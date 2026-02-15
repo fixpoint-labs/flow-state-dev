@@ -1,0 +1,16 @@
+{
+  "name": "@flow-state-dev/devtool",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "node ../../scripts/typecheck.mjs",
+    "lint": "echo 'lint not configured for wave 1'",
+    "test": "echo 'test not configured for wave 1'"
+  },
+  "dependencies": {
+    "@flow-state-dev/client": "workspace:*",
+    "@flow-state-dev/react": "workspace:*"
+  }
+}

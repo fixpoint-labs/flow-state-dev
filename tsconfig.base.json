@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": false,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "baseUrl": ".",
+    "paths": {
+      "@flow-state-dev/core": ["packages/core/src/index.ts"],
+      "@flow-state-dev/core/types": ["packages/core/src/types/index.ts"],
+      "@flow-state-dev/core/items": ["packages/core/src/items/index.ts"],
+      "@flow-state-dev/server": ["packages/server/src/index.ts"],
+      "@flow-state-dev/client": ["packages/client/src/index.ts"],
+      "@flow-state-dev/react": ["packages/react/src/index.ts"],
+      "@flow-state-dev/testing": ["packages/testing/src/index.ts"],
+      "@flow-state-dev/cli": ["packages/cli/src/index.ts"]
+    }
+  }
+}

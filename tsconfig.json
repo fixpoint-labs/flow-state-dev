@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/server" },
+    { "path": "./packages/client" },
+    { "path": "./packages/react" },
+    { "path": "./packages/testing" },
+    { "path": "./packages/cli" },
+    { "path": "./apps/devtool" }
+  ]
+}
