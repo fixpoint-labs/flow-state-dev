@@ -1,4 +1,6 @@
-# Wave <Letter> - <Title>
+# Wave 1.<letter> - <Title>
+
+File path convention: `docs/waves/wave-1/wave-1.<letter>.md`
 
 ## 1. Objective
 

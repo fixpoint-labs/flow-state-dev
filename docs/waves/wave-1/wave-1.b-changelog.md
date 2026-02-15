@@ -1,7 +1,7 @@
-# Wave B Changelog
+# Wave 1.b Changelog
 
 Date: 2026-02-15
-Wave: B (Canonical Wave B)
+Wave: 1.b (Canonical Wave B)
 Status: Completed
 
 ## Deliverables
@@ -15,7 +15,7 @@ Status: Completed
 | Schema helper modules | Completed | `packages/core/src/schema/common.ts`, `packages/core/src/schema/index.ts` |
 | Type smoke checks for connector + flow inference | Completed | `packages/core/src/types/tests/sequencer-connectors.type-test.ts`, `packages/core/src/types/tests/flow-state-inference.type-test.ts` |
 | Core boundary export wiring updates | Completed | `packages/core/src/index.ts`, `packages/core/src/types/index.ts`, `packages/core/src/items/index.ts`, `packages/core/package.json` |
-| Wave execution artifacts | Completed | `docs/waves/wave-b.md`, `docs/waves/wave-b-journal.md`, `docs/waves/wave-b-changelog.md`, `changelog.md` |
+| Wave execution artifacts | Completed | `docs/waves/wave-1/wave-1.b.md`, `docs/waves/wave-1/wave-1.b-journal.md`, `docs/waves/wave-1/wave-1.b-changelog.md`, `changelog.md` |
 
 ## Verification Summary
 
@@ -35,4 +35,4 @@ Status: Completed
 ## Notes
 
 - Runtime `tsc` validation remains deferred until dependencies can be installed in an environment with npm registry access.
-- Wave B contracts are implemented and wired for downstream Wave C builder work.
+- Wave 1.b contracts are implemented and wired for downstream Wave 1.c builder work.

@@ -1,7 +1,7 @@
-# Wave A Changelog
+# Wave 1.a Changelog
 
 Date: 2026-02-15
-Wave: A (Canonical Wave A)
+Wave: 1.a (Canonical Wave A)
 Status: Completed
 
 ## Deliverables
@@ -13,8 +13,8 @@ Status: Completed
 | Package entrypoints | Completed | `packages/*/src/index.ts` |
 | TS project boundaries | Completed | `packages/*/tsconfig.json`, `apps/devtool/tsconfig.json`, root `tsconfig.json` references |
 | Core subpath exports | Completed | `packages/core/package.json`, `packages/core/src/types/index.ts`, `packages/core/src/items/index.ts` |
-| React import proof for core subpaths | Completed | `packages/react/src/_wave-a-import-smoke.ts`, `packages/react/src/index.ts` |
-| Wave execution artifacts | Completed | `docs/waves/wave-a.md`, `docs/waves/wave-a-journal.md`, `docs/waves/wave-a-changelog.md`, `changelog.md` |
+| React import proof for core subpaths | Completed | `packages/react/src/_wave-1a-import-smoke.ts`, `packages/react/src/index.ts` |
+| Wave execution artifacts | Completed | `docs/waves/wave-1/wave-1.a.md`, `docs/waves/wave-1/wave-1.a-journal.md`, `docs/waves/wave-1/wave-1.a-changelog.md`, `changelog.md` |
 
 ## Verification Summary
 
@@ -31,4 +31,4 @@ Status: Completed
 ## Notes
 
 - `pnpm install` could not reach `registry.npmjs.org` in this environment.
-- Wave A remains execution-complete for scaffold/boundary validation; runtime TypeScript compilation (`tsc`) will be activated automatically once dependencies can be installed.
+- Wave 1.a remains execution-complete for scaffold/boundary validation; runtime TypeScript compilation (`tsc`) will be activated automatically once dependencies can be installed.

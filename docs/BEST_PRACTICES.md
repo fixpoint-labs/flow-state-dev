@@ -60,7 +60,7 @@ Update policy:
 - Status: Active
 - Date: 2026-02-15
 - Rule:
-  - Each wave must maintain wave-local artifacts (`wave-<letter>-journal.md`, `wave-<letter>-changelog.md`).
+  - Each wave must maintain wave-local artifacts (`docs/waves/wave-1/wave-1.<letter>-journal.md`, `docs/waves/wave-1/wave-1.<letter>-changelog.md`).
   - Each wave must also add a concise summary entry to root `changelog.md`.
 - Why:
   - Wave-local docs preserve detail; root changelog preserves project-level continuity.

@@ -1,4 +1,4 @@
-# Wave B Journal
+# Wave 1.b Journal
 
 Date: 2026-02-15
 
@@ -11,22 +11,22 @@ Date: 2026-02-15
 5. `../preperation/architecture/FLOW_SYSTEM.md`
 6. `../preperation/architecture/STATE_AND_SCOPES.md`
 7. `../preperation/architecture/STREAMING.md`
-8. `docs/waves/wave-b.md`
+8. `docs/waves/wave-1/wave-1.b.md`
 
 ## Execution Notes
 
-- Implemented Wave B core types and schema modules under `packages/core/src/types`, `packages/core/src/items`, and `packages/core/src/schema`.
-- Replaced Wave A placeholder marker types with canonical type exports for block, flow, state, scope, resource, and projection contracts.
+- Implemented Wave 1.b core types and schema modules under `packages/core/src/types`, `packages/core/src/items`, and `packages/core/src/schema`.
+- Replaced Wave 1.a placeholder marker types with canonical type exports for block, flow, state, scope, resource, and projection contracts.
 - Added canonical output item/content/event type surface for `@flow-state-dev/core/items`.
 - Added compile-only type smoke files for connector chaining and flow scope-state inference in `packages/core/src/types/tests`.
-- Updated `packages/core/src/index.ts`, `packages/core/src/types/index.ts`, and `packages/core/src/items/index.ts` to expose Wave B contracts.
+- Updated `packages/core/src/index.ts`, `packages/core/src/types/index.ts`, and `packages/core/src/items/index.ts` to expose Wave 1.b contracts.
 - Added `zod` dependency to `packages/core/package.json` for canonical schema typing.
-- Updated React smoke import proof to consume real core type/item exports in `packages/react/src/_wave-a-import-smoke.ts`.
+- Updated React smoke import proof to consume real core type/item exports in `packages/react/src/_wave-1a-import-smoke.ts`.
 
 ## Environment Deviation
 
 - Network access to npm registry remains unavailable in this environment.
-- `pnpm install` was not re-attempted for Wave B because prior runs failed with `ENOTFOUND registry.npmjs.org`.
+- `pnpm install` was not re-attempted for Wave 1.b because prior runs failed with `ENOTFOUND registry.npmjs.org`.
 - Verification used `scripts/typecheck.mjs` static checks for import wiring and source structure in lieu of `tsc` compilation.
 
 ## Verification Command Log
@@ -40,9 +40,9 @@ Date: 2026-02-15
 | `pnpm -r lint` | Passed (placeholder scripts) |
 | `pnpm -r test` | Passed (placeholder scripts) |
 | `rg -n "from ['\\\"]/|from \\\"/" packages/core/src` | Passed; no matches (exit code 1 indicates no absolute imports) |
-| `find packages/core/src/types -maxdepth 2 -type f \| sort` | Passed; expected Wave B type files present |
-| `find packages/core/src/items -maxdepth 2 -type f \| sort` | Passed; expected Wave B item files present |
-| `find packages/core/src/schema -maxdepth 2 -type f \| sort` | Passed; expected Wave B schema files present |
+| `find packages/core/src/types -maxdepth 2 -type f \| sort` | Passed; expected Wave 1.b type files present |
+| `find packages/core/src/items -maxdepth 2 -type f \| sort` | Passed; expected Wave 1.b item files present |
+| `find packages/core/src/schema -maxdepth 2 -type f \| sort` | Passed; expected Wave 1.b schema files present |
 
 ## Contract Spot-Check Notes
 

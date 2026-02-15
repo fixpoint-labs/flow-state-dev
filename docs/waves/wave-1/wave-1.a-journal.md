@@ -1,4 +1,4 @@
-# Wave A Journal
+# Wave 1.a Journal
 
 Date: 2026-02-15
 
@@ -7,12 +7,12 @@ Date: 2026-02-15
 1. `../preperation/planning/PHASE_1_BUILD_PLAYBOOK.md`
 2. `../preperation/architecture/IMPLEMENTATION_PLAN.md`
 3. `../preperation/architecture/ARCHITECTURE_OVERVIEW.md`
-4. `docs/waves/wave-a.md`
+4. `docs/waves/wave-1/wave-1.a.md`
 5. `docs/ARCHITECTURE_CHEAT_SHEET.compact.md`
 
 ## Execution Notes
 
-- Implemented Wave A scaffold for all required packages and `apps/devtool`.
+- Implemented Wave 1.a scaffold for all required packages and `apps/devtool`.
 - Added workspace root config (`package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `tsconfig.json`).
 - Added package manifests, TypeScript configs, and minimal entrypoints for:
   - `packages/core`
@@ -22,7 +22,7 @@ Date: 2026-02-15
   - `packages/testing`
   - `packages/cli`
 - Added `packages/core` subpath module files and package export mapping for `.`, `./types`, and `./items`.
-- Added compile-time import smoke proof in `packages/react/src/_wave-a-import-smoke.ts` importing:
+- Added compile-time import smoke proof in `packages/react/src/_wave-1a-import-smoke.ts` importing:
   - `@flow-state-dev/core/types`
   - `@flow-state-dev/core/items`
 
@@ -30,7 +30,7 @@ Date: 2026-02-15
 
 - `pnpm install` was attempted but npm registry access was unavailable in this environment.
 - Error observed: `ENOTFOUND registry.npmjs.org` while resolving/fetching `typescript`.
-- To keep Wave A verifiable offline, package `typecheck` scripts were wired to `scripts/typecheck.mjs`, a deterministic static checker that validates:
+- To keep Wave 1.a verifiable offline, package `typecheck` scripts were wired to `scripts/typecheck.mjs`, a deterministic static checker that validates:
   - `tsconfig.json` presence
   - `src/` presence
   - relative import resolution inside `src/**`
@@ -43,8 +43,8 @@ Date: 2026-02-15
 |---|---|
 | `pnpm install` | Failed due to offline registry (`ENOTFOUND registry.npmjs.org`) |
 | `pnpm -r typecheck` | Passed for all workspace packages/apps via offline static checker |
-| `pnpm -r lint` | Passed (wave A placeholder scripts) |
-| `pnpm -r test` | Passed (wave A placeholder scripts) |
+| `pnpm -r lint` | Passed (wave 1.a placeholder scripts) |
+| `pnpm -r test` | Passed (wave 1.a placeholder scripts) |
 | `find packages apps -maxdepth 2 -name package.json \| sort` | Passed; manifests found for all required package/app targets |
 | `find packages -path '*/src/index.ts' \| sort` | Passed; six package entrypoints found |
 | `cat packages/core/package.json` | Passed; exports include `.`, `./types`, `./items` |
@@ -52,9 +52,9 @@ Date: 2026-02-15
 
 ## Contract Spot-Check Notes
 
-- Verified Wave A requirements from `../preperation/architecture/IMPLEMENTATION_PLAN.md`:
-  - Wave A A1 package entrypoints created.
-  - Wave A A2 core subpath exports configured.
+- Verified Wave 1.a requirements from `../preperation/architecture/IMPLEMENTATION_PLAN.md`:
+  - Wave 1.a A1 package entrypoints created.
+  - Wave 1.a A2 core subpath exports configured.
 - Verified package/export boundary expectations from `../preperation/architecture/ARCHITECTURE_OVERVIEW.md`:
   - Required package set scaffolded.
   - `@flow-state-dev/core`, `@flow-state-dev/core/types`, and `@flow-state-dev/core/items` boundaries established.

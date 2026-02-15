@@ -27,7 +27,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "node ../../scripts/typecheck.mjs",
-    "lint": "echo 'lint not configured for wave A'",
-    "test": "echo 'test not configured for wave A'"
+    "lint": "echo 'lint not configured for wave 1.a'",
+    "test": "echo 'test not configured for wave 1.a'"
   }
 }
