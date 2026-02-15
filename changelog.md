@@ -49,3 +49,10 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Added blocks barrel exports in `packages/core/src/blocks/index.ts` and wired runtime builder exports at `packages/core/src/index.ts`.
 - Added sequencer DSL type smoke coverage at `packages/core/src/types/tests/sequencer-dsl.type-test.ts`.
 - Added Wave 1.c execution artifacts: `docs/waves/wave-1/wave-1.c-journal.md` and `docs/waves/wave-1/wave-1.c-changelog.md`.
+
+### Unit test infrastructure
+
+- Added workspace Vitest baseline config at `vitest.config.ts`.
+- Added `vitest` dev dependency and root `test:watch` script in `package.json`.
+- Replaced placeholder `test` scripts with Vitest commands in all packages and `apps/devtool`.
+- Added initial package-level unit test files under `packages/*/test/*.test.ts` and `apps/devtool/test/index.test.ts` to verify each workspace target has runnable test coverage.

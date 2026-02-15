@@ -1,1 +1,1 @@
-export const devtoolWave1Scaffold = "@flow-state-dev/devtool";
+export const devtoolPackageMarker = "@flow-state-dev/devtool";

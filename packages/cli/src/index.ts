@@ -1,1 +1,1 @@
-export const cliWave1Scaffold = "@flow-state-dev/cli";
+export const cliPackageMarker = "@flow-state-dev/cli";

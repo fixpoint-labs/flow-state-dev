@@ -1,1 +1,1 @@
-export const serverWave1Scaffold = "@flow-state-dev/server";
+export const serverPackageMarker = "@flow-state-dev/server";
