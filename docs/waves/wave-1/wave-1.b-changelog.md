@@ -36,3 +36,4 @@ Status: Completed
 
 - Runtime `tsc` validation remains deferred until dependencies can be installed in an environment with npm registry access.
 - Wave 1.b contracts are implemented and wired for downstream Wave 1.c builder work.
+- Post-merge architecture sync applied: stream event types now include request/user stream split and `scope.state.changed` user-stream event typing per updated canonical docs.

@@ -35,3 +35,4 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Added `zod` dependency to `packages/core/package.json` for canonical schema typing.
 - Updated React smoke import proof to consume real core type/item exports via `packages/react/src/_wave-1a-import-smoke.ts`.
 - Added Wave 1.b execution artifacts: `docs/waves/wave-1/wave-1.b-journal.md` and `docs/waves/wave-1/wave-1.b-changelog.md`.
+- Synced Wave 1.b stream event typings to updated canonical docs by adding request/user stream event base unions and `scope.state.changed` user-stream event types in `packages/core/src/items/events.ts`.

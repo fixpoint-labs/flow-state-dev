@@ -59,3 +59,16 @@ Date: 2026-02-15
 - Verified `STREAMING.md` alignment:
   - `OutputItem` union and `Content` taxonomy follow canonical item-first model.
   - Stream event envelopes include `sequence_number` and request/item/content lifecycle events.
+
+## Addendum: Post-Merge Architecture Sync (2026-02-15)
+
+- Reviewed new architecture updates in `preperation` related to streaming invalidation and scope-state change signaling.
+- Updated `packages/core/src/items/events.ts` to align with canonical stream envelope split:
+  - added `RequestEventBase` and `UserEventBase` with `stream` discriminator
+  - added `RequestStreamEvent` and `UserStreamEvent` unions
+  - narrowed request `resource.changed` scope to `request`
+  - added optional-capability user stream events:
+    - `UserResourceChangedEvent` (`scope: session | user | project`)
+    - `ScopeStateChangedEvent` (`type: scope.state.changed`)
+- Updated `packages/core/src/items/index.ts` exports for new event types.
+- Re-ran `pnpm --filter @flow-state-dev/core typecheck` and `pnpm -r typecheck` (both passed).

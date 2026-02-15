@@ -3,71 +3,111 @@ import type { OutputItem } from "./types";
 
 export type RequestStatus = "in_progress" | "completed" | "incomplete" | "failed";
 
-export type EventBase = {
+export type RequestEventBase = {
+  stream: "request";
   requestId: string;
   sequence_number: number;
   ts: number;
 };
 
-export type RequestCreatedEvent = EventBase & {
+export type UserEventBase = {
+  stream: "user";
+  userId: string;
+  sequence_number: number;
+  ts: number;
+};
+
+export type EventBase = RequestEventBase | UserEventBase;
+
+export type RequestCreatedEvent = RequestEventBase & {
   type: "request.created";
   status: "in_progress";
 };
 
-export type RequestStatusEvent = EventBase & {
+export type RequestStatusEvent = RequestEventBase & {
   type: "request.in_progress" | "request.completed" | "request.incomplete" | "request.failed";
   status: RequestStatus;
 };
 
-export type ItemAddedEvent = EventBase & {
+export type ItemAddedEvent = RequestEventBase & {
   type: "item.added";
   item: OutputItem;
 };
 
-export type ItemDoneEvent = EventBase & {
+export type ItemDoneEvent = RequestEventBase & {
   type: "item.done";
   item: OutputItem;
 };
 
-export type ContentPartAddedEvent = EventBase & {
+export type ContentPartAddedEvent = RequestEventBase & {
   type: "content.added";
   itemId: string;
   contentIndex: number;
   content: Content;
 };
 
-export type ContentPartDeltaEvent = EventBase & {
+export type ContentPartDeltaEvent = RequestEventBase & {
   type: "content.delta";
   itemId: string;
   contentIndex: number;
   delta: string;
 };
 
-export type ContentPartDoneEvent = EventBase & {
+export type ContentPartDoneEvent = RequestEventBase & {
   type: "content.done";
   itemId: string;
   contentIndex: number;
   content: Content;
 };
 
-export type ResourceChangedEvent = EventBase & {
+export type RequestResourceChangedEvent = RequestEventBase & {
   type: "resource.changed";
-  scope: "request" | "session" | "user" | "project";
+  scope: "request";
   resourcePath: string;
   changeType: "created" | "updated" | "deleted";
 };
 
-export type DebugEvent = EventBase & {
+export type UserResourceChangedEvent = UserEventBase & {
+  type: "resource.changed";
+  scope: "session" | "user" | "project";
+  resourcePath: string;
+  changeType: "created" | "updated" | "deleted";
+};
+
+export type ResourceChangedEvent = RequestResourceChangedEvent | UserResourceChangedEvent;
+
+export type ScopeStateChangedEvent = UserEventBase & {
+  type: "scope.state.changed";
+  scope: "session" | "user" | "project";
+  scopeId: string;
+  changeType: "updated" | "deleted";
+};
+
+export type RequestDebugEvent = RequestEventBase & {
   type: "debug";
   name: string;
   data: unknown;
 };
 
-export type PingEvent = EventBase & {
+export type UserDebugEvent = UserEventBase & {
+  type: "debug";
+  name: string;
+  data: unknown;
+};
+
+export type DebugEvent = RequestDebugEvent | UserDebugEvent;
+
+export type RequestPingEvent = RequestEventBase & {
   type: "ping";
 };
 
-export type StreamEvent =
+export type UserPingEvent = UserEventBase & {
+  type: "ping";
+};
+
+export type PingEvent = RequestPingEvent | UserPingEvent;
+
+export type RequestStreamEvent =
   | RequestCreatedEvent
   | RequestStatusEvent
   | ItemAddedEvent
@@ -75,6 +115,14 @@ export type StreamEvent =
   | ContentPartAddedEvent
   | ContentPartDeltaEvent
   | ContentPartDoneEvent
-  | ResourceChangedEvent
-  | DebugEvent
-  | PingEvent;
+  | RequestResourceChangedEvent
+  | RequestDebugEvent
+  | RequestPingEvent;
+
+export type UserStreamEvent =
+  | UserResourceChangedEvent
+  | ScopeStateChangedEvent
+  | UserDebugEvent
+  | UserPingEvent;
+
+export type StreamEvent = RequestStreamEvent | UserStreamEvent;

@@ -35,9 +35,20 @@ export type {
   ItemAddedEvent,
   ItemDoneEvent,
   PingEvent,
+  RequestDebugEvent,
+  RequestEventBase,
   RequestCreatedEvent,
+  RequestPingEvent,
+  RequestResourceChangedEvent,
+  RequestStreamEvent,
   RequestStatus,
   RequestStatusEvent,
+  ScopeStateChangedEvent,
   ResourceChangedEvent,
-  StreamEvent
+  StreamEvent,
+  UserDebugEvent,
+  UserEventBase,
+  UserPingEvent,
+  UserResourceChangedEvent,
+  UserStreamEvent
 } from "./events";
