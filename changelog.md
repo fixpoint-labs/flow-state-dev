@@ -24,3 +24,13 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Added React compile-time smoke import proof from `@flow-state-dev/core/types` and `@flow-state-dev/core/items`.
 - Added offline Wave A typecheck verifier at `scripts/typecheck.mjs` due registry unavailability in this environment.
 - Added Wave A execution artifacts: `docs/waves/wave-a-journal.md` and `docs/waves/wave-a-changelog.md`.
+
+### Wave B implementation
+
+- Implemented canonical core type contracts in `packages/core/src/types/*` for blocks, flows, state/scopes, and resources/projections.
+- Implemented canonical item/content/stream event contracts in `packages/core/src/items/*` aligned to item-first streaming architecture.
+- Added shared schema typing helpers in `packages/core/src/schema/*` and wired type/item exports through core entrypoints.
+- Added compile-only type smoke checks at `packages/core/src/types/tests/sequencer-connectors.type-test.ts` and `packages/core/src/types/tests/flow-state-inference.type-test.ts`.
+- Added `zod` dependency to `packages/core/package.json` for canonical schema typing.
+- Updated React smoke import proof to consume real core type/item exports via `packages/react/src/_wave-a-import-smoke.ts`.
+- Added Wave B execution artifacts: `docs/waves/wave-b-journal.md` and `docs/waves/wave-b-changelog.md`.

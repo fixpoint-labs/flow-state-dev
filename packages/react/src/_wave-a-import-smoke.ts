@@ -1,6 +1,7 @@
-import type { CoreTypeMarker } from "@flow-state-dev/core/types";
-import { coreItemMarker } from "@flow-state-dev/core/items";
+import type { BlockKind } from "@flow-state-dev/core/types";
+import type { OutputItem } from "@flow-state-dev/core/items";
 
-export type WaveACoreTypeImportProof = CoreTypeMarker;
+export type WaveACoreTypeImportProof = BlockKind;
+export type WaveACoreItemImportProof = OutputItem["type"];
 
-export const waveACoreItemImportProof: typeof coreItemMarker = coreItemMarker;
+export const waveACoreItemImportProof: WaveACoreItemImportProof = "message";

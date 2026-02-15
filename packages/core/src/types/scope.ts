@@ -1,0 +1,107 @@
+import type { ItemStatus, ItemVisibility } from "../items/types";
+import type { JsonObject } from "../schema/common";
+import type { ResourceHandle, ResourceRegistry } from "./resource";
+import type { ScopeStateOps } from "./state";
+
+export type ScopeType = "request" | "session" | "user" | "project";
+
+export type ScopeIdentity = {
+  type: ScopeType;
+  id: string;
+  userId?: string;
+  projectId?: string;
+};
+
+export type SessionItem = {
+  id: string;
+  type: string;
+  status: ItemStatus;
+  visibility: ItemVisibility;
+  transient?: boolean;
+  requestId: string;
+  itemIndex: number;
+  payload: unknown;
+  ts?: number;
+};
+
+export type MessageLimit = number | { tokens: number };
+
+export type ItemQuery = {
+  limit?: MessageLimit;
+  includeTransient?: boolean;
+  visibility?: ItemVisibility | ItemVisibility[];
+};
+
+export type SessionItemViews = {
+  all: (query?: ItemQuery) => SessionItem[];
+  ui: (query?: ItemQuery) => SessionItem[];
+  llm: (query?: ItemQuery) => SessionItem[];
+};
+
+export type Message = {
+  id: string;
+  role: "system" | "developer" | "user" | "assistant" | "tool";
+  content: string | JsonObject | JsonObject[];
+  ts?: number;
+};
+
+export type LLMMessage = {
+  role: "system" | "developer" | "user" | "assistant" | "tool";
+  content: unknown;
+};
+
+export type MessageQuery = {
+  limit?: MessageLimit;
+};
+
+export type MessageViews = {
+  ui: (query?: MessageQuery) => Message[];
+  llm: (query?: MessageQuery) => LLMMessage[];
+};
+
+export type JournalEntry = {
+  id: string;
+  ts: number;
+  text: string;
+  source?: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+};
+
+export type JournalEntryInput = Omit<JournalEntry, "id" | "ts">;
+
+export type RequestScopeHandle<TState extends object = Record<string, unknown>> = {
+  identity: ScopeIdentity;
+  state: Readonly<TState>;
+} & ScopeStateOps<TState>;
+
+export type SessionScopeHandle<
+  TState extends object = Record<string, unknown>,
+  TResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
+> = {
+  identity: ScopeIdentity;
+  state: Readonly<TState>;
+  resources: ResourceRegistry<TResources>;
+  items: SessionItemViews;
+  messages: MessageViews;
+  appendJournal(entry: JournalEntryInput): Promise<void>;
+  getJournal(options?: { limit?: number; offset?: number }): Promise<JournalEntry[]>;
+} & ScopeStateOps<TState>;
+
+export type UserScopeHandle<
+  TState extends object = Record<string, unknown>,
+  TResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
+> = {
+  identity: ScopeIdentity;
+  state: Readonly<TState>;
+  resources: ResourceRegistry<TResources>;
+} & ScopeStateOps<TState>;
+
+export type ProjectScopeHandle<
+  TState extends object = Record<string, unknown>,
+  TResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
+> = {
+  identity: ScopeIdentity;
+  state: Readonly<TState>;
+  resources?: ResourceRegistry<TResources>;
+} & ScopeStateOps<TState>;
