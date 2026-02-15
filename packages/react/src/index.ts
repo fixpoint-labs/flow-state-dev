@@ -1,4 +1,4 @@
-export type { Wave1CoreTypeImportProof } from "./_wave1-import-smoke";
-export { wave1CoreItemImportProof } from "./_wave1-import-smoke";
+export type { WaveACoreTypeImportProof } from "./_wave-a-import-smoke";
+export { waveACoreItemImportProof } from "./_wave-a-import-smoke";
 
-export const reactWave1Scaffold = "@flow-state-dev/react";
+export const reactWaveAScaffold = "@flow-state-dev/react";

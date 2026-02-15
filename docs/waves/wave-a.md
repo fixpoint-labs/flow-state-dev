@@ -1,4 +1,4 @@
-# Wave 1 - Workspace and Package Scaffolding (Canonical Wave A)
+# Wave A - Workspace and Package Scaffolding (Canonical Wave A)
 
 ## 1. Objective
 
@@ -48,7 +48,7 @@ Conflict rule:
 
 ## 5. Task Plan
 
-### W1-T1: Initialize workspace root
+### WA-T1: Initialize workspace root
 
 Purpose:
 
@@ -67,7 +67,7 @@ Acceptance criteria:
 - Workspace discovery includes `packages/*` and `apps/*`.
 - Root scripts include at minimum `typecheck`, `test`, and `lint` commands (even if some are placeholders at this wave).
 
-### W1-T2: Scaffold package/app directories and manifests
+### WA-T2: Scaffold package/app directories and manifests
 
 Purpose:
 
@@ -89,7 +89,7 @@ Acceptance criteria:
 - Every required package has a manifest and `src/index.ts`.
 - No absolute-path imports in package source files.
 
-### W1-T3: Configure TypeScript project boundaries
+### WA-T3: Configure TypeScript project boundaries
 
 Purpose:
 
@@ -105,7 +105,7 @@ Acceptance criteria:
 
 - `pnpm -r typecheck` runs across all workspace packages without missing-config errors.
 
-### W1-T4: Establish canonical core exports + subpath exports
+### WA-T4: Establish canonical core exports + subpath exports
 
 Purpose:
 
@@ -124,7 +124,7 @@ Acceptance criteria:
 - `@flow-state-dev/core/types` export resolves.
 - `@flow-state-dev/core/items` export resolves.
 
-### W1-T5: Add compile-time consumer proof for react package
+### WA-T5: Add compile-time consumer proof for react package
 
 Purpose:
 
@@ -134,7 +134,7 @@ Files to create/modify:
 
 - `packages/react/src/index.ts`
 - optional compile-only smoke file, for example:
-  - `packages/react/src/_wave1-import-smoke.ts`
+  - `packages/react/src/_wave-a-import-smoke.ts`
 
 Acceptance criteria:
 
@@ -142,7 +142,7 @@ Acceptance criteria:
   - `@flow-state-dev/core/types`
   - `@flow-state-dev/core/items`
 
-### W1-T6: Record wave execution artifacts
+### WA-T6: Record wave execution artifacts
 
 Purpose:
 
@@ -150,16 +150,16 @@ Purpose:
 
 Files to create/modify:
 
-- `docs/waves/wave-1.md` (this plan; update as needed during execution)
-- `docs/waves/wave-1-journal.md` (execution notes, commands run, deviations)
-- `docs/waves/wave-1-changelog.md` (deliverables + verification results)
-- `changelog.md` (root summary entry for Wave 1 outcomes)
+- `docs/waves/wave-a.md` (this plan; update as needed during execution)
+- `docs/waves/wave-a-journal.md` (execution notes, commands run, deviations)
+- `docs/waves/wave-a-changelog.md` (deliverables + verification results)
+- `changelog.md` (root summary entry for Wave A outcomes)
 
 Acceptance criteria:
 
 - Journal includes exact verification commands and outcomes.
 - Changelog maps each deliverable to its verification evidence.
-- Root changelog includes a concise Wave 1 summary entry.
+- Root changelog includes a concise Wave A summary entry.
 
 ## 6. Deliverables And Verification
 
@@ -172,12 +172,12 @@ Acceptance criteria:
 | Core subpath modules resolve | `packages/core/src/types/index.ts`, `packages/core/src/items/index.ts` | workspace typecheck | No unresolved module errors for subpaths |
 | React can import core subpaths | `packages/react/src/index.ts` and/or smoke file | workspace typecheck | Imports from `@flow-state-dev/core/types` and `/items` compile |
 | No absolute path imports in package sources | `packages/**/src/*` | `rg -n \"from ['\\\"]/|from \\\"/\" packages` | No absolute filesystem import paths detected |
-| Wave artifacts captured | `docs/waves/wave-1-journal.md`, `docs/waves/wave-1-changelog.md` | manual review | Files contain command log + verification summary |
-| Root changelog summary recorded | `changelog.md` | manual review | Contains Wave 1 summary of completed changes |
+| Wave artifacts captured | `docs/waves/wave-a-journal.md`, `docs/waves/wave-a-changelog.md` | manual review | Files contain command log + verification summary |
+| Root changelog summary recorded | `changelog.md` | manual review | Contains Wave A summary of completed changes |
 
 ## 7. Wave Gate Checklist
 
-Required to close Wave 1:
+Required to close Wave A:
 
 - [x] `pnpm -r typecheck` passes
 - [x] targeted tests for changed packages pass (if tests exist in this wave)
@@ -185,27 +185,27 @@ Required to close Wave 1:
 - [x] contract spot-checks completed against:
   - `../preperation/architecture/IMPLEMENTATION_PLAN.md` Wave A
   - `../preperation/architecture/ARCHITECTURE_OVERVIEW.md` package/export sections
-- [x] `docs/waves/wave-1-changelog.md` updated
-- [x] `docs/waves/wave-1-journal.md` updated
-- [x] `changelog.md` updated with Wave 1 summary
+- [x] `docs/waves/wave-a-changelog.md` updated
+- [x] `docs/waves/wave-a-journal.md` updated
+- [x] `changelog.md` updated with Wave A summary
 
 Execution note:
 
 - `pnpm install` could not reach `registry.npmjs.org` in this environment.
-- Wave 1 verification used `pnpm -r typecheck` backed by `scripts/typecheck.mjs` (offline static verification of TS project wiring/import boundaries).
+- Wave A verification used `pnpm -r typecheck` backed by `scripts/typecheck.mjs` (offline static verification of TS project wiring/import boundaries).
 
-## 8. Definition Of Done (Wave 1)
+## 8. Definition Of Done (Wave A)
 
-Wave 1 is done when all of the following are true:
+Wave A is done when all of the following are true:
 
 - Repo has stable package/app scaffolding for all Phase 1 targets.
 - Core subpath export boundary is established and compilable.
 - React package can compile against core type/item subpaths.
 - Verification artifacts document exactly what was run and what passed.
 
-## 9. Handoff To Wave 2
+## 9. Handoff To Wave B
 
-Wave 2 may assume:
+Wave B may assume:
 
 - stable workspace/package layout exists
 - package entrypoints and manifests are in place

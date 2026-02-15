@@ -1,4 +1,4 @@
-# Wave 1 Journal
+# Wave A Journal
 
 Date: 2026-02-15
 
@@ -7,12 +7,12 @@ Date: 2026-02-15
 1. `../preperation/planning/PHASE_1_BUILD_PLAYBOOK.md`
 2. `../preperation/architecture/IMPLEMENTATION_PLAN.md`
 3. `../preperation/architecture/ARCHITECTURE_OVERVIEW.md`
-4. `docs/waves/wave-1.md`
+4. `docs/waves/wave-a.md`
 5. `docs/ARCHITECTURE_CHEAT_SHEET.compact.md`
 
 ## Execution Notes
 
-- Implemented Wave 1 scaffold for all required packages and `apps/devtool`.
+- Implemented Wave A scaffold for all required packages and `apps/devtool`.
 - Added workspace root config (`package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `tsconfig.json`).
 - Added package manifests, TypeScript configs, and minimal entrypoints for:
   - `packages/core`
@@ -22,7 +22,7 @@ Date: 2026-02-15
   - `packages/testing`
   - `packages/cli`
 - Added `packages/core` subpath module files and package export mapping for `.`, `./types`, and `./items`.
-- Added compile-time import smoke proof in `packages/react/src/_wave1-import-smoke.ts` importing:
+- Added compile-time import smoke proof in `packages/react/src/_wave-a-import-smoke.ts` importing:
   - `@flow-state-dev/core/types`
   - `@flow-state-dev/core/items`
 
@@ -30,7 +30,7 @@ Date: 2026-02-15
 
 - `pnpm install` was attempted but npm registry access was unavailable in this environment.
 - Error observed: `ENOTFOUND registry.npmjs.org` while resolving/fetching `typescript`.
-- To keep Wave 1 verifiable offline, package `typecheck` scripts were wired to `scripts/typecheck.mjs`, a deterministic static checker that validates:
+- To keep Wave A verifiable offline, package `typecheck` scripts were wired to `scripts/typecheck.mjs`, a deterministic static checker that validates:
   - `tsconfig.json` presence
   - `src/` presence
   - relative import resolution inside `src/**`
@@ -43,8 +43,8 @@ Date: 2026-02-15
 |---|---|
 | `pnpm install` | Failed due to offline registry (`ENOTFOUND registry.npmjs.org`) |
 | `pnpm -r typecheck` | Passed for all workspace packages/apps via offline static checker |
-| `pnpm -r lint` | Passed (wave 1 placeholder scripts) |
-| `pnpm -r test` | Passed (wave 1 placeholder scripts) |
+| `pnpm -r lint` | Passed (wave A placeholder scripts) |
+| `pnpm -r test` | Passed (wave A placeholder scripts) |
 | `find packages apps -maxdepth 2 -name package.json \| sort` | Passed; manifests found for all required package/app targets |
 | `find packages -path '*/src/index.ts' \| sort` | Passed; six package entrypoints found |
 | `cat packages/core/package.json` | Passed; exports include `.`, `./types`, `./items` |

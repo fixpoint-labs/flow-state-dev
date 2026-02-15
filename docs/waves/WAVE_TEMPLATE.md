@@ -1,4 +1,4 @@
-# Wave N - <Title>
+# Wave <Letter> - <Title>
 
 ## 1. Objective
 
