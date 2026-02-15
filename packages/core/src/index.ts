@@ -9,3 +9,25 @@ export type {
 } from "./schema/common";
 
 export { defineProjection, defineResource, projection, projectionData, projectionMessages, projectionText, resource } from "./types/resource";
+export { generator, handler, resolveGeneratorMessage, resolveGeneratorRender, router, sequencer } from "./blocks";
+export type {
+  BranchStep,
+  BranchStepOutput,
+  GeneratorConfig,
+  GeneratorLoopConfig,
+  GeneratorLoopState,
+  GeneratorRepairConfig,
+  GeneratorRepairMode,
+  GeneratorSlot,
+  GeneratorSlotEntry,
+  GeneratorSlotRefOptions,
+  GeneratorSlotReference,
+  GeneratorToolResult,
+  HandlerConfig,
+  ParallelStep,
+  ParallelStepOutput,
+  RouterConfig,
+  SequencerConfig,
+  SequencerDefinition,
+  ToolBinding
+} from "./blocks";
