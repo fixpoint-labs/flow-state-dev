@@ -98,6 +98,17 @@ Update policy:
 - Why:
   - Keeps onboarding fast and accurate while preserving detailed process guidance in the right place for agent workflows.
 
+### BP-009: Maintain package-level READMEs for public packages
+
+- Status: Active
+- Date: 2026-02-16
+- Rule:
+  - Maintain `README.md` in each public package directory (`packages/*`).
+  - Package READMEs should document purpose, current public API surface, basic usage, and package-local verification commands.
+  - Update a package README in the same change set when that package’s exported surface, runtime behavior, or setup scripts materially change.
+- Why:
+  - Reduces onboarding and integration friction by keeping package docs close to the code that owns each contract.
+
 ---
 
 ## Template For New Entries

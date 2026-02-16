@@ -34,3 +34,4 @@ Use this protocol when work is wave-based:
 
 - Update `docs/BEST_PRACTICES.md` when a new implementation standard is adopted.
 - Update `README.md` when onboarding-relevant facts change (setup, package roles, key concepts, workflow entry points).
+- Update `packages/*/README.md` when a package's exported surface, behavior, or package-local setup commands materially change.

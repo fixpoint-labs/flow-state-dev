@@ -116,3 +116,27 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Added route exports in `packages/server/src/routes/index.ts` and wired registry/routes through `packages/server/src/index.ts`.
 - Added Wave 1.h unit coverage in `packages/server/test/registry-routes.test.ts` and expanded server export smoke checks in `packages/server/test/index.test.ts`.
 - Added Wave 1.h execution artifacts: `docs/waves/wave-1/wave-1.h-journal.md` and `docs/waves/wave-1/wave-1.h-changelog.md`.
+
+### Wave 1.i implementation
+
+- Added Wave 1.i execution plan at `docs/waves/wave-1/wave-1.i.md` aligned to canonical Wave I.
+- Implemented client transport APIs in `packages/client/src/*`, including action/session/state APIs and request/user SSE clients with resume controls.
+- Implemented typed flow-bound client helpers in `packages/client/src/action-client/executeAction.ts` and package exports in `packages/client/src/index.ts`.
+- Implemented React wrappers and render surfaces in `packages/react/src/*`, including flow/session/action/request-stream helpers, block renderer registry, and flow context utilities.
+- Added Wave 1.i unit coverage in `packages/client/test/*` and `packages/react/test/*`.
+- Updated client/react package scripts in `packages/client/package.json` and `packages/react/package.json` for deterministic dependency-build-aware typecheck/test execution.
+- Updated `README.md` maturity section to reflect implemented client/react package surfaces.
+- Added Wave 1.i execution artifacts: `docs/waves/wave-1/wave-1.i-journal.md` and `docs/waves/wave-1/wave-1.i-changelog.md`.
+
+### Documentation updates
+
+- Added package-level onboarding docs:
+  - `packages/client/README.md`
+  - `packages/react/README.md`
+  - `packages/server/README.md`
+  - `packages/testing/README.md`
+- Added best-practice standard for package README maintenance in `docs/BEST_PRACTICES.md` (BP-009).
+- Expanded `packages/react/README.md` with hook-by-hook usage documentation (`useFlowAgent`, `useSession`, `useAction`, `useRequestStream`, `useTypedFlowClient`), context resolution rules, and rendering helper guidance.
+- Added an explicit typed-client naming alias `createTypedFlowClient` in `packages/client/src/action-client/executeAction.ts` and `packages/client/src/index.ts`, with coverage in `packages/client/test/*`.
+- Expanded `packages/react/README.md` with a full canonical chat send/stream/render example and AI Elements integration pattern guidance.
+- Updated root `README.md` documentation map to link directly to package-level READMEs.

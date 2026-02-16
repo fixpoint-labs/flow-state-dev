@@ -20,7 +20,9 @@ Building AI features often means stitching together orchestration, retries, stre
 
 - Core contracts and block builders are implemented.
 - Server execution, stores, and streaming runtime are implemented.
-- Client/React/testing/CLI/devtool packages are scaffolded and iterating toward full Phase 1 scope.
+- Client transport/session/SSE APIs are implemented and tested.
+- React hook wrappers, renderer registry, and item render helpers are implemented and tested.
+- Testing/CLI/devtool packages remain in active implementation.
 
 This is an implementation-phase repository, not a polished production release yet.
 
@@ -95,6 +97,11 @@ pnpm test
 
 - Canonical architecture (authoritative): `../preperation/architecture/`
 - Implementation plan: `../preperation/architecture/IMPLEMENTATION_PLAN.md`
+- Package docs:
+  - `packages/server/README.md`
+  - `packages/client/README.md`
+  - `packages/react/README.md`
+  - `packages/testing/README.md`
 - Best practices (living): `docs/BEST_PRACTICES.md`
 - Changelog: `changelog.md`
 - Agent collaboration protocol: `AGENTS.md`

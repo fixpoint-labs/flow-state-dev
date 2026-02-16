@@ -1,0 +1,144 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  createSessionClient,
+  type ClientFetch,
+  type SessionDetail,
+  type SessionRequestSummary,
+  type SessionStateSnapshotResponse,
+  type SessionSummary
+} from "../src";
+
+function createJsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "content-type": "application/json"
+    }
+  });
+}
+
+const SESSION: SessionDetail = {
+  id: "sess_1",
+  flowKind: "demo",
+  userId: "devuser",
+  createdAt: 1,
+  updatedAt: 2,
+  projectId: "proj_1"
+};
+
+const REQUESTS: SessionRequestSummary[] = [
+  {
+    id: "req_1",
+    flowKind: "demo",
+    actionName: "run",
+    userId: "devuser",
+    sessionId: "sess_1",
+    status: "completed",
+    createdAt: 1,
+    updatedAt: 2
+  }
+];
+
+const SNAPSHOT: SessionStateSnapshotResponse = {
+  sessionId: "sess_1",
+  flowKind: "demo",
+  state: {
+    session: {
+      count: 1
+    }
+  },
+  resources: [],
+  projections: {}
+};
+
+describe("createSessionClient", () => {
+  it("lists sessions using canonical query params", async () => {
+    const sessions: SessionSummary[] = [
+      {
+        id: "sess_1",
+        flowKind: "demo",
+        userId: "devuser",
+        createdAt: 1,
+        updatedAt: 2
+      }
+    ];
+
+    const fetcher = vi.fn<ClientFetch>(async () =>
+      createJsonResponse({ sessions })
+    );
+
+    const client = createSessionClient({ fetcher });
+    const result = await client.listSessions({
+      flowKind: "demo",
+      userId: "devuser",
+      limit: 20,
+      offset: 5
+    });
+
+    expect(result).toEqual(sessions);
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "/api/flows/sessions?flowKind=demo&userId=devuser&limit=20&offset=5"
+    );
+  });
+
+  it("creates and deletes sessions", async () => {
+    const fetcher = vi
+      .fn<ClientFetch>()
+      .mockImplementationOnce(async (_url, init) => {
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+          userId: "devuser"
+        });
+        return createJsonResponse({ session: SESSION }, 201);
+      })
+      .mockImplementationOnce(async (_url, init) => {
+        expect(init?.method).toBe("DELETE");
+        return createJsonResponse(undefined, 204);
+      });
+
+    const client = createSessionClient({ fetcher });
+    const created = await client.createSession({
+      flowKind: "demo",
+      userId: "devuser"
+    });
+
+    expect(created.id).toBe("sess_1");
+
+    await client.deleteSession("sess_1");
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/flows/demo/sessions");
+    expect(fetcher.mock.calls[1]?.[0]).toBe("/api/flows/sessions/sess_1");
+  });
+
+  it("reads session detail, request list, and state snapshot", async () => {
+    const fetcher = vi
+      .fn<ClientFetch>()
+      .mockImplementationOnce(async () =>
+        createJsonResponse({ session: SESSION })
+      )
+      .mockImplementationOnce(async () =>
+        createJsonResponse({ requests: REQUESTS })
+      )
+      .mockImplementationOnce(async () => createJsonResponse(SNAPSHOT));
+
+    const client = createSessionClient({ fetcher });
+
+    const session = await client.getSession("sess_1");
+    expect(session.projectId).toBe("proj_1");
+
+    const requests = await client.listSessionRequests("sess_1", {
+      status: "completed",
+      limit: 10
+    });
+    expect(requests).toHaveLength(1);
+
+    const snapshot = await client.getSessionState("sess_1");
+    expect(snapshot.flowKind).toBe("demo");
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/flows/sessions/sess_1");
+    expect(fetcher.mock.calls[1]?.[0]).toBe(
+      "/api/flows/sessions/sess_1/requests?status=completed&limit=10"
+    );
+    expect(fetcher.mock.calls[2]?.[0]).toBe("/api/flows/sessions/sess_1/state");
+  });
+});

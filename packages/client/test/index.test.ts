@@ -1,8 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { clientPackageMarker } from "../src";
+import {
+  clientPackageMarker,
+  createActionClient,
+  createFlowClient,
+  createTypedFlowClient,
+  createSessionClient,
+  createSSEClient,
+  createUserSSEClient,
+  ClientHttpError
+} from "../src";
 
 describe("@flow-state-dev/client", () => {
   it("exports scaffold marker", () => {
     expect(clientPackageMarker).toBe("@flow-state-dev/client");
+  });
+
+  it("exports client runtime primitives", () => {
+    expect(typeof createActionClient).toBe("function");
+    expect(typeof createFlowClient).toBe("function");
+    expect(typeof createTypedFlowClient).toBe("function");
+    expect(typeof createSessionClient).toBe("function");
+    expect(typeof createSSEClient).toBe("function");
+    expect(typeof createUserSSEClient).toBe("function");
+    expect(typeof ClientHttpError).toBe("function");
   });
 });
