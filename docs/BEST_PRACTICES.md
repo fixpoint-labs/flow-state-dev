@@ -87,6 +87,17 @@ Update policy:
 - Why:
   - Improves onboarding speed and reduces misunderstanding as runtime orchestration complexity grows.
 
+### BP-008: Keep README onboarding-first and current
+
+- Status: Active
+- Date: 2026-02-16
+- Rule:
+  - `README.md` is the first-stop onboarding document for new developers and should focus on project purpose, objectives, key concepts, setup, package responsibilities, and core commands.
+  - Process-specific collaboration protocol (for example wave execution rules) should live in `AGENTS.md`, not in `README.md`.
+  - Update `README.md` in the same change set when onboarding-relevant facts change (new package/app, package responsibility changes, setup/command changes, or major architecture concept shifts).
+- Why:
+  - Keeps onboarding fast and accurate while preserving detailed process guidance in the right place for agent workflows.
+
 ---
 
 ## Template For New Entries
