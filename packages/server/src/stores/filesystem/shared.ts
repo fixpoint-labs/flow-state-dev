@@ -1,5 +1,6 @@
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { applyOffsetLimit } from "../shared";
 
 function toFileName(id: string): string {
   return `${encodeURIComponent(id)}.json`;
@@ -79,21 +80,6 @@ export async function listRecords<TValue>(rootDir: string): Promise<TValue[]> {
   }
 
   return values;
-}
-
-export function applyOffsetLimit<TValue>(
-  values: TValue[],
-  options: { offset?: number; limit?: number } | undefined
-): TValue[] {
-  const offset = Math.max(0, options?.offset ?? 0);
-  const limit = options?.limit;
-  const sliced = values.slice(offset);
-
-  if (limit === undefined) {
-    return sliced;
-  }
-
-  return sliced.slice(0, Math.max(0, limit));
 }
 
 type StoreListOptions = {
