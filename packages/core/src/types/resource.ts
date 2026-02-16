@@ -189,18 +189,46 @@ export function defineProjection<const TProjection extends ProjectionConfig>(
   return config;
 }
 
+function toJsonObject(value: Record<string, unknown>): JsonObject {
+  const out: JsonObject = {};
+
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry === undefined) {
+      continue;
+    }
+
+    out[key] = entry as JsonValue;
+  }
+
+  return out;
+}
+
 function createSlotReference(label: string, options?: ProjectionRefOptions): SlotReference {
-  return (_input, _ctx) => ({
-    role: "system",
-    content: { ref: label, options }
-  });
+  return (_input, _ctx) => {
+    const content = toJsonObject({
+      ref: label,
+      options: options === undefined ? undefined : toJsonObject(options as Record<string, unknown>)
+    });
+
+    return {
+      role: "system",
+      content
+    };
+  };
 }
 
 export function resource(uri: string, options?: ResourceRefOptions): SlotReference {
-  return (_input, _ctx) => ({
-    role: "system",
-    content: { ref: uri, options }
-  });
+  return (_input, _ctx) => {
+    const content = toJsonObject({
+      ref: uri,
+      options: options === undefined ? undefined : toJsonObject(options as Record<string, unknown>)
+    });
+
+    return {
+      role: "system",
+      content
+    };
+  };
 }
 
 export function projection(uri: string, options?: ProjectionRefOptions): SlotReference {

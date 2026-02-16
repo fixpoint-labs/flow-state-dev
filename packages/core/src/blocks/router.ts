@@ -40,7 +40,7 @@ export interface RouterConfig<TInput, TOutput> extends Omit<BlockConfig<TInput, 
 export function router<TInput, TOutput>(config: RouterConfig<TInput, TOutput>): BlockDefinition<TInput, TOutput> {
   return buildBlock<TInput, TOutput>({
     kind: "router",
-    config,
+    config: config as unknown as BlockConfig<TInput, TOutput>,
     execute: async (input, ctx) => {
       const selected = await config.execute(input, ctx);
       const passesValidation =

@@ -29,24 +29,31 @@ const toStringBlock = handler<number, string>({
   execute: (value) => value.toString()
 });
 
-const pipeline = sequencer<string>({
-  name: "dsl-smoke"
-})
+const thenAndTap = sequencer<string>({ name: "then-and-tap" })
   .then(parseNumber)
   .then(toLabel)
   .then((value) => value.value, addOne)
-  .tap((value) => value)
+  .tap((value) => {
+    void value;
+  })
   .tap((value) => value, addOne)
   .thenIf((value) => value > 0, square)
-  .thenIf((value) => value > 0, (value) => value, square)
+  .thenIf((value) => value > 0, (value) => value, square);
+
+const looping = sequencer<number>({ name: "looping" })
+  .doWhile((value) => value < 10, addOne)
+  .doUntil((value) => value > 12, addOne);
+
+const collections = sequencer<number>({ name: "collections" })
   .map((value) => [value, value + 1])
   .forEach(addOne)
-  .doWhile((value) => value < 10, addOne)
-  .doUntil((value) => value > 10, addOne)
   .parallel({
-    raw: addOne,
+    raw: {
+      connector: (value) => value[0],
+      block: addOne
+    },
     mapped: {
-      connector: (value) => value.raw,
+      connector: (value) => value[0],
       block: toStringBlock
     }
   })
@@ -55,7 +62,11 @@ const pipeline = sequencer<string>({
     large: [(value) => value.raw, (value) => value >= 100, square]
   });
 
-const typedPipeline: SequencerDefinition<string, number> = pipeline;
+const typedThenAndTap: SequencerDefinition<string, number> = thenAndTap;
+const typedLooping: SequencerDefinition<number, number> = looping;
+const typedCollections: SequencerDefinition<number, number> = collections;
 
-void typedPipeline;
+void typedThenAndTap;
+void typedLooping;
+void typedCollections;
 export const sequencerDslTypeSmoke = true;

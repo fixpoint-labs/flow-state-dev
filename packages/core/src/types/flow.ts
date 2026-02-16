@@ -118,7 +118,7 @@ export type FlowInstanceOptions<
   kind?: string;
   requireSession?: boolean;
   requireUser?: boolean;
-  actions?: Partial<TActions>;
+  actions?: Partial<TActions> & Record<string, ActionConfig>;
   session?: TSession;
   request?: TRequest;
   user?: TUser;

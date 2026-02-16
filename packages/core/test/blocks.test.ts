@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generator, handler, router, sequencer } from "../src";
+import { defineFlow, generator, handler, router, sequencer } from "../src";
 
 describe("@flow-state-dev/core test harness", () => {
   it("exports canonical block builders", () => {
@@ -7,5 +7,6 @@ describe("@flow-state-dev/core test harness", () => {
     expect(typeof generator).toBe("function");
     expect(typeof sequencer).toBe("function");
     expect(typeof router).toBe("function");
+    expect(typeof defineFlow).toBe("function");
   });
 });

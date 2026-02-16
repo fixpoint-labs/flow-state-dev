@@ -133,7 +133,11 @@ async function runWithRetry<TValue>(
 }
 
 function preserveNonFunctionOption<TValue>(value: TValue): TValue | undefined {
-  return typeof value === "function" ? undefined : value;
+  if (typeof value === "function") {
+    return undefined;
+  }
+
+  return value;
 }
 
 export function buildBlock<TInput, TOutput>(options: BuildBlockOptions<TInput, TOutput>): BlockDefinition<TInput, TOutput> {
@@ -183,8 +187,8 @@ export function buildBlock<TInput, TOutput>(options: BuildBlockOptions<TInput, T
       const nextConfig: BlockConfig<TInput, TTo> = {
         ...(runtimeConfig as unknown as BlockConfig<TInput, TTo>),
         outputSchema: undefined,
-        render: preserveNonFunctionOption(runtimeConfig.render),
-        message: preserveNonFunctionOption(runtimeConfig.message),
+        render: preserveNonFunctionOption(runtimeConfig.render) as BlockConfig<TInput, TTo>["render"],
+        message: preserveNonFunctionOption(runtimeConfig.message) as BlockConfig<TInput, TTo>["message"],
         onCompleted: undefined
       };
 

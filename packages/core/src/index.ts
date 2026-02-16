@@ -10,6 +10,7 @@ export type {
 
 export { defineProjection, defineResource, projection, projectionData, projectionMessages, projectionText, resource } from "./types/resource";
 export { generator, handler, resolveGeneratorMessage, resolveGeneratorRender, router, sequencer } from "./blocks";
+export { defineFlow } from "./flow";
 export type {
   BranchStep,
   BranchStepOutput,
@@ -31,3 +32,12 @@ export type {
   SequencerDefinition,
   ToolBinding
 } from "./blocks";
+export type {
+  ActionConfig,
+  FlowDefinition,
+  FlowInstance,
+  FlowInstanceOptions,
+  FlowType,
+  ToolLifecycleEvent,
+  ToolsConfig
+} from "./types/flow";

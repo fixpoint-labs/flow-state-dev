@@ -214,8 +214,8 @@ function createSequencer<TInput, TOutput>(
       description: config.description,
       inputSchema: config.inputSchema,
       outputSchema: config.outputSchema,
-      render: config.render as unknown,
-      message: config.message as unknown
+      render: config.render as any,
+      message: config.message as any
     },
     execute: runSequencerOperations(operations, rescueHandlers) as (
       input: TInput,
@@ -530,7 +530,11 @@ function createSequencer<TInput, TOutput>(
         run: async (value, ctx) => {
           if (connector === undefined) {
             if (isBlockDefinition(tapTarget)) {
-              await executeBlock(tapTarget as BlockDefinition<TOutput, unknown>, value as TOutput, ctx);
+              await executeBlock(
+                tapTarget as unknown as BlockDefinition<TOutput, unknown>,
+                value as TOutput,
+                ctx
+              );
             } else {
               await (tapTarget as (value: TOutput, ctx: BlockContext) => void | Promise<void>)(
                 value as TOutput,
@@ -570,7 +574,11 @@ function createSequencer<TInput, TOutput>(
 
           if (connector === undefined) {
             if (isBlockDefinition(tapTarget)) {
-              await executeBlock(tapTarget as BlockDefinition<TOutput, unknown>, value as TOutput, ctx);
+              await executeBlock(
+                tapTarget as unknown as BlockDefinition<TOutput, unknown>,
+                value as TOutput,
+                ctx
+              );
             } else {
               await (tapTarget as (value: TOutput, ctx: BlockContext) => void | Promise<void>)(
                 value as TOutput,

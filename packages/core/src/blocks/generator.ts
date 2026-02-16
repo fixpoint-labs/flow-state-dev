@@ -9,6 +9,7 @@ import type {
   RenderOption,
   RetryPolicy
 } from "../types/block";
+import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
 import { buildBlock } from "./internal/build-block";
 
 const DEFAULT_MAX_ITERATIONS = 8;
@@ -104,6 +105,7 @@ export interface GeneratorConfig<TInput, TOutput> extends Omit<BlockConfig<TInpu
     ctx: BlockContext
   ) => MaybePromise<unknown>;
   generate?: (state: GeneratorLoopState<TInput>, ctx: BlockContext) => MaybePromise<unknown>;
+  flowTools?: ToolsConfig;
   retry?: RetryPolicy;
   render?: RenderOption<TOutput>;
   message?: MessageOption<TOutput>;
@@ -192,6 +194,96 @@ async function resolveTools(
   return Array.isArray(resolved) ? resolved : [];
 }
 
+function isBlockObserver(
+  observer: ToolsConfig["onToolStarted"]
+): observer is BlockDefinition<ToolLifecycleEvent, void> {
+  return typeof observer === "object" && observer !== null && "config" in observer;
+}
+
+async function runToolObserver(
+  observer: ToolsConfig["onToolStarted"] | ToolsConfig["onToolCompleted"] | ToolsConfig["onToolErrored"] | undefined,
+  event: ToolLifecycleEvent,
+  ctx: BlockContext
+): Promise<void> {
+  if (observer === undefined) {
+    return;
+  }
+
+  if (isBlockObserver(observer as ToolsConfig["onToolStarted"])) {
+    await (observer as BlockDefinition<ToolLifecycleEvent, void>).config.execute?.(event, ctx);
+    return;
+  }
+
+  await (observer as (input: ToolLifecycleEvent, ctx: BlockContext) => MaybePromise<void>)(event, ctx);
+}
+
+async function withTimeout<TValue>(
+  promise: Promise<TValue>,
+  timeoutMs: number | undefined,
+  label: string
+): Promise<TValue> {
+  if (timeoutMs === undefined || timeoutMs <= 0) {
+    return promise;
+  }
+
+  return new Promise<TValue>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+  });
+}
+
+async function runWithRetry<TValue>(
+  run: () => Promise<TValue>,
+  retry: RetryPolicy | undefined
+): Promise<TValue> {
+  if (retry === undefined) {
+    return run();
+  }
+
+  const maxAttempts = Math.max(1, retry.maxAttempts ?? 1);
+  const baseDelayMs = Math.max(0, retry.baseDelayMs ?? 0);
+  const maxDelayMs = Math.max(baseDelayMs, retry.maxDelayMs ?? Number.POSITIVE_INFINITY);
+  let attempt = 0;
+
+  while (attempt < maxAttempts) {
+    attempt += 1;
+
+    try {
+      return await run();
+    } catch (error) {
+      const normalizedError = toError(error);
+      if (attempt >= maxAttempts) {
+        throw normalizedError;
+      }
+
+      if (retry.retryableErrors !== undefined && retry.retryableErrors.length > 0) {
+        const isRetryable = retry.retryableErrors.some((ErrorType) => normalizedError instanceof ErrorType);
+        if (!isRetryable) {
+          throw normalizedError;
+        }
+      }
+
+      const delayMs = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt - 1));
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  throw new Error("Tool retry loop exited unexpectedly");
+}
+
 function parseOutputWithSchema<TOutput>(schema: ZodTypeAny, candidate: unknown): { success: true; output: TOutput } | {
   success: false;
   error: Error;
@@ -267,36 +359,99 @@ async function applyRepairPolicy<TInput, TOutput>(
 async function invokeTools<TInput>(
   tools: ToolBinding[],
   state: GeneratorLoopState<TInput>,
-  ctx: BlockContext
+  ctx: BlockContext,
+  flowTools: ToolsConfig | undefined
 ): Promise<GeneratorToolResult[]> {
-  const results: GeneratorToolResult[] = [];
+  const timeoutMs = flowTools?.defaults?.timeoutMs;
+  const retry = flowTools?.defaults?.retry;
+  const concurrency = flowTools?.defaults?.concurrency ?? "serial";
 
-  for (const tool of tools) {
+  const runOne = async (
+    tool: ToolBinding
+  ): Promise<{ result?: GeneratorToolResult; fatal?: Error }> => {
     const enabled = typeof tool.enabled === "function" ? await tool.enabled(state as GeneratorLoopState, ctx) : tool.enabled;
     if (enabled === false) {
-      continue;
+      return {};
     }
 
     const toolInput = tool.input === undefined ? state.input : await tool.input(state as GeneratorLoopState, ctx);
+    const startedEvent: ToolLifecycleEvent = {
+      toolName: tool.name,
+      input: toolInput
+    };
+    await runToolObserver(flowTools?.onToolStarted, startedEvent, ctx);
 
     try {
-      const output = await tool.execute(toolInput, ctx);
-      results.push({
+      const output = await runWithRetry(
+        async () =>
+          withTimeout(
+            Promise.resolve(tool.execute(toolInput, ctx)),
+            timeoutMs,
+            `tool:${tool.name}`
+          ),
+        retry
+      );
+      const completedEvent: ToolLifecycleEvent = {
         toolName: tool.name,
         input: toolInput,
         output
-      });
+      };
+      await runToolObserver(flowTools?.onToolCompleted, completedEvent, ctx);
+      return {
+        result: {
+          toolName: tool.name,
+          input: toolInput,
+          output
+        }
+      };
     } catch (error) {
       const normalizedError = toError(error);
-      results.push({
+      const erroredEvent: ToolLifecycleEvent = {
         toolName: tool.name,
         input: toolInput,
         error: normalizedError
-      });
-
-      if (tool.continueOnError !== true) {
-        throw normalizedError;
+      };
+      await runToolObserver(flowTools?.onToolErrored, erroredEvent, ctx);
+      if (tool.continueOnError === true) {
+        return {
+          result: {
+            toolName: tool.name,
+            input: toolInput,
+            error: normalizedError
+          }
+        };
       }
+
+      return {
+        result: {
+          toolName: tool.name,
+          input: toolInput,
+          error: normalizedError
+        },
+        fatal: normalizedError
+      };
+    }
+  };
+
+  if (concurrency === "parallel") {
+    const settled = await Promise.all(tools.map((tool) => runOne(tool)));
+    const results = settled.flatMap((entry) => (entry.result === undefined ? [] : [entry.result]));
+    const fatal = settled.find((entry) => entry.fatal !== undefined)?.fatal;
+    if (fatal !== undefined) {
+      throw fatal;
+    }
+
+    return results;
+  }
+
+  const results: GeneratorToolResult[] = [];
+  for (const tool of tools) {
+    const outcome = await runOne(tool);
+    if (outcome.result !== undefined) {
+      results.push(outcome.result);
+    }
+    if (outcome.fatal !== undefined) {
+      throw outcome.fatal;
     }
   }
 
@@ -367,7 +522,7 @@ export async function resolveGeneratorRender<TOutput>(
 export function generator<TInput, TOutput>(
   config: GeneratorConfig<TInput, TOutput>
 ): BlockDefinition<TInput, TOutput> {
-  const outputSchema = config.outputSchema ?? z.string();
+  const outputSchema = (config.outputSchema ?? z.string()) as ZodTypeAny;
   const normalizedConfig: GeneratorConfig<TInput, TOutput> = {
     ...config,
     outputSchema
@@ -375,7 +530,7 @@ export function generator<TInput, TOutput>(
 
   return buildBlock<TInput, TOutput>({
     kind: "generator",
-    config: normalizedConfig,
+    config: normalizedConfig as unknown as BlockConfig<TInput, TOutput>,
     execute: async (input, ctx) => {
       const model = await resolveString(normalizedConfig.model, input, ctx);
       const prompt = await resolveString(normalizedConfig.prompt, input, ctx);
@@ -409,7 +564,7 @@ export function generator<TInput, TOutput>(
         };
 
         if (runTools && tools.length > 0) {
-          const toolResults = await invokeTools(tools, state, ctx);
+          const toolResults = await invokeTools(tools, state, ctx, normalizedConfig.flowTools);
           aggregatedToolResults.push(...toolResults);
         }
 

@@ -18,7 +18,7 @@ export interface HandlerConfig<TInput, TOutput> extends Omit<BlockConfig<TInput,
 export function handler<TInput, TOutput>(config: HandlerConfig<TInput, TOutput>): BlockDefinition<TInput, TOutput> {
   return buildBlock<TInput, TOutput>({
     kind: "handler",
-    config,
+    config: config as unknown as BlockConfig<TInput, TOutput>,
     execute: config.execute
   });
 }
