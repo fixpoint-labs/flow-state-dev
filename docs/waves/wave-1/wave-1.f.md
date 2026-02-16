@@ -2,18 +2,19 @@
 
 ## 1. Objective
 
-Implement canonical Phase 1 request-stream runtime primitives in `@flow-state-dev/server`: response emission with monotonic sequence numbers, SSE event framing/encoding, and resume/replay utilities for `Last-Event-ID` and `starting_after`.
+Implement canonical Phase 1 request-stream runtime primitives in `@flow-state-dev/server`: response emission with monotonic sequence numbers, SSE event framing/encoding, resume/replay utilities for `Last-Event-ID` and `starting_after`, and internal no-op streaming seams for future middleware support.
 
 ## 2. Canonical Inputs
 
 Primary authority for this wave:
 
 1. `../preperation/planning/PHASE_1_BUILD_PLAYBOOK.md`
-2. `../preperation/architecture/IMPLEMENTATION_PLAN.md` (Wave F: F0-F4)
+2. `../preperation/architecture/IMPLEMENTATION_PLAN.md` (Wave F: F0-F5)
 3. `../preperation/architecture/STREAMING.md` (request stream lifecycle, event envelope, replay rules)
 4. `../preperation/architecture/SERVER_AND_CLIENT.md` (resume semantics and endpoint contracts)
 5. `../preperation/architecture/ARCHITECTURE_OVERVIEW.md` (request stream as Phase 1 correctness channel)
-6. `docs/waves/wave-1/wave-1.e.md` (context/store handoff assumptions)
+6. `../preperation/architecture/MIDDLEWARE_EXTENSION_PLAN.md` (Phase 1 readiness seam expectations)
+7. `docs/waves/wave-1/wave-1.e.md` (context/store handoff assumptions)
 
 Conflict rule:
 
@@ -29,6 +30,7 @@ Conflict rule:
 - request stream resume parsing and replay helpers in `packages/server/src/streaming/resume.ts`
 - streaming barrel exports in `packages/server/src/streaming/index.ts`
 - server package root export wiring for streaming APIs
+- stream envelope metadata types and internal no-op seam hooks in streaming runtime internals
 - wave docs/changelog updates and streaming-focused unit tests
 
 ### Out of scope
@@ -125,7 +127,27 @@ Acceptance criteria:
 - streaming modules exported via server package root
 - no cross-package leakage into client/react boundaries
 
-### W1F-T5: Add tests and wave artifacts
+### W1F-T5: Introduce streaming seam metadata and internal no-op interception points (F5)
+
+Purpose:
+
+- Prepare streaming internals for Phase 2 middleware without exposing public middleware APIs or changing runtime behavior.
+
+Files:
+
+- `packages/server/src/streaming/response-emitter.ts`
+- `packages/server/src/streaming/encode-event.ts`
+- `packages/server/src/streaming/types.ts` (or equivalent)
+- `packages/server/src/streaming/internal/*`
+
+Acceptance criteria:
+
+- stream envelope metadata includes stable correlation/provenance fields for future enrichment/redaction
+- explicit internal seam points exist for item/event interception in emitter/encoding paths
+- no behavior change when seam points are configured with no handlers
+- no public middleware registration/interception API is added
+
+### W1F-T6: Add tests and wave artifacts
 
 Purpose:
 
@@ -151,6 +173,7 @@ Acceptance criteria:
 | SSE framing + encoder implemented | `packages/server/src/streaming/sse.ts`, `packages/server/src/streaming/encode-event.ts` | `pnpm --filter @flow-state-dev/server test` | encoded frames contain canonical id/event/data fields |
 | Resume/replay helpers implemented | `packages/server/src/streaming/resume.ts` | `pnpm --filter @flow-state-dev/server test` | cursor parsing and replay selection tests pass |
 | Streaming exports wired | `packages/server/src/streaming/index.ts`, `packages/server/src/index.ts` | `pnpm -r --if-present typecheck` | workspace typecheck passes with streaming exports |
+| Streaming seam metadata + no-op seams implemented | `packages/server/src/streaming/types.ts`, `packages/server/src/streaming/internal/*`, `packages/server/src/streaming/response-emitter.ts`, `packages/server/src/streaming/encode-event.ts` | `pnpm --filter @flow-state-dev/server test` | seam metadata fields are populated and no-op seam parity tests pass |
 | Wave artifacts updated | `docs/waves/wave-1/wave-1.f-*`, `changelog.md` | manual review | docs and changelog entries present |
 
 ## 7. Wave Gate Checklist
@@ -163,6 +186,7 @@ Acceptance criteria:
   - `../preperation/architecture/IMPLEMENTATION_PLAN.md` Wave F
   - `../preperation/architecture/STREAMING.md`
   - `../preperation/architecture/SERVER_AND_CLIENT.md`
+  - `../preperation/architecture/MIDDLEWARE_EXTENSION_PLAN.md`
 - [x] `docs/waves/wave-1/wave-1.f-changelog.md` updated
 - [x] `docs/waves/wave-1/wave-1.f-journal.md` updated
 - [x] `changelog.md` updated with Wave 1.f summary
@@ -174,6 +198,7 @@ Wave 1.f is done when:
 - request-stream events can be emitted with canonical sequence/id rules
 - SSE framing/encoding is deterministic and standards-compatible
 - resume parsing and replay cursor logic supports both `Last-Event-ID` and `starting_after`
+- streaming internals include no-op-safe seam metadata/interception points for future middleware
 - streaming APIs are exported for downstream execution and route integration waves
 - verification evidence is captured in tests and wave artifacts
 
@@ -183,4 +208,5 @@ Wave 1.g may assume:
 
 - response emitter and replay helpers are available for execution runtime integration
 - request stream encoding/framing contracts are implemented and test-covered
+- streaming seam metadata and internal interception points are available for execution/runtime seam expansion
 - server package exports streaming primitives for execution and route layers

@@ -18,6 +18,13 @@ import type {
 } from "@flow-state-dev/core/items";
 import type { ResponseEmitterHandle } from "@flow-state-dev/core/types";
 import { createRequestEventId } from "./encode-event";
+import {
+  applyEnvelopeSeam,
+  applyItemSeam,
+  NOOP_INTERNAL_STREAMING_SEAMS,
+  type InternalStreamingSeams
+} from "./internal/seams";
+import { createStreamEnvelope } from "./types";
 
 export type RequestStreamEventWithId = RequestStreamEvent & {
   id: string;
@@ -33,6 +40,10 @@ export type CreateResponseEmitterOptions = {
   startSequenceNumber?: number;
   now?: () => number;
   onEvent?: (event: RequestStreamEventWithId) => Promise<void> | void;
+};
+
+type CreateInternalResponseEmitterOptions = CreateResponseEmitterOptions & {
+  internalSeams?: InternalStreamingSeams;
 };
 
 const DEFAULT_PROVENANCE: ItemProvenance = {
@@ -56,15 +67,17 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   private readonly requestId: string;
   private readonly now: () => number;
   private readonly onEvent?: (event: RequestStreamEventWithId) => Promise<void> | void;
+  private readonly internalSeams: InternalStreamingSeams;
   private sequenceNumber: number;
   private readonly events: RequestStreamEventWithId[] = [];
   private readonly itemsById = new Map<string, OutputItem>();
 
-  constructor(options: CreateResponseEmitterOptions) {
+  constructor(options: CreateInternalResponseEmitterOptions) {
     this.requestId = options.requestId;
     this.sequenceNumber = Math.max(0, options.startSequenceNumber ?? 0);
     this.now = options.now ?? (() => Date.now());
     this.onEvent = options.onEvent;
+    this.internalSeams = options.internalSeams ?? NOOP_INTERNAL_STREAMING_SEAMS;
   }
 
   async emit(event: unknown): Promise<void> {
@@ -95,18 +108,28 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   }
 
   async emitItemAdded(item: OutputItem): Promise<RequestStreamEventWithId> {
-    this.itemsById.set(item.id, item);
+    const interceptedItem = applyItemSeam(
+      this.internalSeams,
+      item,
+      "item.added"
+    );
+    this.itemsById.set(interceptedItem.id, interceptedItem);
     return this.appendEvent<ItemAddedEvent>({
       type: "item.added",
-      item
+      item: interceptedItem
     });
   }
 
   async emitItemDone(item: OutputItem): Promise<RequestStreamEventWithId> {
-    this.itemsById.set(item.id, item);
+    const interceptedItem = applyItemSeam(
+      this.internalSeams,
+      item,
+      "item.done"
+    );
+    this.itemsById.set(interceptedItem.id, interceptedItem);
     return this.appendEvent<ItemDoneEvent>({
       type: "item.done",
-      item
+      item: interceptedItem
     });
   }
 
@@ -258,9 +281,18 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       ts: this.now()
     } as TEvent;
 
+    const interceptedEnvelope = applyEnvelopeSeam(
+      this.internalSeams,
+      createStreamEnvelope(
+        fullEvent,
+        createRequestEventId(this.requestId, sequence)
+      ),
+      "event.before_store"
+    );
+
     const withId: RequestStreamEventWithId = {
-      ...fullEvent,
-      id: createRequestEventId(this.requestId, sequence)
+      ...(interceptedEnvelope.event as RequestStreamEvent),
+      id: interceptedEnvelope.id
     };
 
     this.events.push(withId);
@@ -275,5 +307,17 @@ export class ResponseEmitter implements ResponseEmitterHandle {
 export function createResponseEmitter(
   options: CreateResponseEmitterOptions
 ): ResponseEmitter {
-  return new ResponseEmitter(options);
+  return new ResponseEmitter({
+    ...options,
+    internalSeams: NOOP_INTERNAL_STREAMING_SEAMS
+  });
+}
+
+export function createInternalResponseEmitter(
+  options: CreateInternalResponseEmitterOptions
+): ResponseEmitter {
+  return new ResponseEmitter({
+    ...options,
+    internalSeams: options.internalSeams ?? NOOP_INTERNAL_STREAMING_SEAMS
+  });
 }
