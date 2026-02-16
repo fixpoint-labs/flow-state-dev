@@ -1,6 +1,12 @@
+/**
+ * Retry policy resolution and retry-loop execution utilities for runtime blocks/actions.
+ */
 import type { RetryPolicy } from "@flow-state-dev/core/types";
 import { FlowError } from "../errors/flow-error";
 
+/**
+ * Concrete retry settings after block and runtime policy merge.
+ */
 export type ResolvedRetryPolicy = {
   maxAttempts: number;
   baseDelayMs: number;
@@ -12,6 +18,9 @@ const DEFAULT_MAX_ATTEMPTS = 1;
 const DEFAULT_BASE_DELAY_MS = 0;
 const DEFAULT_MAX_DELAY_MS = 5000;
 
+/**
+ * Merges block-level and runtime retry policy with normalized defaults.
+ */
 export function mergeRetryPolicy(
   blockRetry: RetryPolicy | undefined,
   runtimeRetry: RetryPolicy | undefined
@@ -38,6 +47,9 @@ export function mergeRetryPolicy(
   };
 }
 
+/**
+ * Returns whether an error should be retried under the provided policy.
+ */
 export function isRetryableError(
   error: Error,
   policy: ResolvedRetryPolicy | undefined
@@ -62,6 +74,9 @@ export function isRetryableError(
   return policy.retryableErrors.some((ErrorType) => error instanceof ErrorType);
 }
 
+/**
+ * Waits for a retry delay and exits early when aborted.
+ */
 async function waitWithAbort(ms: number, signal: AbortSignal | undefined): Promise<void> {
   if (ms <= 0) {
     return;
@@ -91,6 +106,9 @@ async function waitWithAbort(ms: number, signal: AbortSignal | undefined): Promi
   });
 }
 
+/**
+ * Executes work with retry/backoff semantics and optional abort support.
+ */
 export async function retryWithPolicy<TValue>(
   run: () => Promise<TValue>,
   policy: ResolvedRetryPolicy | undefined,

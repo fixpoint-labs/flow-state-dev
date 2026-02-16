@@ -1,5 +1,11 @@
+/**
+ * Rescue resolution utilities used by sequencer/runtime error recovery.
+ */
 import type { BlockDefinition, RescueHandlerSpec } from "@flow-state-dev/core/types";
 
+/**
+ * Returns true when a rescue handler is eligible for the provided error.
+ */
 export function isErrorTypeMatch(
   error: Error,
   handler: RescueHandlerSpec
@@ -11,6 +17,9 @@ export function isErrorTypeMatch(
   return handler.when.some((ErrorType) => error instanceof ErrorType);
 }
 
+/**
+ * Resolves the first matching rescue block for an error, preserving handler order.
+ */
 export function resolveRescueHandler(
   error: Error,
   handlers: RescueHandlerSpec[]

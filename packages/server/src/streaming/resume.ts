@@ -1,3 +1,6 @@
+/**
+ * Cursor parsing and replay helpers for resumable request streams.
+ */
 import type { RequestStreamEvent } from "@flow-state-dev/core/items";
 
 export type ParsedStreamEventId = {
@@ -47,12 +50,18 @@ function parseSequence(value: number | string | null | undefined): number | unde
   return parsed;
 }
 
+/**
+ * Parses `starting_after` query/header input into a valid non-negative sequence.
+ */
 export function parseStartingAfter(
   value: number | string | null | undefined
 ): number | undefined {
   return parseSequence(value);
 }
 
+/**
+ * Parses a stream event id in `<streamId>:<sequenceNumber>` format.
+ */
 export function parseStreamEventId(
   value: string | null | undefined
 ): ParsedStreamEventId | undefined {
@@ -82,6 +91,9 @@ export function parseStreamEventId(
   };
 }
 
+/**
+ * Resolves replay cursor priority: `starting_after`, then `last_event_id`, then none.
+ */
 export function resolveRequestReplayCursor(
   options: ResolveRequestReplayCursorOptions
 ): RequestReplayCursor {
@@ -113,6 +125,9 @@ export type ReplayRequestEventsOptions = ResolveRequestReplayCursorOptions & {
   events: RequestStreamEvent[];
 };
 
+/**
+ * Returns events that occur after the resolved replay cursor.
+ */
 export function replayRequestEvents(
   options: ReplayRequestEventsOptions
 ): RequestStreamEvent[] {

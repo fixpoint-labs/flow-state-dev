@@ -1,3 +1,6 @@
+/**
+ * Internal extension seams for execution instrumentation and middleware evolution.
+ */
 import type { FlowError } from "../../errors/flow-error";
 import type { ExecutionMetadata } from "../types";
 
@@ -24,8 +27,14 @@ export type InternalExecutionSeams = {
   ) => Promise<void> | void;
 };
 
+/**
+ * Default seam set that leaves runtime behavior unchanged.
+ */
 export const NOOP_INTERNAL_EXECUTION_SEAMS: InternalExecutionSeams = {};
 
+/**
+ * Applies optional block-input interception.
+ */
 export function applyBlockInputSeam<TInput>(
   seams: InternalExecutionSeams | undefined,
   input: TInput,
@@ -35,6 +44,9 @@ export function applyBlockInputSeam<TInput>(
   return (intercepted ?? input) as TInput;
 }
 
+/**
+ * Applies optional block-output interception.
+ */
 export function applyBlockOutputSeam<TOutput>(
   seams: InternalExecutionSeams | undefined,
   output: TOutput,
@@ -44,6 +56,9 @@ export function applyBlockOutputSeam<TOutput>(
   return (intercepted ?? output) as TOutput;
 }
 
+/**
+ * Applies optional normalized-error interception.
+ */
 export function applyNormalizedErrorSeam(
   seams: InternalExecutionSeams | undefined,
   error: FlowError,
@@ -53,6 +68,9 @@ export function applyNormalizedErrorSeam(
   return intercepted ?? error;
 }
 
+/**
+ * Emits generator lifecycle signals when instrumentation is configured.
+ */
 export async function emitGeneratorLifecycleSeam(
   seams: InternalExecutionSeams | undefined,
   stage: "before_execute" | "after_execute" | "errored",
@@ -61,6 +79,9 @@ export async function emitGeneratorLifecycleSeam(
   await seams?.onGeneratorLifecycle?.(stage, metadata);
 }
 
+/**
+ * Emits action lifecycle signals when instrumentation is configured.
+ */
 export async function emitActionLifecycleSeam(
   seams: InternalExecutionSeams | undefined,
   stage: "started" | "completed" | "errored" | "finished",

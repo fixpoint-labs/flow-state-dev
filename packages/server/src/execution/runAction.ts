@@ -1,3 +1,6 @@
+/**
+ * Action-level orchestration runtime for request lifecycle, observers, persistence, and terminal errors.
+ */
 import type { ErrorItem, ItemProvenance } from "@flow-state-dev/core/items";
 import type {
   ActionConfig,
@@ -38,10 +41,16 @@ const RUNTIME_PROVENANCE: ItemProvenance = {
   phase: "main"
 };
 
+/**
+ * Creates a request id when the caller does not provide one.
+ */
 function generateRequestId(): string {
   return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
+/**
+ * Resolves an action definition from a flow and validates that it exists.
+ */
 function resolveAction<
   TFlow extends FlowInstance,
   TActionName extends keyof TFlow["actions"] & string
@@ -59,6 +68,9 @@ function resolveAction<
   return action as ActionConfig;
 }
 
+/**
+ * Validates and parses action input using the action's schema.
+ */
 function parseActionInput(action: ActionConfig, input: unknown): unknown {
   const parsed = action.inputSchema.safeParse(input);
   if (parsed.success) {
@@ -77,6 +89,9 @@ function parseActionInput(action: ActionConfig, input: unknown): unknown {
   );
 }
 
+/**
+ * Applies a partial request-record update when a record exists.
+ */
 async function patchRequestRecord(
   stores: StoreRegistry,
   requestId: string,
@@ -94,6 +109,9 @@ async function patchRequestRecord(
   });
 }
 
+/**
+ * Executes observer blocks and propagates observer failures to the caller.
+ */
 async function runObserver(
   observer: BlockDefinition<any, void> | undefined,
   input: unknown,
@@ -121,6 +139,9 @@ async function runObserver(
   }
 }
 
+/**
+ * Executes observer blocks while swallowing observer failures.
+ */
 async function runObserverSafely(
   observer: BlockDefinition<any, void> | undefined,
   input: unknown,
@@ -140,6 +161,9 @@ async function runObserverSafely(
   }
 }
 
+/**
+ * Emits an internal terminal error item when the response emitter supports item events.
+ */
 async function emitTerminalError(
   ctx: ExecutionContext,
   error: FlowError
@@ -176,6 +200,9 @@ async function emitTerminalError(
   await response.emitItemDone(item);
 }
 
+/**
+ * Public action execution API using default internal seams.
+ */
 export async function runAction<
   TFlow extends FlowInstance = FlowInstance,
   TActionName extends keyof TFlow["actions"] & string = keyof TFlow["actions"] & string
@@ -188,6 +215,9 @@ export async function runAction<
   });
 }
 
+/**
+ * Internal action execution entrypoint with injectable seams for instrumentation/testing.
+ */
 export async function runActionInternal<
   TFlow extends FlowInstance = FlowInstance,
   TActionName extends keyof TFlow["actions"] & string = keyof TFlow["actions"] & string

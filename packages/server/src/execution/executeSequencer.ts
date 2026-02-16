@@ -1,6 +1,12 @@
+/**
+ * Executes sequencer blocks via framework-compiled runtime operations.
+ */
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import type { ExecuteBlockContext } from "./types";
 
+/**
+ * Runs a sequencer block and enforces the internal compiled execution invariant.
+ */
 export async function executeSequencer<TInput, TOutput>(
   block: BlockDefinition<TInput, TOutput>,
   input: TInput,

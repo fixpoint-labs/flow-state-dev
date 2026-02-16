@@ -1,3 +1,6 @@
+/**
+ * Public execution runtime API surface for server package consumers.
+ */
 export { executeBlock } from "./executeBlock";
 export { executeGenerator } from "./executeGenerator";
 export { executeHandler } from "./executeHandler";

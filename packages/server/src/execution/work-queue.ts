@@ -1,3 +1,6 @@
+/**
+ * Runtime queue for background work tasks that may outlive main block execution.
+ */
 type WorkTaskRecord = {
   name: string;
   promise: Promise<unknown>;
@@ -8,9 +11,15 @@ export type WorkQueueResult = {
   failed: Array<{ name: string; error: Error }>;
 };
 
+/**
+ * Collects asynchronous work and resolves all queued tasks in batch.
+ */
 export class WorkQueue {
   private readonly tasks: WorkTaskRecord[] = [];
 
+  /**
+   * Adds a unit of background work to the queue.
+   */
   addWork(
     task: () => Promise<unknown> | unknown,
     options: { name?: string } = {}
@@ -23,10 +32,16 @@ export class WorkQueue {
     });
   }
 
+  /**
+   * Returns whether the queue currently has pending tasks.
+   */
   hasPendingWork(): boolean {
     return this.tasks.length > 0;
   }
 
+  /**
+   * Awaits all currently queued work and returns settled results.
+   */
   async waitForWork(options: {
     failOnError?: boolean;
   } = {}): Promise<WorkQueueResult> {
@@ -78,6 +93,9 @@ export class WorkQueue {
   }
 }
 
+/**
+ * Creates a new empty work queue.
+ */
 export function createWorkQueue(): WorkQueue {
   return new WorkQueue();
 }

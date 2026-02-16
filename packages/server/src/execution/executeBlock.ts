@@ -1,3 +1,6 @@
+/**
+ * Central block execution entrypoint: dispatch, seam interception, retry, and error normalization.
+ */
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { normalizeError } from "../errors/normalize-error";
 import { executeGenerator } from "./executeGenerator";
@@ -26,6 +29,9 @@ type ExecuteDispatcherOptions = {
   metadata: ExecutionMetadata;
 };
 
+/**
+ * Dispatches block execution to the runtime for each supported block kind.
+ */
 async function executeByKind<TInput, TOutput>(
   block: BlockDefinition<TInput, TOutput>,
   input: TInput,
@@ -59,6 +65,9 @@ export type ExecuteBlockInternalOptions<TInput = unknown, TOutput = unknown> =
     internalSeams?: InternalExecutionSeams;
   };
 
+/**
+ * Executes a block and always returns a structured execution result.
+ */
 export async function executeBlock<TInput, TOutput>(
   options: ExecuteBlockInternalOptions<TInput, TOutput>
 ): Promise<ExecuteBlockResult<TOutput>> {

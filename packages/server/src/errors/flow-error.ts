@@ -1,3 +1,6 @@
+/**
+ * Canonical runtime error model for execution, validation, and transportable failure metadata.
+ */
 export type FlowErrorScope = "request" | "work" | "resource" | "block";
 
 export type FlowErrorOptions = {
@@ -10,6 +13,9 @@ export type FlowErrorOptions = {
   details?: Record<string, unknown>;
 };
 
+/**
+ * Base error shape used across server runtime boundaries.
+ */
 export class FlowError extends Error {
   readonly code: string;
   readonly retryable: boolean;
@@ -49,6 +55,9 @@ function withDefaults(
   };
 }
 
+/**
+ * Error for invalid input or schema validation failures.
+ */
 export class ValidationError extends FlowError {
   constructor(message: string, options?: SubclassOptions) {
     super(
@@ -62,6 +71,9 @@ export class ValidationError extends FlowError {
   }
 }
 
+/**
+ * Error for retryable network-related failures.
+ */
 export class NetworkError extends FlowError {
   constructor(message: string, options?: SubclassOptions) {
     super(
@@ -75,6 +87,9 @@ export class NetworkError extends FlowError {
   }
 }
 
+/**
+ * Error for retryable timeout-related failures.
+ */
 export class TimeoutError extends FlowError {
   constructor(message: string, options?: SubclassOptions) {
     super(
@@ -88,6 +103,9 @@ export class TimeoutError extends FlowError {
   }
 }
 
+/**
+ * Error for retryable upstream rate limit failures.
+ */
 export class RateLimitError extends FlowError {
   constructor(message: string, options?: SubclassOptions) {
     super(
@@ -101,6 +119,9 @@ export class RateLimitError extends FlowError {
   }
 }
 
+/**
+ * Error for retryable model invocation failures.
+ */
 export class ModelError extends FlowError {
   constructor(message: string, options?: SubclassOptions) {
     super(
@@ -114,6 +135,9 @@ export class ModelError extends FlowError {
   }
 }
 
+/**
+ * Error for tool failures that are typically not retryable by default.
+ */
 export class ToolExecutionError extends FlowError {
   constructor(message: string, options?: SubclassOptions) {
     super(

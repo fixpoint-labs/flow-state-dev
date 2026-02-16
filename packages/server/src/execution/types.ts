@@ -1,3 +1,6 @@
+/**
+ * Shared execution runtime types used by block and action orchestration paths.
+ */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   ActionConfig,
@@ -71,6 +74,9 @@ export type RunActionResolved<
   startedAtMs: number;
 };
 
+/**
+ * Builds execution metadata from context with optional caller overrides.
+ */
 export function createExecutionMetadata(
   ctx: ExecuteBlockContext,
   overrides: Partial<ExecutionMetadata> = {}

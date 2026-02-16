@@ -1,3 +1,6 @@
+/**
+ * Streaming event encoding utilities for SSE transport.
+ */
 import type { StreamEvent } from "@flow-state-dev/core/items";
 import {
   applyEnvelopeSeam,
@@ -7,6 +10,9 @@ import {
 import { serializeSSEFrame } from "./sse";
 import { createStreamEnvelope } from "./types";
 
+/**
+ * Builds a stable stream event id for request-scoped events.
+ */
 export function createRequestEventId(
   requestId: string,
   sequenceNumber: number
@@ -14,6 +20,9 @@ export function createRequestEventId(
   return `${requestId}:${sequenceNumber}`;
 }
 
+/**
+ * Builds a stable stream event id for user-scoped events.
+ */
 export function createUserEventId(
   userId: string,
   sequenceNumber: number
@@ -21,6 +30,9 @@ export function createUserEventId(
   return `${userId}:${sequenceNumber}`;
 }
 
+/**
+ * Resolves the canonical stream event id for any stream event.
+ */
 export function createStreamEventId(event: StreamEvent): string {
   if (event.stream === "request") {
     return createRequestEventId(event.requestId, event.sequence_number);
@@ -33,12 +45,18 @@ export type EncodeStreamEventInternalOptions = {
   internalSeams?: InternalStreamingSeams;
 };
 
+/**
+ * Encodes a stream event as a single SSE frame using default seams.
+ */
 export function encodeStreamEvent(event: StreamEvent): string {
   return encodeStreamEventInternal(event, {
     internalSeams: NOOP_INTERNAL_STREAMING_SEAMS
   });
 }
 
+/**
+ * Encodes a stream event as a single SSE frame with optional internal seam interception.
+ */
 export function encodeStreamEventInternal(
   event: StreamEvent,
   options?: EncodeStreamEventInternalOptions

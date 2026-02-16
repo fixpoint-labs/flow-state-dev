@@ -1,3 +1,6 @@
+/**
+ * Normalizes unknown thrown values into a consistent FlowError shape.
+ */
 import type { FlowErrorScope } from "./flow-error";
 import { FlowError } from "./flow-error";
 
@@ -47,6 +50,9 @@ function toError(value: unknown): Error {
   return new Error("Unknown execution error");
 }
 
+/**
+ * Converts any thrown value into FlowError while preserving useful metadata when present.
+ */
 export function normalizeError(
   error: unknown,
   options: NormalizeErrorOptions = {}

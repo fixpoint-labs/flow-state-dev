@@ -1,6 +1,12 @@
+/**
+ * Executes handler blocks, which rely on user-defined execute logic.
+ */
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import type { ExecuteBlockContext } from "./types";
 
+/**
+ * Runs a handler block after validating that the block kind is correct.
+ */
 export async function executeHandler<TInput, TOutput>(
   block: BlockDefinition<TInput, TOutput>,
   input: TInput,

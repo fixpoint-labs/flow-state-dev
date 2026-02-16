@@ -1,3 +1,6 @@
+/**
+ * Public streaming runtime API surface for event ids, emitters, replay, and SSE serialization.
+ */
 export {
   createRequestEventId,
   createStreamEventId,

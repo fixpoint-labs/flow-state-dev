@@ -1,3 +1,6 @@
+/**
+ * Executes generator blocks and emits internal lifecycle seams around execution.
+ */
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import {
   emitGeneratorLifecycleSeam,
@@ -11,6 +14,9 @@ export type ExecuteGeneratorOptions = {
   metadata: ExecutionMetadata;
 };
 
+/**
+ * Runs a generator block and emits before/after/error lifecycle hooks for instrumentation.
+ */
 export async function executeGenerator<TInput, TOutput>(
   block: BlockDefinition<TInput, TOutput>,
   input: TInput,

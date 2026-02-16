@@ -1,3 +1,6 @@
+/**
+ * Typed stream envelope and correlation helpers used by storage/encoding paths.
+ */
 import type {
   ItemProvenance,
   ItemAddedEvent,
@@ -26,6 +29,9 @@ function isItemEvent(event: StreamEvent): event is ItemAddedEvent | ItemDoneEven
   return event.type === "item.added" || event.type === "item.done";
 }
 
+/**
+ * Derives correlation metadata from a raw stream event.
+ */
 export function createStreamCorrelation(event: StreamEvent): StreamCorrelation {
   if (event.stream === "request") {
     return {
@@ -48,6 +54,9 @@ export function createStreamCorrelation(event: StreamEvent): StreamCorrelation {
   };
 }
 
+/**
+ * Extracts item provenance from item events only.
+ */
 export function extractEventProvenance(
   event: StreamEvent
 ): ItemProvenance | undefined {
@@ -58,6 +67,9 @@ export function extractEventProvenance(
   return event.item.provenance;
 }
 
+/**
+ * Builds a stream envelope with id, correlation data, and optional provenance.
+ */
 export function createStreamEnvelope<TEvent extends StreamEvent>(
   event: TEvent,
   id: string

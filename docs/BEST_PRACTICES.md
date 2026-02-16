@@ -75,6 +75,18 @@ Update policy:
 - Why:
   - Keeps implementation surfaces domain-focused and avoids coupling runtime artifacts to temporary execution planning labels.
 
+### BP-007: Concise API and file-level documentation
+
+- Status: Active
+- Date: 2026-02-16
+- Rule:
+  - Add a concise file header comment to implementation files that explains the file's role in the runtime.
+  - Document 100% of exported methods/functions/classes with concise doc comments focused on contract and behavior.
+  - Document important internal helpers when they carry non-obvious control flow, state transitions, or error semantics.
+  - Keep comments high-signal and short; avoid restating obvious syntax.
+- Why:
+  - Improves onboarding speed and reduces misunderstanding as runtime orchestration complexity grows.
+
 ---
 
 ## Template For New Entries

@@ -1,3 +1,6 @@
+/**
+ * Request-scoped stream event emitter that buffers events/items and supports replay/inspection.
+ */
 import type {
   Content,
   ContentPartAddedEvent,
@@ -63,6 +66,9 @@ function isRequestStreamDraft(value: unknown): value is {
   return typeof candidate.type === "string";
 }
 
+/**
+ * Stateful request event emitter used by runtime execution and SSE transport.
+ */
 export class ResponseEmitter implements ResponseEmitterHandle {
   private readonly requestId: string;
   private readonly now: () => number;
@@ -72,6 +78,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   private readonly events: RequestStreamEventWithId[] = [];
   private readonly itemsById = new Map<string, OutputItem>();
 
+  /**
+   * Creates a request-scoped emitter instance.
+   */
   constructor(options: CreateInternalResponseEmitterOptions) {
     this.requestId = options.requestId;
     this.sequenceNumber = Math.max(0, options.startSequenceNumber ?? 0);
@@ -80,6 +89,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     this.internalSeams = options.internalSeams ?? NOOP_INTERNAL_STREAMING_SEAMS;
   }
 
+  /**
+   * Emits a draft request event if shape is valid; otherwise emits an internal debug event.
+   */
   async emit(event: unknown): Promise<void> {
     if (!isRequestStreamDraft(event)) {
       await this.emitDebug("response.emit.invalid", { value: event });
@@ -91,6 +103,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     );
   }
 
+  /**
+   * Emits the canonical request-created event.
+   */
   async emitRequestCreated(): Promise<RequestStreamEventWithId> {
     return this.appendEvent<RequestCreatedEvent>({
       type: "request.created",
@@ -98,6 +113,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     });
   }
 
+  /**
+   * Emits a request status transition event.
+   */
   async emitRequestStatus(
     status: RequestStatus
   ): Promise<RequestStreamEventWithId> {
@@ -107,6 +125,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     });
   }
 
+  /**
+   * Emits an item-added event and tracks the item for later item views.
+   */
   async emitItemAdded(item: OutputItem): Promise<RequestStreamEventWithId> {
     const interceptedItem = applyItemSeam(
       this.internalSeams,
@@ -120,6 +141,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     });
   }
 
+  /**
+   * Emits an item-done event and updates tracked item state.
+   */
   async emitItemDone(item: OutputItem): Promise<RequestStreamEventWithId> {
     const interceptedItem = applyItemSeam(
       this.internalSeams,
@@ -133,6 +157,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     });
   }
 
+  /**
+   * Emits a content-part added event for an item.
+   */
   async emitContentAdded(
     itemId: string,
     contentIndex: number,
@@ -146,6 +173,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     });
   }
 
+  /**
+   * Emits a content-part delta event for an item.
+   */
   async emitContentDelta(
     itemId: string,
     contentIndex: number,
@@ -159,6 +189,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     });
   }
 
+  /**
+   * Emits a content-part done event for an item.
+   */
   async emitContentDone(
     itemId: string,
     contentIndex: number,
@@ -172,6 +205,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     });
   }
 
+  /**
+   * Emits a debug event.
+   */
   async emitDebug(
     name: string,
     data: unknown
@@ -183,12 +219,18 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     });
   }
 
+  /**
+   * Emits a keepalive ping event.
+   */
   async emitPing(): Promise<RequestStreamEventWithId> {
     return this.appendEvent<RequestPingEvent>({
       type: "ping"
     });
   }
 
+  /**
+   * Emits the standard resource update item lifecycle and optional request resource.changed event.
+   */
   async emitResourceUpdate(options: {
     scope: ResourceUpdateItem["scope"];
     resourcePath: string;
@@ -249,20 +291,32 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     };
   }
 
+  /**
+   * Returns all emitted request events in emission order.
+   */
   getEvents(): RequestStreamEventWithId[] {
     return [...this.events];
   }
 
+  /**
+   * Returns current tracked items sorted by item index.
+   */
   getItems(): OutputItem[] {
     const items = Array.from(this.itemsById.values());
     items.sort((left, right) => left.itemIndex - right.itemIndex);
     return items;
   }
 
+  /**
+   * Returns the most recently emitted event id.
+   */
   getLastEventId(): string | undefined {
     return this.events[this.events.length - 1]?.id;
   }
 
+  /**
+   * Returns the latest request sequence number.
+   */
   getSequenceNumber(): number {
     return this.sequenceNumber;
   }
@@ -304,6 +358,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   }
 }
 
+/**
+ * Creates a public response emitter with default seam behavior.
+ */
 export function createResponseEmitter(
   options: CreateResponseEmitterOptions
 ): ResponseEmitter {
@@ -313,6 +370,9 @@ export function createResponseEmitter(
   });
 }
 
+/**
+ * Creates an internal response emitter with optional seam hooks.
+ */
 export function createInternalResponseEmitter(
   options: CreateInternalResponseEmitterOptions
 ): ResponseEmitter {

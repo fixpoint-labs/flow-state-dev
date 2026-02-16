@@ -1,3 +1,6 @@
+/**
+ * SSE frame serialization helpers.
+ */
 export type SSEFrame = {
   id?: string;
   event?: string;
@@ -18,6 +21,9 @@ function toDataString(data: unknown): string {
   return JSON.stringify(data);
 }
 
+/**
+ * Serializes one SSE frame according to the Server-Sent Events wire format.
+ */
 export function serializeSSEFrame(frame: SSEFrame): string {
   const lines: string[] = [];
 
@@ -47,6 +53,9 @@ export function serializeSSEFrame(frame: SSEFrame): string {
   return `${lines.join("\n")}\n`;
 }
 
+/**
+ * Serializes multiple SSE frames in order into one payload chunk.
+ */
 export function serializeSSEFrames(frames: SSEFrame[]): string {
   return frames.map((frame) => serializeSSEFrame(frame)).join("");
 }
