@@ -65,6 +65,16 @@ Update policy:
 - Why:
   - Wave-local docs preserve detail; root changelog preserves project-level continuity.
 
+### BP-006: Keep wave labels out of code and tests
+
+- Status: Active
+- Date: 2026-02-16
+- Rule:
+  - Use wave identifiers in planning and documentation artifacts only.
+  - Do not reference wave labels (for example `wave 1.x`) in runtime code, package code comments, or test assertions/titles.
+- Why:
+  - Keeps implementation surfaces domain-focused and avoids coupling runtime artifacts to temporary execution planning labels.
+
 ---
 
 ## Template For New Entries
