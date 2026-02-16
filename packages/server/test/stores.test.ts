@@ -122,7 +122,7 @@ describe("store adapters", () => {
   });
 
   it("supports filesystem store persistence and list operations", async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), "fsd-wave-e-"));
+    const rootDir = await mkdtemp(path.join(tmpdir(), "fsd-server-store-"));
 
     try {
       const stores = createFilesystemStores({ rootDir });

@@ -33,5 +33,16 @@ export type {
   UserStore
 } from "./stores";
 export * from "./streaming";
+export * from "./execution";
+export {
+  FlowError,
+  ModelError,
+  NetworkError,
+  RateLimitError,
+  TimeoutError,
+  ToolExecutionError,
+  ValidationError
+} from "./errors/flow-error";
+export { normalizeError } from "./errors/normalize-error";
 
 export const serverPackageMarker = "@flow-state-dev/server";

@@ -3,7 +3,10 @@ import {
   createResponseEmitter,
   createExecutionContext,
   createInMemoryStores,
+  executeBlock,
+  normalizeError,
   replayRequestEvents,
+  runAction,
   runWithCAS,
   serializeSSEFrame,
   serverPackageMarker
@@ -21,5 +24,8 @@ describe("@flow-state-dev/server", () => {
     expect(typeof createResponseEmitter).toBe("function");
     expect(typeof serializeSSEFrame).toBe("function");
     expect(typeof replayRequestEvents).toBe("function");
+    expect(typeof executeBlock).toBe("function");
+    expect(typeof runAction).toBe("function");
+    expect(typeof normalizeError).toBe("function");
   });
 });
