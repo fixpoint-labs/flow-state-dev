@@ -32,5 +32,6 @@ export type {
   UserRecord,
   UserStore
 } from "./stores";
+export * from "./streaming";
 
 export const serverPackageMarker = "@flow-state-dev/server";
