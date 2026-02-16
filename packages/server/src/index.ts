@@ -34,6 +34,8 @@ export type {
 } from "./stores";
 export * from "./streaming";
 export * from "./execution";
+export * from "./registry";
+export * from "./routes";
 export {
   FlowError,
   ModelError,
