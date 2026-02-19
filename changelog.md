@@ -117,6 +117,8 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Added Wave 1.h unit coverage in `packages/server/test/registry-routes.test.ts` and expanded server export smoke checks in `packages/server/test/index.test.ts`.
 - Added Wave 1.h execution artifacts: `docs/waves/wave-1/wave-1.h-journal.md` and `docs/waves/wave-1/wave-1.h-changelog.md`.
 
+## 2026-02-19
+
 ### Wave 1.i implementation
 
 - Added Wave 1.i execution plan at `docs/waves/wave-1/wave-1.i.md` aligned to canonical Wave I.
@@ -128,6 +130,21 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Updated client/react package scripts in `packages/client/package.json` and `packages/react/package.json` for deterministic dependency-build-aware typecheck/test execution.
 - Updated `README.md` maturity section to reflect implemented client/react package surfaces.
 - Added Wave 1.i execution artifacts: `docs/waves/wave-1/wave-1.i-journal.md` and `docs/waves/wave-1/wave-1.i-changelog.md`.
+
+### Wave 1.j implementation
+
+- Added Wave 1.j execution plan at `docs/waves/wave-1/wave-1.j.md` aligned to canonical Wave J.
+- Implemented testing harness runtime in `packages/testing/src/runtime/createTestContext.ts` with seeded in-memory stores, target lookup support, and state-change capture.
+- Implemented canonical testing utilities in `packages/testing/src/test-utilities/*`:
+  - `testBlock`
+  - `testSequencer`
+  - `testRouter`
+  - `testFlow`
+  - `testItems`
+- Implemented snapshot trace utility in `packages/testing/src/snapshot/snapshotTrace.ts`.
+- Implemented scripted generator mocks in `packages/testing/src/mocks/mockGenerator.ts`.
+- Expanded testing package exports in `packages/testing/src/index.ts` and added Wave 1.j test coverage in `packages/testing/test/*`.
+- Added Wave 1.j execution artifacts: `docs/waves/wave-1/wave-1.j-journal.md` and `docs/waves/wave-1/wave-1.j-changelog.md`.
 
 ### Documentation updates
 
@@ -141,4 +158,5 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Renamed client builders to `createClient` and `createTypedClient` in `packages/client/src/action-client/executeAction.ts` and `packages/client/src/index.ts`, and updated related client/react tests and docs.
 - Kept untyped session action execution as `session.sendAction(...)` in `packages/react/src/hooks/useSession.ts` until typed session actions are introduced.
 - Updated `packages/client/README.md` for snapshot query options (`include_items`, scope-grouped `projections`).
+- Replaced `packages/testing/README.md` scaffold notes with concrete API documentation for Wave 1.j testing utilities.
 - Updated root `README.md` documentation map to link directly to package-level READMEs.

@@ -34,4 +34,4 @@ pnpm install --filter @flow-state-dev/react
   - `ResourceConfig` and `ResourceHandle` expanded to include Phase 1 content/config fields
   - server `/sessions/:id/state` now computes scope-grouped client projections and supports projection filtering
 - Added server route coverage for grouped projections and projection query filters.
-- React test execution is currently blocked in this environment because `react` is not installed in `packages/react/node_modules` and registry access is unavailable (`ENOTFOUND registry.npmjs.org`).
+- Installed `react` + `@types/react` for `@flow-state-dev/react` and revalidated React build/tests after dependency resolution.

@@ -22,7 +22,8 @@ Building AI features often means stitching together orchestration, retries, stre
 - Server execution, stores, and streaming runtime are implemented.
 - Client transport/session/SSE APIs are implemented and tested.
 - React hook wrappers, renderer registry, and item render helpers are implemented and tested.
-- Testing/CLI/devtool packages remain in active implementation.
+- Testing package APIs are implemented and validated.
+- CLI/devtool packages remain in active implementation.
 
 This is an implementation-phase repository, not a polished production release yet.
 

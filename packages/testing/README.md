@@ -1,23 +1,44 @@
 # @flow-state-dev/testing
 
-Testing utilities package for Flow State Dev.
+Deterministic test utilities for Flow State Dev runtime contracts.
 
-## Current Status
+This package provides:
+- isolated runtime harness creation (`createTestContext`)
+- block/flow test helpers (`testBlock`, `testSequencer`, `testRouter`, `testFlow`)
+- item assertion helpers (`testItems`)
+- snapshot trace summaries (`snapshotTrace`)
+- scripted generator mocks (`mockGenerator`)
 
-This package is currently scaffolded and exported in the workspace, with implementation of canonical testing utilities still in progress.
+## Public API
 
-Current export:
-- `testingPackageMarker`
+- `createTestContext(options?)`
+- `testBlock(block, options)`
+- `testSequencer(sequencer, options)`
+- `testRouter(router, options)`
+- `testFlow(options)`
+- `testItems(items)`
+- `snapshotTrace(result)`
+- `mockGenerator(options)`
 
-## Intended Scope
+## Quick usage
 
-This package will own framework testing helpers such as:
-- deterministic block/flow test harness utilities
-- item assertion helpers
-- snapshot trace helpers
-- generator mocking helpers
+```ts
+import { handler } from "@flow-state-dev/core";
+import { testBlock } from "@flow-state-dev/testing";
 
-These contracts are defined in `preperation/architecture/TESTING.md` (sibling repository to `implementation/`).
+const block = handler<{ amount: number }, { ok: boolean }>({
+  name: "increment",
+  execute: async (input, ctx) => {
+    await ctx.session?.incState({ count: input.amount });
+    return { ok: true };
+  },
+});
+
+const result = await testBlock(block, {
+  input: { amount: 1 },
+  session: { state: { count: 0 } },
+});
+```
 
 ## Scripts
 
@@ -27,5 +48,5 @@ These contracts are defined in `preperation/architecture/TESTING.md` (sibling re
 
 ## Notes
 
-- Keep this package independent of app-specific test code.
-- Prefer framework-contract tests that mirror canonical runtime semantics.
+- Utilities are intentionally framework-contract focused, not app-specific.
+- `testSequencer` step/work traces are inferred from emitted item provenance in Phase 1.
