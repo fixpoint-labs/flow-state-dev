@@ -2,19 +2,18 @@
  * Public API surface for framework transport clients and stream utilities.
  */
 export {
-  createActionClient,
-  createFlowClient,
-  createTypedFlowClient,
-  type ActionClient,
-  type CreateActionClientOptions,
-  type CreateFlowClientOptions,
-  type CreateTypedFlowClientOptions
+  createClient,
+  createTypedClient,
+  type Client,
+  type CreateClientOptions,
+  type CreateTypedClientOptions
 } from "./action-client/executeAction";
 
 export {
   createSessionClient,
   type CreateSessionClientOptions,
   type CreateSessionOptions,
+  type GetSessionStateOptions,
   type ListSessionRequestsOptions,
   type ListSessionsOptions,
   type SessionClient

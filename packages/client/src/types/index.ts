@@ -18,6 +18,7 @@ import type {
   UserResourceChangedEvent,
   UserStreamEvent
 } from "@flow-state-dev/core/items";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   ActionConfig,
   FlowActionInput,
@@ -166,12 +167,12 @@ export type SessionStateSnapshotResponse = {
     user?: Record<string, unknown>;
     project?: Record<string, unknown>;
   };
-  resources: Array<{
-    scope: "session" | "user" | "project";
-    name: string;
-    state: Record<string, unknown>;
-  }>;
-  projections: Record<string, unknown>;
+  projections: {
+    session?: Record<string, unknown>;
+    user?: Record<string, unknown>;
+    project?: Record<string, unknown>;
+  };
+  items?: OutputItem[];
 };
 
 /**

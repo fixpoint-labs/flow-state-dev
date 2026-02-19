@@ -1,11 +1,15 @@
 /**
- * Action execution hook wrapper over the client action transport.
+ * Low-level action execution hook with loading/error state tracking.
  */
-import { createActionClient, type ExecuteActionResponse } from "@flow-state-dev/client";
-import { getFlowContext } from "../context/FlowContext";
+import { useCallback, useMemo, useState } from "react";
+import {
+  createClient,
+  type ExecuteActionResponse
+} from "@flow-state-dev/client";
+import { useFlowContext } from "../context/FlowContext";
 
 /**
- * Options for creating an action executor wrapper.
+ * Options for useAction.
  */
 export type UseActionOptions = {
   flowKind?: string;
@@ -15,7 +19,7 @@ export type UseActionOptions = {
 };
 
 /**
- * State and API returned from `useAction` wrappers.
+ * Return type for useAction.
  */
 export type UseActionResult = {
   execute: (
@@ -27,68 +31,53 @@ export type UseActionResult = {
 };
 
 /**
- * Returns action execution helpers with simple loading/error state.
+ * Low-level escape-hatch hook for executing a single named action.
  */
 export function useAction(options: UseActionOptions): UseActionResult {
-  const context = getFlowContext();
+  const context = useFlowContext();
   const flowKind = options.flowKind ?? context.flowKind;
   const userId = options.userId ?? context.userId;
+  const baseUrl = options.baseUrl ?? context.baseUrl;
 
-  if (flowKind === undefined || flowKind.trim().length === 0) {
-    throw new Error("useAction requires flowKind (option or FlowContext)");
+  if (!flowKind?.trim()) {
+    throw new Error("useAction requires flowKind (option or FlowProvider)");
   }
 
-  if (userId === undefined || userId.trim().length === 0) {
-    throw new Error("useAction requires userId (option or FlowContext)");
+  if (!userId?.trim()) {
+    throw new Error("useAction requires userId (option or FlowProvider)");
   }
 
-  const client = createActionClient({
-    flowKind,
-    userId,
-    baseUrl: options.baseUrl ?? context.baseUrl
-  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | undefined>();
 
-  let loading = false;
-  let error: Error | undefined;
+  const client = useMemo(
+    () => createClient({ flowKind: flowKind!, userId: userId!, baseUrl }),
+    [flowKind, userId, baseUrl]
+  );
 
-  const execute = async (
-    input: unknown,
-    sessionId?: string
-  ): Promise<ExecuteActionResponse> => {
-    loading = true;
-    error = undefined;
+  const execute = useCallback(
+    async (
+      input: unknown,
+      sessionId?: string
+    ): Promise<ExecuteActionResponse> => {
+      setLoading(true);
+      setError(undefined);
 
-    try {
-      return await client.sendAction(options.action, input, {
-        sessionId
-      });
-    } catch (cause) {
-      error = normalizeError(cause);
-      throw error;
-    } finally {
-      loading = false;
-    }
-  };
-
-  return {
-    execute,
-    get loading() {
-      return loading;
+      try {
+        return await client.sendAction(options.action, input, {
+          sessionId
+        });
+      } catch (cause) {
+        const normalized =
+          cause instanceof Error ? cause : new Error(String(cause));
+        setError(normalized);
+        throw normalized;
+      } finally {
+        setLoading(false);
+      }
     },
-    get error() {
-      return error;
-    }
-  };
-}
+    [client, options.action]
+  );
 
-function normalizeError(value: unknown): Error {
-  if (value instanceof Error) {
-    return value;
-  }
-
-  if (typeof value === "string" && value.length > 0) {
-    return new Error(value);
-  }
-
-  return new Error("Unknown useAction error");
+  return { execute, loading, error };
 }

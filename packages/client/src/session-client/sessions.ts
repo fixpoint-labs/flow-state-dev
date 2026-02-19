@@ -39,6 +39,14 @@ export type ListSessionRequestsOptions = {
 };
 
 /**
+ * Query options for reading a session state snapshot.
+ */
+export type GetSessionStateOptions = {
+  includeItems?: boolean;
+  projections?: string[];
+};
+
+/**
  * Payload used when creating a new session.
  */
 export type CreateSessionOptions = {
@@ -60,7 +68,10 @@ export type SessionClient = {
     sessionId: string,
     options?: ListSessionRequestsOptions
   ) => Promise<SessionRequestSummary[]>;
-  getSessionState: (sessionId: string) => Promise<SessionStateSnapshotResponse>;
+  getSessionState: (
+    sessionId: string,
+    options?: GetSessionStateOptions
+  ) => Promise<SessionStateSnapshotResponse>;
   createSession: (options: CreateSessionOptions) => Promise<SessionDetail>;
   deleteSession: (sessionId: string) => Promise<void>;
 };
@@ -115,13 +126,22 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
   };
 
   const getSessionState = async (
-    sessionId: string
+    sessionId: string,
+    stateOptions?: GetSessionStateOptions
   ): Promise<SessionStateSnapshotResponse> => {
     return requestJson<SessionStateSnapshotResponse>({
       fetcher,
       url: buildFlowApiUrl({
         baseUrl: options.baseUrl,
-        path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/state`
+        path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/state`,
+        query: asQuery({
+          include_items: stateOptions?.includeItems,
+          projections:
+            stateOptions?.projections === undefined ||
+            stateOptions.projections.length === 0
+              ? undefined
+              : stateOptions.projections.join(",")
+        })
       })
     });
   };

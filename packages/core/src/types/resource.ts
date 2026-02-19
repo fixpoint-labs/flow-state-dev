@@ -1,4 +1,4 @@
-import type { ZodTypeAny } from "zod";
+import { z, type ZodTypeAny } from "zod";
 import type { BlockContext } from "./block";
 import type {
   ProjectScopeHandle,
@@ -10,10 +10,12 @@ import type {
 import type { JsonObject, JsonValue } from "../schema/common";
 
 export type ResourceConfig = {
-  client: boolean;
   stateSchema: ZodTypeAny;
   default?: JsonValue;
   dynamic?: boolean;
+  writable?: boolean;
+  allowedExtensions?: string[];
+  metadata?: Record<string, unknown>;
 };
 
 export type ResourceContext<TState extends JsonObject = JsonObject> = {
@@ -42,6 +44,11 @@ export interface ResourceHandle<TState extends JsonObject = JsonObject> {
   patchState(updates: Partial<TState>): Promise<void>;
   setState(nextState: TState): Promise<void>;
   updateState(updater: (state: TState) => TState | Promise<TState>): Promise<void>;
+  readContent(): Promise<string>;
+  writeContent(content: string): Promise<void>;
+  contentType?: string;
+  extension?: string;
+  config: Readonly<ResourceConfig>;
 }
 
 export type ResourceRegistry<
@@ -100,6 +107,7 @@ export type ProjectionConfig<
   TProjectResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
 > = {
   client: boolean;
+  outputSchema?: ZodTypeAny;
   requestStateSchema?: ZodTypeAny;
   sessionStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
@@ -186,7 +194,10 @@ export function defineResource<const TStateSchema extends ZodTypeAny>(
 export function defineProjection<const TProjection extends ProjectionConfig>(
   config: TProjection
 ): TProjection {
-  return config;
+  return {
+    ...config,
+    outputSchema: config.outputSchema ?? z.any()
+  };
 }
 
 function toJsonObject(value: Record<string, unknown>): JsonObject {

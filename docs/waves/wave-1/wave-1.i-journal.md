@@ -3,30 +3,35 @@
 ## Date
 
 - 2026-02-16
+- 2026-02-19
 
 ## Commands Run
 
 ```bash
-pnpm --filter @flow-state-dev/client typecheck
+pnpm --filter @flow-state-dev/core test
 pnpm --filter @flow-state-dev/client test
-pnpm --filter @flow-state-dev/react typecheck
+pnpm --filter @flow-state-dev/server test
 pnpm --filter @flow-state-dev/react test
-pnpm -r --if-present typecheck
-pnpm -r --if-present test
+pnpm install --filter @flow-state-dev/react
 ```
 
 ## Notes
 
-- Implemented client API modules in `packages/client/src/*`:
-  - canonical action transport + typed flow-bound client helper
-  - canonical session/state APIs for list/get/create/delete/requests/state snapshot
-  - request/user SSE clients with callback dispatch, dedupe, and resume controls (`Last-Event-ID`, `starting_after`)
-- Implemented react wrapper modules in `packages/react/src/*`:
-  - hook wrappers for flow/session/action/request-stream and typed flow client access
-  - item render helpers and block renderer fallback/custom mapping behavior
-  - block renderer registry and lightweight flow context helpers
-- Expanded unit coverage for both packages:
-  - `packages/client/test/*`
-  - `packages/react/test/*`
-- Updated package scripts in `packages/client/package.json` and `packages/react/package.json` so client/react typecheck/tests run with deterministic core/client build prerequisites.
-- Updated onboarding status in `README.md` to reflect implemented client/react package surfaces.
+- Refactored React wave surfaces to align with current direction:
+  - removed `useTypedFlowClient`
+  - added `useProjections(session, options)`
+  - added `useBlockContext()`
+  - simplified `useSession` (`items` option, `detail` field, pre-memoized item views)
+  - moved block renderer resolution to `FlowProvider` context (`renderKey` based)
+- Updated client snapshot contract and query options:
+  - `SessionStateSnapshotResponse.projections` is now scope-grouped (`session`/`user`/`project`)
+  - added optional `items` snapshot payload
+  - added `getSessionState(..., { includeItems, projections })`
+- Aligned core/server contracts with architecture direction:
+  - block config renames: `render` -> `clientOutput`, `message` -> `llmOutput`
+  - item field rename: `renderName` -> `renderKey`
+  - `UserConfig`/`ProjectConfig` now support `projections`
+  - `ResourceConfig` and `ResourceHandle` expanded to include Phase 1 content/config fields
+  - server `/sessions/:id/state` now computes scope-grouped client projections and supports projection filtering
+- Added server route coverage for grouped projections and projection query filters.
+- React test execution is currently blocked in this environment because `react` is not installed in `packages/react/node_modules` and registry access is unavailable (`ENOTFOUND registry.npmjs.org`).

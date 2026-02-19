@@ -1,127 +1,404 @@
 /**
- * Session-focused hook wrapper for action execution, state snapshots, and request streams.
+ * Session-focused reactive hook for session lifecycle, request streaming, and item views.
  */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  createActionClient,
+  createClient,
   createSessionClient,
+  createSSEClient,
   type ExecuteActionResponse,
+  type RequestStreamHandle,
   type SessionDetail,
   type SessionStateSnapshotResponse
 } from "@flow-state-dev/client";
-import { getFlowContext } from "../context/FlowContext";
-import {
-  useRequestStream,
-  type UseRequestStreamResult
-} from "./useRequestStream";
+import type {
+  BlockOutputItem,
+  FunctionCallItem,
+  MessageItem,
+  OutputItem
+} from "@flow-state-dev/core/items";
+import { useFlowContext } from "../context/FlowContext";
 
 /**
- * Options for creating session wrappers.
+ * Items subscription configuration for useSession.
  */
-export type UseSessionOptions = {
-  flowKind?: string;
-  sessionId?: string;
+export type SessionItemsOptions =
+  | boolean
+  | {
+      visibility?: OutputItem["visibility"];
+      includeTransient?: boolean;
+    };
+
+/**
+ * Options for useSession (third positional arg).
+ */
+export type UseSessionHookOptions = {
   userId?: string;
   baseUrl?: string;
+  items?: SessionItemsOptions;
 };
 
 /**
- * Session wrapper API surface.
+ * Reactive session view returned by useSession.
  */
-export type UseSessionResult = {
+export type SessionView = {
   readonly flowKind: string;
-  readonly sessionId: string;
+  readonly sessionId?: string;
   readonly userId: string;
-  readonly session: SessionDetail | null;
+  readonly isLoading: boolean;
+  readonly isStreaming: boolean;
+  readonly error: Error | null;
+  readonly detail: SessionDetail | null;
   readonly snapshot: SessionStateSnapshotResponse | null;
-  refresh: () => Promise<void>;
+  readonly items: OutputItem[];
+  readonly messages: MessageItem[];
+  readonly blockOutputs: BlockOutputItem[];
+  readonly functionCalls: FunctionCallItem[];
   sendAction: (
     action: string,
     input: unknown
   ) => Promise<ExecuteActionResponse>;
-  streamRequest: (requestId: string) => UseRequestStreamResult;
+  refresh: () => Promise<void>;
 };
 
-/**
- * Creates session-level helpers scoped to one flow/session/user tuple.
- */
-export function useSession(options: UseSessionOptions): UseSessionResult {
-  const context = getFlowContext();
-  const flowKind = requireValue(options.flowKind ?? context.flowKind, "flowKind");
-  const sessionId = requireValue(
-    options.sessionId ?? context.sessionId,
-    "sessionId"
-  );
-  const userId = requireValue(options.userId ?? context.userId, "userId");
-  const baseUrl = options.baseUrl ?? context.baseUrl;
+function normalizeFlowKind(flowKind: string): string {
+  const trimmed = flowKind.trim();
+  if (trimmed.length === 0) {
+    throw new Error("useSession requires non-empty flow kind");
+  }
 
-  const sessionClient = createSessionClient({
-    baseUrl
-  });
-  const actionClient = createActionClient({
-    flowKind,
-    userId,
-    baseUrl
-  });
+  return trimmed;
+}
 
-  let session: SessionDetail | null = null;
-  let snapshot: SessionStateSnapshotResponse | null = null;
+function resolveItemsConfig(
+  options: SessionItemsOptions | undefined
+): {
+  enabled: boolean;
+  visibility?: OutputItem["visibility"];
+  includeTransient: boolean;
+} {
+  if (options === false) {
+    return {
+      enabled: false,
+      includeTransient: false
+    };
+  }
 
-  const refresh = async (): Promise<void> => {
-    const [nextSession, nextSnapshot] = await Promise.all([
-      sessionClient.getSession(sessionId),
-      sessionClient.getSessionState(sessionId)
-    ]);
-    session = nextSession;
-    snapshot = nextSnapshot;
-  };
-
-  const sendAction = async (
-    action: string,
-    input: unknown
-  ): Promise<ExecuteActionResponse> => {
-    const response = await actionClient.sendAction(action, input, {
-      sessionId
-    });
-
-    if (response.status === "completed") {
-      await refresh();
-    }
-
-    return response;
-  };
-
-  const streamRequest = (requestId: string): UseRequestStreamResult =>
-    useRequestStream({
-      flowKind,
-      requestId,
-      baseUrl,
-      onCompletedRefetch: async () => {
-        await refresh();
-        return snapshot ?? undefined;
-      }
-    });
+  if (typeof options === "object") {
+    return {
+      enabled: true,
+      visibility: options.visibility,
+      includeTransient: options.includeTransient === true
+    };
+  }
 
   return {
-    flowKind,
-    sessionId,
-    userId,
-    get session() {
-      return session;
-    },
-    get snapshot() {
-      return snapshot;
-    },
-    refresh,
-    sendAction,
-    streamRequest
+    enabled: true,
+    includeTransient: false
   };
 }
 
-function requireValue(value: string | undefined, field: string): string {
-  const normalized = value?.trim();
-  if (normalized === undefined || normalized.length === 0) {
-    throw new Error(`useSession requires ${field} (option or FlowContext)`);
+function passesItemFilter(
+  item: OutputItem,
+  filter: {
+    visibility?: OutputItem["visibility"];
+    includeTransient: boolean;
+  }
+): boolean {
+  if (!filter.includeTransient && item.transient === true) {
+    return false;
   }
 
-  return normalized;
+  if (filter.visibility !== undefined && item.visibility !== filter.visibility) {
+    return false;
+  }
+
+  return true;
+}
+
+function filterAndSortItems(
+  items: OutputItem[] | undefined,
+  filter: {
+    visibility?: OutputItem["visibility"];
+    includeTransient: boolean;
+  }
+): OutputItem[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return [...items]
+    .filter((item) => passesItemFilter(item, filter))
+    .sort((left, right) => left.itemIndex - right.itemIndex);
+}
+
+function upsertItem(items: OutputItem[], nextItem: OutputItem): OutputItem[] {
+  const existingIndex = items.findIndex((item) => item.id === nextItem.id);
+  if (existingIndex === -1) {
+    const next = [...items, nextItem];
+    next.sort((left, right) => left.itemIndex - right.itemIndex);
+    return next;
+  }
+
+  const next = [...items];
+  next[existingIndex] = nextItem;
+  next.sort((left, right) => left.itemIndex - right.itemIndex);
+  return next;
+}
+
+/**
+ * Reactive session hook with auto-stream management and item-first defaults.
+ */
+export function useSession(
+  flowKind: string,
+  sessionId: string | undefined,
+  options?: UseSessionHookOptions
+): SessionView {
+  const context = useFlowContext();
+  const resolvedFlowKind = normalizeFlowKind(flowKind);
+  const userId = options?.userId ?? context.userId ?? "devuser";
+  const baseUrl = options?.baseUrl ?? context.baseUrl;
+
+  const itemConfig = useMemo(
+    () => resolveItemsConfig(options?.items),
+    [options?.items]
+  );
+
+  const [detail, setDetail] = useState<SessionDetail | null>(null);
+  const [snapshot, setSnapshot] = useState<SessionStateSnapshotResponse | null>(null);
+  const [items, setItems] = useState<OutputItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const streamHandleRef = useRef<RequestStreamHandle | null>(null);
+
+  const sessionClient = useMemo(
+    () => createSessionClient({ baseUrl }),
+    [baseUrl]
+  );
+
+  const client = useMemo(
+    () => createClient({ flowKind: resolvedFlowKind, userId, baseUrl }),
+    [resolvedFlowKind, userId, baseUrl]
+  );
+
+  const applySnapshot = useCallback(
+    (nextSnapshot: SessionStateSnapshotResponse) => {
+      setSnapshot(nextSnapshot);
+      if (!itemConfig.enabled) {
+        setItems([]);
+        return;
+      }
+
+      setItems(
+        filterAndSortItems(nextSnapshot.items, {
+          visibility: itemConfig.visibility,
+          includeTransient: itemConfig.includeTransient
+        })
+      );
+    },
+    [itemConfig.enabled, itemConfig.includeTransient, itemConfig.visibility]
+  );
+
+  const refreshSnapshot = useCallback(async () => {
+    if (sessionId === undefined) {
+      return;
+    }
+
+    try {
+      const [nextDetail, nextSnapshot] = await Promise.all([
+        sessionClient.getSession(sessionId),
+        sessionClient.getSessionState(sessionId, {
+          includeItems: itemConfig.enabled
+        })
+      ]);
+
+      setDetail(nextDetail);
+      applySnapshot(nextSnapshot);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause : new Error(String(cause)));
+    }
+  }, [sessionId, sessionClient, itemConfig.enabled, applySnapshot]);
+
+  useEffect(() => {
+    if (sessionId === undefined) {
+      setDetail(null);
+      setSnapshot(null);
+      setItems([]);
+      setError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoading(true);
+    setError(null);
+
+    void (async () => {
+      try {
+        const [nextDetail, nextSnapshot] = await Promise.all([
+          sessionClient.getSession(sessionId),
+          sessionClient.getSessionState(sessionId, {
+            includeItems: itemConfig.enabled
+          })
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setDetail(nextDetail);
+        applySnapshot(nextSnapshot);
+      } catch (cause) {
+        if (!cancelled) {
+          setError(cause instanceof Error ? cause : new Error(String(cause)));
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, sessionClient, itemConfig.enabled, applySnapshot]);
+
+  useEffect(() => {
+    return () => {
+      if (streamHandleRef.current !== null) {
+        streamHandleRef.current.close();
+        streamHandleRef.current = null;
+      }
+    };
+  }, [sessionId]);
+
+  const sendAction = useCallback(
+    async (
+      action: string,
+      input: unknown
+    ): Promise<ExecuteActionResponse> => {
+      if (sessionId === undefined) {
+        throw new Error("useSession.sendAction requires a sessionId");
+      }
+
+      if (streamHandleRef.current !== null) {
+        streamHandleRef.current.close();
+        streamHandleRef.current = null;
+      }
+
+      setError(null);
+
+      try {
+        const response = await client.sendAction(action, input, {
+          sessionId
+        });
+
+        if (itemConfig.enabled && response.request?.id) {
+          setIsStreaming(true);
+          const filter = {
+            visibility: itemConfig.visibility,
+            includeTransient: itemConfig.includeTransient
+          };
+
+          const handle = createSSEClient({
+            url: `/api/flows/${encodeURIComponent(resolvedFlowKind)}/requests/${encodeURIComponent(response.request.id)}/stream`,
+            baseUrl,
+            onItemAdded: (event) => {
+              if (!passesItemFilter(event.item, filter)) {
+                return;
+              }
+
+              setItems((prev: OutputItem[]) => upsertItem(prev, event.item));
+
+              if (event.item.type === "fsd:resource_update") {
+                void refreshSnapshot();
+              }
+            },
+            onItemDone: (event) => {
+              setItems((prev: OutputItem[]) => upsertItem(prev, event.item));
+            },
+            onRequestStatus: (event) => {
+              if (
+                event.status === "completed" ||
+                event.status === "failed" ||
+                event.status === "incomplete"
+              ) {
+                setIsStreaming(false);
+                streamHandleRef.current?.close();
+                streamHandleRef.current = null;
+
+                if (event.status === "completed") {
+                  void refreshSnapshot();
+                }
+              }
+            },
+            onError: () => {
+              setIsStreaming(false);
+              streamHandleRef.current?.close();
+              streamHandleRef.current = null;
+            }
+          });
+
+          streamHandleRef.current = handle;
+        } else if (response.status === "completed") {
+          await refreshSnapshot();
+        }
+
+        return response;
+      } catch (cause) {
+        const normalized = cause instanceof Error ? cause : new Error(String(cause));
+        setError(normalized);
+        setIsStreaming(false);
+        throw normalized;
+      }
+    },
+    [
+      sessionId,
+      client,
+      itemConfig.enabled,
+      itemConfig.visibility,
+      itemConfig.includeTransient,
+      resolvedFlowKind,
+      baseUrl,
+      refreshSnapshot
+    ]
+  );
+
+  const refresh = useCallback(async () => {
+    await refreshSnapshot();
+  }, [refreshSnapshot]);
+
+  const messages = useMemo(
+    () => items.filter((item: OutputItem): item is MessageItem => item.type === "message"),
+    [items]
+  );
+  const blockOutputs = useMemo(
+    () =>
+      items.filter((item: OutputItem): item is BlockOutputItem => item.type === "fsd:block_output"),
+    [items]
+  );
+  const functionCalls = useMemo(
+    () =>
+      items.filter((item: OutputItem): item is FunctionCallItem => item.type === "function_call"),
+    [items]
+  );
+
+  return {
+    flowKind: resolvedFlowKind,
+    sessionId,
+    userId,
+    isLoading,
+    isStreaming,
+    error,
+    detail,
+    snapshot,
+    items,
+    messages,
+    blockOutputs,
+    functionCalls,
+    sendAction,
+    refresh
+  };
 }

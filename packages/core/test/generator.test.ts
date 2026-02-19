@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   generator,
-  resolveGeneratorMessage,
-  resolveGeneratorRender,
+  resolveGeneratorClientOutput,
+  resolveGeneratorLlmOutput,
   type GeneratorLoopState
 } from "../src";
 import { createMockContext } from "./helpers";
@@ -181,25 +181,22 @@ describe("generator builder", () => {
 });
 
 describe("generator helpers", () => {
-  it("resolves message option variants", async () => {
+  it("resolves llmOutput option variants", async () => {
     const ctx = createMockContext();
 
-    await expect(resolveGeneratorMessage(false, { value: 1 }, ctx)).resolves.toBeNull();
-    await expect(resolveGeneratorMessage(true, { value: 1 }, ctx)).resolves.toEqual({ value: 1 });
-    await expect(resolveGeneratorMessage("fixed", { value: 1 }, ctx)).resolves.toBe("fixed");
+    await expect(resolveGeneratorLlmOutput(false, { value: 1 }, ctx)).resolves.toBeNull();
+    await expect(resolveGeneratorLlmOutput(true, { value: 1 }, ctx)).resolves.toEqual({ value: 1 });
+    await expect(resolveGeneratorLlmOutput("fixed", { value: 1 }, ctx)).resolves.toBe("fixed");
     await expect(
-      resolveGeneratorMessage((output) => ({ wrapped: output }), { value: 1 }, ctx)
+      resolveGeneratorLlmOutput((output) => ({ wrapped: output }), { value: 1 }, ctx)
     ).resolves.toEqual({ wrapped: { value: 1 } });
   });
 
-  it("resolves render option variants", async () => {
-    const renderCtx = { blockName: "demo", requestId: "req_1", itemIndex: 1 };
-
-    await expect(resolveGeneratorRender(false, { value: 1 }, renderCtx)).resolves.toBeNull();
-    await expect(resolveGeneratorRender(true, { value: 1 }, renderCtx)).resolves.toEqual({ value: 1 });
-    await expect(resolveGeneratorRender("fixed", { value: 1 }, renderCtx)).resolves.toBe("fixed");
+  it("resolves clientOutput option variants", async () => {
+    await expect(resolveGeneratorClientOutput(false, { value: 1 })).resolves.toBeNull();
+    await expect(resolveGeneratorClientOutput(true, { value: 1 })).resolves.toEqual({ value: 1 });
     await expect(
-      resolveGeneratorRender((output) => ({ wrapped: output }), { value: 1 }, renderCtx)
+      resolveGeneratorClientOutput((output) => ({ wrapped: output }), { value: 1 })
     ).resolves.toEqual({ wrapped: { value: 1 } });
   });
 });

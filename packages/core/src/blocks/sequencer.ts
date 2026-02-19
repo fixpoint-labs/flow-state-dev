@@ -214,8 +214,8 @@ function createSequencer<TInput, TOutput>(
       description: config.description,
       inputSchema: config.inputSchema,
       outputSchema: config.outputSchema,
-      render: config.render as any,
-      message: config.message as any
+      clientOutput: config.clientOutput as any,
+      llmOutput: config.llmOutput as any
     },
     execute: runSequencerOperations(operations, rescueHandlers) as (
       input: TInput,

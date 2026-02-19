@@ -2,9 +2,8 @@ import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
 import {
-  createActionClient,
-  createFlowClient,
-  createTypedFlowClient,
+  createClient,
+  createTypedClient,
   type ClientFetch,
   type ExecuteActionResponse,
   type SessionStateSnapshotResponse
@@ -32,7 +31,6 @@ const SNAPSHOT_RESPONSE: SessionStateSnapshotResponse = {
     user: { name: "test" },
     project: { mode: "dev" }
   },
-  resources: [],
   projections: {}
 };
 
@@ -45,7 +43,7 @@ function createJsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-describe("createActionClient", () => {
+describe("createClient", () => {
   it("posts action execution requests with required userId", async () => {
     const fetcher = vi.fn<ClientFetch>(async (_url, init) => {
       expect(init?.method).toBe("POST");
@@ -60,7 +58,7 @@ describe("createActionClient", () => {
       return createJsonResponse(EXECUTE_RESPONSE);
     });
 
-    const client = createActionClient({
+    const client = createClient({
       flowKind: "demo",
       userId: "devuser",
       fetcher
@@ -75,7 +73,7 @@ describe("createActionClient", () => {
 
   it("uses session-scoped action route when sessionId is supplied", async () => {
     const fetcher = vi.fn<ClientFetch>(async () => createJsonResponse(EXECUTE_RESPONSE));
-    const client = createActionClient({
+    const client = createClient({
       flowKind: "demo",
       userId: "devuser",
       fetcher
@@ -88,7 +86,7 @@ describe("createActionClient", () => {
 
   it("validates required client identity inputs", () => {
     expect(() =>
-      createActionClient({
+      createClient({
         flowKind: "",
         userId: "devuser",
         fetcher: vi.fn()
@@ -96,7 +94,7 @@ describe("createActionClient", () => {
     ).toThrow("flowKind");
 
     expect(() =>
-      createActionClient({
+      createClient({
         flowKind: "demo",
         userId: "",
         fetcher: vi.fn()
@@ -105,7 +103,7 @@ describe("createActionClient", () => {
   });
 });
 
-describe("createFlowClient", () => {
+describe("createTypedClient", () => {
   it("creates typed action helpers and state snapshot helpers", async () => {
     const flow = defineFlow({
       kind: "demo",
@@ -153,7 +151,7 @@ describe("createFlowClient", () => {
       return createJsonResponse({});
     });
 
-    const client = createFlowClient({
+    const client = createTypedClient({
       flow,
       userId: "devuser",
       fetcher
@@ -178,7 +176,7 @@ describe("createFlowClient", () => {
     expect(projectState).toEqual({ mode: "dev" });
   });
 
-  it("supports explicit typed-client alias naming", async () => {
+  it("creates typed action helpers with compile-time flow typing", async () => {
     const flow = defineFlow({
       kind: "demo",
       actions: {
@@ -200,7 +198,7 @@ describe("createFlowClient", () => {
       createJsonResponse(EXECUTE_RESPONSE)
     );
 
-    const client = createTypedFlowClient({
+    const client = createTypedClient({
       flow,
       userId: "devuser",
       fetcher

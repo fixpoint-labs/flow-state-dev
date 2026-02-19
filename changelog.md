@@ -122,7 +122,8 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Added Wave 1.i execution plan at `docs/waves/wave-1/wave-1.i.md` aligned to canonical Wave I.
 - Implemented client transport APIs in `packages/client/src/*`, including action/session/state APIs and request/user SSE clients with resume controls.
 - Implemented typed flow-bound client helpers in `packages/client/src/action-client/executeAction.ts` and package exports in `packages/client/src/index.ts`.
-- Implemented React wrappers and render surfaces in `packages/react/src/*`, including flow/session/action/request-stream helpers, block renderer registry, and flow context utilities.
+- Implemented React wrappers and render surfaces in `packages/react/src/*`, including `useProjections`, simplified `useSession`, context-driven renderer resolution, and `useBlockContext`.
+- Aligned core/server contracts to the React direction (`renderKey`, `clientOutput`/`llmOutput`, grouped client projections, filtered session snapshot projections).
 - Added Wave 1.i unit coverage in `packages/client/test/*` and `packages/react/test/*`.
 - Updated client/react package scripts in `packages/client/package.json` and `packages/react/package.json` for deterministic dependency-build-aware typecheck/test execution.
 - Updated `README.md` maturity section to reflect implemented client/react package surfaces.
@@ -136,7 +137,8 @@ All notable implementation-repo changes are recorded here as concise, wave-level
   - `packages/server/README.md`
   - `packages/testing/README.md`
 - Added best-practice standard for package README maintenance in `docs/BEST_PRACTICES.md` (BP-009).
-- Expanded `packages/react/README.md` with hook-by-hook usage documentation (`useFlowAgent`, `useSession`, `useAction`, `useRequestStream`, `useTypedFlowClient`), context resolution rules, and rendering helper guidance.
-- Added an explicit typed-client naming alias `createTypedFlowClient` in `packages/client/src/action-client/executeAction.ts` and `packages/client/src/index.ts`, with coverage in `packages/client/test/*`.
-- Expanded `packages/react/README.md` with a full canonical chat send/stream/render example and AI Elements integration pattern guidance.
+- Expanded `packages/react/README.md` with hook-by-hook usage documentation (`useFlow`, `useSession`, `useProjections`, `useAction`, `useRequestStream`) and context renderer guidance.
+- Renamed client builders to `createClient` and `createTypedClient` in `packages/client/src/action-client/executeAction.ts` and `packages/client/src/index.ts`, and updated related client/react tests and docs.
+- Kept untyped session action execution as `session.sendAction(...)` in `packages/react/src/hooks/useSession.ts` until typed session actions are introduced.
+- Updated `packages/client/README.md` for snapshot query options (`include_items`, scope-grouped `projections`).
 - Updated root `README.md` documentation map to link directly to package-level READMEs.

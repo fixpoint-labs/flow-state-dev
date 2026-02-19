@@ -1,5 +1,11 @@
 export { handler } from "./handler";
-export { generator, resolveGeneratorMessage, resolveGeneratorRender } from "./generator";
+export {
+  generator,
+  resolveGeneratorClientOutput,
+  resolveGeneratorLlmOutput,
+  resolveGeneratorMessage,
+  resolveGeneratorRender
+} from "./generator";
 export { sequencer } from "./sequencer";
 export { router } from "./router";
 

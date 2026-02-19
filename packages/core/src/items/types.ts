@@ -52,7 +52,7 @@ export type ReasoningItem = OutputItemBase & {
 export type BlockOutputItem = OutputItemBase & {
   type: "fsd:block_output";
   blockName: string;
-  renderName?: string;
+  renderKey?: string;
   output: unknown;
 };
 

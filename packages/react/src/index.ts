@@ -1,20 +1,32 @@
 /**
- * Public React-facing wrappers, render helpers, registry helpers, and context utilities.
+ * Public React-facing wrappers, render helpers, and context utilities.
  */
-export type { CoreItemImportProof, CoreTypeImportProof } from "./_core-import-smoke";
+export type {
+  CoreItemImportProof,
+  CoreTypeImportProof
+} from "./_core-import-smoke";
 export { coreItemImportProof } from "./_core-import-smoke";
 
 export {
-  useFlowAgent,
-  type UseFlowAgentOptions,
-  type UseFlowAgentResult
-} from "./hooks/useFlowAgent";
+  useFlow,
+  type UseFlowOptions,
+  type UseFlowResult
+} from "./hooks/useFlow";
 
 export {
   useSession,
-  type UseSessionOptions,
-  type UseSessionResult
+  type SessionItemsOptions,
+  type SessionView,
+  type UseSessionHookOptions
 } from "./hooks/useSession";
+
+export {
+  useProjections,
+  type ProjectionScopeSubscribeOptions,
+  type ProjectionSubscribeOptions,
+  type ProjectionValues,
+  type ZodSchemaLike
+} from "./hooks/useProjections";
 
 export {
   useAction,
@@ -28,11 +40,6 @@ export {
   type UseRequestStreamOptions,
   type UseRequestStreamResult
 } from "./hooks/useRequestStream";
-
-export {
-  useTypedFlowClient,
-  type UseTypedFlowClientOptions
-} from "./hooks/useTypedFlowClient";
 
 export {
   ItemRenderer,
@@ -51,23 +58,24 @@ export {
 
 export {
   BlockRenderer,
+  useBlockContext,
+  type BlockMetadata,
   type BlockRendererComponentProps
 } from "./components/BlockRenderer";
 
-export {
-  clearBlockRenderers,
-  getBlockRenderer,
-  listBlockRendererKeys,
-  registerBlockRenderer,
-  type BlockComponentType,
-  type BlockRendererProps
+export type {
+  BlockComponentType,
+  BlockRendererMap
 } from "./registry/block-renderers";
 
 export {
+  FlowProvider,
+  useFlowContext,
   getFlowContext,
   setFlowContext,
   withFlowContext,
-  type FlowContextValue
+  type FlowContextValue,
+  type FlowProviderProps
 } from "./context/FlowContext";
 
 export const reactPackageMarker = "@flow-state-dev/react";

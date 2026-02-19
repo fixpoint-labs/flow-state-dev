@@ -9,7 +9,16 @@ export type {
 } from "./schema/common";
 
 export { defineProjection, defineResource, projection, projectionData, projectionMessages, projectionText, resource } from "./types/resource";
-export { generator, handler, resolveGeneratorMessage, resolveGeneratorRender, router, sequencer } from "./blocks";
+export {
+  generator,
+  handler,
+  resolveGeneratorClientOutput,
+  resolveGeneratorLlmOutput,
+  resolveGeneratorMessage,
+  resolveGeneratorRender,
+  router,
+  sequencer
+} from "./blocks";
 export { defineFlow } from "./flow";
 export type {
   BranchStep,

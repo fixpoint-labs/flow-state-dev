@@ -1,10 +1,10 @@
 /**
- * Request stream hook wrapper that maintains stream-derived item/status views.
+ * Low-level request stream hook that maintains reactive item/status views.
  */
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createSSEClient,
-  type RequestStreamHandle,
-  type SessionStateSnapshotResponse
+  type RequestStreamHandle
 } from "@flow-state-dev/client";
 import type {
   BlockOutputItem,
@@ -14,17 +14,17 @@ import type {
   RequestStatus,
   StatusItem
 } from "@flow-state-dev/core/items";
-import { getFlowContext } from "../context/FlowContext";
+import { useFlowContext } from "../context/FlowContext";
 
 /**
- * Visibility filter options for request stream item views.
+ * Visibility filter for request stream items.
  */
 export type RequestStreamFilter = {
   visibility?: OutputItem["visibility"];
 };
 
 /**
- * Options for creating request stream wrappers.
+ * Options for useRequestStream.
  */
 export type UseRequestStreamOptions = {
   flowKind?: string;
@@ -33,11 +33,10 @@ export type UseRequestStreamOptions = {
   lastEventId?: string;
   startingAfter?: number;
   filter?: RequestStreamFilter;
-  onCompletedRefetch?: () => Promise<SessionStateSnapshotResponse | void>;
 };
 
 /**
- * API surface returned from request stream wrappers.
+ * Return type for useRequestStream.
  */
 export type UseRequestStreamResult = {
   readonly items: OutputItem[];
@@ -52,98 +51,136 @@ export type UseRequestStreamResult = {
 };
 
 /**
- * Creates a request stream wrapper that tracks stream state in local memory.
+ * Low-level escape-hatch hook for subscribing to one request stream.
  */
 export function useRequestStream(
   options: UseRequestStreamOptions
 ): UseRequestStreamResult {
-  const context = getFlowContext();
+  const context = useFlowContext();
   const flowKind = options.flowKind ?? context.flowKind;
-  if (flowKind === undefined || flowKind.trim().length === 0) {
-    throw new Error("useRequestStream requires flowKind (option or FlowContext)");
+  const baseUrl = options.baseUrl ?? context.baseUrl;
+
+  if (!flowKind?.trim()) {
+    throw new Error(
+      "useRequestStream requires flowKind (option or FlowProvider)"
+    );
   }
 
-  const requestId = options.requestId.trim();
-  if (requestId.length === 0) {
+  if (!options.requestId.trim()) {
     throw new Error("useRequestStream requires non-empty requestId");
   }
 
-  let items: OutputItem[] = [];
-  let status: RequestStatus = "in_progress";
-  let isStreaming = true;
-  let handle: RequestStreamHandle | undefined;
+  const [items, setItems] = useState<OutputItem[]>([]);
+  const [status, setStatus] = useState<RequestStatus>("in_progress");
+  const [isStreaming, setIsStreaming] = useState(true);
+  const handleRef = useRef<RequestStreamHandle | null>(null);
 
-  handle = createSSEClient({
-    url: `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/stream`,
-    baseUrl: options.baseUrl ?? context.baseUrl,
-    lastEventId: options.lastEventId,
-    startingAfter: options.startingAfter,
-    onRequestStatus: (event) => {
-      status = event.status;
-      if (status === "completed") {
-        void options.onCompletedRefetch?.();
-      }
+  useEffect(() => {
+    setItems([]);
+    setStatus("in_progress");
+    setIsStreaming(true);
 
-      if (status === "completed" || status === "failed" || status === "incomplete") {
-        isStreaming = false;
-      }
-    },
-    onItemAdded: (event) => {
-      const item = event.item;
-      if (!passesVisibilityFilter(item, options.filter)) {
-        return;
-      }
+    const handle = createSSEClient({
+      url: `/api/flows/${encodeURIComponent(flowKind!)}/requests/${encodeURIComponent(options.requestId)}/stream`,
+      baseUrl,
+      lastEventId: options.lastEventId,
+      startingAfter: options.startingAfter,
+      onRequestStatus: (event) => {
+        setStatus(event.status);
 
-      items = [...items, item].sort((left, right) => left.itemIndex - right.itemIndex);
-    },
-    onItemDone: (event) => {
-      const doneItem = event.item;
-      items = items.map((item) =>
-        item.id === doneItem.id
-          ? doneItem
-          : item
-      );
-    },
-    onError: () => {
-      isStreaming = false;
-    }
-  });
+        if (
+          event.status === "completed" ||
+          event.status === "failed" ||
+          event.status === "incomplete"
+        ) {
+          setIsStreaming(false);
+        }
+      },
+      onItemAdded: (event) => {
+        if (!passesVisibilityFilter(event.item, options.filter)) return;
+
+        setItems((prev: OutputItem[]) => {
+          const previousItems = prev as OutputItem[];
+          const next = [...prev, event.item];
+          next.sort(
+            (left, right) => left.itemIndex - right.itemIndex
+          );
+          return next as typeof previousItems;
+        });
+      },
+      onItemDone: (event) => {
+        setItems((prev: OutputItem[]) =>
+          (prev as OutputItem[]).map((item: OutputItem) =>
+            item.id === event.item.id ? event.item : item
+          )
+        );
+      },
+      onError: () => {
+        setIsStreaming(false);
+      }
+    });
+
+    handleRef.current = handle;
+
+    return () => {
+      handle.close();
+      handleRef.current = null;
+    };
+  }, [
+    flowKind,
+    options.requestId,
+    baseUrl,
+    options.lastEventId,
+    options.startingAfter
+  ]);
+
+  const messages = useMemo(
+    () =>
+      items.filter(
+        (item: OutputItem): item is MessageItem => item.type === "message"
+      ),
+    [items]
+  );
+
+  const functionCalls = useMemo(
+    () =>
+      items.filter(
+        (item: OutputItem): item is FunctionCallItem =>
+          item.type === "function_call"
+      ),
+    [items]
+  );
+
+  const blockOutputs = useMemo(
+    () =>
+      items.filter(
+        (item: OutputItem): item is BlockOutputItem =>
+          item.type === "fsd:block_output"
+      ),
+    [items]
+  );
+
+  const currentStatus = useMemo(() => {
+    const statusItems = items.filter(
+      (item: OutputItem): item is StatusItem => item.type === "fsd:status"
+    );
+    return statusItems[statusItems.length - 1];
+  }, [items]);
 
   return {
-    get items() {
-      return items;
-    },
-    get status() {
-      return status;
-    },
-    get messages() {
-      return items.filter((item): item is MessageItem => item.type === "message");
-    },
-    get functionCalls() {
-      return items.filter(
-        (item): item is FunctionCallItem => item.type === "function_call"
-      );
-    },
-    get blockOutputs() {
-      return items.filter(
-        (item): item is BlockOutputItem => item.type === "fsd:block_output"
-      );
-    },
-    get currentStatus() {
-      const statusItems = items.filter(
-        (item): item is StatusItem => item.type === "fsd:status"
-      );
-      return statusItems[statusItems.length - 1];
-    },
-    get isStreaming() {
-      return isStreaming;
-    },
+    items,
+    status,
+    messages,
+    functionCalls,
+    blockOutputs,
+    currentStatus,
+    isStreaming,
     get lastEventId() {
-      return handle?.lastEventId;
+      return handleRef.current?.lastEventId;
     },
     close: () => {
-      isStreaming = false;
-      handle?.close();
+      setIsStreaming(false);
+      handleRef.current?.close();
     }
   };
 }
@@ -152,9 +189,6 @@ function passesVisibilityFilter(
   item: OutputItem,
   filter: RequestStreamFilter | undefined
 ): boolean {
-  if (filter?.visibility === undefined) {
-    return true;
-  }
-
+  if (filter?.visibility === undefined) return true;
   return item.visibility === filter.visibility;
 }

@@ -63,16 +63,28 @@ export type RequestConfig = {
   onStepErrored?: BlockDefinition<any, void>;
 };
 
-export type UserConfig<TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>> = {
-  stateSchema?: ZodTypeAny;
-  resources?: TResources;
-};
-
-export type ProjectConfig<
-  TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>
+export type UserConfig<
+  TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>,
+  TProjections extends Record<string, ProjectionConfig | ProjectionShorthand> = Record<
+    string,
+    ProjectionConfig | ProjectionShorthand
+  >
 > = {
   stateSchema?: ZodTypeAny;
   resources?: TResources;
+  projections?: TProjections;
+};
+
+export type ProjectConfig<
+  TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>,
+  TProjections extends Record<string, ProjectionConfig | ProjectionShorthand> = Record<
+    string,
+    ProjectionConfig | ProjectionShorthand
+  >
+> = {
+  stateSchema?: ZodTypeAny;
+  resources?: TResources;
+  projections?: TProjections;
 };
 
 export type WorkConfig = {

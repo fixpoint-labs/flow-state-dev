@@ -47,7 +47,6 @@ const SNAPSHOT: SessionStateSnapshotResponse = {
       count: 1
     }
   },
-  resources: [],
   projections: {}
 };
 
@@ -140,5 +139,19 @@ describe("createSessionClient", () => {
       "/api/flows/sessions/sess_1/requests?status=completed&limit=10"
     );
     expect(fetcher.mock.calls[2]?.[0]).toBe("/api/flows/sessions/sess_1/state");
+  });
+
+  it("supports snapshot query options for items and projection filters", async () => {
+    const fetcher = vi.fn<ClientFetch>(async () => createJsonResponse(SNAPSHOT));
+    const client = createSessionClient({ fetcher });
+
+    await client.getSessionState("sess_1", {
+      includeItems: true,
+      projections: ["session.artifactsList", "user.topics"]
+    });
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "/api/flows/sessions/sess_1/state?include_items=true&projections=session.artifactsList%2Cuser.topics"
+    );
   });
 });

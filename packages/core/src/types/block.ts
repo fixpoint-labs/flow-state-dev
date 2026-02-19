@@ -66,27 +66,20 @@ export interface ChunkValidation {
   reason?: string;
 }
 
-export type RenderContext = {
-  blockName: string;
-  requestId?: string;
-  itemIndex?: number;
-};
+export type ClientOutputOption<TOutput> =
+  | false
+  | true
+  | ((output: TOutput) => Record<string, unknown> | null);
 
-export type RenderOption<TOutput> =
+export type LlmOutputOption<TOutput> =
   | false
   | true
   | string
-  | ((output: TOutput, ctx: RenderContext) => unknown | null);
-
-export type MessageOption<TOutput> =
-  | false
-  | true
-  | string
-  | ((output: TOutput, ctx: BlockContext) => unknown | null);
+  | ((output: TOutput) => unknown | null);
 
 export interface BlockConfig<TInput = unknown, TOutput = unknown> {
   name: string;
-  renderName?: string;
+  renderKey?: string;
   description?: string;
   inputSchema?: ZodTypeAny;
   outputSchema?: ZodTypeAny;
@@ -98,8 +91,8 @@ export interface BlockConfig<TInput = unknown, TOutput = unknown> {
   onErrored?: (error: Error, ctx: BlockContext) => Promise<void> | void;
 
   retry?: RetryPolicy;
-  render?: RenderOption<TOutput>;
-  message?: MessageOption<TOutput>;
+  clientOutput?: ClientOutputOption<TOutput>;
+  llmOutput?: LlmOutputOption<TOutput>;
 
   [key: string]: unknown;
 }
@@ -107,7 +100,7 @@ export interface BlockConfig<TInput = unknown, TOutput = unknown> {
 export interface BlockDefinition<TInput = unknown, TOutput = unknown> {
   kind: BlockKind;
   name: string;
-  renderName?: string;
+  renderKey?: string;
   description?: string;
   inputSchema?: ZodTypeAny;
   outputSchema?: ZodTypeAny;

@@ -17,6 +17,13 @@
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*"
   },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "react": "^19.2.4"
+  },
   "scripts": {
     "build": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/client build && tsc -p tsconfig.json",
     "typecheck": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/client build && node ../../scripts/typecheck.mjs",

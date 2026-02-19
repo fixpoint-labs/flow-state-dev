@@ -1,9 +1,9 @@
 import type {
   BlockContext,
   BlockDefinition,
+  ClientOutputOption,
   ConnectorFn,
-  MessageOption,
-  RenderOption,
+  LlmOutputOption,
   RescueHandlerSpec
 } from "../types/block";
 
@@ -153,8 +153,8 @@ export type SequencerConfig<TInput = unknown> = {
   description?: string;
   inputSchema?: BlockDefinition<TInput, TInput>["inputSchema"];
   outputSchema?: BlockDefinition<TInput, TInput>["outputSchema"];
-  render?: RenderOption<TInput>;
-  message?: MessageOption<TInput>;
+  clientOutput?: ClientOutputOption<TInput>;
+  llmOutput?: LlmOutputOption<TInput>;
 };
 
 export type SequencerWorkTask = {

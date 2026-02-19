@@ -1,19 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   BlockRenderer,
+  FlowProvider,
   ItemRenderer,
   MessagesRenderer,
-  clearBlockRenderers,
   coreItemImportProof,
   getFlowContext,
   reactPackageMarker,
-  registerBlockRenderer,
-  setFlowContext,
   useAction,
-  useFlowAgent,
+  useFlow,
+  useFlowContext,
+  useProjections,
   useRequestStream,
-  useSession,
-  useTypedFlowClient
+  useSession
 } from "../src";
 
 describe("@flow-state-dev/react", () => {
@@ -25,21 +24,23 @@ describe("@flow-state-dev/react", () => {
     expect(coreItemImportProof).toBe("message");
   });
 
-  it("exports react package primitives", () => {
-    expect(typeof useFlowAgent).toBe("function");
+  it("exports hooks", () => {
+    expect(typeof useFlow).toBe("function");
     expect(typeof useSession).toBe("function");
+    expect(typeof useProjections).toBe("function");
     expect(typeof useAction).toBe("function");
     expect(typeof useRequestStream).toBe("function");
-    expect(typeof useTypedFlowClient).toBe("function");
+  });
 
+  it("exports FlowProvider and context helpers", () => {
+    expect(typeof FlowProvider).toBe("function");
+    expect(typeof useFlowContext).toBe("function");
+    expect(typeof getFlowContext).toBe("function");
+  });
+
+  it("exports render helpers", () => {
     expect(typeof BlockRenderer).toBe("function");
     expect(typeof ItemRenderer).toBe("function");
     expect(typeof MessagesRenderer).toBe("function");
-
-    expect(typeof registerBlockRenderer).toBe("function");
-    expect(typeof clearBlockRenderers).toBe("function");
-
-    expect(typeof setFlowContext).toBe("function");
-    expect(typeof getFlowContext).toBe("function");
   });
 });

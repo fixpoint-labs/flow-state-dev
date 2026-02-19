@@ -27,7 +27,8 @@ Conflict rule:
 - request-stream resume controls (`Last-Event-ID` and `starting_after`) in SSE client
 - `@flow-state-dev/react` hook wrappers over `@flow-state-dev/client`
 - item rendering helpers (`ItemRenderer`, `ItemsRenderer`, `MessagesRenderer`, `BlockRenderer`)
-- block renderer registry and flow context helpers
+- context-based block renderer resolution (`FlowProvider.blockRenderers`) and block metadata hook (`useBlockContext`)
+- projection subscription hook (`useProjections`)
 - package export wiring and unit tests for both packages
 - wave docs and root changelog updates
 
@@ -73,11 +74,11 @@ Acceptance criteria:
 
 Files:
 
-- `packages/react/src/hooks/useFlowAgent.ts`
+- `packages/react/src/hooks/useFlow.ts`
 - `packages/react/src/hooks/useSession.ts`
+- `packages/react/src/hooks/useProjections.ts`
 - `packages/react/src/hooks/useAction.ts`
 - `packages/react/src/hooks/useRequestStream.ts`
-- `packages/react/src/hooks/useTypedFlowClient.ts`
 - `packages/react/src/components/ItemRenderer.ts`
 - `packages/react/src/components/ItemsRenderer.ts`
 - `packages/react/src/components/MessagesRenderer.ts`
@@ -90,8 +91,9 @@ Acceptance criteria:
 
 - wrappers delegate transport/session/stream operations to `@flow-state-dev/client`
 - request-completed paths trigger snapshot refresh behavior in session wrappers
-- render helpers consume canonical `OutputItem` shapes and block renderer mappings
-- registry and context helpers are exported for app-level composition
+- render helpers consume canonical `OutputItem` shapes and context renderer mappings (`renderKey`)
+- `useProjections` exposes scope-group projection reads from session snapshots
+- `useBlockContext` exposes block metadata to registered renderer components
 
 ### W1I-T4: Add tests and package wiring verification
 

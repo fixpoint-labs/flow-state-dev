@@ -3,10 +3,9 @@ import type {
   BlockConfig,
   BlockContext,
   BlockDefinition,
+  ClientOutputOption,
   ConnectorFn,
-  MessageOption,
-  RenderContext,
-  RenderOption,
+  LlmOutputOption,
   RetryPolicy
 } from "../types/block";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
@@ -107,8 +106,8 @@ export interface GeneratorConfig<TInput, TOutput> extends Omit<BlockConfig<TInpu
   generate?: (state: GeneratorLoopState<TInput>, ctx: BlockContext) => MaybePromise<unknown>;
   flowTools?: ToolsConfig;
   retry?: RetryPolicy;
-  render?: RenderOption<TOutput>;
-  message?: MessageOption<TOutput>;
+  clientOutput?: ClientOutputOption<TOutput>;
+  llmOutput?: LlmOutputOption<TOutput>;
 }
 
 function toError(value: unknown): Error {
@@ -479,10 +478,10 @@ function resolveMaxIterations<TInput, TOutput>(config: GeneratorConfig<TInput, T
   return Math.max(1, configured);
 }
 
-export async function resolveGeneratorMessage<TOutput>(
-  option: MessageOption<TOutput> | undefined,
+export async function resolveGeneratorLlmOutput<TOutput>(
+  option: LlmOutputOption<TOutput> | undefined,
   output: TOutput,
-  ctx: BlockContext
+  _ctx?: BlockContext
 ): Promise<unknown | null> {
   if (option === false) {
     return null;
@@ -496,13 +495,13 @@ export async function resolveGeneratorMessage<TOutput>(
     return option;
   }
 
-  return option(output, ctx);
+  return option(output);
 }
 
-export async function resolveGeneratorRender<TOutput>(
-  option: RenderOption<TOutput> | undefined,
+export async function resolveGeneratorClientOutput<TOutput>(
+  option: ClientOutputOption<TOutput> | undefined,
   output: TOutput,
-  ctx: RenderContext
+  _ctx?: unknown
 ): Promise<unknown | null> {
   if (option === false || option === undefined) {
     return null;
@@ -512,12 +511,18 @@ export async function resolveGeneratorRender<TOutput>(
     return output;
   }
 
-  if (typeof option === "string") {
-    return option;
-  }
-
-  return option(output, ctx);
+  return option(output);
 }
+
+/**
+ * @deprecated Use resolveGeneratorLlmOutput instead.
+ */
+export const resolveGeneratorMessage = resolveGeneratorLlmOutput;
+
+/**
+ * @deprecated Use resolveGeneratorClientOutput instead.
+ */
+export const resolveGeneratorRender = resolveGeneratorClientOutput;
 
 export function generator<TInput, TOutput>(
   config: GeneratorConfig<TInput, TOutput>

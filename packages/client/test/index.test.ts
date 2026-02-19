@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   clientPackageMarker,
-  createActionClient,
-  createFlowClient,
-  createTypedFlowClient,
+  createClient,
+  createTypedClient,
   createSessionClient,
   createSSEClient,
   createUserSSEClient,
@@ -16,9 +15,8 @@ describe("@flow-state-dev/client", () => {
   });
 
   it("exports client runtime primitives", () => {
-    expect(typeof createActionClient).toBe("function");
-    expect(typeof createFlowClient).toBe("function");
-    expect(typeof createTypedFlowClient).toBe("function");
+    expect(typeof createClient).toBe("function");
+    expect(typeof createTypedClient).toBe("function");
     expect(typeof createSessionClient).toBe("function");
     expect(typeof createSSEClient).toBe("function");
     expect(typeof createUserSSEClient).toBe("function");

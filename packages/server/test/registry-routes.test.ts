@@ -31,6 +31,59 @@ function makeFlow(kind: string, id = kind): FlowInstance {
   });
 }
 
+function makeProjectedFlow(kind: string, id = kind): FlowInstance {
+  return defineFlow({
+    kind,
+    actions: {
+      run: {
+        inputSchema: z.object({
+          value: z.string()
+        }),
+        block: handler<{ value: string }, { ok: boolean }>({
+          name: `${kind}-run`,
+          execute: () => ({ ok: true })
+        })
+      }
+    },
+    session: {
+      projections: {
+        sessionInfo: {
+          client: true,
+          compute: (ctx) => ({
+            sessionId: ctx.session?.identity.id
+          })
+        },
+        hiddenInternal: {
+          client: false,
+          compute: () => ({ hidden: true })
+        }
+      }
+    },
+    user: {
+      projections: {
+        userInfo: {
+          client: true,
+          compute: (ctx) => ({
+            userId: ctx.user?.identity.id
+          })
+        }
+      }
+    },
+    project: {
+      projections: {
+        projectInfo: {
+          client: true,
+          compute: (ctx) => ({
+            projectId: ctx.project?.identity.id
+          })
+        }
+      }
+    }
+  })({
+    id
+  });
+}
+
 describe("flow registry", () => {
   it("registers, resolves, and lists flows", () => {
     const registry = createFlowRegistry();
@@ -287,5 +340,84 @@ describe("createFlowApiRouter", () => {
 
     expect(response.status).toBe(500);
     expect(onError).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns scope-grouped client projections and supports projection filters", async () => {
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    const flow = makeProjectedFlow("projected");
+    registry.register(flow);
+    const router = createFlowApiRouter({
+      registry,
+      stores
+    });
+
+    const executeResponse = await router.POST(
+      new Request("http://localhost/api/flows/projected/sess_proj/actions/run", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: "user_proj",
+          projectId: "proj_1",
+          input: { value: "ok" }
+        })
+      }),
+      { params: { path: ["projected", "sess_proj", "actions", "run"] } }
+    );
+    expect(executeResponse.status).toBe(200);
+
+    const stateResponse = await router.GET(
+      new Request("http://localhost/api/flows/sessions/sess_proj/state"),
+      {
+        params: {
+          path: ["sessions", "sess_proj", "state"]
+        }
+      }
+    );
+    expect(stateResponse.status).toBe(200);
+    expect((await stateResponse.json()) as { projections: Record<string, unknown> }).toMatchObject({
+      projections: {
+        session: {
+          sessionInfo: {
+            sessionId: "sess_proj"
+          }
+        },
+        user: {
+          userInfo: {
+            userId: "user_proj"
+          }
+        },
+        project: {
+          projectInfo: {
+            projectId: "proj_1"
+          }
+        }
+      }
+    });
+
+    const filteredResponse = await router.GET(
+      new Request(
+        "http://localhost/api/flows/sessions/sess_proj/state?projections=session.sessionInfo,user.userInfo"
+      ),
+      {
+        params: {
+          path: ["sessions", "sess_proj", "state"]
+        }
+      }
+    );
+    expect(filteredResponse.status).toBe(200);
+    expect((await filteredResponse.json()) as { projections: Record<string, unknown> }).toMatchObject({
+      projections: {
+        session: {
+          sessionInfo: {
+            sessionId: "sess_proj"
+          }
+        },
+        user: {
+          userInfo: {
+            userId: "user_proj"
+          }
+        }
+      }
+    });
   });
 });

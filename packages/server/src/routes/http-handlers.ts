@@ -1,7 +1,11 @@
 /**
  * HTTP route handlers for canonical `/api/flows` endpoints.
  */
-import type { RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
+import type {
+  OutputItem,
+  RequestStatusEvent,
+  RequestStreamEvent
+} from "@flow-state-dev/core/items";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import { FlowError, ValidationError } from "../errors/flow-error";
 import { runAction } from "../execution/runAction";
@@ -135,6 +139,264 @@ function getPositiveInteger(value: string | null): number | undefined {
   }
 
   return parsed;
+}
+
+function getBooleanFlag(value: string | null): boolean {
+  if (value === null) {
+    return false;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return normalized === "true" || normalized === "1";
+}
+
+type ProjectionScope = "session" | "user" | "project";
+type ProjectionFilter = Partial<Record<ProjectionScope, Set<string>>>;
+
+function parseProjectionFilter(value: string | null): ProjectionFilter | undefined {
+  if (value === null || value.trim().length === 0) {
+    return undefined;
+  }
+
+  const parsed: ProjectionFilter = {};
+  const entries = value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  for (const entry of entries) {
+    const [scopeCandidate, projectionName] = entry.split(".", 2);
+    const isScoped =
+      scopeCandidate === "session" ||
+      scopeCandidate === "user" ||
+      scopeCandidate === "project";
+    const scope: ProjectionScope = isScoped ? scopeCandidate : "session";
+    const name = isScoped ? projectionName : scopeCandidate;
+
+    if (name === undefined || name.trim().length === 0) {
+      continue;
+    }
+
+    if (parsed[scope] === undefined) {
+      parsed[scope] = new Set<string>();
+    }
+
+    parsed[scope]!.add(name.trim());
+  }
+
+  if (Object.keys(parsed).length === 0) {
+    return undefined;
+  }
+
+  return parsed;
+}
+
+function shouldIncludeProjection(
+  filter: ProjectionFilter | undefined,
+  scope: ProjectionScope,
+  name: string
+): boolean {
+  if (filter === undefined) {
+    return true;
+  }
+
+  const values = filter[scope];
+  if (values === undefined) {
+    return false;
+  }
+
+  return values.has(name);
+}
+
+function createNoopScopeOps(): {
+  patchState: (...args: unknown[]) => Promise<void>;
+  setState: (...args: unknown[]) => Promise<void>;
+  incState: (...args: unknown[]) => Promise<void>;
+  pushState: (...args: unknown[]) => Promise<void>;
+  setStateRecord: (...args: unknown[]) => Promise<void>;
+  deleteStateRecord: (...args: unknown[]) => Promise<void>;
+  atomicState: (...args: unknown[]) => Promise<void>;
+} {
+  const noop = async (): Promise<void> => undefined;
+  return {
+    patchState: noop,
+    setState: noop,
+    incState: noop,
+    pushState: noop,
+    setStateRecord: noop,
+    deleteStateRecord: noop,
+    atomicState: noop
+  };
+}
+
+function createEmptyResources(): Record<string, unknown> {
+  return {
+    get: (name: string) => {
+      throw new Error(`Resource \"${name}\" is not registered`);
+    },
+    list: () => []
+  };
+}
+
+function createRequestProjectionHandle(options: {
+  requestId: string;
+  userId: string;
+  projectId?: string;
+  state?: JsonObject;
+}): Record<string, unknown> {
+  return {
+    identity: {
+      type: "request",
+      id: options.requestId,
+      userId: options.userId,
+      projectId: options.projectId
+    },
+    state: options.state ?? {},
+    ...createNoopScopeOps()
+  };
+}
+
+function createSessionProjectionHandle(options: {
+  sessionId: string;
+  userId: string;
+  projectId?: string;
+  state?: JsonObject;
+}): Record<string, unknown> {
+  return {
+    identity: {
+      type: "session",
+      id: options.sessionId,
+      userId: options.userId,
+      projectId: options.projectId
+    },
+    state: options.state ?? {},
+    resources: createEmptyResources(),
+    ...createNoopScopeOps()
+  };
+}
+
+function createUserProjectionHandle(options: {
+  userId: string;
+  state?: JsonObject;
+}): Record<string, unknown> {
+  return {
+    identity: {
+      type: "user",
+      id: options.userId,
+      userId: options.userId
+    },
+    state: options.state ?? {},
+    resources: createEmptyResources(),
+    ...createNoopScopeOps()
+  };
+}
+
+function createProjectProjectionHandle(options: {
+  projectId: string;
+  userId?: string;
+  state?: JsonObject;
+}): Record<string, unknown> {
+  return {
+    identity: {
+      type: "project",
+      id: options.projectId,
+      userId: options.userId,
+      projectId: options.projectId
+    },
+    state: options.state ?? {},
+    resources: createEmptyResources(),
+    ...createNoopScopeOps()
+  };
+}
+
+function resolveProjectionCompute(
+  definition: unknown
+): ((ctx: Record<string, unknown>) => unknown | Promise<unknown>) | undefined {
+  if (typeof definition === "function") {
+    return definition as (ctx: Record<string, unknown>) => unknown | Promise<unknown>;
+  }
+
+  if (
+    typeof definition === "object" &&
+    definition !== null &&
+    "compute" in definition &&
+    typeof (definition as { compute?: unknown }).compute === "function"
+  ) {
+    return (definition as { compute: (ctx: Record<string, unknown>) => unknown | Promise<unknown> })
+      .compute;
+  }
+
+  return undefined;
+}
+
+function isClientProjection(definition: unknown): boolean {
+  if (typeof definition === "function") {
+    return true;
+  }
+
+  if (typeof definition !== "object" || definition === null) {
+    return false;
+  }
+
+  return (definition as { client?: unknown }).client === true;
+}
+
+function applyProjectionOutputSchema(
+  definition: unknown,
+  value: unknown
+): unknown {
+  if (typeof definition !== "object" || definition === null) {
+    return value;
+  }
+
+  const schema = (definition as { outputSchema?: { parse?: unknown } }).outputSchema;
+  if (
+    schema === undefined ||
+    typeof schema !== "object" ||
+    schema === null ||
+    typeof (schema as { parse?: unknown }).parse !== "function"
+  ) {
+    return value;
+  }
+
+  return (schema as { parse: (input: unknown) => unknown }).parse(value);
+}
+
+async function computeScopeProjections(options: {
+  definitions: Record<string, unknown> | undefined;
+  scope: ProjectionScope;
+  filter: ProjectionFilter | undefined;
+  context: Record<string, unknown>;
+}): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+
+  for (const [name, definition] of Object.entries(options.definitions ?? {})) {
+    if (!isClientProjection(definition)) {
+      continue;
+    }
+
+    if (!shouldIncludeProjection(options.filter, options.scope, name)) {
+      continue;
+    }
+
+    const compute = resolveProjectionCompute(definition);
+    if (compute === undefined) {
+      continue;
+    }
+
+    const value = await compute(options.context);
+    out[name] = applyProjectionOutputSchema(definition, value);
+  }
+
+  return out;
+}
+
+function sortItems(items: OutputItem[] | undefined): OutputItem[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return [...items].sort((left, right) => left.itemIndex - right.itemIndex);
 }
 
 function generateId(prefix: string): string {
@@ -453,6 +715,14 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           });
         }
 
+        const flow = options.registry.get(session.flowKind);
+        if (flow === undefined) {
+          return jsonResponse(404, {
+            error: `Unknown flow "${session.flowKind}"`
+          });
+        }
+
+        const url = new URL(request.url);
         const latestRequest = (
           await stores.request.list({
             sessionId: session.id,
@@ -464,6 +734,70 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           session.projectId === undefined
             ? undefined
             : await stores.project.get(session.projectId);
+        const projectionFilter = parseProjectionFilter(
+          url.searchParams.get("projections")
+        );
+        const includeItems = getBooleanFlag(
+          url.searchParams.get("include_items")
+        );
+
+        const projectionContext: Record<string, unknown> = {
+          request: createRequestProjectionHandle({
+            requestId: latestRequest?.id ?? `request_for_${session.id}`,
+            userId: session.userId,
+            projectId: session.projectId,
+            state: latestRequest?.state
+          }),
+          session: {
+            ...createSessionProjectionHandle({
+              sessionId: session.id,
+              userId: session.userId,
+              projectId: session.projectId,
+              state: session.state
+            }),
+            resources: createEmptyResources()
+          },
+          user:
+            user === undefined
+              ? null
+              : {
+                  ...createUserProjectionHandle({
+                    userId: user.userId,
+                    state: user.state
+                  }),
+                  resources: createEmptyResources()
+                },
+          project:
+            project === undefined
+              ? null
+              : {
+                  ...createProjectProjectionHandle({
+                    projectId: project.projectId,
+                    userId: project.userId,
+                    state: project.state
+                  }),
+                  resources: createEmptyResources()
+                }
+        };
+
+        const sessionProjections = await computeScopeProjections({
+          definitions: flow.session?.projections as Record<string, unknown> | undefined,
+          scope: "session",
+          filter: projectionFilter,
+          context: projectionContext
+        });
+        const userProjections = await computeScopeProjections({
+          definitions: flow.user?.projections as Record<string, unknown> | undefined,
+          scope: "user",
+          filter: projectionFilter,
+          context: projectionContext
+        });
+        const projectProjections = await computeScopeProjections({
+          definitions: flow.project?.projections as Record<string, unknown> | undefined,
+          scope: "project",
+          filter: projectionFilter,
+          context: projectionContext
+        });
 
         return jsonResponse(200, {
           sessionId: session.id,
@@ -474,8 +808,23 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
             user: user?.state,
             project: project?.state
           },
-          resources: [],
-          projections: {}
+          projections: {
+            session:
+              Object.keys(sessionProjections).length > 0
+                ? sessionProjections
+                : undefined,
+            user:
+              Object.keys(userProjections).length > 0
+                ? userProjections
+                : undefined,
+            project:
+              Object.keys(projectProjections).length > 0
+                ? projectProjections
+                : undefined
+          },
+          items: includeItems
+            ? sortItems(session.items as unknown as OutputItem[])
+            : undefined
         });
       }
 

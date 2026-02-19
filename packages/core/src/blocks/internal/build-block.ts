@@ -159,7 +159,7 @@ export function buildBlock<TInput, TOutput>(options: BuildBlockOptions<TInput, T
   const definition: BlockDefinition<TInput, TOutput> = {
     kind,
     name: runtimeConfig.name,
-    renderName: runtimeConfig.renderName,
+    renderKey: runtimeConfig.renderKey,
     description: runtimeConfig.description,
     inputSchema: runtimeConfig.inputSchema,
     outputSchema: runtimeConfig.outputSchema,
@@ -187,8 +187,14 @@ export function buildBlock<TInput, TOutput>(options: BuildBlockOptions<TInput, T
       const nextConfig: BlockConfig<TInput, TTo> = {
         ...(runtimeConfig as unknown as BlockConfig<TInput, TTo>),
         outputSchema: undefined,
-        render: preserveNonFunctionOption(runtimeConfig.render) as BlockConfig<TInput, TTo>["render"],
-        message: preserveNonFunctionOption(runtimeConfig.message) as BlockConfig<TInput, TTo>["message"],
+        clientOutput: preserveNonFunctionOption(runtimeConfig.clientOutput) as BlockConfig<
+          TInput,
+          TTo
+        >["clientOutput"],
+        llmOutput: preserveNonFunctionOption(runtimeConfig.llmOutput) as BlockConfig<
+          TInput,
+          TTo
+        >["llmOutput"],
         onCompleted: undefined
       };
 

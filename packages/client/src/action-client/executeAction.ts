@@ -20,9 +20,9 @@ import {
 } from "../session-client/sessions";
 
 /**
- * Options for creating the generic action client.
+ * Options for creating the generic client.
  */
-export type CreateActionClientOptions = {
+export type CreateClientOptions = {
   flowKind: string;
   userId: string;
   baseUrl?: string;
@@ -30,9 +30,9 @@ export type CreateActionClientOptions = {
 };
 
 /**
- * Generic action client contract used for dynamic flow execution.
+ * Generic client contract used for dynamic flow execution.
  */
-export type ActionClient = {
+export type Client = {
   readonly flowKind: string;
   readonly userId: string;
   listFlows: () => Promise<FlowListEntry[]>;
@@ -45,23 +45,17 @@ export type ActionClient = {
 };
 
 /**
- * Options for creating the typed flow-bound client.
+ * Options for creating the typed client.
  */
-export type CreateFlowClientOptions<TFlow extends FlowLike> = {
+export type CreateTypedClientOptions<TFlow extends FlowLike> = {
   flow: TFlow;
   userId: string;
 } & CreateSessionClientOptions;
 
 /**
- * Alias for typed flow-client options with explicit naming intent.
+ * Creates a generic client scoped to one flow kind.
  */
-export type CreateTypedFlowClientOptions<TFlow extends FlowLike> =
-  CreateFlowClientOptions<TFlow>;
-
-/**
- * Creates a generic action client scoped to one flow kind.
- */
-export function createActionClient(options: CreateActionClientOptions): ActionClient {
+export function createClient(options: CreateClientOptions): Client {
   const flowKind = ensureRequired(options.flowKind, "flowKind");
   const userId = ensureRequired(options.userId, "userId");
   const fetcher = resolveFetch(options.fetcher);
@@ -134,13 +128,13 @@ export function createActionClient(options: CreateActionClientOptions): ActionCl
 }
 
 /**
- * Creates a typed flow client with `actions.<actionName>(input)` helpers.
+ * Creates a typed client with `actions.<actionName>(input)` helpers.
  */
-export function createFlowClient<TFlow extends FlowLike>(
-  options: CreateFlowClientOptions<TFlow>
+export function createTypedClient<TFlow extends FlowLike>(
+  options: CreateTypedClientOptions<TFlow>
 ): FlowClient<TFlow> {
   const flowKind = ensureRequired(options.flow.kind, "flow.kind");
-  const actionClient = createActionClient({
+  const client = createClient({
     flowKind,
     userId: options.userId,
     baseUrl: options.baseUrl,
@@ -157,14 +151,14 @@ export function createFlowClient<TFlow extends FlowLike>(
       (
         input: FlowActionInput<ActionConfig>,
         actionOptions?: SendActionOptions
-      ) => actionClient.sendAction(actionName, input, actionOptions)
+      ) => client.sendAction(actionName, input, actionOptions)
     ])
   ) as TypedActionMethods<TFlow>;
 
   return {
     flowKind,
-    userId: actionClient.userId,
-    sendAction: actionClient.sendAction,
+    userId: client.userId,
+    sendAction: client.sendAction,
     actions,
     state: {
       getSnapshot: (sessionId: string) =>
@@ -191,19 +185,10 @@ export function createFlowClient<TFlow extends FlowLike>(
   };
 }
 
-/**
- * Alias for `createFlowClient` with explicit typed-client naming.
- */
-export function createTypedFlowClient<TFlow extends FlowLike>(
-  options: CreateTypedFlowClientOptions<TFlow>
-): FlowClient<TFlow> {
-  return createFlowClient(options);
-}
-
 function ensureRequired(value: string, name: string): string {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
-    throw new Error(`createActionClient requires non-empty ${name}`);
+    throw new Error(`createClient requires non-empty ${name}`);
   }
 
   return trimmed;
