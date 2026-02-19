@@ -14,6 +14,22 @@ function isRouteInCandidates<TInput, TOutput>(
   return routes.some((route) => route === candidate || route.name === candidate.name);
 }
 
+function isBlockDefinition<TInput, TOutput>(
+  value: unknown
+): value is BlockDefinition<TInput, TOutput> {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.kind === "string" &&
+    typeof candidate.name === "string" &&
+    typeof candidate.config === "object" &&
+    candidate.config !== null
+  );
+}
+
 export interface RouterConfig<TInput, TOutput> extends Omit<BlockConfig<TInput, TOutput>, "execute"> {
   requestStateSchema?: ZodTypeAny;
   sessionStateSchema?: ZodTypeAny;
@@ -42,7 +58,13 @@ export function router<TInput, TOutput>(config: RouterConfig<TInput, TOutput>): 
     kind: "router",
     config: config as unknown as BlockConfig<TInput, TOutput>,
     execute: async (input, ctx) => {
-      const selected = await config.execute(input, ctx);
+      const candidate = config.execute(input, ctx);
+
+      // Sequencer definitions expose a `.then()` DSL method and can be mistaken
+      // for thenables. Detect concrete blocks before awaiting route selection.
+      const selected = isBlockDefinition<TInput, TOutput>(candidate)
+        ? candidate
+        : await candidate;
       const passesValidation =
         config.validateRoute === undefined
           ? isRouteInCandidates(selected, config.routes)

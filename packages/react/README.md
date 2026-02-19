@@ -42,7 +42,7 @@ function App() {
 
 function AgentUI() {
   const flow = useFlow({ autoCreateSession: true });
-  const session = useSession("market-intel-agent", flow.activeSessionId, {
+  const session = useSession(flow.activeSessionId, {
     items: { visibility: "ui" },
   });
 
@@ -89,14 +89,12 @@ Nested providers merge `blockRenderers` (child keys override parent keys).
 
 Session lifecycle helper (list/create/select sessions).
 
-### `useSession(flowKind, sessionId, options?)`
+### `useSession(sessionId, options?)`
 
-Primary session hook.
+Primary session hook. `flowKind` defaults to `useFlowContext().flowKind` and can be overridden via options.
 
 ```ts
-const session = useSession("flow-kind", sessionId, {
-  userId,
-  baseUrl,
+const session = useSession(sessionId, {
   items: true,
 });
 ```

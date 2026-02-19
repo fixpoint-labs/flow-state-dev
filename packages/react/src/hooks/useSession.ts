@@ -30,9 +30,10 @@ export type SessionItemsOptions =
     };
 
 /**
- * Options for useSession (third positional arg).
+ * Options for useSession.
  */
 export type UseSessionHookOptions = {
+  flowKind?: string;
   userId?: string;
   baseUrl?: string;
   items?: SessionItemsOptions;
@@ -148,14 +149,15 @@ function upsertItem(items: OutputItem[], nextItem: OutputItem): OutputItem[] {
 
 /**
  * Reactive session hook with auto-stream management and item-first defaults.
+ *
+ * `flowKind` defaults to `useFlowContext().flowKind` and can be overridden via options.
  */
 export function useSession(
-  flowKind: string,
   sessionId: string | undefined,
   options?: UseSessionHookOptions
 ): SessionView {
   const context = useFlowContext();
-  const resolvedFlowKind = normalizeFlowKind(flowKind);
+  const resolvedFlowKind = normalizeFlowKind(options?.flowKind ?? context.flowKind ?? "");
   const userId = options?.userId ?? context.userId ?? "devuser";
   const baseUrl = options?.baseUrl ?? context.baseUrl;
 

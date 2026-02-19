@@ -1,6 +1,7 @@
 /**
  * Canonical item renderer entrypoint for single stream items.
  */
+import { createElement, type ReactNode } from "react";
 import type {
   MessageItem,
   OutputItem,
@@ -16,9 +17,9 @@ export type ItemRendererProps = {
 };
 
 /**
- * Renders one output item into a framework-agnostic render payload.
+ * Renders one output item as a React node.
  */
-export function ItemRenderer(props: ItemRendererProps): unknown {
+export function ItemRenderer(props: ItemRendererProps): ReactNode {
   if (props.item.type === "fsd:block_output") {
     return BlockRenderer({
       item: props.item
@@ -33,33 +34,31 @@ export function ItemRenderer(props: ItemRendererProps): unknown {
     return renderStatusItem(props.item);
   }
 
-  return {
-    type: props.item.type,
-    status: props.item.status,
-    visibility: props.item.visibility,
-    item: props.item
-  };
+  return createElement(
+    "pre",
+    { style: { fontSize: 12 } },
+    JSON.stringify({ type: props.item.type, status: props.item.status }, null, 2)
+  );
 }
 
-function renderMessageItem(item: MessageItem): unknown {
+function renderMessageItem(item: MessageItem): ReactNode {
   const text = item.content
     .filter((content) => content.type === "output_text")
     .map((content) => content.text)
     .join("\n");
 
-  return {
-    type: "message",
-    role: item.role,
-    text,
-    item
-  };
+  return createElement(
+    "div",
+    { "data-role": item.role },
+    createElement("strong", null, item.role === "user" ? "You" : "Assistant"),
+    createElement("p", { style: { margin: "4px 0" } }, text)
+  );
 }
 
-function renderStatusItem(item: StatusItem): unknown {
-  return {
-    type: "status",
-    message: item.message,
-    detail: item.detail,
-    item
-  };
+function renderStatusItem(item: StatusItem): ReactNode {
+  return createElement(
+    "div",
+    { "data-status": item.status },
+    item.message ?? item.status
+  );
 }

@@ -1,6 +1,7 @@
 import type { TargetHandle } from "@flow-state-dev/core/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { JsonObject, JsonValue } from "@flow-state-dev/core/types";
+import { z } from "zod";
 import {
   createExecutionContext,
   createInMemoryStores,
@@ -83,6 +84,18 @@ function toJsonObject(value: Record<string, unknown>): JsonObject {
   return out;
 }
 
+function toJsonObjectRecord(
+  value: Record<string, unknown>
+): Record<string, JsonObject> {
+  const out: Record<string, JsonObject> = {};
+
+  for (const [key, entry] of Object.entries(value)) {
+    out[key] = toJsonObject(asRecord(entry));
+  }
+
+  return out;
+}
+
 function nowMs(): number {
   return Date.now();
 }
@@ -91,9 +104,35 @@ function generateId(prefix: string): string {
   return `${prefix}_${nowMs()}_${Math.random().toString(16).slice(2)}`;
 }
 
+function createResourceConfig(
+  resources: Record<string, unknown> | undefined
+): Record<string, { stateSchema: z.ZodTypeAny; writable: true }> | undefined {
+  if (resources === undefined) {
+    return undefined;
+  }
+
+  const names = Object.keys(resources);
+  if (names.length === 0) {
+    return undefined;
+  }
+
+  return Object.fromEntries(
+    names.map((name) => [
+      name,
+      {
+        stateSchema: z.record(z.string(), z.unknown()),
+        writable: true
+      }
+    ])
+  );
+}
+
 function createTestFlow(options: {
   flow?: FlowInstance;
   sessionId?: string;
+  sessionResources?: Record<string, unknown>;
+  userResources?: Record<string, unknown>;
+  projectResources?: Record<string, unknown>;
 }): FlowInstance {
   if (options.flow !== undefined) {
     return options.flow;
@@ -104,7 +143,22 @@ function createTestFlow(options: {
     kind: "testing-flow",
     requireSession: options.sessionId !== undefined,
     requireUser: true,
-    actions: {}
+    actions: {},
+    session:
+      options.sessionId === undefined
+        ? undefined
+        : {
+            resources: createResourceConfig(options.sessionResources)
+          },
+    user: {
+      resources: createResourceConfig(options.userResources)
+    },
+    project:
+      options.projectResources === undefined
+        ? undefined
+        : {
+            resources: createResourceConfig(options.projectResources)
+          }
   } as FlowInstance;
 }
 
@@ -117,10 +171,10 @@ async function seedStores(options: {
   userId: string;
   projectId?: string;
   seed: {
-    request?: Record<string, unknown>;
-    session?: Record<string, unknown>;
-    user?: Record<string, unknown>;
-    project?: Record<string, unknown>;
+    request?: { state?: Record<string, unknown> };
+    session?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
+    user?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
+    project?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
   };
 }): Promise<void> {
   const now = nowMs();
@@ -129,7 +183,11 @@ async function seedStores(options: {
     await options.stores.user.set(options.userId, {
       id: options.userId,
       userId: options.userId,
-      state: toJsonObject(cloneRecord(options.seed.user)),
+      state: toJsonObject(cloneRecord(options.seed.user.state ?? {})),
+      resources:
+        options.seed.user.resources === undefined
+          ? undefined
+          : toJsonObjectRecord(cloneRecord(options.seed.user.resources)),
       version: 0,
       createdAt: now,
       updatedAt: now
@@ -141,7 +199,11 @@ async function seedStores(options: {
       id: options.projectId,
       projectId: options.projectId,
       userId: options.userId,
-      state: toJsonObject(cloneRecord(options.seed.project ?? {})),
+      state: toJsonObject(cloneRecord(options.seed.project?.state ?? {})),
+      resources:
+        options.seed.project?.resources === undefined
+          ? undefined
+          : toJsonObjectRecord(cloneRecord(options.seed.project.resources)),
       version: 0,
       createdAt: now,
       updatedAt: now
@@ -156,7 +218,11 @@ async function seedStores(options: {
       projectId: options.projectId,
       metadata: undefined,
       latestRequestId: undefined,
-      state: toJsonObject(cloneRecord(options.seed.session ?? {})),
+      state: toJsonObject(cloneRecord(options.seed.session?.state ?? {})),
+      resources:
+        options.seed.session?.resources === undefined
+          ? undefined
+          : toJsonObjectRecord(cloneRecord(options.seed.session.resources)),
       version: 0,
       createdAt: now,
       updatedAt: now,
@@ -179,7 +245,7 @@ async function seedStores(options: {
       projectId: options.projectId,
       status: "in_progress",
       startedAtMs: now,
-      state: toJsonObject(cloneRecord(options.seed.request)),
+      state: toJsonObject(cloneRecord(options.seed.request.state ?? {})),
       metadata: undefined,
       version: 0,
       createdAt: now,
@@ -323,7 +389,10 @@ export async function createTestContext<TInput = unknown>(
 ): Promise<TestContextRuntime> {
   const flow = createTestFlow({
     flow: options.flow,
-    sessionId: options.sessionId
+    sessionId: options.sessionId,
+    sessionResources: options.session?.resources,
+    userResources: options.user?.resources,
+    projectResources: options.project?.resources
   });
   const actionName = options.actionName ?? "test-action";
   const requestId = options.requestId ?? generateId("test_req");
@@ -344,10 +413,33 @@ export async function createTestContext<TInput = unknown>(
     userId,
     projectId,
     seed: {
-      request: options.request?.state,
-      session: options.session?.state,
-      user: options.user?.state,
-      project: options.project?.state
+      request:
+        options.request === undefined
+          ? undefined
+          : {
+              state: options.request.state
+            },
+      session:
+        options.session === undefined
+          ? undefined
+          : {
+              state: options.session.state,
+              resources: options.session.resources
+            },
+      user:
+        options.user === undefined
+          ? undefined
+          : {
+              state: options.user.state,
+              resources: options.user.resources
+            },
+      project:
+        options.project === undefined
+          ? undefined
+          : {
+              state: options.project.state,
+              resources: options.project.resources
+            }
     }
   });
 
@@ -384,6 +476,12 @@ export async function createTestContext<TInput = unknown>(
 
     return createTargetHandle(name, targetState) as unknown as TargetHandle<TState>;
   };
+
+  if (options.generators !== undefined) {
+    (ctx as Record<string, unknown>).__testGenerators = options.generators;
+    (ctx as Record<string, unknown>).__unmockedGeneratorPolicy =
+      options.unmockedGeneratorPolicy ?? "error";
+  }
 
   return {
     ctx,

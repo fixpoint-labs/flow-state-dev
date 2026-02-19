@@ -2,11 +2,20 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
 import type { MockGeneratorInstance } from "../mocks/mockGenerator";
 
+export type TestRequestSeed = {
+  state?: Record<string, unknown>;
+};
+
+export type TestScopeSeed = {
+  state?: Record<string, unknown>;
+  resources?: Record<string, unknown>;
+};
+
 export type TestStateSeed = {
-  request?: Record<string, unknown>;
-  session?: Record<string, unknown>;
-  user?: Record<string, unknown>;
-  project?: Record<string, unknown>;
+  request?: TestRequestSeed;
+  session?: TestScopeSeed;
+  user?: TestScopeSeed;
+  project?: TestScopeSeed;
 };
 
 export type TestTargetSeed = {
@@ -15,10 +24,10 @@ export type TestTargetSeed = {
 
 export type TestBlockOptions<TInput> = {
   input: TInput;
-  request?: { state?: Record<string, unknown> };
-  session?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
-  user?: { state?: Record<string, unknown> };
-  project?: { state?: Record<string, unknown> };
+  request?: TestRequestSeed;
+  session?: TestScopeSeed;
+  user?: TestScopeSeed;
+  project?: TestScopeSeed;
   targets?: Record<string, TestTargetSeed>;
   tools?: Record<string, (...args: any[]) => Promise<any> | any>;
   generators?: Record<string, MockGeneratorInstance>;

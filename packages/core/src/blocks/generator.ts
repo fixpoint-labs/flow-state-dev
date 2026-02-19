@@ -77,6 +77,25 @@ export interface ToolBinding {
   continueOnError?: boolean;
 }
 
+/**
+ * Non-function slot entry forms (strings, objects, arrays).
+ */
+export type GeneratorSlotStatic =
+  | string
+  | Record<string, unknown>
+  | Array<Record<string, unknown>>
+  | Array<GeneratorSlotStatic>;
+
+/**
+ * Typed user-slot function — receives the block's actual TInput.
+ * Preferred over GeneratorSlotReference for the `user` slot because it
+ * preserves the input type without requiring a cast at the call site.
+ */
+export type TypedUserSlotFn<TInput> = (
+  input: TInput,
+  ctx: BlockContext
+) => MaybePromise<unknown>;
+
 export interface GeneratorConfig<TInput, TOutput> extends Omit<BlockConfig<TInput, TOutput>, "execute"> {
   requestStateSchema?: ZodTypeAny;
   sessionStateSchema?: ZodTypeAny;
@@ -91,7 +110,8 @@ export interface GeneratorConfig<TInput, TOutput> extends Omit<BlockConfig<TInpu
   prompt: ResolvableString<TInput>;
   context?: GeneratorSlot;
   history?: GeneratorSlot;
-  user?: GeneratorSlot;
+  /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
+  user?: TypedUserSlotFn<TInput> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
   tools?: ToolBinding[] | ((ctx: BlockContext) => MaybePromise<ToolBinding[]>);
   loop?: GeneratorLoopConfig<TInput>;
   maxIterations?: number;
@@ -473,6 +493,45 @@ function buildFallbackCandidate<TInput>(state: GeneratorLoopState<TInput>): unkn
   return state.prompt;
 }
 
+/**
+ * Checks ctx for a test-injected mock generator matching this block name.
+ * Returns the mock's structuredOutput if found, undefined otherwise.
+ * The __testGenerators property is set by the testing package's createTestContext.
+ */
+function resolveTestMock(
+  blockName: string,
+  input: unknown,
+  ctx: BlockContext
+): unknown | undefined {
+  const ctxRecord = ctx as unknown as Record<string, unknown>;
+  const generators = ctxRecord.__testGenerators as
+    | Record<string, { name: string; calls: Array<{ input: unknown; model?: string; prompt?: string }>; next(): { structuredOutput?: unknown } | undefined }>
+    | undefined;
+
+  if (generators === undefined) {
+    return undefined;
+  }
+
+  const mock = generators[blockName];
+  if (mock === undefined) {
+    const policy = ctxRecord.__unmockedGeneratorPolicy as string | undefined;
+    if (policy === "error") {
+      throw new Error(
+        `Generator "${blockName}" has no mock. Provide a mock via generators["${blockName}"] or set unmockedGeneratorPolicy to "warn" or "allow".`
+      );
+    }
+    return undefined;
+  }
+
+  mock.calls.push({ input });
+  const step = mock.next();
+  if (step === undefined) {
+    throw new Error(`Mock generator "${blockName}" exhausted its script. Call .reset() or add more script steps.`);
+  }
+
+  return step.structuredOutput;
+}
+
 function resolveMaxIterations<TInput, TOutput>(config: GeneratorConfig<TInput, TOutput>): number {
   const configured = config.loop?.maxIterations ?? config.maxIterations ?? DEFAULT_MAX_ITERATIONS;
   return Math.max(1, configured);
@@ -537,11 +596,24 @@ export function generator<TInput, TOutput>(
     kind: "generator",
     config: normalizedConfig as unknown as BlockConfig<TInput, TOutput>,
     execute: async (input, ctx) => {
+      const mockCandidate = resolveTestMock(normalizedConfig.name as string, input, ctx);
+      if (mockCandidate !== undefined) {
+        const state: GeneratorLoopState<TInput> = {
+          iteration: 0,
+          input,
+          model: "mock",
+          prompt: "",
+          messages: [],
+          toolResults: []
+        };
+        return applyRepairPolicy(normalizedConfig, outputSchema, mockCandidate, state, ctx);
+      }
+
       const model = await resolveString(normalizedConfig.model, input, ctx);
       const prompt = await resolveString(normalizedConfig.prompt, input, ctx);
       const contextValues = await resolveSlotValues(normalizedConfig.context, input, ctx);
       const historyValues = await resolveSlotValues(normalizedConfig.history, input, ctx);
-      const userValues = await resolveSlotValues(normalizedConfig.user, input, ctx);
+      const userValues = await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
       const messages = [
         { role: "system", content: prompt },
         ...contextValues.map(asSystemMessage),

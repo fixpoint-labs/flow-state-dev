@@ -1,6 +1,7 @@
 /**
  * Central block execution entrypoint: dispatch, seam interception, retry, and error normalization.
  */
+import type { BlockOutputItem, ItemProvenance } from "@flow-state-dev/core/items";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { normalizeError } from "../errors/normalize-error";
 import { executeGenerator } from "./executeGenerator";
@@ -28,6 +29,96 @@ type ExecuteDispatcherOptions = {
   internalSeams: InternalExecutionSeams;
   metadata: ExecutionMetadata;
 };
+
+function hasItemEmitter(response: unknown): response is {
+  emitItemAdded: (item: BlockOutputItem) => Promise<unknown>;
+  emitItemDone: (item: BlockOutputItem) => Promise<unknown>;
+} {
+  return (
+    typeof response === "object" &&
+    response !== null &&
+    typeof (response as { emitItemAdded?: unknown }).emitItemAdded === "function" &&
+    typeof (response as { emitItemDone?: unknown }).emitItemDone === "function"
+  );
+}
+
+function resolveBlockOutputVisibility(
+  block: BlockDefinition<any, any>
+): BlockOutputItem["visibility"] {
+  const clientEnabled = block.config.clientOutput !== false;
+  const llmEnabled = block.config.llmOutput !== false;
+
+  if (clientEnabled && llmEnabled) {
+    return "both";
+  }
+
+  if (clientEnabled) {
+    return "ui";
+  }
+
+  if (llmEnabled) {
+    return "llm";
+  }
+
+  return "internal";
+}
+
+function resolveBlockOutputPayload<TOutput>(
+  block: BlockDefinition<any, TOutput>,
+  output: TOutput
+): unknown {
+  if (typeof block.config.clientOutput === "function") {
+    return block.config.clientOutput(output);
+  }
+
+  return output;
+}
+
+function createBlockOutputProvenance(
+  metadata: ExecutionMetadata,
+  blockName: string
+): ItemProvenance {
+  return {
+    blockName,
+    blockInstanceId:
+      metadata.blockInstanceId ?? `${blockName}_${metadata.requestId}`,
+    phase: metadata.scope === "work" ? "work" : "main",
+    stepIndex: metadata.stepIndex,
+    workGroupId: metadata.workGroupId,
+    attempt: metadata.attempt
+  };
+}
+
+async function emitBlockOutputItem<TOutput>(
+  options: {
+    block: BlockDefinition<any, TOutput>;
+    output: TOutput;
+    ctx: ExecuteBlockContext;
+    metadata: ExecutionMetadata;
+  }
+): Promise<void> {
+  if (!hasItemEmitter(options.ctx.response)) {
+    return;
+  }
+
+  const itemIndex = getResponseItems(options.ctx.response).length;
+  const item: BlockOutputItem = {
+    id: `item_block_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: "fsd:block_output",
+    status: "completed",
+    visibility: resolveBlockOutputVisibility(options.block),
+    requestId: options.metadata.requestId,
+    itemIndex,
+    provenance: createBlockOutputProvenance(options.metadata, options.block.name),
+    ts: Date.now(),
+    blockName: options.block.name,
+    renderKey: options.block.renderKey ?? options.block.config.renderKey,
+    output: resolveBlockOutputPayload(options.block, options.output)
+  };
+
+  await options.ctx.response.emitItemAdded(item);
+  await options.ctx.response.emitItemDone(item);
+}
 
 /**
  * Dispatches block execution to the runtime for each supported block kind.
@@ -111,6 +202,13 @@ export async function executeBlock<TInput, TOutput>(
         : await retryWithPolicy(run, retryPolicy, {
             signal: options.ctx.signal
           });
+
+    await emitBlockOutputItem({
+      block: options.block,
+      output,
+      ctx: options.ctx,
+      metadata
+    });
 
     return {
       output,

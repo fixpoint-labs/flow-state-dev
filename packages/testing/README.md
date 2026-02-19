@@ -40,6 +40,30 @@ const result = await testBlock(block, {
 });
 ```
 
+### Seeding scope state and resources
+
+`testFlow` and `testBlock` use nested scope seeds:
+
+```ts
+const result = await testFlow({
+  flow,
+  action: "run",
+  input: { message: "hello" },
+  userId: "devuser",
+  seed: {
+    session: {
+      state: { mode: "chat" },
+      resources: {
+        artifacts: { byId: {}, order: [] },
+      },
+    },
+    user: {
+      state: { preferredModel: "gpt-4o-mini" },
+    },
+  },
+});
+```
+
 ## Scripts
 
 - `pnpm --filter @flow-state-dev/testing build`

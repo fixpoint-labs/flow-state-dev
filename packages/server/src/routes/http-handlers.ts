@@ -6,7 +6,7 @@ import type {
   RequestStatusEvent,
   RequestStreamEvent
 } from "@flow-state-dev/core/items";
-import type { JsonObject } from "@flow-state-dev/core/types";
+import type { JsonObject, ResourceConfig } from "@flow-state-dev/core/types";
 import { FlowError, ValidationError } from "../errors/flow-error";
 import { runAction } from "../execution/runAction";
 import { type FlowRegistry } from "../registry/flow-registry";
@@ -229,12 +229,120 @@ function createNoopScopeOps(): {
   };
 }
 
-function createEmptyResources(): Record<string, unknown> {
+function cloneValue<TValue>(value: TValue): TValue {
+  if (typeof globalThis.structuredClone === "function") {
+    return globalThis.structuredClone(value) as TValue;
+  }
+
+  return JSON.parse(JSON.stringify(value)) as TValue;
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asJsonObject(value: unknown): JsonObject {
+  return isJsonObject(value) ? value : {};
+}
+
+function isResourceConfig(value: unknown): value is ResourceConfig {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as { stateSchema?: { safeParse?: unknown } };
+  return (
+    typeof candidate.stateSchema === "object" &&
+    candidate.stateSchema !== null &&
+    typeof candidate.stateSchema.safeParse === "function"
+  );
+}
+
+function normalizeResourceDefault(config: ResourceConfig): JsonObject {
+  if (config.default !== undefined && isJsonObject(config.default)) {
+    return cloneValue(config.default);
+  }
+
+  const parsedUndefined = config.stateSchema.safeParse(undefined);
+  if (parsedUndefined.success && isJsonObject(parsedUndefined.data)) {
+    return asJsonObject(parsedUndefined.data);
+  }
+
+  const parsedEmpty = config.stateSchema.safeParse({});
+  if (parsedEmpty.success && isJsonObject(parsedEmpty.data)) {
+    return asJsonObject(parsedEmpty.data);
+  }
+
+  return {};
+}
+
+function normalizeResourceState(config: ResourceConfig, value: unknown): JsonObject {
+  const parsed = config.stateSchema.safeParse(value);
+  if (parsed.success && isJsonObject(parsed.data)) {
+    return asJsonObject(parsed.data);
+  }
+
+  return normalizeResourceDefault(config);
+}
+
+function createProjectionResources(options: {
+  scope: "session" | "user" | "project";
+  configs: Record<string, unknown> | undefined;
+  persisted: Record<string, unknown> | undefined;
+}): Record<string, unknown> {
+  const handles: Record<string, Record<string, unknown>> = {};
+
+  for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
+    if (!isResourceConfig(maybeConfig)) {
+      continue;
+    }
+
+    const readState = (): JsonObject =>
+      cloneValue(
+        normalizeResourceState(
+          maybeConfig,
+          options.persisted?.[resourceName]
+        )
+      );
+
+    handles[resourceName] = {
+      name: resourceName,
+      scope: options.scope,
+      config: maybeConfig,
+      get state() {
+        return readState();
+      },
+      patchState: async () => {
+        throw new Error(`Projection resources are read-only ("${resourceName}")`);
+      },
+      setState: async () => {
+        throw new Error(`Projection resources are read-only ("${resourceName}")`);
+      },
+      updateState: async () => {
+        throw new Error(`Projection resources are read-only ("${resourceName}")`);
+      },
+      readContent: async () => {
+        const state = readState();
+        const content = state.content;
+        return typeof content === "string" ? content : JSON.stringify(state);
+      },
+      writeContent: async () => {
+        throw new Error(`Projection resources are read-only ("${resourceName}")`);
+      }
+    };
+  }
+
   return {
+    ...handles,
     get: (name: string) => {
-      throw new Error(`Resource \"${name}\" is not registered`);
+      const handle = handles[name];
+      if (handle === undefined) {
+        throw new Error(`Resource "${name}" is not registered`);
+      }
+
+      return handle;
     },
-    list: () => []
+    list: () => Object.values(handles)
   };
 }
 
@@ -261,6 +369,7 @@ function createSessionProjectionHandle(options: {
   userId: string;
   projectId?: string;
   state?: JsonObject;
+  resources?: Record<string, unknown>;
 }): Record<string, unknown> {
   return {
     identity: {
@@ -270,7 +379,12 @@ function createSessionProjectionHandle(options: {
       projectId: options.projectId
     },
     state: options.state ?? {},
-    resources: createEmptyResources(),
+    resources: options.resources ?? {
+      get: () => {
+        throw new Error("Resource registry unavailable");
+      },
+      list: () => []
+    },
     ...createNoopScopeOps()
   };
 }
@@ -278,6 +392,7 @@ function createSessionProjectionHandle(options: {
 function createUserProjectionHandle(options: {
   userId: string;
   state?: JsonObject;
+  resources?: Record<string, unknown>;
 }): Record<string, unknown> {
   return {
     identity: {
@@ -286,7 +401,12 @@ function createUserProjectionHandle(options: {
       userId: options.userId
     },
     state: options.state ?? {},
-    resources: createEmptyResources(),
+    resources: options.resources ?? {
+      get: () => {
+        throw new Error("Resource registry unavailable");
+      },
+      list: () => []
+    },
     ...createNoopScopeOps()
   };
 }
@@ -295,6 +415,7 @@ function createProjectProjectionHandle(options: {
   projectId: string;
   userId?: string;
   state?: JsonObject;
+  resources?: Record<string, unknown>;
 }): Record<string, unknown> {
   return {
     identity: {
@@ -304,7 +425,12 @@ function createProjectProjectionHandle(options: {
       projectId: options.projectId
     },
     state: options.state ?? {},
-    resources: createEmptyResources(),
+    resources: options.resources ?? {
+      get: () => {
+        throw new Error("Resource registry unavailable");
+      },
+      list: () => []
+    },
     ...createNoopScopeOps()
   };
 }
@@ -740,6 +866,21 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         const includeItems = getBooleanFlag(
           url.searchParams.get("include_items")
         );
+        const sessionResources = createProjectionResources({
+          scope: "session",
+          configs: flow.session?.resources as Record<string, unknown> | undefined,
+          persisted: session.resources as Record<string, unknown> | undefined
+        });
+        const userResources = createProjectionResources({
+          scope: "user",
+          configs: flow.user?.resources as Record<string, unknown> | undefined,
+          persisted: user?.resources as Record<string, unknown> | undefined
+        });
+        const projectResources = createProjectionResources({
+          scope: "project",
+          configs: flow.project?.resources as Record<string, unknown> | undefined,
+          persisted: project?.resources as Record<string, unknown> | undefined
+        });
 
         const projectionContext: Record<string, unknown> = {
           request: createRequestProjectionHandle({
@@ -753,31 +894,27 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
               sessionId: session.id,
               userId: session.userId,
               projectId: session.projectId,
-              state: session.state
-            }),
-            resources: createEmptyResources()
+              state: session.state,
+              resources: sessionResources
+            })
           },
           user:
             user === undefined
               ? null
-              : {
-                  ...createUserProjectionHandle({
-                    userId: user.userId,
-                    state: user.state
-                  }),
-                  resources: createEmptyResources()
-                },
+              : createUserProjectionHandle({
+                  userId: user.userId,
+                  state: user.state,
+                  resources: userResources
+                }),
           project:
             project === undefined
               ? null
-              : {
-                  ...createProjectProjectionHandle({
-                    projectId: project.projectId,
-                    userId: project.userId,
-                    state: project.state
-                  }),
-                  resources: createEmptyResources()
-                }
+              : createProjectProjectionHandle({
+                  projectId: project.projectId,
+                  userId: project.userId,
+                  state: project.state,
+                  resources: projectResources
+                })
         };
 
         const sessionProjections = await computeScopeProjections({

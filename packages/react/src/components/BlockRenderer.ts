@@ -54,9 +54,7 @@ function asComponentProps(output: unknown): Record<string, unknown> {
 /**
  * Renders one block output item via context-provided renderer mapping or fallback payload view.
  */
-export function BlockRenderer(
-  props: BlockRendererComponentProps
-): ReactNode | Record<string, unknown> {
+export function BlockRenderer(props: BlockRendererComponentProps): ReactNode {
   const { blockRenderers } = useFlowContext();
   const renderKey = props.item.renderKey ?? props.item.blockName;
   const Component = resolveRenderer(blockRenderers, renderKey);
@@ -79,12 +77,19 @@ export function BlockRenderer(
     );
   }
 
-  return {
-    type: "block-output",
-    renderKey,
-    blockName: props.item.blockName,
-    status: props.item.status,
-    output: props.item.output,
-    itemId: props.item.id
-  };
+  return createElement(
+    "pre",
+    { style: { fontSize: 12 } },
+    JSON.stringify(
+      {
+        type: "block-output",
+        renderKey,
+        blockName: props.item.blockName,
+        status: props.item.status,
+        output: props.item.output
+      },
+      null,
+      2
+    )
+  );
 }

@@ -492,7 +492,12 @@ describe("execution runtime", () => {
     });
 
     expect(withNoopSeams.output).toBe(baseline.output);
-    expect(withNoopSeams.items).toEqual(baseline.items);
+    expect(baseline.items.at(-1)?.type).toBe("fsd:block_output");
+    expect(withNoopSeams.items.at(-1)?.type).toBe("fsd:block_output");
+    expect(withNoopSeams.items.at(-1)).toMatchObject({
+      blockName: "seam-handler",
+      output: baseline.output
+    });
     expect(withNoopSeams.error).toEqual(baseline.error);
   });
 

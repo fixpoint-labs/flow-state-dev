@@ -24,6 +24,25 @@ function toJsonObject(value: Record<string, unknown>): JsonObject {
   return out;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function toJsonObjectRecord(
+  value: Record<string, unknown>
+): Record<string, JsonObject> {
+  const out: Record<string, JsonObject> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    out[key] = toJsonObject(asRecord(entry));
+  }
+
+  return out;
+}
+
 function normalizeStatus(
   value: "in_progress" | "completed" | "failed" | "incomplete" | undefined
 ): "completed" | "failed" | "incomplete" {
@@ -43,10 +62,10 @@ async function seedFlowStores(options: {
   projectId?: string;
   userId: string;
   seed?: {
-    request?: Record<string, unknown>;
-    session?: Record<string, unknown>;
-    user?: Record<string, unknown>;
-    project?: Record<string, unknown>;
+    request?: { state?: Record<string, unknown> };
+    session?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
+    user?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
+    project?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
   };
 }): Promise<void> {
   const now = Date.now();
@@ -55,7 +74,11 @@ async function seedFlowStores(options: {
     await options.stores.user.set(options.userId, {
       id: options.userId,
       userId: options.userId,
-      state: toJsonObject(cloneRecord(options.seed.user)),
+      state: toJsonObject(cloneRecord(options.seed.user.state ?? {})),
+      resources:
+        options.seed.user.resources === undefined
+          ? undefined
+          : toJsonObjectRecord(cloneRecord(options.seed.user.resources)),
       version: 0,
       createdAt: now,
       updatedAt: now
@@ -67,7 +90,11 @@ async function seedFlowStores(options: {
       id: options.projectId,
       projectId: options.projectId,
       userId: options.userId,
-      state: toJsonObject(cloneRecord(options.seed?.project ?? {})),
+      state: toJsonObject(cloneRecord(options.seed?.project?.state ?? {})),
+      resources:
+        options.seed?.project?.resources === undefined
+          ? undefined
+          : toJsonObjectRecord(cloneRecord(options.seed.project.resources)),
       version: 0,
       createdAt: now,
       updatedAt: now
@@ -82,7 +109,11 @@ async function seedFlowStores(options: {
       projectId: options.projectId,
       metadata: undefined,
       latestRequestId: undefined,
-      state: toJsonObject(cloneRecord(options.seed?.session ?? {})),
+      state: toJsonObject(cloneRecord(options.seed?.session?.state ?? {})),
+      resources:
+        options.seed?.session?.resources === undefined
+          ? undefined
+          : toJsonObjectRecord(cloneRecord(options.seed.session.resources)),
       version: 0,
       createdAt: now,
       updatedAt: now,
@@ -105,7 +136,7 @@ async function seedFlowStores(options: {
       projectId: options.projectId,
       status: "in_progress",
       startedAtMs: now,
-      state: toJsonObject(cloneRecord(options.seed.request)),
+      state: toJsonObject(cloneRecord(options.seed.request.state ?? {})),
       metadata: undefined,
       version: 0,
       createdAt: now,

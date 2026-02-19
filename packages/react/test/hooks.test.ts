@@ -24,7 +24,7 @@ describe("hook exports and types", () => {
     expect(typeof useFlow).toBe("function");
   });
 
-  it("useSession accepts positional (flowKind, sessionId, options) args", () => {
+  it("useSession accepts positional (sessionId, options) args", () => {
     expect(typeof useSession).toBe("function");
     expect(useSession.length).toBeGreaterThanOrEqual(1);
   });
@@ -43,9 +43,9 @@ describe("hook exports and types", () => {
 });
 
 describe("useSession signature", () => {
-  it("accepts a flow kind string as first positional arg", () => {
+  it("accepts sessionId as first positional arg with flowKind from options", () => {
     expect(() => {
-      useSession("demo", undefined);
+      useSession(undefined, { flowKind: "demo" });
     }).toThrow();
   });
 });

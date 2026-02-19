@@ -3,6 +3,7 @@ import type {
   JournalEntry,
   JournalEntryInput,
   JsonObject,
+  JsonValue,
   LLMMessage,
   Message,
   MessageLimit,
@@ -10,8 +11,10 @@ import type {
   MessageViews,
   ProjectScopeHandle,
   RequestScopeHandle,
+  ResourceConfig,
   ResourceHandle,
   ResourceRegistry,
+  ScopeType,
   SessionItem,
   SessionItemViews,
   SessionScopeHandle,
@@ -54,17 +57,218 @@ function listByQuery<TValue>(
   return values.slice(Math.max(0, values.length - max));
 }
 
-function createEmptyResourceRegistry<
-  TResources extends Record<string, ResourceHandle<any>>
->(): ResourceRegistry<TResources> {
-  const registry = {
-    get: (name: keyof TResources): TResources[keyof TResources] => {
-      throw new Error(`Resource "${String(name)}" is not registered`);
-    },
-    list: (): Array<TResources[keyof TResources]> => []
+function cloneValue<TValue>(value: TValue): TValue {
+  if (typeof globalThis.structuredClone === "function") {
+    return globalThis.structuredClone(value) as TValue;
+  }
+
+  return JSON.parse(JSON.stringify(value)) as TValue;
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
+  );
+}
+
+function asJsonObject(value: unknown): JsonObject {
+  if (!isJsonObject(value)) {
+    return {};
+  }
+
+  return value;
+}
+
+function normalizeResourceDefault(config: ResourceConfig): JsonObject {
+  if (config.default !== undefined && isJsonObject(config.default)) {
+    return cloneValue(config.default);
+  }
+
+  const parsedFromUndefined = config.stateSchema.safeParse(undefined);
+  if (parsedFromUndefined.success && isJsonObject(parsedFromUndefined.data)) {
+    return asJsonObject(parsedFromUndefined.data);
+  }
+
+  const parsedFromEmptyObject = config.stateSchema.safeParse({});
+  if (parsedFromEmptyObject.success && isJsonObject(parsedFromEmptyObject.data)) {
+    return asJsonObject(parsedFromEmptyObject.data);
+  }
+
+  return {};
+}
+
+function normalizeResourceState(
+  config: ResourceConfig,
+  value: unknown
+): JsonObject {
+  const parsed = config.stateSchema.safeParse(value);
+  if (parsed.success && isJsonObject(parsed.data)) {
+    return asJsonObject(parsed.data);
+  }
+
+  return normalizeResourceDefault(config);
+}
+
+function normalizeScopeResources(
+  configs: Record<string, ResourceConfig> | undefined,
+  seed: Record<string, unknown> | undefined
+): Record<string, JsonObject> {
+  const normalized: Record<string, JsonObject> = {};
+
+  for (const [resourceName, config] of Object.entries(configs ?? {})) {
+    normalized[resourceName] = normalizeResourceState(
+      config,
+      seed?.[resourceName]
+    );
+  }
+
+  return normalized;
+}
+
+function asJsonValue(value: unknown): JsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => asJsonValue(entry)) as JsonValue;
+  }
+
+  if (!isJsonObject(value)) {
+    return {};
+  }
+
+  const out: JsonObject = {};
+  for (const [key, entry] of Object.entries(value)) {
+    out[key] = asJsonValue(entry);
+  }
+
+  return out;
+}
+
+function updateObjectState(
+  currentState: JsonObject,
+  updates: Partial<JsonObject>
+): JsonObject {
+  const next: JsonObject = {
+    ...currentState
   };
 
-  return registry as ResourceRegistry<TResources>;
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === undefined) {
+      delete next[key];
+      continue;
+    }
+
+    next[key] = value;
+  }
+
+  return next;
+}
+
+function createScopeResourceRegistry<TResources extends Record<string, ResourceHandle<any>>>(
+  options: {
+    scope: ScopeType;
+    configs: Record<string, ResourceConfig> | undefined;
+    readResources: () => Record<string, JsonObject>;
+    persistResources: (next: Record<string, JsonObject>) => Promise<void>;
+  }
+): ResourceRegistry<TResources> {
+  const handles = {} as Record<string, ResourceHandle<JsonObject>>;
+  const configs = options.configs ?? {};
+
+  const persistResourceState = async (
+    name: string,
+    config: ResourceConfig,
+    next: unknown
+  ): Promise<void> => {
+    if (config.writable === false) {
+      throw new Error(`Resource "${name}" is read-only`);
+    }
+
+    const nextResources = {
+      ...options.readResources(),
+      [name]: normalizeResourceState(config, next)
+    };
+
+    await options.persistResources(nextResources);
+  };
+
+  for (const [resourceName, config] of Object.entries(configs)) {
+    const readState = (): JsonObject =>
+      cloneValue(
+        options.readResources()[resourceName] ??
+          normalizeResourceDefault(config)
+      );
+
+    handles[resourceName] = {
+      name: resourceName,
+      scope: options.scope,
+      config,
+      get state() {
+        return readState();
+      },
+      async patchState(updates: Partial<JsonObject>): Promise<void> {
+        await persistResourceState(
+          resourceName,
+          config,
+          updateObjectState(readState(), updates)
+        );
+      },
+      async setState(nextState: JsonObject): Promise<void> {
+        await persistResourceState(resourceName, config, nextState);
+      },
+      async updateState(
+        updater: (
+          state: JsonObject
+        ) => JsonObject | Promise<JsonObject>
+      ): Promise<void> {
+        const next = await updater(readState());
+        await persistResourceState(resourceName, config, next);
+      },
+      async readContent(): Promise<string> {
+        const state = readState();
+        const content = state.content;
+
+        if (typeof content === "string") {
+          return content;
+        }
+
+        return JSON.stringify(state);
+      },
+      async writeContent(content: string): Promise<void> {
+        const state = readState();
+        const nextState = {
+          ...state,
+          content: asJsonValue(content)
+        };
+
+        await persistResourceState(resourceName, config, nextState);
+      }
+    };
+  }
+
+  return {
+    ...(handles as TResources),
+    get(name) {
+      const handle = handles[String(name)];
+      if (handle === undefined) {
+        throw new Error(`Resource "${String(name)}" is not registered`);
+      }
+
+      return handle as TResources[keyof TResources];
+    },
+    list() {
+      return Object.values(handles) as Array<TResources[keyof TResources]>;
+    }
+  } as ResourceRegistry<TResources>;
 }
 
 function ensureJournalDefaults(record: SessionRecord): void {
@@ -105,8 +309,15 @@ function defineStateProperty<THandle extends object, TState extends JsonObject>(
   }) as THandle & { readonly state: Readonly<TState> };
 }
 
-function createSessionItemViews(record: SessionRecord): SessionItemViews {
+function createSessionItemViews(
+  readRecord: () => SessionRecord | undefined
+): SessionItemViews {
   const select = (query: ItemQuery | undefined): SessionItem[] => {
+    const record = readRecord();
+    if (record === undefined) {
+      return [];
+    }
+
     const includeTransient = query?.includeTransient === true;
     const visibilityFilter = query?.visibility;
     const allowedVisibility = visibilityFilter === undefined
@@ -148,12 +359,26 @@ function createSessionItemViews(record: SessionRecord): SessionItemViews {
   };
 }
 
-function createMessageViews(record: SessionRecord): MessageViews {
+function createMessageViews(
+  readRecord: () => SessionRecord | undefined
+): MessageViews {
   return {
-    ui: (query: MessageQuery | undefined): Message[] =>
-      listByQuery(record.messages.ui, query),
-    llm: (query: MessageQuery | undefined): LLMMessage[] =>
-      listByQuery(record.messages.llm, query)
+    ui: (query: MessageQuery | undefined): Message[] => {
+      const record = readRecord();
+      if (record === undefined) {
+        return [];
+      }
+
+      return listByQuery(record.messages.ui, query);
+    },
+    llm: (query: MessageQuery | undefined): LLMMessage[] => {
+      const record = readRecord();
+      if (record === undefined) {
+        return [];
+      }
+
+      return listByQuery(record.messages.llm, query);
+    }
   };
 }
 
@@ -185,6 +410,15 @@ export async function createExecutionContext<
     flow,
     stores
   } = options;
+  const sessionResourceConfigs = flow.session?.resources as
+    | Record<string, ResourceConfig>
+    | undefined;
+  const userResourceConfigs = flow.user?.resources as
+    | Record<string, ResourceConfig>
+    | undefined;
+  const projectResourceConfigs = flow.project?.resources as
+    | Record<string, ResourceConfig>
+    | undefined;
 
   if (!options.userId || options.userId.trim().length === 0) {
     throw new Error(`Flow "${flow.kind}" requires a userId`);
@@ -205,6 +439,7 @@ export async function createExecutionContext<
       id: userId,
       userId,
       state: (options.userState ?? {}) as TUserState,
+      resources: normalizeScopeResources(userResourceConfigs, undefined),
       version: 0,
       createdAt: now,
       updatedAt: now
@@ -222,6 +457,7 @@ export async function createExecutionContext<
         userId,
         projectId: options.projectId,
         state: (options.sessionState ?? {}) as TSessionState,
+        resources: normalizeScopeResources(sessionResourceConfigs, undefined),
         version: 0,
         createdAt: now,
         updatedAt: now,
@@ -248,6 +484,7 @@ export async function createExecutionContext<
         projectId,
         userId,
         state: (options.projectState ?? {}) as TProjectState,
+        resources: normalizeScopeResources(projectResourceConfigs, undefined),
         version: 0,
         createdAt: now,
         updatedAt: now
@@ -291,6 +528,67 @@ export async function createExecutionContext<
   };
   const projectRef: { current: ProjectRecord | undefined } = {
     current: projectRecord
+  };
+
+  const readSessionResources = (): Record<string, JsonObject> =>
+    normalizeScopeResources(
+      sessionResourceConfigs,
+      sessionRef.current?.resources as Record<string, unknown> | undefined
+    );
+
+  const readUserResources = (): Record<string, JsonObject> =>
+    normalizeScopeResources(
+      userResourceConfigs,
+      userRef.current.resources as Record<string, unknown> | undefined
+    );
+
+  const readProjectResources = (): Record<string, JsonObject> =>
+    normalizeScopeResources(
+      projectResourceConfigs,
+      projectRef.current?.resources as Record<string, unknown> | undefined
+    );
+
+  const persistSessionResources = async (
+    next: Record<string, JsonObject>
+  ): Promise<void> => {
+    const current = sessionRef.current;
+    if (current === undefined) {
+      return;
+    }
+
+    sessionRef.current = {
+      ...current,
+      resources: normalizeScopeResources(sessionResourceConfigs, next),
+      updatedAt: Date.now()
+    };
+    await stores.session.set(sessionRef.current.id, sessionRef.current);
+  };
+
+  const persistUserResources = async (
+    next: Record<string, JsonObject>
+  ): Promise<void> => {
+    userRef.current = {
+      ...userRef.current,
+      resources: normalizeScopeResources(userResourceConfigs, next),
+      updatedAt: Date.now()
+    };
+    await stores.user.set(userRef.current.id, userRef.current);
+  };
+
+  const persistProjectResources = async (
+    next: Record<string, JsonObject>
+  ): Promise<void> => {
+    const current = projectRef.current;
+    if (current === undefined) {
+      return;
+    }
+
+    projectRef.current = {
+      ...current,
+      resources: normalizeScopeResources(projectResourceConfigs, next),
+      updatedAt: Date.now()
+    };
+    await stores.project.set(projectRef.current.id, projectRef.current);
   };
 
   const requestContainer = createStateContainer<TRequestState>(
@@ -386,6 +684,33 @@ export async function createExecutionContext<
           }
         });
 
+  const userResources = createScopeResourceRegistry({
+    scope: "user",
+    configs: userResourceConfigs,
+    readResources: readUserResources,
+    persistResources: persistUserResources
+  });
+
+  const sessionResources =
+    sessionRef.current === undefined
+      ? undefined
+      : createScopeResourceRegistry({
+          scope: "session",
+          configs: sessionResourceConfigs,
+          readResources: readSessionResources,
+          persistResources: persistSessionResources
+        });
+
+  const projectResources =
+    projectRef.current === undefined
+      ? undefined
+      : createScopeResourceRegistry({
+          scope: "project",
+          configs: projectResourceConfigs,
+          readResources: readProjectResources,
+          persistResources: persistProjectResources
+        });
+
   const requestHandle = defineStateProperty(
     {
       identity: {
@@ -406,7 +731,7 @@ export async function createExecutionContext<
         id: userRef.current.id,
         userId: userRef.current.userId
       },
-      resources: createEmptyResourceRegistry(),
+      resources: userResources,
       ...userOps
     },
     () => userContainer.read()
@@ -423,9 +748,9 @@ export async function createExecutionContext<
               userId: sessionRef.current.userId,
               projectId: sessionRef.current.projectId
             },
-            resources: createEmptyResourceRegistry(),
-            items: createSessionItemViews(sessionRef.current),
-            messages: createMessageViews(sessionRef.current),
+            resources: sessionResources,
+            items: createSessionItemViews(() => sessionRef.current),
+            messages: createMessageViews(() => sessionRef.current),
             appendJournal: async (entry: JournalEntryInput): Promise<void> => {
               const current = sessionRef.current;
               if (current === undefined) {
@@ -478,7 +803,7 @@ export async function createExecutionContext<
               userId: projectRef.current.userId,
               projectId: projectRef.current.projectId
             },
-            resources: createEmptyResourceRegistry(),
+            resources: projectResources,
             ...projectOps
           },
           () => projectContainer.read()

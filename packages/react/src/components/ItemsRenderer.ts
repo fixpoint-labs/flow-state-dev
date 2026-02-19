@@ -1,6 +1,7 @@
 /**
  * Collection renderer for ordered output item arrays.
  */
+import { createElement, Fragment, type ReactNode } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { ItemRenderer } from "./ItemRenderer";
 
@@ -14,12 +15,14 @@ export type ItemsRendererProps = {
 /**
  * Renders output items in deterministic `itemIndex` order.
  */
-export function ItemsRenderer(props: ItemsRendererProps): unknown[] {
-  return [...props.items]
-    .sort((left, right) => left.itemIndex - right.itemIndex)
-    .map((item) =>
-      ItemRenderer({
-        item
-      })
-    );
+export function ItemsRenderer(props: ItemsRendererProps): ReactNode {
+  const sorted = [...props.items].sort(
+    (left, right) => left.itemIndex - right.itemIndex
+  );
+
+  return createElement(
+    Fragment,
+    null,
+    ...sorted.map((item) => ItemRenderer({ item }))
+  );
 }
