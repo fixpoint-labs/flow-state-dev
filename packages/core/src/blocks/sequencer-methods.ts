@@ -1,3 +1,4 @@
+import { z, type ZodTypeAny } from "zod";
 import type {
   BlockContext,
   BlockDefinition,
@@ -8,16 +9,16 @@ import type {
 } from "../types/block";
 
 export type ParallelStep<TCurrent> =
-  | BlockDefinition<TCurrent, unknown>
+  | BlockDefinition<any, any>
   | {
       connector: ConnectorFn<TCurrent, unknown>;
-      block: BlockDefinition<unknown, unknown>;
+      block: BlockDefinition<any, any>;
     };
 
-export type ParallelStepOutput<TStep> = TStep extends BlockDefinition<any, infer TOutput>
-  ? TOutput
-  : TStep extends { block: BlockDefinition<any, infer TOutput> }
-    ? TOutput
+export type ParallelStepOutput<TStep> = TStep extends BlockDefinition<any, infer TOutSchema>
+  ? z.infer<TOutSchema extends ZodTypeAny ? TOutSchema : ZodTypeAny>
+  : TStep extends { block: BlockDefinition<any, infer TOutSchema> }
+    ? z.infer<TOutSchema extends ZodTypeAny ? TOutSchema : ZodTypeAny>
     : never;
 
 export type BranchStep<TInput> = readonly [
@@ -29,9 +30,9 @@ export type BranchStep<TInput> = readonly [
 export type BranchStepOutput<TStep> = TStep extends readonly [
   ConnectorFn<any, any>,
   (input: any, ctx: BlockContext) => boolean | Promise<boolean>,
-  BlockDefinition<any, infer TOutput>
+  BlockDefinition<any, infer TOutSchema>
 ]
-  ? TOutput
+  ? z.infer<TOutSchema extends ZodTypeAny ? TOutSchema : ZodTypeAny>
   : never;
 
 export type WorkResult = {
@@ -41,22 +42,78 @@ export type WorkResult = {
   reason?: Error;
 };
 
-export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<TInput, TOutput> {
-  then<TNext>(block: BlockDefinition<TOutput, TNext>): SequencerDefinition<TInput, TNext>;
-  then<TStepIn, TNext>(
-    connector: ConnectorFn<TOutput, TStepIn>,
-    block: BlockDefinition<TStepIn, TNext>
-  ): SequencerDefinition<TInput, TNext>;
+/** Extracts the config parameter type from a block factory function. */
+export type FactoryConfig<TFactory> = TFactory extends (config: infer C) => any ? C : never;
 
-  thenIf<TNext>(
+/**
+ * Transforms a factory's config for inline use in a sequencer chain.
+ * - Omits inputSchema (auto-injected from previous step's outputSchema)
+ * - Makes name optional (auto-generated if omitted)
+ * - Overrides execute to receive TInput (the chain's current output type)
+ */
+export type InlineConfig<
+  TFactory,
+  TInput,
+  TOutputSchema extends ZodTypeAny
+> = Omit<FactoryConfig<TFactory>, "inputSchema" | "name" | "outputSchema" | "execute"> & {
+  name?: string;
+  outputSchema: TOutputSchema;
+  execute?: (input: TInput, ctx: BlockContext) => z.infer<TOutputSchema> | Promise<z.infer<TOutputSchema>>;
+};
+
+/**
+ * Inline config for tap (output discarded, outputSchema optional).
+ */
+export type InlineTapConfig<TFactory, TInput> = Omit<FactoryConfig<TFactory>, "inputSchema" | "name" | "outputSchema" | "execute"> & {
+  name?: string;
+  outputSchema?: ZodTypeAny;
+  execute?: (input: TInput, ctx: BlockContext) => unknown | Promise<unknown>;
+};
+
+/** Factory function type — matches handler(), generator(), router(). */
+export type InlineBlockFactory = (config: any) => BlockDefinition<any, any>;
+
+/**
+ * Sequencer DSL definition. Types flow through the chain via schema inference:
+ * - TInput/TOutput are runtime value types (e.g., `number`, `string`)
+ * - Types are inferred from Zod schemas on BlockDefinition via `z.infer<>`
+ * - Connectors and conditions receive properly typed values from the previous step
+ *
+ * The sequencer extends BlockDefinition<any, any> at the boundary for structural compatibility.
+ */
+export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<any, any> {
+  // then(block) — infer output from block's output schema
+  then<TOutSchema extends ZodTypeAny>(
+    block: BlockDefinition<any, TOutSchema>
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>>;
+  // then(factory, inlineConfig) — inline block definition
+  then<TFactory extends InlineBlockFactory, TOutputSchema extends ZodTypeAny>(
+    factory: TFactory,
+    config: InlineConfig<TFactory, TOutput, TOutputSchema>
+  ): SequencerDefinition<TInput, z.infer<TOutputSchema>>;
+  // then(connector, block) — connector transforms, block output inferred
+  then<TStepIn, TOutSchema extends ZodTypeAny>(
+    connector: ConnectorFn<TOutput, TStepIn>,
+    block: BlockDefinition<any, TOutSchema>
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>>;
+
+  // thenIf(condition, block) — conditional, union of current | block output
+  thenIf<TOutSchema extends ZodTypeAny>(
     condition: (input: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
-    block: BlockDefinition<TOutput, TNext>
-  ): SequencerDefinition<TInput, TOutput | TNext>;
-  thenIf<TStepIn, TNext>(
+    block: BlockDefinition<any, TOutSchema>
+  ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>>;
+  // thenIf(condition, factory, inlineConfig) — conditional inline
+  thenIf<TFactory extends InlineBlockFactory, TOutputSchema extends ZodTypeAny>(
+    condition: (input: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
+    factory: TFactory,
+    config: InlineConfig<TFactory, TOutput, TOutputSchema>
+  ): SequencerDefinition<TInput, TOutput | z.infer<TOutputSchema>>;
+  // thenIf(condition, connector, block) — conditional with connector
+  thenIf<TStepIn, TOutSchema extends ZodTypeAny>(
     condition: (input: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
     connector: ConnectorFn<TOutput, TStepIn>,
-    block: BlockDefinition<TStepIn, TNext>
-  ): SequencerDefinition<TInput, TOutput | TNext>;
+    block: BlockDefinition<any, TOutSchema>
+  ): SequencerDefinition<TInput, TOutput | z.infer<TOutSchema>>;
 
   map<TNext>(mapper: (input: TOutput, ctx: BlockContext) => TNext | Promise<TNext>): SequencerDefinition<TInput, TNext>;
 
@@ -65,39 +122,43 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<TI
     options?: { maxConcurrency?: number }
   ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>;
 
-  forEach<TItem, TStepOut>(
+  // forEach(block) — infer element output from block's output schema
+  forEach<TOutSchema extends ZodTypeAny>(
     blockOrFactory:
-      | BlockDefinition<TItem, TStepOut>
-      | ((item: TItem, index: number, ctx: BlockContext) => BlockDefinition<TItem, TStepOut>),
+      | BlockDefinition<any, TOutSchema>
+      | ((item: TOutput extends readonly (infer TItem)[] ? TItem : unknown, index: number, ctx: BlockContext) => BlockDefinition<any, TOutSchema>),
     options?: { maxConcurrency?: number }
-  ): SequencerDefinition<TInput, TStepOut[]>;
-  forEach<TItem, TStepIn, TStepOut>(
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>[]>;
+  // forEach(connector, block) — connector provides items, block output inferred
+  forEach<TStepIn, TOutSchema extends ZodTypeAny>(
     connector: ConnectorFn<TOutput, TStepIn[]>,
     blockOrFactory:
-      | BlockDefinition<TStepIn, TStepOut>
-      | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<TStepIn, TStepOut>),
+      | BlockDefinition<any, TOutSchema>
+      | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, TOutSchema>),
     options?: { maxConcurrency?: number }
-  ): SequencerDefinition<TInput, TStepOut[]>;
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>[]>;
 
-  doUntil<TStepIn, TNext>(
-    condition: (value: TNext | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
-    block: BlockDefinition<TStepIn, TNext>
-  ): SequencerDefinition<TInput, TNext>;
-  doUntil<TStepIn, TNext>(
-    condition: (value: TNext | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
+  // doUntil — loop block output inferred from schema
+  doUntil<TOutSchema extends ZodTypeAny>(
+    condition: (value: z.infer<TOutSchema> | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
+    block: BlockDefinition<any, TOutSchema>
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>>;
+  doUntil<TStepIn, TOutSchema extends ZodTypeAny>(
+    condition: (value: z.infer<TOutSchema> | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
     connector: ConnectorFn<TOutput, TStepIn>,
-    block: BlockDefinition<TStepIn, TNext>
-  ): SequencerDefinition<TInput, TNext>;
+    block: BlockDefinition<any, TOutSchema>
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>>;
 
-  doWhile<TStepIn, TNext>(
-    condition: (value: TNext | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
-    block: BlockDefinition<TStepIn, TNext>
-  ): SequencerDefinition<TInput, TNext>;
-  doWhile<TStepIn, TNext>(
-    condition: (value: TNext | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
+  // doWhile — loop block output inferred from schema
+  doWhile<TOutSchema extends ZodTypeAny>(
+    condition: (value: z.infer<TOutSchema> | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
+    block: BlockDefinition<any, TOutSchema>
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>>;
+  doWhile<TStepIn, TOutSchema extends ZodTypeAny>(
+    condition: (value: z.infer<TOutSchema> | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
     connector: ConnectorFn<TOutput, TStepIn>,
-    block: BlockDefinition<TStepIn, TNext>
-  ): SequencerDefinition<TInput, TNext>;
+    block: BlockDefinition<any, TOutSchema>
+  ): SequencerDefinition<TInput, z.infer<TOutSchema>>;
 
   loopBack(
     targetStepName: string,
@@ -107,10 +168,10 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<TI
     }
   ): SequencerDefinition<TInput, TOutput>;
 
-  work(block: BlockDefinition<TOutput, unknown>, options?: { name?: string }): SequencerDefinition<TInput, TOutput>;
+  work(block: BlockDefinition<any, any>, options?: { name?: string }): SequencerDefinition<TInput, TOutput>;
   work<TStepIn>(
     connector: ConnectorFn<TOutput, TStepIn>,
-    block: BlockDefinition<TStepIn, unknown>,
+    block: BlockDefinition<any, any>,
     options?: { name?: string }
   ): SequencerDefinition<TInput, TOutput>;
 
@@ -121,24 +182,28 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<TI
 
   tap(
     blockOrFn:
-      | BlockDefinition<TOutput, unknown>
+      | BlockDefinition<any, any>
       | ((value: TOutput, ctx: BlockContext) => void | Promise<void>)
+  ): SequencerDefinition<TInput, TOutput>;
+  tap<TFactory extends InlineBlockFactory>(
+    factory: TFactory,
+    config: InlineTapConfig<TFactory, TOutput>
   ): SequencerDefinition<TInput, TOutput>;
   tap<TStepIn>(
     connector: ConnectorFn<TOutput, TStepIn>,
-    block: BlockDefinition<TStepIn, unknown>
+    block: BlockDefinition<any, any>
   ): SequencerDefinition<TInput, TOutput>;
 
   tapIf(
     condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
     blockOrFn:
-      | BlockDefinition<TOutput, unknown>
+      | BlockDefinition<any, any>
       | ((value: TOutput, ctx: BlockContext) => void | Promise<void>)
   ): SequencerDefinition<TInput, TOutput>;
   tapIf<TStepIn>(
     condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
     connector: ConnectorFn<TOutput, TStepIn>,
-    block: BlockDefinition<TStepIn, unknown>
+    block: BlockDefinition<any, any>
   ): SequencerDefinition<TInput, TOutput>;
 
   rescue(handlers: RescueHandlerSpec[]): SequencerDefinition<TInput, TOutput>;
@@ -146,15 +211,17 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<TI
   branch<TBranches extends Record<string, BranchStep<TOutput>>>(
     branches: TBranches
   ): SequencerDefinition<TInput, BranchStepOutput<TBranches[keyof TBranches]>>;
+
+  validate(): SequencerDefinition<TInput, TOutput>;
 }
 
-export type SequencerConfig<TInput = unknown> = {
+export type SequencerConfig<TInputSchema extends ZodTypeAny = ZodTypeAny> = {
   name: string;
   description?: string;
-  inputSchema?: BlockDefinition<TInput, TInput>["inputSchema"];
-  outputSchema?: BlockDefinition<TInput, TInput>["outputSchema"];
-  clientOutput?: ClientOutputOption<TInput>;
-  llmOutput?: LlmOutputOption<TInput>;
+  inputSchema?: TInputSchema;
+  outputSchema?: ZodTypeAny;
+  clientOutput?: ClientOutputOption<z.infer<TInputSchema>>;
+  llmOutput?: LlmOutputOption<z.infer<TInputSchema>>;
 };
 
 export type SequencerWorkTask = {

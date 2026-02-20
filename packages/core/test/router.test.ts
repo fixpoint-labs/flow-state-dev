@@ -4,16 +4,16 @@ import { createMockContext } from "./helpers";
 
 describe("router builder", () => {
   it("executes selected route", async () => {
-    const low = handler<number, string>({
+    const low = handler({
       name: "low",
       execute: () => "low"
     });
-    const high = handler<number, string>({
+    const high = handler({
       name: "high",
       execute: () => "high"
     });
 
-    const block = router<number, string>({
+    const block = router({
       name: "route",
       routes: [low, high],
       execute: (value) => (value < 10 ? low : high)
@@ -25,16 +25,16 @@ describe("router builder", () => {
   });
 
   it("throws when selected route is not in declared candidates", async () => {
-    const inRoutes = handler<number, string>({
+    const inRoutes = handler({
       name: "in-routes",
       execute: () => "ok"
     });
-    const rogue = handler<number, string>({
+    const rogue = handler({
       name: "rogue",
       execute: () => "rogue"
     });
 
-    const block = router<number, string>({
+    const block = router({
       name: "route-validation",
       routes: [inRoutes],
       execute: () => rogue
@@ -45,12 +45,12 @@ describe("router builder", () => {
   });
 
   it("uses validateRoute override when provided", async () => {
-    const routeA = handler<number, string>({
+    const routeA = handler({
       name: "a",
       execute: () => "a"
     });
 
-    const block = router<number, string>({
+    const block = router({
       name: "custom-validator",
       routes: [routeA],
       execute: () => routeA,
@@ -62,7 +62,7 @@ describe("router builder", () => {
   });
 
   it("throws when selected route has no run method", async () => {
-    const valid = handler<number, string>({
+    const valid = handler({
       name: "valid",
       execute: () => "ok"
     });
@@ -73,7 +73,7 @@ describe("router builder", () => {
       run: undefined
     };
 
-    const block = router<number, string>({
+    const block = router({
       name: "missing-run-route",
       routes: [valid, missingRun as unknown as typeof valid],
       execute: () => missingRun as unknown as typeof valid

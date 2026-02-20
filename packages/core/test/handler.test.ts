@@ -5,7 +5,7 @@ import { createMockContext } from "./helpers";
 
 describe("handler builder", () => {
   it("builds a handler block definition", async () => {
-    const block = handler<string, { message: string }>({
+    const block = handler({
       name: "hello",
       inputSchema: z.string(),
       outputSchema: z.object({ message: z.string() }),

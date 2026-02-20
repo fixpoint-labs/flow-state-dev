@@ -93,10 +93,10 @@ function inferLoopIterations(items: OutputItem[]): number {
  * Executes a sequencer block and returns sequencer-focused traces.
  */
 export async function testSequencer<TInput, TOutput>(
-  sequencer: BlockDefinition<TInput, TOutput>,
+  sequencer: BlockDefinition,
   options: TestBlockOptions<TInput>
 ): Promise<TestSequencerResult<TOutput>> {
-  const base = await testBlock(sequencer, options);
+  const base = await testBlock<TInput, TOutput>(sequencer, options);
   const steps = buildStepTraces(base.items);
 
   return {

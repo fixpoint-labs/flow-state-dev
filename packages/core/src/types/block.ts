@@ -1,4 +1,4 @@
-import type { ZodTypeAny } from "zod";
+import { z, type ZodTypeAny } from "zod";
 import type {
   ProjectScopeHandle,
   RequestScopeHandle,
@@ -79,43 +79,53 @@ export type LlmOutputOption<TOutput> =
   | string
   | ((output: TOutput) => unknown | null);
 
-export interface BlockConfig<TInput = unknown, TOutput = unknown> {
+export interface BlockConfig<
+  TInputSchema extends ZodTypeAny = ZodTypeAny,
+  TOutputSchema extends ZodTypeAny = ZodTypeAny,
+> {
   name: string;
   renderKey?: string;
   description?: string;
-  inputSchema?: ZodTypeAny;
-  outputSchema?: ZodTypeAny;
-  connectInput?: ConnectorFn<unknown, TInput>;
+  inputSchema?: TInputSchema;
+  outputSchema?: TOutputSchema;
+  connectInput?: ConnectorFn<unknown, z.infer<TInputSchema>>;
 
-  execute?: (input: TInput, ctx: BlockContext) => Promise<TOutput> | TOutput;
-  validateChunk?: (input: TInput, ctx: BlockContext) => Promise<ChunkValidation> | ChunkValidation;
-  onCompleted?: (output: TOutput, ctx: BlockContext) => Promise<void> | void;
+  execute?: (input: z.infer<TInputSchema>, ctx: BlockContext) => Promise<z.infer<TOutputSchema>> | z.infer<TOutputSchema>;
+  validateChunk?: (input: z.infer<TInputSchema>, ctx: BlockContext) => Promise<ChunkValidation> | ChunkValidation;
+  onCompleted?: (output: z.infer<TOutputSchema>, ctx: BlockContext) => Promise<void> | void;
   onErrored?: (error: Error, ctx: BlockContext) => Promise<void> | void;
 
   retry?: RetryPolicy;
-  clientOutput?: ClientOutputOption<TOutput>;
-  llmOutput?: LlmOutputOption<TOutput>;
-
-  [key: string]: unknown;
+  clientOutput?: ClientOutputOption<z.infer<TOutputSchema>>;
+  llmOutput?: LlmOutputOption<z.infer<TOutputSchema>>;
 }
 
-export interface BlockDefinition<TInput = unknown, TOutput = unknown> {
+export interface BlockDefinition<
+  TInputSchema extends ZodTypeAny = ZodTypeAny,
+  TOutputSchema extends ZodTypeAny = ZodTypeAny,
+> {
   kind: BlockKind;
   name: string;
   renderKey?: string;
   description?: string;
-  inputSchema?: ZodTypeAny;
-  outputSchema?: ZodTypeAny;
-  config: BlockConfig<TInput, TOutput>;
-  run(input: TInput, ctx: BlockContext): Promise<TOutput>;
+  inputSchema: TInputSchema;
+  outputSchema: TOutputSchema;
+  config: BlockConfig<TInputSchema, TOutputSchema>;
+  run(input: z.infer<TInputSchema>, ctx: BlockContext): Promise<z.infer<TOutputSchema>>;
 
-  connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<TFrom, TOutput>;
+  connectInput<TFrom>(mapper: ConnectorFn<TFrom, z.infer<TInputSchema>>): BlockDefinition<ZodTypeAny, TOutputSchema>;
   connectOutput<TTo>(
-    mapper: (output: TOutput, ctx: BlockContext) => TTo | Promise<TTo>
-  ): BlockDefinition<TInput, TTo>;
+    mapper: (output: z.infer<TOutputSchema>, ctx: BlockContext) => TTo | Promise<TTo>
+  ): BlockDefinition<TInputSchema, ZodTypeAny>;
 }
 
 export interface RescueHandlerSpec {
   when?: Array<new (...args: any[]) => Error>;
   block: BlockDefinition<any, any>;
 }
+
+/** Extract the inferred input type from a BlockDefinition. */
+export type BlockInput<T> = T extends BlockDefinition<infer TIn, any> ? z.infer<TIn> : never;
+
+/** Extract the inferred output type from a BlockDefinition. */
+export type BlockOutput<T> = T extends BlockDefinition<any, infer TOut> ? z.infer<TOut> : never;

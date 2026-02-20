@@ -9,7 +9,7 @@ import type {
  * Executes a router block and returns the selected route name when detected.
  */
 export async function testRouter<TInput, TOutput>(
-  router: BlockDefinition<TInput, TOutput>,
+  router: BlockDefinition,
   options: TestBlockOptions<TInput>
 ): Promise<TestRouterResult<TOutput>> {
   const routes = Array.isArray((router.config as unknown as { routes?: unknown }).routes)
@@ -30,7 +30,7 @@ export async function testRouter<TInput, TOutput>(
   }
 
   try {
-    const base = await testBlock(router, options);
+    const base = await testBlock<TInput, TOutput>(router, options);
 
     return {
       ...base,

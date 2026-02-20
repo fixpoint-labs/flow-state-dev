@@ -5,8 +5,9 @@ import { createMockContext } from "./helpers";
 
 describe("defineFlow", () => {
   it("returns callable flow type with defaults and merge-based overrides", () => {
-    const baseAction = handler<{ value: number }, number>({
+    const baseAction = handler({
       name: "base-action",
+      inputSchema: z.object({ value: z.number() }),
       execute: (input) => input.value + 1
     });
 
@@ -30,8 +31,9 @@ describe("defineFlow", () => {
       actions: {
         extra: {
           inputSchema: z.object({ message: z.string() }),
-          block: handler<{ message: string }, string>({
+          block: handler({
             name: "extra-action",
+            inputSchema: z.object({ message: z.string() }),
             execute: (input) => input.message
           })
         }
@@ -62,7 +64,7 @@ describe("defineFlow", () => {
         actions: {
           run: {
             inputSchema: z.object({}),
-            block: handler<{}, {}>({
+            block: handler({
               name: "noop",
               execute: () => ({})
             })
@@ -76,7 +78,7 @@ describe("defineFlow", () => {
       actions: {
         run: {
           inputSchema: z.object({}),
-          block: handler<{}, {}>({
+          block: handler({
             name: "noop-valid",
             execute: () => ({})
           })
@@ -93,7 +95,7 @@ describe("defineFlow", () => {
     const onToolStarted = vi.fn();
     const onToolCompleted = vi.fn();
     const onToolErrored = vi.fn();
-    const flakyTool = handler<{ text: string }, { ok: boolean }>({
+    const flakyTool = handler({
       name: "flaky-tool",
       execute: () => {
         attempts += 1;
@@ -105,7 +107,7 @@ describe("defineFlow", () => {
       }
     });
 
-    const runAction = generator<{ text: string }, { ok: boolean }>({
+    const runAction = generator({
       name: "run-generator",
       model: "test-model",
       prompt: "test-prompt",
@@ -172,12 +174,12 @@ describe("defineFlow", () => {
     let modelCalls = 0;
     const baseStarted = vi.fn();
     const overrideStarted = vi.fn();
-    const okTool = handler<{ text: string }, { ok: boolean }>({
+    const okTool = handler({
       name: "ok-tool",
       execute: () => ({ ok: true })
     });
 
-    const runAction = generator<{ text: string }, { ok: boolean }>({
+    const runAction = generator({
       name: "override-hooks-generator",
       model: "model",
       prompt: "prompt",

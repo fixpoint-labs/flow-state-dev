@@ -106,7 +106,10 @@ export type TypedUserSlotFn<TInput> = (
   ctx: BlockContext
 ) => MaybePromise<unknown>;
 
-export interface GeneratorConfig<TInput, TOutput> extends Omit<BlockConfig<TInput, TOutput>, "execute"> {
+export interface GeneratorConfig<
+  TInputSchema extends ZodTypeAny = ZodTypeAny,
+  TOutputSchema extends ZodTypeAny = ZodTypeAny,
+> extends Omit<BlockConfig<TInputSchema, TOutputSchema>, "execute"> {
   requestStateSchema?: ZodTypeAny;
   sessionStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
@@ -115,28 +118,28 @@ export interface GeneratorConfig<TInput, TOutput> extends Omit<BlockConfig<TInpu
   sessionResourcesSchema?: ZodTypeAny;
   userResourcesSchema?: ZodTypeAny;
   projectResourcesSchema?: ZodTypeAny;
-  connectInput?: ConnectorFn<unknown, TInput>;
-  model: ResolvableModel<TInput>;
-  prompt: ResolvableString<TInput>;
+  connectInput?: ConnectorFn<unknown, z.infer<TInputSchema>>;
+  model: ResolvableModel<z.infer<TInputSchema>>;
+  prompt: ResolvableString<z.infer<TInputSchema>>;
   context?: GeneratorSlot;
   history?: GeneratorSlot;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
-  user?: TypedUserSlotFn<TInput> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
+  user?: TypedUserSlotFn<z.infer<TInputSchema>> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
   tools?: GeneratorTool[] | ((ctx: BlockContext) => MaybePromise<GeneratorTool[]>);
-  loop?: GeneratorLoopConfig<TInput>;
+  loop?: GeneratorLoopConfig<z.infer<TInputSchema>>;
   maxIterations?: number;
   maxTokens?: number;
   repair?: GeneratorRepairConfig;
   repairOutput?: (
     candidate: unknown,
     error: Error,
-    state: GeneratorLoopState<TInput>,
+    state: GeneratorLoopState<z.infer<TInputSchema>>,
     ctx: BlockContext
   ) => MaybePromise<unknown>;
   flowTools?: ToolsConfig;
   retry?: RetryPolicy;
-  clientOutput?: ClientOutputOption<TOutput>;
-  llmOutput?: LlmOutputOption<TOutput>;
+  clientOutput?: ClientOutputOption<z.infer<TOutputSchema>>;
+  llmOutput?: LlmOutputOption<z.infer<TOutputSchema>>;
 }
 
 async function resolveString<TInput>(
@@ -267,7 +270,7 @@ function indexToolsByName(tools: GeneratorTool[]): Map<string, GeneratorTool> {
 
 function isBlockObserver(
   observer: ToolsConfig["onToolStarted"]
-): observer is BlockDefinition<ToolLifecycleEvent, void> {
+): observer is BlockDefinition<any, any> {
   return (
     typeof observer === "object" &&
     observer !== null &&
@@ -286,7 +289,7 @@ async function runToolObserver(
   }
 
   if (isBlockObserver(observer as ToolsConfig["onToolStarted"])) {
-    await (observer as BlockDefinition<ToolLifecycleEvent, void>).run(event, ctx);
+    await (observer as BlockDefinition<any, any>).run(event, ctx);
     return;
   }
 
@@ -370,7 +373,7 @@ async function attemptDefaultRepair(candidate: unknown): Promise<unknown> {
 }
 
 async function applyRepairPolicy<TInput, TOutput>(
-  config: GeneratorConfig<TInput, TOutput>,
+  config: { repair?: GeneratorRepairConfig; repairOutput?: GeneratorConfig<any, any>["repairOutput"] },
   outputSchema: ZodTypeAny,
   candidate: unknown,
   state: GeneratorLoopState<TInput>,
@@ -545,7 +548,7 @@ async function invokeModelTools<TInput>(
   return results;
 }
 
-function resolveMaxIterations<TInput, TOutput>(config: GeneratorConfig<TInput, TOutput>): number {
+function resolveMaxIterations(config: { loop?: GeneratorLoopConfig<unknown>; maxIterations?: number }): number {
   const configured = config.loop?.maxIterations ?? config.maxIterations ?? DEFAULT_MAX_ITERATIONS;
   return Math.max(1, configured);
 }
@@ -596,27 +599,33 @@ export const resolveGeneratorMessage = resolveGeneratorLlmOutput;
  */
 export const resolveGeneratorRender = resolveGeneratorClientOutput;
 
-export function generator<TInput, TOutput>(
-  config: GeneratorConfig<TInput, TOutput>
-): BlockDefinition<TInput, TOutput> {
+export function generator<
+  TInputSchema extends ZodTypeAny = ZodTypeAny,
+  TOutputSchema extends ZodTypeAny = ZodTypeAny,
+>(
+  config: GeneratorConfig<TInputSchema, TOutputSchema>
+): BlockDefinition<TInputSchema, TOutputSchema> {
+  type TInput = z.infer<TInputSchema>;
+  type TOutput = z.infer<TOutputSchema>;
+
   const outputSchema = (config.outputSchema ?? z.string()) as ZodTypeAny;
-  const normalizedConfig: GeneratorConfig<TInput, TOutput> = {
+  const normalizedConfig: GeneratorConfig<TInputSchema, TOutputSchema> = {
     ...config,
-    outputSchema
+    outputSchema: outputSchema as TOutputSchema
   };
 
-  return buildBlock<TInput, TOutput>({
+  return buildBlock<TInputSchema, TOutputSchema>({
     kind: "generator",
-    config: normalizedConfig as unknown as BlockConfig<TInput, TOutput>,
-    execute: async (input, ctx) => {
+    config: normalizedConfig as unknown as BlockConfig<TInputSchema, TOutputSchema>,
+    execute: async (input: TInput, ctx) => {
       const blockName = String(normalizedConfig.name);
-      const { modelId, model } = await resolveModel(
+      const { modelId, model } = await resolveModel<TInput>(
         normalizedConfig.model,
         input,
         ctx,
         blockName
       );
-      const prompt = await resolveString(normalizedConfig.prompt, input, ctx);
+      const prompt = await resolveString<TInput>(normalizedConfig.prompt, input, ctx);
       const contextValues = await resolveSlotValues(normalizedConfig.context, input, ctx);
       const historyValues = await resolveSlotValues(normalizedConfig.history, input, ctx);
       const userValues = await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
@@ -660,7 +669,7 @@ export function generator<TInput, TOutput>(
         const iterationToolResults =
           iterationToolCalls.length === 0
             ? []
-            : await invokeModelTools(
+            : await invokeModelTools<TInput>(
                 iterationToolCalls,
                 toolsByName,
                 state,
@@ -684,7 +693,7 @@ export function generator<TInput, TOutput>(
           };
 
           try {
-            return await applyRepairPolicy(normalizedConfig, outputSchema, candidate, candidateState, ctx);
+            return await applyRepairPolicy<TInput, TOutput>(normalizedConfig, outputSchema, candidate, candidateState, ctx);
           } catch (error) {
             lastError = toError(error);
           }

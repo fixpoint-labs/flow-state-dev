@@ -63,17 +63,17 @@ function mergeConfig<TConfig extends object | undefined>(base: TConfig, override
   } as TConfig;
 }
 
-function withFlowTools<TInput, TOutput>(
-  block: BlockDefinition<TInput, TOutput>,
+function withFlowTools(
+  block: BlockDefinition,
   flowTools: ToolsConfig | undefined
-): BlockDefinition<TInput, TOutput> {
+): BlockDefinition {
   if (flowTools === undefined || block.kind !== "generator") {
     return block;
   }
 
-  const generatorConfig = block.config as unknown as GeneratorConfig<TInput, TOutput>;
+  const generatorConfig = block.config as unknown as GeneratorConfig;
   const mergedTools = mergeToolsConfig(flowTools, generatorConfig.flowTools);
-  return generator<TInput, TOutput>({
+  return generator({
     ...generatorConfig,
     flowTools: mergedTools
   });

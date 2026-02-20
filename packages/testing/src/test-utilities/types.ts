@@ -119,4 +119,4 @@ export type TestFlowResult = {
   items: OutputItem[];
 };
 
-export type TestableBlock<TInput, TOutput> = BlockDefinition<TInput, TOutput>;
+export type TestableBlock = BlockDefinition;

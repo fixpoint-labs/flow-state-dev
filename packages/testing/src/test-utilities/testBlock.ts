@@ -18,7 +18,7 @@ function asRecord(value: unknown): Record<string, unknown> {
  * Executes one block with seeded scope state and returns deterministic test artifacts.
  */
 export async function testBlock<TInput, TOutput>(
-  block: TestableBlock<TInput, TOutput>,
+  block: TestableBlock,
   options: TestBlockOptions<TInput>
 ): Promise<TestBlockResult<TOutput>> {
   const startedAt = Date.now();

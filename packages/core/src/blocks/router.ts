@@ -1,4 +1,4 @@
-import type { ZodTypeAny } from "zod";
+import { z, type ZodTypeAny } from "zod";
 import type {
   BlockConfig,
   BlockContext,
@@ -8,14 +8,17 @@ import type {
 import { buildBlock } from "./internal/build-block";
 import { isBlockDefinition } from "./internal/utils";
 
-function isRouteInCandidates<TInput, TOutput>(
-  candidate: BlockDefinition<TInput, TOutput>,
-  routes: BlockDefinition<TInput, TOutput>[]
+function isRouteInCandidates<TInputSchema extends ZodTypeAny, TOutputSchema extends ZodTypeAny>(
+  candidate: BlockDefinition<TInputSchema, TOutputSchema>,
+  routes: BlockDefinition<TInputSchema, TOutputSchema>[]
 ): boolean {
   return routes.some((route) => route === candidate || route.name === candidate.name);
 }
 
-export interface RouterConfig<TInput, TOutput> extends Omit<BlockConfig<TInput, TOutput>, "execute"> {
+export interface RouterConfig<
+  TInputSchema extends ZodTypeAny = ZodTypeAny,
+  TOutputSchema extends ZodTypeAny = ZodTypeAny,
+> extends Omit<BlockConfig<TInputSchema, TOutputSchema>, "execute"> {
   requestStateSchema?: ZodTypeAny;
   sessionStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
@@ -24,31 +27,34 @@ export interface RouterConfig<TInput, TOutput> extends Omit<BlockConfig<TInput, 
   sessionResourcesSchema?: ZodTypeAny;
   userResourcesSchema?: ZodTypeAny;
   projectResourcesSchema?: ZodTypeAny;
-  connectInput?: ConnectorFn<unknown, TInput>;
-  routes: BlockDefinition<TInput, TOutput>[];
+  connectInput?: ConnectorFn<unknown, z.infer<TInputSchema>>;
+  routes: BlockDefinition<TInputSchema, TOutputSchema>[];
   execute: (
-    input: TInput,
+    input: z.infer<TInputSchema>,
     ctx: BlockContext
-  ) => Promise<BlockDefinition<TInput, TOutput>> | BlockDefinition<TInput, TOutput>;
+  ) => Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>;
   validateRoute?: (
-    candidate: BlockDefinition<TInput, TOutput>,
-    routes: BlockDefinition<TInput, TOutput>[],
-    input: TInput,
+    candidate: BlockDefinition<TInputSchema, TOutputSchema>,
+    routes: BlockDefinition<TInputSchema, TOutputSchema>[],
+    input: z.infer<TInputSchema>,
     ctx: BlockContext
   ) => Promise<boolean> | boolean;
 }
 
-export function router<TInput, TOutput>(config: RouterConfig<TInput, TOutput>): BlockDefinition<TInput, TOutput> {
-  return buildBlock<TInput, TOutput>({
+export function router<
+  TInputSchema extends ZodTypeAny = ZodTypeAny,
+  TOutputSchema extends ZodTypeAny = ZodTypeAny,
+>(config: RouterConfig<TInputSchema, TOutputSchema>): BlockDefinition<TInputSchema, TOutputSchema> {
+  return buildBlock<TInputSchema, TOutputSchema>({
     kind: "router",
-    config: config as unknown as BlockConfig<TInput, TOutput>,
+    config: config as unknown as BlockConfig<TInputSchema, TOutputSchema>,
     execute: async (input, ctx) => {
       const candidate = config.execute(input, ctx);
 
       // Sequencer definitions expose a `.then()` DSL method and can be mistaken
       // for thenables. Detect concrete blocks before awaiting route selection.
       const selected = isBlockDefinition(candidate)
-        ? (candidate as BlockDefinition<TInput, TOutput>)
+        ? (candidate as BlockDefinition<TInputSchema, TOutputSchema>)
         : await candidate;
       const passesValidation =
         config.validateRoute === undefined

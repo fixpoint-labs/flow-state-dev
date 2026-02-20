@@ -22,8 +22,10 @@ import { createExecutionMetadata } from "../src/execution/types";
 import { FlowError } from "../src/errors/flow-error";
 
 async function createCtx(requestId: string) {
-  const block = handler<number, number>({
+  const block = handler({
     name: "ctx-handler",
+    inputSchema: z.number(),
+    outputSchema: z.number(),
     execute: (value) => value
   });
 
@@ -191,13 +193,17 @@ describe("execution internals", () => {
   it("dispatches all block kinds through executeBlock and emits generator lifecycle seams", async () => {
     const ctx = await createCtx("req_execute");
 
-    const h = handler<number, number>({
+    const h = handler({
       name: "h",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
       execute: (value) => value + 1
     });
-    const s = sequencer<number>({ name: "s" }).map((value) => value + 2);
-    const g = generator<string, string>({
+    const s = sequencer({ name: "s", inputSchema: z.number() }).map((value) => value + 2);
+    const g = generator({
       name: "g",
+      inputSchema: z.string(),
+      outputSchema: z.string(),
       model: "model",
       prompt: "prompt"
     });
@@ -225,8 +231,10 @@ describe("execution internals", () => {
     expect(gResult.output).toBe("ok");
     expect(lifecycle).toEqual(["before_execute", "after_execute"]);
 
-    const gFail = generator<string, string>({
+    const gFail = generator({
       name: "g-fail",
+      inputSchema: z.string(),
+      outputSchema: z.string(),
       model: "model-fail",
       prompt: "prompt"
     });
@@ -265,8 +273,10 @@ describe("execution internals", () => {
     expect(unknownResult.output).toBeUndefined();
 
     let attempts = 0;
-    const retrying = handler<number, number>({
+    const retrying = handler({
       name: "retrying",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
       retry: {
         maxAttempts: 2,
         baseDelayMs: 0,

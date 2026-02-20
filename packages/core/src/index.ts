@@ -1,3 +1,4 @@
+export type { BlockInput, BlockOutput } from "./types/block";
 export type { ContextOf, ResourceContext, StateOf } from "./types/resource";
 export type {
   JsonObject,
@@ -23,6 +24,7 @@ export { defineFlow } from "./flow";
 export type {
   BranchStep,
   BranchStepOutput,
+  FactoryConfig,
   GeneratorConfig,
   GeneratorLoopConfig,
   GeneratorLoopState,
@@ -35,6 +37,9 @@ export type {
   GeneratorTool,
   GeneratorToolResult,
   HandlerConfig,
+  InlineBlockFactory,
+  InlineConfig,
+  InlineTapConfig,
   ParallelStep,
   ParallelStepOutput,
   RouterConfig,

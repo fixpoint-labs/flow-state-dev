@@ -11,8 +11,10 @@ describe("runAction edge behavior", () => {
       actions: {
         run: {
           inputSchema: z.object({ value: z.number() }),
-          block: handler<{ value: number }, string>({
+          block: handler({
             name: "run",
+            inputSchema: z.object({ value: z.number() }),
+            outputSchema: z.string(),
             execute: () => "ok"
           })
         }
@@ -38,8 +40,10 @@ describe("runAction edge behavior", () => {
       actions: {
         run: {
           inputSchema: z.object({ value: z.number() }),
-          block: handler<{ value: number }, string>({
+          block: handler({
             name: "run",
+            inputSchema: z.object({ value: z.number() }),
+            outputSchema: z.string(),
             execute: () => "ok"
           })
         }
@@ -66,15 +70,19 @@ describe("runAction edge behavior", () => {
       actions: {
         run: {
           inputSchema: z.object({ value: z.number() }),
-          block: handler<{ value: number }, string>({
+          block: handler({
             name: "run",
+            inputSchema: z.object({ value: z.number() }),
+            outputSchema: z.string(),
             execute: () => "ok"
           })
         }
       },
       request: {
-        onStarted: handler<any, void>({
+        onStarted: handler({
           name: "request-started-observer",
+          inputSchema: z.any(),
+          outputSchema: z.any(),
           execute: () => {
             throw new Error("observer start failure");
           }
@@ -100,14 +108,18 @@ describe("runAction edge behavior", () => {
       actions: {
         run: {
           inputSchema: z.object({ value: z.number() }),
-          block: handler<{ value: number }, string>({
+          block: handler({
             name: "run",
+            inputSchema: z.object({ value: z.number() }),
+            outputSchema: z.string(),
             execute: () => {
               throw new Error("primary failure");
             }
           }),
-          onErrored: handler<any, void>({
+          onErrored: handler({
             name: "action-errored-observer",
+            inputSchema: z.any(),
+            outputSchema: z.any(),
             execute: () => {
               throw new Error("action observer failed");
             }
@@ -115,14 +127,18 @@ describe("runAction edge behavior", () => {
         }
       },
       request: {
-        onErrored: handler<any, void>({
+        onErrored: handler({
           name: "request-errored-observer",
+          inputSchema: z.any(),
+          outputSchema: z.any(),
           execute: () => {
             throw new Error("request errored observer failed");
           }
         }),
-        onFinished: handler<any, void>({
+        onFinished: handler({
           name: "request-finished-observer",
+          inputSchema: z.any(),
+          outputSchema: z.any(),
           execute: () => {
             throw new Error("request finished observer failed");
           }
@@ -152,8 +168,10 @@ describe("runAction edge behavior", () => {
       actions: {
         run: {
           inputSchema: z.object({ value: z.number() }),
-          block: handler<{ value: number }, string>({
+          block: handler({
             name: "run",
+            inputSchema: z.object({ value: z.number() }),
+            outputSchema: z.string(),
             execute: () => "ok"
           })
         }
@@ -188,8 +206,10 @@ describe("runAction edge behavior", () => {
       actions: {
         run: {
           inputSchema: z.object({ value: z.number() }),
-          block: handler<{ value: number }, string>({
+          block: handler({
             name: "run",
+            inputSchema: z.object({ value: z.number() }),
+            outputSchema: z.string(),
             execute: () => {
               throw new Error("failure");
             }
@@ -222,8 +242,10 @@ describe("runAction edge behavior", () => {
       actions: {
         run: {
           inputSchema: z.object({ value: z.number() }),
-          block: handler<{ value: number }, string>({
+          block: handler({
             name: "run",
+            inputSchema: z.object({ value: z.number() }),
+            outputSchema: z.string(),
             execute: () => "ok"
           })
         }
@@ -261,8 +283,10 @@ describe("runAction edge behavior", () => {
       actions: {
         run: {
           inputSchema: z.object({ value: z.number() }),
-          block: handler<{ value: number }, string>({
+          block: handler({
             name: "run",
+            inputSchema: z.object({ value: z.number() }),
+            outputSchema: z.string(),
             execute: () => "ok"
           })
         }
@@ -296,8 +320,10 @@ describe("runAction edge behavior", () => {
               }
             })
           },
-          block: handler<{ value: number }, string>({
+          block: handler({
             name: "run",
+            inputSchema: z.object({ value: z.number() }),
+            outputSchema: z.string(),
             execute: () => "ok"
           })
         }
@@ -324,8 +350,10 @@ describe("runAction edge behavior", () => {
       actions: {
         run: {
           inputSchema: z.object({ value: z.number() }),
-          block: handler<{ value: number }, string>({
+          block: handler({
             name: "run",
+            inputSchema: z.object({ value: z.number() }),
+            outputSchema: z.string(),
             execute: (_input, ctx) => {
               (ctx as any).response = null;
               throw new Error("primary failure");

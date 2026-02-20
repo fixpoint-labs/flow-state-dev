@@ -41,9 +41,9 @@ export type ExecuteBlockResult<TOutput = unknown> = ExecutionResult<TOutput>;
 
 export type ExecuteBlockContext = ExecutionContext;
 
-export type ExecuteBlockOptions<TInput = unknown, TOutput = unknown> = {
-  block: BlockDefinition<TInput, TOutput>;
-  input: TInput;
+export type ExecuteBlockOptions = {
+  block: BlockDefinition;
+  input: unknown;
   ctx: ExecuteBlockContext;
   retry?: RetryPolicy;
   metadata?: Partial<ExecutionMetadata>;

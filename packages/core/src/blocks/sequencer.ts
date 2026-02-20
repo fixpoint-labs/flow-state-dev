@@ -1,7 +1,9 @@
+import { z, type ZodTypeAny } from "zod";
 import type { BlockContext, BlockDefinition, ConnectorFn, RescueHandlerSpec } from "../types/block";
 import type {
   BranchStep,
   BranchStepOutput,
+  InlineBlockFactory,
   ParallelStep,
   ParallelStepOutput,
   SequencerConfig,
@@ -13,6 +15,57 @@ import { buildBlock } from "./internal/build-block";
 import { isBlockDefinition, toError, withTimeout } from "./internal/utils";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
+
+let inlineBlockCounter = 0;
+
+function autoInlineName(): string {
+  inlineBlockCounter += 1;
+  return `inline-${inlineBlockCounter}`;
+}
+
+/**
+ * Detects inline config objects passed to sequencer DSL methods.
+ * Primary discriminator: outputSchema (a Zod type with _def property).
+ * Secondary discriminator: execute function (for tap where outputSchema is optional).
+ * Rejects BlockDefinition objects (which also have properties but are identified by kind/name/config).
+ */
+function isInlineConfig(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || isBlockDefinition(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  // Primary: has a Zod outputSchema
+  if (
+    record.outputSchema !== undefined &&
+    typeof record.outputSchema === "object" &&
+    record.outputSchema !== null &&
+    (record.outputSchema as Record<string, unknown>)._def !== undefined
+  ) {
+    return true;
+  }
+
+  // Secondary: has execute function (for tap where outputSchema is optional)
+  return typeof record.execute === "function";
+}
+
+/**
+ * Builds a BlockDefinition from a factory function and inline config,
+ * injecting inputSchema from the previous step's output schema.
+ */
+function buildInlineBlock(
+  factory: InlineBlockFactory,
+  inlineConfig: Record<string, unknown>,
+  lastOutputSchema: ZodTypeAny | undefined
+): BlockDefinition<any, any> {
+  const name = (inlineConfig.name as string | undefined) ?? autoInlineName();
+  return factory({
+    ...inlineConfig,
+    name,
+    inputSchema: lastOutputSchema ?? z.any()
+  });
+}
 
 type SequencerOperation = {
   name: string;
@@ -46,11 +99,11 @@ function isConcurrencyOptions(value: unknown): value is { maxConcurrency?: numbe
   return "maxConcurrency" in record || Object.keys(record).length === 0;
 }
 
-async function executeBlock<TInput, TOutput>(
-  block: BlockDefinition<TInput, TOutput>,
-  input: TInput,
+async function executeBlock(
+  block: BlockDefinition<any, any>,
+  input: unknown,
   ctx: BlockContext
-): Promise<TOutput> {
+): Promise<unknown> {
   return block.run(input, ctx);
 }
 
@@ -148,56 +201,136 @@ function runSequencerOperations(
 }
 
 function createSequencer<TInput, TOutput>(
-  config: SequencerConfig<TInput>,
+  config: SequencerConfig<any>,
   operations: SequencerOperation[],
-  rescueHandlers: RescueHandlerSpec[]
+  rescueHandlers: RescueHandlerSpec[],
+  lastOutputSchema?: ZodTypeAny,
+  resolvedInputSchema?: ZodTypeAny
 ): SequencerDefinition<TInput, TOutput> {
-  const baseBlock = buildBlock<TInput, TOutput>({
+  // The tracked output schema reflects the chain's last step (informational for devtools/composition).
+  // We pass undefined to buildBlock's outputSchema so the sequencer itself doesn't validate output —
+  // individual blocks in the chain already validate their own outputs.
+  const trackedOutputSchema = lastOutputSchema ?? config.outputSchema;
+
+  const baseBlock = buildBlock({
     kind: "sequencer",
     config: {
       name: config.name,
       description: config.description,
-      inputSchema: config.inputSchema,
-      outputSchema: config.outputSchema,
+      inputSchema: resolvedInputSchema ?? config.inputSchema,
+      outputSchema: undefined,
       clientOutput: config.clientOutput as any,
       llmOutput: config.llmOutput as any
     },
     execute: runSequencerOperations(operations, rescueHandlers) as (
-      input: TInput,
+      input: unknown,
       ctx: BlockContext
-    ) => Promise<TOutput>
+    ) => Promise<unknown>
   });
 
+  // Override the informational schema on the block definition so devtools and consumers
+  // (parallel, forEach) see the real output type — without triggering validation.
+  if (trackedOutputSchema !== undefined) {
+    (baseBlock as any).outputSchema = trackedOutputSchema;
+    (baseBlock as any).config = { ...baseBlock.config, outputSchema: trackedOutputSchema };
+  }
+
   const extend = <TNext>(
-    operation: SequencerOperation
+    operation: SequencerOperation,
+    newOutputSchema?: ZodTypeAny,
+    newInputSchema?: ZodTypeAny
   ): SequencerDefinition<TInput, TNext> =>
-    createSequencer<TInput, TNext>(config, [...operations, operation], rescueHandlers);
+    createSequencer<TInput, TNext>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema);
+
+  /**
+   * On the first step (no operations yet) when neither config nor resolved input
+   * schema is set, capture the block's inputSchema as the sequencer's inputSchema.
+   * Returns the captured schema or undefined (meaning no override).
+   */
+  const inferFirstBlockInput = (block: BlockDefinition<any, any>): ZodTypeAny | undefined => {
+    if (operations.length === 0 && resolvedInputSchema === undefined && config.inputSchema === undefined) {
+      return block.config.inputSchema;
+    }
+    return undefined;
+  };
 
   const definition: SequencerDefinition<TInput, TOutput> = Object.assign(baseBlock, {
     then<TStepIn, TNext>(
-      arg1: BlockDefinition<TOutput, TNext> | ConnectorFn<TOutput, TStepIn>,
-      arg2?: BlockDefinition<TStepIn, TNext>
+      arg1: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn> | InlineBlockFactory,
+      arg2?: BlockDefinition<any, any> | Record<string, unknown>
     ): SequencerDefinition<TInput, TNext> {
-      const connector = arg2 === undefined ? undefined : (arg1 as ConnectorFn<TOutput, TStepIn>);
-      const block = (arg2 ?? arg1) as BlockDefinition<TStepIn, TNext>;
+      // Path 1: then(factory, inlineConfig) — inline block definition
+      if (typeof arg1 === "function" && !isBlockDefinition(arg1) && arg2 !== undefined && isInlineConfig(arg2)) {
+        const block = buildInlineBlock(arg1 as InlineBlockFactory, arg2 as Record<string, unknown>, lastOutputSchema);
+        const capturedInput = inferFirstBlockInput(block);
+        return extend<TNext>(
+          {
+            name: block.name,
+            run: async (value, ctx) => {
+              const output = await executeBlock(block, value, ctx);
+              return { value: output };
+            }
+          },
+          block.config.outputSchema,
+          capturedInput
+        );
+      }
 
-      return extend<TNext>({
-        name: block.name,
-        run: async (value, ctx) => {
-          const nextInput = connector === undefined ? value : await connector(value as TOutput, ctx);
-          const output = await executeBlock(block, nextInput as TStepIn, ctx);
-          return { value: output };
-        }
-      });
+      // Path 2: then(block) — pre-defined block
+      // Path 3: then(connector, block) — connector + pre-defined block
+      const connector = arg2 === undefined ? undefined : (arg1 as ConnectorFn<TOutput, TStepIn>);
+      const block = (arg2 ?? arg1) as BlockDefinition<any, any>;
+      const capturedInput = inferFirstBlockInput(block);
+
+      return extend<TNext>(
+        {
+          name: block.name,
+          run: async (value, ctx) => {
+            const nextInput = connector === undefined ? value : await connector(value as TOutput, ctx);
+            const output = await executeBlock(block, nextInput, ctx);
+            return { value: output };
+          }
+        },
+        block.config.outputSchema,
+        capturedInput
+      );
     },
 
     thenIf<TStepIn, TNext>(
       condition: (input: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
-      arg2: BlockDefinition<TOutput, TNext> | ConnectorFn<TOutput, TStepIn>,
-      arg3?: BlockDefinition<TStepIn, TNext>
+      arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn> | InlineBlockFactory,
+      arg3?: BlockDefinition<any, any> | Record<string, unknown>
     ): SequencerDefinition<TInput, TOutput | TNext> {
+      // Path 1: thenIf(condition, factory, inlineConfig) — inline block definition
+      if (typeof arg2 === "function" && !isBlockDefinition(arg2) && arg3 !== undefined && isInlineConfig(arg3)) {
+        const block = buildInlineBlock(arg2 as InlineBlockFactory, arg3 as Record<string, unknown>, lastOutputSchema);
+        return createSequencer<TInput, TOutput | TNext>(
+          config,
+          [
+            ...operations,
+            {
+              name: `if:${block.name}`,
+              run: async (value, ctx) => {
+                const matches = await condition(value as TOutput, ctx);
+                if (!matches) {
+                  return { value };
+                }
+
+                const output = await executeBlock(block, value, ctx);
+                return { value: output };
+              }
+            }
+          ],
+          rescueHandlers,
+          block.config.outputSchema,
+          resolvedInputSchema
+        );
+      }
+
+      // Path 2: thenIf(condition, block) — pre-defined block
+      // Path 3: thenIf(condition, connector, block) — connector + pre-defined block
       const connector = arg3 === undefined ? undefined : (arg2 as ConnectorFn<TOutput, TStepIn>);
-      const block = (arg3 ?? arg2) as BlockDefinition<TStepIn, TNext>;
+      const block = (arg3 ?? arg2) as BlockDefinition<any, any>;
 
       return createSequencer<TInput, TOutput | TNext>(
         config,
@@ -212,61 +345,79 @@ function createSequencer<TInput, TOutput>(
               }
 
               const nextInput = connector === undefined ? value : await connector(value as TOutput, ctx);
-              const output = await executeBlock(block, nextInput as TStepIn, ctx);
+              const output = await executeBlock(block, nextInput, ctx);
               return { value: output };
             }
           }
         ],
-        rescueHandlers
+        rescueHandlers,
+        block.config.outputSchema,
+        resolvedInputSchema
       );
     },
 
     map<TNext>(mapper: (input: TOutput, ctx: BlockContext) => TNext | Promise<TNext>): SequencerDefinition<TInput, TNext> {
-      return extend<TNext>({
-        name: "map",
-        run: async (value, ctx) => ({ value: await mapper(value as TOutput, ctx) })
-      });
+      return extend<TNext>(
+        {
+          name: "map",
+          run: async (value, ctx) => ({ value: await mapper(value as TOutput, ctx) })
+        },
+        undefined
+      );
     },
 
     parallel<TSteps extends Record<string, ParallelStep<TOutput>>>(
       steps: TSteps,
       options?: { maxConcurrency?: number }
     ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }> {
-      return extend<{ [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>({
-        name: "parallel",
-        run: async (value, ctx) => {
-          const entries = Object.entries(steps) as Array<[keyof TSteps, TSteps[keyof TSteps]]>;
-          const outputs = await mapWithConcurrency(
-            entries,
-            options?.maxConcurrency,
-            async ([, step]): Promise<unknown> => {
-              if (isBlockDefinition(step)) {
-                return executeBlock(step as BlockDefinition<TOutput, unknown>, value as TOutput, ctx);
+      // Build composite output schema: { key: step.outputSchema, ... }
+      const schemaShape: Record<string, ZodTypeAny> = {};
+      for (const [key, step] of Object.entries(steps)) {
+        const stepBlock = isBlockDefinition(step)
+          ? (step as BlockDefinition<any, any>)
+          : (step as { block: BlockDefinition<any, any> }).block;
+        schemaShape[key] = stepBlock.config.outputSchema ?? z.any();
+      }
+      const compositeSchema = z.object(schemaShape);
+
+      return extend<{ [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>(
+        {
+          name: "parallel",
+          run: async (value, ctx) => {
+            const entries = Object.entries(steps) as Array<[keyof TSteps, TSteps[keyof TSteps]]>;
+            const outputs = await mapWithConcurrency(
+              entries,
+              options?.maxConcurrency,
+              async ([, step]): Promise<unknown> => {
+                if (isBlockDefinition(step)) {
+                  return executeBlock(step as BlockDefinition<any, any>, value, ctx);
+                }
+
+                const connected = await step.connector(value as TOutput, ctx);
+                return executeBlock(step.block, connected, ctx);
               }
+            );
 
-              const connected = await step.connector(value as TOutput, ctx);
-              return executeBlock(step.block, connected, ctx);
-            }
-          );
+            const result = {} as { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> };
+            entries.forEach(([key], index) => {
+              result[key] = outputs[index] as ParallelStepOutput<TSteps[typeof key]>;
+            });
 
-          const result = {} as { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> };
-          entries.forEach(([key], index) => {
-            result[key] = outputs[index] as ParallelStepOutput<TSteps[typeof key]>;
-          });
-
-          return { value: result };
-        }
-      });
+            return { value: result };
+          }
+        },
+        compositeSchema
+      );
     },
 
     forEach<TItem, TStepIn, TStepOut>(
       arg1:
-        | BlockDefinition<TItem, TStepOut>
-        | ((item: TItem, index: number, ctx: BlockContext) => BlockDefinition<TItem, TStepOut>)
+        | BlockDefinition<any, any>
+        | ((item: TItem, index: number, ctx: BlockContext) => BlockDefinition<any, any>)
         | ConnectorFn<TOutput, TStepIn[]>,
       arg2?:
-        | BlockDefinition<TStepIn, TStepOut>
-        | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<TStepIn, TStepOut>)
+        | BlockDefinition<any, any>
+        | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>)
         | { maxConcurrency?: number },
       arg3?: { maxConcurrency?: number }
     ): SequencerDefinition<TInput, TStepOut[]> {
@@ -274,97 +425,114 @@ function createSequencer<TInput, TOutput>(
         arg3 !== undefined || (arg2 !== undefined && !isConcurrencyOptions(arg2));
       const connector = hasConnector ? (arg1 as ConnectorFn<TOutput, TStepIn[]>) : undefined;
       const blockOrFactory = (hasConnector ? arg2 : arg1) as
-        | BlockDefinition<TStepIn, TStepOut>
-        | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<TStepIn, TStepOut>);
+        | BlockDefinition<any, any>
+        | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>);
       const options = (hasConnector ? arg3 : arg2) as { maxConcurrency?: number } | undefined;
 
-      return extend<TStepOut[]>({
-        name: "forEach",
-        run: async (value, ctx) => {
-          const items = (
-            connector === undefined ? (value as unknown as TStepIn[]) : await connector(value as TOutput, ctx)
-          ) ?? [];
+      // Determine element output schema for z.array() propagation
+      const elementBlock = isBlockDefinition(blockOrFactory)
+        ? (blockOrFactory as BlockDefinition<any, any>)
+        : undefined;
+      const arraySchema = elementBlock?.config.outputSchema
+        ? z.array(elementBlock.config.outputSchema)
+        : undefined;
 
-          if (!Array.isArray(items)) {
-            throw new Error("forEach expected an array input");
+      return extend<TStepOut[]>(
+        {
+          name: "forEach",
+          run: async (value, ctx) => {
+            const items = (
+              connector === undefined ? (value as unknown as TStepIn[]) : await connector(value as TOutput, ctx)
+            ) ?? [];
+
+            if (!Array.isArray(items)) {
+              throw new Error("forEach expected an array input");
+            }
+
+            const outputs = await mapWithConcurrency(items, options?.maxConcurrency, async (item, index) => {
+              const block =
+                typeof blockOrFactory === "function" && !isBlockDefinition(blockOrFactory)
+                  ? blockOrFactory(item, index, ctx)
+                  : (blockOrFactory as BlockDefinition<any, any>);
+
+              return executeBlock(block, item, ctx);
+            });
+
+            return { value: outputs };
           }
-
-          const outputs = await mapWithConcurrency(items, options?.maxConcurrency, async (item, index) => {
-            const block =
-              typeof blockOrFactory === "function" && !isBlockDefinition(blockOrFactory)
-                ? blockOrFactory(item, index, ctx)
-                : (blockOrFactory as BlockDefinition<TStepIn, TStepOut>);
-
-            return executeBlock(block, item, ctx);
-          });
-
-          return { value: outputs };
-        }
-      });
+        },
+        arraySchema
+      );
     },
 
     doUntil<TStepIn, TNext>(
       condition: (value: TNext | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
-      arg2: BlockDefinition<TStepIn, TNext> | ConnectorFn<TOutput, TStepIn>,
-      arg3?: BlockDefinition<TStepIn, TNext>
+      arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
+      arg3?: BlockDefinition<any, any>
     ): SequencerDefinition<TInput, TNext> {
       const connector = arg3 === undefined ? undefined : (arg2 as ConnectorFn<TOutput, TStepIn>);
-      const block = (arg3 ?? arg2) as BlockDefinition<TStepIn, TNext>;
+      const block = (arg3 ?? arg2) as BlockDefinition<any, any>;
 
-      return extend<TNext>({
-        name: `doUntil:${block.name}`,
-        run: async (value, ctx) => {
-          let nextInput =
-            connector === undefined ? (value as unknown as TStepIn) : await connector(value as TOutput, ctx);
-          let guard = 0;
+      return extend<TNext>(
+        {
+          name: `doUntil:${block.name}`,
+          run: async (value, ctx) => {
+            let nextInput =
+              connector === undefined ? value : await connector(value as TOutput, ctx);
+            let guard = 0;
 
-          while (true) {
-            const output = await executeBlock(block, nextInput, ctx);
-            const done = await condition(output, ctx);
-            if (done) {
-              return { value: output };
+            while (true) {
+              const output = await executeBlock(block, nextInput, ctx);
+              const done = await condition(output as TNext, ctx);
+              if (done) {
+                return { value: output };
+              }
+
+              guard += 1;
+              if (guard > DEFAULT_MAX_LOOP_GUARD) {
+                throw new Error(`doUntil exceeded max loop guard (${DEFAULT_MAX_LOOP_GUARD})`);
+              }
+
+              nextInput = output;
             }
-
-            guard += 1;
-            if (guard > DEFAULT_MAX_LOOP_GUARD) {
-              throw new Error(`doUntil exceeded max loop guard (${DEFAULT_MAX_LOOP_GUARD})`);
-            }
-
-            nextInput = output as unknown as TStepIn;
           }
-        }
-      });
+        },
+        block.config.outputSchema
+      );
     },
 
     doWhile<TStepIn, TNext>(
       condition: (value: TNext | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
-      arg2: BlockDefinition<TStepIn, TNext> | ConnectorFn<TOutput, TStepIn>,
-      arg3?: BlockDefinition<TStepIn, TNext>
+      arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
+      arg3?: BlockDefinition<any, any>
     ): SequencerDefinition<TInput, TNext> {
       const connector = arg3 === undefined ? undefined : (arg2 as ConnectorFn<TOutput, TStepIn>);
-      const block = (arg3 ?? arg2) as BlockDefinition<TStepIn, TNext>;
+      const block = (arg3 ?? arg2) as BlockDefinition<any, any>;
 
-      return extend<TNext>({
-        name: `doWhile:${block.name}`,
-        run: async (value, ctx) => {
-          let nextInput =
-            connector === undefined ? (value as unknown as TStepIn) : await connector(value as TOutput, ctx);
-          let output = await executeBlock(block, nextInput, ctx);
-          let guard = 0;
+      return extend<TNext>(
+        {
+          name: `doWhile:${block.name}`,
+          run: async (value, ctx) => {
+            let nextInput =
+              connector === undefined ? value : await connector(value as TOutput, ctx);
+            let output = await executeBlock(block, nextInput, ctx);
+            let guard = 0;
 
-          while (await condition(output, ctx)) {
-            guard += 1;
-            if (guard > DEFAULT_MAX_LOOP_GUARD) {
-              throw new Error(`doWhile exceeded max loop guard (${DEFAULT_MAX_LOOP_GUARD})`);
+            while (await condition(output as TNext, ctx)) {
+              guard += 1;
+              if (guard > DEFAULT_MAX_LOOP_GUARD) {
+                throw new Error(`doWhile exceeded max loop guard (${DEFAULT_MAX_LOOP_GUARD})`);
+              }
+
+              nextInput = output;
+              output = await executeBlock(block, nextInput, ctx);
             }
 
-            nextInput = output as unknown as TStepIn;
-            output = await executeBlock(block, nextInput, ctx);
+            return { value: output };
           }
-
-          return { value: output };
-        }
-      });
+        },
+        block.config.outputSchema
+      );
     },
 
     loopBack(
@@ -374,203 +542,278 @@ function createSequencer<TInput, TOutput>(
         maxIterations: number;
       }
     ): SequencerDefinition<TInput, TOutput> {
-      return extend<TOutput>({
-        name: `loopBack:${targetStepName}`,
-        run: async (value, ctx, runtime, stepIndex) => {
-          const shouldLoop = options.when === undefined ? true : await options.when(value, ctx);
-          if (!shouldLoop) {
-            return { value };
-          }
+      return extend<TOutput>(
+        {
+          name: `loopBack:${targetStepName}`,
+          run: async (value, ctx, runtime, stepIndex) => {
+            const shouldLoop = options.when === undefined ? true : await options.when(value, ctx);
+            if (!shouldLoop) {
+              return { value };
+            }
 
-          const key = `${targetStepName}:${stepIndex}`;
-          const currentCount = runtime.loopCounts.get(key) ?? 0;
-          if (currentCount >= options.maxIterations) {
-            return { value };
-          }
+            const key = `${targetStepName}:${stepIndex}`;
+            const currentCount = runtime.loopCounts.get(key) ?? 0;
+            if (currentCount >= options.maxIterations) {
+              return { value };
+            }
 
-          runtime.loopCounts.set(key, currentCount + 1);
-          return { value, jumpTo: targetStepName };
-        }
-      });
+            runtime.loopCounts.set(key, currentCount + 1);
+            return { value, jumpTo: targetStepName };
+          }
+        },
+        lastOutputSchema
+      );
     },
 
     work<TStepIn>(
-      arg1: BlockDefinition<TOutput, unknown> | ConnectorFn<TOutput, TStepIn>,
-      arg2?: BlockDefinition<TStepIn, unknown> | WorkOptions,
+      arg1: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
+      arg2?: BlockDefinition<any, any> | WorkOptions,
       arg3?: WorkOptions
     ): SequencerDefinition<TInput, TOutput> {
       const hasConnector = isBlockDefinition(arg2);
       const connector = hasConnector ? (arg1 as ConnectorFn<TOutput, TStepIn>) : undefined;
-      const block = (hasConnector ? arg2 : arg1) as BlockDefinition<TStepIn, unknown>;
+      const block = (hasConnector ? arg2 : arg1) as BlockDefinition<any, any>;
       const options = (hasConnector ? arg3 : arg2) as WorkOptions | undefined;
 
-      return extend<TOutput>({
-        name: options?.name ?? `work:${block.name}`,
-        run: async (value, ctx, runtime) => {
-          const name = options?.name ?? block.name;
-          const input =
-            connector === undefined ? (value as unknown as TStepIn) : await connector(value as TOutput, ctx);
+      return extend<TOutput>(
+        {
+          name: options?.name ?? `work:${block.name}`,
+          run: async (value, ctx, runtime) => {
+            const name = options?.name ?? block.name;
+            const input =
+              connector === undefined ? value : await connector(value as TOutput, ctx);
 
-          const promise = executeBlock(block, input, ctx)
-            .then(
-              (result): WorkResult => ({
+            const promise = executeBlock(block, input, ctx)
+              .then(
+                (result): WorkResult => ({
+                  name,
+                  status: "fulfilled",
+                  value: result
+                })
+              )
+              .catch((error): WorkResult => ({
                 name,
-                status: "fulfilled",
-                value: result
-              })
-            )
-            .catch((error): WorkResult => ({
-              name,
-              status: "rejected",
-              reason: toError(error)
-            }));
+                status: "rejected",
+                reason: toError(error)
+              }));
 
-          runtime.workTasks.push({ name, promise });
-          return { value };
-        }
-      });
+            runtime.workTasks.push({ name, promise });
+            return { value };
+          }
+        },
+        lastOutputSchema
+      );
     },
 
     waitForWork(options?: WaitForWorkOptions): SequencerDefinition<TInput, TOutput> {
-      return extend<TOutput>({
-        name: "waitForWork",
-        run: async (value, _ctx, runtime) => {
-          if (runtime.workTasks.length === 0) {
+      return extend<TOutput>(
+        {
+          name: "waitForWork",
+          run: async (value, _ctx, runtime) => {
+            if (runtime.workTasks.length === 0) {
+              return { value };
+            }
+
+            const workTasks = runtime.workTasks.splice(0, runtime.workTasks.length);
+            const results = await withTimeout(
+              Promise.all(workTasks.map((task) => task.promise)),
+              options?.timeoutMs,
+              "waitForWork"
+            );
+
+            if (options?.failOnError === true) {
+              const rejected = results.find((result) => result.status === "rejected");
+              if (rejected !== undefined) {
+                throw rejected.reason ?? new Error(`Background work "${rejected.name}" failed`);
+              }
+            }
+
             return { value };
           }
-
-          const workTasks = runtime.workTasks.splice(0, runtime.workTasks.length);
-          const results = await withTimeout(
-            Promise.all(workTasks.map((task) => task.promise)),
-            options?.timeoutMs,
-            "waitForWork"
-          );
-
-          if (options?.failOnError === true) {
-            const rejected = results.find((result) => result.status === "rejected");
-            if (rejected !== undefined) {
-              throw rejected.reason ?? new Error(`Background work "${rejected.name}" failed`);
-            }
-          }
-
-          return { value };
-        }
-      });
+        },
+        lastOutputSchema
+      );
     },
 
     tap<TStepIn>(
       arg1:
-        | BlockDefinition<TOutput, unknown>
+        | BlockDefinition<any, any>
         | ((value: TOutput, ctx: BlockContext) => void | Promise<void>)
-        | ConnectorFn<TOutput, TStepIn>,
-      arg2?: BlockDefinition<TStepIn, unknown>
+        | ConnectorFn<TOutput, TStepIn>
+        | InlineBlockFactory,
+      arg2?: BlockDefinition<any, any> | Record<string, unknown>
     ): SequencerDefinition<TInput, TOutput> {
+      // Path 1: tap(factory, inlineConfig) — inline block as side effect
+      if (typeof arg1 === "function" && !isBlockDefinition(arg1) && arg2 !== undefined && isInlineConfig(arg2)) {
+        const block = buildInlineBlock(arg1 as InlineBlockFactory, arg2 as Record<string, unknown>, lastOutputSchema);
+        return extend<TOutput>(
+          {
+            name: `tap:${block.name}`,
+            run: async (value, ctx) => {
+              await executeBlock(block, value, ctx);
+              return { value };
+            }
+          },
+          lastOutputSchema
+        );
+      }
+
+      // Path 2: tap(block | fn) — pre-defined block or function
+      // Path 3: tap(connector, block) — connector + pre-defined block
       const connector = arg2 === undefined ? undefined : (arg1 as ConnectorFn<TOutput, TStepIn>);
       const tapTarget = (arg2 ?? arg1) as
-        | BlockDefinition<TStepIn, unknown>
+        | BlockDefinition<any, any>
         | ((value: TOutput, ctx: BlockContext) => void | Promise<void>);
 
-      return extend<TOutput>({
-        name: "tap",
-        run: async (value, ctx) => {
-          if (connector === undefined) {
-            if (isBlockDefinition(tapTarget)) {
-              await executeBlock(
-                tapTarget as unknown as BlockDefinition<TOutput, unknown>,
-                value as TOutput,
-                ctx
-              );
+      return extend<TOutput>(
+        {
+          name: "tap",
+          run: async (value, ctx) => {
+            if (connector === undefined) {
+              if (isBlockDefinition(tapTarget)) {
+                await executeBlock(tapTarget as BlockDefinition<any, any>, value, ctx);
+              } else {
+                await (tapTarget as (value: TOutput, ctx: BlockContext) => void | Promise<void>)(
+                  value as TOutput,
+                  ctx
+                );
+              }
             } else {
-              await (tapTarget as (value: TOutput, ctx: BlockContext) => void | Promise<void>)(
-                value as TOutput,
-                ctx
-              );
+              const connectedInput = await connector(value as TOutput, ctx);
+              await executeBlock(tapTarget as BlockDefinition<any, any>, connectedInput, ctx);
             }
-          } else {
-            const connectedInput = await connector(value as TOutput, ctx);
-            await executeBlock(tapTarget as BlockDefinition<TStepIn, unknown>, connectedInput, ctx);
-          }
 
-          return { value };
-        }
-      });
+            return { value };
+          }
+        },
+        lastOutputSchema
+      );
     },
 
     tapIf<TStepIn>(
       condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
       arg2:
-        | BlockDefinition<TOutput, unknown>
+        | BlockDefinition<any, any>
         | ((value: TOutput, ctx: BlockContext) => void | Promise<void>)
         | ConnectorFn<TOutput, TStepIn>,
-      arg3?: BlockDefinition<TStepIn, unknown>
+      arg3?: BlockDefinition<any, any>
     ): SequencerDefinition<TInput, TOutput> {
       const connector = arg3 === undefined ? undefined : (arg2 as ConnectorFn<TOutput, TStepIn>);
       const tapTarget = (arg3 ?? arg2) as
-        | BlockDefinition<TStepIn, unknown>
+        | BlockDefinition<any, any>
         | ((value: TOutput, ctx: BlockContext) => void | Promise<void>);
 
-      return extend<TOutput>({
-        name: "tapIf",
-        run: async (value, ctx) => {
-          const matches = await condition(value as TOutput, ctx);
-          if (!matches) {
+      return extend<TOutput>(
+        {
+          name: "tapIf",
+          run: async (value, ctx) => {
+            const matches = await condition(value as TOutput, ctx);
+            if (!matches) {
+              return { value };
+            }
+
+            if (connector === undefined) {
+              if (isBlockDefinition(tapTarget)) {
+                await executeBlock(tapTarget as BlockDefinition<any, any>, value, ctx);
+              } else {
+                await (tapTarget as (value: TOutput, ctx: BlockContext) => void | Promise<void>)(
+                  value as TOutput,
+                  ctx
+                );
+              }
+            } else {
+              const connectedInput = await connector(value as TOutput, ctx);
+              await executeBlock(tapTarget as BlockDefinition<any, any>, connectedInput, ctx);
+            }
+
             return { value };
           }
-
-          if (connector === undefined) {
-            if (isBlockDefinition(tapTarget)) {
-              await executeBlock(
-                tapTarget as unknown as BlockDefinition<TOutput, unknown>,
-                value as TOutput,
-                ctx
-              );
-            } else {
-              await (tapTarget as (value: TOutput, ctx: BlockContext) => void | Promise<void>)(
-                value as TOutput,
-                ctx
-              );
-            }
-          } else {
-            const connectedInput = await connector(value as TOutput, ctx);
-            await executeBlock(tapTarget as BlockDefinition<TStepIn, unknown>, connectedInput, ctx);
-          }
-
-          return { value };
-        }
-      });
+        },
+        lastOutputSchema
+      );
     },
 
     rescue(handlers: RescueHandlerSpec[]): SequencerDefinition<TInput, TOutput> {
-      return createSequencer<TInput, TOutput>(config, operations, handlers);
+      return createSequencer<TInput, TOutput>(config, operations, handlers, lastOutputSchema, resolvedInputSchema);
     },
 
     branch<TBranches extends Record<string, BranchStep<TOutput>>>(
       branches: TBranches
     ): SequencerDefinition<TInput, BranchStepOutput<TBranches[keyof TBranches]>> {
-      return extend<BranchStepOutput<TBranches[keyof TBranches]>>({
-        name: "branch",
-        run: async (value, ctx) => {
-          for (const key of Object.keys(branches) as Array<keyof TBranches>) {
-            const [connector, condition, block] = branches[key];
-            const connectedInput = await connector(value as TOutput, ctx);
-            const matches = await condition(connectedInput, ctx);
-            if (!matches) {
-              continue;
+      // Branch output schema is ambiguous (depends on which branch matches at runtime),
+      // so we take the first branch block's outputSchema as a best-effort propagation.
+      const branchEntries = Object.values(branches) as Array<BranchStep<TOutput>>;
+      const firstBranchSchema = branchEntries.length > 0
+        ? branchEntries[0][2].config.outputSchema
+        : undefined;
+
+      return extend<BranchStepOutput<TBranches[keyof TBranches]>>(
+        {
+          name: "branch",
+          run: async (value, ctx) => {
+            for (const key of Object.keys(branches) as Array<keyof TBranches>) {
+              const [connector, condition, block] = branches[key];
+              const connectedInput = await connector(value as TOutput, ctx);
+              const matches = await condition(connectedInput, ctx);
+              if (!matches) {
+                continue;
+              }
+
+              const output = await executeBlock(block, connectedInput, ctx);
+              return { value: output };
             }
 
-            const output = await executeBlock(block, connectedInput, ctx);
-            return { value: output };
+            throw new Error("branch had no matching route");
           }
+        },
+        firstBranchSchema
+      );
+    },
 
-          throw new Error("branch had no matching route");
+    validate(): SequencerDefinition<TInput, TOutput> {
+      if (config.outputSchema === undefined || lastOutputSchema === undefined) {
+        return definition;
+      }
+
+      const declaredTypeName = (config.outputSchema as any)._def?.typeName as string | undefined;
+      const actualTypeName = (lastOutputSchema as any)._def?.typeName as string | undefined;
+
+      if (declaredTypeName !== undefined && actualTypeName !== undefined && declaredTypeName !== actualTypeName) {
+        throw new Error(
+          `Sequencer "${config.name}" output schema mismatch: declared ${declaredTypeName} but chain produces ${actualTypeName}`
+        );
+      }
+
+      // For ZodObject schemas, also check shape keys match
+      if (declaredTypeName === "ZodObject") {
+        const declaredShape = (config.outputSchema as any)._def?.shape?.();
+        const actualShape = (lastOutputSchema as any)._def?.shape?.();
+        if (declaredShape !== undefined && actualShape !== undefined) {
+          const declaredKeys = Object.keys(declaredShape).sort();
+          const actualKeys = Object.keys(actualShape).sort();
+          if (declaredKeys.join(",") !== actualKeys.join(",")) {
+            throw new Error(
+              `Sequencer "${config.name}" output schema shape mismatch: declared keys [${declaredKeys}] but chain produces [${actualKeys}]`
+            );
+          }
         }
-      });
+      }
+
+      return definition;
     }
   });
 
   return definition;
 }
 
-export function sequencer<TInput = unknown>(config: SequencerConfig<TInput>): SequencerDefinition<TInput, TInput> {
-  return createSequencer<TInput, TInput>(config, [], []);
+export function sequencer<TInputSchema extends ZodTypeAny = ZodTypeAny>(
+  config: SequencerConfig<TInputSchema>
+): SequencerDefinition<z.infer<TInputSchema>, z.infer<TInputSchema>> {
+  return createSequencer<z.infer<TInputSchema>, z.infer<TInputSchema>>(
+    config as SequencerConfig<any>,
+    [],
+    [],
+    config.inputSchema,
+    config.inputSchema
+  );
 }

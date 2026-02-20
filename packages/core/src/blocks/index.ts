@@ -27,6 +27,10 @@ export type {
 export type {
   BranchStep,
   BranchStepOutput,
+  FactoryConfig,
+  InlineBlockFactory,
+  InlineConfig,
+  InlineTapConfig,
   ParallelStep,
   ParallelStepOutput,
   SequencerConfig,

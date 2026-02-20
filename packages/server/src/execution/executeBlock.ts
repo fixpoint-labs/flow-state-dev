@@ -60,9 +60,9 @@ function resolveBlockOutputVisibility(
   return "internal";
 }
 
-function resolveBlockOutputPayload<TOutput>(
-  block: BlockDefinition<any, TOutput>,
-  output: TOutput
+function resolveBlockOutputPayload(
+  block: BlockDefinition<any, any>,
+  output: unknown
 ): unknown {
   if (typeof block.config.clientOutput === "function") {
     return block.config.clientOutput(output);
@@ -86,10 +86,10 @@ function createBlockOutputProvenance(
   };
 }
 
-async function emitBlockOutputItem<TOutput>(
+async function emitBlockOutputItem(
   options: {
-    block: BlockDefinition<any, TOutput>;
-    output: TOutput;
+    block: BlockDefinition<any, any>;
+    output: unknown;
     ctx: ExecuteBlockContext;
     metadata: ExecutionMetadata;
   }
@@ -120,12 +120,12 @@ async function emitBlockOutputItem<TOutput>(
 /**
  * Dispatches block execution to the runtime for each supported block kind.
  */
-async function executeByKind<TInput, TOutput>(
-  block: BlockDefinition<TInput, TOutput>,
-  input: TInput,
+async function executeByKind(
+  block: BlockDefinition,
+  input: unknown,
   ctx: ExecuteBlockContext,
   options: ExecuteDispatcherOptions
-): Promise<TOutput> {
+): Promise<unknown> {
   if (block.kind === "generator") {
     const seams = options.internalSeams;
     await emitGeneratorLifecycleSeam(seams, "before_execute", options.metadata);
@@ -150,17 +150,17 @@ async function executeByKind<TInput, TOutput>(
   throw new Error(`Unknown block kind "${String(block.kind)}"`);
 }
 
-export type ExecuteBlockInternalOptions<TInput = unknown, TOutput = unknown> =
-  ExecuteBlockOptions<TInput, TOutput> & {
+export type ExecuteBlockInternalOptions =
+  ExecuteBlockOptions & {
     internalSeams?: InternalExecutionSeams;
   };
 
 /**
  * Executes a block and always returns a structured execution result.
  */
-export async function executeBlock<TInput, TOutput>(
-  options: ExecuteBlockInternalOptions<TInput, TOutput>
-): Promise<ExecuteBlockResult<TOutput>> {
+export async function executeBlock(
+  options: ExecuteBlockInternalOptions
+): Promise<ExecuteBlockResult> {
   const startedAt = Date.now();
   const seams = options.internalSeams ?? NOOP_INTERNAL_EXECUTION_SEAMS;
   const metadata = createExecutionMetadata(options.ctx, {
@@ -171,7 +171,7 @@ export async function executeBlock<TInput, TOutput>(
   });
 
   try {
-    const run = async (): Promise<TOutput> => {
+    const run = async (): Promise<unknown> => {
       const interceptedInput = applyBlockInputSeam(
         seams,
         options.input,

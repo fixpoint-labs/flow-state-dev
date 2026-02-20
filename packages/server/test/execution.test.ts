@@ -28,8 +28,10 @@ import {
 } from "../src/execution/internal/seams";
 
 async function createRuntimeContext(requestId: string) {
-  const block = handler<number, number>({
+  const block = handler({
     name: "base-handler",
+    inputSchema: z.number(),
+    outputSchema: z.number(),
     execute: (value) => value
   });
 
@@ -252,8 +254,10 @@ describe("execution runtime", () => {
     setTimeout(() => inFlightAbort.abort(), 5);
     await expect(inFlightPromise).rejects.toThrow("Retry aborted");
 
-    const rescueBlock = handler<Error, string>({
+    const rescueBlock = handler({
       name: "rescue",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
       execute: () => "ok"
     });
     expect(
@@ -263,12 +267,16 @@ describe("execution runtime", () => {
   });
 
   it("resolves rescue handlers by typed match then fallback", () => {
-    const typedRescue = handler<Error, string>({
+    const typedRescue = handler({
       name: "typed-rescue",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
       execute: () => "typed"
     });
-    const fallbackRescue = handler<Error, string>({
+    const fallbackRescue = handler({
       name: "fallback-rescue",
+      inputSchema: z.any(),
+      outputSchema: z.string(),
       execute: () => "fallback"
     });
 
@@ -323,29 +331,40 @@ describe("execution runtime", () => {
   it("dispatches handler/generator/sequencer/router blocks", async () => {
     const { ctx } = await createRuntimeContext("req_dispatch");
 
-    const handlerBlock = handler<number, number>({
+    const handlerBlock = handler({
       name: "plus-one",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
       execute: (value) => value + 1
     });
-    const generatorBlock = generator<string, string>({
+    const generatorBlock = generator({
       name: "gen",
+      inputSchema: z.string(),
+      outputSchema: z.string(),
       model: "mock-model",
       prompt: "say hi"
     });
-    const sequencerBlock = sequencer<number>({
-      name: "seq"
+    const sequencerBlock = sequencer({
+      name: "seq",
+      inputSchema: z.number()
     }).map((value) => value + 2);
 
-    const routeA = handler<number, string>({
+    const routeA = handler({
       name: "route-a",
+      inputSchema: z.number(),
+      outputSchema: z.string(),
       execute: () => "a"
     });
-    const routeB = handler<number, string>({
+    const routeB = handler({
       name: "route-b",
+      inputSchema: z.number(),
+      outputSchema: z.string(),
       execute: () => "b"
     });
-    const routerBlock = router<number, string>({
+    const routerBlock = router({
       name: "router",
+      inputSchema: z.number(),
+      outputSchema: z.string(),
       routes: [routeA, routeB],
       execute: () => routeB
     });
@@ -382,8 +401,10 @@ describe("execution runtime", () => {
     const events: string[] = [];
 
     const observer = (name: string) =>
-      handler<any, void>({
+      handler({
         name,
+        inputSchema: z.any(),
+        outputSchema: z.any(),
         execute: (input) => {
           const status =
             typeof input === "object" &&
@@ -400,8 +421,10 @@ describe("execution runtime", () => {
       actions: {
         run: {
           inputSchema: z.object({ value: z.number() }),
-          block: handler<{ value: number }, string>({
+          block: handler({
             name: "success-action",
+            inputSchema: z.object({ value: z.number() }),
+            outputSchema: z.string(),
             execute: () => "done"
           }),
           onCompleted: observer("action.completed")
@@ -441,8 +464,10 @@ describe("execution runtime", () => {
       actions: {
         run: {
           inputSchema: z.object({ value: z.number() }),
-          block: handler<{ value: number }, string>({
+          block: handler({
             name: "failure-action",
+            inputSchema: z.object({ value: z.number() }),
+            outputSchema: z.string(),
             execute: () => {
               throw new Error("boom");
             }
@@ -481,8 +506,10 @@ describe("execution runtime", () => {
 
   it("keeps execution behavior unchanged with explicit no-op seams", async () => {
     const { ctx } = await createRuntimeContext("req_seam_parity");
-    const block = handler<number, number>({
+    const block = handler({
       name: "seam-handler",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
       execute: (value) => value + 4
     });
 
@@ -510,8 +537,10 @@ describe("execution runtime", () => {
 
   it("allows internal seam interception on normalized block errors", async () => {
     const { ctx } = await createRuntimeContext("req_seam_error");
-    const failing = handler<number, number>({
+    const failing = handler({
       name: "failing-block",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
       execute: () => {
         throw new Error("original");
       }

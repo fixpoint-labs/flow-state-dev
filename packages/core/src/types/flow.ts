@@ -25,20 +25,18 @@ export type ToolsConfig = {
     concurrency?: "parallel" | "serial";
     retry?: RetryPolicy;
   };
-  onToolStarted?: HookHandler<ToolLifecycleEvent> | BlockDefinition<ToolLifecycleEvent, void>;
-  onToolCompleted?: HookHandler<ToolLifecycleEvent> | BlockDefinition<ToolLifecycleEvent, void>;
-  onToolErrored?: HookHandler<ToolLifecycleEvent> | BlockDefinition<ToolLifecycleEvent, void>;
+  onToolStarted?: HookHandler<ToolLifecycleEvent> | BlockDefinition<any, any>;
+  onToolCompleted?: HookHandler<ToolLifecycleEvent> | BlockDefinition<any, any>;
+  onToolErrored?: HookHandler<ToolLifecycleEvent> | BlockDefinition<any, any>;
 };
 
 export type ActionConfig<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
-  TInput = TInputSchema["_output"],
-  TOutput = unknown
 > = {
   inputSchema: TInputSchema;
-  block: BlockDefinition<TInput, TOutput>;
-  onCompleted?: BlockDefinition<any, void>;
-  onErrored?: BlockDefinition<any, void>;
+  block: BlockDefinition<TInputSchema, any>;
+  onCompleted?: BlockDefinition<any, any>;
+  onErrored?: BlockDefinition<any, any>;
 };
 
 export type SessionConfig<
@@ -56,11 +54,11 @@ export type SessionConfig<
 
 export type RequestConfig = {
   stateSchema?: ZodTypeAny;
-  onStarted?: BlockDefinition<any, void>;
-  onCompleted?: BlockDefinition<any, void>;
-  onErrored?: BlockDefinition<any, void>;
-  onFinished?: BlockDefinition<any, void>;
-  onStepErrored?: BlockDefinition<any, void>;
+  onStarted?: BlockDefinition<any, any>;
+  onCompleted?: BlockDefinition<any, any>;
+  onErrored?: BlockDefinition<any, any>;
+  onFinished?: BlockDefinition<any, any>;
+  onStepErrored?: BlockDefinition<any, any>;
 };
 
 export type UserConfig<
@@ -88,10 +86,10 @@ export type ProjectConfig<
 };
 
 export type WorkConfig = {
-  onStarted?: BlockDefinition<any, void>;
-  onCompleted?: BlockDefinition<any, void>;
-  onErrored?: BlockDefinition<any, void>;
-  onFinished?: BlockDefinition<any, void>;
+  onStarted?: BlockDefinition<any, any>;
+  onCompleted?: BlockDefinition<any, any>;
+  onErrored?: BlockDefinition<any, any>;
+  onFinished?: BlockDefinition<any, any>;
 };
 
 export type FlowDefinition<

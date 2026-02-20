@@ -12,7 +12,7 @@ describe("buildBlock", () => {
     const config = {
       name: "",
       execute: () => "ok"
-    } as unknown as BlockConfig<unknown, string>;
+    } as unknown as BlockConfig;
 
     expect(() =>
       buildBlock({
@@ -26,7 +26,7 @@ describe("buildBlock", () => {
     expect(() =>
       buildBlock({
         kind: "handler",
-        config: { name: "missing-execute" } as BlockConfig<unknown, unknown>
+        config: { name: "missing-execute" } as BlockConfig
       })
     ).toThrow("without an execute function");
   });
@@ -71,7 +71,7 @@ describe("buildBlock", () => {
   });
 
   it("supports connectInput and connectOutput", async () => {
-    const block = buildBlock<number, number>({
+    const block = buildBlock({
       kind: "handler",
       config: {
         name: "math",
@@ -87,7 +87,7 @@ describe("buildBlock", () => {
 
   it("propagates errors without retry (server owns retry)", async () => {
     let attempts = 0;
-    const block = buildBlock<number, number>({
+    const block = buildBlock({
       kind: "handler",
       config: {
         name: "no-retry",
@@ -108,7 +108,7 @@ describe("buildBlock", () => {
     const onErrored = vi.fn();
     const ctx = createMockContext();
 
-    const okBlock = buildBlock<number, number>({
+    const okBlock = buildBlock({
       kind: "handler",
       config: {
         name: "ok",
@@ -120,7 +120,7 @@ describe("buildBlock", () => {
     await expect(okBlock.run(1, ctx)).resolves.toBe(2);
     expect(onCompleted).toHaveBeenCalledWith(2, ctx);
 
-    const failingBlock = buildBlock<number, number>({
+    const failingBlock = buildBlock({
       kind: "handler",
       config: {
         name: "fail",

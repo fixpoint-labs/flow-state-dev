@@ -11,7 +11,7 @@ import { createMockContext } from "./helpers";
 
 describe("generator builder", () => {
   it("defaults output schema to string when omitted", async () => {
-    const block = generator<{ value: string }, string>({
+    const block = generator({
       name: "string-output",
       model: "mock-model",
       prompt: "Return a string"
@@ -38,7 +38,7 @@ describe("generator builder", () => {
       }
     };
 
-    const block = generator<{ value: string }, string>({
+    const block = generator({
       name: "direct-model",
       model,
       prompt: "Return text"
@@ -50,8 +50,9 @@ describe("generator builder", () => {
 
   it("resolves model and prompt from functions", async () => {
     const seen: Array<{ modelId: string; prompt: unknown }> = [];
-    const block = generator<{ count: number }, string>({
+    const block = generator({
       name: "dynamic-model-prompt",
+      inputSchema: z.object({ count: z.number() }),
       model: (input) => `model-${input.count}`,
       prompt: (input) => `prompt-${input.count}`
     });
@@ -77,7 +78,7 @@ describe("generator builder", () => {
 
   it("supports repair mode auto with custom repairOutput", async () => {
     const repairOutput = vi.fn().mockReturnValue({ done: true });
-    const block = generator<{ value: number }, { done: boolean }>({
+    const block = generator({
       name: "repair-auto",
       model: "m",
       prompt: "p",
@@ -101,7 +102,7 @@ describe("generator builder", () => {
   });
 
   it("fails immediately in repair fail/rescue modes", async () => {
-    const blockFail = generator<{ value: number }, { done: boolean }>({
+    const blockFail = generator({
       name: "repair-fail",
       model: "m",
       prompt: "p",
@@ -109,7 +110,7 @@ describe("generator builder", () => {
       repair: { mode: "fail", maxAttempts: 4 }
     });
 
-    const blockRescue = generator<{ value: number }, { done: boolean }>({
+    const blockRescue = generator({
       name: "repair-rescue",
       model: "m",
       prompt: "p",
@@ -134,8 +135,10 @@ describe("generator builder", () => {
   it("runs model-requested tools inside the loop", async () => {
     const toolCalls: string[] = [];
     let modelCalls = 0;
-    const succeedTool = handler<{ text: string }, { text: string; ok: boolean }>({
+    const succeedTool = handler({
       name: "succeeds",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.object({ text: z.string(), ok: z.boolean() }),
       execute: (input) => {
         toolCalls.push("ok");
         return {
@@ -145,7 +148,7 @@ describe("generator builder", () => {
       }
     });
 
-    const block = generator<{ text: string }, { text: string; ok: boolean }>({
+    const block = generator({
       name: "tool-loop",
       model: "m",
       prompt: "p",
@@ -188,8 +191,8 @@ describe("generator builder", () => {
   });
 
   it("supports loop stopWhen and maxIterations", async () => {
-    const states: GeneratorLoopState<{ n: number }>[] = [];
-    const block = generator<{ n: number }, { done: true }>({
+    const states: GeneratorLoopState[] = [];
+    const block = generator({
       name: "loop-stop",
       model: "m",
       prompt: "p",
@@ -222,14 +225,16 @@ describe("generator builder", () => {
 
   it("skips tool invocation when loop.runTools is false", async () => {
     const toolCall = vi.fn();
-    const tool = handler<{ value: number }, { ok: boolean }>({
+    const tool = handler({
       name: "unused-tool",
+      inputSchema: z.object({ value: z.number() }),
+      outputSchema: z.object({ ok: z.boolean() }),
       execute: () => {
         toolCall();
         return { ok: false };
       }
     });
-    const block = generator<{ value: number }, { ok: boolean }>({
+    const block = generator({
       name: "no-tools",
       model: "m",
       prompt: "p",

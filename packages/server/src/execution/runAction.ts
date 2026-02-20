@@ -113,7 +113,7 @@ async function patchRequestRecord(
  * Executes observer blocks and propagates observer failures to the caller.
  */
 async function runObserver(
-  observer: BlockDefinition<any, void> | undefined,
+  observer: BlockDefinition<any, any> | undefined,
   input: unknown,
   ctx: ExecutionContext,
   options: {
@@ -143,7 +143,7 @@ async function runObserver(
  * Executes observer blocks while swallowing observer failures.
  */
 async function runObserverSafely(
-  observer: BlockDefinition<any, void> | undefined,
+  observer: BlockDefinition<any, any> | undefined,
   input: unknown,
   ctx: ExecutionContext,
   options: {
