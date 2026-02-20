@@ -32,6 +32,7 @@ export type {
   GeneratorSlotEntry,
   GeneratorSlotRefOptions,
   GeneratorSlotReference,
+  GeneratorTool,
   GeneratorToolResult,
   HandlerConfig,
   ParallelStep,
@@ -50,3 +51,11 @@ export type {
   ToolLifecycleEvent,
   ToolsConfig
 } from "./types/flow";
+export type {
+  GeneratorModel,
+  GeneratorModelResult,
+  GeneratorModelTool,
+  GeneratorModelToolCall,
+  GeneratorModelUsage,
+  ModelResolver
+} from "./types/model";

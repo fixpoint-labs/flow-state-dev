@@ -89,32 +89,28 @@ describe("defineFlow", () => {
 
   it("wires flow-level tool defaults and lifecycle hooks into generator execution", async () => {
     let attempts = 0;
+    let modelCalls = 0;
     const onToolStarted = vi.fn();
     const onToolCompleted = vi.fn();
     const onToolErrored = vi.fn();
+    const flakyTool = handler<{ text: string }, { ok: boolean }>({
+      name: "flaky-tool",
+      execute: () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error("flaky");
+        }
+
+        return { ok: true };
+      }
+    });
 
     const runAction = generator<{ text: string }, { ok: boolean }>({
       name: "run-generator",
       model: "test-model",
       prompt: "test-prompt",
       outputSchema: z.object({ ok: z.boolean() }),
-      tools: [
-        {
-          name: "flaky-tool",
-          execute: () => {
-            attempts += 1;
-            if (attempts === 1) {
-              throw new Error("flaky");
-            }
-
-            return { ok: true };
-          }
-        }
-      ],
-      generate: (state) => {
-        const successful = state.toolResults.find((entry) => entry.error === undefined);
-        return successful?.output ?? { ok: false };
-      }
+      tools: [flakyTool]
     });
 
     const flow = defineFlow({
@@ -139,8 +135,30 @@ describe("defineFlow", () => {
     });
 
     const instance = flow();
-    const ctx = createMockContext();
-    await expect(instance.actions.run.block.config.execute?.({ text: "hello" }, ctx)).resolves.toEqual({
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "test-model",
+        async generate() {
+          if (modelCalls === 0) {
+            modelCalls += 1;
+            return {
+              toolCalls: [
+                {
+                  toolCallId: "tool-1",
+                  toolName: "flaky-tool",
+                  args: { text: "hello" }
+                }
+              ]
+            };
+          }
+
+          return {
+            structuredOutput: { ok: true }
+          };
+        }
+      })
+    });
+    await expect(instance.actions.run.block.run({ text: "hello" }, ctx)).resolves.toEqual({
       ok: true
     });
 
@@ -151,21 +169,20 @@ describe("defineFlow", () => {
   });
 
   it("allows instance tool hooks to override flow hooks", async () => {
+    let modelCalls = 0;
     const baseStarted = vi.fn();
     const overrideStarted = vi.fn();
+    const okTool = handler<{ text: string }, { ok: boolean }>({
+      name: "ok-tool",
+      execute: () => ({ ok: true })
+    });
 
     const runAction = generator<{ text: string }, { ok: boolean }>({
       name: "override-hooks-generator",
       model: "model",
       prompt: "prompt",
       outputSchema: z.object({ ok: z.boolean() }),
-      tools: [
-        {
-          name: "ok-tool",
-          execute: () => ({ ok: true })
-        }
-      ],
-      generate: (state) => state.toolResults[0]?.output ?? { ok: false }
+      tools: [okTool]
     });
 
     const flow = defineFlow({
@@ -187,8 +204,30 @@ describe("defineFlow", () => {
       }
     });
 
-    const ctx = createMockContext();
-    await expect(instance.actions.run.block.config.execute?.({ text: "hello" }, ctx)).resolves.toEqual({
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "model",
+        async generate() {
+          if (modelCalls === 0) {
+            modelCalls += 1;
+            return {
+              toolCalls: [
+                {
+                  toolCallId: "tool-1",
+                  toolName: "ok-tool",
+                  args: { text: "hello" }
+                }
+              ]
+            };
+          }
+
+          return {
+            structuredOutput: { ok: true }
+          };
+        }
+      })
+    });
+    await expect(instance.actions.run.block.run({ text: "hello" }, ctx)).resolves.toEqual({
       ok: true
     });
 

@@ -43,8 +43,29 @@ describe("buildBlock", () => {
     });
 
     const ctx = createMockContext();
-    await expect(block.config.execute?.({ count: 1 }, ctx)).resolves.toEqual({ total: 2 });
-    await expect(block.config.execute?.({ count: "bad" } as unknown as { count: number }, ctx)).rejects.toThrow(
+    await expect(block.run({ count: 1 }, ctx)).resolves.toEqual({ total: 2 });
+    await expect(block.run({ count: "bad" } as unknown as { count: number }, ctx)).rejects.toThrow(
+      "input validation failed"
+    );
+  });
+
+  it("keeps config.execute as user logic and exposes framework behavior via run()", async () => {
+    const execute = vi.fn((input: { count: number }) => ({ total: input.count + 1 }));
+    const block = buildBlock({
+      kind: "handler",
+      config: {
+        name: "raw-execute",
+        inputSchema: z.object({ count: z.number() }),
+        outputSchema: z.object({ total: z.number() }),
+        execute
+      }
+    });
+
+    const ctx = createMockContext();
+    expect(
+      block.config.execute?.({ count: "bad" } as unknown as { count: number }, ctx)
+    ).toEqual({ total: "bad1" });
+    await expect(block.run({ count: "bad" } as unknown as { count: number }, ctx)).rejects.toThrow(
       "input validation failed"
     );
   });
@@ -61,55 +82,24 @@ describe("buildBlock", () => {
       .connectOutput((value) => `n:${value}`);
 
     const ctx = createMockContext();
-    await expect(block.config.execute?.("4", ctx)).resolves.toBe("n:8");
+    await expect(block.run("4", ctx)).resolves.toBe("n:8");
   });
 
-  it("retries only retryable errors", async () => {
+  it("propagates errors without retry (server owns retry)", async () => {
     let attempts = 0;
     const block = buildBlock<number, number>({
       kind: "handler",
       config: {
-        name: "retryable",
-        retry: {
-          maxAttempts: 3,
-          baseDelayMs: 0,
-          retryableErrors: [RetryableError]
-        },
+        name: "no-retry",
         execute: () => {
           attempts += 1;
-          if (attempts < 3) {
-            throw new RetryableError("try again");
-          }
-          return attempts;
+          throw new RetryableError("try again");
         }
       }
     });
 
     const ctx = createMockContext();
-    await expect(block.config.execute?.(1, ctx)).resolves.toBe(3);
-    expect(attempts).toBe(3);
-  });
-
-  it("does not retry non-retryable errors", async () => {
-    let attempts = 0;
-    const block = buildBlock<number, number>({
-      kind: "handler",
-      config: {
-        name: "non-retryable",
-        retry: {
-          maxAttempts: 5,
-          baseDelayMs: 0,
-          retryableErrors: [RetryableError]
-        },
-        execute: () => {
-          attempts += 1;
-          throw new FatalError("fatal");
-        }
-      }
-    });
-
-    const ctx = createMockContext();
-    await expect(block.config.execute?.(1, ctx)).rejects.toThrow("fatal");
+    await expect(block.run(1, ctx)).rejects.toThrow("try again");
     expect(attempts).toBe(1);
   });
 
@@ -127,7 +117,7 @@ describe("buildBlock", () => {
       }
     });
 
-    await expect(okBlock.config.execute?.(1, ctx)).resolves.toBe(2);
+    await expect(okBlock.run(1, ctx)).resolves.toBe(2);
     expect(onCompleted).toHaveBeenCalledWith(2, ctx);
 
     const failingBlock = buildBlock<number, number>({
@@ -141,7 +131,7 @@ describe("buildBlock", () => {
       }
     });
 
-    await expect(failingBlock.config.execute?.(1, ctx)).rejects.toThrow("boom");
+    await expect(failingBlock.run(1, ctx)).rejects.toThrow("boom");
     expect(onErrored).toHaveBeenCalledTimes(1);
     expect(onErrored.mock.calls[0]?.[0]).toBeInstanceOf(Error);
   });

@@ -8,6 +8,7 @@ This package provides:
 - item assertion helpers (`testItems`)
 - snapshot trace summaries (`snapshotTrace`)
 - scripted generator mocks (`mockGenerator`)
+- model-resolver mock adapter (`createMockModelResolver`)
 
 ## Public API
 
@@ -19,6 +20,7 @@ This package provides:
 - `testItems(items)`
 - `snapshotTrace(result)`
 - `mockGenerator(options)`
+- `createMockModelResolver(options)`
 
 ## Quick usage
 
@@ -74,3 +76,5 @@ const result = await testFlow({
 
 - Utilities are intentionally framework-contract focused, not app-specific.
 - `testSequencer` step/work traces are inferred from emitted item provenance in Phase 1.
+- Generator mocks are resolved by generator block name first (`generators`) and model id second (`models`).
+- `testFlow` accepts `generators`, `models`, and `unmockedGeneratorPolicy` with the same behavior as `testBlock`.

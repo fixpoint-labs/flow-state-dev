@@ -36,6 +36,11 @@ export * from "./streaming";
 export * from "./execution";
 export * from "./registry";
 export * from "./routes";
+export { createAiSdkModelResolver } from "./models/createAiSdkModelResolver";
+export { createDefaultModelResolver } from "./models/createDefaultModelResolver";
+export type {
+  ResolveAiSdkLanguageModel
+} from "./models/createAiSdkModelResolver";
 export {
   FlowError,
   ModelError,

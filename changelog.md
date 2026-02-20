@@ -160,3 +160,39 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Updated `packages/client/README.md` for snapshot query options (`include_items`, scope-grouped `projections`).
 - Replaced `packages/testing/README.md` scaffold notes with concrete API documentation for Wave 1.j testing utilities.
 - Updated root `README.md` documentation map to link directly to package-level READMEs.
+
+### Block execution and generator model correction
+
+- Refactored core block execution contract so framework behavior lives on `block.run(...)` in `packages/core/src/blocks/internal/build-block.ts`, with `config.execute` left as user-provided logic only.
+- Added generator model abstraction types in `packages/core/src/types/model.ts` and wired `resolveModel` onto `BlockContext` in `packages/core/src/types/block.ts`.
+- Reworked generator runtime in `packages/core/src/blocks/generator.ts` to:
+  - remove hidden test-context mock hooks
+  - resolve models through `ctx.resolveModel(modelId, blockName)`
+  - execute model-requested tool blocks via `tool.run(...)`
+  - remove legacy `generate` callback fallback so model resolution is the only generation path
+- Updated core block dispatch internals to use `run()`:
+  - `packages/core/src/blocks/sequencer.ts`
+  - `packages/core/src/blocks/router.ts`
+- Updated server runtime to call `run()` and wire model resolution:
+  - execution dispatch/executors in `packages/server/src/execution/*`
+  - context wiring in `packages/server/src/context/*`
+  - route/action bootstrap options in `packages/server/src/routes/*` and `packages/server/src/execution/types.ts`
+- Migrated testing mocks to the model boundary:
+  - added `createMockModelResolver` in `packages/testing/src/mocks/mockGenerator.ts`
+  - removed hidden context-property injection from `packages/testing/src/runtime/createTestContext.ts`
+  - added `models` fallback mocking support in `packages/testing/src/test-utilities/types.ts`
+- Updated unit tests across `packages/core/test/*`, `packages/server/test/*`, and `packages/testing/test/*` to validate the new `run()` and model-resolver behavior.
+- Updated onboarding docs for changed public behavior in:
+  - `README.md`
+  - `packages/server/README.md`
+  - `packages/testing/README.md`
+- Added AI SDK adapter and tests:
+  - new server utility `createAiSdkModelResolver` (`packages/server/src/models/createAiSdkModelResolver.ts`)
+  - new server tests using `MockLanguageModelV3` from `ai/test` (`packages/server/test/ai-sdk-model-resolver.test.ts`)
+- Fixed `testFlow` generator mocking parity with `testBlock` by adding `generators` / `models` / `unmockedGeneratorPolicy` options and forwarding them through a mock model resolver.
+- Added built-in production resolver wiring:
+  - new `createDefaultModelResolver` using Vercel AI Gateway (`packages/server/src/models/createDefaultModelResolver.ts`)
+  - `createExecutionContext` now defaults to this resolver when `modelResolver` is omitted, so generator blocks call AI SDK without explicit app wiring.
+- Expanded AI SDK resolver behavior/tests:
+  - added best-effort structured-output handling from `outputSchema` (JSON response format hint + JSON text parsing fallback)
+  - added adapter-call assertions for `maxTokens`, `signal`, tools, and prompt forwarding in `packages/server/test/ai-sdk-model-resolver.test.ts`.

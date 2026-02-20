@@ -10,6 +10,7 @@ import type {
   WorkResult
 } from "./sequencer-methods";
 import { buildBlock } from "./internal/build-block";
+import { isBlockDefinition, toError, withTimeout } from "./internal/utils";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
 
@@ -32,32 +33,6 @@ type WaitForWorkOptions = {
   timeoutMs?: number;
 };
 
-function toError(value: unknown): Error {
-  if (value instanceof Error) {
-    return value;
-  }
-
-  if (typeof value === "string" && value.length > 0) {
-    return new Error(value);
-  }
-
-  return new Error("Sequencer execution failed");
-}
-
-function isBlockDefinition(value: unknown): value is BlockDefinition<any, any> {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  const maybeBlock = value as Record<string, unknown>;
-  return (
-    typeof maybeBlock.kind === "string" &&
-    typeof maybeBlock.name === "string" &&
-    typeof maybeBlock.config === "object" &&
-    maybeBlock.config !== null
-  );
-}
-
 function isConcurrencyOptions(value: unknown): value is { maxConcurrency?: number } {
   if (typeof value !== "object" || value === null) {
     return false;
@@ -76,37 +51,7 @@ async function executeBlock<TInput, TOutput>(
   input: TInput,
   ctx: BlockContext
 ): Promise<TOutput> {
-  if (block.config.execute === undefined) {
-    throw new Error(`Block "${block.name}" cannot run because config.execute is missing`);
-  }
-
-  return block.config.execute(input, ctx);
-}
-
-async function withTimeout<TValue>(
-  promise: Promise<TValue>,
-  timeoutMs: number | undefined,
-  label: string
-): Promise<TValue> {
-  if (timeoutMs === undefined || timeoutMs <= 0) {
-    return promise;
-  }
-
-  return new Promise<TValue>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-
-    promise
-      .then((value) => {
-        clearTimeout(timeout);
-        resolve(value);
-      })
-      .catch((error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-  });
+  return block.run(input, ctx);
 }
 
 async function mapWithConcurrency<TInput, TOutput>(

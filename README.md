@@ -33,6 +33,7 @@ This is an implementation-phase repository, not a polished production release ye
 - **Block kinds**: exactly `handler`, `generator`, `sequencer`, `router`.
 - **Generator**: loop-capable runtime unit with framework-managed execution.
 - **Scopes**: request/session/user/project state + resource updates.
+- **Execution entrypoint**: blocks execute via framework-owned `block.run(...)`.
 - **Streaming model**: item/content lifecycle events with sequence-based replay.
 - **Execution model**: normalized errors, retry policy, rescue routing, work convergence.
 

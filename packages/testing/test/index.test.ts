@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createMockModelResolver,
   createTestContext,
   mockGenerator,
   snapshotTrace,
@@ -25,5 +26,6 @@ describe("@flow-state-dev/testing", () => {
     expect(typeof testItems).toBe("function");
     expect(typeof snapshotTrace).toBe("function");
     expect(typeof mockGenerator).toBe("function");
+    expect(typeof createMockModelResolver).toBe("function");
   });
 });

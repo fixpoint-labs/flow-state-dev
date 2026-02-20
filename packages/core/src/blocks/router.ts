@@ -6,28 +6,13 @@ import type {
   ConnectorFn
 } from "../types/block";
 import { buildBlock } from "./internal/build-block";
+import { isBlockDefinition } from "./internal/utils";
 
 function isRouteInCandidates<TInput, TOutput>(
   candidate: BlockDefinition<TInput, TOutput>,
   routes: BlockDefinition<TInput, TOutput>[]
 ): boolean {
   return routes.some((route) => route === candidate || route.name === candidate.name);
-}
-
-function isBlockDefinition<TInput, TOutput>(
-  value: unknown
-): value is BlockDefinition<TInput, TOutput> {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  const candidate = value as Record<string, unknown>;
-  return (
-    typeof candidate.kind === "string" &&
-    typeof candidate.name === "string" &&
-    typeof candidate.config === "object" &&
-    candidate.config !== null
-  );
 }
 
 export interface RouterConfig<TInput, TOutput> extends Omit<BlockConfig<TInput, TOutput>, "execute"> {
@@ -62,8 +47,8 @@ export function router<TInput, TOutput>(config: RouterConfig<TInput, TOutput>): 
 
       // Sequencer definitions expose a `.then()` DSL method and can be mistaken
       // for thenables. Detect concrete blocks before awaiting route selection.
-      const selected = isBlockDefinition<TInput, TOutput>(candidate)
-        ? candidate
+      const selected = isBlockDefinition(candidate)
+        ? (candidate as BlockDefinition<TInput, TOutput>)
         : await candidate;
       const passesValidation =
         config.validateRoute === undefined
@@ -76,11 +61,7 @@ export function router<TInput, TOutput>(config: RouterConfig<TInput, TOutput>): 
         );
       }
 
-      if (selected.config.execute === undefined) {
-        throw new Error(`Router "${config.name}" selected route "${selected.name}" without an execute function`);
-      }
-
-      return selected.config.execute(input, ctx);
+      return selected.run(input, ctx);
     }
   });
 }

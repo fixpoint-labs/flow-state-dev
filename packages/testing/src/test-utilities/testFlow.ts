@@ -1,6 +1,7 @@
 import { createInMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/server";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { JsonObject, JsonValue } from "@flow-state-dev/core/types";
+import { createMockModelResolver } from "../mocks/mockGenerator";
 import type { TestFlowOptions, TestFlowResult } from "./types";
 
 function cloneRecord<TValue extends Record<string, unknown>>(value: TValue): TValue {
@@ -176,6 +177,11 @@ export async function testFlow<TInput = unknown>(
     projectId,
     userId: options.userId,
     requestId,
+    modelResolver: createMockModelResolver({
+      generators: options.generators,
+      models: options.models,
+      policy: options.unmockedGeneratorPolicy
+    }),
     stores
   });
 

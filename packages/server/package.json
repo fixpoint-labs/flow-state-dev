@@ -14,7 +14,8 @@
     "dist"
   ],
   "dependencies": {
-    "@flow-state-dev/core": "workspace:*"
+    "@flow-state-dev/core": "workspace:*",
+    "ai": "^6.0.93"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

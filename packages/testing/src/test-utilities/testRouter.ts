@@ -16,19 +16,15 @@ export async function testRouter<TInput, TOutput>(
     ? ((router.config as unknown as { routes: BlockDefinition<any, any>[] }).routes ?? [])
     : [];
 
-  const originals = new Map<string, BlockDefinition<any, any>["config"]["execute"]>();
+  const originals = new Map<string, BlockDefinition<any, any>["run"]>();
   let selectedRoute: string | undefined;
 
   for (const route of routes) {
-    originals.set(route.name, route.config.execute);
+    originals.set(route.name, route.run);
 
-    const original = route.config.execute;
-    route.config.execute = async (input: unknown, ctx: unknown) => {
+    const original = route.run;
+    route.run = async (input: unknown, ctx: unknown) => {
       selectedRoute = route.name;
-      if (typeof original !== "function") {
-        return undefined;
-      }
-
       return original(input, ctx as any);
     };
   }
@@ -42,7 +38,10 @@ export async function testRouter<TInput, TOutput>(
     };
   } finally {
     for (const route of routes) {
-      route.config.execute = originals.get(route.name);
+      const original = originals.get(route.name);
+      if (original !== undefined) {
+        route.run = original;
+      }
     }
   }
 }

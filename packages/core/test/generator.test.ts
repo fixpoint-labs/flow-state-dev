@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   generator,
+  handler,
   resolveGeneratorClientOutput,
   resolveGeneratorLlmOutput,
   type GeneratorLoopState
@@ -13,35 +14,63 @@ describe("generator builder", () => {
     const block = generator<{ value: string }, string>({
       name: "string-output",
       model: "mock-model",
-      prompt: "Return a string",
-      generate: () => "hello"
+      prompt: "Return a string"
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "mock-model",
+        async generate() {
+          return { text: "hello" };
+        }
+      })
+    });
+    await expect(block.run({ value: "x" }, ctx)).resolves.toBe("hello");
+  });
+
+  it("accepts a direct GeneratorModel instance in config.model", async () => {
+    const model = {
+      modelId: "custom:model",
+      async generate() {
+        return {
+          text: "from-direct-model"
+        };
+      }
+    };
+
+    const block = generator<{ value: string }, string>({
+      name: "direct-model",
+      model,
+      prompt: "Return text"
     });
 
     const ctx = createMockContext();
-    await expect(block.config.execute?.({ value: "x" }, ctx)).resolves.toBe("hello");
+    await expect(block.run({ value: "x" }, ctx)).resolves.toBe("from-direct-model");
   });
 
   it("resolves model and prompt from functions", async () => {
-    const seen: Array<{ input: number; model: string; prompt: string }> = [];
+    const seen: Array<{ modelId: string; prompt: unknown }> = [];
     const block = generator<{ count: number }, string>({
       name: "dynamic-model-prompt",
       model: (input) => `model-${input.count}`,
-      prompt: (input) => `prompt-${input.count}`,
-      generate: (state) => {
-        seen.push({
-          input: state.input.count,
-          model: state.model,
-          prompt: state.prompt
-        });
-        return "ok";
-      }
+      prompt: (input) => `prompt-${input.count}`
     });
 
-    const ctx = createMockContext();
-    await expect(block.config.execute?.({ count: 2 }, ctx)).resolves.toBe("ok");
+    const ctx = createMockContext({
+      resolveModel: (modelId) => ({
+        modelId,
+        async generate(options) {
+          seen.push({
+            modelId,
+            prompt: (options.messages[0] as { content?: unknown } | undefined)?.content
+          });
+          return { text: "ok" };
+        }
+      })
+    });
+    await expect(block.run({ count: 2 }, ctx)).resolves.toBe("ok");
     expect(seen[0]).toEqual({
-      input: 2,
-      model: "model-2",
+      modelId: "model-2",
       prompt: "prompt-2"
     });
   });
@@ -54,12 +83,20 @@ describe("generator builder", () => {
       prompt: "p",
       outputSchema: z.object({ done: z.boolean() }),
       repair: { mode: "auto", maxAttempts: 1 },
-      repairOutput,
-      generate: () => ({ done: "nope" })
+      repairOutput
     });
 
-    const ctx = createMockContext();
-    await expect(block.config.execute?.({ value: 1 }, ctx)).resolves.toEqual({ done: true });
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate() {
+          return {
+            structuredOutput: { done: "nope" }
+          };
+        }
+      })
+    });
+    await expect(block.run({ value: 1 }, ctx)).resolves.toEqual({ done: true });
     expect(repairOutput).toHaveBeenCalledTimes(1);
   });
 
@@ -69,8 +106,7 @@ describe("generator builder", () => {
       model: "m",
       prompt: "p",
       outputSchema: z.object({ done: z.boolean() }),
-      repair: { mode: "fail", maxAttempts: 4 },
-      generate: () => ({ done: "bad" })
+      repair: { mode: "fail", maxAttempts: 4 }
     });
 
     const blockRescue = generator<{ value: number }, { done: boolean }>({
@@ -78,17 +114,36 @@ describe("generator builder", () => {
       model: "m",
       prompt: "p",
       outputSchema: z.object({ done: z.boolean() }),
-      repair: { mode: "rescue", maxAttempts: 4 },
-      generate: () => ({ done: "bad" })
+      repair: { mode: "rescue", maxAttempts: 4 }
     });
 
-    const ctx = createMockContext();
-    await expect(blockFail.config.execute?.({ value: 1 }, ctx)).rejects.toThrow("validation failed");
-    await expect(blockRescue.config.execute?.({ value: 1 }, ctx)).rejects.toThrow("validation failed");
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate() {
+          return {
+            structuredOutput: { done: "bad" }
+          };
+        }
+      })
+    });
+    await expect(blockFail.run({ value: 1 }, ctx)).rejects.toThrow("validation failed");
+    await expect(blockRescue.run({ value: 1 }, ctx)).rejects.toThrow("validation failed");
   });
 
-  it("runs tools inside the loop and can continue on tool errors", async () => {
+  it("runs model-requested tools inside the loop", async () => {
     const toolCalls: string[] = [];
+    let modelCalls = 0;
+    const succeedTool = handler<{ text: string }, { text: string; ok: boolean }>({
+      name: "succeeds",
+      execute: (input) => {
+        toolCalls.push("ok");
+        return {
+          text: input.text,
+          ok: true
+        };
+      }
+    });
 
     const block = generator<{ text: string }, { text: string; ok: boolean }>({
       name: "tool-loop",
@@ -96,35 +151,40 @@ describe("generator builder", () => {
       prompt: "p",
       outputSchema: z.object({ text: z.string(), ok: z.boolean() }),
       maxIterations: 2,
-      tools: [
-        {
-          name: "fails-but-continues",
-          continueOnError: true,
-          execute: () => {
-            toolCalls.push("fail");
-            throw new Error("tool failed");
-          }
-        },
-        {
-          name: "succeeds",
-          execute: (input) => {
-            toolCalls.push("ok");
-            return { text: (input as { text: string }).text, ok: true };
-          }
-        }
-      ],
-      generate: (state) => {
-        const success = state.toolResults.find((result) => result.error === undefined);
-        return success?.output ?? { text: "missing", ok: false };
-      }
+      tools: [succeedTool]
     });
 
-    const ctx = createMockContext();
-    await expect(block.config.execute?.({ text: "hello" }, ctx)).resolves.toEqual({
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate() {
+          if (modelCalls === 0) {
+            modelCalls += 1;
+            return {
+              toolCalls: [
+                {
+                  toolCallId: "call-1",
+                  toolName: "succeeds",
+                  args: { text: "hello" }
+                }
+              ]
+            };
+          }
+
+          return {
+            structuredOutput: {
+              text: "hello",
+              ok: true
+            }
+          };
+        }
+      })
+    });
+    await expect(block.run({ text: "hello" }, ctx)).resolves.toEqual({
       text: "hello",
       ok: true
     });
-    expect(toolCalls).toEqual(["fail", "ok"]);
+    expect(toolCalls).toEqual(["ok"]);
   });
 
   it("supports loop stopWhen and maxIterations", async () => {
@@ -135,47 +195,69 @@ describe("generator builder", () => {
       prompt: "p",
       outputSchema: z.object({ done: z.literal(true) }),
       maxIterations: 4,
-      generate: (state) => {
-        states.push(state);
-        return { done: false as unknown as true };
-      },
       loop: {
-        stopWhen: (state) => state.iteration >= 1
+        stopWhen: (state) => {
+          states.push(state);
+          return state.iteration >= 1;
+        }
       },
       repair: {
         mode: "fail"
       }
     });
 
-    const ctx = createMockContext();
-    await expect(block.config.execute?.({ n: 1 }, ctx)).rejects.toThrow("validation failed");
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate() {
+          return {
+            structuredOutput: { done: false as unknown as true }
+          };
+        }
+      })
+    });
+    await expect(block.run({ n: 1 }, ctx)).rejects.toThrow("validation failed");
     expect(states.length).toBe(2);
   });
 
   it("skips tool invocation when loop.runTools is false", async () => {
     const toolCall = vi.fn();
+    const tool = handler<{ value: number }, { ok: boolean }>({
+      name: "unused-tool",
+      execute: () => {
+        toolCall();
+        return { ok: false };
+      }
+    });
     const block = generator<{ value: number }, { ok: boolean }>({
       name: "no-tools",
       model: "m",
       prompt: "p",
       outputSchema: z.object({ ok: z.boolean() }),
-      tools: [
-        {
-          name: "unused-tool",
-          execute: () => {
-            toolCall();
-            return { ok: false };
-          }
-        }
-      ],
+      tools: [tool],
       loop: {
         runTools: false
-      },
-      generate: () => ({ ok: true })
+      }
     });
 
-    const ctx = createMockContext();
-    await expect(block.config.execute?.({ value: 1 }, ctx)).resolves.toEqual({ ok: true });
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate() {
+          return {
+            toolCalls: [
+              {
+                toolCallId: "unused",
+                toolName: "unused-tool",
+                args: { value: 1 }
+              }
+            ],
+            structuredOutput: { ok: true }
+          };
+        }
+      })
+    });
+    await expect(block.run({ value: 1 }, ctx)).resolves.toEqual({ ok: true });
     expect(toolCall).not.toHaveBeenCalled();
   });
 });

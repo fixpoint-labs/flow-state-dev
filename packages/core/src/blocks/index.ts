@@ -20,6 +20,7 @@ export type {
   GeneratorSlotEntry,
   GeneratorSlotRefOptions,
   GeneratorSlotReference,
+  GeneratorTool,
   GeneratorToolResult,
   ToolBinding
 } from "./generator";

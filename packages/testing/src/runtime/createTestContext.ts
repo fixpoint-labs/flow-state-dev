@@ -14,6 +14,7 @@ import type {
   StateChange,
   TestBlockOptions
 } from "../test-utilities/types";
+import { createMockModelResolver } from "../mocks/mockGenerator";
 
 const STATE_OPERATIONS = [
   "patchState",
@@ -477,11 +478,11 @@ export async function createTestContext<TInput = unknown>(
     return createTargetHandle(name, targetState) as unknown as TargetHandle<TState>;
   };
 
-  if (options.generators !== undefined) {
-    (ctx as Record<string, unknown>).__testGenerators = options.generators;
-    (ctx as Record<string, unknown>).__unmockedGeneratorPolicy =
-      options.unmockedGeneratorPolicy ?? "error";
-  }
+  ctx.resolveModel = createMockModelResolver({
+    generators: options.generators,
+    models: options.models,
+    policy: options.unmockedGeneratorPolicy
+  });
 
   return {
     ctx,

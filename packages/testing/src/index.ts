@@ -26,9 +26,11 @@ export type {
 export { snapshotTrace, type SnapshotTrace } from "./snapshot/snapshotTrace";
 
 export {
+  createMockModelResolver,
   mockGenerator,
   type MockGeneratorInstance,
-  type MockGeneratorScriptStep
+  type MockGeneratorScriptStep,
+  type UnmockedGeneratorPolicy
 } from "./mocks/mockGenerator";
 
 export const testingPackageMarker = "@flow-state-dev/testing";

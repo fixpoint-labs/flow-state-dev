@@ -34,6 +34,14 @@ export type {
   UserConfig,
   WorkConfig
 } from "./flow";
+export type {
+  GeneratorModel,
+  GeneratorModelResult,
+  GeneratorModelTool,
+  GeneratorModelToolCall,
+  GeneratorModelUsage,
+  ModelResolver
+} from "./model";
 
 export type {
   ContextOf,

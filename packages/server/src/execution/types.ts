@@ -6,6 +6,7 @@ import type {
   ActionConfig,
   BlockDefinition,
   FlowInstance,
+  ModelResolver,
   RetryPolicy
 } from "@flow-state-dev/core/types";
 import type { ExecutionContext } from "../context/types";
@@ -61,6 +62,7 @@ export type RunActionOptions<
   requestId?: string;
   metadata?: Record<string, unknown>;
   signal?: AbortSignal;
+  modelResolver?: ModelResolver;
   stores: StoreRegistry;
   retry?: RetryPolicy;
 };

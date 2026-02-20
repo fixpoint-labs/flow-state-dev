@@ -52,7 +52,20 @@ import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server"
 const registry = createFlowRegistry();
 registry.register(flow);
 
-const router = createFlowApiRouter({ registry });
+const router = createFlowApiRouter({
+  registry
+});
+```
+
+Optional custom model registry:
+
+```ts
+import { createFlowApiRouter, createAiSdkModelResolver } from "@flow-state-dev/server";
+
+const router = createFlowApiRouter({
+  registry,
+  modelResolver: createAiSdkModelResolver((modelId) => myModels.resolve(modelId))
+});
 ```
 
 ## Scripts
@@ -66,3 +79,6 @@ const router = createFlowApiRouter({ registry });
 - Phase 1 requires caller-provided `userId` for action/session routes.
 - Request stream replay supports `Last-Event-ID` and `starting_after`.
 - User stream remains capability-gated and disabled in current Phase 1 implementation.
+- Generator blocks resolve models through `ctx.resolveModel`.
+- By default, server runtime uses a built-in Vercel AI Gateway resolver (`AI_GATEWAY_API_KEY` or Vercel OIDC).
+- `createAiSdkModelResolver` and `createDefaultModelResolver` are available when you need explicit model routing behavior.

@@ -28,6 +28,7 @@ import type {
   StoreRegistry,
   UserRecord
 } from "../stores/types";
+import { createDefaultModelResolver } from "../models/createDefaultModelResolver";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 
 function normalizeLimit(
@@ -813,6 +814,8 @@ export async function createExecutionContext<
   const response = options.response ?? {
     emit: async () => undefined
   };
+  const resolveModel =
+    options.modelResolver ?? createDefaultModelResolver();
 
   return {
     flow,
@@ -833,6 +836,7 @@ export async function createExecutionContext<
     project: projectHandle,
     response,
     signal: options.signal ?? new AbortController().signal,
+    resolveModel,
     getBlockResult: (name: string): unknown => blockResults.get(name),
     getTarget: () => undefined
   };

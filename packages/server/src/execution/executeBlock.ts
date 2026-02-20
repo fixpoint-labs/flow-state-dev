@@ -4,15 +4,12 @@
 import type { BlockOutputItem, ItemProvenance } from "@flow-state-dev/core/items";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { normalizeError } from "../errors/normalize-error";
-import { executeGenerator } from "./executeGenerator";
-import { executeHandler } from "./executeHandler";
-import { executeRouter } from "./executeRouter";
-import { executeSequencer } from "./executeSequencer";
 import { getResponseItems } from "./internal/response";
 import {
   applyBlockInputSeam,
   applyBlockOutputSeam,
   applyNormalizedErrorSeam,
+  emitGeneratorLifecycleSeam,
   NOOP_INTERNAL_EXECUTION_SEAMS,
   type InternalExecutionSeams
 } from "./internal/seams";
@@ -129,23 +126,25 @@ async function executeByKind<TInput, TOutput>(
   ctx: ExecuteBlockContext,
   options: ExecuteDispatcherOptions
 ): Promise<TOutput> {
-  if (block.kind === "handler") {
-    return executeHandler(block, input, ctx);
-  }
-
   if (block.kind === "generator") {
-    return executeGenerator(block, input, ctx, {
-      internalSeams: options.internalSeams,
-      metadata: options.metadata
-    });
+    const seams = options.internalSeams;
+    await emitGeneratorLifecycleSeam(seams, "before_execute", options.metadata);
+    try {
+      const output = await block.run(input, ctx as any);
+      await emitGeneratorLifecycleSeam(seams, "after_execute", options.metadata);
+      return output;
+    } catch (error) {
+      await emitGeneratorLifecycleSeam(seams, "errored", options.metadata);
+      throw error;
+    }
   }
 
-  if (block.kind === "sequencer") {
-    return executeSequencer(block, input, ctx);
-  }
-
-  if (block.kind === "router") {
-    return executeRouter(block, input, ctx);
+  if (
+    block.kind === "handler" ||
+    block.kind === "sequencer" ||
+    block.kind === "router"
+  ) {
+    return block.run(input, ctx as any);
   }
 
   throw new Error(`Unknown block kind "${String(block.kind)}"`);

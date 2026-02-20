@@ -73,6 +73,9 @@ describe("createExecutionContext", () => {
     expect(savedUser?.state).toEqual({ role: "admin" });
     expect(savedSession?.journal.length).toBe(1);
     expect(await ctx.session?.getJournal()).toHaveLength(1);
+    const model = ctx.resolveModel("openai:gpt-4o-mini", "ctx-handler");
+    expect(model.modelId).toBe("openai:gpt-4o-mini");
+    expect(typeof model.generate).toBe("function");
   });
 
   it("supports flows that opt out of sessions", async () => {

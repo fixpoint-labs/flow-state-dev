@@ -9,10 +9,6 @@ import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { createExecutionContext, createInMemoryStores, createResponseEmitter, executeBlock } from "../src";
 import { NetworkError } from "../src/errors/flow-error";
-import { executeGenerator } from "../src/execution/executeGenerator";
-import { executeHandler } from "../src/execution/executeHandler";
-import { executeRouter } from "../src/execution/executeRouter";
-import { executeSequencer } from "../src/execution/executeSequencer";
 import { getResponseItems } from "../src/execution/internal/response";
 import {
   applyBlockInputSeam,
@@ -53,6 +49,18 @@ async function createCtx(requestId: string) {
     requestId,
     sessionId: "sess_ctx",
     userId: "user_ctx",
+    modelResolver: (modelId) => ({
+      modelId,
+      async generate() {
+        if (modelId === "model-fail") {
+          throw new Error("gfail");
+        }
+
+        return {
+          text: "ok"
+        };
+      }
+    }),
     stores,
     response
   });
@@ -180,7 +188,7 @@ describe("execution internals", () => {
     expect(unknownUserMetadata.userId).toBe("unknown_user");
   });
 
-  it("runs kind-specific executors and validates runtime execute presence", async () => {
+  it("dispatches all block kinds through executeBlock and emits generator lifecycle seams", async () => {
     const ctx = await createCtx("req_execute");
 
     const h = handler<number, number>({
@@ -191,137 +199,49 @@ describe("execution internals", () => {
     const g = generator<string, string>({
       name: "g",
       model: "model",
-      prompt: "prompt",
-      generate: () => "ok"
+      prompt: "prompt"
     });
 
-    // Sequencer/generator runtime functions are internal compiled execute handlers.
-    expect(typeof s.config.execute).toBe("function");
-    expect(typeof g.config.execute).toBe("function");
+    expect(s.config.execute).toBeUndefined();
+    expect(g.config.execute).toBeUndefined();
 
-    await expect(executeHandler(h, 1, ctx)).resolves.toBe(2);
-    await expect(executeSequencer(s, 1, ctx)).resolves.toBe(3);
+    const hResult = await executeBlock({ block: h, input: 1, ctx });
+    expect(hResult.output).toBe(2);
+
+    const sResult = await executeBlock({ block: s, input: 1, ctx });
+    expect(sResult.output).toBe(3);
 
     const lifecycle: string[] = [];
-    await expect(
-      executeGenerator(g, "in", ctx, {
-        metadata: createExecutionMetadata(ctx),
-        internalSeams: {
-          onGeneratorLifecycle: (stage) => {
-            lifecycle.push(stage);
-          }
+    const gResult = await executeBlock({
+      block: g,
+      input: "in",
+      ctx,
+      internalSeams: {
+        onGeneratorLifecycle: (stage) => {
+          lifecycle.push(stage);
         }
-      })
-    ).resolves.toBe("ok");
+      }
+    });
+    expect(gResult.output).toBe("ok");
     expect(lifecycle).toEqual(["before_execute", "after_execute"]);
 
     const gFail = generator<string, string>({
       name: "g-fail",
-      model: "model",
-      prompt: "prompt",
-      generate: () => {
-        throw new Error("gfail");
+      model: "model-fail",
+      prompt: "prompt"
+    });
+    const gFailResult = await executeBlock({
+      block: gFail,
+      input: "in",
+      ctx,
+      internalSeams: {
+        onGeneratorLifecycle: (stage) => {
+          lifecycle.push(stage);
+        }
       }
     });
-    await expect(
-      executeGenerator(gFail, "in", ctx, {
-        metadata: createExecutionMetadata(ctx),
-        internalSeams: {
-          onGeneratorLifecycle: (stage) => {
-            lifecycle.push(stage);
-          }
-        }
-      })
-    ).rejects.toThrow("gfail");
+    expect(gFailResult.error).toBeDefined();
     expect(lifecycle).toContain("errored");
-
-    await expect(
-      executeGenerator(g, "in", ctx, {
-        metadata: createExecutionMetadata(ctx)
-      })
-    ).resolves.toBe("ok");
-
-    const badHandler = {
-      kind: "handler",
-      name: "bad-handler",
-      config: {}
-    } as unknown as BlockDefinition<number, number>;
-    await expect(executeHandler(badHandler, 1, ctx)).rejects.toThrow(
-      "missing config.execute"
-    );
-
-    const badSequencer = {
-      kind: "sequencer",
-      name: "bad-seq",
-      config: {}
-    } as unknown as BlockDefinition<number, number>;
-    await expect(executeSequencer(badSequencer, 1, ctx)).rejects.toThrow(
-      "missing framework-compiled execution"
-    );
-
-    const badGenerator = {
-      kind: "generator",
-      name: "bad-gen",
-      config: {}
-    } as unknown as BlockDefinition<number, number>;
-    await expect(
-      executeGenerator(badGenerator, 1, ctx, {
-        metadata: createExecutionMetadata(ctx)
-      })
-    ).rejects.toThrow("missing framework-compiled execution");
-
-    const badRouter = {
-      kind: "router",
-      name: "bad-router",
-      config: {}
-    } as unknown as BlockDefinition<number, number>;
-    await expect(executeRouter(badRouter, 1, ctx)).rejects.toThrow(
-      "missing config.execute"
-    );
-
-    await expect(
-      executeHandler(
-        {
-          ...h,
-          kind: "router"
-        } as unknown as BlockDefinition<number, number>,
-        1,
-        ctx
-      )
-    ).rejects.toThrow('executeHandler expected "handler"');
-    await expect(
-      executeSequencer(
-        {
-          ...s,
-          kind: "handler"
-        } as unknown as BlockDefinition<number, number>,
-        1,
-        ctx
-      )
-    ).rejects.toThrow('executeSequencer expected "sequencer"');
-    await expect(
-      executeRouter(
-        {
-          ...h,
-          kind: "handler"
-        } as unknown as BlockDefinition<number, number>,
-        1,
-        ctx
-      )
-    ).rejects.toThrow('executeRouter expected "router"');
-    await expect(
-      executeGenerator(
-        {
-          ...h,
-          kind: "handler"
-        } as unknown as BlockDefinition<number, number>,
-        1,
-        ctx,
-        {
-          metadata: createExecutionMetadata(ctx)
-        }
-      )
-    ).rejects.toThrow('executeGenerator expected "generator"');
   });
 
   it("handles executeBlock unknown kind and uses block-level retry policies", async () => {
@@ -332,7 +252,8 @@ describe("execution internals", () => {
       name: "unknown-kind",
       config: {
         execute: async () => 1
-      }
+      },
+      run: async () => 1
     } as unknown as BlockDefinition<number, number>;
 
     const unknownResult = await executeBlock({

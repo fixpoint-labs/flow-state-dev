@@ -55,6 +55,14 @@ async function createRuntimeContext(requestId: string) {
     requestId,
     sessionId: "sess_runtime",
     userId: "user_runtime",
+    modelResolver: (modelId) => ({
+      modelId,
+      async generate() {
+        return {
+          text: modelId === "mock-model" ? "generated" : "ok"
+        };
+      }
+    }),
     stores,
     response
   });
@@ -322,8 +330,7 @@ describe("execution runtime", () => {
     const generatorBlock = generator<string, string>({
       name: "gen",
       model: "mock-model",
-      prompt: "say hi",
-      generate: () => "generated"
+      prompt: "say hi"
     });
     const sequencerBlock = sequencer<number>({
       name: "seq"

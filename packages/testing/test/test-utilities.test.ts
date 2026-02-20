@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { handler, router } from "@flow-state-dev/core";
+import { generator, handler, router } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import {
+  mockGenerator,
   testBlock,
   testFlow,
   testRouter,
@@ -85,6 +86,69 @@ describe("testing utilities", () => {
 
     expect(result.status).toBe("completed");
     expect(result.output).toEqual({ echoed: "hello" });
+  });
+
+  it("testFlow supports generator mocking by block-name and model-id", async () => {
+    const chat = generator<{ message: string }, { reply: string }>({
+      name: "chat-generator",
+      model: "openai:gpt-4o-mini",
+      prompt: "Reply to the user",
+      outputSchema: passthroughSchema as any
+    });
+    const fallback = generator<{ message: string }, { reply: string }>({
+      name: "fallback-generator",
+      model: "openai:gpt-4o-mini",
+      prompt: "Fallback",
+      outputSchema: passthroughSchema as any
+    });
+
+    const flow: FlowInstance = {
+      id: "generator-flow",
+      kind: "generator-flow",
+      requireSession: false,
+      requireUser: true,
+      actions: {
+        run: {
+          inputSchema: passthroughSchema as any,
+          block: router<{ message: string }, { reply: string }>({
+            name: "generator-router",
+            routes: [chat, fallback],
+            execute: (input) => (input.message === "primary" ? chat : fallback)
+          })
+        }
+      }
+    } as FlowInstance;
+
+    const byName = mockGenerator({
+      name: "chat-generator",
+      script: [{ structuredOutput: { reply: "from block-name" } }]
+    });
+    const byModel = mockGenerator({
+      name: "openai:gpt-4o-mini",
+      script: [{ structuredOutput: { reply: "from model-id" } }]
+    });
+
+    const primary = await testFlow({
+      flow,
+      action: "run",
+      input: { message: "primary" },
+      userId: "user_1",
+      generators: { "chat-generator": byName },
+      models: { "openai:gpt-4o-mini": byModel }
+    });
+    expect(primary.status).toBe("completed");
+    expect(primary.output).toEqual({ reply: "from block-name" });
+
+    const secondary = await testFlow({
+      flow,
+      action: "run",
+      input: { message: "secondary" },
+      userId: "user_1",
+      generators: { "chat-generator": byName },
+      models: { "openai:gpt-4o-mini": byModel }
+    });
+    expect(secondary.status).toBe("completed");
+    expect(secondary.output).toEqual({ reply: "from model-id" });
   });
 
   it("testItems and snapshotTrace provide deterministic assertions", () => {

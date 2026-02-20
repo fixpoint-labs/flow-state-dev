@@ -242,6 +242,7 @@ export async function runActionInternal<
     projectId: options.projectId,
     metadata: options.metadata,
     signal: options.signal,
+    modelResolver: options.modelResolver,
     response,
     stores: options.stores
   });

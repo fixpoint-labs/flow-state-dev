@@ -1,6 +1,7 @@
 /**
  * Catch-all route adapter for framework-owned `/api/flows/[...path]` endpoints.
  */
+import type { ModelResolver } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import {
@@ -15,6 +16,7 @@ import {
 export type CreateFlowApiRouterOptions = {
   registry: FlowRegistry;
   stores?: Partial<StoreRegistry>;
+  modelResolver?: ModelResolver;
   onError?: (error: Error, context: { method: string; path: string }) => void;
 };
 

@@ -1,6 +1,9 @@
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
-import type { MockGeneratorInstance } from "../mocks/mockGenerator";
+import type {
+  MockGeneratorInstance,
+  UnmockedGeneratorPolicy
+} from "../mocks/mockGenerator";
 
 export type TestRequestSeed = {
   state?: Record<string, unknown>;
@@ -31,7 +34,8 @@ export type TestBlockOptions<TInput> = {
   targets?: Record<string, TestTargetSeed>;
   tools?: Record<string, (...args: any[]) => Promise<any> | any>;
   generators?: Record<string, MockGeneratorInstance>;
-  unmockedGeneratorPolicy?: "error" | "warn" | "allow";
+  models?: Record<string, MockGeneratorInstance>;
+  unmockedGeneratorPolicy?: UnmockedGeneratorPolicy;
 };
 
 export type StateChange = {
@@ -102,6 +106,9 @@ export type TestFlowOptions<TInput = unknown> = {
   sessionId?: string;
   userId: string;
   seed?: TestStateSeed;
+  generators?: Record<string, MockGeneratorInstance>;
+  models?: Record<string, MockGeneratorInstance>;
+  unmockedGeneratorPolicy?: UnmockedGeneratorPolicy;
 };
 
 export type TestFlowResult = {

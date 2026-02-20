@@ -14,6 +14,6 @@ describe("handler builder", () => {
 
     const ctx = createMockContext();
     expect(block.kind).toBe("handler");
-    await expect(block.config.execute?.("team", ctx)).resolves.toEqual({ message: "hi team" });
+    await expect(block.run("team", ctx)).resolves.toEqual({ message: "hi team" });
   });
 });

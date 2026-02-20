@@ -2,6 +2,7 @@ import type {
   BlockContext,
   FlowInstance,
   JsonObject,
+  ModelResolver,
   ResponseEmitterHandle
 } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "../stores/types";
@@ -47,5 +48,6 @@ export type CreateExecutionContextOptions<
   metadata?: Record<string, unknown>;
   signal?: AbortSignal;
   response?: ResponseEmitterHandle;
+  modelResolver?: ModelResolver;
   stores: StoreRegistry;
 };

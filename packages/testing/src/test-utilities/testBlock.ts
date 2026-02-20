@@ -30,6 +30,7 @@ export async function testBlock<TInput, TOutput>(
     targets: options.targets,
     tools: options.tools,
     generators: options.generators,
+    models: options.models,
     unmockedGeneratorPolicy: options.unmockedGeneratorPolicy,
     actionName: `test:${block.name}`,
     sessionId: options.session === undefined ? undefined : "test-session"

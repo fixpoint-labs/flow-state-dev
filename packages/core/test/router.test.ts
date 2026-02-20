@@ -20,8 +20,8 @@ describe("router builder", () => {
     });
 
     const ctx = createMockContext();
-    await expect(block.config.execute?.(3, ctx)).resolves.toBe("low");
-    await expect(block.config.execute?.(20, ctx)).resolves.toBe("high");
+    await expect(block.run(3, ctx)).resolves.toBe("low");
+    await expect(block.run(20, ctx)).resolves.toBe("high");
   });
 
   it("throws when selected route is not in declared candidates", async () => {
@@ -41,7 +41,7 @@ describe("router builder", () => {
     });
 
     const ctx = createMockContext();
-    await expect(block.config.execute?.(1, ctx)).rejects.toThrow("invalid route");
+    await expect(block.run(1, ctx)).rejects.toThrow("invalid route");
   });
 
   it("uses validateRoute override when provided", async () => {
@@ -58,31 +58,28 @@ describe("router builder", () => {
     });
 
     const ctx = createMockContext();
-    await expect(block.config.execute?.(1, ctx)).rejects.toThrow("invalid route");
+    await expect(block.run(1, ctx)).rejects.toThrow("invalid route");
   });
 
-  it("throws when selected route has no execute function", async () => {
+  it("throws when selected route has no run method", async () => {
     const valid = handler<number, string>({
       name: "valid",
       execute: () => "ok"
     });
 
-    const missingExecute = {
+    const missingRun = {
       ...valid,
-      name: "missing-execute",
-      config: {
-        ...valid.config,
-        execute: undefined
-      }
+      name: "missing-run",
+      run: undefined
     };
 
     const block = router<number, string>({
-      name: "missing-exec-route",
-      routes: [valid, missingExecute],
-      execute: () => missingExecute
+      name: "missing-run-route",
+      routes: [valid, missingRun as unknown as typeof valid],
+      execute: () => missingRun as unknown as typeof valid
     });
 
     const ctx = createMockContext();
-    await expect(block.config.execute?.(1, ctx)).rejects.toThrow("without an execute function");
+    await expect(block.run(1, ctx)).rejects.toThrow("not a function");
   });
 });

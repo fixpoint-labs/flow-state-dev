@@ -18,7 +18,7 @@ describe("sequencer builder", () => {
       .then((value) => value * 2, two);
 
     const ctx = createMockContext();
-    await expect(chain.config.execute?.(1, ctx)).resolves.toBe(6);
+    await expect(chain.run(1, ctx)).resolves.toBe(6);
   });
 
   it("supports thenIf", async () => {
@@ -28,13 +28,13 @@ describe("sequencer builder", () => {
       .thenIf((value) => value > 100, (value) => value, plusTen);
 
     const ctx = createMockContext();
-    await expect(seq.config.execute?.(1, ctx)).resolves.toBe(11);
+    await expect(seq.run(1, ctx)).resolves.toBe(11);
   });
 
   it("supports map", async () => {
     const seq = sequencer<number>({ name: "map-step" }).map((value) => `v:${value}`);
     const ctx = createMockContext();
-    await expect(seq.config.execute?.(3, ctx)).resolves.toBe("v:3");
+    await expect(seq.run(3, ctx)).resolves.toBe("v:3");
   });
 
   it("supports parallel", async () => {
@@ -47,7 +47,7 @@ describe("sequencer builder", () => {
     });
 
     const ctx = createMockContext();
-    await expect(seq.config.execute?.(2, ctx)).resolves.toEqual({
+    await expect(seq.run(2, ctx)).resolves.toEqual({
       left: 3,
       right: 7
     });
@@ -63,8 +63,8 @@ describe("sequencer builder", () => {
     );
 
     const ctx = createMockContext();
-    await expect(direct.config.execute?.([1, 2], ctx)).resolves.toEqual([3, 4]);
-    await expect(viaConnector.config.execute?.(2, ctx)).resolves.toEqual([4, 5]);
+    await expect(direct.run([1, 2], ctx)).resolves.toEqual([3, 4]);
+    await expect(viaConnector.run(2, ctx)).resolves.toEqual([4, 5]);
   });
 
   it("supports doUntil and doWhile", async () => {
@@ -73,8 +73,8 @@ describe("sequencer builder", () => {
     const whileSeq = sequencer<number>({ name: "while" }).doWhile((value) => value < 3, inc);
 
     const ctx = createMockContext();
-    await expect(untilSeq.config.execute?.(0, ctx)).resolves.toBe(3);
-    await expect(whileSeq.config.execute?.(0, ctx)).resolves.toBe(3);
+    await expect(untilSeq.run(0, ctx)).resolves.toBe(3);
+    await expect(whileSeq.run(0, ctx)).resolves.toBe(3);
   });
 
   it("supports loopBack", async () => {
@@ -87,7 +87,7 @@ describe("sequencer builder", () => {
       });
 
     const ctx = createMockContext();
-    await expect(seq.config.execute?.(0, ctx)).resolves.toBe(3);
+    await expect(seq.run(0, ctx)).resolves.toBe(3);
   });
 
   it("supports work and waitForWork", async () => {
@@ -101,7 +101,7 @@ describe("sequencer builder", () => {
       .waitForWork({ failOnError: true });
 
     const ctx = createMockContext();
-    await expect(seq.config.execute?.(1, ctx)).resolves.toBe(1);
+    await expect(seq.run(1, ctx)).resolves.toBe(1);
   });
 
   it("waitForWork can fail on background errors", async () => {
@@ -117,7 +117,7 @@ describe("sequencer builder", () => {
       .waitForWork({ failOnError: true });
 
     const ctx = createMockContext();
-    await expect(seq.config.execute?.(1, ctx)).rejects.toThrow("background failure");
+    await expect(seq.run(1, ctx)).rejects.toThrow("background failure");
   });
 
   it("supports tap and tapIf", async () => {
@@ -141,7 +141,7 @@ describe("sequencer builder", () => {
       .tapIf((value) => value > 0, (value) => value * 3, tapBlock);
 
     const ctx = createMockContext();
-    await expect(seq.config.execute?.(2, ctx)).resolves.toBe(2);
+    await expect(seq.run(2, ctx)).resolves.toBe(2);
     expect(tapped).toEqual([3, 4, 4, 6]);
   });
 
@@ -163,7 +163,7 @@ describe("sequencer builder", () => {
       .rescue([{ block: rescueBlock }]);
 
     const ctx = createMockContext();
-    await expect(seq.config.execute?.(1, ctx)).resolves.toBe("recovered:broken");
+    await expect(seq.run(1, ctx)).resolves.toBe("recovered:broken");
   });
 
   it("supports branch and throws when no branch matches", async () => {
@@ -186,7 +186,7 @@ describe("sequencer builder", () => {
     });
 
     const ctx = createMockContext();
-    await expect(branching.config.execute?.(12, ctx)).resolves.toBe("large");
-    await expect(none.config.execute?.(1, ctx)).rejects.toThrow("no matching route");
+    await expect(branching.run(12, ctx)).resolves.toBe("large");
+    await expect(none.run(1, ctx)).rejects.toThrow("no matching route");
   });
 });

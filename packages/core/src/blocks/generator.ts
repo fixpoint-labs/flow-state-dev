@@ -8,8 +8,15 @@ import type {
   LlmOutputOption,
   RetryPolicy
 } from "../types/block";
+import type {
+  GeneratorModel,
+  GeneratorModelResult,
+  GeneratorModelTool,
+  GeneratorModelToolCall
+} from "../types/model";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
 import { buildBlock } from "./internal/build-block";
+import { toError, withTimeout } from "./internal/utils";
 
 const DEFAULT_MAX_ITERATIONS = 8;
 const DEFAULT_REPAIR_ATTEMPTS = 1;
@@ -17,6 +24,10 @@ const DEFAULT_REPAIR_ATTEMPTS = 1;
 type MaybePromise<TValue> = TValue | Promise<TValue>;
 
 type ResolvableString<TInput> = string | ((input: TInput, ctx: BlockContext) => MaybePromise<string>);
+type ResolvableModel<TInput> =
+  | string
+  | GeneratorModel
+  | ((input: TInput, ctx: BlockContext) => MaybePromise<string | GeneratorModel>);
 
 export type GeneratorSlotReference = (
   input: unknown,
@@ -62,20 +73,19 @@ export interface GeneratorLoopConfig<TInput = unknown> {
 }
 
 export interface GeneratorToolResult {
+  toolCallId?: string;
   toolName: string;
   input: unknown;
   output?: unknown;
   error?: Error;
 }
 
-export interface ToolBinding {
-  name: string;
-  description?: string;
-  enabled?: boolean | ((state: GeneratorLoopState, ctx: BlockContext) => MaybePromise<boolean>);
-  input?: (state: GeneratorLoopState, ctx: BlockContext) => MaybePromise<unknown>;
-  execute: (input: unknown, ctx: BlockContext) => MaybePromise<unknown>;
-  continueOnError?: boolean;
-}
+export type GeneratorTool = BlockDefinition<any, any>;
+
+/**
+ * @deprecated Use GeneratorTool. Kept as an alias for compatibility.
+ */
+export type ToolBinding = GeneratorTool;
 
 /**
  * Non-function slot entry forms (strings, objects, arrays).
@@ -106,13 +116,13 @@ export interface GeneratorConfig<TInput, TOutput> extends Omit<BlockConfig<TInpu
   userResourcesSchema?: ZodTypeAny;
   projectResourcesSchema?: ZodTypeAny;
   connectInput?: ConnectorFn<unknown, TInput>;
-  model: ResolvableString<TInput>;
+  model: ResolvableModel<TInput>;
   prompt: ResolvableString<TInput>;
   context?: GeneratorSlot;
   history?: GeneratorSlot;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
   user?: TypedUserSlotFn<TInput> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
-  tools?: ToolBinding[] | ((ctx: BlockContext) => MaybePromise<ToolBinding[]>);
+  tools?: GeneratorTool[] | ((ctx: BlockContext) => MaybePromise<GeneratorTool[]>);
   loop?: GeneratorLoopConfig<TInput>;
   maxIterations?: number;
   maxTokens?: number;
@@ -123,23 +133,10 @@ export interface GeneratorConfig<TInput, TOutput> extends Omit<BlockConfig<TInpu
     state: GeneratorLoopState<TInput>,
     ctx: BlockContext
   ) => MaybePromise<unknown>;
-  generate?: (state: GeneratorLoopState<TInput>, ctx: BlockContext) => MaybePromise<unknown>;
   flowTools?: ToolsConfig;
   retry?: RetryPolicy;
   clientOutput?: ClientOutputOption<TOutput>;
   llmOutput?: LlmOutputOption<TOutput>;
-}
-
-function toError(value: unknown): Error {
-  if (value instanceof Error) {
-    return value;
-  }
-
-  if (typeof value === "string" && value.length > 0) {
-    return new Error(value);
-  }
-
-  return new Error("Generator execution failed");
 }
 
 async function resolveString<TInput>(
@@ -148,6 +145,45 @@ async function resolveString<TInput>(
   ctx: BlockContext
 ): Promise<string> {
   return typeof value === "function" ? value(input, ctx) : value;
+}
+
+function isGeneratorModel(value: unknown): value is GeneratorModel {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.modelId === "string" &&
+    typeof candidate.generate === "function"
+  );
+}
+
+async function resolveModel<TInput>(
+  value: ResolvableModel<TInput>,
+  input: TInput,
+  ctx: BlockContext,
+  blockName: string
+): Promise<{ modelId: string; model: GeneratorModel }> {
+  const resolved = typeof value === "function" ? await value(input, ctx) : value;
+
+  if (typeof resolved === "string") {
+    return {
+      modelId: resolved,
+      model: ctx.resolveModel(resolved, blockName)
+    };
+  }
+
+  if (isGeneratorModel(resolved)) {
+    return {
+      modelId: resolved.modelId,
+      model: resolved
+    };
+  }
+
+  throw new Error(
+    `Generator "${blockName}" model must resolve to a model id string or GeneratorModel instance`
+  );
 }
 
 function normalizeSlotEntries(slot: GeneratorSlot | undefined): GeneratorSlotEntry[] {
@@ -202,9 +238,9 @@ async function resolveSlotValues(
 }
 
 async function resolveTools(
-  tools: ToolBinding[] | ((ctx: BlockContext) => MaybePromise<ToolBinding[]>) | undefined,
+  tools: GeneratorTool[] | ((ctx: BlockContext) => MaybePromise<GeneratorTool[]>) | undefined,
   ctx: BlockContext
-): Promise<ToolBinding[]> {
+): Promise<GeneratorTool[]> {
   if (tools === undefined) {
     return [];
   }
@@ -213,10 +249,31 @@ async function resolveTools(
   return Array.isArray(resolved) ? resolved : [];
 }
 
+function compileToolsForModel(tools: GeneratorTool[]): GeneratorModelTool[] {
+  return tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.inputSchema
+  }));
+}
+
+function indexToolsByName(tools: GeneratorTool[]): Map<string, GeneratorTool> {
+  const map = new Map<string, GeneratorTool>();
+  for (const tool of tools) {
+    map.set(tool.name, tool);
+  }
+  return map;
+}
+
 function isBlockObserver(
   observer: ToolsConfig["onToolStarted"]
 ): observer is BlockDefinition<ToolLifecycleEvent, void> {
-  return typeof observer === "object" && observer !== null && "config" in observer;
+  return (
+    typeof observer === "object" &&
+    observer !== null &&
+    "run" in observer &&
+    typeof (observer as { run?: unknown }).run === "function"
+  );
 }
 
 async function runToolObserver(
@@ -229,37 +286,11 @@ async function runToolObserver(
   }
 
   if (isBlockObserver(observer as ToolsConfig["onToolStarted"])) {
-    await (observer as BlockDefinition<ToolLifecycleEvent, void>).config.execute?.(event, ctx);
+    await (observer as BlockDefinition<ToolLifecycleEvent, void>).run(event, ctx);
     return;
   }
 
   await (observer as (input: ToolLifecycleEvent, ctx: BlockContext) => MaybePromise<void>)(event, ctx);
-}
-
-async function withTimeout<TValue>(
-  promise: Promise<TValue>,
-  timeoutMs: number | undefined,
-  label: string
-): Promise<TValue> {
-  if (timeoutMs === undefined || timeoutMs <= 0) {
-    return promise;
-  }
-
-  return new Promise<TValue>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-
-    promise
-      .then((value) => {
-        clearTimeout(timeout);
-        resolve(value);
-      })
-      .catch((error) => {
-        clearTimeout(timeout);
-        reject(error);
-      });
-  });
 }
 
 async function runWithRetry<TValue>(
@@ -375,8 +406,49 @@ async function applyRepairPolicy<TInput, TOutput>(
   }
 }
 
-async function invokeTools<TInput>(
-  tools: ToolBinding[],
+function resolveGenerationCandidate(result: GeneratorModelResult): unknown {
+  if (result.structuredOutput !== undefined) {
+    return result.structuredOutput;
+  }
+
+  return result.text;
+}
+
+function createToolResultMessage(result: GeneratorToolResult): Record<string, unknown> {
+  return {
+    role: "tool",
+    toolCallId: result.toolCallId,
+    name: result.toolName,
+    content:
+      result.error === undefined
+        ? result.output
+        : {
+            error: result.error.message
+          }
+  };
+}
+
+function appendIterationMessages(
+  messages: unknown[],
+  generationResult: GeneratorModelResult,
+  toolResults: GeneratorToolResult[]
+): void {
+  if (generationResult.text !== undefined || (generationResult.toolCalls?.length ?? 0) > 0) {
+    messages.push({
+      role: "assistant",
+      content: generationResult.text,
+      toolCalls: generationResult.toolCalls
+    });
+  }
+
+  for (const toolResult of toolResults) {
+    messages.push(createToolResultMessage(toolResult));
+  }
+}
+
+async function invokeModelTools<TInput>(
+  toolCalls: GeneratorModelToolCall[],
+  toolsByName: Map<string, GeneratorTool>,
   state: GeneratorLoopState<TInput>,
   ctx: BlockContext,
   flowTools: ToolsConfig | undefined
@@ -386,17 +458,18 @@ async function invokeTools<TInput>(
   const concurrency = flowTools?.defaults?.concurrency ?? "serial";
 
   const runOne = async (
-    tool: ToolBinding
+    toolCall: GeneratorModelToolCall
   ): Promise<{ result?: GeneratorToolResult; fatal?: Error }> => {
-    const enabled = typeof tool.enabled === "function" ? await tool.enabled(state as GeneratorLoopState, ctx) : tool.enabled;
-    if (enabled === false) {
-      return {};
+    const tool = toolsByName.get(toolCall.toolName);
+    if (tool === undefined) {
+      return {
+        fatal: new Error(`Generator requested unknown tool "${toolCall.toolName}"`)
+      };
     }
 
-    const toolInput = tool.input === undefined ? state.input : await tool.input(state as GeneratorLoopState, ctx);
     const startedEvent: ToolLifecycleEvent = {
-      toolName: tool.name,
-      input: toolInput
+      toolName: toolCall.toolName,
+      input: toolCall.args
     };
     await runToolObserver(flowTools?.onToolStarted, startedEvent, ctx);
 
@@ -404,47 +477,42 @@ async function invokeTools<TInput>(
       const output = await runWithRetry(
         async () =>
           withTimeout(
-            Promise.resolve(tool.execute(toolInput, ctx)),
+            Promise.resolve(tool.run(toolCall.args, ctx)),
             timeoutMs,
-            `tool:${tool.name}`
+            `tool:${toolCall.toolName}`
           ),
         retry
       );
+
       const completedEvent: ToolLifecycleEvent = {
-        toolName: tool.name,
-        input: toolInput,
+        toolName: toolCall.toolName,
+        input: toolCall.args,
         output
       };
       await runToolObserver(flowTools?.onToolCompleted, completedEvent, ctx);
+
       return {
         result: {
-          toolName: tool.name,
-          input: toolInput,
+          toolCallId: toolCall.toolCallId,
+          toolName: toolCall.toolName,
+          input: toolCall.args,
           output
         }
       };
     } catch (error) {
       const normalizedError = toError(error);
       const erroredEvent: ToolLifecycleEvent = {
-        toolName: tool.name,
-        input: toolInput,
+        toolName: toolCall.toolName,
+        input: toolCall.args,
         error: normalizedError
       };
       await runToolObserver(flowTools?.onToolErrored, erroredEvent, ctx);
-      if (tool.continueOnError === true) {
-        return {
-          result: {
-            toolName: tool.name,
-            input: toolInput,
-            error: normalizedError
-          }
-        };
-      }
 
       return {
         result: {
-          toolName: tool.name,
-          input: toolInput,
+          toolCallId: toolCall.toolCallId,
+          toolName: toolCall.toolName,
+          input: toolCall.args,
           error: normalizedError
         },
         fatal: normalizedError
@@ -453,7 +521,7 @@ async function invokeTools<TInput>(
   };
 
   if (concurrency === "parallel") {
-    const settled = await Promise.all(tools.map((tool) => runOne(tool)));
+    const settled = await Promise.all(toolCalls.map((toolCall) => runOne(toolCall)));
     const results = settled.flatMap((entry) => (entry.result === undefined ? [] : [entry.result]));
     const fatal = settled.find((entry) => entry.fatal !== undefined)?.fatal;
     if (fatal !== undefined) {
@@ -464,8 +532,8 @@ async function invokeTools<TInput>(
   }
 
   const results: GeneratorToolResult[] = [];
-  for (const tool of tools) {
-    const outcome = await runOne(tool);
+  for (const toolCall of toolCalls) {
+    const outcome = await runOne(toolCall);
     if (outcome.result !== undefined) {
       results.push(outcome.result);
     }
@@ -475,61 +543,6 @@ async function invokeTools<TInput>(
   }
 
   return results;
-}
-
-function buildFallbackCandidate<TInput>(state: GeneratorLoopState<TInput>): unknown {
-  for (let index = state.toolResults.length - 1; index >= 0; index -= 1) {
-    const result = state.toolResults[index];
-    if (result.error === undefined) {
-      return result.output;
-    }
-  }
-
-  const lastUserMessage = state.messages[state.messages.length - 1];
-  if (lastUserMessage !== undefined) {
-    return lastUserMessage;
-  }
-
-  return state.prompt;
-}
-
-/**
- * Checks ctx for a test-injected mock generator matching this block name.
- * Returns the mock's structuredOutput if found, undefined otherwise.
- * The __testGenerators property is set by the testing package's createTestContext.
- */
-function resolveTestMock(
-  blockName: string,
-  input: unknown,
-  ctx: BlockContext
-): unknown | undefined {
-  const ctxRecord = ctx as unknown as Record<string, unknown>;
-  const generators = ctxRecord.__testGenerators as
-    | Record<string, { name: string; calls: Array<{ input: unknown; model?: string; prompt?: string }>; next(): { structuredOutput?: unknown } | undefined }>
-    | undefined;
-
-  if (generators === undefined) {
-    return undefined;
-  }
-
-  const mock = generators[blockName];
-  if (mock === undefined) {
-    const policy = ctxRecord.__unmockedGeneratorPolicy as string | undefined;
-    if (policy === "error") {
-      throw new Error(
-        `Generator "${blockName}" has no mock. Provide a mock via generators["${blockName}"] or set unmockedGeneratorPolicy to "warn" or "allow".`
-      );
-    }
-    return undefined;
-  }
-
-  mock.calls.push({ input });
-  const step = mock.next();
-  if (step === undefined) {
-    throw new Error(`Mock generator "${blockName}" exhausted its script. Call .reset() or add more script steps.`);
-  }
-
-  return step.structuredOutput;
 }
 
 function resolveMaxIterations<TInput, TOutput>(config: GeneratorConfig<TInput, TOutput>): number {
@@ -596,32 +609,27 @@ export function generator<TInput, TOutput>(
     kind: "generator",
     config: normalizedConfig as unknown as BlockConfig<TInput, TOutput>,
     execute: async (input, ctx) => {
-      const mockCandidate = resolveTestMock(normalizedConfig.name as string, input, ctx);
-      if (mockCandidate !== undefined) {
-        const state: GeneratorLoopState<TInput> = {
-          iteration: 0,
-          input,
-          model: "mock",
-          prompt: "",
-          messages: [],
-          toolResults: []
-        };
-        return applyRepairPolicy(normalizedConfig, outputSchema, mockCandidate, state, ctx);
-      }
-
-      const model = await resolveString(normalizedConfig.model, input, ctx);
+      const blockName = String(normalizedConfig.name);
+      const { modelId, model } = await resolveModel(
+        normalizedConfig.model,
+        input,
+        ctx,
+        blockName
+      );
       const prompt = await resolveString(normalizedConfig.prompt, input, ctx);
       const contextValues = await resolveSlotValues(normalizedConfig.context, input, ctx);
       const historyValues = await resolveSlotValues(normalizedConfig.history, input, ctx);
       const userValues = await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
-      const messages = [
+      const messages: unknown[] = [
         { role: "system", content: prompt },
         ...contextValues.map(asSystemMessage),
         ...historyValues,
         ...userValues.map(asUserMessage)
       ];
 
-      const tools = await resolveTools(normalizedConfig.tools, ctx);
+      const toolBlocks = await resolveTools(normalizedConfig.tools, ctx);
+      const toolsByName = indexToolsByName(toolBlocks);
+      const compiledTools = compileToolsForModel(toolBlocks);
       const maxIterations = resolveMaxIterations(normalizedConfig);
       const runTools = normalizedConfig.loop?.runTools !== false;
 
@@ -633,33 +641,64 @@ export function generator<TInput, TOutput>(
         const state: GeneratorLoopState<TInput> = {
           iteration,
           input,
-          model,
+          model: modelId,
           prompt,
           messages,
           toolResults: aggregatedToolResults,
           lastCandidate: previousCandidate
         };
 
-        if (runTools && tools.length > 0) {
-          const toolResults = await invokeTools(tools, state, ctx, normalizedConfig.flowTools);
-          aggregatedToolResults.push(...toolResults);
+        const generation = await model.generate({
+          messages,
+          tools: runTools ? compiledTools : undefined,
+          outputSchema,
+          maxTokens: normalizedConfig.maxTokens,
+          signal: ctx.signal
+        });
+
+        const iterationToolCalls = runTools ? generation.toolCalls ?? [] : [];
+        const iterationToolResults =
+          iterationToolCalls.length === 0
+            ? []
+            : await invokeModelTools(
+                iterationToolCalls,
+                toolsByName,
+                state,
+                ctx,
+                normalizedConfig.flowTools
+              );
+
+        if (iterationToolResults.length > 0) {
+          aggregatedToolResults.push(...iterationToolResults);
         }
 
-        const candidate =
-          normalizedConfig.generate === undefined
-            ? buildFallbackCandidate(state)
-            : await normalizedConfig.generate(state, ctx);
+        appendIterationMessages(messages, generation, iterationToolResults);
 
-        previousCandidate = candidate;
+        const candidate = resolveGenerationCandidate(generation);
+        if (candidate !== undefined) {
+          previousCandidate = candidate;
+          const candidateState: GeneratorLoopState<TInput> = {
+            ...state,
+            toolResults: aggregatedToolResults,
+            lastCandidate: previousCandidate
+          };
 
-        try {
-          return await applyRepairPolicy(normalizedConfig, outputSchema, candidate, state, ctx);
-        } catch (error) {
-          lastError = toError(error);
+          try {
+            return await applyRepairPolicy(normalizedConfig, outputSchema, candidate, candidateState, ctx);
+          } catch (error) {
+            lastError = toError(error);
+          }
         }
 
         if (normalizedConfig.loop?.stopWhen !== undefined) {
-          const shouldStop = await normalizedConfig.loop.stopWhen(state, ctx);
+          const shouldStop = await normalizedConfig.loop.stopWhen(
+            {
+              ...state,
+              toolResults: aggregatedToolResults,
+              lastCandidate: previousCandidate
+            },
+            ctx
+          );
           if (shouldStop) {
             break;
           }
@@ -668,7 +707,7 @@ export function generator<TInput, TOutput>(
 
       throw (
         lastError ??
-        new Error(`Generator "${normalizedConfig.name}" did not produce a valid output in ${maxIterations} iteration(s)`)
+        new Error(`Generator "${blockName}" did not produce a valid output in ${maxIterations} iteration(s)`)
       );
     }
   });

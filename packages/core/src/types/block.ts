@@ -6,6 +6,7 @@ import type {
   UserScopeHandle
 } from "./scope";
 import type { ScopeStateOps } from "./state";
+import type { ModelResolver } from "./model";
 
 export type BlockKind = "handler" | "generator" | "sequencer" | "router";
 
@@ -41,6 +42,7 @@ export interface BlockContext<
 
   response: ResponseEmitterHandle;
   signal: AbortSignal;
+  resolveModel: ModelResolver;
 
   getBlockResult(name: string): unknown;
   getTarget<TState extends object = Record<string, unknown>>(
@@ -105,6 +107,7 @@ export interface BlockDefinition<TInput = unknown, TOutput = unknown> {
   inputSchema?: ZodTypeAny;
   outputSchema?: ZodTypeAny;
   config: BlockConfig<TInput, TOutput>;
+  run(input: TInput, ctx: BlockContext): Promise<TOutput>;
 
   connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<TFrom, TOutput>;
   connectOutput<TTo>(

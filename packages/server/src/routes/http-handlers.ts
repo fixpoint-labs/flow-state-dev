@@ -6,7 +6,7 @@ import type {
   RequestStatusEvent,
   RequestStreamEvent
 } from "@flow-state-dev/core/items";
-import type { JsonObject, ResourceConfig } from "@flow-state-dev/core/types";
+import type { JsonObject, ModelResolver, ResourceConfig } from "@flow-state-dev/core/types";
 import { FlowError, ValidationError } from "../errors/flow-error";
 import { runAction } from "../execution/runAction";
 import { type FlowRegistry } from "../registry/flow-registry";
@@ -66,6 +66,7 @@ export const NOOP_INTERNAL_ROUTE_SEAMS: InternalRouteSeams = {};
 export type CreateFlowRouteHandlersOptions = {
   registry: FlowRegistry;
   stores?: Partial<StoreRegistry>;
+  modelResolver?: ModelResolver;
   onError?: (error: Error, context: { method: string; path: string }) => void;
   internalSeams?: InternalRouteSeams;
 };
@@ -723,6 +724,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           projectId: resolvedActionInput.projectId,
           metadata: resolvedActionInput.metadata,
           signal: resolvedActionInput.signal,
+          modelResolver: options.modelResolver,
           stores
         });
 
