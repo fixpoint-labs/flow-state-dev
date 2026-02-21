@@ -46,10 +46,12 @@ export interface RouterConfig<
 export function router<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
->(config: RouterConfig<TInputSchema, TOutputSchema>): BlockDefinition<TInputSchema, TOutputSchema> {
-  return buildBlock<TInputSchema, TOutputSchema>({
+  TInput = z.infer<TInputSchema>,
+  TOutput = z.infer<TOutputSchema>,
+>(config: RouterConfig<TInputSchema, TOutputSchema, TInput, TOutput>): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+  return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "router",
-    config: config as unknown as BlockConfig<TInputSchema, TOutputSchema>,
+    config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     execute: async (input, ctx) => {
       const candidate = config.execute(input, ctx);
 

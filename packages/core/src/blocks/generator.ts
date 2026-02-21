@@ -604,21 +604,20 @@ export const resolveGeneratorRender = resolveGeneratorClientOutput;
 export function generator<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
+  TInput = z.infer<TInputSchema>,
+  TOutput = z.infer<TOutputSchema>,
 >(
-  config: GeneratorConfig<TInputSchema, TOutputSchema>
-): BlockDefinition<TInputSchema, TOutputSchema> {
-  type TInput = z.infer<TInputSchema>;
-  type TOutput = z.infer<TOutputSchema>;
-
+  config: GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput>
+): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const outputSchema = (config.outputSchema ?? z.string()) as ZodTypeAny;
-  const normalizedConfig: GeneratorConfig<TInputSchema, TOutputSchema> = {
+  const normalizedConfig: GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput> = {
     ...config,
     outputSchema: outputSchema as TOutputSchema
   };
 
-  return buildBlock<TInputSchema, TOutputSchema>({
+  return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "generator",
-    config: normalizedConfig as unknown as BlockConfig<TInputSchema, TOutputSchema>,
+    config: normalizedConfig as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     execute: async (input: TInput, ctx) => {
       const blockName = String(normalizedConfig.name);
       const { modelId, model } = await resolveModel<TInput>(

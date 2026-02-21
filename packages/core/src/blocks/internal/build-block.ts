@@ -21,10 +21,12 @@ type ExecuteFn<
 export type BuildBlockOptions<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
+  TInput = z.infer<TInputSchema>,
+  TOutput = z.infer<TOutputSchema>,
 > = {
   kind: BlockKind;
-  config: BlockConfig<TInputSchema, TOutputSchema>;
-  execute?: ExecuteFn<TInputSchema, TOutputSchema>;
+  config: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
+  execute?: ExecuteFn<TInputSchema, TOutputSchema, TInput, TOutput>;
 };
 
 function validateSchema<TValue>(
@@ -125,39 +127,43 @@ export function buildBlock<
     },
     connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<ZodTypeAny, TOutputSchema> {
       const nextConfig = {
-        ...(runtimeConfig as unknown as BlockConfig<ZodTypeAny, TOutputSchema>),
+        ...(runtimeConfig as unknown as BlockConfig<ZodTypeAny, TOutputSchema, unknown, TOutput>),
         connectInput: mapper as unknown as ConnectorFn<unknown, unknown>
       };
 
-      return buildBlock<ZodTypeAny, TOutputSchema>({
+      return buildBlock<ZodTypeAny, TOutputSchema, unknown, TOutput>({
         kind,
         config: nextConfig,
-        execute: internalExecute as unknown as ExecuteFn<ZodTypeAny, TOutputSchema>
+        execute: internalExecute as unknown as ExecuteFn<ZodTypeAny, TOutputSchema, unknown, TOutput>
       });
     },
     connectOutput<TTo>(
       mapper: (output: TOutput, ctx: BlockContext) => TTo | Promise<TTo>
     ): BlockDefinition<TInputSchema, ZodTypeAny> {
-      const mappedExecute: ExecuteFn<TInputSchema, ZodTypeAny> = async (input, ctx) => {
+      const mappedExecute: ExecuteFn<TInputSchema, ZodTypeAny, TInput, TTo> = async (input, ctx) => {
         const output = await internalExecute(input, ctx);
         return mapper(output as TOutput, ctx);
       };
 
-      const nextConfig: BlockConfig<TInputSchema, ZodTypeAny> = {
-        ...(runtimeConfig as unknown as BlockConfig<TInputSchema, ZodTypeAny>),
+      const nextConfig: BlockConfig<TInputSchema, ZodTypeAny, TInput, TTo> = {
+        ...(runtimeConfig as unknown as BlockConfig<TInputSchema, ZodTypeAny, TInput, TTo>),
         outputSchema: z.any() as ZodTypeAny,
         clientOutput: preserveNonFunctionOption(runtimeConfig.clientOutput) as BlockConfig<
           TInputSchema,
-          ZodTypeAny
+          ZodTypeAny,
+          TInput,
+          TTo
         >["clientOutput"],
         llmOutput: preserveNonFunctionOption(runtimeConfig.llmOutput) as BlockConfig<
           TInputSchema,
-          ZodTypeAny
+          ZodTypeAny,
+          TInput,
+          TTo
         >["llmOutput"],
         onCompleted: undefined
       };
 
-      return buildBlock<TInputSchema, ZodTypeAny>({
+      return buildBlock<TInputSchema, ZodTypeAny, TInput, TTo>({
         kind,
         config: nextConfig,
         execute: mappedExecute

@@ -23,10 +23,12 @@ export interface HandlerConfig<
 export function handler<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
->(config: HandlerConfig<TInputSchema, TOutputSchema>): BlockDefinition<TInputSchema, TOutputSchema> {
-  return buildBlock<TInputSchema, TOutputSchema>({
+  TInput = z.infer<TInputSchema>,
+  TOutput = z.infer<TOutputSchema>,
+>(config: HandlerConfig<TInputSchema, TOutputSchema, TInput, TOutput>): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+  return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "handler",
-    config: config as unknown as BlockConfig<TInputSchema, TOutputSchema>,
+    config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     execute: config.execute
   });
 }
