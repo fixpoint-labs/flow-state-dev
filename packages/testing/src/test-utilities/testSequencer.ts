@@ -1,7 +1,9 @@
-import type { OutputItem, StepErrorItem } from "@flow-state-dev/core/items";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { OutputItem, StepErrorItem } from "@flow-state-dev/core/items";
 import { testBlock } from "./testBlock";
 import type {
+  BlockInput,
+  BlockOutput,
   StepTrace,
   TestBlockOptions,
   TestSequencerResult,
@@ -92,11 +94,11 @@ function inferLoopIterations(items: OutputItem[]): number {
 /**
  * Executes a sequencer block and returns sequencer-focused traces.
  */
-export async function testSequencer<TInput, TOutput>(
-  sequencer: BlockDefinition,
-  options: TestBlockOptions<TInput>
-): Promise<TestSequencerResult<TOutput>> {
-  const base = await testBlock<TInput, TOutput>(sequencer, options);
+export async function testSequencer<TBlock extends BlockDefinition<any, any>>(
+  sequencer: TBlock,
+  options: TestBlockOptions<BlockInput<TBlock>>
+): Promise<TestSequencerResult<BlockOutput<TBlock>>> {
+  const base = await testBlock(sequencer, options);
   const steps = buildStepTraces(base.items);
 
   return {

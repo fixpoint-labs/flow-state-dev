@@ -109,7 +109,9 @@ export type TypedUserSlotFn<TInput> = (
 export interface GeneratorConfig<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
-> extends Omit<BlockConfig<TInputSchema, TOutputSchema>, "execute"> {
+  TInput = z.infer<TInputSchema>,
+  TOutput = z.infer<TOutputSchema>,
+> extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: ZodTypeAny;
   sessionStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
@@ -118,28 +120,28 @@ export interface GeneratorConfig<
   sessionResourcesSchema?: ZodTypeAny;
   userResourcesSchema?: ZodTypeAny;
   projectResourcesSchema?: ZodTypeAny;
-  connectInput?: ConnectorFn<unknown, z.infer<TInputSchema>>;
-  model: ResolvableModel<z.infer<TInputSchema>>;
-  prompt: ResolvableString<z.infer<TInputSchema>>;
+  connectInput?: ConnectorFn<unknown, TInput>;
+  model: ResolvableModel<TInput>;
+  prompt: ResolvableString<TInput>;
   context?: GeneratorSlot;
   history?: GeneratorSlot;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
-  user?: TypedUserSlotFn<z.infer<TInputSchema>> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
+  user?: TypedUserSlotFn<TInput> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
   tools?: GeneratorTool[] | ((ctx: BlockContext) => MaybePromise<GeneratorTool[]>);
-  loop?: GeneratorLoopConfig<z.infer<TInputSchema>>;
+  loop?: GeneratorLoopConfig<TInput>;
   maxIterations?: number;
   maxTokens?: number;
   repair?: GeneratorRepairConfig;
   repairOutput?: (
     candidate: unknown,
     error: Error,
-    state: GeneratorLoopState<z.infer<TInputSchema>>,
+    state: GeneratorLoopState<TInput>,
     ctx: BlockContext
   ) => MaybePromise<unknown>;
   flowTools?: ToolsConfig;
   retry?: RetryPolicy;
-  clientOutput?: ClientOutputOption<z.infer<TOutputSchema>>;
-  llmOutput?: LlmOutputOption<z.infer<TOutputSchema>>;
+  clientOutput?: ClientOutputOption<TOutput>;
+  llmOutput?: LlmOutputOption<TOutput>;
 }
 
 async function resolveString<TInput>(

@@ -806,10 +806,13 @@ function createSequencer<TInput, TOutput>(
   return definition;
 }
 
-export function sequencer<TInputSchema extends ZodTypeAny = ZodTypeAny>(
-  config: SequencerConfig<TInputSchema>
-): SequencerDefinition<z.infer<TInputSchema>, z.infer<TInputSchema>> {
-  return createSequencer<z.infer<TInputSchema>, z.infer<TInputSchema>>(
+export function sequencer<
+  TInputSchema extends ZodTypeAny = ZodTypeAny,
+  TInput = z.infer<TInputSchema>,
+>(
+  config: SequencerConfig<TInputSchema, TInput>
+): SequencerDefinition<TInput, TInput> {
+  return createSequencer<TInput, TInput>(
     config as SequencerConfig<any>,
     [],
     [],

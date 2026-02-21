@@ -18,7 +18,9 @@ function isRouteInCandidates<TInputSchema extends ZodTypeAny, TOutputSchema exte
 export interface RouterConfig<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
-> extends Omit<BlockConfig<TInputSchema, TOutputSchema>, "execute"> {
+  TInput = z.infer<TInputSchema>,
+  TOutput = z.infer<TOutputSchema>,
+> extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: ZodTypeAny;
   sessionStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
@@ -27,16 +29,16 @@ export interface RouterConfig<
   sessionResourcesSchema?: ZodTypeAny;
   userResourcesSchema?: ZodTypeAny;
   projectResourcesSchema?: ZodTypeAny;
-  connectInput?: ConnectorFn<unknown, z.infer<TInputSchema>>;
+  connectInput?: ConnectorFn<unknown, TInput>;
   routes: BlockDefinition<TInputSchema, TOutputSchema>[];
   execute: (
-    input: z.infer<TInputSchema>,
+    input: TInput,
     ctx: BlockContext
   ) => Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>;
   validateRoute?: (
     candidate: BlockDefinition<TInputSchema, TOutputSchema>,
     routes: BlockDefinition<TInputSchema, TOutputSchema>[],
-    input: z.infer<TInputSchema>,
+    input: TInput,
     ctx: BlockContext
   ) => Promise<boolean> | boolean;
 }

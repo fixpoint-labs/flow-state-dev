@@ -1,6 +1,8 @@
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { testBlock } from "./testBlock";
 import type {
+  BlockInput,
+  BlockOutput,
   TestBlockOptions,
   TestRouterResult
 } from "./types";
@@ -8,10 +10,10 @@ import type {
 /**
  * Executes a router block and returns the selected route name when detected.
  */
-export async function testRouter<TInput, TOutput>(
-  router: BlockDefinition,
-  options: TestBlockOptions<TInput>
-): Promise<TestRouterResult<TOutput>> {
+export async function testRouter<TBlock extends BlockDefinition<any, any>>(
+  router: TBlock,
+  options: TestBlockOptions<BlockInput<TBlock>>
+): Promise<TestRouterResult<BlockOutput<TBlock>>> {
   const routes = Array.isArray((router.config as unknown as { routes?: unknown }).routes)
     ? ((router.config as unknown as { routes: BlockDefinition<any, any>[] }).routes ?? [])
     : [];
@@ -30,7 +32,7 @@ export async function testRouter<TInput, TOutput>(
   }
 
   try {
-    const base = await testBlock<TInput, TOutput>(router, options);
+    const base = await testBlock(router, options);
 
     return {
       ...base,

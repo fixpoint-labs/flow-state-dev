@@ -1,9 +1,11 @@
+import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { executeBlock } from "@flow-state-dev/server";
 import { createTestContext } from "../runtime/createTestContext";
 import type {
+  BlockInput,
+  BlockOutput,
   TestBlockOptions,
-  TestBlockResult,
-  TestableBlock
+  TestBlockResult
 } from "./types";
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -16,13 +18,17 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 /**
  * Executes one block with seeded scope state and returns deterministic test artifacts.
+ *
+ * Types are inferred from the block's Zod schema parameters:
+ * - Input type is derived from the block's `inputSchema` property
+ * - Output type is derived from the block's `outputSchema` property
  */
-export async function testBlock<TInput, TOutput>(
-  block: TestableBlock,
-  options: TestBlockOptions<TInput>
-): Promise<TestBlockResult<TOutput>> {
+export async function testBlock<TBlock extends BlockDefinition<any, any>>(
+  block: TBlock,
+  options: TestBlockOptions<BlockInput<TBlock>>
+): Promise<TestBlockResult<BlockOutput<TBlock>>> {
   const startedAt = Date.now();
-  const runtime = await createTestContext<TInput>({
+  const runtime = await createTestContext({
     request: options.request,
     session: options.session,
     user: options.user,
@@ -43,7 +49,7 @@ export async function testBlock<TInput, TOutput>(
   });
 
   return {
-    output: result.output as TOutput,
+    output: result.output as BlockOutput<TBlock>,
     error: result.error ?? null,
     items: runtime.getItems(),
     state: {

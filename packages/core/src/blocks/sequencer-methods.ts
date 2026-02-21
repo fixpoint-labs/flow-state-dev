@@ -15,10 +15,10 @@ export type ParallelStep<TCurrent> =
       block: BlockDefinition<any, any>;
     };
 
-export type ParallelStepOutput<TStep> = TStep extends BlockDefinition<any, infer TOutSchema>
-  ? z.infer<TOutSchema extends ZodTypeAny ? TOutSchema : ZodTypeAny>
-  : TStep extends { block: BlockDefinition<any, infer TOutSchema> }
-    ? z.infer<TOutSchema extends ZodTypeAny ? TOutSchema : ZodTypeAny>
+export type ParallelStepOutput<TStep> = TStep extends { outputSchema: { _output: infer V } }
+  ? V
+  : TStep extends { block: { outputSchema: { _output: infer V } } }
+    ? V
     : never;
 
 export type BranchStep<TInput> = readonly [
@@ -30,9 +30,9 @@ export type BranchStep<TInput> = readonly [
 export type BranchStepOutput<TStep> = TStep extends readonly [
   ConnectorFn<any, any>,
   (input: any, ctx: BlockContext) => boolean | Promise<boolean>,
-  BlockDefinition<any, infer TOutSchema>
+  { outputSchema: { _output: infer V } }
 ]
-  ? z.infer<TOutSchema extends ZodTypeAny ? TOutSchema : ZodTypeAny>
+  ? V
   : never;
 
 export type WorkResult = {
@@ -54,11 +54,12 @@ export type FactoryConfig<TFactory> = TFactory extends (config: infer C) => any 
 export type InlineConfig<
   TFactory,
   TInput,
-  TOutputSchema extends ZodTypeAny
+  TOutputSchema extends ZodTypeAny,
+  TOutput = z.infer<TOutputSchema>,
 > = Omit<FactoryConfig<TFactory>, "inputSchema" | "name" | "outputSchema" | "execute"> & {
   name?: string;
   outputSchema: TOutputSchema;
-  execute?: (input: TInput, ctx: BlockContext) => z.infer<TOutputSchema> | Promise<z.infer<TOutputSchema>>;
+  execute?: (input: TInput, ctx: BlockContext) => TOutput | Promise<TOutput>;
 };
 
 /**
@@ -215,13 +216,16 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<an
   validate(): SequencerDefinition<TInput, TOutput>;
 }
 
-export type SequencerConfig<TInputSchema extends ZodTypeAny = ZodTypeAny> = {
+export type SequencerConfig<
+  TInputSchema extends ZodTypeAny = ZodTypeAny,
+  TInput = z.infer<TInputSchema>,
+> = {
   name: string;
   description?: string;
   inputSchema?: TInputSchema;
   outputSchema?: ZodTypeAny;
-  clientOutput?: ClientOutputOption<z.infer<TInputSchema>>;
-  llmOutput?: LlmOutputOption<z.infer<TInputSchema>>;
+  clientOutput?: ClientOutputOption<TInput>;
+  llmOutput?: LlmOutputOption<TInput>;
 };
 
 export type SequencerWorkTask = {

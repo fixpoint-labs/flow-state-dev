@@ -8,10 +8,15 @@ import type {
 } from "../../types/block";
 import { toError } from "./utils";
 
-type ExecuteFn<TInputSchema extends ZodTypeAny, TOutputSchema extends ZodTypeAny> = (
-  input: z.infer<TInputSchema>,
+type ExecuteFn<
+  TInputSchema extends ZodTypeAny,
+  TOutputSchema extends ZodTypeAny,
+  TInput = z.infer<TInputSchema>,
+  TOutput = z.infer<TOutputSchema>,
+> = (
+  input: TInput,
   ctx: BlockContext
-) => Promise<z.infer<TOutputSchema>> | z.infer<TOutputSchema>;
+) => Promise<TOutput> | TOutput;
 
 export type BuildBlockOptions<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
@@ -55,7 +60,9 @@ function preserveNonFunctionOption<TValue>(value: TValue): TValue | undefined {
 export function buildBlock<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
->(options: BuildBlockOptions<TInputSchema, TOutputSchema>): BlockDefinition<TInputSchema, TOutputSchema> {
+  TInput = z.infer<TInputSchema>,
+  TOutput = z.infer<TOutputSchema>,
+>(options: BuildBlockOptions<TInputSchema, TOutputSchema>): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { kind, config } = options;
   const internalExecute = options.execute ?? config.execute;
 
@@ -70,13 +77,13 @@ export function buildBlock<
   const resolvedInputSchema = (config.inputSchema ?? z.any()) as TInputSchema;
   const resolvedOutputSchema = (config.outputSchema ?? z.any()) as TOutputSchema;
 
-  const runtimeConfig: BlockConfig<TInputSchema, TOutputSchema> = {
+  const runtimeConfig: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput> = {
     ...config,
     inputSchema: resolvedInputSchema,
     outputSchema: resolvedOutputSchema
   };
 
-  const definition: BlockDefinition<TInputSchema, TOutputSchema> = {
+  const definition: BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> = {
     kind,
     name: runtimeConfig.name,
     renderKey: runtimeConfig.renderKey,
@@ -84,14 +91,14 @@ export function buildBlock<
     inputSchema: resolvedInputSchema,
     outputSchema: resolvedOutputSchema,
     config: runtimeConfig,
-    async run(rawInput: z.infer<TInputSchema>, ctx: BlockContext): Promise<z.infer<TOutputSchema>> {
+    async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       try {
         const connectedInput = runtimeConfig.connectInput
           ? await runtimeConfig.connectInput(rawInput, ctx)
           : rawInput;
-        const validatedInput = validateSchema<z.infer<TInputSchema>>(runtimeConfig.inputSchema, connectedInput, "input", runtimeConfig.name);
+        const validatedInput = validateSchema<TInput>(runtimeConfig.inputSchema, connectedInput, "input", runtimeConfig.name);
         const output = await internalExecute(validatedInput, ctx);
-        const validatedOutput = validateSchema<z.infer<TOutputSchema>>(
+        const validatedOutput = validateSchema<TOutput>(
           runtimeConfig.outputSchema,
           output,
           "output",
@@ -116,7 +123,7 @@ export function buildBlock<
         throw normalizedError;
       }
     },
-    connectInput<TFrom>(mapper: ConnectorFn<TFrom, z.infer<TInputSchema>>): BlockDefinition<ZodTypeAny, TOutputSchema> {
+    connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<ZodTypeAny, TOutputSchema> {
       const nextConfig = {
         ...(runtimeConfig as unknown as BlockConfig<ZodTypeAny, TOutputSchema>),
         connectInput: mapper as unknown as ConnectorFn<unknown, unknown>
@@ -129,11 +136,11 @@ export function buildBlock<
       });
     },
     connectOutput<TTo>(
-      mapper: (output: z.infer<TOutputSchema>, ctx: BlockContext) => TTo | Promise<TTo>
+      mapper: (output: TOutput, ctx: BlockContext) => TTo | Promise<TTo>
     ): BlockDefinition<TInputSchema, ZodTypeAny> {
       const mappedExecute: ExecuteFn<TInputSchema, ZodTypeAny> = async (input, ctx) => {
         const output = await internalExecute(input, ctx);
-        return mapper(output, ctx);
+        return mapper(output as TOutput, ctx);
       };
 
       const nextConfig: BlockConfig<TInputSchema, ZodTypeAny> = {

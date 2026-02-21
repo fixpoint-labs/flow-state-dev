@@ -1,5 +1,5 @@
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { BlockDefinition, FlowInstance } from "@flow-state-dev/core/types";
+import type { BlockInput, BlockOutput, FlowInstance } from "@flow-state-dev/core/types";
 import type {
   MockGeneratorInstance,
   UnmockedGeneratorPolicy
@@ -119,4 +119,4 @@ export type TestFlowResult = {
   items: OutputItem[];
 };
 
-export type TestableBlock = BlockDefinition;
+export type { BlockInput, BlockOutput };
