@@ -3,7 +3,8 @@ import type {
   BlockConfig,
   BlockContext,
   BlockDefinition,
-  ConnectorFn
+  ConnectorFn,
+  InferStateFromSchema
 } from "../types/block";
 import { buildBlock } from "./internal/build-block";
 import { isBlockDefinition } from "./internal/utils";
@@ -20,11 +21,21 @@ export interface RouterConfig<
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
   TInput = z.infer<TInputSchema>,
   TOutput = z.infer<TOutputSchema>,
+  // State schemas — optional, default to undefined (no schema declared)
+  TRequestStateSchema extends ZodTypeAny | undefined = undefined,
+  TSessionStateSchema extends ZodTypeAny | undefined = undefined,
+  TUserStateSchema extends ZodTypeAny | undefined = undefined,
+  TProjectStateSchema extends ZodTypeAny | undefined = undefined,
+  // Derive-once: evaluate z.infer exactly once per provided schema
+  TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
+  TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
+  TUserState extends object = InferStateFromSchema<TUserStateSchema>,
+  TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
-  requestStateSchema?: ZodTypeAny;
-  sessionStateSchema?: ZodTypeAny;
-  userStateSchema?: ZodTypeAny;
-  projectStateSchema?: ZodTypeAny;
+  requestStateSchema?: TRequestStateSchema;
+  sessionStateSchema?: TSessionStateSchema;
+  userStateSchema?: TUserStateSchema;
+  projectStateSchema?: TProjectStateSchema;
   requestResourcesSchema?: ZodTypeAny;
   sessionResourcesSchema?: ZodTypeAny;
   userResourcesSchema?: ZodTypeAny;
@@ -33,13 +44,13 @@ export interface RouterConfig<
   routes: BlockDefinition<TInputSchema, TOutputSchema>[];
   execute: (
     input: TInput,
-    ctx: BlockContext
+    ctx: BlockContext<TRequestState, TSessionState, TUserState, TProjectState>
   ) => Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>;
   validateRoute?: (
     candidate: BlockDefinition<TInputSchema, TOutputSchema>,
     routes: BlockDefinition<TInputSchema, TOutputSchema>[],
     input: TInput,
-    ctx: BlockContext
+    ctx: BlockContext<TRequestState, TSessionState, TUserState, TProjectState>
   ) => Promise<boolean> | boolean;
 }
 
@@ -48,12 +59,28 @@ export function router<
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
   TInput = z.infer<TInputSchema>,
   TOutput = z.infer<TOutputSchema>,
->(config: RouterConfig<TInputSchema, TOutputSchema, TInput, TOutput>): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+  TRequestStateSchema extends ZodTypeAny | undefined = undefined,
+  TSessionStateSchema extends ZodTypeAny | undefined = undefined,
+  TUserStateSchema extends ZodTypeAny | undefined = undefined,
+  TProjectStateSchema extends ZodTypeAny | undefined = undefined,
+  TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
+  TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
+  TUserState extends object = InferStateFromSchema<TUserStateSchema>,
+  TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
+>(
+  config: RouterConfig<
+    TInputSchema, TOutputSchema, TInput, TOutput,
+    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TProjectStateSchema,
+    TRequestState, TSessionState, TUserState, TProjectState
+  >
+): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "router",
     config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     execute: async (input, ctx) => {
-      const candidate = config.execute(input, ctx);
+      const candidate = (config.execute as (input: TInput, ctx: BlockContext) =>
+        Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>
+      )(input, ctx);
 
       // Sequencer definitions expose a `.then()` DSL method and can be mistaken
       // for thenables. Detect concrete blocks before awaiting route selection.
@@ -63,7 +90,12 @@ export function router<
       const passesValidation =
         config.validateRoute === undefined
           ? isRouteInCandidates(selected, config.routes)
-          : await config.validateRoute(selected, config.routes, input, ctx);
+          : await (config.validateRoute as (
+              candidate: BlockDefinition<TInputSchema, TOutputSchema>,
+              routes: BlockDefinition<TInputSchema, TOutputSchema>[],
+              input: TInput,
+              ctx: BlockContext
+            ) => Promise<boolean> | boolean)(selected, config.routes, input, ctx);
 
       if (!passesValidation) {
         throw new Error(

@@ -133,3 +133,11 @@ export type BlockInput<T> = T extends { inputSchema: { _output: infer V } } ? V 
 
 /** Extract the inferred output value type from a BlockDefinition. */
 export type BlockOutput<T> = T extends { outputSchema: { _output: infer V } } ? V : never;
+
+/**
+ * Derive-once utility for block-level state schemas.
+ * When a Zod schema is provided, infer the value type. When absent (undefined), fall back
+ * to Record<string, unknown> so that ctx.session?.state etc. remain loosely typed.
+ */
+export type InferStateFromSchema<T> =
+  T extends ZodTypeAny ? z.infer<T> : Record<string, unknown>;

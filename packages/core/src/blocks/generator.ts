@@ -5,6 +5,7 @@ import type {
   BlockDefinition,
   ClientOutputOption,
   ConnectorFn,
+  InferStateFromSchema,
   LlmOutputOption,
   RetryPolicy
 } from "../types/block";
@@ -23,15 +24,16 @@ const DEFAULT_REPAIR_ATTEMPTS = 1;
 
 type MaybePromise<TValue> = TValue | Promise<TValue>;
 
-type ResolvableString<TInput> = string | ((input: TInput, ctx: BlockContext) => MaybePromise<string>);
-type ResolvableModel<TInput> =
+type ResolvableString<TInput, TCtx = BlockContext> =
+  string | ((input: TInput, ctx: TCtx) => MaybePromise<string>);
+type ResolvableModel<TInput, TCtx = BlockContext> =
   | string
   | GeneratorModel
-  | ((input: TInput, ctx: BlockContext) => MaybePromise<string | GeneratorModel>);
+  | ((input: TInput, ctx: TCtx) => MaybePromise<string | GeneratorModel>);
 
-export type GeneratorSlotReference = (
+export type GeneratorSlotReference<TCtx = BlockContext> = (
   input: unknown,
-  ctx: BlockContext
+  ctx: TCtx
 ) => unknown | Promise<unknown>;
 
 export type GeneratorSlotEntry =
@@ -66,10 +68,10 @@ export interface GeneratorLoopState<TInput = unknown> {
   lastCandidate?: unknown;
 }
 
-export interface GeneratorLoopConfig<TInput = unknown> {
+export interface GeneratorLoopConfig<TInput = unknown, TCtx = BlockContext> {
   maxIterations?: number;
   runTools?: boolean;
-  stopWhen?: (state: GeneratorLoopState<TInput>, ctx: BlockContext) => MaybePromise<boolean>;
+  stopWhen?: (state: GeneratorLoopState<TInput>, ctx: TCtx) => MaybePromise<boolean>;
 }
 
 export interface GeneratorToolResult {
@@ -101,9 +103,9 @@ export type GeneratorSlotStatic =
  * Preferred over GeneratorSlotReference for the `user` slot because it
  * preserves the input type without requiring a cast at the call site.
  */
-export type TypedUserSlotFn<TInput> = (
+export type TypedUserSlotFn<TInput, TCtx = BlockContext> = (
   input: TInput,
-  ctx: BlockContext
+  ctx: TCtx
 ) => MaybePromise<unknown>;
 
 export interface GeneratorConfig<
@@ -111,24 +113,36 @@ export interface GeneratorConfig<
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
   TInput = z.infer<TInputSchema>,
   TOutput = z.infer<TOutputSchema>,
+  // State schemas — optional, default to undefined (no schema declared)
+  TRequestStateSchema extends ZodTypeAny | undefined = undefined,
+  TSessionStateSchema extends ZodTypeAny | undefined = undefined,
+  TUserStateSchema extends ZodTypeAny | undefined = undefined,
+  TProjectStateSchema extends ZodTypeAny | undefined = undefined,
+  // Derive-once: evaluate z.infer exactly once per provided schema
+  TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
+  TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
+  TUserState extends object = InferStateFromSchema<TUserStateSchema>,
+  TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
+  // Single typed context threaded into all callbacks
+  TCtx = BlockContext<TRequestState, TSessionState, TUserState, TProjectState>,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
-  requestStateSchema?: ZodTypeAny;
-  sessionStateSchema?: ZodTypeAny;
-  userStateSchema?: ZodTypeAny;
-  projectStateSchema?: ZodTypeAny;
+  requestStateSchema?: TRequestStateSchema;
+  sessionStateSchema?: TSessionStateSchema;
+  userStateSchema?: TUserStateSchema;
+  projectStateSchema?: TProjectStateSchema;
   requestResourcesSchema?: ZodTypeAny;
   sessionResourcesSchema?: ZodTypeAny;
   userResourcesSchema?: ZodTypeAny;
   projectResourcesSchema?: ZodTypeAny;
   connectInput?: ConnectorFn<unknown, TInput>;
-  model: ResolvableModel<TInput>;
-  prompt: ResolvableString<TInput>;
+  model: ResolvableModel<TInput, TCtx>;
+  prompt: ResolvableString<TInput, TCtx>;
   context?: GeneratorSlot;
   history?: GeneratorSlot;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
-  user?: TypedUserSlotFn<TInput> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
-  tools?: GeneratorTool[] | ((ctx: BlockContext) => MaybePromise<GeneratorTool[]>);
-  loop?: GeneratorLoopConfig<TInput>;
+  user?: TypedUserSlotFn<TInput, TCtx> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
+  tools?: GeneratorTool[] | ((ctx: TCtx) => MaybePromise<GeneratorTool[]>);
+  loop?: GeneratorLoopConfig<TInput, TCtx>;
   maxIterations?: number;
   maxTokens?: number;
   repair?: GeneratorRepairConfig;
@@ -136,7 +150,7 @@ export interface GeneratorConfig<
     candidate: unknown,
     error: Error,
     state: GeneratorLoopState<TInput>,
-    ctx: BlockContext
+    ctx: TCtx
   ) => MaybePromise<unknown>;
   flowTools?: ToolsConfig;
   retry?: RetryPolicy;
@@ -606,14 +620,27 @@ export function generator<
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
   TInput = z.infer<TInputSchema>,
   TOutput = z.infer<TOutputSchema>,
+  TRequestStateSchema extends ZodTypeAny | undefined = undefined,
+  TSessionStateSchema extends ZodTypeAny | undefined = undefined,
+  TUserStateSchema extends ZodTypeAny | undefined = undefined,
+  TProjectStateSchema extends ZodTypeAny | undefined = undefined,
+  TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
+  TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
+  TUserState extends object = InferStateFromSchema<TUserStateSchema>,
+  TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
+  TCtx = BlockContext<TRequestState, TSessionState, TUserState, TProjectState>,
 >(
-  config: GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput>
+  config: GeneratorConfig<
+    TInputSchema, TOutputSchema, TInput, TOutput,
+    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TProjectStateSchema,
+    TRequestState, TSessionState, TUserState, TProjectState, TCtx
+  >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const outputSchema = (config.outputSchema ?? z.string()) as ZodTypeAny;
   const normalizedConfig: GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput> = {
     ...config,
     outputSchema: outputSchema as TOutputSchema
-  };
+  } as GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
 
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "generator",
