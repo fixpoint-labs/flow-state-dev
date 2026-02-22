@@ -4,8 +4,10 @@ import type {
   BlockContext,
   BlockDefinition,
   ConnectorFn,
+  InferResourcesFromSchemas,
   InferStateFromSchema
 } from "../types/block";
+import type { ResourceHandle } from "../types/resource";
 import { buildBlock } from "./internal/build-block";
 import { isBlockDefinition } from "./internal/utils";
 
@@ -31,26 +33,39 @@ export interface RouterConfig<
   TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
   TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
+  // Resource schemas — optional, default to undefined (no typed resources)
+  TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
+  // Derive-once: map resource schemas to typed ResourceHandle records
+  TSessionResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TSessionResourceSchemas>,
+  TUserResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TUserResourceSchemas>,
+  TProjectResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TProjectResourceSchemas>,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
   userStateSchema?: TUserStateSchema;
   projectStateSchema?: TProjectStateSchema;
-  requestResourcesSchema?: ZodTypeAny;
-  sessionResourcesSchema?: ZodTypeAny;
-  userResourcesSchema?: ZodTypeAny;
-  projectResourcesSchema?: ZodTypeAny;
+  sessionResourceSchemas?: TSessionResourceSchemas;
+  userResourceSchemas?: TUserResourceSchemas;
+  projectResourceSchemas?: TProjectResourceSchemas;
   connectInput?: ConnectorFn<unknown, TInput>;
   routes: BlockDefinition<TInputSchema, TOutputSchema>[];
   execute: (
     input: TInput,
-    ctx: BlockContext<TRequestState, TSessionState, TUserState, TProjectState>
+    ctx: BlockContext<
+      TRequestState, TSessionState, TUserState, TProjectState,
+      TSessionResources, TUserResources, TProjectResources
+    >
   ) => Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>;
   validateRoute?: (
     candidate: BlockDefinition<TInputSchema, TOutputSchema>,
     routes: BlockDefinition<TInputSchema, TOutputSchema>[],
     input: TInput,
-    ctx: BlockContext<TRequestState, TSessionState, TUserState, TProjectState>
+    ctx: BlockContext<
+      TRequestState, TSessionState, TUserState, TProjectState,
+      TSessionResources, TUserResources, TProjectResources
+    >
   ) => Promise<boolean> | boolean;
 }
 
@@ -67,11 +82,19 @@ export function router<
   TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
   TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
+  TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TSessionResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TSessionResourceSchemas>,
+  TUserResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TUserResourceSchemas>,
+  TProjectResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TProjectResourceSchemas>,
 >(
   config: RouterConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
     TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TProjectStateSchema,
-    TRequestState, TSessionState, TUserState, TProjectState
+    TRequestState, TSessionState, TUserState, TProjectState,
+    TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
+    TSessionResources, TUserResources, TProjectResources
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({

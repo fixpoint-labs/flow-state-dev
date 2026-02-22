@@ -5,10 +5,12 @@ import type {
   BlockDefinition,
   ClientOutputOption,
   ConnectorFn,
+  InferResourcesFromSchemas,
   InferStateFromSchema,
   LlmOutputOption,
   RetryPolicy
 } from "../types/block";
+import type { ResourceHandle } from "../types/resource";
 import type {
   GeneratorModel,
   GeneratorModelResult,
@@ -123,17 +125,27 @@ export interface GeneratorConfig<
   TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
   TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
+  // Resource schemas — optional, default to undefined (no typed resources)
+  TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
+  // Derive-once: map resource schemas to typed ResourceHandle records
+  TSessionResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TSessionResourceSchemas>,
+  TUserResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TUserResourceSchemas>,
+  TProjectResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TProjectResourceSchemas>,
   // Single typed context threaded into all callbacks
-  TCtx = BlockContext<TRequestState, TSessionState, TUserState, TProjectState>,
+  TCtx = BlockContext<
+    TRequestState, TSessionState, TUserState, TProjectState,
+    TSessionResources, TUserResources, TProjectResources
+  >,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
   userStateSchema?: TUserStateSchema;
   projectStateSchema?: TProjectStateSchema;
-  requestResourcesSchema?: ZodTypeAny;
-  sessionResourcesSchema?: ZodTypeAny;
-  userResourcesSchema?: ZodTypeAny;
-  projectResourcesSchema?: ZodTypeAny;
+  sessionResourceSchemas?: TSessionResourceSchemas;
+  userResourceSchemas?: TUserResourceSchemas;
+  projectResourceSchemas?: TProjectResourceSchemas;
   connectInput?: ConnectorFn<unknown, TInput>;
   model: ResolvableModel<TInput, TCtx>;
   prompt: ResolvableString<TInput, TCtx>;
@@ -628,12 +640,23 @@ export function generator<
   TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
   TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
-  TCtx = BlockContext<TRequestState, TSessionState, TUserState, TProjectState>,
+  TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TSessionResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TSessionResourceSchemas>,
+  TUserResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TUserResourceSchemas>,
+  TProjectResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TProjectResourceSchemas>,
+  TCtx = BlockContext<
+    TRequestState, TSessionState, TUserState, TProjectState,
+    TSessionResources, TUserResources, TProjectResources
+  >,
 >(
   config: GeneratorConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
     TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TProjectStateSchema,
-    TRequestState, TSessionState, TUserState, TProjectState, TCtx
+    TRequestState, TSessionState, TUserState, TProjectState,
+    TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
+    TSessionResources, TUserResources, TProjectResources, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const outputSchema = (config.outputSchema ?? z.string()) as ZodTypeAny;

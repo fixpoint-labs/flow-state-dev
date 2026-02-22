@@ -15,12 +15,14 @@ export const updateArtifactOutputSchema = z.object({
 
 // Tool block: LLM-callable artifact writer.
 // Demonstrates resource mutation via updateState() — an atomic read-modify-write
-// that receives the current raw state and returns the next state.
+// that receives the current state and returns the next state.
 export const updateArtifact = handler({
   name: "update-artifact",
   description: "Create or update an artifact in the session artifacts resource.",
   inputSchema: updateArtifactInputSchema,
   outputSchema: updateArtifactOutputSchema,
+  sessionResourceSchemas: z.object({ artifacts: artifactResourceStateSchema }),
+
   execute: async (input, ctx) => {
     const artifacts = ctx.session?.resources.get("artifacts");
     if (artifacts === undefined) {
@@ -31,9 +33,8 @@ export const updateArtifact = handler({
     }
 
     // updateState() is an atomic read-modify-write. The callback receives the
-    // current raw state and must return the complete next state.
-    await artifacts.updateState(async (rawState) => {
-      const state = artifactResourceStateSchema.parse(rawState);
+    // current typed state and must return the complete next state.
+    await artifacts.updateState(async (state) => {
       const order = state.order.includes(input.id)
         ? state.order
         : [...state.order, input.id];

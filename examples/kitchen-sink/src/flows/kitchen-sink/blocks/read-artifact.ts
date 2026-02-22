@@ -22,10 +22,15 @@ export const readArtifact = handler({
   description: "Read an artifact by ID from the session artifacts resource.",
   inputSchema: readArtifactInputSchema,
   outputSchema: readArtifactOutputSchema,
+
+  // Typed resource schemas: declares that this block expects a session resource
+  // named "artifacts" with the given state shape. ctx.session.resources.get()
+  // returns a typed ResourceHandle — no manual .parse() needed.
+  sessionResourceSchemas: z.object({ artifacts: artifactResourceStateSchema }),
+
   execute: async (input, ctx) => {
     const artifactsHandle = ctx.session?.resources.get("artifacts");
-    const artifacts = artifactResourceStateSchema.parse(artifactsHandle?.state ?? {});
-    const artifact = artifacts.byId[input.artifactId];
+    const artifact = artifactsHandle?.state.byId[input.artifactId];
 
     if (artifact === undefined) {
       return {

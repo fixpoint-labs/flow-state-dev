@@ -5,6 +5,7 @@ import type {
   SessionScopeHandle,
   UserScopeHandle
 } from "./scope";
+import type { ResourceHandle } from "./resource";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
 
@@ -33,12 +34,15 @@ export interface BlockContext<
   TRequestState extends object = Record<string, unknown>,
   TSessionState extends object = Record<string, unknown>,
   TUserState extends object = Record<string, unknown>,
-  TProjectState extends object = Record<string, unknown>
+  TProjectState extends object = Record<string, unknown>,
+  TSessionResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
+  TUserResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
+  TProjectResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
 > {
   request: RequestScopeHandle<TRequestState>;
-  session?: SessionScopeHandle<TSessionState>;
-  user: UserScopeHandle<TUserState>;
-  project?: ProjectScopeHandle<TProjectState>;
+  session?: SessionScopeHandle<TSessionState, TSessionResources>;
+  user: UserScopeHandle<TUserState, TUserResources>;
+  project?: ProjectScopeHandle<TProjectState, TProjectResources>;
 
   response: ResponseEmitterHandle;
   signal: AbortSignal;
@@ -141,3 +145,14 @@ export type BlockOutput<T> = T extends { outputSchema: { _output: infer V } } ? 
  */
 export type InferStateFromSchema<T> =
   T extends ZodTypeAny ? z.infer<T> : Record<string, unknown>;
+
+/**
+ * Derive-once utility for block-level resource schemas.
+ * Given a Zod object schema like `z.object({ artifacts: artifactStateSchema })`,
+ * produces a typed resource handle map: `{ artifacts: ResourceHandle<ArtifactState> }`.
+ * When absent (undefined), falls back to the untyped default.
+ */
+export type InferResourcesFromSchemas<T> =
+  T extends ZodTypeAny
+    ? { [K in keyof z.infer<T>]: ResourceHandle<z.infer<T>[K]> }
+    : Record<string, ResourceHandle<any>>;

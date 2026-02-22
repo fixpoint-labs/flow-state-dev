@@ -11,17 +11,18 @@ export const formatReport = handler({
   inputSchema: analysisOutputSchema,
   outputSchema: analysisOutputSchema,
   sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
+  sessionResourceSchemas: z.object({ artifacts: artifactResourceStateSchema }),
 
   execute: async (input, ctx) => {
-    // Resources are accessed via the scope handle's .resources map.
-    // The resource name ("artifacts") must match what the flow defines.
+    // Resources are accessed via the scope handle's typed .resources map.
+    // Because we declared sessionResourceSchemas above, .get("artifacts")
+    // returns a typed ResourceHandle — no manual .parse() needed.
     const artifactsHandle = ctx.session?.resources.get("artifacts");
-    const artifacts = artifactResourceStateSchema.parse(artifactsHandle?.state ?? {});
 
     return {
       ...input,
       instructions:
-        `Context: ${artifacts.order.length} artifacts in session. ` +
+        `Context: ${artifactsHandle?.state.order.length ?? 0} artifacts in session. ` +
         `Mode: ${ctx.session?.state.mode ?? "chat"}.`
     };
   },
