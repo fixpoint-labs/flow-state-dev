@@ -68,9 +68,9 @@ export type ProjectionContext<
   TProjectResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
 > = {
   request: RequestScopeHandle<TRequestState>;
-  session: (SessionScopeHandle<TSessionState, TSessionResources> & {
+  session: SessionScopeHandle<TSessionState, TSessionResources> & {
     resources: TSessionResources;
-  }) | null;
+  };
   user: (UserScopeHandle<TUserState, TUserResources> & { resources: TUserResources }) | null;
   project: (ProjectScopeHandle<TProjectState, TProjectResources> & {
     resources: TProjectResources;

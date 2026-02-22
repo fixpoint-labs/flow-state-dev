@@ -92,7 +92,7 @@ export function createExecutionMetadata(
       ctx.user.identity.userId ??
       ctx.request.identity.userId ??
       "unknown_user",
-    sessionId: overrides.sessionId ?? ctx.session?.identity.id,
+    sessionId: overrides.sessionId ?? ctx.session.identity.id,
     projectId: overrides.projectId ?? ctx.request.identity.projectId,
     blockName: overrides.blockName,
     blockKind: overrides.blockKind,

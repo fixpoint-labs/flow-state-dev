@@ -154,8 +154,7 @@ export async function testFlow<TInput = unknown>(
 ): Promise<TestFlowResult> {
   const stores = createInMemoryStores();
   const requestId = generateId("test_flow_req");
-  const sessionId =
-    options.sessionId ?? (options.flow.requireSession ? "test-session" : undefined);
+  const sessionId = options.sessionId ?? "test-session";
   const projectId = options.seed?.project === undefined ? undefined : "test-project";
 
   await seedFlowStores({

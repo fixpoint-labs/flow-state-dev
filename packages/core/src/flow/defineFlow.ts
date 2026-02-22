@@ -119,7 +119,6 @@ function createFlowInstance(
   definition: AnyFlowDefinition,
   options: AnyFlowInstanceOptions | undefined
 ): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyProject, AnyWork> {
-  const requireSession = options?.requireSession ?? definition.requireSession ?? true;
   const requireUser = options?.requireUser ?? definition.requireUser ?? true;
   if (!requireUser) {
     throw new Error(`Flow "${definition.kind}" must set requireUser=true in Phase 1`);
@@ -132,7 +131,6 @@ function createFlowInstance(
   return {
     id: options?.id ?? kind,
     kind,
-    requireSession,
     requireUser,
     actions,
     session: mergeConfig(definition.session, options?.session),
@@ -156,7 +154,6 @@ export function defineFlow<
 ): FlowType<TActions, TSession, TRequest, TUser, TProject, TWork> {
   const normalizedDefinition: AnyFlowDefinition = {
     ...definition,
-    requireSession: definition.requireSession ?? true,
     requireUser: definition.requireUser ?? true
   };
 
@@ -177,7 +174,6 @@ export function defineFlow<
   const baseInstance = createFlowInstance(normalizedDefinition, undefined);
   return Object.assign(flowFactory, {
     kind: normalizedDefinition.kind,
-    requireSession: baseInstance.requireSession,
     requireUser: baseInstance.requireUser,
     actions: baseInstance.actions as TActions,
     session: baseInstance.session as TSession,

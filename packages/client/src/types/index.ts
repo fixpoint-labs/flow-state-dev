@@ -96,7 +96,6 @@ export type ExecuteActionResponse = {
 export type FlowListEntry = {
   id: string;
   kind: string;
-  requireSession: boolean;
   requireUser: boolean;
   actions: string[];
 };

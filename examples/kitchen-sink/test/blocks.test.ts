@@ -8,7 +8,12 @@ import {
 describe("kitchen-sink blocks", () => {
   it("readArtifact returns not-found for missing artifact", async () => {
     const result = await testBlock(readArtifact, {
-      input: { artifactId: "missing-id" }
+      input: { artifactId: "missing-id" },
+      session: {
+        resources: {
+          artifacts: { byId: {}, order: [] }
+        }
+      }
     });
 
     expect(result.output.title).toBe("Not Found");

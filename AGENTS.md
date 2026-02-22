@@ -37,11 +37,11 @@ Use this protocol when work is wave-based:
    the types in `packages/core`.
 
 2. **No wrapper functions for simple property access.** `input.message` does not need a
-   `readMessage(input)` helper. `ctx.session?.state.mode` does not need a
+   `readMessage(input)` helper. `ctx.session.state.mode` does not need a
    `parseModeFromScope(ctx)` wrapper.
 
 3. **No invented APIs.** Before calling a method, verify it exists in the package source.
-   `ctx.session?.appendJournal()` and `ctx.session?.messages.ui()` do not exist. If you
+   `ctx.session.appendJournal()` and `ctx.session.messages.ui()` do not exist. If you
    need functionality that doesn't exist, flag it as a gap — do not pretend it exists.
 
 4. **No internal API access.** Never reach into `block.config.execute`. Never construct

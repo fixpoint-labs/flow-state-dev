@@ -109,7 +109,7 @@ const applyRequestedMode = handler({
   outputSchema: inputSchema,
   sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
   execute: async (input, ctx) => {
-    await ctx.session?.patchState({ mode: input.mode });
+    await ctx.session.patchState({ mode: input.mode });
     return input;
   },
   llmOutput: false
@@ -166,8 +166,8 @@ const incrementRequestCount = handler({
     lastAction: z.string().optional()
   }),
   execute: async (input, ctx) => {
-    const count = ctx.session?.state.requestCount ?? 0;
-    await ctx.session?.patchState({
+    const count = ctx.session.state.requestCount ?? 0;
+    await ctx.session.patchState({
       requestCount: count + 1,
       lastAction: "run"
     });
@@ -242,7 +242,7 @@ export const modeRouter = router({
   sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
   routes: [chatPipeline, planPipeline],
   execute: (input, ctx) => {
-    const mode = ctx.session?.state.mode ?? input.mode;
+    const mode = ctx.session.state.mode ?? input.mode;
     return mode === "plan" ? planPipeline : chatPipeline;
   }
 });
@@ -260,7 +260,6 @@ export const modeRouter = router({
 
 const kitchenSinkFlow = defineFlow({
   kind: "kitchen-sink",
-  requireSession: true,
   requireUser: true,
 
   // Actions are the flow's public API — each maps a name to an input schema
@@ -294,7 +293,7 @@ const kitchenSinkFlow = defineFlow({
         outputSchema: artifactsListOutputSchema,
         compute: (ctx) => {
           const artifacts = artifactResourceStateSchema.parse(
-            ctx.session?.resources.get("artifacts")?.state ?? {}
+            ctx.session.resources.get("artifacts")?.state ?? {}
           );
 
           return artifacts.order.map((id) => ({
@@ -307,8 +306,8 @@ const kitchenSinkFlow = defineFlow({
         client: true,
         outputSchema: modeStatusOutputSchema,
         compute: (ctx) => ({
-          currentMode: modeSchema.parse(ctx.session?.state.mode ?? "chat"),
-          requestCount: Number(ctx.session?.state.requestCount ?? 0)
+          currentMode: modeSchema.parse(ctx.session.state.mode ?? "chat"),
+          requestCount: Number(ctx.session.state.requestCount ?? 0)
         })
       }
     }

@@ -40,7 +40,7 @@ export interface BlockContext<
   TProjectResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
 > {
   request: RequestScopeHandle<TRequestState>;
-  session?: SessionScopeHandle<TSessionState, TSessionResources>;
+  session: SessionScopeHandle<TSessionState, TSessionResources>;
   user: UserScopeHandle<TUserState, TUserResources>;
   project?: ProjectScopeHandle<TProjectState, TProjectResources>;
 
@@ -141,7 +141,7 @@ export type BlockOutput<T> = T extends { outputSchema: { _output: infer V } } ? 
 /**
  * Derive-once utility for block-level state schemas.
  * When a Zod schema is provided, infer the value type. When absent (undefined), fall back
- * to Record<string, unknown> so that ctx.session?.state etc. remain loosely typed.
+ * to Record<string, unknown> so that ctx.session.state etc. remain loosely typed.
  */
 export type InferStateFromSchema<T> =
   T extends ZodTypeAny ? z.infer<T> : Record<string, unknown>;

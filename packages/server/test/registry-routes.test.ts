@@ -50,7 +50,7 @@ function makeProjectedFlow(kind: string, id = kind): FlowInstance {
         sessionInfo: {
           client: true,
           compute: (ctx) => ({
-            sessionId: ctx.session?.identity.id
+            sessionId: ctx.session.identity.id
           })
         },
         hiddenInternal: {
@@ -174,7 +174,6 @@ describe("createFlowApiRouter", () => {
         {
           id: "demo",
           kind: "demo",
-          requireSession: true,
           requireUser: true,
           actions: ["run"]
         }

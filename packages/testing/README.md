@@ -31,7 +31,7 @@ import { testBlock } from "@flow-state-dev/testing";
 const block = handler<{ amount: number }, { ok: boolean }>({
   name: "increment",
   execute: async (input, ctx) => {
-    await ctx.session?.incState({ count: input.amount });
+    await ctx.session.incState({ count: input.amount });
     return { ok: true };
   },
 });

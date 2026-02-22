@@ -425,13 +425,8 @@ export async function createExecutionContext<
     throw new Error(`Flow "${flow.kind}" requires a userId`);
   }
 
-  const shouldUseSession = flow.requireSession === true || options.sessionId !== undefined;
-  if (flow.requireSession === true && options.sessionId === undefined) {
-    throw new Error(`Flow "${flow.kind}" requires a sessionId`);
-  }
-
   const userId = options.userId;
-  const sessionId = options.sessionId;
+  const sessionId = options.sessionId ?? `ephemeral_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const requestId = options.requestId;
 
   let userRecord = await stores.user.get(userId);
@@ -448,31 +443,28 @@ export async function createExecutionContext<
     await stores.user.set(userRecord.id, userRecord);
   }
 
-  let sessionRecord: SessionRecord | undefined;
-  if (shouldUseSession && sessionId !== undefined) {
-    sessionRecord = await stores.session.get(sessionId);
-    if (sessionRecord === undefined) {
-      sessionRecord = {
-        id: sessionId,
-        flowKind: flow.kind,
-        userId,
-        projectId: options.projectId,
-        state: (options.sessionState ?? {}) as TSessionState,
-        resources: normalizeScopeResources(sessionResourceConfigs, undefined),
-        version: 0,
-        createdAt: now,
-        updatedAt: now,
-        journal: [],
-        items: [],
-        messages: {
-          ui: [],
-          llm: []
-        }
-      };
-      await stores.session.set(sessionRecord.id, sessionRecord);
-    } else {
-      ensureJournalDefaults(sessionRecord);
-    }
+  let sessionRecord = await stores.session.get(sessionId);
+  if (sessionRecord === undefined) {
+    sessionRecord = {
+      id: sessionId,
+      flowKind: flow.kind,
+      userId,
+      projectId: options.projectId,
+      state: (options.sessionState ?? {}) as TSessionState,
+      resources: normalizeScopeResources(sessionResourceConfigs, undefined),
+      version: 0,
+      createdAt: now,
+      updatedAt: now,
+      journal: [],
+      items: [],
+      messages: {
+        ui: [],
+        llm: []
+      }
+    };
+    await stores.session.set(sessionRecord.id, sessionRecord);
+  } else {
+    ensureJournalDefaults(sessionRecord);
   }
 
   const projectId = options.projectId ?? sessionRecord?.projectId;
@@ -524,7 +516,7 @@ export async function createExecutionContext<
   const userRef: { current: UserRecord } = {
     current: userRecord
   };
-  const sessionRef: { current: SessionRecord | undefined } = {
+  const sessionRef: { current: SessionRecord } = {
     current: sessionRecord
   };
   const projectRef: { current: ProjectRecord | undefined } = {
@@ -534,7 +526,7 @@ export async function createExecutionContext<
   const readSessionResources = (): Record<string, JsonObject> =>
     normalizeScopeResources(
       sessionResourceConfigs,
-      sessionRef.current?.resources as Record<string, unknown> | undefined
+      sessionRef.current.resources as Record<string, unknown> | undefined
     );
 
   const readUserResources = (): Record<string, JsonObject> =>
@@ -552,13 +544,8 @@ export async function createExecutionContext<
   const persistSessionResources = async (
     next: Record<string, JsonObject>
   ): Promise<void> => {
-    const current = sessionRef.current;
-    if (current === undefined) {
-      return;
-    }
-
     sessionRef.current = {
-      ...current,
+      ...sessionRef.current,
       resources: normalizeScopeResources(sessionResourceConfigs, next),
       updatedAt: Date.now()
     };
@@ -600,13 +587,10 @@ export async function createExecutionContext<
     userRef.current.state as TUserState,
     userRef.current.version
   );
-  const sessionContainer =
-    sessionRef.current === undefined
-      ? undefined
-      : createStateContainer<TSessionState>(
-          sessionRef.current.state as TSessionState,
-          sessionRef.current.version
-        );
+  const sessionContainer = createStateContainer<TSessionState>(
+    sessionRef.current.state as TSessionState,
+    sessionRef.current.version
+  );
   const projectContainer =
     projectRef.current === undefined
       ? undefined
@@ -639,28 +623,20 @@ export async function createExecutionContext<
     }
   });
 
-  const sessionOps =
-    sessionRef.current === undefined || sessionContainer === undefined
-      ? undefined
-      : createScopeStateOps(sessionContainer, {
-          onPersist: async (state, version) => {
-            const current = sessionRef.current;
-            if (current === undefined) {
-              return;
-            }
-
-            sessionRef.current = {
-              ...current,
-              state: state as TSessionState,
-              version,
-              updatedAt: Date.now()
-            };
-            await stores.session.set(
-              sessionRef.current.id,
-              sessionRef.current
-            );
-          }
-        });
+  const sessionOps = createScopeStateOps(sessionContainer, {
+    onPersist: async (state, version) => {
+      sessionRef.current = {
+        ...sessionRef.current,
+        state: state as TSessionState,
+        version,
+        updatedAt: Date.now()
+      };
+      await stores.session.set(
+        sessionRef.current.id,
+        sessionRef.current
+      );
+    }
+  });
 
   const projectOps =
     projectRef.current === undefined || projectContainer === undefined
@@ -692,15 +668,12 @@ export async function createExecutionContext<
     persistResources: persistUserResources
   });
 
-  const sessionResources =
-    sessionRef.current === undefined
-      ? undefined
-      : createScopeResourceRegistry({
-          scope: "session",
-          configs: sessionResourceConfigs,
-          readResources: readSessionResources,
-          persistResources: persistSessionResources
-        });
+  const sessionResources = createScopeResourceRegistry({
+    scope: "session",
+    configs: sessionResourceConfigs,
+    readResources: readSessionResources,
+    persistResources: persistSessionResources
+  });
 
   const projectResources =
     projectRef.current === undefined
@@ -738,60 +711,47 @@ export async function createExecutionContext<
     () => userContainer.read()
   ) as UserScopeHandle<TUserState>;
 
-  const sessionHandle =
-    sessionRef.current === undefined || sessionOps === undefined || sessionContainer === undefined
-      ? undefined
-      : (defineStateProperty(
-          {
-            identity: {
-              type: "session" as const,
-              id: sessionRef.current.id,
-              userId: sessionRef.current.userId,
-              projectId: sessionRef.current.projectId
-            },
-            resources: sessionResources,
-            items: createSessionItemViews(() => sessionRef.current),
-            messages: createMessageViews(() => sessionRef.current),
-            appendJournal: async (entry: JournalEntryInput): Promise<void> => {
-              const current = sessionRef.current;
-              if (current === undefined) {
-                return;
-              }
+  const sessionHandle = defineStateProperty(
+    {
+      identity: {
+        type: "session" as const,
+        id: sessionRef.current.id,
+        userId: sessionRef.current.userId,
+        projectId: sessionRef.current.projectId
+      },
+      resources: sessionResources,
+      items: createSessionItemViews(() => sessionRef.current),
+      messages: createMessageViews(() => sessionRef.current),
+      appendJournal: async (entry: JournalEntryInput): Promise<void> => {
+        const journalEntry = buildJournalEntry(entry);
+        sessionRef.current = {
+          ...sessionRef.current,
+          journal: [...sessionRef.current.journal, journalEntry],
+          updatedAt: Date.now()
+        };
+        await stores.session.set(
+          sessionRef.current.id,
+          sessionRef.current
+        );
+      },
+      getJournal: async (query?: {
+        limit?: number;
+        offset?: number;
+      }): Promise<JournalEntry[]> => {
+        const offset = Math.max(0, query?.offset ?? 0);
+        const start = offset;
+        const list = sessionRef.current.journal.slice(start);
 
-              const journalEntry = buildJournalEntry(entry);
-              sessionRef.current = {
-                ...current,
-                journal: [...current.journal, journalEntry],
-                updatedAt: Date.now()
-              };
-              await stores.session.set(
-                sessionRef.current.id,
-                sessionRef.current
-              );
-            },
-            getJournal: async (query?: {
-              limit?: number;
-              offset?: number;
-            }): Promise<JournalEntry[]> => {
-              const current = sessionRef.current;
-              if (current === undefined) {
-                return [];
-              }
+        if (query?.limit === undefined) {
+          return [...list];
+        }
 
-              const offset = Math.max(0, query?.offset ?? 0);
-              const start = offset;
-              const list = current.journal.slice(start);
-
-              if (query?.limit === undefined) {
-                return [...list];
-              }
-
-              return list.slice(0, Math.max(0, query.limit));
-            },
-            ...sessionOps
-          },
-          () => sessionContainer.read()
-        ) as SessionScopeHandle<TSessionState>);
+        return list.slice(0, Math.max(0, query.limit));
+      },
+      ...sessionOps
+    },
+    () => sessionContainer.read()
+  ) as SessionScopeHandle<TSessionState>;
 
   const projectHandle =
     projectRef.current === undefined || projectOps === undefined || projectContainer === undefined

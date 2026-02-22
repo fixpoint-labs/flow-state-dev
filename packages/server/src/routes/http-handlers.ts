@@ -653,7 +653,6 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           flows: options.registry.list().map((flow) => ({
             id: flow.id,
             kind: flow.kind,
-            requireSession: flow.requireSession,
             requireUser: flow.requireUser,
             actions: Object.keys(flow.actions)
           }))

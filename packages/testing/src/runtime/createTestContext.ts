@@ -52,7 +52,7 @@ export type TestContextRuntime = {
   response: ReturnType<typeof createResponseEmitter>;
   stateChanges: StateChange[];
   requestId: string;
-  sessionId?: string;
+  sessionId: string;
   userId: string;
   projectId?: string;
   flow: FlowInstance;
@@ -142,15 +142,11 @@ function createTestFlow(options: {
   return {
     id: "testing-flow",
     kind: "testing-flow",
-    requireSession: options.sessionId !== undefined,
     requireUser: true,
     actions: {},
-    session:
-      options.sessionId === undefined
-        ? undefined
-        : {
-            resources: createResourceConfig(options.sessionResources)
-          },
+    session: {
+      resources: createResourceConfig(options.sessionResources)
+    },
     user: {
       resources: createResourceConfig(options.userResources)
     },
@@ -397,7 +393,7 @@ export async function createTestContext<TInput = unknown>(
   });
   const actionName = options.actionName ?? "test-action";
   const requestId = options.requestId ?? generateId("test_req");
-  const sessionId = options.sessionId;
+  const sessionId = options.sessionId ?? generateId("test_session");
   const userId = options.userId ?? "test-user";
   const projectId = options.projectId;
 

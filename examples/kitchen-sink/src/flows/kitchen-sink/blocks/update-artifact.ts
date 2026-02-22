@@ -24,7 +24,7 @@ export const updateArtifact = handler({
   sessionResourceSchemas: z.object({ artifacts: artifactResourceStateSchema }),
 
   execute: async (input, ctx) => {
-    const artifacts = ctx.session?.resources.get("artifacts");
+    const artifacts = ctx.session.resources.get("artifacts");
     if (artifacts === undefined) {
       return {
         success: false,

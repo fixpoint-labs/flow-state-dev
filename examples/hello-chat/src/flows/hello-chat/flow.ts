@@ -65,8 +65,8 @@ const incrementMessageCount = handler({
   execute: async (input, ctx) => {
     // ctx.session.state.messageCount is typed as `number` thanks to the
     // sessionStateSchema above — no Number() cast needed.
-    const count = ctx.session?.state.messageCount ?? 0;
-    await ctx.session?.patchState({ messageCount: count + 1 });
+    const count = ctx.session.state.messageCount ?? 0;
+    await ctx.session.patchState({ messageCount: count + 1 });
     return input;
   },
   // This block is invisible to both the client and the LLM — it's purely
@@ -82,11 +82,10 @@ const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSc
   .then(incrementMessageCount);
 
 // Flow definition: one action ("chat"), session-scoped state, no resources
-// or projections. requireSession/requireUser mean the server will ensure
-// scope handles exist before any block executes.
+// or projections. requireUser means the server will ensure the user scope
+// handle exists before any block executes.
 const helloChatFlow = defineFlow({
   kind: "hello-chat",
-  requireSession: true,
   requireUser: true,
   actions: {
     chat: {

@@ -19,7 +19,7 @@ describe("testing utilities", () => {
     const increment = handler<{ amount: number }, { ok: boolean }>({
       name: "increment",
       execute: async (input, ctx) => {
-        await ctx.session?.incState({ count: input.amount });
+        await ctx.session.incState({ count: input.amount });
         return { ok: true };
       }
     });
@@ -64,7 +64,6 @@ describe("testing utilities", () => {
     const flow: FlowInstance = {
       id: "test",
       kind: "test-flow",
-      requireSession: false,
       requireUser: true,
       actions: {
         run: {
@@ -105,7 +104,6 @@ describe("testing utilities", () => {
     const flow: FlowInstance = {
       id: "generator-flow",
       kind: "generator-flow",
-      requireSession: false,
       requireUser: true,
       actions: {
         run: {

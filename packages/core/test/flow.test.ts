@@ -27,7 +27,6 @@ describe("defineFlow", () => {
     const custom = flow({
       id: "demo-custom",
       kind: "demo-custom-kind",
-      requireSession: false,
       actions: {
         extra: {
           inputSchema: z.object({ message: z.string() }),
@@ -44,12 +43,10 @@ describe("defineFlow", () => {
     });
 
     expect(flow.kind).toBe("demo");
-    expect(flow.requireSession).toBe(true);
     expect(flow.requireUser).toBe(true);
 
     expect(custom.id).toBe("demo-custom");
     expect(custom.kind).toBe("demo-custom-kind");
-    expect(custom.requireSession).toBe(false);
     expect(custom.requireUser).toBe(true);
     expect(Object.keys(custom.actions).sort()).toEqual(["extra", "run"]);
     expect(custom.session?.stateSchema).toBeDefined();

@@ -34,7 +34,7 @@ export const analyzeInput = handler({
     // ctx.session.state.mode is typed as "chat" | "plan" | "review" — no
     // runtime parsing needed because the sessionStateSchema above provides
     // compile-time type information to BlockContext.
-    const mode = ctx.session?.state.mode ?? input.mode;
+    const mode = ctx.session.state.mode ?? input.mode;
 
     return {
       message: input.message,

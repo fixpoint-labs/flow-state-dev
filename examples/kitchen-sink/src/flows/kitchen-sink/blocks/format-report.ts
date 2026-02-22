@@ -17,13 +17,13 @@ export const formatReport = handler({
     // Resources are accessed via the scope handle's typed .resources map.
     // Because we declared sessionResourceSchemas above, .get("artifacts")
     // returns a typed ResourceHandle — no manual .parse() needed.
-    const artifactsHandle = ctx.session?.resources.get("artifacts");
+    const artifactsHandle = ctx.session.resources.get("artifacts");
 
     return {
       ...input,
       instructions:
         `Context: ${artifactsHandle?.state.order.length ?? 0} artifacts in session. ` +
-        `Mode: ${ctx.session?.state.mode ?? "chat"}.`
+        `Mode: ${ctx.session.state.mode ?? "chat"}.`
     };
   },
 

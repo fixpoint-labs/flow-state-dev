@@ -6,7 +6,7 @@ import {
   createInMemoryStores
 } from "../src";
 
-function createFlow(requireSession = true) {
+function createFlow() {
   const block = handler<{ value: string }, { ok: boolean }>({
     name: "ctx-handler",
     execute: () => ({ ok: true })
@@ -14,7 +14,6 @@ function createFlow(requireSession = true) {
 
   return defineFlow({
     kind: "ctx-flow",
-    requireSession,
     actions: {
       run: {
         inputSchema: z.object({ value: z.string() }),
@@ -26,7 +25,7 @@ function createFlow(requireSession = true) {
 
 describe("createExecutionContext", () => {
   it("enforces user requirement", async () => {
-    const flow = createFlow(true);
+    const flow = createFlow();
     const stores = createInMemoryStores();
 
     await expect(
@@ -41,7 +40,7 @@ describe("createExecutionContext", () => {
   });
 
   it("composes request/session/user scopes and persists state updates", async () => {
-    const flow = createFlow(true);
+    const flow = createFlow();
     const stores = createInMemoryStores();
 
     const ctx = await createExecutionContext({
@@ -58,12 +57,12 @@ describe("createExecutionContext", () => {
 
     expect(ctx.request.identity.type).toBe("request");
     expect(ctx.user.identity.type).toBe("user");
-    expect(ctx.session?.identity.type).toBe("session");
+    expect(ctx.session.identity.type).toBe("session");
     expect(ctx.project).toBeUndefined();
 
     await ctx.request.patchState({ count: 2 });
     await ctx.user.patchState({ role: "admin" });
-    await ctx.session?.appendJournal({ text: "started", source: "test" });
+    await ctx.session.appendJournal({ text: "started", source: "test" });
 
     const savedRequest = await stores.request.get("req_1");
     const savedUser = await stores.user.get("user_1");
@@ -72,14 +71,14 @@ describe("createExecutionContext", () => {
     expect(savedRequest?.state).toEqual({ count: 2 });
     expect(savedUser?.state).toEqual({ role: "admin" });
     expect(savedSession?.journal.length).toBe(1);
-    expect(await ctx.session?.getJournal()).toHaveLength(1);
+    expect(await ctx.session.getJournal()).toHaveLength(1);
     const model = ctx.resolveModel("openai:gpt-4o-mini", "ctx-handler");
     expect(model.modelId).toBe("openai:gpt-4o-mini");
     expect(typeof model.generate).toBe("function");
   });
 
-  it("supports flows that opt out of sessions", async () => {
-    const flow = createFlow(false);
+  it("creates an ephemeral session when no sessionId is provided", async () => {
+    const flow = createFlow();
     const stores = createInMemoryStores();
 
     const ctx = await createExecutionContext({
@@ -90,7 +89,8 @@ describe("createExecutionContext", () => {
       stores
     });
 
-    expect(ctx.session).toBeUndefined();
+    expect(ctx.session).toBeDefined();
+    expect(ctx.session.identity.type).toBe("session");
     expect(ctx.user.identity.id).toBe("user_no_session");
   });
 });

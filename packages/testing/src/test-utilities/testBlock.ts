@@ -39,7 +39,7 @@ export async function testBlock<TBlock extends BlockDefinition<any, any>>(
     models: options.models,
     unmockedGeneratorPolicy: options.unmockedGeneratorPolicy,
     actionName: `test:${block.name}`,
-    sessionId: options.session === undefined ? undefined : "test-session"
+    sessionId: "test-session"
   });
 
   const result = await executeBlock({
@@ -54,7 +54,7 @@ export async function testBlock<TBlock extends BlockDefinition<any, any>>(
     items: runtime.getItems(),
     state: {
       request: asRecord(runtime.ctx.request.state),
-      session: asRecord(runtime.ctx.session?.state),
+      session: asRecord(runtime.ctx.session.state),
       user: asRecord(runtime.ctx.user.state),
       project: asRecord(runtime.ctx.project?.state)
     },

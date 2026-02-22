@@ -101,7 +101,6 @@ export type FlowDefinition<
   TWork extends WorkConfig | undefined = WorkConfig | undefined
 > = {
   kind: string;
-  requireSession?: boolean;
   requireUser?: boolean;
 
   actions: TActions;
@@ -126,7 +125,6 @@ export type FlowInstanceOptions<
 > = {
   id?: string;
   kind?: string;
-  requireSession?: boolean;
   requireUser?: boolean;
   actions?: Partial<TActions> & Record<string, ActionConfig>;
   session?: TSession;
@@ -147,7 +145,6 @@ export type FlowInstance<
 > = {
   id: string;
   kind: string;
-  requireSession: boolean;
   requireUser: boolean;
   actions: TActions;
   session?: TSession;
@@ -167,7 +164,6 @@ export type FlowType<
   TWork extends WorkConfig | undefined = WorkConfig | undefined
 > = {
   kind: string;
-  requireSession: boolean;
   requireUser: boolean;
   actions: TActions;
   session?: TSession;

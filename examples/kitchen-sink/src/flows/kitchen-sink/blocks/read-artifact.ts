@@ -29,7 +29,7 @@ export const readArtifact = handler({
   sessionResourceSchemas: z.object({ artifacts: artifactResourceStateSchema }),
 
   execute: async (input, ctx) => {
-    const artifactsHandle = ctx.session?.resources.get("artifacts");
+    const artifactsHandle = ctx.session.resources.get("artifacts");
     const artifact = artifactsHandle?.state.byId[input.artifactId];
 
     if (artifact === undefined) {
