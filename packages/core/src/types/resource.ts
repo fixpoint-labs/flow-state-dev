@@ -112,9 +112,9 @@ export type ProjectionConfig<
   sessionStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
   projectStateSchema?: ZodTypeAny;
-  sessionResourcesSchema?: ZodTypeAny;
-  userResourcesSchema?: ZodTypeAny;
-  projectResourcesSchema?: ZodTypeAny;
+  sessionResourceSchemas?: ZodTypeAny;
+  userResourceSchemas?: ZodTypeAny;
+  projectResourceSchemas?: ZodTypeAny;
   compute: ProjectionComputeFn<
     TRequestState,
     TSessionState,
