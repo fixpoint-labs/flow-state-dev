@@ -7,6 +7,8 @@
     { "path": "./packages/react" },
     { "path": "./packages/testing" },
     { "path": "./packages/cli" },
-    { "path": "./apps/devtool" }
+    { "path": "./apps/devtool" },
+    { "path": "./examples/hello-chat" },
+    { "path": "./examples/kitchen-sink" }
   ]
 }

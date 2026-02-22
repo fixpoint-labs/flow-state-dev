@@ -23,6 +23,9 @@ Building AI features often means stitching together orchestration, retries, stre
 - Client transport/session/SSE APIs are implemented and tested.
 - React hook wrappers, renderer registry, and item render helpers are implemented and tested.
 - Testing package APIs are implemented and validated.
+- Canonical Wave K example flows are implemented in:
+  - `examples/hello-chat/src/flows/hello-chat/flow.ts`
+  - `examples/kitchen-sink/src/flows/kitchen-sink/flow.ts`
 - CLI/devtool packages remain in active implementation.
 
 This is an implementation-phase repository, not a polished production release yet.
@@ -46,6 +49,8 @@ This is an implementation-phase repository, not a polished production release ye
 - `@flow-state-dev/testing`: flow/block/runtime test harnesses.
 - `@flow-state-dev/cli`: `fsdev` CLI for running/inspecting flows.
 - `apps/devtool`: first-party inspector app using public framework APIs.
+- `examples/hello-chat`: minimal canonical chat flow example.
+- `examples/kitchen-sink`: comprehensive canonical feature-reference flow example.
 
 ## Repository layout
 
@@ -59,6 +64,9 @@ packages/
   cli/
 apps/
   devtool/
+examples/
+  hello-chat/
+  kitchen-sink/
 docs/
   BEST_PRACTICES.md
   ARCHITECTURE_CHEAT_SHEET.compact.md
@@ -104,6 +112,9 @@ pnpm test
   - `packages/client/README.md`
   - `packages/react/README.md`
   - `packages/testing/README.md`
+- Example docs:
+  - `examples/hello-chat/README.md`
+  - `examples/kitchen-sink/README.md`
 - Best practices (living): `docs/BEST_PRACTICES.md`
 - Changelog: `changelog.md`
 - Agent collaboration protocol: `AGENTS.md`

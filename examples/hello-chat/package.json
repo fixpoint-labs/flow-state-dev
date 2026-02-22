@@ -1,0 +1,24 @@
+{
+  "name": "@flow-state-dev/example-hello-chat",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/react build && tsc -p tsconfig.json",
+    "typecheck": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/react build && node ../../scripts/typecheck.mjs",
+    "lint": "echo 'lint not configured yet'",
+    "test": "pnpm --filter @flow-state-dev/testing build && vitest run --root .",
+    "test:watch": "vitest --root ."
+  },
+  "dependencies": {
+    "@flow-state-dev/client": "workspace:*",
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/react": "workspace:*",
+    "react": "^19.2.4",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@flow-state-dev/testing": "workspace:*",
+    "@types/react": "^19.2.14"
+  }
+}

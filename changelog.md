@@ -146,6 +146,20 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Expanded testing package exports in `packages/testing/src/index.ts` and added Wave 1.j test coverage in `packages/testing/test/*`.
 - Added Wave 1.j execution artifacts: `docs/waves/wave-1/wave-1.j-journal.md` and `docs/waves/wave-1/wave-1.j-changelog.md`.
 
+### Wave 1.k implementation
+
+- Added Wave 1.k execution plan at `docs/waves/wave-1/wave-1.k.md` aligned to canonical Wave K.
+- Corrected Wave 1.k implementation per authoritative correction document by deleting the legacy web example target and replacing it with canonical `examples/*` packages.
+- Added `examples/hello-chat` with a minimal generator flow, session projection, React usage sample, and flow tests.
+- Added `examples/kitchen-sink` with all four block kinds, session resources/projections, user projections, router-by-context, sequencer DSL coverage, React block-renderer usage, and flow/block tests.
+- Updated runtime/test infrastructure to support corrected examples:
+  - persisted scope resources in execution context
+  - resource-backed projection compute context in session-state route
+  - `fsd:block_output` emission for block execution results
+  - router selection safety for sequencer routes (thenable edge)
+  - nested `state` + `resources` seeding for testing harness helpers
+- Added Wave 1.k execution artifacts: `docs/waves/wave-1/wave-1.k-journal.md` and `docs/waves/wave-1/wave-1.k-changelog.md`.
+
 ### Documentation updates
 
 - Added package-level onboarding docs:
@@ -196,3 +210,5 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Expanded AI SDK resolver behavior/tests:
   - added best-effort structured-output handling from `outputSchema` (JSON response format hint + JSON text parsing fallback)
   - added adapter-call assertions for `maxTokens`, `signal`, tools, and prompt forwarding in `packages/server/test/ai-sdk-model-resolver.test.ts`.
+
+- Updated root docs to reference `examples/hello-chat` and `examples/kitchen-sink`.
