@@ -1,5 +1,6 @@
-import { asSchema, generateText } from "ai";
+import { generateText, Output } from "ai";
 import type {
+  GeneratorModel,
   GeneratorModelResult,
   GeneratorModelTool,
   GeneratorModelToolCall,
@@ -173,17 +174,32 @@ function compileToolsForAiSdk(
 }
 
 /**
- * Creates a framework ModelResolver backed by Vercel AI SDK `generateText`.
- * The provided function maps `modelId` strings to AI SDK language model instances.
+ * Wraps an AI SDK language model instance into a framework GeneratorModel.
+ * Use this when you already have a resolved model (e.g. `openai("gpt-5")`)
+ * and want to pass it directly as a generator's `model` config.
  */
-export function createAiSdkModelResolver(
-  resolveLanguageModel: ResolveAiSdkLanguageModel
-): ModelResolver {
-  return (modelId: string) => ({
+export function wrapAiSdkModel(
+  languageModel: unknown,
+  modelId?: string
+): GeneratorModel {
+  const resolvedId =
+    modelId ??
+    (typeof (languageModel as Record<string, unknown>)?.modelId === "string"
+      ? (languageModel as Record<string, unknown>).modelId as string
+      : "unknown");
+
+  return createGeneratorModelFromAiSdk(resolvedId, languageModel);
+}
+
+function createGeneratorModelFromAiSdk(
+  modelId: string,
+  languageModel: unknown
+): GeneratorModel {
+  return {
     modelId,
     async generate(options): Promise<GeneratorModelResult> {
       const request: Record<string, unknown> = {
-        model: resolveLanguageModel(modelId),
+        model: languageModel,
         messages: options.messages
       };
 
@@ -201,11 +217,7 @@ export function createAiSdkModelResolver(
       }
 
       if (options.outputSchema !== undefined) {
-        const schema = asSchema(options.outputSchema as any);
-        request.responseFormat = {
-          type: "json",
-          schema: await schema.jsonSchema
-        };
+        request.output = Output.object({ schema: options.outputSchema as any });
       }
 
       const result = (await generateText(
@@ -224,5 +236,17 @@ export function createAiSdkModelResolver(
         usage: normalizeUsage(result.usage)
       };
     }
-  });
+  };
+}
+
+/**
+ * Creates a framework ModelResolver backed by Vercel AI SDK `generateText`.
+ * Accepts a provider function that maps model ID strings to AI SDK language
+ * model instances (e.g. the `openai` export from `@ai-sdk/openai`).
+ */
+export function createAiSdkModelResolver(
+  resolveLanguageModel: ResolveAiSdkLanguageModel
+): ModelResolver {
+  return (modelId: string) =>
+    createGeneratorModelFromAiSdk(modelId, resolveLanguageModel(modelId));
 }

@@ -276,28 +276,6 @@ function ensureJournalDefaults(record: SessionRecord): void {
   if (!Array.isArray(record.journal)) {
     record.journal = [];
   }
-
-  if (!Array.isArray(record.items)) {
-    record.items = [];
-  }
-
-  if (
-    typeof record.messages !== "object" ||
-    record.messages === null
-  ) {
-    record.messages = {
-      ui: [],
-      llm: []
-    };
-  }
-
-  if (!Array.isArray(record.messages.ui)) {
-    record.messages.ui = [];
-  }
-
-  if (!Array.isArray(record.messages.llm)) {
-    record.messages.llm = [];
-  }
 }
 
 function defineStateProperty<THandle extends object, TState extends JsonObject>(
@@ -327,7 +305,7 @@ function createSessionItemViews(
         ? visibilityFilter
         : [visibilityFilter];
 
-    const filtered = record.items.filter((item) => {
+    const filtered = (record.items ?? []).filter((item) => {
       if (!includeTransient && item.transient === true) {
         return false;
       }
@@ -370,7 +348,7 @@ function createMessageViews(
         return [];
       }
 
-      return listByQuery(record.messages.ui, query);
+      return listByQuery(record.messages?.ui ?? [], query);
     },
     llm: (query: MessageQuery | undefined): LLMMessage[] => {
       const record = readRecord();
@@ -378,7 +356,7 @@ function createMessageViews(
         return [];
       }
 
-      return listByQuery(record.messages.llm, query);
+      return listByQuery(record.messages?.llm ?? [], query);
     }
   };
 }
@@ -455,12 +433,7 @@ export async function createExecutionContext<
       version: 0,
       createdAt: now,
       updatedAt: now,
-      journal: [],
-      items: [],
-      messages: {
-        ui: [],
-        llm: []
-      }
+      journal: []
     };
     await stores.session.set(sessionRecord.id, sessionRecord);
   } else {

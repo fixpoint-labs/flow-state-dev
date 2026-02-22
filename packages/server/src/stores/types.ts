@@ -5,6 +5,7 @@ import type {
   SessionItem
 } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
+import type { OutputItem } from "@flow-state-dev/core/items";
 
 export type RequestStatus = "in_progress" | "completed" | "incomplete" | "failed";
 
@@ -24,8 +25,10 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   metadata?: Record<string, unknown>;
   latestRequestId?: string;
   journal: JournalEntry[];
-  items: SessionItem[];
-  messages: {
+  /** @deprecated Items are canonical on RequestRecord; aggregated on read via session state endpoint. */
+  items?: SessionItem[];
+  /** @deprecated Messages are derived projections from items; not stored on session. */
+  messages?: {
     ui: Message[];
     llm: LLMMessage[];
   };
@@ -42,6 +45,7 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   completedAtMs?: number;
   failedAtMs?: number;
   metadata?: Record<string, unknown>;
+  items?: OutputItem[];
 };
 
 export type UserRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {

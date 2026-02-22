@@ -290,9 +290,11 @@ export async function runActionInternal<
     }, ctx, { internalSeams });
 
     const completedAt = Date.now();
+    const items = response.getItems();
     await patchRequestRecord(options.stores, requestId, {
       status: "completed",
-      completedAtMs: completedAt
+      completedAtMs: completedAt,
+      items
     });
 
     ctx.requestRuntime.status = "completed";
@@ -330,7 +332,8 @@ export async function runActionInternal<
     const failedAt = Date.now();
     await patchRequestRecord(options.stores, requestId, {
       status: "failed",
-      failedAtMs: failedAt
+      failedAtMs: failedAt,
+      items: response.getItems()
     });
 
     ctx.requestRuntime.status = "failed";

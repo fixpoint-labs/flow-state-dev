@@ -554,7 +554,7 @@ function buildReplayEvents(record: RequestRecord): RequestStreamEvent[] {
     record.updatedAt ??
     createdAt;
 
-  return [
+  const events: RequestStreamEvent[] = [
     {
       stream: "request",
       type: "request.created",
@@ -562,16 +562,41 @@ function buildReplayEvents(record: RequestRecord): RequestStreamEvent[] {
       sequence_number: 1,
       status: "in_progress",
       ts: createdAt
-    },
-    {
-      stream: "request",
-      type: requestStatusEventType(record.status),
-      requestId: record.id,
-      sequence_number: 2,
-      status: record.status,
-      ts: statusTs
     }
   ];
+
+  let seq = 2;
+  if (record.items !== undefined) {
+    for (const item of record.items) {
+      events.push({
+        stream: "request",
+        type: "item.added",
+        requestId: record.id,
+        sequence_number: seq++,
+        ts: item.ts ?? createdAt,
+        item
+      });
+      events.push({
+        stream: "request",
+        type: "item.done",
+        requestId: record.id,
+        sequence_number: seq++,
+        ts: item.ts ?? createdAt,
+        item
+      });
+    }
+  }
+
+  events.push({
+    stream: "request",
+    type: requestStatusEventType(record.status),
+    requestId: record.id,
+    sequence_number: seq,
+    status: record.status,
+    ts: statusTs
+  });
+
+  return events;
 }
 
 function normalizeError(error: unknown): Error {
@@ -867,6 +892,22 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         const includeItems = getBooleanFlag(
           url.searchParams.get("include_items")
         );
+
+        // Items are canonical on RequestRecords — aggregate from all session
+        // requests when the client asks for items (architecture: "session
+        // history is derived by iterating request items across session requests").
+        let aggregatedItems: OutputItem[] | undefined;
+        if (includeItems) {
+          const requests = await stores.request.list({
+            sessionId: session.id
+          });
+          aggregatedItems = [];
+          for (const req of requests) {
+            if (req.items !== undefined) {
+              aggregatedItems.push(...req.items);
+            }
+          }
+        }
         const sessionResources = createProjectionResources({
           scope: "session",
           configs: flow.session?.resources as Record<string, unknown> | undefined,
@@ -961,7 +1002,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
                 : undefined
           },
           items: includeItems
-            ? sortItems(session.items as unknown as OutputItem[])
+            ? sortItems(aggregatedItems!)
             : undefined
         });
       }
@@ -1001,12 +1042,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           version: 0,
           createdAt: now,
           updatedAt: now,
-          journal: [],
-          items: [],
-          messages: {
-            ui: [],
-            llm: []
-          }
+          journal: []
         };
 
         await stores.session.set(record.id, record);

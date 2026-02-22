@@ -36,7 +36,7 @@ export * from "./streaming";
 export * from "./execution";
 export * from "./registry";
 export * from "./routes";
-export { createAiSdkModelResolver } from "./models/createAiSdkModelResolver";
+export { createAiSdkModelResolver, wrapAiSdkModel } from "./models/createAiSdkModelResolver";
 export { createDefaultModelResolver } from "./models/createDefaultModelResolver";
 export type {
   ResolveAiSdkLanguageModel
