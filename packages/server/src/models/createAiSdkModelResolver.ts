@@ -1,13 +1,18 @@
-import { generateText, Output } from "ai";
+import { generateText, streamText, Output, stepCountIs } from "ai";
 import type {
   GeneratorModel,
   GeneratorModelResult,
+  GeneratorModelStreamChunk,
   GeneratorModelTool,
   GeneratorModelToolCall,
   ModelResolver
 } from "@flow-state-dev/core/types";
 
 export type ResolveAiSdkLanguageModel = (modelId: string) => unknown;
+
+// ---------------------------------------------------------------------------
+// Internal helpers — normalise AI SDK result shapes into framework types
+// ---------------------------------------------------------------------------
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -149,29 +154,109 @@ function parseStructuredOutputFromText(text: string | undefined): unknown {
   }
 }
 
-function compileToolsForAiSdk(
-  tools: GeneratorModelTool[] | undefined
-): Record<string, unknown> | undefined {
-  if (tools === undefined || tools.length === 0) {
-    return undefined;
+// ---------------------------------------------------------------------------
+// Shared request builder — single place to compile AI SDK config
+// ---------------------------------------------------------------------------
+
+function buildAiSdkRequest(
+  languageModel: unknown,
+  options: {
+    messages: unknown[];
+    tools?: GeneratorModelTool[];
+    outputSchema?: unknown;
+    maxTokens?: number;
+    signal?: AbortSignal;
+    maxSteps?: number;
+  }
+): Record<string, unknown> {
+  const request: Record<string, unknown> = {
+    model: languageModel,
+    messages: options.messages
+  };
+
+  // Compile tools — include execute if provided (enables AI SDK auto-execution)
+  if (options.tools !== undefined && options.tools.length > 0) {
+    const compiled: Record<string, unknown> = {};
+    for (const tool of options.tools) {
+      const entry: Record<string, unknown> = {
+        description: tool.description,
+        inputSchema:
+          tool.parameters ?? {
+            type: "object",
+            properties: {},
+            additionalProperties: true
+          }
+      };
+      if (tool.execute !== undefined) {
+        entry.execute = tool.execute;
+      }
+      compiled[tool.name] = entry;
+    }
+    request.tools = compiled;
   }
 
-  const compiled: Record<string, unknown> = {};
-  for (const tool of tools) {
-    compiled[tool.name] = {
-      description: tool.description,
-      inputSchema:
-        tool.parameters ??
-        {
-          type: "object",
-          properties: {},
-          additionalProperties: true
-        }
-    };
+  // Multi-step: stopWhen controls when the AI SDK's loop terminates.
+  // Default is stepCountIs(1) in the SDK, so only override when > 1.
+  const maxSteps = options.maxSteps ?? 1;
+  if (maxSteps > 1) {
+    request.stopWhen = stepCountIs(maxSteps);
   }
 
-  return compiled;
+  if (options.outputSchema !== undefined) {
+    request.output = Output.object({ schema: options.outputSchema as any });
+  }
+
+  if (options.maxTokens !== undefined) {
+    request.maxOutputTokens = options.maxTokens;
+  }
+
+  if (options.signal !== undefined) {
+    request.abortSignal = options.signal;
+  }
+
+  return request;
 }
+
+// ---------------------------------------------------------------------------
+// Result normalisers — extract framework types from AI SDK results
+// ---------------------------------------------------------------------------
+
+function normalizeGenerateResult(
+  result: Record<string, unknown>
+): GeneratorModelResult {
+  const text = typeof result.text === "string" ? result.text : undefined;
+  const structuredOutput =
+    normalizeStructuredOutput(result) ??
+    parseStructuredOutputFromText(text);
+
+  return {
+    text,
+    structuredOutput,
+    toolCalls: normalizeToolCalls(result.toolCalls),
+    finishReason: normalizeFinishReason(result.finishReason),
+    usage: normalizeUsage(result.usage)
+  };
+}
+
+function normalizeFinishChunk(
+  result: Record<string, unknown>
+): Omit<GeneratorModelStreamChunk, "type"> {
+  const text = typeof result.text === "string" ? result.text : undefined;
+  return {
+    finishReason: normalizeFinishReason(result.finishReason),
+    usage: normalizeUsage(result.usage),
+    fullResult: {
+      text,
+      toolCalls: normalizeToolCalls(result.toolCalls),
+      finishReason: normalizeFinishReason(result.finishReason),
+      usage: normalizeUsage(result.usage)
+    }
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
 /**
  * Wraps an AI SDK language model instance into a framework GeneratorModel.
@@ -197,52 +282,58 @@ function createGeneratorModelFromAiSdk(
 ): GeneratorModel {
   return {
     modelId,
+
     async generate(options): Promise<GeneratorModelResult> {
-      const request: Record<string, unknown> = {
-        model: languageModel,
-        messages: options.messages
-      };
-
-      const compiledTools = compileToolsForAiSdk(options.tools);
-      if (compiledTools !== undefined) {
-        request.tools = compiledTools;
-      }
-
-      if (options.maxTokens !== undefined) {
-        request.maxOutputTokens = options.maxTokens;
-      }
-
-      if (options.signal !== undefined) {
-        request.abortSignal = options.signal;
-      }
-
-      if (options.outputSchema !== undefined) {
-        request.output = Output.object({ schema: options.outputSchema as any });
-      }
-
+      const request = buildAiSdkRequest(languageModel, options);
       const result = (await generateText(
         request as any
       )) as unknown as Record<string, unknown>;
-      const text = typeof result.text === "string" ? result.text : undefined;
-      const structuredOutput =
-        normalizeStructuredOutput(result) ??
-        parseStructuredOutputFromText(text);
+      return normalizeGenerateResult(result);
+    },
 
-      return {
-        text,
-        structuredOutput,
-        toolCalls: normalizeToolCalls(result.toolCalls),
-        finishReason: normalizeFinishReason(result.finishReason),
-        usage: normalizeUsage(result.usage)
+    async *stream(options): AsyncGenerator<GeneratorModelStreamChunk> {
+      const request = buildAiSdkRequest(languageModel, options);
+      const result = streamText(request as any);
+
+      // Iterate fullStream to capture tool-call events during multi-step loops,
+      // not just text deltas.
+      for await (const part of (result as any).fullStream) {
+        const partRecord = part as Record<string, unknown>;
+        if (partRecord.type === "text-delta") {
+          yield {
+            type: "text_delta",
+            textDelta: partRecord.textDelta as string ?? partRecord.text as string
+          };
+        } else if (partRecord.type === "tool-call") {
+          yield {
+            type: "tool_call_delta",
+            toolCallDelta: {
+              toolCallId: partRecord.toolCallId as string,
+              toolName: partRecord.toolName as string,
+              argsDelta: JSON.stringify(partRecord.args)
+            }
+          };
+        }
+      }
+
+      const finalResult = (await result) as unknown as Record<string, unknown>;
+      yield {
+        type: "finish",
+        ...normalizeFinishChunk(finalResult)
       };
     }
   };
 }
 
 /**
- * Creates a framework ModelResolver backed by Vercel AI SDK `generateText`.
- * Accepts a provider function that maps model ID strings to AI SDK language
- * model instances (e.g. the `openai` export from `@ai-sdk/openai`).
+ * Creates a framework ModelResolver backed by Vercel AI SDK `generateText`
+ * and `streamText`. Accepts a provider function that maps model ID strings
+ * to AI SDK language model instances (e.g. the `openai` export from
+ * `@ai-sdk/openai`).
+ *
+ * Both generate and stream paths use a shared request builder, so tools,
+ * maxSteps, outputSchema, etc. are compiled identically regardless of
+ * whether the caller requests full or streamed output.
  */
 export function createAiSdkModelResolver(
   resolveLanguageModel: ResolveAiSdkLanguageModel

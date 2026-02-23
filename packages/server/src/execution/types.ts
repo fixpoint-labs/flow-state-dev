@@ -11,6 +11,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type { ExecutionContext } from "../context/types";
 import type { FlowError, FlowErrorScope } from "../errors/flow-error";
+import type { ResponseEmitter } from "../streaming/response-emitter";
 import type { StoreRegistry } from "../stores/types";
 
 export type ExecutionMetadata = {
@@ -65,6 +66,7 @@ export type RunActionOptions<
   modelResolver?: ModelResolver;
   stores: StoreRegistry;
   retry?: RetryPolicy;
+  responseEmitter?: ResponseEmitter;
 };
 
 export type RunActionResolved<

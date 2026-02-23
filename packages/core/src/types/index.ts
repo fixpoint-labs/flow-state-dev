@@ -39,9 +39,11 @@ export type {
 export type {
   GeneratorModel,
   GeneratorModelResult,
+  GeneratorModelStreamChunk,
   GeneratorModelTool,
   GeneratorModelToolCall,
   GeneratorModelUsage,
+  GeneratorStepResult,
   ModelResolver
 } from "./model";
 

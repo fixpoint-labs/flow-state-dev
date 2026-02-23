@@ -30,12 +30,14 @@ export type ItemQuery = {
   limit?: MessageLimit;
   includeTransient?: boolean;
   visibility?: ItemVisibility | ItemVisibility[];
+  itemTypes?: string[];
+  roles?: Array<"user" | "assistant" | "system" | "developer" | "tool">;
 };
 
 export type SessionItemViews = {
   all: (query?: ItemQuery) => SessionItem[];
-  ui: (query?: ItemQuery) => SessionItem[];
-  llm: (query?: ItemQuery) => SessionItem[];
+  client: (query?: ItemQuery) => SessionItem[];
+  llm: (query?: ItemQuery) => Promise<LLMMessage[]>;
 };
 
 export type Message = {
@@ -83,7 +85,6 @@ export type SessionScopeHandle<
   state: Readonly<TState>;
   resources: ResourceRegistry<TResources>;
   items: SessionItemViews;
-  messages: MessageViews;
   appendJournal(entry: JournalEntryInput): Promise<void>;
   getJournal(options?: { limit?: number; offset?: number }): Promise<JournalEntry[]>;
 } & ScopeStateOps<TState>;

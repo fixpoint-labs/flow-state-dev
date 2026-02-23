@@ -87,8 +87,9 @@ describe("defineFlow", () => {
   });
 
   it("wires flow-level tool defaults and lifecycle hooks into generator execution", async () => {
+    // Tools are compiled with `execute` wrappers that include retry and
+    // lifecycle hooks. The mock model simulates the AI SDK calling execute.
     let attempts = 0;
-    let modelCalls = 0;
     const onToolStarted = vi.fn();
     const onToolCompleted = vi.fn();
     const onToolErrored = vi.fn();
@@ -137,20 +138,15 @@ describe("defineFlow", () => {
     const ctx = createMockContext({
       resolveModel: () => ({
         modelId: "test-model",
-        async generate() {
-          if (modelCalls === 0) {
-            modelCalls += 1;
-            return {
-              toolCalls: [
-                {
-                  toolCallId: "tool-1",
-                  toolName: "flaky-tool",
-                  args: { text: "hello" }
-                }
-              ]
-            };
+        async generate(options: any) {
+          // Simulate AI SDK: call tool execute, then return final result.
+          // The execute wrapper includes retry (maxAttempts: 2).
+          if (options.tools?.length > 0) {
+            const tool = options.tools[0];
+            if (tool.execute) {
+              await tool.execute({ text: "hello" });
+            }
           }
-
           return {
             structuredOutput: { ok: true }
           };
@@ -161,6 +157,7 @@ describe("defineFlow", () => {
       ok: true
     });
 
+    // flaky tool fails once then succeeds on retry
     expect(attempts).toBe(2);
     expect(onToolStarted).toHaveBeenCalledTimes(1);
     expect(onToolCompleted).toHaveBeenCalledTimes(1);
@@ -168,7 +165,6 @@ describe("defineFlow", () => {
   });
 
   it("allows instance tool hooks to override flow hooks", async () => {
-    let modelCalls = 0;
     const baseStarted = vi.fn();
     const overrideStarted = vi.fn();
     const okTool = handler({
@@ -206,20 +202,14 @@ describe("defineFlow", () => {
     const ctx = createMockContext({
       resolveModel: () => ({
         modelId: "model",
-        async generate() {
-          if (modelCalls === 0) {
-            modelCalls += 1;
-            return {
-              toolCalls: [
-                {
-                  toolCallId: "tool-1",
-                  toolName: "ok-tool",
-                  args: { text: "hello" }
-                }
-              ]
-            };
+        async generate(options: any) {
+          // Simulate AI SDK: call tool execute, then return final result.
+          if (options.tools?.length > 0) {
+            const tool = options.tools[0];
+            if (tool.execute) {
+              await tool.execute({ text: "hello" });
+            }
           }
-
           return {
             structuredOutput: { ok: true }
           };

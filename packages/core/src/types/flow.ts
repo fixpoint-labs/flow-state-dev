@@ -37,6 +37,7 @@ export type ActionConfig<
   block: BlockDefinition<TInputSchema, any>;
   onCompleted?: BlockDefinition<any, any>;
   onErrored?: BlockDefinition<any, any>;
+  userMessage?: (input: TInputSchema["_output"]) => string;
 };
 
 export type SessionConfig<

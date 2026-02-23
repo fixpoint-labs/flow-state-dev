@@ -211,15 +211,19 @@ describe("createFlowApiRouter", () => {
       { params: { path: ["demo", "sess_1", "actions", "run"] } }
     );
 
-    expect(executeResponse.status).toBe(200);
+    expect(executeResponse.status).toBe(202);
     const executionPayload = (await executeResponse.json()) as {
       request: { id: string; status: string };
       session?: { id: string };
       status: string;
     };
-    expect(executionPayload.status).toBe("completed");
-    expect(executionPayload.request.status).toBe("completed");
+    // 202 returns in_progress immediately — execution runs async
+    expect(executionPayload.status).toBe("in_progress");
+    expect(executionPayload.request.status).toBe("in_progress");
     expect(executionPayload.session?.id).toBe("sess_1");
+
+    // Allow async execution to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     const streamResponse = await router.GET(
       new Request(
@@ -362,7 +366,10 @@ describe("createFlowApiRouter", () => {
       }),
       { params: { path: ["projected", "sess_proj", "actions", "run"] } }
     );
-    expect(executeResponse.status).toBe(200);
+    expect(executeResponse.status).toBe(202);
+
+    // Allow async execution to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
 
     const stateResponse = await router.GET(
       new Request("http://localhost/api/flows/sessions/sess_proj/state"),

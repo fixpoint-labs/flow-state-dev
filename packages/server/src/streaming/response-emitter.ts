@@ -66,6 +66,19 @@ function isRequestStreamDraft(value: unknown): value is {
   return typeof candidate.type === "string";
 }
 
+function isOutputItem(value: unknown): value is OutputItem {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.type === "string" &&
+    typeof candidate.itemIndex === "number"
+  );
+}
+
 /**
  * Stateful request event emitter used by runtime execution and SSE transport.
  */
@@ -91,10 +104,26 @@ export class ResponseEmitter implements ResponseEmitterHandle {
 
   /**
    * Emits a draft request event if shape is valid; otherwise emits an internal debug event.
+   *
+   * Item events (`item.added`, `item.done`) are routed through the tracking helpers
+   * so that items are captured in `getItems()` and available for persistence/replay.
    */
   async emit(event: unknown): Promise<void> {
     if (!isRequestStreamDraft(event)) {
       await this.emitDebug("response.emit.invalid", { value: event });
+      return;
+    }
+
+    const draft = event as Record<string, unknown>;
+
+    // Route item events through tracking helpers so items are persisted.
+    if (draft.type === "item.added" && isOutputItem(draft.item)) {
+      await this.emitItemAdded(draft.item as OutputItem);
+      return;
+    }
+
+    if (draft.type === "item.done" && isOutputItem(draft.item)) {
+      await this.emitItemDone(draft.item as OutputItem);
       return;
     }
 
@@ -299,11 +328,18 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   }
 
   /**
-   * Returns current tracked items sorted by item index.
+   * Returns current tracked items sorted chronologically (ts, then itemIndex tiebreaker).
    */
   getItems(): OutputItem[] {
     const items = Array.from(this.itemsById.values());
-    items.sort((left, right) => left.itemIndex - right.itemIndex);
+    items.sort((left, right) => {
+      const tsDiff = left.ts - right.ts;
+      if (tsDiff !== 0) {
+        return tsDiff;
+      }
+
+      return left.itemIndex - right.itemIndex;
+    });
     return items;
   }
 

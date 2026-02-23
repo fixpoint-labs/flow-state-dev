@@ -14,8 +14,7 @@ import type { ResourceHandle } from "../types/resource";
 import type {
   GeneratorModel,
   GeneratorModelResult,
-  GeneratorModelTool,
-  GeneratorModelToolCall
+  GeneratorModelTool
 } from "../types/model";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
 import { buildBlock } from "./internal/build-block";
@@ -280,6 +279,10 @@ async function resolveTools(
   return Array.isArray(resolved) ? resolved : [];
 }
 
+/**
+ * Compile tools WITHOUT execute functions. Used when `runTools: false` — the
+ * model will suggest tool calls, but the AI SDK won't auto-execute them.
+ */
 function compileToolsForModel(tools: GeneratorTool[]): GeneratorModelTool[] {
   return tools.map((tool) => ({
     name: tool.name,
@@ -288,12 +291,39 @@ function compileToolsForModel(tools: GeneratorTool[]): GeneratorModelTool[] {
   }));
 }
 
-function indexToolsByName(tools: GeneratorTool[]): Map<string, GeneratorTool> {
-  const map = new Map<string, GeneratorTool>();
-  for (const tool of tools) {
-    map.set(tool.name, tool);
-  }
-  return map;
+/**
+ * Compile tools WITH execute wrappers. Each framework tool's `run()` method
+ * is wrapped with the framework's retry/timeout/lifecycle hooks in an
+ * `execute` closure. The AI SDK will auto-execute these tools during its
+ * built-in multi-step loop.
+ */
+function compileToolsWithExecute(
+  tools: GeneratorTool[],
+  ctx: BlockContext,
+  flowTools: ToolsConfig | undefined
+): GeneratorModelTool[] {
+  const timeoutMs = flowTools?.defaults?.timeoutMs;
+  const retry = flowTools?.defaults?.retry;
+  return tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.inputSchema,
+    execute: async (args: unknown) => {
+      await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, ctx);
+      try {
+        const output = await runWithRetry(
+          () => withTimeout(Promise.resolve(tool.run(args, ctx)), timeoutMs, `tool:${tool.name}`),
+          retry
+        );
+        await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, ctx);
+        return output;
+      } catch (error) {
+        const err = toError(error);
+        await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, ctx);
+        throw err;
+      }
+    }
+  }));
 }
 
 function isBlockObserver(
@@ -437,6 +467,14 @@ async function applyRepairPolicy<TInput, TOutput>(
   }
 }
 
+function isTextOutputSchema(schema: ZodTypeAny): boolean {
+  // Detect z.string() — the default text output schema.
+  // ZodString has _def.typeName === "ZodString".
+  // Guard against non-Zod schemas (e.g. passthrough mocks) that lack _def.
+  const def = (schema as { _def?: { typeName?: string } })._def;
+  return def?.typeName === "ZodString";
+}
+
 function resolveGenerationCandidate(result: GeneratorModelResult): unknown {
   if (result.structuredOutput !== undefined) {
     return result.structuredOutput;
@@ -445,136 +483,6 @@ function resolveGenerationCandidate(result: GeneratorModelResult): unknown {
   return result.text;
 }
 
-function createToolResultMessage(result: GeneratorToolResult): Record<string, unknown> {
-  return {
-    role: "tool",
-    toolCallId: result.toolCallId,
-    name: result.toolName,
-    content:
-      result.error === undefined
-        ? result.output
-        : {
-            error: result.error.message
-          }
-  };
-}
-
-function appendIterationMessages(
-  messages: unknown[],
-  generationResult: GeneratorModelResult,
-  toolResults: GeneratorToolResult[]
-): void {
-  if (generationResult.text !== undefined || (generationResult.toolCalls?.length ?? 0) > 0) {
-    messages.push({
-      role: "assistant",
-      content: generationResult.text,
-      toolCalls: generationResult.toolCalls
-    });
-  }
-
-  for (const toolResult of toolResults) {
-    messages.push(createToolResultMessage(toolResult));
-  }
-}
-
-async function invokeModelTools<TInput>(
-  toolCalls: GeneratorModelToolCall[],
-  toolsByName: Map<string, GeneratorTool>,
-  state: GeneratorLoopState<TInput>,
-  ctx: BlockContext,
-  flowTools: ToolsConfig | undefined
-): Promise<GeneratorToolResult[]> {
-  const timeoutMs = flowTools?.defaults?.timeoutMs;
-  const retry = flowTools?.defaults?.retry;
-  const concurrency = flowTools?.defaults?.concurrency ?? "serial";
-
-  const runOne = async (
-    toolCall: GeneratorModelToolCall
-  ): Promise<{ result?: GeneratorToolResult; fatal?: Error }> => {
-    const tool = toolsByName.get(toolCall.toolName);
-    if (tool === undefined) {
-      return {
-        fatal: new Error(`Generator requested unknown tool "${toolCall.toolName}"`)
-      };
-    }
-
-    const startedEvent: ToolLifecycleEvent = {
-      toolName: toolCall.toolName,
-      input: toolCall.args
-    };
-    await runToolObserver(flowTools?.onToolStarted, startedEvent, ctx);
-
-    try {
-      const output = await runWithRetry(
-        async () =>
-          withTimeout(
-            Promise.resolve(tool.run(toolCall.args, ctx)),
-            timeoutMs,
-            `tool:${toolCall.toolName}`
-          ),
-        retry
-      );
-
-      const completedEvent: ToolLifecycleEvent = {
-        toolName: toolCall.toolName,
-        input: toolCall.args,
-        output
-      };
-      await runToolObserver(flowTools?.onToolCompleted, completedEvent, ctx);
-
-      return {
-        result: {
-          toolCallId: toolCall.toolCallId,
-          toolName: toolCall.toolName,
-          input: toolCall.args,
-          output
-        }
-      };
-    } catch (error) {
-      const normalizedError = toError(error);
-      const erroredEvent: ToolLifecycleEvent = {
-        toolName: toolCall.toolName,
-        input: toolCall.args,
-        error: normalizedError
-      };
-      await runToolObserver(flowTools?.onToolErrored, erroredEvent, ctx);
-
-      return {
-        result: {
-          toolCallId: toolCall.toolCallId,
-          toolName: toolCall.toolName,
-          input: toolCall.args,
-          error: normalizedError
-        },
-        fatal: normalizedError
-      };
-    }
-  };
-
-  if (concurrency === "parallel") {
-    const settled = await Promise.all(toolCalls.map((toolCall) => runOne(toolCall)));
-    const results = settled.flatMap((entry) => (entry.result === undefined ? [] : [entry.result]));
-    const fatal = settled.find((entry) => entry.fatal !== undefined)?.fatal;
-    if (fatal !== undefined) {
-      throw fatal;
-    }
-
-    return results;
-  }
-
-  const results: GeneratorToolResult[] = [];
-  for (const toolCall of toolCalls) {
-    const outcome = await runOne(toolCall);
-    if (outcome.result !== undefined) {
-      results.push(outcome.result);
-    }
-    if (outcome.fatal !== undefined) {
-      throw outcome.fatal;
-    }
-  }
-
-  return results;
-}
 
 function resolveMaxIterations(config: { loop?: GeneratorLoopConfig<unknown>; maxIterations?: number }): number {
   const configured = config.loop?.maxIterations ?? config.maxIterations ?? DEFAULT_MAX_ITERATIONS;
@@ -626,6 +534,122 @@ export const resolveGeneratorMessage = resolveGeneratorLlmOutput;
  * @deprecated Use resolveGeneratorClientOutput instead.
  */
 export const resolveGeneratorRender = resolveGeneratorClientOutput;
+
+/**
+ * Duck-typed helper to get the current item count from the response emitter.
+ * The core ResponseEmitterHandle only exposes `emit()`, but the server-side
+ * ResponseEmitter also has `getItems()`. We use duck-typing so the generator
+ * can assign a sequential itemIndex without importing server types.
+ */
+function getEmitterItemCount(response: unknown): number {
+  if (
+    typeof response === "object" &&
+    response !== null &&
+    "getItems" in response &&
+    typeof (response as { getItems?: unknown }).getItems === "function"
+  ) {
+    const items = (response as { getItems: () => unknown[] }).getItems();
+    return Array.isArray(items) ? items.length : 0;
+  }
+  return 0;
+}
+
+/**
+ * Executes a streaming text generation: emits item.added, content.added,
+ * content.delta per chunk, content.done, and item.done events.
+ *
+ * Supports multi-step tool loops — the AI SDK drives tool execution via
+ * `execute` closures on compiled tools, and this function streams all text
+ * deltas to the client as they arrive.
+ */
+async function executeStreamingGeneration<TInput, TOutput>(
+  model: GeneratorModel,
+  messages: unknown[],
+  compiledTools: GeneratorModelTool[],
+  config: GeneratorConfig<any, any, TInput, TOutput>,
+  outputSchema: ZodTypeAny,
+  blockName: string,
+  maxSteps: number,
+  ctx: BlockContext
+): Promise<TOutput> {
+  const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const contentPartIndex = 0;
+  const provenance = {
+    blockName,
+    blockInstanceId: blockName,
+    phase: "main" as const
+  };
+
+  // Emit in-progress assistant message
+  const messageItem = {
+    id: itemId,
+    type: "message" as const,
+    role: "assistant" as const,
+    status: "in_progress" as const,
+    visibility: "both" as const,
+    transient: false,
+    requestId: ctx.request.identity.id,
+    itemIndex: getEmitterItemCount(ctx.response),
+    provenance,
+    ts: Date.now(),
+    content: [{ type: "output_text" as const, text: "" }]
+  };
+  await ctx.response.emit({ type: "item.added", item: messageItem });
+
+  // Emit content.added for the first content part
+  await ctx.response.emit({
+    type: "content.added",
+    itemId,
+    contentPartIndex,
+    contentPart: { type: "output_text", text: "" }
+  });
+
+  // Stream text deltas (tool calls are handled internally by the AI SDK)
+  let accumulated = "";
+  for await (const chunk of model.stream!({
+    messages,
+    tools: compiledTools.length > 0 ? compiledTools : undefined,
+    maxTokens: config.maxTokens,
+    signal: ctx.signal,
+    maxSteps
+  })) {
+    if (chunk.type === "text_delta" && chunk.textDelta !== undefined) {
+      accumulated += chunk.textDelta;
+      await ctx.response.emit({
+        type: "content.delta",
+        itemId,
+        contentPartIndex,
+        delta: chunk.textDelta
+      });
+    }
+  }
+
+  // Emit content.done
+  await ctx.response.emit({
+    type: "content.done",
+    itemId,
+    contentPartIndex,
+    contentPart: { type: "output_text", text: accumulated }
+  });
+
+  // Validate output through the schema
+  const parsed = outputSchema.safeParse(accumulated);
+  if (!parsed.success) {
+    throw new Error(
+      `Generator "${blockName}" streaming output failed schema validation: ${parsed.error.issues[0]?.message ?? "unknown"}`
+    );
+  }
+
+  // Emit completed item
+  const completedItem = {
+    ...messageItem,
+    status: "completed" as const,
+    content: [{ type: "output_text" as const, text: accumulated }]
+  };
+  await ctx.response.emit({ type: "item.done", item: completedItem });
+
+  return parsed.data as TOutput;
+}
 
 export function generator<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
@@ -688,87 +712,90 @@ export function generator<
       ];
 
       const toolBlocks = await resolveTools(normalizedConfig.tools, ctx);
-      const toolsByName = indexToolsByName(toolBlocks);
-      const compiledTools = compileToolsForModel(toolBlocks);
-      const maxIterations = resolveMaxIterations(normalizedConfig);
       const runTools = normalizedConfig.loop?.runTools !== false;
+      const maxSteps = resolveMaxIterations(normalizedConfig);
 
-      let lastError: Error | undefined;
-      let previousCandidate: unknown;
-      const aggregatedToolResults: GeneratorToolResult[] = [];
+      // Compile tools: with execute wrappers (AI SDK auto-runs them) or
+      // without (model suggests calls but doesn't execute them).
+      const compiledTools = toolBlocks.length > 0
+        ? (runTools
+            ? compileToolsWithExecute(toolBlocks, ctx, normalizedConfig.flowTools)
+            : compileToolsForModel(toolBlocks))
+        : [];
 
-      for (let iteration = 0; iteration < maxIterations; iteration += 1) {
-        const state: GeneratorLoopState<TInput> = {
-          iteration,
-          input,
-          model: modelId,
-          prompt,
+      // Streaming path: text output + model supports streaming.
+      // Now works with tools + multi-step — the AI SDK drives the loop.
+      const canStream = isTextOutputSchema(outputSchema) && model.stream !== undefined;
+
+      if (canStream) {
+        return await executeStreamingGeneration(
+          model,
           messages,
-          toolResults: aggregatedToolResults,
-          lastCandidate: previousCandidate
-        };
-
-        const generation = await model.generate({
-          messages,
-          tools: runTools ? compiledTools : undefined,
+          compiledTools,
+          normalizedConfig,
           outputSchema,
-          maxTokens: normalizedConfig.maxTokens,
-          signal: ctx.signal
-        });
-
-        const iterationToolCalls = runTools ? generation.toolCalls ?? [] : [];
-        const iterationToolResults =
-          iterationToolCalls.length === 0
-            ? []
-            : await invokeModelTools<TInput>(
-                iterationToolCalls,
-                toolsByName,
-                state,
-                ctx,
-                normalizedConfig.flowTools
-              );
-
-        if (iterationToolResults.length > 0) {
-          aggregatedToolResults.push(...iterationToolResults);
-        }
-
-        appendIterationMessages(messages, generation, iterationToolResults);
-
-        const candidate = resolveGenerationCandidate(generation);
-        if (candidate !== undefined) {
-          previousCandidate = candidate;
-          const candidateState: GeneratorLoopState<TInput> = {
-            ...state,
-            toolResults: aggregatedToolResults,
-            lastCandidate: previousCandidate
-          };
-
-          try {
-            return await applyRepairPolicy<TInput, TOutput>(normalizedConfig, outputSchema, candidate, candidateState, ctx);
-          } catch (error) {
-            lastError = toError(error);
-          }
-        }
-
-        if (normalizedConfig.loop?.stopWhen !== undefined) {
-          const shouldStop = await normalizedConfig.loop.stopWhen(
-            {
-              ...state,
-              toolResults: aggregatedToolResults,
-              lastCandidate: previousCandidate
-            },
-            ctx
-          );
-          if (shouldStop) {
-            break;
-          }
-        }
+          blockName,
+          maxSteps,
+          ctx
+        );
       }
 
-      throw (
-        lastError ??
-        new Error(`Generator "${blockName}" did not produce a valid output in ${maxIterations} iteration(s)`)
+      // Non-streaming: single call, model handles multi-step loop via maxSteps.
+      const generation = await model.generate({
+        messages,
+        tools: compiledTools.length > 0 ? compiledTools : undefined,
+        outputSchema,
+        maxTokens: normalizedConfig.maxTokens,
+        signal: ctx.signal,
+        maxSteps
+      });
+
+      const candidate = resolveGenerationCandidate(generation);
+      if (candidate === undefined) {
+        throw new Error(`Generator "${blockName}" did not produce output after ${maxSteps} step(s)`);
+      }
+
+      // Build a loop state for the repair policy (iteration 0, post-hoc)
+      const state: GeneratorLoopState<TInput> = {
+        iteration: 0,
+        input,
+        model: modelId,
+        prompt,
+        messages,
+        toolResults: [],
+        lastCandidate: candidate
+      };
+
+      const output = await applyRepairPolicy<TInput, TOutput>(
+        normalizedConfig, outputSchema, candidate, state, ctx
       );
+
+      // For text-output generators, emit an assistant MessageItem
+      // so the output appears in the conversation item stream.
+      if (isTextOutputSchema(outputSchema) && typeof output === "string") {
+        const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const messageItem = {
+          id: itemId,
+          type: "message" as const,
+          role: "assistant" as const,
+          status: "completed" as const,
+          visibility: "both" as const,
+          transient: false,
+          requestId: ctx.request.identity.id,
+          itemIndex: getEmitterItemCount(ctx.response),
+          provenance: {
+            blockName,
+            blockInstanceId: blockName,
+            phase: "main" as const
+          },
+          ts: Date.now(),
+          content: [{ type: "output_text" as const, text: output }]
+        };
+        await ctx.response.emit({ type: "item.added", item: messageItem });
+        await ctx.response.emit({ type: "item.done", item: messageItem });
+      }
+
+      return output;
     }
   });
 }

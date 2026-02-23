@@ -12,8 +12,6 @@ import {
   type SessionStateSnapshotResponse
 } from "@flow-state-dev/client";
 import type {
-  BlockOutputItem,
-  FunctionCallItem,
   MessageItem,
   OutputItem
 } from "@flow-state-dev/core/items";
@@ -27,6 +25,7 @@ export type SessionItemsOptions =
   | {
       visibility?: OutputItem["visibility"];
       includeTransient?: boolean;
+      itemTypes?: string[];
     };
 
 /**
@@ -52,9 +51,6 @@ export type SessionView = {
   readonly detail: SessionDetail | null;
   readonly snapshot: SessionStateSnapshotResponse | null;
   readonly items: OutputItem[];
-  readonly messages: MessageItem[];
-  readonly blockOutputs: BlockOutputItem[];
-  readonly functionCalls: FunctionCallItem[];
   sendAction: (
     action: string,
     input: unknown
@@ -77,6 +73,7 @@ function resolveItemsConfig(
   enabled: boolean;
   visibility?: OutputItem["visibility"];
   includeTransient: boolean;
+  itemTypes?: string[];
 } {
   if (options === false) {
     return {
@@ -89,7 +86,8 @@ function resolveItemsConfig(
     return {
       enabled: true,
       visibility: options.visibility,
-      includeTransient: options.includeTransient === true
+      includeTransient: options.includeTransient === true,
+      itemTypes: options.itemTypes
     };
   }
 
@@ -117,6 +115,25 @@ function passesItemFilter(
   return true;
 }
 
+/**
+ * Sorts items chronologically by timestamp, with itemIndex as tiebreaker.
+ *
+ * itemIndex is per-request (resets to 0 for each action), so it cannot
+ * serve as a global ordering key across multiple requests. Timestamp gives
+ * cross-request ordering; itemIndex preserves intra-request ordering for
+ * items created at the same millisecond.
+ */
+function sortItemsChronologically(items: OutputItem[]): OutputItem[] {
+  return items.sort((left, right) => {
+    const tsDiff = left.ts - right.ts;
+    if (tsDiff !== 0) {
+      return tsDiff;
+    }
+
+    return left.itemIndex - right.itemIndex;
+  });
+}
+
 function filterAndSortItems(
   items: OutputItem[] | undefined,
   filter: {
@@ -128,23 +145,21 @@ function filterAndSortItems(
     return [];
   }
 
-  return [...items]
-    .filter((item) => passesItemFilter(item, filter))
-    .sort((left, right) => left.itemIndex - right.itemIndex);
+  return sortItemsChronologically(
+    [...items].filter((item) => passesItemFilter(item, filter))
+  );
 }
 
 function upsertItem(items: OutputItem[], nextItem: OutputItem): OutputItem[] {
   const existingIndex = items.findIndex((item) => item.id === nextItem.id);
   if (existingIndex === -1) {
     const next = [...items, nextItem];
-    next.sort((left, right) => left.itemIndex - right.itemIndex);
-    return next;
+    return sortItemsChronologically(next);
   }
 
   const next = [...items];
   next[existingIndex] = nextItem;
-  next.sort((left, right) => left.itemIndex - right.itemIndex);
-  return next;
+  return sortItemsChronologically(next);
 }
 
 /**
@@ -161,9 +176,29 @@ export function useSession(
   const userId = options?.userId ?? context.userId ?? "devuser";
   const baseUrl = options?.baseUrl ?? context.baseUrl;
 
+  // Decompose the items option into stable primitives so that an inline object
+  // literal (e.g. `{ itemTypes: ["message"] }`) doesn't cause a new reference
+  // on every render, which would cascade through applySnapshot → useEffect →
+  // fetch → setState → re-render → infinite loop.
+  const itemsOption = options?.items;
+  const itemsEnabled = itemsOption !== false;
+  const itemsVisibility =
+    typeof itemsOption === "object" && itemsOption !== null && !Array.isArray(itemsOption)
+      ? (itemsOption as Exclude<SessionItemsOptions, boolean>).visibility
+      : undefined;
+  const itemsIncludeTransient =
+    typeof itemsOption === "object" && itemsOption !== null && !Array.isArray(itemsOption)
+      ? (itemsOption as Exclude<SessionItemsOptions, boolean>).includeTransient === true
+      : false;
+  const itemsTypesKey =
+    typeof itemsOption === "object" && itemsOption !== null && !Array.isArray(itemsOption)
+      ? (itemsOption as Exclude<SessionItemsOptions, boolean>).itemTypes?.join(",")
+      : undefined;
+
   const itemConfig = useMemo(
     () => resolveItemsConfig(options?.items),
-    [options?.items]
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stable primitives, not object ref
+    [itemsEnabled, itemsVisibility, itemsIncludeTransient, itemsTypesKey]
   );
 
   const [detail, setDetail] = useState<SessionDetail | null>(null);
@@ -212,7 +247,8 @@ export function useSession(
       const [nextDetail, nextSnapshot] = await Promise.all([
         sessionClient.getSession(sessionId),
         sessionClient.getSessionState(sessionId, {
-          includeItems: itemConfig.enabled
+          includeItems: itemConfig.enabled,
+          itemTypes: itemConfig.itemTypes
         })
       ]);
 
@@ -221,7 +257,7 @@ export function useSession(
     } catch (cause) {
       setError(cause instanceof Error ? cause : new Error(String(cause)));
     }
-  }, [sessionId, sessionClient, itemConfig.enabled, applySnapshot]);
+  }, [sessionId, sessionClient, itemConfig.enabled, itemConfig.itemTypes, applySnapshot]);
 
   useEffect(() => {
     if (sessionId === undefined) {
@@ -241,7 +277,8 @@ export function useSession(
         const [nextDetail, nextSnapshot] = await Promise.all([
           sessionClient.getSession(sessionId),
           sessionClient.getSessionState(sessionId, {
-            includeItems: itemConfig.enabled
+            includeItems: itemConfig.enabled,
+            itemTypes: itemConfig.itemTypes
           })
         ]);
 
@@ -265,7 +302,7 @@ export function useSession(
     return () => {
       cancelled = true;
     };
-  }, [sessionId, sessionClient, itemConfig.enabled, applySnapshot]);
+  }, [sessionId, sessionClient, itemConfig.enabled, itemConfig.itemTypes, applySnapshot]);
 
   useEffect(() => {
     return () => {
@@ -292,12 +329,23 @@ export function useSession(
 
       setError(null);
 
+      // Generate requestId client-side so we can correlate POST with SSE stream.
+      const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
       try {
-        const response = await client.sendAction(action, input, {
-          sessionId
+        // Fire POST first (non-blocking) — the server registers the LiveRequestStream
+        // synchronously inside the POST handler *before* async execution starts.
+        // By starting the POST first, we guarantee the stream is registered by the
+        // time the SSE GET reaches the server (at least one network hop later).
+        const postPromise = client.sendAction(action, input, {
+          sessionId,
+          requestId
         });
 
-        if (itemConfig.enabled && response.request?.id) {
+        // Connect SSE immediately — the POST has been dispatched and the server
+        // will have registered the stream by the time this GET arrives. This enables
+        // real-time token streaming instead of buffering everything until POST returns.
+        if (itemConfig.enabled) {
           setIsStreaming(true);
           const filter = {
             visibility: itemConfig.visibility,
@@ -305,10 +353,20 @@ export function useSession(
           };
 
           const handle = createSSEClient({
-            url: `/api/flows/${encodeURIComponent(resolvedFlowKind)}/requests/${encodeURIComponent(response.request.id)}/stream`,
+            url: `/api/flows/${encodeURIComponent(resolvedFlowKind)}/requests/${encodeURIComponent(requestId)}/stream`,
             baseUrl,
             onItemAdded: (event) => {
               if (!passesItemFilter(event.item, filter)) {
+                return;
+              }
+
+              // Respect itemTypes filter during streaming — server-side
+              // filtering only applies to the initial snapshot, not live SSE events.
+              if (
+                itemConfig.itemTypes !== undefined &&
+                itemConfig.itemTypes.length > 0 &&
+                !itemConfig.itemTypes.includes(event.item.type)
+              ) {
                 return;
               }
 
@@ -320,6 +378,26 @@ export function useSession(
             },
             onItemDone: (event) => {
               setItems((prev: OutputItem[]) => upsertItem(prev, event.item));
+            },
+            onContentDelta: (event) => {
+              setItems((prev: OutputItem[]) => {
+                const target = prev.find((item) => item.id === event.itemId);
+                if (target === undefined || target.type !== "message") {
+                  return prev;
+                }
+
+                const message = target as MessageItem;
+                const content = [...(message.content ?? [])];
+                const part = content[event.contentIndex];
+                if (part !== undefined && part.type === "output_text") {
+                  content[event.contentIndex] = {
+                    ...part,
+                    text: (part.text ?? "") + event.delta
+                  };
+                }
+
+                return upsertItem(prev, { ...message, content });
+              });
             },
             onRequestStatus: (event) => {
               if (
@@ -344,7 +422,12 @@ export function useSession(
           });
 
           streamHandleRef.current = handle;
-        } else if (response.status === "completed") {
+        }
+
+        // Await the POST response after SSE is connected.
+        const response = await postPromise;
+
+        if (!itemConfig.enabled && response.status === "completed") {
           await refreshSnapshot();
         }
 
@@ -372,21 +455,6 @@ export function useSession(
     await refreshSnapshot();
   }, [refreshSnapshot]);
 
-  const messages = useMemo(
-    () => items.filter((item: OutputItem): item is MessageItem => item.type === "message"),
-    [items]
-  );
-  const blockOutputs = useMemo(
-    () =>
-      items.filter((item: OutputItem): item is BlockOutputItem => item.type === "fsd:block_output"),
-    [items]
-  );
-  const functionCalls = useMemo(
-    () =>
-      items.filter((item: OutputItem): item is FunctionCallItem => item.type === "function_call"),
-    [items]
-  );
-
   return {
     flowKind: resolvedFlowKind,
     sessionId,
@@ -397,9 +465,6 @@ export function useSession(
     detail,
     snapshot,
     items,
-    messages,
-    blockOutputs,
-    functionCalls,
     sendAction,
     refresh
   };

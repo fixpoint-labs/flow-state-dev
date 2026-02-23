@@ -6,7 +6,7 @@ import Markdown from "react-markdown";
 import type { MessageItem } from "@flow-state-dev/core/items";
 
 function extractText(message: MessageItem): string {
-  return message.content
+  return (message.content ?? [])
     .filter((c) => c.type === "output_text")
     .map((c) => c.text)
     .join("\n");

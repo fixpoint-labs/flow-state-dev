@@ -4,8 +4,7 @@ import {
   generator,
   handler,
   resolveGeneratorClientOutput,
-  resolveGeneratorLlmOutput,
-  type GeneratorLoopState
+  resolveGeneratorLlmOutput
 } from "../src";
 import { createMockContext } from "./helpers";
 
@@ -132,9 +131,11 @@ describe("generator builder", () => {
     await expect(blockRescue.run({ value: 1 }, ctx)).rejects.toThrow("validation failed");
   });
 
-  it("runs model-requested tools inside the loop", async () => {
+  it("runs model-requested tools via execute wrappers", async () => {
+    // The generator compiles tools with `execute` closures. The model layer
+    // (AI SDK) calls `execute` during its built-in multi-step loop.
+    // This test simulates that behavior in the mock model.
     const toolCalls: string[] = [];
-    let modelCalls = 0;
     const succeedTool = handler({
       name: "succeeds",
       inputSchema: z.object({ text: z.string() }),
@@ -160,20 +161,14 @@ describe("generator builder", () => {
     const ctx = createMockContext({
       resolveModel: () => ({
         modelId: "m",
-        async generate() {
-          if (modelCalls === 0) {
-            modelCalls += 1;
-            return {
-              toolCalls: [
-                {
-                  toolCallId: "call-1",
-                  toolName: "succeeds",
-                  args: { text: "hello" }
-                }
-              ]
-            };
+        async generate(options: any) {
+          // Simulate AI SDK: call tool execute, then return final result
+          if (options.tools?.length > 0) {
+            const tool = options.tools[0];
+            if (tool.execute) {
+              await tool.execute({ text: "hello" });
+            }
           }
-
           return {
             structuredOutput: {
               text: "hello",
@@ -190,37 +185,29 @@ describe("generator builder", () => {
     expect(toolCalls).toEqual(["ok"]);
   });
 
-  it("supports loop stopWhen and maxIterations", async () => {
-    const states: GeneratorLoopState[] = [];
+  it("passes maxSteps to model.generate", async () => {
+    let receivedMaxSteps: number | undefined;
     const block = generator({
-      name: "loop-stop",
+      name: "max-steps",
       model: "m",
       prompt: "p",
       outputSchema: z.object({ done: z.literal(true) }),
-      maxIterations: 4,
-      loop: {
-        stopWhen: (state) => {
-          states.push(state);
-          return state.iteration >= 1;
-        }
-      },
-      repair: {
-        mode: "fail"
-      }
+      maxIterations: 4
     });
 
     const ctx = createMockContext({
       resolveModel: () => ({
         modelId: "m",
-        async generate() {
+        async generate(options: any) {
+          receivedMaxSteps = options.maxSteps;
           return {
-            structuredOutput: { done: false as unknown as true }
+            structuredOutput: { done: true }
           };
         }
       })
     });
-    await expect(block.run({ n: 1 }, ctx)).rejects.toThrow("validation failed");
-    expect(states.length).toBe(2);
+    await expect(block.run({ n: 1 }, ctx)).resolves.toEqual({ done: true });
+    expect(receivedMaxSteps).toBe(4);
   });
 
   it("skips tool invocation when loop.runTools is false", async () => {

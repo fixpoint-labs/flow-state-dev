@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   FlowProvider,
   useFlow,
   useSession,
 } from "@flow-state-dev/react";
-import type { BlockOutputItem, MessageItem } from "@flow-state-dev/core/items";
+import type { MessageItem } from "@flow-state-dev/core/items";
 import { ChatMessage } from "@/components/chat-message";
 import { ChatInput } from "@/components/chat-input";
 import { SessionSidebar } from "@/components/session-sidebar";
@@ -24,7 +24,9 @@ export default function Page() {
 
 function ChatApp() {
   const flow = useFlow({ autoCreateSession: true });
-  const session = useSession(flow.activeSessionId);
+  const session = useSession(flow.activeSessionId, {
+    items: { itemTypes: ["message"] }
+  });
   const [message, setMessage] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -32,12 +34,15 @@ function ChatApp() {
     session.snapshot?.state?.session?.messageCount ?? 0
   );
 
+  // Items are already filtered to only be messages
+  const messages = session.items;
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [session.messages, session.isStreaming]);
+  }, [messages, session.isStreaming]);
 
   const handleSend = useCallback(async () => {
     if (!flow.activeSessionId || message.trim().length === 0) return;
@@ -73,39 +78,12 @@ function ChatApp() {
         {/* Messages */}
         <ScrollArea ref={scrollRef} className="flex-1">
           <div className="mx-auto max-w-3xl py-4">
-            {session.messages.length === 0 && !session.isLoading && (
+            {messages.length === 0 && !session.isLoading && (
               <EmptyState />
             )}
-            {session.messages.map((msg: MessageItem) => (
+            {messages.map((msg) => (
               <ChatMessage key={msg.id} message={msg} />
             ))}
-            {/* Show block outputs as assistant messages for streaming content */}
-            {session.blockOutputs
-              .filter(
-                (bo) =>
-                  !session.messages.some((m: MessageItem) => m.id === bo.id)
-              )
-              .map((bo: BlockOutputItem) => {
-                const output = bo.output as
-                  | Record<string, unknown>
-                  | undefined;
-                const reply =
-                  typeof output?.reply === "string" ? output.reply : null;
-                if (!reply) return null;
-                return (
-                  <div
-                    key={bo.id}
-                    className="flex gap-3 px-4 py-3"
-                  >
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                      <Bot className="h-4 w-4" />
-                    </div>
-                    <div className="max-w-[80%] rounded-2xl bg-muted px-4 py-2.5 text-sm leading-relaxed text-foreground">
-                      <p className="whitespace-pre-wrap">{reply}</p>
-                    </div>
-                  </div>
-                );
-              })}
             {session.error && (
               <div className="mx-4 my-2 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />

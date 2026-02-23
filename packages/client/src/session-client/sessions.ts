@@ -44,6 +44,7 @@ export type ListSessionRequestsOptions = {
 export type GetSessionStateOptions = {
   includeItems?: boolean;
   projections?: string[];
+  itemTypes?: string[];
 };
 
 /**
@@ -140,7 +141,12 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
             stateOptions?.projections === undefined ||
             stateOptions.projections.length === 0
               ? undefined
-              : stateOptions.projections.join(",")
+              : stateOptions.projections.join(","),
+          item_types:
+            stateOptions?.itemTypes === undefined ||
+            stateOptions.itemTypes.length === 0
+              ? undefined
+              : stateOptions.itemTypes.join(",")
         })
       })
     });

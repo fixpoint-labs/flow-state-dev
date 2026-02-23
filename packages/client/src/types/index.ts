@@ -77,12 +77,12 @@ export type ExecuteActionRequestBody = {
  * Canonical action execution response shape.
  */
 export type ExecuteActionResponse = {
-  status: "completed" | "failed" | "incomplete";
+  status: "in_progress" | "completed" | "failed" | "incomplete";
   request: {
     id: string;
     flowKind: string;
     actionName: string;
-    status: "completed" | "failed" | "incomplete";
+    status: "in_progress" | "completed" | "failed" | "incomplete";
   };
   session?: {
     id: string;

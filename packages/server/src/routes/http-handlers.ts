@@ -16,7 +16,9 @@ import type {
   SessionRecord,
   StoreRegistry
 } from "../stores/types";
+import { getActiveStream, registerStream, removeStream } from "../streaming/active-streams";
 import { encodeStreamEvent } from "../streaming/encode-event";
+import { createLiveRequestStream } from "../streaming/live-stream";
 import { replayRequestEvents } from "../streaming/resume";
 import {
   parseFlowRoute,
@@ -523,7 +525,18 @@ function sortItems(items: OutputItem[] | undefined): OutputItem[] {
     return [];
   }
 
-  return [...items].sort((left, right) => left.itemIndex - right.itemIndex);
+  // Items are aggregated across multiple requests. Each request assigns
+  // itemIndex starting from 0, so itemIndex alone is not globally unique.
+  // Sort primarily by timestamp (chronological across requests), then by
+  // itemIndex as a tiebreaker within the same request.
+  return [...items].sort((left, right) => {
+    const tsDiff = left.ts - right.ts;
+    if (tsDiff !== 0) {
+      return tsDiff;
+    }
+
+    return left.itemIndex - right.itemIndex;
+  });
 }
 
 function generateId(prefix: string): string {
@@ -738,7 +751,16 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           }
         };
 
-        const result = await runAction({
+        // Create a LiveRequestStream synchronously before async execution.
+        // This ensures the SSE endpoint can find the stream when the client connects.
+        const liveStream = createLiveRequestStream({
+          requestId: resolvedActionInput.requestId
+        });
+        registerStream(resolvedActionInput.requestId, liveStream);
+
+        // Fire-and-forget: start execution without awaiting.
+        // The stream delivers events to the SSE client in real-time.
+        void runAction({
           flow,
           actionName: resolvedActionInput.actionName as keyof typeof flow.actions & string,
           input: resolvedActionInput.input,
@@ -749,30 +771,27 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           metadata: resolvedActionInput.metadata,
           signal: resolvedActionInput.signal,
           modelResolver: options.modelResolver,
-          stores
+          stores,
+          responseEmitter: liveStream.emitter
+        }).finally(() => {
+          liveStream.close();
+          removeStream(resolvedActionInput.requestId);
         });
 
-        const persistedRequest = await stores.request.get(
-          resolvedActionInput.requestId
-        );
-        const requestStatus =
-          persistedRequest?.status ?? (result.error === undefined ? "completed" : "failed");
-
-        return jsonResponse(200, {
-          status: requestStatus,
+        return jsonResponse(202, {
+          status: "in_progress",
           request: {
             id: resolvedActionInput.requestId,
             flowKind: flow.kind,
             actionName: resolvedActionInput.actionName,
-            status: requestStatus
+            status: "in_progress"
           },
           session:
             resolvedActionInput.sessionId === undefined
               ? undefined
               : {
                   id: resolvedActionInput.sessionId
-                },
-          error: result.error?.message
+                }
         });
       }
 
@@ -784,6 +803,17 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           });
         }
 
+        // Check for a live (in-flight) stream first — delivers events in real-time.
+        const activeStream = getActiveStream(route.requestId);
+        if (activeStream !== undefined) {
+          return new Response(activeStream.readable, {
+            status: 200,
+            headers: SSE_HEADERS
+          });
+        }
+
+        // No active stream — request already completed. Fall back to replay
+        // from persisted RequestRecord events.
         const requestRecord = await stores.request.get(route.requestId);
         if (
           requestRecord === undefined ||
@@ -892,6 +922,10 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         const includeItems = getBooleanFlag(
           url.searchParams.get("include_items")
         );
+        const itemTypesParam = url.searchParams.get("item_types");
+        const itemTypeFilter = itemTypesParam
+          ? new Set(itemTypesParam.split(",").map((t) => t.trim()).filter(Boolean))
+          : undefined;
 
         // Items are canonical on RequestRecords — aggregate from all session
         // requests when the client asks for items (architecture: "session
@@ -904,7 +938,11 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           aggregatedItems = [];
           for (const req of requests) {
             if (req.items !== undefined) {
-              aggregatedItems.push(...req.items);
+              for (const item of req.items) {
+                if (itemTypeFilter === undefined || itemTypeFilter.has(item.type)) {
+                  aggregatedItems.push(item);
+                }
+              }
             }
           }
         }

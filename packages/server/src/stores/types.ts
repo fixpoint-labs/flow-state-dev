@@ -45,6 +45,7 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   completedAtMs?: number;
   failedAtMs?: number;
   metadata?: Record<string, unknown>;
+  input?: unknown;
   items?: OutputItem[];
 };
 

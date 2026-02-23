@@ -36,3 +36,12 @@ export {
   serializeSSEFrames
 } from "./sse";
 export type { SSEFrame } from "./sse";
+
+export { createLiveRequestStream } from "./live-stream";
+export type { LiveRequestStream, CreateLiveRequestStreamOptions } from "./live-stream";
+
+export {
+  registerStream,
+  getActiveStream,
+  removeStream
+} from "./active-streams";

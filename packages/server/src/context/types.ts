@@ -46,6 +46,7 @@ export type CreateExecutionContextOptions<
   userState?: TUserState;
   projectState?: TProjectState;
   metadata?: Record<string, unknown>;
+  input?: unknown;
   signal?: AbortSignal;
   response?: ResponseEmitterHandle;
   modelResolver?: ModelResolver;

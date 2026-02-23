@@ -5,10 +5,7 @@ import type {
   JsonObject,
   JsonValue,
   LLMMessage,
-  Message,
   MessageLimit,
-  MessageQuery,
-  MessageViews,
   ProjectScopeHandle,
   RequestScopeHandle,
   ResourceConfig,
@@ -20,6 +17,12 @@ import type {
   SessionScopeHandle,
   UserScopeHandle
 } from "@flow-state-dev/core/types";
+import type {
+  FunctionCallItem,
+  FunctionCallOutputItem,
+  MessageItem,
+  OutputItem
+} from "@flow-state-dev/core/items";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import type {
   ProjectRecord,
@@ -288,8 +291,150 @@ function defineStateProperty<THandle extends object, TState extends JsonObject>(
   }) as THandle & { readonly state: Readonly<TState> };
 }
 
+/**
+ * Converts a persisted OutputItem into an LLM-ready message.
+ * Returns null for item types that don't map to conversation messages.
+ */
+function itemToLLMMessage(item: OutputItem): LLMMessage | null {
+  if (item.type === "message") {
+    const msg = item as MessageItem;
+    const text = (msg.content ?? [])
+      .filter((c) => c.type === "output_text")
+      .map((c) => (c as { text: string }).text)
+      .join("");
+
+    if (text.length === 0) {
+      return null;
+    }
+
+    return { role: msg.role, content: text };
+  }
+
+  if (item.type === "function_call") {
+    const fc = item as FunctionCallItem;
+    return {
+      role: "assistant",
+      content: JSON.stringify({
+        type: "function_call",
+        callId: fc.callId,
+        name: fc.name,
+        arguments: fc.arguments
+      })
+    };
+  }
+
+  if (item.type === "function_call_output") {
+    const fco = item as FunctionCallOutputItem;
+    return { role: "tool", content: fco.output };
+  }
+
+  return null;
+}
+
+/**
+ * Rough token estimate: ~4 characters per token (conservative for English text).
+ */
+function estimateTokens(message: LLMMessage): number {
+  const content = typeof message.content === "string"
+    ? message.content
+    : JSON.stringify(message.content);
+  return Math.ceil(content.length / 4);
+}
+
+/**
+ * Loads conversation history from prior completed requests in this session,
+ * converts to LLM-ready messages, and applies filtering/limiting.
+ */
+async function loadLLMHistory(
+  stores: StoreRegistry,
+  sessionId: string,
+  currentRequestId: string,
+  query?: ItemQuery
+): Promise<LLMMessage[]> {
+  const requests = await stores.request.list({ sessionId });
+
+  const priorRequests = requests
+    .filter((r) => r.id !== currentRequestId && r.status === "completed")
+    .sort((a, b) => a.startedAtMs - b.startedAtMs);
+
+  const allowedTypes = new Set(query?.itemTypes ?? ["message"]);
+  const allowedRoles = query?.roles ? new Set(query.roles) : undefined;
+
+  const messages: LLMMessage[] = [];
+
+  for (const request of priorRequests) {
+    if (request.items === undefined) {
+      continue;
+    }
+
+    const sorted = [...request.items].sort((a, b) => {
+      const tsDiff = a.ts - b.ts;
+      return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
+    });
+
+    for (const item of sorted) {
+      if (item.transient === true) {
+        continue;
+      }
+
+      if (item.visibility !== "llm" && item.visibility !== "both") {
+        continue;
+      }
+
+      if (!allowedTypes.has(item.type)) {
+        continue;
+      }
+
+      const llmMessage = itemToLLMMessage(item);
+      if (llmMessage === null) {
+        continue;
+      }
+
+      if (allowedRoles !== undefined && !allowedRoles.has(llmMessage.role as "user" | "assistant" | "system" | "developer" | "tool")) {
+        continue;
+      }
+
+      messages.push(llmMessage);
+    }
+  }
+
+  // Apply limit
+  const limit = query?.limit;
+  if (limit === undefined) {
+    return messages;
+  }
+
+  if (typeof limit === "number") {
+    return limit < messages.length
+      ? messages.slice(messages.length - limit)
+      : messages;
+  }
+
+  // Token-based limit: pack from end within budget
+  const tokenBudget = limit.tokens;
+  let tokensUsed = 0;
+  let startIndex = messages.length;
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const tokens = estimateTokens(messages[i]!);
+    if (tokensUsed + tokens > tokenBudget) {
+      break;
+    }
+
+    tokensUsed += tokens;
+    startIndex = i;
+  }
+
+  return messages.slice(startIndex);
+}
+
 function createSessionItemViews(
-  readRecord: () => SessionRecord | undefined
+  readRecord: () => SessionRecord | undefined,
+  options: {
+    stores: StoreRegistry;
+    sessionId: string;
+    currentRequestId: string;
+  }
 ): SessionItemViews {
   const select = (query: ItemQuery | undefined): SessionItem[] => {
     const record = readRecord();
@@ -325,39 +470,18 @@ function createSessionItemViews(
 
   return {
     all: (query) => select(query),
-    ui: (query) =>
+    client: (query) =>
       select({
         ...query,
         visibility: ["ui", "both"]
       }),
     llm: (query) =>
-      select({
-        ...query,
-        visibility: ["llm", "both"]
-      })
-  };
-}
-
-function createMessageViews(
-  readRecord: () => SessionRecord | undefined
-): MessageViews {
-  return {
-    ui: (query: MessageQuery | undefined): Message[] => {
-      const record = readRecord();
-      if (record === undefined) {
-        return [];
-      }
-
-      return listByQuery(record.messages?.ui ?? [], query);
-    },
-    llm: (query: MessageQuery | undefined): LLMMessage[] => {
-      const record = readRecord();
-      if (record === undefined) {
-        return [];
-      }
-
-      return listByQuery(record.messages?.llm ?? [], query);
-    }
+      loadLLMHistory(
+        options.stores,
+        options.sessionId,
+        options.currentRequestId,
+        query
+      )
   };
 }
 
@@ -471,6 +595,7 @@ export async function createExecutionContext<
       status: "in_progress",
       startedAtMs: now,
       metadata: options.metadata,
+      input: options.input,
       state: (options.requestState ?? {}) as TRequestState,
       version: 0,
       createdAt: now,
@@ -693,8 +818,11 @@ export async function createExecutionContext<
         projectId: sessionRef.current.projectId
       },
       resources: sessionResources,
-      items: createSessionItemViews(() => sessionRef.current),
-      messages: createMessageViews(() => sessionRef.current),
+      items: createSessionItemViews(() => sessionRef.current, {
+        stores,
+        sessionId,
+        currentRequestId: requestId
+      }),
       appendJournal: async (entry: JournalEntryInput): Promise<void> => {
         const journalEntry = buildJournalEntry(entry);
         sessionRef.current = {

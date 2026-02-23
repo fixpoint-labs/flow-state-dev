@@ -1,7 +1,7 @@
 /**
  * Action-level orchestration runtime for request lifecycle, observers, persistence, and terminal errors.
  */
-import type { ErrorItem, ItemProvenance } from "@flow-state-dev/core/items";
+import type { ErrorItem, ItemProvenance, MessageItem } from "@flow-state-dev/core/items";
 import type {
   ActionConfig,
   BlockDefinition,
@@ -228,7 +228,7 @@ export async function runActionInternal<
   const action = resolveAction(options.flow, options.actionName);
   const requestId = options.requestId ?? generateRequestId();
   const internalSeams = options.internalSeams ?? NOOP_INTERNAL_EXECUTION_SEAMS;
-  const response = createInternalResponseEmitter({
+  const response = options.responseEmitter ?? createInternalResponseEmitter({
     requestId,
     internalSeams: undefined
   });
@@ -241,6 +241,7 @@ export async function runActionInternal<
     sessionId: options.sessionId,
     projectId: options.projectId,
     metadata: options.metadata,
+    input: options.input,
     signal: options.signal,
     modelResolver: options.modelResolver,
     response,
@@ -262,6 +263,27 @@ export async function runActionInternal<
 
   try {
     const parsedInput = parseActionInput(action, options.input);
+
+    // Emit user message item when the action defines a userMessage extractor.
+    if (action.userMessage !== undefined) {
+      const text = action.userMessage(parsedInput);
+      const userItem: MessageItem = {
+        id: `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+        type: "message",
+        role: "user",
+        status: "completed",
+        visibility: "both",
+        transient: false,
+        requestId,
+        itemIndex: response.getItems().length,
+        provenance: RUNTIME_PROVENANCE,
+        ts: Date.now(),
+        content: [{ type: "output_text", text }]
+      };
+      await response.emitItemAdded(userItem);
+      await response.emitItemDone(userItem);
+    }
+
     const result = await executeBlock({
       block: action.block,
       input: parsedInput,
