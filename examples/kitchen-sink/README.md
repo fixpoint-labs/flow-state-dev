@@ -15,7 +15,7 @@ It demonstrates:
 - session resources (`artifacts`) with resource reads/writes
 - client projections on `session` and `user`
 - action-level lifecycle handling via `onCompleted`
-- React usage with `FlowProvider`, `useItemContext`, `useProjections`, and `ItemsRenderer`
+- React usage with `FlowProvider`, `useProjections`, and `ItemsRenderer`
 - testing coverage with `testFlow`, `testBlock`, `testRouter`, seeded state/resources, and item assertions
 
 Run verification:

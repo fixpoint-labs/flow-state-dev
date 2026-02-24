@@ -31,8 +31,8 @@ function App() {
     <FlowProvider
       flowKind="market-intel-agent"
       userId="devuser"
-      blockRenderers={{
-        "strategy-report": StrategyReportCard,
+      renderers={{
+        component: { "strategy-report": StrategyReportCard },
       }}
     >
       <AgentUI />
@@ -71,17 +71,17 @@ function AgentUI() {
 
 ## FlowProvider
 
-Use `<FlowProvider>` to set defaults and register block renderers.
+Use `<FlowProvider>` to set defaults and register renderers.
 
 Props:
 - `flowKind?: string`
 - `sessionId?: string`
 - `userId?: string`
 - `baseUrl?: string`
-- `blockRenderers?: Record<string, React.ComponentType<any>>` keyed by `renderKey`
+- `renderers?: RendererRegistry` — custom renderers keyed by item type (or by component key for `component`/`container` types)
 - `children: ReactNode`
 
-Nested providers merge `blockRenderers` (child keys override parent keys).
+Nested providers merge `renderers` (child keys override parent keys).
 
 ## Hooks
 
@@ -144,14 +144,28 @@ Low-level request-stream hook with reactive item/status views.
 
 ## Render Helpers
 
-- `ItemRenderer`
-- `ItemsRenderer`
-- `MessagesRenderer`
-- `BlockRenderer`
-- `useBlockContext()` inside a registered block renderer component
+- `ItemRenderer` — renders a single output item (registry → built-in fallback → JSON dev)
+- `ItemsRenderer` — renders a sorted list of output items
+- `MessagesRenderer` — filters to message items, then renders via `ItemRenderer`
 
-Registered block renderer components receive spread output props from the
-`fsd:block_output` item payload.
+All custom renderers receive `{ item }` as their prop. Type the item to the
+kind you expect:
+
+```tsx
+import type { MessageItem } from "@flow-state-dev/core/items";
+
+function ChatMessage({ item }: { item: MessageItem }) {
+  return <p>{item.role}: {item.content[0]?.text}</p>;
+}
+
+const renderers: RendererRegistry = { message: ChatMessage };
+```
+
+Pass `false` to suppress a type (overrides built-in fallbacks):
+
+```tsx
+const renderers: RendererRegistry = { status: false };
+```
 
 ## Scripts
 

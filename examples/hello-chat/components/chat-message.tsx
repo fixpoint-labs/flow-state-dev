@@ -12,9 +12,9 @@ function extractText(message: MessageItem): string {
     .join("\n");
 }
 
-export function ChatMessage({ message }: { message: MessageItem }) {
-  const isUser = message.role === "user";
-  const text = extractText(message);
+export function ChatMessage({ item }: { item: MessageItem }) {
+  const isUser = item.role === "user";
+  const text = extractText(item);
 
   return (
     <div

@@ -56,18 +56,8 @@ export {
   type MessagesRendererProps
 } from "./components/MessagesRenderer";
 
-export {
-  BlockRenderer,
-  useItemContext,
-  useBlockContext,
-  type ItemMetadata,
-  type BlockMetadata,
-  type BlockRendererComponentProps
-} from "./components/BlockRenderer";
-
 export type {
   BlockComponentType,
-  BlockRendererMap,
   RendererRegistry
 } from "./registry/block-renderers";
 

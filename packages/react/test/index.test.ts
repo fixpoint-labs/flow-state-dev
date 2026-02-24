@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  BlockRenderer,
   FlowProvider,
   ItemRenderer,
   MessagesRenderer,
@@ -39,7 +38,6 @@ describe("@flow-state-dev/react", () => {
   });
 
   it("exports render helpers", () => {
-    expect(typeof BlockRenderer).toBe("function");
     expect(typeof ItemRenderer).toBe("function");
     expect(typeof MessagesRenderer).toBe("function");
   });

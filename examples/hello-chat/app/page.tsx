@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   FlowProvider,
+  ItemsRenderer,
   useFlow,
   useSession,
+  type RendererRegistry
 } from "@flow-state-dev/react";
-import type { MessageItem } from "@flow-state-dev/core/items";
 import { ChatMessage } from "@/components/chat-message";
 import { ChatInput } from "@/components/chat-input";
 import { SessionSidebar } from "@/components/session-sidebar";
@@ -14,9 +15,16 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AlertCircle, Bot, Loader2 } from "lucide-react";
 
+// Register the ChatMessage component as the renderer for message items.
+// ItemsRenderer will dispatch to this component for every item with type "message".
+// All other client-visible types (status, error, step_error) use built-in defaults.
+const renderers: RendererRegistry = {
+  message: ChatMessage
+};
+
 export default function Page() {
   return (
-    <FlowProvider flowKind="hello-chat" userId="devuser" baseUrl="">
+    <FlowProvider flowKind="hello-chat" userId="devuser" baseUrl="" renderers={renderers}>
       <ChatApp />
     </FlowProvider>
   );
@@ -32,18 +40,12 @@ function ChatApp() {
     session.snapshot?.state?.session?.messageCount ?? 0
   );
 
-  // useSession delivers all client-audience items by default (type-based routing).
-  // Filter to message items for the chat view.
-  const messages = session.items.filter(
-    (item): item is MessageItem => item.type === "message"
-  );
-
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new items arrive
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, session.isStreaming]);
+  }, [session.items, session.isStreaming]);
 
   const handleSend = useCallback(async () => {
     if (!flow.activeSessionId || message.trim().length === 0) return;
@@ -76,15 +78,13 @@ function ChatApp() {
           )}
         </header>
 
-        {/* Messages */}
+        {/* Items — rendered via the RendererRegistry */}
         <ScrollArea ref={scrollRef} className="flex-1">
           <div className="mx-auto max-w-3xl py-4">
-            {messages.length === 0 && !session.isLoading && (
+            {session.items.length === 0 && !session.isLoading && (
               <EmptyState />
             )}
-            {messages.map((msg) => (
-              <ChatMessage key={msg.id} message={msg} />
-            ))}
+            <ItemsRenderer items={session.items} />
             {session.error && (
               <div className="mx-4 my-2 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />

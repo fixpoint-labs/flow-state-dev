@@ -1,22 +1,22 @@
 import type { ReactElement } from "react";
-import { useItemContext } from "@flow-state-dev/react";
+import type { BlockOutputItem } from "@flow-state-dev/core/items";
 
-type AgentResponseCardProps = {
+type AgentOutput = {
   reply: string;
   artifactsModified: string[];
 };
 
-export default function AgentResponseCard(props: AgentResponseCardProps): ReactElement {
-  const { blockName, status } = useItemContext();
+export default function AgentResponseCard({ item }: { item: BlockOutputItem }): ReactElement {
+  const output = item.output as AgentOutput;
 
   return (
-    <div className={status === "in_progress" ? "animate-pulse" : ""}>
+    <div className={item.status === "in_progress" ? "animate-pulse" : ""}>
       <div>
-        {blockName}
+        {item.blockName}
       </div>
-      <p>{props.reply}</p>
-      {props.artifactsModified.length > 0 ? (
-        <div>Modified: {props.artifactsModified.join(", ")}</div>
+      <p>{output.reply}</p>
+      {output.artifactsModified.length > 0 ? (
+        <div>Modified: {output.artifactsModified.join(", ")}</div>
       ) : null}
     </div>
   );

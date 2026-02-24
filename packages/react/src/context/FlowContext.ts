@@ -51,13 +51,15 @@ function mergeRenderers(
     return parent;
   }
 
+  // Use explicit undefined checks (not ??) so that `false` (suppress) wins
+  // over a parent renderer. `??` would skip `false` since it's falsy.
   return {
-    message: child.message ?? parent.message,
-    reasoning: child.reasoning ?? parent.reasoning,
-    block_output: child.block_output ?? parent.block_output,
-    status: child.status ?? parent.status,
-    error: child.error ?? parent.error,
-    step_error: child.step_error ?? parent.step_error,
+    message: child.message !== undefined ? child.message : parent.message,
+    reasoning: child.reasoning !== undefined ? child.reasoning : parent.reasoning,
+    block_output: child.block_output !== undefined ? child.block_output : parent.block_output,
+    status: child.status !== undefined ? child.status : parent.status,
+    error: child.error !== undefined ? child.error : parent.error,
+    step_error: child.step_error !== undefined ? child.step_error : parent.step_error,
     component: {
       ...parent.component,
       ...child.component
