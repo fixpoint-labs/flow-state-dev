@@ -1,8 +1,7 @@
-import type { OutputItem, MessageItem } from "@flow-state-dev/core/items";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
 import {
   ItemRenderer,
-  MessagesRenderer,
   getFlowContext,
   setFlowContext,
   withFlowContext
@@ -129,49 +128,3 @@ describe("ItemRenderer dispatch", () => {
   });
 });
 
-describe("MessagesRenderer", () => {
-  it("filters to message items and sorts by itemIndex", () => {
-    const items: OutputItem[] = [
-      {
-        id: "item_2",
-        type: "message",
-        role: "assistant",
-        content: [{ type: "output_text", text: "hello" }],
-        status: "completed",
-        requestId: "req_1",
-        itemIndex: 3,
-        provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
-        ts: 3
-      },
-      {
-        id: "item_1",
-        type: "status",
-        message: "working",
-        status: "in_progress",
-        requestId: "req_1",
-        itemIndex: 1,
-        provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
-        ts: 1
-      },
-      {
-        id: "item_3",
-        type: "context",
-        text: "system context",
-        status: "completed",
-        requestId: "req_1",
-        itemIndex: 2,
-        provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
-        ts: 2
-      }
-    ];
-
-    // MessagesRenderer filters to type === "message" then maps through ItemRenderer.
-    // Since message type requires React context for rendering,
-    // we verify the filtering contract directly.
-    const messageItems = items.filter(
-      (item): item is MessageItem => item.type === "message"
-    );
-    expect(messageItems).toHaveLength(1);
-    expect(messageItems[0]?.role).toBe("assistant");
-  });
-});

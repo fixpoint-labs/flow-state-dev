@@ -99,9 +99,11 @@ export function useRequestStream(
 
         setItems((prev: OutputItem[]) => {
           const next = [...prev, event.item];
-          next.sort(
-            (left, right) => left.itemIndex - right.itemIndex
-          );
+          next.sort((left, right) => {
+            const tsDiff = left.ts - right.ts;
+            if (tsDiff !== 0) return tsDiff;
+            return left.itemIndex - right.itemIndex;
+          });
           return next;
         });
       },

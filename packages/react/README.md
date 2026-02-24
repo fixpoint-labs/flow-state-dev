@@ -145,8 +145,7 @@ Low-level request-stream hook with reactive item/status views.
 ## Render Helpers
 
 - `ItemRenderer` — renders a single output item (registry → built-in fallback → JSON dev)
-- `ItemsRenderer` — renders a sorted list of output items
-- `MessagesRenderer` — filters to message items, then renders via `ItemRenderer`
+- `ItemsRenderer` — renders a list of output items in the order provided
 
 All custom renderers receive `{ item }` as their prop. Type the item to the
 kind you expect:

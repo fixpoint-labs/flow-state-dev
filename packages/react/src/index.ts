@@ -51,11 +51,6 @@ export {
   type ItemsRendererProps
 } from "./components/ItemsRenderer";
 
-export {
-  MessagesRenderer,
-  type MessagesRendererProps
-} from "./components/MessagesRenderer";
-
 export type {
   BlockComponentType,
   RendererRegistry
