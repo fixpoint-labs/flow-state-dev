@@ -9,7 +9,6 @@ import {
   withFlowContext
 } from "../src";
 import {
-  normalizeRendererKey,
   resolveRenderer,
   type BlockRendererMap
 } from "../src/registry/block-renderers";
@@ -42,17 +41,13 @@ describe("FlowContext legacy helpers", () => {
 });
 
 describe("renderer map utilities", () => {
-  it("normalizes keys and resolves renderers", () => {
+  it("resolves renderers by item type", () => {
     const renderer = () => "ok";
     const map: BlockRendererMap = {
-      [normalizeRendererKey(" shared ")]: renderer
+      shared: renderer
     };
 
     expect(resolveRenderer(map, "shared")).toBe(renderer);
-  });
-
-  it("throws on empty renderer keys", () => {
-    expect(() => normalizeRendererKey("   ")).toThrow("non-empty");
   });
 });
 
@@ -70,7 +65,6 @@ describe("render helpers", () => {
           }
         ],
         status: "completed",
-        visibility: "ui",
         requestId: "req_1",
         itemIndex: 2,
         provenance: {
@@ -82,10 +76,9 @@ describe("render helpers", () => {
       },
       {
         id: "item_1",
-        type: "fsd:status",
+        type: "status",
         message: "working",
         status: "in_progress",
-        visibility: "internal",
         requestId: "req_1",
         itemIndex: 1,
         provenance: {
@@ -99,21 +92,26 @@ describe("render helpers", () => {
 
     const renderedList = ItemsRenderer({ items }) as Array<{
       type: string;
+      props: Record<string, unknown>;
     }>;
     expect(renderedList).toHaveLength(2);
-    expect(renderedList[0]?.type).toBe("status");
+    // Sorted by itemIndex: status (1) then message (2).
+    // Status renders as createElement("div", { "data-status": ... }).
+    expect(renderedList[0]?.props?.["data-status"]).toBe("in_progress");
 
     const renderedMessages = MessagesRenderer({ items }) as Array<{
       type: string;
+      props: Record<string, unknown>;
     }>;
     expect(renderedMessages).toHaveLength(1);
-    expect(renderedMessages[0]?.type).toBe("message");
+    expect(renderedMessages[0]?.props?.["data-role"]).toBe("assistant");
 
     const oneItem = ItemRenderer({ item: items[0] }) as {
       type: string;
-      text: string;
+      props: Record<string, unknown>;
     };
-    expect(oneItem.type).toBe("message");
-    expect(oneItem.text).toBe("hello");
+    // Message renders as createElement("div", { "data-role": ... }, ...).
+    expect(oneItem.type).toBe("div");
+    expect(oneItem.props?.["data-role"]).toBe("assistant");
   });
 });

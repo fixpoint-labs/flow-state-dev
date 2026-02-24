@@ -58,14 +58,17 @@ export {
 
 export {
   BlockRenderer,
+  useItemContext,
   useBlockContext,
+  type ItemMetadata,
   type BlockMetadata,
   type BlockRendererComponentProps
 } from "./components/BlockRenderer";
 
 export type {
   BlockComponentType,
-  BlockRendererMap
+  BlockRendererMap,
+  RendererRegistry
 } from "./registry/block-renderers";
 
 export {

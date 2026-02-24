@@ -12,11 +12,7 @@ import {
   useMemo,
   type ReactNode
 } from "react";
-import {
-  normalizeRendererKey,
-  type BlockComponentType,
-  type BlockRendererMap
-} from "../registry/block-renderers";
+import type { RendererRegistry } from "../registry/block-renderers";
 
 /**
  * Shared context value used by React hooks.
@@ -26,7 +22,7 @@ export type FlowContextValue = {
   sessionId?: string;
   userId?: string;
   baseUrl?: string;
-  blockRenderers?: BlockRendererMap;
+  renderers?: RendererRegistry;
 };
 
 /**
@@ -37,55 +33,64 @@ export type FlowProviderProps = {
   sessionId?: string;
   userId?: string;
   baseUrl?: string;
-  blockRenderers?: Record<string, BlockComponentType>;
+  renderers?: RendererRegistry;
   children: ReactNode;
 };
 
 const FlowCtx = createContext<FlowContextValue>({});
 
-function normalizeRendererMap(
-  renderers: Record<string, BlockComponentType> | undefined
-): BlockRendererMap {
-  if (renderers === undefined) {
-    return {};
+function mergeRenderers(
+  parent: RendererRegistry | undefined,
+  child: RendererRegistry | undefined
+): RendererRegistry {
+  if (parent === undefined) {
+    return child ?? {};
   }
 
-  const normalized: BlockRendererMap = {};
-  for (const [rawKey, component] of Object.entries(renderers)) {
-    normalized[normalizeRendererKey(rawKey)] = component;
+  if (child === undefined) {
+    return parent;
   }
 
-  return normalized;
+  return {
+    message: child.message ?? parent.message,
+    reasoning: child.reasoning ?? parent.reasoning,
+    block_output: child.block_output ?? parent.block_output,
+    status: child.status ?? parent.status,
+    error: child.error ?? parent.error,
+    step_error: child.step_error ?? parent.step_error,
+    component: {
+      ...parent.component,
+      ...child.component
+    },
+    container: {
+      ...parent.container,
+      ...child.container
+    }
+  };
 }
 
 /**
- * Canonical React context provider for flow defaults and block renderers.
+ * Canonical React context provider for flow defaults and renderers.
  */
 export function FlowProvider(props: FlowProviderProps): ReactNode {
   const parent = useContext(FlowCtx);
 
   const contextValue = useMemo<FlowContextValue>(() => {
-    const parentRenderers = parent.blockRenderers ?? {};
-    const ownRenderers = normalizeRendererMap(props.blockRenderers);
-
     return {
       flowKind: props.flowKind ?? parent.flowKind,
       sessionId: props.sessionId ?? parent.sessionId,
       userId: props.userId ?? parent.userId,
       baseUrl: props.baseUrl ?? parent.baseUrl,
-      blockRenderers: {
-        ...parentRenderers,
-        ...ownRenderers
-      }
+      renderers: mergeRenderers(parent.renderers, props.renderers)
     };
   }, [
     parent.baseUrl,
-    parent.blockRenderers,
+    parent.renderers,
     parent.flowKind,
     parent.sessionId,
     parent.userId,
     props.baseUrl,
-    props.blockRenderers,
+    props.renderers,
     props.flowKind,
     props.sessionId,
     props.userId

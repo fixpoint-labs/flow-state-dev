@@ -1,11 +1,16 @@
 /**
  * Canonical item renderer entrypoint for single stream items.
+ *
+ * Dispatches to type-specific renderers or the BlockRenderer for
+ * items that participate in the renderer registry.
  */
 import { createElement, type ReactNode } from "react";
 import type {
   MessageItem,
   OutputItem,
-  StatusItem
+  StatusItem,
+  ErrorItem,
+  StepErrorItem
 } from "@flow-state-dev/core/items";
 import { BlockRenderer } from "./BlockRenderer";
 
@@ -18,27 +23,48 @@ export type ItemRendererProps = {
 
 /**
  * Renders one output item as a React node.
+ *
+ * Items with registered renderers (`block_output`, `component`, `container`)
+ * route through BlockRenderer which reads from FlowProvider context.
+ * Built-in types (`message`, `status`, `error`, `step_error`) use inline renderers.
+ * Non-client types (`context`, `state_change`, `resource_change`) return null.
  */
 export function ItemRenderer(props: ItemRendererProps): ReactNode {
-  if (props.item.type === "fsd:block_output") {
-    return BlockRenderer({
-      item: props.item
-    });
+  const { item } = props;
+
+  // Registry-resolved types.
+  if (
+    item.type === "block_output" ||
+    item.type === "component" ||
+    item.type === "container"
+  ) {
+    return BlockRenderer({ item });
   }
 
-  if (props.item.type === "message") {
-    return renderMessageItem(props.item);
+  // Built-in renderers.
+  if (item.type === "message") {
+    return renderMessageItem(item);
   }
 
-  if (props.item.type === "fsd:status") {
-    return renderStatusItem(props.item);
+  if (item.type === "reasoning") {
+    // Reasoning items can be rendered via registry or inline.
+    return BlockRenderer({ item });
   }
 
-  return createElement(
-    "pre",
-    { style: { fontSize: 12 } },
-    JSON.stringify({ type: props.item.type, status: props.item.status }, null, 2)
-  );
+  if (item.type === "status") {
+    return renderStatusItem(item);
+  }
+
+  if (item.type === "error") {
+    return renderErrorItem(item);
+  }
+
+  if (item.type === "step_error") {
+    return renderStepErrorItem(item);
+  }
+
+  // Non-client types (context, state_change, resource_change): not rendered.
+  return null;
 }
 
 function renderMessageItem(item: MessageItem): ReactNode {
@@ -59,6 +85,22 @@ function renderStatusItem(item: StatusItem): ReactNode {
   return createElement(
     "div",
     { "data-status": item.status },
-    item.message ?? item.status
+    item.message
+  );
+}
+
+function renderErrorItem(item: ErrorItem): ReactNode {
+  return createElement(
+    "div",
+    { "data-error": "true", style: { color: "red" } },
+    item.message
+  );
+}
+
+function renderStepErrorItem(item: StepErrorItem): ReactNode {
+  return createElement(
+    "div",
+    { "data-step-error": "true", style: { color: "orange" } },
+    `${item.blockName ? `[${item.blockName}] ` : ""}${item.message}${item.recovered ? " (recovered)" : ""}`
   );
 }

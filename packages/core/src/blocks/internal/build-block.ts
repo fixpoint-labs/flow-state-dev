@@ -51,14 +51,6 @@ function validateSchema<TValue>(
   throw new Error(`Block "${blockName}" ${kind} validation failed${pathSuffix}: ${issueMessage}`);
 }
 
-function preserveNonFunctionOption<TValue>(value: TValue): TValue | undefined {
-  if (typeof value === "function") {
-    return undefined;
-  }
-
-  return value;
-}
-
 export function buildBlock<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
@@ -88,7 +80,6 @@ export function buildBlock<
   const definition: BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> = {
     kind,
     name: runtimeConfig.name,
-    renderKey: runtimeConfig.renderKey,
     description: runtimeConfig.description,
     inputSchema: resolvedInputSchema,
     outputSchema: resolvedOutputSchema,
@@ -148,18 +139,6 @@ export function buildBlock<
       const nextConfig: BlockConfig<TInputSchema, ZodTypeAny, TInput, TTo> = {
         ...(runtimeConfig as unknown as BlockConfig<TInputSchema, ZodTypeAny, TInput, TTo>),
         outputSchema: z.any() as ZodTypeAny,
-        clientOutput: preserveNonFunctionOption(runtimeConfig.clientOutput) as BlockConfig<
-          TInputSchema,
-          ZodTypeAny,
-          TInput,
-          TTo
-        >["clientOutput"],
-        llmOutput: preserveNonFunctionOption(runtimeConfig.llmOutput) as BlockConfig<
-          TInputSchema,
-          ZodTypeAny,
-          TInput,
-          TTo
-        >["llmOutput"],
         onCompleted: undefined
       };
 

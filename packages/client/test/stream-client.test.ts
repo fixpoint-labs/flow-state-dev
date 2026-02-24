@@ -56,9 +56,8 @@ describe("createSSEClient", () => {
           ts: 2,
           item: {
             id: "item_1",
-            type: "fsd:status",
+            type: "status",
             status: "in_progress",
-            visibility: "internal",
             requestId: "req_1",
             itemIndex: 0,
             provenance: {
@@ -83,9 +82,8 @@ describe("createSSEClient", () => {
           ts: 3,
           item: {
             id: "item_dup",
-            type: "fsd:status",
+            type: "status",
             status: "in_progress",
-            visibility: "internal",
             requestId: "req_1",
             itemIndex: 1,
             provenance: {

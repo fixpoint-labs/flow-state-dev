@@ -43,10 +43,4 @@ export const analyzeInput = handler({
     };
   },
 
-  // clientOutput controls what the client sees during streaming.
-  // Omitting fields like `message` keeps internal data off the wire.
-  clientOutput: (output) => ({
-    mode: output.mode,
-    needsContext: output.needsContext
-  })
 });

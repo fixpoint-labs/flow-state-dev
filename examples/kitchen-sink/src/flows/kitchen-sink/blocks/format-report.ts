@@ -27,8 +27,11 @@ export const formatReport = handler({
     };
   },
 
-  // llmOutput controls what gets appended to conversation history for the LLM.
-  // Here we surface the instructions (context summary), falling back to the
-  // raw message if no instructions were generated.
-  llmOutput: (output) => output.instructions ?? output.message
+  // Emit context instructions for the LLM when available.
+  onCompleted: async (output, ctx) => {
+    const text = output.instructions ?? output.message;
+    if (text) {
+      ctx.emitLLMContext(text);
+    }
+  }
 });

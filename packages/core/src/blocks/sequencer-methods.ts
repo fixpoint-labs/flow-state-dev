@@ -2,9 +2,7 @@ import { z, type ZodTypeAny } from "zod";
 import type {
   BlockContext,
   BlockDefinition,
-  ClientOutputOption,
   ConnectorFn,
-  LlmOutputOption,
   RescueHandlerSpec
 } from "../types/block";
 
@@ -224,8 +222,11 @@ export type SequencerConfig<
   description?: string;
   inputSchema?: TInputSchema;
   outputSchema?: ZodTypeAny;
-  clientOutput?: ClientOutputOption<TInput>;
-  llmOutput?: LlmOutputOption<TInput>;
+  container?: {
+    component?: string;
+    label?: string | ((input: TInput) => string);
+    metadata?: Record<string, unknown> | ((input: TInput) => Record<string, unknown>);
+  };
 };
 
 export type SequencerWorkTask = {

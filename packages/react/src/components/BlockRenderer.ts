@@ -1,5 +1,8 @@
 /**
- * Block output renderer that resolves custom components from FlowProvider context.
+ * Item renderer that resolves custom components from the FlowProvider renderer registry.
+ *
+ * Handles `block_output`, `component`, and `container` item types.
+ * Uses `item.type` for primary lookup and `item.component` for keyed types.
  */
 import {
   createContext,
@@ -8,40 +11,55 @@ import {
   useMemo,
   type ReactNode
 } from "react";
-import type { BlockOutputItem, ItemStatus } from "@flow-state-dev/core/items";
+import type {
+  BlockOutputItem,
+  ComponentItem,
+  ContainerItem,
+  ItemStatus,
+  OutputItem
+} from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
 import { resolveRenderer } from "../registry/block-renderers";
 
 /**
- * Props for rendering one `fsd:block_output` item.
+ * Props for rendering one item via the renderer registry.
  */
 export type BlockRendererComponentProps = {
-  item: BlockOutputItem;
+  item: OutputItem;
 };
 
 /**
- * Metadata exposed to block components via useBlockContext().
+ * Metadata exposed to rendered components via useItemContext().
  */
-export type BlockMetadata = {
+export type ItemMetadata = {
   blockName: string;
-  renderKey?: string;
   status: ItemStatus;
-  item: BlockOutputItem;
+  item: OutputItem;
 };
 
-const BlockMetadataCtx = createContext<BlockMetadata | null>(null);
+/**
+ * @deprecated Use `ItemMetadata` instead.
+ */
+export type BlockMetadata = ItemMetadata;
+
+const ItemMetadataCtx = createContext<ItemMetadata | null>(null);
 
 /**
- * Reads block metadata for the currently rendering block-output component.
+ * Reads item metadata for the currently rendering component.
  */
-export function useBlockContext(): BlockMetadata {
-  const ctx = useContext(BlockMetadataCtx);
+export function useItemContext(): ItemMetadata {
+  const ctx = useContext(ItemMetadataCtx);
   if (ctx === null) {
-    throw new Error("useBlockContext must be used inside a block renderer");
+    throw new Error("useItemContext must be used inside a renderer component");
   }
 
   return ctx;
 }
+
+/**
+ * @deprecated Use `useItemContext()` instead.
+ */
+export const useBlockContext = useItemContext;
 
 function asComponentProps(output: unknown): Record<string, unknown> {
   if (typeof output === "object" && output !== null && !Array.isArray(output)) {
@@ -52,41 +70,55 @@ function asComponentProps(output: unknown): Record<string, unknown> {
 }
 
 /**
- * Renders one block output item via context-provided renderer mapping or fallback payload view.
+ * Renders an item via the renderer registry from FlowProvider context.
  */
 export function BlockRenderer(props: BlockRendererComponentProps): ReactNode {
-  const { blockRenderers } = useFlowContext();
-  const renderKey = props.item.renderKey ?? props.item.blockName;
-  const Component = resolveRenderer(blockRenderers, renderKey);
+  const { renderers } = useFlowContext();
+  const { item } = props;
 
-  const metadata = useMemo<BlockMetadata>(
+  const componentKey =
+    item.type === "component"
+      ? (item as ComponentItem).component
+      : item.type === "container"
+        ? (item as ContainerItem).component
+        : undefined;
+
+  const Component = resolveRenderer(renderers, item.type, componentKey);
+
+  const metadata = useMemo<ItemMetadata>(
     () => ({
-      blockName: props.item.blockName,
-      renderKey: props.item.renderKey,
-      status: props.item.status,
-      item: props.item
+      blockName:
+        "blockName" in item ? (item as BlockOutputItem).blockName : item.type,
+      status: item.status,
+      item
     }),
-    [props.item]
+    [item]
   );
 
   if (Component !== undefined) {
+    const componentProps =
+      item.type === "component"
+        ? (item as ComponentItem).data
+        : item.type === "block_output"
+          ? asComponentProps((item as BlockOutputItem).output)
+          : {};
+
     return createElement(
-      BlockMetadataCtx.Provider,
+      ItemMetadataCtx.Provider,
       { value: metadata },
-      createElement(Component, asComponentProps(props.item.output))
+      createElement(Component, componentProps)
     );
   }
 
+  // Fallback: render as JSON for development visibility.
   return createElement(
     "pre",
     { style: { fontSize: 12 } },
     JSON.stringify(
       {
-        type: "block-output",
-        renderKey,
-        blockName: props.item.blockName,
-        status: props.item.status,
-        output: props.item.output
+        type: item.type,
+        ...(componentKey !== undefined ? { component: componentKey } : {}),
+        status: item.status
       },
       null,
       2

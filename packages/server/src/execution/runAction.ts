@@ -184,9 +184,8 @@ async function emitTerminalError(
 
   const item: ErrorItem = {
     id: `item_error_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-    type: "fsd:error",
+    type: "error",
     status: "failed",
-    visibility: "internal",
     transient: true,
     requestId: ctx.requestRuntime.requestId,
     itemIndex: getResponseItems(ctx.response).length,
@@ -272,7 +271,6 @@ export async function runActionInternal<
         type: "message",
         role: "user",
         status: "completed",
-        visibility: "both",
         transient: false,
         requestId,
         itemIndex: response.getItems().length,

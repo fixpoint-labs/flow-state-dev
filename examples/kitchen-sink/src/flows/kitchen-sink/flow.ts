@@ -21,7 +21,7 @@
  *   - Partial state schemas — each block declares only the state it needs
  *   - Resources   — named, typed state containers (artifacts) scoped to a session
  *   - Projections  — derived views over state, pushed to the client reactively
- *   - Output channels — clientOutput, llmOutput control what each audience sees
+ *   - Emission API — blocks emit items explicitly via ctx.emitMessage(), ctx.emitComponent(), etc.
  */
 import {
   defineFlow,
@@ -102,7 +102,7 @@ const agentOutputSchema = z.object({
 
 // Writes the requested mode into session state before the pipeline continues.
 // This is a passthrough handler — it returns its input unchanged, but has a
-// side-effect (state mutation). llmOutput: false means the LLM never sees it.
+// side-effect (state mutation). Silent by default (no client/LLM emissions).
 const applyRequestedMode = handler({
   name: "apply-requested-mode",
   inputSchema: inputSchema,
@@ -111,8 +111,7 @@ const applyRequestedMode = handler({
   execute: async (input, ctx) => {
     await ctx.session.patchState({ mode: input.mode });
     return input;
-  },
-  llmOutput: false
+  }
 });
 
 // Generator block: calls an LLM with structured output, tool access, and
@@ -123,10 +122,9 @@ const applyRequestedMode = handler({
 //     so the model callback gets typed access without knowing the full schema
 //   - tools: handler blocks exposed as LLM-callable functions
 //   - repair: auto-retry with schema validation on structured output
-//   - clientOutput/llmOutput: separate what clients and the LLM see
+//   - emit: controls which automatic emissions are enabled
 const agentGenerator = generator({
   name: "agent-generator",
-  renderKey: "agent-response",
   userStateSchema: z.object({ preferredModel: z.string().default("gpt-4o-mini") }),
   model: (_input, ctx) => ctx.user?.state.preferredModel ?? "gpt-4o-mini",
   prompt: "You are a development assistant that can read and modify project artifacts.",
@@ -139,15 +137,10 @@ const agentGenerator = generator({
   tools: [readArtifact, updateArtifact],
   maxIterations: 2,
   outputSchema: agentOutputSchema,
-  clientOutput: (output) => ({
-    reply: output.reply,
-    artifactsModified: output.artifactsModified
-  }),
-  llmOutput: (output) =>
-    `Assistant: ${output.reply}` +
-    (output.artifactsModified.length > 0
-      ? ` [Modified: ${output.artifactsModified.join(", ")}]`
-      : ""),
+  emit: {
+    messages: true,
+    reasoning: true
+  },
   repair: {
     mode: "auto",
     maxAttempts: 2
@@ -157,6 +150,7 @@ const agentGenerator = generator({
 // Bookkeeping handler: increments a request counter in session state.
 // This block declares only { requestCount, lastAction } — it doesn't know
 // about the "mode" field, and it doesn't need to.
+// Silent by default — no client or LLM emissions.
 const incrementRequestCount = handler({
   name: "increment-request-count",
   inputSchema: agentOutputSchema,
@@ -172,9 +166,7 @@ const incrementRequestCount = handler({
       lastAction: "run"
     });
     return input;
-  },
-  llmOutput: false,
-  clientOutput: false
+  }
 });
 
 // Rescue fallback: runs when the plan pipeline throws.

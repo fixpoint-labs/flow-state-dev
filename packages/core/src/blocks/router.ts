@@ -67,6 +67,11 @@ export interface RouterConfig<
       TSessionResources, TUserResources, TProjectResources
     >
   ) => Promise<boolean> | boolean;
+  container?: {
+    component?: string;
+    label?: string | ((input: TInput) => string);
+    metadata?: Record<string, unknown> | ((input: TInput) => Record<string, unknown>);
+  };
 }
 
 export function router<

@@ -22,29 +22,18 @@ export function testItems(items: OutputItem[]) {
         (item): item is Extract<OutputItem, { type: "message" }> => item.type === "message"
       );
     },
-    functionCalls(): Array<Extract<OutputItem, { type: "function_call" }>> {
-      return allItems.filter(
-        (item): item is Extract<OutputItem, { type: "function_call" }> => item.type === "function_call"
-      );
-    },
-    functionCallOutputs(): Array<Extract<OutputItem, { type: "function_call_output" }>> {
-      return allItems.filter(
-        (item): item is Extract<OutputItem, { type: "function_call_output" }> =>
-          item.type === "function_call_output"
-      );
-    },
-    errors(): Array<Extract<OutputItem, { type: "fsd:error" | "fsd:step_error" }>> {
+    errors(): Array<Extract<OutputItem, { type: "error" | "step_error" }>> {
       return allItems.filter(
         (
           item
-        ): item is Extract<OutputItem, { type: "fsd:error" | "fsd:step_error" }> =>
-          item.type === "fsd:error" || item.type === "fsd:step_error"
+        ): item is Extract<OutputItem, { type: "error" | "step_error" }> =>
+          item.type === "error" || item.type === "step_error"
       );
     },
-    blockOutputs(blockName?: string): Array<Extract<OutputItem, { type: "fsd:block_output" }>> {
+    blockOutputs(blockName?: string): Array<Extract<OutputItem, { type: "block_output" }>> {
       return allItems.filter(
-        (item): item is Extract<OutputItem, { type: "fsd:block_output" }> => {
-          if (item.type !== "fsd:block_output") {
+        (item): item is Extract<OutputItem, { type: "block_output" }> => {
+          if (item.type !== "block_output") {
             return false;
           }
 
@@ -53,6 +42,21 @@ export function testItems(items: OutputItem[]) {
           }
 
           return item.blockName === blockName;
+        }
+      );
+    },
+    components(componentName?: string): Array<Extract<OutputItem, { type: "component" }>> {
+      return allItems.filter(
+        (item): item is Extract<OutputItem, { type: "component" }> => {
+          if (item.type !== "component") {
+            return false;
+          }
+
+          if (componentName === undefined) {
+            return true;
+          }
+
+          return item.component === componentName;
         }
       );
     },

@@ -17,7 +17,7 @@ import type {
   RequestStatus,
   RequestStatusEvent,
   RequestStreamEvent,
-  ResourceUpdateItem
+  ResourceChangeItem
 } from "@flow-state-dev/core/items";
 import type { ResponseEmitterHandle } from "@flow-state-dev/core/types";
 import { createRequestEventId } from "./encode-event";
@@ -258,20 +258,21 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   }
 
   /**
-   * Emits the standard resource update item lifecycle and optional request resource.changed event.
+   * Emits the standard resource change item lifecycle and optional request resource.changed event.
    */
-  async emitResourceUpdate(options: {
-    scope: ResourceUpdateItem["scope"];
+  async emitResourceChange(options: {
+    scope: ResourceChangeItem["scope"];
     resourcePath: string;
-    changeType: ResourceUpdateItem["changeType"];
+    changeType: ResourceChangeItem["changeType"];
+    delta?: unknown;
+    version?: number;
     itemId?: string;
     itemIndex?: number;
     provenance?: ItemProvenance;
-    visibility?: ResourceUpdateItem["visibility"];
     transient?: boolean;
     ts?: number;
   }): Promise<{
-    item: ResourceUpdateItem;
+    item: ResourceChangeItem;
     addedEvent: RequestStreamEventWithId;
     doneEvent: RequestStreamEventWithId;
     changedEvent?: RequestStreamEventWithId;
@@ -280,15 +281,14 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     const itemIndex =
       options.itemIndex ?? this.itemsById.size;
 
-    const item: ResourceUpdateItem = {
+    const item: ResourceChangeItem = {
       id:
         options.itemId ??
-        `item_resource_update_${itemIndex}_${Math.random()
+        `item_resource_change_${itemIndex}_${Math.random()
           .toString(16)
           .slice(2)}`,
-      type: "fsd:resource_update",
+      type: "resource_change",
       status: "completed",
-      visibility: options.visibility ?? "internal",
       transient: options.transient ?? true,
       requestId: this.requestId,
       itemIndex,
@@ -296,7 +296,9 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       ts,
       scope: options.scope,
       resourcePath: options.resourcePath,
-      changeType: options.changeType
+      changeType: options.changeType,
+      delta: options.delta,
+      version: options.version
     };
 
     const addedEvent = await this.emitItemAdded(item);

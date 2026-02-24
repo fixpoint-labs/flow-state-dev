@@ -39,11 +39,11 @@ function buildStepTraces(items: OutputItem[]): StepTrace[] {
 
     current.items.push(item);
 
-    if (item.type === "fsd:block_output") {
+    if (item.type === "block_output") {
       current.output = item.output;
     }
 
-    if (item.type === "fsd:step_error") {
+    if (item.type === "step_error") {
       current.error = new Error((item as StepErrorItem).message);
     }
 

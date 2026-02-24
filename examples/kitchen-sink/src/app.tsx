@@ -5,7 +5,7 @@ import {
   useFlow,
   useProjections,
   useSession,
-  type BlockComponentType
+  type RendererRegistry
 } from "@flow-state-dev/react";
 import AgentResponseCard from "./components/AgentResponseCard";
 import {
@@ -16,8 +16,8 @@ import {
 
 const BASE_URL = "http://localhost:3000";
 
-const blockRenderers: Record<string, BlockComponentType> = {
-  "agent-response": AgentResponseCard
+const renderers: RendererRegistry = {
+  block_output: AgentResponseCard
 };
 
 export default function KitchenSinkApp(): ReactElement {
@@ -26,7 +26,7 @@ export default function KitchenSinkApp(): ReactElement {
       flowKind="kitchen-sink"
       userId="devuser"
       baseUrl={BASE_URL}
-      blockRenderers={blockRenderers}
+      renderers={renderers}
     >
       <MainView />
     </FlowProvider>

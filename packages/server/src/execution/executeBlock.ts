@@ -39,38 +39,6 @@ function hasItemEmitter(response: unknown): response is {
   );
 }
 
-function resolveBlockOutputVisibility(
-  block: BlockDefinition<any, any>
-): BlockOutputItem["visibility"] {
-  const clientEnabled = block.config.clientOutput !== false;
-  const llmEnabled = block.config.llmOutput !== false;
-
-  if (clientEnabled && llmEnabled) {
-    return "both";
-  }
-
-  if (clientEnabled) {
-    return "ui";
-  }
-
-  if (llmEnabled) {
-    return "llm";
-  }
-
-  return "internal";
-}
-
-function resolveBlockOutputPayload(
-  block: BlockDefinition<any, any>,
-  output: unknown
-): unknown {
-  if (typeof block.config.clientOutput === "function") {
-    return block.config.clientOutput(output);
-  }
-
-  return output;
-}
-
 function createBlockOutputProvenance(
   metadata: ExecutionMetadata,
   blockName: string
@@ -101,16 +69,14 @@ async function emitBlockOutputItem(
   const itemIndex = getResponseItems(options.ctx.response).length;
   const item: BlockOutputItem = {
     id: `item_block_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-    type: "fsd:block_output",
+    type: "block_output",
     status: "completed",
-    visibility: resolveBlockOutputVisibility(options.block),
     requestId: options.metadata.requestId,
     itemIndex,
     provenance: createBlockOutputProvenance(options.metadata, options.block.name),
     ts: Date.now(),
     blockName: options.block.name,
-    renderKey: options.block.renderKey ?? options.block.config.renderKey,
-    output: resolveBlockOutputPayload(options.block, options.output)
+    output: options.output
   };
 
   await options.ctx.response.emitItemAdded(item);

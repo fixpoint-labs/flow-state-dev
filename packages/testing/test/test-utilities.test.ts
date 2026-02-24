@@ -157,7 +157,6 @@ describe("testing utilities", () => {
         role: "assistant",
         content: [{ type: "output_text", text: "hi" }],
         status: "completed",
-        visibility: "ui",
         requestId: "req_1",
         itemIndex: 1,
         provenance: {
@@ -169,11 +168,10 @@ describe("testing utilities", () => {
       },
       {
         id: "item_2",
-        type: "fsd:block_output",
+        type: "block_output",
         blockName: "summary",
         output: { ok: true },
         status: "completed",
-        visibility: "ui",
         requestId: "req_1",
         itemIndex: 2,
         provenance: {

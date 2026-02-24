@@ -1,40 +1,58 @@
 /**
- * Block renderer type utilities used by FlowProvider and BlockRenderer.
+ * Renderer registry types used by FlowProvider and item renderers.
+ *
+ * Renderers are keyed by item type. For `component` and `container` items,
+ * a secondary lookup by `item.component` resolves a specific component.
  */
 import type { ComponentType } from "react";
 
 /**
- * Component shape accepted in FlowProvider `blockRenderers`.
+ * Component shape accepted in renderer maps.
  */
 export type BlockComponentType = ComponentType<any>;
 
 /**
- * Renderer map keyed by render key.
+ * Canonical renderer registry shape.
+ *
+ * Class-based item types (`message`, `reasoning`, etc.) are resolved directly.
+ * `component` and `container` items use a secondary keyed map so that
+ * `renderers.component?.["chart"]` resolves a chart-specific component.
+ */
+export type RendererRegistry = {
+  message?: BlockComponentType;
+  reasoning?: BlockComponentType;
+  block_output?: BlockComponentType;
+  status?: BlockComponentType;
+  error?: BlockComponentType;
+  step_error?: BlockComponentType;
+  component?: Record<string, BlockComponentType>;
+  container?: Record<string, BlockComponentType>;
+};
+
+/**
+ * @deprecated Use `RendererRegistry` instead.
  */
 export type BlockRendererMap = Record<string, BlockComponentType>;
 
 /**
- * Normalizes renderer keys for deterministic lookup.
- */
-export function normalizeRendererKey(value: string): string {
-  const key = value.trim();
-  if (key.length === 0) {
-    throw new Error("Renderer key must be a non-empty string");
-  }
-
-  return key;
-}
-
-/**
- * Resolves one renderer by render key from a provider map.
+ * Resolves a renderer for a given item type and optional component key.
  */
 export function resolveRenderer(
-  renderers: BlockRendererMap | undefined,
-  renderKey: string
+  renderers: RendererRegistry | undefined,
+  itemType: string,
+  componentKey?: string
 ): BlockComponentType | undefined {
   if (renderers === undefined) {
     return undefined;
   }
 
-  return renderers[normalizeRendererKey(renderKey)];
+  if (itemType === "component" && componentKey !== undefined) {
+    return renderers.component?.[componentKey];
+  }
+
+  if (itemType === "container" && componentKey !== undefined) {
+    return renderers.container?.[componentKey];
+  }
+
+  return (renderers as Record<string, BlockComponentType | undefined>)[itemType];
 }

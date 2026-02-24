@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { useBlockContext } from "@flow-state-dev/react";
+import { useItemContext } from "@flow-state-dev/react";
 
 type AgentResponseCardProps = {
   reply: string;
@@ -7,12 +7,12 @@ type AgentResponseCardProps = {
 };
 
 export default function AgentResponseCard(props: AgentResponseCardProps): ReactElement {
-  const { blockName, renderKey, status } = useBlockContext();
+  const { blockName, status } = useItemContext();
 
   return (
     <div className={status === "in_progress" ? "animate-pulse" : ""}>
       <div>
-        {blockName} ({renderKey ?? "default"})
+        {blockName}
       </div>
       <p>{props.reply}</p>
       {props.artifactsModified.length > 0 ? (

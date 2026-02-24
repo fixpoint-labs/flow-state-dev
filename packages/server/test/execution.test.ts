@@ -494,7 +494,7 @@ describe("execution runtime", () => {
 
     expect(failed.error).toBeDefined();
     expect(failed.error).toBeInstanceOf(FlowError);
-    expect(failed.items.some((item) => item.type === "fsd:error")).toBe(true);
+    expect(failed.items.some((item) => item.type === "error")).toBe(true);
     expect(events).toEqual([
       "request.started",
       "action.errored",
@@ -526,8 +526,8 @@ describe("execution runtime", () => {
     });
 
     expect(withNoopSeams.output).toBe(baseline.output);
-    expect(baseline.items.at(-1)?.type).toBe("fsd:block_output");
-    expect(withNoopSeams.items.at(-1)?.type).toBe("fsd:block_output");
+    expect(baseline.items.at(-1)?.type).toBe("block_output");
+    expect(withNoopSeams.items.at(-1)?.type).toBe("block_output");
     expect(withNoopSeams.items.at(-1)).toMatchObject({
       blockName: "seam-handler",
       output: baseline.output

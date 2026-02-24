@@ -8,6 +8,7 @@ import type {
 import type { ResourceHandle } from "./resource";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
+import type { Content } from "../items/content";
 
 export type BlockKind = "handler" | "generator" | "sequencer" | "router";
 
@@ -29,6 +30,17 @@ export type TargetHandle<TState extends object = Record<string, unknown>> = {
   | "deleteStateRecord"
   | "atomicState"
 >;
+
+export interface MessageHandle {
+  addContent(content: Content): void;
+  appendDelta(text: string): void;
+  done(): void;
+}
+
+export interface ComponentHandle {
+  update(data: Record<string, unknown>): void;
+  done(): void;
+}
 
 export interface BlockContext<
   TRequestState extends object = Record<string, unknown>,
@@ -52,6 +64,12 @@ export interface BlockContext<
   getTarget<TState extends object = Record<string, unknown>>(
     name: string
   ): TargetHandle<TState> | undefined;
+
+  emitMessage(text: string): MessageHandle;
+  emitMessage(content: Content[]): MessageHandle;
+  emitComponent(component: string, data: Record<string, unknown>): ComponentHandle;
+  emitLLMContext(text: string): void;
+  emitStatus(message: string): void;
 }
 
 export type ConnectorFn<TFrom, TTo> = (
@@ -72,17 +90,6 @@ export interface ChunkValidation {
   reason?: string;
 }
 
-export type ClientOutputOption<TOutput> =
-  | false
-  | true
-  | ((output: TOutput) => Record<string, unknown> | null);
-
-export type LlmOutputOption<TOutput> =
-  | false
-  | true
-  | string
-  | ((output: TOutput) => unknown | null);
-
 export interface BlockConfig<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
@@ -90,7 +97,6 @@ export interface BlockConfig<
   TOutput = z.infer<TOutputSchema>,
 > {
   name: string;
-  renderKey?: string;
   description?: string;
   inputSchema?: TInputSchema;
   outputSchema?: TOutputSchema;
@@ -102,8 +108,6 @@ export interface BlockConfig<
   onErrored?: (error: Error, ctx: BlockContext) => Promise<void> | void;
 
   retry?: RetryPolicy;
-  clientOutput?: ClientOutputOption<TOutput>;
-  llmOutput?: LlmOutputOption<TOutput>;
 }
 
 export interface BlockDefinition<
@@ -114,7 +118,6 @@ export interface BlockDefinition<
 > {
   kind: BlockKind;
   name: string;
-  renderKey?: string;
   description?: string;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;

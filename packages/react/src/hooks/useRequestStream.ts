@@ -8,7 +8,6 @@ import {
 } from "@flow-state-dev/client";
 import type {
   BlockOutputItem,
-  FunctionCallItem,
   MessageItem,
   OutputItem,
   RequestStatus,
@@ -17,10 +16,10 @@ import type {
 import { useFlowContext } from "../context/FlowContext";
 
 /**
- * Visibility filter for request stream items.
+ * Type-based filter for request stream items.
  */
 export type RequestStreamFilter = {
-  visibility?: OutputItem["visibility"];
+  itemTypes?: string[];
 };
 
 /**
@@ -42,7 +41,6 @@ export type UseRequestStreamResult = {
   readonly items: OutputItem[];
   readonly status: RequestStatus;
   readonly messages: MessageItem[];
-  readonly functionCalls: FunctionCallItem[];
   readonly blockOutputs: BlockOutputItem[];
   readonly currentStatus?: StatusItem;
   readonly isStreaming: boolean;
@@ -97,20 +95,19 @@ export function useRequestStream(
         }
       },
       onItemAdded: (event) => {
-        if (!passesVisibilityFilter(event.item, options.filter)) return;
+        if (!passesTypeFilter(event.item, options.filter)) return;
 
         setItems((prev: OutputItem[]) => {
-          const previousItems = prev as OutputItem[];
           const next = [...prev, event.item];
           next.sort(
             (left, right) => left.itemIndex - right.itemIndex
           );
-          return next as typeof previousItems;
+          return next;
         });
       },
       onItemDone: (event) => {
         setItems((prev: OutputItem[]) =>
-          (prev as OutputItem[]).map((item: OutputItem) =>
+          prev.map((item: OutputItem) =>
             item.id === event.item.id ? event.item : item
           )
         );
@@ -142,27 +139,18 @@ export function useRequestStream(
     [items]
   );
 
-  const functionCalls = useMemo(
-    () =>
-      items.filter(
-        (item: OutputItem): item is FunctionCallItem =>
-          item.type === "function_call"
-      ),
-    [items]
-  );
-
   const blockOutputs = useMemo(
     () =>
       items.filter(
         (item: OutputItem): item is BlockOutputItem =>
-          item.type === "fsd:block_output"
+          item.type === "block_output"
       ),
     [items]
   );
 
   const currentStatus = useMemo(() => {
     const statusItems = items.filter(
-      (item: OutputItem): item is StatusItem => item.type === "fsd:status"
+      (item: OutputItem): item is StatusItem => item.type === "status"
     );
     return statusItems[statusItems.length - 1];
   }, [items]);
@@ -171,7 +159,6 @@ export function useRequestStream(
     items,
     status,
     messages,
-    functionCalls,
     blockOutputs,
     currentStatus,
     isStreaming,
@@ -185,10 +172,10 @@ export function useRequestStream(
   };
 }
 
-function passesVisibilityFilter(
+function passesTypeFilter(
   item: OutputItem,
   filter: RequestStreamFilter | undefined
 ): boolean {
-  if (filter?.visibility === undefined) return true;
-  return item.visibility === filter.visibility;
+  if (filter?.itemTypes === undefined) return true;
+  return filter.itemTypes.includes(item.type);
 }

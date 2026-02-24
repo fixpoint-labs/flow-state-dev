@@ -1,10 +1,10 @@
 import type { Content } from "./content";
 
 export type ItemStatus = "in_progress" | "completed" | "incomplete" | "failed";
-export type ItemVisibility = "ui" | "llm" | "both" | "internal";
 
 export type ItemProvenance = {
   blockName: string;
+  blockDefinitionId?: string;
   blockInstanceId: string;
   parentBlockInstanceId?: string;
   phase: "main" | "work";
@@ -17,12 +17,22 @@ export type OutputItemBase = {
   id: string;
   type: string;
   status: ItemStatus;
-  visibility: ItemVisibility;
   transient?: boolean;
   requestId: string;
   itemIndex: number;
   provenance: ItemProvenance;
   ts: number;
+};
+
+export type BlockOutputItem = OutputItemBase & {
+  type: "block_output";
+  blockName: string;
+  output: unknown;
+  toolCall?: {
+    callId: string;
+    arguments: string;
+    generatorBlock: string;
+  };
 };
 
 export type MessageItem = OutputItemBase & {
@@ -31,88 +41,77 @@ export type MessageItem = OutputItemBase & {
   content: Content[];
 };
 
-export type FunctionCallItem = OutputItemBase & {
-  type: "function_call";
-  callId: string;
-  name: string;
-  arguments: string;
-};
-
-export type FunctionCallOutputItem = OutputItemBase & {
-  type: "function_call_output";
-  callId: string;
-  output: string;
-};
-
 export type ReasoningItem = OutputItemBase & {
   type: "reasoning";
   summary: Content[];
 };
 
-export type BlockOutputItem = OutputItemBase & {
-  type: "fsd:block_output";
+export type ComponentItem = OutputItemBase & {
+  type: "component";
+  component: string;
+  data: Record<string, unknown>;
+};
+
+export type ContainerItem = OutputItemBase & {
+  type: "container";
   blockName: string;
-  renderKey?: string;
-  output: unknown;
+  component?: string;
+  label?: string;
+  metadata?: Record<string, unknown>;
 };
 
 export type StatusItem = OutputItemBase & {
-  type: "fsd:status";
+  type: "status";
   message: string;
   detail?: unknown;
 };
 
-export type ResourceUpdateItem = OutputItemBase & {
-  type: "fsd:resource_update";
+export type ContextItem = OutputItemBase & {
+  type: "context";
+  text: string;
+};
+
+export type StateChangeItem = OutputItemBase & {
+  type: "state_change";
+  scope: "request" | "session" | "user" | "project";
+  operation: "patch" | "set" | "increment" | "push" | "delete_key" | "atomic";
+  path?: string;
+  delta?: unknown;
+  version: number;
+};
+
+export type ResourceChangeItem = OutputItemBase & {
+  type: "resource_change";
   scope: "request" | "session" | "user" | "project";
   resourcePath: string;
   changeType: "created" | "updated" | "deleted";
+  delta?: unknown;
+  version?: number;
 };
 
 export type ErrorItem = OutputItemBase & {
-  type: "fsd:error";
+  type: "error";
   message: string;
   code?: string;
 };
 
 export type StepErrorItem = OutputItemBase & {
-  type: "fsd:step_error";
+  type: "step_error";
   message: string;
   code?: string;
   blockName?: string;
   recovered: boolean;
 };
 
-export type SuspendItem = OutputItemBase & {
-  type: "fsd:suspend";
-  reason: string;
-  data?: unknown;
-  resumeSchema?: unknown;
-};
-
-export type DebugItem = OutputItemBase & {
-  type: "fsd:debug";
-  name: string;
-  data: unknown;
-};
-
-export type StandaloneFileItem = OutputItemBase & {
-  type: "fsd:file";
-  mediaType: string;
-  data: string;
-  filename?: string;
-};
-
 export type OutputItem =
-  | MessageItem
-  | FunctionCallItem
-  | FunctionCallOutputItem
-  | ReasoningItem
   | BlockOutputItem
+  | MessageItem
+  | ReasoningItem
+  | ComponentItem
+  | ContainerItem
   | StatusItem
-  | ResourceUpdateItem
+  | ContextItem
+  | StateChangeItem
+  | ResourceChangeItem
   | ErrorItem
-  | StepErrorItem
-  | SuspendItem
-  | DebugItem
-  | StandaloneFileItem;
+  | StepErrorItem;

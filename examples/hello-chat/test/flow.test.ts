@@ -35,10 +35,7 @@ const chatFixture = mockGenerator({
   name: "chat-generator",
   script: [
     {
-      structuredOutput: {
-        reply: "TypeScript is a typed superset of JavaScript.",
-        model: "gpt-4o-mini"
-      }
+      text: "TypeScript is a typed superset of JavaScript."
     }
   ]
 });
@@ -54,14 +51,14 @@ describe("hello-chat", () => {
     expect(result.output).toBeDefined();
   });
 
-  it("emits fsd:block_output items", async () => {
+  it("emits block_output items", async () => {
     chatFixture.reset();
     const result = await testBlock(chatPipeline, {
       input: { message: "Hello" },
       generators: { "chat-generator": chatFixture }
     });
 
-    const blockOutputs = result.items.filter((item) => item.type === "fsd:block_output");
+    const blockOutputs = result.items.filter((item) => item.type === "block_output");
     expect(blockOutputs.length).toBeGreaterThan(0);
   });
 

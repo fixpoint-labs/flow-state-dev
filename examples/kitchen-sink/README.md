@@ -9,13 +9,13 @@ It demonstrates:
 - router decisions from both action input and `ctx.session.state`
 - generator tool loop with handler-backed tools
 - generator slots: `prompt`, `context`, `history`, `user`
-- `clientOutput` and `llmOutput` transforms
-- `renderKey`-based block renderer resolution
+- emission API: `ctx.emitMessage()`, `ctx.emitComponent()`, `ctx.emitLLMContext()`, `ctx.emitStatus()`
+- type-based renderer registry via `FlowProvider({ renderers })`
 - sequencer DSL coverage: `.then()`, `.thenIf()`, `.map()`, `.parallel()`, `.tap()`, `.rescue()`
 - session resources (`artifacts`) with resource reads/writes
 - client projections on `session` and `user`
 - action-level lifecycle handling via `onCompleted`
-- React usage with `FlowProvider`, `useBlockContext`, `useProjections`, and `ItemsRenderer`
+- React usage with `FlowProvider`, `useItemContext`, `useProjections`, and `ItemsRenderer`
 - testing coverage with `testFlow`, `testBlock`, `testRouter`, seeded state/resources, and item assertions
 
 Run verification:

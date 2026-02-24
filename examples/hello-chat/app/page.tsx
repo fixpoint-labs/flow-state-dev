@@ -24,9 +24,7 @@ export default function Page() {
 
 function ChatApp() {
   const flow = useFlow({ autoCreateSession: true });
-  const session = useSession(flow.activeSessionId, {
-    items: { itemTypes: ["message"] }
-  });
+  const session = useSession(flow.activeSessionId);
   const [message, setMessage] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -34,8 +32,11 @@ function ChatApp() {
     session.snapshot?.state?.session?.messageCount ?? 0
   );
 
-  // Items are already filtered to only be messages
-  const messages = session.items;
+  // useSession delivers all client-audience items by default (type-based routing).
+  // Filter to message items for the chat view.
+  const messages = session.items.filter(
+    (item): item is MessageItem => item.type === "message"
+  );
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {

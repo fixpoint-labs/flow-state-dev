@@ -3,11 +3,9 @@ import type {
   BlockConfig,
   BlockContext,
   BlockDefinition,
-  ClientOutputOption,
   ConnectorFn,
   InferResourcesFromSchemas,
   InferStateFromSchema,
-  LlmOutputOption,
   RetryPolicy
 } from "../types/block";
 import type { ResourceHandle } from "../types/resource";
@@ -165,8 +163,11 @@ export interface GeneratorConfig<
   ) => MaybePromise<unknown>;
   flowTools?: ToolsConfig;
   retry?: RetryPolicy;
-  clientOutput?: ClientOutputOption<TOutput>;
-  llmOutput?: LlmOutputOption<TOutput>;
+  emit?: {
+    reasoning?: boolean;
+    messages?: boolean;
+    toolCalls?: boolean;
+  };
 }
 
 async function resolveString<TInput>(
@@ -489,52 +490,6 @@ function resolveMaxIterations(config: { loop?: GeneratorLoopConfig<unknown>; max
   return Math.max(1, configured);
 }
 
-export async function resolveGeneratorLlmOutput<TOutput>(
-  option: LlmOutputOption<TOutput> | undefined,
-  output: TOutput,
-  _ctx?: BlockContext
-): Promise<unknown | null> {
-  if (option === false) {
-    return null;
-  }
-
-  if (option === undefined || option === true) {
-    return output;
-  }
-
-  if (typeof option === "string") {
-    return option;
-  }
-
-  return option(output);
-}
-
-export async function resolveGeneratorClientOutput<TOutput>(
-  option: ClientOutputOption<TOutput> | undefined,
-  output: TOutput,
-  _ctx?: unknown
-): Promise<unknown | null> {
-  if (option === false || option === undefined) {
-    return null;
-  }
-
-  if (option === true) {
-    return output;
-  }
-
-  return option(output);
-}
-
-/**
- * @deprecated Use resolveGeneratorLlmOutput instead.
- */
-export const resolveGeneratorMessage = resolveGeneratorLlmOutput;
-
-/**
- * @deprecated Use resolveGeneratorClientOutput instead.
- */
-export const resolveGeneratorRender = resolveGeneratorClientOutput;
-
 /**
  * Duck-typed helper to get the current item count from the response emitter.
  * The core ResponseEmitterHandle only exposes `emit()`, but the server-side
@@ -586,7 +541,6 @@ async function executeStreamingGeneration<TInput, TOutput>(
     type: "message" as const,
     role: "assistant" as const,
     status: "in_progress" as const,
-    visibility: "both" as const,
     transient: false,
     requestId: ctx.request.identity.id,
     itemIndex: getEmitterItemCount(ctx.response),
@@ -723,9 +677,10 @@ export function generator<
             : compileToolsForModel(toolBlocks))
         : [];
 
-      // Streaming path: text output + model supports streaming.
+      // Streaming path: text output + model supports streaming + messages not suppressed.
       // Now works with tools + multi-step — the AI SDK drives the loop.
-      const canStream = isTextOutputSchema(outputSchema) && model.stream !== undefined;
+      const messagesEnabled = normalizedConfig.emit?.messages !== false;
+      const canStream = messagesEnabled && isTextOutputSchema(outputSchema) && model.stream !== undefined;
 
       if (canStream) {
         return await executeStreamingGeneration(
@@ -772,14 +727,15 @@ export function generator<
 
       // For text-output generators, emit an assistant MessageItem
       // so the output appears in the conversation item stream.
-      if (isTextOutputSchema(outputSchema) && typeof output === "string") {
+      // Suppress when emit.messages is explicitly false.
+      const shouldEmitMessage = normalizedConfig.emit?.messages !== false;
+      if (shouldEmitMessage && isTextOutputSchema(outputSchema) && typeof output === "string") {
         const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         const messageItem = {
           id: itemId,
           type: "message" as const,
           role: "assistant" as const,
           status: "completed" as const,
-          visibility: "both" as const,
           transient: false,
           requestId: ctx.request.identity.id,
           itemIndex: getEmitterItemCount(ctx.response),

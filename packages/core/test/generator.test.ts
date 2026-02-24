@@ -2,9 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   generator,
-  handler,
-  resolveGeneratorClientOutput,
-  resolveGeneratorLlmOutput
+  handler
 } from "../src";
 import { createMockContext } from "./helpers";
 
@@ -251,26 +249,5 @@ describe("generator builder", () => {
     });
     await expect(block.run({ value: 1 }, ctx)).resolves.toEqual({ ok: true });
     expect(toolCall).not.toHaveBeenCalled();
-  });
-});
-
-describe("generator helpers", () => {
-  it("resolves llmOutput option variants", async () => {
-    const ctx = createMockContext();
-
-    await expect(resolveGeneratorLlmOutput(false, { value: 1 }, ctx)).resolves.toBeNull();
-    await expect(resolveGeneratorLlmOutput(true, { value: 1 }, ctx)).resolves.toEqual({ value: 1 });
-    await expect(resolveGeneratorLlmOutput("fixed", { value: 1 }, ctx)).resolves.toBe("fixed");
-    await expect(
-      resolveGeneratorLlmOutput((output) => ({ wrapped: output }), { value: 1 }, ctx)
-    ).resolves.toEqual({ wrapped: { value: 1 } });
-  });
-
-  it("resolves clientOutput option variants", async () => {
-    await expect(resolveGeneratorClientOutput(false, { value: 1 })).resolves.toBeNull();
-    await expect(resolveGeneratorClientOutput(true, { value: 1 })).resolves.toEqual({ value: 1 });
-    await expect(
-      resolveGeneratorClientOutput((output) => ({ wrapped: output }), { value: 1 })
-    ).resolves.toEqual({ wrapped: { value: 1 } });
   });
 });

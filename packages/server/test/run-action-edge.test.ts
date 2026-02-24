@@ -374,6 +374,6 @@ describe("runAction edge behavior", () => {
     });
 
     expect(result.error?.message).toBe("primary failure");
-    expect(result.items.some((item) => item.type === "fsd:error")).toBe(false);
+    expect(result.items.some((item) => item.type === "error")).toBe(false);
   });
 });

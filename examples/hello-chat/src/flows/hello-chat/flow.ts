@@ -61,10 +61,6 @@ const incrementMessageCount = handler({
     await ctx.session.patchState({ messageCount: count + 1 });
     return input;
   },
-  // This block is invisible to both the client and the LLM — it's purely
-  // internal bookkeeping.
-  llmOutput: false,
-  clientOutput: false
 });
 
 // Pipeline: generator → counter. The sequencer pipes the generator's

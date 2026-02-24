@@ -92,14 +92,14 @@ describe("kitchen-sink flow", () => {
     expect(result.error).toBeNull();
   });
 
-  it("emits fsd:block_output items", async () => {
+  it("emits block_output items", async () => {
     agentFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Check items", mode: "chat" },
       generators: { "agent-generator": agentFixture }
     });
 
-    const blockOutputs = result.items.filter((item) => item.type === "fsd:block_output");
+    const blockOutputs = result.items.filter((item) => item.type === "block_output");
     expect(blockOutputs.length).toBeGreaterThan(0);
   });
 

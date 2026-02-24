@@ -32,7 +32,6 @@ function makeMessageItem(options: {
       }
     ],
     status: "completed",
-    visibility: "ui",
     requestId: options.requestId,
     itemIndex: options.itemIndex,
     provenance: {
@@ -105,7 +104,7 @@ describe("streaming runtime", () => {
       now: () => 100
     });
 
-    const requestMutation = await emitter.emitResourceUpdate({
+    const requestMutation = await emitter.emitResourceChange({
       scope: "request",
       resourcePath: "request/state",
       changeType: "updated",
@@ -113,7 +112,7 @@ describe("streaming runtime", () => {
       itemIndex: 0
     });
 
-    const sessionMutation = await emitter.emitResourceUpdate({
+    const sessionMutation = await emitter.emitResourceChange({
       scope: "session",
       resourcePath: "session/profile",
       changeType: "created",
@@ -121,11 +120,11 @@ describe("streaming runtime", () => {
       itemIndex: 1
     });
 
-    expect(requestMutation.item.type).toBe("fsd:resource_update");
+    expect(requestMutation.item.type).toBe("resource_change");
     expect(requestMutation.item.scope).toBe("request");
     expect(requestMutation.changedEvent?.type).toBe("resource.changed");
 
-    expect(sessionMutation.item.type).toBe("fsd:resource_update");
+    expect(sessionMutation.item.type).toBe("resource_change");
     expect(sessionMutation.item.scope).toBe("session");
     expect(sessionMutation.changedEvent).toBeUndefined();
 

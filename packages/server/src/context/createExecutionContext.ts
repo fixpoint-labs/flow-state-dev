@@ -18,11 +18,16 @@ import type {
   UserScopeHandle
 } from "@flow-state-dev/core/types";
 import type {
-  FunctionCallItem,
-  FunctionCallOutputItem,
+  BlockOutputItem,
+  ComponentItem,
+  Content,
+  ContextItem,
+  ItemProvenance,
   MessageItem,
-  OutputItem
+  OutputItem,
+  StatusItem
 } from "@flow-state-dev/core/items";
+import type { ComponentHandle, MessageHandle } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import type {
   ProjectRecord,
@@ -292,7 +297,36 @@ function defineStateProperty<THandle extends object, TState extends JsonObject>(
 }
 
 /**
+ * Set of item types that enter LLM context.
+ * `block_output` is conditional — only when it has a `toolCall` field.
+ */
+const LLM_AUDIENCE_TYPES = new Set([
+  "message",
+  "reasoning",
+  "context",
+  "block_output"
+]);
+
+/**
+ * Set of item types visible to the client.
+ * `block_output`, `context` are NOT client-visible.
+ */
+const CLIENT_AUDIENCE_TYPES = new Set([
+  "message",
+  "reasoning",
+  "component",
+  "container",
+  "status",
+  "state_change",
+  "resource_change",
+  "error",
+  "step_error"
+]);
+
+/**
  * Converts a persisted OutputItem into an LLM-ready message.
+ * Uses type-based audience routing: message, reasoning, context, and
+ * block_output (with toolCall) enter LLM context.
  * Returns null for item types that don't map to conversation messages.
  */
 function itemToLLMMessage(item: OutputItem): LLMMessage | null {
@@ -310,22 +344,38 @@ function itemToLLMMessage(item: OutputItem): LLMMessage | null {
     return { role: msg.role, content: text };
   }
 
-  if (item.type === "function_call") {
-    const fc = item as FunctionCallItem;
-    return {
-      role: "assistant",
-      content: JSON.stringify({
-        type: "function_call",
-        callId: fc.callId,
-        name: fc.name,
-        arguments: fc.arguments
-      })
-    };
+  if (item.type === "reasoning") {
+    const summary = (item as { summary: Content[] }).summary ?? [];
+    const text = summary
+      .filter((c) => c.type === "output_text")
+      .map((c) => (c as { text: string }).text)
+      .join("");
+
+    return text.length > 0
+      ? { role: "assistant", content: text }
+      : null;
   }
 
-  if (item.type === "function_call_output") {
-    const fco = item as FunctionCallOutputItem;
-    return { role: "tool", content: fco.output };
+  if (item.type === "context") {
+    const ctx = item as ContextItem;
+    return ctx.text.length > 0
+      ? { role: "system", content: ctx.text }
+      : null;
+  }
+
+  if (item.type === "block_output") {
+    const bo = item as BlockOutputItem;
+    // Only enters LLM context when invoked as a tool by a generator.
+    if (bo.toolCall === undefined) {
+      return null;
+    }
+
+    return {
+      role: "tool",
+      content: typeof bo.output === "string"
+        ? bo.output
+        : JSON.stringify(bo.output)
+    };
   }
 
   return null;
@@ -357,7 +407,9 @@ async function loadLLMHistory(
     .filter((r) => r.id !== currentRequestId && r.status === "completed")
     .sort((a, b) => a.startedAtMs - b.startedAtMs);
 
-  const allowedTypes = new Set(query?.itemTypes ?? ["message"]);
+  const allowedTypes = query?.itemTypes
+    ? new Set(query.itemTypes)
+    : LLM_AUDIENCE_TYPES;
   const allowedRoles = query?.roles ? new Set(query.roles) : undefined;
 
   const messages: LLMMessage[] = [];
@@ -377,10 +429,7 @@ async function loadLLMHistory(
         continue;
       }
 
-      if (item.visibility !== "llm" && item.visibility !== "both") {
-        continue;
-      }
-
+      // Type-based audience routing: only LLM-audience types proceed.
       if (!allowedTypes.has(item.type)) {
         continue;
       }
@@ -436,29 +485,32 @@ function createSessionItemViews(
     currentRequestId: string;
   }
 ): SessionItemViews {
-  const select = (query: ItemQuery | undefined): SessionItem[] => {
+  const select = (
+    query: ItemQuery | undefined,
+    audienceTypes?: Set<string>
+  ): SessionItem[] => {
     const record = readRecord();
     if (record === undefined) {
       return [];
     }
 
     const includeTransient = query?.includeTransient === true;
-    const visibilityFilter = query?.visibility;
-    const allowedVisibility = visibilityFilter === undefined
-      ? undefined
-      : Array.isArray(visibilityFilter)
-        ? visibilityFilter
-        : [visibilityFilter];
+    const itemTypeFilter = query?.itemTypes
+      ? new Set(query.itemTypes)
+      : undefined;
 
     const filtered = (record.items ?? []).filter((item) => {
       if (!includeTransient && item.transient === true) {
         return false;
       }
 
-      if (
-        allowedVisibility !== undefined &&
-        !allowedVisibility.includes(item.visibility)
-      ) {
+      // Type-based audience filtering when provided.
+      if (audienceTypes !== undefined && !audienceTypes.has(item.type)) {
+        return false;
+      }
+
+      // Explicit item type filter from query.
+      if (itemTypeFilter !== undefined && !itemTypeFilter.has(item.type)) {
         return false;
       }
 
@@ -470,11 +522,7 @@ function createSessionItemViews(
 
   return {
     all: (query) => select(query),
-    client: (query) =>
-      select({
-        ...query,
-        visibility: ["ui", "both"]
-      }),
+    client: (query) => select(query, CLIENT_AUDIENCE_TYPES),
     llm: (query) =>
       loadLLMHistory(
         options.stores,
@@ -490,6 +538,158 @@ function buildJournalEntry(entry: JournalEntryInput): JournalEntry {
     id: `journal_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     ts: Date.now(),
     ...entry
+  };
+}
+
+type EmissionContext = {
+  requestId: string;
+  response: {
+    emitItemAdded(item: OutputItem): Promise<unknown>;
+    emitItemDone(item: OutputItem): Promise<unknown>;
+    emitContentAdded?(itemId: string, contentIndex: number, content: Content): Promise<unknown>;
+    emitContentDelta?(itemId: string, contentIndex: number, delta: string): Promise<unknown>;
+    emitContentDone?(itemId: string, contentIndex: number, content: Content): Promise<unknown>;
+  };
+  provenance: () => ItemProvenance;
+  nextItemIndex: () => number;
+};
+
+function createEmitMessage(
+  emCtx: EmissionContext
+): {
+  (text: string): MessageHandle;
+  (content: Content[]): MessageHandle;
+} {
+  return function emitMessage(textOrContent: string | Content[]): MessageHandle {
+    const content: Content[] =
+      typeof textOrContent === "string"
+        ? [{ type: "output_text", text: textOrContent }]
+        : textOrContent;
+
+    const itemIndex = emCtx.nextItemIndex();
+    const item: MessageItem = {
+      id: `item_message_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+      type: "message",
+      status: "in_progress",
+      requestId: emCtx.requestId,
+      itemIndex,
+      provenance: emCtx.provenance(),
+      ts: Date.now(),
+      role: "assistant",
+      content
+    };
+
+    // Fire-and-forget the added event; streaming content follows via handle.
+    void emCtx.response.emitItemAdded(item);
+
+    let contentIndex = content.length;
+
+    const handle: MessageHandle = {
+      addContent(newContent: Content): void {
+        const idx = contentIndex;
+        contentIndex += 1;
+        item.content.push(newContent);
+        if (emCtx.response.emitContentAdded) {
+          void emCtx.response.emitContentAdded(item.id, idx, newContent);
+        }
+      },
+      appendDelta(delta: string): void {
+        // Append delta to last output_text content part or create new one.
+        const lastIdx = item.content.length - 1;
+        const last = item.content[lastIdx];
+        if (last !== undefined && last.type === "output_text") {
+          (last as { text: string }).text += delta;
+          if (emCtx.response.emitContentDelta) {
+            void emCtx.response.emitContentDelta(item.id, lastIdx, delta);
+          }
+        } else {
+          handle.addContent({ type: "output_text", text: delta });
+        }
+      },
+      done(): void {
+        item.status = "completed";
+        void emCtx.response.emitItemDone(item);
+      }
+    };
+
+    return handle;
+  };
+}
+
+function createEmitComponent(
+  emCtx: EmissionContext
+): (component: string, data: Record<string, unknown>) => ComponentHandle {
+  return function emitComponent(
+    component: string,
+    data: Record<string, unknown>
+  ): ComponentHandle {
+    const itemIndex = emCtx.nextItemIndex();
+    const item: ComponentItem = {
+      id: `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+      type: "component",
+      status: "in_progress",
+      requestId: emCtx.requestId,
+      itemIndex,
+      provenance: emCtx.provenance(),
+      ts: Date.now(),
+      component,
+      data
+    };
+
+    void emCtx.response.emitItemAdded(item);
+
+    return {
+      update(newData: Record<string, unknown>): void {
+        Object.assign(item.data, newData);
+      },
+      done(): void {
+        item.status = "completed";
+        void emCtx.response.emitItemDone(item);
+      }
+    };
+  };
+}
+
+function createEmitLLMContext(
+  emCtx: EmissionContext
+): (text: string) => void {
+  return function emitLLMContext(text: string): void {
+    const itemIndex = emCtx.nextItemIndex();
+    const item: ContextItem = {
+      id: `item_context_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+      type: "context",
+      status: "completed",
+      requestId: emCtx.requestId,
+      itemIndex,
+      provenance: emCtx.provenance(),
+      ts: Date.now(),
+      text
+    };
+
+    void emCtx.response.emitItemAdded(item);
+    void emCtx.response.emitItemDone(item);
+  };
+}
+
+function createEmitStatus(
+  emCtx: EmissionContext
+): (message: string) => void {
+  return function emitStatus(message: string): void {
+    const itemIndex = emCtx.nextItemIndex();
+    const item: StatusItem = {
+      id: `item_status_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+      type: "status",
+      status: "completed",
+      transient: true,
+      requestId: emCtx.requestId,
+      itemIndex,
+      provenance: emCtx.provenance(),
+      ts: Date.now(),
+      message
+    };
+
+    void emCtx.response.emitItemAdded(item);
+    void emCtx.response.emitItemDone(item);
   };
 }
 
@@ -878,6 +1078,37 @@ export async function createExecutionContext<
   const resolveModel =
     options.modelResolver ?? createDefaultModelResolver();
 
+  // Emission context used by emitMessage/emitComponent/emitLLMContext/emitStatus.
+  // Duck-type the response: if it has emitItemAdded/emitItemDone, use those;
+  // otherwise fall back to the generic emit() method via a thin adapter.
+  let emittedItemCount = 0;
+  const typedResponse = response as unknown as Record<string, unknown>;
+  const hasTypedEmitter =
+    typeof typedResponse.emitItemAdded === "function" &&
+    typeof typedResponse.emitItemDone === "function";
+
+  const emissionResponse: EmissionContext["response"] = hasTypedEmitter
+    ? (response as unknown as EmissionContext["response"])
+    : {
+        async emitItemAdded(item: OutputItem) {
+          await response.emit({ type: "item.added", item });
+        },
+        async emitItemDone(item: OutputItem) {
+          await response.emit({ type: "item.done", item });
+        }
+      };
+
+  const emCtx: EmissionContext = {
+    requestId: requestRef.current.id,
+    response: emissionResponse,
+    provenance: () => ({
+      blockName: "runtime",
+      blockInstanceId: `runtime_${requestRef.current.id}`,
+      phase: "main" as const
+    }),
+    nextItemIndex: () => emittedItemCount++
+  };
+
   return {
     flow,
     actionName: options.actionName,
@@ -899,6 +1130,10 @@ export async function createExecutionContext<
     signal: options.signal ?? new AbortController().signal,
     resolveModel,
     getBlockResult: (name: string): unknown => blockResults.get(name),
-    getTarget: () => undefined
+    getTarget: () => undefined,
+    emitMessage: createEmitMessage(emCtx),
+    emitComponent: createEmitComponent(emCtx),
+    emitLLMContext: createEmitLLMContext(emCtx),
+    emitStatus: createEmitStatus(emCtx)
   };
 }

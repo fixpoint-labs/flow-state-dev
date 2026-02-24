@@ -8,22 +8,20 @@ export type {
 
 export type {
   BlockOutputItem,
-  DebugItem,
+  ComponentItem,
+  ContainerItem,
+  ContextItem,
   ErrorItem,
-  FunctionCallItem,
-  FunctionCallOutputItem,
   ItemProvenance,
   ItemStatus,
-  ItemVisibility,
   MessageItem,
   OutputItem,
   OutputItemBase,
   ReasoningItem,
-  ResourceUpdateItem,
-  StandaloneFileItem,
+  ResourceChangeItem,
+  StateChangeItem,
   StatusItem,
-  StepErrorItem,
-  SuspendItem
+  StepErrorItem
 } from "./types";
 
 export type {

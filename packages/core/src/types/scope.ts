@@ -1,4 +1,4 @@
-import type { ItemStatus, ItemVisibility } from "../items/types";
+import type { ItemStatus } from "../items/types";
 import type { JsonObject } from "../schema/common";
 import type { ResourceHandle, ResourceRegistry } from "./resource";
 import type { ScopeStateOps } from "./state";
@@ -16,7 +16,6 @@ export type SessionItem = {
   id: string;
   type: string;
   status: ItemStatus;
-  visibility: ItemVisibility;
   transient?: boolean;
   requestId: string;
   itemIndex: number;
@@ -29,7 +28,6 @@ export type MessageLimit = number | { tokens: number };
 export type ItemQuery = {
   limit?: MessageLimit;
   includeTransient?: boolean;
-  visibility?: ItemVisibility | ItemVisibility[];
   itemTypes?: string[];
   roles?: Array<"user" | "assistant" | "system" | "developer" | "tool">;
 };
