@@ -11,7 +11,7 @@ export const analysisOutputSchema = z.object({
   message: z.string(),
   mode: modeSchema,
   needsContext: z.boolean(),
-  instructions: z.string().optional()
+  instructions: z.string().default("")
 });
 
 export type AnalysisOutput = z.infer<typeof analysisOutputSchema>;
@@ -39,7 +39,8 @@ export const analyzeInput = handler({
     return {
       message: input.message,
       mode,
-      needsContext: input.message.length > 80
+      needsContext: input.message.length > 80,
+      instructions: ""
     };
   },
 

@@ -43,6 +43,7 @@ import {
   artifactResourceStateSchema
 } from "./schemas";
 
+const MODEL_ID = "gpt-5-mini";
 // ---------------------------------------------------------------------------
 // Flow-level schemas
 // ---------------------------------------------------------------------------
@@ -67,7 +68,7 @@ const sessionStateSchema = z.object({
 // User state persists across sessions for a given user.
 const userStateSchema = z.object({
   displayName: z.string().default("Developer"),
-  preferredModel: z.string().default("gpt-5-mini")
+  preferredModel: z.string().default(MODEL_ID)
 });
 
 // Projection output schemas — projections are derived views computed from
@@ -92,8 +93,8 @@ const userPrefsOutputSchema = z.object({
 
 const agentOutputSchema = z.object({
   reply: z.string(),
-  reasoning: z.string().optional(),
-  artifactsModified: z.array(z.string()).default([])
+  reasoning: z.string().nullable(),
+  artifactsModified: z.array(z.string())
 });
 
 // ---------------------------------------------------------------------------
@@ -125,7 +126,7 @@ const applyRequestedMode = handler({
 //   - emit: controls which automatic emissions are enabled
 const agentGenerator = generator({
   name: "agent-generator",
-  userStateSchema: z.object({ preferredModel: z.string().default("gpt-4o-mini") }),
+  userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
   model: (_input, ctx) => ctx.user?.state.preferredModel ?? "gpt-4o-mini",
   prompt: "You are a development assistant that can read and modify project artifacts.",
   context: [
@@ -178,6 +179,7 @@ const planFallback = handler({
   outputSchema: agentOutputSchema,
   execute: async () => ({
     reply: "Plan generation failed. Please try again with a simpler goal.",
+    reasoning: null,
     artifactsModified: []
   })
 });
@@ -259,7 +261,8 @@ const kitchenSinkFlow = defineFlow({
   actions: {
     run: {
       inputSchema,
-      block: modeRouter
+      block: modeRouter,
+      userMessage: (input: z.infer<typeof inputSchema>) => input.message
     }
   },
 
@@ -314,7 +317,7 @@ const kitchenSinkFlow = defineFlow({
         outputSchema: userPrefsOutputSchema,
         compute: (ctx) => ({
           displayName: String(ctx.user?.state.displayName ?? "Developer"),
-          preferredModel: String(ctx.user?.state.preferredModel ?? "gpt-4o-mini")
+          preferredModel: String(ctx.user?.state.preferredModel ?? MODEL_ID)
         })
       }
     }

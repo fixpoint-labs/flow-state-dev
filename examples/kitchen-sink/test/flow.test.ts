@@ -37,6 +37,7 @@ const agentFixture = mockGenerator({
     {
       structuredOutput: {
         reply: "Here is what I found.",
+        reasoning: null,
         artifactsModified: []
       }
     }
@@ -148,6 +149,7 @@ describe("kitchen-sink flow", () => {
         {
           structuredOutput: {
             reply: "Scripted reply",
+            reasoning: null,
             artifactsModified: ["doc-1"]
           }
         }

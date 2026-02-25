@@ -25,13 +25,5 @@ export const formatReport = handler({
         `Context: ${artifactsHandle?.state.order.length ?? 0} artifacts in session. ` +
         `Mode: ${ctx.session.state.mode ?? "chat"}.`
     };
-  },
-
-  // Emit context instructions for the LLM when available.
-  onCompleted: async (output, ctx) => {
-    const text = output.instructions ?? output.message;
-    if (text) {
-      ctx.emitLLMContext(text);
-    }
   }
 });
