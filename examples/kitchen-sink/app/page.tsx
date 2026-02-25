@@ -42,8 +42,6 @@ import { ProjectionsBar } from "@/components/projections-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { SuggestionRow } from "@/components/suggestion-row";
 
-// Icons
-import { Bot } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Renderer registry — maps item types to AI Element bridge components
@@ -161,7 +159,6 @@ function KitchenSinkApp() {
               <ConversationEmptyState
                 title="Kitchen Sink"
                 description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, projections, and tool-use."
-                icon={<Bot className="h-8 w-8" />}
               />
             )}
             <ItemsRenderer items={session.items} />

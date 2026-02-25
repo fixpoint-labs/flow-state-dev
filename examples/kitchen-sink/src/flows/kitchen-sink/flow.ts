@@ -133,9 +133,10 @@ const agentGenerator = generator({
     "Available tools: read-artifact, update-artifact."
   ],
   inputSchema: analysisOutputSchema,
+  history: (_input, ctx) => ctx.session.items.llm(),
   user: (input) => input.message,
   tools: [readArtifact, updateArtifact],
-  maxIterations: 2,
+  maxIterations: 5,
   outputSchema: z.string(),
   emit: {
     messages: true,
