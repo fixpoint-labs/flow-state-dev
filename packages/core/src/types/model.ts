@@ -37,8 +37,9 @@ export type GeneratorModelTool = {
 };
 
 export type GeneratorModelStreamChunk = {
-  type: "text_delta" | "tool_call_delta" | "finish";
+  type: "text_delta" | "tool_call_delta" | "reasoning_delta" | "finish";
   textDelta?: string;
+  reasoningDelta?: string;
   toolCallDelta?: { toolCallId: string; toolName: string; argsDelta?: string };
   finishReason?: string;
   usage?: GeneratorModelUsage;
@@ -54,6 +55,7 @@ export interface GeneratorModel {
     maxTokens?: number;
     signal?: AbortSignal;
     maxSteps?: number;
+    providerOptions?: Record<string, unknown>;
   }): Promise<GeneratorModelResult>;
   stream?(options: {
     messages: unknown[];
@@ -61,6 +63,7 @@ export interface GeneratorModel {
     maxTokens?: number;
     signal?: AbortSignal;
     maxSteps?: number;
+    providerOptions?: Record<string, unknown>;
   }): AsyncIterable<GeneratorModelStreamChunk>;
 }
 
