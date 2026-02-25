@@ -538,28 +538,14 @@ async function executeStreamingGeneration<TInput, TOutput>(
   const emitReasoning = config.emit?.reasoning !== false;
   let reasoningAccumulated = "";
 
-  // Emit in-progress assistant message
-  const messageItem = {
-    id: itemId,
-    type: "message" as const,
-    role: "assistant" as const,
-    status: "in_progress" as const,
-    transient: false,
-    requestId: ctx.request.identity.id,
-    itemIndex: getEmitterItemCount(ctx.response),
-    provenance,
-    ts: Date.now(),
-    content: [{ type: "output_text" as const, text: "" }]
-  };
-  await ctx.response.emit({ type: "item.added", item: messageItem });
+  // Reasoning and message items are emitted lazily so their order in the
+  // item list matches the natural stream order (reasoning before text).
+  const reasoningItemId = `item_reasoning_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const reasoningContentIndex = 0;
+  let reasoningStarted = false;
 
-  // Emit content.added for the first content part
-  await ctx.response.emit({
-    type: "content.added",
-    itemId,
-    contentIndex: contentPartIndex,
-    content: { type: "output_text", text: "" }
-  });
+  let messageItem: Record<string, unknown> | null = null;
+  let messageEmitted = false;
 
   // Stream text deltas (tool calls are handled internally by the AI SDK)
   let accumulated = "";
@@ -571,7 +557,86 @@ async function executeStreamingGeneration<TInput, TOutput>(
     maxSteps,
     providerOptions: config.providerOptions
   })) {
-    if (chunk.type === "text_delta" && chunk.textDelta !== undefined) {
+    if (chunk.type === "reasoning_delta" && chunk.reasoningDelta !== undefined) {
+      if (emitReasoning) {
+        // On first reasoning delta, emit in-progress reasoning item
+        if (!reasoningStarted) {
+          reasoningStarted = true;
+          const reasoningItem = {
+            id: reasoningItemId,
+            type: "reasoning" as const,
+            status: "in_progress" as const,
+            transient: false,
+            requestId: ctx.request.identity.id,
+            itemIndex: getEmitterItemCount(ctx.response),
+            provenance,
+            ts: Date.now(),
+            summary: [{ type: "reasoning_text" as const, text: "" }]
+          };
+          await ctx.response.emit({ type: "item.added", item: reasoningItem });
+          await ctx.response.emit({
+            type: "content.added",
+            itemId: reasoningItemId,
+            contentIndex: reasoningContentIndex,
+            content: { type: "reasoning_text", text: "" }
+          });
+        }
+        // Stream each reasoning delta to the client
+        reasoningAccumulated += chunk.reasoningDelta;
+        await ctx.response.emit({
+          type: "content.delta",
+          itemId: reasoningItemId,
+          contentIndex: reasoningContentIndex,
+          delta: chunk.reasoningDelta
+        });
+      }
+    } else if (chunk.type === "text_delta" && chunk.textDelta !== undefined) {
+      // On first text delta, finalize reasoning and start the message
+      if (!messageEmitted) {
+        // Close reasoning item if it was started
+        if (reasoningStarted) {
+          await ctx.response.emit({
+            type: "content.done",
+            itemId: reasoningItemId,
+            contentIndex: reasoningContentIndex,
+            content: { type: "reasoning_text", text: reasoningAccumulated }
+          });
+          const completedReasoning = {
+            id: reasoningItemId,
+            type: "reasoning" as const,
+            status: "completed" as const,
+            transient: false,
+            requestId: ctx.request.identity.id,
+            itemIndex: getEmitterItemCount(ctx.response),
+            provenance,
+            ts: Date.now(),
+            summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
+          };
+          await ctx.response.emit({ type: "item.done", item: completedReasoning });
+        }
+
+        // Now emit the in-progress assistant message
+        messageItem = {
+          id: itemId,
+          type: "message" as const,
+          role: "assistant" as const,
+          status: "in_progress" as const,
+          transient: false,
+          requestId: ctx.request.identity.id,
+          itemIndex: getEmitterItemCount(ctx.response),
+          provenance,
+          ts: Date.now(),
+          content: [{ type: "output_text" as const, text: "" }]
+        };
+        await ctx.response.emit({ type: "item.added", item: messageItem });
+        await ctx.response.emit({
+          type: "content.added",
+          itemId,
+          contentIndex: contentPartIndex,
+          content: { type: "output_text", text: "" }
+        });
+        messageEmitted = true;
+      }
       accumulated += chunk.textDelta;
       await ctx.response.emit({
         type: "content.delta",
@@ -579,27 +644,51 @@ async function executeStreamingGeneration<TInput, TOutput>(
         contentIndex: contentPartIndex,
         delta: chunk.textDelta
       });
-    } else if (chunk.type === "reasoning_delta" && chunk.reasoningDelta !== undefined) {
-      reasoningAccumulated += chunk.reasoningDelta;
     }
   }
 
-  // Emit reasoning item if reasoning was collected
-  if (emitReasoning && reasoningAccumulated.length > 0) {
-    const reasoningItemId = `item_reasoning_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    const reasoningItem = {
-      id: reasoningItemId,
-      type: "reasoning" as const,
-      status: "completed" as const,
+  // If no text deltas arrived, still finalize reasoning and emit message
+  if (!messageEmitted) {
+    if (reasoningStarted) {
+      await ctx.response.emit({
+        type: "content.done",
+        itemId: reasoningItemId,
+        contentIndex: reasoningContentIndex,
+        content: { type: "reasoning_text", text: reasoningAccumulated }
+      });
+      const completedReasoning = {
+        id: reasoningItemId,
+        type: "reasoning" as const,
+        status: "completed" as const,
+        transient: false,
+        requestId: ctx.request.identity.id,
+        itemIndex: getEmitterItemCount(ctx.response),
+        provenance,
+        ts: Date.now(),
+        summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
+      };
+      await ctx.response.emit({ type: "item.done", item: completedReasoning });
+    }
+    messageItem = {
+      id: itemId,
+      type: "message" as const,
+      role: "assistant" as const,
+      status: "in_progress" as const,
       transient: false,
       requestId: ctx.request.identity.id,
       itemIndex: getEmitterItemCount(ctx.response),
       provenance,
       ts: Date.now(),
-      summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
+      content: [{ type: "output_text" as const, text: "" }]
     };
-    await ctx.response.emit({ type: "item.added", item: reasoningItem });
-    await ctx.response.emit({ type: "item.done", item: reasoningItem });
+    await ctx.response.emit({ type: "item.added", item: messageItem });
+    await ctx.response.emit({
+      type: "content.added",
+      itemId,
+      contentIndex: contentPartIndex,
+      content: { type: "output_text", text: "" }
+    });
+    messageEmitted = true;
   }
 
   // Emit content.done
@@ -620,7 +709,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
 
   // Emit completed item
   const completedItem = {
-    ...messageItem,
+    ...messageItem!,
     status: "completed" as const,
     content: [{ type: "output_text" as const, text: accumulated }]
   };

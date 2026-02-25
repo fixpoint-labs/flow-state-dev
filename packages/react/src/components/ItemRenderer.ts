@@ -18,6 +18,7 @@ import type {
   ErrorItem,
   MessageItem,
   OutputItem,
+  ReasoningItem,
   StatusItem,
   StepErrorItem
 } from "@flow-state-dev/core/items";
@@ -89,9 +90,24 @@ function renderStepErrorFallback(item: StepErrorItem): ReactNode {
   );
 }
 
+function renderReasoningFallback(item: ReasoningItem): ReactNode {
+  const text = item.summary
+    .filter((c) => c.type === "reasoning_text")
+    .map((c) => c.text)
+    .join("\n");
+
+  return createElement(
+    "details",
+    { "data-reasoning": "true", style: { margin: "4px 8px", opacity: 0.7 } },
+    createElement("summary", { style: { cursor: "pointer", fontSize: 13 } }, "Reasoning"),
+    createElement("pre", { style: { fontSize: 12, whiteSpace: "pre-wrap", margin: "4px 0" } }, text)
+  );
+}
+
 /** Map of item types to built-in fallback renderers. */
 const BUILT_IN_FALLBACKS: Record<string, ((item: OutputItem) => ReactNode) | undefined> = {
   message: (item) => renderMessageFallback(item as MessageItem),
+  reasoning: (item) => renderReasoningFallback(item as ReasoningItem),
   status: (item) => renderStatusFallback(item as StatusItem),
   error: (item) => renderErrorFallback(item as ErrorItem),
   step_error: (item) => renderStepErrorFallback(item as StepErrorItem)

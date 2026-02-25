@@ -16,7 +16,7 @@
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const MODEL_ID = "gpt-5-mini";
+const MODEL_ID = "gpt-5";
 
 export const chatInputSchema = z.object({
   message: z.string().min(1)
@@ -43,7 +43,15 @@ const chatGenerator = generator({
   // session.items.llm() aggregates completed requests, filters to LLM-visible
   // message items, and returns them as {role, content} pairs chronologically.
   history: (_input, ctx) => ctx.session.items.llm(),
-  user: (input) => input.message
+  user: (input) => input.message,
+  emit: {
+    reasoning: true
+  },
+  providerOptions: {
+    openai: {
+      reasoningSummary: "detailed"
+    }
+  }
 });
 
 // Handler block: increments the message counter after each exchange.

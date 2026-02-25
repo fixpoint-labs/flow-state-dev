@@ -301,18 +301,20 @@ function createGeneratorModelFromAiSdk(
       const result = streamText(request as any);
 
       // Iterate fullStream to capture tool-call events during multi-step loops,
-      // not just text deltas.
+      // not just text deltas. AI SDK v6 fullStream part types use hyphenated
+      // names: "text-delta", "reasoning-delta", "tool-call", etc.
       for await (const part of (result as any).fullStream) {
         const partRecord = part as Record<string, unknown>;
+
         if (partRecord.type === "text-delta") {
           yield {
             type: "text_delta",
-            textDelta: partRecord.textDelta as string ?? partRecord.text as string
+            textDelta: (partRecord.textDelta ?? partRecord.text) as string
           };
-        } else if (partRecord.type === "reasoning") {
+        } else if (partRecord.type === "reasoning" || partRecord.type === "reasoning-delta") {
           yield {
             type: "reasoning_delta",
-            reasoningDelta: partRecord.textDelta as string
+            reasoningDelta: (partRecord.textDelta ?? partRecord.delta ?? partRecord.text) as string
           };
         } else if (partRecord.type === "tool-call") {
           yield {

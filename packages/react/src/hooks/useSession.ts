@@ -13,7 +13,8 @@ import {
 } from "@flow-state-dev/client";
 import type {
   MessageItem,
-  OutputItem
+  OutputItem,
+  ReasoningItem
 } from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
 
@@ -373,21 +374,35 @@ export function useSession(
             onContentDelta: (event) => {
               setItems((prev: OutputItem[]) => {
                 const target = prev.find((item) => item.id === event.itemId);
-                if (target === undefined || target.type !== "message") {
-                  return prev;
+                if (target === undefined) return prev;
+
+                if (target.type === "message") {
+                  const message = target as MessageItem;
+                  const content = [...(message.content ?? [])];
+                  const part = content[event.contentIndex];
+                  if (part !== undefined && part.type === "output_text") {
+                    content[event.contentIndex] = {
+                      ...part,
+                      text: (part.text ?? "") + event.delta
+                    };
+                  }
+                  return upsertItem(prev, { ...message, content });
                 }
 
-                const message = target as MessageItem;
-                const content = [...(message.content ?? [])];
-                const part = content[event.contentIndex];
-                if (part !== undefined && part.type === "output_text") {
-                  content[event.contentIndex] = {
-                    ...part,
-                    text: (part.text ?? "") + event.delta
-                  };
+                if (target.type === "reasoning") {
+                  const reasoning = target as ReasoningItem;
+                  const summary = [...(reasoning.summary ?? [])];
+                  const part = summary[event.contentIndex];
+                  if (part !== undefined && part.type === "reasoning_text") {
+                    summary[event.contentIndex] = {
+                      ...part,
+                      text: (part.text ?? "") + event.delta
+                    };
+                  }
+                  return upsertItem(prev, { ...reasoning, summary });
                 }
 
-                return upsertItem(prev, { ...message, content });
+                return prev;
               });
             },
             onRequestStatus: (event) => {

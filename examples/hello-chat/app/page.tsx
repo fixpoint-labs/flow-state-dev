@@ -9,6 +9,7 @@ import {
   type RendererRegistry
 } from "@flow-state-dev/react";
 import { ChatMessage } from "@/components/chat-message";
+import { ReasoningMessage } from "@/components/reasoning-message";
 import { ChatInput } from "@/components/chat-input";
 import { SessionSidebar } from "@/components/session-sidebar";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +20,8 @@ import { AlertCircle, Bot, Loader2 } from "lucide-react";
 // ItemsRenderer will dispatch to this component for every item with type "message".
 // All other client-visible types (status, error, step_error) use built-in defaults.
 const renderers: RendererRegistry = {
-  message: ChatMessage
+  message: ChatMessage,
+  reasoning: ReasoningMessage
 };
 
 export default function Page() {
