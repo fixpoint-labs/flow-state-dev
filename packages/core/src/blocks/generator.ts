@@ -168,6 +168,7 @@ export interface GeneratorConfig<
     messages?: boolean;
     toolCalls?: boolean;
   };
+  providerOptions?: Record<string, unknown>;
 }
 
 async function resolveString<TInput>(
@@ -534,6 +535,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
     blockInstanceId: blockName,
     phase: "main" as const
   };
+  const emitReasoning = config.emit?.reasoning !== false;
+  let reasoningAccumulated = "";
 
   // Emit in-progress assistant message
   const messageItem = {
@@ -565,7 +568,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
     tools: compiledTools.length > 0 ? compiledTools : undefined,
     maxTokens: config.maxTokens,
     signal: ctx.signal,
-    maxSteps
+    maxSteps,
+    providerOptions: config.providerOptions
   })) {
     if (chunk.type === "text_delta" && chunk.textDelta !== undefined) {
       accumulated += chunk.textDelta;
@@ -575,7 +579,27 @@ async function executeStreamingGeneration<TInput, TOutput>(
         contentIndex: contentPartIndex,
         delta: chunk.textDelta
       });
+    } else if (chunk.type === "reasoning_delta" && chunk.reasoningDelta !== undefined) {
+      reasoningAccumulated += chunk.reasoningDelta;
     }
+  }
+
+  // Emit reasoning item if reasoning was collected
+  if (emitReasoning && reasoningAccumulated.length > 0) {
+    const reasoningItemId = `item_reasoning_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const reasoningItem = {
+      id: reasoningItemId,
+      type: "reasoning" as const,
+      status: "completed" as const,
+      transient: false,
+      requestId: ctx.request.identity.id,
+      itemIndex: getEmitterItemCount(ctx.response),
+      provenance,
+      ts: Date.now(),
+      summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
+    };
+    await ctx.response.emit({ type: "item.added", item: reasoningItem });
+    await ctx.response.emit({ type: "item.done", item: reasoningItem });
   }
 
   // Emit content.done
@@ -702,7 +726,8 @@ export function generator<
         outputSchema,
         maxTokens: normalizedConfig.maxTokens,
         signal: ctx.signal,
-        maxSteps
+        maxSteps,
+        providerOptions: normalizedConfig.providerOptions
       });
 
       const candidate = resolveGenerationCandidate(generation);
