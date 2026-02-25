@@ -167,6 +167,7 @@ function buildAiSdkRequest(
     maxTokens?: number;
     signal?: AbortSignal;
     maxSteps?: number;
+    providerOptions?: Record<string, unknown>;
   }
 ): Record<string, unknown> {
   const request: Record<string, unknown> = {
@@ -212,6 +213,10 @@ function buildAiSdkRequest(
 
   if (options.signal !== undefined) {
     request.abortSignal = options.signal;
+  }
+
+  if (options.providerOptions !== undefined) {
+    request.providerOptions = options.providerOptions;
   }
 
   return request;
@@ -303,6 +308,11 @@ function createGeneratorModelFromAiSdk(
           yield {
             type: "text_delta",
             textDelta: partRecord.textDelta as string ?? partRecord.text as string
+          };
+        } else if (partRecord.type === "reasoning") {
+          yield {
+            type: "reasoning_delta",
+            reasoningDelta: partRecord.textDelta as string
           };
         } else if (partRecord.type === "tool-call") {
           yield {
