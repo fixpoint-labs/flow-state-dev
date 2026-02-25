@@ -61,7 +61,7 @@ export const Reasoning = memo(
     className,
     isStreaming = false,
     open,
-    defaultOpen,
+    defaultOpen = false,
     onOpenChange,
     duration: durationProp,
     children,

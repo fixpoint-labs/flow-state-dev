@@ -34,7 +34,6 @@ import { KitchenSinkMessage } from "@/components/kitchen-sink-message";
 import { KitchenSinkReasoning } from "@/components/kitchen-sink-reasoning";
 import { KitchenSinkStatus } from "@/components/kitchen-sink-status";
 import { KitchenSinkError } from "@/components/kitchen-sink-error";
-import { AgentResponseCard } from "@/components/agent-response-card";
 
 // Layout components
 import { SessionSidebar } from "@/components/session-sidebar";
@@ -52,20 +51,17 @@ import { Bot } from "lucide-react";
 const renderers: RendererRegistry = {
   message: KitchenSinkMessage,
   reasoning: KitchenSinkReasoning,
-  block_output: AgentResponseCard,
   status: KitchenSinkStatus,
   error: KitchenSinkError,
   step_error: KitchenSinkError,
 };
 
-// Item types to include (extends default set with block_output for tool call visibility)
 const ITEM_TYPES = [
   "message",
   "reasoning",
   "status",
   "error",
   "step_error",
-  "block_output",
 ];
 
 // Stable reference for useProjections — avoids re-creating the options object on every render

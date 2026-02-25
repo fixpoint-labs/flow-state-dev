@@ -16,7 +16,7 @@
 import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const MODEL_ID = "gpt-5";
+const MODEL_ID = "gpt-5-mini";
 
 export const chatInputSchema = z.object({
   message: z.string().min(1)

@@ -91,11 +91,9 @@ const userPrefsOutputSchema = z.object({
   preferredModel: z.string()
 });
 
-const agentOutputSchema = z.object({
-  reply: z.string(),
-  reasoning: z.string().nullable(),
-  artifactsModified: z.array(z.string())
-});
+// Generator outputs plain text — reasoning comes from the provider's native
+// reasoning tokens, and artifact modifications are tracked deterministically
+// via resource state (the update-artifact tool writes to session resources).
 
 // ---------------------------------------------------------------------------
 // Blocks (inline)
@@ -122,12 +120,13 @@ const applyRequestedMode = handler({
 //   - userStateSchema: declares a partial user state slice ({ preferredModel })
 //     so the model callback gets typed access without knowing the full schema
 //   - tools: handler blocks exposed as LLM-callable functions
-//   - repair: auto-retry with schema validation on structured output
-//   - emit: controls which automatic emissions are enabled
+//   - emit.reasoning: reasoning comes from the provider's native tokens, not
+//     from asking the LLM to generate a reasoning field
+//   - providerOptions: enables detailed reasoning summaries from OpenAI models
 const agentGenerator = generator({
   name: "agent-generator",
   userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
-  model: (_input, ctx) => ctx.user?.state.preferredModel ?? "gpt-4o-mini",
+  model: (_input, ctx) => ctx.user?.state.preferredModel ?? MODEL_ID,
   prompt: "You are a development assistant that can read and modify project artifacts.",
   context: [
     "You are operating in the flow-state-dev kitchen-sink example.",
@@ -137,14 +136,13 @@ const agentGenerator = generator({
   user: (input) => input.message,
   tools: [readArtifact, updateArtifact],
   maxIterations: 2,
-  outputSchema: agentOutputSchema,
+  outputSchema: z.string(),
   emit: {
     messages: true,
     reasoning: true
   },
-  repair: {
-    mode: "auto",
-    maxAttempts: 2
+  providerOptions: {
+    openai: { reasoningSummary: "detailed" }
   }
 });
 
@@ -154,8 +152,8 @@ const agentGenerator = generator({
 // Silent by default — no client or LLM emissions.
 const incrementRequestCount = handler({
   name: "increment-request-count",
-  inputSchema: agentOutputSchema,
-  outputSchema: agentOutputSchema,
+  inputSchema: z.string(),
+  outputSchema: z.string(),
   sessionStateSchema: z.object({
     requestCount: z.number().default(0),
     lastAction: z.string().optional()
@@ -176,12 +174,9 @@ const incrementRequestCount = handler({
 const planFallback = handler({
   name: "plan-fallback",
   inputSchema: z.unknown(),
-  outputSchema: agentOutputSchema,
-  execute: async () => ({
-    reply: "Plan generation failed. Please try again with a simpler goal.",
-    reasoning: null,
-    artifactsModified: []
-  })
+  outputSchema: z.string(),
+  execute: async () =>
+    "Plan generation failed. Please try again with a simpler goal."
 });
 
 // ---------------------------------------------------------------------------
@@ -202,7 +197,7 @@ const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .then(agentGenerator)
   .then(incrementRequestCount)
   .tap(async (output) => {
-    console.log(`Chat completed: ${output.reply.slice(0, 50)}...`);
+    console.log(`Chat completed: ${output.slice(0, 50)}...`);
   });
 
 const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
@@ -232,7 +227,7 @@ const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
 export const modeRouter = router({
   name: "mode-router",
   inputSchema: inputSchema,
-  outputSchema: agentOutputSchema,
+  outputSchema: z.string(),
   sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
   routes: [chatPipeline, planPipeline],
   execute: (input, ctx) => {

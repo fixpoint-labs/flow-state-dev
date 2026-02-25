@@ -1,6 +1,9 @@
 import { router } from "@/lib/server";
 import { type NextRequest } from "next/server";
 
+// Prevent Next.js from buffering SSE responses.
+export const dynamic = "force-dynamic";
+
 // Next.js 15 uses async params — unwrap the promise and forward to the
 // framework's route handlers which expect the sync `{ params: { path } }` shape.
 type RouteContext = { params: Promise<{ path: string[] }> };
