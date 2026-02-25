@@ -364,6 +364,10 @@ export function useSession(
               }
             },
             onItemDone: (event) => {
+              if (!passesItemFilter(event.item, filter)) {
+                return;
+              }
+
               setItems((prev: OutputItem[]) => upsertItem(prev, event.item));
             },
             onContentDelta: (event) => {

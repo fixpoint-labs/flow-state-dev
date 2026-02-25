@@ -554,8 +554,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
   await ctx.response.emit({
     type: "content.added",
     itemId,
-    contentPartIndex,
-    contentPart: { type: "output_text", text: "" }
+    contentIndex: contentPartIndex,
+    content: { type: "output_text", text: "" }
   });
 
   // Stream text deltas (tool calls are handled internally by the AI SDK)
@@ -572,7 +572,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
       await ctx.response.emit({
         type: "content.delta",
         itemId,
-        contentPartIndex,
+        contentIndex: contentPartIndex,
         delta: chunk.textDelta
       });
     }
@@ -582,8 +582,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
   await ctx.response.emit({
     type: "content.done",
     itemId,
-    contentPartIndex,
-    contentPart: { type: "output_text", text: accumulated }
+    contentIndex: contentPartIndex,
+    content: { type: "output_text", text: accumulated }
   });
 
   // Validate output through the schema
