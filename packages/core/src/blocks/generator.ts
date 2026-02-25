@@ -30,18 +30,20 @@ type ResolvableModel<TInput, TCtx = BlockContext> =
   | GeneratorModel
   | ((input: TInput, ctx: TCtx) => MaybePromise<string | GeneratorModel>);
 
-export type GeneratorSlotReference<TCtx = BlockContext> = (
-  input: unknown,
+export type GeneratorSlotReference<TInput = unknown, TCtx = BlockContext> = (
+  input: TInput,
   ctx: TCtx
 ) => unknown | Promise<unknown>;
 
-export type GeneratorSlotEntry =
+export type GeneratorSlotEntry<TInput = unknown, TCtx = BlockContext> =
   | string
   | Record<string, unknown>
   | Array<Record<string, unknown>>
-  | GeneratorSlotReference;
+  | GeneratorSlotReference<TInput, TCtx>;
 
-export type GeneratorSlot = GeneratorSlotEntry | GeneratorSlotEntry[];
+export type GeneratorSlot<TInput = unknown, TCtx = BlockContext> =
+  | GeneratorSlotEntry<TInput, TCtx>
+  | GeneratorSlotEntry<TInput, TCtx>[];
 
 export type GeneratorSlotRefOptions = {
   optional?: boolean;
@@ -146,8 +148,8 @@ export interface GeneratorConfig<
   connectInput?: ConnectorFn<unknown, TInput>;
   model: ResolvableModel<TInput, TCtx>;
   prompt: ResolvableString<TInput, TCtx>;
-  context?: GeneratorSlot;
-  history?: GeneratorSlot;
+  context?: GeneratorSlot<TInput, TCtx>;
+  history?: GeneratorSlot<TInput, TCtx>;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
   user?: TypedUserSlotFn<TInput, TCtx> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
   tools?: GeneratorTool[] | ((ctx: TCtx) => MaybePromise<GeneratorTool[]>);
@@ -171,10 +173,10 @@ export interface GeneratorConfig<
   providerOptions?: Record<string, unknown>;
 }
 
-async function resolveString<TInput>(
-  value: ResolvableString<TInput>,
+async function resolveString<TInput, TCtx extends BlockContext>(
+  value: ResolvableString<TInput, TCtx>,
   input: TInput,
-  ctx: BlockContext
+  ctx: TCtx
 ): Promise<string> {
   return typeof value === "function" ? value(input, ctx) : value;
 }
@@ -191,10 +193,10 @@ function isGeneratorModel(value: unknown): value is GeneratorModel {
   );
 }
 
-async function resolveModel<TInput>(
-  value: ResolvableModel<TInput>,
+async function resolveModel<TInput, TCtx extends BlockContext>(
+  value: ResolvableModel<TInput, TCtx>,
   input: TInput,
-  ctx: BlockContext,
+  ctx: TCtx,
   blockName: string
 ): Promise<{ modelId: string; model: GeneratorModel }> {
   const resolved = typeof value === "function" ? await value(input, ctx) : value;
@@ -218,7 +220,9 @@ async function resolveModel<TInput>(
   );
 }
 
-function normalizeSlotEntries(slot: GeneratorSlot | undefined): GeneratorSlotEntry[] {
+function normalizeSlotEntries<TInput, TCtx extends BlockContext>(
+  slot: GeneratorSlot<TInput, TCtx> | undefined
+): GeneratorSlotEntry<TInput, TCtx>[] {
   if (slot === undefined) {
     return [];
   }
@@ -254,10 +258,10 @@ function asUserMessage(value: unknown): unknown {
   return value;
 }
 
-async function resolveSlotValues(
-  slot: GeneratorSlot | undefined,
-  input: unknown,
-  ctx: BlockContext
+async function resolveSlotValues<TInput, TCtx extends BlockContext>(
+  slot: GeneratorSlot<TInput, TCtx> | undefined,
+  input: TInput,
+  ctx: TCtx
 ): Promise<unknown[]> {
   const values: unknown[] = [];
 
@@ -269,9 +273,9 @@ async function resolveSlotValues(
   return values;
 }
 
-async function resolveTools(
-  tools: GeneratorTool[] | ((ctx: BlockContext) => MaybePromise<GeneratorTool[]>) | undefined,
-  ctx: BlockContext
+async function resolveTools<TCtx extends BlockContext>(
+  tools: GeneratorTool[] | ((ctx: TCtx) => MaybePromise<GeneratorTool[]>) | undefined,
+  ctx: TCtx
 ): Promise<GeneratorTool[]> {
   if (tools === undefined) {
     return [];
@@ -761,13 +765,13 @@ export function generator<
     config: normalizedConfig as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     execute: async (input: TInput, ctx) => {
       const blockName = String(normalizedConfig.name);
-      const { modelId, model } = await resolveModel<TInput>(
+      const { modelId, model } = await resolveModel(
         normalizedConfig.model,
         input,
         ctx,
         blockName
       );
-      const prompt = await resolveString<TInput>(normalizedConfig.prompt, input, ctx);
+      const prompt = await resolveString(normalizedConfig.prompt, input, ctx);
       const contextValues = await resolveSlotValues(normalizedConfig.context, input, ctx);
       const historyValues = await resolveSlotValues(normalizedConfig.history, input, ctx);
       const userValues = await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
