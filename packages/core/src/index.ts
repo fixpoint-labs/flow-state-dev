@@ -58,5 +58,6 @@ export type {
   GeneratorModelTool,
   GeneratorModelToolCall,
   GeneratorModelUsage,
-  ModelResolver
+  ModelResolver,
+  PrepareStepFn
 } from "./types/model";

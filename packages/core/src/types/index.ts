@@ -44,7 +44,8 @@ export type {
   GeneratorModelToolCall,
   GeneratorModelUsage,
   GeneratorStepResult,
-  ModelResolver
+  ModelResolver,
+  PrepareStepFn
 } from "./model";
 
 export type {

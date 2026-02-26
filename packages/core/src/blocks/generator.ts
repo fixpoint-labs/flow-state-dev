@@ -12,7 +12,8 @@ import type { ResourceHandle } from "../types/resource";
 import type {
   GeneratorModel,
   GeneratorModelResult,
-  GeneratorModelTool
+  GeneratorModelTool,
+  PrepareStepFn
 } from "../types/model";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
 import { buildBlock } from "./internal/build-block";
@@ -171,6 +172,8 @@ export interface GeneratorConfig<
     toolCalls?: boolean;
   };
   providerOptions?: Record<string, unknown>;
+  /** When true (default), auto-inject tool name+description pairs into the system context. */
+  describeTools?: boolean;
 }
 
 async function resolveString<TInput, TCtx extends BlockContext>(
@@ -330,6 +333,20 @@ function compileToolsWithExecute(
       }
     }
   }));
+}
+
+/**
+ * Build a context string listing available tools by name and description.
+ * Returns undefined if no tools have descriptions.
+ */
+function buildToolDescriptionContext(tools: GeneratorTool[]): string | undefined {
+  const described = tools.filter((t) => t.description);
+  if (described.length === 0) {
+    return undefined;
+  }
+
+  const lines = described.map((t) => `- ${t.name}: ${t.description}`);
+  return `Available tools:\n${lines.join("\n")}`;
 }
 
 function isBlockObserver(
@@ -530,7 +547,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
   outputSchema: ZodTypeAny,
   blockName: string,
   maxSteps: number,
-  ctx: BlockContext
+  ctx: BlockContext,
+  prepareStep?: PrepareStepFn
 ): Promise<TOutput> {
   const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const contentPartIndex = 0;
@@ -559,7 +577,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
     maxTokens: config.maxTokens,
     signal: ctx.signal,
     maxSteps,
-    providerOptions: config.providerOptions
+    providerOptions: config.providerOptions,
+    prepareStep
   })) {
     if (chunk.type === "reasoning_delta" && chunk.reasoningDelta !== undefined) {
       if (emitReasoning) {
@@ -771,18 +790,89 @@ export function generator<
         ctx,
         blockName
       );
+
+      const autoDescribe = normalizedConfig.describeTools !== false;
+      const toolBlocks = await resolveTools(normalizedConfig.tools, ctx);
+
       const prompt = await resolveString(normalizedConfig.prompt, input, ctx);
       const contextValues = await resolveSlotValues(normalizedConfig.context, input, ctx);
+
+      // Auto-describe: inject tool name+description pairs into context.
+      if (autoDescribe) {
+        const toolDescription = buildToolDescriptionContext(toolBlocks);
+        if (toolDescription !== undefined) {
+          contextValues.push(toolDescription);
+        }
+      }
+
       const historyValues = await resolveSlotValues(normalizedConfig.history, input, ctx);
       const userValues = await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
-      const messages: unknown[] = [
+
+      // Build initial system prefix (prompt + context + tool descriptions)
+      // separately so prepareStep can replace it with freshly resolved values.
+      const systemPrefix: unknown[] = [
         { role: "system", content: prompt },
-        ...contextValues.map(asSystemMessage),
+        ...contextValues.map(asSystemMessage)
+      ];
+      const systemPrefixCount = systemPrefix.length;
+      const messages: unknown[] = [
+        ...systemPrefix,
         ...historyValues,
         ...userValues.map(asUserMessage)
       ];
 
-      const toolBlocks = await resolveTools(normalizedConfig.tools, ctx);
+      // Build prepareStep callback when prompt, context, or tools contain
+      // dynamic (function-typed) entries. The AI SDK calls this before each
+      // step of the multi-step tool loop, letting us re-resolve dynamic
+      // slots so the LLM sees fresh state and the correct active tools.
+      const hasDynamicPrompt = typeof normalizedConfig.prompt === "function";
+      const hasDynamicContext = normalizeSlotEntries(normalizedConfig.context).some(
+        (entry) => typeof entry === "function"
+      );
+      const hasDynamicTools = typeof normalizedConfig.tools === "function";
+
+      let prepareStepFn: PrepareStepFn | undefined;
+      if (hasDynamicPrompt || hasDynamicContext || hasDynamicTools) {
+        prepareStepFn = async ({ stepNumber, messages: currentMessages }) => {
+          if (stepNumber === 0) {
+            return undefined;
+          }
+
+          // Re-resolve tools when dynamic so we can update activeTools and
+          // rebuild tool descriptions to match the current step's tool set.
+          let activeTools: string[] | undefined;
+          let freshToolDescription: string | undefined;
+          if (hasDynamicTools) {
+            const freshTools = await resolveTools(normalizedConfig.tools, ctx);
+            activeTools = freshTools.map((t) => t.name);
+            if (autoDescribe) {
+              freshToolDescription = buildToolDescriptionContext(freshTools);
+            }
+          } else if (autoDescribe) {
+            freshToolDescription = buildToolDescriptionContext(toolBlocks);
+          }
+
+          const freshPrompt = await resolveString(normalizedConfig.prompt, input, ctx);
+          const freshContext = await resolveSlotValues(normalizedConfig.context, input, ctx);
+          if (freshToolDescription !== undefined) {
+            freshContext.push(freshToolDescription);
+          }
+
+          const freshSystemPrefix: unknown[] = [
+            { role: "system", content: freshPrompt },
+            ...freshContext.map(asSystemMessage)
+          ];
+
+          // Replace the system prefix with fresh values; keep conversation
+          // messages (history, user, accumulated tool calls/results).
+          const conversationMessages = currentMessages.slice(systemPrefixCount);
+          return {
+            messages: [...freshSystemPrefix, ...conversationMessages],
+            activeTools
+          };
+        };
+      }
+
       const runTools = normalizedConfig.loop?.runTools !== false;
       const maxSteps = resolveMaxIterations(normalizedConfig);
 
@@ -808,7 +898,8 @@ export function generator<
           outputSchema,
           blockName,
           maxSteps,
-          ctx
+          ctx,
+          prepareStepFn
         );
       }
 
@@ -820,7 +911,8 @@ export function generator<
         maxTokens: normalizedConfig.maxTokens,
         signal: ctx.signal,
         maxSteps,
-        providerOptions: normalizedConfig.providerOptions
+        providerOptions: normalizedConfig.providerOptions,
+        prepareStep: prepareStepFn
       });
 
       const candidate = resolveGenerationCandidate(generation);

@@ -5,7 +5,8 @@ import type {
   GeneratorModelStreamChunk,
   GeneratorModelTool,
   GeneratorModelToolCall,
-  ModelResolver
+  ModelResolver,
+  PrepareStepFn
 } from "@flow-state-dev/core/types";
 
 export type ResolveAiSdkLanguageModel = (modelId: string) => unknown;
@@ -168,6 +169,7 @@ function buildAiSdkRequest(
     signal?: AbortSignal;
     maxSteps?: number;
     providerOptions?: Record<string, unknown>;
+    prepareStep?: PrepareStepFn;
   }
 ): Record<string, unknown> {
   const request: Record<string, unknown> = {
@@ -201,6 +203,16 @@ function buildAiSdkRequest(
   const maxSteps = options.maxSteps ?? 1;
   if (maxSteps > 1) {
     request.stopWhen = stepCountIs(maxSteps);
+  }
+
+  // prepareStep: called by the AI SDK before each step in the multi-step
+  // loop. The generator uses this to re-resolve dynamic context/prompt
+  // slot functions so the LLM sees fresh state on every iteration.
+  if (options.prepareStep !== undefined) {
+    const fn = options.prepareStep;
+    request.prepareStep = async (stepInfo: { stepNumber: number; messages: unknown[] }) => {
+      return fn(stepInfo);
+    };
   }
 
   if (options.outputSchema !== undefined) {

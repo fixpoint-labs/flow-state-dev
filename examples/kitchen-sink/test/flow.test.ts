@@ -31,16 +31,12 @@ function collectSourceFiles(dir: string): string[] {
   return files;
 }
 
+const emptyArtifacts = { byId: {}, order: [] as string[] };
+
 const agentFixture = mockGenerator({
   name: "agent-generator",
   script: [
-    {
-      structuredOutput: {
-        reply: "Here is what I found.",
-        reasoning: null,
-        artifactsModified: []
-      }
-    }
+    { text: "Here is what I found." }
   ]
 });
 
@@ -48,6 +44,7 @@ describe("kitchen-sink flow", () => {
   it("completes a chat action via modeRouter", async () => {
     const result = await testBlock(modeRouter, {
       input: { message: "Hello kitchen sink", mode: "chat" },
+      session: { resources: { artifacts: emptyArtifacts } },
       generators: { "agent-generator": agentFixture }
     });
 
@@ -59,6 +56,7 @@ describe("kitchen-sink flow", () => {
     agentFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Create a deployment plan", mode: "plan" },
+      session: { resources: { artifacts: emptyArtifacts } },
       generators: { "agent-generator": agentFixture }
     });
 
@@ -81,6 +79,7 @@ describe("kitchen-sink flow", () => {
     agentFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Test with custom model", mode: "chat" },
+      session: { resources: { artifacts: emptyArtifacts } },
       user: {
         state: {
           displayName: "TestUser",
@@ -97,6 +96,7 @@ describe("kitchen-sink flow", () => {
     agentFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Check items", mode: "chat" },
+      session: { resources: { artifacts: emptyArtifacts } },
       generators: { "agent-generator": agentFixture }
     });
 
@@ -146,19 +146,11 @@ describe("kitchen-sink flow", () => {
     const scripted = mockGenerator({
       name: "agent-generator",
       script: [
-        {
-          structuredOutput: {
-            reply: "Scripted reply",
-            reasoning: null,
-            artifactsModified: ["doc-1"]
-          }
-        }
+        { text: "Scripted reply" }
       ]
     });
 
-    expect(scripted.next()?.structuredOutput).toMatchObject({
-      reply: "Scripted reply"
-    });
+    expect(scripted.next()?.text).toBe("Scripted reply");
     scripted.reset();
     expect(scripted.next()).toBeDefined();
   });

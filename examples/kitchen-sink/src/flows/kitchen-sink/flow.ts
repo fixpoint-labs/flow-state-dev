@@ -121,18 +121,43 @@ const applyRequestedMode = handler({
 //   - userStateSchema: declares a partial user state slice ({ preferredModel })
 //     so the model callback gets typed access without knowing the full schema
 //   - tools: handler blocks exposed as LLM-callable functions
+//   - describeTools: (default true) auto-injects tool descriptions into context
+//   - Dynamic context: function-typed context entries are re-resolved before
+//     each step of the tool loop via the AI SDK's prepareStep callback, so the
+//     LLM always sees fresh state (e.g., an up-to-date artifact list)
 //   - emit.reasoning: reasoning comes from the provider's native tokens, not
 //     from asking the LLM to generate a reasoning field
 //   - providerOptions: enables detailed reasoning summaries from OpenAI models
 const agentGenerator = generator({
   name: "agent-generator",
   userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
+  sessionResourceSchemas: z.object({ artifacts: artifactResourceStateSchema }),
   model: (_input, ctx) => ctx.user?.state.preferredModel ?? MODEL_ID,
-  prompt: "You are a development assistant that can read and modify project artifacts.",
+
+  prompt: `You are a helpful development assistant. You help users create, read, and manage project artifacts.
+
+When users ask you to create or write something, save it as an artifact using the update-artifact tool. Choose a short, descriptive id (kebab-case) and a clear title.
+
+When users ask about existing artifacts, use the read-artifact tool to fetch the full content before responding.
+
+Be concise and helpful. When you create or update an artifact, briefly confirm what you did.`,
+
   context: [
-    "You are operating in the flow-state-dev kitchen-sink example.",
-    "Available tools: read-artifact, update-artifact."
+    // Dynamic: current artifact list, re-evaluated each tool loop step so
+    // the LLM sees artifacts created by earlier tool calls in the same turn.
+    (_input, ctx) => {
+      const artifacts = ctx.session.resources.get("artifacts");
+      const state = artifacts?.state;
+      if (!state?.order?.length) {
+        return "No artifacts exist yet in this session.";
+      }
+      const list = state.order
+        .map((id: string) => `- ${id}: ${state.byId[id]?.title ?? "Untitled"}`)
+        .join("\n");
+      return `Current artifacts:\n${list}`;
+    }
   ],
+
   inputSchema: analysisOutputSchema,
   history: (_input, ctx) => ctx.session.items.llm(),
   user: (input) => input.message,

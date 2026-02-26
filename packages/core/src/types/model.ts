@@ -46,6 +46,23 @@ export type GeneratorModelStreamChunk = {
   fullResult?: GeneratorModelResult;
 };
 
+/**
+ * Callback invoked before each step of the AI SDK's multi-step tool loop.
+ * Returns updated system/messages/activeTools for the step, or undefined to
+ * keep defaults.
+ */
+export type PrepareStepResult = {
+  system?: unknown;
+  messages?: unknown[];
+  /** Tool names to enable for this step (filters the compiled tool set). */
+  activeTools?: string[];
+};
+
+export type PrepareStepFn = (stepInfo: {
+  stepNumber: number;
+  messages: unknown[];
+}) => Promise<PrepareStepResult | undefined | void>;
+
 export interface GeneratorModel {
   modelId: string;
   generate(options: {
@@ -56,6 +73,7 @@ export interface GeneratorModel {
     signal?: AbortSignal;
     maxSteps?: number;
     providerOptions?: Record<string, unknown>;
+    prepareStep?: PrepareStepFn;
   }): Promise<GeneratorModelResult>;
   stream?(options: {
     messages: unknown[];
@@ -64,6 +82,7 @@ export interface GeneratorModel {
     signal?: AbortSignal;
     maxSteps?: number;
     providerOptions?: Record<string, unknown>;
+    prepareStep?: PrepareStepFn;
   }): AsyncIterable<GeneratorModelStreamChunk>;
 }
 
