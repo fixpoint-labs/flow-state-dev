@@ -36,7 +36,8 @@ import {
   analysisOutputSchema,
   formatReport,
   readArtifact,
-  updateArtifact
+  updateArtifact,
+  updateArtifactInputSchema
 } from "./blocks";
 import {
   modeSchema,
@@ -78,6 +79,15 @@ const artifactsListOutputSchema = z.array(
   z.object({
     id: z.string(),
     title: z.string()
+  })
+);
+
+const artifactsDetailOutputSchema = z.array(
+  z.object({
+    id: z.string(),
+    title: z.string(),
+    content: z.string(),
+    updatedAt: z.number()
   })
 );
 
@@ -259,6 +269,12 @@ const kitchenSinkFlow = defineFlow({
       inputSchema,
       block: modeRouter,
       userMessage: (input: z.infer<typeof inputSchema>) => input.message
+    },
+    saveArtifact: {
+      inputSchema: updateArtifactInputSchema,
+      block: updateArtifact,
+      userMessage: (input: z.infer<typeof updateArtifactInputSchema>) =>
+        `Save artifact ${input.id}`
     }
   },
 
@@ -293,6 +309,19 @@ const kitchenSinkFlow = defineFlow({
           }));
         }
       },
+      artifactsDetail: {
+        client: true,
+        outputSchema: artifactsDetailOutputSchema,
+        compute: (ctx) => {
+          const artifacts = artifactResourceStateSchema.parse(
+            ctx.session.resources.get("artifacts")?.state ?? {}
+          );
+
+          return artifacts.order
+            .map((id) => artifacts.byId[id])
+            .filter((artifact) => artifact !== undefined);
+        }
+      },
       modeStatus: {
         client: true,
         outputSchema: modeStatusOutputSchema,
@@ -323,6 +352,7 @@ const kitchenSinkFlow = defineFlow({
 // Export schemas needed by client code
 export {
   artifactsListOutputSchema,
+  artifactsDetailOutputSchema,
   modeStatusOutputSchema,
   userPrefsOutputSchema
 };
