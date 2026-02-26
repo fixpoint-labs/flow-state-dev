@@ -10,6 +10,7 @@ import {
   type RendererRegistry,
 } from "@flow-state-dev/react";
 import {
+  artifactsDetailOutputSchema,
   artifactsListOutputSchema,
   modeStatusOutputSchema,
   userPrefsOutputSchema,
@@ -67,6 +68,7 @@ const ITEM_TYPES = [
 const PROJECTION_OPTIONS = {
   session: {
     artifactsList: artifactsListOutputSchema,
+    artifactsDetail: artifactsDetailOutputSchema,
     modeStatus: modeStatusOutputSchema,
   },
   user: {
@@ -109,11 +111,12 @@ function KitchenSinkApp() {
   const modeStatus = projections.session?.modeStatus;
   const userPrefs = projections.user?.preferences;
   const artifacts = projections.session?.artifactsList ?? [];
+  const artifactsDetail = projections.session?.artifactsDetail ?? [];
 
-  // Resolve the selected artifact from the live projection data so it auto-updates
+  // Resolve from detail projection so the viewer has content
   const selectedArtifact = useMemo(
-    () => artifacts.find((a) => a.id === selectedArtifactId) ?? null,
-    [artifacts, selectedArtifactId]
+    () => artifactsDetail.find((a) => a.id === selectedArtifactId) ?? null,
+    [artifactsDetail, selectedArtifactId]
   );
 
   const handleSubmit = useCallback(
@@ -135,6 +138,14 @@ function KitchenSinkApp() {
       setMessage(text);
     },
     []
+  );
+
+  const handleSaveArtifact = useCallback(
+    async (artifact: { id: string; title: string; content: string }) => {
+      if (!flow.activeSessionId) return;
+      await session.sendAction("saveArtifact", artifact);
+    },
+    [flow.activeSessionId, session]
   );
 
   const isDisabled = session.isStreaming || !flow.activeSessionId || flow.isLoading;
@@ -217,6 +228,8 @@ function KitchenSinkApp() {
       {selectedArtifact ? (
         <ArtifactViewer
           artifact={selectedArtifact}
+          isSaving={session.isStreaming}
+          onSaveArtifact={handleSaveArtifact}
           onClose={() => setSelectedArtifactId(null)}
           onBack={() => setSelectedArtifactId(null)}
         />

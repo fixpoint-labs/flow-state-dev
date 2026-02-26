@@ -36,7 +36,8 @@ import {
   analysisOutputSchema,
   formatReport,
   readArtifact,
-  updateArtifact
+  updateArtifact,
+  updateArtifactInputSchema
 } from "./blocks";
 import {
   modeSchema,
@@ -79,6 +80,15 @@ const artifactsListOutputSchema = z.array(
     id: z.string(),
     title: z.string(),
     content: z.string()
+  })
+);
+
+const artifactsDetailOutputSchema = z.array(
+  z.object({
+    id: z.string(),
+    title: z.string(),
+    content: z.string(),
+    updatedAt: z.number()
   })
 );
 
@@ -140,7 +150,7 @@ When users ask you to create or write something, save it as an artifact using th
 
 When users ask about existing artifacts, use the read-artifact tool to fetch the full content before responding.
 
-Be concise and helpful. When you create or update an artifact, briefly confirm what you did.`,
+Be concise and helpful. Never show the artifact id unless specifically asked to do so.`,
 
   context: [
     // Dynamic: current artifact list, re-evaluated each tool loop step so
@@ -285,6 +295,10 @@ const kitchenSinkFlow = defineFlow({
       inputSchema,
       block: modeRouter,
       userMessage: (input: z.infer<typeof inputSchema>) => input.message
+    },
+    saveArtifact: {
+      inputSchema: updateArtifactInputSchema,
+      block: updateArtifact
     }
   },
 
@@ -320,6 +334,19 @@ const kitchenSinkFlow = defineFlow({
           }));
         }
       },
+      artifactsDetail: {
+        client: true,
+        outputSchema: artifactsDetailOutputSchema,
+        compute: (ctx) => {
+          const artifacts = artifactResourceStateSchema.parse(
+            ctx.session.resources.get("artifacts")?.state ?? {}
+          );
+
+          return artifacts.order
+            .map((id) => artifacts.byId[id])
+            .filter((artifact) => artifact !== undefined);
+        }
+      },
       modeStatus: {
         client: true,
         outputSchema: modeStatusOutputSchema,
@@ -350,6 +377,7 @@ const kitchenSinkFlow = defineFlow({
 // Export schemas needed by client code
 export {
   artifactsListOutputSchema,
+  artifactsDetailOutputSchema,
   modeStatusOutputSchema,
   userPrefsOutputSchema
 };
