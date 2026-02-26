@@ -6,22 +6,25 @@ These instructions define the collaboration protocol for agent-driven work in th
 
 At the start of a new conversation in this repo, read:
 
-- `docs/BEST_PRACTICES.md`
-- `docs/ARCHITECTURE_CHEAT_SHEET.compact.md`
-- Relevant canonical specs in `../preperation/architecture/` for the task at hand
+- `CLAUDE.md` — project orientation and key constraints
+- `docs/contributing/best-practices.md` — implementation standards (BP-001–BP-009)
+- `docs/contributing/architecture-reference.md` — quick reference for locked contracts
+- Relevant docs in `docs/architecture/` for the task at hand
 
-If docs conflict, `../preperation/architecture/*` is authoritative.
+For deeper canonical authority on edge cases, consult `../preperation/architecture/*`.
+
+**Authority order**: `../preperation/architecture/*` > `docs/architecture/*` > `docs/contributing/best-practices.md` > this file.
 
 ## Wave execution protocol
 
 Use this protocol when work is wave-based:
 
 - Waves have numbers and letters. Numbers represent the phase of wave we are in, letters indicate the major milestone. Our `..preperation/architecture/IMPLEMENTATION_PLAN.md` tracks the waves we are targeting.
-- Keep wave plans under their wave number, currently at `docs/waves/wave-1/` using `wave-1.<letter>.md`.
+- Keep wave plans under their wave number, currently at `docs/internal/waves/wave-1/` using `wave-1.<letter>.md`.
 - Each wave file must include objective, scope, task breakdown, deliverables, and verification gates.
 - Completed wave work must update:
-  - `docs/waves/wave-1/wave-1.<letter>-journal.md`
-  - `docs/waves/wave-1/wave-1.<letter>-changelog.md`
+  - `docs/internal/waves/wave-1/wave-1.<letter>-journal.md`
+  - `docs/internal/waves/wave-1/wave-1.<letter>-changelog.md`
   - `changelog.md` (concise project-level summary)
 
 ## Implementation guardrails
@@ -62,8 +65,25 @@ Use this protocol when work is wave-based:
    something a real application would need. If a feature doesn't fit the example's use case,
    don't force it. Leave it for the example where it fits naturally.
 
-## Documentation maintenance
+## Documentation maintenance protocol
 
-- Update `docs/BEST_PRACTICES.md` when a new implementation standard is adopted.
-- Update `README.md` when onboarding-relevant facts change (setup, package roles, key concepts, workflow entry points).
-- Update `packages/*/README.md` when a package's exported surface, behavior, or package-local setup commands materially change.
+When making changes that affect the framework's behavior or API, update documentation in the same change set as the code change.
+
+**Architecture docs** (`docs/architecture/`):
+Update when a change affects a core concept — block execution, state ops, streaming behavior, scope semantics, server routes, or client contract. These docs are adapted from the canonical specs in `../preperation/architecture/` and serve as the in-repo reference for framework developers.
+
+**Package READMEs** (`packages/*/README.md`):
+Update when a package's exported surface, behavior, or setup commands materially change. Keep the structure consistent: Purpose → Quick Start → API Surface → Scripts.
+
+**Contributing docs** (`docs/contributing/`):
+- Update `best-practices.md` when a new implementation standard is adopted.
+- Update `architecture-reference.md` when locked contracts change or new ones are established.
+- Update `development-setup.md` when monorepo tooling, build order, or development workflow changes.
+
+**User-facing docs** (`apps/docs/docs/`):
+Update when integration patterns change — server setup, React hooks usage, testing approach, or new concepts are introduced. These docs are for developers building apps WITH the framework.
+
+**Root files**:
+- Update `README.md` when onboarding-relevant facts change (setup, package roles, key concepts).
+- Update `CLAUDE.md` when project orientation, key constraints, or package roles change.
+- Update this file (`AGENTS.md`) when process protocol or collaboration rules change.

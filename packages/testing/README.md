@@ -78,3 +78,9 @@ const result = await testFlow({
 - `testSequencer` step/work traces are inferred from emitted item provenance in Phase 1.
 - Generator mocks are resolved by generator block name first (`generators`) and model id second (`models`).
 - `testFlow` accepts `generators`, `models`, and `unmockedGeneratorPolicy` with the same behavior as `testBlock`.
+
+## Architecture Reference
+
+- [Blocks](../../docs/architecture/blocks.md) — block kinds, BlockContext
+- [Execution and Errors](../../docs/architecture/execution-and-errors.md) — retry, rescue, error model
+- [State and Scopes](../../docs/architecture/state-and-scopes.md) — scope hierarchy, state ops

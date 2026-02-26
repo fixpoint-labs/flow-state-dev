@@ -62,11 +62,31 @@ const snapshot = await sessions.getSessionState("sess_1", {
 });
 ```
 
+### SSE Stream Client
+
+```ts
+import { createSSEClient } from "@flow-state-dev/client";
+
+const stream = createSSEClient({
+  url: `/api/flows/my-flow/requests/${requestId}/stream`,
+  onItemAdded: (event) => { /* handle new item */ },
+  onContentDelta: (event) => { /* handle text chunk */ },
+  onRequestStatus: (event) => {
+    if (event.status === "completed") { /* refetch state */ }
+  },
+});
+```
+
 ## Notes
 
 - `userId` is required for Phase 1 action/session calls.
 - Request stream resume supports both `Last-Event-ID` and `starting_after`.
 - When both resume inputs are supplied, `starting_after` takes precedence.
+
+## Architecture Reference
+
+- [Server and Client](../../docs/architecture/server-and-client.md) — routes, transport, React hooks contract
+- [Streaming](../../docs/architecture/streaming.md) — item/content model, SSE protocol, resume
 
 ## Scripts
 

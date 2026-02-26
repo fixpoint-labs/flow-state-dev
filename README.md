@@ -11,7 +11,9 @@ Building AI features often means stitching together orchestration, retries, stre
 
 ## Why this repo may be worth your time
 
+- You want a framework that doesn't prebake the patterns that you use to implement agentic systems, but instead the primitives that allow you to build your own.
 - You want a typed flow model, not ad-hoc handler chains.
+- You want advanced state and memory management for your agentic workflows and agents.
 - You care about execution semantics (retry, rescue, lifecycle) being explicit and testable.
 - You want item-first streaming with replay/resume, not one-off transport wiring.
 - You want one stack across server, client, React UI, CLI, and tests.
@@ -56,21 +58,22 @@ This is an implementation-phase repository, not a polished production release ye
 
 ```text
 packages/
-  core/
-  server/
-  client/
-  react/
-  testing/
-  cli/
+  core/               # Isomorphic builders, type contracts, item taxonomy
+  server/             # Action runtime, stores, SSE streaming
+  client/             # Isomorphic HTTP/SSE transport client
+  react/              # React hooks, renderers, context providers
+  testing/            # Test harnesses for blocks, flows, generators
+  cli/                # fsdev CLI for running/inspecting flows
 apps/
-  devtool/
+  devtool/            # First-party inspector app
+  docs/               # Docusaurus documentation site
 examples/
-  hello-chat/
-  kitchen-sink/
+  hello-chat/         # Minimal canonical chat flow
+  kitchen-sink/       # Comprehensive feature-reference flow
 docs/
-  BEST_PRACTICES.md
-  ARCHITECTURE_CHEAT_SHEET.compact.md
-  waves/
+  architecture/       # Framework developer reference (9 topic docs)
+  contributing/       # Standards, setup, process docs
+  internal/           # Wave plans, journals, changelogs
 ```
 
 ## Quick start
@@ -98,29 +101,41 @@ pnpm test
 
 ## Start here (new contributors)
 
-1. Read architecture summary: `docs/ARCHITECTURE_CHEAT_SHEET.compact.md`
-2. Check canonical specs: `../preperation/architecture/`
+1. Read architecture overview: `docs/architecture/overview.md`
+2. Browse topic docs: `docs/architecture/` (blocks, flows, state, streaming, etc.)
 3. Review current progress: `changelog.md`
-4. Review standards: `docs/BEST_PRACTICES.md`
+4. Review standards: `docs/contributing/best-practices.md`
+5. For canonical edge cases: `../preperation/architecture/`
 
 ## Documentation map
 
-- Canonical architecture (authoritative): `../preperation/architecture/`
-- Implementation plan: `../preperation/architecture/IMPLEMENTATION_PLAN.md`
-- Package docs:
-  - `packages/server/README.md`
-  - `packages/client/README.md`
-  - `packages/react/README.md`
-  - `packages/testing/README.md`
-- Example docs:
-  - `examples/hello-chat/README.md`
-  - `examples/kitchen-sink/README.md`
-- Best practices (living): `docs/BEST_PRACTICES.md`
+**Architecture reference** (`docs/architecture/`):
+- [Overview](docs/architecture/overview.md) — package structure, core abstractions, data flow
+- [Blocks](docs/architecture/blocks.md) — handler, generator, sequencer, router
+- [Flows and Actions](docs/architecture/flows-and-actions.md) — defineFlow, actions, lifecycle
+- [State and Scopes](docs/architecture/state-and-scopes.md) — 4 scopes, state ops, CAS
+- [Streaming](docs/architecture/streaming.md) — item/content model, SSE protocol, resume
+- [Execution and Errors](docs/architecture/execution-and-errors.md) — retry, rescue, work queue
+- [Resources and Projections](docs/architecture/resources-and-projections.md) — typed data management
+- [Sequencer DSL](docs/architecture/sequencer-dsl.md) — full method reference
+- [Server and Client](docs/architecture/server-and-client.md) — routes, transport, React hooks
+
+**Contributing** (`docs/contributing/`):
+- [Best Practices](docs/contributing/best-practices.md) — implementation standards (BP-001–BP-009)
+- [Architecture Reference](docs/contributing/architecture-reference.md) — locked contracts quick reference
+- [Development Setup](docs/contributing/development-setup.md) — monorepo setup and workflow
+- [Wave Process](docs/contributing/wave-process.md) — wave execution protocol
+
+**Other**:
+- Canonical architecture (authoritative for edge cases): `../preperation/architecture/`
+- Package READMEs: `packages/*/README.md`
+- Example READMEs: `examples/*/README.md`
 - Changelog: `changelog.md`
-- Agent collaboration protocol: `AGENTS.md`
+- Agent protocol: `AGENTS.md`
 
 ## Contributing notes
 
 - Keep onboarding-relevant changes reflected in this README.
-- Keep implementation standards in `docs/BEST_PRACTICES.md`.
+- Keep implementation standards in `docs/contributing/best-practices.md`.
 - Keep wave/process protocol in `AGENTS.md` (not in README).
+- See `AGENTS.md` for the full documentation maintenance protocol.

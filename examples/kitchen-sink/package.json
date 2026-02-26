@@ -7,6 +7,7 @@
     "dev": "next dev",
     "dev:watch": "node scripts/dev-watch.mjs",
     "build": "next build",
+    "vercel-build": "cd ../.. && pnpm install && pnpm -r --filter './packages/**' build && cd examples/kitchen-sink && next build",
     "start": "next start",
     "test": "pnpm --filter @flow-state-dev/testing build && vitest run --root .",
     "test:watch": "vitest --root ."

@@ -44,28 +44,46 @@ Errors:
 - `FlowError` and canonical subclasses
 - `normalizeError`
 
-## Usage
+## Quick Start
+
+### Next.js Catch-All Route
 
 ```ts
+// app/api/flows/[...path]/route.ts
 import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
+import myFlow from "@/flows/my-flow/flow";
 
 const registry = createFlowRegistry();
-registry.register(flow);
+registry.register(myFlow);
 
-const router = createFlowApiRouter({
-  registry
-});
+const router = createFlowApiRouter({ registry });
+
+export const GET = router.GET;
+export const POST = router.POST;
+export const DELETE = router.DELETE;
 ```
 
-Optional custom model registry:
+### Custom Model Resolution
 
 ```ts
 import { createFlowApiRouter, createAiSdkModelResolver } from "@flow-state-dev/server";
 
 const router = createFlowApiRouter({
   registry,
-  modelResolver: createAiSdkModelResolver((modelId) => myModels.resolve(modelId))
+  modelResolver: createAiSdkModelResolver((modelId) => myModels.resolve(modelId)),
 });
+```
+
+### Store Configuration
+
+```ts
+import { createFlowApiRouter, createFilesystemStores, createInMemoryStores } from "@flow-state-dev/server";
+
+// Production: filesystem (default)
+const router = createFlowApiRouter({ registry });
+
+// Testing: in-memory
+const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
 ```
 
 ## Scripts
@@ -82,3 +100,9 @@ const router = createFlowApiRouter({
 - Generator blocks resolve models through `ctx.resolveModel`.
 - By default, server runtime uses a built-in Vercel AI Gateway resolver (`AI_GATEWAY_API_KEY` or Vercel OIDC).
 - `createAiSdkModelResolver` and `createDefaultModelResolver` are available when you need explicit model routing behavior.
+
+## Architecture Reference
+
+- [Server and Client](../../docs/architecture/server-and-client.md) — routes, transport, React hooks contract
+- [Execution and Errors](../../docs/architecture/execution-and-errors.md) — retry, rescue, work queue
+- [Streaming](../../docs/architecture/streaming.md) — item/content model, SSE protocol, resume

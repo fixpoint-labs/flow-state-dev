@@ -166,6 +166,11 @@ Pass `false` to suppress a type (overrides built-in fallbacks):
 const renderers: RendererRegistry = { status: false };
 ```
 
+## Architecture Reference
+
+- [Server and Client](../../docs/architecture/server-and-client.md) — React hooks contract, FlowProvider, rendering
+- [Streaming](../../docs/architecture/streaming.md) — item types, content model, transience
+
 ## Scripts
 
 ```bash

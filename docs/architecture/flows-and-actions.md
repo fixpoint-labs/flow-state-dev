@@ -1,0 +1,224 @@
+# Flows and Actions
+
+A **flow** is the top-level unit of composition. It ties together blocks, state schemas, resources, projections, and lifecycle hooks into a registerable, executable unit.
+
+## Defining a Flow
+
+```ts
+import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const chatFlow = defineFlow({
+  kind: "hello-chat",
+  requireUser: true,
+  actions: {
+    chat: {
+      inputSchema: z.object({ message: z.string().min(1) }),
+      block: chatPipeline,
+      userMessage: (input) => input.message,
+    },
+  },
+  session: {
+    stateSchema: z.object({ messageCount: z.number().default(0) }),
+  },
+});
+```
+
+### FlowType and FlowInstance
+
+`defineFlow` returns a **FlowType** — a callable that produces **FlowInstance**s:
+
+```ts
+const chatFlowType = defineFlow({ kind: "hello-chat", ... });
+
+// Create an instance with overrides
+const flow = chatFlowType({ id: "default" });
+```
+
+Instances support merge-based overrides for action replacement/extension at creation time.
+
+## Actions
+
+Actions are the **entry points** to a flow. Every request executes through a named action.
+
+```ts
+actions: {
+  sendMessage: {
+    inputSchema: z.object({ message: z.string().min(1) }),
+    block: chatSequencer,
+    onCompleted: updateJournalBlock,
+    onErrored: logErrorBlock,
+    userMessage: (input) => input.message,
+  },
+}
+```
+
+| Field | Purpose |
+|-------|---------|
+| `inputSchema` | Zod schema — validated before block execution |
+| `block` | Root block to execute for this action |
+| `userMessage` | Optional function extracting display text → emits a `MessageItem` (role: "user") as the first stream item |
+| `onCompleted` | Block executed on terminal success |
+| `onErrored` | Block executed on terminal failure |
+
+**Key rules:**
+- Actions are flow-level — not nested in session or scope configs
+- Action input validation runs before any block execution
+- `userMessage` is optional — omit it for system triggers or background tasks
+
+## Scope Configuration
+
+Flows configure state and resources across four scopes:
+
+```ts
+defineFlow({
+  kind: "my-flow",
+  requireUser: true,
+  actions: { /* ... */ },
+
+  request: {
+    stateSchema: z.object({ /* per-request state */ }),
+    onStarted: requestStartedBlock,
+    onCompleted: requestCompletedBlock,
+    onErrored: requestErroredBlock,
+    onFinished: requestFinishedBlock,
+    onStepErrored: stepErrorBlock,
+  },
+
+  session: {
+    stateSchema: z.object({ mode: z.enum(["plan", "edit"]).default("plan") }),
+    resources: { /* concrete persisted resources */ },
+    projections: { /* derived views */ },
+  },
+
+  user: {
+    stateSchema: z.object({ /* per-user state */ }),
+    resources: { /* ... */ },
+    projections: { /* ... */ },
+  },
+
+  project: {
+    stateSchema: z.object({ /* project-wide state */ }),
+    resources: { /* ... */ },
+    projections: { /* ... */ },
+  },
+
+  work: {
+    onStarted: workStartedBlock,
+    onCompleted: workCompletedBlock,
+    onErrored: workErroredBlock,
+    onFinished: workFinishedBlock,
+  },
+});
+```
+
+## Lifecycle Hooks
+
+Observational hooks fire at specific points in the request lifecycle:
+
+| Hook | Fires When |
+|------|------------|
+| `onStarted` | Request begins (after session/context resolution) |
+| `onCompleted` | Terminal success only |
+| `onErrored` | Terminal failure only |
+| `onFinished` | Always (success or failure) |
+| `onStepErrored` | Non-terminal step/work failure (for visibility) |
+
+Hooks use **past tense** naming — this is canonical. Present-tense names are reserved for future pre-execution hooks (not Phase 1).
+
+Hooks can be plain callbacks or blocks. If you pass a block, its `inputSchema` must accept the lifecycle event shape.
+
+## Request Execution Pipeline
+
+When an action is invoked, the framework executes this sequence:
+
+1. Resolve flow instance and action
+2. Validate action input against `inputSchema`
+3. Resolve or create session (ephemeral if no `sessionId`)
+4. Require user context (Phase 1 policy)
+5. Create request scope and state
+6. Emit user message item (if `userMessage` defined)
+7. Fire `request.onStarted`
+8. Execute action root block via `block.run(input, ctx)`
+9. Fire action + request completion/error hooks
+10. Fire `request.onFinished`
+11. Persist state and emit terminal stream status
+
+## Resources and Projections
+
+Resources are **concrete persisted data** attached to a scope. Projections are **derived views** computed from state and resources.
+
+```ts
+session: {
+  stateSchema: sessionStateSchema,
+  resources: {
+    plan: {
+      stateSchema: z.object({ steps: z.array(z.string()).default([]) }),
+      writable: true,
+    },
+  },
+  projections: {
+    activePlan: {
+      client: true,
+      compute: (ctx) => ctx.session.resources.plan?.state.steps ?? [],
+    },
+  },
+},
+```
+
+**Key rules:**
+- Client-facing values are exposed through projections only (`client: true`)
+- Generator context should use `projection(...)` references, not raw state dumps
+- Inline declarations are fine; use `defineResource()`/`defineProjection()` for portable reuse
+- Inline projections inherit parent scope schemas automatically
+
+See [Resources and Projections](./resources-and-projections.md) for the full model.
+
+## Flow Discovery
+
+Convention: `src/flows/**/flow.ts`
+
+Each flow module exports one flow instance (or array of instances):
+
+```ts
+// src/flows/hello-chat/flow.ts
+export default helloChatFlow({ id: "default" });
+```
+
+## Route Shape
+
+Server routes follow a canonical pattern:
+
+```
+POST /api/flows/:flowKind/actions/:action
+POST /api/flows/:flowKind/:sessionId/actions/:action
+GET  /api/flows/:flowKind/requests/:requestId/stream
+```
+
+Typically mounted via a Next.js catch-all: `app/api/flows/[...path]/route.ts`
+
+## Tools Configuration
+
+Flow-level tool defaults and lifecycle observers:
+
+```ts
+defineFlow({
+  // ...
+  tools: {
+    defaults: {
+      timeoutMs: 30000,
+      concurrency: "parallel",
+      retry: { maxAttempts: 2 },
+    },
+    onToolStarted: (event, ctx) => { /* ... */ },
+    onToolCompleted: (event, ctx) => { /* ... */ },
+    onToolErrored: (event, ctx) => { /* ... */ },
+  },
+});
+```
+
+Generators still explicitly choose which tools are exposed per call — flow-level `tools` provides defaults and observability.
+
+## Canonical Authority
+
+For full type signatures and edge cases, see `../preperation/architecture/FLOW_SYSTEM.md`.

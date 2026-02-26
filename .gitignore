@@ -3,3 +3,5 @@ dist
 *.tsbuildinfo
 .next
 .env.local
+.docusaurus
+apps/docs/build

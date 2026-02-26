@@ -1,0 +1,118 @@
+import { themes as prismThemes } from "prism-react-renderer";
+import type { Config } from "@docusaurus/types";
+import type * as Preset from "@docusaurus/preset-classic";
+
+const config: Config = {
+  title: "Flow State Dev",
+  tagline: "Block-based AI workflow framework for TypeScript",
+  favicon: "img/favicon.ico",
+
+  url: "https://flowstatedev.com",
+  baseUrl: "/",
+
+  organizationName: "flow-state-dev",
+  projectName: "flow-state-dev",
+
+  onBrokenLinks: "throw",
+
+  markdown: {
+    hooks: {
+      onBrokenMarkdownLinks: "warn",
+    },
+  },
+
+  i18n: {
+    defaultLocale: "en",
+    locales: ["en"],
+  },
+
+  presets: [
+    [
+      "classic",
+      {
+        docs: {
+          sidebarPath: "./sidebars.ts",
+          editUrl:
+            "https://github.com/flow-state-dev/flow-state-dev/tree/main/implementation/apps/docs/",
+        },
+        blog: {
+          showReadingTime: true,
+          editUrl:
+            "https://github.com/flow-state-dev/flow-state-dev/tree/main/implementation/apps/docs/",
+        },
+        theme: {
+          customCss: "./src/css/custom.css",
+        },
+      } satisfies Preset.Options,
+    ],
+  ],
+
+  themeConfig: {
+    navbar: {
+      title: "Flow State Dev",
+      items: [
+        {
+          type: "docSidebar",
+          sidebarId: "docsSidebar",
+          position: "left",
+          label: "Docs",
+        },
+        { to: "/blog", label: "Blog", position: "left" },
+        {
+          href: "https://github.com/flow-state-dev/flow-state-dev",
+          label: "GitHub",
+          position: "right",
+        },
+      ],
+    },
+    footer: {
+      style: "dark",
+      links: [
+        {
+          title: "Docs",
+          items: [
+            { label: "Introduction", to: "/docs/intro" },
+            { label: "Quick Start", to: "/docs/getting-started/quick-start" },
+            { label: "Concepts", to: "/docs/concepts/blocks" },
+          ],
+        },
+        {
+          title: "Guides",
+          items: [
+            {
+              label: "Building a Chat App",
+              to: "/docs/guides/building-a-chat-app",
+            },
+            { label: "Server Setup", to: "/docs/guides/server-setup" },
+            {
+              label: "React Integration",
+              to: "/docs/guides/react-integration",
+            },
+          ],
+        },
+        {
+          title: "More",
+          items: [
+            { label: "Blog", to: "/blog" },
+            {
+              label: "GitHub",
+              href: "https://github.com/flow-state-dev/flow-state-dev",
+            },
+          ],
+        },
+      ],
+      copyright: `Copyright ${new Date().getFullYear()} Flow State Dev. Built with Docusaurus.`,
+    },
+    prism: {
+      theme: prismThemes.github,
+      darkTheme: prismThemes.dracula,
+      additionalLanguages: ["bash", "json"],
+    },
+    colorMode: {
+      defaultMode: "dark",
+      respectPrefersColorScheme: true,
+    },
+  } satisfies Preset.ThemeConfig,
+};
+
+export default config;
