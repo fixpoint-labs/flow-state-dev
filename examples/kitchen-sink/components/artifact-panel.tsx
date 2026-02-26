@@ -5,13 +5,15 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { FileText, Package } from "lucide-react";
 
-type ArtifactSummary = { id: string; title: string };
+type ArtifactSummary = { id: string; title: string; content: string };
 
 interface ArtifactPanelProps {
   artifacts: ArtifactSummary[];
+  selectedId?: string | null;
+  onSelect?: (id: string) => void;
 }
 
-export function ArtifactPanel({ artifacts }: ArtifactPanelProps) {
+export function ArtifactPanel({ artifacts, selectedId, onSelect }: ArtifactPanelProps) {
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-l bg-muted/30">
       <div className="flex items-center gap-2 px-4 py-3">
@@ -27,9 +29,15 @@ export function ArtifactPanel({ artifacts }: ArtifactPanelProps) {
       <ScrollArea className="flex-1 p-2">
         <div className="flex flex-col gap-1">
           {artifacts.map((artifact) => (
-            <div
+            <button
               key={artifact.id}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+              type="button"
+              onClick={() => onSelect?.(artifact.id)}
+              className={`flex items-center gap-2 rounded-md px-3 py-2 text-sm text-left w-full transition-colors ${
+                selectedId === artifact.id
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              }`}
             >
               <FileText className="h-4 w-4 shrink-0" />
               <div className="flex flex-col min-w-0">
@@ -38,7 +46,7 @@ export function ArtifactPanel({ artifacts }: ArtifactPanelProps) {
                 </span>
                 <span className="truncate text-xs">{artifact.id}</span>
               </div>
-            </div>
+            </button>
           ))}
           {artifacts.length === 0 && (
             <p className="px-3 py-4 text-center text-xs text-muted-foreground">

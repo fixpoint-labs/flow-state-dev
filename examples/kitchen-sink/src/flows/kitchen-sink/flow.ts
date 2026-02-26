@@ -77,7 +77,8 @@ const userStateSchema = z.object({
 const artifactsListOutputSchema = z.array(
   z.object({
     id: z.string(),
-    title: z.string()
+    title: z.string(),
+    content: z.string()
   })
 );
 
@@ -289,7 +290,8 @@ const kitchenSinkFlow = defineFlow({
 
           return artifacts.order.map((id) => ({
             id,
-            title: artifacts.byId[id]?.title ?? "Untitled"
+            title: artifacts.byId[id]?.title ?? "Untitled",
+            content: artifacts.byId[id]?.content ?? ""
           }));
         }
       },

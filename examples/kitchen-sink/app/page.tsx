@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   FlowProvider,
   ItemsRenderer,
@@ -40,6 +40,7 @@ import { SessionSidebar } from "@/components/session-sidebar";
 import { ModeSelector } from "@/components/mode-selector";
 import { ProjectionsBar } from "@/components/projections-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
+import { ArtifactViewer } from "@/components/artifact-viewer";
 import { SuggestionRow } from "@/components/suggestion-row";
 
 
@@ -100,6 +101,7 @@ function KitchenSinkApp() {
 
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<"chat" | "plan" | "review">("chat");
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
 
   // Projections: live derived views from session + user state
   const projections = useProjections(session, PROJECTION_OPTIONS);
@@ -107,6 +109,12 @@ function KitchenSinkApp() {
   const modeStatus = projections.session?.modeStatus;
   const userPrefs = projections.user?.preferences;
   const artifacts = projections.session?.artifactsList ?? [];
+
+  // Resolve the selected artifact from the live projection data so it auto-updates
+  const selectedArtifact = useMemo(
+    () => artifacts.find((a) => a.id === selectedArtifactId) ?? null,
+    [artifacts, selectedArtifactId]
+  );
 
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
@@ -205,8 +213,20 @@ function KitchenSinkApp() {
         </div>
       </main>
 
-      {/* Right sidebar: artifacts */}
-      <ArtifactPanel artifacts={artifacts} />
+      {/* Right panel: artifact list or expanded viewer */}
+      {selectedArtifact ? (
+        <ArtifactViewer
+          artifact={selectedArtifact}
+          onClose={() => setSelectedArtifactId(null)}
+          onBack={() => setSelectedArtifactId(null)}
+        />
+      ) : (
+        <ArtifactPanel
+          artifacts={artifacts}
+          selectedId={selectedArtifactId}
+          onSelect={setSelectedArtifactId}
+        />
+      )}
     </div>
   );
 }
