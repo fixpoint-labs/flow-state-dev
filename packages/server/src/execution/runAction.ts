@@ -239,6 +239,15 @@ export async function runActionInternal<
   });
   const logger = options.logger ?? DEFAULT_RUNTIME_LOGGER;
 
+  response.setLogCallback((eventType, detail) => {
+    logRuntimeEvent(logger, "debug", `[flow-state] ${eventType}`, {
+      requestId,
+      actionName: options.actionName,
+      flowKind: options.flow.kind,
+      ...detail
+    });
+  });
+
   const ctx = await createExecutionContext({
     flow: options.flow,
     actionName: options.actionName,
