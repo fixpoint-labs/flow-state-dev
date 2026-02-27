@@ -27,6 +27,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Build packages
+        run: pnpm --filter './packages/*' -r build
+
       - name: Typecheck
         run: pnpm typecheck
 
