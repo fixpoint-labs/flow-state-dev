@@ -70,6 +70,14 @@ export interface BlockContext<
   emitComponent(component: string, data: Record<string, unknown>): ComponentHandle;
   emitLLMContext(text: string): void;
   emitStatus(message: string): void;
+
+  /** @internal Server-side instrumentation hooks. Not part of the public API. */
+  _runtimeHooks?: {
+    onBlockStart?: (blockName: string, blockKind: string, input: unknown) => void;
+    onBlockComplete?: (blockName: string, blockKind: string, output: unknown, durationMs: number) => void;
+    onBlockError?: (blockName: string, blockKind: string, error: unknown, durationMs: number) => void;
+    onRouteSelected?: (routerName: string, selectedBlockName: string) => void;
+  };
 }
 
 export type ConnectorFn<TFrom, TTo> = (

@@ -90,6 +90,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   private sequenceNumber: number;
   private readonly events: RequestStreamEventWithId[] = [];
   private readonly itemsById = new Map<string, OutputItem>();
+  private onLogEvent?: (eventType: string, detail: Record<string, unknown>) => void;
 
   /**
    * Creates a request-scoped emitter instance.
@@ -100,6 +101,14 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     this.now = options.now ?? (() => Date.now());
     this.onEvent = options.onEvent;
     this.internalSeams = options.internalSeams ?? NOOP_INTERNAL_STREAMING_SEAMS;
+  }
+
+  /**
+   * Sets a logging callback for item and content lifecycle events.
+   * @internal Used by the execution layer for runtime observability.
+   */
+  setLogCallback(fn: (eventType: string, detail: Record<string, unknown>) => void): void {
+    this.onLogEvent = fn;
   }
 
   /**
@@ -164,6 +173,13 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       "item.added"
     );
     this.itemsById.set(interceptedItem.id, interceptedItem);
+
+    this.onLogEvent?.("item.added", {
+      itemId: interceptedItem.id,
+      itemType: interceptedItem.type,
+      blockName: interceptedItem.provenance?.blockName
+    });
+
     return this.appendEvent<ItemAddedEvent>({
       type: "item.added",
       item: interceptedItem
@@ -194,6 +210,12 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     contentIndex: number,
     content: Content
   ): Promise<RequestStreamEventWithId> {
+    this.onLogEvent?.("content.added", {
+      itemId,
+      contentIndex,
+      contentType: content.type
+    });
+
     return this.appendEvent<ContentPartAddedEvent>({
       type: "content.added",
       itemId,

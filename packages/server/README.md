@@ -23,6 +23,7 @@ Context/runtime:
 - `createExecutionContext`
 - `runAction`
 - `executeBlock`
+- `DEFAULT_RUNTIME_LOGGER`, `summarizeForLog` (structured execution logging helpers)
 
 Stores:
 - `createInMemoryStores`
@@ -85,6 +86,30 @@ const router = createFlowApiRouter({ registry });
 // Testing: in-memory
 const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
 ```
+
+
+## Runtime Logs
+
+`runAction` and `executeBlock` emit structured logs by default (flow/action/block IDs, attempt numbers, summarized input/output payloads, retries, and terminal errors).
+
+Pass `logger` in `runAction(...)` or `executeBlock(...)` to route logs to your preferred sink:
+
+```ts
+await runAction({
+  flow,
+  actionName: "reply",
+  input,
+  userId: "user_123",
+  stores,
+  logger: {
+    info: (message, context) => appLogger.info({ ...context }, message),
+    warn: (message, context) => appLogger.warn({ ...context }, message),
+    error: (message, context) => appLogger.error({ ...context }, message)
+  }
+});
+```
+
+Use `summarizeForLog(value)` when you need the same bounded payload summaries in custom observers/middleware.
 
 ## Scripts
 

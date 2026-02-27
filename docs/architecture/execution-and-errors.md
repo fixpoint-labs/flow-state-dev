@@ -163,6 +163,18 @@ generator({
 });
 ```
 
+## Runtime Logging
+
+Server runtime execution emits structured logs at action and block boundaries:
+
+- Action lifecycle: started, completed, failed
+- Block lifecycle: started, completed, failed
+- Retry lifecycle: each scheduled retry with attempt + delay
+
+Each entry includes request/action/block identity fields and summarized payloads (bounded strings) so logs remain readable for large outputs while preserving debugging signal.
+
+You can override the sink by passing `logger` to `runAction` or `executeBlock`; by default logs go to the console (disabled in test environments).
+
 ## Request Lifecycle
 
 The full request execution sequence:

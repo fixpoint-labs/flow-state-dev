@@ -13,6 +13,12 @@ import {
   NOOP_INTERNAL_EXECUTION_SEAMS,
   type InternalExecutionSeams
 } from "./internal/seams";
+import {
+  DEFAULT_RUNTIME_LOGGER,
+  createExecutionLogContext,
+  logRuntimeEvent,
+  summarizeForLog
+} from "./logging";
 import { mergeRetryPolicy, retryWithPolicy } from "./retry";
 import type {
   ExecuteBlockContext,
@@ -45,8 +51,7 @@ function createBlockOutputProvenance(
 ): ItemProvenance {
   return {
     blockName,
-    blockInstanceId:
-      metadata.blockInstanceId ?? `${blockName}_${metadata.requestId}`,
+    blockInstanceId: metadata.blockInstanceId!,
     phase: metadata.scope === "work" ? "work" : "main",
     stepIndex: metadata.stepIndex,
     workGroupId: metadata.workGroupId,
@@ -129,19 +134,41 @@ export async function executeBlock(
 ): Promise<ExecuteBlockResult> {
   const startedAt = Date.now();
   const seams = options.internalSeams ?? NOOP_INTERNAL_EXECUTION_SEAMS;
+  const blockInstanceId =
+    options.metadata?.blockInstanceId ??
+    `${options.block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const metadata = createExecutionMetadata(options.ctx, {
     ...options.metadata,
     blockName: options.block.name,
     blockKind: options.block.kind,
+    blockInstanceId,
     scope: options.metadata?.scope ?? "block"
   });
+  const logger = options.logger ?? DEFAULT_RUNTIME_LOGGER;
+  let attempt = 0;
 
   try {
     const run = async (): Promise<unknown> => {
+      attempt += 1;
+      const attemptMetadata = {
+        ...metadata,
+        attempt
+      };
+
+      logRuntimeEvent(
+        logger,
+        "debug",
+        "[flow-state] block execution started",
+        {
+          ...createExecutionLogContext(attemptMetadata),
+          input: summarizeForLog(options.input)
+        }
+      );
+
       const interceptedInput = applyBlockInputSeam(
         seams,
         options.input,
-        metadata
+        attemptMetadata
       );
 
       const output = await executeByKind(
@@ -150,11 +177,24 @@ export async function executeBlock(
         options.ctx,
         {
           internalSeams: seams,
-          metadata
+          metadata: attemptMetadata
         }
       );
 
-      return applyBlockOutputSeam(seams, output, metadata);
+      const interceptedOutput = applyBlockOutputSeam(seams, output, attemptMetadata);
+
+      logRuntimeEvent(
+        logger,
+        "debug",
+        "[flow-state] block execution completed",
+        {
+          ...createExecutionLogContext(attemptMetadata),
+          durationMs: Date.now() - startedAt,
+          output: summarizeForLog(interceptedOutput)
+        }
+      );
+
+      return interceptedOutput;
     };
 
     const retryPolicy = mergeRetryPolicy(
@@ -165,14 +205,36 @@ export async function executeBlock(
       retryPolicy === undefined
         ? await run()
         : await retryWithPolicy(run, retryPolicy, {
-            signal: options.ctx.signal
+            signal: options.ctx.signal,
+            onRetry: (retryAttempt, error) => {
+              logRuntimeEvent(
+                logger,
+                "warn",
+                "[flow-state] block execution retry scheduled",
+                {
+                  ...createExecutionLogContext({
+                    ...metadata,
+                    attempt: retryAttempt
+                  }),
+                  maxAttempts: retryPolicy.maxAttempts,
+                  delayMs: Math.min(
+                    retryPolicy.maxDelayMs,
+                    retryPolicy.baseDelayMs * Math.pow(2, retryAttempt - 1)
+                  ),
+                  error: summarizeForLog(error)
+                }
+              );
+            }
           });
 
     await emitBlockOutputItem({
       block: options.block,
       output,
       ctx: options.ctx,
-      metadata
+      metadata: {
+        ...metadata,
+        attempt
+      }
     });
 
     return {
@@ -185,6 +247,20 @@ export async function executeBlock(
       blockName: options.block.name,
       scope: "block"
     });
+
+    logRuntimeEvent(
+      logger,
+      "error",
+      "[flow-state] block execution failed",
+      {
+        ...createExecutionLogContext({
+          ...metadata,
+          attempt: attempt > 0 ? attempt : metadata.attempt
+        }),
+        durationMs: Date.now() - startedAt,
+        error: summarizeForLog(normalized)
+      }
+    );
 
     return {
       output: undefined,

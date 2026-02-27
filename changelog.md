@@ -2,6 +2,15 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-02-27
+
+### Server runtime logging improvements
+
+- Added structured action/block execution logging in `@flow-state-dev/server` with default console output, bounded payload summaries, retry visibility, and terminal error logs.
+- Added `RuntimeLogger` hooks (`logger` option on `runAction`/`executeBlock`) plus reusable helpers (`DEFAULT_RUNTIME_LOGGER`, `summarizeForLog`, `createExecutionLogContext`).
+- Added execution-focused tests for retry/failure log coverage and log summarization helpers.
+- Updated execution architecture and server package docs to describe runtime log behavior and customization.
+
 ## 2026-02-15
 
 ### Planning foundation

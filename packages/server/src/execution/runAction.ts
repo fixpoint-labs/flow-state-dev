@@ -8,6 +8,12 @@ import type {
   FlowInstance
 } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "../context/createExecutionContext";
+import {
+  createExecutionLogContext,
+  DEFAULT_RUNTIME_LOGGER,
+  logRuntimeEvent,
+  summarizeForLog
+} from "./logging";
 import type { ExecutionContext } from "../context/types";
 import type { FlowError } from "../errors/flow-error";
 import { ValidationError } from "../errors/flow-error";
@@ -231,6 +237,16 @@ export async function runActionInternal<
     requestId,
     internalSeams: undefined
   });
+  const logger = options.logger ?? DEFAULT_RUNTIME_LOGGER;
+
+  response.setLogCallback((eventType, detail) => {
+    logRuntimeEvent(logger, "debug", `[flow-state] ${eventType}`, {
+      requestId,
+      actionName: options.actionName,
+      flowKind: options.flow.kind,
+      ...detail
+    });
+  });
 
   const ctx = await createExecutionContext({
     flow: options.flow,
@@ -244,11 +260,17 @@ export async function runActionInternal<
     signal: options.signal,
     modelResolver: options.modelResolver,
     response,
-    stores: options.stores
+    stores: options.stores,
+    logger
   });
 
   const metadata = createExecutionMetadata(ctx, {
     scope: "request"
+  });
+
+  logRuntimeEvent(logger, "info", "[flow-state] action execution started", {
+    ...createExecutionLogContext(metadata),
+    input: summarizeForLog(options.input)
   });
 
   await emitActionLifecycleSeam(internalSeams, "started", metadata);
@@ -290,7 +312,8 @@ export async function runActionInternal<
       internalSeams,
       metadata: {
         scope: "request"
-      }
+      },
+      logger
     });
 
     if (result.error !== undefined) {
@@ -322,6 +345,12 @@ export async function runActionInternal<
 
     await response.emitRequestStatus("completed");
     await emitActionLifecycleSeam(internalSeams, "completed", metadata);
+
+    logRuntimeEvent(logger, "info", "[flow-state] action execution completed", {
+      ...createExecutionLogContext(metadata),
+      durationMs: Date.now() - startedAt,
+      output: summarizeForLog(result.output)
+    });
 
     await runObserver(options.flow.request?.onFinished, {
       requestId,
@@ -379,6 +408,12 @@ export async function runActionInternal<
       error: normalized
     }, ctx, { internalSeams });
     await emitActionLifecycleSeam(internalSeams, "finished", metadata);
+
+    logRuntimeEvent(logger, "error", "[flow-state] action execution failed", {
+      ...createExecutionLogContext(metadata),
+      durationMs: Date.now() - startedAt,
+      error: summarizeForLog(normalized)
+    });
 
     return {
       output: undefined,

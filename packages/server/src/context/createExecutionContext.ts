@@ -37,6 +37,7 @@ import type {
   UserRecord
 } from "../stores/types";
 import { createDefaultModelResolver } from "../models/createDefaultModelResolver";
+import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 
 function normalizeLimit(
@@ -1109,6 +1110,51 @@ export async function createExecutionContext<
     nextItemIndex: () => emittedItemCount++
   };
 
+  const logger = options.logger;
+  const baseLogContext = {
+    requestId: requestRef.current.id,
+    actionName: options.actionName,
+    flowKind: flow.kind
+  };
+
+  const _runtimeHooks: ExecutionContext["_runtimeHooks"] = logger
+    ? {
+        onBlockStart: (blockName, blockKind, input) => {
+          logRuntimeEvent(logger, "debug", "[flow-state] nested block started", {
+            ...baseLogContext,
+            blockName,
+            blockKind,
+            input: summarizeForLog(input)
+          });
+        },
+        onBlockComplete: (blockName, blockKind, output, durationMs) => {
+          logRuntimeEvent(logger, "debug", "[flow-state] nested block completed", {
+            ...baseLogContext,
+            blockName,
+            blockKind,
+            durationMs,
+            output: summarizeForLog(output)
+          });
+        },
+        onBlockError: (blockName, blockKind, error, durationMs) => {
+          logRuntimeEvent(logger, "error", "[flow-state] nested block failed", {
+            ...baseLogContext,
+            blockName,
+            blockKind,
+            durationMs,
+            error: summarizeForLog(error)
+          });
+        },
+        onRouteSelected: (routerName, selectedBlockName) => {
+          logRuntimeEvent(logger, "debug", "[flow-state] router selected route", {
+            ...baseLogContext,
+            routerName,
+            selectedRoute: selectedBlockName
+          });
+        }
+      }
+    : undefined;
+
   return {
     flow,
     actionName: options.actionName,
@@ -1134,6 +1180,7 @@ export async function createExecutionContext<
     emitMessage: createEmitMessage(emCtx),
     emitComponent: createEmitComponent(emCtx),
     emitLLMContext: createEmitLLMContext(emCtx),
-    emitStatus: createEmitStatus(emCtx)
+    emitStatus: createEmitStatus(emCtx),
+    _runtimeHooks
   };
 }

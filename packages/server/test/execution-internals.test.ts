@@ -18,6 +18,10 @@ import {
   emitGeneratorLifecycleSeam,
   NOOP_INTERNAL_EXECUTION_SEAMS
 } from "../src/execution/internal/seams";
+import {
+  createExecutionLogContext,
+  summarizeForLog
+} from "../src/execution/logging";
 import { createExecutionMetadata } from "../src/execution/types";
 import { FlowError } from "../src/errors/flow-error";
 
@@ -154,6 +158,29 @@ describe("execution internals", () => {
     );
 
     expect(stages).toEqual(["before_execute", "completed"]);
+  });
+
+  it("summarizes long log payloads and builds stable log context", async () => {
+    const summary = summarizeForLog({
+      payload: "x".repeat(400)
+    }, 60);
+
+    expect(summary.endsWith("…")).toBe(true);
+
+    const ctx = await createCtx("req_log_context");
+    const metadata = createExecutionMetadata(ctx, {
+      blockName: "my-block",
+      blockKind: "handler",
+      attempt: 2
+    });
+
+    expect(createExecutionLogContext(metadata)).toMatchObject({
+      requestId: "req_log_context",
+      actionName: "run",
+      blockName: "my-block",
+      blockKind: "handler",
+      attempt: 2
+    });
   });
 
   it("builds execution metadata with explicit override and fallback paths", async () => {
