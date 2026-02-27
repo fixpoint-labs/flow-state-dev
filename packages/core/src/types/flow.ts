@@ -3,7 +3,6 @@ import type { BlockContext, BlockDefinition, RetryPolicy } from "./block";
 import type {
   ProjectionComputeFn,
   ProjectionConfig,
-  ProjectionShorthand,
   ResourceConfig,
   ResourceHandle,
   StateOf
@@ -12,6 +11,49 @@ import type {
 type InferResourceHandles<TResources extends Record<string, ResourceConfig>> = {
   [K in keyof TResources]: ResourceHandle<StateOf<TResources[K]>>;
 };
+
+
+type SessionProjectionEntry<TResources extends Record<string, ResourceConfig>> =
+  | ProjectionConfig<
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      InferResourceHandles<TResources>
+    >
+  | ProjectionComputeFn<any, any, any, any, InferResourceHandles<TResources>>;
+
+type UserProjectionEntry<TResources extends Record<string, ResourceConfig>> =
+  | ProjectionConfig<
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      Record<string, ResourceHandle<any>>,
+      InferResourceHandles<TResources>
+    >
+  | ProjectionComputeFn<any, any, any, any, Record<string, ResourceHandle<any>>, InferResourceHandles<TResources>>;
+
+type ProjectProjectionEntry<TResources extends Record<string, ResourceConfig>> =
+  | ProjectionConfig<
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      any,
+      Record<string, ResourceHandle<any>>,
+      Record<string, ResourceHandle<any>>,
+      InferResourceHandles<TResources>
+    >
+  | ProjectionComputeFn<any, any, any, any, Record<string, ResourceHandle<any>>, Record<string, ResourceHandle<any>>, InferResourceHandles<TResources>>;
 
 export type HookHandler<TInput = unknown> = (
   input: TInput,
@@ -47,29 +89,12 @@ export type ActionConfig<
 };
 
 export type SessionConfig<
-  TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>,
-  TProjections extends Record<
-    string,
-    | ProjectionConfig<
-        any,
-        any,
-        any,
-        any,
-        undefined,
-        undefined,
-        undefined,
-        InferResourceHandles<TResources>
-      >
-    | ProjectionComputeFn<any, any, any, any, InferResourceHandles<TResources>>
-  > = Record<
-    string,
-    ProjectionConfig | ProjectionShorthand
-  >
+  TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>
 > = {
   metadata?: ZodTypeAny;
   stateSchema?: ZodTypeAny;
   resources?: TResources;
-  projections?: TProjections;
+  projections?: Record<string, SessionProjectionEntry<TResources>>;
 };
 
 export type RequestConfig = {
@@ -82,56 +107,19 @@ export type RequestConfig = {
 };
 
 export type UserConfig<
-  TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>,
-  TProjections extends Record<
-    string,
-    | ProjectionConfig<
-        any,
-        any,
-        any,
-        any,
-        undefined,
-        undefined,
-        undefined,
-        Record<string, ResourceHandle<any>>,
-        InferResourceHandles<TResources>
-      >
-    | ProjectionComputeFn<any, any, any, any, Record<string, ResourceHandle<any>>, InferResourceHandles<TResources>>
-  > = Record<
-    string,
-    ProjectionConfig | ProjectionShorthand
-  >
+  TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>
 > = {
   stateSchema?: ZodTypeAny;
   resources?: TResources;
-  projections?: TProjections;
+  projections?: Record<string, UserProjectionEntry<TResources>>;
 };
 
 export type ProjectConfig<
-  TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>,
-  TProjections extends Record<
-    string,
-    | ProjectionConfig<
-        any,
-        any,
-        any,
-        any,
-        undefined,
-        undefined,
-        undefined,
-        Record<string, ResourceHandle<any>>,
-        Record<string, ResourceHandle<any>>,
-        InferResourceHandles<TResources>
-      >
-    | ProjectionComputeFn<any, any, any, any, Record<string, ResourceHandle<any>>, Record<string, ResourceHandle<any>>, InferResourceHandles<TResources>>
-  > = Record<
-    string,
-    ProjectionConfig | ProjectionShorthand
-  >
+  TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>
 > = {
   stateSchema?: ZodTypeAny;
   resources?: TResources;
-  projections?: TProjections;
+  projections?: Record<string, ProjectProjectionEntry<TResources>>;
 };
 
 export type WorkConfig = {
