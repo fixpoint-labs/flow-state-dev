@@ -18,7 +18,7 @@ const projectionResourceInferenceSmoke = defineFlow({
       artifactsTitles: {
         client: true,
         compute: (ctx) => {
-          const artifacts = ctx.session.resources.get("artifacts").state;
+          const artifacts = ctx.session.resources.artifacts.state;
           const firstId = artifacts.order[0];
           const title = firstId === undefined ? undefined : artifacts.byId[firstId]?.title;
           return title ?? "untitled";
@@ -45,7 +45,7 @@ const portableProjection = defineProjection({
     artifacts: artifactsResource
   },
   compute: (ctx) => {
-    const artifacts = ctx.session.resources.get("artifacts").state;
+    const artifacts = ctx.session.resources.artifacts.state;
     const firstId = artifacts.order[0];
     return firstId === undefined ? "untitled" : artifacts.byId[firstId]?.title ?? "untitled";
   }
