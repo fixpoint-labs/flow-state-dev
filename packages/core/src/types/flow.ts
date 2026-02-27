@@ -7,6 +7,7 @@ import type {
   ResourceHandle,
   StateOf
 } from "./resource";
+import type { JsonObject } from "../schema/common";
 
 type InferResourceHandles<TResources extends Record<string, ResourceConfig>> = {
   [K in keyof TResources]: ResourceHandle<StateOf<TResources[K]>>;
@@ -15,37 +16,50 @@ type InferResourceHandles<TResources extends Record<string, ResourceConfig>> = {
 
 type SessionProjectionEntry<TResources extends Record<string, ResourceConfig>> =
   | ProjectionConfig<
-      any,
-      any,
-      any,
-      any,
+      JsonObject,
+      JsonObject,
+      JsonObject,
+      JsonObject,
       any,
       any,
       any,
       InferResourceHandles<TResources>
     >
-  | ProjectionComputeFn<any, any, any, any, InferResourceHandles<TResources>>;
+  | ProjectionComputeFn<
+      JsonObject,
+      JsonObject,
+      JsonObject,
+      JsonObject,
+      InferResourceHandles<TResources>
+    >;
 
 type UserProjectionEntry<TResources extends Record<string, ResourceConfig>> =
   | ProjectionConfig<
-      any,
-      any,
-      any,
-      any,
+      JsonObject,
+      JsonObject,
+      JsonObject,
+      JsonObject,
       any,
       any,
       any,
       Record<string, ResourceHandle<any>>,
       InferResourceHandles<TResources>
     >
-  | ProjectionComputeFn<any, any, any, any, Record<string, ResourceHandle<any>>, InferResourceHandles<TResources>>;
+  | ProjectionComputeFn<
+      JsonObject,
+      JsonObject,
+      JsonObject,
+      JsonObject,
+      Record<string, ResourceHandle<any>>,
+      InferResourceHandles<TResources>
+    >;
 
 type ProjectProjectionEntry<TResources extends Record<string, ResourceConfig>> =
   | ProjectionConfig<
-      any,
-      any,
-      any,
-      any,
+      JsonObject,
+      JsonObject,
+      JsonObject,
+      JsonObject,
       any,
       any,
       any,
@@ -53,7 +67,15 @@ type ProjectProjectionEntry<TResources extends Record<string, ResourceConfig>> =
       Record<string, ResourceHandle<any>>,
       InferResourceHandles<TResources>
     >
-  | ProjectionComputeFn<any, any, any, any, Record<string, ResourceHandle<any>>, Record<string, ResourceHandle<any>>, InferResourceHandles<TResources>>;
+  | ProjectionComputeFn<
+      JsonObject,
+      JsonObject,
+      JsonObject,
+      JsonObject,
+      Record<string, ResourceHandle<any>>,
+      Record<string, ResourceHandle<any>>,
+      InferResourceHandles<TResources>
+    >;
 
 export type HookHandler<TInput = unknown> = (
   input: TInput,
