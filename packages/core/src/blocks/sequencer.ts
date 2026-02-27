@@ -104,7 +104,16 @@ async function executeBlock(
   input: unknown,
   ctx: BlockContext
 ): Promise<unknown> {
-  return block.run(input, ctx);
+  const startedAt = Date.now();
+  ctx._runtimeHooks?.onBlockStart?.(block.name, block.kind, input);
+  try {
+    const output = await block.run(input, ctx);
+    ctx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt);
+    return output;
+  } catch (error) {
+    ctx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt);
+    throw error;
+  }
 }
 
 async function mapWithConcurrency<TInput, TOutput>(

@@ -131,7 +131,18 @@ export function router<
         );
       }
 
-      return selected.run(input, ctx);
+      ctx._runtimeHooks?.onRouteSelected?.(config.name, selected.name);
+
+      const startedAt = Date.now();
+      ctx._runtimeHooks?.onBlockStart?.(selected.name, selected.kind, input);
+      try {
+        const output = await selected.run(input, ctx);
+        ctx._runtimeHooks?.onBlockComplete?.(selected.name, selected.kind, output, Date.now() - startedAt);
+        return output;
+      } catch (error) {
+        ctx._runtimeHooks?.onBlockError?.(selected.name, selected.kind, error, Date.now() - startedAt);
+        throw error;
+      }
     }
   });
 }

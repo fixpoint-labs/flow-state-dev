@@ -73,7 +73,7 @@ export function summarizeForLog(
 export function createExecutionLogContext(
   metadata: ExecutionMetadata
 ): Record<string, unknown> {
-  return {
+  const raw: Record<string, unknown> = {
     requestId: metadata.requestId,
     actionName: metadata.actionName,
     flowKind: metadata.flowKind,
@@ -88,6 +88,14 @@ export function createExecutionLogContext(
     stepIndex: metadata.stepIndex,
     workGroupId: metadata.workGroupId
   };
+
+  const filtered: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (value !== undefined) {
+      filtered[key] = value;
+    }
+  }
+  return filtered;
 }
 
 function formatForLog(value: unknown): string {

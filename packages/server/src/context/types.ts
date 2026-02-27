@@ -5,6 +5,7 @@ import type {
   ModelResolver,
   ResponseEmitterHandle
 } from "@flow-state-dev/core/types";
+import type { RuntimeLogger } from "../execution/logging";
 import type { StoreRegistry } from "../stores/types";
 
 export type RequestRuntime = {
@@ -51,4 +52,5 @@ export type CreateExecutionContextOptions<
   response?: ResponseEmitterHandle;
   modelResolver?: ModelResolver;
   stores: StoreRegistry;
+  logger?: RuntimeLogger;
 };

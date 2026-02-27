@@ -237,6 +237,7 @@ export async function runActionInternal<
     requestId,
     internalSeams: undefined
   });
+  const logger = options.logger ?? DEFAULT_RUNTIME_LOGGER;
 
   const ctx = await createExecutionContext({
     flow: options.flow,
@@ -250,13 +251,13 @@ export async function runActionInternal<
     signal: options.signal,
     modelResolver: options.modelResolver,
     response,
-    stores: options.stores
+    stores: options.stores,
+    logger
   });
 
   const metadata = createExecutionMetadata(ctx, {
     scope: "request"
   });
-  const logger = options.logger ?? DEFAULT_RUNTIME_LOGGER;
 
   logRuntimeEvent(logger, "info", "[flow-state] action execution started", {
     ...createExecutionLogContext(metadata),

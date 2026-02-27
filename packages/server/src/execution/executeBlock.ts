@@ -51,8 +51,7 @@ function createBlockOutputProvenance(
 ): ItemProvenance {
   return {
     blockName,
-    blockInstanceId:
-      metadata.blockInstanceId ?? `${blockName}_${metadata.requestId}`,
+    blockInstanceId: metadata.blockInstanceId!,
     phase: metadata.scope === "work" ? "work" : "main",
     stepIndex: metadata.stepIndex,
     workGroupId: metadata.workGroupId,
@@ -135,10 +134,14 @@ export async function executeBlock(
 ): Promise<ExecuteBlockResult> {
   const startedAt = Date.now();
   const seams = options.internalSeams ?? NOOP_INTERNAL_EXECUTION_SEAMS;
+  const blockInstanceId =
+    options.metadata?.blockInstanceId ??
+    `${options.block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const metadata = createExecutionMetadata(options.ctx, {
     ...options.metadata,
     blockName: options.block.name,
     blockKind: options.block.kind,
+    blockInstanceId,
     scope: options.metadata?.scope ?? "block"
   });
   const logger = options.logger ?? DEFAULT_RUNTIME_LOGGER;
@@ -154,7 +157,7 @@ export async function executeBlock(
 
       logRuntimeEvent(
         logger,
-        "info",
+        "debug",
         "[flow-state] block execution started",
         {
           ...createExecutionLogContext(attemptMetadata),
@@ -182,10 +185,11 @@ export async function executeBlock(
 
       logRuntimeEvent(
         logger,
-        "info",
+        "debug",
         "[flow-state] block execution completed",
         {
           ...createExecutionLogContext(attemptMetadata),
+          durationMs: Date.now() - startedAt,
           output: summarizeForLog(interceptedOutput)
         }
       );
@@ -253,6 +257,7 @@ export async function executeBlock(
           ...metadata,
           attempt: attempt > 0 ? attempt : metadata.attempt
         }),
+        durationMs: Date.now() - startedAt,
         error: summarizeForLog(normalized)
       }
     );
