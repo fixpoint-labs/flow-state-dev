@@ -13,6 +13,7 @@ import type { ExecutionContext } from "../context/types";
 import type { FlowError, FlowErrorScope } from "../errors/flow-error";
 import type { ResponseEmitter } from "../streaming/response-emitter";
 import type { StoreRegistry } from "../stores/types";
+import type { RuntimeLogger } from "./logging";
 
 export type ExecutionMetadata = {
   requestId: string;
@@ -48,6 +49,7 @@ export type ExecuteBlockOptions = {
   ctx: ExecuteBlockContext;
   retry?: RetryPolicy;
   metadata?: Partial<ExecutionMetadata>;
+  logger?: RuntimeLogger;
 };
 
 export type RunActionOptions<
@@ -67,6 +69,7 @@ export type RunActionOptions<
   stores: StoreRegistry;
   retry?: RetryPolicy;
   responseEmitter?: ResponseEmitter;
+  logger?: RuntimeLogger;
 };
 
 export type RunActionResolved<

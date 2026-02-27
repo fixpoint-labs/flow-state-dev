@@ -9,6 +9,13 @@ export {
   retryWithPolicy
 } from "./retry";
 export { runAction } from "./runAction";
+export {
+  DEFAULT_RUNTIME_LOGGER,
+  createExecutionLogContext,
+  logRuntimeEvent,
+  summarizeForLog
+} from "./logging";
+export type { RuntimeLogger, RuntimeLoggerLevel } from "./logging";
 export { createWorkQueue, WorkQueue } from "./work-queue";
 export type {
   ExecuteBlockContext,

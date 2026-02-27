@@ -8,6 +8,12 @@ import type {
   FlowInstance
 } from "@flow-state-dev/core/types";
 import { createExecutionContext } from "../context/createExecutionContext";
+import {
+  createExecutionLogContext,
+  DEFAULT_RUNTIME_LOGGER,
+  logRuntimeEvent,
+  summarizeForLog
+} from "./logging";
 import type { ExecutionContext } from "../context/types";
 import type { FlowError } from "../errors/flow-error";
 import { ValidationError } from "../errors/flow-error";
@@ -250,6 +256,12 @@ export async function runActionInternal<
   const metadata = createExecutionMetadata(ctx, {
     scope: "request"
   });
+  const logger = options.logger ?? DEFAULT_RUNTIME_LOGGER;
+
+  logRuntimeEvent(logger, "info", "[flow-state] action execution started", {
+    ...createExecutionLogContext(metadata),
+    input: summarizeForLog(options.input)
+  });
 
   await emitActionLifecycleSeam(internalSeams, "started", metadata);
   await response.emitRequestCreated();
@@ -290,7 +302,8 @@ export async function runActionInternal<
       internalSeams,
       metadata: {
         scope: "request"
-      }
+      },
+      logger
     });
 
     if (result.error !== undefined) {
@@ -322,6 +335,12 @@ export async function runActionInternal<
 
     await response.emitRequestStatus("completed");
     await emitActionLifecycleSeam(internalSeams, "completed", metadata);
+
+    logRuntimeEvent(logger, "info", "[flow-state] action execution completed", {
+      ...createExecutionLogContext(metadata),
+      durationMs: Date.now() - startedAt,
+      output: summarizeForLog(result.output)
+    });
 
     await runObserver(options.flow.request?.onFinished, {
       requestId,
@@ -379,6 +398,12 @@ export async function runActionInternal<
       error: normalized
     }, ctx, { internalSeams });
     await emitActionLifecycleSeam(internalSeams, "finished", metadata);
+
+    logRuntimeEvent(logger, "error", "[flow-state] action execution failed", {
+      ...createExecutionLogContext(metadata),
+      durationMs: Date.now() - startedAt,
+      error: summarizeForLog(normalized)
+    });
 
     return {
       output: undefined,

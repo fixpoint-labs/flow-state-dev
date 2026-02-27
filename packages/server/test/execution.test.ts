@@ -86,6 +86,113 @@ describe("execution runtime", () => {
     expect(error.scope).toBe("block");
   });
 
+  it("emits structured execution logs for action, block, retries, and failures", async () => {
+    const logs: Array<{ level: string; message: string; context: Record<string, unknown> }> = [];
+    const logger = {
+      info: (message: string, context: Record<string, unknown>) => {
+        logs.push({ level: "info", message, context });
+      },
+      warn: (message: string, context: Record<string, unknown>) => {
+        logs.push({ level: "warn", message, context });
+      },
+      error: (message: string, context: Record<string, unknown>) => {
+        logs.push({ level: "error", message, context });
+      }
+    };
+
+    let attempts = 0;
+    const flow = defineFlow({
+      kind: "log-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ text: z.string() }),
+          block: handler({
+            name: "log-handler",
+            inputSchema: z.object({ text: z.string() }),
+            outputSchema: z.string(),
+            retry: {
+              maxAttempts: 3,
+              baseDelayMs: 0,
+              maxDelayMs: 0
+            },
+            execute: ({ text }) => {
+              attempts += 1;
+              if (attempts < 3) {
+                throw new NetworkError(`retry-${attempts}`);
+              }
+
+              return `${text}-done`;
+            }
+          })
+        }
+      }
+    })();
+
+    const success = await runAction({
+      flow,
+      actionName: "run",
+      input: { text: "x" },
+      userId: "user_logs",
+      sessionId: "sess_logs",
+      stores: createInMemoryStores(),
+      logger
+    });
+
+    expect(success.error).toBeUndefined();
+    expect(
+      logs.some((entry) =>
+        entry.message.includes("action execution started") && entry.context.requestId !== undefined
+      )
+    ).toBe(true);
+    expect(
+      logs.some((entry) => entry.message.includes("block execution retry scheduled"))
+    ).toBe(true);
+    expect(
+      logs.some((entry) =>
+        entry.message.includes("action execution completed") &&
+        typeof entry.context.output === "string"
+      )
+    ).toBe(true);
+
+    logs.length = 0;
+
+    const failingFlow = defineFlow({
+      kind: "log-failure-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ text: z.string() }),
+          block: handler({
+            name: "log-failing-handler",
+            inputSchema: z.object({ text: z.string() }),
+            outputSchema: z.string(),
+            execute: () => {
+              throw new Error("boom");
+            }
+          })
+        }
+      }
+    })();
+
+    const failed = await runAction({
+      flow: failingFlow,
+      actionName: "run",
+      input: { text: "x" },
+      userId: "user_logs_fail",
+      sessionId: "sess_logs_fail",
+      stores: createInMemoryStores(),
+      logger
+    });
+
+    expect(failed.error?.message).toBe("boom");
+    expect(
+      logs.some((entry) =>
+        entry.level === "error" &&
+        entry.message.includes("action execution failed") &&
+        typeof entry.context.error === "string"
+      )
+    ).toBe(true);
+  });
+
   it("merges retry policy and retries retryable errors only", async () => {
     const merged = mergeRetryPolicy(
       {
