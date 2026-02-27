@@ -17,6 +17,9 @@
     "@flow-state-dev/core": "workspace:*",
     "ai": "^6.0.93"
   },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "node ../../scripts/typecheck.mjs",
