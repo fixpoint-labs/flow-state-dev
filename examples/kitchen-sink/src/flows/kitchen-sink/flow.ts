@@ -323,9 +323,7 @@ const kitchenSinkFlow = defineFlow({
         client: true,
         outputSchema: artifactsListOutputSchema,
         compute: (ctx) => {
-          const artifacts = artifactResourceStateSchema.parse(
-            ctx.session.resources.get("artifacts")?.state ?? {}
-          );
+          const artifacts = ctx.session.resources.get("artifacts").state;
 
           return artifacts.order.map((id) => ({
             id,
@@ -338,9 +336,7 @@ const kitchenSinkFlow = defineFlow({
         client: true,
         outputSchema: artifactsDetailOutputSchema,
         compute: (ctx) => {
-          const artifacts = artifactResourceStateSchema.parse(
-            ctx.session.resources.get("artifacts")?.state ?? {}
-          );
+          const artifacts = ctx.session.resources.get("artifacts").state;
 
           return artifacts.order
             .map((id) => artifacts.byId[id])

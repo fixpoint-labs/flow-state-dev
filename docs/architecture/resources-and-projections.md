@@ -113,6 +113,11 @@ type ProjectionConfig = {
   sessionStateSchema?: ZodType;
   userStateSchema?: ZodType;
   projectStateSchema?: ZodType;
+  // Optional for portable projections created with defineProjection()
+  // (inline projections infer resource types from the flow automatically)
+  sessionResourceSchemas?: ZodType | Record<string, ZodType | DefinedResource>;
+  userResourceSchemas?: ZodType | Record<string, ZodType | DefinedResource>;
+  projectResourceSchemas?: ZodType | Record<string, ZodType | DefinedResource>;
 };
 ```
 
@@ -145,6 +150,7 @@ type ProjectionContext = {
 **Rules:**
 - Projection `compute` is read-oriented — avoid scope mutations inside it
 - Inline projections inherit parent scope schemas automatically
+- Inline projections also inherit resource state types from their scope resource configs (for example `ctx.session.resources.get("plan").state` is strongly typed)
 - Use `defineProjection()` for portable projections that need explicit schema declarations
 
 ### Portable Projection Definitions

@@ -1,11 +1,17 @@
 import type { ZodTypeAny } from "zod";
 import type { BlockContext, BlockDefinition, RetryPolicy } from "./block";
 import type {
+  ProjectionComputeFn,
   ProjectionConfig,
   ProjectionShorthand,
   ResourceConfig,
-  ResourceHandle
+  ResourceHandle,
+  StateOf
 } from "./resource";
+
+type InferResourceHandles<TResources extends Record<string, ResourceConfig>> = {
+  [K in keyof TResources]: ResourceHandle<StateOf<TResources[K]>>;
+};
 
 export type HookHandler<TInput = unknown> = (
   input: TInput,
@@ -42,7 +48,20 @@ export type ActionConfig<
 
 export type SessionConfig<
   TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>,
-  TProjections extends Record<string, ProjectionConfig | ProjectionShorthand> = Record<
+  TProjections extends Record<
+    string,
+    | ProjectionConfig<
+        any,
+        any,
+        any,
+        any,
+        undefined,
+        undefined,
+        undefined,
+        InferResourceHandles<TResources>
+      >
+    | ProjectionComputeFn<any, any, any, any, InferResourceHandles<TResources>>
+  > = Record<
     string,
     ProjectionConfig | ProjectionShorthand
   >
@@ -64,7 +83,21 @@ export type RequestConfig = {
 
 export type UserConfig<
   TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>,
-  TProjections extends Record<string, ProjectionConfig | ProjectionShorthand> = Record<
+  TProjections extends Record<
+    string,
+    | ProjectionConfig<
+        any,
+        any,
+        any,
+        any,
+        undefined,
+        undefined,
+        undefined,
+        Record<string, ResourceHandle<any>>,
+        InferResourceHandles<TResources>
+      >
+    | ProjectionComputeFn<any, any, any, any, Record<string, ResourceHandle<any>>, InferResourceHandles<TResources>>
+  > = Record<
     string,
     ProjectionConfig | ProjectionShorthand
   >
@@ -76,7 +109,22 @@ export type UserConfig<
 
 export type ProjectConfig<
   TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>,
-  TProjections extends Record<string, ProjectionConfig | ProjectionShorthand> = Record<
+  TProjections extends Record<
+    string,
+    | ProjectionConfig<
+        any,
+        any,
+        any,
+        any,
+        undefined,
+        undefined,
+        undefined,
+        Record<string, ResourceHandle<any>>,
+        Record<string, ResourceHandle<any>>,
+        InferResourceHandles<TResources>
+      >
+    | ProjectionComputeFn<any, any, any, any, Record<string, ResourceHandle<any>>, Record<string, ResourceHandle<any>>, InferResourceHandles<TResources>>
+  > = Record<
     string,
     ProjectionConfig | ProjectionShorthand
   >
