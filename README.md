@@ -1,5 +1,4 @@
-# flow-state-dev (Implementation Workspace)
-
+# flow-state-dev
 `@flow-state-dev` is a block-based AI workflow framework focused on typed flows, resumable streaming, and predictable execution behavior.
 
 This repository is the active implementation workspace for Phase 1.
