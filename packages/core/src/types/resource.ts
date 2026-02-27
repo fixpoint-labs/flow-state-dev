@@ -216,8 +216,42 @@ export function defineResource<
 }
 
 export function defineProjection<
-  const TProjection extends ProjectionConfig<any, any, any, any, any, any, any>
+  TRequestState extends JsonObject = JsonObject,
+  TSessionState extends JsonObject = JsonObject,
+  TUserState extends JsonObject = JsonObject,
+  TProjectState extends JsonObject = JsonObject,
+  TSessionResourceSchemas extends ZodTypeAny | ResourceSchemaMap | undefined = undefined,
+  TUserResourceSchemas extends ZodTypeAny | ResourceSchemaMap | undefined = undefined,
+  TProjectResourceSchemas extends ZodTypeAny | ResourceSchemaMap | undefined = undefined,
+  TSessionResources extends Record<string, ResourceHandle<any>> = InferProjectionResourcesFromSchemas<TSessionResourceSchemas>,
+  TUserResources extends Record<string, ResourceHandle<any>> = InferProjectionResourcesFromSchemas<TUserResourceSchemas>,
+  TProjectResources extends Record<string, ResourceHandle<any>> = InferProjectionResourcesFromSchemas<TProjectResourceSchemas>
 >(
+  config: ProjectionConfig<
+    TRequestState,
+    TSessionState,
+    TUserState,
+    TProjectState,
+    TSessionResourceSchemas,
+    TUserResourceSchemas,
+    TProjectResourceSchemas,
+    TSessionResources,
+    TUserResources,
+    TProjectResources
+  >
+): ProjectionConfig<
+  TRequestState,
+  TSessionState,
+  TUserState,
+  TProjectState,
+  TSessionResourceSchemas,
+  TUserResourceSchemas,
+  TProjectResourceSchemas,
+  TSessionResources,
+  TUserResources,
+  TProjectResources
+>;
+export function defineProjection<const TProjection extends ProjectionConfig>(
   config: TProjection
 ): TProjection {
   return {
