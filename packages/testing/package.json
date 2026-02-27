@@ -15,7 +15,8 @@
   ],
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
-    "@flow-state-dev/server": "workspace:*"
+    "@flow-state-dev/server": "workspace:*",
+    "zod": "^3.24.1"
   },
   "scripts": {
     "build": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && tsc -p tsconfig.json",
