@@ -93,7 +93,7 @@ Step by step:
 2. **Session** — Resolved from `sessionId` or created new.
 3. **User message** — If `userMessage` is defined, a user-role message item is emitted to the stream.
 4. **Execute** — The root block runs asynchronously. Items stream to the client as they're produced.
-5. **Complete** — Lifecycle hooks fire. The stream emits `request.completed` (or `request.errored`).
+5. **Complete** — Lifecycle hooks fire. The stream emits `request.completed` (or `request.failed`).
 
 ## Typed actions
 

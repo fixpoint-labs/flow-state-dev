@@ -89,7 +89,9 @@ function ReportCard({ item }: { item: ComponentItem }) {
 function App() {
   return (
     <FlowProvider
-      config={{ baseUrl: "/api" }}
+      flowKind="research-assistant"
+      userId="user_1"
+      baseUrl="/api"
       renderers={{ component: { "report-card": ReportCard } }}
     >
       <ResearchApp />
@@ -133,8 +135,9 @@ const testExample = `const result = await testFlow({
   },
 });
 
-expect(result.items).toContainItemOfType("message");
-expect(result.items).toContainItemOfType("tool_call");`;
+const items = testItems(result.items);
+expect(items.messages()).not.toHaveLength(0);
+expect(items.components("report-card")).not.toHaveLength(0);`;
 
 /* ── Data ── */
 

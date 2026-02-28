@@ -47,10 +47,9 @@ const result = await testFlow({
   },
 });
 
-expect(result.items).toContainEqual(
-  expect.objectContaining({ type: "message" })
-);
-expect(result.session.state.messageCount).toBe(1);
+const items = testItems(result.items);
+expect(items.messages()).not.toHaveLength(0);
+expect(result.status).toBe("completed");
 ```
 
 ### Testing a sequencer
@@ -149,8 +148,8 @@ const items = testItems(result.items);
 
 expect(items.messages()).toHaveLength(2);
 expect(items.blockOutputs()).toHaveLength(1);
-expect(items.ofType("tool_call")).toHaveLength(3);
-expect(items.ofType("state_change")).not.toHaveLength(0);
+expect(items.byType("tool_call")).toHaveLength(3);
+expect(items.byType("state_change")).not.toHaveLength(0);
 ```
 
 ## What makes this different

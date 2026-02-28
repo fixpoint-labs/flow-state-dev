@@ -54,7 +54,7 @@ const stream = createSSEClient({
 ```ts
 import { createSessionClient } from "@flow-state-dev/client";
 
-const sessions = createSessionClient({ flowKind: "my-app", userId: "user_1" });
+const sessions = createSessionClient({ baseUrl: "/api" });
 
 // State snapshot with projections and items
 const snapshot = await sessions.getSessionState("sess_1", {

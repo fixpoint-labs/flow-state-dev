@@ -47,7 +47,7 @@ const chatFlow = defineFlow({
 
   user: {
     stateSchema: z.object({
-      preferences: z.object({ theme: z.string() }).default({}),
+      preferences: z.object({ theme: z.string().default("light") }).default({}),
     }),
   },
 });

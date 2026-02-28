@@ -27,10 +27,10 @@ data: { "itemId": "msg_1", "delta": { "text": "Hello" } }
 event: content.delta
 data: { "itemId": "msg_1", "delta": { "text": " there!" } }
 
-event: item.updated
+event: item.done
 data: { "item": { "type": "message", "role": "assistant", "status": "completed" } }
 
-event: request.status
+event: request.completed
 data: { "status": "completed" }
 ```
 
@@ -89,17 +89,17 @@ You can also use the `starting_after` query parameter:
 GET /api/flows/:kind/requests/:requestId/stream?starting_after=42
 ```
 
-## Item visibility
+## Item audiences
 
-Not all items are for the user. Items have a `visibility` field that controls who sees them:
+Not all items go everywhere. The framework uses type-based audience routing — each item type has a fixed audience:
 
-| Visibility | Who sees it |
-|------------|------------|
-| `ui` | Rendered in the user-facing UI |
-| `internal` | Available in the stream but not rendered by default |
-| `devtool` | Only visible in developer tools |
+| Audience | Item types |
+|----------|-----------|
+| **Client** | `message`, `reasoning`, `component`, `container`, `status`, `state_change`, `resource_change`, `error`, `step_error` |
+| **LLM** | `message`, `reasoning`, `context`, `block_output` |
+| **Internal** | `block_output` (devtools only unless it's a tool call) |
 
-Generators also contribute items to the LLM context via `session.items.llm()` — the framework automatically filters to items the LLM should see (messages, tool results) and excludes UI-only items (status, components).
+Generators access LLM-audience items via `session.items.llm()` — the framework automatically filters to items the model should see (messages, reasoning, context) and excludes UI-only items (status, components).
 
 ## React integration
 
