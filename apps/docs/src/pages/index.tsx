@@ -14,7 +14,7 @@ function HomepageHeader() {
           Stop wiring. Start building.
         </Heading>
         <p className={styles.heroSubtitle}>
-          Flow State Dev is a TypeScript framework that turns AI orchestration,
+          <span className={styles.brandName}>flow-state.dev</span> is a TypeScript framework that turns AI orchestration,
           streaming, state, and error handling into composable primitives —
           so you can focus on what your AI actually does.
         </p>
@@ -29,7 +29,7 @@ function HomepageHeader() {
             className="button button--secondary button--lg"
             to="/docs/intro"
           >
-            Why Flow State Dev?
+            Why flow-state.dev?
           </Link>
         </div>
       </div>
@@ -39,7 +39,8 @@ function HomepageHeader() {
 
 const defineFlowExample = `import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 
-// Tools are blocks — even sequencers. This tool is a multi-step pipeline.
+// Any block or sequence of blocks can be used as a tool.
+// This tool is a full multi-step pipeline.
 const deepResearch = sequencer({ name: "deep-research" })
   .then(searchIndex)
   .then(rankResults)
@@ -59,14 +60,14 @@ const docResource = {
   writable: true,
 };
 
-// Generator with tool access — tools run as blocks in the framework
+// Pass any block as a tool — the framework compiles it for the LLM
 const agent = generator({
   name: "agent",
   model: "gpt-5-mini",
   prompt: "You are a research assistant.",
   history: (_input, ctx) => ctx.session.items.llm(),
   user: (input) => input.message,
-  tools: [deepResearch, readDoc, writeDoc], // Blocks as tools
+  tools: [deepResearch, readDoc, writeDoc],
 });
 
 // Define the flow — this becomes a full API instantly
@@ -98,37 +99,56 @@ export const { GET, POST, DELETE } = createFlowApiRouter({ registry });
 // GET  /api/flows/research-assistant/requests/:id/stream
 // GET  /api/flows/sessions/:id/state`;
 
-const reactExample = `function Chat() {
+const reactExample = `function ResearchApp() {
   const flow = useFlow({ autoCreateSession: true });
   const session = useSession(flow.activeSessionId);
+
+  // Projections derive client-safe views from server-side resources
   const { session: proj } = useProjections(session, {
-    session: ["messageCount"],
+    session: ["docList"],
   });
 
   return (
     <>
+      {/* Items stream in real time as the AI works */}
       {session.items.map(item => <ItemRenderer key={item.id} item={item} />)}
-      <span>{proj?.messageCount} messages</span>
+
+      {/* Projection: derived from resource state, updated after each request */}
+      <aside>
+        <h3>Documents ({proj?.docList?.length ?? 0})</h3>
+        {proj?.docList?.map(doc => <DocCard key={doc.id} {...doc} />)}
+      </aside>
+
       <button
         onClick={() => session.sendAction("chat", { message: "Hello" })}
         disabled={session.isStreaming}
       >
-        {session.isStreaming ? "Thinking..." : "Send"}
+        {session.isStreaming ? "Researching..." : "Send"}
       </button>
     </>
   );
 }`;
 
-const testExample = `const result = await testBlock(pipeline, {
-  input: { message: "Hello" },
-  session: { state: { messageCount: 0 } },
+const testExample = `// Deterministic tests — no real LLM calls, no network
+const result = await testFlow({
+  flow: researchFlow,
+  action: "chat",
+  input: { message: "Summarize the design doc" },
+  userId: "testuser",
+  seed: {
+    session: {
+      resources: {
+        docs: { byId: { "design-doc": { title: "Design", content: "..." } } },
+      },
+    },
+  },
   generators: {
-    chat: mockGenerator({ script: [{ text: "Hi there!" }] }),
+    agent: mockGenerator({ script: [{ text: "The design doc covers..." }] }),
   },
 });
 
 expect(result.items).toContainItemOfType("message");
-expect(result.session.state.messageCount).toBe(1);`;
+expect(result.items).toContainItemOfType("tool_call");`;
 
 type FeatureItem = {
   title: string;
@@ -137,9 +157,9 @@ type FeatureItem = {
 
 const FeatureList: FeatureItem[] = [
   {
-    title: "Four primitives. Infinite compositions.",
+    title: "Four primitives. Compose freely.",
     description:
-      "Handler, generator, sequencer, router — every AI workflow reduces to these four blocks. Tools are blocks too — even sequencers, so a single tool call can trigger an entire pipeline. Compose freely with branching, parallelism, loops, and error recovery.",
+      "Handler, generator, sequencer, router — every AI workflow reduces to these four blocks. Any block or sequence of blocks can be used as a tool, so a single tool call can trigger an entire pipeline. Compose freely with branching, parallelism, loops, and error recovery.",
   },
   {
     title: "Flows are full APIs.",
@@ -259,7 +279,7 @@ export default function Home(): React.ReactElement {
   return (
     <Layout
       title="AI workflows, composed"
-      description="Flow State Dev — a TypeScript framework for building AI workflows with composable blocks, resumable streaming, scoped state, and full-stack type safety."
+      description="flow-state.dev — a TypeScript framework for building AI workflows with composable blocks, resumable streaming, scoped state, and full-stack type safety."
     >
       <HomepageHeader />
       <main>

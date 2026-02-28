@@ -50,7 +50,7 @@ Every piece of logic — calling an LLM, validating input, choosing a path, comp
 | **Sequencer** | Compose blocks into pipelines | Multi-step workflows with branching, parallelism, error recovery |
 | **Router** | Dispatch to different pipelines at runtime | Mode switching, intent routing, conditional flows |
 
-All blocks share the same contract: `block.run(input, ctx)`. Any block composes with any other block. This includes tools — a generator's tools are blocks, which means a single tool call can trigger a handler, a sequencer pipeline, or even a router that dispatches to different strategies. Your AI's tools can be as simple or as sophisticated as any other part of your workflow.
+All blocks share the same contract: `block.run(input, ctx)`. Any block composes with any other block — and any block or sequence of blocks can be used as a tool. That means a single tool call can trigger a handler, a multi-step sequencer pipeline, or even a router that dispatches to different strategies. Your AI's tools can be as simple or as sophisticated as any other part of your workflow.
 
 ### Flows are full APIs
 

@@ -25,6 +25,13 @@
   line-height: 1.6;
 }
 
+.brandName {
+  font-family: var(--ifm-font-family-monospace);
+  font-weight: 700;
+  color: var(--ifm-color-primary-light);
+  letter-spacing: -0.01em;
+}
+
 .buttons {
   display: flex;
   align-items: center;

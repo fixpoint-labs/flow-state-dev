@@ -3,11 +3,11 @@ import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
 
 const config: Config = {
-  title: "Flow State Dev",
+  title: "flow-state.dev",
   tagline: "Composable AI workflows for TypeScript. Blocks in. Streaming out.",
   favicon: "img/favicon.ico",
 
-  url: "https://flowstatedev.com",
+  url: "https://flow-state.dev",
   baseUrl: "/",
 
   organizationName: "flow-state-dev",
@@ -49,7 +49,7 @@ const config: Config = {
 
   themeConfig: {
     navbar: {
-      title: "Flow State Dev",
+      title: "flow-state.dev",
       items: [
         {
           type: "docSidebar",
@@ -101,7 +101,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright ${new Date().getFullYear()} Flow State Dev. Built with Docusaurus.`,
+      copyright: `Copyright ${new Date().getFullYear()} Fixpoint Labs, LLC. Built with Docusaurus.`,
     },
     prism: {
       theme: prismThemes.github,

@@ -58,12 +58,12 @@ What the framework handles for you:
 - **Streaming** — content deltas flow to the client as they're generated
 - **Structured output repair** — if the LLM returns invalid JSON, the framework can auto-retry or route to a rescue block
 
-#### Tools are blocks
+#### Any block can be a tool
 
-This is one of the most powerful ideas in the framework. A generator's `tools` array accepts any block — handlers, sequencers, even routers. That means a single tool call can trigger an entire multi-step pipeline:
+Any block or sequence of blocks can be used as a tool. A generator's `tools` array accepts handlers, sequencers, routers — anything with the block contract. That means a single tool call can trigger an entire multi-step pipeline:
 
 ```ts
-// A tool that's a simple handler
+// A simple handler as a tool
 const readDoc = handler({
   name: "read-doc",
   inputSchema: z.object({ docId: z.string() }),
@@ -74,13 +74,13 @@ const readDoc = handler({
   },
 });
 
-// A tool that's an entire pipeline — search, rank, summarize
+// A full pipeline as a tool — search, rank, summarize
 const deepResearch = sequencer({ name: "deep-research" })
   .then(searchIndex)
   .then(rankResults)
   .then(summarize);
 
-// Both work as tools — the framework handles the rest
+// Both work as tools — the framework compiles them for the LLM
 const agent = generator({
   name: "agent",
   tools: [readDoc, deepResearch],
@@ -88,7 +88,7 @@ const agent = generator({
 });
 ```
 
-When the LLM calls `deep-research`, the framework runs the full sequencer pipeline, collects the output, and feeds it back to the LLM as the tool result — all within the generator's tool loop. Your tools can be as sophisticated as any other part of your workflow.
+When the LLM calls `deep-research`, the framework runs the full sequencer pipeline, collects the output, and feeds it back as the tool result — all within the generator's tool loop. Your tools can be as sophisticated as any other part of your workflow.
 
 ### Sequencer — the composition engine
 
@@ -174,11 +174,70 @@ const outerPipeline = sequencer({ name: "outer" })
   .then(blockC);
 ```
 
+## Connecting blocks with different shapes
+
+An immediate question: if blocks have typed inputs and outputs, how do they fit together when their types don't match? The answer is **connectors** — lightweight functions that transform one block's output into the next block's input.
+
+### Sequencer connectors
+
+The most common pattern. Pass a transform function before the block in any sequencer method:
+
+```ts
+const pipeline = sequencer({ name: "pipeline", inputSchema })
+  // Block A outputs { text: string, metadata: {...} }
+  // Block B expects { query: string }
+  .then(blockA)
+  .then(
+    (output) => ({ query: output.text }),  // Connector: reshape the data
+    blockB
+  );
+```
+
+Connectors receive the previous step's output and the block context, and return the shape the next block expects. They work across the entire sequencer DSL:
+
+```ts
+pipeline
+  .then((output) => ({ query: output.text }), searchBlock)         // then
+  .thenIf(needsReview, (output) => output.results, reviewBlock)    // thenIf
+  .parallel({                                                       // parallel
+    summary: summaryBlock,
+    tags: { connector: (output) => output.text, block: tagBlock },
+  })
+  .forEach((output) => output.items, processBlock)                 // forEach
+```
+
+The type system tracks these transformations — TypeScript knows the connector's return type must match the next block's input schema.
+
+### Block-level connections
+
+You can also attach transforms directly to a block with `connectInput` and `connectOutput`. This is useful when you want a block to always accept a different input shape:
+
+```ts
+// Create an adapted version of searchBlock that accepts a string
+const searchFromText = searchBlock.connectInput(
+  (text: string) => ({ query: text, limit: 10 })
+);
+
+// Now it fits directly in the pipeline without a sequencer connector
+pipeline.then(searchFromText);
+```
+
+### Why this matters for portability
+
+Connectors are how blocks from different packages work together. A community search block expects `{ query: string, limit: number }`. Your pipeline produces `{ text: string, metadata: object }`. A one-line connector bridges the gap — no wrapper blocks, no adapters, no type gymnastics:
+
+```ts
+pipeline.then(
+  (output) => ({ query: output.text, limit: 5 }),
+  communitySearchBlock
+);
+```
+
 ## Blocks are portable
 
 Because every block has the same contract — typed input, typed output, declared state dependencies — blocks are inherently shareable. A handler that validates email addresses, a sequencer that does multi-step research, a generator pre-configured for code review — each can be packaged independently and composed into any flow.
 
-This is by design. The framework's four-primitive constraint and partial state schemas mean blocks don't leak assumptions about the flows they live in. A block from a shared package composes with your blocks the same way your own blocks compose with each other.
+Connectors make this practical: when types don't align, a simple transform function bridges the gap. No wrapper blocks, no inheritance hierarchies. The framework's four-primitive constraint and partial state schemas mean blocks don't leak assumptions about the flows they live in.
 
 ## Key rules
 
