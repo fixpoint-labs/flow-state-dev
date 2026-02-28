@@ -1,12 +1,42 @@
 # Architecture Overview
 
-`@flow-state-dev` is a block-based AI workflow framework. You define **flows** composed of **blocks**, and the framework handles execution, streaming, state persistence, retries, and client rendering.
+`@flow-state-dev` gives you four composable block primitives — **handler**, **generator**, **sequencer**, **router** — and a runtime that handles execution, streaming, state persistence, retries, and client rendering so you don't have to.
+
+You define flows composed of blocks. The framework does the rest.
 
 This document provides the system-level view. For deep dives into each subsystem, see the companion docs linked throughout.
 
-## Package Structure
+## The idea in 30 seconds
 
-The framework ships as six packages plus one first-party app:
+Every AI feature needs the same infrastructure: call an LLM, stream the response, manage state, handle errors, sync with the UI. Teams rebuild this for every project. `@flow-state-dev` makes these concerns framework primitives.
+
+```ts
+// Define blocks
+const chat = generator({ name: "chat", model: "gpt-5-mini", prompt: "..." });
+const track = handler({ name: "track", execute: async (input, ctx) => {
+  await ctx.session.incState({ count: 1 });
+  return input;
+}});
+
+// Compose into a pipeline
+const pipeline = sequencer({ name: "pipeline" })
+  .then(chat)
+  .then(track)
+  .rescue([{ when: [Error], block: fallback }]);
+
+// Expose as a flow
+export default defineFlow({
+  kind: "my-app",
+  actions: { chat: { block: pipeline } },
+  session: { stateSchema },
+})({ id: "default" });
+```
+
+The framework gives you: SSE streaming with resume, atomic state operations, retry policies, rescue boundaries, lifecycle hooks, typed client SDK, React hooks — all from this definition.
+
+## Package structure
+
+Six packages with strict dependency boundaries:
 
 ```
 @flow-state-dev/core       Isomorphic builders, type contracts, item taxonomy
@@ -18,7 +48,7 @@ The framework ships as six packages plus one first-party app:
 apps/devtool               First-party inspector app
 ```
 
-## Dependency Graph
+## Dependency graph
 
 ```
 core ─────────────────────────────────┐
@@ -36,29 +66,29 @@ core ─────────────────────────
   └── client
 ```
 
-**Boundary rules:**
-- `server` never depends on `react` or `client`
-- `client` never depends on `server` or `react`
-- `react` has no transport logic — it wraps `client`
+**Boundary rules (locked):**
+- `server` never depends on `react` or `client` — server knows nothing about transport consumers
+- `client` never depends on `server` or `react` — works in any JavaScript environment
+- `react` has no transport logic — it wraps `client` with hooks and renderers
 - `cli` uses `server` + `testing`, never `react` or `client`
 - `apps/devtool` uses only public APIs from `client` and `react`
 
-## Core Abstractions
+## Core abstractions
 
-### Blocks
+### Blocks — the four primitives
 
-Four block kinds compose all framework behavior:
+Every piece of logic in the framework is one of exactly four block kinds:
 
-| Kind | Purpose | Example |
-|------|---------|---------|
-| **handler** | Synchronous logic: `input → execute → output` | Validate input, transform data, update state |
-| **generator** | LLM call with framework-managed tool loop | Chat completion, structured extraction, agent tool use |
-| **sequencer** | Fluent DSL composing blocks into pipelines | `then`, `parallel`, `forEach`, `rescue`, `work` |
-| **router** | Runtime block selection | Route to different pipelines based on input/state |
+| Kind | What it does | When to use it |
+|------|-------------|----------------|
+| **handler** | `input → execute → output` | Validation, data transforms, state mutations, tool implementations |
+| **generator** | LLM call with framework-managed tool loop | Chat, structured extraction, agent tool use, any AI generation |
+| **sequencer** | Fluent DSL composing blocks into pipelines | Building multi-step workflows with branching, parallelism, error recovery |
+| **router** | Runtime block selection based on input or state | Dispatching to different pipelines based on mode, intent, or conditions |
 
-All blocks share the same execution contract: `block.run(input, ctx)`. See [Blocks](./blocks.md).
+All blocks share the same execution contract: `block.run(input, ctx)`. This uniformity means any block can be composed with any other block. See [Blocks](./blocks.md).
 
-### Flows
+### Flows — the entry point
 
 A flow ties blocks to **actions** (entry points), **scopes** (state containers), and **lifecycle hooks**:
 
@@ -69,36 +99,46 @@ const myFlow = defineFlow({
   actions: {
     chat: { inputSchema, block: chatPipeline, userMessage: (i) => i.message }
   },
-  session: { stateSchema }
+  session: { stateSchema, resources: { ... }, projections: { ... } },
+  user: { stateSchema, projections: { ... } },
 });
 ```
 
-See [Flows and Actions](./flows-and-actions.md).
+Actions are the flow's public API. Clients call them by name. Each action maps to a root block that the framework executes. See [Flows and Actions](./flows-and-actions.md).
 
-### Scopes
+### Scopes — state that scales
 
-Four nested state scopes with typed operations:
+Four nested state scopes, each with typed atomic operations:
 
 ```
 request → session → user → project
+(one run)  (conversation)  (across sessions)  (shared across users)
 ```
 
-Each scope provides atomic state operations (`patchState`, `incState`, `pushState`, etc.) with CAS-based concurrency. See [State and Scopes](./state-and-scopes.md).
+Each scope provides `patchState`, `setState`, `incState`, `pushState`, `atomicState`, and more — all CAS-guarded for concurrency safety. Blocks declare only the state fields they need via partial schemas, so a counter block doesn't need to know about a preferences block's state. See [State and Scopes](./state-and-scopes.md).
 
-### Streaming
+### Streaming — resilient by default
 
-SSE-based item/content streaming model:
+SSE-based item/content streaming with built-in resume:
 
-- Items have types (`message`, `reasoning`, `component`, `status`, `error`, etc.)
-- Content streams within items via delta events
-- Sequence-number cursors enable replay/resume
-- Item types determine audience routing (client, LLM, devtools)
+- **Items** have types (`message`, `reasoning`, `component`, `status`, `error`, etc.) and lifecycle states (`in_progress` → `completed`)
+- **Content** streams within items via delta events — text appears token-by-token
+- **Sequence-number cursors** enable replay after disconnect — no data loss, no duplicates
+- **Item types determine audience routing** — some items go to the UI, some to the LLM context, some to devtools
 
 See [Streaming](./streaming.md).
 
-## Data Flow
+### Resources and projections — data with policy
 
-A typical request flows through the system like this:
+**Resources** are named, typed state containers scoped to sessions, users, or projects. Think of them as structured data stores that blocks can read and write.
+
+**Projections** are derived views computed from state and resources — and the *only* way to expose data to clients. This is a deliberate architectural choice: you can't accidentally leak internal state because projections are the sole data gateway.
+
+See [Resources and Projections](./resources-and-projections.md).
+
+## Data flow
+
+A typical request flows through the system:
 
 ```
 Client                    Server                           Store
@@ -123,12 +163,12 @@ Client                    Server                           Store
 ```
 
 Key points:
-1. POST returns `202 Accepted` immediately — execution is async
-2. Items stream live via SSE as blocks execute
-3. Client refetches state snapshot on `request.completed` (correctness path)
-4. Resume after disconnect uses `Last-Event-ID` or `starting_after` query param
+1. **Async by design** — POST returns `202 Accepted` immediately. Execution happens in the background.
+2. **Live streaming** — Items stream via SSE as blocks execute. The client sees results as they're produced.
+3. **Correctness path** — Client refetches the state snapshot on `request.completed` to get the authoritative final state.
+4. **Resilient resume** — Reconnect after disconnect using `Last-Event-ID` or `starting_after` query param. The server replays missed events from the sequence cursor.
 
-## Locked Contracts (Phase 1)
+## Locked contracts (Phase 1)
 
 These decisions are canonical and cannot change without architecture review:
 
@@ -141,6 +181,6 @@ These decisions are canonical and cannot change without architecture review:
 - Generator provider: Vercel AI SDK in Phase 1
 - Observational hooks: past tense (`onStarted`, `onCompleted`, `onErrored`, `onFinished`)
 
-## Canonical Authority
+## Canonical authority
 
 For edge cases and detailed contracts, the canonical specs in `../preperation/architecture/` are authoritative. The docs in this directory are adapted summaries — when in doubt, check the source spec.

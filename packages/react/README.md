@@ -1,11 +1,39 @@
 # @flow-state-dev/react
 
-React bindings for Flow State Dev.
+**React hooks and renderers for Flow State Dev. Wire AI workflows to your UI in minutes.**
 
-`@flow-state-dev/react` is a UI-layer package:
-- wraps `@flow-state-dev/client` transport APIs with React hooks
-- provides renderer/context helpers for `fsd:block_output` items
-- keeps transport logic out of React components
+```tsx
+import { FlowProvider, useFlow, useSession, ItemRenderer } from "@flow-state-dev/react";
+
+function App() {
+  return (
+    <FlowProvider flowKind="my-app" userId="user_1">
+      <Chat />
+    </FlowProvider>
+  );
+}
+
+function Chat() {
+  const flow = useFlow({ autoCreateSession: true });
+  const session = useSession(flow.activeSessionId);
+
+  return (
+    <div>
+      {session.items.map(item => (
+        <ItemRenderer key={item.id} item={item} />
+      ))}
+      <button
+        onClick={() => session.sendAction("chat", { message: "Hello" })}
+        disabled={session.isStreaming}
+      >
+        {session.isStreaming ? "Thinking..." : "Send"}
+      </button>
+    </div>
+  );
+}
+```
+
+That's a streaming chat UI. Items appear in real time as the LLM generates them. State syncs automatically. Reconnection is handled. No SSE wiring, no manual refetches.
 
 ## Install
 
@@ -15,161 +43,123 @@ pnpm add @flow-state-dev/react
 
 Peer dependency: `react ^18.0.0 || ^19.0.0`
 
-## Quick Start
+## How it works
 
-```tsx
-import {
-  FlowProvider,
-  ItemRenderer,
-  useFlow,
-  useProjections,
-  useSession,
-} from "@flow-state-dev/react";
+`@flow-state-dev/react` wraps the [`@flow-state-dev/client`](../client) transport layer with React hooks. All network communication goes through the client — no transport logic lives in this package. This means:
 
-function App() {
-  return (
-    <FlowProvider
-      flowKind="market-intel-agent"
-      userId="devuser"
-      renderers={{
-        component: { "strategy-report": StrategyReportCard },
-      }}
-    >
-      <AgentUI />
-    </FlowProvider>
-  );
-}
-
-function AgentUI() {
-  const flow = useFlow({ autoCreateSession: true });
-  const session = useSession(flow.activeSessionId, {
-    items: { visibility: "ui" },
-  });
-
-  const projections = useProjections(session, {
-    session: ["artifactsList", "planStatus"],
-  });
-
-  return (
-    <div>
-      <button
-        onClick={() => session.sendAction("run", { prompt: "hello" })}
-        disabled={session.isStreaming}
-      >
-        {session.isStreaming ? "Running..." : "Run"}
-      </button>
-
-      <pre>{JSON.stringify(projections.session?.planStatus, null, 2)}</pre>
-
-      {session.items.map((item) => (
-        <ItemRenderer key={item.id} item={item} />
-      ))}
-    </div>
-  );
-}
-```
+- Hooks manage lifecycle and reactivity, not HTTP or SSE
+- You can swap transport behavior by configuring the client
+- The same flow definitions work across React, vanilla JS, and Node
 
 ## FlowProvider
 
-Use `<FlowProvider>` to set defaults and register renderers.
+Wrap your app (or a subtree) with `<FlowProvider>` to set defaults and register custom renderers:
+
+```tsx
+<FlowProvider
+  flowKind="my-app"
+  userId="user_1"
+  renderers={{
+    component: { "strategy-report": StrategyReportCard },
+    message: CustomMessageBubble,
+    status: false, // suppress status items in the UI
+  }}
+>
+  <App />
+</FlowProvider>
+```
 
 Props:
-- `flowKind?: string`
-- `sessionId?: string`
-- `userId?: string`
-- `baseUrl?: string`
-- `renderers?: RendererRegistry` — custom renderers keyed by item type (or by component key for `component`/`container` types)
+- `flowKind?: string` — Default flow kind for child hooks
+- `sessionId?: string` — Default session ID
+- `userId?: string` — Required for Phase 1
+- `baseUrl?: string` — API base URL
+- `renderers?: RendererRegistry` — Custom renderers keyed by item type or component key
 - `children: ReactNode`
 
-Nested providers merge `renderers` (child keys override parent keys).
+Nested providers merge `renderers` — child keys override parent keys.
 
 ## Hooks
 
 ### `useFlow(options?)`
 
-Session lifecycle helper (list/create/select sessions).
+Session lifecycle — list, create, and select sessions:
+
+```ts
+const flow = useFlow({ autoCreateSession: true });
+// flow.activeSessionId, flow.sessions, flow.createSession(), flow.selectSession()
+```
 
 ### `useSession(sessionId, options?)`
 
-Primary session hook. `flowKind` defaults to `useFlowContext().flowKind` and can be overridden via options.
+The primary hook. Gives you everything about a session — items, state, streaming status, and the ability to send actions:
 
 ```ts
 const session = useSession(sessionId, {
-  items: true,
+  items: { visibility: "ui", includeTransient: false },
 });
 ```
 
-`items` options:
-- `true` (default)
-- `false`
-- `{ visibility?: ItemVisibility; includeTransient?: boolean }`
-
-Return shape:
-- `detail` (`SessionDetail | null`)
-- `snapshot` (`SessionStateSnapshotResponse | null`)
-- `items`, `messages`, `blockOutputs`, `functionCalls`
-- `isLoading`, `isStreaming`, `error`
-- `sendAction(action, input)`
-- `refresh()`
+Returns:
+- `detail` — Session metadata
+- `snapshot` — Current state snapshot with projections
+- `items`, `messages`, `blockOutputs`, `functionCalls` — Filtered item views
+- `isLoading`, `isStreaming`, `error` — Status flags
+- `sendAction(action, input)` — Trigger an action
+- `refresh()` — Manually refetch
 
 ### `useProjections(session, options)`
 
-Reads scope-grouped projection values from `session.snapshot`.
+Read typed projection values from the session snapshot:
 
 ```ts
 const projections = useProjections(session, {
-  session: ["artifactsList"],
-  user: ["topics"],
+  session: ["artifactsList", "modeStatus"],
+  user: ["preferences"],
   project: ["sharedConfig"],
 });
-```
 
-Typed mode:
-
-```ts
+// Or with schemas for runtime validation:
 const projections = useProjections(session, {
-  session: {
-    artifactsList: artifactsListSchema,
-  },
+  session: { artifactsList: artifactsListSchema },
 });
 ```
 
 ### `useAction(options)`
 
-Low-level action execution hook for direct action calls.
+Low-level hook for direct action execution without session management.
 
 ### `useRequestStream(options)`
 
-Low-level request-stream hook with reactive item/status views.
+Low-level hook for subscribing to a request's SSE stream with reactive item/status views.
 
-## Render Helpers
+## Render helpers
 
-- `ItemRenderer` — renders a single output item (registry → built-in fallback → JSON dev)
-- `ItemsRenderer` — renders a list of output items in the order provided
+`ItemRenderer` and `ItemsRenderer` handle the dispatch from item types to your registered renderers:
 
-All custom renderers receive `{ item }` as their prop. Type the item to the
-kind you expect:
+```tsx
+// Single item
+<ItemRenderer item={item} />
+
+// List of items
+<ItemsRenderer items={session.items} />
+```
+
+Custom renderers receive `{ item }` as their prop:
 
 ```tsx
 import type { MessageItem } from "@flow-state-dev/core/items";
 
-function ChatMessage({ item }: { item: MessageItem }) {
-  return <p>{item.role}: {item.content[0]?.text}</p>;
+function ChatBubble({ item }: { item: MessageItem }) {
+  return (
+    <div className={item.role === "user" ? "user-bubble" : "assistant-bubble"}>
+      {item.content[0]?.text}
+    </div>
+  );
 }
-
-const renderers: RendererRegistry = { message: ChatMessage };
 ```
 
-Pass `false` to suppress a type (overrides built-in fallbacks):
-
-```tsx
-const renderers: RendererRegistry = { status: false };
-```
-
-## Architecture Reference
-
-- [Server and Client](../../docs/architecture/server-and-client.md) — React hooks contract, FlowProvider, rendering
-- [Streaming](../../docs/architecture/streaming.md) — item types, content model, transience
+Register renderers via `FlowProvider` or pass them directly to `ItemRenderer`.
 
 ## Scripts
 
@@ -178,3 +168,8 @@ pnpm --filter @flow-state-dev/react build
 pnpm --filter @flow-state-dev/react typecheck
 pnpm --filter @flow-state-dev/react test
 ```
+
+## Architecture reference
+
+- [Server and Client](../../docs/architecture/server-and-client.md) — React hooks contract, FlowProvider, rendering
+- [Streaming](../../docs/architecture/streaming.md) — Item types, content model, transience
