@@ -54,9 +54,41 @@ const agent = generator({
 
 What the framework handles for you:
 - **Prompt assembly** from four slots: system prompt, context entries, conversation history, and user message
-- **Tool execution loops** — tools are handler blocks, auto-compiled to provider-native format
+- **Tool execution loops** — tools are blocks, auto-compiled to provider-native format (see below)
 - **Streaming** — content deltas flow to the client as they're generated
 - **Structured output repair** — if the LLM returns invalid JSON, the framework can auto-retry or route to a rescue block
+
+#### Tools are blocks
+
+This is one of the most powerful ideas in the framework. A generator's `tools` array accepts any block — handlers, sequencers, even routers. That means a single tool call can trigger an entire multi-step pipeline:
+
+```ts
+// A tool that's a simple handler
+const readDoc = handler({
+  name: "read-doc",
+  inputSchema: z.object({ docId: z.string() }),
+  outputSchema: z.string(),
+  execute: async (input, ctx) => {
+    const doc = ctx.session.resources.get("docs")?.state.byId[input.docId];
+    return doc?.content ?? "Document not found.";
+  },
+});
+
+// A tool that's an entire pipeline — search, rank, summarize
+const deepResearch = sequencer({ name: "deep-research" })
+  .then(searchIndex)
+  .then(rankResults)
+  .then(summarize);
+
+// Both work as tools — the framework handles the rest
+const agent = generator({
+  name: "agent",
+  tools: [readDoc, deepResearch],
+  // ...
+});
+```
+
+When the LLM calls `deep-research`, the framework runs the full sequencer pipeline, collects the output, and feeds it back to the LLM as the tool result — all within the generator's tool loop. Your tools can be as sophisticated as any other part of your workflow.
 
 ### Sequencer — the composition engine
 
@@ -141,6 +173,12 @@ const outerPipeline = sequencer({ name: "outer" })
   .then(modeRouter)       // Router inside sequencer
   .then(blockC);
 ```
+
+## Blocks are portable
+
+Because every block has the same contract — typed input, typed output, declared state dependencies — blocks are inherently shareable. A handler that validates email addresses, a sequencer that does multi-step research, a generator pre-configured for code review — each can be packaged independently and composed into any flow.
+
+This is by design. The framework's four-primitive constraint and partial state schemas mean blocks don't leak assumptions about the flows they live in. A block from a shared package composes with your blocks the same way your own blocks compose with each other.
 
 ## Key rules
 

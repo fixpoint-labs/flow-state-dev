@@ -39,49 +39,64 @@ function HomepageHeader() {
 
 const defineFlowExample = `import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 
-// An LLM-powered chat with conversation history and tools
-const chat = generator({
-  name: "chat",
+// Tools are blocks — even sequencers. This tool is a multi-step pipeline.
+const deepResearch = sequencer({ name: "deep-research" })
+  .then(searchIndex)
+  .then(rankResults)
+  .then(summarize);
+
+// Resources give your AI a persistent workspace: text + structured state
+// Think files with metadata, scoped to sessions, users, or projects.
+const docResource = {
+  stateSchema: z.object({
+    byId: z.record(z.object({
+      title: z.string(),
+      content: z.string(),       // Rich text — the "file" part
+      tags: z.array(z.string()), // Structured state — the "metadata" part
+    })).default({}),
+    order: z.array(z.string()).default([]),
+  }),
+  writable: true,
+};
+
+// Generator with tool access — tools run as blocks in the framework
+const agent = generator({
+  name: "agent",
   model: "gpt-5-mini",
-  prompt: "You are a helpful assistant.",
+  prompt: "You are a research assistant.",
   history: (_input, ctx) => ctx.session.items.llm(),
   user: (input) => input.message,
-  tools: [searchDocs, createArtifact],
+  tools: [deepResearch, readDoc, writeDoc], // Blocks as tools
 });
 
-// Track usage with atomic state operations
-const trackUsage = handler({
-  name: "track-usage",
-  sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
-  execute: async (input, ctx) => {
-    await ctx.session.incState({ messageCount: 1 });
-    return input;
-  },
-});
-
-// Compose into a pipeline with error recovery
-const pipeline = sequencer({ name: "chat-pipeline" })
-  .then(chat)
-  .then(trackUsage)
-  .rescue([{ when: [ModelError], block: fallback }]);
-
-// Define the flow — streaming, state, retries all handled
+// Define the flow — this becomes a full API instantly
 export default defineFlow({
-  kind: "my-app",
+  kind: "research-assistant",
   actions: {
-    chat: { block: pipeline, userMessage: (i) => i.message },
+    chat: { block: agent, userMessage: (i) => i.message },
   },
-  session: { stateSchema, resources, projections },
+  session: {
+    stateSchema,
+    resources: { docs: docResource },
+    projections: {
+      docList: { client: true, compute: (ctx) => /* derived view */ },
+    },
+  },
 })({ id: "default" });`;
 
 const serverExample = `import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
-import myFlow from "./flows/my-flow";
+import researchFlow from "./flows/research-assistant";
+import chatFlow from "./flows/chat";
 
 const registry = createFlowRegistry();
-registry.register(myFlow);
+registry.register(researchFlow);
+registry.register(chatFlow);  // Register as many flows as you need
 
 export const { GET, POST, DELETE } = createFlowApiRouter({ registry });
-// That's it. Full REST API with SSE streaming.`;
+// Each flow is now a full API: actions, sessions, streaming, state snapshots.
+// POST /api/flows/research-assistant/actions/chat
+// GET  /api/flows/research-assistant/requests/:id/stream
+// GET  /api/flows/research-assistant/sessions/:id/state`;
 
 const reactExample = `function Chat() {
   const flow = useFlow({ autoCreateSession: true });
@@ -124,17 +139,27 @@ const FeatureList: FeatureItem[] = [
   {
     title: "Four primitives. Infinite compositions.",
     description:
-      "Handler, generator, sequencer, router — every AI workflow reduces to these four blocks. Compose them into pipelines with branching, parallelism, loops, and error recovery using a fluent DSL.",
+      "Handler, generator, sequencer, router — every AI workflow reduces to these four blocks. Tools are blocks too — even sequencers, so a single tool call can trigger an entire pipeline. Compose freely with branching, parallelism, loops, and error recovery.",
+  },
+  {
+    title: "Flows are full APIs.",
+    description:
+      "Define a flow, register it, and you have a complete REST API with SSE streaming, session management, and state snapshots. No route wiring. No transport plumbing. Every flow is instantly callable from any client.",
+  },
+  {
+    title: "Resources: hybrid memory + filesystem.",
+    description:
+      "Resources combine rich text content with atomic structured state — like files that carry metadata. Scoped to sessions, users, or projects. Projections derive client-safe views. Your AI gets a persistent, typed workspace.",
+  },
+  {
+    title: "Built for an ecosystem.",
+    description:
+      "Blocks and flows are portable by design. Share a tool block, a validation handler, or an entire flow across projects. The uniform block contract means community blocks compose with yours out of the box.",
   },
   {
     title: "Streaming that just works.",
     description:
       "Items stream over SSE as blocks execute — messages, tool calls, state changes, custom components. Disconnect mid-response? Reconnect with a sequence cursor. No data loss. No duplicates.",
-  },
-  {
-    title: "State that scales with your app.",
-    description:
-      "Four isolation levels — request, session, user, project — each with atomic operations. Resources hold structured data. Projections are the only way to expose state to clients. Security by architecture.",
   },
   {
     title: "Type safety from schema to screen.",
@@ -145,7 +170,7 @@ const FeatureList: FeatureItem[] = [
 
 function Feature({ title, description }: FeatureItem) {
   return (
-    <div className={clsx("col col--6")}>
+    <div className={clsx("col col--4")}>
       <div className="padding-horiz--md padding-vert--lg">
         <Heading as="h3">{title}</Heading>
         <p>{description}</p>

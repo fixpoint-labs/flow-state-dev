@@ -50,7 +50,19 @@ Every piece of logic — calling an LLM, validating input, choosing a path, comp
 | **Sequencer** | Compose blocks into pipelines | Multi-step workflows with branching, parallelism, error recovery |
 | **Router** | Dispatch to different pipelines at runtime | Mode switching, intent routing, conditional flows |
 
-All blocks share the same contract: `block.run(input, ctx)`. Any block composes with any other block.
+All blocks share the same contract: `block.run(input, ctx)`. Any block composes with any other block. This includes tools — a generator's tools are blocks, which means a single tool call can trigger a handler, a sequencer pipeline, or even a router that dispatches to different strategies. Your AI's tools can be as simple or as sophisticated as any other part of your workflow.
+
+### Flows are full APIs
+
+Define a flow, register it with the server, and you have a complete REST API — action execution, session management, SSE streaming, state snapshots — with zero route wiring. Every flow you register becomes instantly callable from any client:
+
+```
+POST /api/flows/my-app/actions/chat          → Execute an action
+GET  /api/flows/my-app/requests/:id/stream   → Stream results via SSE
+GET  /api/flows/my-app/sessions/:id/state    → State snapshot with projections
+```
+
+Multiple flows can coexist in the same server. Each one is self-contained with its own actions, state, and resources.
 
 ### Resumable streaming
 
@@ -69,9 +81,15 @@ Four isolation levels with atomic operations:
 
 Each block declares only the state fields it needs via partial schemas. A counter block doesn't need to know about a preferences block's state.
 
-### Resources and projections
+### Resources: hybrid memory and filesystem
 
-**Resources** are typed data containers — think artifacts, plans, documents — scoped to sessions, users, or projects. **Projections** are derived views computed from state and resources, and the *only* way to expose data to clients. You can't accidentally leak internal state because projections are the sole data gateway.
+**Resources** are more than key-value stores. Each resource combines rich text content with structured atomic state — like a file that carries metadata. An artifact resource can hold a document's full text alongside its title, tags, and timestamps, all in one typed container with atomic operations. Scoped to sessions, users, or projects, resources give your AI a persistent, typed workspace.
+
+**Projections** are derived views computed from state and resources, and the *only* way to expose data to clients. You can't accidentally leak internal state because projections are the sole data gateway.
+
+### Built for an ecosystem
+
+Blocks and flows are portable by design. A tool block, a validation handler, a complete agentic workflow — each is a self-contained unit with typed inputs, outputs, and declared state dependencies. Share them across projects or publish them as packages. The uniform block contract means community blocks compose with yours without adapters or glue code.
 
 ### Full-stack type safety
 

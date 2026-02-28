@@ -44,16 +44,18 @@ That's a streaming chat with conversation history, session state, and atomic cou
 
 | Block | What it does |
 |-------|-------------|
-| **handler** | Pure logic — validate, transform, mutate state |
+| **handler** | Pure logic — validate, transform, mutate state, implement tools |
 | **generator** | Call an LLM with managed tool loops, streaming, and structured output repair |
 | **sequencer** | Compose blocks into pipelines with `.then()`, `.parallel()`, `.rescue()`, `.forEach()`, and 10 more DSL methods |
 | **router** | Dispatch to different pipelines at runtime based on input or state |
+
+Tools are blocks too — including sequencers. A single tool call can trigger an entire multi-step pipeline. This means your AI's tools can be as sophisticated as any other part of your workflow.
 
 **Scoped state that scales.** Four isolation levels — request, session, user, project — each with atomic operations (`patchState`, `incState`, `pushState`, `atomicState`). Every block declares only the state fields it needs. Type-safe all the way down.
 
 **Resumable streaming out of the box.** Items stream over SSE as blocks execute. Disconnect mid-response? Reconnect with a sequence cursor and pick up exactly where you left off. No data loss. No duplicate events.
 
-**Resources and projections for data policy.** Resources are typed, named state containers. Projections are derived views — and the *only* way to expose data to clients. You can't accidentally leak internal state.
+**Resources: hybrid memory and filesystem.** Each resource combines rich text content with structured atomic state — like files that carry metadata. An artifact can hold a document's full text alongside its title, tags, and timestamps. Scoped to sessions, users, or projects. Projections derive client-safe views — the *only* way to expose data. You can't accidentally leak internal state.
 
 **First-class error handling.** Retry policies per block. Type-based rescue routing. Non-aborting work queues for side-chain operations. Normalized error model with codes, scopes, and retry signals.
 
@@ -61,7 +63,9 @@ That's a streaming chat with conversation history, session state, and atomic cou
 
 ## The developer experience
 
-**Server** — Register flows and get a complete API with three lines:
+**Flows are full APIs.** Register a flow and you get action execution, session management, SSE streaming, and state snapshots — zero route wiring:
+
+**Server** — Three lines to a complete API:
 
 ```ts
 const registry = createFlowRegistry();
@@ -111,13 +115,16 @@ expect(result.items).toContainItemOfType("message");
 expect(result.stateChanges[0].resultingState.messageCount).toBe(1);
 ```
 
+**Built for an ecosystem.** Blocks and flows are portable. Share a tool block, a validation handler, or a complete agentic flow across projects. The uniform block contract means community blocks compose with yours out of the box.
+
 ## When this framework is for you
 
 - You're building AI-powered features and tired of reinventing orchestration, streaming, and state management every time.
 - You want composable primitives, not a rigid agent framework that prescribes how you structure your AI.
+- You want tools that can be as powerful as your workflows — multi-step pipelines, not just function wrappers.
+- You want your AI to have a real workspace: persistent resources with rich content and typed state, not just chat history.
 - You care about execution semantics — retry, rescue, lifecycle hooks — being explicit and testable, not hidden in application glue.
 - You want one coherent stack across server, client, React, CLI, and tests.
-- You want the confidence that comes from end-to-end type safety with zero code generation.
 
 ## Packages
 

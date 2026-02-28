@@ -90,16 +90,23 @@ const counter = handler({
 
 This keeps blocks reusable and self-documenting about their dependencies.
 
-## Resources
+## Resources — hybrid memory and filesystem
 
-Resources are named, schema-typed data containers attached to a scope. Use them for structured data that needs its own lifecycle — artifacts, plans, documents, collections:
+Resources are more than key-value stores. Each resource combines **rich text content** with **structured atomic state** — think of them as files that carry metadata. This hybrid model gives your AI a persistent, typed workspace.
+
+Consider an artifacts resource: each artifact has a `content` field (the "file" — a document, code snippet, plan, or any rich text) alongside structured fields like `title`, `tags`, and `updatedAt` (the "metadata"). Both live in the same typed container with the same atomic operations:
 
 ```ts
 session: {
   resources: {
     artifacts: {
       stateSchema: z.object({
-        byId: z.record(z.object({ title: z.string(), content: z.string() })).default({}),
+        byId: z.record(z.object({
+          title: z.string(),
+          content: z.string(),              // The "file" — rich text content
+          tags: z.array(z.string()),         // Structured metadata
+          updatedAt: z.number(),             // Structured metadata
+        })).default({}),
         order: z.array(z.string()).default([]),
       }),
       writable: true,
@@ -112,13 +119,27 @@ Access resources through scope handles — they have the same atomic operations 
 
 ```ts
 const artifacts = ctx.session.resources.get("artifacts");
-const titles = artifacts.state.order.map(id => artifacts.state.byId[id]?.title);
 
+// Read content and metadata together
+const doc = artifacts.state.byId["design-doc"];
+console.log(doc.content);  // The full document text
+console.log(doc.tags);     // ["architecture", "v2"]
+
+// Write with atomic state operations
 await artifacts.patchState({
-  byId: { "doc-1": { title: "Design Doc", content: "..." } },
-  order: [...artifacts.state.order, "doc-1"],
+  byId: {
+    "design-doc": {
+      title: "Design Doc v2",
+      content: "# Architecture\n\nThe system is composed of...",
+      tags: ["architecture", "v2"],
+      updatedAt: Date.now(),
+    },
+  },
+  order: [...artifacts.state.order, "design-doc"],
 });
 ```
+
+Resources are scoped — session-level resources persist across requests in a conversation, user-level resources persist across sessions, project-level resources are shared across users. This gives you a natural hierarchy: scratch artifacts in a session, personal notes per user, shared knowledge bases per project.
 
 ## Projections
 
