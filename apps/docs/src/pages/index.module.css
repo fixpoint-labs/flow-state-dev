@@ -1,32 +1,92 @@
 .heroBanner {
-  padding: 4rem 0;
+  padding: 6rem 0 4rem;
   text-align: center;
   position: relative;
   overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    var(--ifm-color-primary-darkest) 0%,
+    var(--ifm-background-color) 100%
+  );
+}
+
+.heroTitle {
+  font-size: 3rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 1rem;
+}
+
+.heroSubtitle {
+  font-size: 1.25rem;
+  max-width: 640px;
+  margin: 0 auto 2rem;
+  color: var(--ifm-color-emphasis-700);
+  line-height: 1.6;
 }
 
 .buttons {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 1rem;
   margin-top: 1.5rem;
 }
 
 .features {
   display: flex;
   align-items: center;
-  padding: 2rem 0;
+  padding: 3rem 0;
 }
 
-.codePreview {
+.sectionSubtext {
+  color: var(--ifm-color-emphasis-600);
+  max-width: 600px;
+}
+
+.codeShowcase {
   padding: 2rem 0 4rem;
 }
 
-.codeBlock {
-  background: var(--ifm-code-background);
-  border-radius: var(--ifm-code-border-radius);
-  padding: 1.5rem;
-  font-size: 0.875rem;
-  line-height: 1.6;
-  overflow-x: auto;
+.codeStep {
+  margin-bottom: 2rem;
+}
+
+.codeStepLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: var(--ifm-color-emphasis-800);
+}
+
+.codeStepNumber {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--ifm-color-primary);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.ctaSection {
+  padding: 4rem 0 5rem;
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+}
+
+@media (max-width: 768px) {
+  .heroTitle {
+    font-size: 2.2rem;
+  }
+
+  .heroSubtitle {
+    font-size: 1.1rem;
+  }
 }

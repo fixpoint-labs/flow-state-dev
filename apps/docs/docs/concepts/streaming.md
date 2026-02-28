@@ -4,22 +4,22 @@ sidebar_position: 5
 
 # Streaming
 
-Flow State Dev uses an **item-first streaming model** over Server-Sent Events (SSE). Instead of streaming raw text, the framework streams structured items — messages, tool calls, state changes, components — that clients render as they arrive.
+Most frameworks bolt streaming on as an afterthought — raw text over a WebSocket, maybe some SSE. Flow State Dev makes streaming structural. Instead of raw text, the framework streams **typed items**: messages, tool calls, state changes, reasoning, custom components. Each item has a lifecycle and a sequence number, so clients can disconnect and resume without losing a single event.
 
-## How Streaming Works
+## How it works
 
-When an action executes, the server creates a request stream. The client connects to it via SSE:
+When a client invokes an action, the server starts executing blocks and streaming results immediately:
 
 ```
-POST /api/flows/:kind/actions/:action → 202 { requestId }
-GET  /api/flows/:kind/requests/:requestId/stream → SSE events
+POST /api/flows/:kind/actions/:action  -->  202 { requestId }
+GET  /api/flows/:kind/requests/:requestId/stream  -->  SSE events
 ```
 
-Events flow in real-time as blocks execute:
+Events flow in real time as blocks execute:
 
 ```
 event: item.added
-data: { "item": { "type": "message", "role": "assistant", ... } }
+data: { "item": { "type": "message", "role": "assistant", "status": "in_progress" } }
 
 event: content.delta
 data: { "itemId": "msg_1", "delta": { "text": "Hello" } }
@@ -27,30 +27,37 @@ data: { "itemId": "msg_1", "delta": { "text": "Hello" } }
 event: content.delta
 data: { "itemId": "msg_1", "delta": { "text": " there!" } }
 
+event: item.updated
+data: { "item": { "type": "message", "role": "assistant", "status": "completed" } }
+
 event: request.status
 data: { "status": "completed" }
 ```
 
-## Item Types
+The client assembles content progressively from deltas. Text appears token by token. When the request completes, the client refetches the state snapshot for the authoritative final state.
 
-| Type | What It Is |
+## Item types
+
+Every streamed event is a typed item. This means the client always knows what it's rendering:
+
+| Type | What it is |
 |------|-----------|
 | `message` | Chat message (user or assistant) with content parts |
-| `reasoning` | Model reasoning/thinking (often hidden from end users) |
+| `reasoning` | Model reasoning/thinking tokens |
 | `block_output` | Structured output from any block |
-| `component` | Custom UI component with props |
-| `container` | Groups child items for UI layout |
+| `component` | Custom UI component with typed props |
+| `container` | Groups child items for visual layout |
 | `tool_call` | Tool invocation with arguments |
 | `tool_result` | Tool execution result |
 | `state_change` | State mutation notification |
 | `resource_change` | Resource mutation notification |
 | `step_error` | Non-terminal error in a pipeline step |
 | `error` | Terminal request error |
-| `status` | Request lifecycle status |
+| `status` | Transient progress updates |
 
-## Content Model
+## Content model
 
-Message and reasoning items have a **content array** of typed parts:
+Message and reasoning items have a **content array** with typed parts:
 
 ```ts
 {
@@ -63,45 +70,55 @@ Message and reasoning items have a **content array** of typed parts:
 }
 ```
 
-Content is streamed via `content.delta` events — the client assembles the full content progressively.
+Content is assembled progressively from `content.delta` events — the framework handles buffering and assembly so you don't have to.
 
-## Resume and Replay
+## Resume and replay
 
-Every stream event has a **sequence number**. Clients can resume from where they left off:
+This is where Flow State Dev's streaming really shines. Every event has a **sequence number**. When a client disconnects — network blip, tab backgrounded, mobile app suspended — it can resume from exactly where it left off:
 
 ```
 GET /api/flows/:kind/requests/:requestId/stream
 Last-Event-ID: 42
 ```
 
-The server replays all events after sequence 42, then switches to live streaming. This makes reconnection seamless — no lost data.
+The server replays all events after sequence 42, then switches to live streaming. No data loss. No duplicate events. No application-level retry logic needed.
 
-## Item Visibility
+You can also use the `starting_after` query parameter:
 
-Items have a `visibility` field:
+```
+GET /api/flows/:kind/requests/:requestId/stream?starting_after=42
+```
 
-| Visibility | Meaning |
-|------------|---------|
-| `ui` | Shown to the user in the UI |
-| `internal` | Available in stream but not rendered by default |
+## Item visibility
+
+Not all items are for the user. Items have a `visibility` field that controls who sees them:
+
+| Visibility | Who sees it |
+|------------|------------|
+| `ui` | Rendered in the user-facing UI |
+| `internal` | Available in the stream but not rendered by default |
 | `devtool` | Only visible in developer tools |
 
-Transient items (like in-progress content) are replaced by their final versions when the block completes.
+Generators also contribute items to the LLM context via `session.items.llm()` — the framework automatically filters to items the LLM should see (messages, tool results) and excludes UI-only items (status, components).
 
-## React Integration
+## React integration
 
-On the React side, streaming is automatic through hooks:
+On the React side, streaming is automatic. The `useSession` hook connects to the SSE stream, processes events, and updates items reactively:
 
 ```tsx
 const session = useSession(sessionId);
 
-// session.items — all items from the current session
-// session.isStreaming — true while a request is active
-// session.messages — filtered to message items only
-
+// Items update in real time as the stream delivers them
 {session.items.map((item) => (
   <ItemRenderer key={item.id} item={item} />
 ))}
+
+// Filtered views
+{session.messages.map(...)}        // Only message items
+{session.blockOutputs.map(...)}    // Only block outputs
+
+// Status
+{session.isStreaming && <Spinner />}
 ```
 
-The `useSession` hook connects to the SSE stream, processes events, and updates items reactively. No manual stream management needed.
+No manual stream management. No event listeners. No reconnection logic. The hooks handle all of it.

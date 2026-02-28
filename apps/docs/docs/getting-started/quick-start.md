@@ -4,69 +4,80 @@ sidebar_position: 1
 
 # Quick Start
 
-Build your first flow in 5 minutes. This guide walks you through defining a simple chat flow, setting up the server, and connecting a React frontend.
+Build a streaming chat app in 5 minutes. By the end, you'll have an LLM-powered chat with conversation history, session state, and a React UI — all type-safe, all streaming.
 
 ## Prerequisites
 
 - Node.js >= 18 (Node 20+ recommended)
 - pnpm (or npm/yarn)
 
-## 1. Install Packages
+## 1. Install packages
 
 ```bash
 pnpm add @flow-state-dev/core @flow-state-dev/server @flow-state-dev/client @flow-state-dev/react zod
 ```
 
-## 2. Define a Flow
+## 2. Define your flow
 
-Create a file for your flow definition:
+This is where you describe what your AI does. A generator calls the LLM. A handler tracks state. A sequencer wires them together. `defineFlow` makes it deployable.
 
 ```ts title="src/flows/hello-chat/flow.ts"
-import { defineFlow, generator, sequencer } from "@flow-state-dev/core";
+import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-// Define a generator block for LLM interaction
+const inputSchema = z.object({ message: z.string() });
+
+// Generator: calls the LLM with conversation history
 const chatGen = generator({
   name: "chat",
   model: "gpt-5-mini",
   prompt: "You are a helpful assistant.",
-  inputSchema: z.object({ message: z.string() }),
+  inputSchema,
+  history: (_input, ctx) => ctx.session.items.llm(),
   user: (input) => input.message,
 });
 
-// Create a pipeline
-const pipeline = sequencer({
-  name: "chat-pipeline",
-  inputSchema: z.object({ message: z.string() }),
-}).then(chatGen);
+// Handler: increments a message counter after each exchange
+const counter = handler({
+  name: "counter",
+  inputSchema: z.string(),
+  outputSchema: z.string(),
+  sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
+  execute: async (input, ctx) => {
+    await ctx.session.incState({ messageCount: 1 });
+    return input;
+  },
+});
 
-// Define and export the flow
+// Pipeline: generator → counter
+const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
+  .then(chatGen)
+  .then(counter);
+
+// Flow definition
 const chatFlow = defineFlow({
   kind: "hello-chat",
+  requireUser: true,
   actions: {
     chat: {
-      inputSchema: z.object({ message: z.string() }),
+      inputSchema,
       block: pipeline,
       userMessage: (input) => input.message,
     },
   },
   session: {
-    stateSchema: z.object({}),
+    stateSchema: z.object({ messageCount: z.number().default(0) }),
   },
 });
 
 export default chatFlow({ id: "default" });
 ```
 
-**What's happening here:**
-- `generator` creates an LLM-calling block with a prompt and input schema
-- `sequencer` chains blocks into a pipeline
-- `defineFlow` declares the flow with its actions and session config
-- The final `chatFlow({ id: "default" })` creates a flow instance
+**What's happening:** The generator handles the LLM call — prompt assembly, streaming, conversation history. The handler is a pure function that bumps a counter. The sequencer pipes the generator's output into the handler. `defineFlow` wraps it all with actions, session state, and lifecycle management.
 
-## 3. Set Up the Server
+## 3. Set up the server
 
-Create an API route that registers your flow and handles requests:
+One catch-all route gives you a complete API with SSE streaming:
 
 ```ts title="app/api/flows/[...path]/route.ts"
 import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
@@ -82,9 +93,11 @@ export const POST = router.POST;
 export const DELETE = router.DELETE;
 ```
 
-This gives you a full REST API with SSE streaming at `/api/flows/`.
+That's it. You now have action execution, session management, SSE streaming with resume, and state snapshots at `/api/flows/`.
 
-## 4. Connect the React Frontend
+## 4. Connect the React frontend
+
+The hooks handle streaming, reconnection, and state sync. You just render:
 
 ```tsx title="src/app/page.tsx"
 import { FlowProvider, ItemRenderer, useFlow, useSession } from "@flow-state-dev/react";
@@ -117,7 +130,7 @@ function ChatUI() {
       >
         <input name="message" placeholder="Type a message..." />
         <button type="submit" disabled={session.isStreaming}>
-          Send
+          {session.isStreaming ? "Thinking..." : "Send"}
         </button>
       </form>
     </div>
@@ -125,27 +138,25 @@ function ChatUI() {
 }
 ```
 
-**What's happening here:**
-- `FlowProvider` sets up the flow context with `flowKind` and `userId`
-- `useFlow` manages session lifecycle (creates one automatically)
-- `useSession` provides items, streaming status, and `sendAction`
-- `ItemRenderer` renders each streamed item using registered renderers
+**What's happening:** `FlowProvider` sets up the flow context. `useFlow` creates a session automatically. `useSession` gives you live-updating items, streaming status, and `sendAction`. `ItemRenderer` renders each streamed item. The framework handles SSE connection, reconnection, and state sync behind the scenes.
 
-## 5. Run It
+## 5. Run it
 
 ```bash
 pnpm dev
 ```
 
-Open your browser and start chatting. The framework handles:
-- Action dispatch and validation
-- SSE streaming with automatic reconnection
-- Session state persistence
+Open your browser and start chatting. The framework is handling:
+- Input validation against your Zod schema
+- Action dispatch and async block execution
+- SSE streaming with automatic reconnection and resume
+- Session state persistence across requests
+- Conversation history assembly for the LLM
 - Item rendering in the UI
 
-## Next Steps
+## Next steps
 
-- [Installation](/docs/getting-started/installation) — Package options and configuration
-- [Project Structure](/docs/getting-started/project-structure) — How to organize your flow project
-- [Concepts: Blocks](/docs/concepts/blocks) — Deep dive into the four block kinds
-- [Guide: Building a Chat App](/docs/guides/building-a-chat-app) — Complete walkthrough with state, tools, and UI
+- **[Installation](/docs/getting-started/installation)** — Package options, peer dependencies, TypeScript config
+- **[Project Structure](/docs/getting-started/project-structure)** — How to organize flows, blocks, and tools
+- **[Blocks](/docs/concepts/blocks)** — Deep dive into handler, generator, sequencer, and router
+- **[Building a Chat App](/docs/guides/building-a-chat-app)** — Full walkthrough with state, projections, tools, and tests

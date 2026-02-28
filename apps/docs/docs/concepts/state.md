@@ -4,43 +4,43 @@ sidebar_position: 4
 
 # State Management
 
-Flow State Dev provides structured state management across four scope levels with typed operations, resources, and projections.
+State in AI applications is messy. Conversation history, user preferences, shared configuration, intermediate processing data — all at different lifetimes, all needing different isolation guarantees. Flow State Dev gives you four scoped levels with typed operations, resources for structured data, and projections to control exactly what the client can see.
 
 ## Scopes
 
 State is organized into four hierarchical scopes:
 
-| Scope | Lifetime | Use For |
+| Scope | Lifetime | Example |
 |-------|----------|---------|
-| **Request** | Single action execution | Temporary processing data |
-| **Session** | Across requests in a conversation | Chat history, current mode, plan state |
-| **User** | Across sessions for a user | Preferences, accumulated knowledge |
+| **Request** | Single action execution | Temporary processing data, intermediate results |
+| **Session** | Across requests in a conversation | Chat history, current mode, plan state, counters |
+| **User** | Across sessions for a user | Preferences, accumulated knowledge, model choices |
 | **Project** | Across users in a project | Shared configuration, global data |
 
-Each scope has its own state, resources, and projections.
+Each scope has its own state, resources, and projections. Most of your state lives at the session level.
 
-## State Operations
+## State operations
 
-State is managed through scope handles in `BlockContext`:
+Every scope provides the same set of atomic operations via the block context:
 
 ```ts
 execute: async (input, ctx) => {
-  // Read state
+  // Read state — always available, always typed
   const mode = ctx.session.state.mode;
 
-  // Patch state (merge fields)
+  // Patch — merge fields into existing state
   await ctx.session.patchState({ mode: "agent" });
 
-  // Replace state entirely
+  // Replace — overwrite the entire state
   await ctx.session.setState({ mode: "chat", count: 0 });
 
-  // Increment numeric fields
+  // Increment — atomic numeric increment
   await ctx.session.incState({ messageCount: 1 });
 
-  // Push to array fields
+  // Push — append to array fields
   await ctx.session.pushState({ history: newEntry });
 
-  // Functional update
+  // Functional update — read-modify-write with CAS safety
   await ctx.session.updateState((current) => ({
     ...current,
     processedAt: Date.now(),
@@ -48,11 +48,11 @@ execute: async (input, ctx) => {
 }
 ```
 
-All state operations use **CAS (Compare-and-Swap)** semantics — concurrent updates are retried automatically to prevent lost writes.
+All operations use **CAS (Compare-and-Swap)** semantics — if two blocks try to update the same state concurrently, one will automatically retry. No lost writes.
 
-## Defining State Schemas
+## Defining state schemas
 
-State schemas are declared in the flow definition:
+State schemas are declared at the flow level:
 
 ```ts
 const myFlow = defineFlow({
@@ -67,23 +67,40 @@ const myFlow = defineFlow({
     stateSchema: z.object({
       preferences: z.object({
         theme: z.enum(["light", "dark"]).default("dark"),
+        preferredModel: z.string().default("gpt-5-mini"),
       }).default({}),
     }),
   },
 });
 ```
 
+**Partial schemas** are the key pattern: each block declares only the state fields it needs, not the full flow-level schema. A counter block that only touches `messageCount` doesn't need to know about `mode`:
+
+```ts
+const counter = handler({
+  name: "counter",
+  sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
+  execute: async (input, ctx) => {
+    // ctx.session.state is typed as { messageCount: number }
+    await ctx.session.incState({ messageCount: 1 });
+    return input;
+  },
+});
+```
+
+This keeps blocks reusable and self-documenting about their dependencies.
+
 ## Resources
 
-Resources are named, schema-typed data containers attached to a scope. They're ideal for structured data that needs independent lifecycle from the main state:
+Resources are named, schema-typed data containers attached to a scope. Use them for structured data that needs its own lifecycle — artifacts, plans, documents, collections:
 
 ```ts
 session: {
   resources: {
-    plan: {
+    artifacts: {
       stateSchema: z.object({
-        steps: z.array(z.string()).default([]),
-        status: z.enum(["draft", "active", "complete"]).default("draft"),
+        byId: z.record(z.object({ title: z.string(), content: z.string() })).default({}),
+        order: z.array(z.string()).default([]),
       }),
       writable: true,
     },
@@ -91,51 +108,66 @@ session: {
 }
 ```
 
-Access resources through scope handles:
+Access resources through scope handles — they have the same atomic operations as state:
 
 ```ts
-const plan = ctx.session.resources.plan;
-const steps = plan.state.steps;
+const artifacts = ctx.session.resources.get("artifacts");
+const titles = artifacts.state.order.map(id => artifacts.state.byId[id]?.title);
 
-await plan.patchState({ status: "active" });
+await artifacts.patchState({
+  byId: { "doc-1": { title: "Design Doc", content: "..." } },
+  order: [...artifacts.state.order, "doc-1"],
+});
 ```
 
 ## Projections
 
-Projections are derived views computed from state and resources. They're the **only way** to expose values to the client:
+Projections are derived views computed from state and resources. They're the **only way** to expose data to clients:
 
 ```ts
 session: {
   projections: {
-    activePlan: {
-      client: true,  // Visible to the client
-      compute: (ctx) => ctx.session.resources.plan?.state ?? null,
+    artifactsList: {
+      client: true,  // Visible to the frontend
+      compute: (ctx) => {
+        const artifacts = ctx.session.resources.get("artifacts")?.state;
+        return artifacts?.order.map(id => ({
+          id,
+          title: artifacts.byId[id]?.title ?? "Untitled",
+        })) ?? [];
+      },
     },
-    messageCount: (ctx) => ctx.session.state.messageCount ?? 0,
+    messageCount: {
+      client: true,
+      compute: (ctx) => ctx.session.state.messageCount ?? 0,
+    },
   },
 }
 ```
 
-On the client side, read projections via `useProjections`:
+On the client, read projections via `useProjections`:
 
 ```tsx
 const projections = useProjections(session, {
-  session: ["activePlan", "messageCount"],
+  session: ["artifactsList", "messageCount"],
+  user: ["preferences"],
 });
-// projections.session.activePlan → { steps: [...], status: "active" }
+// projections.session?.artifactsList → [{ id: "doc-1", title: "Design Doc" }]
 ```
 
-## Client Visibility
+## Why projections matter
 
-The client reads state through projections, not raw state. The state snapshot endpoint returns projections grouped by scope:
+Raw state never reaches the client. The state snapshot endpoint returns projections grouped by scope:
 
 ```json
 {
   "projections": {
-    "session": { "activePlan": [...], "messageCount": 5 },
+    "session": { "artifactsList": [...], "messageCount": 5 },
     "user": { "preferences": { "theme": "dark" } }
   }
 }
 ```
 
-During streaming, `state_change` and `resource_change` events signal that projections may be stale — the client refetches on `request.completed`.
+This is a deliberate architectural choice. Internal state — intermediate processing data, raw resource contents, block-specific fields — stays on the server. You decide exactly what the client sees by writing `compute` functions. Security by architecture, not by convention.
+
+During streaming, `state_change` and `resource_change` events signal that projections may be stale — the client refetches the authoritative snapshot on `request.completed`.

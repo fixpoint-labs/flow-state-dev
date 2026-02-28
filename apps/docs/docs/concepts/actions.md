@@ -4,11 +4,11 @@ sidebar_position: 3
 
 # Actions
 
-Actions are the entry points into a flow. When a client wants to do something — send a message, reset state, trigger processing — it invokes an action.
+Actions are how the outside world talks to your flow. When a client sends a message, resets state, or triggers any processing — it invokes an action. Actions are the flow's public API: named entry points with validated input and a block to execute.
 
-## Defining Actions
+## Defining actions
 
-Actions are defined inside `defineFlow`:
+Actions live inside `defineFlow`:
 
 ```ts
 const myFlow = defineFlow({
@@ -23,28 +23,32 @@ const myFlow = defineFlow({
       inputSchema: z.object({}),
       block: resetHandler,
     },
+    saveArtifact: {
+      inputSchema: artifactInputSchema,
+      block: updateArtifact,
+    },
   },
 });
 ```
 
 Each action has:
-- **`inputSchema`** — Zod schema for validating action input
-- **`block`** — The block (or pipeline) to execute
-- **`userMessage`** (optional) — Extracts a user message string from the input, emitted as a `message` item before block execution
+- **`inputSchema`** — Zod schema that validates every incoming request. Invalid input is rejected before any block runs.
+- **`block`** — The block (or pipeline) to execute. This is where the work happens.
+- **`userMessage`** (optional) — Extracts a display string from the input. The framework emits it as a user-role `message` item before execution begins, so the conversation history shows what the user said.
 
-## Invoking Actions
+## Invoking actions
 
-### From the client
+### From the client SDK
 
 ```ts
 import { createClient } from "@flow-state-dev/client";
 
-const client = createClient({ flowKind: "my-app", userId: "devuser" });
+const client = createClient({ flowKind: "my-app", userId: "user_1" });
 
-// Dynamic action name
+// New session (auto-created)
 await client.sendAction("chat", { message: "Hello!" });
 
-// With an existing session
+// Existing session
 await client.sendAction("chat", { message: "Hello!" }, { sessionId: "sess_123" });
 ```
 
@@ -52,14 +56,10 @@ await client.sendAction("chat", { message: "Hello!" }, { sessionId: "sess_123" }
 
 ```tsx
 const session = useSession(sessionId);
-
-// Primary pattern — via useSession
 await session.sendAction("chat", { message: "Hello!" });
 ```
 
-### HTTP API
-
-Actions are exposed at:
+### Over HTTP
 
 ```
 POST /api/flows/:kind/actions/:action              # New session
@@ -72,41 +72,39 @@ The server returns `202 Accepted` immediately with a `requestId`. Execution happ
 GET /api/flows/:kind/requests/:requestId/stream
 ```
 
-## Execution Flow
+## How an action executes
 
 ```
 Client                        Server
-  │                             │
-  ├─ POST /actions/chat ──────►│
-  │   { input, userId }        ├─ validate input
-  │                             ├─ resolve/create session
-  │◄── 202 { requestId } ──────┤
-  │                             ├─ execute block (async)
-  ├─ GET /requests/:id/stream ►│
-  │◄── SSE events ─────────────┤  item.added, content.delta, ...
-  │◄── request.completed ──────┤
-  │                             │
+  |                             |
+  |-- POST /actions/chat ------>|
+  |   { input, userId }        |-- validate input
+  |                             |-- resolve/create session
+  |<-- 202 { requestId } ------|
+  |                             |-- execute block (async)
+  |-- GET /requests/:id/stream->|
+  |<-- SSE events --------------|  item.added, content.delta, ...
+  |<-- request.completed -------|
+  |                             |
 ```
 
-## Action Lifecycle
+Step by step:
+1. **Validate** — Input is checked against `inputSchema`. Bad input returns 400.
+2. **Session** — Resolved from `sessionId` or created new.
+3. **User message** — If `userMessage` is defined, a user-role message item is emitted to the stream.
+4. **Execute** — The root block runs asynchronously. Items stream to the client as they're produced.
+5. **Complete** — Lifecycle hooks fire. The stream emits `request.completed` (or `request.errored`).
 
-1. **Validate** — Input is checked against `inputSchema`
-2. **Session** — Resolved from `sessionId` or created new
-3. **User message** — `userMessage(input)` emitted if defined
-4. **Execute** — Block runs asynchronously
-5. **Complete or Error** — Lifecycle hooks fire, stream closes
+## Typed actions
 
-## Typed Actions
-
-For compile-time type safety, use `createTypedClient`:
+For compile-time type safety, use `createTypedClient` — it generates action methods from your flow definition:
 
 ```ts
 import { createTypedClient } from "@flow-state-dev/client";
 
-const client = createTypedClient({ flow: myFlow, userId: "devuser" });
+const client = createTypedClient({ flow: myFlow, userId: "user_1" });
 
-// Type-safe action methods
-await client.actions.chat({ message: "Hello!" });
-// TypeScript error: Property 'invalid' does not exist
-await client.actions.invalid({ message: "Hello!" });
+await client.actions.chat({ message: "Hello!" });     // Type-checked
+await client.actions.reset({});                         // Type-checked
+await client.actions.invalid({ message: "Hello!" });   // TypeScript error
 ```

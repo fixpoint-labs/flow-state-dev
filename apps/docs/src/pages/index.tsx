@@ -1,39 +1,119 @@
 import clsx from "clsx";
 import Link from "@docusaurus/Link";
-import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
 import Layout from "@theme/Layout";
 import Heading from "@theme/Heading";
+import CodeBlock from "@theme/CodeBlock";
 
 import styles from "./index.module.css";
 
 function HomepageHeader() {
-  const { siteConfig } = useDocusaurusContext();
   return (
-    <header className={clsx("hero hero--primary", styles.heroBanner)}>
+    <header className={clsx("hero", styles.heroBanner)}>
       <div className="container">
-        <Heading as="h1" className="hero__title">
-          {siteConfig.title}
+        <Heading as="h1" className={styles.heroTitle}>
+          Stop wiring. Start building.
         </Heading>
-        <p className="hero__subtitle">{siteConfig.tagline}</p>
+        <p className={styles.heroSubtitle}>
+          Flow State Dev is a TypeScript framework that turns AI orchestration,
+          streaming, state, and error handling into composable primitives —
+          so you can focus on what your AI actually does.
+        </p>
         <div className={styles.buttons}>
           <Link
-            className="button button--secondary button--lg"
+            className="button button--primary button--lg"
             to="/docs/getting-started/quick-start"
           >
             Get Started
           </Link>
           <Link
-            className="button button--secondary button--outline button--lg"
+            className="button button--secondary button--lg"
             to="/docs/intro"
-            style={{ marginLeft: "1rem" }}
           >
-            Learn More
+            Why Flow State Dev?
           </Link>
         </div>
       </div>
     </header>
   );
 }
+
+const defineFlowExample = `import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+
+// An LLM-powered chat with conversation history and tools
+const chat = generator({
+  name: "chat",
+  model: "gpt-5-mini",
+  prompt: "You are a helpful assistant.",
+  history: (_input, ctx) => ctx.session.items.llm(),
+  user: (input) => input.message,
+  tools: [searchDocs, createArtifact],
+});
+
+// Track usage with atomic state operations
+const trackUsage = handler({
+  name: "track-usage",
+  sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
+  execute: async (input, ctx) => {
+    await ctx.session.incState({ messageCount: 1 });
+    return input;
+  },
+});
+
+// Compose into a pipeline with error recovery
+const pipeline = sequencer({ name: "chat-pipeline" })
+  .then(chat)
+  .then(trackUsage)
+  .rescue([{ when: [ModelError], block: fallback }]);
+
+// Define the flow — streaming, state, retries all handled
+export default defineFlow({
+  kind: "my-app",
+  actions: {
+    chat: { block: pipeline, userMessage: (i) => i.message },
+  },
+  session: { stateSchema, resources, projections },
+})({ id: "default" });`;
+
+const serverExample = `import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
+import myFlow from "./flows/my-flow";
+
+const registry = createFlowRegistry();
+registry.register(myFlow);
+
+export const { GET, POST, DELETE } = createFlowApiRouter({ registry });
+// That's it. Full REST API with SSE streaming.`;
+
+const reactExample = `function Chat() {
+  const flow = useFlow({ autoCreateSession: true });
+  const session = useSession(flow.activeSessionId);
+  const { session: proj } = useProjections(session, {
+    session: ["messageCount"],
+  });
+
+  return (
+    <>
+      {session.items.map(item => <ItemRenderer key={item.id} item={item} />)}
+      <span>{proj?.messageCount} messages</span>
+      <button
+        onClick={() => session.sendAction("chat", { message: "Hello" })}
+        disabled={session.isStreaming}
+      >
+        {session.isStreaming ? "Thinking..." : "Send"}
+      </button>
+    </>
+  );
+}`;
+
+const testExample = `const result = await testBlock(pipeline, {
+  input: { message: "Hello" },
+  session: { state: { messageCount: 0 } },
+  generators: {
+    chat: mockGenerator({ script: [{ text: "Hi there!" }] }),
+  },
+});
+
+expect(result.items).toContainItemOfType("message");
+expect(result.session.state.messageCount).toBe(1);`;
 
 type FeatureItem = {
   title: string;
@@ -42,24 +122,24 @@ type FeatureItem = {
 
 const FeatureList: FeatureItem[] = [
   {
-    title: "Typed Blocks, Composable Flows",
+    title: "Four primitives. Infinite compositions.",
     description:
-      "Define handlers, generators, sequencers, and routers as typed building blocks. Compose them into flows with a fluent DSL that catches errors at build time.",
+      "Handler, generator, sequencer, router — every AI workflow reduces to these four blocks. Compose them into pipelines with branching, parallelism, loops, and error recovery using a fluent DSL.",
   },
   {
-    title: "Resumable Streaming",
+    title: "Streaming that just works.",
     description:
-      "Item-first streaming with sequence-number replay. Clients reconnect mid-stream without losing data. SSE protocol with content deltas, tool calls, and status events.",
+      "Items stream over SSE as blocks execute — messages, tool calls, state changes, custom components. Disconnect mid-response? Reconnect with a sequence cursor. No data loss. No duplicates.",
   },
   {
-    title: "Scoped State Management",
+    title: "State that scales with your app.",
     description:
-      "Four scope levels — request, session, user, project — with CAS-based state operations. Resources and projections provide typed data management with client visibility control.",
+      "Four isolation levels — request, session, user, project — each with atomic operations. Resources hold structured data. Projections are the only way to expose state to clients. Security by architecture.",
   },
   {
-    title: "Full-Stack TypeScript",
+    title: "Type safety from schema to screen.",
     description:
-      "One type system from server execution through client transport to React UI. Schemas defined once, validated everywhere. No glue code between layers.",
+      "Define a Zod schema once. It validates at runtime, infers at compile time, and flows from server blocks through the client SDK to React hooks. No glue code. No type drift.",
   },
 ];
 
@@ -88,43 +168,40 @@ function HomepageFeatures() {
   );
 }
 
-function HomepageCodePreview() {
+type CodeTab = {
+  label: string;
+  code: string;
+  language: string;
+};
+
+const codeTabs: CodeTab[] = [
+  { label: "Define", code: defineFlowExample, language: "ts" },
+  { label: "Serve", code: serverExample, language: "ts" },
+  { label: "Render", code: reactExample, language: "tsx" },
+  { label: "Test", code: testExample, language: "ts" },
+];
+
+function HomepageCodeShowcase() {
   return (
-    <section className={styles.codePreview}>
+    <section className={styles.codeShowcase}>
       <div className="container">
         <div className="row">
-          <div className="col col--8 col--offset-2">
-            <Heading as="h2" className="text--center margin-bottom--lg">
-              Define a flow in minutes
+          <div className="col col--10 col--offset-1">
+            <Heading as="h2" className="text--center margin-bottom--sm">
+              From definition to UI in four steps
             </Heading>
-            <pre className={styles.codeBlock}>
-              <code>{`import { defineFlow, generator, sequencer } from "@flow-state-dev/core";
-import { z } from "zod";
-
-const chatGen = generator({
-  name: "chat",
-  model: "gpt-5-mini",
-  prompt: "You are a helpful assistant.",
-  inputSchema: z.object({ message: z.string() }),
-  user: (input) => input.message,
-});
-
-const pipeline = sequencer({
-  name: "chat-pipeline",
-  inputSchema: z.object({ message: z.string() }),
-}).then(chatGen);
-
-export default defineFlow({
-  kind: "my-chat",
-  actions: {
-    chat: {
-      inputSchema: z.object({ message: z.string() }),
-      block: pipeline,
-      userMessage: (input) => input.message,
-    },
-  },
-});`}</code>
-            </pre>
+            <p className={clsx("text--center margin-bottom--lg", styles.sectionSubtext)}>
+              Define your blocks and flows. Register with the server. Wire up React hooks. Write deterministic tests. Each layer is independent and composable.
+            </p>
+            {codeTabs.map((tab, idx) => (
+              <div key={idx} className={styles.codeStep}>
+                <div className={styles.codeStepLabel}>
+                  <span className={styles.codeStepNumber}>{idx + 1}</span>
+                  {tab.label}
+                </div>
+                <CodeBlock language={tab.language}>{tab.code}</CodeBlock>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -132,14 +209,38 @@ export default defineFlow({
   );
 }
 
-export default function Home(): React.ReactElement {
-  const { siteConfig } = useDocusaurusContext();
+function HomepageCTA() {
   return (
-    <Layout title={siteConfig.title} description={siteConfig.tagline}>
+    <section className={styles.ctaSection}>
+      <div className="container text--center">
+        <Heading as="h2">Ready to build?</Heading>
+        <p className={styles.sectionSubtext} style={{ margin: "0 auto 1.5rem" }}>
+          Get a streaming chat app running in under 5 minutes. No boilerplate. No plumbing.
+        </p>
+        <div className={styles.buttons}>
+          <Link
+            className="button button--primary button--lg"
+            to="/docs/getting-started/quick-start"
+          >
+            Quick Start Guide
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export default function Home(): React.ReactElement {
+  return (
+    <Layout
+      title="AI workflows, composed"
+      description="Flow State Dev — a TypeScript framework for building AI workflows with composable blocks, resumable streaming, scoped state, and full-stack type safety."
+    >
       <HomepageHeader />
       <main>
         <HomepageFeatures />
-        <HomepageCodePreview />
+        <HomepageCodeShowcase />
+        <HomepageCTA />
       </main>
     </Layout>
   );

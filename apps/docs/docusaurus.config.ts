@@ -4,7 +4,7 @@ import type * as Preset from "@docusaurus/preset-classic";
 
 const config: Config = {
   title: "Flow State Dev",
-  tagline: "Block-based AI workflow framework for TypeScript",
+  tagline: "Composable AI workflows for TypeScript. Blocks in. Streaming out.",
   favicon: "img/favicon.ico",
 
   url: "https://flowstatedev.com",
