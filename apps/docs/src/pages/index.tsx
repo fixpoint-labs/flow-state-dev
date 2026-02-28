@@ -10,11 +10,21 @@ import styles from "./index.module.css";
 
 const defineExample = `import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 
-// A tool that's a full multi-step pipeline — not a function wrapper
+// A tool that's a full pipeline — parallel steps, background work, error recovery
 const deepResearch = sequencer({ name: "deep-research" })
-  .then(searchIndex)
-  .then(rankResults)
-  .then(summarize);
+  .then(parseQuery)
+  .parallel({
+    web: searchWeb,
+    docs: searchInternalDocs,
+    memory: searchMemory,
+  }, { maxConcurrency: 3 })
+  .then(mergeAndRank)
+  .doUntil(
+    (result) => result.confidence > 0.9,
+    refineResults
+  )
+  .work(logAnalytics)
+  .rescue([{ when: [SearchError], block: fallbackSearch }]);
 
 // Blocks emit component items — structured data for the UI
 const analyze = handler({
@@ -174,7 +184,7 @@ const features: FeatureItem[] = [
   {
     title: "Four primitives. Compose freely.",
     description:
-      "Handler, generator, sequencer, router — every AI workflow reduces to these four blocks. Compose with branching, parallelism, loops, and error recovery.",
+      "Handler, generator, sequencer, router. The sequencer DSL alone gives you parallel steps, forEach, doUntil/doWhile loops, background work, branching, error recovery, and more.",
   },
   {
     title: "Flows are full APIs.",

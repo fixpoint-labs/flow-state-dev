@@ -92,27 +92,149 @@ When the LLM calls `deep-research`, the framework runs the full sequencer pipeli
 
 ### Sequencer — the composition engine
 
-Sequencers compose blocks into pipelines using a fluent DSL. Each step's output feeds into the next step's input.
+Sequencers compose blocks into pipelines using a fluent DSL with 15 chainable methods. Each step's output feeds into the next step's input, with full type inference through the chain.
+
+#### Sequential steps
+
+The basics — chain blocks in order, conditionally skip steps, or transform values inline:
 
 ```ts
-import { sequencer } from "@flow-state-dev/core";
-
-const pipeline = sequencer({
-  name: "chat-pipeline",
-  inputSchema: z.object({ message: z.string() }),
-})
-  .then(analyzeInput)
-  .thenIf((result) => result.needsContext, enrichWithContext)
-  .then(agent)
-  .tap(analyticsBlock)
-  .rescue([
-    { when: [NetworkError], block: retryWithBackup },
-    { when: [ModelError], block: fallbackModel },
-    { block: genericRecovery },
-  ]);
+const pipeline = sequencer({ name: "pipeline", inputSchema })
+  .then(analyzeInput)                                            // always runs
+  .thenIf((result) => result.needsContext, enrichWithContext)     // conditional
+  .map((result) => ({ ...result, timestamp: Date.now() }))       // inline transform
+  .then(agent);
 ```
 
-The DSL has 14 methods: `then`, `thenIf`, `parallel`, `forEach`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `waitForWork`, `loopBack`. See [Sequencer Patterns](/docs/guides/sequencer-patterns) for recipes.
+#### Parallel execution
+
+Run multiple blocks concurrently with a single step. Output is an object keyed by step name:
+
+```ts
+const enriched = sequencer({ name: "enrich" })
+  .then(parseQuery)
+  .parallel({
+    web: searchWeb,
+    docs: searchInternalDocs,
+    memory: { connector: (input) => input.userId, block: searchUserHistory },
+  }, { maxConcurrency: 3 })
+  // output: { web: WebResults, docs: DocResults, memory: HistoryResults }
+  .then(mergeResults);
+```
+
+#### Collection processing
+
+Process arrays concurrently with `forEach`. Supports dynamic block selection per item:
+
+```ts
+pipeline
+  .forEach(processChunk, { maxConcurrency: 5 })               // static block
+  .forEach((input) => input.urls, fetchUrl, { maxConcurrency: 10 })  // extract array first
+  .forEach((item, index) => item.type === "pdf" ? parsePdf : parseText);  // dynamic block
+```
+
+#### Loops
+
+Three loop constructs — each with built-in guards to prevent infinite loops:
+
+```ts
+pipeline
+  // Loop until condition is true (checked after each iteration)
+  .doUntil((result) => result.confidence > 0.9, refineBlock)
+
+  // Loop while condition is true (checked after each iteration)
+  .doWhile((result) => result.remaining > 0, processNextBatch)
+
+  // Jump back to a named step — requires explicit max iterations
+  .then(generateBlock)
+  .then(validateBlock)
+  .loopBack("generate-block", {
+    when: (result) => !result.isValid,
+    maxIterations: 3,
+  });
+```
+
+#### Background work
+
+Queue non-blocking tasks that run alongside the main pipeline. The main chain continues immediately — background failures emit `step_error` items but never abort the pipeline:
+
+```ts
+pipeline
+  .then(coreLogic)
+  .work(logAnalytics)                          // fire and forget
+  .work((output) => output.metrics, reportMetrics)  // with connector
+  .then(moreWork)
+  .waitForWork({ timeoutMs: 5000 });           // optionally converge later
+```
+
+#### Branching
+
+Route to different blocks based on runtime conditions. First matching branch wins:
+
+```ts
+pipeline.branch({
+  urgent: [
+    (input) => input,
+    (input) => input.priority === "critical",
+    urgentPipeline,
+  ],
+  standard: [
+    (input) => input,
+    (input) => input.priority === "normal",
+    standardPipeline,
+  ],
+  fallback: [
+    (input) => input,
+    () => true,  // catch-all
+    defaultPipeline,
+  ],
+});
+```
+
+#### Side effects
+
+Run blocks or functions for observation without changing the payload:
+
+```ts
+pipeline
+  .tap(auditLogBlock)                                    // block side effect
+  .tap((value, ctx) => console.log("checkpoint", value)) // inline side effect
+  .tapIf((value) => value.score < 0.5, alertBlock);      // conditional side effect
+```
+
+#### Error recovery
+
+Catch errors from prior steps and route to recovery blocks by error type:
+
+```ts
+pipeline.rescue([
+  { when: [RateLimitError], block: retryWithBackoff },
+  { when: [ModelError], block: fallbackModel },
+  { block: genericRecovery },  // catch-all
+]);
+```
+
+#### Putting it all together
+
+These compose into sophisticated workflows that would be painful to build from scratch:
+
+```ts
+const researchAgent = sequencer({ name: "research-agent" })
+  .then(parseQuery)
+  .parallel({
+    web: searchWeb,
+    docs: searchDocs,
+    memory: searchMemory,
+  })
+  .then(mergeAndRank)
+  .doUntil((r) => r.confidence > 0.9, refineResults)
+  .work(logAnalytics)
+  .then(synthesize)
+  .tapIf((r) => r.citations.length > 5, notifyReviewer)
+  .rescue([{ when: [SearchError], block: fallbackSearch }]);
+```
+
+That's a parallel search across three sources, iterative refinement until confidence is high, background analytics, synthesis, conditional notification, and error recovery — all as a single composable block that can be nested inside other sequencers, used as a generator tool, or registered as a flow action.
 
 ### Router — runtime dispatch
 
