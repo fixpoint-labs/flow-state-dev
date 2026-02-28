@@ -8,7 +8,7 @@ import styles from "./index.module.css";
 
 /* ── Code examples ── */
 
-const defineExample = `import { defineFlow, generator, sequencer } from "@flow-state-dev/core";
+const defineExample = `import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
 
 // A tool that's a full multi-step pipeline — not a function wrapper
 const deepResearch = sequencer({ name: "deep-research" })
@@ -16,17 +16,20 @@ const deepResearch = sequencer({ name: "deep-research" })
   .then(rankResults)
   .then(summarize);
 
-// Resources: hybrid memory — text content + structured state
-const docResource = {
-  stateSchema: z.object({
-    byId: z.record(z.object({
-      title: z.string(),
-      content: z.string(),       // Rich text — the "file" part
-      tags: z.array(z.string()), // Structured state — the "metadata" part
-    })).default({}),
-  }),
-  writable: true,
-};
+// Blocks emit component items — structured data for the UI
+const analyze = handler({
+  name: "analyze",
+  execute: async (input, ctx) => {
+    const report = await buildReport(input);
+    const component = ctx.emitComponent("report-card", {
+      title: report.title,
+      findings: report.findings,
+      confidence: report.score,
+    });
+    component.done();
+    return report;
+  },
+});
 
 const agent = generator({
   name: "agent",
@@ -34,7 +37,7 @@ const agent = generator({
   prompt: "You are a research assistant.",
   history: (_input, ctx) => ctx.session.items.llm(),
   user: (input) => input.message,
-  tools: [deepResearch, readDoc, writeDoc],
+  tools: [deepResearch, analyze, readDoc, writeDoc],
 });
 
 export default defineFlow({
@@ -64,21 +67,37 @@ export const { GET, POST, DELETE } = createFlowApiRouter({ registry });
 // GET  /api/flows/research-assistant/requests/:id/stream
 // GET  /api/flows/sessions/:id/state`;
 
-const renderExample = `function ResearchApp() {
+const renderExample = `// Register component renderers — the UI counterpart to ctx.emitComponent()
+function ReportCard({ item }: { item: ComponentItem }) {
+  const { title, findings, confidence } = item.data;
+  return (
+    <div className="report-card">
+      <h3>{title}</h3>
+      <ul>{findings.map(f => <li key={f}>{f}</li>)}</ul>
+      <meter value={confidence} />
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <FlowProvider
+      config={{ baseUrl: "/api" }}
+      renderers={{ component: { "report-card": ReportCard } }}
+    >
+      <ResearchApp />
+    </FlowProvider>
+  );
+}
+
+function ResearchApp() {
   const flow = useFlow({ autoCreateSession: true });
   const session = useSession(flow.activeSessionId);
-  const { session: proj } = useProjections(session, {
-    session: ["docList"],
-  });
 
   return (
     <>
+      {/* ItemRenderer resolves component items to registered renderers */}
       {session.items.map(item => <ItemRenderer key={item.id} item={item} />)}
-
-      <aside>
-        <h3>Documents ({proj?.docList?.length ?? 0})</h3>
-        {proj?.docList?.map(doc => <DocCard key={doc.id} {...doc} />)}
-      </aside>
 
       <button
         onClick={() => session.sendAction("chat", { message: "Hello" })}
@@ -134,7 +153,7 @@ const codeTabs: CodeTab[] = [
   },
   {
     label: "Render",
-    caption: "React hooks that stream items and projections in real time.",
+    caption: "Register component renderers. ItemRenderer resolves them from the stream.",
     code: renderExample,
     language: "tsx",
   },
@@ -175,7 +194,7 @@ const features: FeatureItem[] = [
   {
     title: "Streaming that just works.",
     description:
-      "Items stream over SSE as blocks execute. Disconnect mid-response? Reconnect with a sequence cursor. No data loss.",
+      "Messages, components, status updates — all stream over SSE as blocks execute. Disconnect mid-response? Reconnect with a sequence cursor.",
   },
   {
     title: "Type-safe, end to end.",
