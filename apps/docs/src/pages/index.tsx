@@ -8,9 +8,9 @@ import styles from "./index.module.css";
 
 /* ── Code examples ── */
 
-const defineExample = `import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+const defineExample = `import { defineFlow, generator, sequencer } from "@flow-state-dev/core";
 
-// A tool that's a full pipeline — parallel steps, background work, error recovery
+// A tool that's a full pipeline — parallel steps, loops, error recovery
 const deepResearch = sequencer({ name: "deep-research" })
   .then(parseQuery)
   .parallel({
@@ -26,20 +26,17 @@ const deepResearch = sequencer({ name: "deep-research" })
   .work(logAnalytics)
   .rescue([{ when: [SearchError], block: fallbackSearch }]);
 
-// Blocks emit component items — structured data for the UI
-const analyze = handler({
-  name: "analyze",
-  execute: async (input, ctx) => {
-    const report = await buildReport(input);
-    const component = ctx.emitComponent("report-card", {
+// Sequencer that analyzes and emits a component item to the UI
+const analyze = sequencer({ name: "analyze" })
+  .then(gatherEvidence)
+  .then(scoreFindings)
+  .tap((report, ctx) => {
+    ctx.emitComponent("report-card", {
       title: report.title,
       findings: report.findings,
       confidence: report.score,
-    });
-    component.done();
-    return report;
-  },
-});
+    }).done();
+  });
 
 const agent = generator({
   name: "agent",
