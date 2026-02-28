@@ -18,5 +18,19 @@
   --ifm-color-primary-light: #a5b4fc;
   --ifm-color-primary-lighter: #c7d2fe;
   --ifm-color-primary-lightest: #e0e7ff;
+  --ifm-background-color: #0a0a0f;
+  --ifm-background-surface-color: #111118;
+  --ifm-navbar-background-color: rgba(10, 10, 15, 0.8);
+  --ifm-footer-background-color: #06060a;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .navbar {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
