@@ -59,7 +59,7 @@ Define a flow, register it with the server, and you have a complete REST API —
 ```
 POST /api/flows/my-app/actions/chat          → Execute an action
 GET  /api/flows/my-app/requests/:id/stream   → Stream results via SSE
-GET  /api/flows/my-app/sessions/:id/state    → State snapshot with projections
+GET  /api/flows/sessions/:id/state            → State snapshot with projections
 ```
 
 Multiple flows can coexist in the same server. Each one is self-contained with its own actions, state, and resources.

@@ -96,7 +96,7 @@ export const { GET, POST, DELETE } = createFlowApiRouter({ registry });
 // Each flow is now a full API: actions, sessions, streaming, state snapshots.
 // POST /api/flows/research-assistant/actions/chat
 // GET  /api/flows/research-assistant/requests/:id/stream
-// GET  /api/flows/research-assistant/sessions/:id/state`;
+// GET  /api/flows/sessions/:id/state`;
 
 const reactExample = `function Chat() {
   const flow = useFlow({ autoCreateSession: true });
