@@ -4,7 +4,8 @@ import type {
   BlockContext,
   BlockDefinition,
   BlockKind,
-  ConnectorFn
+  ConnectorFn,
+  DeclaredResources
 } from "../../types/block";
 import { toError } from "./utils";
 
@@ -27,6 +28,7 @@ export type BuildBlockOptions<
   kind: BlockKind;
   config: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
   execute?: ExecuteFn<TInputSchema, TOutputSchema, TInput, TOutput>;
+  declaredResources?: DeclaredResources;
 };
 
 function validateSchema<TValue>(
@@ -84,6 +86,7 @@ export function buildBlock<
     inputSchema: resolvedInputSchema,
     outputSchema: resolvedOutputSchema,
     config: runtimeConfig,
+    declaredResources: options.declaredResources,
     async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       try {
         const connectedInput = runtimeConfig.connectInput

@@ -1,5 +1,5 @@
-export type { BlockInput, BlockOutput } from "./types/block";
-export type { ContextOf, ResourceContext, StateOf } from "./types/resource";
+export type { BlockInput, BlockOutput, DeclaredResources } from "./types/block";
+export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
 export type {
   JsonObject,
   JsonPrimitive,
