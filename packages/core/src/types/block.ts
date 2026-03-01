@@ -50,11 +50,13 @@ export interface BlockContext<
   TSessionResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
   TUserResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
   TProjectResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
+  TSequencerState extends object = Record<string, unknown>,
 > {
   request: RequestScopeHandle<TRequestState>;
   session: SessionScopeHandle<TSessionState, TSessionResources>;
   user: UserScopeHandle<TUserState, TUserResources>;
   project?: ProjectScopeHandle<TProjectState, TProjectResources>;
+  sequencer?: TargetHandle<TSequencerState>;
 
   response: ResponseEmitterHandle;
   signal: AbortSignal;

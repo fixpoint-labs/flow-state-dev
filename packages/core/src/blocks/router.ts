@@ -28,11 +28,13 @@ export interface RouterConfig<
   TSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
   TProjectStateSchema extends ZodTypeAny | undefined = undefined,
+  TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   // Derive-once: evaluate z.infer exactly once per provided schema
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
   TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
   TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
+  TSequencerState extends object = InferStateFromSchema<TSequencerStateSchema>,
   // Resource schemas — optional, default to undefined (no typed resources)
   TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
@@ -46,6 +48,7 @@ export interface RouterConfig<
   sessionStateSchema?: TSessionStateSchema;
   userStateSchema?: TUserStateSchema;
   projectStateSchema?: TProjectStateSchema;
+  sequencerStateSchema?: TSequencerStateSchema;
   sessionResourceSchemas?: TSessionResourceSchemas;
   userResourceSchemas?: TUserResourceSchemas;
   projectResourceSchemas?: TProjectResourceSchemas;
@@ -55,7 +58,7 @@ export interface RouterConfig<
     input: TInput,
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TProjectState,
-      TSessionResources, TUserResources, TProjectResources
+      TSessionResources, TUserResources, TProjectResources, TSequencerState
     >
   ) => Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>;
   validateRoute?: (
@@ -64,7 +67,7 @@ export interface RouterConfig<
     input: TInput,
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TProjectState,
-      TSessionResources, TUserResources, TProjectResources
+      TSessionResources, TUserResources, TProjectResources, TSequencerState
     >
   ) => Promise<boolean> | boolean;
   container?: {
@@ -83,10 +86,12 @@ export function router<
   TSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
   TProjectStateSchema extends ZodTypeAny | undefined = undefined,
+  TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
   TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
   TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
+  TSequencerState extends object = InferStateFromSchema<TSequencerStateSchema>,
   TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
   TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
@@ -96,8 +101,8 @@ export function router<
 >(
   config: RouterConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
-    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TProjectStateSchema,
-    TRequestState, TSessionState, TUserState, TProjectState,
+    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TProjectStateSchema, TSequencerStateSchema,
+    TRequestState, TSessionState, TUserState, TProjectState, TSequencerState,
     TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
     TSessionResources, TUserResources, TProjectResources
   >

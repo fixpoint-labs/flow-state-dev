@@ -222,6 +222,7 @@ export type SequencerConfig<
   description?: string;
   inputSchema?: TInputSchema;
   outputSchema?: ZodTypeAny;
+  stateSchema?: ZodTypeAny;
   container?: {
     component?: string;
     label?: string | ((input: TInput) => string);

@@ -120,11 +120,13 @@ export interface GeneratorConfig<
   TSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
   TProjectStateSchema extends ZodTypeAny | undefined = undefined,
+  TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   // Derive-once: evaluate z.infer exactly once per provided schema
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
   TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
   TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
+  TSequencerState extends object = InferStateFromSchema<TSequencerStateSchema>,
   // Resource schemas — optional, default to undefined (no typed resources)
   TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
@@ -136,13 +138,14 @@ export interface GeneratorConfig<
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,
-    TSessionResources, TUserResources, TProjectResources
+    TSessionResources, TUserResources, TProjectResources, TSequencerState
   >,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
   userStateSchema?: TUserStateSchema;
   projectStateSchema?: TProjectStateSchema;
+  sequencerStateSchema?: TSequencerStateSchema;
   sessionResourceSchemas?: TSessionResourceSchemas;
   userResourceSchemas?: TUserResourceSchemas;
   projectResourceSchemas?: TProjectResourceSchemas;
@@ -750,10 +753,12 @@ export function generator<
   TSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
   TProjectStateSchema extends ZodTypeAny | undefined = undefined,
+  TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
   TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
   TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
+  TSequencerState extends object = InferStateFromSchema<TSequencerStateSchema>,
   TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
   TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
@@ -762,13 +767,13 @@ export function generator<
   TProjectResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TProjectResourceSchemas>,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,
-    TSessionResources, TUserResources, TProjectResources
+    TSessionResources, TUserResources, TProjectResources, TSequencerState
   >,
 >(
   config: GeneratorConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
-    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TProjectStateSchema,
-    TRequestState, TSessionState, TUserState, TProjectState,
+    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TProjectStateSchema, TSequencerStateSchema,
+    TRequestState, TSessionState, TUserState, TProjectState, TSequencerState,
     TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
     TSessionResources, TUserResources, TProjectResources, TCtx
   >
