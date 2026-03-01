@@ -4,11 +4,11 @@ import type {
   BlockContext,
   BlockDefinition,
   ConnectorFn,
-  InferResourcesFromSchemas,
+  InferBlockResources,
   InferStateFromSchema,
   RetryPolicy
 } from "../types/block";
-import type { ResourceHandle } from "../types/resource";
+import type { DefinedResource, ResourceHandle } from "../types/resource";
 import type {
   GeneratorModel,
   GeneratorModelResult,
@@ -131,10 +131,14 @@ export interface GeneratorConfig<
   TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
   TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
-  // Derive-once: map resource schemas to typed ResourceHandle records
-  TSessionResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TSessionResourceSchemas>,
-  TUserResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TUserResourceSchemas>,
-  TProjectResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TProjectResourceSchemas>,
+  // Resource definitions — optional, provide typing AND auto-installation
+  TSessionResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
+  TUserResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
+  TProjectResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
+  // Derive-once: map resource schemas/definitions to typed ResourceHandle records
+  TSessionResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
+  TUserResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
+  TProjectResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,
@@ -149,6 +153,9 @@ export interface GeneratorConfig<
   sessionResourceSchemas?: TSessionResourceSchemas;
   userResourceSchemas?: TUserResourceSchemas;
   projectResourceSchemas?: TProjectResourceSchemas;
+  sessionResources?: TSessionResourceDefs;
+  userResources?: TUserResourceDefs;
+  projectResources?: TProjectResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
   model: ResolvableModel<TInput, TCtx>;
   prompt: ResolvableString<TInput, TCtx>;
@@ -777,9 +784,12 @@ export function generator<
   TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
   TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
-  TSessionResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TSessionResourceSchemas>,
-  TUserResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TUserResourceSchemas>,
-  TProjectResources extends Record<string, ResourceHandle<any>> = InferResourcesFromSchemas<TProjectResourceSchemas>,
+  TSessionResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
+  TUserResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
+  TProjectResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
+  TSessionResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
+  TUserResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
+  TProjectResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,
     TSessionResources, TUserResources, TProjectResources, TSequencerState
@@ -790,6 +800,7 @@ export function generator<
     TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TProjectStateSchema, TSequencerStateSchema,
     TRequestState, TSessionState, TUserState, TProjectState, TSequencerState,
     TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
+    TSessionResourceDefs, TUserResourceDefs, TProjectResourceDefs,
     TSessionResources, TUserResources, TProjectResources, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {

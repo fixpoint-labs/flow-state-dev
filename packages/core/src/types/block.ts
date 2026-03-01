@@ -5,10 +5,11 @@ import type {
   SessionScopeHandle,
   UserScopeHandle
 } from "./scope";
-import type { ResourceHandle } from "./resource";
+import type { DefinedResource, ResourceHandle } from "./resource";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
 import type { Content } from "../items/content";
+import type { JsonObject } from "../schema/common";
 
 export type BlockKind = "handler" | "generator" | "sequencer" | "router";
 
@@ -133,6 +134,12 @@ export interface BlockConfig<
   retry?: RetryPolicy;
 }
 
+export type DeclaredResources = {
+  session?: Record<string, DefinedResource>;
+  user?: Record<string, DefinedResource>;
+  project?: Record<string, DefinedResource>;
+};
+
 export interface BlockDefinition<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
@@ -145,6 +152,7 @@ export interface BlockDefinition<
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
   config: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
+  declaredResources?: DeclaredResources;
   run(input: TInput, ctx: BlockContext): Promise<TOutput>;
 
   connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<ZodTypeAny, TOutputSchema>;
@@ -182,3 +190,22 @@ export type InferResourcesFromSchemas<T> =
   T extends ZodTypeAny
     ? { [K in keyof z.infer<T>]: ResourceHandle<z.infer<T>[K]> }
     : Record<string, ResourceHandle<any>>;
+
+/**
+ * Derive typed ResourceHandle records from a `Record<string, DefinedResource>`.
+ * Each DefinedResource carries a phantom `StateType` that maps to
+ * `ResourceHandle<StateType>`.
+ */
+export type InferResourcesFromDefinitions<T> =
+  T extends Record<string, DefinedResource>
+    ? { [K in keyof T]: ResourceHandle<T[K] extends DefinedResource<infer S> ? S : JsonObject> }
+    : Record<string, ResourceHandle<any>>;
+
+/**
+ * Combined resource inference: prefers DefinedResource-based definitions
+ * when available, otherwise falls back to schema-based inference.
+ */
+export type InferBlockResources<TSchemas, TDefs> =
+  TDefs extends Record<string, DefinedResource>
+    ? InferResourcesFromDefinitions<TDefs>
+    : InferResourcesFromSchemas<TSchemas>;
