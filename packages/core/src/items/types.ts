@@ -74,6 +74,7 @@ export type ContextItem = OutputItemBase & {
 export type StateChangeItem = OutputItemBase & {
   type: "state_change";
   scope: "request" | "session" | "user" | "project" | "block_instance";
+  blockInstanceId?: string;
   operation: "patch" | "set" | "increment" | "push" | "delete_key" | "atomic";
   path?: string;
   delta?: unknown;
