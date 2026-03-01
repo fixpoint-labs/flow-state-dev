@@ -1,10 +1,10 @@
 ---
-sidebar_position: 6
+sidebar_position: 7
 ---
 
 # Testing
 
-LLMs aren't deterministic. But your tests should be. Flow State Dev ships a dedicated testing package that lets you write fully deterministic tests for blocks, pipelines, and complete flows — no real LLM calls, no network, no flaky tests.
+LLMs aren't deterministic. But your tests should be. flow-state.dev ships a dedicated testing package that lets you write fully deterministic tests for blocks, pipelines, and complete flows — no real LLM calls, no network, no flaky tests.
 
 ## Test harnesses
 

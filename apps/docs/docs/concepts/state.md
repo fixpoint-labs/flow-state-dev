@@ -4,7 +4,7 @@ sidebar_position: 4
 
 # State Management
 
-State in AI applications is messy. Conversation history, user preferences, shared configuration, intermediate processing data — all at different lifetimes, all needing different isolation guarantees. Flow State Dev gives you four scoped levels with typed operations, resources for structured data, and projections to control exactly what the client can see.
+State in AI applications is messy. Conversation history, user preferences, shared configuration, intermediate processing data — all at different lifetimes, all needing different isolation guarantees. flow-state.dev gives you four scoped levels with typed operations, resources for structured data, and projections to control exactly what the client can see.
 
 ## Scopes
 

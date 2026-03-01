@@ -1,10 +1,10 @@
 ---
-sidebar_position: 7
+sidebar_position: 5
 ---
 
 # Type System
 
-Most TypeScript frameworks ask you to manage types alongside your code — writing interfaces, casting generics, wiring type parameters through layers. Flow State Dev takes a different approach: **you write a Zod schema, and the framework infers everything from it.** Input types, output types, state types, resource types, context types — all derived automatically, all the way through.
+Most TypeScript frameworks ask you to manage types alongside your code — writing interfaces, casting generics, wiring type parameters through layers. flow-state.dev takes a different approach: **you write a Zod schema, and the framework infers everything from it.** Input types, output types, state types, resource types, context types — all derived automatically, all the way through.
 
 The goal is to minimize type gymnastics. Your code should be easy to read and reason about, not cluttered with manual type annotations.
 
@@ -183,3 +183,49 @@ Here's what the framework infers so you don't have to:
 | Scope `stateSchema` in flow | Projection `compute(ctx)` types |
 
 The pattern is always the same: **Zod schema in, TypeScript types out.** One source of truth. No drift between runtime validation and compile-time checking.
+
+## Extracting types when you need them
+
+In most cases you never need to think about types — you write schemas, and `execute` just works. But sometimes you need a block's inferred type outside of the block itself — maybe for a utility function, a shared interface, or a connector. The framework exports type helpers so you never have to manage types manually:
+
+```ts
+import { type BlockInput, type BlockOutput, type StateOf } from "@flow-state-dev/core";
+
+const search = handler({
+  name: "search",
+  inputSchema: z.object({ query: z.string(), limit: z.number() }),
+  outputSchema: z.array(z.object({ title: z.string(), url: z.string() })),
+  sessionStateSchema: z.object({ searchCount: z.number().default(0) }),
+  execute: async (input, ctx) => { /* ... */ },
+});
+
+// Extract types directly from the block — no duplication
+type SearchInput = BlockInput<typeof search>;    // { query: string; limit: number }
+type SearchOutput = BlockOutput<typeof search>;  // { title: string; url: string }[]
+```
+
+For state and resource schemas:
+
+```ts
+import { type StateOf, type ContextOf } from "@flow-state-dev/core";
+
+const docResource = defineResource({
+  stateSchema: z.object({
+    byId: z.record(z.object({ title: z.string(), content: z.string() })),
+  }),
+});
+
+type DocState = StateOf<typeof docResource>;  // { byId: Record<string, { title: string; content: string }> }
+```
+
+### Available type helpers
+
+| Helper | Extracts |
+|--------|----------|
+| `BlockInput<typeof block>` | Inferred input type from `inputSchema` |
+| `BlockOutput<typeof block>` | Inferred output type from `outputSchema` |
+| `StateOf<T>` | State type from a schema, resource, or scope config |
+| `ContextOf<T, Kind>` | Context handle type for a scope or resource |
+| `ResourceContext<T>` | Resource context type |
+
+These all use `typeof` on your existing definitions — the block or resource is the single source of truth, and you derive types from it rather than maintaining them separately.

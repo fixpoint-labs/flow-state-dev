@@ -3,11 +3,11 @@ sidebar_position: 1
 slug: /intro
 ---
 
-# Why Flow State Dev?
+# Why flow-state.dev?
 
 Every AI feature needs the same infrastructure: call an LLM, stream the response, manage state across turns, handle errors gracefully, sync everything to the UI. Teams rebuild this from scratch every time — ad-hoc orchestration, hand-rolled SSE, application-specific retry logic, state scattered across closures and databases.
 
-Flow State Dev makes these concerns **framework primitives**. You write the logic that matters. The framework handles everything else.
+flow-state.dev makes these concerns **framework primitives**. You write the logic that matters. The framework handles everything else.
 
 ## What it looks like
 

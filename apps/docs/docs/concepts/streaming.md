@@ -1,10 +1,10 @@
 ---
-sidebar_position: 5
+sidebar_position: 6
 ---
 
 # Streaming
 
-Most frameworks bolt streaming on as an afterthought — raw text over a WebSocket, maybe some SSE. Flow State Dev makes streaming structural. Instead of raw text, the framework streams **typed items**: messages, tool calls, state changes, reasoning, custom components. Each item has a lifecycle and a sequence number, so clients can disconnect and resume without losing a single event.
+Most frameworks bolt streaming on as an afterthought — raw text over a WebSocket, maybe some SSE. flow-state.dev makes streaming structural. Instead of raw text, the framework streams **typed items**: messages, tool calls, state changes, reasoning, custom components. Each item has a lifecycle and a sequence number, so clients can disconnect and resume without losing a single event.
 
 ## How it works
 
@@ -74,7 +74,7 @@ Content is assembled progressively from `content.delta` events — the framework
 
 ## Resume and replay
 
-This is where Flow State Dev's streaming really shines. Every event has a **sequence number**. When a client disconnects — network blip, tab backgrounded, mobile app suspended — it can resume from exactly where it left off:
+This is where flow-state.dev's streaming really shines. Every event has a **sequence number**. When a client disconnects — network blip, tab backgrounded, mobile app suspended — it can resume from exactly where it left off:
 
 ```
 GET /api/flows/:kind/requests/:requestId/stream

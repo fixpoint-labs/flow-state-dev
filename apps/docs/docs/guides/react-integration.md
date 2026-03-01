@@ -4,7 +4,7 @@ sidebar_position: 3
 
 # React Integration
 
-How to use Flow State Dev's React bindings to build interactive UIs.
+How to use flow-state.dev's React bindings to build interactive UIs.
 
 ## FlowProvider
 

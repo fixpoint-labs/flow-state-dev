@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Blocks
 
-Everything in Flow State Dev is a block. Every LLM call, every data transform, every branching decision, every multi-step pipeline — it's all composed from four block kinds. No more, no less.
+Everything in flow-state.dev is a block. Every LLM call, every data transform, every branching decision, every multi-step pipeline — it's all composed from four block kinds. No more, no less.
 
 This constraint is the point. Four primitives that compose freely means you can build any AI workflow without inventing new abstractions.
 
