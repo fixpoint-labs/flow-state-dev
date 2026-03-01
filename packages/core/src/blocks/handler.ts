@@ -8,7 +8,7 @@ import type {
   InferStateFromSchema
 } from "../types/block";
 import type { DefinedResource, ResourceHandle } from "../types/resource";
-import { buildBlock } from "./internal/build-block";
+import { buildBlock, extractDeclaredResources } from "./internal/build-block";
 
 export interface HandlerConfig<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
@@ -98,6 +98,7 @@ export function handler<
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "handler",
     config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
-    execute: config.execute as unknown as (input: TInput, ctx: BlockContext) => Promise<TOutput> | TOutput
+    execute: config.execute as unknown as (input: TInput, ctx: BlockContext) => Promise<TOutput> | TOutput,
+    declaredResources: extractDeclaredResources(config)
   });
 }
