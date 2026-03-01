@@ -16,6 +16,9 @@
   "dependencies": {
     "@flow-state-dev/core": "workspace:*"
   },
+  "devDependencies": {
+    "zod": "^3.25.76"
+  },
   "scripts": {
     "build": "pnpm --filter @flow-state-dev/core build && tsc -p tsconfig.json",
     "typecheck": "pnpm --filter @flow-state-dev/core build && node ../../scripts/typecheck.mjs",

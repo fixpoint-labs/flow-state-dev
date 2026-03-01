@@ -143,12 +143,12 @@ function createFlowInstance(
 }
 
 export function defineFlow<
-  TActions extends Record<string, ActionConfig>,
-  TSession extends SessionConfig | undefined = SessionConfig | undefined,
-  TRequest extends RequestConfig | undefined = RequestConfig | undefined,
-  TUser extends UserConfig | undefined = UserConfig | undefined,
-  TProject extends ProjectConfig | undefined = ProjectConfig | undefined,
-  TWork extends WorkConfig | undefined = WorkConfig | undefined
+  const TActions extends Record<string, ActionConfig>,
+  const TSession extends SessionConfig | undefined = SessionConfig | undefined,
+  const TRequest extends RequestConfig | undefined = RequestConfig | undefined,
+  const TUser extends UserConfig | undefined = UserConfig | undefined,
+  const TProject extends ProjectConfig | undefined = ProjectConfig | undefined,
+  const TWork extends WorkConfig | undefined = WorkConfig | undefined
 >(
   definition: FlowDefinition<TActions, TSession, TRequest, TUser, TProject, TWork>
 ): FlowType<TActions, TSession, TRequest, TUser, TProject, TWork> {

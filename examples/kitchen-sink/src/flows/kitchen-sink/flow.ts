@@ -156,7 +156,7 @@ Be concise and helpful. Never show the artifact id unless specifically asked to 
     // Dynamic: current artifact list, re-evaluated each tool loop step so
     // the LLM sees artifacts created by earlier tool calls in the same turn.
     (_input, ctx) => {
-      const artifacts = ctx.session.resources.get("artifacts");
+      const artifacts = ctx.session.resources.artifacts;
       const state = artifacts?.state;
       if (!state?.order?.length) {
         return "No artifacts exist yet in this session.";
@@ -322,10 +322,9 @@ const kitchenSinkFlow = defineFlow({
       artifactsList: {
         client: true,
         outputSchema: artifactsListOutputSchema,
+        sessionResourceSchemas: { artifacts: artifactResourceStateSchema },
         compute: (ctx) => {
-          const artifacts = artifactResourceStateSchema.parse(
-            ctx.session.resources.get("artifacts")?.state ?? {}
-          );
+          const artifacts = ctx.session.resources.artifacts.state;
 
           return artifacts.order.map((id) => ({
             id,
@@ -337,10 +336,9 @@ const kitchenSinkFlow = defineFlow({
       artifactsDetail: {
         client: true,
         outputSchema: artifactsDetailOutputSchema,
+        sessionResourceSchemas: { artifacts: artifactResourceStateSchema },
         compute: (ctx) => {
-          const artifacts = artifactResourceStateSchema.parse(
-            ctx.session.resources.get("artifacts")?.state ?? {}
-          );
+          const artifacts = ctx.session.resources.artifacts.state;
 
           return artifacts.order
             .map((id) => artifacts.byId[id])

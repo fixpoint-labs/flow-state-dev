@@ -113,6 +113,8 @@ export default defineFlow({
 - `projectionData(uri)` — Structured data projection
 - `projectionMessages(uri)` — Message-pair projection
 
+Inline flow projections infer resource state types from scope `resources` automatically. For portable projections (`defineProjection`), provide `sessionResourceSchemas`, `userResourceSchemas`, or `projectResourceSchemas` (as Zod schemas, `defineResource(...)` values, or maps of either) when you need typed resource access inside `compute`.
+
 **Type helpers:**
 - `StateOf<T>` — Extract state type from schema or resource
 - `ContextOf<T, Kind>` — Get context handle type for scope/resource
