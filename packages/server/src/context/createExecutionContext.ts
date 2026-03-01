@@ -1428,6 +1428,21 @@ export async function createExecutionContext<
       response: responseRef.current as ExecutionContext["response"],
       signal: options.signal ?? new AbortController().signal,
       resolveModel,
+      targets: new Proxy({}, {
+        get(_target, prop) {
+          if (typeof prop !== "string") {
+            return undefined;
+          }
+
+          return context.getTarget(prop);
+        },
+        ownKeys() {
+          return [];
+        },
+        getOwnPropertyDescriptor() {
+          return { enumerable: true, configurable: true };
+        }
+      }) as BlockContext["targets"],
       getTarget: <TState extends object = Record<string, unknown>>(name: string): TargetHandle<TState> | undefined => {
         const toTargetHandle = (
           matched: Pick<SiblingRegistryEntry, "parent" | "parentStateContainer">

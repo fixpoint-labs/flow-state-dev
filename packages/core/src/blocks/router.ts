@@ -47,6 +47,7 @@ export interface RouterConfig<
   TSessionResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
   TUserResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
@@ -60,12 +61,13 @@ export interface RouterConfig<
   userResources?: TUserResourceDefs;
   projectResources?: TProjectResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
+  targets?: TTargetSchemas;
   routes: BlockDefinition<TInputSchema, TOutputSchema>[];
   execute: (
     input: TInput,
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TProjectState,
-      TSessionResources, TUserResources, TProjectResources, TSequencerState
+      TSessionResources, TUserResources, TProjectResources, TSequencerState, TTargetSchemas
     >
   ) => Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>;
   validateRoute?: (
@@ -74,7 +76,7 @@ export interface RouterConfig<
     input: TInput,
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TProjectState,
-      TSessionResources, TUserResources, TProjectResources, TSequencerState
+      TSessionResources, TUserResources, TProjectResources, TSequencerState, TTargetSchemas
     >
   ) => Promise<boolean> | boolean;
   container?: {
@@ -108,6 +110,7 @@ export function router<
   TSessionResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
   TUserResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
 >(
   config: RouterConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
@@ -115,7 +118,7 @@ export function router<
     TRequestState, TSessionState, TUserState, TProjectState, TSequencerState,
     TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
     TSessionResourceDefs, TUserResourceDefs, TProjectResourceDefs,
-    TSessionResources, TUserResources, TProjectResources
+    TSessionResources, TUserResources, TProjectResources, TTargetSchemas
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({

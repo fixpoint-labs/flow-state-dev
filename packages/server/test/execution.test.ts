@@ -621,6 +621,57 @@ describe("execution runtime", () => {
   });
 
 
+
+  it("resolves declared ctx.targets entries and returns undefined when missing", async () => {
+    const { ctx } = await createRuntimeContext("req_declared_targets");
+
+    const inspect = handler({
+      name: "inspect-targets",
+      inputSchema: z.number(),
+      outputSchema: z.object({
+        outer: z.string(),
+        missing: z.boolean(),
+        legacy: z.string()
+      }),
+      targets: {
+        outer: z.object({}),
+        missing: z.object({})
+      },
+      execute: async (_value, stepCtx) => {
+        const outer = stepCtx.targets.outer;
+        const missing = stepCtx.targets.missing;
+        const legacy = stepCtx.getTarget("outer");
+
+        await outer?.patchState({ count: 2 });
+
+        return {
+          outer: String(outer?.name),
+          missing: missing === undefined,
+          legacy: String(legacy?.name)
+        };
+      }
+    });
+
+    const outer = sequencer({
+      name: "outer",
+      inputSchema: z.number(),
+      stateSchema: z.object({ count: z.number().default(0) })
+    }).then(inspect);
+
+    const result = await executeBlock({
+      block: outer,
+      input: 1,
+      ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({
+      outer: "outer",
+      missing: true,
+      legacy: "outer"
+    });
+  });
+
   it("resolves getTarget from sibling registry before ancestors", async () => {
     const { ctx } = await createRuntimeContext("req_targets_siblings");
 

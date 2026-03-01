@@ -59,6 +59,7 @@ export interface BlockContext<
   TUserResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
   TProjectResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
   TSequencerState extends object = Record<string, unknown>,
+  TTargets extends Record<string, ZodTypeAny> | undefined = undefined,
 > {
   request: RequestScopeHandle<TRequestState>;
   session: SessionScopeHandle<TSessionState, TSessionResources>;
@@ -73,6 +74,8 @@ export interface BlockContext<
   getTarget<TState extends object = Record<string, unknown>>(
     name: string
   ): TargetHandle<TState> | undefined;
+
+  targets: InferTargetsFromSchemas<TTargets>;
 
   emitMessage(text: string): MessageHandle;
   emitMessage(content: Content[]): MessageHandle;
@@ -209,3 +212,12 @@ export type InferBlockResources<TSchemas, TDefs> =
   TDefs extends Record<string, DefinedResource>
     ? InferResourcesFromDefinitions<TDefs>
     : InferResourcesFromSchemas<TSchemas>;
+
+/**
+ * Derive typed target handles from block-level target schemas.
+ * Each declared target name maps to `TargetHandle<z.infer<schema>> | undefined`.
+ */
+export type InferTargetsFromSchemas<TSchemas> =
+  TSchemas extends Record<string, ZodTypeAny>
+    ? { [K in keyof TSchemas]: TargetHandle<z.infer<TSchemas[K]>> | undefined }
+    : Record<string, never>;

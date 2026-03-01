@@ -39,6 +39,7 @@ export interface HandlerConfig<
   TSessionResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
   TUserResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
@@ -52,11 +53,12 @@ export interface HandlerConfig<
   userResources?: TUserResourceDefs;
   projectResources?: TProjectResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
+  targets?: TTargetSchemas;
   execute: (
     input: TInput,
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TProjectState,
-      TSessionResources, TUserResources, TProjectResources, TSequencerState
+      TSessionResources, TUserResources, TProjectResources, TSequencerState, TTargetSchemas
     >
   ) => Promise<TOutput> | TOutput;
 }
@@ -85,6 +87,7 @@ export function handler<
   TSessionResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
   TUserResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
 >(
   config: HandlerConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
@@ -92,7 +95,7 @@ export function handler<
     TRequestState, TSessionState, TUserState, TProjectState, TSequencerState,
     TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
     TSessionResourceDefs, TUserResourceDefs, TProjectResourceDefs,
-    TSessionResources, TUserResources, TProjectResources
+    TSessionResources, TUserResources, TProjectResources, TTargetSchemas
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
