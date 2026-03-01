@@ -269,6 +269,10 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
 
   packages/core:
     dependencies:
