@@ -9,28 +9,33 @@ import styles from "./index.module.css";
 /* ── Code examples ── */
 
 const defineExample = `import { defineFlow, generator, sequencer } from "@flow-state-dev/core";
+// Reusable blocks — yours, your team's, or from the ecosystem
+import { searchWeb, searchInternalDocs, searchMemory } from "@research/blocks";
+import { mergeAndRank, refineResults } from "@research/ranking";
+import { gatherEvidence, scoreFindings } from "@research/analysis";
+import { logAnalytics, fallbackSearch } from "@infra/blocks";
 
-// A tool that's a full pipeline — parallel steps, loops, error recovery
+// A tool that's a full pipeline — parallel search, iterative refinement, recovery
 const deepResearch = sequencer({ name: "deep-research" })
   .then(parseQuery)
-  .parallel({
+  .parallel({                                // fan out to three sources at once
     web: searchWeb,
     docs: searchInternalDocs,
     memory: searchMemory,
   }, { maxConcurrency: 3 })
   .then(mergeAndRank)
-  .doUntil(
+  .doUntil(                                  // loop until quality threshold met
     (result) => result.confidence > 0.9,
     refineResults
   )
-  .work(logAnalytics)
+  .work(logAnalytics)                        // async side work — doesn't block the pipeline
   .rescue([{ when: [SearchError], block: fallbackSearch }]);
 
 // Sequencer that analyzes and emits a component item to the UI
 const analyze = sequencer({ name: "analyze" })
   .then(gatherEvidence)
   .then(scoreFindings)
-  .tap((report, ctx) => {
+  .tap((report, ctx) => {                    // side effect — emit without changing the payload
     ctx.emitComponent("report-card", {
       title: report.title,
       findings: report.findings,
@@ -42,6 +47,8 @@ const agent = generator({
   name: "agent",
   model: "gpt-5-mini",
   prompt: "You are a research assistant.",
+  // Blocks can declare only the state they need
+  sessionStateSchema: z.object({ researchCount: z.number().default(0) }),
   history: (_input, ctx) => ctx.session.items.llm(),
   user: (input) => input.message,
   tools: [deepResearch, analyze, readDoc, writeDoc],
@@ -50,7 +57,11 @@ const agent = generator({
 export default defineFlow({
   kind: "research-assistant",
   actions: {
-    chat: { block: agent, userMessage: (i) => i.message },
+    chat: {
+      inputSchema: z.object({ message: z.string() }),
+      block: agent,
+      userMessage: (i) => i.message,
+    },
   },
   session: {
     stateSchema,
