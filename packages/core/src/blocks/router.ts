@@ -139,15 +139,30 @@ export function router<
       ctx._runtimeHooks?.onRouteSelected?.(config.name, selected.name);
 
       const startedAt = Date.now();
-      ctx._runtimeHooks?.onBlockStart?.(selected.name, selected.kind, input);
-      try {
-        const output = await selected.run(input, ctx);
-        ctx._runtimeHooks?.onBlockComplete?.(selected.name, selected.kind, output, Date.now() - startedAt);
-        return output;
-      } catch (error) {
-        ctx._runtimeHooks?.onBlockError?.(selected.name, selected.kind, error, Date.now() - startedAt);
-        throw error;
+      const runSelected = async (scopedCtx: BlockContext): Promise<TOutput> => {
+        scopedCtx._runtimeHooks?.onBlockStart?.(selected.name, selected.kind, input);
+        try {
+          const output = await selected.run(input, scopedCtx);
+          scopedCtx._runtimeHooks?.onBlockComplete?.(selected.name, selected.kind, output, Date.now() - startedAt);
+          return output;
+        } catch (error) {
+          scopedCtx._runtimeHooks?.onBlockError?.(selected.name, selected.kind, error, Date.now() - startedAt);
+          throw error;
+        }
+      };
+
+      if (ctx._withExecutionScope === undefined) {
+        return runSelected(ctx);
       }
+
+      return ctx._withExecutionScope(
+        {
+          name: selected.name,
+          kind: selected.kind,
+          instanceId: `${selected.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`
+        },
+        runSelected
+      );
     }
   });
 }

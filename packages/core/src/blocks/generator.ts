@@ -321,19 +321,34 @@ function compileToolsWithExecute(
     description: tool.description,
     parameters: tool.inputSchema,
     execute: async (args: unknown) => {
-      await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, ctx);
-      try {
-        const output = await runWithRetry(
-          () => withTimeout(Promise.resolve(tool.run(args, ctx)), timeoutMs, `tool:${tool.name}`),
-          retry
-        );
-        await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, ctx);
-        return output;
-      } catch (error) {
-        const err = toError(error);
-        await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, ctx);
-        throw err;
+      const runTool = async (scopedCtx: BlockContext): Promise<unknown> => {
+        await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
+        try {
+          const output = await runWithRetry(
+            () => withTimeout(Promise.resolve(tool.run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
+            retry
+          );
+          await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
+          return output;
+        } catch (error) {
+          const err = toError(error);
+          await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, scopedCtx);
+          throw err;
+        }
+      };
+
+      if (ctx._withExecutionScope === undefined) {
+        return runTool(ctx);
       }
+
+      return ctx._withExecutionScope(
+        {
+          name: tool.name,
+          kind: tool.kind,
+          instanceId: `${tool.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`
+        },
+        runTool
+      );
     }
   }));
 }

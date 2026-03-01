@@ -105,15 +105,30 @@ async function executeBlock(
   ctx: BlockContext
 ): Promise<unknown> {
   const startedAt = Date.now();
-  ctx._runtimeHooks?.onBlockStart?.(block.name, block.kind, input);
-  try {
-    const output = await block.run(input, ctx);
-    ctx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt);
-    return output;
-  } catch (error) {
-    ctx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt);
-    throw error;
+  const run = async (scopedCtx: BlockContext): Promise<unknown> => {
+    scopedCtx._runtimeHooks?.onBlockStart?.(block.name, block.kind, input);
+    try {
+      const output = await block.run(input, scopedCtx);
+      scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt);
+      return output;
+    } catch (error) {
+      scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt);
+      throw error;
+    }
+  };
+
+  if (ctx._withExecutionScope === undefined) {
+    return run(ctx);
   }
+
+  return ctx._withExecutionScope(
+    {
+      name: block.name,
+      kind: block.kind,
+      instanceId: `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`
+    },
+    run
+  );
 }
 
 async function mapWithConcurrency<TInput, TOutput>(

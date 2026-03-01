@@ -12,6 +12,12 @@ import type { Content } from "../items/content";
 
 export type BlockKind = "handler" | "generator" | "sequencer" | "router";
 
+export type ExecutionParent = {
+  name: string;
+  kind: BlockKind;
+  instanceId: string;
+};
+
 export interface ResponseEmitterHandle {
   emit(event: unknown): void | Promise<void>;
 }
@@ -80,6 +86,12 @@ export interface BlockContext<
     onBlockError?: (blockName: string, blockKind: string, error: unknown, durationMs: number) => void;
     onRouteSelected?: (routerName: string, selectedBlockName: string) => void;
   };
+
+  /** @internal Runtime hook that executes nested blocks with parent-chain metadata. */
+  _withExecutionScope?<TValue>(
+    parent: ExecutionParent,
+    execute: (ctx: BlockContext) => Promise<TValue>
+  ): Promise<TValue>;
 }
 
 export type ConnectorFn<TFrom, TTo> = (

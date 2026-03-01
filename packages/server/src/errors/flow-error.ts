@@ -150,3 +150,19 @@ export class ToolExecutionError extends FlowError {
     this.name = "ToolExecutionError";
   }
 }
+
+/**
+ * Error for ambiguous block name lookups while resolving execution targets.
+ */
+export class AmbiguousBlockNameError extends FlowError {
+  constructor(message: string, options?: SubclassOptions) {
+    super(
+      message,
+      withDefaults(options, {
+        code: "ambiguous_block_name",
+        retryable: false
+      })
+    );
+    this.name = "AmbiguousBlockNameError";
+  }
+}
