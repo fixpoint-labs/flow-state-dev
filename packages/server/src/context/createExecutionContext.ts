@@ -15,7 +15,8 @@ import type {
   SessionItem,
   SessionItemViews,
   SessionScopeHandle,
-  UserScopeHandle
+  UserScopeHandle,
+  FlowInstance
 } from "@flow-state-dev/core/types";
 import type {
   BlockOutputItem,
@@ -25,6 +26,7 @@ import type {
   ItemProvenance,
   MessageItem,
   OutputItem,
+  StateChangeItem,
   StatusItem
 } from "@flow-state-dev/core/items";
 import type { BlockContext, ComponentHandle, ExecutionParent, MessageHandle, TargetHandle } from "@flow-state-dev/core/types";
@@ -693,6 +695,218 @@ function createEmitLLMContext(
   };
 }
 
+
+
+type StateChangeScope = StateChangeItem["scope"];
+type StateChangeOperation = StateChangeItem["operation"];
+
+function shouldPersistScopeChange(flow: FlowInstance): boolean {
+  const withFlags = flow as FlowInstance & {
+    persistStateChanges?: boolean;
+  };
+
+  if (withFlags.persistStateChanges === true) {
+    return true;
+  }
+
+  return process.env.NODE_ENV !== "production";
+}
+
+async function emitStateChangeItem(options: {
+  response: unknown;
+  requestId: string;
+  nextItemIndex: () => number;
+  provenance: () => ItemProvenance;
+  scope: StateChangeScope;
+  operation: StateChangeOperation;
+  version: number;
+  delta?: unknown;
+  path?: string;
+  blockInstanceId?: string;
+  transient: boolean;
+}): Promise<void> {
+  const typed = options.response as {
+    emitItemAdded?: (item: OutputItem) => Promise<unknown>;
+    emitItemDone?: (item: OutputItem) => Promise<unknown>;
+  };
+
+  if (
+    typeof typed.emitItemAdded !== "function" ||
+    typeof typed.emitItemDone !== "function"
+  ) {
+    return;
+  }
+
+  const itemIndex = options.nextItemIndex();
+  const item: StateChangeItem = {
+    id: `item_state_change_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+    type: "state_change",
+    status: "completed",
+    transient: options.transient,
+    requestId: options.requestId,
+    itemIndex,
+    provenance: options.provenance(),
+    ts: Date.now(),
+    scope: options.scope,
+    blockInstanceId: options.blockInstanceId,
+    operation: options.operation,
+    path: options.path,
+    delta: options.delta,
+    version: options.version
+  };
+
+  await typed.emitItemAdded(item);
+  await typed.emitItemDone(item);
+}
+
+function createTargetStateOps<TState extends JsonObject>(options: {
+  container: ReturnType<typeof createStateContainer<TState>>;
+  persist: (state: Readonly<TState>, version: number) => Promise<void> | void;
+  response: unknown;
+  requestId: string;
+  nextItemIndex: () => number;
+  provenance: () => ItemProvenance;
+  blockInstanceId: string;
+  transientStateChanges: boolean;
+}): Pick<TargetHandle<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> {
+  const baseOps = createScopeStateOps<TState>(options.container, {
+    onPersist: options.persist
+  });
+
+  return {
+    async patchState(
+      updatesOrKey: Partial<TState> | keyof TState,
+      updater?: (current: TState[keyof TState]) => TState[keyof TState]
+    ) {
+      await (baseOps.patchState as (
+        updatesOrKey: Partial<TState> | keyof TState,
+        updater?: (current: TState[keyof TState]) => TState[keyof TState]
+      ) => Promise<void>)(updatesOrKey, updater);
+      const version = options.container.getVersion();
+      if (typeof updatesOrKey === "string") {
+        await emitStateChangeItem({
+          response: options.response,
+          requestId: options.requestId,
+          nextItemIndex: options.nextItemIndex,
+          provenance: options.provenance,
+          scope: "block_instance",
+          operation: "patch",
+          path: updatesOrKey,
+          delta: { path: updatesOrKey },
+          version,
+          blockInstanceId: options.blockInstanceId,
+          transient: options.transientStateChanges
+        });
+        return;
+      }
+
+      await emitStateChangeItem({
+        response: options.response,
+        requestId: options.requestId,
+        nextItemIndex: options.nextItemIndex,
+        provenance: options.provenance,
+        scope: "block_instance",
+        operation: "patch",
+        delta: updatesOrKey,
+        version,
+        blockInstanceId: options.blockInstanceId,
+        transient: options.transientStateChanges
+      });
+    },
+    async setState(nextState: TState) {
+      await baseOps.setState(nextState);
+      await emitStateChangeItem({
+        response: options.response,
+        requestId: options.requestId,
+        nextItemIndex: options.nextItemIndex,
+        provenance: options.provenance,
+        scope: "block_instance",
+        operation: "set",
+        delta: nextState,
+        version: options.container.getVersion(),
+        blockInstanceId: options.blockInstanceId,
+        transient: options.transientStateChanges
+      });
+    },
+    async incState(increments: Record<string, number>) {
+      await baseOps.incState(increments);
+      await emitStateChangeItem({
+        response: options.response,
+        requestId: options.requestId,
+        nextItemIndex: options.nextItemIndex,
+        provenance: options.provenance,
+        scope: "block_instance",
+        operation: "increment",
+        delta: increments,
+        version: options.container.getVersion(),
+        blockInstanceId: options.blockInstanceId,
+        transient: options.transientStateChanges
+      });
+    },
+    async pushState(field: string, value: unknown) {
+      await baseOps.pushState(field, value);
+      await emitStateChangeItem({
+        response: options.response,
+        requestId: options.requestId,
+        nextItemIndex: options.nextItemIndex,
+        provenance: options.provenance,
+        scope: "block_instance",
+        operation: "push",
+        path: field,
+        delta: value,
+        version: options.container.getVersion(),
+        blockInstanceId: options.blockInstanceId,
+        transient: options.transientStateChanges
+      });
+    },
+    async setStateRecord(field: string, key: string, value: unknown) {
+      await baseOps.setStateRecord(field, key, value);
+      await emitStateChangeItem({
+        response: options.response,
+        requestId: options.requestId,
+        nextItemIndex: options.nextItemIndex,
+        provenance: options.provenance,
+        scope: "block_instance",
+        operation: "patch",
+        path: `${field}.${key}`,
+        delta: { [field]: { [key]: value } },
+        version: options.container.getVersion(),
+        blockInstanceId: options.blockInstanceId,
+        transient: options.transientStateChanges
+      });
+    },
+    async deleteStateRecord(field: string, key: string) {
+      await baseOps.deleteStateRecord(field, key);
+      await emitStateChangeItem({
+        response: options.response,
+        requestId: options.requestId,
+        nextItemIndex: options.nextItemIndex,
+        provenance: options.provenance,
+        scope: "block_instance",
+        operation: "delete_key",
+        path: `${field}.${key}`,
+        delta: { [field]: key },
+        version: options.container.getVersion(),
+        blockInstanceId: options.blockInstanceId,
+        transient: options.transientStateChanges
+      });
+    },
+    async atomicState(mutator: (state: Readonly<TState>) => Partial<TState>) {
+      await baseOps.atomicState(mutator);
+      await emitStateChangeItem({
+        response: options.response,
+        requestId: options.requestId,
+        nextItemIndex: options.nextItemIndex,
+        provenance: options.provenance,
+        scope: "block_instance",
+        operation: "atomic",
+        version: options.container.getVersion(),
+        blockInstanceId: options.blockInstanceId,
+        transient: options.transientStateChanges
+      });
+    }
+  };
+}
 function createEmitStatus(
   emCtx: EmissionContext
 ): (message: string) => void {
@@ -735,6 +949,7 @@ export async function createExecutionContext<
     flow,
     stores
   } = options;
+  const transientStateChanges = !shouldPersistScopeChange(flow);
   const sessionResourceConfigs = flow.session?.resources as
     | Record<string, ResourceConfig>
     | undefined;
@@ -1234,7 +1449,20 @@ export async function createExecutionContext<
                   deleteStateRecord: noState,
                   atomicState: noState
                 }
-              : (createScopeStateOps(container) as unknown as Pick<TargetHandle<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">);
+              : (createTargetStateOps({
+                  container,
+                  persist: async () => undefined,
+                  response: responseRef.current,
+                  requestId: requestRef.current.id,
+                  nextItemIndex: () => emittedItemCount++,
+                  provenance: () => ({
+                    blockName: matched.parent.name,
+                    blockInstanceId: matched.parent.instanceId,
+                    phase: "main"
+                  }),
+                  blockInstanceId: matched.parent.instanceId,
+                  transientStateChanges
+                }) as unknown as Pick<TargetHandle<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">);
 
           return defineStateProperty(
             {

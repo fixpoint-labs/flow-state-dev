@@ -835,6 +835,181 @@ describe("execution runtime", () => {
     });
   });
 
+  it("emits state_change items for sequencer target state ops with block instance provenance", async () => {
+    const { ctx } = await createRuntimeContext("req_seq_state_change");
+
+    const mutate = handler({
+      name: "mutate-state",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: async (input, stepCtx) => {
+        const target = stepCtx.sequencer;
+        if (target === undefined) {
+          throw new Error("missing sequencer target");
+        }
+
+        await target.patchState({ status: "running" });
+        await target.patchState("count", (current) => Number(current ?? 0) + 1);
+        await target.setState({
+          count: 5,
+          total: 3,
+          status: "set",
+          notes: ["seed"],
+          flags: { active: true }
+        });
+        await target.incState({ count: 2 });
+        await target.pushState("notes", "next");
+        await target.setStateRecord("flags", "seen", true);
+        await target.deleteStateRecord("flags", "active");
+        await target.atomicState((state) => ({
+          status: `${String((state as Record<string, unknown>).status)}:done`
+        }));
+
+        return input;
+      }
+    });
+
+    const seq = sequencer({
+      name: "stateful",
+      inputSchema: z.number(),
+      stateSchema: z.object({
+        count: z.number().default(0),
+        total: z.number().default(0),
+        status: z.string().default("idle"),
+        notes: z.array(z.string()).default([]),
+        flags: z.record(z.boolean()).default({})
+      })
+    }).then(mutate);
+
+    const result = await executeBlock({
+      block: seq,
+      input: 1,
+      ctx
+    });
+
+    expect(result.error).toBeUndefined();
+
+    const response = ctx.response as ReturnType<typeof createResponseEmitter>;
+    const items = response
+      .getItems()
+      .filter((item) => item.type === "state_change");
+
+    expect(items).toHaveLength(8);
+
+    const scopedItems = items.map((item) => item as Extract<(typeof items)[number], { type: "state_change" }>);
+    expect(scopedItems.every((item) => item.scope === "block_instance")).toBe(true);
+    expect(scopedItems.every((item) => item.provenance.blockName === "stateful")).toBe(true);
+    expect(scopedItems.every((item) => item.provenance.blockInstanceId === item.blockInstanceId)).toBe(true);
+    expect(scopedItems.map((item) => item.operation)).toEqual([
+      "patch",
+      "patch",
+      "set",
+      "increment",
+      "push",
+      "patch",
+      "delete_key",
+      "atomic"
+    ]);
+    expect(scopedItems.map((item) => item.version)).toEqual([
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ]);
+    expect(scopedItems.every((item) => item.transient === false)).toBe(true);
+  });
+
+  it("uses transient state_change items in production unless persistStateChanges is enabled", async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+
+    try {
+      const stores = createInMemoryStores();
+      const step = handler({
+        name: "step",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (value, blockCtx) => {
+          await blockCtx.sequencer?.patchState({ count: value + 1 });
+          return value;
+        }
+      });
+
+      const seq = sequencer({
+        name: "seq-prod",
+        inputSchema: z.number(),
+        stateSchema: z.object({ count: z.number().default(0) })
+      }).then(step);
+
+      const flow = defineFlow({
+        kind: "state-change-transience",
+        actions: {
+          run: {
+            inputSchema: z.number(),
+            block: seq
+          }
+        }
+      })() as ReturnType<ReturnType<typeof defineFlow>> & { persistStateChanges?: boolean };
+
+      const response = createResponseEmitter({ requestId: "req_transient_prod" });
+      const ctx = await createExecutionContext({
+        flow,
+        actionName: "run",
+        requestId: "req_transient_prod",
+        sessionId: "sess_transient_prod",
+        userId: "user_transient_prod",
+        stores,
+        response,
+        modelResolver: (modelId) => ({
+          modelId,
+          async generate() {
+            return { text: "ok" };
+          }
+        })
+      });
+
+      const prodResult = await executeBlock({ block: seq, input: 1, ctx });
+      expect(prodResult.error).toBeUndefined();
+
+      const prodStateItems = response.getItems().filter((item) => item.type === "state_change");
+      expect(prodStateItems).toHaveLength(1);
+      expect(prodStateItems[0]?.transient).toBe(true);
+
+      flow.persistStateChanges = true;
+      const persistedResponse = createResponseEmitter({ requestId: "req_transient_persist" });
+      const persistedCtx = await createExecutionContext({
+        flow,
+        actionName: "run",
+        requestId: "req_transient_persist",
+        sessionId: "sess_transient_persist",
+        userId: "user_transient_persist",
+        stores,
+        response: persistedResponse,
+        modelResolver: (modelId) => ({
+          modelId,
+          async generate() {
+            return { text: "ok" };
+          }
+        })
+      });
+
+      const persistedResult = await executeBlock({ block: seq, input: 2, ctx: persistedCtx });
+      expect(persistedResult.error).toBeUndefined();
+
+      const persistedStateItems = persistedResponse
+        .getItems()
+        .filter((item) => item.type === "state_change");
+      expect(persistedStateItems).toHaveLength(1);
+      expect(persistedStateItems[0]?.transient).toBe(false);
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+  });
+
   it("resolves nearest sequencer and applies schema defaults", async () => {
     const { ctx } = await createRuntimeContext("req_seq_nested");
 
