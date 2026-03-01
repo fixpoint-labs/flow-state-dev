@@ -5,3 +5,8 @@ dist
 .env.local
 .docusaurus
 apps/docs/build
+
+# Local tool configs
+.claude/settings.local.json
+.codex/
+.zenflow/
