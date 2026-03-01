@@ -11,7 +11,8 @@ import type {
   SequencerRuntimeState,
   WorkResult
 } from "./sequencer-methods";
-import { buildBlock } from "./internal/build-block";
+import { buildBlock, mergeDeclaredResources } from "./internal/build-block";
+import type { DeclaredResources } from "../types/block";
 import { isBlockDefinition, toError, withTimeout } from "./internal/utils";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
@@ -231,7 +232,8 @@ function createSequencer<TInput, TOutput>(
   operations: SequencerOperation[],
   rescueHandlers: RescueHandlerSpec[],
   lastOutputSchema?: ZodTypeAny,
-  resolvedInputSchema?: ZodTypeAny
+  resolvedInputSchema?: ZodTypeAny,
+  accumulatedResources?: DeclaredResources
 ): SequencerDefinition<TInput, TOutput> {
   // The tracked output schema reflects the chain's last step (informational for devtools/composition).
   // We pass undefined to buildBlock's outputSchema so the sequencer itself doesn't validate output —
@@ -250,7 +252,8 @@ function createSequencer<TInput, TOutput>(
     execute: runSequencerOperations(operations, rescueHandlers) as (
       input: unknown,
       ctx: BlockContext
-    ) => Promise<unknown>
+    ) => Promise<unknown>,
+    declaredResources: accumulatedResources
   });
 
   // Override the informational schema on the block definition so devtools and consumers
@@ -260,12 +263,24 @@ function createSequencer<TInput, TOutput>(
     (baseBlock as any).config = { ...baseBlock.config, outputSchema: trackedOutputSchema };
   }
 
+  /** Merge a child block's declaredResources into the sequencer's accumulator. */
+  const mergeFrom = (...blocks: Array<BlockDefinition<any, any> | undefined>): DeclaredResources | undefined => {
+    let merged = accumulatedResources;
+    for (const block of blocks) {
+      if (block?.declaredResources !== undefined) {
+        merged = mergeDeclaredResources(merged, block.declaredResources);
+      }
+    }
+    return merged;
+  };
+
   const extend = <TNext>(
     operation: SequencerOperation,
     newOutputSchema?: ZodTypeAny,
-    newInputSchema?: ZodTypeAny
+    newInputSchema?: ZodTypeAny,
+    newResources?: DeclaredResources
   ): SequencerDefinition<TInput, TNext> =>
-    createSequencer<TInput, TNext>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema);
+    createSequencer<TInput, TNext>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources);
 
   /**
    * On the first step (no operations yet) when neither config nor resolved input
@@ -297,7 +312,8 @@ function createSequencer<TInput, TOutput>(
             }
           },
           block.config.outputSchema,
-          capturedInput
+          capturedInput,
+          mergeFrom(block)
         );
       }
 
@@ -317,7 +333,8 @@ function createSequencer<TInput, TOutput>(
           }
         },
         block.config.outputSchema,
-        capturedInput
+        capturedInput,
+        mergeFrom(block)
       );
     },
 
@@ -348,7 +365,8 @@ function createSequencer<TInput, TOutput>(
           ],
           rescueHandlers,
           block.config.outputSchema,
-          resolvedInputSchema
+          resolvedInputSchema,
+          mergeFrom(block)
         );
       }
 
@@ -377,7 +395,8 @@ function createSequencer<TInput, TOutput>(
         ],
         rescueHandlers,
         block.config.outputSchema,
-        resolvedInputSchema
+        resolvedInputSchema,
+        mergeFrom(block)
       );
     },
 
@@ -397,11 +416,13 @@ function createSequencer<TInput, TOutput>(
     ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }> {
       // Build composite output schema: { key: step.outputSchema, ... }
       const schemaShape: Record<string, ZodTypeAny> = {};
+      const stepBlocks: BlockDefinition<any, any>[] = [];
       for (const [key, step] of Object.entries(steps)) {
         const stepBlock = isBlockDefinition(step)
           ? (step as BlockDefinition<any, any>)
           : (step as { block: BlockDefinition<any, any> }).block;
         schemaShape[key] = stepBlock.config.outputSchema ?? z.any();
+        stepBlocks.push(stepBlock);
       }
       const compositeSchema = z.object(schemaShape);
 
@@ -431,7 +452,9 @@ function createSequencer<TInput, TOutput>(
             return { value: result };
           }
         },
-        compositeSchema
+        compositeSchema,
+        undefined,
+        mergeFrom(...stepBlocks)
       );
     },
 
@@ -486,7 +509,9 @@ function createSequencer<TInput, TOutput>(
             return { value: outputs };
           }
         },
-        arraySchema
+        arraySchema,
+        undefined,
+        mergeFrom(elementBlock)
       );
     },
 
@@ -522,7 +547,9 @@ function createSequencer<TInput, TOutput>(
             }
           }
         },
-        block.config.outputSchema
+        block.config.outputSchema,
+        undefined,
+        mergeFrom(block)
       );
     },
 
@@ -556,7 +583,9 @@ function createSequencer<TInput, TOutput>(
             return { value: output };
           }
         },
-        block.config.outputSchema
+        block.config.outputSchema,
+        undefined,
+        mergeFrom(block)
       );
     },
 
@@ -626,7 +655,9 @@ function createSequencer<TInput, TOutput>(
             return { value };
           }
         },
-        lastOutputSchema
+        lastOutputSchema,
+        undefined,
+        mergeFrom(block)
       );
     },
 
@@ -679,7 +710,9 @@ function createSequencer<TInput, TOutput>(
               return { value };
             }
           },
-          lastOutputSchema
+          lastOutputSchema,
+          undefined,
+          mergeFrom(block)
         );
       }
 
@@ -689,6 +722,9 @@ function createSequencer<TInput, TOutput>(
       const tapTarget = (arg2 ?? arg1) as
         | BlockDefinition<any, any>
         | ((value: TOutput, ctx: BlockContext) => void | Promise<void>);
+
+      // Only merge resources if tapTarget is a block (not a function)
+      const tapBlock = isBlockDefinition(tapTarget) ? (tapTarget as BlockDefinition<any, any>) : undefined;
 
       return extend<TOutput>(
         {
@@ -711,7 +747,9 @@ function createSequencer<TInput, TOutput>(
             return { value };
           }
         },
-        lastOutputSchema
+        lastOutputSchema,
+        undefined,
+        mergeFrom(tapBlock)
       );
     },
 
@@ -727,6 +765,8 @@ function createSequencer<TInput, TOutput>(
       const tapTarget = (arg3 ?? arg2) as
         | BlockDefinition<any, any>
         | ((value: TOutput, ctx: BlockContext) => void | Promise<void>);
+
+      const tapIfBlock = isBlockDefinition(tapTarget) ? (tapTarget as BlockDefinition<any, any>) : undefined;
 
       return extend<TOutput>(
         {
@@ -754,12 +794,19 @@ function createSequencer<TInput, TOutput>(
             return { value };
           }
         },
-        lastOutputSchema
+        lastOutputSchema,
+        undefined,
+        mergeFrom(tapIfBlock)
       );
     },
 
     rescue(handlers: RescueHandlerSpec[]): SequencerDefinition<TInput, TOutput> {
-      return createSequencer<TInput, TOutput>(config, operations, handlers, lastOutputSchema, resolvedInputSchema);
+      // Collect resources from rescue handler blocks
+      const rescueResources = handlers.reduce<DeclaredResources | undefined>(
+        (acc, h) => mergeDeclaredResources(acc, h.block.declaredResources),
+        accumulatedResources
+      );
+      return createSequencer<TInput, TOutput>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources);
     },
 
     branch<TBranches extends Record<string, BranchStep<TOutput>>>(
@@ -771,6 +818,9 @@ function createSequencer<TInput, TOutput>(
       const firstBranchSchema = branchEntries.length > 0
         ? branchEntries[0][2].config.outputSchema
         : undefined;
+
+      // Collect resources from all branch blocks
+      const branchBlocks = branchEntries.map((entry) => entry[2]);
 
       return extend<BranchStepOutput<TBranches[keyof TBranches]>>(
         {
@@ -791,7 +841,9 @@ function createSequencer<TInput, TOutput>(
             throw new Error("branch had no matching route");
           }
         },
-        firstBranchSchema
+        firstBranchSchema,
+        undefined,
+        mergeFrom(...branchBlocks)
       );
     },
 
