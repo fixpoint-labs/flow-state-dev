@@ -1,5 +1,6 @@
 import { generator, type GeneratorConfig } from "../blocks/generator";
-import type { BlockDefinition } from "../types/block";
+import { mergeDeclaredResources } from "../blocks/internal/build-block";
+import type { BlockDefinition, DeclaredResources } from "../types/block";
 import type {
   ActionConfig,
   FlowDefinition,
@@ -13,6 +14,7 @@ import type {
   UserConfig,
   WorkConfig
 } from "../types/flow";
+import type { ResourceConfig } from "../types/resource";
 
 type AnyActions = Record<string, ActionConfig>;
 
@@ -115,6 +117,68 @@ function mergeActions(
   return merged;
 }
 
+type ScopeResources = Record<string, ResourceConfig>;
+
+/**
+ * Collect declaredResources from all action blocks in the flow and merge
+ * them together. Returns the union of all block-declared resources.
+ */
+function collectBlockResources(actions: AnyActions): DeclaredResources | undefined {
+  let collected: DeclaredResources | undefined;
+  for (const action of Object.values(actions)) {
+    collected = mergeDeclaredResources(collected, action.block.declaredResources);
+  }
+  return collected;
+}
+
+/**
+ * Merge block-declared resources into a flow's scope config resources.
+ * Flow-level declarations take priority over block-declared resources.
+ */
+function mergeBlockResourcesIntoScope(
+  flowResources: ScopeResources | undefined,
+  blockResources: Record<string, ResourceConfig> | undefined
+): ScopeResources | undefined {
+  if (blockResources === undefined) return flowResources;
+  if (flowResources === undefined) return { ...blockResources };
+
+  // Block resources form the base; flow resources override
+  return { ...blockResources, ...flowResources };
+}
+
+/**
+ * Merge block-declared resources from all actions into the flow's scope configs.
+ * Flow-level resource declarations always win over block-declared ones.
+ */
+function mergeFlowResources(
+  session: AnySession,
+  user: AnyUser,
+  project: AnyProject,
+  blockResources: DeclaredResources | undefined
+): { session: AnySession; user: AnyUser; project: AnyProject } {
+  if (blockResources === undefined) {
+    return { session, user, project };
+  }
+
+  const mergedSession = blockResources.session !== undefined
+    ? { ...session, resources: mergeBlockResourcesIntoScope(session?.resources, blockResources.session) }
+    : session;
+
+  const mergedUser = blockResources.user !== undefined
+    ? { ...user, resources: mergeBlockResourcesIntoScope(user?.resources, blockResources.user) }
+    : user;
+
+  const mergedProject = blockResources.project !== undefined
+    ? { ...project, resources: mergeBlockResourcesIntoScope(project?.resources, blockResources.project) }
+    : project;
+
+  return {
+    session: mergedSession as AnySession,
+    user: mergedUser as AnyUser,
+    project: mergedProject as AnyProject
+  };
+}
+
 function createFlowInstance(
   definition: AnyFlowDefinition,
   options: AnyFlowInstanceOptions | undefined
@@ -128,15 +192,25 @@ function createFlowInstance(
   const kind = options?.kind ?? definition.kind;
   const actions = mergeActions(definition.actions, options?.actions, tools);
 
+  // Merge scope configs from definition + options first
+  const session = mergeConfig(definition.session, options?.session);
+  const user = mergeConfig(definition.user, options?.user);
+  const project = mergeConfig(definition.project, options?.project);
+
+  // Collect block-declared resources and merge into scope configs
+  // Flow-level declarations take priority over block-declared ones
+  const blockResources = collectBlockResources(actions);
+  const merged = mergeFlowResources(session, user, project, blockResources);
+
   return {
     id: options?.id ?? kind,
     kind,
     requireUser,
     actions,
-    session: mergeConfig(definition.session, options?.session),
+    session: merged.session,
     request: mergeConfig(definition.request, options?.request),
-    user: mergeConfig(definition.user, options?.user),
-    project: mergeConfig(definition.project, options?.project),
+    user: merged.user,
+    project: merged.project,
     work: mergeConfig(definition.work, options?.work),
     tools
   };

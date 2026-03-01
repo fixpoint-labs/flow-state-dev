@@ -355,6 +355,38 @@ pipeline.then(
 );
 ```
 
+## Blocks declare their resources
+
+Just like blocks declare their state dependencies with partial schemas, blocks can declare their **resource dependencies** using `sessionResources`, `userResources`, and `projectResources`. These accept `defineResource()` values:
+
+```ts
+import { defineResource, handler } from "@flow-state-dev/core";
+
+const planResource = defineResource({
+  stateSchema: z.object({
+    steps: z.array(z.string()).default([]),
+    status: z.enum(["draft", "active", "complete"]).default("draft"),
+  }),
+  writable: true,
+});
+
+const planManager = handler({
+  name: "plan-manager",
+  sessionResources: { plan: planResource },
+  execute: async (input, ctx) => {
+    await ctx.session.resources.plan.patchState({ status: "active" });
+    return input;
+  },
+});
+```
+
+The framework collects these declarations automatically:
+- **Sequencers** merge declared resources from all child blocks in the chain
+- **`defineFlow`** collects resources from all action blocks and merges them into the flow's scope configs
+- **Flow-level** resource declarations take priority over block-declared ones
+
+This means blocks bring their own resource requirements — you don't have to repeat them in the flow definition. It follows the same philosophy as partial state schemas: blocks are self-documenting about their dependencies.
+
 ## Blocks are portable
 
 Because every block has the same contract — typed input, typed output, declared state dependencies — blocks are inherently shareable. A handler that validates email addresses, a sequencer that does multi-step research, a generator pre-configured for code review — each can be packaged independently and composed into any flow.

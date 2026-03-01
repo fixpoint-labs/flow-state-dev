@@ -130,6 +130,27 @@ session: {
 },
 ```
 
+### Automatic resource collection
+
+Blocks can declare resource dependencies directly (via `sessionResources`, `userResources`, `projectResources` using `defineResource()` values). When `defineFlow` is called, it collects declared resources from all action blocks and merges them into the session/user/project scope configs automatically:
+
+```ts
+const planManager = handler({
+  name: "plan-manager",
+  sessionResources: { plan: planResource },
+  execute: async (input, ctx) => { /* uses ctx.session.resources.plan */ },
+});
+
+const myFlow = defineFlow({
+  kind: "my-app",
+  actions: { manage: { block: planManager } },
+  // session.resources automatically includes { plan: planResource }
+  // from the block — no need to declare it again here
+});
+```
+
+Flow-level resource declarations take priority. If both a block and the flow declare a resource with the same name, the flow's version wins.
+
 See [State](/docs/concepts/state) for details on scopes, resources, and projections.
 
 ## Lifecycle hooks

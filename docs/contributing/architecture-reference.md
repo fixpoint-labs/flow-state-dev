@@ -78,6 +78,10 @@ Conflict rule: `preperation/architecture/*` wins.
 - Projections are derived views; `client: true` exposes to client
 - Generator context should use `projection(...)` references, not raw state
 - `defineResource()` / `defineProjection()` for portable declarations
+- Blocks declare resources via `sessionResources`, `userResources`, `projectResources` (using `defineResource()` values)
+- Sequencers collect `declaredResources` from all child blocks automatically
+- `defineFlow` merges block-declared resources into flow scope configs; flow-level wins over block-level
+- Same `defineResource()` reference across blocks = no conflict; different references for same name = build-time error
 
 → [Resources and Projections](../architecture/resources-and-projections.md)
 

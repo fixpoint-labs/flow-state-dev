@@ -105,7 +105,7 @@ export default defineFlow({
 - `defineFlow(definition)` — Create a flow type with actions, scopes, resources, and projections
 
 **Resources and projections:**
-- `defineResource(config)` — Portable resource definition
+- `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `projectResources`)
 - `defineProjection(config)` — Portable projection definition
 - `resource(uri)` — Resource slot reference for generators
 - `projection(uri)` — Projection slot reference
@@ -134,6 +134,8 @@ Output item unions, content types, and stream event helpers. Item types: `messag
 **Partial state schemas.** Each block declares only the state fields it touches. A counter block doesn't need to know about a preferences block's state. This keeps blocks reusable and self-documenting about their dependencies.
 
 **Silent by default.** Blocks emit nothing to the client unless they explicitly call `ctx.emitMessage()`, `ctx.emitComponent()`, or `ctx.emitStatus()`. Generators are the exception — they auto-emit messages and reasoning. This gives you precise control over what the user sees.
+
+**Automatic resource collection.** Blocks declare their resource dependencies via `sessionResources`/`userResources`/`projectResources` using `defineResource()` values. Sequencers collect these from child blocks. `defineFlow` merges them into the flow's scope configs automatically — blocks bring their own resource requirements, just like partial state schemas. Flow-level declarations take priority.
 
 **Projections as data policy.** Projections are the *only* way to expose data to clients. Internal state, resources, and intermediate values stay server-side unless you deliberately project them. Security by architecture, not by convention.
 

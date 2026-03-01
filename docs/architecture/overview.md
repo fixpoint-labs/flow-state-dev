@@ -130,7 +130,7 @@ See [Streaming](./streaming.md).
 
 ### Resources and projections — data with policy
 
-**Resources** are named, typed state containers scoped to sessions, users, or projects. Think of them as structured data stores that blocks can read and write.
+**Resources** are named, typed state containers scoped to sessions, users, or projects. Think of them as structured data stores that blocks can read and write. Blocks can declare their resource dependencies directly via `defineResource()`, and the framework collects and merges these declarations automatically — through sequencers up to the flow level.
 
 **Projections** are derived views computed from state and resources — and the *only* way to expose data to clients. This is a deliberate architectural choice: you can't accidentally leak internal state because projections are the sole data gateway.
 

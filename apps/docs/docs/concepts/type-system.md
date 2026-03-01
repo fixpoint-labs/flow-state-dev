@@ -178,6 +178,7 @@ Here's what the framework infers so you don't have to:
 | `sessionStateSchema` | `ctx.session.state` type |
 | `userStateSchema` | `ctx.user.state` type |
 | `sessionResourceSchemas` | `ctx.session.resources.*` handle types |
+| `sessionResources` (with `defineResource`) | `BlockDefinition.declaredResources` + automatic flow merge |
 | Block in `.then()` | Next step's input type |
 | Block in `tools` | Model tool parameters and result type |
 | Scope `stateSchema` in flow | Projection `compute(ctx)` types |

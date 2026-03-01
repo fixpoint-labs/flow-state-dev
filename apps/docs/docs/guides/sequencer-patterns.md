@@ -189,6 +189,30 @@ pipeline.branch({
 
 Each branch is a tuple: `[connector, condition, block]`.
 
+## Resource Propagation
+
+Sequencers automatically collect `declaredResources` from all child blocks. When a block declares `sessionResources`, `userResources`, or `projectResources`, those declarations bubble up through the sequencer chain to the flow:
+
+```ts
+const planResource = defineResource({
+  stateSchema: z.object({ steps: z.array(z.string()).default([]) }),
+  writable: true,
+});
+
+const planManager = handler({
+  name: "plan-manager",
+  sessionResources: { plan: planResource },
+  execute: async (input, ctx) => { /* ... */ },
+});
+
+const pipeline = sequencer({ name: "pipeline" })
+  .then(planManager)    // resource declaration collected
+  .then(otherBlock);
+
+// pipeline.declaredResources includes { session: { plan: planResource } }
+// defineFlow will merge this into the flow's session.resources automatically
+```
+
 ## Container Wrapping
 
 Group items for UI display:

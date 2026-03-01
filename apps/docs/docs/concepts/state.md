@@ -160,6 +160,10 @@ If two blocks declare the same field with incompatible types, the framework catc
 
 For shared blocks used across codebases, the recommended practice is to namespace state fields (e.g., `analytics_eventCount` instead of `count`) to avoid collisions. Within a single codebase, consistent naming conventions are usually enough.
 
+### Resource declarations bubble too
+
+The same bubbling model applies to resources. Blocks can declare resource dependencies with `sessionResources`, `userResources`, and `projectResources` (using `defineResource()` values). Sequencers collect these from child blocks, and `defineFlow` merges them into the flow's scope configs. Flow-level declarations take priority — blocks bring defaults, flows can override. See [Blocks](/docs/concepts/blocks#blocks-declare-their-resources) for examples.
+
 ## Resources — hybrid memory and filesystem
 
 Resources are more than key-value stores. Each resource combines **rich text content** with **structured atomic state** — think of them as files that carry metadata. This hybrid model gives your AI a persistent, typed workspace.
