@@ -440,6 +440,12 @@ export async function createTestContext<TInput = unknown>(
     }
   });
 
+  const modelResolver = createMockModelResolver({
+    generators: options.generators,
+    models: options.models,
+    policy: options.unmockedGeneratorPolicy
+  });
+
   const ctx = await createExecutionContext({
     flow,
     actionName,
@@ -448,7 +454,8 @@ export async function createTestContext<TInput = unknown>(
     userId,
     projectId,
     response,
-    stores
+    stores,
+    modelResolver
   });
 
   wrapScopeStateOps("request", ctx.request as unknown as Record<string, unknown>, stateChanges);
@@ -474,11 +481,7 @@ export async function createTestContext<TInput = unknown>(
     return createTargetHandle(name, targetState) as unknown as TargetHandle<TState>;
   };
 
-  ctx.resolveModel = createMockModelResolver({
-    generators: options.generators,
-    models: options.models,
-    policy: options.unmockedGeneratorPolicy
-  });
+  ctx.resolveModel = modelResolver;
 
   return {
     ctx,
