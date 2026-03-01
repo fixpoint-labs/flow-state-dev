@@ -52,13 +52,43 @@ interface BlockContext {
 Blocks are **silent by default** — if a block doesn't explicitly emit via `ctx` methods, it produces nothing visible to the client or LLM.
 
 
-`ctx.sequencer` resolves to the nearest ancestor sequencer that declared `stateSchema`. The handle exposes in-memory instance state for the active sequencer execution (`state`, `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`). Instance state initializes from schema defaults (`safeParse(undefined)` / `safeParse({})`).
+`ctx.sequencer` resolves to the nearest enclosing sequencer in the execution stack. If that sequencer defines `stateSchema`, the returned `TargetHandle` is typed from the schema and exposes mutable instance state (`state`, `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`). Sequencer instance state initializes from `defaultState` when provided, otherwise from schema defaults (`safeParse(undefined)` / `safeParse({})`).
 
-When no enclosing sequencer with `stateSchema` exists, `ctx.sequencer` is `undefined`.
+When no enclosing sequencer exists, `ctx.sequencer` is `undefined`.
 
 `getTarget(name)` resolves nearest-first in two passes:
 1. Already-dispatched siblings at the current execution level (most-recent dispatch wins)
-2. Ancestor execution chain (existing parent-chain walk)
+2. Ancestor execution chain (parent-chain walk)
+
+If multiple ancestors match and precedence cannot resolve, runtime throws `AmbiguousBlockNameError`.
+
+### Sequencer state schema bubbling
+
+Handler, generator, and router blocks can declare `sequencerStateSchema`. This follows the same bubbling contract as request/session/user/project schemas:
+
+- block-level `sequencerStateSchema` declares what state shape a block requires
+- when composed inside a sequencer, that schema bubbles up to the enclosing sequencer's instance-state contract
+- sequencer-level `stateSchema` may be declared directly; when both are present they must be structurally compatible
+
+```ts
+const updateProgress = handler({
+  name: "update-progress",
+  sequencerStateSchema: z.object({ progress: z.number() }),
+  execute: async (input, ctx) => {
+    await ctx.sequencer?.patchState({ progress: input.progress });
+  },
+});
+
+const research = sequencer({
+  name: "research",
+  stateSchema: z.object({ progress: z.number().default(0) }),
+  defaultState: { progress: 0 },
+}).then(updateProgress);
+```
+
+When sequencer state mutates, runtime emits a `state_change` item with `scope: "block_instance"` and the sequencer `blockInstanceId` in item provenance for client routing.
+
+Tool blocks inherit the same context chain: if a tool runs inside a generator inside a sequencer, the tool's `ctx.sequencer` points to that nearest sequencer and `ctx.getTarget("<sequencer-name>")` resolves to the same handle.
 
 ## Handler
 
