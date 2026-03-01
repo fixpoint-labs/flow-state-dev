@@ -18,24 +18,24 @@ import { logAnalytics, fallbackSearch } from "@infra/blocks";
 // A tool that's a full pipeline — parallel search, iterative refinement, recovery
 const deepResearch = sequencer({ name: "deep-research" })
   .then(parseQuery)
-  .parallel({                                // fan out to three sources at once
+  .parallel({ // fan out to three sources at once
     web: searchWeb,
     docs: searchInternalDocs,
     memory: searchMemory,
   }, { maxConcurrency: 3 })
   .then(mergeAndRank)
-  .doUntil(                                  // loop until quality threshold met
+  .doUntil( // loop until quality threshold met
     (result) => result.confidence > 0.9,
     refineResults
   )
-  .work(logAnalytics)                        // async side work — doesn't block the pipeline
+  .work(logAnalytics) // async — doesn't block the pipeline
   .rescue([{ when: [SearchError], block: fallbackSearch }]);
 
 // Sequencer that analyzes and emits a component item to the UI
 const analyze = sequencer({ name: "analyze" })
   .then(gatherEvidence)
   .then(scoreFindings)
-  .tap((report, ctx) => {                    // side effect — emit without changing the payload
+  .tap((report, ctx) => { // emit without changing the payload
     ctx.emitComponent("report-card", {
       title: report.title,
       findings: report.findings,

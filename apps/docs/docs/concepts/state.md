@@ -90,6 +90,74 @@ const counter = handler({
 
 This keeps blocks reusable and self-documenting about their dependencies.
 
+## State bubbling
+
+Here's the powerful part: you don't have to define every state field at the flow level. When a flow is constructed, block-level state declarations **bubble up** and merge into the flow's combined schema automatically.
+
+Say you have two blocks, each declaring the session state they need:
+
+```ts
+const counter = handler({
+  name: "counter",
+  sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
+  execute: async (input, ctx) => {
+    await ctx.session.incState({ messageCount: 1 });
+    return input;
+  },
+});
+
+const modeSwitch = handler({
+  name: "mode-switch",
+  sessionStateSchema: z.object({ mode: z.enum(["chat", "agent"]).default("chat") }),
+  execute: async (input, ctx) => {
+    await ctx.session.patchState({ mode: "agent" });
+    return input;
+  },
+});
+```
+
+When these blocks are composed into a flow, their state declarations are collected and merged. The flow ends up with a combined session state of `{ messageCount: number, mode: "chat" | "agent" }` — without you having to repeat those fields in a flow-level `stateSchema`.
+
+You *can* still define a flow-level schema if you want one clean place to see everything:
+
+```ts
+defineFlow({
+  kind: "my-app",
+  session: {
+    stateSchema: z.object({
+      messageCount: z.number().default(0),
+      mode: z.enum(["chat", "agent"]).default("chat"),
+    }),
+  },
+  // ...
+});
+```
+
+But you don't have to. The flow-level schema only needs to define fields that aren't already declared by blocks — or fields that the flow configuration itself references (like in projections).
+
+### Why this matters
+
+The point is **blocks shouldn't depend on flows**. A counter block that needs `messageCount` declares it on itself. A mode-switching block declares `mode`. Neither needs to know about the other's state. Neither is coupled to a specific flow definition.
+
+This is what makes blocks truly portable:
+
+```ts
+// These blocks work in any flow — they bring their own state requirements
+import { counter } from "@shared/blocks";
+import { modeSwitch } from "@shared/blocks";
+
+const pipeline = sequencer({ name: "chat" })
+  .then(counter)       // bubbles up { messageCount }
+  .then(modeSwitch)    // bubbles up { mode }
+  .then(agent);
+```
+
+### Conflicts
+
+If two blocks declare the same field with incompatible types, the framework catches it as a type error during flow construction. This means schema conflicts surface early — at build time, not at runtime.
+
+For shared blocks used across codebases, the recommended practice is to namespace state fields (e.g., `analytics_eventCount` instead of `count`) to avoid collisions. Within a single codebase, consistent naming conventions are usually enough.
+
 ## Resources — hybrid memory and filesystem
 
 Resources are more than key-value stores. Each resource combines **rich text content** with **structured atomic state** — think of them as files that carry metadata. This hybrid model gives your AI a persistent, typed workspace.
