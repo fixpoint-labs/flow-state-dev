@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { mockGenerator, testBlock } from "@flow-state-dev/testing";
+import { mockGenerator, testBlock, testFlow } from "@flow-state-dev/testing";
 import helloChatFlow from "../src/flows/hello-chat/flow";
 
 /**
@@ -10,8 +10,8 @@ import helloChatFlow from "../src/flows/hello-chat/flow";
  * They should never require OPENAI_API_KEY or make real network calls.
  */
 
-// Access the pipeline block from the flow definition for unit testing.
-// testBlock supports generator mocks; testFlow does not yet.
+// Access the pipeline block from the flow definition for state-change assertions.
+// testFlow exercises the runtime path, while testBlock exposes state mutations.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const chatPipeline = (helloChatFlow.actions.chat as any).block;
 
@@ -61,18 +61,25 @@ describe("hello-chat", () => {
   });
 
   it("completes a chat action", async () => {
-    const result = await testBlock(chatPipeline, {
+    const result = await testFlow({
+      flow: helloChatFlow,
+      action: "chat",
+      userId: "test-user",
       input: { message: "What is TypeScript?" },
       generators: { "chat-generator": chatFixture }
     });
 
-    expect(result.error).toBeNull();
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe("completed");
     expect(result.output).toBeDefined();
   });
 
   it("emits block_output items", async () => {
     chatFixture.reset();
-    const result = await testBlock(chatPipeline, {
+    const result = await testFlow({
+      flow: helloChatFlow,
+      action: "chat",
+      userId: "test-user",
       input: { message: "Hello" },
       generators: { "chat-generator": chatFixture }
     });
