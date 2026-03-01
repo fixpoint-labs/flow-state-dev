@@ -503,6 +503,149 @@ describe("execution runtime", () => {
     expect(routerResult.output).toBe("b");
   });
 
+  it("tracks parent chain and resolves getTarget across sequencer, tools, and router execution", async () => {
+    const stores = createInMemoryStores();
+    const base = handler({
+      name: "base",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value) => value
+    });
+
+    const flow = defineFlow({
+      kind: "target-flow",
+      actions: {
+        run: {
+          inputSchema: z.number(),
+          block: base
+        }
+      }
+    })();
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_targets",
+      sessionId: "sess_targets",
+      userId: "user_targets",
+      stores,
+      modelResolver: (modelId) => ({
+        modelId,
+        async generate(options: any) {
+          if (Array.isArray(options.tools) && options.tools.length > 0 && typeof options.tools[0]?.execute === "function") {
+            await options.tools[0].execute({ text: "hello" });
+          }
+          return { text: "chat-output" };
+        }
+      })
+    });
+
+    const snapshots: Array<{ step: string; target?: string }> = [];
+
+    const innerTool = handler({
+      name: "inner-tool",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      execute: (_input, toolCtx) => {
+        const sequencerTarget = toolCtx.getTarget("research");
+        const chatTarget = toolCtx.getTarget("chat");
+
+        snapshots.push({
+          step: "tool",
+          target: `${sequencerTarget?.name}:${chatTarget?.name}`
+        });
+
+        return "tool-ok";
+      }
+    });
+
+    const chat = generator({
+      name: "chat",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      model: "mock-model",
+      prompt: "Use tools",
+      tools: [innerTool]
+    });
+
+    const routeA = handler({
+      name: "route-a",
+      inputSchema: z.string(),
+      outputSchema: z.string(),
+      execute: (input, routeCtx) => {
+        const seqTarget = routeCtx.getTarget("research");
+        snapshots.push({ step: "router-route", target: seqTarget?.name });
+        return `${input}-a`;
+      }
+    });
+
+    const gate = router({
+      name: "gate",
+      inputSchema: z.string(),
+      outputSchema: z.string(),
+      routes: [routeA],
+      execute: () => routeA
+    });
+
+    const validate = handler({
+      name: "validate",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.object({ text: z.string() }),
+      execute: (input, stepCtx) => {
+        const researchTarget = stepCtx.getTarget("research");
+        snapshots.push({ step: "sequencer-step", target: researchTarget?.name });
+        return input;
+      }
+    });
+
+    const research = sequencer({
+      name: "research",
+      inputSchema: z.object({ text: z.string() })
+    })
+      .then(validate)
+      .then(chat)
+      .then(gate);
+
+    const result = await executeBlock({
+      block: research,
+      input: { text: "hello" },
+      ctx
+    });
+
+    expect(result.output).toBe("chat-output-a");
+    expect(snapshots).toEqual([
+      { step: "sequencer-step", target: "research" },
+      { step: "tool", target: "research:chat" },
+      { step: "router-route", target: "research" }
+    ]);
+  });
+
+  it("throws AmbiguousBlockNameError when parent chain contains duplicate names", async () => {
+    const { ctx } = await createRuntimeContext("req_targets_ambiguous");
+
+    const duplicateLeaf = handler({
+      name: "leaf",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value, leafCtx) => {
+        expect(() => leafCtx.getTarget("dup")).toThrow(/ambiguous/i);
+        return value;
+      }
+    });
+
+    const inner = sequencer({ name: "dup", inputSchema: z.number() }).then(duplicateLeaf);
+    const outer = sequencer({ name: "dup", inputSchema: z.number() }).then(inner);
+
+    const result = await executeBlock({
+      block: outer,
+      input: 1,
+      ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toBe(1);
+  });
+
   it("runs request lifecycle observers in canonical order for success and failure", async () => {
     const stores = createInMemoryStores();
     const events: string[] = [];

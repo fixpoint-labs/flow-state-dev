@@ -48,7 +48,8 @@ export {
   RateLimitError,
   TimeoutError,
   ToolExecutionError,
-  ValidationError
+  ValidationError,
+  AmbiguousBlockNameError
 } from "./errors/flow-error";
 export { normalizeError } from "./errors/normalize-error";
 

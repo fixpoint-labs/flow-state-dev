@@ -36,7 +36,7 @@ Conflict rule: `preperation/architecture/*` wins.
 - Hierarchy: `request → session → user → project` → [State and Scopes](../architecture/state-and-scopes.md)
 - State ops (atomic): `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`
 - CAS + bounded retries for concurrency safety
-- `getTarget(name)`: nearest ancestor block instance; may return `undefined`
+- `getTarget(name)`: resolves through execution parent chain; may return `undefined` or throw `AmbiguousBlockNameError` when multiple ancestors share the same name
 
 ## Streaming
 

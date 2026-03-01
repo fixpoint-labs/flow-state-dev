@@ -27,7 +27,7 @@ import type {
   OutputItem,
   StatusItem
 } from "@flow-state-dev/core/items";
-import type { ComponentHandle, MessageHandle } from "@flow-state-dev/core/types";
+import type { BlockContext, ComponentHandle, ExecutionParent, MessageHandle, TargetHandle } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import type {
   ProjectRecord,
@@ -38,6 +38,7 @@ import type {
 } from "../stores/types";
 import { createDefaultModelResolver } from "../models/createDefaultModelResolver";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
+import { AmbiguousBlockNameError } from "../errors/flow-error";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 
 function normalizeLimit(
@@ -1073,8 +1074,16 @@ export async function createExecutionContext<
         ) as ProjectScopeHandle<TProjectState>);
 
   const blockResults = new Map<string, unknown>();
+  type ExecutionParentNode = {
+    parent: ExecutionParent;
+    parentState?: JsonObject;
+    previous?: ExecutionParentNode;
+  };
   const response = options.response ?? {
     emit: async () => undefined
+  };
+  const responseRef: { current: unknown } = {
+    current: response
   };
   const resolveModel =
     options.modelResolver ?? createDefaultModelResolver();
@@ -1155,32 +1164,99 @@ export async function createExecutionContext<
       }
     : undefined;
 
-  return {
-    flow,
-    actionName: options.actionName,
-    requestRuntime: {
-      requestId: requestRef.current.id,
-      actionName: requestRef.current.actionName,
-      status: requestRef.current.status,
-      startedAtMs: requestRef.current.startedAtMs,
-      completedAtMs: requestRef.current.completedAtMs,
-      failedAtMs: requestRef.current.failedAtMs,
-      metadata: requestRef.current.metadata
-    },
-    stores,
-    request: requestHandle,
-    session: sessionHandle,
-    user: userHandle,
-    project: projectHandle,
-    response,
-    signal: options.signal ?? new AbortController().signal,
-    resolveModel,
-    getBlockResult: (name: string): unknown => blockResults.get(name),
-    getTarget: () => undefined,
-    emitMessage: createEmitMessage(emCtx),
-    emitComponent: createEmitComponent(emCtx),
-    emitLLMContext: createEmitLLMContext(emCtx),
-    emitStatus: createEmitStatus(emCtx),
-    _runtimeHooks
+  const createContext = (
+    parentChain: ExecutionParentNode | undefined
+  ): ExecutionContext<TRequestState, TSessionState, TUserState, TProjectState> => {
+    const context: ExecutionContext<TRequestState, TSessionState, TUserState, TProjectState> = {
+      flow,
+      actionName: options.actionName,
+      requestRuntime: {
+        requestId: requestRef.current.id,
+        actionName: requestRef.current.actionName,
+        status: requestRef.current.status,
+        startedAtMs: requestRef.current.startedAtMs,
+        completedAtMs: requestRef.current.completedAtMs,
+        failedAtMs: requestRef.current.failedAtMs,
+        metadata: requestRef.current.metadata
+      },
+      stores,
+      request: requestHandle,
+      session: sessionHandle,
+      user: userHandle,
+      project: projectHandle,
+      response: responseRef.current as ExecutionContext["response"],
+      signal: options.signal ?? new AbortController().signal,
+      resolveModel,
+      getBlockResult: (name: string): unknown => blockResults.get(name),
+      getTarget: <TState extends object = Record<string, unknown>>(name: string): TargetHandle<TState> | undefined => {
+        const matches: ExecutionParentNode[] = [];
+        for (let cursor = parentChain; cursor !== undefined; cursor = cursor.previous) {
+          if (cursor.parent.name === name) {
+            matches.push(cursor);
+          }
+        }
+
+        if (matches.length === 0) {
+          return undefined;
+        }
+
+        if (matches.length > 1) {
+          const nearest = matches[0]!.parent;
+          const ambiguous = matches.map((entry) => entry.parent.instanceId).join(", ");
+          throw new AmbiguousBlockNameError(
+            `getTarget("${name}") is ambiguous from block instance "${nearest.instanceId}". Matching instances: ${ambiguous}`
+          );
+        }
+
+        const matched = matches[0]!;
+        const pendingState = matched.parentState ?? {};
+        const noState = async (): Promise<never> => {
+          throw new Error(
+            `State operations for target "${matched.parent.name}" are not wired yet.`
+          );
+        };
+
+        return {
+          name: matched.parent.name,
+          instanceId: matched.parent.instanceId,
+          state: pendingState as Readonly<TState>,
+          patchState: noState,
+          setState: noState,
+          incState: noState,
+          pushState: noState,
+          setStateRecord: noState,
+          deleteStateRecord: noState,
+          atomicState: noState
+        } satisfies TargetHandle<TState>;
+      },
+      emitMessage: createEmitMessage(emCtx),
+      emitComponent: createEmitComponent(emCtx),
+      emitLLMContext: createEmitLLMContext(emCtx),
+      emitStatus: createEmitStatus(emCtx),
+      _runtimeHooks,
+      _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>) => {
+        const childChain: ExecutionParentNode = {
+          parent,
+          previous: parentChain
+        };
+        const childContext = createContext(childChain);
+        return execute(childContext);
+      }
+    };
+
+    Object.defineProperty(context, "response", {
+      get() {
+        return responseRef.current as ExecutionContext["response"];
+      },
+      set(value: unknown) {
+        responseRef.current = value;
+      },
+      enumerable: true,
+      configurable: true
+    });
+
+    return context;
   };
+
+  return createContext(undefined);
 }

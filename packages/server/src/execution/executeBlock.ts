@@ -171,15 +171,33 @@ export async function executeBlock(
         attemptMetadata
       );
 
-      const output = await executeByKind(
-        options.block,
-        interceptedInput,
-        options.ctx,
-        {
-          internalSeams: seams,
-          metadata: attemptMetadata
-        }
-      );
+      const output = options.ctx._withExecutionScope === undefined
+        ? await executeByKind(
+            options.block,
+            interceptedInput,
+            options.ctx,
+            {
+              internalSeams: seams,
+              metadata: attemptMetadata
+            }
+          )
+        : await options.ctx._withExecutionScope(
+            {
+              name: options.block.name,
+              kind: options.block.kind,
+              instanceId: attemptMetadata.blockInstanceId ?? blockInstanceId
+            },
+            async (scopedCtx) =>
+              executeByKind(
+                options.block,
+                interceptedInput,
+                scopedCtx as ExecuteBlockContext,
+                {
+                  internalSeams: seams,
+                  metadata: attemptMetadata
+                }
+              )
+          );
 
       const interceptedOutput = applyBlockOutputSeam(seams, output, attemptMetadata);
 
