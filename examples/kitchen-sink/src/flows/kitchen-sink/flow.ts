@@ -326,7 +326,7 @@ const kitchenSinkFlow = defineFlow({
         compute: (ctx) => {
           const artifacts = ctx.session.resources.artifacts.state;
 
-          return artifacts.order.map((id) => ({
+          return artifacts.order.map((id: string) => ({
             id,
             title: artifacts.byId[id]?.title ?? "Untitled",
             content: artifacts.byId[id]?.content ?? ""
@@ -341,8 +341,8 @@ const kitchenSinkFlow = defineFlow({
           const artifacts = ctx.session.resources.artifacts.state;
 
           return artifacts.order
-            .map((id) => artifacts.byId[id])
-            .filter((artifact) => artifact !== undefined);
+            .map((id: string) => artifacts.byId[id])
+            .filter((artifact: { id: string; title: string; content: string } | undefined) => artifact !== undefined);
         }
       },
       modeStatus: {

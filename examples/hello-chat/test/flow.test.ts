@@ -1,14 +1,20 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
-import { mockGenerator, testBlock } from "@flow-state-dev/testing";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { mockGenerator, testBlock, testFlow } from "@flow-state-dev/testing";
 import helloChatFlow from "../src/flows/hello-chat/flow";
 
-// Access the pipeline block from the flow definition for unit testing.
-// testBlock supports generator mocks; testFlow does not yet.
+/**
+ * These tests intentionally mock generator output with @flow-state-dev/testing.
+ * They should never require OPENAI_API_KEY or make real network calls.
+ */
+
+// Access the pipeline block from the flow definition for state-change assertions.
+// testFlow exercises the runtime path, while testBlock exposes state mutations.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const chatPipeline = (helloChatFlow.actions.chat as any).block;
+const MODEL_ID = "gpt-5-mini";
 
 function collectSourceFiles(dir: string): string[] {
   const entries = readdirSync(dir);
@@ -31,31 +37,60 @@ function collectSourceFiles(dir: string): string[] {
   return files;
 }
 
-const chatFixture = mockGenerator({
-  name: "chat-generator",
-  script: [
-    {
+function createChatFixture() {
+  return mockGenerator({
+    name: "chat-generator",
+    script: Array.from({ length: 6 }, () => ({
       text: "TypeScript is a typed superset of JavaScript."
-    }
-  ]
-});
+    }))
+  });
+}
+
+function withGeneratorMocks(chatFixture: ReturnType<typeof createChatFixture>) {
+  return {
+    generators: { "chat-generator": chatFixture },
+    models: { [MODEL_ID]: chatFixture }
+  };
+}
+
+let fetchSpy: ReturnType<typeof vi.spyOn> | undefined;
 
 describe("hello-chat", () => {
+  beforeAll(() => {
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      throw new Error(
+        `Unexpected network request in mocked hello-chat tests: ${String(input)}`
+      );
+    });
+  });
+
+  afterAll(() => {
+    fetchSpy?.mockRestore();
+  });
+
   it("completes a chat action", async () => {
-    const result = await testBlock(chatPipeline, {
+    const chatFixture = createChatFixture();
+    const result = await testFlow({
+      flow: helloChatFlow,
+      action: "chat",
+      userId: "test-user",
       input: { message: "What is TypeScript?" },
-      generators: { "chat-generator": chatFixture }
+      ...withGeneratorMocks(chatFixture)
     });
 
-    expect(result.error).toBeNull();
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe("completed");
     expect(result.output).toBeDefined();
   });
 
   it("emits block_output items", async () => {
-    chatFixture.reset();
-    const result = await testBlock(chatPipeline, {
+    const chatFixture = createChatFixture();
+    const result = await testFlow({
+      flow: helloChatFlow,
+      action: "chat",
+      userId: "test-user",
       input: { message: "Hello" },
-      generators: { "chat-generator": chatFixture }
+      ...withGeneratorMocks(chatFixture)
     });
 
     const blockOutputs = result.items.filter((item) => item.type === "block_output");
@@ -63,13 +98,13 @@ describe("hello-chat", () => {
   });
 
   it("increments message count in session state", async () => {
-    chatFixture.reset();
+    const chatFixture = createChatFixture();
     const result = await testBlock(chatPipeline, {
       input: { message: "Hello again" },
       session: {
         state: { messageCount: 5 }
       },
-      generators: { "chat-generator": chatFixture }
+      ...withGeneratorMocks(chatFixture)
     });
 
     expect(result.error).toBeNull();
