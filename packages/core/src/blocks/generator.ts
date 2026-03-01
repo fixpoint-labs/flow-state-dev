@@ -139,10 +139,11 @@ export interface GeneratorConfig<
   TSessionResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
   TUserResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,
-    TSessionResources, TUserResources, TProjectResources, TSequencerState
+    TSessionResources, TUserResources, TProjectResources, TSequencerState, TTargetSchemas
   >,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
@@ -157,6 +158,7 @@ export interface GeneratorConfig<
   userResources?: TUserResourceDefs;
   projectResources?: TProjectResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
+  targets?: TTargetSchemas;
   model: ResolvableModel<TInput, TCtx>;
   prompt: ResolvableString<TInput, TCtx>;
   context?: GeneratorSlot<TInput, TCtx>;
@@ -790,9 +792,10 @@ export function generator<
   TSessionResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
   TUserResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,
-    TSessionResources, TUserResources, TProjectResources, TSequencerState
+    TSessionResources, TUserResources, TProjectResources, TSequencerState, TTargetSchemas
   >,
 >(
   config: GeneratorConfig<
@@ -801,7 +804,7 @@ export function generator<
     TRequestState, TSessionState, TUserState, TProjectState, TSequencerState,
     TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
     TSessionResourceDefs, TUserResourceDefs, TProjectResourceDefs,
-    TSessionResources, TUserResources, TProjectResources, TCtx
+    TSessionResources, TUserResources, TProjectResources, TTargetSchemas, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const outputSchema = (config.outputSchema ?? z.string()) as ZodTypeAny;

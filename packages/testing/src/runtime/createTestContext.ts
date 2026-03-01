@@ -525,6 +525,16 @@ export async function createTestContext<TInput = unknown>(
     return originalGetTarget(name) as TargetHandle<TState> | undefined;
   };
 
+  const targetsProxy = new Proxy({}, {
+    get(_target, prop) {
+      if (typeof prop !== "string") {
+        return undefined;
+      }
+
+      return ctx.getTarget(prop);
+    }
+  });
+
   const proxiedContext = new Proxy(ctx, {
     get(target, prop, receiver) {
       if (prop === "getTarget") {
@@ -533,6 +543,10 @@ export async function createTestContext<TInput = unknown>(
 
       if (prop === "sequencer" && options.sequencer !== undefined) {
         return ctx.getTarget(sequencerName);
+      }
+
+      if (prop === "targets") {
+        return targetsProxy;
       }
 
       return Reflect.get(target, prop, receiver);
