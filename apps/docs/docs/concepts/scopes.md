@@ -414,9 +414,110 @@ Use **project scope** when multiple users need to read or write the same data �
 
 Use **user scope** when the data belongs to one person — their preferences, their saved items, their accumulated context. Even if it *looks* shared (like "preferred model"), if each user should have their own value, it's user scope.
 
+## Sequencer scope
+
+The four persistence scopes above (request, session, user, project) are tied to identity — who's calling, which conversation, which project. Sequencer scope is different: it's tied to **execution structure**. When blocks run inside a sequencer, they can share state scoped to that sequencer instance.
+
+### Why sequencer scope exists
+
+Consider a multi-step pipeline: a planner block produces a plan, then a series of executor blocks carry it out. The plan isn't session state — it doesn't need to persist after the pipeline finishes. It isn't request state — it needs to be shared across the blocks in the sequence. Sequencer scope gives you a shared workspace for blocks that are designed to run together.
+
+### Declaring sequencer state
+
+A sequencer declares its instance state with `stateSchema`:
+
+```ts
+const pipeline = sequencer({
+  name: "research-pipeline",
+  inputSchema: z.string(),
+  stateSchema: z.object({
+    plan: z.array(z.string()).default([]),
+    currentStep: z.number().default(0),
+    findings: z.record(z.string()).default({}),
+  }),
+});
+```
+
+Each time this sequencer executes, it gets a fresh state container initialized from the schema defaults. The state lives for the duration of that sequencer's execution — it's not persisted to any store.
+
+### Accessing sequencer state from blocks
+
+Blocks inside the sequencer access it via `ctx.sequencer`:
+
+```ts
+const planner = handler({
+  name: "planner",
+  sequencerStateSchema: z.object({
+    plan: z.array(z.string()),
+    currentStep: z.number(),
+  }),
+  execute: async (input, ctx) => {
+    // Write the plan into sequencer state for downstream blocks
+    await ctx.sequencer!.patchState({
+      plan: ["search", "analyze", "summarize"],
+      currentStep: 0,
+    });
+    return input;
+  },
+});
+
+const executor = handler({
+  name: "executor",
+  sequencerStateSchema: z.object({
+    currentStep: z.number(),
+    findings: z.record(z.string()),
+  }),
+  execute: async (input, ctx) => {
+    const step = ctx.sequencer!.state.currentStep;
+
+    // Do work, then record findings and advance
+    await ctx.sequencer!.patchState({
+      findings: { [`step-${step}`]: "result..." },
+    });
+    await ctx.sequencer!.incState({ currentStep: 1 });
+    return input;
+  },
+});
+
+const researchPipeline = pipeline
+  .then(planner)
+  .then(executor)
+  .then(executor);
+```
+
+The `sequencerStateSchema` on each block declares what state shape it expects from its enclosing sequencer. Like session/user/project state schemas, these bubble up and merge — the framework catches conflicts at build time.
+
+`ctx.sequencer` resolves to the **nearest enclosing sequencer** that declares a `stateSchema`. If the block isn't inside a sequencer (or the sequencer has no state schema), `ctx.sequencer` is `undefined`.
+
+### Finding blocks with `getTarget`
+
+Sequencer scope enables another pattern: blocks finding and reading state from specific siblings or ancestors by name. The `ctx.getTarget(name)` method returns a `TargetHandle` for the named block:
+
+```ts
+execute: async (input, ctx) => {
+  // Find a previously-executed sibling or ancestor by name
+  const plannerResult = ctx.getTarget<{ plan: string[] }>("planner");
+
+  if (plannerResult) {
+    const plan = plannerResult.state.plan;
+    // Can also mutate the target's state
+    await plannerResult.patchState({ plan: [...plan, "extra-step"] });
+  }
+}
+```
+
+`getTarget` resolves nearest-first in two passes:
+
+1. **Siblings first** — already-dispatched blocks at the current execution level, most-recent dispatch wins. This is how a later block in a sequencer finds an earlier one.
+2. **Ancestors second** — walks up the parent execution chain. This is how a deeply nested block finds an enclosing sequencer or a block from an outer sequence.
+
+Returns `undefined` if no block with that name is found. Throws `AmbiguousBlockNameError` if multiple ancestors share the same name — this forces you to be explicit about which block you mean.
+
+A `TargetHandle` provides the same state operations as other scopes (`patchState`, `setState`, `incState`, `pushState`, etc.), but only if the target block has a `stateSchema`. Calling state operations on a target without state throws an error.
+
 ## Scope hierarchy and resolution
 
-The four scopes form a hierarchy:
+The persistence scopes form a hierarchy based on lifetime and sharing:
 
 ```
 request → session → user → project
@@ -424,6 +525,8 @@ request → session → user → project
 ```
 
 "Higher" means broader lifetime and wider sharing. Request is the narrowest — one execution, one user, gone when done. Project is the broadest — persists indefinitely, shared across users.
+
+Sequencer scope is orthogonal to this hierarchy — it's scoped to execution structure rather than identity, and exists only for the duration of a sequencer's execution.
 
 ### How blocks access scopes
 
@@ -435,24 +538,28 @@ execute: async (input, ctx) => {
   ctx.session    // Always available — SessionScopeHandle
   ctx.user       // Always available — UserScopeHandle
   ctx.project    // Optional — ProjectScopeHandle | undefined
+  ctx.sequencer  // Optional — TargetHandle | undefined (when inside a sequencer with stateSchema)
+
+  ctx.getTarget("block-name")  // Find sibling/ancestor by name — TargetHandle | undefined
 }
 ```
 
-Request, session, and user are always present (userId is required, sessions auto-create). Project is present only when a `projectId` was provided.
+Request, session, and user are always present (userId is required, sessions auto-create). Project is present only when a `projectId` was provided. Sequencer is present only when the block is executing inside a sequencer that declares state.
 
 ### Scope capability differences
 
 Not all scopes are equal in what they offer:
 
-| Capability | Request | Session | User | Project |
-|-----------|---------|---------|------|---------|
-| State (read/write) | Yes | Yes | Yes | Yes |
-| Resources | — | Yes | Yes | Optional |
-| Items (conversation history) | — | Yes | — | — |
-| Journal (append-only log) | — | Yes | — | — |
-| Identity | Yes | Yes | Yes | Yes |
+| Capability | Request | Session | User | Project | Sequencer |
+|-----------|---------|---------|------|---------|-----------|
+| State (read/write) | Yes | Yes | Yes | Yes | Yes |
+| Resources | — | Yes | Yes | Optional | — |
+| Items (conversation history) | — | Yes | — | — | — |
+| Journal (append-only log) | — | Yes | — | — | — |
+| Identity | Yes | Yes | Yes | Yes | — |
+| Persisted | Yes | Yes | Yes | Yes | No |
 
-Session is the richest scope because it's the conversational boundary — it accumulates items and provides audience-specific views for both the client and the LLM.
+Session is the richest scope because it's the conversational boundary — it accumulates items and provides audience-specific views for both the client and the LLM. Sequencer scope is the lightest — just state, no persistence, no identity.
 
 ### Resolution pattern
 
