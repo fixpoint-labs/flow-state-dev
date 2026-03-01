@@ -8,7 +8,7 @@ import type {
   InferStateFromSchema
 } from "../types/block";
 import type { DefinedResource, ResourceHandle } from "../types/resource";
-import { buildBlock } from "./internal/build-block";
+import { buildBlock, extractDeclaredResources } from "./internal/build-block";
 import { isBlockDefinition } from "./internal/utils";
 
 function isRouteInCandidates<TInputSchema extends ZodTypeAny, TOutputSchema extends ZodTypeAny>(
@@ -121,6 +121,7 @@ export function router<
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "router",
     config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
+    declaredResources: extractDeclaredResources(config),
     execute: async (input, ctx) => {
       const candidate = (config.execute as (input: TInput, ctx: BlockContext) =>
         Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>

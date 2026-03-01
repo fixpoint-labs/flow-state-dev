@@ -95,7 +95,7 @@ const gen = generator({
   context: [
     (_input, ctx) => {
       const entries = ctx.session.resources.observations.state.entries;
-      return entries.map((e) => e.text).join(", ");
+      return entries.map((e: { text: string; score: number }) => e.text).join(", ");
     }
   ],
   user: (input) => input.prompt

@@ -7,7 +7,24 @@ import type {
   ConnectorFn,
   DeclaredResources
 } from "../../types/block";
+import type { DefinedResource } from "../../types/resource";
 import { toError } from "./utils";
+
+/**
+ * Extract resource declarations from a block config into a `DeclaredResources`
+ * metadata object. Returns `undefined` when no resources are declared.
+ */
+export function extractDeclaredResources(config: {
+  sessionResources?: Record<string, DefinedResource>;
+  userResources?: Record<string, DefinedResource>;
+  projectResources?: Record<string, DefinedResource>;
+}): DeclaredResources | undefined {
+  const result: DeclaredResources = {};
+  if (config.sessionResources) result.session = config.sessionResources;
+  if (config.userResources) result.user = config.userResources;
+  if (config.projectResources) result.project = config.projectResources;
+  return Object.keys(result).length > 0 ? result : undefined;
+}
 
 type ExecuteFn<
   TInputSchema extends ZodTypeAny,

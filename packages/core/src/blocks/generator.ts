@@ -16,7 +16,7 @@ import type {
   PrepareStepFn
 } from "../types/model";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
-import { buildBlock } from "./internal/build-block";
+import { buildBlock, extractDeclaredResources } from "./internal/build-block";
 import { toError, withTimeout } from "./internal/utils";
 
 const DEFAULT_MAX_ITERATIONS = 8;
@@ -813,6 +813,7 @@ export function generator<
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "generator",
     config: normalizedConfig as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
+    declaredResources: extractDeclaredResources(config),
     execute: async (input: TInput, ctx) => {
       const blockName = String(normalizedConfig.name);
       const { modelId, model } = await resolveModel(
