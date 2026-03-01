@@ -170,11 +170,30 @@ export function router<
         return runSelected(ctx);
       }
 
+      const containerConfig =
+        selected.kind === "sequencer" || selected.kind === "router"
+          ? (selected.config as { container?: { component?: string; label?: string | ((input: unknown) => string); metadata?: Record<string, unknown> | ((input: unknown) => Record<string, unknown>); } }).container
+          : undefined;
+
       return ctx._withExecutionScope(
         {
           name: selected.name,
           kind: selected.kind,
-          instanceId: `${selected.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`
+          instanceId: `${selected.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          container:
+            containerConfig === undefined
+              ? undefined
+              : {
+                  component: containerConfig.component,
+                  label:
+                    typeof containerConfig.label === "function"
+                      ? containerConfig.label(input as any)
+                      : containerConfig.label,
+                  metadata:
+                    typeof containerConfig.metadata === "function"
+                      ? containerConfig.metadata(input as any)
+                      : containerConfig.metadata
+                }
         },
         runSelected
       );

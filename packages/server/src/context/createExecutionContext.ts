@@ -21,6 +21,7 @@ import type {
 import type {
   BlockOutputItem,
   ComponentItem,
+  ContainerItem,
   Content,
   ContextItem,
   ItemProvenance,
@@ -1529,21 +1530,59 @@ export async function createExecutionContext<
       emitStatus: createEmitStatus(emCtx),
       _runtimeHooks,
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>) => {
+        const resolvedParent: ExecutionParent = {
+          ...parent,
+          parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId
+        };
+
         const parentStateContainer =
-          parent.kind === "sequencer" && parent.stateSchema !== undefined
+          resolvedParent.kind === "sequencer" && resolvedParent.stateSchema !== undefined
             ? createStateContainer<JsonObject>(
-                normalizeStateDefault(parent.stateSchema)
+                normalizeStateDefault(resolvedParent.stateSchema)
               )
             : undefined;
 
+        if (resolvedParent.container !== undefined) {
+          const typed = responseRef.current as {
+            emitItemAdded?: (item: OutputItem) => Promise<unknown>;
+            emitItemDone?: (item: OutputItem) => Promise<unknown>;
+          };
+          if (
+            typeof typed.emitItemAdded === "function" &&
+            typeof typed.emitItemDone === "function"
+          ) {
+            const itemIndex = emittedItemCount++;
+            const item: ContainerItem = {
+              id: `item_container_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+              type: "container",
+              status: "completed",
+              requestId: requestRef.current.id,
+              itemIndex,
+              provenance: {
+                blockName: resolvedParent.name,
+                blockInstanceId: resolvedParent.instanceId,
+                parentBlockInstanceId: resolvedParent.parentInstanceId,
+                phase: "main"
+              },
+              ts: Date.now(),
+              blockName: resolvedParent.name,
+              component: resolvedParent.container.component,
+              label: resolvedParent.container.label,
+              metadata: resolvedParent.container.metadata
+            };
+            await typed.emitItemAdded(item);
+            await typed.emitItemDone(item);
+          }
+        }
+
         const siblingEntry: SiblingRegistryEntry = {
-          parent,
+          parent: resolvedParent,
           parentStateContainer
         };
         childSiblingRegistry.push(siblingEntry);
 
         const childChain: ExecutionParentNode = {
-          parent,
+          parent: resolvedParent,
           parentStateContainer,
           previous: parentChain
         };

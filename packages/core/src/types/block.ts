@@ -17,7 +17,13 @@ export type ExecutionParent = {
   name: string;
   kind: BlockKind;
   instanceId: string;
+  parentInstanceId?: string;
   stateSchema?: ZodTypeAny;
+  container?: {
+    component?: string;
+    label?: string;
+    metadata?: Record<string, unknown>;
+  };
 };
 
 export interface ResponseEmitterHandle {
@@ -127,6 +133,11 @@ export interface BlockConfig<
   inputSchema?: TInputSchema;
   outputSchema?: TOutputSchema;
   stateSchema?: ZodTypeAny;
+  container?: {
+    component?: string;
+    label?: string | ((input: TInput) => string);
+    metadata?: Record<string, unknown> | ((input: TInput) => Record<string, unknown>);
+  };
   connectInput?: ConnectorFn<unknown, TInput>;
 
   execute?: (input: TInput, ctx: BlockContext) => Promise<TOutput> | TOutput;

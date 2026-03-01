@@ -25,6 +25,7 @@ export type ExecutionMetadata = {
   blockName?: string;
   blockKind?: BlockDefinition["kind"];
   blockInstanceId?: string;
+  parentBlockInstanceId?: string;
   scope?: FlowErrorScope;
   attempt?: number;
   stepIndex?: number;
@@ -102,6 +103,7 @@ export function createExecutionMetadata(
     blockName: overrides.blockName,
     blockKind: overrides.blockKind,
     blockInstanceId: overrides.blockInstanceId,
+    parentBlockInstanceId: overrides.parentBlockInstanceId,
     scope: overrides.scope,
     attempt: overrides.attempt,
     stepIndex: overrides.stepIndex,

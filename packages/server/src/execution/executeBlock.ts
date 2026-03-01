@@ -52,12 +52,15 @@ function createBlockOutputProvenance(
   return {
     blockName,
     blockInstanceId: metadata.blockInstanceId!,
+    parentBlockInstanceId: metadata.parentBlockInstanceId,
     phase: metadata.scope === "work" ? "work" : "main",
     stepIndex: metadata.stepIndex,
     workGroupId: metadata.workGroupId,
     attempt: metadata.attempt
   };
 }
+
+
 
 async function emitBlockOutputItem(
   options: {
@@ -171,6 +174,17 @@ export async function executeBlock(
         attemptMetadata
       );
 
+      const containerConfig =
+        options.block.kind === "sequencer" || options.block.kind === "router"
+          ? (options.block.config as {
+              container?: {
+                component?: string;
+                label?: string | ((input: unknown) => string);
+                metadata?: Record<string, unknown> | ((input: unknown) => Record<string, unknown>);
+              };
+            }).container
+          : undefined;
+
       const output = options.ctx._withExecutionScope === undefined
         ? await executeByKind(
             options.block,
@@ -186,7 +200,22 @@ export async function executeBlock(
               name: options.block.name,
               kind: options.block.kind,
               instanceId: attemptMetadata.blockInstanceId ?? blockInstanceId,
-              stateSchema: options.block.kind === "sequencer" ? options.block.config.stateSchema : undefined
+              stateSchema: options.block.kind === "sequencer" ? options.block.config.stateSchema : undefined,
+              parentInstanceId: attemptMetadata.parentBlockInstanceId,
+              container:
+                containerConfig === undefined
+                  ? undefined
+                  : {
+                      component: containerConfig.component,
+                      label:
+                        typeof containerConfig.label === "function"
+                          ? containerConfig.label(interceptedInput)
+                          : containerConfig.label,
+                      metadata:
+                        typeof containerConfig.metadata === "function"
+                          ? containerConfig.metadata(interceptedInput)
+                          : containerConfig.metadata
+                    }
             },
             async (scopedCtx) =>
               executeByKind(
