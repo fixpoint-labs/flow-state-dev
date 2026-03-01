@@ -760,6 +760,208 @@ describe("execution runtime", () => {
     expect(result.output).toBe(1);
   });
 
+
+  it("initializes sequencer instance state and exposes mutating target ops", async () => {
+    const { ctx } = await createRuntimeContext("req_seq_state");
+
+    const inspect = handler({
+      name: "inspect-state",
+      inputSchema: z.number(),
+      outputSchema: z.object({
+        count: z.number(),
+        total: z.number(),
+        status: z.string(),
+        notes: z.array(z.string()),
+        flags: z.record(z.boolean())
+      }),
+      execute: async (_input, stepCtx) => {
+        const target = stepCtx.sequencer;
+        expect(target).toBeDefined();
+        if (target === undefined) {
+          throw new Error("missing sequencer target");
+        }
+
+        await target.patchState({ status: "running" });
+        await target.setState({
+          count: 2,
+          total: 5,
+          status: "set",
+          notes: ["seed"],
+          flags: { seen: true }
+        });
+        await target.incState({ count: 3, total: 7 });
+        await target.pushState("notes", "next");
+        await target.setStateRecord("flags", "active", true);
+        await target.deleteStateRecord("flags", "seen");
+        await target.atomicState((state) => ({
+          status: `${String((state as Record<string, unknown>).status)}:done`
+        }));
+
+        return {
+          count: Number((target.state as Record<string, unknown>).count),
+          total: Number((target.state as Record<string, unknown>).total),
+          status: String((target.state as Record<string, unknown>).status),
+          notes: (target.state as Record<string, unknown>).notes as string[],
+          flags: (target.state as Record<string, boolean>).flags as Record<string, boolean>
+        };
+      }
+    });
+
+    const seq = sequencer({
+      name: "stateful",
+      inputSchema: z.number(),
+      stateSchema: z.object({
+        count: z.number().default(1),
+        total: z.number().default(0),
+        status: z.string().default("idle"),
+        notes: z.array(z.string()).default([]),
+        flags: z.record(z.boolean()).default({})
+      })
+    }).then(inspect);
+
+    const result = await executeBlock({
+      block: seq,
+      input: 1,
+      ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({
+      count: 5,
+      total: 12,
+      status: "set:done",
+      notes: ["seed", "next"],
+      flags: { active: true }
+    });
+  });
+
+  it("resolves nearest sequencer and applies schema defaults", async () => {
+    const { ctx } = await createRuntimeContext("req_seq_nested");
+
+    const leaf = handler({
+      name: "leaf",
+      inputSchema: z.number(),
+      outputSchema: z.object({
+        nearest: z.string(),
+        count: z.number()
+      }),
+      execute: (input, leafCtx) => ({
+        nearest: String(leafCtx.sequencer?.name),
+        count: Number((leafCtx.sequencer?.state as Record<string, unknown>)?.count ?? input)
+      })
+    });
+
+    const inner = sequencer({
+      name: "inner",
+      inputSchema: z.number(),
+      stateSchema: z.object({ count: z.number().default(11) })
+    }).then(leaf);
+
+    const outer = sequencer({
+      name: "outer",
+      inputSchema: z.number(),
+      stateSchema: z.object({ count: z.number().default(7) })
+    }).then(inner);
+
+    const result = await executeBlock({
+      block: outer,
+      input: 1,
+      ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({ nearest: "inner", count: 11 });
+  });
+
+  it("resolves ctx.sequencer in tool blocks and leaves it undefined outside sequencers", async () => {
+    const stores = createInMemoryStores();
+    const base = handler({
+      name: "base",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value) => value
+    });
+
+    const flow = defineFlow({
+      kind: "seq-tool-flow",
+      actions: {
+        run: {
+          inputSchema: z.number(),
+          block: base
+        }
+      }
+    })();
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_seq_tool",
+      sessionId: "sess_seq_tool",
+      userId: "user_seq_tool",
+      stores,
+      modelResolver: (modelId) => ({
+        modelId,
+        async generate(options: any) {
+          if (Array.isArray(options.tools) && options.tools.length > 0 && typeof options.tools[0]?.execute === "function") {
+            await options.tools[0].execute({ text: "hello" });
+          }
+          return { text: "ok" };
+        }
+      })
+    });
+
+    const toolObservations: string[] = [];
+
+    const tool = handler({
+      name: "tool",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      execute: (_input, toolCtx) => {
+        toolObservations.push(`${toolCtx.sequencer?.name}:${toolCtx.getTarget("research")?.name}`);
+        return "done";
+      }
+    });
+
+    const chat = generator({
+      name: "chat",
+      inputSchema: z.object({ text: z.string() }),
+      outputSchema: z.string(),
+      model: "mock-model",
+      prompt: "use tool",
+      tools: [tool]
+    });
+
+    const seq = sequencer({
+      name: "research",
+      inputSchema: z.object({ text: z.string() }),
+      stateSchema: z.object({ mode: z.string().default("idle") })
+    }).then(chat);
+
+    const seqResult = await executeBlock({
+      block: seq,
+      input: { text: "hi" },
+      ctx
+    });
+
+    expect(seqResult.error).toBeUndefined();
+    expect(toolObservations).toEqual(["research:research"]);
+
+    const standalone = handler({
+      name: "standalone",
+      inputSchema: z.number(),
+      outputSchema: z.boolean(),
+      execute: (_input, standaloneCtx) => standaloneCtx.sequencer === undefined
+    });
+
+    const standaloneResult = await executeBlock({
+      block: standalone,
+      input: 1,
+      ctx
+    });
+
+    expect(standaloneResult.output).toBe(true);
+  });
+
   it("runs request lifecycle observers in canonical order for success and failure", async () => {
     const stores = createInMemoryStores();
     const events: string[] = [];

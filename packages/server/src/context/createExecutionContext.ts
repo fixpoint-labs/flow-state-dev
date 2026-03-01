@@ -110,6 +110,26 @@ function normalizeResourceDefault(config: ResourceConfig): JsonObject {
   return {};
 }
 
+function normalizeStateDefault(
+  stateSchema: { safeParse: (value: unknown) => { success: boolean; data?: unknown } } | undefined
+): JsonObject {
+  if (stateSchema === undefined) {
+    return {};
+  }
+
+  const parsedFromUndefined = stateSchema.safeParse(undefined);
+  if (parsedFromUndefined.success) {
+    return asJsonObject(parsedFromUndefined.data);
+  }
+
+  const parsedFromEmptyObject = stateSchema.safeParse({});
+  if (parsedFromEmptyObject.success) {
+    return asJsonObject(parsedFromEmptyObject.data);
+  }
+
+  return {};
+}
+
 function normalizeResourceState(
   config: ResourceConfig,
   value: unknown
@@ -288,7 +308,7 @@ function ensureJournalDefaults(record: SessionRecord): void {
   }
 }
 
-function defineStateProperty<THandle extends object, TState extends JsonObject>(
+function defineStateProperty<THandle extends object, TState extends object>(
   handle: THandle,
   readState: () => Readonly<TState>
 ): THandle & { readonly state: Readonly<TState> } {
@@ -1075,12 +1095,12 @@ export async function createExecutionContext<
 
   type ExecutionParentNode = {
     parent: ExecutionParent;
-    parentState?: JsonObject;
+    parentStateContainer?: ReturnType<typeof createStateContainer<JsonObject>>;
     previous?: ExecutionParentNode;
   };
   type SiblingRegistryEntry = {
     parent: ExecutionParent;
-    parentState?: JsonObject;
+    parentStateContainer?: ReturnType<typeof createStateContainer<JsonObject>>;
   };
   const response = options.response ?? {
     emit: async () => undefined
@@ -1195,27 +1215,35 @@ export async function createExecutionContext<
       resolveModel,
       getTarget: <TState extends object = Record<string, unknown>>(name: string): TargetHandle<TState> | undefined => {
         const toTargetHandle = (
-          matched: Pick<SiblingRegistryEntry, "parent" | "parentState">
+          matched: Pick<SiblingRegistryEntry, "parent" | "parentStateContainer">
         ): TargetHandle<TState> => {
-          const pendingState = matched.parentState ?? {};
+          const container = matched.parentStateContainer;
           const noState = async (): Promise<never> => {
             throw new Error(
-              `State operations for target "${matched.parent.name}" are not wired yet.`
+              `Target "${matched.parent.name}" does not expose instance state operations.`
             );
           };
+          const ops: Pick<TargetHandle<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> =
+            container === undefined
+              ? {
+                  patchState: noState,
+                  setState: noState,
+                  incState: noState,
+                  pushState: noState,
+                  setStateRecord: noState,
+                  deleteStateRecord: noState,
+                  atomicState: noState
+                }
+              : (createScopeStateOps(container) as unknown as Pick<TargetHandle<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">);
 
-          return {
-            name: matched.parent.name,
-            instanceId: matched.parent.instanceId,
-            state: pendingState as Readonly<TState>,
-            patchState: noState,
-            setState: noState,
-            incState: noState,
-            pushState: noState,
-            setStateRecord: noState,
-            deleteStateRecord: noState,
-            atomicState: noState
-          } satisfies TargetHandle<TState>;
+          return defineStateProperty(
+            {
+              name: matched.parent.name,
+              instanceId: matched.parent.instanceId,
+              ...ops
+            },
+            () => (container?.read() ?? {}) as TState
+          ) as unknown as TargetHandle<TState>;
         };
 
         if (siblingRegistry !== undefined && siblingRegistry.length > 0) {
@@ -1258,13 +1286,22 @@ export async function createExecutionContext<
       emitStatus: createEmitStatus(emCtx),
       _runtimeHooks,
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>) => {
+        const parentStateContainer =
+          parent.kind === "sequencer" && parent.stateSchema !== undefined
+            ? createStateContainer<JsonObject>(
+                normalizeStateDefault(parent.stateSchema)
+              )
+            : undefined;
+
         const siblingEntry: SiblingRegistryEntry = {
-          parent
+          parent,
+          parentStateContainer
         };
         childSiblingRegistry.push(siblingEntry);
 
         const childChain: ExecutionParentNode = {
           parent,
+          parentStateContainer,
           previous: parentChain
         };
         const childContext = createContext(
@@ -1275,6 +1312,25 @@ export async function createExecutionContext<
         return execute(childContext);
       }
     };
+
+    Object.defineProperty(context, "sequencer", {
+      enumerable: true,
+      get() {
+        let cursor = parentChain;
+        while (cursor !== undefined) {
+          if (
+            cursor.parent.kind === "sequencer" &&
+            cursor.parentStateContainer !== undefined
+          ) {
+            return context.getTarget(cursor.parent.name);
+          }
+
+          cursor = cursor.previous;
+        }
+
+        return undefined;
+      }
+    });
 
     Object.defineProperty(context, "response", {
       get() {

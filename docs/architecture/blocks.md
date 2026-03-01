@@ -33,6 +33,7 @@ interface BlockContext {
   session?: SessionScopeHandle;
   user: UserScopeHandle;
   project?: ProjectScopeHandle;
+  sequencer?: TargetHandle;
 
   response: ResponseEmitterHandle;
   signal: AbortSignal;
@@ -49,6 +50,11 @@ interface BlockContext {
 ```
 
 Blocks are **silent by default** — if a block doesn't explicitly emit via `ctx` methods, it produces nothing visible to the client or LLM.
+
+
+`ctx.sequencer` resolves to the nearest ancestor sequencer that declared `stateSchema`. The handle exposes in-memory instance state for the active sequencer execution (`state`, `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`). Instance state initializes from schema defaults (`safeParse(undefined)` / `safeParse({})`).
+
+When no enclosing sequencer with `stateSchema` exists, `ctx.sequencer` is `undefined`.
 
 `getTarget(name)` resolves nearest-first in two passes:
 1. Already-dispatched siblings at the current execution level (most-recent dispatch wins)

@@ -185,7 +185,8 @@ export async function executeBlock(
             {
               name: options.block.name,
               kind: options.block.kind,
-              instanceId: attemptMetadata.blockInstanceId ?? blockInstanceId
+              instanceId: attemptMetadata.blockInstanceId ?? blockInstanceId,
+              stateSchema: options.block.kind === "sequencer" ? options.block.config.stateSchema : undefined
             },
             async (scopedCtx) =>
               executeByKind(
