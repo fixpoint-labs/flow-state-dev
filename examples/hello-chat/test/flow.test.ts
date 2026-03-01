@@ -14,6 +14,7 @@ import helloChatFlow from "../src/flows/hello-chat/flow";
 // testFlow exercises the runtime path, while testBlock exposes state mutations.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const chatPipeline = (helloChatFlow.actions.chat as any).block;
+const MODEL_ID = "gpt-5-mini";
 
 function collectSourceFiles(dir: string): string[] {
   const entries = readdirSync(dir);
@@ -36,14 +37,21 @@ function collectSourceFiles(dir: string): string[] {
   return files;
 }
 
-const chatFixture = mockGenerator({
-  name: "chat-generator",
-  script: [
-    {
+function createChatFixture() {
+  return mockGenerator({
+    name: "chat-generator",
+    script: Array.from({ length: 6 }, () => ({
       text: "TypeScript is a typed superset of JavaScript."
-    }
-  ]
-});
+    }))
+  });
+}
+
+function withGeneratorMocks(chatFixture: ReturnType<typeof createChatFixture>) {
+  return {
+    generators: { "chat-generator": chatFixture },
+    models: { [MODEL_ID]: chatFixture }
+  };
+}
 
 let fetchSpy: ReturnType<typeof vi.spyOn> | undefined;
 
@@ -61,12 +69,13 @@ describe("hello-chat", () => {
   });
 
   it("completes a chat action", async () => {
+    const chatFixture = createChatFixture();
     const result = await testFlow({
       flow: helloChatFlow,
       action: "chat",
       userId: "test-user",
       input: { message: "What is TypeScript?" },
-      generators: { "chat-generator": chatFixture }
+      ...withGeneratorMocks(chatFixture)
     });
 
     expect(result.error).toBeUndefined();
@@ -75,13 +84,13 @@ describe("hello-chat", () => {
   });
 
   it("emits block_output items", async () => {
-    chatFixture.reset();
+    const chatFixture = createChatFixture();
     const result = await testFlow({
       flow: helloChatFlow,
       action: "chat",
       userId: "test-user",
       input: { message: "Hello" },
-      generators: { "chat-generator": chatFixture }
+      ...withGeneratorMocks(chatFixture)
     });
 
     const blockOutputs = result.items.filter((item) => item.type === "block_output");
@@ -89,13 +98,13 @@ describe("hello-chat", () => {
   });
 
   it("increments message count in session state", async () => {
-    chatFixture.reset();
+    const chatFixture = createChatFixture();
     const result = await testBlock(chatPipeline, {
       input: { message: "Hello again" },
       session: {
         state: { messageCount: 5 }
       },
-      generators: { "chat-generator": chatFixture }
+      ...withGeneratorMocks(chatFixture)
     });
 
     expect(result.error).toBeNull();
