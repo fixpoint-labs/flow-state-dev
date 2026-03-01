@@ -162,6 +162,10 @@ Block-level state declarations bubble upward for compatibility checking. This en
 - Type safety preservation across sequencer steps
 - Recursive shadowing rules for nested sequencers
 
+## Resource Declaration Bubbling
+
+Similar to state schemas, block-level resource declarations (`sessionResources`, `userResources`, `projectResources`) bubble upward through the composition hierarchy. Sequencers collect declared resources from all child blocks, and `defineFlow` merges them into the flow's scope configs automatically. Flow-level resource declarations take priority over block-declared ones. See [Resources and Projections](./resources-and-projections.md) for the full collection and merge model.
+
 ## Streaming Integration
 
 State and resource mutations emit streaming events:

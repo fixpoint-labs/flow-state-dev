@@ -270,6 +270,26 @@ pipeline.branch({
 
 Each branch is a tuple: `[connector, condition, block]`.
 
+## Resource Collection
+
+Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain. Every method that accepts a block — `then`, `thenIf`, `parallel`, `forEach`, `doUntil`, `doWhile`, `work`, `tap`, `tapIf`, `rescue`, `branch` — merges that block's declared resources into the sequencer's accumulated set.
+
+```ts
+const pipeline = sequencer({ name: "pipeline" })
+  .then(blockWithSessionResources)     // collects session resources
+  .parallel({
+    a: blockWithUserResources,         // collects user resources
+    b: blockWithProjectResources,      // collects project resources
+  })
+  .rescue([{ block: recoveryBlock }]); // collects rescue block resources
+
+// pipeline.declaredResources contains the merged union of all child resources
+```
+
+Nested sequencers bubble their collected resources upward — a sequencer used as a step in another sequencer contributes all of its accumulated resources.
+
+**Conflict detection:** If two child blocks declare different `defineResource()` references for the same resource name in the same scope, the sequencer throws a build-time error. Same reference = no conflict.
+
 ## Schema Propagation
 
 - `outputSchema` on the sequencer config is a declaration of intent

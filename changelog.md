@@ -2,6 +2,19 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-03-01
+
+### Block resource declarations and automatic collection (FIX-92)
+
+- Added `DeclaredResources` type and `declaredResources` field on `BlockDefinition` in `@flow-state-dev/core`.
+- Blocks (`handler`, `generator`, `router`) now accept `sessionResources`, `userResources`, `projectResources` config properties using `defineResource()` values, surfaced as `BlockDefinition.declaredResources`.
+- Added `extractDeclaredResources()` and `mergeDeclaredResources()` utilities in core block internals.
+- Sequencers automatically collect `declaredResources` from all child blocks across the DSL chain (`then`, `thenIf`, `parallel`, `forEach`, `doUntil`, `doWhile`, `work`, `tap`, `tapIf`, `rescue`, `branch`), with build-time conflict detection for same-name/different-reference resources.
+- `defineFlow` collects `declaredResources` from all action blocks and merges them into flow scope configs (`session`, `user`, `project`). Flow-level declarations take priority over block-declared ones.
+- Added compile-time type tests for block resource declarations.
+- Added 49 new unit tests covering resource extraction, merge, sequencer collection, and flow-level merge.
+- Updated architecture docs, contributing reference, core README, and user-facing docs to document the feature.
+
 ## 2026-02-27
 
 ### Server runtime logging improvements

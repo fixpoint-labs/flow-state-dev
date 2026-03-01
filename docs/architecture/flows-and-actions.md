@@ -172,7 +172,28 @@ session: {
 - Inline declarations are fine; use `defineResource()`/`defineProjection()` for portable reuse
 - Inline projections inherit parent scope schemas automatically
 
-See [Resources and Projections](./resources-and-projections.md) for the full model.
+### Automatic Resource Collection
+
+Blocks can declare resource dependencies directly via `sessionResources`, `userResources`, and `projectResources` (using `defineResource()` values). When `defineFlow` is called, it collects `declaredResources` from all action blocks and merges them into the flow's scope configs. Flow-level resource declarations take priority — blocks bring defaults, and the flow can override them:
+
+```ts
+// Block declares its resource dependency
+const planManager = handler({
+  name: "plan-manager",
+  sessionResources: { plan: planResource },
+  execute: async (input, ctx) => { /* ... */ },
+});
+
+// defineFlow merges block-declared resources into session.resources
+const flow = defineFlow({
+  kind: "my-app",
+  actions: { manage: { block: planManager } },
+  // session.resources will automatically include { plan: planResource }
+  // even without declaring it here
+});
+```
+
+See [Resources and Projections](./resources-and-projections.md) for the full collection and merge model.
 
 ## Flow Discovery
 

@@ -87,6 +87,67 @@ async function addStep(ctx: PlanContext, step: string) {
 }
 ```
 
+### Block-Level Resource Declarations
+
+Blocks can declare their resource dependencies directly using `sessionResources`, `userResources`, and `projectResources` properties. These accept `defineResource()` values:
+
+```ts
+const planManager = handler({
+  name: "plan-manager",
+  sessionResources: { plan: planResource },
+  execute: async (input, ctx) => {
+    await ctx.session.resources.plan.patchState({ status: "active" });
+    return input;
+  },
+});
+```
+
+Declared resources surface on `BlockDefinition.declaredResources` as metadata. This enables automatic resource collection — blocks declare what they need, and the framework ensures those resources are available at runtime.
+
+#### Sequencer Resource Collection
+
+Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain (`.then()`, `.parallel()`, `.rescue()`, etc.). Nested sequencers bubble their collected resources upward:
+
+```ts
+const pipeline = sequencer({ name: "pipeline" })
+  .then(planManager)      // declares session.plan
+  .then(analyticsBlock)   // declares user.analytics
+  .rescue([{ block: recoveryBlock }]);  // declares session.errorLog
+
+// pipeline.declaredResources contains all three resources
+```
+
+#### Flow-Level Resource Merge
+
+`defineFlow` collects `declaredResources` from all action blocks and merges them into the flow's scope configs automatically. Flow-level resource declarations take priority over block-declared resources:
+
+```ts
+const myFlow = defineFlow({
+  kind: "my-app",
+  actions: { chat: { block: pipeline } },
+  session: {
+    // Flow-level plan overrides block-declared plan (same key)
+    resources: { plan: customPlanResource },
+  },
+});
+// Block-declared analyticsBlock.userResources and errorLog are still merged in
+```
+
+#### Conflict Detection
+
+When two blocks declare different `defineResource()` references for the same resource name in the same scope, the framework throws a build-time error:
+
+```ts
+const blockA = handler({ sessionResources: { plan: planResourceV1 } });
+const blockB = handler({ sessionResources: { plan: planResourceV2 } });
+
+// Error: Resource conflict: "plan" in session scope is declared
+// with different defineResource() references.
+sequencer({ name: "pipeline" }).then(blockA).then(blockB);
+```
+
+If both blocks reference the **same** `defineResource()` instance, there is no conflict — the merge succeeds silently.
+
 ## Projections
 
 Projections are derived views — computed from state, resources, and other scope data. They're the **only way** to expose values to the client.

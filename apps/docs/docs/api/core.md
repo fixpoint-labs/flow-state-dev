@@ -104,7 +104,7 @@ export default myFlow({ id: "default" });
 
 ### `defineResource(config)`
 
-Create a portable resource definition.
+Create a portable resource definition. Can be used in flow scope configs and in block-level resource declarations (`sessionResources`, `userResources`, `projectResources`):
 
 ```ts
 import { defineResource } from "@flow-state-dev/core";
@@ -112,6 +112,16 @@ import { defineResource } from "@flow-state-dev/core";
 const planResource = defineResource({
   stateSchema: z.object({ steps: z.array(z.string()).default([]) }),
   writable: true,
+});
+
+// Use in flow scope config
+session: { resources: { plan: planResource } }
+
+// Or declare on blocks — collected and merged into the flow automatically
+const myHandler = handler({
+  name: "plan-manager",
+  sessionResources: { plan: planResource },
+  execute: async (input, ctx) => { /* ... */ },
 });
 ```
 

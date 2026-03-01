@@ -14,6 +14,7 @@ interface BlockDefinition<TInput, TOutput> {
   name: string;
   inputSchema?: ZodTypeAny;
   outputSchema?: ZodTypeAny;
+  declaredResources?: DeclaredResources;
 
   run(input: TInput, ctx: BlockContext): Promise<TOutput>;
   connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<TFrom, TOutput>;
@@ -89,6 +90,32 @@ const research = sequencer({
 When sequencer state mutates, runtime emits a `state_change` item with `scope: "block_instance"` and the sequencer `blockInstanceId` in item provenance for client routing.
 
 Tool blocks inherit the same context chain: if a tool runs inside a generator inside a sequencer, the tool's `ctx.sequencer` points to that nearest sequencer and `ctx.getTarget("<sequencer-name>")` resolves to the same handle.
+
+### Block resource declarations
+
+Blocks can declare their resource dependencies using `sessionResources`, `userResources`, and `projectResources` config properties. These accept `defineResource()` values and surface on `BlockDefinition.declaredResources`:
+
+```ts
+import { defineResource, handler } from "@flow-state-dev/core";
+
+const planResource = defineResource({
+  stateSchema: z.object({ steps: z.array(z.string()).default([]) }),
+  writable: true,
+});
+
+const planManager = handler({
+  name: "plan-manager",
+  sessionResources: { plan: planResource },
+  execute: async (input, ctx) => {
+    await ctx.session.resources.plan.patchState({ steps: ["step1"] });
+    return input;
+  },
+});
+
+// planManager.declaredResources === { session: { plan: planResource } }
+```
+
+Resource declarations are supported on all block kinds: handler, generator, and router. Sequencers automatically collect declared resources from all child blocks in the DSL chain. `defineFlow` merges block-declared resources into the flow's scope configs — see [Resources and Projections](./resources-and-projections.md) for the full collection and merge model.
 
 ## Handler
 
