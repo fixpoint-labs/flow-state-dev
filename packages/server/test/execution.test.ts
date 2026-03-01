@@ -620,6 +620,120 @@ describe("execution runtime", () => {
     ]);
   });
 
+
+  it("resolves getTarget from sibling registry before ancestors", async () => {
+    const { ctx } = await createRuntimeContext("req_targets_siblings");
+
+    let releaseWorker: (() => void) | undefined;
+    const workerReady = new Promise<void>((resolve) => {
+      releaseWorker = resolve;
+    });
+
+    const duplicateA = handler({
+      name: "dup",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value) => value + 1
+    });
+
+    const duplicateB = handler({
+      name: "dup",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value) => value + 2
+    });
+
+    const worker = handler({
+      name: "worker",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: async (value) => {
+        await workerReady;
+        return value + 10;
+      }
+    });
+
+    const snapshots: Array<{ key: string; value: string | undefined }> = [];
+
+    const inspect = handler({
+      name: "inspect",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value, stepCtx) => {
+        const dupTarget = stepCtx.getTarget("dup");
+        const workerTarget = stepCtx.getTarget("worker");
+        const ancestorFallback = stepCtx.getTarget("outer");
+
+        snapshots.push({ key: "dup", value: dupTarget?.instanceId });
+        snapshots.push({ key: "worker", value: workerTarget?.name });
+        snapshots.push({ key: "fallback", value: ancestorFallback?.name });
+
+        releaseWorker?.();
+        return value;
+      }
+    });
+
+    const inner = sequencer({ name: "inner", inputSchema: z.number() })
+      .then(duplicateA)
+      .then(duplicateB)
+      .work(worker)
+      .then(inspect)
+      .waitForWork();
+
+    const outer = sequencer({ name: "outer", inputSchema: z.number() }).then(inner);
+
+    const result = await executeBlock({
+      block: outer,
+      input: 1,
+      ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toBe(4);
+    expect(snapshots.find((entry) => entry.key === "worker")?.value).toBe("worker");
+    expect(snapshots.find((entry) => entry.key === "fallback")?.value).toBe("outer");
+
+    const dupInstanceId = snapshots.find((entry) => entry.key === "dup")?.value;
+    expect(dupInstanceId).toMatch(/^dup_/);
+  });
+
+  it("prefers sibling target over same-name ancestor target", async () => {
+    const { ctx } = await createRuntimeContext("req_targets_sibling_shadow");
+
+    const sibling = handler({
+      name: "dup",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value) => value + 1
+    });
+
+    const inspect = handler({
+      name: "inspect",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value, stepCtx) => {
+        const target = stepCtx.getTarget("dup");
+        expect(target?.instanceId).toMatch(/^dup_/);
+        return value;
+      }
+    });
+
+    const child = sequencer({ name: "child", inputSchema: z.number() })
+      .then(sibling)
+      .then(inspect);
+
+    const outer = sequencer({ name: "dup", inputSchema: z.number() }).then(child);
+
+    const result = await executeBlock({
+      block: outer,
+      input: 1,
+      ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toBe(2);
+  });
+
   it("throws AmbiguousBlockNameError when parent chain contains duplicate names", async () => {
     const { ctx } = await createRuntimeContext("req_targets_ambiguous");
 

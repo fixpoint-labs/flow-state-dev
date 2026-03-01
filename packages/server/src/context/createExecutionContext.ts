@@ -1073,11 +1073,14 @@ export async function createExecutionContext<
           () => projectContainer.read()
         ) as ProjectScopeHandle<TProjectState>);
 
-  const blockResults = new Map<string, unknown>();
   type ExecutionParentNode = {
     parent: ExecutionParent;
     parentState?: JsonObject;
     previous?: ExecutionParentNode;
+  };
+  type SiblingRegistryEntry = {
+    parent: ExecutionParent;
+    parentState?: JsonObject;
   };
   const response = options.response ?? {
     emit: async () => undefined
@@ -1165,8 +1168,11 @@ export async function createExecutionContext<
     : undefined;
 
   const createContext = (
-    parentChain: ExecutionParentNode | undefined
+    parentChain: ExecutionParentNode | undefined,
+    siblingRegistry: SiblingRegistryEntry[] | undefined,
+    siblingSearchLimit: number | undefined
   ): ExecutionContext<TRequestState, TSessionState, TUserState, TProjectState> => {
+    const childSiblingRegistry: SiblingRegistryEntry[] = [];
     const context: ExecutionContext<TRequestState, TSessionState, TUserState, TProjectState> = {
       flow,
       actionName: options.actionName,
@@ -1187,8 +1193,44 @@ export async function createExecutionContext<
       response: responseRef.current as ExecutionContext["response"],
       signal: options.signal ?? new AbortController().signal,
       resolveModel,
-      getBlockResult: (name: string): unknown => blockResults.get(name),
       getTarget: <TState extends object = Record<string, unknown>>(name: string): TargetHandle<TState> | undefined => {
+        const toTargetHandle = (
+          matched: Pick<SiblingRegistryEntry, "parent" | "parentState">
+        ): TargetHandle<TState> => {
+          const pendingState = matched.parentState ?? {};
+          const noState = async (): Promise<never> => {
+            throw new Error(
+              `State operations for target "${matched.parent.name}" are not wired yet.`
+            );
+          };
+
+          return {
+            name: matched.parent.name,
+            instanceId: matched.parent.instanceId,
+            state: pendingState as Readonly<TState>,
+            patchState: noState,
+            setState: noState,
+            incState: noState,
+            pushState: noState,
+            setStateRecord: noState,
+            deleteStateRecord: noState,
+            atomicState: noState
+          } satisfies TargetHandle<TState>;
+        };
+
+        if (siblingRegistry !== undefined && siblingRegistry.length > 0) {
+          const searchFrom = Math.min(
+            siblingSearchLimit ?? siblingRegistry.length - 1,
+            siblingRegistry.length - 1
+          );
+          for (let index = searchFrom; index >= 0; index -= 1) {
+            const sibling = siblingRegistry[index];
+            if (sibling?.parent.name === name) {
+              return toTargetHandle(sibling);
+            }
+          }
+        }
+
         const matches: ExecutionParentNode[] = [];
         for (let cursor = parentChain; cursor !== undefined; cursor = cursor.previous) {
           if (cursor.parent.name === name) {
@@ -1208,26 +1250,7 @@ export async function createExecutionContext<
           );
         }
 
-        const matched = matches[0]!;
-        const pendingState = matched.parentState ?? {};
-        const noState = async (): Promise<never> => {
-          throw new Error(
-            `State operations for target "${matched.parent.name}" are not wired yet.`
-          );
-        };
-
-        return {
-          name: matched.parent.name,
-          instanceId: matched.parent.instanceId,
-          state: pendingState as Readonly<TState>,
-          patchState: noState,
-          setState: noState,
-          incState: noState,
-          pushState: noState,
-          setStateRecord: noState,
-          deleteStateRecord: noState,
-          atomicState: noState
-        } satisfies TargetHandle<TState>;
+        return toTargetHandle(matches[0]!);
       },
       emitMessage: createEmitMessage(emCtx),
       emitComponent: createEmitComponent(emCtx),
@@ -1235,11 +1258,20 @@ export async function createExecutionContext<
       emitStatus: createEmitStatus(emCtx),
       _runtimeHooks,
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>) => {
+        const siblingEntry: SiblingRegistryEntry = {
+          parent
+        };
+        childSiblingRegistry.push(siblingEntry);
+
         const childChain: ExecutionParentNode = {
           parent,
           previous: parentChain
         };
-        const childContext = createContext(childChain);
+        const childContext = createContext(
+          childChain,
+          childSiblingRegistry,
+          childSiblingRegistry.length - 1
+        );
         return execute(childContext);
       }
     };
@@ -1258,5 +1290,5 @@ export async function createExecutionContext<
     return context;
   };
 
-  return createContext(undefined);
+  return createContext(undefined, undefined, undefined);
 }
