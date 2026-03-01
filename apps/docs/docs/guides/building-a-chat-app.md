@@ -251,4 +251,4 @@ The test harness creates an isolated runtime with in-memory stores, mocks the ge
 - Add **[custom renderers](/docs/guides/react-integration)** to style messages, reasoning, and components
 - Add **tools** to the generator for [function calling](/docs/concepts/blocks#generator--the-ai-block) (search, create artifacts, etc.)
 - Use **[sequencer patterns](/docs/guides/sequencer-patterns)** for conditional logic, parallelism, and error recovery
-- Add **resources and projections** for richer state — see the [kitchen-sink example](https://github.com/flow-state-dev/flow-state-dev) for a full demonstration
+- Add **resources and projections** for richer state — see the [kitchen-sink example](https://github.com/fixpoint-labs/flow-state-dev) for a full demonstration
