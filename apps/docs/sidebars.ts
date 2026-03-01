@@ -35,6 +35,7 @@ const sidebars: SidebarsConfig = {
         "guides/testing-flows",
         "guides/custom-model-resolver",
         "guides/sequencer-patterns",
+        "guides/state-storage",
       ],
     },
     {
