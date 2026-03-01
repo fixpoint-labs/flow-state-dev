@@ -4,19 +4,20 @@ sidebar_position: 1
 
 # Building a Chat App
 
-This guide walks you through building a complete chat application with Flow State Dev — from flow definition to React UI.
+This guide walks you through building a complete chat application — from blocks to React UI to deterministic tests. Along the way, you'll see how conversation history, session state, projections, and streaming fit together.
 
-## What We're Building
+## What we're building
 
-A chat app with:
-- LLM-powered responses via a generator block
-- Message counting via a handler block
-- Session state persistence
-- Streaming responses in a React UI
+A chat app where:
+- An LLM generates responses via a generator block
+- A handler tracks message count in session state
+- A projection exposes the count to the React UI
+- Items stream to the frontend in real time
+- Tests run deterministically with mocked generators
 
-## 1. Define the Blocks
+## 1. Define the blocks
 
-### Generator Block
+### The generator — talks to the LLM
 
 ```ts title="src/flows/hello-chat/blocks/chat-gen.ts"
 import { generator } from "@flow-state-dev/core";
@@ -27,11 +28,14 @@ export const chatGen = generator({
   model: "gpt-5-mini",
   prompt: "You are a helpful assistant. Be concise and friendly.",
   inputSchema: z.object({ message: z.string() }),
+  history: (_input, ctx) => ctx.session.items.llm(),
   user: (input) => input.message,
 });
 ```
 
-### Counter Handler
+The `history` slot loads prior conversation from persisted request items. `session.items.llm()` returns completed messages in `{role, content}` format — the framework handles filtering and formatting. The `user` slot extracts the current message from input.
+
+### The handler — tracks usage
 
 ```ts title="src/flows/hello-chat/blocks/counter.ts"
 import { handler } from "@flow-state-dev/core";
@@ -49,7 +53,9 @@ export const counter = handler({
 });
 ```
 
-## 2. Compose the Pipeline
+Notice the **partial state schema** — this handler only declares `messageCount`. It doesn't need to know about any other session state fields. `incState` is an atomic increment — safe even under concurrent requests.
+
+## 2. Compose the pipeline and flow
 
 ```ts title="src/flows/hello-chat/flow.ts"
 import { defineFlow, sequencer } from "@flow-state-dev/core";
@@ -57,10 +63,9 @@ import { z } from "zod";
 import { chatGen } from "./blocks/chat-gen";
 import { counter } from "./blocks/counter";
 
-const pipeline = sequencer({
-  name: "chat-pipeline",
-  inputSchema: z.object({ message: z.string() }),
-})
+const inputSchema = z.object({ message: z.string() });
+
+const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .then(chatGen)
   .then(counter);
 
@@ -70,7 +75,7 @@ const chatFlow = defineFlow({
 
   actions: {
     chat: {
-      inputSchema: z.object({ message: z.string() }),
+      inputSchema,
       block: pipeline,
       userMessage: (input) => input.message,
     },
@@ -93,12 +98,12 @@ const chatFlow = defineFlow({
 export default chatFlow({ id: "default" });
 ```
 
-**What this does:**
-- The sequencer chains `chatGen` → `counter`, so every chat message gets an LLM response and increments the count
-- `userMessage: (input) => input.message` emits the user's input as a visible message item
-- The `messageCount` projection exposes the count to the React UI
+Key details:
+- The sequencer chains `chatGen` then `counter` — every message gets an LLM response and increments the count
+- `userMessage: (input) => input.message` tells the framework to emit a user-role message item before execution, so the conversation stream shows what the user said
+- The `messageCount` projection exposes the count to the React UI — this is the *only* way the client sees this value
 
-## 3. Set Up the Server
+## 3. Set up the server
 
 ```ts title="app/api/flows/[...path]/route.ts"
 import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
@@ -113,6 +118,8 @@ export const GET = router.GET;
 export const POST = router.POST;
 export const DELETE = router.DELETE;
 ```
+
+Three lines of setup. You now have action execution, session management, SSE streaming, and state snapshots.
 
 ## 4. Build the React UI
 
@@ -157,7 +164,7 @@ function ChatUI() {
     <div>
       <header>
         <h1>Chat</h1>
-        <span>Messages: {projections.session?.messageCount ?? 0}</span>
+        <span>{projections.session?.messageCount ?? 0} messages</span>
       </header>
 
       <div>
@@ -173,7 +180,7 @@ function ChatUI() {
           autoComplete="off"
         />
         <button type="submit" disabled={session.isStreaming}>
-          {session.isStreaming ? "Sending..." : "Send"}
+          {session.isStreaming ? "Thinking..." : "Send"}
         </button>
       </form>
     </div>
@@ -181,13 +188,20 @@ function ChatUI() {
 }
 ```
 
-## 5. Test It
+What each hook does:
+- `useFlow({ autoCreateSession: true })` — creates a session on mount, tracks the active session ID
+- `useSession(id, { items: { visibility: "ui" } })` — connects to the SSE stream, delivers items in real time, provides `sendAction` and `isStreaming`
+- `useProjections(session, { session: ["messageCount"] })` — reads the `messageCount` projection from the latest state snapshot
+
+## 5. Write tests
+
+No real LLM calls. No network. Deterministic results:
 
 ```ts title="src/flows/hello-chat/__tests__/flow.test.ts"
 import { testFlow } from "@flow-state-dev/testing";
 import chatFlow from "../flow";
 
-test("chat action increments message count", async () => {
+test("chat action streams a response and increments count", async () => {
   const result = await testFlow({
     flow: chatFlow,
     action: "chat",
@@ -198,15 +212,43 @@ test("chat action increments message count", async () => {
     },
   });
 
-  expect(result.session.state.messageCount).toBe(1);
+  // User message was emitted
   expect(result.items).toContainEqual(
     expect.objectContaining({ type: "message", role: "user" })
   );
+
+  // Assistant message was emitted
+  expect(result.items).toContainEqual(
+    expect.objectContaining({ type: "message", role: "assistant" })
+  );
+
+  // State was updated
+  expect(result.session.state.messageCount).toBe(1);
+});
+
+test("message count accumulates across requests", async () => {
+  const result = await testFlow({
+    flow: chatFlow,
+    action: "chat",
+    input: { message: "Second message" },
+    userId: "testuser",
+    seed: {
+      session: { state: { messageCount: 3 } },
+    },
+    generators: {
+      chat: { output: "Response" },
+    },
+  });
+
+  expect(result.session.state.messageCount).toBe(4);
 });
 ```
 
-## Next Steps
+The test harness creates an isolated runtime with in-memory stores, mocks the generator, and executes the full action pipeline — validation, session resolution, block execution, state persistence, lifecycle hooks. Same contracts as production.
 
-- Add [custom renderers](/docs/guides/react-integration) for message styling
-- Add tools to the generator for [function calling](/docs/concepts/blocks#generator)
-- Use [sequencer patterns](/docs/guides/sequencer-patterns) for branching and error recovery
+## Next steps
+
+- Add **[custom renderers](/docs/guides/react-integration)** to style messages, reasoning, and components
+- Add **tools** to the generator for [function calling](/docs/concepts/blocks#generator--the-ai-block) (search, create artifacts, etc.)
+- Use **[sequencer patterns](/docs/guides/sequencer-patterns)** for conditional logic, parallelism, and error recovery
+- Add **resources and projections** for richer state — see the [kitchen-sink example](https://github.com/flow-state-dev/flow-state-dev) for a full demonstration

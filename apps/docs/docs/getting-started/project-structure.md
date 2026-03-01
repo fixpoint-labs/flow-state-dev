@@ -4,7 +4,7 @@ sidebar_position: 3
 
 # Project Structure
 
-How to organize your Flow State Dev project.
+How to organize your flow-state.dev project.
 
 ## Recommended Layout
 

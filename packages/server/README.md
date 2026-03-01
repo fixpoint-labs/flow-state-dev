@@ -1,62 +1,13 @@
 # @flow-state-dev/server
 
-Server runtime for Flow State Dev.
-
-This package owns:
-- action execution orchestration
-- in-memory and filesystem store adapters
-- request streaming and replay utilities
-- flow registry and canonical route adapters
-- runtime error normalization
-
-## What This Package Is For
-
-Use `@flow-state-dev/server` inside framework-integrated server environments to:
-- register flows
-- execute actions
-- expose canonical `/api/flows` routes
-- persist and query state across request/session/user/project scopes
-
-## Public API Areas
-
-Context/runtime:
-- `createExecutionContext`
-- `runAction`
-- `executeBlock`
-- `DEFAULT_RUNTIME_LOGGER`, `summarizeForLog` (structured execution logging helpers)
-
-Stores:
-- `createInMemoryStores`
-- `createFilesystemStores`
-- scope store factories and CAS/state ops
-
-Streaming:
-- `createResponseEmitter`
-- `encodeStreamEvent`
-- `serializeSSEFrame`
-- `replayRequestEvents`
-
-Registry/routes:
-- `createFlowRegistry`
-- `createFlowApiRouter`
-- `parseFlowRoute`
-
-Errors:
-- `FlowError` and canonical subclasses
-- `normalizeError`
-
-## Quick Start
-
-### Next.js Catch-All Route
+**The runtime. Register flows, execute actions, stream results — three lines to a complete API.**
 
 ```ts
-// app/api/flows/[...path]/route.ts
 import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
-import myFlow from "@/flows/my-flow/flow";
+import myFlow from "./flows/my-flow";
 
 const registry = createFlowRegistry();
 registry.register(myFlow);
-
 const router = createFlowApiRouter({ registry });
 
 export const GET = router.GET;
@@ -64,7 +15,30 @@ export const POST = router.POST;
 export const DELETE = router.DELETE;
 ```
 
-### Custom Model Resolution
+That's a full API with action execution, session management, SSE streaming with resume, and state snapshots. Drop it into a Next.js catch-all route and you're done.
+
+## What this package does
+
+- **Action execution** — Validates input, resolves sessions, runs block pipelines, emits items
+- **SSE streaming** — Items stream live as blocks execute, with sequence-number cursors for resume
+- **State persistence** — In-memory and filesystem store adapters with CAS-guarded atomic writes
+- **Flow registry** — Register multiple flows, routes are derived automatically
+- **Error normalization** — All errors become typed `FlowError` instances with codes, retry signals, and scope context
+- **Structured logging** — Every action execution logs flow/action/block IDs, attempt numbers, timing, and summarized payloads
+
+## Store configuration
+
+```ts
+import { createFilesystemStores, createInMemoryStores } from "@flow-state-dev/server";
+
+// Default: filesystem persistence
+const router = createFlowApiRouter({ registry });
+
+// Testing: in-memory (fast, no cleanup)
+const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
+```
+
+## Custom model resolution
 
 ```ts
 import { createFlowApiRouter, createAiSdkModelResolver } from "@flow-state-dev/server";
@@ -75,59 +49,70 @@ const router = createFlowApiRouter({
 });
 ```
 
-### Store Configuration
+## Custom logging
 
-```ts
-import { createFlowApiRouter, createFilesystemStores, createInMemoryStores } from "@flow-state-dev/server";
-
-// Production: filesystem (default)
-const router = createFlowApiRouter({ registry });
-
-// Testing: in-memory
-const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
-```
-
-
-## Runtime Logs
-
-`runAction` and `executeBlock` emit structured logs by default (flow/action/block IDs, attempt numbers, summarized input/output payloads, retries, and terminal errors).
-
-Pass `logger` in `runAction(...)` or `executeBlock(...)` to route logs to your preferred sink:
+`runAction` and `executeBlock` emit structured logs by default — flow/action/block IDs, attempt numbers, summarized payloads, retries, and terminal errors.
 
 ```ts
 await runAction({
   flow,
-  actionName: "reply",
+  actionName: "chat",
   input,
   userId: "user_123",
   stores,
   logger: {
-    info: (message, context) => appLogger.info({ ...context }, message),
-    warn: (message, context) => appLogger.warn({ ...context }, message),
-    error: (message, context) => appLogger.error({ ...context }, message)
-  }
+    info: (msg, ctx) => appLogger.info({ ...ctx }, msg),
+    warn: (msg, ctx) => appLogger.warn({ ...ctx }, msg),
+    error: (msg, ctx) => appLogger.error({ ...ctx }, msg),
+  },
 });
 ```
 
-Use `summarizeForLog(value)` when you need the same bounded payload summaries in custom observers/middleware.
+Use `summarizeForLog(value)` for the same bounded payload summaries in custom middleware.
 
-## Scripts
+## Public API
 
-- `pnpm --filter @flow-state-dev/server build`
-- `pnpm --filter @flow-state-dev/server typecheck`
-- `pnpm --filter @flow-state-dev/server test`
+**Runtime:**
+- `createExecutionContext` — Build a block execution context
+- `runAction` — Execute a flow action end-to-end
+- `executeBlock` — Execute a single block with context
+
+**Stores:**
+- `createInMemoryStores` — Fast, ephemeral stores for testing
+- `createFilesystemStores` — Persistent stores for development and production
+- Scope store factories and CAS/state ops
+
+**Streaming:**
+- `createResponseEmitter` — Create an SSE emitter for a request
+- `encodeStreamEvent` / `serializeSSEFrame` — Low-level SSE encoding
+- `replayRequestEvents` — Replay events from a sequence cursor
+
+**Registry/routes:**
+- `createFlowRegistry` — Register flow instances
+- `createFlowApiRouter` — Generate HTTP route handlers from a registry
+- `parseFlowRoute` — Parse incoming request paths
+
+**Errors:**
+- `FlowError` and canonical subclasses
+- `normalizeError` — Wrap any thrown value into a typed FlowError
 
 ## Notes
 
-- Phase 1 requires caller-provided `userId` for action/session routes.
-- Request stream replay supports `Last-Event-ID` and `starting_after`.
-- User stream remains capability-gated and disabled in current Phase 1 implementation.
-- Generator blocks resolve models through `ctx.resolveModel`.
-- By default, server runtime uses a built-in Vercel AI Gateway resolver (`AI_GATEWAY_API_KEY` or Vercel OIDC).
-- `createAiSdkModelResolver` and `createDefaultModelResolver` are available when you need explicit model routing behavior.
+- Phase 1 requires caller-provided `userId` for all action/session routes
+- Stream resume supports both `Last-Event-ID` header and `starting_after` query param
+- Generator blocks resolve models through `ctx.resolveModel` — default uses Vercel AI Gateway
+- `createAiSdkModelResolver` and `createDefaultModelResolver` available for explicit model routing
 
-## Architecture Reference
+## Scripts
 
-- [Server and Client](../../docs/architecture/server-and-client.md) — routes, transport, React hooks contract
-- [Execution and Errors](../../docs/architecture/execution-and-errors.md) — retry, rescue, work queue
-- [Streaming](../../docs/architecture/streaming.md) — item/content model, SSE protocol, resume
+```bash
+pnpm --filter @flow-state-dev/server build
+pnpm --filter @flow-state-dev/server typecheck
+pnpm --filter @flow-state-dev/server test
+```
+
+## Architecture reference
+
+- [Server and Client](../../docs/architecture/server-and-client.md) — Routes, transport, React hooks contract
+- [Execution and Errors](../../docs/architecture/execution-and-errors.md) — Retry, rescue, work queue
+- [Streaming](../../docs/architecture/streaming.md) — Item/content model, SSE protocol, resume semantics

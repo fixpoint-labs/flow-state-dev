@@ -1,95 +1,121 @@
 # @flow-state-dev/core
 
-Isomorphic builders, type contracts, and item taxonomy for Flow State Dev.
+**The building blocks. Define handlers, generators, sequencers, routers, and flows — all with end-to-end type safety.**
 
-This is the foundation package — every other package depends on it. It defines the block builders, flow model, type system, and item/event taxonomy used across the framework.
+This is the foundation package. Every other package depends on it. It's isomorphic — runs in Node, the browser, edge runtimes, anywhere JavaScript runs.
 
-## What This Package Is For
-
-Use `@flow-state-dev/core` to:
-- Define blocks (`handler`, `generator`, `sequencer`, `router`)
-- Define flows (`defineFlow`)
-- Define resources and projections (`defineResource`, `defineProjection`)
-- Import shared types and item definitions
-
-This package is **isomorphic** — no platform-specific code (Node, browser, etc.).
-
-## Quick Start
+## What you can build
 
 ```ts
-import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, generator, handler, sequencer, router } from "@flow-state-dev/core";
 import { z } from "zod";
+```
 
-// Define a generator block
-const chatGen = generator({
-  name: "chat",
+**A generator that calls an LLM with tools, history, and streaming:**
+
+```ts
+const agent = generator({
+  name: "agent",
   model: "gpt-5-mini",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
+  history: (_input, ctx) => ctx.session.items.llm(),
   user: (input) => input.message,
+  tools: [readDoc, writeDoc],
+  emit: { reasoning: true, messages: true },
 });
+```
 
-// Define a handler block
+**A handler that validates and transforms:**
+
+```ts
 const counter = handler({
   name: "counter",
-  inputSchema: z.string(),
-  outputSchema: z.string(),
   sessionStateSchema: z.object({ count: z.number().default(0) }),
   execute: async (input, ctx) => {
-    await ctx.session.patchState({ count: (ctx.session.state.count ?? 0) + 1 });
+    await ctx.session.incState({ count: 1 });
     return input;
   },
 });
+```
 
-// Compose into a pipeline
-const pipeline = sequencer({ name: "chat-pipeline", inputSchema: z.object({ message: z.string() }) })
-  .then(chatGen)
-  .then(counter);
+**A sequencer that composes them into a pipeline with error recovery:**
 
-// Define the flow
-const flow = defineFlow({
-  kind: "my-chat",
+```ts
+const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
+  .then(analyzeInput)
+  .thenIf((result) => result.needsContext, enrichWithContext)
+  .then(agent)
+  .then(counter)
+  .rescue([{ when: [ModelError], block: fallback }]);
+```
+
+**A router that dispatches to different pipelines at runtime:**
+
+```ts
+const dispatch = router({
+  name: "mode-router",
+  routes: [chatPipeline, planPipeline, reviewPipeline],
+  execute: (input, ctx) => {
+    const mode = ctx.session.state.mode;
+    if (mode === "plan") return planPipeline;
+    if (mode === "review") return reviewPipeline;
+    return chatPipeline;
+  },
+});
+```
+
+**A flow that ties it all together:**
+
+```ts
+export default defineFlow({
+  kind: "my-app",
   requireUser: true,
   actions: {
     chat: {
       inputSchema: z.object({ message: z.string() }),
-      block: pipeline,
+      block: dispatch,
       userMessage: (input) => input.message,
     },
   },
   session: {
-    stateSchema: z.object({ count: z.number().default(0) }),
+    stateSchema: z.object({ mode: z.string().default("chat"), count: z.number().default(0) }),
+    resources: { artifacts: { stateSchema: artifactSchema, writable: true } },
+    projections: {
+      artifactsList: {
+        client: true,
+        compute: (ctx) => /* derive list from resource state */,
+      },
+    },
   },
-});
-
-export default flow({ id: "default" });
+})({ id: "default" });
 ```
 
 ## Exports
 
 ### Main (`@flow-state-dev/core`)
 
-**Block Builders:**
-- `handler(config)` — Synchronous logic block
-- `generator(config)` — LLM call with tool loop
-- `sequencer(config)` — Fluent composition DSL
-- `router(config)` — Runtime block selection
+**Block builders:**
+- `handler(config)` — Synchronous/async logic block
+- `generator(config)` — LLM call with framework-managed tool loop, streaming, and structured output repair
+- `sequencer(config)` — Fluent composition DSL (14 methods: `then`, `thenIf`, `parallel`, `forEach`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `waitForWork`, `loopBack`)
+- `router(config)` — Runtime block selection from declared routes
 
 **Flow:**
-- `defineFlow(definition)` — Create a flow type
+- `defineFlow(definition)` — Create a flow type with actions, scopes, resources, and projections
 
-**Resources & Projections:**
+**Resources and projections:**
 - `defineResource(config)` — Portable resource definition
 - `defineProjection(config)` — Portable projection definition
-- `resource(uri, opts?)` — Resource slot reference for generators
-- `projection(uri, opts?)` — Projection slot reference
-- `projectionText(uri, opts?)` — Text projection reference
-- `projectionData(uri, opts?)` — Data projection reference
-- `projectionMessages(uri, opts?)` — Message projection reference
+- `resource(uri)` — Resource slot reference for generators
+- `projection(uri)` — Projection slot reference
+- `projectionText(uri)` — Text projection for LLM context
+- `projectionData(uri)` — Structured data projection
+- `projectionMessages(uri)` — Message-pair projection
 
 Inline flow projections infer resource state types from scope `resources` automatically. For portable projections (`defineProjection`), provide `sessionResourceSchemas`, `userResourceSchemas`, or `projectResourceSchemas` (as Zod schemas, `defineResource(...)` values, or maps of either) when you need typed resource access inside `compute`.
 
-**Type Helpers:**
+**Type helpers:**
 - `StateOf<T>` — Extract state type from schema or resource
 - `ContextOf<T, Kind>` — Get context handle type for scope/resource
 - `ResourceContext<T>` — Resource context type
@@ -97,27 +123,36 @@ Inline flow projections infer resource state types from scope `resources` automa
 
 ### Types (`@flow-state-dev/core/types`)
 
-Block, flow, resource, scope, streaming, and model type definitions. Use this subpath for type-only imports in client/react code.
+Block, flow, resource, scope, streaming, and model type definitions. Use this subpath for type-only imports.
 
 ### Items (`@flow-state-dev/core/items`)
 
-Canonical output item unions, content types, and stream event helpers. Use this subpath for item-related type imports.
+Output item unions, content types, and stream event helpers. Item types: `message`, `reasoning`, `component`, `context`, `status`, `state_change`, `resource_change`, `block_output`, `error`, `step_error`.
+
+## Key design decisions
+
+**Partial state schemas.** Each block declares only the state fields it touches. A counter block doesn't need to know about a preferences block's state. This keeps blocks reusable and self-documenting about their dependencies.
+
+**Silent by default.** Blocks emit nothing to the client unless they explicitly call `ctx.emitMessage()`, `ctx.emitComponent()`, or `ctx.emitStatus()`. Generators are the exception — they auto-emit messages and reasoning. This gives you precise control over what the user sees.
+
+**Projections as data policy.** Projections are the *only* way to expose data to clients. Internal state, resources, and intermediate values stay server-side unless you deliberately project them. Security by architecture, not by convention.
 
 ## Dependencies
 
-- `zod` ^3.24.1 — Schema validation
+- `zod` ^3.24.1
 
 ## Scripts
 
-- `pnpm --filter @flow-state-dev/core build`
-- `pnpm --filter @flow-state-dev/core typecheck`
-- `pnpm --filter @flow-state-dev/core test`
+```bash
+pnpm --filter @flow-state-dev/core build
+pnpm --filter @flow-state-dev/core typecheck
+pnpm --filter @flow-state-dev/core test
+```
 
-## Architecture Reference
+## Architecture reference
 
-See `docs/architecture/` for detailed documentation:
-- [Blocks](../../docs/architecture/blocks.md)
-- [Flows and Actions](../../docs/architecture/flows-and-actions.md)
-- [Sequencer DSL](../../docs/architecture/sequencer-dsl.md)
-- [State and Scopes](../../docs/architecture/state-and-scopes.md)
-- [Resources and Projections](../../docs/architecture/resources-and-projections.md)
+- [Blocks](../../docs/architecture/blocks.md) — Deep dive into all four block kinds
+- [Flows and Actions](../../docs/architecture/flows-and-actions.md) — defineFlow, actions, lifecycle hooks
+- [Sequencer DSL](../../docs/architecture/sequencer-dsl.md) — Full method reference for the composition DSL
+- [State and Scopes](../../docs/architecture/state-and-scopes.md) — Scoped state, atomic operations, CAS
+- [Resources and Projections](../../docs/architecture/resources-and-projections.md) — Data containers and derived views

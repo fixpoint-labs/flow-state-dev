@@ -6,7 +6,7 @@ sidebar_position: 2
 
 ## Packages
 
-Flow State Dev is distributed as separate packages. Install what you need:
+flow-state.dev is distributed as separate packages. Install what you need:
 
 ```bash
 # Core (required) — block builders, flow definitions, types
@@ -44,7 +44,7 @@ The `react` package depends on `client` internally — you don't need to install
 
 ## TypeScript
 
-Flow State Dev is written in TypeScript and ships type definitions. For best results:
+flow-state.dev is written in TypeScript and ships type definitions. For best results:
 
 - TypeScript `^5.7`
 - Enable `strict` mode in your `tsconfig.json`

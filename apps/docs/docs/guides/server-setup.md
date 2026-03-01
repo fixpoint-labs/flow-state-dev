@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Server Setup
 
-How to configure the Flow State Dev server runtime in your application.
+How to configure the flow-state.dev server runtime in your application.
 
 ## Basic Setup
 

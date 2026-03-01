@@ -20,6 +20,7 @@ const sidebars: SidebarsConfig = {
         "concepts/flows",
         "concepts/actions",
         "concepts/state",
+        "concepts/type-system",
         "concepts/streaming",
         "concepts/testing",
       ],
