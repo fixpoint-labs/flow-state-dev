@@ -10,7 +10,7 @@ Guide for setting up the Flow State Dev monorepo for local development.
 ## Initial Setup
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/fixpoint-labs/flow-state-dev
 cd implementation
 pnpm install
 pnpm typecheck

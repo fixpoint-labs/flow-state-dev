@@ -10,7 +10,7 @@ const config: Config = {
   url: "https://flow-state.dev",
   baseUrl: "/",
 
-  organizationName: "flow-state-dev",
+  organizationName: "fixpoint-labs",
   projectName: "flow-state-dev",
 
   onBrokenLinks: "throw",
@@ -33,12 +33,12 @@ const config: Config = {
         docs: {
           sidebarPath: "./sidebars.ts",
           editUrl:
-            "https://github.com/flow-state-dev/flow-state-dev/tree/main/implementation/apps/docs/",
+            "https://github.com/fixpoint-labs/flow-state-dev/tree/main/implementation/apps/docs/",
         },
         blog: {
           showReadingTime: true,
           editUrl:
-            "https://github.com/flow-state-dev/flow-state-dev/tree/main/implementation/apps/docs/",
+            "https://github.com/fixpoint-labs/flow-state-dev/tree/main/implementation/apps/docs/",
         },
         theme: {
           customCss: "./src/css/custom.css",
@@ -59,7 +59,7 @@ const config: Config = {
         },
         { to: "/blog", label: "Blog", position: "left" },
         {
-          href: "https://github.com/flow-state-dev/flow-state-dev",
+          href: "https://github.com/fixpoint-labs/flow-state-dev",
           label: "GitHub",
           position: "right",
         },
@@ -96,7 +96,7 @@ const config: Config = {
             { label: "Blog", to: "/blog" },
             {
               label: "GitHub",
-              href: "https://github.com/flow-state-dev/flow-state-dev",
+              href: "https://github.com/fixpoint-labs/flow-state-dev",
             },
           ],
         },
