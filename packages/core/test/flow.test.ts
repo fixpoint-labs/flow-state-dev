@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { defineFlow, generator, handler } from "../src";
+import { defineFlow, generator, handler, sequencer } from "../src";
+import { defineResource } from "../src/types/resource";
 import { createMockContext } from "./helpers";
 
 describe("defineFlow", () => {
@@ -222,5 +223,234 @@ describe("defineFlow", () => {
 
     expect(baseStarted).not.toHaveBeenCalled();
     expect(overrideStarted).toHaveBeenCalledTimes(1);
+  });
+
+  describe("resource merging", () => {
+    const observationsResource = defineResource({
+      stateSchema: z.object({
+        entries: z.array(z.object({ text: z.string(), score: z.number() }))
+      })
+    });
+
+    const artifactsResource = defineResource({
+      stateSchema: z.object({
+        order: z.array(z.string()),
+        byId: z.record(z.object({ title: z.string() }))
+      })
+    });
+
+    const flowLevelResource = defineResource({
+      stateSchema: z.object({ count: z.number() })
+    });
+
+    it("merges block-declared session resources into flow session config", () => {
+      const block = handler({
+        name: "with-resources",
+        sessionResources: { observations: observationsResource },
+        execute: (v) => v
+      });
+
+      const flow = defineFlow({
+        kind: "res-merge",
+        actions: {
+          run: { inputSchema: z.any(), block }
+        }
+      });
+
+      expect(flow.session?.resources).toEqual({
+        observations: observationsResource
+      });
+    });
+
+    it("merges block-declared user resources into flow user config", () => {
+      const block = handler({
+        name: "with-user-res",
+        userResources: { artifacts: artifactsResource },
+        execute: (v) => v
+      });
+
+      const flow = defineFlow({
+        kind: "user-res",
+        actions: {
+          run: { inputSchema: z.any(), block }
+        }
+      });
+
+      expect(flow.user?.resources).toEqual({
+        artifacts: artifactsResource
+      });
+    });
+
+    it("merges block-declared project resources into flow project config", () => {
+      const block = handler({
+        name: "with-proj-res",
+        projectResources: { artifacts: artifactsResource },
+        execute: (v) => v
+      });
+
+      const flow = defineFlow({
+        kind: "proj-res",
+        actions: {
+          run: { inputSchema: z.any(), block }
+        }
+      });
+
+      expect(flow.project?.resources).toEqual({
+        artifacts: artifactsResource
+      });
+    });
+
+    it("flow-level resources take priority over block-declared resources", () => {
+      const block = handler({
+        name: "block-obs",
+        sessionResources: { observations: observationsResource },
+        execute: (v) => v
+      });
+
+      const flow = defineFlow({
+        kind: "flow-wins",
+        actions: {
+          run: { inputSchema: z.any(), block }
+        },
+        session: {
+          resources: { observations: flowLevelResource }
+        }
+      });
+
+      // Flow-level wins — should be the flowLevelResource, not observationsResource
+      expect(flow.session?.resources?.observations).toBe(flowLevelResource);
+    });
+
+    it("merges disjoint flow-level and block-declared resources", () => {
+      const block = handler({
+        name: "block-obs",
+        sessionResources: { observations: observationsResource },
+        execute: (v) => v
+      });
+
+      const flow = defineFlow({
+        kind: "disjoint",
+        actions: {
+          run: { inputSchema: z.any(), block }
+        },
+        session: {
+          resources: { counter: flowLevelResource }
+        }
+      });
+
+      expect(flow.session?.resources).toEqual({
+        observations: observationsResource,
+        counter: flowLevelResource
+      });
+    });
+
+    it("merges resources from multiple actions", () => {
+      const blockA = handler({
+        name: "a",
+        sessionResources: { observations: observationsResource },
+        execute: (v) => v
+      });
+      const blockB = handler({
+        name: "b",
+        userResources: { artifacts: artifactsResource },
+        execute: (v) => v
+      });
+
+      const flow = defineFlow({
+        kind: "multi-action",
+        actions: {
+          run: { inputSchema: z.any(), block: blockA },
+          other: { inputSchema: z.any(), block: blockB }
+        }
+      });
+
+      expect(flow.session?.resources).toEqual({
+        observations: observationsResource
+      });
+      expect(flow.user?.resources).toEqual({
+        artifacts: artifactsResource
+      });
+    });
+
+    it("collects resources from sequencer blocks (nested collection)", () => {
+      const innerBlock = handler({
+        name: "inner",
+        sessionResources: { observations: observationsResource },
+        execute: (v) => v
+      });
+      const seq = sequencer({ name: "pipeline" }).then(innerBlock);
+
+      const flow = defineFlow({
+        kind: "seq-res",
+        actions: {
+          run: { inputSchema: z.any(), block: seq }
+        }
+      });
+
+      expect(flow.session?.resources).toEqual({
+        observations: observationsResource
+      });
+    });
+
+    it("preserves existing flow scope config when merging block resources", () => {
+      const block = handler({
+        name: "with-res",
+        sessionResources: { observations: observationsResource },
+        execute: (v) => v
+      });
+
+      const flow = defineFlow({
+        kind: "preserve-config",
+        actions: {
+          run: { inputSchema: z.any(), block }
+        },
+        session: {
+          stateSchema: z.object({ mode: z.string() })
+        }
+      });
+
+      expect(flow.session?.stateSchema).toBeDefined();
+      expect(flow.session?.resources).toEqual({
+        observations: observationsResource
+      });
+    });
+
+    it("does not modify scope configs when no block resources are declared", () => {
+      const block = handler({
+        name: "no-res",
+        execute: (v) => v
+      });
+
+      const flow = defineFlow({
+        kind: "no-block-res",
+        actions: {
+          run: { inputSchema: z.any(), block }
+        }
+      });
+
+      expect(flow.session).toBeUndefined();
+      expect(flow.user).toBeUndefined();
+      expect(flow.project).toBeUndefined();
+    });
+
+    it("merges block resources into flow instances created via factory", () => {
+      const block = handler({
+        name: "with-res",
+        sessionResources: { observations: observationsResource },
+        execute: (v) => v
+      });
+
+      const flow = defineFlow({
+        kind: "instance-merge",
+        actions: {
+          run: { inputSchema: z.any(), block }
+        }
+      });
+
+      const instance = flow({ id: "test" });
+      expect(instance.session?.resources).toEqual({
+        observations: observationsResource
+      });
+    });
   });
 });
