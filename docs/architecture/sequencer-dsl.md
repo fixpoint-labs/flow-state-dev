@@ -15,6 +15,25 @@ const pipeline = sequencer({
 
 The sequencer itself is a block — it has `inputSchema`, `outputSchema`, and can be used anywhere a block is expected.
 
+Sequencer config also supports instance state:
+
+- `stateSchema`: Zod schema for mutable sequencer instance state
+- `defaultState`: optional explicit initial state (applied before schema defaults)
+
+```ts
+const research = sequencer({
+  name: "research",
+  inputSchema: z.object({ topic: z.string() }),
+  stateSchema: z.object({
+    progress: z.number().default(0),
+    phase: z.string().default("draft"),
+  }),
+  defaultState: { phase: "planning" },
+});
+```
+
+Blocks inside the sequencer can declare `sequencerStateSchema` to type `ctx.sequencer`, and can also resolve named ancestors via `ctx.getTarget(name)`.
+
 ## Method Reference
 
 ### `then(block)` — Sequential Step

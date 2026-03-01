@@ -25,12 +25,17 @@ export type TestTargetSeed = {
   state: Record<string, unknown>;
 };
 
+export type TestSequencerSeed = TestTargetSeed & {
+  name?: string;
+};
+
 export type TestBlockOptions<TInput> = {
   input: TInput;
   request?: TestRequestSeed;
   session?: TestScopeSeed;
   user?: TestScopeSeed;
   project?: TestScopeSeed;
+  sequencer?: TestSequencerSeed;
   targets?: Record<string, TestTargetSeed>;
   tools?: Record<string, (...args: any[]) => Promise<any> | any>;
   generators?: Record<string, MockGeneratorInstance>;
@@ -39,7 +44,7 @@ export type TestBlockOptions<TInput> = {
 };
 
 export type StateChange = {
-  scope: "request" | "session" | "user" | "project";
+  scope: "request" | "session" | "user" | "project" | "block_instance";
   operation:
     | "patchState"
     | "setState"
@@ -50,6 +55,8 @@ export type StateChange = {
     | "atomicState";
   args: unknown[];
   resultingState: Record<string, unknown>;
+  targetName?: string;
+  targetInstanceId?: string;
 };
 
 export type TestBlockResult<TOutput> = {
@@ -61,6 +68,7 @@ export type TestBlockResult<TOutput> = {
     session: Record<string, unknown>;
     user: Record<string, unknown>;
     project: Record<string, unknown>;
+    sequencer: Record<string, unknown>;
   };
   stateChanges: StateChange[];
   meta: {

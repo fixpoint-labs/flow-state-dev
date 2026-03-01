@@ -66,6 +66,25 @@ const result = await testFlow({
 });
 ```
 
+
+### Seeding sequencer context in block tests
+
+`testBlock` and `testSequencer` accept `sequencer` to mock the nearest enclosing sequencer (`ctx.sequencer`) and capture sequencer instance state mutations in `result.stateChanges` with `scope: "block_instance"`.
+
+```ts
+const result = await testSequencer(mySequencer, {
+  input: { value: 1 },
+  sequencer: {
+    // defaults to the tested block name when omitted
+    name: "research",
+    state: { progress: 0 },
+  },
+});
+
+expect(result.state.sequencer.progress).toBeGreaterThanOrEqual(0);
+expect(result.stateChanges.some((change) => change.scope === "block_instance")).toBe(true);
+```
+
 ## Scripts
 
 - `pnpm --filter @flow-state-dev/testing build`

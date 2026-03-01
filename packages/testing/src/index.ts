@@ -18,6 +18,7 @@ export type {
   TestFlowResult,
   TestRouterResult,
   TestSequencerResult,
+  TestSequencerSeed,
   TestStateSeed,
   TestTargetSeed,
   WorkTrace

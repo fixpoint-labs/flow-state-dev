@@ -26,12 +26,15 @@ const STATE_OPERATIONS = [
   "atomicState"
 ] as const;
 
-type ScopeName = "request" | "session" | "user" | "project";
+type ScopeName = "request" | "session" | "user" | "project" | "block_instance";
 
 type ScopeOperation = (typeof STATE_OPERATIONS)[number];
 
 type MutableTargetState = {
   value: Record<string, unknown>;
+  scope: ScopeName;
+  instanceId: string;
+  name: string;
 };
 
 export type CreateTestContextOptions<TInput = unknown> = Omit<
@@ -44,6 +47,7 @@ export type CreateTestContextOptions<TInput = unknown> = Omit<
   sessionId?: string;
   userId?: string;
   projectId?: string;
+  sequencerName?: string;
 };
 
 export type TestContextRuntime = {
@@ -284,8 +288,8 @@ function wrapScopeStateOps(
 }
 
 function createTargetHandle(
-  name: string,
-  targetState: MutableTargetState
+  targetState: MutableTargetState,
+  stateChanges: StateChange[]
 ): TargetHandle<Record<string, unknown>> {
   const mutate = async (
     mutator: (current: Record<string, unknown>) => Record<string, unknown>
@@ -293,9 +297,20 @@ function createTargetHandle(
     targetState.value = mutator(targetState.value);
   };
 
+  const pushTargetStateChange = (operation: ScopeOperation, args: unknown[]): void => {
+    stateChanges.push({
+      scope: targetState.scope,
+      operation,
+      args,
+      resultingState: cloneRecord(targetState.value),
+      targetName: targetState.name,
+      targetInstanceId: targetState.instanceId
+    });
+  };
+
   return {
-    name,
-    instanceId: `${name}_instance`,
+    name: targetState.name,
+    instanceId: targetState.instanceId,
     get state() {
       return cloneRecord(targetState.value);
     },
@@ -306,9 +321,12 @@ function createTargetHandle(
           ...(updates as Record<string, unknown>)
         }));
       }
+
+      pushTargetStateChange("patchState", [updates]);
     },
     setState: async (nextState: unknown): Promise<void> => {
       await mutate(() => asRecord(nextState));
+      pushTargetStateChange("setState", [nextState]);
     },
     incState: async (increments: unknown): Promise<void> => {
       await mutate((current) => {
@@ -321,6 +339,8 @@ function createTargetHandle(
 
         return next;
       });
+
+      pushTargetStateChange("incState", [increments]);
     },
     pushState: async (field: unknown, value: unknown): Promise<void> => {
       const key = typeof field === "string" ? field : String(field);
@@ -331,6 +351,8 @@ function createTargetHandle(
           [key]: [...existing, value]
         };
       });
+
+      pushTargetStateChange("pushState", [field, value]);
     },
     setStateRecord: async (
       field: unknown,
@@ -347,6 +369,8 @@ function createTargetHandle(
           [recordKey]: value
         }
       }));
+
+      pushTargetStateChange("setStateRecord", [field, key, value]);
     },
     deleteStateRecord: async (field: unknown, key: unknown): Promise<void> => {
       const fieldName = typeof field === "string" ? field : String(field);
@@ -361,6 +385,8 @@ function createTargetHandle(
           [fieldName]: nextRecord
         };
       });
+
+      pushTargetStateChange("deleteStateRecord", [field, key]);
     },
     atomicState: async (mutator: unknown): Promise<void> => {
       if (typeof mutator !== "function") {
@@ -377,6 +403,8 @@ function createTargetHandle(
           ...patch
         };
       });
+
+      pushTargetStateChange("atomicState", [mutator]);
     }
   };
 }
@@ -464,27 +492,57 @@ export async function createTestContext<TInput = unknown>(
   wrapScopeStateOps("project", ctx.project as unknown as Record<string, unknown>, stateChanges);
 
   const targetStateByName = new Map<string, MutableTargetState>();
-  for (const [name, target] of Object.entries(options.targets ?? {})) {
-    targetStateByName.set(name, {
-      value: cloneRecord(target.state)
+
+  const sequencerName = options.sequencer?.name ?? options.sequencerName ?? "sequencer";
+  if (options.sequencer !== undefined) {
+    targetStateByName.set(sequencerName, {
+      value: cloneRecord(options.sequencer.state),
+      scope: "block_instance",
+      instanceId: `${sequencerName}_instance`,
+      name: sequencerName
     });
   }
+
+  for (const [name, target] of Object.entries(options.targets ?? {})) {
+    targetStateByName.set(name, {
+      value: cloneRecord(target.state),
+      scope: "request",
+      instanceId: `${name}_instance`,
+      name
+    });
+  }
+
+  const originalGetTarget = ctx.getTarget.bind(ctx);
 
   ctx.getTarget = <TState extends object = Record<string, unknown>>(
     name: string
   ) => {
     const targetState = targetStateByName.get(name);
-    if (targetState === undefined) {
-      return undefined;
+    if (targetState !== undefined) {
+      return createTargetHandle(targetState, stateChanges) as unknown as TargetHandle<TState>;
     }
 
-    return createTargetHandle(name, targetState) as unknown as TargetHandle<TState>;
+    return originalGetTarget(name) as TargetHandle<TState> | undefined;
   };
+
+  const proxiedContext = new Proxy(ctx, {
+    get(target, prop, receiver) {
+      if (prop === "getTarget") {
+        return ctx.getTarget;
+      }
+
+      if (prop === "sequencer" && options.sequencer !== undefined) {
+        return ctx.getTarget(sequencerName);
+      }
+
+      return Reflect.get(target, prop, receiver);
+    }
+  }) as ExecutionContext;
 
   ctx.resolveModel = modelResolver;
 
   return {
-    ctx,
+    ctx: proxiedContext,
     stores,
     response,
     stateChanges,
