@@ -125,7 +125,8 @@ async function executeBlock(
     {
       name: block.name,
       kind: block.kind,
-      instanceId: `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`
+      instanceId: `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined
     },
     run
   );
@@ -179,7 +180,8 @@ function createRuntimeState(): SequencerRuntimeState {
   return {
     stepHistory: [],
     loopCounts: new Map<string, number>(),
-    workTasks: []
+    workTasks: [],
+    stateVersion: 0
   };
 }
 
@@ -242,7 +244,8 @@ function createSequencer<TInput, TOutput>(
       name: config.name,
       description: config.description,
       inputSchema: resolvedInputSchema ?? config.inputSchema,
-      outputSchema: undefined
+      outputSchema: undefined,
+      stateSchema: config.stateSchema
     },
     execute: runSequencerOperations(operations, rescueHandlers) as (
       input: unknown,

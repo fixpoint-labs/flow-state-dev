@@ -239,4 +239,5 @@ export type SequencerRuntimeState = {
   stepHistory: string[];
   loopCounts: Map<string, number>;
   workTasks: SequencerWorkTask[];
+  stateVersion: number;
 };
