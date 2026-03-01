@@ -81,12 +81,14 @@ const counter = handler({
   name: "counter",
   sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
   execute: async (input, ctx) => {
-    // ctx.session.state is typed as { messageCount: number }
+    // ctx.session.state is typed as { messageCount: number } — inferred from the schema
     await ctx.session.incState({ messageCount: 1 });
     return input;
   },
 });
 ```
+
+Note that `ctx.session.state` is fully typed here — the framework infers types directly from your Zod schemas. You write a schema once and the input, output, state, and resources are all strongly typed throughout your `execute` function with no manual type annotations. See [Type System](/docs/concepts/type-system) for more on how this works across blocks, sequencers, and flows.
 
 This keeps blocks reusable and self-documenting about their dependencies.
 
