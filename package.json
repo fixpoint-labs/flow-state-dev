@@ -5,7 +5,7 @@
   "packageManager": "pnpm@10.4.1",
   "scripts": {
     "install:all": "pnpm install",
-    "typecheck": "pnpm -r --if-present typecheck",
+    "typecheck": "pnpm -r --if-present typecheck && node scripts/validate-package-boundaries.mjs",
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm -r --if-present test",
     "test:watch": "pnpm -r --parallel --stream --if-present test:watch",
