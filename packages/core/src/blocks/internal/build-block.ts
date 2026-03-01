@@ -26,6 +26,61 @@ export function extractDeclaredResources(config: {
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
+type ResourceScope = "session" | "user" | "project";
+
+/**
+ * Merge a scope-level resource map from `source` into `target`.
+ * Same `DefinedResource` reference → no conflict.
+ * Different references → build-time error.
+ */
+function mergeScopeResources(
+  target: Record<string, DefinedResource>,
+  source: Record<string, DefinedResource>,
+  scope: ResourceScope
+): void {
+  for (const [name, resource] of Object.entries(source)) {
+    const existing = target[name];
+    if (existing === undefined) {
+      target[name] = resource;
+      continue;
+    }
+
+    // Same reference — no conflict
+    if (existing === resource) {
+      continue;
+    }
+
+    throw new Error(
+      `Resource conflict: "${name}" in ${scope} scope is declared with different defineResource() references. Use the same reference across blocks.`
+    );
+  }
+}
+
+/**
+ * Merge two `DeclaredResources` objects. Mutates `target` in place and returns it.
+ * Returns `undefined` when both inputs are undefined.
+ */
+export function mergeDeclaredResources(
+  target: DeclaredResources | undefined,
+  source: DeclaredResources | undefined
+): DeclaredResources | undefined {
+  if (source === undefined) return target;
+  if (target === undefined) return { ...source };
+
+  const scopes: ResourceScope[] = ["session", "user", "project"];
+  for (const scope of scopes) {
+    const sourceScope = source[scope];
+    if (sourceScope === undefined) continue;
+    if (target[scope] === undefined) {
+      target[scope] = { ...sourceScope };
+    } else {
+      mergeScopeResources(target[scope]!, sourceScope, scope);
+    }
+  }
+
+  return target;
+}
+
 type ExecuteFn<
   TInputSchema extends ZodTypeAny,
   TOutputSchema extends ZodTypeAny,
