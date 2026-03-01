@@ -38,7 +38,6 @@ interface BlockContext {
   signal: AbortSignal;
   resolveModel: ModelResolver;
 
-  getBlockResult(name: string): unknown;
   getTarget(name: string): TargetHandle | undefined;
 
   // Item emission
@@ -50,6 +49,10 @@ interface BlockContext {
 ```
 
 Blocks are **silent by default** — if a block doesn't explicitly emit via `ctx` methods, it produces nothing visible to the client or LLM.
+
+`getTarget(name)` resolves nearest-first in two passes:
+1. Already-dispatched siblings at the current execution level (most-recent dispatch wins)
+2. Ancestor execution chain (existing parent-chain walk)
 
 ## Handler
 

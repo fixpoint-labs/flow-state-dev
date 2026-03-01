@@ -68,7 +68,6 @@ export interface BlockContext<
   signal: AbortSignal;
   resolveModel: ModelResolver;
 
-  getBlockResult(name: string): unknown;
   getTarget<TState extends object = Record<string, unknown>>(
     name: string
   ): TargetHandle<TState> | undefined;
