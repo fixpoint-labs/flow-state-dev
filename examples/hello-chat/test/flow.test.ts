@@ -1,9 +1,14 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { mockGenerator, testBlock } from "@flow-state-dev/testing";
 import helloChatFlow from "../src/flows/hello-chat/flow";
+
+/**
+ * These tests intentionally mock generator output with @flow-state-dev/testing.
+ * They should never require OPENAI_API_KEY or make real network calls.
+ */
 
 // Access the pipeline block from the flow definition for unit testing.
 // testBlock supports generator mocks; testFlow does not yet.
@@ -40,7 +45,21 @@ const chatFixture = mockGenerator({
   ]
 });
 
+let fetchSpy: ReturnType<typeof vi.spyOn> | undefined;
+
 describe("hello-chat", () => {
+  beforeAll(() => {
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      throw new Error(
+        `Unexpected network request in mocked hello-chat tests: ${String(input)}`
+      );
+    });
+  });
+
+  afterAll(() => {
+    fetchSpy?.mockRestore();
+  });
+
   it("completes a chat action", async () => {
     const result = await testBlock(chatPipeline, {
       input: { message: "What is TypeScript?" },

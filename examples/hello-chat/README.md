@@ -15,3 +15,9 @@ Run verification:
 pnpm --filter @flow-state-dev/example-hello-chat typecheck
 pnpm --filter @flow-state-dev/example-hello-chat test
 ```
+
+## Testing note
+
+The hello-chat tests intentionally mock generator responses and fail fast on any
+network access. This keeps the suite deterministic in CI and ensures no
+`OPENAI_API_KEY` is required for test runs.
