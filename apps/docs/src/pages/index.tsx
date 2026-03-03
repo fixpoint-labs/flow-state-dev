@@ -189,6 +189,7 @@ const codeTabs: CodeTab[] = [
 type FeatureItem = {
   title: string;
   description: string;
+  icon: string;
 };
 
 const features: FeatureItem[] = [
@@ -196,31 +197,37 @@ const features: FeatureItem[] = [
     title: "Four primitives. Compose freely.",
     description:
       "Handler, generator, sequencer, router. The sequencer DSL alone gives you parallel steps, forEach, doUntil/doWhile loops, background work, branching, error recovery, and more.",
+    icon: "\u25E3",
   },
   {
     title: "Flows are full APIs.",
     description:
       "Define a flow and you have REST endpoints, SSE streaming, session management, and state snapshots. No route wiring.",
+    icon: "\u21C4",
   },
   {
     title: "Hybrid memory + filesystem.",
     description:
-      "Resources combine rich text with structured state — like files that carry metadata. Scoped to sessions, users, or projects.",
+      "Resources combine rich text with structured state \u2014 like files that carry metadata. Scoped to sessions, users, or projects.",
+    icon: "\u2B22",
   },
   {
     title: "Built for an ecosystem.",
     description:
       "Blocks are portable. Share a tool, a handler, or an entire flow. Community blocks compose with yours out of the box.",
+    icon: "\u2B2C",
   },
   {
     title: "Streaming that just works.",
     description:
-      "Messages, components, status updates — all stream over SSE as blocks execute. Disconnect mid-response? Reconnect with a sequence cursor.",
+      "Messages, components, status updates \u2014 all stream over SSE as blocks execute. Disconnect mid-response? Reconnect with a sequence cursor.",
+    icon: "\u2192",
   },
   {
     title: "Type-safe, end to end.",
     description:
       "One Zod schema flows from server blocks through client SDK to React hooks. No glue code. No type drift.",
+    icon: "\u2B25",
   },
 ];
 
@@ -229,14 +236,16 @@ const features: FeatureItem[] = [
 function Hero() {
   return (
     <header className={styles.heroBanner}>
-      <div className="container">
+      <div className={styles.heroGrid} />
+      <div className={`container ${styles.heroContent}`}>
+        <div className={styles.heroAccent} />
         <Heading as="h1" className={styles.heroTitle}>
-          Stop wiring. Start building.
+          Stop wiring.{"\n"}Start building.
         </Heading>
         <p className={styles.heroSubtitle}>
           <span className={styles.brandName}>flow-state.dev</span> gives you
           composable primitives for AI orchestration, streaming, state, and
-          error handling — so you can explore new patterns instead of
+          error handling &mdash; so you can explore new patterns instead of
           reinventing infrastructure.
         </p>
         <div className={styles.buttons}>
@@ -255,9 +264,21 @@ function Hero() {
 function Features() {
   return (
     <section className={styles.features}>
+      <div className={styles.featuresSectionHeader}>
+        <div>
+          <span className={styles.featuresSectionLabel}>Primitives</span>
+        </div>
+        <Heading as="h2" className={styles.featuresSectionTitle}>
+          Everything you need, nothing you don't
+        </Heading>
+        <p className={styles.featuresSectionSubtext}>
+          Four block kinds, composable flows, and scoped state. Each piece works alone or together.
+        </p>
+      </div>
       <div className={styles.featureGrid}>
         {features.map((f, i) => (
           <div key={i} className={styles.featureCard}>
+            <div className={styles.featureNumber}>0{i + 1}</div>
             <div className={styles.featureTitle}>{f.title}</div>
             <p className={styles.featureDesc}>{f.description}</p>
           </div>
@@ -273,11 +294,15 @@ function CodeShowcase() {
 
   return (
     <section className={styles.codeShowcase}>
+      <div style={{ textAlign: "center" }}>
+        <span className={styles.sectionLabel}>Workflow</span>
+      </div>
       <Heading as="h2" className={styles.sectionTitle}>
         From definition to UI in four steps
       </Heading>
       <p className={styles.sectionSubtext}>
-        Define blocks. Register flows. Wire up React. Write deterministic tests. Each layer is independent and composable.
+        Define blocks. Register flows. Wire up React. Write deterministic tests.
+        Each layer is independent and composable.
       </p>
 
       <div className={styles.tabBar}>
@@ -300,22 +325,44 @@ function CodeShowcase() {
   );
 }
 
+function InstallSnippet() {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText("npx create-flow-state-app my-app");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button className={styles.installSnippet} onClick={handleCopy} type="button">
+      <span className={styles.installPrompt}>$</span>
+      npx create-flow-state-app my-app
+      <span className={styles.installCopy}>{copied ? "copied!" : "click to copy"}</span>
+    </button>
+  );
+}
+
 function CTA() {
   return (
     <section className={styles.ctaSection}>
-      <Heading as="h2" className={styles.ctaTitle}>
-        Ready to explore?
-      </Heading>
-      <p className={styles.ctaSubtext}>
-        Get a streaming AI app running in minutes. Then push it somewhere no framework has gone before.
-      </p>
-      <div className={styles.buttons}>
-        <Link className={styles.primaryBtn} to="/docs/getting-started/quick-start">
-          Quick Start
-        </Link>
-        <Link className={styles.secondaryBtn} to="/blog/welcome">
-          Read the Manifesto
-        </Link>
+      <div className={styles.ctaContent}>
+        <Heading as="h2" className={styles.ctaTitle}>
+          Ready to explore?
+        </Heading>
+        <p className={styles.ctaSubtext}>
+          Get a streaming AI app running in minutes. Then push it somewhere no
+          framework has gone before.
+        </p>
+        <div className={styles.buttons}>
+          <Link className={styles.primaryBtn} to="/docs/getting-started/quick-start">
+            Quick Start
+          </Link>
+          <Link className={styles.secondaryBtn} to="/blog/welcome">
+            Read the Manifesto
+          </Link>
+        </div>
+        <InstallSnippet />
       </div>
     </section>
   );
@@ -327,12 +374,15 @@ export default function Home(): React.ReactElement {
   return (
     <Layout
       title="AI workflows, composed"
-      description="flow-state.dev — a TypeScript framework for building AI workflows with composable blocks, resumable streaming, scoped state, and full-stack type safety."
+      description="flow-state.dev \u2014 a TypeScript framework for building AI workflows with composable blocks, resumable streaming, scoped state, and full-stack type safety."
     >
       <Hero />
       <main>
+        <div className={styles.sectionDivider} />
         <Features />
+        <div className={styles.sectionDivider} />
         <CodeShowcase />
+        <div className={styles.sectionDivider} />
         <CTA />
       </main>
     </Layout>
