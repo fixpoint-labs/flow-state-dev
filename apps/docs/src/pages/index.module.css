@@ -19,7 +19,7 @@
   inset: 0;
   background:
     radial-gradient(ellipse 70% 50% at 50% 0%, rgba(124, 108, 240, 0.18) 0%, transparent 60%),
-    radial-gradient(ellipse 50% 40% at 80% 20%, rgba(34, 211, 238, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 40% at 80% 20%, rgba(56, 189, 248, 0.08) 0%, transparent 50%),
     radial-gradient(ellipse 40% 50% at 15% 60%, rgba(124, 108, 240, 0.06) 0%, transparent 50%);
   pointer-events: none;
   animation: pulseGlow 8s ease-in-out infinite;
@@ -257,9 +257,9 @@
   color: var(--fsd-accent);
   margin-bottom: 1rem;
   padding: 0.35rem 0.85rem;
-  border: 1px solid rgba(34, 211, 238, 0.2);
+  border: 1px solid rgba(56, 189, 248, 0.2);
   border-radius: 6px;
-  background: rgba(34, 211, 238, 0.05);
+  background: rgba(56, 189, 248, 0.05);
 }
 
 .featuresSectionTitle {
@@ -393,9 +393,9 @@
   color: var(--fsd-accent);
   margin-bottom: 1rem;
   padding: 0.35rem 0.85rem;
-  border: 1px solid rgba(34, 211, 238, 0.2);
+  border: 1px solid rgba(56, 189, 248, 0.2);
   border-radius: 6px;
-  background: rgba(34, 211, 238, 0.05);
+  background: rgba(56, 189, 248, 0.05);
 }
 
 .sectionTitle {
@@ -511,7 +511,7 @@
   inset: 0;
   background:
     radial-gradient(ellipse 60% 50% at 50% 60%, rgba(124, 108, 240, 0.08) 0%, transparent 60%),
-    radial-gradient(ellipse 40% 30% at 30% 40%, rgba(34, 211, 238, 0.04) 0%, transparent 50%);
+    radial-gradient(ellipse 40% 30% at 30% 40%, rgba(56, 189, 248, 0.04) 0%, transparent 50%);
   pointer-events: none;
 }
 

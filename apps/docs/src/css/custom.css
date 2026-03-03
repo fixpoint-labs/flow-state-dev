@@ -25,8 +25,8 @@
   --ifm-line-height-base: 1.65;
 
   /* custom tokens */
-  --fsd-accent: #22d3ee;
-  --fsd-accent-glow: rgba(34, 211, 238, 0.15);
+  --fsd-accent: #38bdf8;
+  --fsd-accent-glow: rgba(56, 189, 248, 0.15);
   --fsd-surface-border: rgba(0, 0, 0, 0.08);
   --fsd-text-muted: rgba(0, 0, 0, 0.55);
   --fsd-noise-opacity: 0.03;
@@ -48,8 +48,8 @@
   --docusaurus-highlighted-code-line-bg: rgba(124, 108, 240, 0.15);
 
   /* custom tokens */
-  --fsd-accent: #22d3ee;
-  --fsd-accent-glow: rgba(34, 211, 238, 0.12);
+  --fsd-accent: #38bdf8;
+  --fsd-accent-glow: rgba(56, 189, 248, 0.12);
   --fsd-surface-border: rgba(255, 255, 255, 0.06);
   --fsd-text-muted: rgba(255, 255, 255, 0.45);
   --fsd-noise-opacity: 0.025;
