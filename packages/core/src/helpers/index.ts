@@ -69,7 +69,7 @@ export type {
   AnalyzerConfig
 } from "./analyzer";
 
-export type {
+export {
   synthesizer,
   synthesizerOutputSchema
 } from "./synthesizer";
