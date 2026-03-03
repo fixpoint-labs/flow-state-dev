@@ -122,12 +122,31 @@ async function executeBlock(
     return run(ctx);
   }
 
+  const containerConfig =
+    block.kind === "sequencer" || block.kind === "router"
+      ? (block.config as { container?: { component?: string; label?: string | ((input: unknown) => string); metadata?: Record<string, unknown> | ((input: unknown) => Record<string, unknown>); } }).container
+      : undefined;
+
   return ctx._withExecutionScope(
     {
       name: block.name,
       kind: block.kind,
       instanceId: `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-      stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined
+      stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined,
+      container:
+        containerConfig === undefined
+          ? undefined
+          : {
+              component: containerConfig.component,
+              label:
+                typeof containerConfig.label === "function"
+                  ? containerConfig.label(input as any)
+                  : containerConfig.label,
+              metadata:
+                typeof containerConfig.metadata === "function"
+                  ? containerConfig.metadata(input as any)
+                  : containerConfig.metadata
+            }
     },
     run
   );
@@ -247,7 +266,8 @@ function createSequencer<TInput, TOutput>(
       description: config.description,
       inputSchema: resolvedInputSchema ?? config.inputSchema,
       outputSchema: undefined,
-      stateSchema: config.stateSchema
+      stateSchema: config.stateSchema,
+      container: config.container
     },
     execute: runSequencerOperations(operations, rescueHandlers) as (
       input: unknown,

@@ -1188,6 +1188,50 @@ describe("execution runtime", () => {
     expect(standaloneResult.output).toBe(true);
   });
 
+
+  it("emits container items for sequencer execution and preserves block-instance parent linkage", async () => {
+    const { ctx } = await createRuntimeContext("req_container_link");
+
+    const leaf = handler({
+      name: "leaf-step",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value, stepCtx) => {
+        stepCtx.emitMessage(`value:${value}`);
+        return value + 1;
+      }
+    });
+
+    const flowSeq = sequencer({
+      name: "research",
+      inputSchema: z.number(),
+      container: {
+        component: "ResearchProgress",
+        label: (input) => `Research:${input}`,
+        metadata: (input) => ({ startedWith: input })
+      }
+    }).then(leaf);
+
+    const result = await executeBlock({
+      block: flowSeq,
+      input: 2,
+      ctx
+    });
+
+    expect(result.error).toBeUndefined();
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const container = items.find((item) => item.type === "container");
+    expect(container).toBeDefined();
+    expect(container).toMatchObject({
+      blockName: "research",
+      component: "ResearchProgress",
+      label: "Research:2",
+      metadata: { startedWith: 2 }
+    });
+
+  });
+
   it("runs request lifecycle observers in canonical order for success and failure", async () => {
     const stores = createInMemoryStores();
     const events: string[] = [];

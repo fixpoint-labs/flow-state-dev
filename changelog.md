@@ -4,6 +4,13 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-03-01
 
+### Sequencer container item emission groundwork (FIX-8)
+
+- Added optional `container` metadata to the shared block config surface so sequencer/router container settings remain attached to built block definitions.
+- Extended execution parent metadata with `parentInstanceId` and resolved container metadata, enabling runtime scope frames to carry parent-child block-instance relationships.
+- Updated server execution/context wiring to emit `container` stream items whenever a scoped sequencer/router frame with container config is entered.
+- Added server execution coverage asserting sequencer container emission with resolved component/label/metadata payload.
+
 ### Block resource declarations and automatic collection (FIX-92)
 
 - Added `DeclaredResources` type and `declaredResources` field on `BlockDefinition` in `@flow-state-dev/core`.
