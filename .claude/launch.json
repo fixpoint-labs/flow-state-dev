@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hello-chat",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-c", "source ~/.nvm/nvm.sh && pnpm --filter hello-chat dev -- --port 3001"],
+      "port": 3001
+    },
+    {
+      "name": "kitchen-sink",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-c", "source ~/.nvm/nvm.sh && pnpm --filter kitchen-sink dev -- --port 3002"],
+      "port": 3002
+    },
+    {
+      "name": "docs",
+      "runtimeExecutable": "/bin/bash",
+      "runtimeArgs": ["-c", "source ~/.nvm/nvm.sh && cd /Users/jakehoffner/Projects/flow-state-dev/implementation/apps/docs && npx docusaurus start --port 3004"],
+      "port": 3004
+    }
+  ]
+}

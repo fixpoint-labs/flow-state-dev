@@ -1,0 +1,144 @@
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { helper, sequencer } from "../src";
+import { createMockContext } from "./helpers";
+
+describe("helper.combiner", () => {
+  it("returns a handler block definition", () => {
+    const block = helper.combiner({ name: "merge-results" });
+
+    expect(block.kind).toBe("handler");
+    expect(block.name).toBe("merge-results");
+  });
+
+  it("merges multiple objects with deterministic rules", async () => {
+    const block = helper.combiner({ name: "object-merge" });
+
+    await expect(
+      block.run(
+        [
+          {
+            topic: "alpha",
+            tags: ["a", "shared"],
+            metadata: { score: 0.4, owner: "team-a" }
+          },
+          {
+            tags: ["shared", "b"],
+            metadata: { score: 0.9 },
+            summary: "done"
+          }
+        ],
+        createMockContext()
+      )
+    ).resolves.toEqual({
+      combined: {
+        topic: "alpha",
+        tags: ["a", "shared", "b"],
+        metadata: { score: 0.9, owner: "team-a" },
+        summary: "done"
+      },
+      mergeNotes: [
+        "combined.tags: deduplicated array entries during merge.",
+        "combined.metadata.score: conflicting values resolved by taking the later artifact."
+      ]
+    });
+  });
+
+  it("concatenates and deduplicates top-level arrays", async () => {
+    const block = helper.combiner({ name: "array-merge" });
+
+    await expect(
+      block.run(
+        [
+          ["a", "b", "shared"],
+          ["shared", "c"],
+          ["c", "d"]
+        ],
+        createMockContext()
+      )
+    ).resolves.toEqual({
+      combined: ["a", "b", "shared", "c", "d"],
+      mergeNotes: ["combined: deduplicated array entries during merge."]
+    });
+  });
+
+  it("normalizes mixed input artifact types", async () => {
+    const block = helper.combiner({ name: "mixed-merge" });
+
+    await expect(
+      block.run(
+        {
+          artifacts: [
+            { id: 1 },
+            "note",
+            { id: 1 },
+            ["a"],
+            "note"
+          ]
+        },
+        createMockContext()
+      )
+    ).resolves.toEqual({
+      combined: [{ id: 1 }, "note", ["a"]],
+      mergeNotes: [
+        "Mixed artifact types detected; normalized by preserving artifact order and deduplicating exact matches."
+      ]
+    });
+  });
+
+  it("uses default output schema and supports override", async () => {
+    const defaultBlock = helper.combiner({ name: "default-schema" });
+    const customBlock = helper.combiner({
+      name: "custom-schema",
+      outputSchema: z.object({
+        combined: z.object({ title: z.string() }),
+        mergeNotes: z.array(z.string()).optional()
+      })
+    });
+
+    await expect(defaultBlock.run([], createMockContext())).resolves.toEqual({
+      combined: [],
+      mergeNotes: ["No artifacts provided; returned an empty combined array."]
+    });
+
+    await expect(
+      customBlock.run([{ title: "first" }, { title: "second" }], createMockContext())
+    ).resolves.toEqual({
+      combined: { title: "second" },
+      mergeNotes: ["combined.title: conflicting values resolved by taking the later artifact."]
+    });
+  });
+
+  it("is composable inside sequencers", async () => {
+    const combine = helper.combiner({ name: "combine-in-sequencer" });
+
+    const chain = sequencer({
+      name: "combine-chain",
+      inputSchema: z.object({
+        primary: z.object({
+          tags: z.array(z.string())
+        }),
+        secondary: z.object({
+          tags: z.array(z.string())
+        })
+      })
+    })
+      .map((input) => [input.primary, input.secondary])
+      .then(combine);
+
+    await expect(
+      chain.run(
+        {
+          primary: { tags: ["a", "shared"] },
+          secondary: { tags: ["shared", "b"] }
+        },
+        createMockContext()
+      )
+    ).resolves.toEqual({
+      combined: {
+        tags: ["a", "shared", "b"]
+      },
+      mergeNotes: ["combined.tags: deduplicated array entries during merge."]
+    });
+  });
+});
