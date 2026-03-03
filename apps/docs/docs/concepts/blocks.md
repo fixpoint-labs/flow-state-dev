@@ -278,8 +278,17 @@ execute: async (input, ctx) => {
 
   // Resolve AI models
   const model = ctx.resolveModel("gpt-5-mini");
+
+  // Access typed targets — named ancestor blocks declared in config
+  const research = ctx.targets.research;  // StateHandle<{ progress: number }> | undefined
+  await research?.patchState({ progress: 75 });
+
+  // Or use getTarget for dynamic/untyped access
+  const dynamic = ctx.getTarget("some-block");
 }
 ```
+
+Targets give a block typed access to the state of named ancestor blocks in the execution tree. They are declared via `targetStateSchemas` in the block config — see [Target state](/docs/concepts/state#target-state) for details.
 
 ## Blocks are composable
 

@@ -20,8 +20,13 @@ const myHandler = handler({
   inputSchema: z.object({ value: z.string() }),
   outputSchema: z.object({ result: z.string() }),
   sessionStateSchema: z.object({ count: z.number().default(0) }),
+  targetStateSchemas: {
+    research: z.object({ progress: z.number() }),
+  },
   execute: async (input, ctx) => {
     await ctx.session.incState({ count: 1 });
+    // ctx.targets.research is StateHandle<{ progress: number }> | undefined
+    await ctx.targets.research?.patchState({ progress: 50 });
     return { result: input.value.toUpperCase() };
   },
 });
@@ -40,7 +45,13 @@ const myGenerator = generator({
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   outputSchema: z.object({ response: z.string() }),
-  user: (input) => input.message,
+  targetStateSchemas: {
+    research: z.object({ progress: z.number() }),
+  },
+  user: (input, ctx) => {
+    const progress = ctx.targets.research?.state.progress ?? 0;
+    return `progress:${progress} — ${input.message}`;
+  },
   tools: [myTool],
   context: [projectionText("session.plan")],
   history: [projectionMessages("session.history")],
@@ -74,8 +85,14 @@ import { router } from "@flow-state-dev/core";
 const myRouter = router({
   name: "mode-router",
   inputSchema: z.object({ mode: z.string() }),
-  routes: { chat: chatBlock, agent: agentBlock },
-  execute: async (input) => input.mode,
+  targetStateSchemas: {
+    coordinator: z.object({ step: z.number() }),
+  },
+  routes: [chatBlock, agentBlock],
+  execute: async (input, ctx) => {
+    const step = ctx.targets.coordinator?.state.step ?? 0;
+    return step > 0 ? agentBlock : chatBlock;
+  },
 });
 ```
 

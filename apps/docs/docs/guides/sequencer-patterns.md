@@ -213,6 +213,66 @@ const pipeline = sequencer({ name: "pipeline" })
 // defineFlow will merge this into the flow's session.resources automatically
 ```
 
+## Typed Target Access
+
+When a block runs inside a nested sequencer and needs to read or write the state of an outer sequencer, use `targetStateSchemas` instead of manual `getTarget<Type>("name")` casts. The framework infers types from the declared schemas, so the access is fully typed with no assertions.
+
+### Multi-sequencer coordination example
+
+Here an inner processing block reports progress back to the outer research sequencer:
+
+```ts
+import { handler, sequencer } from "@flow-state-dev/core";
+import { z } from "zod";
+
+// --- Outer sequencer carries progress state ---
+const researchPipeline = sequencer({
+  name: "research-pipeline",
+  inputSchema: z.object({ query: z.string() }),
+  sessionStateSchema: z.object({ progress: z.number().default(0) }),
+});
+
+// --- Inner block declares which ancestor it needs ---
+const processChunk = handler({
+  name: "process-chunk",
+  inputSchema: z.object({ chunk: z.string(), total: z.number(), index: z.number() }),
+  outputSchema: z.string(),
+  targetStateSchemas: {
+    // Declare the ancestor by its block name and the state fields we'll touch
+    "research-pipeline": z.object({ progress: z.number() }),
+  },
+  execute: async (input, ctx) => {
+    const pct = Math.round(((input.index + 1) / input.total) * 100);
+    // Fully typed: StateHandle<{ progress: number }> | undefined
+    await ctx.targets["research-pipeline"]?.patchState({ progress: pct });
+    return `processed:${input.chunk}`;
+  },
+});
+
+// --- Nested sequencer uses the reporting block ---
+const chunkProcessor = sequencer({ name: "chunk-processor" })
+  .then(splitIntoChunks)
+  .forEach(processChunk, { maxConcurrency: 3 });
+
+// --- Wire into the outer pipeline ---
+researchPipeline
+  .then(fetchSources)
+  .then(chunkProcessor)   // processChunk inside here reaches up to researchPipeline
+  .then(synthesize);
+```
+
+**Why `targetStateSchemas` instead of `getTarget`:**
+
+```ts
+// With getTarget — manual cast, no compile-time safety
+const outer = ctx.getTarget<{ progress: number }>("research-pipeline");
+
+// With targetStateSchemas — inferred, self-documenting
+await ctx.targets["research-pipeline"]?.patchState({ progress: pct });
+```
+
+`getTarget` is a valid escape hatch for dynamic or unknown ancestor names. For static, well-known relationships, `targetStateSchemas` is preferred: the block documents its topology requirements and the type flows through without any cast.
+
 ## Container Wrapping
 
 Group items for UI display:
