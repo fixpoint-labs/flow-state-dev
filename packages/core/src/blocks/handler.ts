@@ -53,7 +53,7 @@ export interface HandlerConfig<
   userResources?: TUserResourceDefs;
   projectResources?: TProjectResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
-  targets?: TTargetSchemas;
+  targetStateSchemas?: TTargetSchemas;
   execute: (
     input: TInput,
     ctx: BlockContext<

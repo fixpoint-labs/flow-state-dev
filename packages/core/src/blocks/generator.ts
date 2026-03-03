@@ -158,7 +158,7 @@ export interface GeneratorConfig<
   userResources?: TUserResourceDefs;
   projectResources?: TProjectResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
-  targets?: TTargetSchemas;
+  targetStateSchemas?: TTargetSchemas;
   model: ResolvableModel<TInput, TCtx>;
   prompt: ResolvableString<TInput, TCtx>;
   context?: GeneratorSlot<TInput, TCtx>;

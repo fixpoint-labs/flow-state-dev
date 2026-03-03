@@ -30,7 +30,7 @@ export interface ResponseEmitterHandle {
   emit(event: unknown): void | Promise<void>;
 }
 
-export type TargetHandle<TState extends object = Record<string, unknown>> = {
+export type StateHandle<TState extends object = Record<string, unknown>> = {
   name: string;
   instanceId: string;
   state: Readonly<TState>;
@@ -44,6 +44,15 @@ export type TargetHandle<TState extends object = Record<string, unknown>> = {
   | "deleteStateRecord"
   | "atomicState"
 >;
+
+/** @deprecated Use StateHandle. */
+export type TargetHandle<TState extends object = Record<string, unknown>> = StateHandle<TState>;
+
+export type BlockResult<TOutput> =
+  | { status: "not_started" }
+  | { status: "running" }
+  | { status: "completed"; output: TOutput }
+  | { status: "failed"; error: Error };
 
 export interface MessageHandle {
   addContent(content: Content): void;
@@ -71,7 +80,7 @@ export interface BlockContext<
   session: SessionScopeHandle<TSessionState, TSessionResources>;
   user: UserScopeHandle<TUserState, TUserResources>;
   project?: ProjectScopeHandle<TProjectState, TProjectResources>;
-  sequencer?: TargetHandle<TSequencerState>;
+  sequencer?: StateHandle<TSequencerState>;
 
   response: ResponseEmitterHandle;
   signal: AbortSignal;
@@ -79,9 +88,17 @@ export interface BlockContext<
 
   getTarget<TState extends object = Record<string, unknown>>(
     name: string
-  ): TargetHandle<TState> | undefined;
+  ): StateHandle<TState> | undefined;
 
-  targets: InferTargetsFromSchemas<TTargets>;
+  getBlockOutput<TBlock extends BlockDefinition>(
+    block: TBlock
+  ): BlockOutput<TBlock> | undefined;
+
+  getBlockResult<TBlock extends BlockDefinition>(
+    block: TBlock
+  ): BlockResult<BlockOutput<TBlock>>;
+
+  targets: InferTargetStatesFromSchemas<TTargets>;
 
   emitMessage(text: string): MessageHandle;
   emitMessage(content: Content[]): MessageHandle;
@@ -225,10 +242,13 @@ export type InferBlockResources<TSchemas, TDefs> =
     : InferResourcesFromSchemas<TSchemas>;
 
 /**
- * Derive typed target handles from block-level target schemas.
+ * Derive typed state handles from block-level target state schemas.
  * Each declared target name maps to `TargetHandle<z.infer<schema>> | undefined`.
  */
-export type InferTargetsFromSchemas<TSchemas> =
+export type InferTargetStatesFromSchemas<TSchemas> =
   TSchemas extends Record<string, ZodTypeAny>
-    ? { [K in keyof TSchemas]: TargetHandle<z.infer<TSchemas[K]>> | undefined }
+    ? { [K in keyof TSchemas]: StateHandle<z.infer<TSchemas[K]>> | undefined }
     : Record<string, never>;
+
+/** @deprecated Use InferTargetStatesFromSchemas. */
+export type InferTargetsFromSchemas<TSchemas> = InferTargetStatesFromSchemas<TSchemas>;

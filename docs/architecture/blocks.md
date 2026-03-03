@@ -34,14 +34,21 @@ interface BlockContext {
   session?: SessionScopeHandle;
   user: UserScopeHandle;
   project?: ProjectScopeHandle;
-  sequencer?: TargetHandle;
+  sequencer?: StateHandle;
 
   response: ResponseEmitterHandle;
   signal: AbortSignal;
   resolveModel: ModelResolver;
 
-  getTarget(name: string): TargetHandle | undefined;
-  targets: Record<string, TargetHandle | undefined>;
+  getTarget(name: string): StateHandle | undefined;
+  targets: Record<string, StateHandle | undefined>;
+
+  getBlockOutput(block: BlockDefinition): unknown | undefined;
+  getBlockResult(block: BlockDefinition):
+    | { status: "not_started" }
+    | { status: "running" }
+    | { status: "completed"; output: unknown }
+    | { status: "failed"; error: Error };
 
   // Item emission
   emitMessage(text: string): MessageHandle;
@@ -54,7 +61,7 @@ interface BlockContext {
 Blocks are **silent by default** — if a block doesn't explicitly emit via `ctx` methods, it produces nothing visible to the client or LLM.
 
 
-`ctx.sequencer` resolves to the nearest enclosing sequencer in the execution stack. If that sequencer defines `stateSchema`, the returned `TargetHandle` is typed from the schema and exposes mutable instance state (`state`, `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`). Sequencer instance state initializes from `defaultState` when provided, otherwise from schema defaults (`safeParse(undefined)` / `safeParse({})`).
+`ctx.sequencer` resolves to the nearest enclosing sequencer in the execution stack. If that sequencer defines `stateSchema`, the returned `StateHandle` is typed from the schema and exposes mutable instance state (`state`, `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`). Sequencer instance state initializes from `defaultState` when provided, otherwise from schema defaults (`safeParse(undefined)` / `safeParse({})`).
 
 When no enclosing sequencer exists, `ctx.sequencer` is `undefined`.
 
@@ -92,12 +99,12 @@ When sequencer state mutates, runtime emits a `state_change` item with `scope: "
 
 Tool blocks inherit the same context chain: if a tool runs inside a generator inside a sequencer, the tool's `ctx.sequencer` points to that nearest sequencer and `ctx.getTarget("<sequencer-name>")` resolves to the same handle.
 
-For statically known target dependencies, handler/generator/router blocks can declare `targets` in config:
+For statically known target state coordination, handler/generator/router blocks can declare `targetStateSchemas` in config:
 
 ```ts
 const validate = handler({
   name: "validate",
-  targets: {
+  targetStateSchemas: {
     research: z.object({ progress: z.number() })
   },
   execute: async (input, ctx) => {
@@ -340,3 +347,11 @@ No block-level configuration is needed — the emission API is the control mecha
 ## Canonical Authority
 
 For full type signatures, edge cases, and detailed semantics, see `../preperation/architecture/BLOCKS.md`.
+
+
+Output dependencies use block-definition references instead of name-based state handles:
+
+```ts
+const result = ctx.getBlockResult(validateBlock);
+const output = ctx.getBlockOutput(validateBlock);
+```
