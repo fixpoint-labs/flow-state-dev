@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { helper, sequencer } from "../src";
+import { macro, sequencer } from "../src";
 import { createMockContext } from "./helpers";
 
-describe("helper.contextReducer", () => {
+describe("macro.contextReducer", () => {
   it("returns a generator block definition", () => {
-    const block = helper.contextReducer({
+    const block = macro.contextReducer({
       name: "reduce-context"
     });
 
@@ -15,7 +15,7 @@ describe("helper.contextReducer", () => {
 
   it("supports distill mode instructions", async () => {
     const seenMessages: unknown[] = [];
-    const block = helper.contextReducer({
+    const block = macro.contextReducer({
       name: "distill-mode",
       mode: "distill"
     });
@@ -45,7 +45,7 @@ describe("helper.contextReducer", () => {
 
   it("supports denoise mode instructions", async () => {
     const seenMessages: unknown[] = [];
-    const block = helper.contextReducer({
+    const block = macro.contextReducer({
       name: "denoise-mode",
       mode: "denoise"
     });
@@ -75,7 +75,7 @@ describe("helper.contextReducer", () => {
 
   it("supports compress mode instructions", async () => {
     const seenMessages: unknown[] = [];
-    const block = helper.contextReducer({
+    const block = macro.contextReducer({
       name: "compress-mode",
       mode: "compress"
     });
@@ -106,8 +106,8 @@ describe("helper.contextReducer", () => {
   });
 
   it("uses default output schema and supports override", async () => {
-    const defaultBlock = helper.contextReducer({ name: "default-schema", mode: "compress" });
-    const customBlock = helper.contextReducer({
+    const defaultBlock = macro.contextReducer({ name: "default-schema", mode: "compress" });
+    const customBlock = macro.contextReducer({
       name: "custom-schema",
       mode: "compress",
       outputSchema: z.object({
@@ -152,7 +152,7 @@ describe("helper.contextReducer", () => {
   });
 
   it("is composable inside sequencers", async () => {
-    const reduce = helper.contextReducer({
+    const reduce = macro.contextReducer({
       name: "reduce-in-sequencer",
       mode: "distill"
     });
