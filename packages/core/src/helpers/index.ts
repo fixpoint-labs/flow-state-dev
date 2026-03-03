@@ -41,6 +41,16 @@ export type {
 } from "./summarizer";
 
 export {
+  decomposer,
+  decomposerOutputSchema,
+  decomposerTaskSchema
+} from "./decomposer";
+
+export type {
+  DecomposerConfig
+} from "./decomposer";
+
+export {
   composer,
   composerOutputSchema
 } from "./composer";
@@ -59,7 +69,7 @@ export type {
   AnalyzerConfig
 } from "./analyzer";
 
-export type {
+export {
   synthesizer,
   synthesizerOutputSchema
 } from "./synthesizer";
