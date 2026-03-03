@@ -1,4 +1,16 @@
 export {
+  contextReducer,
+  contextReducerCompressOutputSchema,
+  contextReducerDenoiseOutputSchema,
+  contextReducerDistillOutputSchema
+} from "./context-reducer";
+
+export type {
+  ContextReducerConfig,
+  ContextReducerMode
+} from "./context-reducer";
+
+export {
   combiner,
   combinerOutputSchema
 } from "./combiner";
