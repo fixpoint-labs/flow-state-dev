@@ -75,9 +75,9 @@ Conflict rule: `preperation/architecture/*` wins.
 
 → [Architecture Overview](../architecture/overview.md)
 
-## Macro Blocks (Helpers)
+## Macro Blocks
 
-Eight pre-built helper factories wrapping generator/handler blocks:
+Ten pre-built macro factories wrapping generator/handler blocks:
 
 | Macro | Kind | Purpose |
 |-------|------|---------|
@@ -92,10 +92,10 @@ Eight pre-built helper factories wrapping generator/handler blocks:
 | `intentClassifier` | generator | Classify input into bounded category set for routing |
 | `intentRouter` | sequencer | Pre-wired classifier + router for classification-driven branching |
 
-- Access via `helper.<name>(config)` — returns a standard `BlockDefinition`
+- Access via `macro.<name>(config)` — returns a standard `BlockDefinition`
 - All generators default to `"gpt-5-mini"` model
 - All macros accept optional `outputSchema` override
-- Combiner is the only handler (deterministic, no model)
+- Combiner is handler-based (deterministic, no model)
 
 > [Macro Blocks](../architecture/macros.md)
 

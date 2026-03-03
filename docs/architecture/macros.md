@@ -1,19 +1,19 @@
 # Macro Blocks
 
-Macro blocks are pre-built helper factories that wrap the core block primitives (generator, handler) into specialized, high-level capabilities. Each macro returns a standard `BlockDefinition` — composable in sequencers, routers, and flows like any other block.
+Macro blocks are pre-built factories that wrap the core block primitives (generator, handler) into specialized, high-level capabilities. Each macro returns a standard `BlockDefinition` — composable in sequencers, routers, and flows like any other block.
 
 ## The idea in 30 seconds
 
 ```ts
-import { helper, sequencer } from "@flow-state-dev/core";
+import { macro, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const summarize = helper.summarizer({
+const summarize = macro.summarizer({
   name: "brief-summary",
   granularity: "brief",
 });
 
-const analyze = helper.analyzer({
+const analyze = macro.analyzer({
   name: "quality-check",
   criteria: ["accuracy", "completeness"],
 });
@@ -53,7 +53,7 @@ Every macro factory accepts a `name` (required) and returns a block that can be 
 Reduces context using one of three strategies. Each mode selects a tailored system prompt and a mode-specific default output schema.
 
 ```ts
-const reduce = helper.contextReducer({
+const reduce = macro.contextReducer({
   name: "compress-history",
   mode: "compress",
 });
@@ -115,7 +115,7 @@ const pipeline = sequencer({
   inputSchema: z.object({ source: z.string() }),
 })
   .map((input) => input.source)
-  .then(helper.contextReducer({ name: "distill", mode: "distill" }));
+  .then(macro.contextReducer({ name: "distill", mode: "distill" }));
 ```
 
 ---
@@ -125,7 +125,7 @@ const pipeline = sequencer({
 Extracts durable memory candidates from user and assistant interactions. The extraction is stateless — the block identifies candidates but does not perform persistence. Downstream blocks or flow actions handle storage (e.g., writing to session resources).
 
 ```ts
-const extract = helper.memoryExtractor({
+const extract = macro.memoryExtractor({
   name: "extract-memories",
 });
 ```
@@ -159,7 +159,7 @@ See [MemoryCandidate](#memorycandidate) in the shared types reference below.
 **Integration pattern — flowing candidates into session resources:**
 
 ```ts
-const extract = helper.memoryExtractor({ name: "extract" });
+const extract = macro.memoryExtractor({ name: "extract" });
 
 const pipeline = sequencer({
   name: "memory-pipeline",
@@ -184,7 +184,7 @@ const pipeline = sequencer({
 Breaks broad requests into executable subtasks with optional dependency references and priority levels.
 
 ```ts
-const decompose = helper.decomposer({
+const decompose = macro.decomposer({
   name: "break-down-request",
 });
 ```
@@ -213,7 +213,7 @@ See [SubTask](#subtask) in the shared types reference below.
 The `deps` array on each task references other task IDs, expressing execution ordering constraints. Use this output to drive parallel or sequential execution downstream:
 
 ```ts
-const decompose = helper.decomposer({ name: "plan" });
+const decompose = macro.decomposer({ name: "plan" });
 
 const pipeline = sequencer({
   name: "task-pipeline",
@@ -229,7 +229,7 @@ const pipeline = sequencer({
 **Custom output schema with owner assignment:**
 
 ```ts
-const decompose = helper.decomposer({
+const decompose = macro.decomposer({
   name: "assigned-tasks",
   outputSchema: z.object({
     tasks: z.array(z.object({
@@ -250,7 +250,7 @@ Assembles a coherent artifact from structured parts. Use composer when you have 
 **How it differs from `synthesizer`:** Composer rebuilds from discrete parts (sections, fragments, chunks). Synthesizer reconciles overlap and conflict across independent inputs that may cover the same ground.
 
 ```ts
-const compose = helper.composer({
+const compose = macro.composer({
   name: "assemble-report",
   objectives: ["Preserve chronology", "Keep section headings"],
 });
@@ -278,7 +278,7 @@ const compose = helper.composer({
 **Usage in a sequencer:**
 
 ```ts
-const compose = helper.composer({ name: "build-doc" });
+const compose = macro.composer({ name: "build-doc" });
 
 const pipeline = sequencer({
   name: "composition-pipeline",
@@ -297,7 +297,7 @@ const pipeline = sequencer({
 Summarizes input at one of three granularity levels. Optionally accepts objectives to focus the summary on specific concerns.
 
 ```ts
-const summarize = helper.summarizer({
+const summarize = macro.summarizer({
   name: "exec-summary",
   granularity: "executive",
   objectives: ["Highlight risks", "Capture decisions"],
@@ -335,7 +335,7 @@ const summarize = helper.summarizer({
 **Output schema override:**
 
 ```ts
-const summarize = helper.summarizer({
+const summarize = macro.summarizer({
   name: "scored-summary",
   outputSchema: z.object({
     summary: z.string(),
@@ -348,10 +348,10 @@ const summarize = helper.summarizer({
 
 ### `combiner`
 
-Deterministically merges multiple artifacts using structural rules. This is the only macro that uses a **handler** block — no LLM call is involved. Merge behavior is fully predictable.
+Deterministically merges multiple artifacts using structural rules. Uses a **handler** block — no LLM call is involved. Merge behavior is fully predictable.
 
 ```ts
-const combine = helper.combiner({
+const combine = macro.combiner({
   name: "merge-results",
 });
 ```
@@ -404,7 +404,7 @@ const pipeline = sequencer({
   }),
 })
   .map((input) => [input.primary, input.secondary])
-  .then(helper.combiner({ name: "merge" }));
+  .then(macro.combiner({ name: "merge" }));
 ```
 
 ---
@@ -416,7 +416,7 @@ Reconciles multiple intermediate artifacts into one coherent, non-redundant outp
 **How it differs from `combiner`:** Combiner performs deterministic structural merging. Synthesizer uses an LLM to reconcile semantic overlap and conflict across independent inputs.
 
 ```ts
-const synthesize = helper.synthesizer({
+const synthesize = macro.synthesizer({
   name: "reconcile-sources",
   objectives: ["Prefer sources with direct evidence"],
 });
@@ -444,7 +444,7 @@ const synthesize = helper.synthesizer({
 **Multi-input pattern:**
 
 ```ts
-const synthesize = helper.synthesizer({ name: "unify" });
+const synthesize = macro.synthesizer({ name: "unify" });
 
 const pipeline = sequencer({
   name: "synthesis-chain",
@@ -463,7 +463,7 @@ const pipeline = sequencer({
 Evaluates an artifact against structured criteria and returns findings with severity levels. Use analyzer output to drive downstream routing decisions (e.g., proceed vs. review).
 
 ```ts
-const analyze = helper.analyzer({
+const analyze = macro.analyzer({
   name: "security-review",
   criteria: ["authentication", "authorization", "data-leak-prevention"],
 });
@@ -496,9 +496,9 @@ See [Finding](#finding) in the shared types reference below.
 **Wiring analyzer output into routing decisions:**
 
 ```ts
-import { handler, helper, router, sequencer } from "@flow-state-dev/core";
+import { handler, macro, router, sequencer } from "@flow-state-dev/core";
 
-const analyze = helper.analyzer({ name: "risk-check", criteria: ["risk"] });
+const analyze = macro.analyzer({ name: "risk-check", criteria: ["risk"] });
 const proceed = handler({ name: "proceed", execute: () => ({ path: "proceed" }) });
 const review = handler({ name: "review", execute: () => ({ path: "review" }) });
 
@@ -531,7 +531,7 @@ Classifies input into exactly one category from a bounded set. Each category is 
 The output schema enforces category validation: if the model returns a category not in the declared set, a Zod refinement error is thrown. This makes it safe to wire directly into a router without defensive checks.
 
 ```ts
-const classify = helper.intentClassifier({
+const classify = macro.intentClassifier({
   name: "support-triage",
   categories: {
     billing: "Questions about invoices, charges, or subscription payments.",
@@ -566,10 +566,10 @@ The default schema includes a `superRefine` validator that rejects any `category
 **Wiring into a router for intent-based dispatch:**
 
 ```ts
-import { handler, helper, router, sequencer } from "@flow-state-dev/core";
+import { handler, macro, router, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const classify = helper.intentClassifier({
+const classify = macro.intentClassifier({
   name: "classify-intent",
   categories: {
     billing: "Invoice, payment, or subscription issues.",
@@ -615,7 +615,7 @@ A sequencer-level convenience that combines `intentClassifier` + `router` into a
 This is the idiomatic pattern for classification-driven branching. Use `intentClassifier` directly only when you need to inspect or transform the classification result mid-flow.
 
 ```ts
-const triage = helper.intentRouter({
+const triage = macro.intentRouter({
   name: "support-triage",
   categories: {
     billing: {
@@ -758,25 +758,25 @@ A research pipeline that decomposes a broad question into subtasks, summarizes e
 
 ```ts
 import { z } from "zod";
-import { handler, helper, sequencer } from "@flow-state-dev/core";
+import { handler, macro, sequencer } from "@flow-state-dev/core";
 
 // Step 1: Break down the research question
-const decompose = helper.decomposer({ name: "plan-research" });
+const decompose = macro.decomposer({ name: "plan-research" });
 
 // Step 2: Summarize each subtask result
-const summarize = helper.summarizer({
+const summarize = macro.summarizer({
   name: "summarize-finding",
   granularity: "detailed",
 });
 
 // Step 3: Analyze the combined summaries
-const analyze = helper.analyzer({
+const analyze = macro.analyzer({
   name: "quality-gate",
   criteria: ["coverage", "accuracy", "confidence"],
 });
 
 // Step 4: Synthesize into a final answer
-const synthesize = helper.synthesizer({
+const synthesize = macro.synthesizer({
   name: "final-synthesis",
   objectives: ["Produce a coherent narrative", "Cite evidence for claims"],
 });
@@ -815,13 +815,13 @@ A memory pipeline that extracts durable memories from a conversation transcript 
 
 ```ts
 import { z } from "zod";
-import { helper, sequencer } from "@flow-state-dev/core";
+import { macro, sequencer } from "@flow-state-dev/core";
 
 // Step 1: Extract memory candidates
-const extract = helper.memoryExtractor({ name: "extract-memories" });
+const extract = macro.memoryExtractor({ name: "extract-memories" });
 
 // Step 2: Compress the context for storage
-const compress = helper.contextReducer({
+const compress = macro.contextReducer({
   name: "compress-context",
   mode: "compress",
 });
@@ -878,18 +878,18 @@ Represents the classification result produced by the intentClassifier.
 - All generator-based macros default to `"gpt-5-mini"` and accept a `model` override.
 - All macros export their default output schema as a named Zod object (e.g., `summarizerOutputSchema`) for reference or reuse.
 - The `outputSchema` parameter on every macro accepts a generic type, providing full type inference on the block's output.
-- Combiner is the only handler-based macro — it runs deterministic logic with no LLM call.
+- Combiner is handler-based — it runs deterministic logic with no LLM call.
 - Every macro returns a standard `BlockDefinition` and is immediately composable via sequencer methods (`.then()`, `.parallel()`, `.forEach()`, etc.), router routes, or flow definitions.
 - Non-string inputs are automatically serialized to JSON with 2-space indentation before being sent to the model.
 
 ## Imports
 
-All macros are accessible via the `helper` namespace:
+All macros are accessible via the `macro` namespace:
 
 ```ts
-import { helper } from "@flow-state-dev/core";
+import { macro } from "@flow-state-dev/core";
 
-const block = helper.summarizer({ name: "summary" });
+const block = macro.summarizer({ name: "summary" });
 ```
 
 Individual macros and schemas can also be imported directly:
