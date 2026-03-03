@@ -45,8 +45,6 @@ export type StateHandle<TState extends object = Record<string, unknown>> = {
   | "atomicState"
 >;
 
-/** @deprecated Use StateHandle. */
-export type TargetHandle<TState extends object = Record<string, unknown>> = StateHandle<TState>;
 
 export type BlockResult<TOutput> =
   | { status: "not_started" }
@@ -243,12 +241,10 @@ export type InferBlockResources<TSchemas, TDefs> =
 
 /**
  * Derive typed state handles from block-level target state schemas.
- * Each declared target name maps to `TargetHandle<z.infer<schema>> | undefined`.
+ * Each declared target name maps to `StateHandle<z.infer<schema>> | undefined`.
  */
 export type InferTargetStatesFromSchemas<TSchemas> =
   TSchemas extends Record<string, ZodTypeAny>
     ? { [K in keyof TSchemas]: StateHandle<z.infer<TSchemas[K]>> | undefined }
     : Record<string, never>;
 
-/** @deprecated Use InferTargetStatesFromSchemas. */
-export type InferTargetsFromSchemas<TSchemas> = InferTargetStatesFromSchemas<TSchemas>;

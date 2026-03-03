@@ -14,8 +14,7 @@ export type {
   RescueHandlerSpec,
   ResponseEmitterHandle,
   RetryPolicy,
-  StateHandle,
-  TargetHandle
+  StateHandle
 } from "./block";
 
 export type {
