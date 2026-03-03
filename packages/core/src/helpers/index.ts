@@ -18,10 +18,6 @@ export type {
   MemoryExtractorConfig
 } from "./memoryExtractor";
 
-export type {
-  MemoryExtractorConfig
-} from "./memoryExtractor";
-
 export {
   summarizer,
   summarizerOutputSchema
