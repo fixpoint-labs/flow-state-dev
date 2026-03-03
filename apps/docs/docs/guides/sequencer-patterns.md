@@ -133,6 +133,125 @@ pipeline
   .waitForWork({ failOnError: false });  // Wait, don't fail on work errors
 ```
 
+## Inline Blocks
+
+The `.then()`, `.thenIf()`, and `.tap()` methods each accept a block factory (`handler`, `generator`, or `router`) paired with an inline config, instead of a pre-built block. The sequencer **automatically injects** the previous step's `outputSchema` as the `inputSchema` of the inline block — you never wire schemas between steps manually.
+
+### Auto-injected input schema
+
+`inputSchema` is always sourced from the prior step's `outputSchema` (or `z.any()` if no prior schema exists). It cannot be overridden in the inline config:
+
+```ts
+const pipeline = sequencer({ name: "process", inputSchema: z.string() })
+  .then(parseNumber)   // outputSchema: z.number()
+  .then(handler, {
+    // inputSchema is z.number() — auto-injected from parseNumber's outputSchema
+    outputSchema: z.string(),
+    execute: (input) => `result: ${input}`,
+  });
+```
+
+### `.then()` inline form
+
+`outputSchema` is required — it drives TypeScript inference for all subsequent steps:
+
+```ts
+const pipeline = sequencer({ name: "pipeline", inputSchema: z.string() })
+  .then(parseNumber)
+  .then(handler, {
+    outputSchema: z.object({ label: z.string(), value: z.number() }),
+    execute: (input) => ({ label: `v:${input}`, value: input }),
+  })
+  .then(handler, {
+    // inputSchema is { label: string, value: number } — auto-injected from above
+    outputSchema: z.string(),
+    execute: (input) => input.label,
+  });
+```
+
+### `.thenIf()` inline form
+
+Wraps the inline block in a condition. The output type becomes a **union** (`TOutput | InlineOutput`) since the condition may not match:
+
+```ts
+const pipeline = sequencer({ name: "pipeline", inputSchema: z.number() })
+  .thenIf(
+    (input) => input > 0,
+    handler,
+    {
+      outputSchema: z.string(),
+      execute: (input) => `positive: ${input}`,
+    }
+  );
+// Output type: number | string
+```
+
+### `.tap()` inline form
+
+`outputSchema` is optional — the output is discarded and the chain type is unchanged:
+
+```ts
+const pipeline = sequencer({ name: "pipeline", inputSchema: z.number() })
+  .then(processNumber)
+  .tap(handler, {
+    execute: (input) => {
+      console.log("checkpoint:", input);
+    },
+  })
+  .then(nextStep);  // receives processNumber's output unchanged
+```
+
+### Works with generator and router
+
+The inline form works with all three block factories. Here's an example with `generator` — note that `outputSchema` must still be provided explicitly even though generators default to `z.string()` at runtime, because TypeScript uses it for downstream inference:
+
+```ts
+const pipeline = sequencer({
+  name: "chat-pipeline",
+  inputSchema: z.object({ message: z.string(), context: z.string() }),
+})
+  .then(generator, {
+    model: "gpt-5-mini",
+    prompt: "Summarize the following in one sentence.",
+    // inputSchema is { message: string, context: string } — auto-injected
+    outputSchema: z.object({ summary: z.string() }),
+    user: (input) => `${input.context}\n\n${input.message}`,
+  })
+  .then(handler, {
+    outputSchema: z.string(),
+    execute: (input) => input.summary,
+  });
+```
+
+### Auto-generated names
+
+`name` is optional. If omitted, the sequencer auto-generates names (`inline-1`, `inline-2`, etc.). Provide a name when you need to reference the step from `loopBack` or for clearer debug output:
+
+```ts
+const pipeline = sequencer({ name: "pipeline", inputSchema: z.string() })
+  .then(handler, { outputSchema: z.number(), execute: (input) => input.length })         // name: "inline-1"
+  .then(handler, { outputSchema: z.string(), execute: (input) => String(input) })        // name: "inline-2"
+  .then(handler, { name: "format", outputSchema: z.string(), execute: (i) => `[${i}]` }) // name: "format"
+```
+
+### Mixing inline and pre-defined blocks
+
+Inline blocks compose freely with pre-defined blocks in the same chain:
+
+```ts
+const pipeline = sequencer({ name: "pipeline", inputSchema: z.string() })
+  .then(parseNumber)      // pre-defined
+  .then(handler, {        // inline
+    outputSchema: z.number(),
+    execute: (input) => input * 2,
+  })
+  .then(toLabel)          // pre-defined
+  .then(handler, {        // inline
+    outputSchema: z.string(),
+    execute: (input) => input.label,
+  });
+```
+
 ## Side Effects
 
 Execute a block without changing the main payload:
