@@ -75,6 +75,28 @@ Conflict rule: `preperation/architecture/*` wins.
 
 → [Architecture Overview](../architecture/overview.md)
 
+## Macro Blocks (Helpers)
+
+Eight pre-built helper factories wrapping generator/handler blocks:
+
+| Macro | Kind | Purpose |
+|-------|------|---------|
+| `contextReducer` | generator | Context reduction (distill, denoise, compress) |
+| `memoryExtractor` | generator | Extract durable memory candidates |
+| `decomposer` | generator | Break requests into subtasks with dependency graph |
+| `composer` | generator | Assemble coherent output from parts |
+| `summarizer` | generator | Summarize at brief/detailed/executive granularity |
+| `combiner` | handler | Deterministic artifact merge (no LLM) |
+| `synthesizer` | generator | Reconcile overlapping/conflicting inputs |
+| `analyzer` | generator | Evaluate artifacts against criteria |
+
+- Access via `helper.<name>(config)` — returns a standard `BlockDefinition`
+- All generators default to `"gpt-5-mini"` model
+- All macros accept optional `outputSchema` override
+- Combiner is the only handler (deterministic, no model)
+
+> [Macro Blocks](../architecture/macros.md)
+
 ## Resources and Projections
 
 - Concrete resources are persisted, attached to scopes

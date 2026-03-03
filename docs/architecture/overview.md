@@ -136,6 +136,21 @@ See [Streaming](./streaming.md).
 
 See [Resources and Projections](./resources-and-projections.md).
 
+### Macro blocks — pre-built helpers
+
+Macro blocks are factory functions that wrap `generator` or `handler` blocks into specialized, high-level capabilities: context reduction, memory extraction, task decomposition, summarization, analysis, and more. Each macro returns a standard `BlockDefinition` — composable in sequencers, routers, and flows like any other block.
+
+```ts
+const summarize = helper.summarizer({ name: "brief", granularity: "brief" });
+const analyze = helper.analyzer({ name: "check", criteria: ["accuracy"] });
+
+const pipeline = sequencer({ name: "review" })
+  .then(summarize)
+  .then(analyze);
+```
+
+Eight macros ship in Phase 1, grouped into four categories: Context & Memory, Planning & Decomposition, Synthesis & Output, and Evaluation. See [Macro Blocks](./macros.md).
+
 ## Data flow
 
 A typical request flows through the system:
