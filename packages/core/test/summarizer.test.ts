@@ -77,6 +77,31 @@ describe("helper.summarizer", () => {
     expect(JSON.stringify(seenMessages)).toContain("recommendations");
   });
 
+
+  it("adds objectives guidance when provided", async () => {
+    const seenMessages: unknown[] = [];
+    const block = helper.summarizer({
+      name: "objective-focused",
+      objectives: ["Highlight risks", "Capture decisions"]
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          seenMessages.push(...options.messages);
+          return { structuredOutput: { summary: "focused" } };
+        }
+      })
+    });
+
+    await expect(block.run("source text", ctx)).resolves.toEqual({ summary: "focused" });
+    const serialized = JSON.stringify(seenMessages);
+    expect(serialized).toContain("Focus the summary on these objectives");
+    expect(serialized).toContain("Highlight risks");
+    expect(serialized).toContain("Capture decisions");
+  });
+
   it("uses default output schema and supports override", async () => {
     const defaultBlock = helper.summarizer({ name: "default-schema" });
     const customBlock = helper.summarizer({

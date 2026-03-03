@@ -21,6 +21,7 @@ export interface SummarizerConfig<
   name: string;
   model?: GeneratorConfig["model"];
   granularity?: SummarizerGranularity;
+  objectives?: string | string[];
   outputSchema?: TOutputSchema;
 }
 
@@ -41,6 +42,12 @@ export function summarizer<
   const granularity = config.granularity ?? "brief";
   const outputSchema = config.outputSchema ?? summarizerOutputSchema;
   const instruction = GRANULARITY_INSTRUCTIONS[granularity];
+  const objectives =
+    config.objectives === undefined
+      ? undefined
+      : Array.isArray(config.objectives)
+        ? config.objectives
+        : [config.objectives];
 
   return generator({
     name: config.name,
@@ -49,8 +56,15 @@ export function summarizer<
     prompt: [
       "You are a summarization assistant.",
       instruction,
+      objectives === undefined
+        ? undefined
+        : `Focus the summary on these objectives:\n${objectives
+            .map((objective, index) => `${index + 1}. ${objective}`)
+            .join("\n")}`,
       "Return output that exactly matches the required schema."
-    ].join("\n"),
+    ]
+      .filter((line): line is string => line !== undefined)
+      .join("\n"),
     user: (input) => toUserContent(input)
   });
 }
