@@ -7,3 +7,13 @@ export type {
   SummarizerConfig,
   SummarizerGranularity
 } from "./summarizer";
+
+export {
+  analyzer,
+  analyzerFindingSchema,
+  analyzerOutputSchema
+} from "./analyzer";
+
+export type {
+  AnalyzerConfig
+} from "./analyzer";
