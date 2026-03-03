@@ -41,6 +41,16 @@ export type {
 } from "./summarizer";
 
 export {
+  analyzer,
+  analyzerFindingSchema,
+  analyzerOutputSchema
+} from "./analyzer";
+
+export type {
+  AnalyzerConfig
+} from "./analyzer";
+
+export type {
   synthesizer,
   synthesizerOutputSchema
 } from "./synthesizer";
