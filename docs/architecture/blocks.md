@@ -355,3 +355,5 @@ Output dependencies use block-definition references instead of name-based state 
 const result = ctx.getBlockResult(validateBlock);
 const output = ctx.getBlockOutput(validateBlock);
 ```
+
+These APIs resolve only against already-dispatched siblings at the current execution level. They do not walk the ancestor chain.

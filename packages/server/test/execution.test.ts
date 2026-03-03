@@ -759,6 +759,46 @@ describe("execution runtime", () => {
     expect(result.output).toEqual({ outputMissing: true, status: "running" });
   });
 
+  it("does not resolve ancestor block outputs/results", async () => {
+    const { ctx } = await createRuntimeContext("req_block_output_ancestor_unavailable");
+
+    const validate = handler({
+      name: "validate",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value) => value + 1
+    });
+
+    const inspect = handler({
+      name: "inspect-ancestor-output",
+      inputSchema: z.number(),
+      outputSchema: z.object({ outputMissing: z.boolean(), status: z.string() }),
+      execute: (value, stepCtx) => {
+        const output = stepCtx.getBlockOutput(validate);
+        const result = stepCtx.getBlockResult(validate);
+
+        return {
+          outputMissing: output === undefined && value > 0,
+          status: result.status
+        };
+      }
+    });
+
+    const inner = sequencer({ name: "inner", inputSchema: z.number() }).then(inspect);
+    const flow = sequencer({ name: "outer", inputSchema: z.number() })
+      .then(validate)
+      .then(inner);
+
+    const result = await executeBlock({
+      block: flow,
+      input: 1,
+      ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({ outputMissing: true, status: "not_started" });
+  });
+
   it("returns failed status for failed sibling results", async () => {
     const { ctx } = await createRuntimeContext("req_block_output_failed");
 

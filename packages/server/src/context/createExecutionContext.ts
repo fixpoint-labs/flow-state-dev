@@ -1543,12 +1543,6 @@ export async function createExecutionContext<
           }
         }
 
-        for (let cursor = parentChain; cursor !== undefined; cursor = cursor.previous) {
-          if (cursor.parent.name === name && cursor.result.status === "completed") {
-            return cursor.result.output as never;
-          }
-        }
-
         return undefined;
       },
       getBlockResult: (block): BlockResult<never> => {
@@ -1578,26 +1572,6 @@ export async function createExecutionContext<
 
             return { status: sibling.result.status } as BlockResult<never>;
           }
-        }
-
-        let cursor = parentChain;
-        while (cursor !== undefined) {
-          if (cursor.parent.name === name) {
-            if (cursor.result.status === "completed") {
-              return { status: "completed", output: cursor.result.output } as BlockResult<never>;
-            }
-
-            if (cursor.result.status === "failed") {
-              return {
-                status: "failed",
-                error: cursor.result.error ?? new Error(`Block "${name}" failed.`)
-              } as BlockResult<never>;
-            }
-
-            return { status: cursor.result.status } as BlockResult<never>;
-          }
-
-          cursor = cursor.previous;
         }
 
         return { status: "not_started" } as BlockResult<never>;
