@@ -238,7 +238,6 @@ function Hero() {
     <header className={styles.heroBanner}>
       <div className={styles.heroGrid} />
       <div className={`container ${styles.heroContent}`}>
-        <div className={styles.heroAccent} />
         <Heading as="h1" className={styles.heroTitle}>
           Stop wiring.{"\n"}Start building.
         </Heading>

@@ -1,27 +1,27 @@
 /* ══════════════════════════════════════════════════════════════
-   flow-state.dev — "Signal Flow" Design System
-   A high-contrast dark aesthetic inspired by signal processing,
-   data flow visualization, and precision engineering.
+   flow-state.dev — Editorial Monochrome Theme
+   High-contrast dark aesthetic with typography-driven hierarchy.
+   Single accent color (#38bdf8) for brand identity and links.
    ══════════════════════════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
 
 /* ── Light mode tokens ── */
 :root {
-  --ifm-color-primary: #5b4cdb;
-  --ifm-color-primary-dark: #4939d0;
-  --ifm-color-primary-darker: #3f2fc9;
-  --ifm-color-primary-darkest: #3426a5;
-  --ifm-color-primary-light: #6f62e1;
-  --ifm-color-primary-lighter: #7b6fe4;
-  --ifm-color-primary-lightest: #9b92eb;
+  --ifm-color-primary: #0ea5e9;
+  --ifm-color-primary-dark: #0284c7;
+  --ifm-color-primary-darker: #0369a1;
+  --ifm-color-primary-darkest: #075985;
+  --ifm-color-primary-light: #38bdf8;
+  --ifm-color-primary-lighter: #7dd3fc;
+  --ifm-color-primary-lightest: #bae6fd;
   --ifm-code-font-size: 95%;
   --ifm-font-family-base: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
   --ifm-font-family-monospace: 'JetBrains Mono', 'Fira Code', monospace;
   --ifm-heading-font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
   --ifm-heading-font-weight: 700;
   --ifm-font-weight-bold: 600;
-  --docusaurus-highlighted-code-line-bg: rgba(91, 76, 219, 0.1);
+  --docusaurus-highlighted-code-line-bg: rgba(56, 189, 248, 0.08);
   --ifm-line-height-base: 1.65;
 
   /* custom tokens */
@@ -29,30 +29,28 @@
   --fsd-accent-glow: rgba(56, 189, 248, 0.15);
   --fsd-surface-border: rgba(0, 0, 0, 0.08);
   --fsd-text-muted: rgba(0, 0, 0, 0.55);
-  --fsd-noise-opacity: 0.03;
 }
 
 /* ── Dark mode tokens ── */
 [data-theme="dark"] {
-  --ifm-color-primary: #7c6cf0;
-  --ifm-color-primary-dark: #6558eb;
-  --ifm-color-primary-darker: #5a4de9;
-  --ifm-color-primary-darkest: #3d2de3;
-  --ifm-color-primary-light: #937ff5;
-  --ifm-color-primary-lighter: #9e8df7;
-  --ifm-color-primary-lightest: #c4bbfb;
+  --ifm-color-primary: #38bdf8;
+  --ifm-color-primary-dark: #0ea5e9;
+  --ifm-color-primary-darker: #0284c7;
+  --ifm-color-primary-darkest: #0369a1;
+  --ifm-color-primary-light: #7dd3fc;
+  --ifm-color-primary-lighter: #bae6fd;
+  --ifm-color-primary-lightest: #e0f2fe;
   --ifm-background-color: #08080c;
   --ifm-background-surface-color: #0e0e14;
-  --ifm-navbar-background-color: rgba(8, 8, 12, 0.75);
+  --ifm-navbar-background-color: rgba(8, 8, 12, 0.85);
   --ifm-footer-background-color: #050508;
-  --docusaurus-highlighted-code-line-bg: rgba(124, 108, 240, 0.15);
+  --docusaurus-highlighted-code-line-bg: rgba(56, 189, 248, 0.1);
 
   /* custom tokens */
   --fsd-accent: #38bdf8;
   --fsd-accent-glow: rgba(56, 189, 248, 0.12);
   --fsd-surface-border: rgba(255, 255, 255, 0.06);
   --fsd-text-muted: rgba(255, 255, 255, 0.45);
-  --fsd-noise-opacity: 0.025;
 }
 
 /* ── Global base styles ── */
@@ -70,9 +68,9 @@ body {
 /* ── Navbar ── */
 
 [data-theme="dark"] .navbar {
-  backdrop-filter: blur(16px) saturate(1.4);
-  -webkit-backdrop-filter: blur(16px) saturate(1.4);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .navbar__title {
@@ -91,7 +89,7 @@ body {
 /* ── Footer ── */
 
 [data-theme="dark"] .footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .footer__title {
@@ -168,7 +166,7 @@ body {
 /* ── Selection highlight ── */
 
 ::selection {
-  background: rgba(124, 108, 240, 0.3);
+  background: rgba(56, 189, 248, 0.2);
   color: inherit;
 }
 
@@ -185,18 +183,7 @@ body {
   }
 }
 
-@keyframes shimmer {
-  0% { background-position: -200% center; }
-  100% { background-position: 200% center; }
-}
-
 @keyframes pulseGlow {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 0.7; }
-}
-
-@keyframes gradientShift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
 }
