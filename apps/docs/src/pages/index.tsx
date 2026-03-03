@@ -239,7 +239,7 @@ function Hero() {
       <div className={styles.heroGrid} />
       <div className={`container ${styles.heroContent}`}>
         <Heading as="h1" className={styles.heroTitle}>
-          Stop wiring.{"\n"}Start building.
+          Full-stack Agentic Superpowers
         </Heading>
         <p className={styles.heroSubtitle}>
           <span className={styles.brandName}>flow-state.dev</span> gives you
