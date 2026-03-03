@@ -39,7 +39,7 @@ async function createRuntimeContext(requestId: string) {
     kind: "runtime-flow",
     actions: {
       run: {
-        inputSchema: z.number(),
+        inputSchema: z.object({ valid: z.boolean(), count: z.number() }),
         block
       }
     }
@@ -633,7 +633,7 @@ describe("execution runtime", () => {
         missing: z.boolean(),
         legacy: z.string()
       }),
-      targets: {
+      targetStateSchemas: {
         outer: z.object({}),
         missing: z.object({})
       },
@@ -670,6 +670,175 @@ describe("execution runtime", () => {
       missing: true,
       legacy: "outer"
     });
+  });
+
+  it("exposes completed sibling outputs via getBlockOutput/getBlockResult", async () => {
+    const { ctx } = await createRuntimeContext("req_block_output_completed");
+
+    const validate = handler({
+      name: "validate",
+      inputSchema: z.number(),
+      outputSchema: z.object({ valid: z.boolean(), count: z.number() }),
+      execute: (value) => ({ valid: value > 0, count: value })
+    });
+
+    const inspect = handler({
+      name: "inspect-output",
+      inputSchema: z.object({ valid: z.boolean(), count: z.number() }),
+      outputSchema: z.object({
+        outputValid: z.boolean(),
+        status: z.string()
+      }),
+      execute: (_value, stepCtx) => {
+        const output = stepCtx.getBlockOutput(validate);
+        const result = stepCtx.getBlockResult(validate);
+
+        return {
+          outputValid: output?.valid ?? false,
+          status: result.status
+        };
+      }
+    });
+
+    const flow = sequencer({ name: "flow", inputSchema: z.number() })
+      .then(validate)
+      .then(inspect);
+
+    const result = await executeBlock({
+      block: flow,
+      input: 3,
+      ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({ outputValid: true, status: "completed" });
+  });
+
+  it("returns running status and undefined output for in-progress sibling work", async () => {
+    const { ctx } = await createRuntimeContext("req_block_output_running");
+
+    let releaseWorker: (() => void) | undefined;
+    const workerReady = new Promise<void>((resolve) => {
+      releaseWorker = resolve;
+    });
+
+    const worker = handler({
+      name: "async-worker",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: async (value) => {
+        await workerReady;
+        return value + 1;
+      }
+    });
+
+    const inspect = handler({
+      name: "inspect-running",
+      inputSchema: z.number(),
+      outputSchema: z.object({ outputMissing: z.boolean(), status: z.string() }),
+      execute: (value, stepCtx) => {
+        const output = stepCtx.getBlockOutput(worker);
+        const result = stepCtx.getBlockResult(worker);
+        releaseWorker?.();
+        return { outputMissing: output === undefined && value > 0, status: result.status };
+      }
+    });
+
+    const flow = sequencer({ name: "flow-running", inputSchema: z.number() })
+      .work(worker)
+      .then(inspect)
+      .waitForWork();
+
+    const result = await executeBlock({
+      block: flow,
+      input: 1,
+      ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({ outputMissing: true, status: "running" });
+  });
+
+  it("does not resolve ancestor block outputs/results", async () => {
+    const { ctx } = await createRuntimeContext("req_block_output_ancestor_unavailable");
+
+    const validate = handler({
+      name: "validate",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value) => value + 1
+    });
+
+    const inspect = handler({
+      name: "inspect-ancestor-output",
+      inputSchema: z.number(),
+      outputSchema: z.object({ outputMissing: z.boolean(), status: z.string() }),
+      execute: (value, stepCtx) => {
+        const output = stepCtx.getBlockOutput(validate);
+        const result = stepCtx.getBlockResult(validate);
+
+        return {
+          outputMissing: output === undefined && value > 0,
+          status: result.status
+        };
+      }
+    });
+
+    const inner = sequencer({ name: "inner", inputSchema: z.number() }).then(inspect);
+    const flow = sequencer({ name: "outer", inputSchema: z.number() })
+      .then(validate)
+      .then(inner);
+
+    const result = await executeBlock({
+      block: flow,
+      input: 1,
+      ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({ outputMissing: true, status: "not_started" });
+  });
+
+  it("returns failed status for failed sibling results", async () => {
+    const { ctx } = await createRuntimeContext("req_block_output_failed");
+
+    const worker = handler({
+      name: "failing-worker",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: () => {
+        throw new Error("boom");
+      }
+    });
+
+    const inspect = handler({
+      name: "inspect-failed",
+      inputSchema: z.number(),
+      outputSchema: z.object({ outputMissing: z.boolean(), status: z.string(), hasError: z.boolean() }),
+      execute: (_value, stepCtx) => {
+        const output = stepCtx.getBlockOutput(worker);
+        const result = stepCtx.getBlockResult(worker);
+        return {
+          outputMissing: output === undefined,
+          status: result.status,
+          hasError: result.status === "failed"
+        };
+      }
+    });
+
+    const flow = sequencer({ name: "flow-failed", inputSchema: z.number() })
+      .work(worker)
+      .waitForWork({ failOnError: false })
+      .then(inspect);
+
+    const result = await executeBlock({
+      block: flow,
+      input: 1,
+      ctx
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.output).toEqual({ outputMissing: true, status: "failed", hasError: true });
   });
 
   it("resolves getTarget from sibling registry before ancestors", async () => {

@@ -30,7 +30,7 @@ import type {
   StateChangeItem,
   StatusItem
 } from "@flow-state-dev/core/items";
-import type { BlockContext, ComponentHandle, ExecutionParent, MessageHandle, TargetHandle } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockResult, ComponentHandle, ExecutionParent, MessageHandle, StateHandle } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import type {
   ProjectRecord,
@@ -769,7 +769,7 @@ function createTargetStateOps<TState extends JsonObject>(options: {
   provenance: () => ItemProvenance;
   blockInstanceId: string;
   transientStateChanges: boolean;
-}): Pick<TargetHandle<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> {
+}): Pick<StateHandle<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> {
   const baseOps = createScopeStateOps<TState>(options.container, {
     onPersist: options.persist
   });
@@ -1312,11 +1312,13 @@ export async function createExecutionContext<
   type ExecutionParentNode = {
     parent: ExecutionParent;
     parentStateContainer?: ReturnType<typeof createStateContainer<JsonObject>>;
+    result: { status: "not_started" | "running" | "completed" | "failed"; output?: unknown; error?: Error };
     previous?: ExecutionParentNode;
   };
   type SiblingRegistryEntry = {
     parent: ExecutionParent;
     parentStateContainer?: ReturnType<typeof createStateContainer<JsonObject>>;
+    result: { status: "not_started" | "running" | "completed" | "failed"; output?: unknown; error?: Error };
   };
   const response = options.response ?? {
     emit: async () => undefined
@@ -1444,17 +1446,17 @@ export async function createExecutionContext<
           return { enumerable: true, configurable: true };
         }
       }) as BlockContext["targets"],
-      getTarget: <TState extends object = Record<string, unknown>>(name: string): TargetHandle<TState> | undefined => {
+      getTarget: <TState extends object = Record<string, unknown>>(name: string): StateHandle<TState> | undefined => {
         const toTargetHandle = (
           matched: Pick<SiblingRegistryEntry, "parent" | "parentStateContainer">
-        ): TargetHandle<TState> => {
+        ): StateHandle<TState> => {
           const container = matched.parentStateContainer;
           const noState = async (): Promise<never> => {
             throw new Error(
               `Target "${matched.parent.name}" does not expose instance state operations.`
             );
           };
-          const ops: Pick<TargetHandle<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> =
+          const ops: Pick<StateHandle<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> =
             container === undefined
               ? {
                   patchState: noState,
@@ -1478,7 +1480,7 @@ export async function createExecutionContext<
                   }),
                   blockInstanceId: matched.parent.instanceId,
                   transientStateChanges
-                }) as unknown as Pick<TargetHandle<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">);
+                }) as unknown as Pick<StateHandle<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">);
 
           return defineStateProperty(
             {
@@ -1487,7 +1489,7 @@ export async function createExecutionContext<
               ...ops
             },
             () => (container?.read() ?? {}) as TState
-          ) as unknown as TargetHandle<TState>;
+          ) as unknown as StateHandle<TState>;
         };
 
         if (siblingRegistry !== undefined && siblingRegistry.length > 0) {
@@ -1523,6 +1525,56 @@ export async function createExecutionContext<
         }
 
         return toTargetHandle(matches[0]!);
+      },
+
+      getBlockOutput: (block) => {
+        const name = block.name;
+
+        if (siblingRegistry !== undefined && siblingRegistry.length > 0) {
+          const searchFrom = Math.min(
+            siblingSearchLimit ?? siblingRegistry.length - 1,
+            siblingRegistry.length - 1
+          );
+          for (let index = searchFrom; index >= 0; index -= 1) {
+            const sibling = siblingRegistry[index];
+            if (sibling?.parent.name === name && sibling.result.status === "completed") {
+              return sibling.result.output as never;
+            }
+          }
+        }
+
+        return undefined;
+      },
+      getBlockResult: (block): BlockResult<never> => {
+        const name = block.name;
+
+        if (siblingRegistry !== undefined && siblingRegistry.length > 0) {
+          const searchFrom = Math.min(
+            siblingSearchLimit ?? siblingRegistry.length - 1,
+            siblingRegistry.length - 1
+          );
+          for (let index = searchFrom; index >= 0; index -= 1) {
+            const sibling = siblingRegistry[index];
+            if (sibling?.parent.name !== name) {
+              continue;
+            }
+
+            if (sibling.result.status === "completed") {
+              return { status: "completed", output: sibling.result.output } as BlockResult<never>;
+            }
+
+            if (sibling.result.status === "failed") {
+              return {
+                status: "failed",
+                error: sibling.result.error ?? new Error(`Block "${name}" failed.`)
+              } as BlockResult<never>;
+            }
+
+            return { status: sibling.result.status } as BlockResult<never>;
+          }
+        }
+
+        return { status: "not_started" } as BlockResult<never>;
       },
       emitMessage: createEmitMessage(emCtx),
       emitComponent: createEmitComponent(emCtx),
@@ -1577,13 +1629,15 @@ export async function createExecutionContext<
 
         const siblingEntry: SiblingRegistryEntry = {
           parent: resolvedParent,
-          parentStateContainer
+          parentStateContainer,
+          result: { status: "running" }
         };
         childSiblingRegistry.push(siblingEntry);
 
         const childChain: ExecutionParentNode = {
           parent: resolvedParent,
           parentStateContainer,
+          result: siblingEntry.result,
           previous: parentChain
         };
         const childContext = createContext(
@@ -1591,7 +1645,19 @@ export async function createExecutionContext<
           childSiblingRegistry,
           childSiblingRegistry.length - 1
         );
-        return execute(childContext);
+
+        try {
+          const output = await execute(childContext);
+          siblingEntry.result.status = "completed";
+          siblingEntry.result.output = output;
+          siblingEntry.result.error = undefined;
+          return output;
+        } catch (error) {
+          siblingEntry.result.status = "failed";
+          siblingEntry.result.error = error instanceof Error ? error : new Error(String(error));
+          siblingEntry.result.output = undefined;
+          throw error;
+        }
       }
     };
 

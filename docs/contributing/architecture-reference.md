@@ -36,7 +36,10 @@ Conflict rule: `preperation/architecture/*` wins.
 - Hierarchy: `request → session → user → project` → [State and Scopes](../architecture/state-and-scopes.md)
 - State ops (atomic): `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`
 - CAS + bounded retries for concurrency safety
-- `getTarget(name)`: resolves nearest-first across dispatched siblings at the current execution level, then falls back to the ancestor parent chain; may return `undefined` or throw `AmbiguousBlockNameError` when multiple ancestors share the same name
+- `getTarget(name)`: state-only escape hatch; resolves nearest-first across dispatched siblings at the current execution level, then falls back to the ancestor parent chain; may return `undefined` or throw `AmbiguousBlockNameError` when multiple ancestors share the same name
+- `targetStateSchemas`: typed declaration surface for `ctx.targets.<name>` state handles
+- `getBlockOutput(blockDef)`: returns completed output from already-dispatched sibling blocks at the current execution level, otherwise `undefined`
+- `getBlockResult(blockDef)`: returns `{status: not_started|running|completed|failed}` for already-dispatched sibling blocks at the current execution level (not ancestor chain), with output/error payload on terminal states
 
 ## Streaming
 

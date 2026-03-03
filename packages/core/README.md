@@ -148,7 +148,7 @@ Output item unions, content types, and stream event helpers. Item types: `messag
 
 **Automatic resource collection.** Blocks declare their resource dependencies via `sessionResources`/`userResources`/`projectResources` using `defineResource()` values. Sequencers collect these from child blocks. `defineFlow` merges them into the flow's scope configs automatically — blocks bring their own resource requirements, just like partial state schemas. Flow-level declarations take priority.
 
-**Typed target declarations.** Handler, generator, and router blocks can declare `targets` with Zod schemas. Declared target names become typed on `ctx.targets.<name>` as `TargetHandle<...> | undefined`, while `ctx.getTarget(name)` remains available for dynamic lookups.
+**Typed target state declarations.** Handler, generator, and router blocks can declare `targetStateSchemas` with Zod schemas. Declared names type `ctx.targets.<name>` as `StateHandle<...> | undefined` for state coordination. Use `ctx.getBlockOutput(blockDef)` / `ctx.getBlockResult(blockDef)` for explicit output dependencies.
 
 **Projections as data policy.** Projections are the *only* way to expose data to clients. Internal state, resources, and intermediate values stay server-side unless you deliberately project them. Security by architecture, not by convention.
 

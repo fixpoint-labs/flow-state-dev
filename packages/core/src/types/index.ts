@@ -5,6 +5,7 @@ export type {
   BlockInput,
   BlockKind,
   BlockOutput,
+  BlockResult,
   ChunkValidation,
   ComponentHandle,
   ConnectorFn,
@@ -13,7 +14,7 @@ export type {
   RescueHandlerSpec,
   ResponseEmitterHandle,
   RetryPolicy,
-  TargetHandle
+  StateHandle
 } from "./block";
 
 export type {

@@ -1,4 +1,4 @@
-import type { TargetHandle } from "@flow-state-dev/core/types";
+import type { StateHandle } from "@flow-state-dev/core/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { JsonObject, JsonValue } from "@flow-state-dev/core/types";
 import { z } from "zod";
@@ -290,7 +290,7 @@ function wrapScopeStateOps(
 function createTargetHandle(
   targetState: MutableTargetState,
   stateChanges: StateChange[]
-): TargetHandle<Record<string, unknown>> {
+): StateHandle<Record<string, unknown>> {
   const mutate = async (
     mutator: (current: Record<string, unknown>) => Record<string, unknown>
   ): Promise<void> => {
@@ -519,10 +519,10 @@ export async function createTestContext<TInput = unknown>(
   ) => {
     const targetState = targetStateByName.get(name);
     if (targetState !== undefined) {
-      return createTargetHandle(targetState, stateChanges) as unknown as TargetHandle<TState>;
+      return createTargetHandle(targetState, stateChanges) as unknown as StateHandle<TState>;
     }
 
-    return originalGetTarget(name) as TargetHandle<TState> | undefined;
+    return originalGetTarget(name) as StateHandle<TState> | undefined;
   };
 
   const targetsProxy = new Proxy({}, {

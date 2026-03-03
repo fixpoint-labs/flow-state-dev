@@ -61,7 +61,7 @@ export interface RouterConfig<
   userResources?: TUserResourceDefs;
   projectResources?: TProjectResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
-  targets?: TTargetSchemas;
+  targetStateSchemas?: TTargetSchemas;
   routes: BlockDefinition<TInputSchema, TOutputSchema>[];
   execute: (
     input: TInput,
