@@ -50,6 +50,10 @@ const config: Config = {
   themeConfig: {
     navbar: {
       title: "flow-state.dev",
+      logo: {
+        alt: "flow-state.dev logo",
+        src: "img/logo.png",
+      },
       items: [
         {
           type: "docSidebar",
