@@ -266,3 +266,68 @@ Raw state never reaches the client. The state snapshot endpoint returns projecti
 This is a deliberate architectural choice. Internal state — intermediate processing data, raw resource contents, block-specific fields — stays on the server. You decide exactly what the client sees by writing `compute` functions. Security by architecture, not by convention.
 
 During streaming, `state_change` and `resource_change` events signal that projections may be stale — the client refetches the authoritative snapshot on `request.completed`.
+
+## Target state
+
+Targets give a block typed access to the state of **named ancestor blocks** in the execution tree. A block running inside a sequencer can reach up and read or write the sequencer's state — without knowing exactly where in the flow it lives.
+
+### Declaring targets
+
+Add `targetStateSchemas` to any `handler`, `generator`, or `router` config:
+
+```ts
+const progressReporter = handler({
+  name: "progress-reporter",
+  inputSchema: z.object({ step: z.number() }),
+  outputSchema: z.number(),
+  targetStateSchemas: {
+    research: z.object({ progress: z.number() }),
+  },
+  execute: async (input, ctx) => {
+    // ctx.targets.research is StateHandle<{ progress: number }> | undefined
+    await ctx.targets.research?.patchState({ progress: input.step });
+    return input.step;
+  },
+});
+```
+
+Each entry in `targetStateSchemas` declares:
+- The **name** of the ancestor block (as registered by its `name` config field)
+- The **partial state schema** this block expects to read or write on that ancestor
+
+### Using targets
+
+Targets are accessed via `ctx.targets.<name>`, which returns a fully-typed `StateHandle | undefined`:
+
+```ts
+// Read state from a named ancestor
+const progress = ctx.targets.research?.state.progress ?? 0;
+
+// Write state to a named ancestor
+await ctx.targets.research?.patchState({ progress: 75 });
+await ctx.targets.research?.incState({ progress: 1 });
+```
+
+All target handles are `| undefined` — if the block runs outside the expected topology (e.g. in a test or a different flow), the ancestor may not exist. Guard all target access with `?.`.
+
+### Targets vs `ctx.sequencer`
+
+| | `ctx.sequencer` | `ctx.targets.name` |
+|---|---|---|
+| **What it points to** | Nearest enclosing sequencer | Specific named ancestor |
+| **Typing** | Inferred from sequencer's `sessionStateSchema` | Inferred from `targetStateSchemas` entry |
+| **Use case** | Access the direct parent pipeline | Cross-sequencer coordination |
+
+Use `ctx.targets` when a block needs to communicate with a *specific* ancestor — for example, a leaf handler updating progress on an outer research sequencer that wraps a whole pipeline.
+
+### Dynamic / untyped access
+
+When you don't know the target name at compile time, use `ctx.getTarget`:
+
+```ts
+// getTarget is a complementary escape hatch — not deprecated
+const dynamic = ctx.getTarget<{ progress: number }>("some-block");
+await dynamic?.patchState({ progress: 50 });
+```
+
+`getTarget` accepts an optional type parameter for ergonomic casting. For well-known relationships, prefer `targetStateSchemas` for the typed inference and self-documentation it provides.
