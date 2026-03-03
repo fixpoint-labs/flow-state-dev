@@ -106,6 +106,7 @@ export default defineFlow({
 
 **Helper factories (`helper.*`):**
 - `helper.summarizer(config)` — Generator factory for brief, detailed, or executive summaries with optional focus `objectives` and a default `{ summary, keyPoints? }` output contract
+- `helper.composer(config)` — Generator factory that assembles coherent artifacts from structured parts/constraints with a default `{ composed, structure? }` output contract
 
 **Resources and projections:**
 - `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `projectResources`)
