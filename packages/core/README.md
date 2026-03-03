@@ -105,6 +105,7 @@ export default defineFlow({
 - `defineFlow(definition)` — Create a flow type with actions, scopes, resources, and projections
 
 **Helper factories (`helper.*`):**
+- `helper.contextReducer(config)` — Generator factory for `distill`, `denoise`, or `compress` context transformation modes with mode-specific default output schemas (`{ distilled, keyPoints }`, `{ cleaned, removedCategories? }`, `{ compressed, compressionRatio?, dropped? }`)
 - `helper.summarizer(config)` — Generator factory for brief, detailed, or executive summaries with optional focus `objectives` and a default `{ summary, keyPoints? }` output contract
 
 **Resources and projections:**

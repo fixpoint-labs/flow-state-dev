@@ -2,6 +2,18 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-03-03
+
+### Core helper: contextReducer (FIX-73)
+
+- Added `helper.contextReducer(config)` to `@flow-state-dev/core` as a generator factory with three modes: `distill`, `denoise`, and `compress`.
+- Added mode-specific default output schemas with caller override support:
+  - `contextReducerDistillOutputSchema` → `{ distilled, keyPoints }`
+  - `contextReducerDenoiseOutputSchema` → `{ cleaned, removedCategories? }`
+  - `contextReducerCompressOutputSchema` → `{ compressed, compressionRatio?, dropped? }`
+- Added unit coverage for all three modes, schema override behavior, and sequencer composition.
+- Updated `packages/core/README.md` exports documentation for helper factories.
+
 ## 2026-03-01
 
 ### Sequencer container item emission groundwork (FIX-8)
