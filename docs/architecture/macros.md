@@ -41,6 +41,7 @@ Every macro factory accepts a `name` (required) and returns a block that can be 
 | `combiner` | handler | Synthesis & Output | Deterministically merge artifacts (no LLM) |
 | `synthesizer` | generator | Synthesis & Output | Reconcile multiple inputs into one coherent artifact |
 | `analyzer` | generator | Evaluation | Evaluate artifacts against structured criteria |
+| `intentClassifier` | generator | Routing | Classify input into a bounded category set for downstream routing |
 
 ---
 
@@ -520,6 +521,90 @@ const pipeline = sequencer({
 
 ---
 
+## Routing
+
+### `intentClassifier`
+
+Classifies input into exactly one category from a bounded set. Each category is declared as a key–description pair — the descriptions are injected into the LLM prompt so the model understands the semantics of each category, not just the label. The output includes a `confidence` score and optional `reasoning`.
+
+The output schema enforces category validation: if the model returns a category not in the declared set, a Zod refinement error is thrown. This makes it safe to wire directly into a router without defensive checks.
+
+```ts
+const classify = helper.intentClassifier({
+  name: "support-triage",
+  categories: {
+    billing: "Questions about invoices, charges, or subscription payments.",
+    "technical-support": "Requests about bugs, outages, or broken product behavior.",
+    "general-inquiry": "General product questions and feature clarifications.",
+  },
+});
+```
+
+**Config:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | `string` | — | Block name (required) |
+| `categories` | `Record<string, string>` | — | Category name → description map (minimum 2 categories, required) |
+| `model` | `string` | `"gpt-5-mini"` | Model identifier |
+| `outputSchema` | `ZodTypeAny` | auto-generated | Override the default output schema |
+
+**Default output schema:**
+
+```ts
+// IntentClassifierOutput
+{
+  category: string;    // one of the declared category keys
+  confidence: number;  // 0–1
+  reasoning?: string;  // why this category was chosen
+}
+```
+
+The default schema includes a `superRefine` validator that rejects any `category` value not in the declared keys. Custom output schemas also receive this validation automatically.
+
+**Wiring into a router for intent-based dispatch:**
+
+```ts
+import { handler, helper, router, sequencer } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const classify = helper.intentClassifier({
+  name: "classify-intent",
+  categories: {
+    billing: "Invoice, payment, or subscription issues.",
+    support: "Bugs, outages, or technical problems.",
+    sales: "Pricing, plans, or purchase inquiries.",
+  },
+});
+
+const billingHandler = handler({ name: "billing", execute: (input) => ({ team: "billing", input }) });
+const supportHandler = handler({ name: "support", execute: (input) => ({ team: "support", input }) });
+const salesHandler = handler({ name: "sales", execute: (input) => ({ team: "sales", input }) });
+
+const intentRouter = router({
+  name: "intent-router",
+  routes: [billingHandler, supportHandler, salesHandler],
+  execute: (input) => {
+    switch (input.category) {
+      case "billing": return billingHandler;
+      case "support": return supportHandler;
+      case "sales": return salesHandler;
+      default: return supportHandler;
+    }
+  },
+});
+
+const pipeline = sequencer({
+  name: "triage-pipeline",
+  inputSchema: z.object({ message: z.string() }),
+})
+  .map((input) => input.message)
+  .then(classify)
+  .then(intentRouter);
+```
+
+---
+
 ## Shared Types Reference
 
 ### `Finding`
@@ -689,6 +774,25 @@ const memoryPipeline = sequencer({
 
 **Data flow:** `transcript` → `parallel(memoryExtractor, contextReducer)` → `tap(write to session)` → done
 
+### `IntentClassifierOutput`
+
+Represents the classification result produced by the intentClassifier.
+
+```ts
+// IntentClassifierOutput
+{
+  category: string;    // one of the declared category keys
+  confidence: number;  // 0–1
+  reasoning?: string;  // explanation of the classification decision
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `category` | `string` | yes | The selected category (validated against declared keys) |
+| `confidence` | `number` (0–1) | yes | Classification confidence score |
+| `reasoning` | `string` | no | Why this category was chosen |
+
 ---
 
 ## Key properties
@@ -721,6 +825,7 @@ import {
   analyzerOutputSchema,
   memoryCandidateSchema,
   decomposerTaskSchema,
+  intentClassifier,
 } from "@flow-state-dev/core";
 ```
 
@@ -738,5 +843,8 @@ import type {
   ComposerConfig,
   CombinerConfig,
   SynthesizerConfig,
+  IntentClassifierConfig,
+  IntentCategories,
+  IntentClassifierOutput,
 } from "@flow-state-dev/core";
 ```

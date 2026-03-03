@@ -6,7 +6,7 @@ sidebar_position: 8
 
 Macro blocks are pre-built helper factories that wrap the core block primitives into specialized, high-level capabilities. Instead of configuring a generator from scratch every time you need summarization or task decomposition, you call a macro that returns a fully configured block — composable in sequencers, routers, and flows like any other block.
 
-This guide covers all eight macros with realistic examples showing how they solve real problems in AI workflows.
+This guide covers all nine macros with realistic examples showing how they solve real problems in AI workflows.
 
 ## Quick overview
 
@@ -28,6 +28,7 @@ const block = helper.summarizer({ name: "my-summarizer", granularity: "brief" })
 | `combiner` | handler | Deterministically merge artifacts (no LLM call) |
 | `synthesizer` | generator | Reconcile overlapping or conflicting inputs into one artifact |
 | `analyzer` | generator | Evaluate artifacts against structured criteria |
+| `intentClassifier` | generator | Classify input into a bounded category set for routing |
 
 Every generator-based macro defaults to `"gpt-5-mini"` and accepts a `model` override. All macros accept an optional `outputSchema` to replace the default output shape with full type inference.
 
@@ -551,6 +552,101 @@ export const codeReview = sequencer({
   .map((input) => input.diff)
   .then(analyze)
   .then(decisionRouter);
+```
+
+---
+
+## Routing
+
+### intentClassifier — categorize input for dispatch
+
+When your flow needs to handle different kinds of user input differently — billing questions vs. technical support vs. sales inquiries — `intentClassifier` categorizes the input into one of a bounded set of categories. Each category has a human-readable description so the model understands the semantics, not just the label.
+
+The output schema includes built-in Zod validation that rejects categories not in the declared set, so it's safe to wire directly into a router without defensive checks.
+
+```ts
+import { helper } from "@flow-state-dev/core";
+
+const classify = helper.intentClassifier({
+  name: "support-triage",
+  categories: {
+    billing: "Questions about invoices, charges, or subscription payments.",
+    "technical-support": "Requests about bugs, outages, or broken product behavior.",
+    "general-inquiry": "General product questions and feature clarifications.",
+  },
+});
+// Default output: { category: string, confidence: number, reasoning?: string }
+```
+
+The `categories` map requires at least 2 entries. Each key becomes a valid output category; each value becomes the description injected into the model prompt.
+
+#### Realistic example: customer support triage
+
+Classify incoming support messages and route them to the right team. High-confidence classifications go straight to the team handler; low-confidence ones are escalated for human triage:
+
+```ts title="src/flows/support/blocks/triage.ts"
+import { handler, helper, router, sequencer } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const classify = helper.intentClassifier({
+  name: "classify-ticket",
+  categories: {
+    billing: "Invoice disputes, refund requests, subscription changes, payment failures.",
+    technical: "Bug reports, error messages, product not working as expected.",
+    account: "Password resets, account access, profile changes, permissions.",
+    feature: "Feature requests, product suggestions, enhancement ideas.",
+  },
+});
+
+const billingTeam = handler({
+  name: "billing-team",
+  execute: (input) => ({ team: "billing", ticket: input }),
+});
+
+const techTeam = handler({
+  name: "tech-team",
+  execute: (input) => ({ team: "engineering", ticket: input }),
+});
+
+const accountTeam = handler({
+  name: "account-team",
+  execute: (input) => ({ team: "account-services", ticket: input }),
+});
+
+const featureTeam = handler({
+  name: "feature-team",
+  execute: (input) => ({ team: "product", ticket: input }),
+});
+
+const humanTriage = handler({
+  name: "human-triage",
+  execute: (input) => ({ team: "triage-queue", ticket: input, reason: "low confidence" }),
+});
+
+const teamRouter = router({
+  name: "team-router",
+  routes: [billingTeam, techTeam, accountTeam, featureTeam, humanTriage],
+  execute: (input) => {
+    // Low confidence? Send to human triage
+    if (input.confidence < 0.7) return humanTriage;
+
+    switch (input.category) {
+      case "billing": return billingTeam;
+      case "technical": return techTeam;
+      case "account": return accountTeam;
+      case "feature": return featureTeam;
+      default: return humanTriage;
+    }
+  },
+});
+
+export const supportTriage = sequencer({
+  name: "support-triage-pipeline",
+  inputSchema: z.object({ message: z.string() }),
+})
+  .map((input) => input.message)
+  .then(classify)
+  .then(teamRouter);
 ```
 
 ---
