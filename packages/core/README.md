@@ -104,6 +104,9 @@ export default defineFlow({
 **Flow:**
 - `defineFlow(definition)` — Create a flow type with actions, scopes, resources, and projections
 
+**Helper factories (`helper.*`):**
+- `helper.summarizer(config)` — Generator factory for brief, detailed, or executive summaries with optional focus `objectives` and a default `{ summary, keyPoints? }` output contract
+
 **Resources and projections:**
 - `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `projectResources`)
 - `defineProjection(config)` — Portable projection definition
