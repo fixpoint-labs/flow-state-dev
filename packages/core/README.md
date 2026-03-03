@@ -105,6 +105,7 @@ export default defineFlow({
 - `defineFlow(definition)` — Create a flow type with actions, scopes, resources, and projections
 
 **Helper factories (`helper.*`):**
+- `helper.decomposer(config)` — Generator factory that breaks broad requests into executable tasks using a default `{ tasks: [{ id, goal, deps?, priority? }] }` output contract
 - `helper.summarizer(config)` — Generator factory for brief, detailed, or executive summaries with optional focus `objectives` and a default `{ summary, keyPoints? }` output contract
 
 **Resources and projections:**
