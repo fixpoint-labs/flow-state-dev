@@ -106,6 +106,7 @@ export default defineFlow({
 
 **Helper factories (`helper.*`):**
 - `helper.summarizer(config)` — Generator factory for brief, detailed, or executive summaries with optional focus `objectives` and a default `{ summary, keyPoints? }` output contract
+- `helper.combiner(config)` — Handler factory for deterministic artifact merging via concatenation, deduplication, and structural normalization with default `{ combined, mergeNotes? }` output
 - `helper.intentClassifier(config)` — Generator factory for bounded intent classification with required category descriptions and default `{ category, confidence, reasoning? }` output contract
 - `helper.memoryExtractor(config)` — Generator factory for stateless durable-memory extraction with a default `{ memories: Array<{ type, content, confidence?, source? }> }` output contract (`type` ∈ `fact | preference | constraint | decision`)
 
