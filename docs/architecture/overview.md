@@ -149,7 +149,7 @@ const pipeline = sequencer({ name: "review" })
   .then(analyze);
 ```
 
-Nine macros ship in Phase 1, grouped into five categories: Context & Memory, Planning & Decomposition, Synthesis & Output, Evaluation, and Routing. See [Macro Blocks](./macros.md).
+Ten macros ship in Phase 1, grouped into five categories: Context & Memory, Planning & Decomposition, Synthesis & Output, Evaluation, and Routing. See [Macro Blocks](./macros.md).
 
 ## Data flow
 

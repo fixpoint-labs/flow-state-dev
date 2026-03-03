@@ -42,6 +42,7 @@ Every macro factory accepts a `name` (required) and returns a block that can be 
 | `synthesizer` | generator | Synthesis & Output | Reconcile multiple inputs into one coherent artifact |
 | `analyzer` | generator | Evaluation | Evaluate artifacts against structured criteria |
 | `intentClassifier` | generator | Routing | Classify input into a bounded category set for downstream routing |
+| `intentRouter` | sequencer | Routing | Pre-wired classifier + router for classification-driven branching |
 
 ---
 
@@ -603,6 +604,83 @@ const pipeline = sequencer({
   .then(intentRouter);
 ```
 
+For most use cases, prefer `intentRouter` (below) which eliminates this boilerplate entirely.
+
+---
+
+### `intentRouter`
+
+A sequencer-level convenience that combines `intentClassifier` + `router` into a single declaration. The caller declares categories with descriptions and a branch handler per category — the macro compiles this into a sequencer that runs the classifier then routes to the matching branch.
+
+This is the idiomatic pattern for classification-driven branching. Use `intentClassifier` directly only when you need to inspect or transform the classification result mid-flow.
+
+```ts
+const triage = helper.intentRouter({
+  name: "support-triage",
+  categories: {
+    billing: {
+      description: "Questions or disputes about invoices, payments, or subscriptions.",
+      handler: billingHandler,
+    },
+    "technical-support": {
+      description: "Requests for help with product errors, bugs, or unexpected behavior.",
+      handler: techSupportSequencer,
+    },
+    "general-inquiry": {
+      description: "General questions about features, availability, or how the product works.",
+      handler: generalHandler,
+    },
+  },
+  fallback: unknownHandler,
+  confidenceThreshold: 0.7,
+});
+```
+
+**Config:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | `string` | — | Block name (required) |
+| `categories` | `Record<string, { description: string; handler: BlockDefinition }>` | — | Category name → description + handler map (minimum 2, required) |
+| `model` | `string` | `"gpt-5-mini"` | Model identifier for the internal classifier |
+| `fallback` | `BlockDefinition` | — | Block to execute for low-confidence or unmatched results |
+| `confidenceThreshold` | `number` (0–1) | — | Below this confidence, route to fallback |
+
+**Returns:** A `sequencer` block definition.
+
+**Compilation target:**
+
+The macro compiles to a sequencer containing:
+1. An internal `intentClassifier` generator — receives category keys and descriptions extracted from the config
+2. A `router` — reads the classifier output and dispatches to the matching branch handler
+
+The caller never manually constructs either primitive.
+
+**Behavior:**
+- Descriptions are extracted from each category entry and passed to the internal `intentClassifier` to guide classification
+- Handlers are extracted and registered as router routes
+- When `confidenceThreshold` is set, results below the threshold route to `fallback`
+- When `fallback` is omitted and confidence falls below threshold, an error is thrown with a descriptive message
+- All branch handlers accept any valid block definition (handler, generator, sequencer, router)
+
+**Usage in a sequencer:**
+
+```ts
+const pipeline = sequencer({
+  name: "support-pipeline",
+  inputSchema: z.object({ message: z.string() }),
+})
+  .map((input) => input.message)
+  .then(triage);
+```
+
+**Comparison with manual `intentClassifier` + `router`:**
+
+| Approach | When to use |
+|----------|-------------|
+| `intentRouter` | Standard classification → dispatch; no need to inspect classification mid-flow |
+| `intentClassifier` + `router` | Need to transform, log, or branch on the classification result before routing |
+
 ---
 
 ## Shared Types Reference
@@ -826,6 +904,7 @@ import {
   memoryCandidateSchema,
   decomposerTaskSchema,
   intentClassifier,
+  intentRouter,
 } from "@flow-state-dev/core";
 ```
 
@@ -846,5 +925,6 @@ import type {
   IntentClassifierConfig,
   IntentCategories,
   IntentClassifierOutput,
+  IntentRouterConfig,
 } from "@flow-state-dev/core";
 ```

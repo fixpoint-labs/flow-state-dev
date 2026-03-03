@@ -6,7 +6,7 @@ sidebar_position: 8
 
 Macro blocks are pre-built helper factories that wrap the core block primitives into specialized, high-level capabilities. Instead of configuring a generator from scratch every time you need summarization or task decomposition, you call a macro that returns a fully configured block — composable in sequencers, routers, and flows like any other block.
 
-This guide covers all nine macros with realistic examples showing how they solve real problems in AI workflows.
+This guide covers all ten macros with realistic examples showing how they solve real problems in AI workflows.
 
 ## Quick overview
 
@@ -29,6 +29,7 @@ const block = helper.summarizer({ name: "my-summarizer", granularity: "brief" })
 | `synthesizer` | generator | Reconcile overlapping or conflicting inputs into one artifact |
 | `analyzer` | generator | Evaluate artifacts against structured criteria |
 | `intentClassifier` | generator | Classify input into a bounded category set for routing |
+| `intentRouter` | sequencer | Pre-wired classifier + router for classification-driven branching |
 
 Every generator-based macro defaults to `"gpt-5-mini"` and accepts a `model` override. All macros accept an optional `outputSchema` to replace the default output shape with full type inference.
 
@@ -648,6 +649,122 @@ export const supportTriage = sequencer({
   .then(classify)
   .then(teamRouter);
 ```
+
+For most classification → dispatch workflows, `intentRouter` (below) eliminates this boilerplate entirely.
+
+---
+
+### intentRouter — classify and dispatch in one step
+
+`intentRouter` combines `intentClassifier` + `router` into a single declaration. Instead of wiring the two primitives manually, you declare categories with descriptions and handlers in one place — the macro builds the sequencer for you.
+
+This is the idiomatic way to do classification-driven branching. Use `intentClassifier` directly only when you need to inspect or transform the classification result before routing.
+
+```ts
+import { helper } from "@flow-state-dev/core";
+
+const triage = helper.intentRouter({
+  name: "support-triage",
+  categories: {
+    billing: {
+      description: "Invoice disputes, refund requests, payment failures.",
+      handler: billingHandler,
+    },
+    technical: {
+      description: "Bug reports, errors, broken product behavior.",
+      handler: techHandler,
+    },
+  },
+  fallback: unknownHandler,       // optional — handles low-confidence results
+  confidenceThreshold: 0.7,       // optional — below this, use fallback
+});
+// Returns a sequencer block definition
+```
+
+The `categories` map is the single source of truth — labels, descriptions, and handlers declared once. The macro extracts descriptions for the classifier and handlers for the router.
+
+**Confidence threshold behavior:**
+- When `confidenceThreshold` is set and the classifier returns a confidence below it, the result routes to `fallback`
+- When `fallback` is omitted and confidence is too low, an error is thrown with a descriptive message
+- When no threshold is set, the top category is always used regardless of confidence
+
+#### Realistic example: multi-department helpdesk
+
+A helpdesk flow that routes user messages to specialized department handlers. Each department handler can be a simple handler, a generator, or a full nested sequencer — the macro accepts any block type:
+
+```ts title="src/flows/helpdesk/blocks/dispatch.ts"
+import { generator, handler, helper, sequencer } from "@flow-state-dev/core";
+import { z } from "zod";
+
+// Department handlers — each can be any block type
+const billingHandler = handler({
+  name: "billing-dept",
+  execute: async (input, ctx) => {
+    await ctx.session.pushState("routing", { dept: "billing", at: Date.now() });
+    return { department: "billing", message: "Routing to billing team..." };
+  },
+});
+
+const techSupport = sequencer({ name: "tech-support" })
+  .then(
+    generator({
+      name: "diagnose",
+      model: "gpt-5-mini",
+      prompt: "You are a technical support agent. Diagnose the issue and suggest next steps.",
+      user: (input) => typeof input === "string" ? input : JSON.stringify(input),
+    })
+  );
+
+const salesTeam = handler({
+  name: "sales-dept",
+  execute: (input) => ({ department: "sales", message: "Connecting to sales..." }),
+});
+
+const escalation = handler({
+  name: "escalation-dept",
+  execute: (input) => ({ department: "escalation", message: "Escalating to a manager..." }),
+});
+
+const fallbackHandler = handler({
+  name: "fallback",
+  execute: (input) => ({ department: "general", message: "Routing to general support..." }),
+});
+
+// One declaration — classifier + router built automatically
+export const helpdesk = helper.intentRouter({
+  name: "helpdesk-dispatch",
+  categories: {
+    billing: {
+      description: "Invoice disputes, refund requests, subscription changes, payment failures.",
+      handler: billingHandler,
+    },
+    technical: {
+      description: "Bug reports, error messages, product crashes, or unexpected behavior.",
+      handler: techSupport,
+    },
+    sales: {
+      description: "Pricing questions, plan comparisons, enterprise inquiries, purchase flow.",
+      handler: salesTeam,
+    },
+    escalation: {
+      description: "Frustrated users, requests to speak with a manager, repeated unresolved issues.",
+      handler: escalation,
+    },
+  },
+  fallback: fallbackHandler,
+  confidenceThreshold: 0.6,
+});
+
+// Use in a flow pipeline
+const pipeline = sequencer({
+  name: "helpdesk-pipeline",
+  inputSchema: z.object({ message: z.string() }),
+})
+  .map((input) => input.message)
+  .then(helpdesk);
+```
+
+Compare this to the manual `intentClassifier` + `router` approach above — the same behavior with significantly less wiring.
 
 ---
 

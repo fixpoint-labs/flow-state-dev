@@ -90,6 +90,7 @@ Eight pre-built helper factories wrapping generator/handler blocks:
 | `synthesizer` | generator | Reconcile overlapping/conflicting inputs |
 | `analyzer` | generator | Evaluate artifacts against criteria |
 | `intentClassifier` | generator | Classify input into bounded category set for routing |
+| `intentRouter` | sequencer | Pre-wired classifier + router for classification-driven branching |
 
 - Access via `helper.<name>(config)` — returns a standard `BlockDefinition`
 - All generators default to `"gpt-5-mini"` model
