@@ -41,6 +41,15 @@ export type {
 } from "./summarizer";
 
 export {
+  composer,
+  composerOutputSchema
+} from "./composer";
+
+export type {
+  ComposerConfig
+} from "./composer";
+
+export {
   analyzer,
   analyzerFindingSchema,
   analyzerOutputSchema
