@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { helper, sequencer } from "../src";
+import { utility, sequencer } from "../src";
 import { createMockContext } from "./helpers";
 
-describe("helper.synthesizer", () => {
+describe("utility.synthesizer", () => {
   it("returns a generator block definition", () => {
-    const block = helper.synthesizer({
+    const block = utility.synthesizer({
       name: "synthesize-findings"
     });
 
@@ -15,7 +15,7 @@ describe("helper.synthesizer", () => {
 
   it("includes explicit conflict-resolution guidance", async () => {
     const seenMessages: unknown[] = [];
-    const block = helper.synthesizer({
+    const block = utility.synthesizer({
       name: "resolve-conflicts",
       objectives: "Prefer sources with direct evidence"
     });
@@ -62,7 +62,7 @@ describe("helper.synthesizer", () => {
   });
 
   it("synthesizes complementary inputs into a unified output", async () => {
-    const block = helper.synthesizer({
+    const block = utility.synthesizer({
       name: "merge-complementary"
     });
 
@@ -102,8 +102,8 @@ describe("helper.synthesizer", () => {
   });
 
   it("uses default output schema and supports override", async () => {
-    const defaultBlock = helper.synthesizer({ name: "default-schema" });
-    const customBlock = helper.synthesizer({
+    const defaultBlock = utility.synthesizer({ name: "default-schema" });
+    const customBlock = utility.synthesizer({
       name: "custom-schema",
       outputSchema: z.object({
         synthesis: z.string(),
@@ -145,7 +145,7 @@ describe("helper.synthesizer", () => {
   });
 
   it("is composable inside sequencers", async () => {
-    const synthesize = helper.synthesizer({
+    const synthesize = utility.synthesizer({
       name: "synthesize-in-sequencer"
     });
 

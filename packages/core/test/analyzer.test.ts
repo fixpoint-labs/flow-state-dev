@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { handler, helper, router, sequencer } from "../src";
+import { handler, utility, router, sequencer } from "../src";
 import { createMockContext } from "./helpers";
 
-describe("helper.analyzer", () => {
+describe("utility.analyzer", () => {
   it("returns a generator block definition", () => {
-    const block = helper.analyzer({
+    const block = utility.analyzer({
       name: "quality-check"
     });
 
@@ -15,7 +15,7 @@ describe("helper.analyzer", () => {
 
   it("supports caller-specified evaluation criteria", async () => {
     const seenMessages: unknown[] = [];
-    const block = helper.analyzer({
+    const block = utility.analyzer({
       name: "criteria-check",
       criteria: ["completeness", "accuracy", "clarity"]
     });
@@ -50,7 +50,7 @@ describe("helper.analyzer", () => {
 
   it("uses default criteria when none are provided", async () => {
     const seenMessages: unknown[] = [];
-    const block = helper.analyzer({ name: "defaults" });
+    const block = utility.analyzer({ name: "defaults" });
 
     const ctx = createMockContext({
       resolveModel: () => ({
@@ -78,8 +78,8 @@ describe("helper.analyzer", () => {
   });
 
   it("supports default output schema and caller override", async () => {
-    const defaultBlock = helper.analyzer({ name: "default-schema" });
-    const customBlock = helper.analyzer({
+    const defaultBlock = utility.analyzer({ name: "default-schema" });
+    const customBlock = utility.analyzer({
       name: "custom-schema",
       outputSchema: z.object({
         findings: z.array(z.object({ criterion: z.string(), assessment: z.string() })),
@@ -139,7 +139,7 @@ describe("helper.analyzer", () => {
   });
 
   it("accepts varied input types", async () => {
-    const block = helper.analyzer({ name: "input-shapes" });
+    const block = utility.analyzer({ name: "input-shapes" });
 
     const ctx = createMockContext({
       resolveModel: () => ({
@@ -164,7 +164,7 @@ describe("helper.analyzer", () => {
   });
 
   it("is composable before router blocks in sequencers", async () => {
-    const analyze = helper.analyzer({
+    const analyze = utility.analyzer({
       name: "pre-route-analysis",
       criteria: ["risk"]
     });

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { helper, sequencer } from "../src";
+import { utility, sequencer } from "../src";
 import { createMockContext } from "./helpers";
 
-describe("helper.composer", () => {
+describe("utility.composer", () => {
   it("returns a generator block definition", () => {
-    const block = helper.composer({
+    const block = utility.composer({
       name: "compose-report"
     });
 
@@ -14,7 +14,7 @@ describe("helper.composer", () => {
   });
 
   it("composes output from multiple parts", async () => {
-    const block = helper.composer({
+    const block = utility.composer({
       name: "compose-multi-part"
     });
 
@@ -54,7 +54,7 @@ describe("helper.composer", () => {
 
   it("adds objective guidance when provided", async () => {
     const seenMessages: unknown[] = [];
-    const block = helper.composer({
+    const block = utility.composer({
       name: "objective-focused",
       objectives: ["Preserve chronology", "Keep section headings"]
     });
@@ -77,8 +77,8 @@ describe("helper.composer", () => {
   });
 
   it("uses default output schema and supports override", async () => {
-    const defaultBlock = helper.composer({ name: "default-schema" });
-    const customBlock = helper.composer({
+    const defaultBlock = utility.composer({ name: "default-schema" });
+    const customBlock = utility.composer({
       name: "custom-schema",
       outputSchema: z.object({
         composed: z.string(),
@@ -117,7 +117,7 @@ describe("helper.composer", () => {
   });
 
   it("is composable inside sequencers", async () => {
-    const compose = helper.composer({
+    const compose = utility.composer({
       name: "compose-in-sequencer"
     });
 
