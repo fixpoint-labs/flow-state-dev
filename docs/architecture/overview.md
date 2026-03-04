@@ -136,20 +136,20 @@ See [Streaming](./streaming.md).
 
 See [Resources and Projections](./resources-and-projections.md).
 
-### Macro blocks — pre-built helpers
+### Utility blocks — pre-built building blocks
 
-Macro blocks are factory functions that wrap `generator` or `handler` blocks into specialized, high-level capabilities: context reduction, memory extraction, task decomposition, summarization, analysis, and more. Each macro returns a standard `BlockDefinition` — composable in sequencers, routers, and flows like any other block.
+Utility blocks are factory functions that wrap `generator` or `handler` blocks into specialized, high-level capabilities: context reduction, memory extraction, task decomposition, summarization, analysis, and more. Each utility returns a standard `BlockDefinition` — composable in sequencers, routers, and flows like any other block.
 
 ```ts
-const summarize = helper.summarizer({ name: "brief", granularity: "brief" });
-const analyze = helper.analyzer({ name: "check", criteria: ["accuracy"] });
+const summarize = utility.summarizer({ name: "brief", granularity: "brief" });
+const analyze = utility.analyzer({ name: "check", criteria: ["accuracy"] });
 
 const pipeline = sequencer({ name: "review" })
   .then(summarize)
   .then(analyze);
 ```
 
-Ten macros ship in Phase 1, grouped into five categories: Context & Memory, Planning & Decomposition, Synthesis & Output, Evaluation, and Routing. See [Macro Blocks](./macros.md).
+Ten utilities ship in Phase 1, grouped into five categories: Context & Memory, Planning & Decomposition, Synthesis & Output, Evaluation, and Routing. See [Utility Blocks](./utility-blocks.md).
 
 ## Data flow
 

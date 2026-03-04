@@ -393,21 +393,21 @@ Because every block has the same contract — typed input, typed output, declare
 
 Connectors make this practical: when types don't align, a simple transform function bridges the gap. No wrapper blocks, no inheritance hierarchies. The framework's four-primitive constraint and partial state schemas mean blocks don't leak assumptions about the flows they live in.
 
-## Macro blocks
+## Utility blocks
 
-The four primitives give you full control, but common AI patterns — summarization, task decomposition, intent classification — require the same boilerplate configuration every time. **Macro blocks** are pre-built factories that return fully configured blocks for these patterns:
+The four primitives give you full control, but common AI patterns — summarization, task decomposition, intent classification — require the same boilerplate configuration every time. **Utility blocks** are pre-built factories that return fully configured blocks for these patterns:
 
 ```ts
-import { macro } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 
-const summarize = macro.summarizer({ name: "brief", granularity: "brief" });
-const classify = macro.intentClassifier({ name: "triage", categories: { ... } });
-const decompose = macro.decomposer({ name: "plan" });
+const summarize = utility.summarizer({ name: "brief", granularity: "brief" });
+const classify = utility.intentClassifier({ name: "triage", categories: { ... } });
+const decompose = utility.decomposer({ name: "plan" });
 ```
 
-Each macro returns a standard block — composable in sequencers, routers, and flows like any block you build yourself. Nine macros produce generator blocks (LLM-powered), and one (`combiner`) produces a handler block (deterministic, no LLM).
+Each utility returns a standard block — composable in sequencers, routers, and flows like any block you build yourself. Nine utilities produce generator blocks (LLM-powered), and one (`combiner`) produces a handler block (deterministic, no LLM).
 
-See the [Macro Blocks guide](/docs/guides/macro-blocks) for the full catalog with examples and output schemas.
+See the [Utility Blocks guide](/docs/guides/utility-blocks) for the full catalog with examples and output schemas.
 
 ## Key rules
 

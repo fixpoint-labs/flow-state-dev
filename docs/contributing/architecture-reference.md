@@ -75,12 +75,12 @@ Conflict rule: `preperation/architecture/*` wins.
 
 → [Architecture Overview](../architecture/overview.md)
 
-## Macro Blocks
+## Utility Blocks
 
-Ten pre-built macro factories wrapping generator/handler blocks:
+Ten pre-built utility factories wrapping generator/handler blocks:
 
-| Macro | Kind | Purpose |
-|-------|------|---------|
+| Utility | Kind | Purpose |
+|---------|------|---------|
 | `contextReducer` | generator | Context reduction (distill, denoise, compress) |
 | `memoryExtractor` | generator | Extract durable memory candidates |
 | `decomposer` | generator | Break requests into subtasks with dependency graph |
@@ -92,12 +92,12 @@ Ten pre-built macro factories wrapping generator/handler blocks:
 | `intentClassifier` | generator | Classify input into bounded category set for routing |
 | `intentRouter` | sequencer | Pre-wired classifier + router for classification-driven branching |
 
-- Access via `macro.<name>(config)` — returns a standard `BlockDefinition`
+- Access via `utility.<name>(config)` — returns a standard `BlockDefinition`
 - All generators default to `"gpt-5-mini"` model
-- All macros accept optional `outputSchema` override
+- All utilities accept optional `outputSchema` override
 - Combiner is handler-based (deterministic, no model)
 
-> [Macro Blocks](../architecture/macros.md)
+> [Utility Blocks](../architecture/utility-blocks.md)
 
 ## Resources and Projections
 

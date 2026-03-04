@@ -2,23 +2,23 @@
 sidebar_position: 8
 ---
 
-# Macro Blocks
+# Utility Blocks
 
-Macro blocks are pre-built factories that wrap the core block primitives into specialized, high-level capabilities. Instead of configuring a generator from scratch every time you need summarization or task decomposition, you call a macro that returns a fully configured block — composable in sequencers, routers, and flows like any other block.
+Utility blocks are pre-built factories that wrap the core block primitives into specialized, high-level capabilities. Instead of configuring a generator from scratch every time you need summarization or task decomposition, you call a utility that returns a fully configured block — composable in sequencers, routers, and flows like any other block.
 
-This guide covers all ten macros with realistic examples showing how they solve real problems in AI workflows.
+This guide covers all ten utilities with realistic examples showing how they solve real problems in AI workflows.
 
 ## Quick overview
 
-All macros live in the `macro` namespace:
+All utilities live in the `utility` namespace:
 
 ```ts
-import { macro } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 
-const block = macro.summarizer({ name: "my-summarizer", granularity: "brief" });
+const block = utility.summarizer({ name: "my-summarizer", granularity: "brief" });
 ```
 
-| Macro | Kind | What it does |
+| Utility | Kind | What it does |
 |-------|------|--------------|
 | [`contextReducer`](#contextreducer) | generator | Reduce context via distill, denoise, or compress strategies |
 | [`memoryExtractor`](#memoryextractor) | generator | Extract durable memory candidates from conversations |
@@ -31,7 +31,7 @@ const block = macro.summarizer({ name: "my-summarizer", granularity: "brief" });
 | [`intentClassifier`](#intentclassifier) | generator | Classify input into a bounded category set for routing |
 | [`intentRouter`](#intentrouter) | sequencer | Pre-wired classifier + router for classification-driven branching |
 
-Every generator-based macro defaults to `"gpt-5-mini"` and accepts a `model` override. All macros accept an optional `outputSchema` to replace the default output shape with full type inference.
+Every generator-based utility defaults to `"gpt-5-mini"` and accepts a `model` override. All utilities accept an optional `outputSchema` to replace the default output shape with full type inference.
 
 ---
 
@@ -48,22 +48,22 @@ Long conversations and documents eat up context windows fast. `contextReducer` g
 - Compressing session context to fit within a strict token budget
 
 ```ts
-import { macro } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 
 // Distill: extract the core ideas, discard the wording
-const distill = macro.contextReducer({
+const distill = utility.contextReducer({
   name: "distill-context",
   mode: "distill",
 });
 
 // Denoise: strip filler, keep structure
-const denoise = macro.contextReducer({
+const denoise = utility.contextReducer({
   name: "denoise-context",
   mode: "denoise",
 });
 
 // Compress: lossy reduction under a token budget
-const compress = macro.contextReducer({
+const compress = utility.contextReducer({
   name: "compress-context",
   mode: "compress",
 });
@@ -113,10 +113,10 @@ const compress = macro.contextReducer({
 When a session's conversation history grows too large, compress it before the next generator call:
 
 ```ts title="src/flows/agent/blocks/manage-context.ts"
-import { macro, sequencer } from "@flow-state-dev/core";
+import { utility, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const compressHistory = macro.contextReducer({
+const compressHistory = utility.contextReducer({
   name: "compress-history",
   mode: "compress",
 });
@@ -148,9 +148,9 @@ Conversations contain durable facts, preferences, and decisions that should pers
 - Learning tool and workflow preferences for personalization
 
 ```ts
-import { macro } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 
-const extract = macro.memoryExtractor({
+const extract = utility.memoryExtractor({
   name: "extract-memories",
 });
 ```
@@ -196,10 +196,10 @@ Each `MemoryCandidate` has:
 Extract memories from each conversation turn and accumulate them in session state:
 
 ```ts title="src/flows/assistant/blocks/learn-user.ts"
-import { handler, macro, sequencer } from "@flow-state-dev/core";
+import { handler, utility, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const extract = macro.memoryExtractor({ name: "learn" });
+const extract = utility.memoryExtractor({ name: "learn" });
 
 const persist = handler({
   name: "persist-memories",
@@ -249,9 +249,9 @@ When users make broad requests like "build me a landing page", an LLM needs stru
 - Feeding a task scheduler that dispatches work to specialized agents
 
 ```ts
-import { macro } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 
-const decompose = macro.decomposer({
+const decompose = utility.decomposer({
   name: "plan-tasks",
 });
 ```
@@ -303,12 +303,12 @@ Each `SubTask` has:
 An agent that takes a project brief, decomposes it, and summarizes each task for a quick overview:
 
 ```ts title="src/flows/project-planner/blocks/plan.ts"
-import { macro, sequencer } from "@flow-state-dev/core";
+import { utility, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const decompose = macro.decomposer({ name: "decompose-project" });
+const decompose = utility.decomposer({ name: "decompose-project" });
 
-const summarizeTask = macro.summarizer({
+const summarizeTask = utility.summarizer({
   name: "task-summary",
   granularity: "brief",
 });
@@ -338,9 +338,9 @@ When you have discrete sections — an intro, body, and conclusion from differen
 - Building structured outputs from discrete pipeline stages
 
 ```ts
-import { macro } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 
-const compose = macro.composer({
+const compose = utility.composer({
   name: "assemble-report",
   objectives: ["Maintain chronological order", "Use consistent tone"],
 });
@@ -360,20 +360,20 @@ const compose = macro.composer({
 Different blocks produce different report sections. Composer assembles them into a single document:
 
 ```ts title="src/flows/reports/blocks/build-report.ts"
-import { macro, sequencer } from "@flow-state-dev/core";
+import { utility, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const summarizeFindings = macro.summarizer({
+const summarizeFindings = utility.summarizer({
   name: "findings-summary",
   granularity: "detailed",
 });
 
-const summarizeRisks = macro.summarizer({
+const summarizeRisks = utility.summarizer({
   name: "risk-summary",
   granularity: "executive",
 });
 
-const compose = macro.composer({
+const compose = utility.composer({
   name: "final-report",
   objectives: ["Lead with executive summary", "End with action items"],
 });
@@ -420,21 +420,21 @@ export const buildReport = sequencer({
 - Executive briefings from detailed technical reports
 
 ```ts
-import { macro } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 
-const brief = macro.summarizer({
+const brief = utility.summarizer({
   name: "brief",
   granularity: "brief",
 });
 // 1-2 sentence core takeaway
 
-const detailed = macro.summarizer({
+const detailed = utility.summarizer({
   name: "detailed",
   granularity: "detailed",
 });
 // Paragraph-level with context and nuance
 
-const executive = macro.summarizer({
+const executive = utility.summarizer({
   name: "exec",
   granularity: "executive",
   objectives: ["Focus on budget impact", "Highlight blockers"],
@@ -474,10 +474,10 @@ const executive = macro.summarizer({
 Summarize a team's daily standup notes into an executive brief for stakeholders:
 
 ```ts title="src/flows/standups/blocks/digest.ts"
-import { macro, sequencer } from "@flow-state-dev/core";
+import { utility, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const summarize = macro.summarizer({
+const summarize = utility.summarizer({
   name: "standup-digest",
   granularity: "executive",
   objectives: [
@@ -517,9 +517,9 @@ export const standupDigest = sequencer({
 - Deduplicating overlapping data collected from different pipelines
 
 ```ts
-import { macro } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 
-const merge = macro.combiner({ name: "merge-results" });
+const merge = utility.combiner({ name: "merge-results" });
 ```
 
 **Merge strategy:**
@@ -556,11 +556,11 @@ Deduplication uses stable serialization (sorted object keys) — not reference e
 After searching multiple sources in parallel, combine the results into a single deduplicated set:
 
 ```ts title="src/flows/search/blocks/merge-search.ts"
-import { macro, sequencer } from "@flow-state-dev/core";
+import { utility, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { searchWeb, searchDocs } from "./search-sources";
 
-const merge = macro.combiner({ name: "merge-search-results" });
+const merge = utility.combiner({ name: "merge-search-results" });
 
 export const searchAndMerge = sequencer({
   name: "search-and-merge",
@@ -587,9 +587,9 @@ When multiple sources cover the same ground with different perspectives or confl
 - Producing consensus summaries from multi-source intelligence
 
 ```ts
-import { macro } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 
-const synthesize = macro.synthesizer({
+const synthesize = utility.synthesizer({
   name: "reconcile",
   objectives: ["Prefer sources with direct evidence", "Flag unresolvable conflicts"],
 });
@@ -616,10 +616,10 @@ The `rationale` array explains every synthesis decision — which sources agreed
 Two analysts independently review the same product. Their reports overlap and sometimes disagree:
 
 ```ts title="src/flows/analysis/blocks/reconcile.ts"
-import { macro, sequencer } from "@flow-state-dev/core";
+import { utility, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const synthesize = macro.synthesizer({
+const synthesize = utility.synthesizer({
   name: "reconcile-reviews",
   objectives: [
     "Surface areas of agreement first",
@@ -658,9 +658,9 @@ export const reconcileReviews = sequencer({
 - Risk assessment for generated outputs before delivery to users
 
 ```ts
-import { macro } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 
-const analyze = macro.analyzer({
+const analyze = utility.analyzer({
   name: "code-review",
   criteria: ["correctness", "security", "performance", "maintainability"],
 });
@@ -709,10 +709,10 @@ Each `Finding` has:
 Analyze a pull request. If anything critical is found, route to human review. Otherwise, auto-approve:
 
 ```ts title="src/flows/code-review/blocks/review.ts"
-import { handler, macro, router, sequencer } from "@flow-state-dev/core";
+import { handler, utility, router, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const analyze = macro.analyzer({
+const analyze = utility.analyzer({
   name: "pr-analysis",
   criteria: ["correctness", "security", "test-coverage", "breaking-changes"],
 });
@@ -772,9 +772,9 @@ The output schema includes built-in Zod validation that rejects categories not i
 - Pre-filtering inputs before expensive downstream processing
 
 ```ts
-import { macro } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 
-const classify = macro.intentClassifier({
+const classify = utility.intentClassifier({
   name: "support-triage",
   categories: {
     billing: "Questions about invoices, charges, or subscription payments.",
@@ -801,10 +801,10 @@ The `categories` map requires at least 2 entries. Each key becomes a valid outpu
 Classify incoming support messages and route them to the right team. High-confidence classifications go straight to the team handler; low-confidence ones are escalated for human triage:
 
 ```ts title="src/flows/support/blocks/triage.ts"
-import { handler, macro, router, sequencer } from "@flow-state-dev/core";
+import { handler, utility, router, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const classify = macro.intentClassifier({
+const classify = utility.intentClassifier({
   name: "classify-ticket",
   categories: {
     billing: "Invoice disputes, refund requests, subscription changes, payment failures.",
@@ -870,7 +870,7 @@ For most classification-to-dispatch workflows, `intentRouter` (below) eliminates
 
 ### intentRouter — classify and dispatch in one step {#intentrouter}
 
-`intentRouter` combines `intentClassifier` + `router` into a single declaration. Instead of wiring the two primitives manually, you declare categories with descriptions and handlers in one place — the macro builds the sequencer for you.
+`intentRouter` combines `intentClassifier` + `router` into a single declaration. Instead of wiring the two primitives manually, you declare categories with descriptions and handlers in one place — the utility builds the sequencer for you.
 
 This is the idiomatic way to do classification-driven branching. Use `intentClassifier` directly only when you need to inspect or transform the classification result before routing.
 
@@ -881,9 +881,9 @@ This is the idiomatic way to do classification-driven branching. Use `intentClas
 - Any classification-to-dispatch pattern where you don't need to inspect the classification mid-flow
 
 ```ts
-import { macro } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 
-const triage = macro.intentRouter({
+const triage = utility.intentRouter({
   name: "support-triage",
   categories: {
     billing: {
@@ -901,7 +901,7 @@ const triage = macro.intentRouter({
 // Returns a sequencer block definition
 ```
 
-The `categories` map is the single source of truth — labels, descriptions, and handlers declared once. The macro extracts descriptions for the classifier and handlers for the router.
+The `categories` map is the single source of truth — labels, descriptions, and handlers declared once. The utility extracts descriptions for the classifier and handlers for the router.
 
 **Confidence threshold behavior:**
 - When `confidenceThreshold` is set and the classifier returns a confidence below it, the result routes to `fallback`
@@ -915,7 +915,7 @@ The `categories` map is the single source of truth — labels, descriptions, and
 A helpdesk flow that routes user messages to specialized department handlers:
 
 ```ts title="src/flows/helpdesk/blocks/dispatch.ts"
-import { handler, macro, sequencer } from "@flow-state-dev/core";
+import { handler, utility, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { techSupportPipeline } from "./tech-support";
 
@@ -942,7 +942,7 @@ const fallbackHandler = handler({
   execute: (input) => ({ department: "general", message: "Routing to general support..." }),
 });
 
-export const helpdesk = macro.intentRouter({
+export const helpdesk = utility.intentRouter({
   name: "helpdesk-dispatch",
   categories: {
     billing: {
@@ -980,35 +980,35 @@ Compare this to the manual `intentClassifier` + `router` approach above — the 
 
 ## End-to-end examples
 
-These examples show how multiple macros compose into complete workflows.
+These examples show how multiple utilities compose into complete workflows.
 
 ### Research pipeline
 
 A user asks a broad research question. The system decomposes it into subtasks, summarizes each one, checks quality, then synthesizes a final answer:
 
 ```ts title="src/flows/research/flow.ts"
-import { defineFlow, macro, sequencer } from "@flow-state-dev/core";
+import { defineFlow, utility, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
 const inputSchema = z.object({ question: z.string() });
 
 // Step 1: Break the question into research subtasks
-const decompose = macro.decomposer({ name: "plan-research" });
+const decompose = utility.decomposer({ name: "plan-research" });
 
 // Step 2: Summarize each subtask's scope
-const summarize = macro.summarizer({
+const summarize = utility.summarizer({
   name: "summarize-subtask",
   granularity: "detailed",
 });
 
 // Step 3: Check quality of the collected research
-const qualityGate = macro.analyzer({
+const qualityGate = utility.analyzer({
   name: "quality-gate",
   criteria: ["coverage", "accuracy", "evidence-quality"],
 });
 
 // Step 4: Synthesize into one coherent answer
-const synthesize = macro.synthesizer({
+const synthesize = utility.synthesizer({
   name: "final-answer",
   objectives: [
     "Produce a coherent narrative, not bullet points",
@@ -1068,12 +1068,12 @@ export default researchFlow({ id: "default" });
 After each conversation turn, extract durable memories and compress the conversation history for efficient storage. Both operations run in parallel since they're independent:
 
 ```ts title="src/flows/assistant/blocks/memory-pipeline.ts"
-import { handler, macro, sequencer } from "@flow-state-dev/core";
+import { handler, utility, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const extract = macro.memoryExtractor({ name: "extract-memories" });
+const extract = utility.memoryExtractor({ name: "extract-memories" });
 
-const compress = macro.contextReducer({
+const compress = utility.contextReducer({
   name: "compress-history",
   mode: "compress",
 });
@@ -1117,13 +1117,13 @@ export const memoryPipeline = sequencer({
 
 ## Overriding the output schema
 
-Every macro accepts an `outputSchema` parameter that replaces the default with full generic type inference. This is useful when you need the LLM to produce additional fields or a different shape:
+Every utility accepts an `outputSchema` parameter that replaces the default with full generic type inference. This is useful when you need the LLM to produce additional fields or a different shape:
 
 ```ts
-import { macro } from "@flow-state-dev/core";
+import { utility } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const customAnalyzer = macro.analyzer({
+const customAnalyzer = utility.analyzer({
   name: "routing-analysis",
   criteria: ["risk"],
   outputSchema: z.object({
@@ -1142,5 +1142,5 @@ const customAnalyzer = macro.analyzer({
 ## Next steps
 
 - See the [Sequencer Patterns](/docs/guides/sequencer-patterns) guide for more composition techniques
-- Read about [Blocks](/docs/concepts/blocks) to understand how macros fit into the four-primitive model
-- Check [Testing Flows](/docs/guides/testing-flows) for how to test macro-based pipelines with mocked generators
+- Read about [Blocks](/docs/concepts/blocks) to understand how utilities fit into the four-primitive model
+- Check [Testing Flows](/docs/guides/testing-flows) for how to test utility-based pipelines with mocked generators
