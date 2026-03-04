@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { macro, sequencer } from "../src";
+import { utility, sequencer } from "../src";
 import { createMockContext } from "./helpers";
 
-describe("macro.decomposer", () => {
+describe("utility.decomposer", () => {
   it("returns a generator block definition", () => {
-    const block = macro.decomposer({
+    const block = utility.decomposer({
       name: "task-decompose"
     });
 
@@ -14,7 +14,7 @@ describe("macro.decomposer", () => {
   });
 
   it("uses default output schema for a single task", async () => {
-    const block = macro.decomposer({ name: "single-task" });
+    const block = utility.decomposer({ name: "single-task" });
 
     const ctx = createMockContext({
       resolveModel: () => ({
@@ -35,7 +35,7 @@ describe("macro.decomposer", () => {
   });
 
   it("supports multiple tasks with dependency references", async () => {
-    const block = macro.decomposer({ name: "many-tasks" });
+    const block = utility.decomposer({ name: "many-tasks" });
 
     const ctx = createMockContext({
       resolveModel: () => ({
@@ -62,7 +62,7 @@ describe("macro.decomposer", () => {
   });
 
   it("supports output schema overrides", async () => {
-    const block = macro.decomposer({
+    const block = utility.decomposer({
       name: "custom-schema",
       outputSchema: z.object({
         tasks: z.array(
@@ -94,7 +94,7 @@ describe("macro.decomposer", () => {
   });
 
   it("is composable inside sequencers", async () => {
-    const decompose = macro.decomposer({
+    const decompose = utility.decomposer({
       name: "decompose-in-sequencer"
     });
 

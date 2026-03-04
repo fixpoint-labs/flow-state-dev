@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { macro, sequencer } from "../src";
+import { utility, sequencer } from "../src";
 import { createMockContext } from "./helpers";
 
-describe("macro.combiner", () => {
+describe("utility.combiner", () => {
   it("returns a handler block definition", () => {
-    const block = macro.combiner({ name: "merge-results" });
+    const block = utility.combiner({ name: "merge-results" });
 
     expect(block.kind).toBe("handler");
     expect(block.name).toBe("merge-results");
   });
 
   it("merges multiple objects with deterministic rules", async () => {
-    const block = macro.combiner({ name: "object-merge" });
+    const block = utility.combiner({ name: "object-merge" });
 
     await expect(
       block.run(
@@ -45,7 +45,7 @@ describe("macro.combiner", () => {
   });
 
   it("concatenates and deduplicates top-level arrays", async () => {
-    const block = macro.combiner({ name: "array-merge" });
+    const block = utility.combiner({ name: "array-merge" });
 
     await expect(
       block.run(
@@ -63,7 +63,7 @@ describe("macro.combiner", () => {
   });
 
   it("normalizes mixed input artifact types", async () => {
-    const block = macro.combiner({ name: "mixed-merge" });
+    const block = utility.combiner({ name: "mixed-merge" });
 
     await expect(
       block.run(
@@ -87,8 +87,8 @@ describe("macro.combiner", () => {
   });
 
   it("uses default output schema and supports override", async () => {
-    const defaultBlock = macro.combiner({ name: "default-schema" });
-    const customBlock = macro.combiner({
+    const defaultBlock = utility.combiner({ name: "default-schema" });
+    const customBlock = utility.combiner({
       name: "custom-schema",
       outputSchema: z.object({
         combined: z.object({ title: z.string() }),
@@ -110,7 +110,7 @@ describe("macro.combiner", () => {
   });
 
   it("is composable inside sequencers", async () => {
-    const combine = macro.combiner({ name: "combine-in-sequencer" });
+    const combine = utility.combiner({ name: "combine-in-sequencer" });
 
     const chain = sequencer({
       name: "combine-chain",

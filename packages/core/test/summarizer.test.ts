@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { macro, sequencer } from "../src";
+import { utility, sequencer } from "../src";
 import { createMockContext } from "./helpers";
 
-describe("macro.summarizer", () => {
+describe("utility.summarizer", () => {
   it("returns a generator block definition", () => {
-    const block = macro.summarizer({
+    const block = utility.summarizer({
       name: "summarize-brief"
     });
 
@@ -15,7 +15,7 @@ describe("macro.summarizer", () => {
 
   it("supports brief granularity instructions", async () => {
     const seenMessages: unknown[] = [];
-    const block = macro.summarizer({
+    const block = utility.summarizer({
       name: "brief",
       granularity: "brief"
     });
@@ -36,7 +36,7 @@ describe("macro.summarizer", () => {
 
   it("supports detailed granularity instructions", async () => {
     const seenMessages: unknown[] = [];
-    const block = macro.summarizer({
+    const block = utility.summarizer({
       name: "detailed",
       granularity: "detailed"
     });
@@ -57,7 +57,7 @@ describe("macro.summarizer", () => {
 
   it("supports executive granularity instructions", async () => {
     const seenMessages: unknown[] = [];
-    const block = macro.summarizer({
+    const block = utility.summarizer({
       name: "executive",
       granularity: "executive"
     });
@@ -80,7 +80,7 @@ describe("macro.summarizer", () => {
 
   it("adds objectives guidance when provided", async () => {
     const seenMessages: unknown[] = [];
-    const block = macro.summarizer({
+    const block = utility.summarizer({
       name: "objective-focused",
       objectives: ["Highlight risks", "Capture decisions"]
     });
@@ -103,8 +103,8 @@ describe("macro.summarizer", () => {
   });
 
   it("uses default output schema and supports override", async () => {
-    const defaultBlock = macro.summarizer({ name: "default-schema" });
-    const customBlock = macro.summarizer({
+    const defaultBlock = utility.summarizer({ name: "default-schema" });
+    const customBlock = utility.summarizer({
       name: "custom-schema",
       outputSchema: z.object({
         summary: z.string(),
@@ -135,7 +135,7 @@ describe("macro.summarizer", () => {
   });
 
   it("is composable inside sequencers", async () => {
-    const summarize = macro.summarizer({
+    const summarize = utility.summarizer({
       name: "summarize-in-sequencer"
     });
 

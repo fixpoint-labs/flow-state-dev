@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { macro, sequencer } from "../src";
+import { utility, sequencer } from "../src";
 import { createMockContext } from "./helpers";
 
-describe("macro.intentClassifier", () => {
+describe("utility.intentClassifier", () => {
   const categories = {
     billing: "Questions related to invoices, charges, or subscription payments.",
     "technical-support": "Requests about bugs, outages, or product behavior that is not working.",
@@ -11,7 +11,7 @@ describe("macro.intentClassifier", () => {
   } as const;
 
   it("returns a generator block definition", () => {
-    const block = macro.intentClassifier({
+    const block = utility.intentClassifier({
       name: "support-intent",
       categories
     });
@@ -22,7 +22,7 @@ describe("macro.intentClassifier", () => {
 
   it("requires at least 2 categories", () => {
     expect(() =>
-      macro.intentClassifier({
+      utility.intentClassifier({
         name: "invalid",
         categories: { only: "single option" }
       })
@@ -31,7 +31,7 @@ describe("macro.intentClassifier", () => {
 
   it("injects category descriptions into the prompt", async () => {
     const seenMessages: unknown[] = [];
-    const block = macro.intentClassifier({
+    const block = utility.intentClassifier({
       name: "descriptions",
       categories
     });
@@ -59,7 +59,7 @@ describe("macro.intentClassifier", () => {
   });
 
   it("validates output category against declared category keys", async () => {
-    const block = macro.intentClassifier({
+    const block = utility.intentClassifier({
       name: "validate-category",
       categories
     });
@@ -77,12 +77,12 @@ describe("macro.intentClassifier", () => {
   });
 
   it("uses default output schema and supports override", async () => {
-    const defaultBlock = macro.intentClassifier({
+    const defaultBlock = utility.intentClassifier({
       name: "default-schema",
       categories
     });
 
-    const customBlock = macro.intentClassifier({
+    const customBlock = utility.intentClassifier({
       name: "custom-schema",
       categories,
       outputSchema: z.object({
@@ -124,7 +124,7 @@ describe("macro.intentClassifier", () => {
   });
 
   it("is composable inside sequencers", async () => {
-    const classify = macro.intentClassifier({
+    const classify = utility.intentClassifier({
       name: "classify-in-sequencer",
       categories
     });
@@ -153,7 +153,7 @@ describe("macro.intentClassifier", () => {
 
   it("handles different category sets with description specificity", async () => {
     const seenMessages: unknown[] = [];
-    const triage = macro.intentClassifier({
+    const triage = utility.intentClassifier({
       name: "triage",
       categories: {
         urgent: "Immediate risk, outage, or customer-impacting incident.",

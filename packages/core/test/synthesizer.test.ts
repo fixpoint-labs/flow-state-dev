@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { macro, sequencer } from "../src";
+import { utility, sequencer } from "../src";
 import { createMockContext } from "./helpers";
 
-describe("macro.synthesizer", () => {
+describe("utility.synthesizer", () => {
   it("returns a generator block definition", () => {
-    const block = macro.synthesizer({
+    const block = utility.synthesizer({
       name: "synthesize-findings"
     });
 
@@ -15,7 +15,7 @@ describe("macro.synthesizer", () => {
 
   it("includes explicit conflict-resolution guidance", async () => {
     const seenMessages: unknown[] = [];
-    const block = macro.synthesizer({
+    const block = utility.synthesizer({
       name: "resolve-conflicts",
       objectives: "Prefer sources with direct evidence"
     });
@@ -62,7 +62,7 @@ describe("macro.synthesizer", () => {
   });
 
   it("synthesizes complementary inputs into a unified output", async () => {
-    const block = macro.synthesizer({
+    const block = utility.synthesizer({
       name: "merge-complementary"
     });
 
@@ -102,8 +102,8 @@ describe("macro.synthesizer", () => {
   });
 
   it("uses default output schema and supports override", async () => {
-    const defaultBlock = macro.synthesizer({ name: "default-schema" });
-    const customBlock = macro.synthesizer({
+    const defaultBlock = utility.synthesizer({ name: "default-schema" });
+    const customBlock = utility.synthesizer({
       name: "custom-schema",
       outputSchema: z.object({
         synthesis: z.string(),
@@ -145,7 +145,7 @@ describe("macro.synthesizer", () => {
   });
 
   it("is composable inside sequencers", async () => {
-    const synthesize = macro.synthesizer({
+    const synthesize = utility.synthesizer({
       name: "synthesize-in-sequencer"
     });
 

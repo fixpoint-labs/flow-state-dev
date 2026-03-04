@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { handler, macro, router, sequencer } from "../src";
+import { handler, utility, router, sequencer } from "../src";
 import { createMockContext } from "./helpers";
 
-describe("macro.analyzer", () => {
+describe("utility.analyzer", () => {
   it("returns a generator block definition", () => {
-    const block = macro.analyzer({
+    const block = utility.analyzer({
       name: "quality-check"
     });
 
@@ -15,7 +15,7 @@ describe("macro.analyzer", () => {
 
   it("supports caller-specified evaluation criteria", async () => {
     const seenMessages: unknown[] = [];
-    const block = macro.analyzer({
+    const block = utility.analyzer({
       name: "criteria-check",
       criteria: ["completeness", "accuracy", "clarity"]
     });
@@ -50,7 +50,7 @@ describe("macro.analyzer", () => {
 
   it("uses default criteria when none are provided", async () => {
     const seenMessages: unknown[] = [];
-    const block = macro.analyzer({ name: "defaults" });
+    const block = utility.analyzer({ name: "defaults" });
 
     const ctx = createMockContext({
       resolveModel: () => ({
@@ -78,8 +78,8 @@ describe("macro.analyzer", () => {
   });
 
   it("supports default output schema and caller override", async () => {
-    const defaultBlock = macro.analyzer({ name: "default-schema" });
-    const customBlock = macro.analyzer({
+    const defaultBlock = utility.analyzer({ name: "default-schema" });
+    const customBlock = utility.analyzer({
       name: "custom-schema",
       outputSchema: z.object({
         findings: z.array(z.object({ criterion: z.string(), assessment: z.string() })),
@@ -139,7 +139,7 @@ describe("macro.analyzer", () => {
   });
 
   it("accepts varied input types", async () => {
-    const block = macro.analyzer({ name: "input-shapes" });
+    const block = utility.analyzer({ name: "input-shapes" });
 
     const ctx = createMockContext({
       resolveModel: () => ({
@@ -164,7 +164,7 @@ describe("macro.analyzer", () => {
   });
 
   it("is composable before router blocks in sequencers", async () => {
-    const analyze = macro.analyzer({
+    const analyze = utility.analyzer({
       name: "pre-route-analysis",
       criteria: ["risk"]
     });

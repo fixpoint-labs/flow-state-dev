@@ -17,7 +17,7 @@ export {
   sequencer
 } from "./blocks";
 export { defineFlow } from "./flow";
-export * as macro from "./macro";
+export * as utility from "./utility";
 export type {
   BranchStep,
   BranchStepOutput,

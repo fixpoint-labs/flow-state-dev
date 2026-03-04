@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { macro, sequencer } from "../src";
+import { utility, sequencer } from "../src";
 import { createMockContext } from "./helpers";
 
-describe("macro.memoryExtractor", () => {
+describe("utility.memoryExtractor", () => {
   it("returns a generator block definition", () => {
-    const block = macro.memoryExtractor({
+    const block = utility.memoryExtractor({
       name: "extract-memories"
     });
 
@@ -14,7 +14,7 @@ describe("macro.memoryExtractor", () => {
   });
 
   it("uses a default output schema with memory type classification", async () => {
-    const block = macro.memoryExtractor({ name: "default-schema" });
+    const block = utility.memoryExtractor({ name: "default-schema" });
 
     const ctx = createMockContext({
       resolveModel: () => ({
@@ -45,7 +45,7 @@ describe("macro.memoryExtractor", () => {
   });
 
   it("supports override output schemas", async () => {
-    const block = macro.memoryExtractor({
+    const block = utility.memoryExtractor({
       name: "custom-schema",
       outputSchema: z.object({
         memories: z.array(
@@ -80,7 +80,7 @@ describe("macro.memoryExtractor", () => {
 
   it("extracts from varied input types by serializing non-string input", async () => {
     const seenMessages: unknown[] = [];
-    const block = macro.memoryExtractor({ name: "varied-input" });
+    const block = utility.memoryExtractor({ name: "varied-input" });
 
     const ctx = createMockContext({
       resolveModel: () => ({
@@ -118,7 +118,7 @@ describe("macro.memoryExtractor", () => {
   });
 
   it("is composable inside sequencers", async () => {
-    const extract = macro.memoryExtractor({
+    const extract = utility.memoryExtractor({
       name: "extract-in-sequencer"
     });
 
