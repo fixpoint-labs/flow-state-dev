@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Framework Philosophy
 
-Flow State Dev is opinionated. Not in the way that forces you into predefined patterns, but in the way that removes everything standing between you and the thing you're trying to build. These eight principles explain how the framework thinks — and why it was built the way it was.
+flow-state.dev is opinionated. Not in the way that forces you into predefined patterns, but in the way that removes everything standing between you and the thing you're trying to build. These eight principles explain how the framework thinks — and why it was built the way it was.
 
 ---
 
@@ -35,7 +35,7 @@ const agent = generator({
 
 ## 2. Built for AI Execution
 
-AI applications are long-running, non-deterministic, streaming, and stateful. Traditional frameworks treat these as edge cases. Flow State Dev treats them as the default execution model.
+AI applications are long-running, non-deterministic, streaming, and stateful. Traditional frameworks treat these as edge cases. flow-state.dev treats them as the default execution model.
 
 Every primitive was designed around the reality that AI-driven applications have fundamentally different requirements than request/response web apps. Flows don't terminate when a response is sent — they persist session state, accumulate resources, and can be resumed. Generators run a tool loop managed entirely by the framework, not by application code.
 
