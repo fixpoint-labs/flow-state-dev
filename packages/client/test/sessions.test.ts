@@ -147,11 +147,14 @@ describe("createSessionClient", () => {
 
     await client.getSessionState("sess_1", {
       includeItems: true,
-      projections: ["session.artifactsList", "user.topics"]
+      projections: ["session.artifactsList", "user.topics"],
+      itemTypes: ["message"],
+      offset: 100,
+      limit: 50
     });
 
     expect(fetcher.mock.calls[0]?.[0]).toBe(
-      "/api/flows/sessions/sess_1/state?include_items=true&projections=session.artifactsList%2Cuser.topics"
+      "/api/flows/sessions/sess_1/state?include_items=true&projections=session.artifactsList%2Cuser.topics&item_types=message&offset=100&limit=50"
     );
   });
 });

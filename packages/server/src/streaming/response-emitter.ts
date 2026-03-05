@@ -41,6 +41,7 @@ type RequestEventDraft<TEvent extends RequestStreamEvent> = Omit<
 export type CreateResponseEmitterOptions = {
   requestId: string;
   startSequenceNumber?: number;
+  maxBufferSize?: number;
   now?: () => number;
   onEvent?: (event: RequestStreamEventWithId) => Promise<void> | void;
 };
@@ -54,6 +55,8 @@ const DEFAULT_PROVENANCE: ItemProvenance = {
   blockInstanceId: "runtime",
   phase: "main"
 };
+
+const DEFAULT_MAX_BUFFER_SIZE = 10_000;
 
 function isRequestStreamDraft(value: unknown): value is {
   type: RequestStreamEvent["type"];
@@ -87,10 +90,12 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   private readonly now: () => number;
   private readonly onEvent?: (event: RequestStreamEventWithId) => Promise<void> | void;
   private readonly internalSeams: InternalStreamingSeams;
+  private readonly maxBufferSize: number;
   private sequenceNumber: number;
   private readonly events: RequestStreamEventWithId[] = [];
   private readonly itemsById = new Map<string, OutputItem>();
   private onLogEvent?: (eventType: string, detail: Record<string, unknown>) => void;
+  private droppedBufferedEvents = 0;
 
   /**
    * Creates a request-scoped emitter instance.
@@ -98,6 +103,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   constructor(options: CreateInternalResponseEmitterOptions) {
     this.requestId = options.requestId;
     this.sequenceNumber = Math.max(0, options.startSequenceNumber ?? 0);
+    this.maxBufferSize = Math.max(1, options.maxBufferSize ?? DEFAULT_MAX_BUFFER_SIZE);
     this.now = options.now ?? (() => Date.now());
     this.onEvent = options.onEvent;
     this.internalSeams = options.internalSeams ?? NOOP_INTERNAL_STREAMING_SEAMS;
@@ -410,11 +416,28 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     };
 
     this.events.push(withId);
+    this.enforceBufferLimit();
     if (this.onEvent !== undefined) {
       await this.onEvent(withId);
     }
 
     return withId;
+  }
+
+  private enforceBufferLimit(): void {
+    if (this.events.length <= this.maxBufferSize) {
+      return;
+    }
+
+    const overflowCount = this.events.length - this.maxBufferSize;
+    this.events.splice(0, overflowCount);
+    this.droppedBufferedEvents += overflowCount;
+
+    this.onLogEvent?.("response.buffer.capped", {
+      requestId: this.requestId,
+      maxBufferSize: this.maxBufferSize,
+      droppedEvents: this.droppedBufferedEvents
+    });
   }
 }
 

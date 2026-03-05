@@ -22,6 +22,7 @@ export type LiveRequestStream = {
 
 export type CreateLiveRequestStreamOptions = {
   requestId: string;
+  maxBufferSize?: number;
   internalSeams?: InternalStreamingSeams;
 };
 
@@ -64,6 +65,7 @@ export function createLiveRequestStream(
 
   const emitter = createInternalResponseEmitter({
     requestId,
+    maxBufferSize: options.maxBufferSize,
     onEvent,
     internalSeams: options.internalSeams
   });

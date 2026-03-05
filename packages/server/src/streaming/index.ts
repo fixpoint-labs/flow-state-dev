@@ -41,6 +41,9 @@ export { createLiveRequestStream } from "./live-stream";
 export type { LiveRequestStream, CreateLiveRequestStreamOptions } from "./live-stream";
 
 export {
+  canRegisterStream,
+  cleanupStaleStreams,
+  configureActiveStreamRegistry,
   registerStream,
   getActiveStream,
   removeStream

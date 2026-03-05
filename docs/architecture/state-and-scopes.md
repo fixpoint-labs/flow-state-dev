@@ -65,6 +65,12 @@ await ctx.session.patchState({ count: newCount });
 
 On retry exhaustion, a `ConcurrentModificationError` is thrown.
 
+### CAS cloning guidance
+
+- CAS containers use deep cloning to preserve immutable write semantics and avoid accidental shared mutation.
+- This trade-off is acceptable for typical Phase 1 scope state payloads (targeting small, kilobyte-scale objects).
+- The runtime emits warnings when scope state exceeds the default `10KB` threshold so integrators can spot large-state pressure early.
+
 **Concurrency guidance:**
 - Avoid read-modify-write patterns inside `parallel`/`forEach` unless using atomic ops
 - Prefer `incState`, `pushState`, `setStateRecord` for concurrent writes
