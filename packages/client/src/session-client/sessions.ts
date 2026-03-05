@@ -45,6 +45,8 @@ export type GetSessionStateOptions = {
   includeItems?: boolean;
   projections?: string[];
   itemTypes?: string[];
+  offset?: number;
+  limit?: number;
 };
 
 /**
@@ -146,7 +148,9 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
             stateOptions?.itemTypes === undefined ||
             stateOptions.itemTypes.length === 0
               ? undefined
-              : stateOptions.itemTypes.join(",")
+              : stateOptions.itemTypes.join(","),
+          offset: stateOptions?.offset,
+          limit: stateOptions?.limit
         })
       })
     });

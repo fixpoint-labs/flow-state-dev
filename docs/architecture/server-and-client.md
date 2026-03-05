@@ -103,6 +103,14 @@ const router = createFlowApiRouter({
   registry,
   stores: createInMemoryStores(),
 });
+
+// Optional runtime safeguards for long-lived servers
+const guardedRouter = createFlowApiRouter({
+  registry,
+  maxResponseBufferSize: 10_000,
+  maxConcurrentStreams: 1_000,
+  staleStreamTtlMs: 300_000,
+});
 ```
 
 ## Client Setup
@@ -138,7 +146,11 @@ const sessions = createSessionClient({ baseUrl: "/api/flows" });
 
 const list = await sessions.list();
 const detail = await sessions.get(sessionId);
-const snapshot = await sessions.getState(sessionId);
+const snapshot = await sessions.getState(sessionId, {
+  includeItems: true,
+  offset: 0,
+  limit: 100,
+});
 ```
 
 ### SSE Stream Client

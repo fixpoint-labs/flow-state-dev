@@ -65,6 +65,11 @@ export class MemoryStateContainer<TState> implements StateContainer<TState> {
 
 export type ScopeStateOpsOptions<TState extends object> = {
   cas?: CASOptions;
+  maxStateSizeBytes?: number;
+  onStateSizeWarning?: (detail: {
+    sizeBytes: number;
+    maxStateSizeBytes: number;
+  }) => void;
   onPersist?: (
     state: Readonly<TState>,
     version: number
@@ -90,7 +95,9 @@ async function applyMutation<TState extends object>(
   await runWithCAS({
     container,
     mutator,
-    options: options?.cas
+    options: options?.cas,
+    maxStateSizeBytes: options?.maxStateSizeBytes,
+    onStateSizeWarning: options?.onStateSizeWarning
   });
   await notifyPersist(container, options);
 }

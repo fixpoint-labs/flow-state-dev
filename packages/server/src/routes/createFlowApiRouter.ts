@@ -17,6 +17,9 @@ export type CreateFlowApiRouterOptions = {
   registry: FlowRegistry;
   stores?: Partial<StoreRegistry>;
   modelResolver?: ModelResolver;
+  maxResponseBufferSize?: number;
+  maxConcurrentStreams?: number;
+  staleStreamTtlMs?: number;
   onError?: (error: Error, context: { method: string; path: string }) => void;
 };
 

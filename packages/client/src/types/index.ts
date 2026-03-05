@@ -172,6 +172,13 @@ export type SessionStateSnapshotResponse = {
     project?: Record<string, unknown>;
   };
   items?: OutputItem[];
+  pagination?: {
+    offset: number;
+    limit: number;
+    total: number;
+    hasMore: boolean;
+    nextOffset: number;
+  };
 };
 
 /**

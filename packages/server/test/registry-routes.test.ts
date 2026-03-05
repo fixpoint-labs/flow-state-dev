@@ -84,6 +84,28 @@ function makeProjectedFlow(kind: string, id = kind): FlowInstance {
   });
 }
 
+function makeSlowFlow(kind: string, id = kind): FlowInstance {
+  return defineFlow({
+    kind,
+    actions: {
+      run: {
+        inputSchema: z.object({
+          value: z.string()
+        }),
+        block: handler<{ value: string }, { ok: boolean }>({
+          name: `${kind}-run-slow`,
+          execute: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 200));
+            return { ok: true };
+          }
+        })
+      }
+    }
+  })({
+    id
+  });
+}
+
 describe("flow registry", () => {
   it("registers, resolves, and lists flows", () => {
     const registry = createFlowRegistry();
@@ -425,5 +447,88 @@ describe("createFlowApiRouter", () => {
         }
       }
     });
+  });
+
+  it("paginates session items with metadata", async () => {
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    registry.register(makeFlow("pagination"));
+    const router = createFlowApiRouter({
+      registry,
+      stores
+    });
+
+    await router.POST(
+      new Request("http://localhost/api/flows/pagination/sess_page/actions/run", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: "user_page",
+          input: { value: "ok" }
+        })
+      }),
+      { params: { path: ["pagination", "sess_page", "actions", "run"] } }
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const stateResponse = await router.GET(
+      new Request(
+        "http://localhost/api/flows/sessions/sess_page/state?include_items=true&offset=0&limit=1"
+      ),
+      {
+        params: {
+          path: ["sessions", "sess_page", "state"]
+        }
+      }
+    );
+
+    expect(stateResponse.status).toBe(200);
+    const payload = (await stateResponse.json()) as {
+      items?: unknown[];
+      pagination?: {
+        offset: number;
+        limit: number;
+        total: number;
+        hasMore: boolean;
+        nextOffset: number;
+      };
+    };
+    expect(payload.items?.length).toBe(1);
+    expect(payload.pagination).toEqual({
+      offset: 0,
+      limit: 1,
+      total: 1,
+      hasMore: false,
+      nextOffset: 1
+    });
+  });
+
+  it("returns 503 when active stream capacity is reached", async () => {
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    registry.register(makeSlowFlow("capacity"));
+    const router = createFlowApiRouter({
+      registry,
+      stores,
+      maxConcurrentStreams: 1
+    });
+
+    const first = await router.POST(
+      new Request("http://localhost/api/flows/capacity/sess_cap_1/actions/run", {
+        method: "POST",
+        body: JSON.stringify({ userId: "user_cap", input: { value: "ok1" } })
+      }),
+      { params: { path: ["capacity", "sess_cap_1", "actions", "run"] } }
+    );
+    expect(first.status).toBe(202);
+
+    const second = await router.POST(
+      new Request("http://localhost/api/flows/capacity/sess_cap_2/actions/run", {
+        method: "POST",
+        body: JSON.stringify({ userId: "user_cap", input: { value: "ok2" } })
+      }),
+      { params: { path: ["capacity", "sess_cap_2", "actions", "run"] } }
+    );
+
+    expect(second.status).toBe(503);
   });
 });
