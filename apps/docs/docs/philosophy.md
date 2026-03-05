@@ -95,35 +95,62 @@ function App() {
 
 ## 4. State That Evolves
 
-State, resources, and projections form the framework's memory system. State evolves through typed operations. Resources accumulate domain knowledge. Projections compute exactly what the model needs to see at any given moment.
+State, resources, and projections form the framework's memory system. State evolves through typed operations. Projections compute derived views from that state — and those views feed directly back into the model's context on every subsequent turn.
 
-Tools don't just return outputs to the LLM — they read and write system state as part of execution. A tool that saves a document updates a resource. A tool that checks progress reads session state. The whole system works as one cohesive exchange of data.
+Tools don't just return outputs to the LLM — they read and write system state as part of execution. A tool that researches a topic records its findings in session state. A projection transforms that accumulated state into a context string the model can reason over. The next time the agent loop runs, the model knows what it already knows — not because the transcript happened to mention it, but because the state system guarantees it.
 
-Memory isn't a conversation transcript you hope fits in the context window. It's structured, scoped, and evolving — and the framework provides the infrastructure to engineer how your application understands and remembers.
+Memory isn't a conversation transcript you hope fits in the context window. It's structured, scoped, and engineered.
 
 ```ts
-const docResource = defineResource({
-  name: "docs",
-  schema: z.object({
-    title: z.string(),
-    content: z.string(),
-    updatedAt: z.string(),
-  }),
+const stateSchema = z.object({
+  coveredTopics: z.array(z.string()).default([]),
+  keyFindings: z.record(z.string()).default({}),
 });
 
-// A tool that writes to resources — the LLM's memory persists across turns
-const writeDoc = handler({
-  name: "write-doc",
-  input: z.object({ id: z.string(), title: z.string(), content: z.string() }),
-  run: async (input, ctx) => {
-    await ctx.session.resources.docs.set(input.id, {
-      title: input.title,
-      content: input.content,
-      updatedAt: new Date().toISOString(),
-    });
-    return { saved: true };
+// A tool that does real work AND updates session state as a side effect.
+// The return value goes to the LLM. The state update persists across turns.
+const researchTopic = handler({
+  name: "research-topic",
+  input: z.object({ topic: z.string() }),
+  sessionStateSchema: stateSchema,
+  execute: async (input, ctx) => {
+    const findings = await fetchResearch(input.topic);
+
+    await ctx.session.pushState("coveredTopics", input.topic);
+    await ctx.session.setStateRecord("keyFindings", input.topic, findings.summary);
+
+    return findings;
   },
 });
+
+// The generator references the projection — not raw state.
+// Every turn, the model receives an up-to-date summary of what it already knows.
+const agent = generator({
+  name: "agent",
+  model: "gpt-5-mini",
+  prompt: "You are a research assistant.",
+  context: [projectionText("session.researchProgress")],
+  history: (_input, ctx) => ctx.session.items.llm(),
+  tools: [researchTopic, synthesize],
+});
+
+export default defineFlow({
+  kind: "researcher",
+  actions: { chat: { block: agent, userMessage: (i) => i.message } },
+  session: {
+    stateSchema,
+    projections: {
+      researchProgress: (ctx) => {
+        const { coveredTopics, keyFindings } = ctx.session.state;
+        if (coveredTopics.length === 0) return "";
+        return [
+          `Topics already researched: ${coveredTopics.join(", ")}`,
+          ...coveredTopics.map((t) => `- ${t}: ${keyFindings[t]}`),
+        ].join("\n");
+      },
+    },
+  },
+})({ id: "default" });
 ```
 
 ---
