@@ -402,6 +402,22 @@ Because every block has the same contract — typed input, typed output, declare
 
 Connectors make this practical: when types don't align, a simple transform function bridges the gap. No wrapper blocks, no inheritance hierarchies. The framework's four-primitive constraint and partial state schemas mean blocks don't leak assumptions about the flows they live in.
 
+## Utility blocks
+
+The four primitives give you full control, but common AI patterns — summarization, task decomposition, intent classification — require the same boilerplate configuration every time. **Utility blocks** are pre-built factories that return fully configured blocks for these patterns:
+
+```ts
+import { utility } from "@flow-state-dev/core";
+
+const summarize = utility.summarizer({ name: "brief", granularity: "brief" });
+const classify = utility.intentClassifier({ name: "triage", categories: { ... } });
+const decompose = utility.decomposer({ name: "plan" });
+```
+
+Each utility returns a standard block — composable in sequencers, routers, and flows like any block you build yourself. Nine utilities produce generator blocks (LLM-powered), and one (`combiner`) produces a handler block (deterministic, no LLM).
+
+See the [Utility Blocks guide](/docs/guides/utility-blocks) for the full catalog with examples and output schemas.
+
 ## Key rules
 
 - **Always use `block.run()`** — never call `block.config.execute` directly. The framework manages validation, retry, lifecycle, and streaming through `block.run()`.

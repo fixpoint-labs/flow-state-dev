@@ -75,6 +75,30 @@ Conflict rule: `preperation/architecture/*` wins.
 
 → [Architecture Overview](../architecture/overview.md)
 
+## Utility Blocks
+
+Ten pre-built utility factories wrapping generator/handler blocks:
+
+| Utility | Kind | Purpose |
+|---------|------|---------|
+| `contextReducer` | generator | Context reduction (distill, denoise, compress) |
+| `memoryExtractor` | generator | Extract durable memory candidates |
+| `decomposer` | generator | Break requests into subtasks with dependency graph |
+| `composer` | generator | Assemble coherent output from parts |
+| `summarizer` | generator | Summarize at brief/detailed/executive granularity |
+| `combiner` | handler | Deterministic artifact merge (no LLM) |
+| `synthesizer` | generator | Reconcile overlapping/conflicting inputs |
+| `analyzer` | generator | Evaluate artifacts against criteria |
+| `intentClassifier` | generator | Classify input into bounded category set for routing |
+| `intentRouter` | sequencer | Pre-wired classifier + router for classification-driven branching |
+
+- Access via `utility.<name>(config)` — returns a standard `BlockDefinition`
+- All generators default to `"gpt-5-mini"` model
+- All utilities accept optional `outputSchema` override
+- Combiner is handler-based (deterministic, no model)
+
+> [Utility Blocks](../architecture/utility-blocks.md)
+
 ## Resources and Projections
 
 - Concrete resources are persisted, attached to scopes
