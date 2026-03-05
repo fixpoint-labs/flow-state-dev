@@ -225,6 +225,37 @@
   color: rgba(0, 0, 0, 0.85);
 }
 
+/* ── Philosophy Link ── */
+
+.philosophyLinkWrap {
+  margin-top: 1.25rem;
+  animation: fadeInUp 0.8s ease-out 0.3s both;
+}
+
+.philosophyLink {
+  font-size: 0.825rem;
+  color: var(--fsd-text-muted);
+  text-decoration: none;
+  opacity: 0.6;
+  transition: opacity 0.2s ease, color 0.2s ease;
+  letter-spacing: 0.005em;
+}
+
+.philosophyLink:hover {
+  opacity: 1;
+  color: rgba(255, 255, 255, 0.75);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+[data-theme="light"] .philosophyLink {
+  color: var(--ifm-color-emphasis-600);
+}
+
+[data-theme="light"] .philosophyLink:hover {
+  color: var(--ifm-color-emphasis-900);
+}
+
 /* ── Section Divider ── */
 
 .sectionDivider {

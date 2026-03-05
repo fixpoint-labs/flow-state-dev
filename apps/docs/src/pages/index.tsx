@@ -255,6 +255,11 @@ function Hero() {
             Why flow-state.dev?
           </Link>
         </div>
+        <div className={styles.philosophyLinkWrap}>
+          <Link className={styles.philosophyLink} to="/docs/philosophy">
+            Read about our philosophy
+          </Link>
+        </div>
       </div>
     </header>
   );
@@ -359,6 +364,11 @@ function CTA() {
           </Link>
           <Link className={styles.secondaryBtn} to="/blog/welcome">
             Read the Manifesto
+          </Link>
+        </div>
+        <div className={styles.philosophyLinkWrap}>
+          <Link className={styles.philosophyLink} to="/docs/philosophy">
+            Read about our philosophy
           </Link>
         </div>
         <InstallSnippet />
