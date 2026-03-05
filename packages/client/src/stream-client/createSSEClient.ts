@@ -23,6 +23,7 @@ export type CreateSSEClientOptions = RequestSSECallbacks & {
   fetcher?: ClientFetch;
   lastEventId?: string;
   startingAfter?: number;
+  dedupWindowSize?: number;
 };
 
 /**
@@ -34,6 +35,7 @@ export type CreateUserSSEClientOptions = UserSSECallbacks & {
   fetcher?: ClientFetch;
   lastEventId?: string;
   startingAfter?: number;
+  dedupWindowSize?: number;
 };
 
 type Frame = {
@@ -42,13 +44,52 @@ type Frame = {
   data?: string;
 };
 
+const DEFAULT_DEDUP_WINDOW_SIZE = 1000;
+
+function createSlidingEventDeduper(windowSize: number): {
+  seen: (key: string) => boolean;
+  clear: () => void;
+} {
+  const boundedWindow = Number.isFinite(windowSize)
+    ? Math.max(1, Math.floor(windowSize))
+    : DEFAULT_DEDUP_WINDOW_SIZE;
+  const order: string[] = [];
+  const values = new Set<string>();
+
+  return {
+    seen: (key: string): boolean => {
+      if (values.has(key)) {
+        return true;
+      }
+
+      values.add(key);
+      order.push(key);
+
+      while (order.length > boundedWindow) {
+        const oldest = order.shift();
+        if (oldest !== undefined) {
+          values.delete(oldest);
+        }
+      }
+
+      return false;
+    },
+    clear: (): void => {
+      order.length = 0;
+      values.clear();
+    }
+  };
+}
+
 /**
  * Creates a request-stream SSE client that parses frames and dispatches typed callbacks.
  */
 export function createSSEClient(options: CreateSSEClientOptions): RequestStreamHandle {
   const fetcher = resolveFetch(options.fetcher);
   const controller = new AbortController();
-  const seen = new Set<string>();
+  const deduper = createSlidingEventDeduper(
+    options.dedupWindowSize ?? DEFAULT_DEDUP_WINDOW_SIZE
+  );
   let closed = false;
   let lastEventId = options.lastEventId;
 
@@ -89,11 +130,10 @@ export function createSSEClient(options: CreateSSEClientOptions): RequestStreamH
       try {
         const parsed = JSON.parse(frame.data) as RequestStreamEvent;
         const key = requestEventKey(parsed);
-        if (seen.has(key)) {
+        if (deduper.seen(key)) {
           return;
         }
 
-        seen.add(key);
         dispatchRequestEvent(parsed, options);
       } catch (error) {
         options.onError?.(normalizeError(error));
@@ -113,6 +153,7 @@ export function createSSEClient(options: CreateSSEClientOptions): RequestStreamH
       }
 
       closed = true;
+      deduper.clear();
       controller.abort();
     },
     get lastEventId() {
@@ -129,7 +170,9 @@ export function createUserSSEClient(
 ): UserStreamHandle {
   const fetcher = resolveFetch(options.fetcher);
   const controller = new AbortController();
-  const seen = new Set<string>();
+  const deduper = createSlidingEventDeduper(
+    options.dedupWindowSize ?? DEFAULT_DEDUP_WINDOW_SIZE
+  );
   let closed = false;
   let lastEventId = options.lastEventId;
 
@@ -170,11 +213,10 @@ export function createUserSSEClient(
       try {
         const parsed = JSON.parse(frame.data) as UserStreamEvent;
         const key = userEventKey(parsed);
-        if (seen.has(key)) {
+        if (deduper.seen(key)) {
           return;
         }
 
-        seen.add(key);
         dispatchUserEvent(parsed, options);
       } catch (error) {
         options.onError?.(normalizeError(error));
@@ -194,6 +236,7 @@ export function createUserSSEClient(
       }
 
       closed = true;
+      deduper.clear();
       controller.abort();
     },
     get lastEventId() {

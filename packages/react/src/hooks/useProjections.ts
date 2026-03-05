@@ -1,8 +1,9 @@
 /**
  * Projection subscription hook that reads scope-grouped projection values from session snapshots.
  */
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { SessionView } from "./useSession";
+import { shallowEqualRecord } from "../internal/shallowEqualRecord";
 
 /**
  * Structural schema contract accepted for typed projection inference.
@@ -62,28 +63,40 @@ export type ProjectionValues<TOptions extends ProjectionSubscribeOptions> =
     ? { project: InferProjectionMap<TProject> }
     : {});
 
-function selectScopeProjections(
-  allValues: Record<string, unknown> | undefined,
-  options: ProjectionScopeSubscribeOptions
-): Record<string, unknown> {
-  const source = allValues ?? {};
-
-  if (Array.isArray(options)) {
-    return Object.fromEntries(options.map((name) => [name, source[name]]));
+function toProjectionNames(options: ProjectionScopeSubscribeOptions | undefined): string[] {
+  if (options === undefined) {
+    return [];
   }
 
-  return Object.fromEntries(
-    Object.keys(options).map((name) => [name, source[name]])
-  );
+  if (Array.isArray(options)) {
+    return options;
+  }
+
+  return Object.keys(options);
 }
 
-/**
- * Reads scope-grouped projection values from the current session snapshot.
- */
+function selectScopeProjections(
+  allValues: Record<string, unknown> | undefined,
+  names: string[]
+): Record<string, unknown> {
+  const source = allValues ?? {};
+  return Object.fromEntries(names.map((name) => [name, source[name]]));
+}
+
 export function useProjections<TOptions extends ProjectionSubscribeOptions>(
   session: SessionView,
   options: TOptions
 ): ProjectionValues<TOptions> {
+  const sessionNames = toProjectionNames(options.session);
+  const userNames = toProjectionNames(options.user);
+  const projectNames = toProjectionNames(options.project);
+
+  const sessionNamesKey = sessionNames.join("\u001f");
+  const userNamesKey = userNames.join("\u001f");
+  const projectNamesKey = projectNames.join("\u001f");
+
+  const previousResultRef = useRef<ProjectionValues<TOptions> | null>(null);
+
   return useMemo(() => {
     const projectionSource = session.snapshot?.projections ?? {};
     const next: Record<string, unknown> = {};
@@ -91,21 +104,48 @@ export function useProjections<TOptions extends ProjectionSubscribeOptions>(
     if (options.session !== undefined) {
       next.session = selectScopeProjections(
         projectionSource.session,
-        options.session
+        sessionNames
       );
     }
 
     if (options.user !== undefined) {
-      next.user = selectScopeProjections(projectionSource.user, options.user);
+      next.user = selectScopeProjections(projectionSource.user, userNames);
     }
 
     if (options.project !== undefined) {
-      next.project = selectScopeProjections(
-        projectionSource.project,
-        options.project
-      );
+      next.project = selectScopeProjections(projectionSource.project, projectNames);
     }
 
-    return next as ProjectionValues<TOptions>;
-  }, [session.snapshot, options]);
+    const previous = previousResultRef.current as Record<string, unknown> | null;
+    if (previous !== null) {
+      const sameSession = shallowEqualRecord(
+        previous.session as Record<string, unknown> | undefined,
+        next.session as Record<string, unknown> | undefined
+      );
+      const sameUser = shallowEqualRecord(
+        previous.user as Record<string, unknown> | undefined,
+        next.user as Record<string, unknown> | undefined
+      );
+      const sameProject = shallowEqualRecord(
+        previous.project as Record<string, unknown> | undefined,
+        next.project as Record<string, unknown> | undefined
+      );
+
+      if (sameSession && sameUser && sameProject) {
+        return previousResultRef.current as ProjectionValues<TOptions>;
+      }
+    }
+
+    const typed = next as ProjectionValues<TOptions>;
+    previousResultRef.current = typed;
+    return typed;
+  }, [
+    session.snapshot?.projections,
+    options.session,
+    options.user,
+    options.project,
+    sessionNamesKey,
+    userNamesKey,
+    projectNamesKey
+  ]);
 }
