@@ -33,6 +33,8 @@ const CLIENT_ITEM_TYPES = new Set([
   "step_error"
 ]);
 
+const DEFAULT_STATE_PAGE_LIMIT = 100;
+
 type ContentDeltaAccumulator = {
   itemId: string;
   contentIndex: number;
@@ -349,6 +351,61 @@ export function useSession(
     [itemConfig.enabled, itemConfig.includeTransient, itemConfig.itemTypes]
   );
 
+  const fetchSessionSnapshot = useCallback(async (): Promise<SessionStateSnapshotResponse | null> => {
+    if (sessionId === undefined) {
+      return null;
+    }
+
+    if (!itemConfig.enabled) {
+      return sessionClient.getSessionState(sessionId, {
+        includeItems: false
+      });
+    }
+
+    let offset = 0;
+    let merged: SessionStateSnapshotResponse | null = null;
+    const mergedItems: OutputItem[] = [];
+
+    while (true) {
+      const page = await sessionClient.getSessionState(sessionId, {
+        includeItems: true,
+        itemTypes: itemConfig.itemTypes,
+        offset,
+        limit: DEFAULT_STATE_PAGE_LIMIT
+      });
+
+      if (merged === null) {
+        merged = page;
+      }
+
+      if (Array.isArray(page.items) && page.items.length > 0) {
+        mergedItems.push(...page.items);
+      }
+
+      if (page.pagination?.hasMore !== true) {
+        break;
+      }
+
+      offset = page.pagination.nextOffset;
+    }
+
+    if (merged === null) {
+      return null;
+    }
+
+    return {
+      ...merged,
+      items: mergedItems,
+      pagination: {
+        offset: 0,
+        limit: mergedItems.length,
+        total: mergedItems.length,
+        hasMore: false,
+        nextOffset: mergedItems.length
+      }
+    };
+  }, [sessionId, sessionClient, itemConfig.enabled, itemConfig.itemTypes]);
+
   const refreshSnapshot = useCallback(async () => {
     if (sessionId === undefined) {
       return;
@@ -357,14 +414,13 @@ export function useSession(
     try {
       const [nextDetail, nextSnapshot] = await Promise.all([
         sessionClient.getSession(sessionId),
-        sessionClient.getSessionState(sessionId, {
-          includeItems: itemConfig.enabled,
-          itemTypes: itemConfig.itemTypes
-        })
+        fetchSessionSnapshot()
       ]);
 
       setDetail(nextDetail);
-      applySnapshot(nextSnapshot);
+      if (nextSnapshot !== null) {
+        applySnapshot(nextSnapshot);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause : new Error(String(cause)));
     }
@@ -391,10 +447,7 @@ export function useSession(
       try {
         const [nextDetail, nextSnapshot] = await Promise.all([
           sessionClient.getSession(sessionId),
-          sessionClient.getSessionState(sessionId, {
-            includeItems: itemConfig.enabled,
-            itemTypes: itemConfig.itemTypes
-          })
+          fetchSessionSnapshot()
         ]);
 
         if (cancelled) {
@@ -402,7 +455,9 @@ export function useSession(
         }
 
         setDetail(nextDetail);
-        applySnapshot(nextSnapshot);
+        if (nextSnapshot !== null) {
+          applySnapshot(nextSnapshot);
+        }
       } catch (cause) {
         if (!cancelled) {
           setError(cause instanceof Error ? cause : new Error(String(cause)));
@@ -417,7 +472,7 @@ export function useSession(
     return () => {
       cancelled = true;
     };
-  }, [sessionId, sessionClient, itemConfig.enabled, itemConfig.itemTypes, applySnapshot]);
+  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot]);
 
   useEffect(() => {
     return () => {

@@ -23,7 +23,22 @@ export type RunWithCASOptions<TState> = {
   container: StateContainer<TState>;
   mutator: CASMutator<TState>;
   options?: CASOptions;
+  maxStateSizeBytes?: number;
+  onStateSizeWarning?: (detail: {
+    sizeBytes: number;
+    maxStateSizeBytes: number;
+  }) => void;
 };
+
+const DEFAULT_MAX_STATE_SIZE_BYTES = 10 * 1024;
+
+function estimateSizeBytes(value: unknown): number {
+  try {
+    return JSON.stringify(value)?.length ?? 0;
+  } catch {
+    return 0;
+  }
+}
 
 function wait(ms: number): Promise<void> {
   if (ms <= 0) {
@@ -38,7 +53,9 @@ function wait(ms: number): Promise<void> {
 export async function runWithCAS<TState>({
   container,
   mutator,
-  options
+  options,
+  maxStateSizeBytes,
+  onStateSizeWarning
 }: RunWithCASOptions<TState>): Promise<Readonly<TState>> {
   const maxRetries = Math.max(0, options?.maxRetries ?? DEFAULT_MAX_RETRIES);
   const baseDelayMs = Math.max(0, options?.baseDelayMs ?? DEFAULT_BASE_DELAY_MS);
@@ -46,6 +63,15 @@ export async function runWithCAS<TState>({
   let attempt = 0;
   while (attempt <= maxRetries) {
     const current = container.read();
+    const currentSizeBytes = estimateSizeBytes(current);
+    const sizeThreshold = maxStateSizeBytes ?? DEFAULT_MAX_STATE_SIZE_BYTES;
+    if (currentSizeBytes > sizeThreshold) {
+      onStateSizeWarning?.({
+        sizeBytes: currentSizeBytes,
+        maxStateSizeBytes: sizeThreshold
+      });
+    }
+
     const expectedVersion = container.getVersion();
     const nextState = await mutator(current);
     const persisted = await container.persist(nextState, expectedVersion);

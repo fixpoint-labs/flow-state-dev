@@ -136,6 +136,21 @@ See [Streaming](./streaming.md).
 
 See [Resources and Projections](./resources-and-projections.md).
 
+### Utility blocks — pre-built building blocks
+
+Utility blocks are factory functions that wrap `generator` or `handler` blocks into specialized, high-level capabilities: context reduction, memory extraction, task decomposition, summarization, analysis, and more. Each utility returns a standard `BlockDefinition` — composable in sequencers, routers, and flows like any other block.
+
+```ts
+const summarize = utility.summarizer({ name: "brief", granularity: "brief" });
+const analyze = utility.analyzer({ name: "check", criteria: ["accuracy"] });
+
+const pipeline = sequencer({ name: "review" })
+  .then(summarize)
+  .then(analyze);
+```
+
+Ten utilities ship in Phase 1, grouped into five categories: Context & Memory, Planning & Decomposition, Synthesis & Output, Evaluation, and Routing. See [Utility Blocks](./utility-blocks.md).
+
 ## Data flow
 
 A typical request flows through the system:

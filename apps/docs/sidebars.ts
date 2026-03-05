@@ -37,6 +37,7 @@ const sidebars: SidebarsConfig = {
         "guides/custom-model-resolver",
         "guides/sequencer-patterns",
         "guides/state-storage",
+        "guides/utility-blocks",
       ],
     },
     {

@@ -16,7 +16,14 @@ import type {
   SessionRecord,
   StoreRegistry
 } from "../stores/types";
-import { getActiveStream, registerStream, removeStream } from "../streaming/active-streams";
+import {
+  canRegisterStream,
+  cleanupStaleStreams,
+  configureActiveStreamRegistry,
+  getActiveStream,
+  registerStream,
+  removeStream
+} from "../streaming/active-streams";
 import { encodeStreamEvent } from "../streaming/encode-event";
 import { createLiveRequestStream } from "../streaming/live-stream";
 import { replayRequestEvents } from "../streaming/resume";
@@ -69,9 +76,14 @@ export type CreateFlowRouteHandlersOptions = {
   registry: FlowRegistry;
   stores?: Partial<StoreRegistry>;
   modelResolver?: ModelResolver;
+  maxResponseBufferSize?: number;
+  maxConcurrentStreams?: number;
+  staleStreamTtlMs?: number;
   onError?: (error: Error, context: { method: string; path: string }) => void;
   internalSeams?: InternalRouteSeams;
 };
+
+const DEFAULT_STATE_ITEMS_LIMIT = 100;
 
 /**
  * Context object expected by catch-all route handlers.
@@ -660,6 +672,13 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   handle: (request: Request, context: FlowRouteContext) => Promise<Response>;
 } {
   const stores = resolveStores(options.stores);
+  configureActiveStreamRegistry({
+    maxConcurrentStreams: options.maxConcurrentStreams,
+    staleStreamTtlMs: options.staleStreamTtlMs,
+    onWarning: (message, detail) => {
+      console.warn(`[flow-state] ${message}`, detail);
+    }
+  });
   const seams = options.internalSeams ?? NOOP_INTERNAL_ROUTE_SEAMS;
 
   const handle = async (
@@ -754,8 +773,16 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         // Create a LiveRequestStream synchronously before async execution.
         // This ensures the SSE endpoint can find the stream when the client connects.
         const liveStream = createLiveRequestStream({
-          requestId: resolvedActionInput.requestId
+          requestId: resolvedActionInput.requestId,
+          maxBufferSize: options.maxResponseBufferSize
         });
+
+        if (!canRegisterStream()) {
+          return jsonResponse(503, {
+            error: "Server is at active stream capacity. Retry shortly."
+          });
+        }
+
         registerStream(resolvedActionInput.requestId, liveStream);
 
         // Fire-and-forget: start execution without awaiting.
@@ -796,6 +823,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       }
 
       if (route.kind === "request_stream") {
+        cleanupStaleStreams();
         const flow = options.registry.get(route.flowKind);
         if (flow === undefined) {
           return jsonResponse(404, {
@@ -922,6 +950,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         const includeItems = getBooleanFlag(
           url.searchParams.get("include_items")
         );
+        const offset = getPositiveInteger(url.searchParams.get("offset")) ?? 0;
+        const limit =
+          getPositiveInteger(url.searchParams.get("limit")) ?? DEFAULT_STATE_ITEMS_LIMIT;
         const itemTypesParam = url.searchParams.get("item_types");
         const itemTypeFilter = itemTypesParam
           ? new Set(itemTypesParam.split(",").map((t) => t.trim()).filter(Boolean))
@@ -931,6 +962,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         // requests when the client asks for items (architecture: "session
         // history is derived by iterating request items across session requests").
         let aggregatedItems: OutputItem[] | undefined;
+        let totalItems = 0;
         if (includeItems) {
           const requests = await stores.request.list({
             sessionId: session.id
@@ -945,6 +977,10 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
               }
             }
           }
+
+          aggregatedItems = sortItems(aggregatedItems);
+          totalItems = aggregatedItems.length;
+          aggregatedItems = aggregatedItems.slice(offset, offset + limit);
         }
         const sessionResources = createProjectionResources({
           scope: "session",
@@ -1040,7 +1076,16 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
                 : undefined
           },
           items: includeItems
-            ? sortItems(aggregatedItems!)
+            ? aggregatedItems
+            : undefined,
+          pagination: includeItems
+            ? {
+                offset,
+                limit,
+                total: totalItems,
+                hasMore: offset + limit < totalItems,
+                nextOffset: Math.min(offset + limit, totalItems)
+              }
             : undefined
         });
       }

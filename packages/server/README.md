@@ -36,6 +36,14 @@ const router = createFlowApiRouter({ registry });
 
 // Testing: in-memory (fast, no cleanup)
 const router = createFlowApiRouter({ registry, stores: createInMemoryStores() });
+
+// Runtime safety guards (optional)
+const guardedRouter = createFlowApiRouter({
+  registry,
+  maxResponseBufferSize: 10_000,
+  maxConcurrentStreams: 1_000,
+  staleStreamTtlMs: 300_000,
+});
 ```
 
 ## Custom model resolution
@@ -100,6 +108,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 
 - Phase 1 requires caller-provided `userId` for all action/session routes
 - Stream resume supports both `Last-Event-ID` header and `starting_after` query param
+- `GET /sessions/:id/state` supports `offset` + `limit` pagination for `items`
 - Generator blocks resolve models through `ctx.resolveModel` — default uses Vercel AI Gateway
 - `createAiSdkModelResolver` and `createDefaultModelResolver` available for explicit model routing
 

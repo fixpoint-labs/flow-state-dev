@@ -1135,7 +1135,15 @@ export async function createExecutionContext<
           projectRef.current.version
         );
 
+  const onStateSizeWarning = (detail: {
+    sizeBytes: number;
+    maxStateSizeBytes: number;
+  }): void => {
+    console.warn("[flow-state] Scope state exceeds recommended CAS size", detail);
+  };
+
   const requestOps = createScopeStateOps(requestContainer, {
+    onStateSizeWarning,
     onPersist: async (state, version) => {
       requestRef.current = {
         ...requestRef.current,
@@ -1148,6 +1156,7 @@ export async function createExecutionContext<
   });
 
   const userOps = createScopeStateOps(userContainer, {
+    onStateSizeWarning,
     onPersist: async (state, version) => {
       userRef.current = {
         ...userRef.current,
@@ -1160,6 +1169,7 @@ export async function createExecutionContext<
   });
 
   const sessionOps = createScopeStateOps(sessionContainer, {
+    onStateSizeWarning,
     onPersist: async (state, version) => {
       sessionRef.current = {
         ...sessionRef.current,
@@ -1178,6 +1188,7 @@ export async function createExecutionContext<
     projectRef.current === undefined || projectContainer === undefined
       ? undefined
       : createScopeStateOps(projectContainer, {
+          onStateSizeWarning,
           onPersist: async (state, version) => {
             const current = projectRef.current;
             if (current === undefined) {

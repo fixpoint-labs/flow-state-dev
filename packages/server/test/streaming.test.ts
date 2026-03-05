@@ -259,6 +259,23 @@ describe("streaming runtime", () => {
     expect(encodedInternal).toBe(encodedDefault);
   });
 
+  it("caps buffered events when maxBufferSize is reached", async () => {
+    const emitter = createResponseEmitter({
+      requestId: "req_cap",
+      now: () => 10,
+      maxBufferSize: 2
+    });
+
+    await emitter.emitRequestCreated();
+    await emitter.emitRequestStatus("in_progress");
+    await emitter.emitRequestStatus("completed");
+
+    expect(emitter.getEvents().map((event) => event.type)).toEqual([
+      "request.in_progress",
+      "request.completed"
+    ]);
+  });
+
   it("parses replay cursors with starting_after precedence and filters replay events", () => {
     expect(parseStartingAfter("42")).toBe(42);
     expect(parseStartingAfter(-1)).toBeUndefined();
