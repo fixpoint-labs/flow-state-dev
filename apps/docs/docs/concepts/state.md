@@ -4,7 +4,7 @@ sidebar_position: 4
 
 # State Management
 
-State in AI applications is messy. Conversation history, user preferences, shared configuration, intermediate processing data — all at different lifetimes, all needing different isolation guarantees. flow-state.dev gives you four scoped levels with typed operations, resources for structured data, and projections to control exactly what the client can see.
+State in AI applications is messy. Conversation history, user preferences, shared configuration, intermediate processing data — all at different lifetimes, all needing different isolation guarantees. flow-state.dev gives you four scoped levels with typed operations, resources for structured data, and client data to control exactly what the client can see.
 
 ## Scopes
 
@@ -17,7 +17,7 @@ State is organized into four hierarchical scopes:
 | **User** | Across sessions for a user | Preferences, accumulated knowledge, model choices |
 | **Project** | Across users in a project | Shared configuration, global data |
 
-Each scope has its own state, resources, and projections. Most of your state lives at the session level.
+Each scope has its own state, resources, and client data. Most of your state lives at the session level.
 
 ## State operations
 
@@ -135,7 +135,7 @@ defineFlow({
 });
 ```
 
-But you don't have to. The flow-level schema only needs to define fields that aren't already declared by blocks — or fields that the flow configuration itself references (like in projections).
+But you don't have to. The flow-level schema only needs to define fields that aren't already declared by blocks — or fields that the flow configuration itself references (like in `clientData` compute functions).
 
 ### Why this matters
 
@@ -215,7 +215,7 @@ await artifacts.patchState({
 
 Resources are scoped — session-level resources persist across requests in a conversation, user-level resources persist across sessions, project-level resources are shared across users. This gives you a natural hierarchy: scratch artifacts in a session, personal notes per user, shared knowledge bases per project.
 
-## Projections
+## Client Data
 
 Client data entries are derived values computed from state and resources. They're the mechanism for exposing data to clients:
 

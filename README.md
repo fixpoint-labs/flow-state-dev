@@ -189,7 +189,7 @@ Resume after disconnect: `Last-Event-ID` or `starting_after` query param replays
 - [State and Scopes](docs/architecture/state-and-scopes.md) — Four scopes, atomic ops, CAS concurrency
 - [Streaming](docs/architecture/streaming.md) — Item/content model, SSE protocol, resume semantics
 - [Execution and Errors](docs/architecture/execution-and-errors.md) — Retry, rescue, work queue
-- [Resources and Client Data](docs/architecture/resources-and-projections.md) — Typed data containers and derived client views
+- [Resources and Client Data](docs/architecture/resources-and-client-data.md) — Typed data containers and derived client views
 - [Sequencer DSL](docs/architecture/sequencer-dsl.md) — Full method reference
 - [Server and Client](docs/architecture/server-and-client.md) — Routes, transport, React hooks
 

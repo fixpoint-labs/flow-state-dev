@@ -166,4 +166,4 @@ pnpm --filter @flow-state-dev/core test
 - [Flows and Actions](../../docs/architecture/flows-and-actions.md) — defineFlow, actions, lifecycle hooks
 - [Sequencer DSL](../../docs/architecture/sequencer-dsl.md) — Full method reference for the composition DSL
 - [State and Scopes](../../docs/architecture/state-and-scopes.md) — Scoped state, atomic operations, CAS
-- [Resources and Client Data](../../docs/architecture/resources-and-projections.md) — Data containers and derived client views
+- [Resources and Client Data](../../docs/architecture/resources-and-client-data.md) — Data containers and derived client views

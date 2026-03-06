@@ -143,7 +143,7 @@ const planManager = handler({
 // planManager.declaredResources === { session: { plan: planResource } }
 ```
 
-Resource declarations are supported on all block kinds: handler, generator, and router. Sequencers automatically collect declared resources from all child blocks in the DSL chain. `defineFlow` merges block-declared resources into the flow's scope configs — see [Resources and Projections](./resources-and-projections.md) for the full collection and merge model.
+Resource declarations are supported on all block kinds: handler, generator, and router. Sequencers automatically collect declared resources from all child blocks in the DSL chain. `defineFlow` merges block-declared resources into the flow's scope configs — see [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
 
 ## Handler
 
@@ -199,7 +199,7 @@ const chatGenerator = generator({
 Generators assemble model messages from four slots, resolved in order:
 
 1. **`prompt`** — System instruction (string or function)
-2. **`context`** — Additional context entries (projections, data)
+2. **`context`** — Additional context entries (via `contextFn()`, data)
 3. **`history`** — Prior conversation messages
 4. **`user`** — Current user input
 

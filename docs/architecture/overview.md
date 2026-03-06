@@ -99,8 +99,8 @@ const myFlow = defineFlow({
   actions: {
     chat: { inputSchema, block: chatPipeline, userMessage: (i) => i.message }
   },
-  session: { stateSchema, resources: { ... }, projections: { ... } },
-  user: { stateSchema, projections: { ... } },
+  session: { stateSchema, resources: { ... }, clientData: { ... } },
+  user: { stateSchema, clientData: { ... } },
 });
 ```
 
@@ -128,13 +128,13 @@ SSE-based item/content streaming with built-in resume:
 
 See [Streaming](./streaming.md).
 
-### Resources and projections — data with policy
+### Resources and client data — data with policy
 
 **Resources** are named, typed state containers scoped to sessions, users, or projects. Think of them as structured data stores that blocks can read and write. Blocks can declare their resource dependencies directly via `defineResource()`, and the framework collects and merges these declarations automatically — through sequencers up to the flow level.
 
-**Projections** are derived views computed from state and resources — and the *only* way to expose data to clients. This is a deliberate architectural choice: you can't accidentally leak internal state because projections are the sole data gateway.
+**Client data** entries are derived views computed from state and resources — and the mechanism for exposing data to clients. Every `clientData` entry is client-visible. Raw state never reaches the client. This is a deliberate architectural choice: you can't accidentally leak internal state because `clientData` is the sole data gateway.
 
-See [Resources and Projections](./resources-and-projections.md).
+See [Resources and Client Data](./resources-and-client-data.md).
 
 ### Utility blocks — pre-built building blocks
 

@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Flows
 
-A flow is the top-level unit — the thing you register with the server and clients connect to. It ties together your blocks, actions, state, resources, and projections into a single, deployable definition.
+A flow is the top-level unit — the thing you register with the server and clients connect to. It ties together your blocks, actions, state, resources, and client data into a single, deployable definition.
 
 Think of a flow as the complete specification of an AI-powered feature: what actions users can trigger, what state is tracked, and what data is exposed to the frontend.
 
@@ -37,11 +37,8 @@ const chatFlow = defineFlow({
     resources: {
       artifacts: { stateSchema: artifactSchema, writable: true },
     },
-    projections: {
-      messageCount: {
-        client: true,
-        compute: (ctx) => ctx.session.state.messageCount ?? 0,
-      },
+    clientData: {
+      messageCount: (ctx) => ctx.state.messageCount ?? 0,
     },
   },
 

@@ -178,7 +178,7 @@ Here's what the framework infers so you don't have to:
 | `sessionResources` (with `defineResource`) | `BlockDefinition.declaredResources` + automatic flow merge |
 | Block in `.then()` | Next step's input type |
 | Block in `tools` | Model tool parameters and result type |
-| Scope `stateSchema` in flow | Projection `compute(ctx)` types |
+| Scope `stateSchema` in flow | `clientData` compute function types |
 
 The pattern is always the same: **Zod schema in, TypeScript types out.** One source of truth. No drift between runtime validation and compile-time checking.
 

@@ -162,7 +162,7 @@ type CodeTab = {
 const codeTabs: CodeTab[] = [
   {
     label: "Define",
-    caption: "Compose blocks into flows with typed state, resources, and projections.",
+    caption: "Compose blocks into flows with typed state, resources, and client data.",
     code: defineExample,
     language: "ts",
   },

@@ -1,6 +1,6 @@
-# Resources and Projections
+# Resources and Client Data
 
-Resources are **concrete persisted data** attached to a scope. Projections are **derived views** computed from state and resources. Together, they provide structured, typed data management within flows.
+Resources are **concrete persisted data** attached to a scope. Client data entries are **derived views** computed from state and resources — the mechanism for exposing server-side data to clients. Together, they provide structured, typed data management within flows.
 
 ## Resources
 
@@ -148,129 +148,113 @@ sequencer({ name: "pipeline" }).then(blockA).then(blockB);
 
 If both blocks reference the **same** `defineResource()` instance, there is no conflict — the merge succeeds silently.
 
-## Projections
+## Client Data
 
-Projections are derived views — computed from state, resources, and other scope data. They're the **only way** to expose values to the client.
+Client data entries are derived views — computed from state and resources within a single scope. They're the mechanism for exposing server-side data to clients.
 
 ```ts
 session: {
-  projections: {
-    activePlan: {
-      client: true,  // Makes this visible to the client
-      compute: (ctx) => ctx.session.resources.plan?.state.steps ?? [],
+  clientData: {
+    activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
+    messageCount: (ctx) => ctx.state.messageCount ?? 0,
+  },
+}
+```
+
+Every `clientData` entry is a function, and every entry is client-visible. There's no `client: true/false` toggle — if it's in `clientData`, clients can see it.
+
+### ClientDataComputeFn
+
+```ts
+type ClientDataComputeFn<TState, TResources> =
+  (ctx: ClientDataContext<TState, TResources>) => JsonValue | Promise<JsonValue>;
+
+type ClientDataContext<TState, TResources> = {
+  state: Readonly<TState>;
+  resources: TResources;
+};
+```
+
+**Key differences from the former projection system:**
+- **Single-scope context**: Each compute function receives only the state and resources from its own scope — no cross-scope access. A session-level `clientData` entry sees session state and session resources, nothing else.
+- **No output schema validation**: Compute functions return `JsonValue` directly. Type safety comes from usage patterns, not runtime schema validation.
+- **No `defineProjection()`**: There's no portable projection builder. For shared computation logic, extract a regular function.
+
+### All Three Scopes
+
+```ts
+defineFlow({
+  kind: "my-app",
+  session: {
+    clientData: {
+      artifactsList: (ctx) => {
+        const artifacts = ctx.resources.artifacts?.state;
+        return artifacts?.order.map(id => ({
+          id,
+          title: artifacts.byId[id]?.title ?? "Untitled",
+        })) ?? [];
+      },
+      modeStatus: (ctx) => ({
+        currentMode: ctx.state.mode ?? "chat",
+        requestCount: ctx.state.requestCount ?? 0,
+      }),
     },
   },
-}
-```
-
-### Projection Config
-
-```ts
-type ProjectionConfig = {
-  client: boolean;             // Whether client can see this
-  outputSchema?: ZodTypeAny;   // Optional output type (defaults to z.any())
-  compute: (ctx: ProjectionContext) => ProjectionValue | Promise<ProjectionValue>;
-  // Optional scope schemas for portable projections:
-  sessionStateSchema?: ZodType;
-  userStateSchema?: ZodType;
-  projectStateSchema?: ZodType;
-  // Optional for portable projections created with defineProjection()
-  // (inline projections infer resource types from the flow automatically)
-  sessionResourceSchemas?: ZodType | Record<string, ZodType | DefinedResource>;
-  userResourceSchemas?: ZodType | Record<string, ZodType | DefinedResource>;
-  projectResourceSchemas?: ZodType | Record<string, ZodType | DefinedResource>;
-};
-```
-
-### Shorthand
-
-For simple cases, projections can be just a compute function:
-
-```ts
-session: {
-  projections: {
-    // Shorthand: just the compute function (client: true must be in the full form)
-    messageCount: (ctx) => ctx.session.state.messageCount ?? 0,
+  user: {
+    clientData: {
+      preferences: (ctx) => ({
+        displayName: ctx.state.displayName ?? "User",
+        preferredModel: ctx.state.preferredModel ?? "gpt-5-mini",
+      }),
+    },
   },
-}
-```
-
-### Projection Context
-
-The `compute` callback receives a `ProjectionContext` with scope handles:
-
-```ts
-type ProjectionContext = {
-  request: RequestScopeHandle;
-  session: SessionScopeHandle & { resources: ... };
-  user: (UserScopeHandle & { resources: ... }) | null;
-  project: (ProjectScopeHandle & { resources: ... }) | null;
-};
-```
-
-**Rules:**
-- Projection `compute` is read-oriented — avoid scope mutations inside it
-- Inline projections inherit parent scope schemas automatically
-- Inline projections also inherit resource state types from their scope resource configs (for example `ctx.session.resources.plan.state` is strongly typed)
-- Use `defineProjection()` for portable projections that need explicit schema declarations
-
-### Portable Projection Definitions
-
-```ts
-import { defineProjection } from "@flow-state-dev/core";
-
-export const topicsProjection = defineProjection({
-  client: true,
-  outputSchema: z.array(z.string()),
-  userStateSchema: z.object({
-    subscribedTopics: z.array(z.string()).default([]),
-  }),
-  compute: (ctx) => ctx.user?.state.subscribedTopics ?? [],
+  project: {
+    clientData: {
+      sharedConfig: (ctx) => ctx.state.config ?? {},
+    },
+  },
 });
 ```
 
-## Generator Context References
+## Context Functions
 
-Generators should use projection references for model context, not raw state dumps:
+Generators use `contextFn()` to pull typed data from scopes into model context — replacing the old projection reference helpers:
 
 ```ts
-import { projection, projectionText, projectionData, projectionMessages } from "@flow-state-dev/core";
+import { contextFn } from "@flow-state-dev/core";
+
+const myContext = contextFn({
+  sessionStateSchema: z.object({ mode: z.string() }),
+  sessionResources: { plan: planResource },
+  fn: (ctx) => {
+    const steps = ctx.session.resources.plan?.state.steps ?? [];
+    return `Current mode: ${ctx.session.state.mode}\nPlan steps: ${steps.join(", ")}`;
+  },
+});
 
 const chatGenerator = generator({
   name: "chat",
   model: "gpt-5-mini",
   prompt: "You are a helpful assistant.",
-  context: [
-    projectionText("session.activePlan"),     // Include as text context
-    projectionData("user.preferences"),        // Include as structured data
-  ],
-  history: [
-    projectionMessages("session.conversationHistory"),  // Include as messages
-  ],
+  context: [myContext],
+  history: (_input, ctx) => ctx.session.items.llm(),
   user: (input) => input.message,
 });
 ```
 
-### Slot Reference Helpers
+### Prompt Formatters
 
-| Helper | Returns | Use For |
-|--------|---------|---------|
-| `projection(uri)` | Raw projection value | General projection access |
-| `projectionText(uri)` | String text | Text context for LLM |
-| `projectionData(uri)` | Structured data | JSON data context |
-| `projectionMessages(uri)` | Message array | Conversation history |
-| `resource(uri)` | Resource value | Concrete resource access |
+The `@flow-state-dev/core/prompt` subpath provides utilities for formatting context data into LLM-friendly strings:
 
-Options for all helpers:
-
-```ts
-{
-  optional?: boolean;      // Don't fail if missing
-  missing?: "error" | "empty";  // Behavior when missing
-  limit?: number | { tokens: number };  // Truncation
-  as?: string;            // Alias in context
-}
-```
+| Formatter | Purpose |
+|-----------|---------|
+| `section(title, content)` | Wrap content in a labeled section |
+| `list(items)` | Bullet list |
+| `keyValues(obj)` | Key-value pairs |
+| `entries(items, fn)` | Map items through a formatter |
+| `codeBlock(code, lang?)` | Fenced code block |
+| `join(...parts)` | Concatenate with double newlines, filtering empties |
+| `when(condition, content)` | Conditional inclusion |
 
 ## Type Helpers
 
@@ -291,21 +275,21 @@ type PlanCtx = ContextOf<typeof planResource, "resource">;
 
 ## Client Visibility
 
-**Important:** Client-facing values are exposed **only** through projections with `client: true`.
+**Important:** Raw state never reaches the client. Client-facing values are exposed **only** through `clientData` entries.
 
-The client reads projections via the state snapshot endpoint:
+The client reads client data via the state snapshot endpoint:
 
 ```
 GET /api/flows/sessions/:sessionId/state
 ```
 
-Returns projections grouped by scope:
+Returns client data grouped by scope:
 
 ```json
 {
-  "projections": {
+  "clientData": {
     "session": { "activePlan": [...], "messageCount": 5 },
-    "user": { "topics": ["ai", "workflows"] },
+    "user": { "preferences": { "displayName": "User", "preferredModel": "gpt-5-mini" } },
     "project": {}
   }
 }
