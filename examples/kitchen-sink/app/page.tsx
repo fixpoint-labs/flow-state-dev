@@ -6,15 +6,9 @@ import {
   ItemsRenderer,
   useFlow,
   useSession,
-  useProjections,
+  useClientData,
   type RendererRegistry,
 } from "@flow-state-dev/react";
-import {
-  artifactsDetailOutputSchema,
-  artifactsListOutputSchema,
-  modeStatusOutputSchema,
-  userPrefsOutputSchema,
-} from "@/src/flows/kitchen-sink/flow";
 
 // AI Elements
 import {
@@ -64,17 +58,11 @@ const ITEM_TYPES = [
   "step_error",
 ];
 
-// Stable reference for useProjections — avoids re-creating the options object on every render
-const PROJECTION_OPTIONS = {
-  session: {
-    artifactsList: artifactsListOutputSchema,
-    artifactsDetail: artifactsDetailOutputSchema,
-    modeStatus: modeStatusOutputSchema,
-  },
-  user: {
-    preferences: userPrefsOutputSchema,
-  },
-} as const;
+// Stable reference for useClientData — avoids re-creating the options object on every render
+const CLIENT_DATA_OPTIONS = {
+  session: ["artifactsList", "artifactsDetail", "modeStatus"] as string[],
+  user: ["preferences"] as string[],
+};
 
 // ---------------------------------------------------------------------------
 // Root page
@@ -105,13 +93,13 @@ function KitchenSinkApp() {
   const [mode, setMode] = useState<"chat" | "plan" | "review">("chat");
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
 
-  // Projections: live derived views from session + user state
-  const projections = useProjections(session, PROJECTION_OPTIONS);
+  // Client data: live derived views from session + user state
+  const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
 
-  const modeStatus = projections.session?.modeStatus;
-  const userPrefs = projections.user?.preferences;
-  const artifacts = projections.session?.artifactsList ?? [];
-  const artifactsDetail = projections.session?.artifactsDetail ?? [];
+  const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number } | undefined;
+  const userPrefs = clientData.user?.preferences as { displayName: string; preferredModel: string } | undefined;
+  const artifacts = (clientData.session?.artifactsList ?? []) as Array<{ id: string; title: string; content: string }>;
+  const artifactsDetail = (clientData.session?.artifactsDetail ?? []) as Array<{ id: string; title: string; content: string; updatedAt: number }>;
 
   // Resolve from detail projection so the viewer has content
   const selectedArtifact = useMemo(
@@ -163,7 +151,7 @@ function KitchenSinkApp() {
 
       {/* Center: main conversation area */}
       <main className="flex flex-1 flex-col min-w-0">
-        {/* Header bar with live projection data */}
+        {/* Header bar with live client data */}
         <ProjectionsBar
           currentMode={modeStatus?.currentMode}
           requestCount={modeStatus?.requestCount}
@@ -177,7 +165,7 @@ function KitchenSinkApp() {
             {session.items.length === 0 && !session.isLoading && (
               <ConversationEmptyState
                 title="Kitchen Sink"
-                description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, projections, and tool-use."
+                description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use."
               />
             )}
             <ItemsRenderer items={session.items} />

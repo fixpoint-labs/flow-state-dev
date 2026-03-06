@@ -2,11 +2,11 @@
 
 This example demonstrates the minimal chat flow shape:
 
-- `defineFlow` with explicit `session.stateSchema` and a client projection
+- `defineFlow` with explicit `session.stateSchema` and clientData
 - one generator-backed action (`chat`)
 - emission API: silent-by-default blocks, explicit `ctx.emitMessage()` / `ctx.emitStatus()`
 - session state mutation via `ctx.session.patchState`
-- React usage with `FlowProvider`, `useSession`, `useProjections`, and `ItemsRenderer`
+- React usage with `FlowProvider`, `useSession`, `useClientData`, and `ItemsRenderer`
 - deterministic flow tests with `testFlow`
 
 Run verification:
