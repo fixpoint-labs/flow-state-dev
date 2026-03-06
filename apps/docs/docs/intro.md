@@ -9,6 +9,18 @@ Every AI feature needs the same infrastructure: call an LLM, stream the response
 
 flow-state.dev makes these concerns **framework primitives**. You write the logic that matters. The framework handles everything else.
 
+## Design principles
+
+These beliefs shaped every API decision in the framework. For the full discussion, read [The flow-state.dev Philosophy](/blog/philosophy).
+
+- **Built for AI execution** — AI apps are long-running, non-deterministic, streaming, and stateful. The framework treats these as the default execution model, not edge cases bolted onto request/response.
+- **Foundations that unlock paradigms** — The framework ships primitives, not pre-built solutions. The goal is foundations powerful enough that developers discover patterns we haven't imagined yet.
+- **The framework owns the machinery** — You define blocks with typed contracts. The framework runs the tool loop, manages retries, persists state, assembles context, and streams items. The architecture is the enforcement mechanism.
+- **State that evolves** — Memory isn't a conversation transcript. State evolves through typed operations, resources accumulate knowledge, and the framework feeds it back into the model's context across turns.
+- **Streaming-first** — Items stream as they're produced with sequence-number resume. Batch is a simplification of the streaming model, not the other way around.
+- **Observability is structural** — The stream is the trace. Every item carries provenance — block name, instance ID, parent block, phase, step index. No instrumentation required.
+- **Your code, your control** — The framework owns the runtime. You own everything above it — blocks, flows, schemas, projections all live in your repo.
+
 ## What it looks like
 
 ```ts
