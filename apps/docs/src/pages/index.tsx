@@ -66,8 +66,8 @@ export default defineFlow({
   session: {
     stateSchema,
     resources: { docs: docResource },
-    projections: {
-      docList: { client: true, compute: (ctx) => /* derived view */ },
+    clientData: {
+      docList: (ctx) => /* derived view from ctx.state + ctx.resources */,
     },
   },
 })({ id: "default" });`;

@@ -102,25 +102,25 @@ const session = useSession(sessionId, {
 
 Returns:
 - `detail` — Session metadata
-- `snapshot` — Current state snapshot with projections
+- `snapshot` — Current state snapshot with clientData
 - `items`, `messages`, `blockOutputs`, `functionCalls` — Filtered item views
 - `isLoading`, `isStreaming`, `error` — Status flags
 - `sendAction(action, input)` — Trigger an action
 - `refresh()` — Manually refetch
 
-### `useProjections(session, options)`
+### `useClientData(session, options)`
 
-Read typed projection values from the session snapshot:
+Read client data values from the session snapshot:
 
 ```ts
-const projections = useProjections(session, {
+const data = useClientData(session, {
   session: ["artifactsList", "modeStatus"],
   user: ["preferences"],
   project: ["sharedConfig"],
 });
 
-// Or with schemas for runtime validation:
-const projections = useProjections(session, {
+// Or with schemas for type inference:
+const data = useClientData(session, {
   session: { artifactsList: artifactsListSchema },
 });
 ```

@@ -31,11 +31,11 @@ const pipeline = sequencer({ name: "pipeline" })
 export default defineFlow({
   kind: "my-app",
   actions: { chat: { block: pipeline, userMessage: (i) => i.message } },
-  session: { stateSchema, resources, projections },
+  session: { stateSchema, resources, clientData },
 })({ id: "default" });
 ```
 
-That gives you: streaming over SSE with resume, conversation history, tool loops, atomic state operations, typed projections to the client, error recovery, and lifecycle hooks. From that one definition.
+That gives you: streaming over SSE with resume, conversation history, tool loops, atomic state operations, typed clientData to the client, error recovery, and lifecycle hooks. From that one definition.
 
 ## What you get
 
@@ -59,7 +59,7 @@ Define a flow, register it with the server, and you have a complete REST API —
 ```
 POST /api/flows/my-app/actions/chat          → Execute an action
 GET  /api/flows/my-app/requests/:id/stream   → Stream results via SSE
-GET  /api/flows/sessions/:id/state            → State snapshot with projections
+GET  /api/flows/sessions/:id/state            → State snapshot with clientData
 ```
 
 Multiple flows can coexist in the same server. Each one is self-contained with its own actions, state, and resources.
@@ -85,7 +85,7 @@ Each block declares only the state fields it needs via partial schemas. A counte
 
 **Resources** are more than key-value stores. Each resource combines rich text content with structured atomic state — like a file that carries metadata. An artifact resource can hold a document's full text alongside its title, tags, and timestamps, all in one typed container with atomic operations. Scoped to sessions, users, or projects, resources give your AI a persistent, typed workspace.
 
-**Projections** are derived views computed from state and resources, and the *only* way to expose data to clients. You can't accidentally leak internal state because projections are the sole data gateway.
+**clientData** entries are derived values computed from state and resources — the mechanism for exposing data to clients. You can't accidentally leak internal state because clientData is the sole data gateway.
 
 ### Built for an ecosystem
 

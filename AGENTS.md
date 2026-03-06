@@ -54,7 +54,7 @@ Use this protocol when work is wave-based:
    a type requirement. Find a better composition, or remove the step.
 
 6. **Schemas belong with their blocks.** Define `inputSchema` and `outputSchema` in the same
-   file as the block that uses them. Flow-level schemas (state, resources, projections) belong
+   file as the block that uses them. Flow-level schemas (state, resources, clientData) belong
    in the flow file. If a schema is shared, reference it from the block file that originally
    defines it.
 

@@ -159,4 +159,4 @@ Open your browser and start chatting. The framework is handling:
 - **[Installation](/docs/getting-started/installation)** — Package options, peer dependencies, TypeScript config
 - **[Project Structure](/docs/getting-started/project-structure)** — How to organize flows, blocks, and tools
 - **[Blocks](/docs/concepts/blocks)** — Deep dive into handler, generator, sequencer, and router
-- **[Building a Chat App](/docs/guides/building-a-chat-app)** — Full walkthrough with state, projections, tools, and tests
+- **[Building a Chat App](/docs/guides/building-a-chat-app)** — Full walkthrough with state, clientData, tools, and tests

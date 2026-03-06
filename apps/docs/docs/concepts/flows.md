@@ -102,7 +102,7 @@ See [Actions](/docs/concepts/actions) for the full picture.
 
 ## Session configuration
 
-Sessions carry state, resources, and projections that persist across requests in a conversation:
+Sessions carry state, resources, and clientData that persist across requests in a conversation:
 
 ```ts
 session: {
@@ -121,11 +121,8 @@ session: {
     },
   },
 
-  projections: {
-    activePlan: {
-      client: true,
-      compute: (ctx) => ctx.session.resources.plan?.state ?? null,
-    },
+  clientData: {
+    activePlan: (ctx) => ctx.resources.plan?.state ?? null,
   },
 },
 ```
@@ -151,7 +148,7 @@ const myFlow = defineFlow({
 
 Flow-level resource declarations take priority. If both a block and the flow declare a resource with the same name, the flow's version wins.
 
-See [State](/docs/concepts/state) for details on scopes, resources, and projections.
+See [State](/docs/concepts/state) for details on scopes, resources, and clientData.
 
 ## Lifecycle hooks
 

@@ -4,9 +4,9 @@ sidebar_position: 7
 
 # State Storage Decision Guide
 
-You have two primary ways to store data in flow-state.dev: **scope state** and **resources**. Both live on the same scopes (session, user, project), both use the same atomic operations, and both are invisible to clients without projections. But they serve different purposes and choosing the wrong one leads to either namespace collisions or unnecessary complexity.
+You have two primary ways to store data in flow-state.dev: **scope state** and **resources**. Both live on the same scopes (session, user, project), both use the same atomic operations, and both are invisible to clients without clientData. But they serve different purposes and choosing the wrong one leads to either namespace collisions or unnecessary complexity.
 
-This guide helps you decide which to use. For the mechanics of state operations, schemas, and projections, see [State Management](/docs/concepts/state).
+This guide helps you decide which to use. For the mechanics of state operations, schemas, and clientData, see [State Management](/docs/concepts/state).
 
 ## Scope state vs resources
 
@@ -269,30 +269,24 @@ session: {
 - Within a single codebase, consistent naming conventions are usually enough
 - When in doubt, use a resource — it eliminates the collision risk entirely
 
-## Projections as the client boundary
+## clientData as the client boundary
 
-Neither scope state nor resources are directly visible to clients. **Projections are the only way to expose data to the frontend.** This is true regardless of where the underlying data lives.
+Neither scope state nor resources are directly visible to clients. **clientData is the only way to expose data to the frontend.** This is true regardless of where the underlying data lives.
 
-This means the state-vs-resource decision is independent of client visibility. Both require a projection to reach the client:
+This means the state-vs-resource decision is independent of client visibility. Both require a clientData entry to reach the client:
 
 ```ts
 session: {
-  projections: {
-    // Projecting from scope state
-    currentMode: {
-      client: true,
-      compute: (ctx) => ctx.session.state.mode,
-    },
-    // Projecting from a resource
-    planSteps: {
-      client: true,
-      compute: (ctx) => ctx.session.resources.plan?.state.steps ?? [],
-    },
+  clientData: {
+    // Deriving from scope state
+    currentMode: (ctx) => ctx.state.mode,
+    // Deriving from a resource
+    planSteps: (ctx) => ctx.resources.plan?.state.steps ?? [],
   },
 }
 ```
 
-The practical implication: choose state vs resources based on the data's nature and lifecycle, not on whether it needs to reach the client. The projection layer handles client visibility regardless.
+The practical implication: choose state vs resources based on the data's nature and lifecycle, not on whether it needs to reach the client. The clientData layer handles client visibility regardless.
 
 ## Putting it all together
 
@@ -323,21 +317,15 @@ const myFlow = defineFlow({
         writable: true,
       },
     },
-    // Projections: the client boundary
-    projections: {
-      mode: {
-        client: true,
-        compute: (ctx) => ctx.session.state.mode,
-      },
-      artifactsList: {
-        client: true,
-        compute: (ctx) => {
-          const arts = ctx.session.resources.artifacts?.state;
-          return arts?.order.map(id => ({
-            id,
-            title: arts.byId[id]?.title ?? "Untitled",
-          })) ?? [];
-        },
+    // clientData: the client boundary
+    clientData: {
+      mode: (ctx) => ctx.state.mode,
+      artifactsList: (ctx) => {
+        const arts = ctx.resources.artifacts?.state;
+        return arts?.order.map(id => ({
+          id,
+          title: arts.byId[id]?.title ?? "Untitled",
+        })) ?? [];
       },
     },
   },
@@ -352,11 +340,8 @@ const myFlow = defineFlow({
         writable: true,
       },
     },
-    projections: {
-      preferences: {
-        client: true,
-        compute: (ctx) => ctx.user?.resources.preferences?.state ?? {},
-      },
+    clientData: {
+      preferences: (ctx) => ctx.resources.preferences?.state ?? {},
     },
   },
 });
@@ -366,4 +351,4 @@ const myFlow = defineFlow({
 - `mode` and `messageCount` → **scope state** — simple flags that multiple blocks read/write
 - `artifacts` → **session resource** — structured objects with content, identity, and lifecycle
 - `preferences` → **user resource** — persists across sessions, managed as a unit
-- Everything the client sees → **projections** — the only client data channel
+- Everything the client sees → **clientData** — the only client data channel

@@ -76,16 +76,16 @@ await session.sendAction("chat", { message: "Hello!" });
 session.refresh();     // Force refetch
 ```
 
-### `useProjections` — State Projections
+### `useClientData` — Client Data
 
 ```tsx
-const projections = useProjections(session, {
+const clientData = useClientData(session, {
   session: ["activePlan", "messageCount"],
   user: ["preferences"],
 });
 
 // Typed mode with schema validation:
-const projections = useProjections(session, {
+const clientData = useClientData(session, {
   session: {
     activePlan: activePlanSchema,
   },

@@ -4,14 +4,14 @@ sidebar_position: 1
 
 # Building a Chat App
 
-This guide walks you through building a complete chat application — from blocks to React UI to deterministic tests. Along the way, you'll see how conversation history, session state, projections, and streaming fit together.
+This guide walks you through building a complete chat application — from blocks to React UI to deterministic tests. Along the way, you'll see how conversation history, session state, clientData, and streaming fit together.
 
 ## What we're building
 
 A chat app where:
 - An LLM generates responses via a generator block
 - A handler tracks message count in session state
-- A projection exposes the count to the React UI
+- A clientData function exposes the count to the React UI
 - Items stream to the frontend in real time
 - Tests run deterministically with mocked generators
 
@@ -86,11 +86,8 @@ const chatFlow = defineFlow({
       messageCount: z.number().default(0),
     }),
 
-    projections: {
-      messageCount: {
-        client: true,
-        compute: (ctx) => ctx.session.state.messageCount ?? 0,
-      },
+    clientData: {
+      messageCount: (ctx) => ctx.state.messageCount ?? 0,
     },
   },
 });
@@ -101,7 +98,7 @@ export default chatFlow({ id: "default" });
 Key details:
 - The sequencer chains `chatGen` then `counter` — every message gets an LLM response and increments the count
 - `userMessage: (input) => input.message` tells the framework to emit a user-role message item before execution, so the conversation stream shows what the user said
-- The `messageCount` projection exposes the count to the React UI — this is the *only* way the client sees this value
+- The `messageCount` clientData function exposes the count to the React UI — this is the *only* way the client sees this value
 
 ## 3. Set up the server
 
@@ -129,7 +126,7 @@ import {
   ItemRenderer,
   useFlow,
   useSession,
-  useProjections,
+  useClientData,
 } from "@flow-state-dev/react";
 
 function ChatApp() {
@@ -146,7 +143,7 @@ function ChatUI() {
     items: { visibility: "ui" },
   });
 
-  const projections = useProjections(session, {
+  const clientData = useClientData(session, {
     session: ["messageCount"],
   });
 
@@ -164,7 +161,7 @@ function ChatUI() {
     <div>
       <header>
         <h1>Chat</h1>
-        <span>{projections.session?.messageCount ?? 0} messages</span>
+        <span>{clientData.session?.messageCount ?? 0} messages</span>
       </header>
 
       <div>
@@ -191,7 +188,7 @@ function ChatUI() {
 What each hook does:
 - `useFlow({ autoCreateSession: true })` — creates a session on mount, tracks the active session ID
 - `useSession(id, { items: { visibility: "ui" } })` — connects to the SSE stream, delivers items in real time, provides `sendAction` and `isStreaming`
-- `useProjections(session, { session: ["messageCount"] })` — reads the `messageCount` projection from the latest state snapshot
+- `useClientData(session, { session: ["messageCount"] })` — reads the `messageCount` clientData from the latest state snapshot
 
 ## 5. Write tests
 
@@ -251,4 +248,4 @@ The test harness creates an isolated runtime with in-memory stores, mocks the ge
 - Add **[custom renderers](/docs/guides/react-integration)** to style messages, reasoning, and components
 - Add **tools** to the generator for [function calling](/docs/concepts/blocks#generator--the-ai-block) (search, create artifacts, etc.)
 - Use **[sequencer patterns](/docs/guides/sequencer-patterns)** for conditional logic, parallelism, and error recovery
-- Add **resources and projections** for richer state — see the [kitchen-sink example](https://github.com/fixpoint-labs/flow-state-dev) for a full demonstration
+- Add **resources and clientData** for richer state — see the [kitchen-sink example](https://github.com/fixpoint-labs/flow-state-dev) for a full demonstration

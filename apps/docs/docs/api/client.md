@@ -57,7 +57,7 @@ const list = await sessions.list();
 const detail = await sessions.get(sessionId);
 const snapshot = await sessions.getSessionState(sessionId, {
   includeItems: true,
-  projections: ["session.activePlan"],
+  clientData: ["session.activePlan"],
 });
 await sessions.delete(sessionId);
 ```

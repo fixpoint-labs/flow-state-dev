@@ -53,8 +53,8 @@ const myGenerator = generator({
     return `progress:${progress} — ${input.message}`;
   },
   tools: [myTool],
-  context: [projectionText("session.plan")],
-  history: [projectionMessages("session.history")],
+  context: [myContextFn],
+  history: (_input, ctx) => ctx.session.items.llm(),
   repair: { mode: "auto", maxAttempts: 3 },
 });
 ```
@@ -109,15 +109,15 @@ const myFlow = defineFlow({
   kind: "my-app",
   requireUser: true,
   actions: { /* ... */ },
-  session: { stateSchema, resources, projections },
-  user: { stateSchema, resources, projections },
+  session: { stateSchema, resources, clientData },
+  user: { stateSchema, resources, clientData },
   request: { onStarted, onCompleted, onErrored, onFinished, onStepErrored },
 });
 
 export default myFlow({ id: "default" });
 ```
 
-## Resources & Projections
+## Resources
 
 ### `defineResource(config)`
 
@@ -142,31 +142,69 @@ const myHandler = handler({
 });
 ```
 
-### `defineProjection(config)`
+## Context Functions
 
-Create a portable projection definition.
+### `contextFn(schemas, fn)`
+
+Create a typed context function for generators. Provides typed access to scope state via schema inference:
 
 ```ts
-import { defineProjection } from "@flow-state-dev/core";
+import { contextFn } from "@flow-state-dev/core";
+import { section, list } from "@flow-state-dev/core/prompt";
 
-const topicsProjection = defineProjection({
-  client: true,
-  outputSchema: z.array(z.string()),
-  compute: (ctx) => ctx.user?.state.subscribedTopics ?? [],
+const researchContext = contextFn(
+  { session: sessionStateSchema },
+  ({ session }) => {
+    if (session.coveredTopics.length === 0) return "";
+    return section("Research Progress", list(session.coveredTopics));
+  }
+);
+
+// Use in any generator
+const agent = generator({
+  context: [researchContext],
+  // ...
 });
 ```
 
-### Context References
+Three overloads: `(session)`, `(session, user)`, `(session, user, project)`.
 
-For generator blocks:
+## Prompt Formatters
 
-| Helper | Returns | Use For |
-|--------|---------|---------|
-| `projection(uri)` | Raw projection value | General access |
-| `projectionText(uri)` | String text | Text context for LLM |
-| `projectionData(uri)` | Structured data | JSON data context |
-| `projectionMessages(uri)` | Message array | Conversation history |
-| `resource(uri)` | Resource value | Direct resource access |
+`@flow-state-dev/core/prompt` — Composable text formatters for building clean LLM context.
+
+| Formatter | Signature | Description |
+|-----------|-----------|-------------|
+| `section(title, ...content)` | `(string, ...string[]) => string` | Titled section with `##` header |
+| `list(items, options?)` | `(string[], { ordered?, prefix? }) => string` | Bullet or numbered list |
+| `keyValues(data)` | `(Record<string, unknown>) => string` | Key-value pairs |
+| `entries(record, formatter)` | `(Record, fn) => string` | Mapped record entries |
+| `codeBlock(code, language?)` | `(string, string?) => string` | Fenced code block |
+| `join(...parts)` | `(...(string \| falsy)[]) => string` | Join with newlines, filtering falsy |
+| `when(condition, content)` | `(boolean, string) => string \| ""` | Conditional inclusion |
+
+## Client Data
+
+### `clientData` on scope configs
+
+Expose derived state to the frontend. Define compute functions on `session`, `user`, or `project` scope configs:
+
+```ts
+defineFlow({
+  session: {
+    stateSchema,
+    clientData: {
+      topicList: (ctx) => ctx.state.coveredTopics,
+      progress: (ctx) => ({
+        total: ctx.state.totalSteps,
+        completed: ctx.state.completedSteps,
+      }),
+    },
+  },
+});
+```
+
+Compute functions receive `{ state, resources }` from their scope. All entries are client-visible. Values must be JSON-serializable.
 
 ## Type Helpers
 
@@ -183,3 +221,4 @@ type Output = BlockOutput<typeof myBlock>;
 
 - `@flow-state-dev/core/types` — Block, flow, resource, scope, streaming, and model type definitions
 - `@flow-state-dev/core/items` — Item unions, content types, and stream event helpers
+- `@flow-state-dev/core/prompt` — Composable prompt formatters (`section`, `list`, `keyValues`, `entries`, `codeBlock`, `join`, `when`)
