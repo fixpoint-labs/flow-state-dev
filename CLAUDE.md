@@ -67,6 +67,20 @@ pnpm test:watch       # Watch mode
 pnpm --filter @flow-state-dev/core test    # Test single package
 ```
 
+## Writing Style (site content)
+
+When writing blog posts, landing copy, or any prose for `apps/docs`, use this voice:
+
+- **Audience is engineers.** No marketing speak. Write like you're explaining something to a peer, not selling to a buyer.
+- **Short sentences. Varied rhythm.** Mix one-sentence paragraphs with longer ones. Don't let every sentence hit the same beat.
+- **Minimal em-dashes.** Prefer commas, periods, or restructured sentences. Em-dashes are fine occasionally — not as a default connector.
+- **No AI cadence.** Avoid: "X isn't just Y — it's Z", lists of three things that escalate nicely, sentences that start with "This", adjectives like "powerful/frictionless/seamless/first-class".
+- **Introduce concepts for newcomers.** Don't assume the reader knows framework terms. When first mentioning something specific (a block kind, an API), briefly say what it does in plain terms.
+- **Be direct about tradeoffs.** It's fine to say "this works for demos, not for production" or "we made a deliberate call here." Honest is better than polished.
+- **Conclusions earn their place.** Don't end every section with a triumphant one-liner. If a point lands, it lands. If it needs a closer, keep it short and specific.
+
+The philosophy blog post (`apps/docs/blog/2026-03-06-philosophy.md`) is the reference example for this voice.
+
 ## Current Phase
 
 Phase 1 (Foundation): Waves 1.a–1.k complete. Remaining: 1.l (CLI), 1.m (devtool), 1.n (cross-package validation).
