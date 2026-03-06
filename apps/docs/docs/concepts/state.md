@@ -4,7 +4,7 @@ sidebar_position: 4
 
 # State Management
 
-State in AI applications is messy. Conversation history, user preferences, shared configuration, intermediate processing data — all at different lifetimes, all needing different isolation guarantees. flow-state.dev gives you four scoped levels with typed operations, resources for structured data, and projections to control exactly what the client can see.
+State in AI applications is messy. Conversation history, user preferences, shared configuration, intermediate processing data — all at different lifetimes, all needing different isolation guarantees. flow-state.dev gives you four scoped levels with typed operations, resources for structured data, and client data to control exactly what the client can see.
 
 ## Scopes
 
@@ -17,7 +17,7 @@ State is organized into four hierarchical scopes:
 | **User** | Across sessions for a user | Preferences, accumulated knowledge, model choices |
 | **Project** | Across users in a project | Shared configuration, global data |
 
-Each scope has its own state, resources, and projections. Most of your state lives at the session level.
+Each scope has its own state, resources, and client data. Most of your state lives at the session level.
 
 ## State operations
 
@@ -135,7 +135,7 @@ defineFlow({
 });
 ```
 
-But you don't have to. The flow-level schema only needs to define fields that aren't already declared by blocks — or fields that the flow configuration itself references (like in projections).
+But you don't have to. The flow-level schema only needs to define fields that aren't already declared by blocks — or fields that the flow configuration itself references (like in `clientData` compute functions).
 
 ### Why this matters
 
@@ -215,57 +215,51 @@ await artifacts.patchState({
 
 Resources are scoped — session-level resources persist across requests in a conversation, user-level resources persist across sessions, project-level resources are shared across users. This gives you a natural hierarchy: scratch artifacts in a session, personal notes per user, shared knowledge bases per project.
 
-## Projections
+## Client Data
 
-Projections are derived views computed from state and resources. They're the **only way** to expose data to clients:
+Client data entries are derived values computed from state and resources. They're the mechanism for exposing data to clients:
 
 ```ts
 session: {
-  projections: {
-    artifactsList: {
-      client: true,  // Visible to the frontend
-      compute: (ctx) => {
-        const artifacts = ctx.session.resources.get("artifacts")?.state;
-        return artifacts?.order.map(id => ({
-          id,
-          title: artifacts.byId[id]?.title ?? "Untitled",
-        })) ?? [];
-      },
+  clientData: {
+    artifactsList: (ctx) => {
+      const artifacts = ctx.resources.artifacts?.state;
+      return artifacts?.order.map(id => ({
+        id,
+        title: artifacts.byId[id]?.title ?? "Untitled",
+      })) ?? [];
     },
-    messageCount: {
-      client: true,
-      compute: (ctx) => ctx.session.state.messageCount ?? 0,
-    },
+    messageCount: (ctx) => ctx.state.messageCount ?? 0,
   },
 }
 ```
 
-On the client, read projections via `useProjections`:
+On the client, read client data via `useClientData`:
 
 ```tsx
-const projections = useProjections(session, {
+const data = useClientData(session, {
   session: ["artifactsList", "messageCount"],
   user: ["preferences"],
 });
-// projections.session?.artifactsList → [{ id: "doc-1", title: "Design Doc" }]
+// data.session?.artifactsList → [{ id: "doc-1", title: "Design Doc" }]
 ```
 
-## Why projections matter
+## Why clientData matters
 
-Raw state never reaches the client. The state snapshot endpoint returns projections grouped by scope:
+Raw state never reaches the client. The state snapshot endpoint returns clientData grouped by scope:
 
 ```json
 {
-  "projections": {
+  "clientData": {
     "session": { "artifactsList": [...], "messageCount": 5 },
     "user": { "preferences": { "theme": "dark" } }
   }
 }
 ```
 
-This is a deliberate architectural choice. Internal state — intermediate processing data, raw resource contents, block-specific fields — stays on the server. You decide exactly what the client sees by writing `compute` functions. Security by architecture, not by convention.
+This is a deliberate architectural choice. Internal state — intermediate processing data, raw resource contents, block-specific fields — stays on the server. You decide exactly what the client sees by writing `clientData` compute functions. Security by architecture, not by convention.
 
-During streaming, `state_change` and `resource_change` events signal that projections may be stale — the client refetches the authoritative snapshot on `request.completed`.
+During streaming, `state_change` and `resource_change` events signal that clientData may be stale — the client refetches the authoritative snapshot on `request.completed`.
 
 ## Target state
 

@@ -1,11 +1,11 @@
 /**
- * Projection subscription hook that reads scope-grouped projection values from session snapshots.
+ * Client data subscription hook that reads scope-grouped clientData values from session snapshots.
  */
 import { useMemo } from "react";
 import type { SessionView } from "./useSession";
 
 /**
- * Structural schema contract accepted for typed projection inference.
+ * Structural schema contract accepted for typed clientData inference.
  */
 export type ZodSchemaLike = {
   _output?: unknown;
@@ -13,26 +13,26 @@ export type ZodSchemaLike = {
 };
 
 /**
- * Projection subscription options for one scope.
+ * Client data subscription options for one scope.
  */
-export type ProjectionScopeSubscribeOptions =
+export type ClientDataScopeSubscribeOptions =
   | string[]
   | Record<string, ZodSchemaLike | true>;
 
 /**
- * Projection subscription options grouped by scope.
+ * Client data subscription options grouped by scope.
  */
-export type ProjectionSubscribeOptions = {
-  session?: ProjectionScopeSubscribeOptions;
-  user?: ProjectionScopeSubscribeOptions;
-  project?: ProjectionScopeSubscribeOptions;
+export type ClientDataSubscribeOptions = {
+  session?: ClientDataScopeSubscribeOptions;
+  user?: ClientDataScopeSubscribeOptions;
+  project?: ClientDataScopeSubscribeOptions;
 };
 
 type InferSchemaOutput<TSchema> = TSchema extends { _output: infer TOutput }
   ? TOutput
   : unknown;
 
-type InferProjectionMap<TOptions> = TOptions extends readonly (infer TKey)[]
+type InferClientDataMap<TOptions> = TOptions extends readonly (infer TKey)[]
   ? TKey extends string
     ? Record<TKey, unknown>
     : Record<string, unknown>
@@ -49,22 +49,22 @@ type InferProjectionMap<TOptions> = TOptions extends readonly (infer TKey)[]
       : Record<string, unknown>;
 
 /**
- * Inferred projection value shape returned by useProjections.
+ * Inferred client data value shape returned by useClientData.
  */
-export type ProjectionValues<TOptions extends ProjectionSubscribeOptions> =
+export type ClientDataValues<TOptions extends ClientDataSubscribeOptions> =
   (TOptions extends { session: infer TSession }
-    ? { session: InferProjectionMap<TSession> }
+    ? { session: InferClientDataMap<TSession> }
     : {}) &
   (TOptions extends { user: infer TUser }
-    ? { user: InferProjectionMap<TUser> }
+    ? { user: InferClientDataMap<TUser> }
     : {}) &
   (TOptions extends { project: infer TProject }
-    ? { project: InferProjectionMap<TProject> }
+    ? { project: InferClientDataMap<TProject> }
     : {});
 
-function selectScopeProjections(
+function selectScopeClientData(
   allValues: Record<string, unknown> | undefined,
-  options: ProjectionScopeSubscribeOptions
+  options: ClientDataScopeSubscribeOptions
 ): Record<string, unknown> {
   const source = allValues ?? {};
 
@@ -78,34 +78,34 @@ function selectScopeProjections(
 }
 
 /**
- * Reads scope-grouped projection values from the current session snapshot.
+ * Reads scope-grouped clientData values from the current session snapshot.
  */
-export function useProjections<TOptions extends ProjectionSubscribeOptions>(
+export function useClientData<TOptions extends ClientDataSubscribeOptions>(
   session: SessionView,
   options: TOptions
-): ProjectionValues<TOptions> {
+): ClientDataValues<TOptions> {
   return useMemo(() => {
-    const projectionSource = session.snapshot?.projections ?? {};
+    const dataSource = session.snapshot?.clientData ?? {};
     const next: Record<string, unknown> = {};
 
     if (options.session !== undefined) {
-      next.session = selectScopeProjections(
-        projectionSource.session,
+      next.session = selectScopeClientData(
+        dataSource.session,
         options.session
       );
     }
 
     if (options.user !== undefined) {
-      next.user = selectScopeProjections(projectionSource.user, options.user);
+      next.user = selectScopeClientData(dataSource.user, options.user);
     }
 
     if (options.project !== undefined) {
-      next.project = selectScopeProjections(
-        projectionSource.project,
+      next.project = selectScopeClientData(
+        dataSource.project,
         options.project
       );
     }
 
-    return next as ProjectionValues<TOptions>;
+    return next as ClientDataValues<TOptions>;
   }, [session.snapshot, options]);
 }

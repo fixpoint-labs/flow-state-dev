@@ -170,7 +170,7 @@ Block-level state declarations bubble upward for compatibility checking. This en
 
 ## Resource Declaration Bubbling
 
-Similar to state schemas, block-level resource declarations (`sessionResources`, `userResources`, `projectResources`) bubble upward through the composition hierarchy. Sequencers collect declared resources from all child blocks, and `defineFlow` merges them into the flow's scope configs automatically. Flow-level resource declarations take priority over block-declared ones. See [Resources and Projections](./resources-and-projections.md) for the full collection and merge model.
+Similar to state schemas, block-level resource declarations (`sessionResources`, `userResources`, `projectResources`) bubble upward through the composition hierarchy. Sequencers collect declared resources from all child blocks, and `defineFlow` merges them into the flow's scope configs automatically. Flow-level resource declarations take priority over block-declared ones. See [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
 
 ## Streaming Integration
 
@@ -184,4 +184,4 @@ State and resource mutations emit streaming events:
 
 ## Canonical Authority
 
-For full type signatures, resource/projection details, and edge cases, see `../preperation/architecture/STATE_AND_SCOPES.md`.
+For full type signatures, resource/clientData details, and edge cases, see `../preperation/architecture/STATE_AND_SCOPES.md`.

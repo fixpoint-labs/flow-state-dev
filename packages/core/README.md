@@ -81,11 +81,8 @@ export default defineFlow({
   session: {
     stateSchema: z.object({ mode: z.string().default("chat"), count: z.number().default(0) }),
     resources: { artifacts: { stateSchema: artifactSchema, writable: true } },
-    projections: {
-      artifactsList: {
-        client: true,
-        compute: (ctx) => /* derive list from resource state */,
-      },
+    clientData: {
+      artifactsList: (ctx) => /* derive list from resource state */,
     },
   },
 })({ id: "default" });
@@ -102,7 +99,7 @@ export default defineFlow({
 - `router(config)` — Runtime block selection from declared routes
 
 **Flow:**
-- `defineFlow(definition)` — Create a flow type with actions, scopes, resources, and projections
+- `defineFlow(definition)` — Create a flow type with actions, scopes, resources, and clientData
 
 **Utility block factories (`utility.*`):**
 - `utility.contextReducer(config)` — Generator factory for `distill`, `denoise`, or `compress` context transformation modes with mode-specific default output schemas (`{ distilled, keyPoints }`, `{ cleaned, removedCategories? }`, `{ compressed, compressionRatio?, dropped? }`)
@@ -115,16 +112,15 @@ export default defineFlow({
 - `utility.intentClassifier(config)` — Generator factory for bounded intent classification with required category descriptions and default `{ category, confidence, reasoning? }` output contract
 - `utility.memoryExtractor(config)` — Generator factory for stateless durable-memory extraction with a default `{ memories: Array<{ type, content, confidence?, source? }> }` output contract (`type` ∈ `fact | preference | constraint | decision`)
 
-**Resources and projections:**
+**Resources:**
 - `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `projectResources`)
-- `defineProjection(config)` — Portable projection definition
-- `resource(uri)` — Resource slot reference for generators
-- `projection(uri)` — Projection slot reference
-- `projectionText(uri)` — Text projection for LLM context
-- `projectionData(uri)` — Structured data projection
-- `projectionMessages(uri)` — Message-pair projection
 
-Inline flow projections infer resource state types from scope `resources` automatically. For portable projections (`defineProjection`), provide `sessionResourceSchemas`, `userResourceSchemas`, or `projectResourceSchemas` (as Zod schemas, `defineResource(...)` values, or maps of either) when you need typed resource access inside `compute`.
+**Context & client data:**
+- `contextFn(schemas, fn)` — Typed context function for generators (scope-aware, portable)
+- `clientData` on scope configs — Derived values exposed to clients (compute functions receive `{ state, resources }`)
+
+**Prompt formatters** (`@flow-state-dev/core/prompt`):
+- `section`, `list`, `keyValues`, `entries`, `codeBlock`, `join`, `when` — Composable text formatters for building clean LLM context
 
 **Type helpers:**
 - `StateOf<T>` — Extract state type from schema or resource
@@ -150,7 +146,7 @@ Output item unions, content types, and stream event helpers. Item types: `messag
 
 **Typed target state declarations.** Handler, generator, and router blocks can declare `targetStateSchemas` with Zod schemas. Declared names type `ctx.targets.<name>` as `StateHandle<...> | undefined` for state coordination. Use `ctx.getBlockOutput(blockDef)` / `ctx.getBlockResult(blockDef)` for explicit output dependencies.
 
-**Projections as data policy.** Projections are the *only* way to expose data to clients. Internal state, resources, and intermediate values stay server-side unless you deliberately project them. Security by architecture, not by convention.
+**clientData as data policy.** `clientData` is how you expose derived state to clients. Internal state, resources, and intermediate values stay server-side unless you deliberately define a clientData compute function. Security by architecture, not by convention.
 
 ## Dependencies
 
@@ -170,4 +166,4 @@ pnpm --filter @flow-state-dev/core test
 - [Flows and Actions](../../docs/architecture/flows-and-actions.md) — defineFlow, actions, lifecycle hooks
 - [Sequencer DSL](../../docs/architecture/sequencer-dsl.md) — Full method reference for the composition DSL
 - [State and Scopes](../../docs/architecture/state-and-scopes.md) — Scoped state, atomic operations, CAS
-- [Resources and Projections](../../docs/architecture/resources-and-projections.md) — Data containers and derived views
+- [Resources and Client Data](../../docs/architecture/resources-and-client-data.md) — Data containers and derived client views

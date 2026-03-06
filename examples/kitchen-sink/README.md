@@ -14,7 +14,7 @@ The canonical reference application for `@flow-state-dev`. A full Next.js app de
 - Emission API: `ctx.emitMessage()`, `ctx.emitComponent()`, `ctx.emitLLMContext()`, `ctx.emitStatus()`
 - Sequencer DSL: `.then()`, `.thenIf()`, `.map()`, `.tap()`, `.rescue()`
 - Session resources (`artifacts`) with typed resource reads/writes
-- Client projections on `session` and `user` scopes
+- clientData on `session` and `user` scopes
 - Action-level `userMessage` for automatic user message emission
 - Lifecycle handling via `onCompleted`
 
@@ -23,7 +23,7 @@ The canonical reference application for `@flow-state-dev`. A full Next.js app de
 - Three-column layout: session sidebar, conversation, artifact panel
 - **AI Elements**: Conversation, Message (with Streamdown markdown), Reasoning, Tool, Suggestion, Shimmer, PromptInput
 - **Bridge components**: Map flow-state item types (`MessageItem`, `ReasoningItem`, `BlockOutputItem`, `StatusItem`, `ErrorItem`) to AI Element visuals
-- **Projections bar**: Live display of mode status, request count, user preferences
+- **Client data bar**: Live display of mode status, request count, user preferences
 - **Mode selector**: Chat / Plan / Review tabs that feed into `sendAction`
 - **Session management**: Create, list, and switch between sessions
 - **Tool call visualization**: Inline display of tool invocations with args + output via AI Elements Tool component
@@ -83,7 +83,7 @@ kitchen-sink/
     agent-response-card   # Dispatches block_output to tool-call or structured output
     session-sidebar       # Session list + creation
     mode-selector         # Chat/Plan/Review tabs
-    projections-bar       # Live projection data display
+    projections-bar       # Live client data display
     artifact-panel        # Right sidebar artifact list
     suggestion-row        # Quick action chips
     ui/                   # shadcn/ui primitives

@@ -210,14 +210,14 @@ const { detail, items, isStreaming, sendAction, refresh } = useSession(sessionId
 await sendAction("chat", { message: "Hello!" });
 ```
 
-**`useProjections`** — Scope-grouped projection subscriptions:
+**`useClientData`** — Scope-grouped client data subscriptions:
 
 ```tsx
-const projections = useProjections(session, {
+const clientData = useClientData(session, {
   session: ["activePlan", "messageCount"],
   user: ["preferences"],
 });
-// projections.session.activePlan, projections.user.preferences
+// clientData.session?.activePlan, clientData.user?.preferences
 ```
 
 **`useAction`** — Low-level action execution:
@@ -270,7 +270,7 @@ Client                        Server
   │◄── request.completed ──────┤
   │                             │
   ├─ GET /sessions/:id/state ─►│
-  │◄── snapshot response ──────┤ (state + projections)
+  │◄── snapshot response ──────┤ (state + clientData)
 ```
 
 **Phase 1 policy:**

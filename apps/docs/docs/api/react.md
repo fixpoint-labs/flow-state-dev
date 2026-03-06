@@ -73,19 +73,19 @@ await session.sendAction("chat", { message: "Hello!" });
 session.refresh();
 ```
 
-### `useProjections(session, options)`
+### `useClientData(session, options)`
 
-Read projection values from session state snapshot.
+Read client data values from session state snapshot.
 
 ```ts
-// String array mode
-const projections = useProjections(session, {
+// String array mode — subscribe by name
+const data = useClientData(session, {
   session: ["activePlan", "messageCount"],
   user: ["preferences"],
 });
 
-// Typed mode with schema validation
-const projections = useProjections(session, {
+// Schema mode — subscribe with type inference
+const data = useClientData(session, {
   session: {
     activePlan: activePlanSchema,
   },

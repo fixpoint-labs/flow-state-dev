@@ -4,19 +4,19 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Activity, User, Cpu } from "lucide-react";
 
-interface ProjectionsBarProps {
+interface ClientDataBarProps {
   currentMode?: string;
   requestCount?: number;
   displayName?: string;
   preferredModel?: string;
 }
 
-export function ProjectionsBar({
+export function ClientDataBar({
   currentMode,
   requestCount,
   displayName,
   preferredModel,
-}: ProjectionsBarProps) {
+}: ClientDataBarProps) {
   return (
     <div className="flex items-center gap-3 border-b px-4 py-2 text-xs">
       <div className="flex items-center gap-1.5 text-muted-foreground">

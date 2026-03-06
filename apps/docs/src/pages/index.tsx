@@ -66,8 +66,8 @@ export default defineFlow({
   session: {
     stateSchema,
     resources: { docs: docResource },
-    projections: {
-      docList: { client: true, compute: (ctx) => /* derived view */ },
+    clientData: {
+      docList: (ctx) => /* derived view from ctx.state + ctx.resources */,
     },
   },
 })({ id: "default" });`;
@@ -162,7 +162,7 @@ type CodeTab = {
 const codeTabs: CodeTab[] = [
   {
     label: "Define",
-    caption: "Compose blocks into flows with typed state, resources, and projections.",
+    caption: "Compose blocks into flows with typed state, resources, and client data.",
     code: defineExample,
     language: "ts",
   },

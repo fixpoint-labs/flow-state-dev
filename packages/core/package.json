@@ -16,6 +16,10 @@
     "./items": {
       "types": "./dist/items/index.d.ts",
       "default": "./dist/items/index.js"
+    },
+    "./prompt": {
+      "types": "./dist/prompt/index.d.ts",
+      "default": "./dist/prompt/index.js"
     }
   },
   "files": [

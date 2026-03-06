@@ -99,18 +99,19 @@ Ten pre-built utility factories wrapping generator/handler blocks:
 
 > [Utility Blocks](../architecture/utility-blocks.md)
 
-## Resources and Projections
+## Resources and Client Data
 
 - Concrete resources are persisted, attached to scopes
-- Projections are derived views; `client: true` exposes to client
-- Generator context should use `projection(...)` references, not raw state
-- `defineResource()` / `defineProjection()` for portable declarations
+- `clientData` entries are derived views — every entry is client-visible (no `client: true/false` toggle)
+- Each `clientData` compute function receives only its own scope's state and resources (single-scope context)
+- Generator context uses `contextFn()` for typed scope access, not raw state dumps
+- `defineResource()` for portable resource declarations
 - Blocks declare resources via `sessionResources`, `userResources`, `projectResources` (using `defineResource()` values)
 - Sequencers collect `declaredResources` from all child blocks automatically
 - `defineFlow` merges block-declared resources into flow scope configs; flow-level wins over block-level
 - Same `defineResource()` reference across blocks = no conflict; different references for same name = build-time error
 
-→ [Resources and Projections](../architecture/resources-and-projections.md)
+→ [Resources and Client Data](../architecture/resources-and-client-data.md)
 
 ## Definition of Done (Phase 1)
 

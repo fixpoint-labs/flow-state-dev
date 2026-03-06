@@ -8,7 +8,7 @@ import {
   useAction,
   useFlow,
   useFlowContext,
-  useProjections,
+  useClientData,
   useRequestStream,
   useSession
 } from "../src";
@@ -25,7 +25,7 @@ describe("@flow-state-dev/react", () => {
   it("exports hooks", () => {
     expect(typeof useFlow).toBe("function");
     expect(typeof useSession).toBe("function");
-    expect(typeof useProjections).toBe("function");
+    expect(typeof useClientData).toBe("function");
     expect(typeof useAction).toBe("function");
     expect(typeof useRequestStream).toBe("function");
   });

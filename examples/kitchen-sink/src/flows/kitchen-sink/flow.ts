@@ -3,7 +3,7 @@
  *
  * A multi-modal AI assistant that demonstrates the core building blocks of
  * @flow-state-dev: handlers, generators, routers, sequencers, typed state,
- * resources, projections, and tool-use.
+ * resources, clientData, and tool-use.
  *
  * What this flow does:
  *   A user sends a message with an optional mode ("chat" or "plan"). A router
@@ -20,7 +20,7 @@
  *   - sequencer() — composing blocks into pipelines with .then/.thenIf/.map/.tap/.rescue
  *   - Partial state schemas — each block declares only the state it needs
  *   - Resources   — named, typed state containers (artifacts) scoped to a session
- *   - Projections  — derived views over state, pushed to the client reactively
+ *   - clientData  — derived client-facing values computed from scope state and resources
  *   - Emission API — blocks emit items explicitly via ctx.emitMessage(), ctx.emitComponent(), etc.
  */
 import {
@@ -48,7 +48,7 @@ const MODEL_ID = "gpt-5-mini";
 // ---------------------------------------------------------------------------
 // Flow-level schemas
 // ---------------------------------------------------------------------------
-// These define the "full picture" of state, resources, and projections that
+// These define the "full picture" of state, resources, and clientData that
 // the flow exposes to the runtime and to clients. Individual blocks only see
 // the slices they declare.
 
@@ -70,36 +70,6 @@ const sessionStateSchema = z.object({
 const userStateSchema = z.object({
   displayName: z.string().default("Developer"),
   preferredModel: z.string().default(MODEL_ID)
-});
-
-// Projection output schemas — projections are derived views computed from
-// state and resources, pushed to clients reactively. They decouple the
-// client's view of state from the internal representation.
-const artifactsListOutputSchema = z.array(
-  z.object({
-    id: z.string(),
-    title: z.string(),
-    content: z.string()
-  })
-);
-
-const artifactsDetailOutputSchema = z.array(
-  z.object({
-    id: z.string(),
-    title: z.string(),
-    content: z.string(),
-    updatedAt: z.number()
-  })
-);
-
-const modeStatusOutputSchema = z.object({
-  currentMode: modeSchema,
-  requestCount: z.number()
-});
-
-const userPrefsOutputSchema = z.object({
-  displayName: z.string(),
-  preferredModel: z.string()
 });
 
 // Generator outputs plain text — reasoning comes from the provider's native
@@ -277,7 +247,7 @@ export const modeRouter = router({
 // Flow definition
 // ---------------------------------------------------------------------------
 // defineFlow() ties everything together: actions, state schemas, resources,
-// and projections. This is the entry point the server registers and clients
+// and clientData. This is the entry point the server registers and clients
 // connect to.
 //
 // The flow-level schemas are the "full picture" — they're the union of all
@@ -302,7 +272,7 @@ const kitchenSinkFlow = defineFlow({
     }
   },
 
-  // Session scope: state, resources, and projections scoped to a session.
+  // Session scope: state, resources, and clientData scoped to a session.
   session: {
     stateSchema: sessionStateSchema,
 
@@ -316,69 +286,48 @@ const kitchenSinkFlow = defineFlow({
       }
     },
 
-    // Projections are derived views computed from state and resources.
-    // client: true means they're pushed to the client on every state change.
-    projections: {
-      artifactsList: {
-        client: true,
-        outputSchema: artifactsListOutputSchema,
-        sessionResourceSchemas: { artifacts: artifactResourceStateSchema },
-        compute: (ctx) => {
-          const artifacts = ctx.session.resources.artifacts.state;
-
-          return artifacts.order.map((id: string) => ({
-            id,
-            title: artifacts.byId[id]?.title ?? "Untitled",
-            content: artifacts.byId[id]?.content ?? ""
-          }));
-        }
+    // clientData entries are derived values computed from scope state and
+    // resources, delivered to clients on every state snapshot request.
+    // Each entry is a simple function: (ctx) => value.
+    clientData: {
+      artifactsList: (ctx) => {
+        const artifacts = (ctx.resources as Record<string, { state: unknown }>).artifacts?.state as
+          | { order: string[]; byId: Record<string, { id: string; title: string; content: string }> }
+          | undefined;
+        if (!artifacts?.order?.length) return [];
+        return artifacts.order.map((id) => ({
+          id,
+          title: artifacts.byId[id]?.title ?? "Untitled",
+          content: artifacts.byId[id]?.content ?? ""
+        }));
       },
-      artifactsDetail: {
-        client: true,
-        outputSchema: artifactsDetailOutputSchema,
-        sessionResourceSchemas: { artifacts: artifactResourceStateSchema },
-        compute: (ctx) => {
-          const artifacts = ctx.session.resources.artifacts.state;
-
-          return artifacts.order
-            .map((id: string) => artifacts.byId[id])
-            .filter((artifact: { id: string; title: string; content: string } | undefined) => artifact !== undefined);
-        }
+      artifactsDetail: (ctx) => {
+        const artifacts = (ctx.resources as Record<string, { state: unknown }>).artifacts?.state as
+          | { order: string[]; byId: Record<string, { id: string; title: string; content: string; updatedAt: number }> }
+          | undefined;
+        if (!artifacts?.order?.length) return [];
+        return artifacts.order
+          .map((id) => artifacts.byId[id])
+          .filter((a): a is NonNullable<typeof a> => a !== undefined);
       },
-      modeStatus: {
-        client: true,
-        outputSchema: modeStatusOutputSchema,
-        compute: (ctx) => ({
-          currentMode: modeSchema.parse(ctx.session.state.mode ?? "chat"),
-          requestCount: Number(ctx.session.state.requestCount ?? 0)
-        })
-      }
+      modeStatus: (ctx) => ({
+        currentMode: modeSchema.parse(ctx.state.mode ?? "chat"),
+        requestCount: Number(ctx.state.requestCount ?? 0)
+      })
     }
   },
 
-  // User scope: state and projections that persist across sessions for a user.
+  // User scope: state and clientData that persist across sessions for a user.
   user: {
     stateSchema: userStateSchema,
-    projections: {
-      preferences: {
-        client: true,
-        outputSchema: userPrefsOutputSchema,
-        compute: (ctx) => ({
-          displayName: String(ctx.user?.state.displayName ?? "Developer"),
-          preferredModel: String(ctx.user?.state.preferredModel ?? MODEL_ID)
-        })
-      }
+    clientData: {
+      preferences: (ctx) => ({
+        displayName: String(ctx.state.displayName ?? "Developer"),
+        preferredModel: String(ctx.state.preferredModel ?? MODEL_ID)
+      })
     }
   }
 });
-
-// Export schemas needed by client code
-export {
-  artifactsListOutputSchema,
-  artifactsDetailOutputSchema,
-  modeStatusOutputSchema,
-  userPrefsOutputSchema
-};
 
 const flow = kitchenSinkFlow({ id: "default" });
 

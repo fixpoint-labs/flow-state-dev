@@ -27,7 +27,7 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   journal: JournalEntry[];
   /** @deprecated Items are canonical on RequestRecord; aggregated on read via session state endpoint. */
   items?: SessionItem[];
-  /** @deprecated Messages are derived projections from items; not stored on session. */
+  /** @deprecated Messages are derived from items; not stored on session. */
   messages?: {
     ui: Message[];
     llm: LLMMessage[];

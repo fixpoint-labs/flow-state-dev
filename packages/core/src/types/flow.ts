@@ -1,81 +1,38 @@
 import type { ZodTypeAny } from "zod";
 import type { BlockContext, BlockDefinition, RetryPolicy } from "./block";
 import type {
-  ProjectionComputeFn,
-  ProjectionConfig,
   ResourceConfig,
   ResourceHandle,
   StateOf
 } from "./resource";
-import type { JsonObject } from "../schema/common";
+import type { JsonObject, JsonValue } from "../schema/common";
 
 type InferResourceHandles<TResources extends Record<string, ResourceConfig>> = {
   [K in keyof TResources]: ResourceHandle<StateOf<TResources[K]>>;
 };
 
+/**
+ * Context provided to a clientData compute function.
+ * Contains the scope state and, where applicable, the scope's resource handles.
+ */
+export type ClientDataContext<
+  TState extends JsonObject = JsonObject,
+  TResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
+> = {
+  state: Readonly<TState>;
+  resources: TResources;
+};
 
-type SessionProjectionEntry<TResources extends Record<string, ResourceConfig>> =
-  | ProjectionConfig<
-      JsonObject,
-      JsonObject,
-      JsonObject,
-      JsonObject,
-      any,
-      any,
-      any,
-      InferResourceHandles<TResources>
-    >
-  | ProjectionComputeFn<
-      JsonObject,
-      JsonObject,
-      JsonObject,
-      JsonObject,
-      InferResourceHandles<TResources>
-    >;
-
-type UserProjectionEntry<TResources extends Record<string, ResourceConfig>> =
-  | ProjectionConfig<
-      JsonObject,
-      JsonObject,
-      JsonObject,
-      JsonObject,
-      any,
-      any,
-      any,
-      Record<string, ResourceHandle<any>>,
-      InferResourceHandles<TResources>
-    >
-  | ProjectionComputeFn<
-      JsonObject,
-      JsonObject,
-      JsonObject,
-      JsonObject,
-      Record<string, ResourceHandle<any>>,
-      InferResourceHandles<TResources>
-    >;
-
-type ProjectProjectionEntry<TResources extends Record<string, ResourceConfig>> =
-  | ProjectionConfig<
-      JsonObject,
-      JsonObject,
-      JsonObject,
-      JsonObject,
-      any,
-      any,
-      any,
-      Record<string, ResourceHandle<any>>,
-      Record<string, ResourceHandle<any>>,
-      InferResourceHandles<TResources>
-    >
-  | ProjectionComputeFn<
-      JsonObject,
-      JsonObject,
-      JsonObject,
-      JsonObject,
-      Record<string, ResourceHandle<any>>,
-      Record<string, ResourceHandle<any>>,
-      InferResourceHandles<TResources>
-    >;
+/**
+ * A compute function that derives client-visible data from scope state.
+ * Always client-visible (no `client: true` flag). Returns serializable data.
+ */
+export type ClientDataComputeFn<
+  TState extends JsonObject = JsonObject,
+  TResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
+> = (
+  ctx: ClientDataContext<TState, TResources>
+) => JsonValue | Promise<JsonValue>;
 
 export type HookHandler<TInput = unknown> = (
   input: TInput,
@@ -116,7 +73,7 @@ export type SessionConfig<
   metadata?: ZodTypeAny;
   stateSchema?: ZodTypeAny;
   resources?: TResources;
-  projections?: Record<string, SessionProjectionEntry<TResources>>;
+  clientData?: Record<string, ClientDataComputeFn<JsonObject, InferResourceHandles<TResources>>>;
 };
 
 export type RequestConfig = {
@@ -133,7 +90,7 @@ export type UserConfig<
 > = {
   stateSchema?: ZodTypeAny;
   resources?: TResources;
-  projections?: Record<string, UserProjectionEntry<TResources>>;
+  clientData?: Record<string, ClientDataComputeFn<JsonObject, InferResourceHandles<TResources>>>;
 };
 
 export type ProjectConfig<
@@ -141,7 +98,7 @@ export type ProjectConfig<
 > = {
   stateSchema?: ZodTypeAny;
   resources?: TResources;
-  projections?: Record<string, ProjectProjectionEntry<TResources>>;
+  clientData?: Record<string, ClientDataComputeFn<JsonObject, InferResourceHandles<TResources>>>;
 };
 
 export type WorkConfig = {

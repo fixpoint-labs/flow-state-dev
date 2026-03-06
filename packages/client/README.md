@@ -56,10 +56,10 @@ import { createSessionClient } from "@flow-state-dev/client";
 
 const sessions = createSessionClient({ baseUrl: "/api" });
 
-// State snapshot with projections and items
+// State snapshot with clientData and items
 const snapshot = await sessions.getSessionState("sess_1", {
   includeItems: true,
-  projections: ["session.artifactsList", "user.preferences"],
+  clientData: ["session.artifactsList", "user.preferences"],
 });
 ```
 

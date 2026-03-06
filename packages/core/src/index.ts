@@ -9,7 +9,9 @@ export type {
   SchemaOutput
 } from "./schema/common";
 
-export { defineProjection, defineResource, projection, projectionData, projectionMessages, projectionText, resource } from "./types/resource";
+export { defineResource, resource } from "./types/resource";
+export { contextFn } from "./context";
+export type { ContextFunction } from "./context";
 export {
   generator,
   handler,
@@ -46,6 +48,8 @@ export type {
 } from "./blocks";
 export type {
   ActionConfig,
+  ClientDataComputeFn,
+  ClientDataContext,
   FlowDefinition,
   FlowInstance,
   FlowInstanceOptions,

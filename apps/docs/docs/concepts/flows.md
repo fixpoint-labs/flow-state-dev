@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Flows
 
-A flow is the top-level unit — the thing you register with the server and clients connect to. It ties together your blocks, actions, state, resources, and projections into a single, deployable definition.
+A flow is the top-level unit — the thing you register with the server and clients connect to. It ties together your blocks, actions, state, resources, and client data into a single, deployable definition.
 
 Think of a flow as the complete specification of an AI-powered feature: what actions users can trigger, what state is tracked, and what data is exposed to the frontend.
 
@@ -37,11 +37,8 @@ const chatFlow = defineFlow({
     resources: {
       artifacts: { stateSchema: artifactSchema, writable: true },
     },
-    projections: {
-      messageCount: {
-        client: true,
-        compute: (ctx) => ctx.session.state.messageCount ?? 0,
-      },
+    clientData: {
+      messageCount: (ctx) => ctx.state.messageCount ?? 0,
     },
   },
 
@@ -102,7 +99,7 @@ See [Actions](/docs/concepts/actions) for the full picture.
 
 ## Session configuration
 
-Sessions carry state, resources, and projections that persist across requests in a conversation:
+Sessions carry state, resources, and clientData that persist across requests in a conversation:
 
 ```ts
 session: {
@@ -121,11 +118,8 @@ session: {
     },
   },
 
-  projections: {
-    activePlan: {
-      client: true,
-      compute: (ctx) => ctx.session.resources.plan?.state ?? null,
-    },
+  clientData: {
+    activePlan: (ctx) => ctx.resources.plan?.state ?? null,
   },
 },
 ```
@@ -151,7 +145,7 @@ const myFlow = defineFlow({
 
 Flow-level resource declarations take priority. If both a block and the flow declare a resource with the same name, the flow's version wins.
 
-See [State](/docs/concepts/state) for details on scopes, resources, and projections.
+See [State](/docs/concepts/state) for details on scopes, resources, and clientData.
 
 ## Lifecycle hooks
 

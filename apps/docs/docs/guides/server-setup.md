@@ -56,7 +56,7 @@ This exposes all framework endpoints under `/api/flows/`.
 | GET | `/api/flows/:kind/requests/:requestId/stream` | SSE request stream |
 | GET | `/api/flows/sessions` | List sessions |
 | GET | `/api/flows/sessions/:sessionId` | Session detail |
-| GET | `/api/flows/sessions/:sessionId/state` | State snapshot (projections) |
+| GET | `/api/flows/sessions/:sessionId/state` | State snapshot (clientData) |
 | POST | `/api/flows/:kind/sessions` | Create session |
 | DELETE | `/api/flows/sessions/:sessionId` | Delete session |
 

@@ -9,7 +9,7 @@ import {
   setFlowContext,
   useAction,
   useFlow,
-  useProjections,
+  useClientData,
   useRequestStream,
   useSession
 } from "../src";
@@ -29,8 +29,8 @@ describe("hook exports and types", () => {
     expect(useSession.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("useProjections is a function", () => {
-    expect(typeof useProjections).toBe("function");
+  it("useClientData is a function", () => {
+    expect(typeof useClientData).toBe("function");
   });
 
   it("useAction is a function", () => {

@@ -1,6 +1,6 @@
 # Flows and Actions
 
-A **flow** is the top-level unit of composition. It ties together blocks, state schemas, resources, projections, and lifecycle hooks into a registerable, executable unit.
+A **flow** is the top-level unit of composition. It ties together blocks, state schemas, resources, client data, and lifecycle hooks into a registerable, executable unit.
 
 ## Defining a Flow
 
@@ -88,19 +88,19 @@ defineFlow({
   session: {
     stateSchema: z.object({ mode: z.enum(["plan", "edit"]).default("plan") }),
     resources: { /* concrete persisted resources */ },
-    projections: { /* derived views */ },
+    clientData: { /* derived views for the client */ },
   },
 
   user: {
     stateSchema: z.object({ /* per-user state */ }),
     resources: { /* ... */ },
-    projections: { /* ... */ },
+    clientData: { /* ... */ },
   },
 
   project: {
     stateSchema: z.object({ /* project-wide state */ }),
     resources: { /* ... */ },
-    projections: { /* ... */ },
+    clientData: { /* ... */ },
   },
 
   work: {
@@ -144,9 +144,9 @@ When an action is invoked, the framework executes this sequence:
 10. Fire `request.onFinished`
 11. Persist state and emit terminal stream status
 
-## Resources and Projections
+## Resources and Client Data
 
-Resources are **concrete persisted data** attached to a scope. Projections are **derived views** computed from state and resources.
+Resources are **concrete persisted data** attached to a scope. Client data entries are **derived views** computed from state and resources — the mechanism for exposing data to clients.
 
 ```ts
 session: {
@@ -157,20 +157,18 @@ session: {
       writable: true,
     },
   },
-  projections: {
-    activePlan: {
-      client: true,
-      compute: (ctx) => ctx.session.resources.plan?.state.steps ?? [],
-    },
+  clientData: {
+    activePlan: (ctx) => ctx.resources.plan?.state.steps ?? [],
+    messageCount: (ctx) => ctx.state.messageCount ?? 0,
   },
 },
 ```
 
 **Key rules:**
-- Client-facing values are exposed through projections only (`client: true`)
-- Generator context should use `projection(...)` references, not raw state dumps
-- Inline declarations are fine; use `defineResource()`/`defineProjection()` for portable reuse
-- Inline projections inherit parent scope schemas automatically
+- Client-facing values are exposed through `clientData` entries — every entry is client-visible
+- Generator context should use `contextFn()` for typed scope access
+- Use `defineResource()` for portable resource reuse
+- Each `clientData` compute function receives only its own scope's state and resources
 
 ### Automatic Resource Collection
 
@@ -193,7 +191,7 @@ const flow = defineFlow({
 });
 ```
 
-See [Resources and Projections](./resources-and-projections.md) for the full collection and merge model.
+See [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
 
 ## Flow Discovery
 

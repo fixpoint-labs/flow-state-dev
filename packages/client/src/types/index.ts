@@ -166,7 +166,7 @@ export type SessionStateSnapshotResponse = {
     user?: Record<string, unknown>;
     project?: Record<string, unknown>;
   };
-  projections: {
+  clientData: {
     session?: Record<string, unknown>;
     user?: Record<string, unknown>;
     project?: Record<string, unknown>;

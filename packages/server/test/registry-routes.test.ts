@@ -31,7 +31,7 @@ function makeFlow(kind: string, id = kind): FlowInstance {
   });
 }
 
-function makeProjectedFlow(kind: string, id = kind): FlowInstance {
+function makeClientDataFlow(kind: string, id = kind): FlowInstance {
   return defineFlow({
     kind,
     actions: {
@@ -46,37 +46,18 @@ function makeProjectedFlow(kind: string, id = kind): FlowInstance {
       }
     },
     session: {
-      projections: {
-        sessionInfo: {
-          client: true,
-          compute: (ctx) => ({
-            sessionId: ctx.session.identity.id
-          })
-        },
-        hiddenInternal: {
-          client: false,
-          compute: () => ({ hidden: true })
-        }
+      clientData: {
+        sessionInfo: () => ({ ready: true })
       }
     },
     user: {
-      projections: {
-        userInfo: {
-          client: true,
-          compute: (ctx) => ({
-            userId: ctx.user?.identity.id
-          })
-        }
+      clientData: {
+        userInfo: () => ({ active: true })
       }
     },
     project: {
-      projections: {
-        projectInfo: {
-          client: true,
-          compute: (ctx) => ({
-            projectId: ctx.project?.identity.id
-          })
-        }
+      clientData: {
+        projectInfo: () => ({ configured: true })
       }
     }
   })({
@@ -367,10 +348,10 @@ describe("createFlowApiRouter", () => {
     expect(onError).toHaveBeenCalledTimes(1);
   });
 
-  it("returns scope-grouped client projections and supports projection filters", async () => {
+  it("returns scope-grouped clientData and supports clientData filters", async () => {
     const registry = createFlowRegistry();
     const stores = createInMemoryStores();
-    const flow = makeProjectedFlow("projected");
+    const flow = makeClientDataFlow("projected");
     registry.register(flow);
     const router = createFlowApiRouter({
       registry,
@@ -402,21 +383,21 @@ describe("createFlowApiRouter", () => {
       }
     );
     expect(stateResponse.status).toBe(200);
-    expect((await stateResponse.json()) as { projections: Record<string, unknown> }).toMatchObject({
-      projections: {
+    expect((await stateResponse.json()) as { clientData: Record<string, unknown> }).toMatchObject({
+      clientData: {
         session: {
           sessionInfo: {
-            sessionId: "sess_proj"
+            ready: true
           }
         },
         user: {
           userInfo: {
-            userId: "user_proj"
+            active: true
           }
         },
         project: {
           projectInfo: {
-            projectId: "proj_1"
+            configured: true
           }
         }
       }
@@ -424,7 +405,7 @@ describe("createFlowApiRouter", () => {
 
     const filteredResponse = await router.GET(
       new Request(
-        "http://localhost/api/flows/sessions/sess_proj/state?projections=session.sessionInfo,user.userInfo"
+        "http://localhost/api/flows/sessions/sess_proj/state?clientData=session.sessionInfo,user.userInfo"
       ),
       {
         params: {
@@ -433,16 +414,16 @@ describe("createFlowApiRouter", () => {
       }
     );
     expect(filteredResponse.status).toBe(200);
-    expect((await filteredResponse.json()) as { projections: Record<string, unknown> }).toMatchObject({
-      projections: {
+    expect((await filteredResponse.json()) as { clientData: Record<string, unknown> }).toMatchObject({
+      clientData: {
         session: {
           sessionInfo: {
-            sessionId: "sess_proj"
+            ready: true
           }
         },
         user: {
           userInfo: {
-            userId: "user_proj"
+            active: true
           }
         }
       }

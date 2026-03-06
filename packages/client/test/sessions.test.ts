@@ -47,7 +47,7 @@ const SNAPSHOT: SessionStateSnapshotResponse = {
       count: 1
     }
   },
-  projections: {}
+  clientData: {}
 };
 
 describe("createSessionClient", () => {
@@ -141,20 +141,20 @@ describe("createSessionClient", () => {
     expect(fetcher.mock.calls[2]?.[0]).toBe("/api/flows/sessions/sess_1/state");
   });
 
-  it("supports snapshot query options for items and projection filters", async () => {
+  it("supports snapshot query options for items and clientData filters", async () => {
     const fetcher = vi.fn<ClientFetch>(async () => createJsonResponse(SNAPSHOT));
     const client = createSessionClient({ fetcher });
 
     await client.getSessionState("sess_1", {
       includeItems: true,
-      projections: ["session.artifactsList", "user.topics"],
+      clientData: ["session.artifactsList", "user.topics"],
       itemTypes: ["message"],
       offset: 100,
       limit: 50
     });
 
     expect(fetcher.mock.calls[0]?.[0]).toBe(
-      "/api/flows/sessions/sess_1/state?include_items=true&projections=session.artifactsList%2Cuser.topics&item_types=message&offset=100&limit=50"
+      "/api/flows/sessions/sess_1/state?include_items=true&clientData=session.artifactsList%2Cuser.topics&item_types=message&offset=100&limit=50"
     );
   });
 });

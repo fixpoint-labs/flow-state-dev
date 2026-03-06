@@ -43,7 +43,7 @@ export type ListSessionRequestsOptions = {
  */
 export type GetSessionStateOptions = {
   includeItems?: boolean;
-  projections?: string[];
+  clientData?: string[];
   itemTypes?: string[];
   offset?: number;
   limit?: number;
@@ -139,11 +139,11 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
         path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/state`,
         query: asQuery({
           include_items: stateOptions?.includeItems,
-          projections:
-            stateOptions?.projections === undefined ||
-            stateOptions.projections.length === 0
+          clientData:
+            stateOptions?.clientData === undefined ||
+            stateOptions.clientData.length === 0
               ? undefined
-              : stateOptions.projections.join(","),
+              : stateOptions.clientData.join(","),
           item_types:
             stateOptions?.itemTypes === undefined ||
             stateOptions.itemTypes.length === 0

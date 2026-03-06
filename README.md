@@ -80,7 +80,7 @@ const client = createClient({ flowKind: "my-app", userId: "user_1" });
 await client.sendAction("chat", { message: "Hello" });
 ```
 
-**React** — Hooks that wire streaming, items, and projections to your UI:
+**React** — Hooks that wire streaming, items, and clientData to your UI:
 
 ```tsx
 <FlowProvider flowKind="my-app" userId="user_1">
@@ -154,7 +154,7 @@ pnpm test
 
 **[hello-chat](examples/hello-chat)** — Minimal chat flow. Generator + handler + sequencer in ~50 lines. Start here.
 
-**[kitchen-sink](examples/kitchen-sink)** — Everything the framework can do. Router-based dispatch, handler-backed tools, session resources with projections, rescue boundaries, and a full Next.js UI.
+**[kitchen-sink](examples/kitchen-sink)** — Everything the framework can do. Router-based dispatch, handler-backed tools, session resources with clientData, rescue boundaries, and a full Next.js UI.
 
 ## Architecture
 
@@ -189,7 +189,7 @@ Resume after disconnect: `Last-Event-ID` or `starting_after` query param replays
 - [State and Scopes](docs/architecture/state-and-scopes.md) — Four scopes, atomic ops, CAS concurrency
 - [Streaming](docs/architecture/streaming.md) — Item/content model, SSE protocol, resume semantics
 - [Execution and Errors](docs/architecture/execution-and-errors.md) — Retry, rescue, work queue
-- [Resources and Projections](docs/architecture/resources-and-projections.md) — Typed data containers and derived views
+- [Resources and Client Data](docs/architecture/resources-and-client-data.md) — Typed data containers and derived client views
 - [Sequencer DSL](docs/architecture/sequencer-dsl.md) — Full method reference
 - [Server and Client](docs/architecture/server-and-client.md) — Routes, transport, React hooks
 

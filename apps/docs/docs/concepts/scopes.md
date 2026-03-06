@@ -628,4 +628,4 @@ Each scope carries exactly the data appropriate for its lifetime:
 - **User**: `preferences`, `recentTopics` — personal data that follows the user to new sessions
 - **Project**: `config` — team settings shared by everyone
 
-For state operations, CAS concurrency, resources, projections, and schema bubbling, see [State Management](/docs/concepts/state).
+For state operations, CAS concurrency, resources, clientData, and schema bubbling, see [State Management](/docs/concepts/state).
