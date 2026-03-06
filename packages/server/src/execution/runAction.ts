@@ -205,6 +205,58 @@ async function emitTerminalError(
   await response.emitItemDone(item);
 }
 
+
+function getActionTokenBudget(action: ActionConfig): {
+  maxTotalTokens: number;
+  warnAt?: number;
+  onExceeded: "error" | "stop" | "warn";
+} | undefined {
+  if (action.tokenBudget === undefined) {
+    return undefined;
+  }
+
+  return {
+    maxTotalTokens: action.tokenBudget.maxTotalTokens,
+    warnAt: action.tokenBudget.warnAt,
+    onExceeded: action.tokenBudget.onExceeded ?? "error"
+  };
+}
+
+async function emitBudgetWarning(
+  ctx: ExecutionContext,
+  message: string
+): Promise<void> {
+  if (
+    typeof ctx.response !== "object" ||
+    ctx.response === null ||
+    typeof (ctx.response as { emitItemAdded?: unknown }).emitItemAdded !== "function" ||
+    typeof (ctx.response as { emitItemDone?: unknown }).emitItemDone !== "function"
+  ) {
+    return;
+  }
+
+  const response = ctx.response as unknown as {
+    emitItemAdded: (item: any) => Promise<unknown>;
+    emitItemDone: (item: any) => Promise<unknown>;
+  };
+
+  const item = {
+    id: `item_status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: "status",
+    status: "completed",
+    transient: true,
+    requestId: ctx.requestRuntime.requestId,
+    itemIndex: getResponseItems(ctx.response).length,
+    provenance: RUNTIME_PROVENANCE,
+    ts: Date.now(),
+    message,
+    detail: { code: "system.token_budget_warning" }
+  };
+
+  await response.emitItemAdded(item);
+  await response.emitItemDone(item);
+}
+
 /**
  * Public action execution API using default internal seams.
  */
@@ -318,6 +370,35 @@ export async function runActionInternal<
 
     if (result.error !== undefined) {
       throw result.error;
+    }
+
+    const tokenBudget = getActionTokenBudget(action);
+    if (tokenBudget !== undefined) {
+      const consumed = ctx.request.tokenUsage.totalConsumed;
+      const warningThreshold = tokenBudget.warnAt === undefined
+        ? undefined
+        : tokenBudget.maxTotalTokens * tokenBudget.warnAt;
+
+      if (warningThreshold !== undefined && consumed >= warningThreshold) {
+        await emitBudgetWarning(
+          ctx,
+          `Token budget warning: consumed ${consumed} of ${tokenBudget.maxTotalTokens}`
+        );
+      }
+
+      if (consumed > tokenBudget.maxTotalTokens) {
+        if (tokenBudget.onExceeded === "warn") {
+          await emitBudgetWarning(
+            ctx,
+            `Token budget exceeded: consumed ${consumed} of ${tokenBudget.maxTotalTokens}`
+          );
+        } else if (tokenBudget.onExceeded === "error") {
+          throw new ValidationError(
+            `Token budget exceeded: consumed ${consumed} > ${tokenBudget.maxTotalTokens}`,
+            { scope: "request" }
+          );
+        }
+      }
     }
 
     await runObserver(action.onCompleted, {

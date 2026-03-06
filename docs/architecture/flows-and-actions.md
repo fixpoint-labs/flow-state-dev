@@ -241,3 +241,10 @@ Generators still explicitly choose which tools are exposed per call — flow-lev
 ## Canonical Authority
 
 For full type signatures and edge cases, see `../preperation/architecture/FLOW_SYSTEM.md`.
+
+
+### Token controls
+
+- Flow-level: `tokenCounter` and `costEstimator` can be provided in `defineFlow`.
+- Action-level: `tokenBudget` can be configured per action for request budget enforcement policies.
+

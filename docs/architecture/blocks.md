@@ -357,3 +357,7 @@ const output = ctx.getBlockOutput(validateBlock);
 ```
 
 These APIs resolve only against already-dispatched siblings at the current execution level. They do not walk the ancestor chain.
+
+
+`BlockContext.request` also exposes live `tokenUsage` and `costEstimate` rollups. `tokenUsage` is aggregated by model from emitted generator `block_output.modelUsage`. `costEstimate` is computed when a flow `costEstimator` is configured.
+

@@ -167,3 +167,15 @@ pnpm --filter @flow-state-dev/core test
 - [Sequencer DSL](../../docs/architecture/sequencer-dsl.md) — Full method reference for the composition DSL
 - [State and Scopes](../../docs/architecture/state-and-scopes.md) — Scoped state, atomic operations, CAS
 - [Resources and Client Data](../../docs/architecture/resources-and-client-data.md) — Data containers and derived client views
+
+
+## Token and Cost Adapters
+
+Core exports:
+- `ModelLookupEntry`, `DEFAULT_MODEL_LOOKUP`, and `findModelEntry(model, lookup?)`
+- `createEstimateTokenCounter(lookup?)` and `estimateTokenCounter`
+- `createTiktokenCounter(tiktokenModule)`
+- `modelPricingEstimator(lookup?)`
+
+Use a shared lookup table to keep token-ratio and pricing resolution consistent across counters and cost estimation.
+

@@ -16,7 +16,8 @@ import type {
   SessionItemViews,
   SessionScopeHandle,
   UserScopeHandle,
-  FlowInstance
+  FlowInstance,
+  TokenCounter
 } from "@flow-state-dev/core/types";
 import type {
   BlockOutputItem,
@@ -407,16 +408,6 @@ function itemToLLMMessage(item: OutputItem): LLMMessage | null {
 }
 
 /**
- * Rough token estimate: ~4 characters per token (conservative for English text).
- */
-function estimateTokens(message: LLMMessage): number {
-  const content = typeof message.content === "string"
-    ? message.content
-    : JSON.stringify(message.content);
-  return Math.ceil(content.length / 4);
-}
-
-/**
  * Loads conversation history from prior completed requests in this session,
  * converts to LLM-ready messages, and applies filtering/limiting.
  */
@@ -424,6 +415,8 @@ async function loadLLMHistory(
   stores: StoreRegistry,
   sessionId: string,
   currentRequestId: string,
+  tokenCounter: TokenCounter,
+  resolveModelId: () => string,
   query?: ItemQuery
 ): Promise<LLMMessage[]> {
   const requests = await stores.request.list({ sessionId });
@@ -488,9 +481,10 @@ async function loadLLMHistory(
   const tokenBudget = limit.tokens;
   let tokensUsed = 0;
   let startIndex = messages.length;
+  const model = resolveModelId();
 
   for (let i = messages.length - 1; i >= 0; i--) {
-    const tokens = estimateTokens(messages[i]!);
+    const tokens = await tokenCounter.countMessages([messages[i]!], model);
     if (tokensUsed + tokens > tokenBudget) {
       break;
     }
@@ -508,6 +502,8 @@ function createSessionItemViews(
     stores: StoreRegistry;
     sessionId: string;
     currentRequestId: string;
+    tokenCounter: TokenCounter;
+    resolveModelId: () => string;
   }
 ): SessionItemViews {
   const select = (
@@ -553,6 +549,8 @@ function createSessionItemViews(
         options.stores,
         options.sessionId,
         options.currentRequestId,
+        options.tokenCounter,
+        options.resolveModelId,
         query
       )
   };
@@ -1232,6 +1230,80 @@ export async function createExecutionContext<
           persistResources: persistProjectResources
         });
 
+
+
+  const modelResolver = options.modelResolver ?? createDefaultModelResolver();
+  const tokenCounter: TokenCounter = flow.tokenCounter ?? {
+    async count(text: string): Promise<number> {
+      return Math.ceil(text.length / 4);
+    },
+    async countMessages(messages: LLMMessage[]): Promise<number> {
+      const total = messages.reduce((acc, message) => acc + JSON.stringify(message.content).length, 0);
+      return Math.ceil(total / 4);
+    }
+  };
+  let currentResolvedModelId = "gpt-4o-mini";
+  const resolveModel = (modelId: string, blockName?: string) => {
+    currentResolvedModelId = modelId;
+    return modelResolver(modelId, blockName);
+  };
+
+  const readLiveItems = (): OutputItem[] => {
+    const typedResponse = responseRef.current as { getItems?: () => OutputItem[] };
+    if (typeof typedResponse.getItems === "function") {
+      return typedResponse.getItems();
+    }
+    return requestRef.current.items ?? [];
+  };
+
+  const computeTokenUsage = () => {
+    const byModel: Record<string, { prompt: number; completion: number; total: number; cacheReadTokens: number; cacheCreationTokens: number }> = {};
+    for (const item of readLiveItems()) {
+      if (item.type !== "block_output") {
+        continue;
+      }
+      const modelUsage = (item as any).modelUsage;
+      if (modelUsage === undefined || typeof modelUsage.model !== "string") {
+        continue;
+      }
+      const existing = byModel[modelUsage.model] ?? {
+        prompt: 0,
+        completion: 0,
+        total: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0
+      };
+      existing.prompt += Number(modelUsage.promptTokens ?? 0);
+      existing.completion += Number(modelUsage.completionTokens ?? 0);
+      existing.total += Number(modelUsage.totalTokens ?? 0);
+      existing.cacheReadTokens += Number(modelUsage.cacheReadTokens ?? 0);
+      existing.cacheCreationTokens += Number(modelUsage.cacheCreationTokens ?? 0);
+      byModel[modelUsage.model] = existing;
+    }
+
+    const totalConsumed = Object.values(byModel).reduce((acc, model) => acc + model.total, 0);
+    const maxBudget = flow.actions[options.actionName]?.tokenBudget?.maxTotalTokens;
+
+    return {
+      totalConsumed,
+      byModel,
+      remaining: typeof maxBudget === "number" ? Math.max(0, maxBudget - totalConsumed) : Number.POSITIVE_INFINITY
+    };
+  };
+
+  const computeCostEstimate = () => {
+    const estimator = flow.costEstimator;
+    const usage = computeTokenUsage();
+    const byModel: Record<string, number> = {};
+
+    for (const [model, entry] of Object.entries(usage.byModel)) {
+      byModel[model] = estimator?.estimate(entry, model) ?? 0;
+    }
+
+    const totalUSD = Object.values(byModel).reduce((acc, value) => acc + value, 0);
+    return { totalUSD, byModel };
+  };
+
   const requestHandle = defineStateProperty(
     {
       identity: {
@@ -1239,6 +1311,12 @@ export async function createExecutionContext<
         id: requestRef.current.id,
         userId,
         projectId: projectRef.current?.id
+      },
+      get tokenUsage() {
+        return computeTokenUsage();
+      },
+      get costEstimate() {
+        return computeCostEstimate();
       },
       ...requestOps
     },
@@ -1270,7 +1348,9 @@ export async function createExecutionContext<
       items: createSessionItemViews(() => sessionRef.current, {
         stores,
         sessionId,
-        currentRequestId: requestId
+        currentRequestId: requestId,
+        tokenCounter,
+        resolveModelId: () => currentResolvedModelId
       }),
       appendJournal: async (entry: JournalEntryInput): Promise<void> => {
         const journalEntry = buildJournalEntry(entry);
@@ -1337,8 +1417,6 @@ export async function createExecutionContext<
   const responseRef: { current: unknown } = {
     current: response
   };
-  const resolveModel =
-    options.modelResolver ?? createDefaultModelResolver();
 
   // Emission context used by emitMessage/emitComponent/emitLLMContext/emitStatus.
   // Duck-type the response: if it has emitItemAdded/emitItemDone, use those;

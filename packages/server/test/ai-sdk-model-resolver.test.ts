@@ -104,4 +104,35 @@ describe("createAiSdkModelResolver", () => {
     expect(request?.tools).toBeDefined();
     expect(request?.prompt[0]?.role).toBe("user");
   });
+
+  it("surfaces provider metadata on generation results", async () => {
+    const resolver = createAiSdkModelResolver(() => new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "hi" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 12, noCache: 12, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 3, text: 3, reasoning: undefined }
+        },
+        providerMetadata: {
+          anthropic: {
+            cacheCreationInputTokens: 2,
+            cacheReadInputTokens: 9
+          }
+        },
+        warnings: []
+      })
+    }));
+
+    const result = await resolver("anthropic:claude-sonnet-4-5", "chat-generator").generate({
+      messages: [{ role: "user", content: "hi" }]
+    });
+
+    expect(result.providerMetadata).toEqual({
+      anthropic: {
+        cacheCreationInputTokens: 2,
+        cacheReadInputTokens: 9
+      }
+    });
+  });
 });

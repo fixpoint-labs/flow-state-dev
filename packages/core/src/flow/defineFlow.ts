@@ -212,7 +212,9 @@ function createFlowInstance(
     user: merged.user,
     project: merged.project,
     work: mergeConfig(definition.work, options?.work),
-    tools
+    tools,
+    tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
+    costEstimator: options?.costEstimator ?? definition.costEstimator
   };
 }
 
@@ -255,6 +257,8 @@ export function defineFlow<
     user: baseInstance.user as TUser,
     project: baseInstance.project as TProject,
     work: baseInstance.work as TWork,
-    tools: baseInstance.tools
+    tools: baseInstance.tools,
+    tokenCounter: baseInstance.tokenCounter,
+    costEstimator: baseInstance.costEstimator
   });
 }
