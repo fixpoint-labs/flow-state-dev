@@ -36,6 +36,79 @@ const agent = generator({
 
 When the community builds blocks on top of this and shares them, their patterns become your building blocks too. That compounding is intentional.
 
+## State that the model can actually use
+
+The standard approach to AI memory is: keep a message list, truncate it when it gets too long, hope the model finds what it needs. This works for demos.
+
+In practice, state worth keeping is worth keeping explicitly. When a research tool discovers something, it shouldn't just return it to the model and hope it shows up in context later. It should write it somewhere structured, so the next turn can use it deliberately.
+
+In flow-state.dev, tools can read and write session state as a normal part of execution. That state persists across turns in a conversation. You control what shape it takes, and the framework makes it available to the model in subsequent calls.
+
+```ts
+const stateSchema = z.object({
+  coveredTopics: z.array(z.string()).default([]),
+  keyFindings: z.record(z.string()).default({}),
+});
+
+// The tool does real work, and records what it found in session state.
+// The return value goes to the LLM now. The state persists for future turns.
+const researchTopic = handler({
+  name: "research-topic",
+  input: z.object({ topic: z.string() }),
+  sessionStateSchema: stateSchema,
+  execute: async (input, ctx) => {
+    const findings = await fetchResearch(input.topic);
+
+    await ctx.session.pushState("coveredTopics", input.topic);
+    await ctx.session.setStateRecord("keyFindings", input.topic, findings.summary);
+
+    return findings;
+  },
+});
+```
+
+The model won't re-research a topic it already covered, because the state system tracks what's been done and feeds it back into context. This is different from hoping it shows up in the transcript.
+
+## Evolve the cloud-native filesystem
+
+A filesystem stores bytes. You can read and write them, but the filesystem doesn't know what they mean, which process owns them, or whether what you wrote is valid.
+
+That model predates AI applications. When an agent needs to persist research findings, manage working documents, track a plan across conversation turns, and surface any of that to the model on the next request — a flat file hierarchy isn't the right abstraction.
+
+Resources are the alternative. A resource is a named container attached to a scope: a session, a user, or a project. It has two layers — structured state defined by a Zod schema, and optionally file content with a declared media type. The combination gives you typed, scope-aware storage that behaves like a state store or a filesystem depending on what you need.
+
+```ts
+const draftResource = defineResource({
+  stateSchema: z.object({
+    title: z.string().default(""),
+    wordCount: z.number().default(0),
+    lastEditedAt: z.number().optional(),
+  }),
+  allowedExtensions: [".md", ".txt"],
+  writable: true,
+});
+```
+
+A session might carry a `draft` resource (the document being edited), a `plan` resource (structured steps), and a `references` resource (cited sources). All typed, all persisted, all accessible to blocks during execution. Blocks declare which resources they need; the framework makes them available.
+
+Projections control what the model sees. Instead of dumping state into context, you declare exactly which resources and state to include for a given turn:
+
+```ts
+const writer = generator({
+  name: "writer",
+  context: [
+    projectionText("session.draft"),       // document content
+    projectionData("session.plan"),        // structured plan
+    projectionData("session.references"),  // cited sources
+  ],
+  // ...
+});
+```
+
+The model sees what you give it. Nothing else leaks in.
+
+A journaling layer is planned — append-only logs that track mutations over time. When that lands, resources become auditable: not just "here is the current state" but "here is how it got here." That's a different kind of substrate for AI systems to reason about.
+
 ## Built for an ecosystem
 
 Blocks don't belong to flows. A block is just a typed unit of logic: input, output, optional state dependencies. That's the whole contract. It doesn't know or care what flow it runs in.
@@ -61,9 +134,7 @@ const chatFlow = defineFlow({
 });
 ```
 
-Resources follow the same logic. Define a resource once with `defineResource()`, use it across multiple flows. Blocks can declare which resources they need — the framework collects those declarations automatically and makes the resources available at runtime.
-
-When a community block declares that it needs a `plan` resource, and your flow already has a `plan` resource with a compatible schema, they just work together. The framework handles the wiring. You don't.
+Resources work the same way. A `defineResource()` definition isn't tied to any specific flow. If a community block declares a dependency on a `plan` resource and your flow already defines one with the same schema, the framework wires them together. Same contract, same instance, no glue code.
 
 ## AI workflows are not web requests
 
@@ -115,39 +186,6 @@ function App() {
   );
 }
 ```
-
-## State that the model can actually use
-
-The standard approach to AI memory is: keep a message list, truncate it when it gets too long, hope the model finds what it needs. This works for demos.
-
-In practice, state worth keeping is worth keeping explicitly. When a research tool discovers something, it shouldn't just return it to the model and hope it shows up in context later. It should write it somewhere structured, so the next turn can use it deliberately.
-
-In flow-state.dev, tools can read and write session state as a normal part of execution. That state persists across turns in a conversation. You control what shape it takes, and the framework makes it available to the model in subsequent calls.
-
-```ts
-const stateSchema = z.object({
-  coveredTopics: z.array(z.string()).default([]),
-  keyFindings: z.record(z.string()).default({}),
-});
-
-// The tool does real work, and records what it found in session state.
-// The return value goes to the LLM now. The state persists for future turns.
-const researchTopic = handler({
-  name: "research-topic",
-  input: z.object({ topic: z.string() }),
-  sessionStateSchema: stateSchema,
-  execute: async (input, ctx) => {
-    const findings = await fetchResearch(input.topic);
-
-    await ctx.session.pushState("coveredTopics", input.topic);
-    await ctx.session.setStateRecord("keyFindings", input.topic, findings.summary);
-
-    return findings;
-  },
-});
-```
-
-The model won't re-research a topic it already covered, because the state system tracks what's been done and feeds it back into context. This is different from hoping it shows up in the transcript.
 
 ## The framework runs the loop
 
