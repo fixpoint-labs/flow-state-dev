@@ -1,4 +1,4 @@
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, generator, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import { createInMemoryStores, runAction, ValidationError } from "../src";
@@ -342,6 +342,152 @@ describe("runAction edge behavior", () => {
 
     expect(result.error?.code).toBe("validation_error");
     expect(result.error?.message).toContain("schema validation failed");
+  });
+
+
+
+  it("enforces token budget with onExceeded=error", async () => {
+    const block = generator({
+      name: "budget-generator-error",
+      model: "openai:gpt-5-mini",
+      prompt: () => "prompt",
+      user: () => "hello"
+    });
+
+    const flow = defineFlow({
+      kind: "budget-error-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.number() }),
+          block,
+          tokenBudget: {
+            maxTotalTokens: 5,
+            onExceeded: "error"
+          }
+        }
+      }
+    })();
+
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: { value: 1 },
+      userId: "user_budget_error",
+      sessionId: "sess_budget_error",
+      requestId: "req_budget_error",
+      stores: createInMemoryStores(),
+      modelResolver: () => ({
+        modelId: "openai:gpt-5-mini",
+        async generate() {
+          return {
+            text: "ok",
+            usage: { promptTokens: 4, completionTokens: 4, totalTokens: 8 }
+          };
+        }
+      })
+    });
+
+    expect(result.error?.code).toBe("validation_error");
+    expect(result.error?.message).toContain("Token budget exceeded");
+  });
+
+  it("emits a single exceeded warning when onExceeded=warn", async () => {
+    const block = generator({
+      name: "budget-generator-warn",
+      model: "openai:gpt-5-mini",
+      prompt: () => "prompt",
+      user: () => "hello"
+    });
+
+    const flow = defineFlow({
+      kind: "budget-warn-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.number() }),
+          block,
+          tokenBudget: {
+            maxTotalTokens: 5,
+            warnAt: 0.5,
+            onExceeded: "warn"
+          }
+        }
+      }
+    })();
+
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: { value: 1 },
+      userId: "user_budget_warn",
+      sessionId: "sess_budget_warn",
+      requestId: "req_budget_warn",
+      stores: createInMemoryStores(),
+      modelResolver: () => ({
+        modelId: "openai:gpt-5-mini",
+        async generate() {
+          return {
+            text: "ok",
+            usage: { promptTokens: 4, completionTokens: 4, totalTokens: 8 }
+          };
+        }
+      })
+    });
+
+    const warnings = result.items.filter((item) => item.type === "status" && (item as { message?: string }).message?.includes("Token budget"));
+    expect(warnings).toHaveLength(1);
+    expect((warnings[0] as { message: string }).message).toContain("exceeded");
+  });
+
+  it("marks request incomplete when onExceeded=stop", async () => {
+    const block = generator({
+      name: "budget-generator-stop",
+      model: "openai:gpt-5-mini",
+      prompt: () => "prompt",
+      user: () => "hello"
+    });
+
+    const stores = createInMemoryStores();
+    const flow = defineFlow({
+      kind: "budget-stop-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.number() }),
+          block,
+          tokenBudget: {
+            maxTotalTokens: 5,
+            onExceeded: "stop"
+          },
+          onCompleted: handler({
+            name: "should-not-run",
+            execute: () => {
+              throw new Error("onCompleted should not execute for stop");
+            }
+          })
+        }
+      }
+    })();
+
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: { value: 1 },
+      userId: "user_budget_stop",
+      sessionId: "sess_budget_stop",
+      requestId: "req_budget_stop",
+      stores,
+      modelResolver: () => ({
+        modelId: "openai:gpt-5-mini",
+        async generate() {
+          return {
+            text: "ok",
+            usage: { promptTokens: 4, completionTokens: 4, totalTokens: 8 }
+          };
+        }
+      })
+    });
+
+    expect(result.error).toBeUndefined();
+    expect((await stores.request.get("req_budget_stop"))?.status).toBe("incomplete");
   });
 
   it("skips terminal error item emission when response is unavailable", async () => {

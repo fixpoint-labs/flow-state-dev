@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   ItemQuery,
   JournalEntry,
@@ -1242,9 +1243,9 @@ export async function createExecutionContext<
       return Math.ceil(total / 4);
     }
   };
-  let currentResolvedModelId = "gpt-4o-mini";
+  const resolvedModelStorage = new AsyncLocalStorage<string>();
   const resolveModel = (modelId: string, blockName?: string) => {
-    currentResolvedModelId = modelId;
+    resolvedModelStorage.enterWith(modelId);
     return modelResolver(modelId, blockName);
   };
 
@@ -1262,8 +1263,8 @@ export async function createExecutionContext<
       if (item.type !== "block_output") {
         continue;
       }
-      const modelUsage = (item as any).modelUsage;
-      if (modelUsage === undefined || typeof modelUsage.model !== "string") {
+      const modelUsage = item.modelUsage;
+      if (modelUsage === undefined) {
         continue;
       }
       const existing = byModel[modelUsage.model] ?? {
@@ -1350,7 +1351,22 @@ export async function createExecutionContext<
         sessionId,
         currentRequestId: requestId,
         tokenCounter,
-        resolveModelId: () => currentResolvedModelId
+        resolveModelId: () => {
+          const active = resolvedModelStorage.getStore();
+          if (typeof active === "string") {
+            return active;
+          }
+
+          const items = readLiveItems();
+          for (let index = items.length - 1; index >= 0; index -= 1) {
+            const item = items[index];
+            if (item?.type === "block_output" && item.modelUsage !== undefined) {
+              return item.modelUsage.model;
+            }
+          }
+
+          return "gpt-4o-mini";
+        }
       }),
       appendJournal: async (entry: JournalEntryInput): Promise<void> => {
         const journalEntry = buildJournalEntry(entry);
