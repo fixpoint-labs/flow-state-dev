@@ -7,11 +7,11 @@ tags: [philosophy, design]
 
 Every framework encodes beliefs. Most of the time they're implicit, buried in API shapes and naming choices. This is ours, written down.
 
-These are the eight principles behind flow-state.dev. They're what we keep coming back to when we're making a hard design call.
+These are the principles behind flow-state.dev. They're what we keep coming back to when we're making a hard design call.
 
 <!-- truncate -->
 
-## 1. Build foundations, not patterns
+## Build foundations, not patterns
 
 Nobody knows what the best AI agents look like yet. The patterns that dominate today (ReAct loops, linear chains, RAG pipelines) are starting points. The teams doing interesting things are the ones that went off-script.
 
@@ -36,7 +36,36 @@ const agent = generator({
 
 When the community builds blocks on top of this and shares them, their patterns become your building blocks too. That compounding is intentional.
 
-## 2. AI workflows are not web requests
+## Built for an ecosystem
+
+Blocks don't belong to flows. A block is just a typed unit of logic: input, output, optional state dependencies. That's the whole contract. It doesn't know or care what flow it runs in.
+
+This makes sharing straightforward. A block you write for one flow works in another flow without modification. A block someone else publishes works with yours because you share the same contract. There's no adapter layer or inheritance hierarchy to make compatible things compatible — if the types line up, it composes.
+
+```ts
+// A block defined in a shared package
+import { deepResearch } from "@myorg/research-blocks";
+
+// Works in a research flow
+const researchFlow = defineFlow({
+  kind: "researcher",
+  actions: { research: { block: deepResearch } },
+});
+
+// Works as a tool in a chat agent in a completely different flow
+const chatFlow = defineFlow({
+  kind: "chat",
+  actions: {
+    chat: { block: generator({ name: "agent", tools: [deepResearch] }) },
+  },
+});
+```
+
+Resources follow the same logic. Define a resource once with `defineResource()`, use it across multiple flows. Blocks can declare which resources they need — the framework collects those declarations automatically and makes the resources available at runtime.
+
+When a community block declares that it needs a `plan` resource, and your flow already has a `plan` resource with a compatible schema, they just work together. The framework handles the wiring. You don't.
+
+## AI workflows are not web requests
 
 Most backend frameworks are built around a request coming in and a response going out. That model works fine for web apps. It does not work for AI.
 
@@ -63,7 +92,7 @@ export default defineFlow({
 
 The LLM tool loop, streaming, state persistence, and error recovery are all handled. You define what the agent can do. The framework runs it.
 
-## 3. Server to screen, no gaps
+## Server to screen, no gaps
 
 A lot of AI orchestration tools stop at the server. They'll run your LLM pipeline, but getting the output to your users is your problem.
 
@@ -87,7 +116,7 @@ function App() {
 }
 ```
 
-## 4. State that the model can actually use
+## State that the model can actually use
 
 The standard approach to AI memory is: keep a message list, truncate it when it gets too long, hope the model finds what it needs. This works for demos.
 
@@ -120,7 +149,7 @@ const researchTopic = handler({
 
 The model won't re-research a topic it already covered, because the state system tracks what's been done and feeds it back into context. This is different from hoping it shows up in the transcript.
 
-## 5. The framework runs the loop
+## The framework runs the loop
 
 When you're managing your own LLM tool loop, you're also managing retries, timeout handling, context assembly, and streaming. These are solvable problems, but solving them in application code means solving them differently every time, which means they're hard to test, hard to debug, and impossible to instrument consistently.
 
@@ -144,7 +173,57 @@ const pipeline = sequencer({ name: "pipeline" })
 
 The constraints compound. Type-safe composition makes wrong wiring a compile error. Consistent execution makes observability possible. Observability makes debugging tractable.
 
-## 6. Streaming is the default
+## Types that travel
+
+TypeScript and AI pipelines have a tense relationship. You spend a lot of time re-declaring the same types at different boundaries: annotate a function's return, re-annotate the next function's input, assert the shape halfway through because the chain got too complex for inference to follow.
+
+The DSL is designed so types travel automatically through the chain. Each step infers its input from the previous step's output. You write schemas at the edges — inputs and outputs you actually want to validate — and TypeScript figures out the rest.
+
+```ts
+const pipeline = sequencer({ name: "research" })
+  .then(parseQuery)    // infers: input from sequencer, output ParsedQuery
+  .then(
+    // inline definition — input is inferred as ParsedQuery, no annotation needed
+    handler, {
+      name: "enrich",
+      execute: async (input, ctx) => ({
+        ...input,
+        timestamp: Date.now(),
+      }),
+    }
+  )
+  .then(searchAndRank); // infers enriched output as its input
+```
+
+Schema bubbling works the same way. A block only needs to declare the state fields it actually uses, not the full flow-level schema. The framework merges declarations upward — the block sees only what it asked for, fully typed.
+
+```ts
+// This block only sees callCount in ctx.session.state
+// even if the session has 20 other fields
+const trackUsage = handler({
+  name: "track-usage",
+  sessionStateSchema: z.object({ callCount: z.number().default(0) }),
+  execute: async (input, ctx) => {
+    await ctx.session.patchState({ callCount: ctx.session.state.callCount + 1 });
+    return input;
+  },
+});
+```
+
+When you need to adapt types at a boundary — like connecting a community block that expects a different shape — `connectInput` and `connectOutput` handle the mapping without casting.
+
+```ts
+// Bridge a shape mismatch with a typed mapper, not an assertion
+const adapted = communityBlock.connectInput(
+  (output: MyOutput) => ({ query: output.searchText, limit: 10 })
+);
+
+pipeline.then(adapted);
+```
+
+The goal is to make the type system work with your composition, not against it.
+
+## Streaming is the default
 
 Streaming isn't a mode you opt into. It's how the execution model works.
 
@@ -168,7 +247,7 @@ const stream = client.streamRequest(requestId, { cursor: lastSequenceNumber });
 
 Batch mode exists (you can await the full result), but it's just streaming with the waiting done for you.
 
-## 7. The stream is the trace
+## The stream is the trace
 
 Observability in most frameworks requires instrumentation: add a tracing library, wrap your functions, configure an exporter, figure out why your spans don't line up with what actually happened.
 
@@ -190,7 +269,7 @@ In flow-state.dev, every item emitted during execution carries its context: whic
 
 If you can render stream items, you can build a debugger. You don't need a separate observability system because the execution model already produces what you'd want a separate system to capture.
 
-## 8. We own the runtime. You own the rest.
+## We own the runtime. You own the rest.
 
 Blocks are functions in your repo. Flows are declarations in your repo. The framework ships the runtime that executes them.
 
