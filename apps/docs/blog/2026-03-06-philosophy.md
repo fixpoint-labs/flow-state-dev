@@ -5,85 +5,79 @@ authors: [flowstatedev]
 tags: [philosophy, design]
 ---
 
-Every framework encodes beliefs — about what problems matter, how software should be structured, where the boundaries belong. Most of the time those beliefs are implicit, scattered across API choices and documentation asides. This post makes ours explicit.
+Every framework encodes beliefs. Most of the time they're implicit, buried in API shapes and naming choices. This is ours, written down.
 
-These are the eight principles behind flow-state.dev, ordered from thesis to execution detail. They're the reference point for every design decision in the framework — past and future.
+These are the eight principles behind flow-state.dev. They're what we keep coming back to when we're making a hard design call.
 
 <!-- truncate -->
 
-## 1. Foundations That Unlock Paradigms
+## 1. Build foundations, not patterns
 
-We don't know what the best AI agents look like yet. Neither does anyone else.
+Nobody knows what the best AI agents look like yet. The patterns that dominate today (ReAct loops, linear chains, RAG pipelines) are starting points. The teams doing interesting things are the ones that went off-script.
 
-The framework provides primitives — blocks, scoped state, resources, projections, streaming items, sequencer composition — not pre-built solutions for known AI patterns. The goal is to create foundations powerful enough that developers and the community discover patterns we haven't imagined yet. Recursive language model architectures. Advanced memory systems. Structured thinking pipelines. We can't predict these. We can give you the building blocks and get out of the way.
+We didn't want to build a framework that locked you into our guesses about what good agents look like. So instead of shipping patterns, we focused on the smallest set of composable pieces that could express any pattern. You get four kinds of building blocks (plain functions, LLM callers, pipelines, and routers), a way to compose them with full type safety, and a streaming runtime underneath.
 
-The patterns that emerge become new blocks to build with and on. This compounding effect is intentional. When a block is portable and composable by default, the community's work extends the framework's reach far beyond what any single team could ship. The framework isn't aiming to be simple — it's aiming to make unlocking powerful capabilities frictionless.
+What you can actually build with that turns out to be much more interesting than what we would have designed directly.
 
 ```ts
-// deepResearch is a tool — but it's also a sequencer you can compose further
+// A multi-step research pipeline used as a single tool call
 const deepResearch = sequencer({ name: "deep-research" })
   .then(parseQuery)
   .parallel({ web: searchWeb, docs: searchInternalDocs, memory: searchMemory })
   .then(mergeAndRank)
   .doUntil((result) => result.confidence > 0.9, refineResults);
 
-// Use it as a tool in a generator — or compose it into a larger pipeline
+// The agent doesn't know deepResearch is a whole pipeline. It's just a tool.
 const agent = generator({
   name: "agent",
   tools: [deepResearch, analyze, readDoc],
 });
 ```
 
-A sequencer that's a tool. A tool that's a pipeline. The primitives don't prescribe how you combine them — they just compose.
+When the community builds blocks on top of this and shares them, their patterns become your building blocks too. That compounding is intentional.
 
-## 2. Built for AI Execution
+## 2. AI workflows are not web requests
 
-AI applications are long-running, non-deterministic, streaming, and stateful. Traditional frameworks treat these as edge cases — an async wrapper here, a WebSocket upgrade there, state crammed into session cookies. flow-state.dev treats them as the default execution model.
+Most backend frameworks are built around a request coming in and a response going out. That model works fine for web apps. It does not work for AI.
 
-Every primitive was designed around the reality that AI-driven applications have fundamentally different requirements than request/response web apps. Flows don't terminate when a response is sent — they persist session state, accumulate resources, and can be resumed. Generators run a tool loop managed entirely by the framework, not by application code. The execution model assumes the happy path involves multiple LLM round-trips, streaming output, and state mutations along the way.
+An AI request might run for 30 seconds. It probably calls an LLM multiple times. The LLM calls tools, which might call more LLMs. Results stream as they're produced. State needs to persist across turns in a conversation. When something goes wrong, you want to retry specific steps, not the whole thing.
 
-This isn't an AI layer bolted onto a CRUD framework. It's an execution model born from AI needs.
+Adapting a request/response framework to handle this produces a lot of workarounds. We started from the other end: what does a framework look like if streaming, long-running execution, multi-turn state, and LLM tool loops are the default case?
 
 ```ts
 const agent = generator({
   name: "agent",
   model: "gpt-5-mini",
   prompt: "You are a research assistant.",
+  // history feeds completed turns back to the model automatically
   history: (_input, ctx) => ctx.session.items.llm(),
   tools: [deepResearch, analyze, readDoc, writeDoc],
 });
 
-// Sessions persist across requests — state accumulates over time
 export default defineFlow({
   kind: "research-assistant",
-  session: {
-    stateSchema,
-    resources: { docs: docResource },
-  },
+  session: { stateSchema, resources: { docs: docResource } },
   actions: { chat: { block: agent } },
 })({ id: "default" });
 ```
 
-One declaration. The framework handles the tool loop, streaming, state persistence, error recovery, and session management. You handle the research logic.
+The LLM tool loop, streaming, state persistence, and error recovery are all handled. You define what the agent can do. The framework runs it.
 
-## 3. Full-Stack, Platform-Ready
+## 3. Server to screen, no gaps
 
-A lot of AI frameworks stop at the orchestration layer and leave you to figure out how to get results to your users. flow-state.dev covers the full path — flow definition on the server, execution runtime, streaming transport, client consumption, and React rendering. There's no integration gap between where AI runs and where users see it.
+A lot of AI orchestration tools stop at the server. They'll run your LLM pipeline, but getting the output to your users is your problem.
 
-The server package provides the execution runtime and REST + SSE API. The client package provides isomorphic session management and action dispatch. The React package wraps the client with hooks and an item renderer. Each layer is independent and composable — the server doesn't know about React, the client doesn't assume a browser.
+flow-state.dev covers the full path. The server package runs flows and streams results over SSE. The client package manages sessions and dispatches actions from any environment (Node, browser, edge). The React package gives you hooks and a stream renderer. Every layer talks to the others without glue code, because they share the same type contracts.
 
-And core works standalone. CLI tools, mobile backends, embedded contexts — the execution model doesn't assume a browser on the other end.
+That said, the server and core packages work fine on their own. If you're building a CLI tool or a mobile backend, you don't pull in React.
 
 ```ts
-// Server: register flows, get a full API
+// Server: register your flow, get a REST + SSE API for free
 const registry = createFlowRegistry();
 registry.register(researchFlow);
 export const { GET, POST, DELETE } = createFlowApiRouter({ registry });
 
-// Client: manage sessions, dispatch actions
-const client = createFlowClient({ baseUrl: "/api" });
-
-// React: hooks consume the stream directly
+// React: one provider wraps the whole session lifecycle
 function App() {
   return (
     <FlowProvider flowKind="research-assistant" userId="user_1" baseUrl="/api">
@@ -93,15 +87,13 @@ function App() {
 }
 ```
 
-Three packages, one type system, zero integration code.
+## 4. State that the model can actually use
 
-## 4. State That Evolves
+The standard approach to AI memory is: keep a message list, truncate it when it gets too long, hope the model finds what it needs. This works for demos.
 
-Most AI frameworks treat memory as "stuff the conversation transcript." Append messages to a list, truncate when it gets too long, hope the model picks up what it needs from the rolling window. This works until it doesn't — and it usually stops working exactly when your application gets interesting.
+In practice, state worth keeping is worth keeping explicitly. When a research tool discovers something, it shouldn't just return it to the model and hope it shows up in context later. It should write it somewhere structured, so the next turn can use it deliberately.
 
-flow-state.dev treats state as a first-class system. State evolves through typed atomic operations. Projections compute derived views from that state — and those views feed directly back into the model's context on every subsequent turn. Tools don't just return outputs to the LLM — they read and write system state as part of execution. The next time the agent loop runs, the model knows what it already knows — not because the transcript happened to mention it, but because the state system guarantees it.
-
-Memory isn't a conversation transcript you hope fits in the context window. It's structured, scoped, and engineered.
+In flow-state.dev, tools can read and write session state as a normal part of execution. That state persists across turns in a conversation. You control what shape it takes, and the framework makes it available to the model in subsequent calls.
 
 ```ts
 const stateSchema = z.object({
@@ -109,8 +101,8 @@ const stateSchema = z.object({
   keyFindings: z.record(z.string()).default({}),
 });
 
-// A tool that does real work AND updates session state as a side effect.
-// The return value goes to the LLM. The state update persists across turns.
+// The tool does real work, and records what it found in session state.
+// The return value goes to the LLM now. The state persists for future turns.
 const researchTopic = handler({
   name: "research-topic",
   input: z.object({ topic: z.string() }),
@@ -124,104 +116,69 @@ const researchTopic = handler({
     return findings;
   },
 });
-
-// The generator references the projection — not raw state.
-// Every turn, the model receives an up-to-date summary of what it already knows.
-const agent = generator({
-  name: "agent",
-  model: "gpt-5-mini",
-  prompt: "You are a research assistant.",
-  context: [projectionText("session.researchProgress")],
-  history: (_input, ctx) => ctx.session.items.llm(),
-  tools: [researchTopic, synthesize],
-});
-
-export default defineFlow({
-  kind: "researcher",
-  actions: { chat: { block: agent, userMessage: (i) => i.message } },
-  session: {
-    stateSchema,
-    projections: {
-      researchProgress: (ctx) => {
-        const { coveredTopics, keyFindings } = ctx.session.state;
-        if (coveredTopics.length === 0) return "";
-        return [
-          `Topics already researched: ${coveredTopics.join(", ")}`,
-          ...coveredTopics.map((t) => `- ${t}: ${keyFindings[t]}`),
-        ].join("\n");
-      },
-    },
-  },
-})({ id: "default" });
 ```
 
-The tool researches a topic and records what it found. The projection assembles a summary. The generator sees it every turn. The model never re-investigates a topic it already covered — not because you told it not to, but because the state system made its knowledge explicit.
+The model won't re-research a topic it already covered, because the state system tracks what's been done and feeds it back into context. This is different from hoping it shows up in the transcript.
 
-## 5. The Framework Owns the Machinery
+## 5. The framework runs the loop
 
-The framework runs the generator tool loop, manages retries, persists state, assembles context, and streams items. You define blocks with typed input/output contracts. The framework orchestrates everything else.
+When you're managing your own LLM tool loop, you're also managing retries, timeout handling, context assembly, and streaming. These are solvable problems, but solving them in application code means solving them differently every time, which means they're hard to test, hard to debug, and impossible to instrument consistently.
 
-This division isn't just convenient — it's the design. Application code that manages its own tool loop is application code that's hard to test, hard to reason about, and impossible to instrument uniformly. By owning the machinery, the framework can guarantee behavioral contracts: sequencers compose predictably, streaming items carry consistent provenance, state transitions are atomic.
+We made a deliberate call: the framework owns the execution machinery. You define what your agent can do (the blocks) and what the flow looks like (the composition). The framework runs everything.
 
-And the architecture itself is the enforcement mechanism. Four block kinds. Typed schemas at every boundary. A sequencer DSL that composes blocks with full type inference through the chain. These aren't opinions you can opt out of — they're structural constraints that make the wrong thing hard to express. Best practices aren't documented in a style guide. They're demanded by the composition model.
+This also gave us somewhere to put type safety. The pipeline DSL infers types across every step. If `mergeAndRank` expects `SearchResults` and you pass it `ParsedQuery`, TypeScript catches it before you ship it.
 
 ```ts
-// The sequencer DSL enforces type safety through the chain
 const pipeline = sequencer({ name: "pipeline" })
-  .then(parseQuery)          // ParsedQuery
-  .parallel({                // { web: WebResults, docs: DocResults }
+  .then(parseQuery)          // output: ParsedQuery
+  .parallel({                // output: { web: WebResults, docs: DocResults }
     web: searchWeb,
     docs: searchInternalDocs,
   })
-  .then(mergeAndRank)        // RankedResults
+  .then(mergeAndRank)        // expects the parallel output, infers RankedResults
   .doUntil(
     (result) => result.confidence > 0.9,
-    refineResults             // TypeScript ensures refineResults accepts RankedResults
+    refineResults
   );
 ```
 
-Try to pass the wrong type between steps. The compiler stops you. Try to compose a block that doesn't declare its state dependencies. The framework catches it. The constraints are the feature.
+The constraints compound. Type-safe composition makes wrong wiring a compile error. Consistent execution makes observability possible. Observability makes debugging tractable.
 
-## 6. Streaming-First
+## 6. Streaming is the default
 
-The execution model is streaming by default. Items flow from server to client as they're produced — LLM text chunks, component emissions, status updates — with resume support built in via sequence cursors.
+Streaming isn't a mode you opt into. It's how the execution model works.
 
-You don't have to consume streams. The client SDK and React hooks abstract over them when you want simple request/response semantics. But the architecture doesn't degrade to support batch. Batch is a simplification of the streaming model, not the other way around. When you query a completed session's items, you're reading from the same item store the stream was writing to.
+As blocks run, they emit items: text chunks, tool calls, structured components your UI can render. Those items flow to the client as they're produced, with a sequence number on each one. If the connection drops, reconnect with the last sequence number you saw and pick up from there.
 
-Disconnect mid-response? Reconnect with a cursor and resume from where you left off. The sequence number is on every item. The infrastructure handles the rest.
+The React hooks abstract over all of this. You can write a streaming chat UI without thinking about SSE. But if you want to work with the stream directly, the same data is there.
 
 ```ts
-// Blocks emit items into the stream as they execute
-const analyze = sequencer({ name: "analyze" })
-  .then(gatherEvidence)
-  .then(scoreFindings)
-  .tap((report, ctx) => {
-    ctx.emitComponent("report-card", {
-      title: report.title,
-      findings: report.findings,
-      confidence: report.score,
-    }).done();
-  });
+// Any block can emit a component item to the stream mid-execution
+.tap((report, ctx) => {
+  ctx.emitComponent("report-card", {
+    title: report.title,
+    findings: report.findings,
+    confidence: report.score,
+  }).done();
+});
 
-// Client resumes from cursor after reconnect
+// Resume from a cursor after a dropped connection
 const stream = client.streamRequest(requestId, { cursor: lastSequenceNumber });
 ```
 
-## 7. Observability is Structural
+Batch mode exists (you can await the full result), but it's just streaming with the waiting done for you.
 
-Most frameworks make observability opt-in. Add a tracing library, instrument your code, configure an exporter. You get visibility proportional to the effort you put in — which means you never have it when you need it most.
+## 7. The stream is the trace
 
-In flow-state.dev, the stream *is* the trace. Every item carries provenance — block name, instance ID, parent block, phase, step index. You don't instrument your code for observability; the execution model produces it as a structural guarantee. Dev tools, flow inspection, and execution replay all consume the same public APIs any developer can build on.
+Observability in most frameworks requires instrumentation: add a tracing library, wrap your functions, configure an exporter, figure out why your spans don't line up with what actually happened.
 
-This also means the trace is always complete. It reflects exactly what the runtime did, not what the code said it was doing. There's no gap between the log and the execution.
+In flow-state.dev, every item emitted during execution carries its context: which block emitted it, which block is its parent, which phase of execution it came from, what step it was in. The dev tools consume these items. Your UI consumes these items. They're the same stream.
 
 ```ts
-// Every item carries full provenance — no custom instrumentation needed
+// A stream item, with no custom instrumentation
 {
-  id: "item_abc123",
   sequenceNumber: 42,
   blockName: "analyze",
-  blockInstanceId: "inst_xyz",
   parentBlockName: "agent",
   phase: "tool-result",
   stepIndex: 3,
@@ -229,24 +186,18 @@ This also means the trace is always complete. It reflects exactly what the runti
   component: "report-card",
   data: { title: "...", findings: [...], confidence: 0.94 }
 }
-
-// Dev tools consume the same stream items your UI does
-const items = await client.getSessionItems(sessionId);
-const agentSteps = items.filter(i => i.blockName === "agent");
 ```
 
-If you can build a UI that renders items, you can build a debugger. The data is already there.
+If you can render stream items, you can build a debugger. You don't need a separate observability system because the execution model already produces what you'd want a separate system to capture.
 
-## 8. Your Code, Your Control
+## 8. We own the runtime. You own the rest.
 
-Application code lives in your repo — blocks, flows, schemas, projections. The framework owns the runtime; you own everything above it.
+Blocks are functions in your repo. Flows are declarations in your repo. The framework ships the runtime that executes them.
 
-There's no hidden orchestration layer, no magic that only works until it doesn't. When you define a block, you're writing a function with a typed contract. When you define a flow, you're declaring a composition. The framework's job is to execute what you described, predictably, at scale.
-
-UI components and starter patterns copy into your project rather than hiding in `node_modules`. When you need to modify a renderer or adapt a pattern, you're editing your own code — not fighting an abstraction or waiting for a package update. No vendor lock-in at the application layer.
+There's no hidden orchestration. No platform that your code has to conform to. You can read every line of what the framework does with your blocks, because the boundary is explicit. UI components and starter patterns are meant to be copied into your project and modified, not kept in `node_modules` behind an abstraction you can't change.
 
 ```ts
-// Your blocks are plain functions with typed contracts
+// A block is a function with a typed contract
 const parseQuery = handler({
   name: "parse-query",
   input: z.object({ message: z.string() }),
@@ -256,22 +207,20 @@ const parseQuery = handler({
   },
 });
 
-// Your flow is a declaration — the framework handles execution
+// A flow is a declaration
 export default defineFlow({
   kind: "research-assistant",
   actions: {
-    chat: {
-      inputSchema: z.object({ message: z.string() }),
-      block: agent,
-      userMessage: (i) => i.message,
-    },
+    chat: { block: agent, userMessage: (i) => i.message },
   },
   session: { stateSchema, resources: { docs: docResource } },
 })({ id: "default" });
 ```
 
+The framework executes what you declared. You can take your blocks elsewhere if you need to.
+
 ---
 
-These eight principles aren't aspirational — they're structural. They're encoded in the type system, the block contract, the streaming model, the scope hierarchy. You can't use flow-state.dev without encountering them, because they *are* the framework.
+These aren't principles we came up with afterward to justify decisions we'd already made. They're what we kept writing on whiteboards while we were figuring out what this thing should be.
 
-If you want to see them in action, [get started](/docs/getting-started/quick-start). If you want to understand the practical "what you get," read [Why flow-state.dev?](/docs/intro).
+If you want to see them in practice, [get started](/docs/getting-started/quick-start).
