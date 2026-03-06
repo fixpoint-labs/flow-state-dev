@@ -22,9 +22,13 @@
       "default": "./dist/prompt/index.js"
     }
   },
+  "license": "MIT",
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "zod": "^3.24.1"
   },

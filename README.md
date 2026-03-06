@@ -208,3 +208,9 @@ Phase 1 (Foundation) — Waves 1.a through 1.k are complete. Core contracts, blo
 - See [`AGENTS.md`](AGENTS.md) for the process protocol
 - See [`docs/contributing/`](docs/contributing/) for standards and setup
 - Keep implementation standards in `docs/contributing/best-practices.md`
+- See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidelines
+- See [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for community standards
+
+## License
+
+MIT — see [`LICENSE`](LICENSE) for details. Copyright (c) 2026 Fixpoint Labs.
