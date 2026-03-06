@@ -87,3 +87,13 @@ export type {
   IntentClassifierConfig,
   IntentClassifierOutput
 } from "./intent-classifier";
+
+export {
+  intentRouter
+} from "./intent-router";
+
+export type {
+  IntentRouterCategories,
+  IntentRouterCategory,
+  IntentRouterConfig
+} from "./intent-router";
