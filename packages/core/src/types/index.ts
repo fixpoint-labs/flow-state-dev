@@ -19,6 +19,8 @@ export type {
 
 export type {
   ActionConfig,
+  ClientDataComputeFn,
+  ClientDataContext,
   FlowActionBlock,
   FlowActionInput,
   FlowDefinition,
@@ -54,18 +56,11 @@ export type {
   ContextOf,
   DefinedResource,
   MessageLike,
-  ProjectionComputeFn,
-  ProjectionConfig,
-  ProjectionContext,
-  ProjectionRefOptions,
-  ProjectionShorthand,
-  ProjectionValue,
   ResourceConfig,
   ResourceContext,
   ResourceHandle,
   ResourceRefOptions,
   ResourceRegistry,
-  SlotReference,
   StateOf
 } from "./resource";
 
@@ -100,4 +95,4 @@ export type {
   SchemaOutput
 } from "../schema/common";
 
-export { defineProjection, defineResource, projection, projectionData, projectionMessages, projectionText, resource } from "./resource";
+export { defineResource, resource } from "./resource";

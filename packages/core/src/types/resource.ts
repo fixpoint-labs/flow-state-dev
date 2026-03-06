@@ -1,5 +1,4 @@
-import { z, type ZodTypeAny } from "zod";
-import type { BlockContext } from "./block";
+import type { ZodTypeAny } from "zod";
 import type {
   ProjectScopeHandle,
   RequestScopeHandle,
@@ -35,8 +34,6 @@ export type MessageLike = {
   content: string | JsonObject | JsonObject[];
 };
 
-export type ProjectionValue = string | MessageLike | MessageLike[] | JsonObject | JsonObject[];
-
 export interface ResourceHandle<TState extends JsonObject = JsonObject> {
   name: string;
   scope: ScopeType;
@@ -57,113 +54,6 @@ export type ResourceRegistry<
   get<TKey extends keyof TResources>(name: TKey): TResources[TKey];
   list(): Array<TResources[keyof TResources]>;
 };
-
-type ResourceSchemaLike = ZodTypeAny | { stateSchema: ZodTypeAny };
-
-type ResourceSchemaMap = Record<string, ResourceSchemaLike>;
-
-type InferProjectionResourceState<TSchema> =
-  TSchema extends { stateSchema: ZodTypeAny }
-    ? AsStateObject<StateOf<TSchema>>
-    : TSchema extends ZodTypeAny
-      ? AsStateObject<TSchema["_output"]>
-      : JsonObject;
-
-type InferProjectionResourcesFromSchemas<TSchemas> =
-  TSchemas extends ZodTypeAny
-    ? { [K in keyof TSchemas["_output"]]: ResourceHandle<AsStateObject<TSchemas["_output"][K]>> }
-    : TSchemas extends ResourceSchemaMap
-      ? { [K in keyof TSchemas]: ResourceHandle<InferProjectionResourceState<TSchemas[K]>> }
-      : Record<string, ResourceHandle<any>>;
-
-export type ProjectionContext<
-  TRequestState extends JsonObject = JsonObject,
-  TSessionState extends JsonObject = JsonObject,
-  TUserState extends JsonObject = JsonObject,
-  TProjectState extends JsonObject = JsonObject,
-  TSessionResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
-  TUserResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
-  TProjectResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
-> = {
-  request: RequestScopeHandle<TRequestState>;
-  session: SessionScopeHandle<TSessionState, TSessionResources> & {
-    resources: TSessionResources;
-  };
-  user: (UserScopeHandle<TUserState, TUserResources> & { resources: TUserResources }) | null;
-  project: (ProjectScopeHandle<TProjectState, TProjectResources> & {
-    resources: TProjectResources;
-  }) | null;
-};
-
-export type ProjectionComputeFn<
-  TRequestState extends JsonObject = JsonObject,
-  TSessionState extends JsonObject = JsonObject,
-  TUserState extends JsonObject = JsonObject,
-  TProjectState extends JsonObject = JsonObject,
-  TSessionResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
-  TUserResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
-  TProjectResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
-> = (
-  ctx: ProjectionContext<
-    TRequestState,
-    TSessionState,
-    TUserState,
-    TProjectState,
-    TSessionResources,
-    TUserResources,
-    TProjectResources
-  >
-) => ProjectionValue | Promise<ProjectionValue>;
-
-export type ProjectionConfig<
-  TRequestState extends JsonObject = JsonObject,
-  TSessionState extends JsonObject = JsonObject,
-  TUserState extends JsonObject = JsonObject,
-  TProjectState extends JsonObject = JsonObject,
-  TSessionResourceSchemas extends ZodTypeAny | ResourceSchemaMap | undefined = undefined,
-  TUserResourceSchemas extends ZodTypeAny | ResourceSchemaMap | undefined = undefined,
-  TProjectResourceSchemas extends ZodTypeAny | ResourceSchemaMap | undefined = undefined,
-  TSessionResources extends Record<string, ResourceHandle<any>> = InferProjectionResourcesFromSchemas<TSessionResourceSchemas>,
-  TUserResources extends Record<string, ResourceHandle<any>> = InferProjectionResourcesFromSchemas<TUserResourceSchemas>,
-  TProjectResources extends Record<string, ResourceHandle<any>> = InferProjectionResourcesFromSchemas<TProjectResourceSchemas>
-> = {
-  client: boolean;
-  outputSchema?: ZodTypeAny;
-  requestStateSchema?: ZodTypeAny;
-  sessionStateSchema?: ZodTypeAny;
-  userStateSchema?: ZodTypeAny;
-  projectStateSchema?: ZodTypeAny;
-  sessionResourceSchemas?: TSessionResourceSchemas;
-  userResourceSchemas?: TUserResourceSchemas;
-  projectResourceSchemas?: TProjectResourceSchemas;
-  compute: ProjectionComputeFn<
-    TRequestState,
-    TSessionState,
-    TUserState,
-    TProjectState,
-    TSessionResources,
-    TUserResources,
-    TProjectResources
-  >;
-};
-
-export type ProjectionShorthand<
-  TRequestState extends JsonObject = JsonObject,
-  TSessionState extends JsonObject = JsonObject,
-  TUserState extends JsonObject = JsonObject,
-  TProjectState extends JsonObject = JsonObject,
-  TSessionResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
-  TUserResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
-  TProjectResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
-> = ProjectionComputeFn<
-  TRequestState,
-  TSessionState,
-  TUserState,
-  TProjectState,
-  TSessionResources,
-  TUserResources,
-  TProjectResources
->;
 
 export type StateOf<T> = T extends { stateSchema: infer S extends ZodTypeAny }
   ? S["_output"]
@@ -194,18 +84,6 @@ export type ResourceRefOptions = {
   as?: string;
 };
 
-export type ProjectionRefOptions = {
-  optional?: boolean;
-  missing?: "error" | "empty";
-  limit?: number | { tokens: number };
-  as?: string;
-};
-
-export type SlotReference = (
-  input: JsonObject,
-  ctx: BlockContext
-) => ProjectionValue | Promise<ProjectionValue>;
-
 export function defineResource<
   const TStateSchema extends ZodTypeAny,
   const TConfig extends ResourceConfig & { stateSchema: TStateSchema }
@@ -213,51 +91,6 @@ export function defineResource<
   config: TConfig
 ): TConfig & DefinedResource<AsStateObject<TStateSchema["_output"]>> {
   return config as unknown as TConfig & DefinedResource<AsStateObject<TStateSchema["_output"]>>;
-}
-
-export function defineProjection<
-  TRequestState extends JsonObject = JsonObject,
-  TSessionState extends JsonObject = JsonObject,
-  TUserState extends JsonObject = JsonObject,
-  TProjectState extends JsonObject = JsonObject,
-  TSessionResourceSchemas extends ZodTypeAny | ResourceSchemaMap | undefined = undefined,
-  TUserResourceSchemas extends ZodTypeAny | ResourceSchemaMap | undefined = undefined,
-  TProjectResourceSchemas extends ZodTypeAny | ResourceSchemaMap | undefined = undefined,
-  TSessionResources extends Record<string, ResourceHandle<any>> = InferProjectionResourcesFromSchemas<TSessionResourceSchemas>,
-  TUserResources extends Record<string, ResourceHandle<any>> = InferProjectionResourcesFromSchemas<TUserResourceSchemas>,
-  TProjectResources extends Record<string, ResourceHandle<any>> = InferProjectionResourcesFromSchemas<TProjectResourceSchemas>
->(
-  config: ProjectionConfig<
-    TRequestState,
-    TSessionState,
-    TUserState,
-    TProjectState,
-    TSessionResourceSchemas,
-    TUserResourceSchemas,
-    TProjectResourceSchemas,
-    TSessionResources,
-    TUserResources,
-    TProjectResources
-  >
-): ProjectionConfig<
-  TRequestState,
-  TSessionState,
-  TUserState,
-  TProjectState,
-  TSessionResourceSchemas,
-  TUserResourceSchemas,
-  TProjectResourceSchemas,
-  TSessionResources,
-  TUserResources,
-  TProjectResources
->;
-export function defineProjection<const TProjection extends ProjectionConfig>(
-  config: TProjection
-): TProjection {
-  return {
-    ...config,
-    outputSchema: config.outputSchema ?? z.any()
-  };
 }
 
 function toJsonObject(value: Record<string, unknown>): JsonObject {
@@ -274,21 +107,12 @@ function toJsonObject(value: Record<string, unknown>): JsonObject {
   return out;
 }
 
-function createSlotReference(label: string, options?: ProjectionRefOptions): SlotReference {
-  return (_input, _ctx) => {
-    const content = toJsonObject({
-      ref: label,
-      options: options === undefined ? undefined : toJsonObject(options as Record<string, unknown>)
-    });
-
-    return {
-      role: "system",
-      content
-    };
-  };
-}
-
-export function resource(uri: string, options?: ResourceRefOptions): SlotReference {
+/**
+ * Slot helper for declaring resource dependencies in generator context slots.
+ * Returns a function compatible with `GeneratorSlotReference` that resolves a
+ * resource reference at execution time.
+ */
+export function resource(uri: string, options?: ResourceRefOptions): (input: JsonObject, ctx: unknown) => MessageLike {
   return (_input, _ctx) => {
     const content = toJsonObject({
       ref: uri,
@@ -300,20 +124,4 @@ export function resource(uri: string, options?: ResourceRefOptions): SlotReferen
       content
     };
   };
-}
-
-export function projection(uri: string, options?: ProjectionRefOptions): SlotReference {
-  return createSlotReference(uri, options);
-}
-
-export function projectionText(uri: string, options?: ProjectionRefOptions): SlotReference {
-  return createSlotReference(uri, options);
-}
-
-export function projectionData(uri: string, options?: ProjectionRefOptions): SlotReference {
-  return createSlotReference(uri, options);
-}
-
-export function projectionMessages(uri: string, options?: ProjectionRefOptions): SlotReference[] {
-  return [createSlotReference(uri, options)];
 }

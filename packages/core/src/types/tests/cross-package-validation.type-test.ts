@@ -125,11 +125,8 @@ const flow = defineFlow({
         })
       }
     },
-    projections: {
-      activeMode: {
-        client: true,
-        compute: (ctx) => `${ctx.session.state.mode}:${ctx.request.state.attempt}`
-      }
+    clientData: {
+      activeMode: (ctx) => ctx.state.mode
     }
   }
 });
