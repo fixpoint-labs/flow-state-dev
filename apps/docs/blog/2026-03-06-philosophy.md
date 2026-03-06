@@ -71,11 +71,9 @@ The model won't re-research a topic it already covered, because the state system
 
 ## Evolve the cloud-native filesystem
 
-A filesystem stores bytes. You can read and write them, but the filesystem doesn't know what they mean, which process owns them, or whether what you wrote is valid.
+A filesystem gives you bytes at a path. That's a low enough abstraction that almost anything can use it, but it pushes all the meaning-making onto the application. The filesystem doesn't know what a "draft document" is, which user it belongs to, or whether a write was valid.
 
-That model predates AI applications. When an agent needs to persist research findings, manage working documents, track a plan across conversation turns, and surface any of that to the model on the next request — a flat file hierarchy isn't the right abstraction.
-
-Resources are the alternative. A resource is a named container attached to a scope: a session, a user, or a project. It has two layers — structured state defined by a Zod schema, and optionally file content with a declared media type. The combination gives you typed, scope-aware storage that behaves like a state store or a filesystem depending on what you need.
+Resources are the typed, scoped alternative. A resource is a named container attached to a scope — a session, a user, or a project — that combines structured state with file content. You define what a resource means: its schema, its content type, its mutability. A `draft` resource isn't a path; it's a contract any block can work with directly.
 
 ```ts
 const draftResource = defineResource({
@@ -89,25 +87,9 @@ const draftResource = defineResource({
 });
 ```
 
-A session might carry a `draft` resource (the document being edited), a `plan` resource (structured steps), and a `references` resource (cited sources). All typed, all persisted, all accessible to blocks during execution. Blocks declare which resources they need; the framework makes them available.
+When an agent edits a document, it mutates a resource with known structure rather than writing bytes to a path. Blocks declare which resources they need; the framework provides them. The definition is portable — publish it as a package and any flow that references it gets the same typed contract, no configuration required.
 
-Projections control what the model sees. Instead of dumping state into context, you declare exactly which resources and state to include for a given turn:
-
-```ts
-const writer = generator({
-  name: "writer",
-  context: [
-    projectionText("session.draft"),       // document content
-    projectionData("session.plan"),        // structured plan
-    projectionData("session.references"),  // cited sources
-  ],
-  // ...
-});
-```
-
-The model sees what you give it. Nothing else leaks in.
-
-A journaling layer is planned — append-only logs that track mutations over time. When that lands, resources become auditable: not just "here is the current state" but "here is how it got here." That's a different kind of substrate for AI systems to reason about.
+A journaling layer is planned. When that lands, every mutation gets an append-only log: what changed, when, and what caused it. That turns typed storage into something closer to a version-controlled file — the kind of substrate an AI system can reason about over time, not just read from.
 
 ## Built for an ecosystem
 
