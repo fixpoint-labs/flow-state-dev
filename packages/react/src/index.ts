@@ -21,12 +21,12 @@ export {
 } from "./hooks/useSession";
 
 export {
-  useProjections,
-  type ProjectionScopeSubscribeOptions,
-  type ProjectionSubscribeOptions,
-  type ProjectionValues,
+  useClientData,
+  type ClientDataScopeSubscribeOptions,
+  type ClientDataSubscribeOptions,
+  type ClientDataValues,
   type ZodSchemaLike
-} from "./hooks/useProjections";
+} from "./hooks/useClientData";
 
 export {
   useAction,

@@ -31,7 +31,7 @@ const SNAPSHOT_RESPONSE: SessionStateSnapshotResponse = {
     user: { name: "test" },
     project: { mode: "dev" }
   },
-  projections: {}
+  clientData: {}
 };
 
 function createJsonResponse(body: unknown, status = 200): Response {
