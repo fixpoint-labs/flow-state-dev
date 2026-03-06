@@ -37,6 +37,8 @@ const stream = createSSEClient({
       // Refetch state snapshot for the authoritative final state
     }
   },
+  // Optional sliding dedup window (defaults to 1000 recent events)
+  dedupWindowSize: 1000
 });
 ```
 
@@ -84,6 +86,7 @@ const snapshot = await sessions.getSessionState("sess_1", {
 
 - `userId` is required for Phase 1 action/session calls
 - Stream resume supports both `Last-Event-ID` header and `starting_after` query param
+- Request and user SSE clients use a bounded sliding-window event dedup cache (`dedupWindowSize`, default `1000`)
 - When both are supplied, `starting_after` takes precedence
 
 ## Scripts

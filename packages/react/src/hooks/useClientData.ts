@@ -1,8 +1,9 @@
 /**
  * Client data subscription hook that reads scope-grouped clientData values from session snapshots.
  */
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import type { SessionView } from "./useSession";
+import { shallowEqualRecord } from "../internal/shallowEqualRecord";
 
 /**
  * Structural schema contract accepted for typed clientData inference.
@@ -62,19 +63,24 @@ export type ClientDataValues<TOptions extends ClientDataSubscribeOptions> =
     ? { project: InferClientDataMap<TProject> }
     : {});
 
-function selectScopeClientData(
-  allValues: Record<string, unknown> | undefined,
-  options: ClientDataScopeSubscribeOptions
-): Record<string, unknown> {
-  const source = allValues ?? {};
-
-  if (Array.isArray(options)) {
-    return Object.fromEntries(options.map((name) => [name, source[name]]));
+function toDataNames(options: ClientDataScopeSubscribeOptions | undefined): string[] {
+  if (options === undefined) {
+    return [];
   }
 
-  return Object.fromEntries(
-    Object.keys(options).map((name) => [name, source[name]])
-  );
+  if (Array.isArray(options)) {
+    return options;
+  }
+
+  return Object.keys(options);
+}
+
+function selectScopeClientData(
+  allValues: Record<string, unknown> | undefined,
+  names: string[]
+): Record<string, unknown> {
+  const source = allValues ?? {};
+  return Object.fromEntries(names.map((name) => [name, source[name]]));
 }
 
 /**
@@ -84,6 +90,16 @@ export function useClientData<TOptions extends ClientDataSubscribeOptions>(
   session: SessionView,
   options: TOptions
 ): ClientDataValues<TOptions> {
+  const sessionNames = toDataNames(options.session);
+  const userNames = toDataNames(options.user);
+  const projectNames = toDataNames(options.project);
+
+  const sessionNamesKey = sessionNames.join("\u001f");
+  const userNamesKey = userNames.join("\u001f");
+  const projectNamesKey = projectNames.join("\u001f");
+
+  const previousResultRef = useRef<ClientDataValues<TOptions> | null>(null);
+
   return useMemo(() => {
     const dataSource = session.snapshot?.clientData ?? {};
     const next: Record<string, unknown> = {};
@@ -91,21 +107,48 @@ export function useClientData<TOptions extends ClientDataSubscribeOptions>(
     if (options.session !== undefined) {
       next.session = selectScopeClientData(
         dataSource.session,
-        options.session
+        sessionNames
       );
     }
 
     if (options.user !== undefined) {
-      next.user = selectScopeClientData(dataSource.user, options.user);
+      next.user = selectScopeClientData(dataSource.user, userNames);
     }
 
     if (options.project !== undefined) {
-      next.project = selectScopeClientData(
-        dataSource.project,
-        options.project
-      );
+      next.project = selectScopeClientData(dataSource.project, projectNames);
     }
 
-    return next as ClientDataValues<TOptions>;
-  }, [session.snapshot, options]);
+    const previous = previousResultRef.current as Record<string, unknown> | null;
+    if (previous !== null) {
+      const sameSession = shallowEqualRecord(
+        previous.session as Record<string, unknown> | undefined,
+        next.session as Record<string, unknown> | undefined
+      );
+      const sameUser = shallowEqualRecord(
+        previous.user as Record<string, unknown> | undefined,
+        next.user as Record<string, unknown> | undefined
+      );
+      const sameProject = shallowEqualRecord(
+        previous.project as Record<string, unknown> | undefined,
+        next.project as Record<string, unknown> | undefined
+      );
+
+      if (sameSession && sameUser && sameProject) {
+        return previousResultRef.current as ClientDataValues<TOptions>;
+      }
+    }
+
+    const typed = next as ClientDataValues<TOptions>;
+    previousResultRef.current = typed;
+    return typed;
+  }, [
+    session.snapshot?.clientData,
+    options.session,
+    options.user,
+    options.project,
+    sessionNamesKey,
+    userNamesKey,
+    projectNamesKey
+  ]);
 }
