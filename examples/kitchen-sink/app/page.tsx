@@ -33,7 +33,7 @@ import { KitchenSinkError } from "@/components/kitchen-sink-error";
 // Layout components
 import { SessionSidebar } from "@/components/session-sidebar";
 import { ModeSelector } from "@/components/mode-selector";
-import { ProjectionsBar } from "@/components/projections-bar";
+import { ClientDataBar } from "@/components/client-data-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactViewer } from "@/components/artifact-viewer";
 import { SuggestionRow } from "@/components/suggestion-row";
@@ -101,7 +101,7 @@ function KitchenSinkApp() {
   const artifacts = (clientData.session?.artifactsList ?? []) as Array<{ id: string; title: string; content: string }>;
   const artifactsDetail = (clientData.session?.artifactsDetail ?? []) as Array<{ id: string; title: string; content: string; updatedAt: number }>;
 
-  // Resolve from detail projection so the viewer has content
+  // Resolve from detail clientData so the viewer has content
   const selectedArtifact = useMemo(
     () => artifactsDetail.find((a) => a.id === selectedArtifactId) ?? null,
     [artifactsDetail, selectedArtifactId]
@@ -152,7 +152,7 @@ function KitchenSinkApp() {
       {/* Center: main conversation area */}
       <main className="flex flex-1 flex-col min-w-0">
         {/* Header bar with live client data */}
-        <ProjectionsBar
+        <ClientDataBar
           currentMode={modeStatus?.currentMode}
           requestCount={modeStatus?.requestCount}
           displayName={userPrefs?.displayName}
