@@ -256,7 +256,7 @@ function Hero() {
           </Link>
         </div>
         <div className={styles.philosophyLinkWrap}>
-          <Link className={styles.philosophyLink} to="/docs/philosophy">
+          <Link className={styles.philosophyLink} to="/blog/philosophy">
             Read about our philosophy
           </Link>
         </div>
@@ -367,7 +367,7 @@ function CTA() {
           </Link>
         </div>
         <div className={styles.philosophyLinkWrap}>
-          <Link className={styles.philosophyLink} to="/docs/philosophy">
+          <Link className={styles.philosophyLink} to="/blog/philosophy">
             Read about our philosophy
           </Link>
         </div>
