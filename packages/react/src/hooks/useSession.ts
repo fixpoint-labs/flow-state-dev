@@ -35,6 +35,12 @@ const CLIENT_ITEM_TYPES = new Set([
 
 const DEFAULT_STATE_PAGE_LIMIT = 100;
 
+type ContentDeltaAccumulator = {
+  itemId: string;
+  contentIndex: number;
+  delta: string;
+};
+
 /**
  * Items subscription configuration for useSession.
  */
@@ -147,39 +153,59 @@ function sortItemsChronologically(items: OutputItem[]): OutputItem[] {
   });
 }
 
-function filterAndSortItems(
-  items: OutputItem[] | undefined,
-  filter: {
-    includeTransient: boolean;
-    itemTypes?: string[];
+function updateItemWithContentDelta(
+  target: OutputItem,
+  contentIndex: number,
+  delta: string
+): OutputItem {
+  if (target.type === "message") {
+    const message = target as MessageItem;
+    const content = [...(message.content ?? [])];
+    const part = content[contentIndex];
+    if (part !== undefined && part.type === "output_text") {
+      content[contentIndex] = {
+        ...part,
+        text: (part.text ?? "") + delta
+      };
+      return { ...message, content };
+    }
   }
+
+  if (target.type === "reasoning") {
+    const reasoning = target as ReasoningItem;
+    const summary = [...(reasoning.summary ?? [])];
+    const part = summary[contentIndex];
+    if (part !== undefined && part.type === "reasoning_text") {
+      summary[contentIndex] = {
+        ...part,
+        text: (part.text ?? "") + delta
+      };
+      return { ...reasoning, summary };
+    }
+  }
+
+  return target;
+}
+
+function buildItemsFromMap(
+  ids: string[],
+  itemsById: ReadonlyMap<string, OutputItem>
 ): OutputItem[] {
-  if (!Array.isArray(items)) {
-    return [];
+  const next: OutputItem[] = [];
+
+  for (const id of ids) {
+    const item = itemsById.get(id);
+    if (item !== undefined) {
+      next.push(item);
+    }
   }
 
-  return sortItemsChronologically(
-    [...items].filter((item) => passesItemFilter(item, filter))
-  );
+  return next;
 }
 
-function upsertItem(items: OutputItem[], nextItem: OutputItem): OutputItem[] {
-  const existingIndex = items.findIndex((item) => item.id === nextItem.id);
-  if (existingIndex === -1) {
-    const next = [...items, nextItem];
-    return sortItemsChronologically(next);
-  }
-
-  const next = [...items];
-  next[existingIndex] = nextItem;
-  return sortItemsChronologically(next);
+function sameChronologicalOrder(left: OutputItem, right: OutputItem): boolean {
+  return left.ts === right.ts && left.itemIndex === right.itemIndex;
 }
-
-/**
- * Reactive session hook with auto-stream management and item-first defaults.
- *
- * `flowKind` defaults to `useFlowContext().flowKind` and can be overridden via options.
- */
 export function useSession(
   sessionId: string | undefined,
   options?: UseSessionHookOptions
@@ -216,6 +242,24 @@ export function useSession(
   const [error, setError] = useState<Error | null>(null);
 
   const streamHandleRef = useRef<RequestStreamHandle | null>(null);
+  const itemsByIdRef = useRef<Map<string, OutputItem>>(new Map());
+  const sortedItemIdsRef = useRef<string[]>([]);
+  const deltaQueueRef = useRef<Map<string, ContentDeltaAccumulator>>(new Map());
+  const flushHandleRef = useRef<number | null>(null);
+
+  const cancelScheduledFlush = useCallback(() => {
+    if (flushHandleRef.current === null) {
+      return;
+    }
+
+    if (typeof window !== "undefined" && typeof window.cancelAnimationFrame === "function") {
+      window.cancelAnimationFrame(flushHandleRef.current);
+    } else {
+      clearTimeout(flushHandleRef.current);
+    }
+
+    flushHandleRef.current = null;
+  }, []);
 
   const sessionClient = useMemo(
     () => createSessionClient({ baseUrl }),
@@ -227,20 +271,89 @@ export function useSession(
     [resolvedFlowKind, userId, baseUrl]
   );
 
+  const flushContentDeltas = useCallback(() => {
+    flushHandleRef.current = null;
+
+    if (deltaQueueRef.current.size === 0) {
+      return;
+    }
+
+    let hasChanges = false;
+
+    for (const queued of deltaQueueRef.current.values()) {
+      const target = itemsByIdRef.current.get(queued.itemId);
+      if (target === undefined) {
+        continue;
+      }
+
+      const nextItem = updateItemWithContentDelta(
+        target,
+        queued.contentIndex,
+        queued.delta
+      );
+
+      if (nextItem !== target) {
+        itemsByIdRef.current.set(queued.itemId, nextItem);
+        hasChanges = true;
+      }
+    }
+
+    deltaQueueRef.current.clear();
+
+    if (!hasChanges) {
+      return;
+    }
+
+    setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+  }, []);
+
+  const scheduleContentFlush = useCallback(() => {
+    if (flushHandleRef.current !== null) {
+      return;
+    }
+
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      flushHandleRef.current = window.requestAnimationFrame(() => {
+        flushContentDeltas();
+      });
+      return;
+    }
+
+    flushHandleRef.current = setTimeout(() => {
+      flushContentDeltas();
+    }, 0) as unknown as number;
+  }, [flushContentDeltas]);
+
   const applySnapshot = useCallback(
     (nextSnapshot: SessionStateSnapshotResponse) => {
       setSnapshot(nextSnapshot);
+
       if (!itemConfig.enabled) {
+        itemsByIdRef.current = new Map();
+        sortedItemIdsRef.current = [];
+        deltaQueueRef.current.clear();
         setItems([]);
         return;
       }
 
-      setItems(
-        filterAndSortItems(nextSnapshot.items, {
-          includeTransient: itemConfig.includeTransient,
-          itemTypes: itemConfig.itemTypes
-        })
+      const filtered = sortItemsChronologically(
+        [...(nextSnapshot.items ?? [])].filter((item) =>
+          passesItemFilter(item, {
+            includeTransient: itemConfig.includeTransient,
+            itemTypes: itemConfig.itemTypes
+          })
+        )
       );
+
+      const nextMap = new Map<string, OutputItem>();
+      for (const item of filtered) {
+        nextMap.set(item.id, item);
+      }
+
+      itemsByIdRef.current = nextMap;
+      sortedItemIdsRef.current = filtered.map((item) => item.id);
+      deltaQueueRef.current.clear();
+      setItems(filtered);
     },
     [itemConfig.enabled, itemConfig.includeTransient, itemConfig.itemTypes]
   );
@@ -322,6 +435,10 @@ export function useSession(
 
   useEffect(() => {
     if (sessionId === undefined) {
+      itemsByIdRef.current = new Map();
+      sortedItemIdsRef.current = [];
+      deltaQueueRef.current.clear();
+      cancelScheduledFlush();
       setDetail(null);
       setSnapshot(null);
       setItems([]);
@@ -370,8 +487,10 @@ export function useSession(
         streamHandleRef.current.close();
         streamHandleRef.current = null;
       }
+
+      cancelScheduledFlush();
     };
-  }, [sessionId]);
+  }, [sessionId, cancelScheduledFlush]);
 
   const sendAction = useCallback(
     async (
@@ -412,9 +531,23 @@ export function useSession(
                 return;
               }
 
-              setItems((prev: OutputItem[]) => upsertItem(prev, event.item));
+              const existing = itemsByIdRef.current.get(event.item.id);
+              const isNewItem = existing === undefined;
+              const orderChanged =
+                existing !== undefined && !sameChronologicalOrder(existing, event.item);
 
-              // Refresh snapshot on resource changes to keep state views current.
+              itemsByIdRef.current.set(event.item.id, event.item);
+
+              if (isNewItem || orderChanged) {
+                const ordered = sortItemsChronologically([
+                  ...itemsByIdRef.current.values()
+                ]);
+                sortedItemIdsRef.current = ordered.map((item) => item.id);
+                setItems(ordered);
+              } else {
+                setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+              }
+
               if (event.item.type === "resource_change") {
                 void refreshSnapshot();
               }
@@ -424,41 +557,37 @@ export function useSession(
                 return;
               }
 
-              setItems((prev: OutputItem[]) => upsertItem(prev, event.item));
+              const existing = itemsByIdRef.current.get(event.item.id);
+              const isNewItem = existing === undefined;
+              const orderChanged =
+                existing !== undefined && !sameChronologicalOrder(existing, event.item);
+
+              itemsByIdRef.current.set(event.item.id, event.item);
+
+              if (isNewItem || orderChanged) {
+                const ordered = sortItemsChronologically([
+                  ...itemsByIdRef.current.values()
+                ]);
+                sortedItemIdsRef.current = ordered.map((item) => item.id);
+                setItems(ordered);
+              } else {
+                setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+              }
             },
             onContentDelta: (event) => {
-              setItems((prev: OutputItem[]) => {
-                const target = prev.find((item) => item.id === event.itemId);
-                if (target === undefined) return prev;
+              const key = `${event.itemId}:${event.contentIndex}`;
+              const existing = deltaQueueRef.current.get(key);
+              if (existing === undefined) {
+                deltaQueueRef.current.set(key, {
+                  itemId: event.itemId,
+                  contentIndex: event.contentIndex,
+                  delta: event.delta
+                });
+              } else {
+                existing.delta += event.delta;
+              }
 
-                if (target.type === "message") {
-                  const message = target as MessageItem;
-                  const content = [...(message.content ?? [])];
-                  const part = content[event.contentIndex];
-                  if (part !== undefined && part.type === "output_text") {
-                    content[event.contentIndex] = {
-                      ...part,
-                      text: (part.text ?? "") + event.delta
-                    };
-                  }
-                  return upsertItem(prev, { ...message, content });
-                }
-
-                if (target.type === "reasoning") {
-                  const reasoning = target as ReasoningItem;
-                  const summary = [...(reasoning.summary ?? [])];
-                  const part = summary[event.contentIndex];
-                  if (part !== undefined && part.type === "reasoning_text") {
-                    summary[event.contentIndex] = {
-                      ...part,
-                      text: (part.text ?? "") + event.delta
-                    };
-                  }
-                  return upsertItem(prev, { ...reasoning, summary });
-                }
-
-                return prev;
-              });
+              scheduleContentFlush();
             },
             onRequestStatus: (event) => {
               if (
@@ -466,6 +595,7 @@ export function useSession(
                 event.status === "failed" ||
                 event.status === "incomplete"
               ) {
+                flushContentDeltas();
                 setIsStreaming(false);
                 streamHandleRef.current?.close();
                 streamHandleRef.current = null;
@@ -476,6 +606,7 @@ export function useSession(
               }
             },
             onError: () => {
+              flushContentDeltas();
               setIsStreaming(false);
               streamHandleRef.current?.close();
               streamHandleRef.current = null;
@@ -507,7 +638,9 @@ export function useSession(
       itemConfig.itemTypes,
       resolvedFlowKind,
       baseUrl,
-      refreshSnapshot
+      refreshSnapshot,
+      scheduleContentFlush,
+      flushContentDeltas
     ]
   );
 
