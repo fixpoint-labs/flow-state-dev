@@ -21,8 +21,17 @@ export type FileContent = {
   filename?: string;
 };
 
+export type OutputAudioContent = {
+  type: "output_audio";
+  audio: string;
+  mediaType: string;
+  transcript?: string;
+  duration?: number;
+};
+
 export type Content =
   | OutputTextContent
   | ReasoningTextContent
   | RefusalContent
-  | FileContent;
+  | FileContent
+  | OutputAudioContent;

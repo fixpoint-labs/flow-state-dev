@@ -7,6 +7,7 @@ import {
   useFlow,
   useSession,
   useClientData,
+  useVoice,
   type RendererRegistry,
 } from "@flow-state-dev/react";
 
@@ -37,6 +38,7 @@ import { ClientDataBar } from "@/components/client-data-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactViewer } from "@/components/artifact-viewer";
 import { SuggestionRow } from "@/components/suggestion-row";
+import { VoiceToggle } from "@/components/voice-toggle";
 
 
 // ---------------------------------------------------------------------------
@@ -92,6 +94,11 @@ function KitchenSinkApp() {
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<"chat" | "plan" | "review">("chat");
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
+
+  const voice = useVoice(session, {
+    action: "run",
+    buildInput: (text) => ({ message: text, mode }),
+  });
 
   // Client data: live derived views from session + user state
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
@@ -193,6 +200,7 @@ function KitchenSinkApp() {
                 onModeChange={setMode}
                 disabled={isDisabled}
               />
+              <VoiceToggle voice={voice} disabled={isDisabled} />
             </div>
             <PromptInput onSubmit={handleSubmit}>
               <PromptInputTextarea

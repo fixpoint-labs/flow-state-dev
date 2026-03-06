@@ -212,7 +212,8 @@ function createFlowInstance(
     user: merged.user,
     project: merged.project,
     work: mergeConfig(definition.work, options?.work),
-    tools
+    tools,
+    voice: options?.voice ?? definition.voice
   };
 }
 
@@ -255,6 +256,7 @@ export function defineFlow<
     user: baseInstance.user as TUser,
     project: baseInstance.project as TProject,
     work: baseInstance.work as TWork,
-    tools: baseInstance.tools
+    tools: baseInstance.tools,
+    voice: baseInstance.voice
   });
 }

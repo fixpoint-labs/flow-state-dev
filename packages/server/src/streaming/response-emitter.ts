@@ -96,6 +96,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   private readonly itemsById = new Map<string, OutputItem>();
   private onLogEvent?: (eventType: string, detail: Record<string, unknown>) => void;
   private droppedBufferedEvents = 0;
+  private readonly eventObservers: Array<(event: RequestStreamEventWithId) => void> = [];
 
   /**
    * Creates a request-scoped emitter instance.
@@ -107,6 +108,14 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     this.now = options.now ?? (() => Date.now());
     this.onEvent = options.onEvent;
     this.internalSeams = options.internalSeams ?? NOOP_INTERNAL_STREAMING_SEAMS;
+  }
+
+  /**
+   * Registers an event observer that is called after each event is emitted.
+   * Used by the TTS pipeline to intercept content deltas for synthesis.
+   */
+  addEventObserver(fn: (event: RequestStreamEventWithId) => void): void {
+    this.eventObservers.push(fn);
   }
 
   /**
@@ -419,6 +428,10 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     this.enforceBufferLimit();
     if (this.onEvent !== undefined) {
       await this.onEvent(withId);
+    }
+
+    for (const observer of this.eventObservers) {
+      observer(withId);
     }
 
     return withId;

@@ -6,6 +6,7 @@ import type {
   StateOf
 } from "./resource";
 import type { JsonObject, JsonValue } from "../schema/common";
+import type { VoiceConfig } from "./speech";
 
 type InferResourceHandles<TResources extends Record<string, ResourceConfig>> = {
   [K in keyof TResources]: ResourceHandle<StateOf<TResources[K]>>;
@@ -127,6 +128,7 @@ export type FlowDefinition<
   project?: TProject;
   work?: TWork;
   tools?: ToolsConfig;
+  voice?: VoiceConfig;
 
   defaultBlockRenderer?: unknown | false;
 };
@@ -149,6 +151,7 @@ export type FlowInstanceOptions<
   project?: TProject;
   work?: TWork;
   tools?: ToolsConfig;
+  voice?: VoiceConfig;
 };
 
 export type FlowInstance<
@@ -169,6 +172,7 @@ export type FlowInstance<
   project?: TProject;
   work?: TWork;
   tools?: ToolsConfig;
+  voice?: VoiceConfig;
 };
 
 export type FlowType<
@@ -188,6 +192,7 @@ export type FlowType<
   project?: TProject;
   work?: TWork;
   tools?: ToolsConfig;
+  voice?: VoiceConfig;
 
   (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TProject, TWork>): FlowInstance<
     TActions,

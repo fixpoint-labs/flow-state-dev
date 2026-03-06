@@ -6,7 +6,13 @@ import type {
   RequestStatusEvent,
   RequestStreamEvent
 } from "@flow-state-dev/core/items";
-import type { JsonObject, ModelResolver, ResourceConfig } from "@flow-state-dev/core/types";
+import type {
+  JsonObject,
+  ModelResolver,
+  ResourceConfig,
+  SpeechResolver,
+  TranscriptionResolver
+} from "@flow-state-dev/core/types";
 import { FlowError, ValidationError } from "../errors/flow-error";
 import { runAction } from "../execution/runAction";
 import { type FlowRegistry } from "../registry/flow-registry";
@@ -76,6 +82,8 @@ export type CreateFlowRouteHandlersOptions = {
   registry: FlowRegistry;
   stores?: Partial<StoreRegistry>;
   modelResolver?: ModelResolver;
+  speechResolver?: SpeechResolver;
+  transcriptionResolver?: TranscriptionResolver;
   maxResponseBufferSize?: number;
   maxConcurrentStreams?: number;
   staleStreamTtlMs?: number;
@@ -605,6 +613,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           metadata: resolvedActionInput.metadata,
           signal: resolvedActionInput.signal,
           modelResolver: options.modelResolver,
+          speechResolver: options.speechResolver,
           stores,
           responseEmitter: liveStream.emitter
         }).finally(() => {
@@ -921,6 +930,60 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
       if (route.kind === "user_stream") {
         return jsonResponse(501, {
           error: "User stream is not enabled in Phase 1"
+        });
+      }
+
+      if (route.kind === "transcribe") {
+        if (options.transcriptionResolver === undefined) {
+          return jsonResponse(501, {
+            error: "Transcription is not configured on this server"
+          });
+        }
+
+        const contentType = request.headers.get("content-type") ?? "";
+        let audioData: Uint8Array;
+        let mediaType: string;
+        let language: string | undefined;
+        let modelId: string | undefined;
+
+        if (contentType.includes("application/json")) {
+          const body = await parseJsonBody(request);
+          const audioBase64 = getString(body.audio as string | undefined);
+          if (audioBase64 === undefined) {
+            return jsonResponse(400, {
+              error: "Transcription requires audio data (base64 in 'audio' field)"
+            });
+          }
+          audioData = Uint8Array.from(atob(audioBase64), (c) => c.charCodeAt(0));
+          mediaType = getString(body.mediaType as string | undefined) ?? "audio/webm";
+          language = getString(body.language as string | undefined);
+          modelId = getString(body.model as string | undefined);
+        } else {
+          const buffer = await request.arrayBuffer();
+          if (buffer.byteLength === 0) {
+            return jsonResponse(400, {
+              error: "Transcription requires audio data in request body"
+            });
+          }
+          audioData = new Uint8Array(buffer);
+          mediaType = contentType.split(";")[0].trim() || "audio/webm";
+          const url = new URL(request.url);
+          language = getString(url.searchParams.get("language"));
+          modelId = getString(url.searchParams.get("model"));
+        }
+
+        const model = options.transcriptionResolver(modelId ?? "default");
+        const result = await model.transcribe({
+          audio: audioData,
+          mediaType,
+          language
+        });
+
+        return jsonResponse(200, {
+          text: result.text,
+          language: result.language,
+          duration: result.duration,
+          segments: result.segments
         });
       }
 

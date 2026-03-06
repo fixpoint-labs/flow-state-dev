@@ -1,6 +1,7 @@
 export type {
   Content,
   FileContent,
+  OutputAudioContent,
   OutputTextContent,
   ReasoningTextContent,
   RefusalContent

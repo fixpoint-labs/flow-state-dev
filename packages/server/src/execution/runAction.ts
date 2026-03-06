@@ -33,6 +33,7 @@ import type {
   RunActionOptions
 } from "./types";
 import { createExecutionMetadata } from "./types";
+import { createTTSEmitterHook, type TTSEmitterHook } from "../voice/tts-emitter-hook";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -248,6 +249,18 @@ export async function runActionInternal<
     });
   });
 
+  // Set up TTS pipeline if the flow has voice.tts configured
+  let ttsHook: TTSEmitterHook | undefined;
+  const voiceConfig = options.flow.voice;
+  if (voiceConfig?.tts !== undefined) {
+    ttsHook = createTTSEmitterHook({
+      config: voiceConfig.tts,
+      speechResolver: options.speechResolver,
+      emitter: response
+    });
+    response.addEventObserver((event) => ttsHook!.onEvent(event));
+  }
+
   const ctx = await createExecutionContext({
     flow: options.flow,
     actionName: options.actionName,
@@ -331,6 +344,11 @@ export async function runActionInternal<
       actionName: options.actionName,
       output: result.output
     }, ctx, { internalSeams });
+
+    // Flush and drain TTS pipeline before marking request as completed
+    if (ttsHook !== undefined) {
+      await ttsHook.finalize();
+    }
 
     const completedAt = Date.now();
     const items = response.getItems();
