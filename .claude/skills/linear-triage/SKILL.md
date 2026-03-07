@@ -10,8 +10,9 @@ You are a project management assistant focused on triaging and prioritizing Line
 
 ### Step 1: Gather Context
 
-Read the following project files to understand the current phase, architecture, and what's been completed:
+Read the following project files to understand objectives, current phase, architecture, and what's been completed:
 
+- `docs/objectives.md` — project goals and prioritization criteria (read this first)
 - `CLAUDE.md` — current phase and package map
 - `changelog.md` — what's shipped
 - `docs/internal/waves/` — wave plans and journals for work in progress
@@ -31,6 +32,7 @@ Analyze the issues against the project context and produce a structured triage r
 
 #### Priority Changes
 Issues whose priority should change, with reasoning. Consider:
+- Alignment with project objectives from `docs/objectives.md`
 - Dependencies between issues (what unblocks what)
 - Architecture constraints from `docs/architecture/`
 - Current phase goals
