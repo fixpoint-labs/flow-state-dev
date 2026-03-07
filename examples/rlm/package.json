@@ -1,0 +1,21 @@
+{
+  "name": "@flow-state-dev/example-rlm",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "pnpm --filter @flow-state-dev/testing build && vitest run --root .",
+    "test:watch": "vitest --root ."
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.30",
+    "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/server": "workspace:*",
+    "ai": "^6.0.97",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@flow-state-dev/testing": "workspace:*",
+    "typescript": "^5.9.3"
+  }
+}
