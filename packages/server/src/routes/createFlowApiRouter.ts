@@ -1,7 +1,11 @@
 /**
  * Catch-all route adapter for framework-owned `/api/flows/[...path]` endpoints.
  */
-import type { ModelResolver } from "@flow-state-dev/core/types";
+import type {
+  ModelResolver,
+  SpeechResolver,
+  TranscriptionResolver
+} from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "../stores/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import {
@@ -17,6 +21,8 @@ export type CreateFlowApiRouterOptions = {
   registry: FlowRegistry;
   stores?: Partial<StoreRegistry>;
   modelResolver?: ModelResolver;
+  speechResolver?: SpeechResolver;
+  transcriptionResolver?: TranscriptionResolver;
   maxResponseBufferSize?: number;
   maxConcurrentStreams?: number;
   staleStreamTtlMs?: number;

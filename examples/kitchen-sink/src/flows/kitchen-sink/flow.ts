@@ -258,6 +258,15 @@ const kitchenSinkFlow = defineFlow({
   kind: "kitchen-sink",
   requireUser: true,
 
+  // Voice: enable TTS so assistant responses are synthesized to audio.
+  // The server's speechResolver maps "tts-1" to the OpenAI TTS provider.
+  voice: {
+    tts: {
+      model: "tts-1",
+      voice: "alloy",
+    },
+  },
+
   // Actions are the flow's public API — each maps a name to an input schema
   // and an entry-point block. Clients call actions by name.
   actions: {
