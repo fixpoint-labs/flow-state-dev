@@ -143,6 +143,25 @@ function normalizeStructuredOutput(value: Record<string, unknown>): unknown {
   return undefined;
 }
 
+function asProviderMetadata(
+  value: unknown
+): Record<string, Record<string, unknown>> | undefined {
+  const record = asRecord(value);
+  if (record === undefined) {
+    return undefined;
+  }
+
+  const normalized: Record<string, Record<string, unknown>> = {};
+  for (const [provider, metadata] of Object.entries(record)) {
+    const providerRecord = asRecord(metadata);
+    if (providerRecord !== undefined) {
+      normalized[provider] = providerRecord;
+    }
+  }
+
+  return Object.keys(normalized).length === 0 ? undefined : normalized;
+}
+
 function parseStructuredOutputFromText(text: string | undefined): unknown {
   if (typeof text !== "string" || text.length === 0) {
     return undefined;
@@ -251,7 +270,10 @@ function normalizeGenerateResult(
     structuredOutput,
     toolCalls: normalizeToolCalls(result.toolCalls),
     finishReason: normalizeFinishReason(result.finishReason),
-    usage: normalizeUsage(result.usage)
+    usage: normalizeUsage(result.usage),
+    providerMetadata: asProviderMetadata(
+      result.providerMetadata ?? result.experimental_providerMetadata
+    )
   };
 }
 

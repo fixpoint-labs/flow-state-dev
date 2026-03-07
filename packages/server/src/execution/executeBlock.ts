@@ -33,6 +33,16 @@ type ExecuteDispatcherOptions = {
   metadata: ExecutionMetadata;
 };
 
+type GeneratorModelUsageMeta = {
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  providerMetadata?: Record<string, Record<string, unknown>>;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
+};
+
 function hasItemEmitter(response: unknown): response is {
   emitItemAdded: (item: BlockOutputItem) => Promise<unknown>;
   emitItemDone: (item: BlockOutputItem) => Promise<unknown>;
@@ -68,6 +78,7 @@ async function emitBlockOutputItem(
     output: unknown;
     ctx: ExecuteBlockContext;
     metadata: ExecutionMetadata;
+    modelUsage?: GeneratorModelUsageMeta;
   }
 ): Promise<void> {
   if (!hasItemEmitter(options.ctx.response)) {
@@ -84,7 +95,8 @@ async function emitBlockOutputItem(
     provenance: createBlockOutputProvenance(options.metadata, options.block.name),
     ts: Date.now(),
     blockName: options.block.name,
-    output: options.output
+    output: options.output,
+    modelUsage: options.modelUsage
   };
 
   await options.ctx.response.emitItemAdded(item);
@@ -99,14 +111,43 @@ async function executeByKind(
   input: unknown,
   ctx: ExecuteBlockContext,
   options: ExecuteDispatcherOptions
-): Promise<unknown> {
+): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta }> {
   if (block.kind === "generator") {
     const seams = options.internalSeams;
+    let modelUsage: GeneratorModelUsageMeta | undefined;
+    const runtimeHooks = {
+      ...ctx._runtimeHooks,
+      onGeneratorModelResult: (payload: {
+        model: string;
+        usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+        providerMetadata?: Record<string, Record<string, unknown>>;
+      }) => {
+        if (payload.usage !== undefined) {
+          const anthropic = payload.providerMetadata?.anthropic ?? {};
+          const readTokens = typeof anthropic.cacheReadInputTokens === "number" ? anthropic.cacheReadInputTokens : undefined;
+          const creationTokens = typeof anthropic.cacheCreationInputTokens === "number" ? anthropic.cacheCreationInputTokens : undefined;
+          modelUsage = {
+            model: payload.model,
+            promptTokens: payload.usage.promptTokens,
+            completionTokens: payload.usage.completionTokens,
+            totalTokens: payload.usage.totalTokens,
+            providerMetadata: payload.providerMetadata,
+            cacheReadTokens: readTokens,
+            cacheCreationTokens: creationTokens
+          };
+        }
+        ctx._runtimeHooks?.onGeneratorModelResult?.(payload);
+      }
+    };
+    const generatorCtx = {
+      ...ctx,
+      _runtimeHooks: runtimeHooks
+    };
     await emitGeneratorLifecycleSeam(seams, "before_execute", options.metadata);
     try {
-      const output = await block.run(input, ctx as any);
+      const output = await block.run(input, generatorCtx as any);
       await emitGeneratorLifecycleSeam(seams, "after_execute", options.metadata);
-      return output;
+      return { output, modelUsage };
     } catch (error) {
       await emitGeneratorLifecycleSeam(seams, "errored", options.metadata);
       throw error;
@@ -118,7 +159,7 @@ async function executeByKind(
     block.kind === "sequencer" ||
     block.kind === "router"
   ) {
-    return block.run(input, ctx as any);
+    return { output: await block.run(input, ctx as any) };
   }
 
   throw new Error(`Unknown block kind "${String(block.kind)}"`);
@@ -151,7 +192,7 @@ export async function executeBlock(
   let attempt = 0;
 
   try {
-    const run = async (): Promise<unknown> => {
+    const run = async (): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta }> => {
       attempt += 1;
       const attemptMetadata = {
         ...metadata,
@@ -185,7 +226,7 @@ export async function executeBlock(
             }).container
           : undefined;
 
-      const output = options.ctx._withExecutionScope === undefined
+      const executionResult = options.ctx._withExecutionScope === undefined
         ? await executeByKind(
             options.block,
             interceptedInput,
@@ -229,7 +270,7 @@ export async function executeBlock(
               )
           );
 
-      const interceptedOutput = applyBlockOutputSeam(seams, output, attemptMetadata);
+      const interceptedOutput = applyBlockOutputSeam(seams, executionResult.output, attemptMetadata);
 
       logRuntimeEvent(
         logger,
@@ -242,14 +283,17 @@ export async function executeBlock(
         }
       );
 
-      return interceptedOutput;
+      return {
+        output: interceptedOutput,
+        modelUsage: executionResult.modelUsage
+      };
     };
 
     const retryPolicy = mergeRetryPolicy(
       options.block.config.retry,
       options.retry
     );
-    const output =
+    const executionResult =
       retryPolicy === undefined
         ? await run()
         : await retryWithPolicy(run, retryPolicy, {
@@ -277,16 +321,17 @@ export async function executeBlock(
 
     await emitBlockOutputItem({
       block: options.block,
-      output,
+      output: executionResult.output,
       ctx: options.ctx,
       metadata: {
         ...metadata,
         attempt
-      }
+      },
+      modelUsage: executionResult.modelUsage
     });
 
     return {
-      output,
+      output: executionResult.output,
       items: getResponseItems(options.ctx.response),
       durationMs: Date.now() - startedAt
     };

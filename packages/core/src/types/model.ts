@@ -26,6 +26,7 @@ export type GeneratorModelResult = {
   toolCalls?: GeneratorModelToolCall[];
   finishReason?: string;
   usage?: GeneratorModelUsage;
+  providerMetadata?: Record<string, Record<string, unknown>>;
   steps?: GeneratorStepResult[];
 };
 

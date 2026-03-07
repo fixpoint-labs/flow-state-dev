@@ -205,6 +205,58 @@ async function emitTerminalError(
   await response.emitItemDone(item);
 }
 
+
+function getActionTokenBudget(action: ActionConfig): {
+  maxTotalTokens: number;
+  warnAt?: number;
+  onExceeded: "error" | "stop" | "warn";
+} | undefined {
+  if (action.tokenBudget === undefined) {
+    return undefined;
+  }
+
+  return {
+    maxTotalTokens: action.tokenBudget.maxTotalTokens,
+    warnAt: action.tokenBudget.warnAt,
+    onExceeded: action.tokenBudget.onExceeded ?? "error"
+  };
+}
+
+async function emitBudgetWarning(
+  ctx: ExecutionContext,
+  message: string
+): Promise<void> {
+  if (
+    typeof ctx.response !== "object" ||
+    ctx.response === null ||
+    typeof (ctx.response as { emitItemAdded?: unknown }).emitItemAdded !== "function" ||
+    typeof (ctx.response as { emitItemDone?: unknown }).emitItemDone !== "function"
+  ) {
+    return;
+  }
+
+  const response = ctx.response as unknown as {
+    emitItemAdded: (item: any) => Promise<unknown>;
+    emitItemDone: (item: any) => Promise<unknown>;
+  };
+
+  const item = {
+    id: `item_status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: "status",
+    status: "completed",
+    transient: true,
+    requestId: ctx.requestRuntime.requestId,
+    itemIndex: getResponseItems(ctx.response).length,
+    provenance: RUNTIME_PROVENANCE,
+    ts: Date.now(),
+    message,
+    detail: { code: "system.token_budget_warning" }
+  };
+
+  await response.emitItemAdded(item);
+  await response.emitItemDone(item);
+}
+
 /**
  * Public action execution API using default internal seams.
  */
@@ -320,31 +372,68 @@ export async function runActionInternal<
       throw result.error;
     }
 
-    await runObserver(action.onCompleted, {
+    const tokenBudget = getActionTokenBudget(action);
+    let terminalStatus: "completed" | "incomplete" = "completed";
+    if (tokenBudget !== undefined) {
+      const consumed = ctx.request.tokenUsage.totalConsumed;
+      const warningThreshold = tokenBudget.warnAt === undefined
+        ? undefined
+        : tokenBudget.maxTotalTokens * tokenBudget.warnAt;
+
+      if (consumed > tokenBudget.maxTotalTokens) {
+        if (tokenBudget.onExceeded === "error") {
+          throw new ValidationError(
+            `Token budget exceeded: consumed ${consumed} > ${tokenBudget.maxTotalTokens}`,
+            { scope: "request" }
+          );
+        }
+
+        await emitBudgetWarning(
+          ctx,
+          `Token budget exceeded: consumed ${consumed} of ${tokenBudget.maxTotalTokens}`
+        );
+
+        if (tokenBudget.onExceeded === "stop") {
+          terminalStatus = "incomplete";
+        }
+      } else if (warningThreshold !== undefined && consumed >= warningThreshold) {
+        await emitBudgetWarning(
+          ctx,
+          `Token budget warning: consumed ${consumed} of ${tokenBudget.maxTotalTokens}`
+        );
+      }
+    }
+
+    if (terminalStatus === "completed") {
+      await runObserver(action.onCompleted, {
       requestId,
       actionName: options.actionName,
       output: result.output
     }, ctx, { internalSeams });
 
-    await runObserver(options.flow.request?.onCompleted, {
+      await runObserver(options.flow.request?.onCompleted, {
       requestId,
       actionName: options.actionName,
       output: result.output
     }, ctx, { internalSeams });
+
+    }
 
     const completedAt = Date.now();
     const items = response.getItems();
     await patchRequestRecord(options.stores, requestId, {
-      status: "completed",
+      status: terminalStatus,
       completedAtMs: completedAt,
       items
     });
 
-    ctx.requestRuntime.status = "completed";
+    ctx.requestRuntime.status = terminalStatus;
     ctx.requestRuntime.completedAtMs = completedAt;
 
-    await response.emitRequestStatus("completed");
-    await emitActionLifecycleSeam(internalSeams, "completed", metadata);
+    await response.emitRequestStatus(terminalStatus);
+    if (terminalStatus === "completed") {
+      await emitActionLifecycleSeam(internalSeams, "completed", metadata);
+    }
 
     logRuntimeEvent(logger, "info", "[flow-state] action execution completed", {
       ...createExecutionLogContext(metadata),
@@ -355,7 +444,7 @@ export async function runActionInternal<
     await runObserver(options.flow.request?.onFinished, {
       requestId,
       actionName: options.actionName,
-      status: "completed",
+      status: terminalStatus,
       output: result.output
     }, ctx, { internalSeams });
     await emitActionLifecycleSeam(internalSeams, "finished", metadata);

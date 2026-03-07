@@ -185,3 +185,9 @@ State and resource mutations emit streaming events:
 ## Canonical Authority
 
 For full type signatures, resource/clientData details, and edge cases, see `../preperation/architecture/STATE_AND_SCOPES.md`.
+
+
+### Token-aware MessageLimit
+
+`session.items.llm({ limit: { tokens: N } })` now performs token-aware packing from newest to oldest using the configured flow `tokenCounter` and the active resolved model ID from generator execution.
+

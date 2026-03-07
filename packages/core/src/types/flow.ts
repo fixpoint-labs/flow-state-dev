@@ -5,6 +5,7 @@ import type {
   ResourceHandle,
   StateOf
 } from "./resource";
+import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
 
 type InferResourceHandles<TResources extends Record<string, ResourceConfig>> = {
@@ -57,6 +58,29 @@ export type ToolsConfig = {
   onToolErrored?: HookHandler<ToolLifecycleEvent> | BlockDefinition<any, any>;
 };
 
+export interface ModelUsageEntry {
+  prompt: number;
+  completion: number;
+  total: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+}
+
+export interface CostEstimator {
+  estimate(usage: ModelUsageEntry, model: string): number;
+}
+
+export interface TokenLedger {
+  readonly totalConsumed: number;
+  readonly byModel: Record<string, ModelUsageEntry>;
+  readonly remaining: number;
+}
+
+export interface CostEstimate {
+  readonly totalUSD: number;
+  readonly byModel: Record<string, number>;
+}
+
 export type ActionConfig<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
 > = {
@@ -65,6 +89,11 @@ export type ActionConfig<
   onCompleted?: BlockDefinition<any, any>;
   onErrored?: BlockDefinition<any, any>;
   userMessage?: (input: TInputSchema["_output"]) => string;
+  tokenBudget?: {
+    maxTotalTokens: number;
+    warnAt?: number;
+    onExceeded?: "error" | "stop" | "warn";
+  };
 };
 
 export type SessionConfig<
@@ -127,6 +156,8 @@ export type FlowDefinition<
   project?: TProject;
   work?: TWork;
   tools?: ToolsConfig;
+  tokenCounter?: TokenCounter;
+  costEstimator?: CostEstimator;
 
   defaultBlockRenderer?: unknown | false;
 };
@@ -149,6 +180,8 @@ export type FlowInstanceOptions<
   project?: TProject;
   work?: TWork;
   tools?: ToolsConfig;
+  tokenCounter?: TokenCounter;
+  costEstimator?: CostEstimator;
 };
 
 export type FlowInstance<
@@ -169,6 +202,8 @@ export type FlowInstance<
   project?: TProject;
   work?: TWork;
   tools?: ToolsConfig;
+  tokenCounter?: TokenCounter;
+  costEstimator?: CostEstimator;
 };
 
 export type FlowType<
