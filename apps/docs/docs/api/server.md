@@ -30,6 +30,8 @@ const router = createFlowApiRouter({
   registry,
   stores: createFilesystemStores(),      // optional, default
   modelResolver: createAiSdkModelResolver(fn),  // optional
+  speechResolver: createAiSdkSpeechResolver(fn),       // optional, for TTS
+  transcriptionResolver: createAiSdkTranscriptionResolver(fn), // optional, for STT
 });
 
 // Use with Next.js App Router:
@@ -95,6 +97,52 @@ const resolver = createAiSdkModelResolver((modelId) => {
 ### `createDefaultModelResolver()`
 
 Default resolver using Vercel AI Gateway.
+
+## Voice
+
+### `createAiSdkSpeechResolver(resolver)`
+
+Create a speech resolver (TTS) using AI SDK providers.
+
+```ts
+import { createAiSdkSpeechResolver } from "@flow-state-dev/server";
+
+const speechResolver = createAiSdkSpeechResolver(
+  (modelId) => openai.speech(modelId)
+);
+```
+
+### `wrapAiSdkSpeechModel(model, modelId?)`
+
+Wrap a single AI SDK speech model into a framework `SpeechModel`.
+
+### `createAiSdkTranscriptionResolver(resolver)`
+
+Create a transcription resolver (STT) using AI SDK providers.
+
+```ts
+import { createAiSdkTranscriptionResolver } from "@flow-state-dev/server";
+
+const transcriptionResolver = createAiSdkTranscriptionResolver(
+  (modelId) => openai.transcription(modelId)
+);
+```
+
+### `wrapAiSdkTranscriptionModel(model, modelId?)`
+
+Wrap a single AI SDK transcription model into a framework `TranscriptionModel`.
+
+### `createSentenceBuffer()`
+
+Create a sentence-boundary detection buffer for TTS text chunking.
+
+### `createTTSPipeline(options)`
+
+Create the synthesis pipeline that converts text deltas into `OutputAudioContent`.
+
+### `createTTSEmitterHook(options)`
+
+Create an event observer that wires the TTS pipeline to a `ResponseEmitter`.
 
 ## Streaming
 

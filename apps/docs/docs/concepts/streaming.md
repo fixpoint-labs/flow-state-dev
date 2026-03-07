@@ -70,6 +70,12 @@ Message and reasoning items have a **content array** with typed parts:
 }
 ```
 
+When [voice](/docs/guides/voice) is enabled, audio content parts also arrive on the same message:
+
+```ts
+{ type: "output_audio", audio: "base64...", mediaType: "audio/mp3", transcript: "Here's what I found:" }
+```
+
 Content is assembled progressively from `content.delta` events — the framework handles buffering and assembly so you don't have to.
 
 ## Resume and replay

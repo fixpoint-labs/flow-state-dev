@@ -206,6 +206,62 @@ defineFlow({
 
 Compute functions receive `{ state, resources }` from their scope. All entries are client-visible. Values must be JSON-serializable.
 
+## Voice Types
+
+### `SpeechModel`
+
+Provider-agnostic interface for text-to-speech synthesis.
+
+```ts
+import type { SpeechModel } from "@flow-state-dev/core";
+
+const model: SpeechModel = {
+  modelId: "tts-1",
+  generate: async (options) => ({ audio: uint8Array, mediaType: "audio/mp3" }),
+};
+```
+
+### `TranscriptionModel`
+
+Provider-agnostic interface for speech-to-text transcription.
+
+```ts
+import type { TranscriptionModel } from "@flow-state-dev/core";
+
+const model: TranscriptionModel = {
+  modelId: "whisper-1",
+  transcribe: async (options) => ({ text: "Hello" }),
+};
+```
+
+### `VoiceConfig`
+
+Flow-level voice configuration. Set on `defineFlow({ voice })`.
+
+```ts
+type VoiceConfig = {
+  tts?: {
+    model: string | SpeechModel;
+    voice?: string;
+    speed?: number;
+  };
+};
+```
+
+### `OutputAudioContent`
+
+Content part for synthesized audio.
+
+```ts
+type OutputAudioContent = {
+  type: "output_audio";
+  audio: string;        // base64
+  mediaType: string;    // "audio/mp3", "audio/wav", etc.
+  transcript?: string;
+  duration?: number;
+};
+```
+
 ## Type Helpers
 
 ```ts
