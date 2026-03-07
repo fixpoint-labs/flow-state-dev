@@ -13,7 +13,7 @@ import kitchenSinkFlow from "@/src/flows/kitchen-sink/flow";
 const modelResolver = createAiSdkModelResolver(openai);
 
 // Voice: speech (TTS) and transcription (STT) resolvers.
-// Uses OpenAI's tts-1/gpt-4o-mini-tts for speech and whisper-1/gpt-4o-mini-transcribe for transcription.
+// Uses OpenAI's gpt-4o-mini-tts for speech and gpt-4o-mini-transcribe for transcription.
 const speechResolver = createAiSdkSpeechResolver((modelId) => openai.speech(modelId));
 const transcriptionResolver = createAiSdkTranscriptionResolver((modelId) => openai.transcription(modelId));
 

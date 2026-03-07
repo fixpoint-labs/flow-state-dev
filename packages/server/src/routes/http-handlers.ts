@@ -972,7 +972,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           modelId = getString(url.searchParams.get("model"));
         }
 
-        const model = options.transcriptionResolver(modelId ?? "whisper-1");
+        const model = options.transcriptionResolver(modelId ?? "gpt-4o-mini-transcribe");
         const result = await model.transcribe({
           audio: audioData,
           mediaType,

@@ -45,12 +45,12 @@ import {
 
 const modelResolver = createAiSdkModelResolver(openai);
 
-// Map model IDs like "tts-1" to OpenAI speech models
+// Map model IDs like "gpt-4o-mini-tts" to OpenAI speech models
 const speechResolver = createAiSdkSpeechResolver(
   (modelId) => openai.speech(modelId)
 );
 
-// Map model IDs like "whisper-1" to OpenAI transcription models
+// Map model IDs like "gpt-4o-mini-transcribe" to OpenAI transcription models
 const transcriptionResolver = createAiSdkTranscriptionResolver(
   (modelId) => openai.transcription(modelId)
 );
@@ -76,16 +76,16 @@ const myFlow = defineFlow({
   kind: "my-flow",
   voice: {
     tts: {
-      model: "tts-1",    // resolved by speechResolver
-      voice: "alloy",     // OpenAI voice: alloy, echo, fable, onyx, nova, shimmer
-      speed: 1.0,         // playback speed multiplier (0.25–4.0)
+      model: "gpt-4o-mini-tts",  // resolved by speechResolver
+      voice: "alloy",            // OpenAI voice: alloy, echo, fable, onyx, nova, shimmer
+      speed: 1.0,                // playback speed multiplier (0.25–4.0)
     },
   },
   actions: { /* ... */ },
 });
 ```
 
-Available OpenAI TTS models: `tts-1`, `tts-1-hd`, `gpt-4o-mini-tts`.
+Available OpenAI TTS model: `gpt-4o-mini-tts`.
 
 When `voice.tts` is set, the server's TTS pipeline automatically:
 - Buffers streaming text deltas into complete sentences
@@ -178,7 +178,7 @@ The server exposes `POST /api/flows/transcribe` for server-side speech-to-text.
 {
   "audio": "<base64-encoded audio>",
   "mediaType": "audio/webm",
-  "model": "whisper-1",
+  "model": "gpt-4o-mini-transcribe",
   "language": "en"
 }
 ```
@@ -195,9 +195,9 @@ The server exposes `POST /api/flows/transcribe` for server-side speech-to-text.
 }
 ```
 
-Available OpenAI transcription models: `whisper-1`, `gpt-4o-mini-transcribe`, `gpt-4o-transcribe`.
+Available OpenAI transcription models: `gpt-4o-mini-transcribe` and `gpt-4o-transcribe`.
 
-The endpoint also accepts raw binary audio with the model specified as a query parameter: `POST /api/flows/transcribe?model=whisper-1` with `Content-Type: audio/webm`.
+The endpoint also accepts raw binary audio with the model specified as a query parameter: `POST /api/flows/transcribe?model=gpt-4o-mini-transcribe` with `Content-Type: audio/webm`.
 
 ## TTS Pipeline Internals
 

@@ -216,7 +216,7 @@ Provider-agnostic interface for text-to-speech synthesis.
 import type { SpeechModel } from "@flow-state-dev/core";
 
 const model: SpeechModel = {
-  modelId: "tts-1",
+  modelId: "gpt-4o-mini-tts",
   generate: async (options) => ({ audio: uint8Array, mediaType: "audio/mp3" }),
 };
 ```
@@ -229,7 +229,7 @@ Provider-agnostic interface for speech-to-text transcription.
 import type { TranscriptionModel } from "@flow-state-dev/core";
 
 const model: TranscriptionModel = {
-  modelId: "whisper-1",
+  modelId: "gpt-4o-mini-transcribe",
   transcribe: async (options) => ({ text: "Hello" }),
 };
 ```

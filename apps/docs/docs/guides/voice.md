@@ -18,7 +18,7 @@ Three things to configure:
 
 ## Server setup
 
-Add `speechResolver` and `transcriptionResolver` to your router. These map model ID strings (like `"tts-1"` or `"whisper-1"`) to actual provider models, the same way `modelResolver` maps IDs like `"gpt-5-mini"` to language models.
+Add `speechResolver` and `transcriptionResolver` to your router. These map model ID strings (like `"gpt-4o-mini-tts"` or `"gpt-4o-mini-transcribe"`) to actual provider models, the same way `modelResolver` maps IDs like `"gpt-5-mini"` to language models.
 
 ```ts title="lib/server.ts"
 import { openai } from "@ai-sdk/openai";
@@ -60,7 +60,7 @@ const myFlow = defineFlow({
   kind: "my-flow",
   voice: {
     tts: {
-      model: "tts-1",
+      model: "gpt-4o-mini-tts",
       voice: "alloy",
     },
   },
@@ -72,7 +72,7 @@ const myFlow = defineFlow({
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `model` | `string` | — | Model ID resolved by `speechResolver`. OpenAI options: `tts-1`, `tts-1-hd`, `gpt-4o-mini-tts` |
+| `model` | `string` | — | Model ID resolved by `speechResolver`. OpenAI model: `gpt-4o-mini-tts` |
 | `voice` | `string` | provider default | Voice variant. OpenAI options: `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer` |
 | `speed` | `number` | `1.0` | Playback speed multiplier (0.25–4.0) |
 
@@ -172,7 +172,7 @@ Send audio as base64 JSON:
 {
   "audio": "<base64-encoded audio bytes>",
   "mediaType": "audio/webm",
-  "model": "whisper-1",
+  "model": "gpt-4o-mini-transcribe",
   "language": "en"
 }
 ```
@@ -180,7 +180,7 @@ Send audio as base64 JSON:
 Or as raw binary with the model as a query parameter:
 
 ```
-POST /api/flows/transcribe?model=whisper-1
+POST /api/flows/transcribe?model=gpt-4o-mini-transcribe
 Content-Type: audio/webm
 
 <raw audio bytes>
@@ -199,7 +199,7 @@ Response:
 }
 ```
 
-OpenAI transcription models: `whisper-1`, `gpt-4o-mini-transcribe`, `gpt-4o-transcribe`.
+OpenAI transcription models: `gpt-4o-mini-transcribe` (default) and `gpt-4o-transcribe`.
 
 You don't need to call this endpoint directly when using `useVoice` — the hook handles it. It's useful if you're building a custom voice UI or using the client package without React.
 
@@ -213,7 +213,7 @@ import { transcribe } from "@flow-state-dev/client";
 const result = await transcribe({
   audio: base64AudioString,
   mediaType: "audio/webm",
-  model: "whisper-1",
+  model: "gpt-4o-mini-transcribe",
 });
 console.log(result.text);
 ```
