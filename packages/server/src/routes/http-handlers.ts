@@ -940,6 +940,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           });
         }
 
+        // 25 MB matches OpenAI Whisper's upload limit.
+        const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+
         const contentType = request.headers.get("content-type") ?? "";
         let audioData: Uint8Array;
         let mediaType: string;
@@ -948,6 +951,12 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
         if (contentType.includes("application/json")) {
           const body = await parseJsonBody(request);
+          const userId = getString(body.userId as string | undefined);
+          if (userId === undefined) {
+            return jsonResponse(400, {
+              error: "Transcription requires non-empty userId"
+            });
+          }
           const audioBase64 = getString(body.audio as string | undefined);
           if (audioBase64 === undefined) {
             return jsonResponse(400, {
@@ -955,19 +964,53 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
             });
           }
           audioData = new Uint8Array(Buffer.from(audioBase64, "base64"));
+          if (audioData.byteLength === 0) {
+            return jsonResponse(400, {
+              error: "Transcription requires non-empty audio data"
+            });
+          }
+          if (audioData.byteLength > MAX_AUDIO_BYTES) {
+            return jsonResponse(413, {
+              error: `Audio payload exceeds maximum size of ${MAX_AUDIO_BYTES} bytes`
+            });
+          }
           mediaType = getString(body.mediaType as string | undefined) ?? "audio/webm";
           language = getString(body.language as string | undefined);
           modelId = getString(body.model as string | undefined);
         } else {
+          const url = new URL(request.url);
+          const userId = getString(url.searchParams.get("userId"));
+          if (userId === undefined) {
+            return jsonResponse(400, {
+              error: "Transcription requires non-empty userId query parameter"
+            });
+          }
+
+          // Check content-length header before reading the body to reject
+          // oversized payloads without buffering them into memory.
+          const contentLength = request.headers.get("content-length");
+          if (contentLength !== null) {
+            const size = parseInt(contentLength, 10);
+            if (!Number.isNaN(size) && size > MAX_AUDIO_BYTES) {
+              return jsonResponse(413, {
+                error: `Audio payload exceeds maximum size of ${MAX_AUDIO_BYTES} bytes`
+              });
+            }
+          }
+
           const buffer = await request.arrayBuffer();
           if (buffer.byteLength === 0) {
             return jsonResponse(400, {
               error: "Transcription requires audio data in request body"
             });
           }
+          if (buffer.byteLength > MAX_AUDIO_BYTES) {
+            return jsonResponse(413, {
+              error: `Audio payload exceeds maximum size of ${MAX_AUDIO_BYTES} bytes`
+            });
+          }
           audioData = new Uint8Array(buffer);
           mediaType = contentType.split(";")[0].trim() || "audio/webm";
-          const url = new URL(request.url);
           language = getString(url.searchParams.get("language"));
           modelId = getString(url.searchParams.get("model"));
         }

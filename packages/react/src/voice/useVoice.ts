@@ -178,7 +178,8 @@ export function useVoice(
       const result = await transcribe({
         audio: audioBlob,
         mediaType: audioBlob.type || "audio/webm",
-        language: options.language
+        language: options.language,
+        userId: session.userId
       }, transcribeOptions);
 
       setInterimTranscript("");

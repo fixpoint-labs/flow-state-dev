@@ -14,6 +14,7 @@ export type TranscribeRequest = {
   mediaType?: string;
   language?: string;
   model?: string;
+  userId: string;
 };
 
 export type TranscribeResponse = {
@@ -58,7 +59,8 @@ export async function transcribe(
         audio: base64,
         mediaType: request.mediaType ?? "audio/webm",
         language: request.language,
-        model: request.model
+        model: request.model,
+        userId: request.userId
       })
     }
   });
