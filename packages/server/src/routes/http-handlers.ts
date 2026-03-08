@@ -947,7 +947,6 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         let audioData: Uint8Array;
         let mediaType: string;
         let language: string | undefined;
-        let modelId: string | undefined;
 
         if (contentType.includes("application/json")) {
           const body = await parseJsonBody(request);
@@ -976,7 +975,6 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           }
           mediaType = getString(body.mediaType as string | undefined) ?? "audio/webm";
           language = getString(body.language as string | undefined);
-          modelId = getString(body.model as string | undefined);
         } else {
           const url = new URL(request.url);
           const userId = getString(url.searchParams.get("userId"));
@@ -1012,10 +1010,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           audioData = new Uint8Array(buffer);
           mediaType = contentType.split(";")[0].trim() || "audio/webm";
           language = getString(url.searchParams.get("language"));
-          modelId = getString(url.searchParams.get("model"));
         }
 
-        const model = options.transcriptionResolver(modelId ?? "gpt-4o-mini-transcribe");
+        const model = options.transcriptionResolver("gpt-4o-mini-transcribe");
         const result = await model.transcribe({
           audio: audioData,
           mediaType,
