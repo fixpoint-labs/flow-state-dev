@@ -71,7 +71,6 @@ export type {
   SpeechModel,
   SpeechResolver,
   SpeechResult,
-  SpeechStreamChunk,
   TranscriptionModel,
   TranscriptionResolver,
   TranscriptionResult,

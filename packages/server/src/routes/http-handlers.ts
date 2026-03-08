@@ -1024,9 +1024,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
         return jsonResponse(200, {
           text: result.text,
-          language: result.language,
-          duration: result.duration,
-          segments: result.segments
+          language: result.language
         });
       }
 

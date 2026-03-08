@@ -110,8 +110,7 @@ export function createTTSPipeline(options: TTSPipelineOptions): TTSPipeline {
       return {
         audio: uint8ArrayToBase64(result.audio),
         mediaType: result.mediaType,
-        transcript: text,
-        duration: result.duration
+        transcript: text
       };
     } catch {
       return null;
@@ -148,8 +147,7 @@ export function createTTSPipeline(options: TTSPipelineOptions): TTSPipeline {
           ephemeral: true,
           audio: result.audio,
           mediaType: result.mediaType,
-          transcript: result.transcript,
-          duration: result.duration
+          transcript: result.transcript
         };
 
         const contentIndex = getNextContentIndex(itemId);

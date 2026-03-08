@@ -36,7 +36,6 @@ export type OutputAudioContent = ContentBase & {
   audio: string;
   mediaType: string;
   transcript?: string;
-  duration?: number;
 };
 
 export type Content =

@@ -14,11 +14,7 @@ import {
 } from "./speech-recognition";
 import type { SessionView } from "../hooks/useSession";
 
-export type VoiceMode = "push-to-talk" | "vad";
-
 export type UseVoiceOptions = {
-  /** Input mode. Default: "push-to-talk" */
-  mode?: VoiceMode;
   /** Action name to dispatch with transcribed text. */
   action: string;
   /** Transform transcribed text into action input. Default: { message: text } */
@@ -42,8 +38,6 @@ export type VoiceState = {
   readonly interimTranscript: string;
   /** Whether voice APIs are available in this browser. */
   readonly isAvailable: boolean;
-  /** Current voice input mode. */
-  readonly mode: VoiceMode;
   /** Start recording / listening. */
   startListening(): Promise<void>;
   /** Stop recording, transcribe, and send action. */
@@ -70,7 +64,6 @@ export function useVoice(
   const recognitionRef = useRef<SpeechRecognitionHandle | null>(null);
   const playedKeysRef = useRef<Set<string>>(new Set());
 
-  const mode = options.mode ?? "push-to-talk";
   const autoPlayTTS = options.autoPlayTTS !== false;
   const buildInput = options.buildInput ?? ((text: string) => ({ message: text }));
 
@@ -224,7 +217,6 @@ export function useVoice(
     isProcessing,
     interimTranscript,
     isAvailable,
-    mode,
     startListening,
     stopListening,
     stopSpeaking

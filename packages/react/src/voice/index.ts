@@ -20,15 +20,7 @@ export {
 } from "./speech-recognition";
 
 export {
-  createVAD,
-  type VADCallbacks,
-  type VADHandle,
-  type VADOptions
-} from "./vad";
-
-export {
   useVoice,
   type UseVoiceOptions,
-  type VoiceMode,
   type VoiceState
 } from "./useVoice";

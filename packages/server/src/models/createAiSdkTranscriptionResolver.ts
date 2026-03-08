@@ -26,13 +26,7 @@ function createTranscriptionModelFromAiSdk(
 
       return {
         text: result.text,
-        language: result.language ?? undefined,
-        duration: result.durationInSeconds ?? undefined,
-        segments: result.segments?.map((s: any) => ({
-          text: s.text,
-          start: s.startSecond,
-          end: s.endSecond
-        }))
+        language: result.language ?? undefined
       };
     }
   };

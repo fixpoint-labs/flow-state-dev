@@ -72,7 +72,6 @@ export {
   createAudioPlayer,
   createSpeechRecognition,
   isSpeechRecognitionAvailable,
-  createVAD,
   type AudioPlayer,
   type AudioPlayerCallbacks,
   type AudioPlayerState,
@@ -82,10 +81,6 @@ export {
   type SpeechRecognitionCallbacks,
   type SpeechRecognitionHandle,
   type UseVoiceOptions,
-  type VADCallbacks,
-  type VADHandle,
-  type VADOptions,
-  type VoiceMode,
   type VoiceState
 } from "./voice";
 
