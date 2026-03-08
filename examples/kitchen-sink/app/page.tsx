@@ -239,10 +239,12 @@ function KitchenSinkApp() {
           <ChatPanel
             message={message}
             mode={mode}
+            rlmContext={rlmContext}
             isDisabled={isDisabled}
             session={session}
             onSetMessage={setMessage}
             onSetMode={setMode}
+            onSetRlmContext={setRlmContext}
             onSubmit={handleSubmit}
             onSuggestionClick={handleSuggestionClick}
           />
