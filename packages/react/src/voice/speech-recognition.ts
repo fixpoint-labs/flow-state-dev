@@ -4,6 +4,20 @@
  * hybrid STT approach alongside server-side Whisper.
  */
 
+/** Minimal interface for the subset of SpeechRecognitionResult we access. */
+interface SpeechResult {
+  readonly resultIndex: number;
+  readonly results: ReadonlyArray<{
+    readonly isFinal: boolean;
+    readonly [0]: { readonly transcript: string };
+  }>;
+}
+
+/** Minimal interface for the SpeechRecognition error event. */
+interface SpeechErrorEvent {
+  readonly error: string;
+}
+
 export type SpeechRecognitionCallbacks = {
   onInterimTranscript?: (text: string) => void;
   onFinalTranscript?: (text: string) => void;
@@ -52,7 +66,7 @@ export function createSpeechRecognition(
       recognition.interimResults = true;
       recognition.lang = options?.language ?? "en-US";
 
-      recognition.onresult = (event: any) => {
+      recognition.onresult = (event: SpeechResult) => {
         let interim = "";
         let final = "";
 
@@ -73,7 +87,7 @@ export function createSpeechRecognition(
         }
       };
 
-      recognition.onerror = (event: any) => {
+      recognition.onerror = (event: SpeechErrorEvent) => {
         if (event.error === "aborted" || event.error === "no-speech") {
           return;
         }
@@ -104,14 +118,30 @@ export function createSpeechRecognition(
   };
 }
 
-function getSpeechRecognitionAPI(): any {
+/** Minimal constructor interface for browser SpeechRecognition API. */
+interface SpeechRecognitionConstructor {
+  new (): {
+    continuous: boolean;
+    interimResults: boolean;
+    lang: string;
+    onresult: ((event: SpeechResult) => void) | null;
+    onerror: ((event: SpeechErrorEvent) => void) | null;
+    onend: (() => void) | null;
+    start(): void;
+    stop(): void;
+    abort(): void;
+  };
+}
+
+function getSpeechRecognitionAPI(): SpeechRecognitionConstructor | null {
   if (typeof window === "undefined") {
     return null;
   }
 
+  const win = window as unknown as Record<string, unknown>;
   return (
-    (window as any).SpeechRecognition ??
-    (window as any).webkitSpeechRecognition ??
+    (win.SpeechRecognition as SpeechRecognitionConstructor | undefined) ??
+    (win.webkitSpeechRecognition as SpeechRecognitionConstructor | undefined) ??
     null
   );
 }

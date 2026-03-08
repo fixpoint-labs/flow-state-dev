@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { transcribe, type TranscribeOptions } from "@flow-state-dev/client";
-import type { OutputAudioContent, OutputItem } from "@flow-state-dev/core/items";
+import type { Content, MessageItem, OutputAudioContent } from "@flow-state-dev/core/items";
 import { createAudioRecorder, type AudioRecorder } from "./audio-recorder";
 import { createAudioPlayer, type AudioPlayer, type AudioPlayerState } from "./audio-player";
 import {
@@ -107,19 +107,15 @@ export function useVoice(
 
     for (const item of session.items) {
       if (item.type !== "message") continue;
-      const msg = item as any;
+      const msg = item as MessageItem;
       if (msg.role !== "assistant") continue;
 
-      const content = msg.content as Array<{ type: string } & Record<string, unknown>> | undefined;
-      if (!content) continue;
-
-      for (const part of content) {
+      for (const part of msg.content) {
         if (part.type === "output_audio") {
-          const audioPart = part as unknown as OutputAudioContent;
-          const key = `${item.id}:${audioPart.audio.slice(0, 20)}`;
+          const key = `${item.id}:${part.audio.slice(0, 20)}`;
           if (!playedKeysRef.current.has(key)) {
             playedKeysRef.current.add(key);
-            playerRef.current!.enqueue(audioPart.audio, audioPart.mediaType);
+            playerRef.current!.enqueue(part.audio, part.mediaType);
           }
         }
       }
