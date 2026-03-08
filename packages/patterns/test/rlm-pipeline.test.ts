@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mockGenerator, testBlock } from "@flow-state-dev/testing";
-import { rlmPipeline } from "../src/flows/rlm/flow";
+import { rlmPipeline } from "../src/rlm";
 
-// A large-ish context document for testing the RLM flow end-to-end.
-// In production this would be >50K tokens; for testing we use a smaller one
-// that still exercises the pipeline mechanics.
 const testContext = [
   "# Technical Design Document: Widget Service",
   "",
@@ -39,7 +36,6 @@ const testContext = [
 
 const emptyContext = { text: "", metadata: {} };
 
-// Mock generators that simulate LLM responses for the RLM pipeline.
 const rootMock = mockGenerator({
   name: "rlm-root",
   script: [{
@@ -62,8 +58,8 @@ const subQueryMock = mockGenerator({
   }]
 });
 
-describe("rlm flow", () => {
-  it("completes a query action through the pipeline", async () => {
+describe("rlm pipeline", () => {
+  it("completes a query through the pipeline", async () => {
     rootMock.reset();
     subQueryMock.reset();
 
@@ -107,8 +103,6 @@ describe("rlm flow", () => {
     });
 
     expect(result.error).toBeNull();
-    // The pipeline should complete without errors, meaning context storage
-    // and generator execution both succeeded.
     expect(result.output).toBeDefined();
   });
 

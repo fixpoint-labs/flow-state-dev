@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { testBlock } from "@flow-state-dev/testing";
-import { peek, grep, chunk } from "../src/flows/rlm/blocks";
+import { peek, grep, chunk } from "../src/rlm/blocks";
 
 const sampleContext = {
   text: "The quick brown fox jumps over the lazy dog. " +

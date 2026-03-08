@@ -139,6 +139,9 @@ importers:
       '@flow-state-dev/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@flow-state-dev/patterns':
+        specifier: workspace:*
+        version: link:../../packages/patterns
       '@flow-state-dev/react':
         specifier: workspace:*
         version: link:../../packages/react
@@ -252,31 +255,6 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
-  examples/rlm:
-    dependencies:
-      '@ai-sdk/openai':
-        specifier: ^3.0.30
-        version: 3.0.30(zod@3.25.76)
-      '@flow-state-dev/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@flow-state-dev/server':
-        specifier: workspace:*
-        version: link:../../packages/server
-      ai:
-        specifier: ^6.0.97
-        version: 6.0.97(zod@3.25.76)
-      zod:
-        specifier: ^3.25.76
-        version: 3.25.76
-    devDependencies:
-      '@flow-state-dev/testing':
-        specifier: workspace:*
-        version: link:../../packages/testing
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-
   packages/cli:
     dependencies:
       '@flow-state-dev/core':
@@ -304,6 +282,25 @@ importers:
       zod:
         specifier: ^3.24.1
         version: 3.25.76
+
+  packages/patterns:
+    dependencies:
+      '@flow-state-dev/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
+      '@flow-state-dev/testing':
+        specifier: workspace:*
+        version: link:../testing
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@25.3.2)(jiti@2.6.1)(lightningcss@1.31.1)(terser@5.46.0)
 
   packages/react:
     dependencies:

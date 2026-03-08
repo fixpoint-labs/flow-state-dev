@@ -1,69 +1,46 @@
 /**
- * RLM (Recursive Language Model) Reference Flow
+ * RLM (Recursive Language Model) Pattern
  *
- * Implements the Recursive Language Model architecture (Gao et al. 2025) using
- * @flow-state-dev primitives. The key idea: the root LM never sees the full
- * context directly. Instead, it uses tools to explore, search, and delegate
- * sub-queries over a large context document.
+ * Reference implementation of the Recursive Language Model architecture
+ * (Gao et al. 2025) using @flow-state-dev primitives.
  *
- * This validates the generator-as-tool composition pattern: a generator block
- * listed in another generator's `tools` array. The root generator (depth-0) can
- * call the sub-query generator (depth-1) as a tool, while the sub-query
- * generator only has exploration tools and cannot recurse further.
+ * The key idea: an LM never sees the full context directly. Instead, it uses
+ * tools to explore, search, and recursively sub-query over large contexts.
  *
- * Concepts demonstrated:
- *   - generator-as-tool (recursive AI pattern)
+ * This module exports reusable blocks and a pipeline builder. Consumers wire
+ * these into their own flows — see kitchen-sink for an integration example.
+ *
+ * Patterns validated:
+ *   - generator-as-tool (recursive AI composition)
  *   - handler blocks as LLM-callable tools
  *   - session resources for large context storage
  *   - depth control via tool set restriction
- *   - sequencer for context setup + generator execution
  */
-import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { generator, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { peek, grep, chunk } from "./blocks";
-import { contextResourceStateSchema } from "./schemas";
+import {
+  contextResourceStateSchema,
+  rlmQueryInputSchema,
+  subQueryOutputSchema,
+  rlmOutputSchema
+} from "./schemas";
 
-const MODEL_ID = "claude-sonnet-4-5-20250514";
-
-// ---------------------------------------------------------------------------
-// Schemas
-// ---------------------------------------------------------------------------
-
-const queryInputSchema = z.object({
-  query: z.string().min(1),
-  context: z.string().min(1)
-});
-
-const sessionStateSchema = z.object({
-  queryCount: z.number().default(0)
-});
-
-const subQueryOutputSchema = z.object({
-  answer: z.string(),
-  confidence: z.number().min(0).max(1),
-  evidence: z.array(z.string())
-});
-
-const rootOutputSchema = z.object({
-  answer: z.string(),
-  reasoning: z.string(),
-  sourcesUsed: z.array(z.string())
-});
+const DEFAULT_MODEL = "claude-sonnet-4-5-20250514";
 
 // ---------------------------------------------------------------------------
 // Depth-1 generator (leaf — no recursive tool)
 // ---------------------------------------------------------------------------
-// This generator processes sub-queries on context subsets. It has exploration
-// tools (peek, grep, chunk) to navigate the context, but it cannot spawn
-// further sub-queries. This is the depth control mechanism: the tool set
+// Processes sub-queries on context subsets. Has exploration tools but cannot
+// spawn further sub-queries. This is the depth control mechanism: tool set
 // restriction prevents infinite recursion.
 
-const subQueryGenerator = generator({
+export const subQueryGenerator = generator({
   name: "rlm-sub-query",
   description:
     "Process a sub-query on a context subset. " +
     "Use when you need to analyze a specific portion of the context in detail.",
-  model: MODEL_ID,
+  model: DEFAULT_MODEL,
 
   inputSchema: z.object({
     query: z.string().describe("The specific sub-question to answer"),
@@ -96,14 +73,12 @@ const subQueryGenerator = generator({
 // ---------------------------------------------------------------------------
 // Depth-0 generator (root — has recursive sub-query tool)
 // ---------------------------------------------------------------------------
-// This is the main RLM generator. It cannot see the full context, only explore
-// it through tools. Critically, it has the sub-query generator as a tool,
-// which is the generator-as-tool pattern: a generator listed in another
-// generator's tools array.
+// The main RLM generator. Cannot see the full context, only explore it through
+// tools. Has the sub-query generator as a tool — the generator-as-tool pattern.
 
-const rootGenerator = generator({
+export const rootGenerator = generator({
   name: "rlm-root",
-  model: MODEL_ID,
+  model: DEFAULT_MODEL,
 
   inputSchema: z.object({
     query: z.string()
@@ -139,12 +114,9 @@ const rootGenerator = generator({
     }
   ],
   user: (input) => input.query,
-  // The key composition: subQueryGenerator is a generator used as a tool.
-  // The framework handles this by executing the sub-generator when the LLM
-  // calls it, and returning the structured output back as the tool result.
   tools: [peek, grep, chunk, subQueryGenerator],
   maxIterations: 10,
-  outputSchema: rootOutputSchema,
+  outputSchema: rlmOutputSchema,
   sessionResourceSchemas: z.object({ context: contextResourceStateSchema }),
   emit: {
     messages: true,
@@ -155,13 +127,12 @@ const rootGenerator = generator({
 // ---------------------------------------------------------------------------
 // Context storage handler
 // ---------------------------------------------------------------------------
-// Stores the user-provided context into the session resource before the root
-// generator runs. This decouples context storage from the generator — the
-// generator and its tools access the context through the resource handle.
+// Stores user-provided context into the session resource before the root
+// generator runs.
 
-const storeContext = handler({
-  name: "store-context",
-  inputSchema: queryInputSchema,
+export const storeContext = handler({
+  name: "rlm-store-context",
+  inputSchema: rlmQueryInputSchema,
   outputSchema: z.object({ query: z.string() }),
   sessionResourceSchemas: z.object({ context: contextResourceStateSchema }),
 
@@ -179,72 +150,23 @@ const storeContext = handler({
   }
 });
 
-// Bookkeeping: increment query counter after each RLM run.
-const incrementQueryCount = handler({
-  name: "increment-query-count",
-  inputSchema: rootOutputSchema,
-  outputSchema: rootOutputSchema,
-  sessionStateSchema: z.object({ queryCount: z.number().default(0) }),
-  execute: async (input, ctx) => {
-    const count = ctx.session.state.queryCount ?? 0;
-    await ctx.session.patchState({ queryCount: count + 1 });
-    return input;
-  }
-});
-
 // ---------------------------------------------------------------------------
 // Pipeline
 // ---------------------------------------------------------------------------
-// Store context → run root RLM generator → increment counter.
+// Store context → run root RLM generator.
 // The sequencer pipes the context storage output ({ query }) into the root
 // generator, which explores the stored context via tools and produces a
 // structured answer.
 
-export const rlmPipeline = sequencer({ name: "rlm-pipeline", inputSchema: queryInputSchema })
+export const rlmPipeline = sequencer({ name: "rlm-pipeline", inputSchema: rlmQueryInputSchema })
   .then(storeContext)
-  .then(rootGenerator)
-  .then(incrementQueryCount);
+  .then(rootGenerator);
 
-// ---------------------------------------------------------------------------
-// Flow definition
-// ---------------------------------------------------------------------------
-
-const rlmFlow = defineFlow({
-  kind: "rlm",
-  requireUser: true,
-
-  actions: {
-    query: {
-      inputSchema: queryInputSchema,
-      block: rlmPipeline,
-      userMessage: (input: z.infer<typeof queryInputSchema>) => input.query
-    }
-  },
-
-  session: {
-    stateSchema: sessionStateSchema,
-    resources: {
-      context: {
-        stateSchema: contextResourceStateSchema,
-        writable: true
-      }
-    },
-    clientData: {
-      queryStats: (ctx) => ({
-        queryCount: Number(ctx.state.queryCount ?? 0)
-      }),
-      contextInfo: (ctx) => {
-        const context = (ctx.resources as Record<string, { state: { text?: string; metadata?: { tokenEstimate?: number } } }>).context?.state;
-        return {
-          loaded: (context?.text?.length ?? 0) > 0,
-          length: context?.text?.length ?? 0,
-          tokenEstimate: context?.metadata?.tokenEstimate ?? 0
-        };
-      }
-    }
-  }
-});
-
-const flow = rlmFlow({ id: "default" });
-
-export default flow;
+// Re-export schemas and blocks for consumers that need finer-grained access.
+export {
+  contextResourceStateSchema,
+  rlmQueryInputSchema,
+  subQueryOutputSchema,
+  rlmOutputSchema
+} from "./schemas";
+export { peek, grep, chunk } from "./blocks";

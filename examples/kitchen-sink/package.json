@@ -9,13 +9,14 @@
     "build": "next build",
     "vercel-build": "cd ../.. && pnpm install && pnpm -r --filter './packages/**' build && cd examples/kitchen-sink && next build",
     "start": "next start",
-    "test": "pnpm --filter @flow-state-dev/testing build && vitest run --root .",
+    "test": "pnpm --filter @flow-state-dev/testing build && pnpm --filter @flow-state-dev/patterns build && vitest run --root .",
     "test:watch": "vitest --root ."
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.30",
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/patterns": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
     "@radix-ui/react-use-controllable-state": "^1.2.2",

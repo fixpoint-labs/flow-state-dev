@@ -43,6 +43,11 @@ import {
   modeSchema,
   artifactResourceStateSchema
 } from "./schemas";
+import {
+  rlmPipeline,
+  rlmQueryInputSchema,
+  contextResourceStateSchema
+} from "@flow-state-dev/patterns";
 
 const MODEL_ID = "gpt-5-mini";
 // ---------------------------------------------------------------------------
@@ -269,6 +274,18 @@ const kitchenSinkFlow = defineFlow({
     saveArtifact: {
       inputSchema: updateArtifactInputSchema,
       block: updateArtifact
+    },
+    // RLM action: recursive language model pattern from @flow-state-dev/patterns.
+    // Demonstrates generator-as-tool composition — the root generator calls a
+    // sub-query generator as a tool for recursive context exploration.
+    //
+    // Note: no userMessage here. userMessage exists to let blocks access the
+    // user's message without coupling to the action's input schema. The RLM
+    // pipeline receives everything it needs through its block input path
+    // (query + context), so userMessage would be redundant.
+    rlm: {
+      inputSchema: rlmQueryInputSchema,
+      block: rlmPipeline
     }
   },
 
@@ -282,6 +299,10 @@ const kitchenSinkFlow = defineFlow({
     resources: {
       artifacts: {
         stateSchema: artifactResourceStateSchema,
+        writable: true
+      },
+      context: {
+        stateSchema: contextResourceStateSchema,
         writable: true
       }
     },

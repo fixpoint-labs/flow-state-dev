@@ -3,7 +3,7 @@ import { z } from "zod";
 // Shared domain schemas for the kitchen-sink flow.
 // Centralizing schemas avoids duplication — blocks import only the slices they need.
 
-export const modeSchema = z.enum(["chat", "plan", "review"]);
+export const modeSchema = z.enum(["chat", "plan", "review", "rlm"]);
 
 export const artifactSchema = z.object({
   id: z.string(),
