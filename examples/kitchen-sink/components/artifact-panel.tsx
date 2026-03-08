@@ -3,6 +3,7 @@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { FileText, Package } from "lucide-react";
 
 type ArtifactSummary = { id: string; title: string };
@@ -11,11 +12,12 @@ interface ArtifactPanelProps {
   artifacts: ArtifactSummary[];
   selectedId?: string | null;
   onSelect?: (id: string) => void;
+  className?: string;
 }
 
-export function ArtifactPanel({ artifacts, selectedId, onSelect }: ArtifactPanelProps) {
+export function ArtifactPanel({ artifacts, selectedId, onSelect, className }: ArtifactPanelProps) {
   return (
-    <aside className="flex h-full w-fit min-w-[11rem] max-w-xs shrink-0 flex-col border-l bg-muted/30">
+    <aside className={cn("flex h-full w-full min-w-0 shrink-0 flex-col border-l bg-muted/30 sm:min-w-[15rem] sm:max-w-xs", className)}>
       <div className="flex items-center gap-2 px-4 py-3">
         <Package className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-semibold">Artifacts</span>
