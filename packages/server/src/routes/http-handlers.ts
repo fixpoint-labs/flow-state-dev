@@ -954,7 +954,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
               error: "Transcription requires audio data (base64 in 'audio' field)"
             });
           }
-          audioData = Uint8Array.from(atob(audioBase64), (c) => c.charCodeAt(0));
+          audioData = new Uint8Array(Buffer.from(audioBase64, "base64"));
           mediaType = getString(body.mediaType as string | undefined) ?? "audio/webm";
           language = getString(body.language as string | undefined);
           modelId = getString(body.model as string | undefined);

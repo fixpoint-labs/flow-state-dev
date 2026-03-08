@@ -1,6 +1,9 @@
 /**
  * Queue-based audio playback for streaming TTS output.
  * Plays audio chunks sequentially for gapless playback of sentence-by-sentence TTS.
+ *
+ * Uses Blob URLs instead of data URLs to avoid keeping large base64 strings
+ * in memory. Each Blob URL is revoked after playback completes.
  */
 
 export type AudioPlayerState = "idle" | "playing";
@@ -19,6 +22,16 @@ export type AudioPlayer = {
   clear(): void;
 };
 
+/** Decode a base64 string into a Uint8Array. */
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
 /**
  * Creates an audio player that queues and plays audio chunks sequentially.
  * Uses HTMLAudioElement for broad browser compatibility.
@@ -26,9 +39,10 @@ export type AudioPlayer = {
 export function createAudioPlayer(
   callbacks?: AudioPlayerCallbacks
 ): AudioPlayer {
-  const queue: Array<{ dataUrl: string }> = [];
+  const queue: Array<{ blobUrl: string }> = [];
   let currentState: AudioPlayerState = "idle";
   let currentAudio: HTMLAudioElement | null = null;
+  let currentBlobUrl: string | null = null;
   let chunkIndex = 0;
   let playing = false;
 
@@ -39,6 +53,13 @@ export function createAudioPlayer(
 
     currentState = next;
     callbacks?.onStateChange?.(next);
+  }
+
+  function revokeCurrentUrl() {
+    if (currentBlobUrl !== null) {
+      URL.revokeObjectURL(currentBlobUrl);
+      currentBlobUrl = null;
+    }
   }
 
   function playNext() {
@@ -55,17 +76,20 @@ export function createAudioPlayer(
 
     callbacks?.onChunkStart?.(index);
 
-    const audio = new Audio(item.dataUrl);
+    currentBlobUrl = item.blobUrl;
+    const audio = new Audio(item.blobUrl);
     currentAudio = audio;
 
     audio.onended = () => {
       currentAudio = null;
+      revokeCurrentUrl();
       callbacks?.onChunkEnd?.(index);
       playNext();
     };
 
     audio.onerror = () => {
       currentAudio = null;
+      revokeCurrentUrl();
       callbacks?.onError?.(new Error(`Audio playback failed for chunk ${index}`));
       callbacks?.onChunkEnd?.(index);
       playNext();
@@ -73,6 +97,7 @@ export function createAudioPlayer(
 
     audio.play().catch((err) => {
       currentAudio = null;
+      revokeCurrentUrl();
       callbacks?.onError?.(err instanceof Error ? err : new Error(String(err)));
       callbacks?.onChunkEnd?.(index);
       playNext();
@@ -85,8 +110,10 @@ export function createAudioPlayer(
     },
 
     enqueue(audioData: string, mediaType: string) {
-      const dataUrl = `data:${mediaType};base64,${audioData}`;
-      queue.push({ dataUrl });
+      const bytes = base64ToBytes(audioData);
+      const blob = new Blob([bytes], { type: mediaType });
+      const blobUrl = URL.createObjectURL(blob);
+      queue.push({ blobUrl });
 
       if (!playing) {
         playNext();
@@ -100,12 +127,21 @@ export function createAudioPlayer(
         currentAudio = null;
       }
 
+      revokeCurrentUrl();
+      // Revoke any queued blob URLs
+      for (const item of queue) {
+        URL.revokeObjectURL(item.blobUrl);
+      }
       queue.length = 0;
       playing = false;
       setState("idle");
     },
 
     clear() {
+      // Revoke queued blob URLs to free memory
+      for (const item of queue) {
+        URL.revokeObjectURL(item.blobUrl);
+      }
       queue.length = 0;
     }
   };
