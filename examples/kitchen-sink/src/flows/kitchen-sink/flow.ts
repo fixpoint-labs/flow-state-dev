@@ -45,7 +45,6 @@ import {
 } from "./schemas";
 import {
   rlmPipeline,
-  rlmQueryInputSchema,
   contextResourceStateSchema
 } from "@flow-state-dev/patterns";
 
@@ -59,7 +58,8 @@ const MODEL_ID = "gpt-5-mini";
 
 const inputSchema = z.object({
   message: z.string().min(1),
-  mode: modeSchema.default("chat")
+  mode: modeSchema.default("chat"),
+  context: z.string().optional()
 });
 
 // Session state lives for the duration of a session. Every block that reads
@@ -228,6 +228,16 @@ const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
     }
   ]);
 
+// RLM pipeline: reshapes the kitchen-sink input into what the patterns
+// rlmPipeline expects ({ query, context }), then delegates to the RLM pattern.
+const rlmRoute = sequencer({ name: "rlm-pipeline", inputSchema })
+  .map((input) => ({
+    query: input.message,
+    context: input.context ?? ""
+  }))
+  .then(rlmPipeline)
+  .map((output) => output.answer);
+
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -241,9 +251,10 @@ export const modeRouter = router({
   inputSchema: inputSchema,
   outputSchema: z.string(),
   sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
-  routes: [chatPipeline, planPipeline],
+  routes: [chatPipeline, planPipeline, rlmRoute],
   execute: (input, ctx) => {
     const mode = ctx.session.state.mode ?? input.mode;
+    if (mode === "rlm") return rlmRoute;
     return mode === "plan" ? planPipeline : chatPipeline;
   }
 });
@@ -274,18 +285,6 @@ const kitchenSinkFlow = defineFlow({
     saveArtifact: {
       inputSchema: updateArtifactInputSchema,
       block: updateArtifact
-    },
-    // RLM action: recursive language model pattern from @flow-state-dev/patterns.
-    // Demonstrates generator-as-tool composition — the root generator calls a
-    // sub-query generator as a tool for recursive context exploration.
-    //
-    // Note: no userMessage here. userMessage exists to let blocks access the
-    // user's message without coupling to the action's input schema. The RLM
-    // pipeline receives everything it needs through its block input path
-    // (query + context), so userMessage would be redundant.
-    rlm: {
-      inputSchema: rlmQueryInputSchema,
-      block: rlmPipeline
     }
   },
 
