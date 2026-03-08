@@ -19,6 +19,9 @@ function createSpeechModelFromAiSdk(
     modelId,
 
     async generate(options): Promise<SpeechResult> {
+      // AI SDK experimental_generateSpeech types are not generic — the model
+      // parameter expects a concrete provider type, but our resolver accepts
+      // any provider. Cast through any to bridge the generic boundary.
       const result = await generateSpeech({
         model: speechModel as any,
         text: options.text,

@@ -3,6 +3,10 @@
  * Accumulates text fragments and emits complete sentences for synthesis.
  */
 
+// Splits on sentence-ending punctuation followed by whitespace. This is
+// intentionally simple — it will mis-split on abbreviations like "Dr. Smith"
+// or "U.S. Army". A more robust approach (e.g., NLP sentence tokenizer)
+// would add latency and complexity for marginal TTS quality improvement.
 const SENTENCE_BOUNDARY = /[.!?]\s+/;
 const SENTENCE_END = /[.!?]$/;
 

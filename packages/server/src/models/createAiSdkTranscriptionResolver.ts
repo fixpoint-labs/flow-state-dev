@@ -19,6 +19,9 @@ function createTranscriptionModelFromAiSdk(
     modelId,
 
     async transcribe(options): Promise<TranscriptionResult> {
+      // AI SDK experimental_transcribe types are not generic — cast through
+      // any to bridge between our provider-agnostic resolver and the SDK's
+      // concrete provider types.
       const result = await (transcribe as any)({
         model: transcriptionModel as any,
         audio: options.audio
