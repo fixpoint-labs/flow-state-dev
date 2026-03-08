@@ -26,8 +26,6 @@ import {
   rlmOutputSchema
 } from "./schemas";
 
-const DEFAULT_MODEL = "claude-sonnet-4-5-20250514";
-
 // ---------------------------------------------------------------------------
 // Depth-1 generator (leaf — no recursive tool)
 // ---------------------------------------------------------------------------
@@ -40,7 +38,8 @@ export const subQueryGenerator = generator({
   description:
     "Process a sub-query on a context subset. " +
     "Use when you need to analyze a specific portion of the context in detail.",
-  model: DEFAULT_MODEL,
+  model: (_input, ctx) =>
+    ctx.session.resources.get("context")?.state.metadata?.model ?? "gpt-4o-mini",
 
   inputSchema: z.object({
     query: z.string().describe("The specific sub-question to answer"),
@@ -78,7 +77,8 @@ export const subQueryGenerator = generator({
 
 export const rootGenerator = generator({
   name: "rlm-root",
-  model: DEFAULT_MODEL,
+  model: (_input, ctx) =>
+    ctx.session.resources.get("context")?.state.metadata?.model ?? "gpt-4o-mini",
 
   inputSchema: z.object({
     query: z.string()
@@ -142,6 +142,7 @@ export const storeContext = handler({
       await contextHandle.updateState(async () => ({
         text: input.context,
         metadata: {
+          model: input.model,
           tokenEstimate: Math.ceil(input.context.length / 4)
         }
       }));

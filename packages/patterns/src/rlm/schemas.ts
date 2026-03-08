@@ -6,13 +6,15 @@ export const contextResourceStateSchema = z.object({
   text: z.string().default(""),
   metadata: z.object({
     source: z.string().optional(),
-    tokenEstimate: z.number().optional()
+    tokenEstimate: z.number().optional(),
+    model: z.string().optional()
   }).default({})
 });
 
 export const rlmQueryInputSchema = z.object({
   query: z.string().min(1),
-  context: z.string().min(1)
+  context: z.string().min(1),
+  model: z.string().min(1)
 });
 
 export const subQueryOutputSchema = z.object({

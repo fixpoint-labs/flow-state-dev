@@ -233,7 +233,8 @@ const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
 const rlmRoute = sequencer({ name: "rlm-pipeline", inputSchema })
   .map((input) => ({
     query: input.message,
-    context: input.context ?? ""
+    context: input.context ?? "",
+    model: MODEL_ID
   }))
   .then(rlmPipeline)
   .map((output) => output.answer);

@@ -66,7 +66,8 @@ describe("rlm pipeline", () => {
     const result = await testBlock(rlmPipeline, {
       input: {
         query: "What are the performance requirements?",
-        context: testContext
+        context: testContext,
+        model: "test-model"
       },
       session: {
         resources: { context: emptyContext }
@@ -91,7 +92,8 @@ describe("rlm pipeline", () => {
     const result = await testBlock(rlmPipeline, {
       input: {
         query: "What is this about?",
-        context: "A short test context."
+        context: "A short test context.",
+        model: "test-model"
       },
       session: {
         resources: { context: emptyContext }
@@ -113,7 +115,8 @@ describe("rlm pipeline", () => {
     const result = await testBlock(rlmPipeline, {
       input: {
         query: "Describe the architecture",
-        context: testContext
+        context: testContext,
+        model: "test-model"
       },
       session: {
         resources: { context: emptyContext }
