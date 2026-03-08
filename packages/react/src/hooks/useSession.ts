@@ -12,6 +12,7 @@ import {
   type SessionStateSnapshotResponse
 } from "@flow-state-dev/client";
 import type {
+  Content,
   MessageItem,
   OutputItem,
   ReasoningItem
@@ -182,6 +183,20 @@ function updateItemWithContentDelta(
       };
       return { ...reasoning, summary };
     }
+  }
+
+  return target;
+}
+
+function updateItemWithContentAdded(
+  target: OutputItem,
+  _contentIndex: number,
+  content: Content
+): OutputItem {
+  if (target.type === "message") {
+    const message = target as MessageItem;
+    const parts = [...(message.content ?? []), content];
+    return { ...message, content: parts };
   }
 
   return target;
@@ -571,6 +586,21 @@ export function useSession(
                 sortedItemIdsRef.current = ordered.map((item) => item.id);
                 setItems(ordered);
               } else {
+                setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+              }
+            },
+            onContentAdded: (event) => {
+              const existing = itemsByIdRef.current.get(event.itemId);
+              if (existing === undefined) {
+                return;
+              }
+              const updated = updateItemWithContentAdded(
+                existing,
+                event.contentIndex,
+                event.content
+              );
+              if (updated !== existing) {
+                itemsByIdRef.current.set(event.itemId, updated);
                 setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
               }
             },

@@ -7,6 +7,11 @@ import type { SpeechModel, SpeechResolver, TTSConfig } from "@flow-state-dev/cor
 import type { ResponseEmitter } from "../streaming/response-emitter";
 import { createSentenceBuffer, type SentenceBuffer } from "./sentence-buffer";
 
+/** Maximum number of concurrent TTS API calls. */
+const MAX_CONCURRENCY = 3;
+/** Per-sentence synthesis timeout in milliseconds. */
+const SYNTHESIS_TIMEOUT_MS = 15_000;
+
 export type TTSPipelineOptions = {
   config: TTSConfig;
   speechResolver?: SpeechResolver;
@@ -27,12 +32,40 @@ export type TTSPipeline = {
  * The pipeline buffers text and dispatches to SpeechModel.generate() on
  * sentence boundaries, emitting OutputAudioContent as additional content
  * parts on the message item.
+ *
+ * Synthesis calls are launched concurrently (up to MAX_CONCURRENCY) for
+ * speed, but results are emitted strictly in sentence order via a per-item
+ * emission chain.
  */
 export function createTTSPipeline(options: TTSPipelineOptions): TTSPipeline {
   const speechModel = resolveSpeechModel(options.config, options.speechResolver);
   const buffers = new Map<string, SentenceBuffer>();
   const contentIndexes = new Map<string, number>();
-  const pending: Promise<void>[] = [];
+
+  // Per-item emission chain ensures audio chunks are emitted in sentence
+  // order even though synthesis calls run concurrently.
+  const emitChains = new Map<string, Promise<void>>();
+
+  // Concurrency limiter: limits the number of in-flight TTS API calls.
+  let inFlight = 0;
+  const waiting: Array<() => void> = [];
+
+  async function acquireSlot(): Promise<void> {
+    if (inFlight < MAX_CONCURRENCY) {
+      inFlight++;
+      return;
+    }
+    await new Promise<void>((resolve) => waiting.push(resolve));
+    inFlight++;
+  }
+
+  function releaseSlot(): void {
+    inFlight--;
+    const next = waiting.shift();
+    if (next !== undefined) {
+      next();
+    }
+  }
 
   function getBuffer(itemId: string): SentenceBuffer {
     let buf = buffers.get(itemId);
@@ -50,37 +83,93 @@ export function createTTSPipeline(options: TTSPipelineOptions): TTSPipeline {
     return next;
   }
 
-  async function synthesizeAndEmit(itemId: string, text: string): Promise<void> {
+  type SynthesisResult = {
+    audio: string;
+    mediaType: string;
+    transcript: string;
+    duration?: number;
+  };
+
+  /**
+   * Pure synthesis — acquires a concurrency slot, calls the speech model
+   * with a timeout, and returns the result. Returns null on failure so a
+   * single bad sentence doesn't break the chain.
+   */
+  async function synthesize(text: string): Promise<SynthesisResult | null> {
+    await acquireSlot();
     try {
-      const result = await speechModel.generate({
-        text,
-        voice: options.config.voice,
-        speed: options.config.speed,
-        outputFormat: "mp3"
-      });
-
-      const base64Audio = uint8ArrayToBase64(result.audio);
-
-      const audioContent: OutputAudioContent = {
-        type: "output_audio",
-        audio: base64Audio,
+      const result = await withTimeout(
+        speechModel.generate({
+          text,
+          voice: options.config.voice,
+          speed: options.config.speed,
+          outputFormat: "mp3"
+        }),
+        SYNTHESIS_TIMEOUT_MS
+      );
+      return {
+        audio: uint8ArrayToBase64(result.audio),
         mediaType: result.mediaType,
         transcript: text,
         duration: result.duration
       };
-
-      const contentIndex = getNextContentIndex(itemId);
-      await options.emitter.emitContentAdded(itemId, contentIndex, audioContent);
-      await options.emitter.emitContentDone(itemId, contentIndex, audioContent);
-    } catch (error) {
-      // TTS failures should not break the text stream.
-      // Log and continue.
-      await options.emitter.emitDebug("tts.synthesis.error", {
-        itemId,
-        text: text.slice(0, 100),
-        error: error instanceof Error ? error.message : String(error)
-      });
+    } catch {
+      return null;
+    } finally {
+      releaseSlot();
     }
+  }
+
+  /**
+   * Enqueue a sentence for synthesis and ordered emission.
+   * The API call starts immediately (subject to concurrency limit), but
+   * the emission waits for all prior sentences to emit first (ordered).
+   */
+  function enqueue(itemId: string, text: string): void {
+    // Kick off synthesis immediately — no waiting for earlier sentences.
+    const resultPromise = synthesize(text);
+
+    // Chain only the emission so audio arrives at the client in order.
+    const prev = emitChains.get(itemId) ?? Promise.resolve();
+    const next = prev.then(async () => {
+      try {
+        const result = await resultPromise;
+        if (result === null) {
+          await options.emitter.emitDebug("tts.synthesis.error", {
+            itemId,
+            text: text.slice(0, 100),
+            error: "synthesis failed or timed out"
+          });
+          return;
+        }
+
+        const audioContent: OutputAudioContent = {
+          type: "output_audio",
+          ephemeral: true,
+          audio: result.audio,
+          mediaType: result.mediaType,
+          transcript: result.transcript,
+          duration: result.duration
+        };
+
+        const contentIndex = getNextContentIndex(itemId);
+        await options.emitter.emitContentAdded(itemId, contentIndex, audioContent);
+        await options.emitter.emitContentDone(itemId, contentIndex, audioContent);
+      } catch (error) {
+        // Swallow emission errors so subsequent sentences still emit.
+        try {
+          await options.emitter.emitDebug("tts.emission.error", {
+            itemId,
+            text: text.slice(0, 100),
+            error: error instanceof Error ? error.message : String(error)
+          });
+        } catch {
+          // Last resort: prevent chain breakage.
+        }
+      }
+    });
+
+    emitChains.set(itemId, next);
   }
 
   return {
@@ -89,8 +178,7 @@ export function createTTSPipeline(options: TTSPipelineOptions): TTSPipeline {
       const sentences = buffer.append(delta);
 
       for (const sentence of sentences) {
-        const p = synthesizeAndEmit(itemId, sentence);
-        pending.push(p);
+        enqueue(itemId, sentence);
       }
     },
 
@@ -102,17 +190,21 @@ export function createTTSPipeline(options: TTSPipelineOptions): TTSPipeline {
 
       const remaining = buffer.flush();
       if (remaining !== undefined) {
-        const p = synthesizeAndEmit(itemId, remaining);
-        pending.push(p);
-        await p;
+        enqueue(itemId, remaining);
       }
 
       buffers.delete(itemId);
+
+      // Wait for this item's emission chain to finish.
+      const chain = emitChains.get(itemId);
+      if (chain !== undefined) {
+        await chain;
+      }
     },
 
     async drain() {
-      await Promise.allSettled(pending);
-      pending.length = 0;
+      await Promise.allSettled([...emitChains.values()]);
+      emitChains.clear();
     }
   };
 }
@@ -144,4 +236,14 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(bytes[i]);
   }
   return btoa(binary);
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); }
+    );
+  });
 }

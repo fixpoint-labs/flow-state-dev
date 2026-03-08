@@ -1,7 +1,8 @@
 /**
  * Action-level orchestration runtime for request lifecycle, observers, persistence, and terminal errors.
  */
-import type { ErrorItem, ItemProvenance, MessageItem } from "@flow-state-dev/core/items";
+import type { ErrorItem, ItemProvenance, MessageItem, OutputItem } from "@flow-state-dev/core/items";
+import { isEphemeralContent } from "@flow-state-dev/core/items";
 import type {
   ActionConfig,
   BlockDefinition,
@@ -97,7 +98,33 @@ function parseActionInput(action: ActionConfig, input: unknown): unknown {
 }
 
 /**
+ * Strips ephemeral content parts (e.g. output_audio) from items before
+ * persistence. Ephemeral content is streamed to the client in real time
+ * but should not be stored, since it may contain large binary payloads.
+ */
+function stripEphemeralContent(items: OutputItem[]): OutputItem[] {
+  return items.map((item) => {
+    if (item.type !== "message") {
+      return item;
+    }
+
+    const message = item as MessageItem;
+    if (message.content === undefined) {
+      return item;
+    }
+
+    const filtered = message.content.filter((c) => !isEphemeralContent(c));
+    if (filtered.length === message.content.length) {
+      return item;
+    }
+
+    return { ...message, content: filtered };
+  });
+}
+
+/**
  * Applies a partial request-record update when a record exists.
+ * Strips ephemeral content from items before writing to the store.
  */
 async function patchRequestRecord(
   stores: StoreRegistry,
@@ -109,9 +136,13 @@ async function patchRequestRecord(
     return;
   }
 
+  const sanitized = patch.items !== undefined
+    ? { ...patch, items: stripEphemeralContent(patch.items) }
+    : patch;
+
   await stores.request.set(requestId, {
     ...current,
-    ...patch,
+    ...sanitized,
     updatedAt: Date.now()
   });
 }

@@ -1,11 +1,14 @@
 export type {
   Content,
+  ContentBase,
   FileContent,
   OutputAudioContent,
   OutputTextContent,
   ReasoningTextContent,
   RefusalContent
 } from "./content";
+
+export { isEphemeralContent } from "./content";
 
 export type {
   BlockOutputItem,

@@ -94,10 +94,12 @@ function KitchenSinkApp() {
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<"chat" | "plan" | "review">("chat");
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
 
   const voice = useVoice(session, {
     action: "run",
     buildInput: (text) => ({ message: text, mode }),
+    autoPlayTTS: ttsEnabled,
   });
 
   // Client data: live derived views from session + user state
@@ -200,7 +202,12 @@ function KitchenSinkApp() {
                 onModeChange={setMode}
                 disabled={isDisabled}
               />
-              <VoiceToggle voice={voice} disabled={isDisabled} />
+              <VoiceToggle
+                voice={voice}
+                disabled={isDisabled}
+                ttsEnabled={ttsEnabled}
+                onToggleTTS={() => setTtsEnabled((v) => !v)}
+              />
             </div>
             <PromptInput onSubmit={handleSubmit}>
               <PromptInputTextarea

@@ -68,17 +68,20 @@ export function useVoice(
   const recorderRef = useRef<AudioRecorder | null>(null);
   const playerRef = useRef<AudioPlayer | null>(null);
   const recognitionRef = useRef<SpeechRecognitionHandle | null>(null);
-  const lastPlayedItemIdRef = useRef<string | null>(null);
+  const playedKeysRef = useRef<Set<string>>(new Set());
 
   const mode = options.mode ?? "push-to-talk";
   const autoPlayTTS = options.autoPlayTTS !== false;
   const buildInput = options.buildInput ?? ((text: string) => ({ message: text }));
 
-  const isAvailable = useMemo(() => {
-    if (typeof navigator === "undefined") return false;
-    if (!navigator.mediaDevices?.getUserMedia) return false;
-    if (typeof MediaRecorder === "undefined") return false;
-    return true;
+  // Defer browser API detection to a client-only effect so the initial
+  // render matches the server (false) and avoids hydration mismatches.
+  const [isAvailable, setIsAvailable] = useState(false);
+  useEffect(() => {
+    if (typeof navigator === "undefined") return;
+    if (!navigator.mediaDevices?.getUserMedia) return;
+    if (typeof MediaRecorder === "undefined") return;
+    setIsAvailable(true);
   }, []);
 
   // Initialize audio player
@@ -96,7 +99,9 @@ export function useVoice(
     };
   }, [autoPlayTTS]);
 
-  // Auto-play OutputAudioContent from session items
+  // Auto-play OutputAudioContent from session items.
+  // Uses a Set to track every audio chunk already enqueued so that
+  // re-renders during streaming never re-enqueue earlier sentences.
   useEffect(() => {
     if (!autoPlayTTS || playerRef.current === null) return;
 
@@ -112,8 +117,8 @@ export function useVoice(
         if (part.type === "output_audio") {
           const audioPart = part as unknown as OutputAudioContent;
           const key = `${item.id}:${audioPart.audio.slice(0, 20)}`;
-          if (key !== lastPlayedItemIdRef.current) {
-            lastPlayedItemIdRef.current = key;
+          if (!playedKeysRef.current.has(key)) {
+            playedKeysRef.current.add(key);
             playerRef.current!.enqueue(audioPart.audio, audioPart.mediaType);
           }
         }
