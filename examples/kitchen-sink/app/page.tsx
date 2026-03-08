@@ -138,19 +138,19 @@ function KitchenSinkApp() {
 
       {isSessionDrawerOpen && (
         <div className="fixed inset-0 z-40 flex bg-black/40 lg:hidden" role="dialog" aria-modal="true" aria-label="Session list drawer">
-          <button
-            type="button"
-            className="flex-1"
-            aria-label="Close sessions drawer"
-            onClick={() => setIsSessionDrawerOpen(false)}
-          />
           <SessionSidebar
-            className="w-[18rem] max-w-[85vw] border-l border-r-0 bg-background shadow-2xl"
+            className="w-[18rem] max-w-[85vw] border-r bg-background shadow-2xl"
             sessions={flow.sessions}
             activeSessionId={flow.activeSessionId}
             isLoading={flow.isLoading}
             onNewChat={() => void handleNewSession()}
             onSelectSession={handleSelectSession}
+          />
+          <button
+            type="button"
+            className="flex-1"
+            aria-label="Close sessions drawer"
+            onClick={() => setIsSessionDrawerOpen(false)}
           />
         </div>
       )}
