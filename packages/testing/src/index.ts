@@ -34,4 +34,33 @@ export {
   type UnmockedGeneratorPolicy
 } from "./mocks/mockGenerator";
 
+export {
+  evalBlock,
+  evalFlow,
+  exactMatch,
+  schemaValid,
+  contains,
+  jsonPath,
+  threshold,
+  custom,
+  allOf,
+  anyOf,
+  loadDataset,
+  fromCsv,
+  buildReport,
+} from "./eval";
+
+export type {
+  Scorer,
+  ScoreResult,
+  EvalCase,
+  EvalBlockConfig,
+  EvalFlowConfig,
+  EvalCaseResult,
+  ScorerSummary,
+  EvalReport,
+  LoadDatasetOptions,
+  CsvMapping,
+} from "./eval";
+
 export const testingPackageMarker = "@flow-state-dev/testing";
