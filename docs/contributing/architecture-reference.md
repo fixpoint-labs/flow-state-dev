@@ -49,6 +49,20 @@ Conflict rule: `preperation/architecture/*` wins.
 
 → [Streaming](../architecture/streaming.md)
 
+## Middleware
+
+- Around-pattern interception of block execution
+- Three layers, composed outer-to-inner: global → flow → block
+- Global: `createFlowApiRouter({ middleware })` — wraps all blocks in all flows
+- Flow: `defineFlow({ middleware })` — wraps all blocks in that flow
+- Block: `BlockConfig.middleware` — wraps that block only
+- Optional `filter` predicate to target specific block kinds/names
+- `next()` may only be called once per middleware (double-call throws)
+- Middleware runs on every retry attempt
+- Types in `core`; composition logic in `server`
+
+→ [Middleware](../architecture/middleware.md)
+
 ## Lifecycle Hooks
 
 | Hook | When |
