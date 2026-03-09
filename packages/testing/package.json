@@ -20,6 +20,7 @@
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
+    "@types/node": "^22.0.0",
     "zod": "^3.24.1"
   },
   "scripts": {
