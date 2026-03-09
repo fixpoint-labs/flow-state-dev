@@ -1,5 +1,6 @@
 import type { ZodTypeAny } from "zod";
 import type { BlockContext, BlockDefinition, RetryPolicy } from "./block";
+import type { Middleware } from "./middleware";
 import type {
   ResourceConfig,
   ResourceHandle,
@@ -158,6 +159,8 @@ export type FlowDefinition<
   work?: TWork;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
+  middleware?: Middleware[];
+
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
 
@@ -183,6 +186,7 @@ export type FlowInstanceOptions<
   work?: TWork;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
+  middleware?: Middleware[];
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
 };
@@ -206,6 +210,7 @@ export type FlowInstance<
   work?: TWork;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
+  middleware?: Middleware[];
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
 };
@@ -228,6 +233,7 @@ export type FlowType<
   work?: TWork;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
+  middleware?: Middleware[];
 
   (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TProject, TWork>): FlowInstance<
     TActions,

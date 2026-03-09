@@ -6,6 +6,7 @@ import type {
   ActionConfig,
   BlockDefinition,
   FlowInstance,
+  Middleware,
   ModelResolver,
   RetryPolicy,
   SpeechResolver
@@ -50,6 +51,7 @@ export type ExecuteBlockOptions = {
   input: unknown;
   ctx: ExecuteBlockContext;
   retry?: RetryPolicy;
+  middleware?: Middleware[];
   metadata?: Partial<ExecutionMetadata>;
   logger?: RuntimeLogger;
 };
@@ -70,6 +72,7 @@ export type RunActionOptions<
   modelResolver?: ModelResolver;
   speechResolver?: SpeechResolver;
   stores: StoreRegistry;
+  middleware?: Middleware[];
   retry?: RetryPolicy;
   responseEmitter?: ResponseEmitter;
   logger?: RuntimeLogger;

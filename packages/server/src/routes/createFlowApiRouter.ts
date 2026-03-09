@@ -2,6 +2,7 @@
  * Catch-all route adapter for framework-owned `/api/flows/[...path]` endpoints.
  */
 import type {
+  Middleware,
   ModelResolver,
   SpeechResolver,
   TranscriptionResolver
@@ -26,6 +27,7 @@ export type CreateFlowApiRouterOptions = {
   maxResponseBufferSize?: number;
   maxConcurrentStreams?: number;
   staleStreamTtlMs?: number;
+  middleware?: Middleware[];
   onError?: (error: Error, context: { method: string; path: string }) => void;
 };
 

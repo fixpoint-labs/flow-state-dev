@@ -214,6 +214,7 @@ function createFlowInstance(
     work: mergeConfig(definition.work, options?.work),
     tools,
     voice: options?.voice ?? definition.voice,
+    middleware: definition.middleware,
     tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
     costEstimator: options?.costEstimator ?? definition.costEstimator
   };
@@ -260,6 +261,7 @@ export function defineFlow<
     work: baseInstance.work as TWork,
     tools: baseInstance.tools,
     voice: baseInstance.voice,
+    middleware: baseInstance.middleware,
     tokenCounter: baseInstance.tokenCounter,
     costEstimator: baseInstance.costEstimator
   });

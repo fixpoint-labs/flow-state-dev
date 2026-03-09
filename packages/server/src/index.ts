@@ -78,5 +78,6 @@ export {
 } from "./voice";
 
 export { createHandleCache, type CachedHandleProvider } from "./handles";
+export * from "./middleware";
 
 export const serverPackageMarker = "@flow-state-dev/server";
