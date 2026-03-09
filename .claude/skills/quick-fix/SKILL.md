@@ -92,6 +92,22 @@ Launch an `Explore` sub-agent to:
 - Check if any open Linear issues are related to or affected by this change
 - Identify if this fix resolves or partially addresses other known issues
 
+#### Agent 4: Documentation & Changelog Review
+Launch a `general-purpose` sub-agent to determine what documentation and changelog updates are needed. The agent should:
+
+1. **Identify what changed semantically** — not just which files were modified, but what behavior, API surface, or developer-facing contract shifted.
+2. **Check each documentation layer** for staleness against the fix:
+   - `docs/architecture/*.md` — Does the fix change how a system works in a way that contradicts the architecture reference?
+   - `apps/docs/` (hosted site) — Are there guides, references, or getting-started pages that describe the old behavior?
+   - `packages/*/README.md` — Does the affected package's README describe the pre-fix behavior?
+   - `AGENTS.md` or `docs/contributing/best-practices.md` — Does the fix introduce a new pattern or deprecate an old one that agents/contributors should know about?
+3. **Changelog** — Determine whether `changelog.md` needs an entry. Not every fix warrants one. It does if:
+   - The fix changes observable behavior (API response shape, error messages, default values)
+   - The fix affects how developers use the framework
+   - The fix resolves a known issue that users may have worked around
+   - It does NOT need an entry for purely internal refactors or test-only changes
+4. **Return a concrete list** of files that need updating and what specifically should change in each. Don't just say "README might need updating" — say which section and what the new content should reflect.
+
 Review the sub-agent results. If they surface anything critical (a bug in the fix, a clearly better approach, a missed test case), address it before presenting to the user. For non-critical observations (possible future refactor, related issues to create), include them in the summary.
 
 ### Step 6: Update Linear Status
