@@ -160,6 +160,15 @@ export function useVoice(
     recorderRef.current = null;
 
     setIsProcessing(true);
+    const voiceMetadata = {
+      metadata: {
+        voice: {
+          inputModality: "speech" as const,
+          ttsEnabled: autoPlayTTS
+        }
+      }
+    };
+
     try {
       const audioBlob = await recorder.stop();
 
@@ -175,14 +184,14 @@ export function useVoice(
 
       if (result.text.trim().length > 0) {
         const input = buildInput(result.text);
-        await session.sendAction(options.action, input);
+        await session.sendAction(options.action, input, voiceMetadata);
       }
     } catch (error) {
       // If transcription fails, try using the interim transcript
       const fallback = interimTranscript.trim();
       if (fallback.length > 0) {
         const input = buildInput(fallback);
-        await session.sendAction(options.action, input);
+        await session.sendAction(options.action, input, voiceMetadata);
       }
     } finally {
       setIsProcessing(false);

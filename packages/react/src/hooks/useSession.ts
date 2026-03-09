@@ -77,7 +77,8 @@ export type SessionView = {
   readonly items: OutputItem[];
   sendAction: (
     action: string,
-    input: unknown
+    input: unknown,
+    options?: { metadata?: Record<string, unknown> }
   ) => Promise<ExecuteActionResponse>;
   refresh: () => Promise<void>;
 };
@@ -510,7 +511,8 @@ export function useSession(
   const sendAction = useCallback(
     async (
       action: string,
-      input: unknown
+      input: unknown,
+      actionOptions?: { metadata?: Record<string, unknown> }
     ): Promise<ExecuteActionResponse> => {
       if (sessionId === undefined) {
         throw new Error("useSession.sendAction requires a sessionId");
@@ -528,7 +530,8 @@ export function useSession(
       try {
         const postPromise = client.sendAction(action, input, {
           sessionId,
-          requestId
+          requestId,
+          metadata: actionOptions?.metadata
         });
 
         if (itemConfig.enabled) {

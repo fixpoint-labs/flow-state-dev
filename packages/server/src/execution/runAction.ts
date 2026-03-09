@@ -280,10 +280,17 @@ export async function runActionInternal<
     });
   });
 
-  // Set up TTS pipeline if the flow has voice.tts configured
+  // Set up TTS pipeline if the flow has voice.tts configured AND the client
+  // explicitly opted in (ttsEnabled: true). TTS is off by default — we don't
+  // want to synthesize audio unless the client specifically asks for it.
   let ttsHook: TTSEmitterHook | undefined;
   const voiceConfig = options.flow.voice;
-  if (voiceConfig?.tts !== undefined) {
+  const voiceMeta = options.metadata?.voice as
+    | { ttsEnabled?: boolean; inputModality?: string }
+    | undefined;
+  const ttsEnabled = voiceMeta?.ttsEnabled === true;
+
+  if (voiceConfig?.tts !== undefined && ttsEnabled) {
     ttsHook = createTTSEmitterHook({
       config: voiceConfig.tts,
       speechResolver: options.speechResolver,
