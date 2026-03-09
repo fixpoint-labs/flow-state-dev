@@ -1,7 +1,8 @@
 /**
  * Action-level orchestration runtime for request lifecycle, observers, persistence, and terminal errors.
  */
-import type { ErrorItem, ItemProvenance, MessageItem } from "@flow-state-dev/core/items";
+import type { ErrorItem, ItemProvenance, MessageItem, OutputItem } from "@flow-state-dev/core/items";
+import { isEphemeralContent } from "@flow-state-dev/core/items";
 import type {
   ActionConfig,
   BlockDefinition,
@@ -33,6 +34,7 @@ import type {
   RunActionOptions
 } from "./types";
 import { createExecutionMetadata } from "./types";
+import { createTTSEmitterHook, type TTSEmitterHook } from "../voice/tts-emitter-hook";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -96,7 +98,33 @@ function parseActionInput(action: ActionConfig, input: unknown): unknown {
 }
 
 /**
+ * Strips ephemeral content parts (e.g. output_audio) from items before
+ * persistence. Ephemeral content is streamed to the client in real time
+ * but should not be stored, since it may contain large binary payloads.
+ */
+function stripEphemeralContent(items: OutputItem[]): OutputItem[] {
+  return items.map((item) => {
+    if (item.type !== "message") {
+      return item;
+    }
+
+    const message = item as MessageItem;
+    if (message.content === undefined) {
+      return item;
+    }
+
+    const filtered = message.content.filter((c) => !isEphemeralContent(c));
+    if (filtered.length === message.content.length) {
+      return item;
+    }
+
+    return { ...message, content: filtered };
+  });
+}
+
+/**
  * Applies a partial request-record update when a record exists.
+ * Strips ephemeral content from items before writing to the store.
  */
 async function patchRequestRecord(
   stores: StoreRegistry,
@@ -108,9 +136,13 @@ async function patchRequestRecord(
     return;
   }
 
+  const sanitized = patch.items !== undefined
+    ? { ...patch, items: stripEphemeralContent(patch.items) }
+    : patch;
+
   await stores.request.set(requestId, {
     ...current,
-    ...patch,
+    ...sanitized,
     updatedAt: Date.now()
   });
 }
@@ -300,6 +332,25 @@ export async function runActionInternal<
     });
   });
 
+  // Set up TTS pipeline if the flow has voice.tts configured AND the client
+  // explicitly opted in (ttsEnabled: true). TTS is off by default — we don't
+  // want to synthesize audio unless the client specifically asks for it.
+  let ttsHook: TTSEmitterHook | undefined;
+  const voiceConfig = options.flow.voice;
+  const voiceMeta = options.metadata?.voice as
+    | { ttsEnabled?: boolean; inputModality?: string }
+    | undefined;
+  const ttsEnabled = voiceMeta?.ttsEnabled === true;
+
+  if (voiceConfig?.tts !== undefined && ttsEnabled) {
+    ttsHook = createTTSEmitterHook({
+      config: voiceConfig.tts,
+      speechResolver: options.speechResolver,
+      emitter: response
+    });
+    response.addEventObserver((event) => ttsHook!.onEvent(event));
+  }
+
   const ctx = await createExecutionContext({
     flow: options.flow,
     actionName: options.actionName,
@@ -417,6 +468,10 @@ export async function runActionInternal<
       output: result.output
     }, ctx, { internalSeams });
 
+    // Flush and drain TTS pipeline before marking request as completed
+    if (ttsHook !== undefined) {
+      await ttsHook.finalize();
+    }
     }
 
     const completedAt = Date.now();

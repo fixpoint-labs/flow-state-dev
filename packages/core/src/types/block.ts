@@ -105,6 +105,16 @@ export interface BlockContext<
   emitLLMContext(text: string): void;
   emitStatus(message: string): void;
 
+  /**
+   * Runtime metadata for the current request. Available during server-side
+   * execution; undefined in test harnesses or static analysis contexts.
+   * Blocks can use this to access client-supplied metadata (e.g., voice
+   * settings) passed through `sendAction`.
+   */
+  requestRuntime?: {
+    metadata?: Record<string, unknown>;
+  };
+
   /** @internal Server-side instrumentation hooks. Not part of the public API. */
   _runtimeHooks?: {
     onBlockStart?: (blockName: string, blockKind: string, input: unknown) => void;

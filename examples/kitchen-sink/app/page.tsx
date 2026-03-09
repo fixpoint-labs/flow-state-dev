@@ -7,6 +7,7 @@ import {
   useFlow,
   useSession,
   useClientData,
+  useVoice,
   type RendererRegistry,
 } from "@flow-state-dev/react";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ import { ClientDataBar } from "@/components/client-data-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactViewer } from "@/components/artifact-viewer";
 import { SuggestionRow } from "@/components/suggestion-row";
+import { VoiceToggle } from "@/components/voice-toggle";
 
 const renderers: RendererRegistry = {
   message: KitchenSinkMessage,
@@ -71,8 +73,15 @@ function KitchenSinkApp() {
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("chat");
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("chat");
   const [isSessionDrawerOpen, setIsSessionDrawerOpen] = useState(false);
+
+  const voice = useVoice(session, {
+    action: "run",
+    buildInput: (text) => ({ message: text, mode }),
+    autoPlayTTS: ttsEnabled,
+  });
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
 
@@ -199,6 +208,9 @@ function KitchenSinkApp() {
               rlmContext={rlmContext}
               isDisabled={isDisabled}
               session={session}
+              voice={voice}
+              ttsEnabled={ttsEnabled}
+              onToggleTTS={() => setTtsEnabled((v) => !v)}
               onSetMessage={setMessage}
               onSetMode={setMode}
               onSetRlmContext={setRlmContext}
@@ -239,6 +251,9 @@ function KitchenSinkApp() {
             mode={mode}
             isDisabled={isDisabled}
             session={session}
+            voice={voice}
+            ttsEnabled={ttsEnabled}
+            onToggleTTS={() => setTtsEnabled((v) => !v)}
             onSetMessage={setMessage}
             onSetMode={setMode}
             onSubmit={handleSubmit}
@@ -273,6 +288,9 @@ interface ChatPanelProps {
   mode: Mode;
   isDisabled: boolean;
   session: ReturnType<typeof useSession>;
+  voice: ReturnType<typeof useVoice>;
+  ttsEnabled: boolean;
+  onToggleTTS: () => void;
   onSetMessage: (value: string) => void;
   onSetMode: (value: Mode) => void;
   onSubmit: (msg: PromptInputMessage) => Promise<void>;
@@ -284,6 +302,9 @@ function ChatPanel({
   mode,
   isDisabled,
   session,
+  voice,
+  ttsEnabled,
+  onToggleTTS,
   onSetMessage,
   onSetMode,
   onSubmit,
@@ -314,6 +335,7 @@ function ChatPanel({
         <div className="mx-auto max-w-3xl px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:px-4 sm:pb-4">
           <div className="mb-2 flex items-center gap-3">
             <ModeSelector mode={mode} onModeChange={onSetMode} disabled={isDisabled} />
+            <VoiceToggle voice={voice} disabled={isDisabled} ttsEnabled={ttsEnabled} onToggleTTS={onToggleTTS} />
           </div>
           <PromptInput onSubmit={onSubmit}>
             <PromptInputTextarea

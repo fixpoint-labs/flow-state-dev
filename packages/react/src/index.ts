@@ -66,4 +66,22 @@ export {
   type FlowProviderProps
 } from "./context/FlowContext";
 
+export {
+  useVoice,
+  createAudioRecorder,
+  createAudioPlayer,
+  createSpeechRecognition,
+  isSpeechRecognitionAvailable,
+  type AudioPlayer,
+  type AudioPlayerCallbacks,
+  type AudioPlayerState,
+  type AudioRecorder,
+  type AudioRecorderOptions,
+  type AudioRecorderState,
+  type SpeechRecognitionCallbacks,
+  type SpeechRecognitionHandle,
+  type UseVoiceOptions,
+  type VoiceState
+} from "./voice";
+
 export const reactPackageMarker = "@flow-state-dev/react";

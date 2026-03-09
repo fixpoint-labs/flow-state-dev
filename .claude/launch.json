@@ -10,7 +10,7 @@
     {
       "name": "kitchen-sink",
       "runtimeExecutable": "/bin/bash",
-      "runtimeArgs": ["-c", "source ~/.nvm/nvm.sh && pnpm --filter kitchen-sink dev -- --port 3002"],
+      "runtimeArgs": ["-c", "source ~/.nvm/nvm.sh && pnpm --filter @flow-state-dev/example-kitchen-sink dev -p 3002"],
       "port": 3002
     },
     {

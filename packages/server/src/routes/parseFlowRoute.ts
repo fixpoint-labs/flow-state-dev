@@ -13,6 +13,7 @@ export type ParsedFlowRoute =
   | { kind: "create_session"; flowKind: string }
   | { kind: "delete_session"; sessionId: string }
   | { kind: "user_stream"; userId: string }
+  | { kind: "transcribe" }
   | { kind: "not_found" };
 
 function cleanSegments(path: string[] | undefined): string[] {
@@ -160,6 +161,14 @@ export function parseFlowRoute(
       kind: "create_session",
       flowKind: segments[0]
     };
+  }
+
+  if (
+    normalizedMethod === "POST" &&
+    segments.length === 1 &&
+    segments[0] === "transcribe"
+  ) {
+    return { kind: "transcribe" };
   }
 
   return { kind: "not_found" };
