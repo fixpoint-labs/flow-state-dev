@@ -53,6 +53,37 @@ docs/
 | `pnpm --filter @flow-state-dev/server typecheck` | Single package | Typecheck one package |
 | `pnpm --filter @flow-state-dev/example-kitchen-sink dev` | Example | Run kitchen-sink dev server |
 
+
+## Versioning and Publishing
+
+This repo uses [Changesets](https://github.com/changesets/changesets) for semver, changelogs, and coordinated workspace version bumps.
+
+| Command | Purpose |
+|---------|---------|
+| `pnpm changeset` | Create a release note for modified publishable packages |
+| `pnpm version-packages` | Apply pending changesets to versions + package changelogs |
+| `pnpm release` | Build `packages/*` and publish with npm provenance |
+
+### CI release automation
+
+- `.github/workflows/release.yml` runs on `main` and uses `changesets/action` to:
+  - open/update a **Version Packages** PR when pending changesets exist
+  - publish to npm (with `--provenance`) after the version PR is merged
+  - create GitHub releases from generated changelogs
+- `.github/workflows/snapshot-release.yml` supports manual snapshot/canary publishing from feature branches via `workflow_dispatch`.
+
+### Required repository secrets
+
+- `NPM_TOKEN`: npm automation token with publish access to `@flow-state-dev` packages
+
+### npm organization checklist
+
+Before first publish, verify the npm org is configured:
+
+- `@flow-state-dev` npm organization exists
+- automation token account is a member with publish permissions
+- package access defaults to public (or package-level `publishConfig.access` remains `public`)
+
 ## Build Order
 
 Packages have a dependency hierarchy. When building from scratch:

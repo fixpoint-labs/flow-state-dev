@@ -1,0 +1,46 @@
+name: Snapshot Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: npm dist-tag for snapshot packages
+        required: true
+        default: canary
+
+jobs:
+  snapshot:
+    name: Publish Snapshot
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Version packages for snapshot
+        run: pnpm changeset version --snapshot "${{ github.event.inputs.tag }}"
+
+      - name: Build packages
+        run: pnpm --filter './packages/*' -r build
+
+      - name: Publish snapshot packages
+        run: pnpm changeset publish --tag "${{ github.event.inputs.tag }}" --no-git-tag --provenance
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Restore repository state
+        if: always()
+        run: git reset --hard HEAD

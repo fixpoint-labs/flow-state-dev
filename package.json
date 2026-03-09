@@ -11,11 +11,16 @@
     "test:watch": "pnpm -r --parallel --stream --if-present test:watch",
     "docs:dev": "pnpm --filter @flow-state-dev/docs dev",
     "docs:build": "pnpm --filter @flow-state-dev/docs build",
-    "docs:serve": "pnpm --filter @flow-state-dev/docs serve"
+    "docs:serve": "pnpm --filter @flow-state-dev/docs serve",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm --filter \"./packages/*\" -r build && changeset publish --provenance",
+    "release:snapshot": "changeset version --snapshot && pnpm --filter \"./packages/*\" -r build && changeset publish --tag canary --no-git-tag --provenance"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^3.2.4",
     "typescript": "^5.7.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "@changesets/cli": "^2.29.5"
   }
 }
