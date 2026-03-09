@@ -310,7 +310,7 @@ const kitchenSinkFlow = defineFlow({
       artifacts: {
         stateSchema: artifactResourceStateSchema,
         writable: true
-      }
+      },
     },
 
     // clientData entries are derived values computed from scope state and

@@ -32,7 +32,7 @@ import { KitchenSinkStatus } from "@/components/kitchen-sink-status";
 import { KitchenSinkError } from "@/components/kitchen-sink-error";
 
 import { SessionSidebar } from "@/components/session-sidebar";
-import { ModeSelector } from "@/components/mode-selector";
+import { ModeSelector, type Mode } from "@/components/mode-selector";
 import { ClientDataBar } from "@/components/client-data-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactViewer } from "@/components/artifact-viewer";
@@ -71,7 +71,7 @@ function KitchenSinkApp() {
   });
 
   const [message, setMessage] = useState("");
-  const [mode, setMode] = useState<"chat" | "plan" | "review">("chat");
+  const [mode, setMode] = useState<Mode>("chat");
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("chat");
@@ -100,7 +100,10 @@ function KitchenSinkApp() {
       const text = msg.text.trim();
       if (!flow.activeSessionId || text.length === 0) return;
       setMessage("");
-      await session.sendAction("run", { message: text, mode });
+      await session.sendAction("run", {
+        message: text,
+        mode,
+      });
     },
     [flow.activeSessionId, mode, session]
   );
@@ -280,14 +283,14 @@ function KitchenSinkApp() {
 
 interface ChatPanelProps {
   message: string;
-  mode: "chat" | "plan" | "review";
+  mode: Mode;
   isDisabled: boolean;
   session: ReturnType<typeof useSession>;
   voice: ReturnType<typeof useVoice>;
   ttsEnabled: boolean;
   onToggleTTS: () => void;
   onSetMessage: (value: string) => void;
-  onSetMode: (value: "chat" | "plan" | "review") => void;
+  onSetMode: (value: Mode) => void;
   onSubmit: (msg: PromptInputMessage) => Promise<void>;
   onSuggestionClick: (text: string) => void;
 }
