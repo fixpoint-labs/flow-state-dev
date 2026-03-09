@@ -7,7 +7,8 @@ import type {
   BlockDefinition,
   FlowInstance,
   ModelResolver,
-  RetryPolicy
+  RetryPolicy,
+  SpeechResolver
 } from "@flow-state-dev/core/types";
 import type { ExecutionContext } from "../context/types";
 import type { FlowError, FlowErrorScope } from "../errors/flow-error";
@@ -67,6 +68,7 @@ export type RunActionOptions<
   metadata?: Record<string, unknown>;
   signal?: AbortSignal;
   modelResolver?: ModelResolver;
+  speechResolver?: SpeechResolver;
   stores: StoreRegistry;
   retry?: RetryPolicy;
   responseEmitter?: ResponseEmitter;

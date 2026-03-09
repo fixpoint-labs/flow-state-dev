@@ -117,6 +117,30 @@ const { items, status, isStreaming } = useRequestStream({
 });
 ```
 
+### `useVoice(session, options)`
+
+Voice input/output composing with `useSession`.
+
+```ts
+import { useVoice } from "@flow-state-dev/react";
+
+const voice = useVoice(session, {
+  action: "run",
+  buildInput: (transcript) => ({ message: transcript }),
+});
+
+voice.isListening;       // boolean — mic is recording
+voice.isSpeaking;        // boolean — audio playback active
+voice.isProcessing;      // boolean — server transcribing
+voice.interimTranscript; // string — browser speech recognition (interim)
+
+voice.startListening();  // start recording
+voice.stopListening();   // stop recording, transcribe, send action
+voice.stopSpeaking();    // stop audio playback
+```
+
+See the [Voice guide](/docs/guides/voice) for full usage details.
+
 ## Renderers
 
 ### `ItemRenderer`

@@ -42,6 +42,17 @@ export type {
   UserConfig,
   WorkConfig
 } from "./flow";
+
+export type {
+  SpeechModel,
+  SpeechResolver,
+  SpeechResult,
+  TranscriptionModel,
+  TranscriptionResolver,
+  TranscriptionResult,
+  TTSConfig,
+  VoiceConfig
+} from "./speech";
 export type {
   GeneratorModel,
   GeneratorModelResult,

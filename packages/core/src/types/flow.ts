@@ -7,6 +7,7 @@ import type {
 } from "./resource";
 import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
+import type { VoiceConfig } from "./speech";
 
 type InferResourceHandles<TResources extends Record<string, ResourceConfig>> = {
   [K in keyof TResources]: ResourceHandle<StateOf<TResources[K]>>;
@@ -156,6 +157,7 @@ export type FlowDefinition<
   project?: TProject;
   work?: TWork;
   tools?: ToolsConfig;
+  voice?: VoiceConfig;
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
 
@@ -180,6 +182,7 @@ export type FlowInstanceOptions<
   project?: TProject;
   work?: TWork;
   tools?: ToolsConfig;
+  voice?: VoiceConfig;
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
 };
@@ -202,6 +205,7 @@ export type FlowInstance<
   project?: TProject;
   work?: TWork;
   tools?: ToolsConfig;
+  voice?: VoiceConfig;
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
 };
@@ -223,6 +227,7 @@ export type FlowType<
   project?: TProject;
   work?: TWork;
   tools?: ToolsConfig;
+  voice?: VoiceConfig;
 
   (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TProject, TWork>): FlowInstance<
     TActions,

@@ -81,3 +81,14 @@ export type {
   ModelResolver,
   PrepareStepFn
 } from "./types/model";
+
+export type {
+  SpeechModel,
+  SpeechResolver,
+  SpeechResult,
+  TranscriptionModel,
+  TranscriptionResolver,
+  TranscriptionResult,
+  TTSConfig,
+  VoiceConfig
+} from "./types/speech";

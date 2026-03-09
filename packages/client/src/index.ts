@@ -50,4 +50,11 @@ export type {
 
 export { ClientHttpError } from "./types";
 
+export {
+  transcribe,
+  type TranscribeOptions,
+  type TranscribeRequest,
+  type TranscribeResponse
+} from "./transcription/transcribe";
+
 export const clientPackageMarker = "@flow-state-dev/client";

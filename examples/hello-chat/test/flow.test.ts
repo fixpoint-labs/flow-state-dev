@@ -53,11 +53,9 @@ function withGeneratorMocks(chatFixture: ReturnType<typeof createChatFixture>) {
   };
 }
 
-let fetchSpy: ReturnType<typeof vi.spyOn> | undefined;
-
 describe("hello-chat", () => {
   beforeAll(() => {
-    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       throw new Error(
         `Unexpected network request in mocked hello-chat tests: ${String(input)}`
       );
@@ -65,7 +63,7 @@ describe("hello-chat", () => {
   });
 
   afterAll(() => {
-    fetchSpy?.mockRestore();
+    vi.restoreAllMocks();
   });
 
   it("completes a chat action", async () => {

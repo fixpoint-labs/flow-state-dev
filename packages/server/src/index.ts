@@ -42,6 +42,20 @@ export type {
   ResolveAiSdkLanguageModel
 } from "./models/createAiSdkModelResolver";
 export {
+  createAiSdkSpeechResolver,
+  wrapAiSdkSpeechModel
+} from "./models/createAiSdkSpeechResolver";
+export type {
+  ResolveAiSdkSpeechModel
+} from "./models/createAiSdkSpeechResolver";
+export {
+  createAiSdkTranscriptionResolver,
+  wrapAiSdkTranscriptionModel
+} from "./models/createAiSdkTranscriptionResolver";
+export type {
+  ResolveAiSdkTranscriptionModel
+} from "./models/createAiSdkTranscriptionResolver";
+export {
   FlowError,
   ModelError,
   NetworkError,
@@ -52,5 +66,15 @@ export {
   AmbiguousBlockNameError
 } from "./errors/flow-error";
 export { normalizeError } from "./errors/normalize-error";
+
+export {
+  createSentenceBuffer,
+  createTTSPipeline,
+  createTTSEmitterHook,
+  type SentenceBuffer,
+  type TTSPipeline,
+  type TTSPipelineOptions,
+  type TTSEmitterHook
+} from "./voice";
 
 export const serverPackageMarker = "@flow-state-dev/server";
