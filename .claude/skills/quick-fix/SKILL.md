@@ -1,5 +1,5 @@
 ---
-name: quick-fix
+name: fsd:quick-fix
 description: Log an issue to Linear and immediately start fixing it. Handles duplicate detection, ticket creation, implementation, quality review via sub-agents, and Linear status updates — only pausing for user review before committing.
 argument-hint: "<description of the issue or improvement>"
 ---
