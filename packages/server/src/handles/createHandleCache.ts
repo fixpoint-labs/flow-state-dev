@@ -10,6 +10,9 @@ type CacheEntry<T> = {
  * A {@link HandleProvider} that also supports explicit disposal of all entries.
  */
 export interface CachedHandleProvider<THandle> extends HandleProvider<THandle> {
+  /** Release a cached handle by key, calling onEvict and provider.release(). Always defined on cached providers. */
+  release(key: string): Promise<void>;
+
   /** Release all cached handles, calling onEvict for each. */
   disposeAll(): void;
 
@@ -78,22 +81,22 @@ export function createHandleCache<THandle>(
     return setTimeout(() => evictEntry(key), ttlMs);
   }
 
-  return {
-    async resolve(key: string): Promise<THandle> {
-      // Cache hit — refresh TTL and return
-      const existing = cache.get(key);
-      if (existing) {
-        clearTimeout(existing.timer);
-        existing.lastAccess = ++accessCounter;
-        existing.timer = resetTimer(key);
-        return existing.handle;
-      }
+  async function resolve(key: string): Promise<THandle> {
+    // Cache hit — refresh TTL and return
+    const existing = cache.get(key);
+    if (existing) {
+      clearTimeout(existing.timer);
+      existing.lastAccess = ++accessCounter;
+      existing.timer = resetTimer(key);
+      return existing.handle;
+    }
 
-      // Deduplicate concurrent resolve calls for the same key
-      const inflight = pending.get(key);
-      if (inflight) return inflight;
+    // Deduplicate concurrent resolve calls for the same key
+    const inflight = pending.get(key);
+    if (inflight) return inflight;
 
-      const promise = provider.resolve(key).then((handle) => {
+    const promise = provider.resolve(key).then(
+      (handle: THandle) => {
         pending.delete(key);
 
         // Evict LRU if at capacity
@@ -108,28 +111,36 @@ export function createHandleCache<THandle>(
         });
 
         return handle;
-      }).catch((err) => {
+      },
+      (err: unknown) => {
         pending.delete(key);
         throw err;
-      });
-
-      pending.set(key, promise);
-      return promise;
-    },
-
-    async release(key: string): Promise<void> {
-      evictEntry(key);
-      await provider.release?.(key);
-    },
-
-    disposeAll(): void {
-      for (const key of [...cache.keys()]) {
-        evictEntry(key);
       }
-    },
+    );
 
+    pending.set(key, promise);
+    return promise;
+  }
+
+  async function release(key: string): Promise<void> {
+    evictEntry(key);
+    await provider.release?.(key);
+  }
+
+  function disposeAll(): void {
+    for (const key of [...cache.keys()]) {
+      evictEntry(key);
+    }
+  }
+
+  const result: CachedHandleProvider<THandle> = {
+    resolve,
+    release,
+    disposeAll,
     get size(): number {
       return cache.size;
     },
   };
+
+  return result;
 }

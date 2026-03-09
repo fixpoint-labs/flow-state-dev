@@ -92,3 +92,5 @@ export type {
   TTSConfig,
   VoiceConfig
 } from "./types/speech";
+
+export type { HandleCacheOptions, HandleProvider } from "./types/handle";
