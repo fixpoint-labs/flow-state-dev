@@ -205,7 +205,6 @@ function KitchenSinkApp() {
             <ChatPanel
               message={message}
               mode={mode}
-              rlmContext={rlmContext}
               isDisabled={isDisabled}
               session={session}
               voice={voice}
@@ -213,7 +212,6 @@ function KitchenSinkApp() {
               onToggleTTS={() => setTtsEnabled((v) => !v)}
               onSetMessage={setMessage}
               onSetMode={setMode}
-              onSetRlmContext={setRlmContext}
               onSubmit={handleSubmit}
               onSuggestionClick={handleSuggestionClick}
             />
