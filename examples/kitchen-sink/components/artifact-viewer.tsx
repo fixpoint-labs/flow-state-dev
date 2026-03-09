@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import { FileText, X, ChevronLeft } from "lucide-react";
 
 type ArtifactDetail = { id: string; title: string; content: string; updatedAt: number };
@@ -16,9 +16,10 @@ interface ArtifactViewerProps {
   onSaveArtifact: (artifact: { id: string; title: string; content: string }) => Promise<void>;
   onClose: () => void;
   onBack: () => void;
+  className?: string;
 }
 
-export function ArtifactViewer({ artifact, isSaving, onSaveArtifact, onClose, onBack }: ArtifactViewerProps) {
+export function ArtifactViewer({ artifact, isSaving, onSaveArtifact, onClose, onBack, className }: ArtifactViewerProps) {
   const [title, setTitle] = useState(artifact.title);
   const [content, setContent] = useState(artifact.content);
 
@@ -30,8 +31,7 @@ export function ArtifactViewer({ artifact, isSaving, onSaveArtifact, onClose, on
   const hasUnsavedChanges = title !== artifact.title || content !== artifact.content;
 
   return (
-    <aside className="flex h-full w-[480px] shrink-0 flex-col border-l bg-background">
-      {/* Header */}
+    <aside className={cn("flex h-full w-full min-w-0 shrink-0 flex-col border-l bg-background sm:w-[480px]", className)}>
       <div className="flex items-center gap-2 px-3 py-2.5">
         <Button variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back to artifact list">
           <ChevronLeft className="h-4 w-4" />
@@ -44,8 +44,7 @@ export function ArtifactViewer({ artifact, isSaving, onSaveArtifact, onClose, on
       </div>
       <Separator />
 
-      {/* Edit form */}
-      <div className="flex flex-1 flex-col gap-3 p-4">
+      <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4">
         <Input
           aria-label="Artifact title"
           value={title}
@@ -56,7 +55,7 @@ export function ArtifactViewer({ artifact, isSaving, onSaveArtifact, onClose, on
           aria-label="Artifact content"
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          className="flex-1 resize-none"
+          className="min-h-0 flex-1 resize-none"
           disabled={isSaving}
         />
         <div className="flex items-center justify-between">

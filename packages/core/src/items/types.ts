@@ -28,6 +28,15 @@ export type BlockOutputItem = OutputItemBase & {
   type: "block_output";
   blockName: string;
   output: unknown;
+  modelUsage?: {
+    model: string;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    providerMetadata?: Record<string, Record<string, unknown>>;
+    cacheReadTokens?: number;
+    cacheCreationTokens?: number;
+  };
   toolCall?: {
     callId: string;
     arguments: string;

@@ -10,6 +10,7 @@ import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
 import type { Content } from "../items/content";
 import type { JsonObject } from "../schema/common";
+import type { GeneratorModelResult, GeneratorModelUsage } from "./model";
 
 export type BlockKind = "handler" | "generator" | "sequencer" | "router";
 
@@ -120,6 +121,11 @@ export interface BlockContext<
     onBlockComplete?: (blockName: string, blockKind: string, output: unknown, durationMs: number) => void;
     onBlockError?: (blockName: string, blockKind: string, error: unknown, durationMs: number) => void;
     onRouteSelected?: (routerName: string, selectedBlockName: string) => void;
+    onGeneratorModelResult?: (payload: {
+      model: string;
+      usage?: GeneratorModelUsage;
+      providerMetadata?: GeneratorModelResult["providerMetadata"];
+    }) => void;
   };
 
   /** @internal Runtime hook that executes nested blocks with parent-chain metadata. */
@@ -257,4 +263,3 @@ export type InferTargetStatesFromSchemas<TSchemas> =
   TSchemas extends Record<string, ZodTypeAny>
     ? { [K in keyof TSchemas]: StateHandle<z.infer<TSchemas[K]>> | undefined }
     : Record<string, never>;
-

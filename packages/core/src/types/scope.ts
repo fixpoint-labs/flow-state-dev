@@ -1,6 +1,7 @@
 import type { ItemStatus } from "../items/types";
 import type { JsonObject } from "../schema/common";
 import type { ResourceHandle, ResourceRegistry } from "./resource";
+import type { CostEstimate, TokenLedger } from "./flow";
 import type { ScopeStateOps } from "./state";
 
 export type ScopeType = "request" | "session" | "user" | "project";
@@ -73,6 +74,8 @@ export type JournalEntryInput = Omit<JournalEntry, "id" | "ts">;
 export type RequestScopeHandle<TState extends object = Record<string, unknown>> = {
   identity: ScopeIdentity;
   state: Readonly<TState>;
+  tokenUsage: TokenLedger;
+  costEstimate: CostEstimate;
 } & ScopeStateOps<TState>;
 
 export type SessionScopeHandle<

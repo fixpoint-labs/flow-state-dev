@@ -216,3 +216,9 @@ The full request execution sequence:
 ## Canonical Authority
 
 For full type signatures, execution pseudocode, and edge cases, see `../preperation/architecture/EXECUTION_AND_ERRORS.md`.
+
+
+### Token budget enforcement
+
+Actions may define `tokenBudget` with `maxTotalTokens`, optional `warnAt`, and `onExceeded` policy (`error` | `stop` | `warn`). Runtime emits warning status items with `system.token_budget_warning` detail when thresholds are crossed.
+

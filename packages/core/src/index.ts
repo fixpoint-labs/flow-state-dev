@@ -19,6 +19,14 @@ export {
   sequencer
 } from "./blocks";
 export { defineFlow } from "./flow";
+export {
+  DEFAULT_MODEL_LOOKUP,
+  findModelEntry,
+  modelPricingEstimator,
+  type ModelLookupEntry
+} from "./adapters/model-lookup";
+export { createEstimateTokenCounter, estimateTokenCounter } from "./adapters/token-counter";
+export { createTiktokenCounter } from "./adapters/tiktoken";
 export * as utility from "./utility";
 export type {
   BranchStep,
@@ -47,6 +55,8 @@ export type {
   ToolBinding
 } from "./blocks";
 export type {
+  CostEstimate,
+  CostEstimator,
   ActionConfig,
   ClientDataComputeFn,
   ClientDataContext,
@@ -54,9 +64,14 @@ export type {
   FlowInstance,
   FlowInstanceOptions,
   FlowType,
+  ModelUsageEntry,
+  TokenLedger,
   ToolLifecycleEvent,
   ToolsConfig
 } from "./types/flow";
+export type {
+  TokenCounter,
+} from "./types/tokens";
 export type {
   GeneratorModel,
   GeneratorModelResult,

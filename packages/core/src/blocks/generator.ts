@@ -595,6 +595,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
 
   let messageItem: Record<string, unknown> | null = null;
   let messageEmitted = false;
+  let finalResult: GeneratorModelResult | undefined;
 
   // Stream text deltas (tool calls are handled internally by the AI SDK)
   let accumulated = "";
@@ -694,6 +695,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
         contentIndex: contentPartIndex,
         delta: chunk.textDelta
       });
+    } else if (chunk.type === "finish") {
+      finalResult = chunk.fullResult;
     }
   }
 
@@ -764,6 +767,12 @@ async function executeStreamingGeneration<TInput, TOutput>(
     content: [{ type: "output_text" as const, text: accumulated }]
   };
   await ctx.response.emit({ type: "item.done", item: completedItem });
+
+  ctx._runtimeHooks?.onGeneratorModelResult?.({
+    model: model.modelId,
+    usage: finalResult?.usage,
+    providerMetadata: finalResult?.providerMetadata
+  });
 
   return parsed.data as TOutput;
 }
@@ -951,6 +960,11 @@ export function generator<
       });
 
       const candidate = resolveGenerationCandidate(generation);
+      ctx._runtimeHooks?.onGeneratorModelResult?.({
+        model: model.modelId,
+        usage: generation.usage,
+        providerMetadata: generation.providerMetadata
+      });
       if (candidate === undefined) {
         throw new Error(`Generator "${blockName}" did not produce output after ${maxSteps} step(s)`);
       }
@@ -959,7 +973,7 @@ export function generator<
       const state: GeneratorLoopState<TInput> = {
         iteration: 0,
         input,
-        model: modelId,
+        model: model.modelId,
         prompt,
         messages,
         toolResults: [],

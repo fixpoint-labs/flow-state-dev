@@ -19,6 +19,7 @@ export type {
 
 export type {
   ActionConfig,
+  CostEstimator,
   ClientDataComputeFn,
   ClientDataContext,
   FlowActionBlock,
@@ -30,6 +31,7 @@ export type {
   FlowType,
   HookHandler,
   InferFlowBlockContext,
+  CostEstimate,
   InferFlowStateMap,
   InferScopeStateFromConfig,
   ProjectConfig,
@@ -93,6 +95,8 @@ export type {
   SessionScopeHandle,
   UserScopeHandle
 } from "./scope";
+
+export type { TokenCounter } from "./tokens";
 
 export type { CASOptions, ScopeStateOps, StateContainer } from "./state";
 

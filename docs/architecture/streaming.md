@@ -172,3 +172,9 @@ This enables UI grouping, debugging, and devtools timeline views.
 ## Canonical Authority
 
 For full type definitions, edge cases, and user-stream event contracts, see `../preperation/architecture/STREAMING.md`.
+
+
+### Generator usage metadata on `block_output`
+
+Generator `block_output` items may include `modelUsage` metadata with `model`, `promptTokens`, `completionTokens`, `totalTokens`, optional `providerMetadata`, and Anthropic cache convenience fields (`cacheReadTokens`, `cacheCreationTokens`). This metadata represents only that generator call; summing across `block_output` items gives total request usage.
+

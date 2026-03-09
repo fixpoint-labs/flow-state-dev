@@ -93,4 +93,80 @@ describe("createExecutionContext", () => {
     expect(ctx.session.identity.type).toBe("session");
     expect(ctx.user.identity.id).toBe("user_no_session");
   });
+
+  it("applies token-based llm history limit using the active model", async () => {
+    const block = handler<{ value: string }, { ok: boolean }>({
+      name: "ctx-handler",
+      execute: async (_input, ctx) => {
+        ctx.resolveModel("openai:gpt-4o-mini", "ctx-handler");
+        return { ok: true };
+      }
+    });
+
+    const flow = defineFlow({
+      kind: "ctx-flow-token-limit",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block
+        }
+      },
+      tokenCounter: {
+        async count(text: string) {
+          return text.length;
+        },
+        async countMessages(messages) {
+          return JSON.stringify(messages[0]?.content ?? "").length;
+        }
+      }
+    })();
+
+    const stores = createInMemoryStores();
+    await stores.request.set("req_prev", {
+      id: "req_prev",
+      flowKind: flow.kind,
+      actionName: "run",
+      sessionId: "sess_token",
+      userId: "user_token",
+      status: "completed",
+      startedAtMs: 1,
+      updatedAt: 1,
+      items: [
+        {
+          id: "item1",
+          type: "message",
+          status: "completed",
+          requestId: "req_prev",
+          itemIndex: 0,
+          ts: 1,
+          role: "user",
+          content: [{ type: "output_text", text: "short" }],
+          provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" }
+        } as any,
+        {
+          id: "item2",
+          type: "message",
+          status: "completed",
+          requestId: "req_prev",
+          itemIndex: 1,
+          ts: 2,
+          role: "assistant",
+          content: [{ type: "output_text", text: "this is a longer message" }],
+          provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" }
+        } as any
+      ]
+    } as any);
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_cur",
+      sessionId: "sess_token",
+      userId: "user_token",
+      stores
+    });
+
+    const messages = await ctx.session.items.llm({ limit: { tokens: 28 } });
+    expect(messages).toHaveLength(1);
+  });
 });

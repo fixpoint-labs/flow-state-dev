@@ -13,6 +13,7 @@ interface SessionSidebarProps {
   isLoading?: boolean;
   onNewChat: () => void;
   onSelectSession: (id: string) => void;
+  className?: string;
 }
 
 export function SessionSidebar({
@@ -21,9 +22,10 @@ export function SessionSidebar({
   isLoading,
   onNewChat,
   onSelectSession,
+  className,
 }: SessionSidebarProps) {
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r bg-muted/30">
+    <aside className={cn("flex h-full w-64 shrink-0 flex-col border-r bg-muted/30", className)}>
       <div className="p-3">
         <Button
           variant="outline"
