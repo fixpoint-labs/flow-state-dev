@@ -11,7 +11,6 @@ const nextConfig = {
     "@flow-state-dev/client",
     "@flow-state-dev/react",
     "@flow-state-dev/server",
-    "@flow-state-dev/patterns",
   ],
   turbopack: {
     root: resolve(__dirname, "../../"),

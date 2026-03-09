@@ -2,7 +2,7 @@
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-export type Mode = "chat" | "plan" | "review" | "rlm";
+export type Mode = "chat" | "plan" | "review";
 
 interface ModeSelectorProps {
   mode: Mode;
@@ -22,9 +22,6 @@ export function ModeSelector({ mode, onModeChange, disabled }: ModeSelectorProps
         </TabsTrigger>
         <TabsTrigger value="review" disabled={disabled} className="text-xs">
           Review
-        </TabsTrigger>
-        <TabsTrigger value="rlm" disabled={disabled} className="text-xs">
-          RLM
         </TabsTrigger>
       </TabsList>
     </Tabs>

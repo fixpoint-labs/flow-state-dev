@@ -70,7 +70,6 @@ function KitchenSinkApp() {
 
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("chat");
-  const [rlmContext, setRlmContext] = useState("");
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("chat");
   const [isSessionDrawerOpen, setIsSessionDrawerOpen] = useState(false);
@@ -95,10 +94,9 @@ function KitchenSinkApp() {
       await session.sendAction("run", {
         message: text,
         mode,
-        ...(mode === "rlm" && rlmContext.trim() ? { context: rlmContext } : {})
       });
     },
-    [flow.activeSessionId, mode, rlmContext, session]
+    [flow.activeSessionId, mode, session]
   );
 
   const handleNewSession = useCallback(async () => {
@@ -239,12 +237,10 @@ function KitchenSinkApp() {
           <ChatPanel
             message={message}
             mode={mode}
-            rlmContext={rlmContext}
             isDisabled={isDisabled}
             session={session}
             onSetMessage={setMessage}
             onSetMode={setMode}
-            onSetRlmContext={setRlmContext}
             onSubmit={handleSubmit}
             onSuggestionClick={handleSuggestionClick}
           />
@@ -275,12 +271,10 @@ function KitchenSinkApp() {
 interface ChatPanelProps {
   message: string;
   mode: Mode;
-  rlmContext: string;
   isDisabled: boolean;
   session: ReturnType<typeof useSession>;
   onSetMessage: (value: string) => void;
   onSetMode: (value: Mode) => void;
-  onSetRlmContext: (value: string) => void;
   onSubmit: (msg: PromptInputMessage) => Promise<void>;
   onSuggestionClick: (text: string) => void;
 }
@@ -288,12 +282,10 @@ interface ChatPanelProps {
 function ChatPanel({
   message,
   mode,
-  rlmContext,
   isDisabled,
   session,
   onSetMessage,
   onSetMode,
-  onSetRlmContext,
   onSubmit,
   onSuggestionClick,
 }: ChatPanelProps) {
@@ -323,20 +315,10 @@ function ChatPanel({
           <div className="mb-2 flex items-center gap-3">
             <ModeSelector mode={mode} onModeChange={onSetMode} disabled={isDisabled} />
           </div>
-          {mode === "rlm" && (
-            <textarea
-              className="mb-2 w-full rounded-lg border bg-muted/50 px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              placeholder="Paste the context document here (the large text the RLM will explore via tools)..."
-              rows={4}
-              value={rlmContext}
-              onChange={(e) => onSetRlmContext(e.target.value)}
-              disabled={isDisabled}
-            />
-          )}
           <PromptInput onSubmit={onSubmit}>
             <PromptInputTextarea
               name="message"
-              placeholder={mode === "rlm" ? "Ask a question about the context above..." : `Send a message in ${mode} mode...`}
+              placeholder={`Send a message in ${mode} mode...`}
               value={message}
               onChange={(e) => onSetMessage(e.target.value)}
               disabled={isDisabled}
@@ -344,7 +326,7 @@ function ChatPanel({
             <PromptInputSubmit
               className="mr-2 sm:mr-4"
               status={session.isStreaming ? "streaming" : "ready"}
-              disabled={isDisabled || message.trim().length === 0 || (mode === "rlm" && rlmContext.trim().length === 0)}
+              disabled={isDisabled || message.trim().length === 0}
             />
           </PromptInput>
         </div>

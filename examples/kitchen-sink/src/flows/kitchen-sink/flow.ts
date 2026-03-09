@@ -43,10 +43,6 @@ import {
   modeSchema,
   artifactResourceStateSchema
 } from "./schemas";
-import {
-  rlmPipeline,
-  contextResourceStateSchema
-} from "@flow-state-dev/patterns";
 
 const MODEL_ID = "gpt-5-mini";
 // ---------------------------------------------------------------------------
@@ -58,8 +54,7 @@ const MODEL_ID = "gpt-5-mini";
 
 const inputSchema = z.object({
   message: z.string().min(1),
-  mode: modeSchema.default("chat"),
-  context: z.string().optional()
+  mode: modeSchema.default("chat")
 });
 
 // Session state lives for the duration of a session. Every block that reads
@@ -228,17 +223,6 @@ const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
     }
   ]);
 
-// RLM pipeline: reshapes the kitchen-sink input into what the patterns
-// rlmPipeline expects ({ query, context }), then delegates to the RLM pattern.
-const rlmRoute = sequencer({ name: "rlm-pipeline", inputSchema })
-  .map((input) => ({
-    query: input.message,
-    context: input.context ?? "",
-    model: MODEL_ID
-  }))
-  .then(rlmPipeline)
-  .map((output) => output.answer);
-
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
@@ -252,10 +236,9 @@ export const modeRouter = router({
   inputSchema: inputSchema,
   outputSchema: z.string(),
   sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
-  routes: [chatPipeline, planPipeline, rlmRoute],
+  routes: [chatPipeline, planPipeline],
   execute: (input, ctx) => {
     const mode = ctx.session.state.mode ?? input.mode;
-    if (mode === "rlm") return rlmRoute;
     return mode === "plan" ? planPipeline : chatPipeline;
   }
 });
@@ -301,10 +284,6 @@ const kitchenSinkFlow = defineFlow({
         stateSchema: artifactResourceStateSchema,
         writable: true
       },
-      context: {
-        stateSchema: contextResourceStateSchema,
-        writable: true
-      }
     },
 
     // clientData entries are derived values computed from scope state and
