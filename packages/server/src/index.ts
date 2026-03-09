@@ -77,4 +77,6 @@ export {
   type TTSEmitterHook
 } from "./voice";
 
+export { createHandleCache, type CachedHandleProvider } from "./handles";
+
 export const serverPackageMarker = "@flow-state-dev/server";

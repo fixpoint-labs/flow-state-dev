@@ -96,6 +96,8 @@ export type {
   UserScopeHandle
 } from "./scope";
 
+export type { HandleCacheOptions, HandleProvider } from "./handle";
+
 export type { TokenCounter } from "./tokens";
 
 export type { CASOptions, ScopeStateOps, StateContainer } from "./state";
