@@ -6,8 +6,10 @@ import { isEphemeralContent } from "@flow-state-dev/core/items";
 import type {
   ActionConfig,
   BlockDefinition,
-  FlowInstance
+  FlowInstance,
+  Middleware
 } from "@flow-state-dev/core/types";
+import { mergeMiddlewareStacks } from "../middleware/compose";
 import { createExecutionContext } from "../context/createExecutionContext";
 import {
   createExecutionLogContext,
@@ -407,11 +409,19 @@ export async function runActionInternal<
       await response.emitItemDone(userItem);
     }
 
+    // Compose middleware: global (from caller) → flow-level.
+    // Block-level middleware is added inside executeBlock from block.config.
+    const actionMiddleware = mergeMiddlewareStacks(
+      options.middleware,
+      options.flow.middleware
+    );
+
     const result = await executeBlock({
       block: action.block,
       input: parsedInput,
       ctx,
       retry: options.retry,
+      middleware: actionMiddleware.length > 0 ? actionMiddleware : undefined,
       internalSeams,
       metadata: {
         scope: "request"

@@ -8,7 +8,7 @@
     "dev:watch": "node scripts/dev-watch.mjs",
     "build": "next build",
     "start": "next start",
-    "test": "vitest run --root .",
+    "test": "pnpm --filter @flow-state-dev/testing build && vitest run --root .",
     "test:watch": "vitest --root ."
   },
   "dependencies": {
