@@ -273,6 +273,7 @@ function AppContent() {
                 flowKind={activeFlowKind}
                 sessionId={effectiveSessionId}
                 availableActions={activeFlow?.actions ?? []}
+                actionSchemas={activeFlow?.actionSchemas}
                 onSendAction={handleSendAction}
                 isSending={isSending}
               />

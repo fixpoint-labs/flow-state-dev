@@ -110,4 +110,11 @@ export type {
   SchemaOutput
 } from "../schema/common";
 
+export { serializeActionSchema } from "../schema/action-schema";
+export type {
+  ActionFieldSchema,
+  ActionFieldType,
+  ActionInputSchema
+} from "../schema/action-schema";
+
 export { defineResource, resource } from "./resource";

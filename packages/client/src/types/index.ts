@@ -21,6 +21,7 @@ import type {
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   ActionConfig,
+  ActionInputSchema,
   FlowActionInput,
   InferScopeStateFromConfig
 } from "@flow-state-dev/core/types";
@@ -98,7 +99,10 @@ export type FlowListEntry = {
   kind: string;
   requireUser: boolean;
   actions: string[];
+  actionSchemas?: Record<string, ActionInputSchema>;
 };
+
+export type { ActionInputSchema, ActionFieldSchema, ActionFieldType } from "@flow-state-dev/core/types";
 
 /**
  * Capability flags advertised by the server.
