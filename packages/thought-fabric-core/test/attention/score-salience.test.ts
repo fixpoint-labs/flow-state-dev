@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { scoreSalience } from './score-salience.js'
+import { scoreSalience } from '../../src/attention/score-salience.js'
 
 describe('attention/scoreSalience', () => {
   it('returns a generator BlockDefinition', () => {

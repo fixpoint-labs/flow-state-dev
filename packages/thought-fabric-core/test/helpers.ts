@@ -1,5 +1,4 @@
-import type { BlockContext } from '../../../core/src/types/block.js'
-import type { ScopeStateOps } from '../../../core/src/types/state.js'
+import type { BlockContext, ScopeStateOps } from '@flow-state-dev/core/types'
 
 function createStateOps<TState extends object>(): ScopeStateOps<TState> {
   return {

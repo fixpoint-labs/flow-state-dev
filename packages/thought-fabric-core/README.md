@@ -59,7 +59,7 @@ const filterBlock = attention.filterRelevance({
 
 ## Dependencies
 
-- `@flow-state-dev/core` (peer dependency)
+- `@flow-state-dev/core`
 - `zod` (direct dependency)
 
 ## Scripts

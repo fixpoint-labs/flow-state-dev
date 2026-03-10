@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { filterRelevance } from './filter-relevance.js'
-import { createMockContext } from '../test-utils/create-mock-context.js'
+import { filterRelevance } from '../../src/attention/filter-relevance.js'
+import { createMockContext } from '../helpers.js'
 
 describe('attention/filterRelevance', () => {
   it('returns a handler BlockDefinition', () => {
