@@ -1,20 +1,7 @@
-const BASE_URL_KEY = "fsd.devtool.baseUrl";
-const DEFAULT_BASE_URL = "http://localhost:3000";
 const USER_ID_KEY = "fsd.devtool.userId";
 const DEFAULT_USER_ID = "devuser";
 const ACTIVE_SESSION_PREFIX = "fsd.devtool.activeSession.";
 const LAST_ACTION_PREFIX = "fsd.devtool.lastAction.";
-
-export function readBaseUrl(): string {
-  if (typeof window === "undefined") return DEFAULT_BASE_URL;
-  const stored = window.localStorage.getItem(BASE_URL_KEY);
-  return stored?.trim() ? stored : DEFAULT_BASE_URL;
-}
-
-export function writeBaseUrl(baseUrl: string): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(BASE_URL_KEY, baseUrl.trim());
-}
 
 export function readUserId(): string {
   if (typeof window === "undefined") return DEFAULT_USER_ID;

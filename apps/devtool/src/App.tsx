@@ -74,7 +74,6 @@ function AppContent() {
 
   const streamRequestId = replayState.requestId ?? activeRequestId;
   const { streamState, streamStatus, items: streamItems } = useRequestStream({
-    config,
     flowKind: activeFlowKind,
     requestId: streamRequestId,
     startingAfter: replayState.startingAfter,

@@ -8,11 +8,10 @@ import { useDevTool } from "@/context/devtool-context";
 export function SettingsSheet() {
   const { config, setConfig } = useDevTool();
   const [open, setOpen] = useState(false);
-  const [baseUrl, setBaseUrl] = useState(config.baseUrl);
   const [userId, setUserId] = useState(config.userId);
 
   const handleSave = () => {
-    setConfig({ baseUrl, userId });
+    setConfig({ userId });
     setOpen(false);
   };
 
@@ -35,15 +34,6 @@ export function SettingsSheet() {
         <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => setOpen(false)}>
           <X className="h-3 w-3" />
         </Button>
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="settings-url" className="text-[10px]">Server URL</Label>
-        <Input
-          id="settings-url"
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          className="h-7 text-xs"
-        />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="settings-user" className="text-[10px]">User ID</Label>

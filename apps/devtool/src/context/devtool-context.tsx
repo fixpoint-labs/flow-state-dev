@@ -9,7 +9,7 @@ import {
 } from "react";
 import type { Client, FlowListEntry, SessionClient } from "@flow-state-dev/client";
 import { createDevToolClient, createDevToolSessionClient, type DevToolConfig } from "@/lib/client";
-import { readBaseUrl, writeBaseUrl, readUserId, writeUserId } from "@/config";
+import { readUserId, writeUserId } from "@/config";
 
 type DevToolState = {
   config: DevToolConfig;
@@ -33,7 +33,7 @@ type Action =
 function buildClients(config: DevToolConfig) {
   return {
     client: createDevToolClient(config),
-    sessionClient: createDevToolSessionClient(config),
+    sessionClient: createDevToolSessionClient(),
   };
 }
 
@@ -70,7 +70,6 @@ const DevToolContext = createContext<DevToolContextValue | null>(null);
 
 function createInitialState(): DevToolState {
   const config: DevToolConfig = {
-    baseUrl: readBaseUrl(),
     userId: readUserId(),
   };
   const clients = buildClients(config);
@@ -101,7 +100,6 @@ export function DevToolProvider({ children }: { children: ReactNode }) {
   }, [state.client]);
 
   const setConfig = useCallback((config: DevToolConfig) => {
-    writeBaseUrl(config.baseUrl);
     writeUserId(config.userId);
     dispatch({ type: "SET_CONFIG", config });
   }, []);

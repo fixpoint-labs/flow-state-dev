@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStatus, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { RequestStreamHandle } from "@flow-state-dev/client";
-import { connectRequestStream, type DevToolConfig } from "@/lib/client";
+import { connectRequestStream } from "@/lib/client";
 
 export type StreamStatus = "idle" | "connecting" | "streaming" | "completed" | "failed" | "disconnected";
 
@@ -29,7 +29,7 @@ function createEmptyStreamState(requestId: string): StreamState {
 }
 
 export type UseRequestStreamOptions = {
-  config: DevToolConfig;
+
   flowKind: string | null;
   requestId: string | null;
   startingAfter?: number;
@@ -46,7 +46,7 @@ export type UseRequestStreamResult = {
 };
 
 export function useRequestStream(options: UseRequestStreamOptions): UseRequestStreamResult {
-  const { config, flowKind, requestId, startingAfter, lastEventId, enabled = true } = options;
+  const { flowKind, requestId, startingAfter, lastEventId, enabled = true } = options;
   const [streamState, setStreamState] = useState<StreamState | null>(null);
   const [streamStatus, setStreamStatus] = useState<StreamStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +75,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
     setStreamStatus("connecting");
     setError(null);
 
-    const handle = connectRequestStream(config, flowKind, requestId, {
+    const handle = connectRequestStream(flowKind, requestId, {
       startingAfter,
       lastEventId,
       onRequestCreated: (event) => {
@@ -171,7 +171,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         handleRef.current = null;
       }
     };
-  }, [config, flowKind, requestId, startingAfter, lastEventId, enabled, close]);
+  }, [flowKind, requestId, startingAfter, lastEventId, enabled, close]);
 
   const items = streamState
     ? streamState.itemOrder.map((id) => streamState.items.get(id)!).filter(Boolean)

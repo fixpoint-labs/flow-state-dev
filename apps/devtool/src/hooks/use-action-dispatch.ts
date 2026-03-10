@@ -21,7 +21,7 @@ export function useActionDispatch(): UseActionDispatchResult {
       setError(null);
       try {
         const response = await fetch(
-          `${config.baseUrl}/api/flows/${encodeURIComponent(flowKind)}/${encodeURIComponent(sessionId)}/actions/${encodeURIComponent(action)}`,
+          `/api/flows/${encodeURIComponent(flowKind)}/${encodeURIComponent(sessionId)}/actions/${encodeURIComponent(action)}`,
           {
             method: "POST",
             headers: { "content-type": "application/json" },
