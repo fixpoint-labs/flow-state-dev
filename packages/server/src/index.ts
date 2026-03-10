@@ -77,4 +77,7 @@ export {
   type TTSEmitterHook
 } from "./voice";
 
+export { createBindingCache, type CachedBindingProvider } from "./bindings";
+export * from "./middleware";
+
 export const serverPackageMarker = "@flow-state-dev/server";
