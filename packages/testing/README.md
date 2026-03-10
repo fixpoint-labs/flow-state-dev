@@ -5,6 +5,8 @@ Deterministic test utilities for Flow State Dev runtime contracts.
 This package provides:
 - isolated runtime harness creation (`createTestContext`)
 - block/flow test helpers (`testBlock`, `testSequencer`, `testRouter`, `testFlow`)
+- eval harness (`evalBlock`, `evalFlow`) with built-in and custom scorers
+- LLM-as-judge scoring (`analyzerScorer`) via `utility.analyzer`
 - item assertion helpers (`testItems`)
 - snapshot trace summaries (`snapshotTrace`)
 - scripted generator mocks (`mockGenerator`)
@@ -83,6 +85,51 @@ const result = await testSequencer(mySequencer, {
 
 expect(result.state.sequencer.progress).toBeGreaterThanOrEqual(0);
 expect(result.stateChanges.some((change) => change.scope === "block_instance")).toBe(true);
+```
+
+## Eval Harness
+
+Run blocks or flows against a dataset and score the results:
+
+```ts
+import { evalBlock, exactMatch, analyzerScorer } from "@flow-state-dev/testing";
+
+const report = await evalBlock(classifier, {
+  dataset: [
+    { input: { text: "I love it" }, expected: { sentiment: "positive" } },
+    { input: { text: "Terrible" }, expected: { sentiment: "negative" } },
+  ],
+  scorers: [
+    exactMatch("sentiment"),
+    analyzerScorer({
+      criteria: ["Output is relevant to the input"],
+      model: "claude-haiku",
+    }),
+  ],
+  concurrency: 3,
+});
+```
+
+### LLM-as-Judge via `analyzerScorer`
+
+`analyzerScorer` bridges `utility.analyzer` into the `Scorer` interface for subjective evaluation:
+
+```ts
+analyzerScorer({
+  criteria: ["Accurate", "Concise", "Professional tone"],
+  model: "claude-haiku",       // cheaper model for grading
+  scoreMapping: "mean",        // "mean" | "min" | { strategy: "weighted", weights }
+  threshold: 0.7,              // pass/fail cutoff
+})
+```
+
+Convenience variants for common concerns:
+
+```ts
+analyzerScorer.relevance()     // Output addresses the input
+analyzerScorer.factuality()    // Only factual claims
+analyzerScorer.coherence()     // Well-structured output
+analyzerScorer.safety()        // No harmful content
 ```
 
 ## Scripts

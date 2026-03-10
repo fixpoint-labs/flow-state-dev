@@ -204,6 +204,45 @@ Eight code-based scorers ship out of the box. No LLM calls required.
 - **`allOf(...scorers)`** — Composite: all child scorers must pass.
 - **`anyOf(...scorers)`** — Composite: at least one child scorer must pass.
 
+### LLM-as-judge scoring
+
+Code-based scorers work when you can define pass/fail with logic: schema validation, exact matches, substring checks. But some qualities — relevance, coherence, factual accuracy — resist programmatic evaluation.
+
+`analyzerScorer` bridges the framework's `utility.analyzer` block into the scorer interface. It runs an LLM to grade each output against criteria you define, then maps the per-criteria scores to a single 0-1 value.
+
+```ts
+import { evalBlock, analyzerScorer, schemaValid } from "@flow-state-dev/testing";
+
+const report = await evalBlock(myGenerator, {
+  dataset: cases,
+  scorers: [
+    // Code-based: did it produce valid JSON?
+    schemaValid(outputSchema),
+    // LLM-as-judge: is the content any good?
+    analyzerScorer({
+      criteria: [
+        "Response directly answers the user question",
+        "Response does not hallucinate facts",
+        "Tone is professional and concise",
+      ],
+      model: "claude-haiku",   // cheaper model for grading
+      scoreMapping: "mean",    // average across criteria
+    }),
+  ],
+});
+```
+
+Four convenience variants cover common concerns without spelling out criteria:
+
+```ts
+analyzerScorer.relevance()    // Does the output address the input?
+analyzerScorer.factuality()   // Does it stick to the facts?
+analyzerScorer.coherence()    // Is it well-structured?
+analyzerScorer.safety()       // Is it free of harmful content?
+```
+
+The `scoreMapping` option controls how per-criteria scores collapse into one number: `"mean"` (default) averages them, `"min"` takes the worst, and `{ strategy: "weighted", weights: {...} }` lets you weigh criteria differently.
+
 ### Datasets from files
 
 Load test cases from JSON or CSV instead of inlining them:
