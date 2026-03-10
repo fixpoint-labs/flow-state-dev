@@ -156,7 +156,7 @@ Open your browser and start chatting. The framework is handling:
 
 ## Alternative: run from the terminal
 
-You don't need a server or React frontend to try your flows. The CLI discovers flows from `src/flows/` and runs them directly:
+You don't need a server or React frontend to try your flows. The CLI discovers flows from `src/flows/` (and monorepo directories like `packages/*/src/flows/`) and runs them directly:
 
 ```bash
 pnpm add -D @flow-state-dev/cli

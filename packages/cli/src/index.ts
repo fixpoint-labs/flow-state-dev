@@ -4,7 +4,8 @@
  */
 export { program } from "./cli.js";
 export { resolveBlock, isBlockDefinition } from "./resolve-block.js";
-export { resolveFlow, discoverFlows, isFlowInstance } from "./resolve-flow.js";
+export { resolveFlow, discoverFlows, getSearchedDirs, isFlowInstance } from "./resolve-flow.js";
+export type { DiscoverFlowsOptions } from "./resolve-flow.js";
 export { parseInputArg } from "./parse-input.js";
 export { formatOutput } from "./format-output.js";
 export { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS } from "./exit-codes.js";

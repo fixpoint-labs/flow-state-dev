@@ -1,9 +1,10 @@
 /**
  * Resolves flow definitions from disk for `fsdev run`.
  * Scans conventional directories (src/flows/, flows/) and imports modules
- * that default-export a FlowInstance.
+ * that default-export a FlowInstance. Also scans one level of subdirectories
+ * for monorepo structures (packages/*, examples/*, apps/*).
  */
-import { resolve, isAbsolute, basename, extname } from "node:path";
+import { resolve, isAbsolute } from "node:path";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { CliError } from "./resolve-block.js";
@@ -29,52 +30,142 @@ export function isFlowInstance(value: unknown): value is FlowInstance {
 const FLOW_DIRS = ["src/flows", "flows"];
 
 /**
- * Discovers all flow instances from conventional directories.
- * Scans each subdirectory for a module with a default-exported FlowInstance.
- *
- * Directory structure convention:
- *   src/flows/<flow-name>/flow.ts  → default exports a FlowInstance
- *   flows/<flow-name>/flow.ts      → default exports a FlowInstance
+ * Monorepo glob patterns — scan one level of subdirectories for flow dirs.
+ * Matches structures like examples/hello-chat/src/flows/, packages/foo/flows/.
  */
-export async function discoverFlows(cwd?: string): Promise<FlowInstance[]> {
-  const root = cwd ?? process.cwd();
+const MONOREPO_PARENT_DIRS = ["packages", "examples", "apps"];
+
+export interface DiscoverFlowsOptions {
+  /** Working directory to search from (defaults to process.cwd()). */
+  cwd?: string;
+  /** Explicit directories to search for flows (overrides default discovery). */
+  flowDirs?: string[];
+}
+
+/**
+ * Discovers all flow instances from conventional directories.
+ *
+ * Search order:
+ * 1. If `flowDirs` is provided, search only those directories.
+ * 2. Otherwise, search `src/flows/` and `flows/` at the root.
+ * 3. Then scan monorepo subdirectories: packages/*, examples/*, apps/*
+ *    looking for src/flows/ and flows/ within each.
+ *
+ * Deduplicates flows by kind (first discovered wins).
+ */
+export async function discoverFlows(cwdOrOptions?: string | DiscoverFlowsOptions): Promise<FlowInstance[]> {
+  const options = typeof cwdOrOptions === "string" ? { cwd: cwdOrOptions } : (cwdOrOptions ?? {});
+  const root = options.cwd ?? process.cwd();
+  const seen = new Set<string>();
   const flows: FlowInstance[] = [];
 
-  for (const dir of FLOW_DIRS) {
-    const flowsDir = resolve(root, dir);
-    if (!existsSync(flowsDir) || !statSync(flowsDir).isDirectory()) {
-      continue;
+  async function addFlow(flow: FlowInstance): Promise<void> {
+    if (!seen.has(flow.kind)) {
+      seen.add(flow.kind);
+      flows.push(flow);
+    }
+  }
+
+  if (options.flowDirs !== undefined) {
+    // Explicit directories — search only these
+    for (const dir of options.flowDirs) {
+      const flowsDir = isAbsolute(dir) ? dir : resolve(root, dir);
+      await scanFlowsDir(flowsDir, addFlow);
+    }
+  } else {
+    // Default discovery: root-level conventional dirs first
+    for (const dir of FLOW_DIRS) {
+      await scanFlowsDir(resolve(root, dir), addFlow);
     }
 
-    const entries = readdirSync(flowsDir);
-    for (const entry of entries) {
-      const entryPath = resolve(flowsDir, entry);
-      if (!statSync(entryPath).isDirectory()) {
-        // Also check if it's a direct .ts file that exports a flow
-        if (entry.endsWith(".ts") || entry.endsWith(".js")) {
-          const flow = await tryImportFlow(entryPath);
-          if (flow !== undefined) {
-            flows.push(flow);
-          }
-        }
+    // Monorepo fallback: scan one level of subdirectories
+    for (const parentName of MONOREPO_PARENT_DIRS) {
+      const parentDir = resolve(root, parentName);
+      if (!existsSync(parentDir) || !statSync(parentDir).isDirectory()) {
         continue;
       }
-
-      // Look for flow.ts or index.ts inside the subdirectory
-      for (const candidate of ["flow.ts", "flow.js", "index.ts", "index.js"]) {
-        const candidatePath = resolve(entryPath, candidate);
-        if (existsSync(candidatePath)) {
-          const flow = await tryImportFlow(candidatePath);
-          if (flow !== undefined) {
-            flows.push(flow);
-            break;
-          }
+      for (const sub of readdirSync(parentDir)) {
+        const subPath = resolve(parentDir, sub);
+        if (!statSync(subPath).isDirectory()) {
+          continue;
+        }
+        for (const flowDir of FLOW_DIRS) {
+          await scanFlowsDir(resolve(subPath, flowDir), addFlow);
         }
       }
     }
   }
 
   return flows;
+}
+
+/**
+ * Returns the list of directories that were searched,
+ * for use in error messages.
+ */
+export function getSearchedDirs(cwdOrOptions?: string | DiscoverFlowsOptions): string[] {
+  const options = typeof cwdOrOptions === "string" ? { cwd: cwdOrOptions } : (cwdOrOptions ?? {});
+  const root = options.cwd ?? process.cwd();
+
+  if (options.flowDirs !== undefined) {
+    return options.flowDirs;
+  }
+
+  const dirs: string[] = [...FLOW_DIRS];
+
+  for (const parentName of MONOREPO_PARENT_DIRS) {
+    const parentDir = resolve(root, parentName);
+    if (existsSync(parentDir) && statSync(parentDir).isDirectory()) {
+      for (const sub of readdirSync(parentDir)) {
+        const subPath = resolve(parentDir, sub);
+        if (statSync(subPath).isDirectory()) {
+          for (const flowDir of FLOW_DIRS) {
+            const candidate = resolve(subPath, flowDir);
+            if (existsSync(candidate) && statSync(candidate).isDirectory()) {
+              dirs.push(`${parentName}/${sub}/${flowDir}`);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return dirs;
+}
+
+/**
+ * Scans a single flows directory for FlowInstance modules.
+ */
+async function scanFlowsDir(flowsDir: string, onFlow: (flow: FlowInstance) => Promise<void>): Promise<void> {
+  if (!existsSync(flowsDir) || !statSync(flowsDir).isDirectory()) {
+    return;
+  }
+
+  const entries = readdirSync(flowsDir);
+  for (const entry of entries) {
+    const entryPath = resolve(flowsDir, entry);
+    if (!statSync(entryPath).isDirectory()) {
+      if (entry.endsWith(".ts") || entry.endsWith(".js")) {
+        const flow = await tryImportFlow(entryPath);
+        if (flow !== undefined) {
+          await onFlow(flow);
+        }
+      }
+      continue;
+    }
+
+    // Look for flow.ts or index.ts inside the subdirectory
+    for (const candidate of ["flow.ts", "flow.js", "index.ts", "index.js"]) {
+      const candidatePath = resolve(entryPath, candidate);
+      if (existsSync(candidatePath)) {
+        const flow = await tryImportFlow(candidatePath);
+        if (flow !== undefined) {
+          await onFlow(flow);
+          break;
+        }
+      }
+    }
+  }
 }
 
 /**

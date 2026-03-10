@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { resolve } from "node:path";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { executeRunCommand, type FlowRunResult, type FlowEvent } from "../src/commands/run.js";
+import { discoverFlows } from "../src/resolve-flow.js";
 import { CliError } from "../src/resolve-block.js";
 
 const fixturesDir = resolve(import.meta.dirname, "fixtures");
@@ -186,6 +187,102 @@ describe("fsdev run integration", () => {
       expect(err).toBeInstanceOf(CliError);
       const message = (err as CliError).message;
       expect(message).toContain("respond");
+    }
+  });
+});
+
+describe("monorepo flow discovery", () => {
+  it("discovers flows from examples/*/src/flows/ in monorepo structure", async () => {
+    const flows = await discoverFlows(fixturesDir);
+    const kinds = flows.map((f) => f.kind);
+
+    // Root-level flows (src/flows/ → fixtures/flows/)
+    expect(kinds).toContain("echo");
+    expect(kinds).toContain("stateful");
+    expect(kinds).toContain("throwing");
+
+    // Monorepo-scanned flow (examples/sample-app/src/flows/nested-flow/)
+    expect(kinds).toContain("nested");
+  });
+
+  it("executes a monorepo-discovered flow via executeRunCommand", async () => {
+    const result = await executeRunCommand("nested", "process", {
+      input: '{"value": "from-monorepo"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.flow.kind).toBe("nested");
+    expect(result.flow.action).toBe("process");
+    expect(result.output).toEqual({ result: "nested: from-monorepo" });
+  });
+
+  it("deduplicates flows by kind (first discovered wins)", async () => {
+    const flows = await discoverFlows(fixturesDir);
+    const kindCounts = new Map<string, number>();
+    for (const flow of flows) {
+      kindCounts.set(flow.kind, (kindCounts.get(flow.kind) ?? 0) + 1);
+    }
+    // Every kind should appear exactly once
+    for (const [kind, count] of kindCounts) {
+      expect(count, `kind "${kind}" should appear once`).toBe(1);
+    }
+  });
+});
+
+describe("--flow-dir explicit override", () => {
+  it("restricts discovery to specified directories only", async () => {
+    const flows = await discoverFlows({
+      cwd: fixturesDir,
+      flowDirs: ["examples/sample-app/src/flows"],
+    });
+    const kinds = flows.map((f) => f.kind);
+
+    // Should find the nested flow from the explicit directory
+    expect(kinds).toContain("nested");
+    // Should NOT find root-level flows since we overrode discovery
+    expect(kinds).not.toContain("echo");
+    expect(kinds).not.toContain("stateful");
+    expect(kinds).not.toContain("throwing");
+  });
+
+  it("supports multiple --flow-dir values", async () => {
+    const flows = await discoverFlows({
+      cwd: fixturesDir,
+      flowDirs: ["flows", "examples/sample-app/src/flows"],
+    });
+    const kinds = flows.map((f) => f.kind);
+
+    // Should find flows from both directories
+    expect(kinds).toContain("echo");
+    expect(kinds).toContain("nested");
+  });
+
+  it("passes --flow-dir through executeRunCommand", async () => {
+    const result = await executeRunCommand("nested", "process", {
+      input: '{"value": "explicit-dir"}',
+      cwd: fixturesDir,
+      flowDir: ["examples/sample-app/src/flows"],
+      stores: createInMemoryStores(),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.output).toEqual({ result: "nested: explicit-dir" });
+  });
+
+  it("shows --flow-dir paths in error message when flow not found", async () => {
+    try {
+      await executeRunCommand("nonexistent", "action", {
+        input: '{}',
+        cwd: fixturesDir,
+        flowDir: ["custom/path"],
+        stores: createInMemoryStores(),
+      });
+    } catch (err) {
+      expect(err).toBeInstanceOf(CliError);
+      const message = (err as CliError).message;
+      expect(message).toContain("custom/path");
     }
   });
 });

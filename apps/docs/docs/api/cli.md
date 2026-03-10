@@ -27,6 +27,7 @@ fsdev run my-agent chat -i '{"message": "Hello!"}'
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
 | `--seed-user <json\|path>` | Seed user-level state |
 | `--seed-project <json\|path>` | Seed project-level state |
+| `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--format <format>` | Output format (default: `json`) |
 
 **NDJSON events:**
@@ -101,26 +102,59 @@ flows/<flow-name>/flow.ts       → default exports a FlowInstance
 flows/<flow-name>.ts            → direct file export
 ```
 
-When a flow or action isn't found, the error message lists what was discovered:
+### Monorepo support
+
+In monorepo structures, the CLI also scans one level of subdirectories under `packages/`, `examples/`, and `apps/`:
+
+```text
+packages/*/src/flows/
+packages/*/flows/
+examples/*/src/flows/
+apps/*/src/flows/
+```
+
+This means flows defined anywhere in your monorepo are automatically discoverable without configuration.
+
+### Custom flow directories
+
+Use `--flow-dir` to override default discovery with explicit paths. This is repeatable:
+
+```bash
+fsdev run my-flow action -i '{}' \
+  --flow-dir ./packages/api/src/flows \
+  --flow-dir ./shared/flows
+```
+
+When `--flow-dir` is specified, only the given directories are searched — the default and monorepo scanning is skipped.
+
+### Error messages
+
+When a flow or action isn't found, the error lists what was discovered and where it searched:
 
 ```text
 Flow "chat" not found. Available flows: echo, stateful, my-agent
-Searched: src/flows/, flows/
+Searched: src/flows, flows, examples/hello-chat/src/flows
 ```
 
 ## Programmatic API
 
 The CLI exports its utilities for use in scripts and CI:
 
-### `discoverFlows(cwd?)`
+### `discoverFlows(cwdOrOptions?)`
 
-Scan conventional directories and return all discovered flow instances.
+Scan conventional directories and return all discovered flow instances. Accepts a string (cwd) or an options object.
 
 ```ts
 import { discoverFlows } from "@flow-state-dev/cli";
 
+// Simple: scan from a directory
 const flows = await discoverFlows("./my-project");
-// FlowInstance[]
+
+// With options: explicit directories
+const flows2 = await discoverFlows({
+  cwd: "./my-project",
+  flowDirs: ["packages/api/src/flows", "shared/flows"],
+});
 ```
 
 ### `resolveFlow(specifier)`

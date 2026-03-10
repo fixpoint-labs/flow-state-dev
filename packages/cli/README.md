@@ -44,6 +44,7 @@ Options:
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
 | `--seed-user <json\|path>` | Seed user-level state |
 | `--seed-project <json\|path>` | Seed project-level state |
+| `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--format <format>` | Output format (default: `json`) |
 
 #### NDJSON streaming
@@ -140,7 +141,23 @@ flows/<flow-name>/flow.ts       → default exports a FlowInstance
 flows/<flow-name>.ts            → direct file export
 ```
 
-Each module must default-export a `FlowInstance` created by `defineFlow(...)({ id: "..." })`.
+In monorepo structures, the CLI also scans one level of subdirectories under `packages/`, `examples/`, and `apps/`:
+
+```
+packages/*/src/flows/<flow-name>/flow.ts
+packages/*/flows/<flow-name>/flow.ts
+examples/*/src/flows/<flow-name>/flow.ts
+apps/*/src/flows/<flow-name>/flow.ts
+```
+
+Use `--flow-dir` to override default discovery with explicit paths:
+
+```bash
+# Search only specific directories
+fsdev run my-flow action -i '{}' --flow-dir ./packages/api/src/flows --flow-dir ./shared/flows
+```
+
+Each module must default-export a `FlowInstance` created by `defineFlow(...)({ id: "..." })`. When the same flow kind is found in multiple directories, the first discovery wins.
 
 ## Programmatic API
 

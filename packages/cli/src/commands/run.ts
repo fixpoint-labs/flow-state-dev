@@ -16,7 +16,7 @@ import {
   type StoreRegistry
 } from "@flow-state-dev/server";
 import type { FlowInstance, ModelResolver } from "@flow-state-dev/core/types";
-import { discoverFlows } from "../resolve-flow.js";
+import { discoverFlows, getSearchedDirs, type DiscoverFlowsOptions } from "../resolve-flow.js";
 import { parseInputArg } from "../parse-input.js";
 import { CliError } from "../resolve-block.js";
 import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS } from "../exit-codes.js";
@@ -74,6 +74,11 @@ function parseSeedArg(value: string, label: string): Record<string, unknown> {
   }
 }
 
+/** Commander accumulator for repeatable options. */
+function collectValues(value: string, previous: string[] | undefined): string[] {
+  return (previous ?? []).concat(value);
+}
+
 /** Registers the `run` subcommand on the given commander program. */
 export function registerRunCommand(program: Command): void {
   program
@@ -86,6 +91,7 @@ export function registerRunCommand(program: Command): void {
     .option("--seed-session <json>", "Seed session-level state (JSON or file path)")
     .option("--seed-user <json>", "Seed user-level state (JSON or file path)")
     .option("--seed-project <json>", "Seed project-level state (JSON or file path)")
+    .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--format <format>", "Output format", "json")
     .action(async (flowKind: string, action: string, options: RunCommandOptions) => {
       try {
@@ -112,6 +118,7 @@ export interface RunCommandOptions {
   seedSession?: string;
   seedUser?: string;
   seedProject?: string;
+  flowDir?: string[];
   format?: string;
 }
 
@@ -130,14 +137,19 @@ export async function executeRunCommand(
   options: RunCommandInternalOptions,
 ): Promise<FlowRunResult> {
   // 1. Discover flows from conventional directories
-  const flows = await discoverFlows(options.cwd);
+  const discoverOptions: DiscoverFlowsOptions = {
+    cwd: options.cwd,
+    ...(options.flowDir !== undefined ? { flowDirs: options.flowDir } : {}),
+  };
+  const flows = await discoverFlows(discoverOptions);
 
   const flow = flows.find((f) => f.kind === flowKind);
   if (flow === undefined) {
     const available = flows.map((f) => f.kind).join(", ") || "(none found)";
+    const searched = getSearchedDirs(discoverOptions).join(", ");
     throw new CliError(
       `Flow "${flowKind}" not found. Available flows: ${available}\n` +
-      `Searched: src/flows/, flows/`,
+      `Searched: ${searched}`,
       EXIT_INVALID_ARGS,
     );
   }
