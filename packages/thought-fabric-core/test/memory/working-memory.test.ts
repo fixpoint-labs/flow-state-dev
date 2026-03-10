@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { workingMemory } from './working-memory.js'
+import { workingMemory } from '../../src/memory/working-memory.js'
 
 describe('memory/workingMemory', () => {
   it('exists as a callable function', () => {

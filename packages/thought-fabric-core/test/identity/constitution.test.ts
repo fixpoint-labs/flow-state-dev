@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { constitution } from './constitution.js'
+import { constitution } from '../../src/identity/constitution.js'
 
 describe('identity/constitution', () => {
   it('exists as a callable function', () => {
