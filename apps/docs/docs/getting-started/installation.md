@@ -23,6 +23,9 @@ pnpm add @flow-state-dev/react
 
 # Testing — test harnesses for blocks and flows
 pnpm add -D @flow-state-dev/testing
+
+# CLI — run flows and blocks from the terminal
+pnpm add -D @flow-state-dev/cli
 ```
 
 ### Which packages do I need?
@@ -34,6 +37,7 @@ pnpm add -D @flow-state-dev/testing
 | Client-side consumption | `core` + `client` |
 | Full-stack React app | `core` + `server` + `react` |
 | Testing | `core` + `testing` |
+| CLI development workflow | `core` + `server` + `cli` |
 
 The `react` package depends on `client` internally — you don't need to install `client` separately when using `react`.
 

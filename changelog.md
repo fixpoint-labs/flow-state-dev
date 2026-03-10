@@ -2,6 +2,17 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-03-09
+
+### CLI: `fsdev run` command with streaming NDJSON (FIX-212)
+
+- Added `fsdev run <flowKind> <action>` command to `@flow-state-dev/cli` for executing flow actions from the terminal with real-time NDJSON streaming to stdout.
+- Added `resolve-flow.ts` with `discoverFlows()` for automatic flow discovery from conventional directories (`src/flows/`, `flows/`) and `resolveFlow()` for explicit file-path loading.
+- NDJSON event types: `item_added`, `content_delta`, `state_change`, `flow_complete`, `error`.
+- Supports session reuse (`--session`), model override (`--model`), state seeding (`--seed-session`, `--seed-user`, `--seed-project`), and input from inline JSON or file.
+- Added 3 test fixture flows (echo, stateful, throwing) and 9 integration tests.
+- Added `packages/cli/README.md` with full command reference and programmatic API documentation.
+
 ## 2026-03-03
 
 ### Core utility block: contextReducer (FIX-73)

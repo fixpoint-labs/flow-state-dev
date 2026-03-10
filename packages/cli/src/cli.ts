@@ -3,6 +3,7 @@
  */
 import { Command } from "commander";
 import { registerBlockCommand } from "./commands/block.js";
+import { registerRunCommand } from "./commands/run.js";
 
 export const program = new Command();
 
@@ -12,3 +13,4 @@ program
   .version("0.0.0");
 
 registerBlockCommand(program);
+registerRunCommand(program);
