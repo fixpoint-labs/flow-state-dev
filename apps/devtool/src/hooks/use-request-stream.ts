@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { RequestStatus, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type { RequestStreamHandle } from "@flow-state-dev/client";
@@ -173,9 +173,12 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
     };
   }, [flowKind, requestId, startingAfter, lastEventId, enabled, close]);
 
-  const items = streamState
-    ? streamState.itemOrder.map((id) => streamState.items.get(id)!).filter(Boolean)
-    : [];
+  const items = useMemo(
+    () => streamState
+      ? streamState.itemOrder.map((id) => streamState.items.get(id)!).filter(Boolean)
+      : [],
+    [streamState],
+  );
 
   return {
     streamState,

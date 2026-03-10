@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Send, Loader2, Bug } from "lucide-react";
 import type { ActionInputSchema } from "@flow-state-dev/client";
 import { Button } from "@/components/ui/button";
@@ -77,24 +77,28 @@ export function ActionBar({
   // Sync selectedAction when availableActions arrive or flow changes
   useEffect(() => {
     if (availableActions.length === 0) {
-      setSelectedAction("");
+      setSelectedAction((prev) => prev === "" ? prev : "");
       return;
     }
     const persisted = flowKind ? readLastAction(flowKind) : null;
     const target = persisted && availableActions.includes(persisted)
       ? persisted
       : availableActions[0];
-    setSelectedAction(target);
+    setSelectedAction((prev) => prev === target ? prev : target);
   }, [availableActions, flowKind]);
 
   // Derive current schema reactively
   const currentSchema = actionSchemas?.[selectedAction];
   const hasForm = isRenderable(currentSchema);
 
-  // Reset form values and mode when action+schema pair changes
+  // Track what we last initialized for to avoid re-running on object reference changes.
+  const initializedRef = useRef("");
   useEffect(() => {
     if (!selectedAction) return;
     const schema = actionSchemas?.[selectedAction];
+    const key = selectedAction + ":" + (schema ? JSON.stringify(schema) : "null");
+    if (key === initializedRef.current) return;
+    initializedRef.current = key;
     const renderable = isRenderable(schema);
     const defaults = getDefaults(schema);
     setFormValues(defaults);
@@ -121,6 +125,7 @@ export function ActionBar({
   }, [inputMode, formValues, jsonInput, currentSchema]);
 
   const handleActionChange = (action: string) => {
+    initializedRef.current = "";
     setSelectedAction(action);
     if (flowKind) writeLastAction(flowKind, action);
   };

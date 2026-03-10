@@ -24,7 +24,6 @@ import { useActiveSession } from "@/hooks/use-active-session";
 import { useRequestStream } from "@/hooks/use-request-stream";
 import { useActionDispatch } from "@/hooks/use-action-dispatch";
 import { useSessionRequests } from "@/hooks/use-session-requests";
-import { useSessionState } from "@/hooks/use-session-state";
 import { useReplay } from "@/hooks/use-replay";
 
 const NAV_EXPANDED_WIDTH = 240;
@@ -81,15 +80,15 @@ function AppContent() {
     enabled: !!streamRequestId,
   });
 
-  const { refresh: refreshState } = useSessionState(effectiveSessionId);
+  const [stateRefreshKey, setStateRefreshKey] = useState(0);
 
   useEffect(() => {
     if (streamStatus === "completed" || streamStatus === "failed") {
       void refreshRequests();
-      void refreshState();
+      setStateRefreshKey((k) => k + 1);
       if (isReplaying) clearReplay();
     }
-  }, [streamStatus, refreshRequests, refreshState, isReplaying, clearReplay]);
+  }, [streamStatus, refreshRequests, isReplaying, clearReplay]);
 
   useEffect(() => {
     if (streamRequestId && streamItems.length > 0) {
@@ -294,7 +293,7 @@ function AppContent() {
           style={{ width: `${detailWidth}px` }}
         >
           <div className="flex-1 p-3 space-y-4">
-            <SessionContextPanel sessionId={effectiveSessionId} />
+            <SessionContextPanel sessionId={effectiveSessionId} refreshKey={stateRefreshKey} />
             <Separator />
             <ItemDetail />
           </div>

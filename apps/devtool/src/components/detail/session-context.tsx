@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { JsonViewer } from "@/components/shared/json-viewer";
@@ -9,10 +9,17 @@ import { useRelativeTime } from "@/hooks/use-relative-time";
 
 type SessionContextPanelProps = {
   sessionId: string | null;
+  refreshKey?: number;
 };
 
-export function SessionContextPanel({ sessionId }: SessionContextPanelProps) {
+export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPanelProps) {
   const { snapshot, isLoading, error, lastFetchedAt, refresh } = useSessionState(sessionId);
+
+  useEffect(() => {
+    if (refreshKey && refreshKey > 0) {
+      void refresh();
+    }
+  }, [refreshKey, refresh]);
   const relativeTime = useRelativeTime(lastFetchedAt);
 
   if (!sessionId) {
@@ -55,46 +62,45 @@ export function SessionContextPanel({ sessionId }: SessionContextPanelProps) {
         <EmptyState message="Session state is empty. Execute an action to populate state." />
       )}
 
-      {snapshot.state.session && Object.keys(snapshot.state.session).length > 0 && (
-        <CollapsibleSection title="Session State" defaultOpen>
-          <JsonViewer data={snapshot.state.session} />
-        </CollapsibleSection>
-      )}
-
-      {snapshot.state.user && Object.keys(snapshot.state.user).length > 0 && (
-        <CollapsibleSection title="User State" defaultOpen={false}>
-          <JsonViewer data={snapshot.state.user} />
-        </CollapsibleSection>
-      )}
-
-      {snapshot.state.project && Object.keys(snapshot.state.project).length > 0 && (
-        <CollapsibleSection title="Project State" defaultOpen={false}>
-          <JsonViewer data={snapshot.state.project} />
+      {hasState && (
+        <CollapsibleSection title="Server State" defaultOpen>
+          {snapshot.state.session && Object.keys(snapshot.state.session).length > 0 && (
+            <ScopeBlock label="Session Scope" data={snapshot.state.session} />
+          )}
+          {snapshot.state.user && Object.keys(snapshot.state.user).length > 0 && (
+            <ScopeBlock label="User Scope" data={snapshot.state.user} />
+          )}
+          {snapshot.state.project && Object.keys(snapshot.state.project).length > 0 && (
+            <ScopeBlock label="Project Scope" data={snapshot.state.project} />
+          )}
+          {snapshot.state.request && Object.keys(snapshot.state.request).length > 0 && (
+            <ScopeBlock label="Request Scope" data={snapshot.state.request} />
+          )}
         </CollapsibleSection>
       )}
 
       {hasClientData && (
-        <CollapsibleSection title="Projections" defaultOpen>
+        <CollapsibleSection title="Client Data" defaultOpen>
           {snapshot.clientData.session && Object.keys(snapshot.clientData.session).length > 0 && (
-            <div className="mb-2">
-              <span className="text-[10px] text-slate-600 uppercase">Session Scope</span>
-              <JsonViewer data={snapshot.clientData.session} className="mt-1" />
-            </div>
+            <ScopeBlock label="Session Scope" data={snapshot.clientData.session} />
           )}
           {snapshot.clientData.user && Object.keys(snapshot.clientData.user).length > 0 && (
-            <div className="mb-2">
-              <span className="text-[10px] text-slate-600 uppercase">User Scope</span>
-              <JsonViewer data={snapshot.clientData.user} className="mt-1" />
-            </div>
+            <ScopeBlock label="User Scope" data={snapshot.clientData.user} />
           )}
           {snapshot.clientData.project && Object.keys(snapshot.clientData.project).length > 0 && (
-            <div>
-              <span className="text-[10px] text-slate-600 uppercase">Project Scope</span>
-              <JsonViewer data={snapshot.clientData.project} className="mt-1" />
-            </div>
+            <ScopeBlock label="Project Scope" data={snapshot.clientData.project} />
           )}
         </CollapsibleSection>
       )}
+    </div>
+  );
+}
+
+function ScopeBlock({ label, data }: { label: string; data: Record<string, unknown> }) {
+  return (
+    <div className="mb-2">
+      <span className="text-[10px] text-slate-600 uppercase">{label}</span>
+      <JsonViewer data={data} className="mt-1" />
     </div>
   );
 }
