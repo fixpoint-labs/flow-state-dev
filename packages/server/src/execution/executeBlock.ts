@@ -92,6 +92,7 @@ async function emitBlockOutputItem(
     id: `item_block_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "block_output",
     status: "completed",
+    transient: options.block.transient || undefined,
     requestId: options.metadata.requestId,
     itemIndex,
     provenance: createBlockOutputProvenance(options.metadata, options.block.name),
@@ -260,6 +261,7 @@ export async function executeBlock(
             name: options.block.name,
             kind: options.block.kind,
             instanceId: attemptMetadata.blockInstanceId ?? blockInstanceId,
+            transient: options.block.transient || undefined,
             stateSchema: options.block.kind === "sequencer" ? options.block.config.stateSchema : undefined,
             parentInstanceId: attemptMetadata.parentBlockInstanceId,
             container:

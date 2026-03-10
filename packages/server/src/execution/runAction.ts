@@ -139,7 +139,7 @@ async function patchRequestRecord(
   }
 
   const sanitized = patch.items !== undefined
-    ? { ...patch, items: stripEphemeralContent(patch.items) }
+    ? { ...patch, items: stripEphemeralContent(patch.items.filter(item => item.transient !== true)) }
     : patch;
 
   await stores.request.set(requestId, {

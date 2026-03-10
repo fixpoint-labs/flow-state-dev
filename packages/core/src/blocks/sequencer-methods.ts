@@ -220,6 +220,7 @@ export type SequencerConfig<
 > = {
   name: string;
   description?: string;
+  transient?: boolean;
   inputSchema?: TInputSchema;
   outputSchema?: ZodTypeAny;
   stateSchema?: ZodTypeAny;

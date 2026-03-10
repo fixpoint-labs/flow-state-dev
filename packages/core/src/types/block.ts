@@ -20,6 +20,7 @@ export type ExecutionParent = {
   kind: BlockKind;
   instanceId: string;
   parentInstanceId?: string;
+  transient?: boolean;
   stateSchema?: ZodTypeAny;
   container?: {
     component?: string;
@@ -162,6 +163,7 @@ export interface BlockConfig<
 > {
   name: string;
   description?: string;
+  transient?: boolean;
   inputSchema?: TInputSchema;
   outputSchema?: TOutputSchema;
   stateSchema?: ZodTypeAny;
@@ -196,6 +198,7 @@ export interface BlockDefinition<
   kind: BlockKind;
   name: string;
   description?: string;
+  transient: boolean;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
   config: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
