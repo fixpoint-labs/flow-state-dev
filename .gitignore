@@ -10,3 +10,4 @@ apps/docs/build
 .claude/settings.local.json
 .codex/
 .zenflow/
+/todos/*
