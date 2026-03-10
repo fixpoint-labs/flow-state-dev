@@ -10,3 +10,5 @@ apps/docs/build
 .claude/settings.local.json
 .codex/
 .zenflow/
+.fsdev/data/*
+packages/cli/.fsdev/data/*

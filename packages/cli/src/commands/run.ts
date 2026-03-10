@@ -20,6 +20,7 @@ import { discoverFlows, getSearchedDirs, type DiscoverFlowsOptions } from "../re
 import { parseInputArg } from "../parse-input.js";
 import { CliError } from "../resolve-block.js";
 import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS } from "../exit-codes.js";
+import { loadEnvFiles } from "../load-env.js";
 
 /** NDJSON event types emitted to stdout during flow execution. */
 export type FlowEvent =
@@ -136,6 +137,10 @@ export async function executeRunCommand(
   actionName: string,
   options: RunCommandInternalOptions,
 ): Promise<FlowRunResult> {
+  // 0. Load .env.local files (walks up from cwd)
+  const cwd = options.cwd ?? process.cwd();
+  loadEnvFiles(cwd);
+
   // 1. Discover flows from conventional directories
   const discoverOptions: DiscoverFlowsOptions = {
     cwd: options.cwd,
