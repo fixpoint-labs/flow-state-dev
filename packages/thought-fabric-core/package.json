@@ -17,14 +17,15 @@
   "publishConfig": {
     "access": "public"
   },
-  "peerDependencies": {
-    "@flow-state-dev/core": "workspace:*"
-  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "lint": "echo 'lint not configured yet'",
     "test": "vitest run --root .",
     "test:watch": "vitest --root ."
+  },
+  "dependencies": {
+    "zod": "^3.24.1",
+    "@flow-state-dev/core": "workspace:*"
   }
 }
