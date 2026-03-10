@@ -116,6 +116,7 @@ Define a Zod schema once. It validates at runtime, infers at compile time, and f
 | [`@flow-state-dev/client`](/docs/api/client) | Isomorphic API client — works in Node, browser, edge |
 | [`@flow-state-dev/react`](/docs/api/react) | React hooks and renderers — wraps client, no transport logic |
 | [`@flow-state-dev/testing`](/docs/api/testing) | Deterministic test harnesses with generator mocks |
+| [`@flow-state-dev/cli`](/docs/api/cli) | Terminal interface (`fsdev`) — run flows, execute blocks |
 
 ## Next steps
 

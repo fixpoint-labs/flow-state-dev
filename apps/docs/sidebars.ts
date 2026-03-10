@@ -50,6 +50,7 @@ const sidebars: SidebarsConfig = {
         "api/client",
         "api/react",
         "api/testing",
+        "api/cli",
       ],
     },
   ],

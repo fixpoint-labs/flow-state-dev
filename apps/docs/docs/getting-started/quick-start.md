@@ -154,9 +154,22 @@ Open your browser and start chatting. The framework is handling:
 - Conversation history assembly for the LLM
 - Item rendering in the UI
 
+## Alternative: run from the terminal
+
+You don't need a server or React frontend to try your flows. The CLI discovers flows from `src/flows/` and runs them directly:
+
+```bash
+pnpm add -D @flow-state-dev/cli
+
+fsdev run hello-chat chat -i '{"message": "Hello!"}'
+```
+
+This streams NDJSON events to stdout as blocks execute. See the [CLI reference](/docs/api/cli) for session reuse, model overrides, and more.
+
 ## Next steps
 
 - **[Installation](/docs/getting-started/installation)** — Package options, peer dependencies, TypeScript config
 - **[Project Structure](/docs/getting-started/project-structure)** — How to organize flows, blocks, and tools
 - **[Blocks](/docs/concepts/blocks)** — Deep dive into handler, generator, sequencer, and router
 - **[Building a Chat App](/docs/guides/building-a-chat-app)** — Full walkthrough with state, clientData, tools, and tests
+- **[CLI Reference](/docs/api/cli)** — Run flows and blocks from the terminal
