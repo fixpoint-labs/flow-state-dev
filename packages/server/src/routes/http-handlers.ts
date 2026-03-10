@@ -8,6 +8,7 @@ import type {
 } from "@flow-state-dev/core/items";
 import type {
   JsonObject,
+  Middleware,
   ModelResolver,
   ResourceConfig,
   SpeechResolver,
@@ -87,6 +88,7 @@ export type CreateFlowRouteHandlersOptions = {
   maxResponseBufferSize?: number;
   maxConcurrentStreams?: number;
   staleStreamTtlMs?: number;
+  middleware?: Middleware[];
   onError?: (error: Error, context: { method: string; path: string }) => void;
   internalSeams?: InternalRouteSeams;
 };
@@ -614,6 +616,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           signal: resolvedActionInput.signal,
           modelResolver: options.modelResolver,
           speechResolver: options.speechResolver,
+          middleware: options.middleware,
           stores,
           responseEmitter: liveStream.emitter
         }).finally(() => {

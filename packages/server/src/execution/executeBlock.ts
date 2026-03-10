@@ -3,6 +3,8 @@
  */
 import type { BlockOutputItem, ItemProvenance } from "@flow-state-dev/core/items";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { composeMiddleware, mergeMiddlewareStacks } from "../middleware/compose";
+import type { BlockMiddlewareContext } from "../middleware/types";
 import { normalizeError } from "../errors/normalize-error";
 import { getResponseItems } from "./internal/response";
 import {
@@ -227,8 +229,24 @@ export async function executeBlock(
             }).container
           : undefined;
 
-      const executionResult = options.ctx._withExecutionScope === undefined
-        ? await executeByKind(
+      // Build middleware chain: caller-provided (global + flow) + block-level.
+      const middlewareStack = mergeMiddlewareStacks(
+        options.middleware,
+        options.block.config.middleware
+      );
+      const blockInfo = { name: options.block.name, kind: options.block.kind };
+      const runMiddleware = composeMiddleware(middlewareStack, blockInfo);
+
+      const middlewareContext: BlockMiddlewareContext = {
+        block: blockInfo,
+        input: interceptedInput,
+        metadata: attemptMetadata,
+        blockContext: options.ctx
+      };
+
+      const executeCore = async (): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta }> => {
+        if (options.ctx._withExecutionScope === undefined) {
+          return executeByKind(
             options.block,
             interceptedInput,
             options.ctx,
@@ -236,41 +254,58 @@ export async function executeBlock(
               internalSeams: seams,
               metadata: attemptMetadata
             }
-          )
-        : await options.ctx._withExecutionScope(
-            {
-              name: options.block.name,
-              kind: options.block.kind,
-              instanceId: attemptMetadata.blockInstanceId ?? blockInstanceId,
-              transient: options.block.transient || undefined,
-              stateSchema: options.block.kind === "sequencer" ? options.block.config.stateSchema : undefined,
-              parentInstanceId: attemptMetadata.parentBlockInstanceId,
-              container:
-                containerConfig === undefined
-                  ? undefined
-                  : {
-                      component: containerConfig.component,
-                      label:
-                        typeof containerConfig.label === "function"
-                          ? containerConfig.label(interceptedInput)
-                          : containerConfig.label,
-                      metadata:
-                        typeof containerConfig.metadata === "function"
-                          ? containerConfig.metadata(interceptedInput)
-                          : containerConfig.metadata
-                    }
-            },
-            async (scopedCtx) =>
-              executeByKind(
-                options.block,
-                interceptedInput,
-                scopedCtx as ExecuteBlockContext,
-                {
-                  internalSeams: seams,
-                  metadata: attemptMetadata
-                }
-              )
           );
+        }
+        return options.ctx._withExecutionScope(
+          {
+            name: options.block.name,
+            kind: options.block.kind,
+            instanceId: attemptMetadata.blockInstanceId ?? blockInstanceId,
+            transient: options.block.transient || undefined,
+            stateSchema: options.block.kind === "sequencer" ? options.block.config.stateSchema : undefined,
+            parentInstanceId: attemptMetadata.parentBlockInstanceId,
+            container:
+              containerConfig === undefined
+                ? undefined
+                : {
+                    component: containerConfig.component,
+                    label:
+                      typeof containerConfig.label === "function"
+                        ? containerConfig.label(interceptedInput)
+                        : containerConfig.label,
+                    metadata:
+                      typeof containerConfig.metadata === "function"
+                        ? containerConfig.metadata(interceptedInput)
+                        : containerConfig.metadata
+                  }
+          },
+          async (scopedCtx) =>
+            executeByKind(
+              options.block,
+              interceptedInput,
+              scopedCtx as ExecuteBlockContext,
+              {
+                internalSeams: seams,
+                metadata: attemptMetadata
+              }
+            )
+        );
+      };
+
+      // Run middleware chain around block execution.
+      // Middleware wraps the output only; modelUsage is captured internally.
+      let capturedModelUsage: GeneratorModelUsageMeta | undefined;
+      const executionResult = await runMiddleware(
+        middlewareContext,
+        async () => {
+          const result = await executeCore();
+          capturedModelUsage = result.modelUsage;
+          return result.output;
+        }
+      ).then((output) => ({
+        output,
+        modelUsage: capturedModelUsage
+      }));
 
       const interceptedOutput = applyBlockOutputSeam(seams, executionResult.output, attemptMetadata);
 

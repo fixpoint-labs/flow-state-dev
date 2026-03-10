@@ -92,3 +92,5 @@ export type {
   TTSConfig,
   VoiceConfig
 } from "./types/speech";
+
+export type { BindingCacheOptions, BindingProvider } from "./types/binding";
