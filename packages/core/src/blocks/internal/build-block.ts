@@ -151,10 +151,13 @@ export function buildBlock<
     outputSchema: resolvedOutputSchema
   };
 
+  const transient = config.transient === true;
+
   const definition: BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> = {
     kind,
     name: runtimeConfig.name,
     description: runtimeConfig.description,
+    transient,
     inputSchema: resolvedInputSchema,
     outputSchema: resolvedOutputSchema,
     config: runtimeConfig,
