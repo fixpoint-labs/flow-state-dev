@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@flow-state-dev/client": "workspace:*",
+    "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
     "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-separator": "^1.1.7",
