@@ -45,6 +45,7 @@ export {
   custom,
   allOf,
   anyOf,
+  analyzerScorer,
   loadDataset,
   fromCsv,
   buildReport,
@@ -61,6 +62,8 @@ export type {
   EvalReport,
   LoadDatasetOptions,
   CsvMapping,
+  AnalyzerScorerConfig,
+  ScoreMapping,
 } from "./eval";
 
 export const testingPackageMarker = "@flow-state-dev/testing";

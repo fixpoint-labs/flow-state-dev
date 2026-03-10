@@ -303,6 +303,54 @@ const lenient = anyOf(
 );
 ```
 
+### LLM-as-judge scoring
+
+Code-based scorers handle structural checks. For subjective quality — "is this response relevant?", "does it hallucinate?" — use `analyzerScorer`, which runs the framework's `utility.analyzer` as a grading LLM.
+
+```ts
+import { evalBlock, analyzerScorer, exactMatch } from "@flow-state-dev/testing";
+
+const report = await evalBlock(chatGenerator, {
+  dataset: cases,
+  scorers: [
+    // Structural: does the output have the right shape?
+    exactMatch("category"),
+    // Subjective: is the content any good?
+    analyzerScorer({
+      criteria: [
+        "Response directly answers the user question",
+        "Response does not hallucinate facts not in the context",
+        "Tone is professional and concise",
+      ],
+      model: "claude-haiku",    // use a cheaper model for grading
+      scoreMapping: "mean",     // average per-criteria scores
+      threshold: 0.7,           // pass if mean score >= 0.7
+    }),
+  ],
+  concurrency: 3,
+});
+```
+
+The analyzer runs once per case, scoring each criterion from 0 to 1. The `scoreMapping` option collapses those into a single score:
+
+- `"mean"` — Average. Good default.
+- `"min"` — Strictest criterion wins. Use when any failure is disqualifying.
+- `{ strategy: "weighted", weights: { "accuracy": 3, "style": 1 } }` — Weighted average.
+
+For common concerns, use the convenience variants instead of writing criteria:
+
+```ts
+analyzerScorer.relevance()     // Is the output relevant to the input?
+analyzerScorer.factuality()    // Does it stick to verifiable facts?
+analyzerScorer.coherence()     // Is it well-structured and logical?
+analyzerScorer.safety()        // Is it free of harmful content?
+
+// They accept config overrides too
+analyzerScorer.relevance({ model: "claude-haiku", threshold: 0.8 })
+```
+
+You can mix code-based and LLM-based scorers freely in the same eval run.
+
 ### Reading the report
 
 The `EvalReport` is JSON-serializable, so you can write it to disk or pipe it into CI tooling:
