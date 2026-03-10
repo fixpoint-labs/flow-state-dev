@@ -8,6 +8,7 @@
     { "path": "./packages/testing" },
     { "path": "./packages/cli" },
     { "path": "./apps/devtool" },
+    { "path": "./packages/thought-fabric-core" },
     { "path": "./examples/hello-chat" },
     { "path": "./examples/kitchen-sink" }
   ]
