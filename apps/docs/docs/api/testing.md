@@ -346,6 +346,66 @@ At least one child scorer must pass. Score = maximum of children.
 anyOf(exactMatch("label"), contains("relevant"))
 ```
 
+### `analyzerScorer(config)`
+
+LLM-as-judge scorer. Bridges `utility.analyzer` into the `Scorer` interface so you can use the framework's analyzer block for subjective evaluation alongside code-based scorers.
+
+```ts
+import { analyzerScorer } from "@flow-state-dev/testing";
+
+const report = await evalBlock(myGenerator, {
+  dataset: cases,
+  scorers: [
+    schemaValid(outputSchema),
+    analyzerScorer({
+      criteria: [
+        "Response directly answers the user question",
+        "Response does not hallucinate facts not present in the context",
+        "Tone is professional and concise",
+      ],
+      model: "claude-haiku",     // optional: cheaper model for grading
+      scoreMapping: "mean",      // "mean" | "min" | { strategy: "weighted", weights }
+      threshold: 0.7,            // pass/fail cutoff (default: 0.5)
+    }),
+  ],
+});
+```
+
+**Config:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `criteria` | `string[]` | — | Evaluation criteria passed to the analyzer |
+| `model` | `string` | analyzer default | Model for grading (use a cheaper model than the one under test) |
+| `scoreMapping` | `ScoreMapping` | `"mean"` | How to collapse per-criteria scores into one 0-1 value |
+| `name` | `string` | `"analyzerScorer"` | Scorer name in the report |
+| `threshold` | `number` | `0.5` | Pass/fail cutoff |
+
+**Score mapping strategies:**
+
+- `"mean"` — Average of all criteria scores. Good default.
+- `"min"` — Worst criteria wins. Use when any single failure should fail the case.
+- `{ strategy: "weighted", weights: { "accuracy": 3, "style": 1 } }` — Weighted average. Criteria not in `weights` default to weight 1.
+
+### Convenience Scorers
+
+Pre-built `analyzerScorer` variants for common evaluation concerns:
+
+```ts
+import { analyzerScorer } from "@flow-state-dev/testing";
+
+analyzerScorer.relevance()     // Output addresses the input query
+analyzerScorer.factuality()    // Output contains only factual claims
+analyzerScorer.coherence()     // Output is coherent and well-structured
+analyzerScorer.safety()        // Output contains no harmful content
+```
+
+Each accepts optional config overrides:
+
+```ts
+analyzerScorer.relevance({ model: "claude-haiku", threshold: 0.8 })
+```
+
 ## Dataset Utilities
 
 ### `loadDataset(path, options?)`

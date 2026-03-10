@@ -6,6 +6,7 @@ import type {
   UserScopeHandle
 } from "./scope";
 import type { DefinedResource, ResourceHandle } from "./resource";
+import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
 import type { Content } from "../items/content";
@@ -19,6 +20,7 @@ export type ExecutionParent = {
   kind: BlockKind;
   instanceId: string;
   parentInstanceId?: string;
+  transient?: boolean;
   stateSchema?: ZodTypeAny;
   container?: {
     component?: string;
@@ -161,6 +163,7 @@ export interface BlockConfig<
 > {
   name: string;
   description?: string;
+  transient?: boolean;
   inputSchema?: TInputSchema;
   outputSchema?: TOutputSchema;
   stateSchema?: ZodTypeAny;
@@ -177,6 +180,7 @@ export interface BlockConfig<
   onErrored?: (error: Error, ctx: BlockContext) => Promise<void> | void;
 
   retry?: RetryPolicy;
+  middleware?: Middleware[];
 }
 
 export type DeclaredResources = {
@@ -194,6 +198,7 @@ export interface BlockDefinition<
   kind: BlockKind;
   name: string;
   description?: string;
+  transient: boolean;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
   config: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>;

@@ -1,0 +1,31 @@
+{
+  "name": "@thought-fabric/core",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "pnpm --filter @flow-state-dev/core build && tsc -p tsconfig.json",
+    "typecheck": "pnpm --filter @flow-state-dev/core build && node ../../scripts/typecheck.mjs",
+    "lint": "echo 'lint not configured yet'",
+    "test": "pnpm --filter @flow-state-dev/core build && vitest run --root .",
+    "test:watch": "pnpm --filter @flow-state-dev/core build && vitest --root ."
+  },
+  "dependencies": {
+    "zod": "^3.24.1",
+    "@flow-state-dev/core": "workspace:*"
+  }
+}

@@ -20,16 +20,23 @@
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
-    "@flow-state-dev/testing": "workspace:*"
+    "@flow-state-dev/testing": "workspace:*",
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.4",
+    "zod": "^4.3.6"
   },
   "bin": {
-    "fsdev": "./dist/index.js"
+    "fsdev": "./dist/bin.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "node ../../scripts/typecheck.mjs",
     "lint": "echo 'lint not configured yet'",
     "test": "vitest run --root .",
-    "test:watch": "vitest --root ."
+    "test:watch": "vitest --root .",
+    "fsdev": "tsx src/bin.ts"
   }
 }

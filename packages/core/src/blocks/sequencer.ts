@@ -132,6 +132,7 @@ async function executeBlock(
       name: block.name,
       kind: block.kind,
       instanceId: `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      transient: block.transient || undefined,
       stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined,
       container:
         containerConfig === undefined
@@ -264,6 +265,7 @@ function createSequencer<TInput, TOutput>(
     config: {
       name: config.name,
       description: config.description,
+      transient: config.transient,
       inputSchema: resolvedInputSchema ?? config.inputSchema,
       outputSchema: undefined,
       stateSchema: config.stateSchema,

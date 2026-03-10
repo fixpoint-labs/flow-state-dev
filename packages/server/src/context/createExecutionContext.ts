@@ -567,6 +567,7 @@ function buildJournalEntry(entry: JournalEntryInput): JournalEntry {
 
 type EmissionContext = {
   requestId: string;
+  blockTransient: boolean;
   response: {
     emitItemAdded(item: OutputItem): Promise<unknown>;
     emitItemDone(item: OutputItem): Promise<unknown>;
@@ -595,6 +596,7 @@ function createEmitMessage(
       id: `item_message_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "message",
       status: "in_progress",
+      transient: emCtx.blockTransient || undefined,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -652,6 +654,7 @@ function createEmitComponent(
       id: `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "component",
       status: "in_progress",
+      transient: emCtx.blockTransient || undefined,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -683,6 +686,7 @@ function createEmitLLMContext(
       id: `item_context_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "context",
       status: "completed",
+      transient: emCtx.blockTransient || undefined,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -1456,6 +1460,7 @@ export async function createExecutionContext<
 
   const emCtx: EmissionContext = {
     requestId: requestRef.current.id,
+    blockTransient: false,
     response: emissionResponse,
     provenance: () => ({
       blockName: "runtime",
@@ -1513,8 +1518,10 @@ export async function createExecutionContext<
   const createContext = (
     parentChain: ExecutionParentNode | undefined,
     siblingRegistry: SiblingRegistryEntry[] | undefined,
-    siblingSearchLimit: number | undefined
+    siblingSearchLimit: number | undefined,
+    scopeEmCtx?: EmissionContext
   ): ExecutionContext<TRequestState, TSessionState, TUserState, TProjectState> => {
+    const activeEmCtx = scopeEmCtx ?? emCtx;
     const childSiblingRegistry: SiblingRegistryEntry[] = [];
     const context: ExecutionContext<TRequestState, TSessionState, TUserState, TProjectState> = {
       flow,
@@ -1681,10 +1688,10 @@ export async function createExecutionContext<
 
         return { status: "not_started" } as BlockResult<never>;
       },
-      emitMessage: createEmitMessage(emCtx),
-      emitComponent: createEmitComponent(emCtx),
-      emitLLMContext: createEmitLLMContext(emCtx),
-      emitStatus: createEmitStatus(emCtx),
+      emitMessage: createEmitMessage(activeEmCtx),
+      emitComponent: createEmitComponent(activeEmCtx),
+      emitLLMContext: createEmitLLMContext(activeEmCtx),
+      emitStatus: createEmitStatus(activeEmCtx),
       _runtimeHooks,
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>) => {
         const resolvedParent: ExecutionParent = {
@@ -1713,6 +1720,7 @@ export async function createExecutionContext<
               id: `item_container_${itemIndex}_${Math.random().toString(16).slice(2)}`,
               type: "container",
               status: "completed",
+              transient: resolvedParent.transient || undefined,
               requestId: requestRef.current.id,
               itemIndex,
               provenance: {
@@ -1745,10 +1753,23 @@ export async function createExecutionContext<
           result: siblingEntry.result,
           previous: parentChain
         };
+        const childEmCtx: EmissionContext = {
+          requestId: requestRef.current.id,
+          blockTransient: resolvedParent.transient === true,
+          response: emissionResponse,
+          provenance: () => ({
+            blockName: resolvedParent.name,
+            blockInstanceId: resolvedParent.instanceId,
+            parentBlockInstanceId: resolvedParent.parentInstanceId,
+            phase: "main" as const
+          }),
+          nextItemIndex: () => emittedItemCount++
+        };
         const childContext = createContext(
           childChain,
           childSiblingRegistry,
-          childSiblingRegistry.length - 1
+          childSiblingRegistry.length - 1,
+          childEmCtx
         );
 
         try {

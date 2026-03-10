@@ -96,6 +96,10 @@ export type {
   UserScopeHandle
 } from "./scope";
 
+export type { BindingCacheOptions, BindingProvider } from "./binding";
+
+export type { Middleware, MiddlewareContext, MiddlewareFn } from "./middleware";
+
 export type { TokenCounter } from "./tokens";
 
 export type { CASOptions, ScopeStateOps, StateContainer } from "./state";
