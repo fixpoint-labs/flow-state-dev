@@ -181,7 +181,7 @@ function AppContent() {
   };
 
   return (
-    <div className="h-screen bg-slate-950 text-slate-100">
+    <div className="h-screen overflow-hidden bg-slate-950 text-slate-100">
       <header className="flex h-10 items-center justify-between border-b border-slate-800 px-4">
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-semibold tracking-wide">FSD DevTools</h1>
@@ -234,8 +234,8 @@ function AppContent() {
         />
 
         {/* Main workspace */}
-        <main className="flex min-w-0 flex-1 flex-col bg-slate-950">
-          <Tabs defaultValue="stream" className="flex flex-1 flex-col">
+        <main className="flex min-w-0 min-h-0 flex-1 flex-col bg-slate-950">
+          <Tabs defaultValue="stream" className="flex flex-1 flex-col min-h-0">
             <div className="flex items-center justify-between px-3 pt-2">
               <TabsList>
                 <TabsTrigger value="stream">Stream</TabsTrigger>
