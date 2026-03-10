@@ -420,6 +420,12 @@ importers:
         specifier: ^3.24.1
         version: 3.25.76
 
+  packages/thought-fabric-core:
+    dependencies:
+      '@flow-state-dev/core':
+        specifier: workspace:*
+        version: link:../core
+
 packages:
 
   '@acemir/cssom@0.9.31':
