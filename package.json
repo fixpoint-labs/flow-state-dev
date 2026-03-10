@@ -15,7 +15,7 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm --filter \"./packages/*\" -r build && changeset publish --provenance",
-    "release:snapshot": "changeset version --snapshot && pnpm --filter \"./packages/*\" -r build && changeset publish --tag canary --no-git-tag --provenance"
+    "release:snapshot": "changeset version --snapshot && pnpm --filter \"./packages/*\" -r build && changeset publish --tag canary --no-git-tag --provenance",
     "fsdev": "tsx packages/cli/bin/fsdev.ts"
   },
   "devDependencies": {
