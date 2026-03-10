@@ -12,6 +12,9 @@ export {
   anyOf,
 } from "./scorers";
 
+export { analyzerScorer } from "./analyzerScorer";
+export type { AnalyzerScorerConfig, ScoreMapping } from "./analyzerScorer";
+
 export { loadDataset, fromCsv } from "./dataset";
 export { buildReport } from "./report";
 
