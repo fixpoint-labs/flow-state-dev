@@ -1,5 +1,5 @@
 ---
-name: linear-triage
+name: fsd:linear-triage
 description: Review Linear issues and propose prioritization changes, surface missing or stale tasks, and sequence work for parallel agent execution with human review gates.
 argument-hint: "[team-key or filter]"
 ---

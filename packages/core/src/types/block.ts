@@ -6,6 +6,7 @@ import type {
   UserScopeHandle
 } from "./scope";
 import type { DefinedResource, ResourceHandle } from "./resource";
+import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
 import type { Content } from "../items/content";
@@ -177,6 +178,7 @@ export interface BlockConfig<
   onErrored?: (error: Error, ctx: BlockContext) => Promise<void> | void;
 
   retry?: RetryPolicy;
+  middleware?: Middleware[];
 }
 
 export type DeclaredResources = {
