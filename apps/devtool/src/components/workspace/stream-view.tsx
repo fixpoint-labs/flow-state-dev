@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { Inbox } from "lucide-react";
 import { ItemRenderer } from "@/components/items/item-renderer";
@@ -33,12 +33,31 @@ export function StreamView({
   onReconnect,
 }: StreamViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const lastScrollRef = useRef(0);
 
+  // Throttle scrollIntoView to at most once per 200ms during streaming
   useEffect(() => {
     if (streamStatus === "streaming") {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      const now = Date.now();
+      if (now - lastScrollRef.current >= 200) {
+        lastScrollRef.current = now;
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      }
     }
   }, [requestGroups, streamStatus]);
+
+  // Pre-compute sequence numbers from indices instead of mutating during render
+  const sequenceMap = useMemo(() => {
+    const map = new Map<string, number>();
+    let seq = 0;
+    for (const group of requestGroups) {
+      for (const item of group.items) {
+        seq++;
+        map.set(item.id, seq);
+      }
+    }
+    return map;
+  }, [requestGroups]);
 
   if (requestGroups.length === 0) {
     return (
@@ -49,8 +68,6 @@ export function StreamView({
       />
     );
   }
-
-  let globalSeq = 0;
 
   return (
     <div className="flex flex-col gap-0 overflow-auto h-full">
@@ -68,16 +85,13 @@ export function StreamView({
               onReplayFromCursor={onReplayFromCursor ? () => onReplayFromCursor(group.requestId) : undefined}
               onReconnect={onReconnect ? () => onReconnect(group.requestId) : undefined}
             />
-            {group.items.map((item) => {
-              globalSeq++;
-              return (
-                <ItemRenderer
-                  key={item.id}
-                  item={item}
-                  sequenceNumber={globalSeq}
-                />
-              );
-            })}
+            {group.items.map((item) => (
+              <ItemRenderer
+                key={item.id}
+                item={item}
+                sequenceNumber={sequenceMap.get(item.id)}
+              />
+            ))}
           </div>
         );
       })}

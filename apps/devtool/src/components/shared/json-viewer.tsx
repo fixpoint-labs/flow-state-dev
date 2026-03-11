@@ -45,7 +45,7 @@ function syntaxHighlight(json: string): React.ReactNode[] {
 
   while ((match = regex.exec(json)) !== null) {
     if (match.index > lastIndex) {
-      parts.push(highlightValues(json.slice(lastIndex, match.index)));
+      parts.push(json.slice(lastIndex, match.index));
     }
     parts.push(
       <span key={`k-${match.index}`} className="text-blue-300">
@@ -57,17 +57,8 @@ function syntaxHighlight(json: string): React.ReactNode[] {
   }
 
   if (lastIndex < json.length) {
-    parts.push(highlightValues(json.slice(lastIndex)));
+    parts.push(json.slice(lastIndex));
   }
 
   return parts;
-}
-
-function highlightValues(text: string): React.ReactNode {
-  return text.replace(/("(?:\\.|[^"\\])*")|(\b\d+\.?\d*\b)|(true|false|null)/g, (m, str, num, bool) => {
-    if (str) return m;
-    if (num) return m;
-    if (bool) return m;
-    return m;
-  });
 }

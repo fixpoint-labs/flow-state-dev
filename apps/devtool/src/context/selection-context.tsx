@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 
 type SelectionState = {
@@ -11,21 +11,28 @@ type SelectionState = {
 const SelectionContext = createContext<SelectionState | null>(null);
 
 export function SelectionProvider({ children }: { children: ReactNode }) {
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<OutputItem | null>(null);
 
-  const selectItem = useCallback((itemId: string, item: OutputItem) => {
-    setSelectedItemId(itemId);
+  const selectItem = useCallback((_itemId: string, item: OutputItem) => {
     setSelectedItem(item);
   }, []);
 
   const clearSelection = useCallback(() => {
-    setSelectedItemId(null);
     setSelectedItem(null);
   }, []);
 
+  const value = useMemo(
+    () => ({
+      selectedItemId: selectedItem?.id ?? null,
+      selectedItem,
+      selectItem,
+      clearSelection,
+    }),
+    [selectedItem, selectItem, clearSelection],
+  );
+
   return (
-    <SelectionContext.Provider value={{ selectedItemId, selectedItem, selectItem, clearSelection }}>
+    <SelectionContext.Provider value={value}>
       {children}
     </SelectionContext.Provider>
   );

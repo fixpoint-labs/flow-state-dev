@@ -1,13 +1,11 @@
 import { Inbox } from "lucide-react";
-import { useFlows } from "@/hooks/use-flows";
 import { useDevTool } from "@/context/devtool-context";
 import { FlowItem } from "./flow-item";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorAlert } from "@/components/shared/error-alert";
 
 export function FlowList() {
-  const { flows, isLoading, error, refresh } = useFlows();
-  const { activeFlowKind, setActiveFlow } = useDevTool();
+  const { flows, flowsLoading: isLoading, flowsError: error, refreshFlows: refresh, activeFlowKind, setActiveFlow } = useDevTool();
 
   if (error) {
     return <ErrorAlert message={error} onRetry={refresh} className="mx-1" />;

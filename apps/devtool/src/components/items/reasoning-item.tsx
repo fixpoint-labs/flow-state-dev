@@ -5,7 +5,7 @@ import { Brain, ChevronDown, ChevronRight } from "lucide-react";
 export function ReasoningItemView({ item }: { item: ReasoningItem }) {
   const [expanded, setExpanded] = useState(false);
   const text = item.summary
-    .map((c) => ("text" in c ? (c as unknown as { text: string }).text : ""))
+    .map((c) => ("text" in c ? (c as { text: string }).text : ""))
     .join("");
 
   return (

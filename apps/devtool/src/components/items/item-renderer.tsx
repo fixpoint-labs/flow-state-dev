@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { MessageItemView } from "./message-item";
 import { ReasoningItemView } from "./reasoning-item";
@@ -17,11 +18,10 @@ import { cn } from "@/lib/utils";
 
 type ItemRendererProps = {
   item: OutputItem;
-  showSequenceNumber?: boolean;
   sequenceNumber?: number;
 };
 
-export function ItemRenderer({ item, showSequenceNumber, sequenceNumber }: ItemRendererProps) {
+export const ItemRenderer = memo(function ItemRenderer({ item, sequenceNumber }: ItemRendererProps) {
   const { isDebugMode } = useDebug();
   const { selectedItemId, selectItem } = useSelection();
   const isSelected = selectedItemId === item.id;
@@ -42,7 +42,7 @@ export function ItemRenderer({ item, showSequenceNumber, sequenceNumber }: ItemR
       onClick={handleClick}
     >
       <div className="flex items-start gap-2">
-        {(showSequenceNumber || isDebugMode) && sequenceNumber !== undefined && (
+        {isDebugMode && sequenceNumber !== undefined && (
           <span className="shrink-0 text-[10px] font-mono text-slate-600 mt-0.5">
             #{sequenceNumber}
           </span>
@@ -60,7 +60,7 @@ export function ItemRenderer({ item, showSequenceNumber, sequenceNumber }: ItemR
       {isDebugMode && <DebugOverlay item={item} />}
     </div>
   );
-}
+});
 
 function ItemContent({ item }: { item: OutputItem }) {
   switch (item.type) {

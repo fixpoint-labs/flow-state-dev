@@ -1,6 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { ChevronDown, ChevronRight, Clock, Minus } from "lucide-react";
+import { ChevronDown, ChevronRight, Clock, Minus, Inbox } from "lucide-react";
 import type { TraceNode } from "@/lib/trace-tree";
 import { buildTraceTree } from "@/lib/trace-tree";
 import type { RequestGroup } from "./stream-view";
@@ -9,7 +9,6 @@ import { KindIndicator } from "@/components/shared/kind-indicator";
 import { useSelection } from "@/context/selection-context";
 import { useDebug } from "@/context/debug-context";
 import { EmptyState } from "@/components/shared/empty-state";
-import { Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type TraceViewProps = {
@@ -17,7 +16,7 @@ type TraceViewProps = {
 };
 
 export function TraceView({ requestGroups }: TraceViewProps) {
-  const tree = buildTraceTree(requestGroups);
+  const tree = useMemo(() => buildTraceTree(requestGroups), [requestGroups]);
   const [expandState, setExpandState] = useState<Record<string, boolean>>({});
 
   const toggleNode = useCallback((nodeId: string) => {
@@ -176,7 +175,7 @@ function getItemPreview(item: OutputItem): string {
   switch (item.type) {
     case "message": {
       const text = item.content
-        .map((c) => ("text" in c ? (c as unknown as { text: string }).text : ""))
+        .map((c) => ("text" in c ? (c as { text: string }).text : ""))
         .join("");
       return text.slice(0, 60) + (text.length > 60 ? "..." : "");
     }
@@ -190,7 +189,7 @@ function getItemPreview(item: OutputItem): string {
       return item.blockName + (item.toolCall ? ` → ${item.toolCall.callId}` : "");
     case "reasoning": {
       const rText = item.summary
-        .map((c) => ("text" in c ? (c as unknown as { text: string }).text : ""))
+        .map((c) => ("text" in c ? (c as { text: string }).text : ""))
         .join("");
       return rText.slice(0, 60) + (rText.length > 60 ? "..." : "");
     }

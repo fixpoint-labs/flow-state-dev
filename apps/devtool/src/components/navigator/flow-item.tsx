@@ -5,7 +5,7 @@ import { useDevTool } from "@/context/devtool-context";
 import { useSessions } from "@/hooks/use-sessions";
 import { useActiveSession } from "@/hooks/use-active-session";
 import { SessionRow } from "./session-row";
-import { BlockTree } from "./block-tree";
+
 
 type FlowItemProps = {
   flow: FlowListEntry;
