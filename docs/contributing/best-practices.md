@@ -109,6 +109,18 @@ Update policy:
 - Why:
   - Reduces onboarding and integration friction by keeping package docs close to the code that owns each contract.
 
+### BP-010: React component conventions
+
+- Status: Active
+- Date: 2026-03-10
+- Rule:
+  - **Prefer `useMemo` over `useEffect` for derived state.** If a value can be computed from props or other state, derive it with `useMemo` rather than syncing it through `useEffect` + `setState`. `useEffect` should be reserved for genuine side effects: subscriptions, DOM manipulation, data fetching, or synchronization with external systems.
+  - **Comment every `useEffect`.** Each `useEffect` must have a brief comment above or inside the hook explaining *what* side effect it performs and *why* it exists. This applies even when the effect seems straightforward — the "why" is often non-obvious to the next reader.
+  - **Comment non-obvious logic.** Code should be readable on its own, but when intent or reasoning isn't self-evident — complex conditions, non-trivial memoization dependencies, workarounds — add a concise comment explaining the *why*.
+- Why:
+  - `useMemo` is synchronous and deterministic — no extra render cycle, no stale intermediate state, no cleanup concerns. `useEffect` for derived state introduces unnecessary complexity and subtle timing bugs.
+  - Mandatory `useEffect` comments prevent "mystery effects" that accumulate as components grow. Effects are the most error-prone part of React components; explaining their purpose makes bugs easier to spot during review.
+
 ---
 
 ## Template For New Entries
