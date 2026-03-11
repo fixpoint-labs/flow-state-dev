@@ -1,14 +1,30 @@
-import { ChevronLeft, ChevronRight, PanelLeft, Send } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, PanelLeft, User } from "lucide-react";
+import type { OutputItem } from "@flow-state-dev/core/items";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { readBaseUrl, writeBaseUrl } from "@/config";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+import { DevToolProvider, useDevTool } from "@/context/devtool-context";
+import { SelectionProvider } from "@/context/selection-context";
+import { DebugProvider } from "@/context/debug-context";
+
+import { FlowList } from "@/components/navigator/flow-list";
+import { SettingsSheet } from "@/components/navigator/settings-sheet";
+import { StreamView, type RequestGroup } from "@/components/workspace/stream-view";
+import { TraceView } from "@/components/workspace/trace-view";
+import { ActionBar } from "@/components/workspace/action-bar";
+import { StreamStatusIndicator } from "@/components/workspace/stream-status";
+import { SessionContextPanel } from "@/components/detail/session-context";
+import { ItemDetail } from "@/components/detail/item-detail";
+
+import { useActiveSession } from "@/hooks/use-active-session";
+import { useRequestStream } from "@/hooks/use-request-stream";
+import { useActionDispatch } from "@/hooks/use-action-dispatch";
+import { useSessionRequests } from "@/hooks/use-session-requests";
+import { useReplay } from "@/hooks/use-replay";
 
 const NAV_EXPANDED_WIDTH = 240;
 const NAV_COLLAPSED_WIDTH = 64;
@@ -19,135 +35,268 @@ const DETAIL_MAX_WIDTH = 520;
 const MAIN_MIN_WIDTH = 560;
 
 export function App() {
+  return (
+    <DevToolProvider>
+      <DebugProvider>
+        <SelectionProvider>
+          <AppContent />
+        </SelectionProvider>
+      </DebugProvider>
+    </DevToolProvider>
+  );
+}
+
+function AppContent() {
+  const { config, flows, activeFlowKind, activeSessionId, setActiveSession } = useDevTool();
   const [navExpanded, setNavExpanded] = useState(true);
   const [navWidth, setNavWidth] = useState(NAV_EXPANDED_WIDTH);
   const [detailWidth, setDetailWidth] = useState(DETAIL_DEFAULT_WIDTH);
-  const [baseUrl, setBaseUrl] = useState(readBaseUrl);
+
+  const activeFlow = flows.find((f) => f.kind === activeFlowKind);
+  const { activeSessionId: stickySession } = useActiveSession(activeFlowKind);
+
+  const effectiveSessionId = activeSessionId ?? stickySession;
+
+  useEffect(() => {
+    if (stickySession && !activeSessionId) {
+      setActiveSession(stickySession);
+    }
+  }, [stickySession, activeSessionId, setActiveSession]);
+
+  const { requests, refresh: refreshRequests } = useSessionRequests(effectiveSessionId);
+  const { sendAction, isSending, lastResponse } = useActionDispatch();
+
+  const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  const [liveItems, setLiveItems] = useState<Map<string, OutputItem[]>>(new Map());
+
+  const { replayState, isReplaying, replayFull, replayFromCursor, simulateReconnect, clearReplay } = useReplay();
+
+  const streamRequestId = replayState.requestId ?? activeRequestId;
+  const { streamState, streamStatus, items: streamItems } = useRequestStream({
+    flowKind: activeFlowKind,
+    requestId: streamRequestId,
+    startingAfter: replayState.startingAfter,
+    lastEventId: replayState.lastEventId,
+    enabled: !!streamRequestId,
+  });
+
+  const [stateRefreshKey, setStateRefreshKey] = useState(0);
+
+  useEffect(() => {
+    if (streamStatus === "completed" || streamStatus === "failed") {
+      void refreshRequests();
+      setStateRefreshKey((k) => k + 1);
+      if (isReplaying) clearReplay();
+    }
+  }, [streamStatus, refreshRequests, isReplaying, clearReplay]);
+
+  useEffect(() => {
+    if (streamRequestId && streamItems.length > 0) {
+      setLiveItems((prev) => {
+        const next = new Map(prev);
+        next.set(streamRequestId, [...streamItems]);
+        return next;
+      });
+    }
+  }, [streamRequestId, streamItems]);
+
+  const requestGroups: RequestGroup[] = useMemo(() => {
+    const groups: RequestGroup[] = [];
+    for (const req of requests) {
+      groups.push({
+        requestId: req.id,
+        action: req.actionName,
+        status: req.status,
+        startedAt: req.startedAtMs ?? req.createdAt,
+        duration: req.completedAtMs && req.startedAtMs ? req.completedAtMs - req.startedAtMs : undefined,
+        items: liveItems.get(req.id) ?? [],
+      });
+    }
+    if (activeRequestId && !requests.find((r) => r.id === activeRequestId)) {
+      groups.push({
+        requestId: activeRequestId,
+        action: lastResponse?.request.actionName ?? "action",
+        status: streamState?.status === "created" ? "in_progress" : (streamState?.status ?? "in_progress"),
+        startedAt: Date.now(),
+        items: liveItems.get(activeRequestId) ?? [],
+      });
+    }
+    return groups;
+  }, [requests, liveItems, activeRequestId, lastResponse, streamState]);
+
+  const handleSendAction = useCallback(
+    async (action: string, input: unknown) => {
+      if (!activeFlowKind || !effectiveSessionId) return;
+      const response = await sendAction(activeFlowKind, effectiveSessionId, action, input);
+      if (response?.request.id) {
+        setActiveRequestId(response.request.id);
+      }
+    },
+    [activeFlowKind, effectiveSessionId, sendAction],
+  );
+
+  const handleReplayFull = useCallback(
+    (requestId: string) => {
+      setLiveItems((prev) => { const next = new Map(prev); next.delete(requestId); return next; });
+      replayFull(requestId);
+    },
+    [replayFull],
+  );
+
+  const handleReplayFromCursor = useCallback(
+    (requestId: string) => {
+      const items = liveItems.get(requestId) ?? [];
+      replayFromCursor(requestId, items.length);
+    },
+    [replayFromCursor, liveItems],
+  );
+
+  const handleReconnect = useCallback(
+    (requestId: string) => {
+      const items = liveItems.get(requestId) ?? [];
+      simulateReconnect(requestId, `${requestId}:${items.length}`);
+    },
+    [simulateReconnect, liveItems],
+  );
 
   const onStartResize = (panel: "nav" | "detail", startClientX: number) => {
     const startNav = navWidth;
     const startDetail = detailWidth;
-
     const onMove = (event: MouseEvent) => {
       if (panel === "nav") {
-        const next = Math.min(NAV_MAX_WIDTH, Math.max(NAV_COLLAPSED_WIDTH, startNav + (event.clientX - startClientX)));
-        setNavWidth(next);
-        return;
+        setNavWidth(Math.min(NAV_MAX_WIDTH, Math.max(NAV_COLLAPSED_WIDTH, startNav + (event.clientX - startClientX))));
+      } else {
+        const next = Math.max(DETAIL_MIN_WIDTH, Math.min(DETAIL_MAX_WIDTH, startDetail - (event.clientX - startClientX)));
+        const maxDetail = Math.max(DETAIL_MIN_WIDTH, window.innerWidth - MAIN_MIN_WIDTH - (navExpanded ? navWidth : NAV_COLLAPSED_WIDTH));
+        setDetailWidth(Math.min(next, maxDetail));
       }
-
-      const delta = event.clientX - startClientX;
-      const next = Math.max(DETAIL_MIN_WIDTH, Math.min(DETAIL_MAX_WIDTH, startDetail - delta));
-      const maxDetail = Math.max(DETAIL_MIN_WIDTH, window.innerWidth - MAIN_MIN_WIDTH - (navExpanded ? navWidth : NAV_COLLAPSED_WIDTH));
-      setDetailWidth(Math.min(next, maxDetail));
     };
-
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
-
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   };
 
   return (
-    <div className="h-screen bg-slate-950 text-slate-100">
-      <header className="flex h-14 items-center justify-between border-b border-slate-800 px-4">
+    <div className="h-screen overflow-hidden bg-slate-950 text-slate-100">
+      <header className="flex h-10 items-center justify-between border-b border-slate-800 px-4">
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-semibold tracking-wide">FSD DevTools</h1>
-          <Badge variant="secondary">v0.1.0</Badge>
+          <Badge variant="secondary" className="text-[10px]">v0.1.0</Badge>
         </div>
-        <Badge>Dark Shell</Badge>
+        <StreamStatusIndicator status={streamStatus} />
       </header>
 
-      <div className="flex h-[calc(100vh-3.5rem)]">
+      <div className="flex h-[calc(100vh-2.5rem)]">
+        {/* Navigator */}
         <aside
-          className="border-r border-slate-800 bg-slate-900/50 p-3"
+          className="flex flex-col border-r border-slate-800 bg-slate-900/50"
           style={{ width: navExpanded ? `${navWidth}px` : `${NAV_COLLAPSED_WIDTH}px` }}
         >
-          <Button variant="outline" size="sm" className="mb-4 flex w-full justify-between" onClick={() => setNavExpanded((current) => !current)}>
-            <span className="inline-flex items-center gap-2">
-              <PanelLeft className="h-4 w-4" />
-              {navExpanded ? "Navigator" : null}
-            </span>
-            {navExpanded ? <ChevronLeft className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          </Button>
-
-          <div className="space-y-2">
-            {["Flows", "Sessions", "Requests"].map((item) => (
-              <Card key={item} className="bg-slate-950">
-                <CardContent className="p-2 text-xs text-slate-400">{navExpanded ? item : item[0]}</CardContent>
-              </Card>
-            ))}
+          <div className="p-2">
+            <Button variant="ghost" size="sm" className="flex w-full justify-between h-7" onClick={() => setNavExpanded((c) => !c)}>
+              <span className="inline-flex items-center gap-1.5">
+                <PanelLeft className="h-3.5 w-3.5" />
+                {navExpanded ? <span className="text-xs">Navigator</span> : null}
+              </span>
+              {navExpanded ? <ChevronLeft className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            </Button>
           </div>
+
+          {navExpanded && (
+            <>
+              <div className="px-2 py-1">
+                <span className="text-[10px] font-medium uppercase text-slate-500">Flows</span>
+              </div>
+              <div className="flex-1 overflow-auto px-1">
+                <FlowList />
+              </div>
+              <Separator />
+              <div className="p-2 space-y-1">
+                <div className="flex items-center gap-1.5 px-2 py-1 text-xs text-slate-400">
+                  <User className="h-3.5 w-3.5" />
+                  <span className="truncate">{config.userId}</span>
+                </div>
+                <SettingsSheet />
+              </div>
+            </>
+          )}
         </aside>
 
         <div
           role="separator"
           aria-orientation="vertical"
           className="w-1 cursor-col-resize bg-slate-800/50 hover:bg-sky-500"
-          onMouseDown={(event) => onStartResize("nav", event.clientX)}
+          onMouseDown={(e) => onStartResize("nav", e.clientX)}
         />
 
-        <main className="flex min-w-0 flex-1 flex-col bg-slate-950">
-          <div className="p-3">
-            <Tabs defaultValue="stream">
+        {/* Main workspace */}
+        <main className="flex min-w-0 min-h-0 flex-1 flex-col bg-slate-950">
+          <Tabs defaultValue="stream" className="flex flex-1 flex-col min-h-0">
+            <div className="flex items-center justify-between px-3 pt-2">
               <TabsList>
                 <TabsTrigger value="stream">Stream</TabsTrigger>
                 <TabsTrigger value="trace">Trace</TabsTrigger>
               </TabsList>
-            </Tabs>
-          </div>
-
-          <Separator />
-
-          <div className="flex-1 p-4">
-            <Card className="h-full">
-              <CardHeader>
-                <CardTitle>Main Workspace</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm text-slate-500">Workspace shell placeholder</CardContent>
-            </Card>
-          </div>
-
-          <Separator />
-
-          <div className="p-3">
-            <div className="flex items-center gap-2 rounded-md border border-slate-800 bg-slate-900/40 p-2">
-              <Input placeholder="Type an action payload (non-functional)" />
-              <Button size="icon" variant="outline" aria-label="Send action">
-                <Send className="h-4 w-4" />
-              </Button>
+              {streamStatus === "streaming" && (
+                <div className="flex items-center gap-1.5">
+                  <span className="inline-block h-2 w-2 rounded-full bg-green-400 animate-pulse" />
+                  <span className="text-[10px] text-slate-400">Auto-refresh on</span>
+                </div>
+              )}
             </div>
-          </div>
+
+            <Separator className="mt-2" />
+
+            <TabsContent value="stream" className="flex-1 min-h-0 m-0">
+              <StreamView
+                requestGroups={requestGroups}
+                streamStatus={streamStatus}
+                isReplaying={isReplaying}
+                onReplayFull={handleReplayFull}
+                onReplayFromCursor={handleReplayFromCursor}
+                onReconnect={handleReconnect}
+              />
+            </TabsContent>
+
+            <TabsContent value="trace" className="flex-1 min-h-0 m-0">
+              <TraceView requestGroups={requestGroups} />
+            </TabsContent>
+
+            <Separator />
+
+            <div className="p-2">
+              <ActionBar
+                flowKind={activeFlowKind}
+                sessionId={effectiveSessionId}
+                availableActions={activeFlow?.actions ?? []}
+                actionSchemas={activeFlow?.actionSchemas}
+                onSendAction={handleSendAction}
+                isSending={isSending}
+              />
+            </div>
+          </Tabs>
         </main>
 
         <div
           role="separator"
           aria-orientation="vertical"
           className="w-1 cursor-col-resize bg-slate-800/50 hover:bg-sky-500"
-          onMouseDown={(event) => onStartResize("detail", event.clientX)}
+          onMouseDown={(e) => onStartResize("detail", e.clientX)}
         />
 
-        <aside className="border-l border-slate-800 bg-slate-900/40 p-3" style={{ width: `${detailWidth}px` }}>
-          <Card>
-            <CardHeader>
-              <CardTitle>Client Configuration</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <Label htmlFor="base-url">Base URL</Label>
-              <Input
-                id="base-url"
-                value={baseUrl}
-                onChange={(event) => {
-                  const next = event.target.value;
-                  setBaseUrl(next);
-                  writeBaseUrl(next);
-                }}
-                placeholder="http://localhost:3000"
-              />
-            </CardContent>
-          </Card>
+        {/* Detail panel */}
+        <aside
+          className="flex flex-col border-l border-slate-800 bg-slate-900/40 overflow-auto"
+          style={{ width: `${detailWidth}px` }}
+        >
+          <div className="flex-1 p-3 space-y-4">
+            <SessionContextPanel sessionId={effectiveSessionId} refreshKey={stateRefreshKey} />
+            <Separator />
+            <ItemDetail />
+          </div>
         </aside>
       </div>
     </div>

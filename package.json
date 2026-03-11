@@ -9,6 +9,7 @@
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm -r --if-present test",
     "test:watch": "pnpm -r --parallel --stream --if-present test:watch",
+    "devtool:dev": "pnpm --filter @flow-state-dev/react build && node scripts/devtool-dev.mjs",
     "docs:dev": "pnpm --filter @flow-state-dev/docs dev",
     "docs:build": "pnpm --filter @flow-state-dev/docs build",
     "docs:serve": "pnpm --filter @flow-state-dev/docs serve",

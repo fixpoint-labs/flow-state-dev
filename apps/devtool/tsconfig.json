@@ -11,5 +11,5 @@
     }
   },
   "include": ["src/**/*", "test/**/*", "vite.config.ts"],
-  "references": [{ "path": "../../packages/client" }, { "path": "../../packages/react" }]
+  "references": [{ "path": "../../packages/core" }, { "path": "../../packages/client" }, { "path": "../../packages/react" }]
 }

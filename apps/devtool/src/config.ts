@@ -1,19 +1,37 @@
-const BASE_URL_KEY = "fsd.devtool.baseUrl";
-const DEFAULT_BASE_URL = "http://localhost:3000";
+const USER_ID_KEY = "fsd.devtool.userId";
+const DEFAULT_USER_ID = "devuser";
+const ACTIVE_SESSION_PREFIX = "fsd.devtool.activeSession.";
+const LAST_ACTION_PREFIX = "fsd.devtool.lastAction.";
 
-export function readBaseUrl(): string {
-  if (typeof window === "undefined") {
-    return DEFAULT_BASE_URL;
-  }
-
-  const stored = window.localStorage.getItem(BASE_URL_KEY);
-  return stored?.trim() ? stored : DEFAULT_BASE_URL;
+export function readUserId(): string {
+  const stored = window.localStorage.getItem(USER_ID_KEY);
+  return stored?.trim() ? stored : DEFAULT_USER_ID;
 }
 
-export function writeBaseUrl(baseUrl: string): void {
-  if (typeof window === "undefined") {
-    return;
-  }
+export function writeUserId(userId: string): void {
+  window.localStorage.setItem(USER_ID_KEY, userId.trim());
+}
 
-  window.localStorage.setItem(BASE_URL_KEY, baseUrl.trim());
+export function readActiveSession(flowKind: string): string | null {
+  return window.localStorage.getItem(ACTIVE_SESSION_PREFIX + flowKind) || null;
+}
+
+export function writeActiveSession(flowKind: string, sessionId: string | null): void {
+  if (sessionId) {
+    window.localStorage.setItem(ACTIVE_SESSION_PREFIX + flowKind, sessionId);
+  } else {
+    window.localStorage.removeItem(ACTIVE_SESSION_PREFIX + flowKind);
+  }
+}
+
+export function readLastAction(flowKind: string): string | null {
+  return window.localStorage.getItem(LAST_ACTION_PREFIX + flowKind) || null;
+}
+
+export function writeLastAction(flowKind: string, action: string): void {
+  window.localStorage.setItem(LAST_ACTION_PREFIX + flowKind, action);
+}
+
+export function readDebugMode(): boolean {
+  return window.localStorage.getItem("fsd.devtool.debugMode") === "true";
 }

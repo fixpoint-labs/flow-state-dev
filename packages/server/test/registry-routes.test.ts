@@ -178,7 +178,15 @@ describe("createFlowApiRouter", () => {
           id: "demo",
           kind: "demo",
           requireUser: true,
-          actions: ["run"]
+          actions: ["run"],
+          actionSchemas: {
+            run: {
+              type: "object",
+              fields: {
+                value: { type: "string", required: true }
+              }
+            }
+          }
         }
       ]
     });

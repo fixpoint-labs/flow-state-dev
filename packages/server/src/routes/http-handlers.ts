@@ -14,6 +14,7 @@ import type {
   SpeechResolver,
   TranscriptionResolver
 } from "@flow-state-dev/core/types";
+import { serializeActionSchema } from "@flow-state-dev/core/types";
 import { FlowError, ValidationError } from "../errors/flow-error";
 import { runAction } from "../execution/runAction";
 import { type FlowRegistry } from "../registry/flow-registry";
@@ -528,7 +529,13 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
             id: flow.id,
             kind: flow.kind,
             requireUser: flow.requireUser,
-            actions: Object.keys(flow.actions)
+            actions: Object.keys(flow.actions),
+            actionSchemas: Object.fromEntries(
+              Object.entries(flow.actions).map(([name, config]) => [
+                name,
+                serializeActionSchema(config.inputSchema)
+              ])
+            )
           }))
         });
       }
