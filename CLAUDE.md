@@ -84,3 +84,6 @@ The philosophy blog post (`apps/docs/blog/2026-03-06-philosophy.md`) is the refe
 ## Current Phase
 
 Phase 1 (Foundation): Waves 1.a–1.k complete. Remaining: 1.l (CLI), 1.m (devtool), 1.n (cross-package validation).
+
+## Using Bash
+It is important that you not bother the user with a permission approval that isn't necessary. Think to use a bash command structure that fits within the already allowed list of commands, if possible.
