@@ -11,7 +11,7 @@ import type {
   ProjectScopeHandle,
   RequestScopeHandle,
   ResourceConfig,
-  ResourceHandle,
+  ResourceRef,
   ResourceRegistry,
   ScopeType,
   SessionItem,
@@ -33,7 +33,7 @@ import type {
   StateChangeItem,
   StatusItem
 } from "@flow-state-dev/core/items";
-import type { BlockContext, BlockResult, ComponentHandle, ExecutionParent, MessageHandle, StateHandle } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockResult, ComponentHandle, ExecutionParent, MessageHandle, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import type {
   ProjectRecord,
@@ -236,7 +236,7 @@ function updateObjectState(
   return next;
 }
 
-function createScopeResourceRegistry<TResources extends Record<string, ResourceHandle<any>>>(
+function createScopeResourceRegistry<TResources extends Record<string, ResourceRef<any>>>(
   options: {
     scope: ScopeType;
     configs: Record<string, ResourceConfig> | undefined;
@@ -246,7 +246,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceH
     persistResourceContent: (next: Record<string, string>) => Promise<void>;
   }
 ): ResourceRegistry<TResources> {
-  const handles = {} as Record<string, ResourceHandle<JsonObject>>;
+  const handles = {} as Record<string, ResourceRef<JsonObject>>;
   const configs = options.configs ?? {};
 
   const persistResourceState = async (
@@ -817,7 +817,7 @@ function createTargetStateOps<TState extends JsonObject>(options: {
   provenance: () => ItemProvenance;
   blockInstanceId: string;
   transientStateChanges: boolean;
-}): Pick<StateHandle<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> {
+}): Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> {
   const baseOps = createScopeStateOps<TState>(options.container, {
     onPersist: options.persist
   });
@@ -1668,17 +1668,17 @@ export async function createExecutionContext<
           return { enumerable: true, configurable: true };
         }
       }) as BlockContext["targets"],
-      getTarget: <TState extends object = Record<string, unknown>>(name: string): StateHandle<TState> | undefined => {
-        const toTargetHandle = (
+      getTarget: <TState extends object = Record<string, unknown>>(name: string): StateRef<TState> | undefined => {
+        const toTargetRef = (
           matched: Pick<SiblingRegistryEntry, "parent" | "parentStateContainer">
-        ): StateHandle<TState> => {
+        ): StateRef<TState> => {
           const container = matched.parentStateContainer;
           const noState = async (): Promise<never> => {
             throw new Error(
               `Target "${matched.parent.name}" does not expose instance state operations.`
             );
           };
-          const ops: Pick<StateHandle<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> =
+          const ops: Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> =
             container === undefined
               ? {
                   patchState: noState,
@@ -1702,7 +1702,7 @@ export async function createExecutionContext<
                   }),
                   blockInstanceId: matched.parent.instanceId,
                   transientStateChanges
-                }) as unknown as Pick<StateHandle<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">);
+                }) as unknown as Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">);
 
           return defineStateProperty(
             {
@@ -1711,7 +1711,7 @@ export async function createExecutionContext<
               ...ops
             },
             () => (container?.read() ?? {}) as TState
-          ) as unknown as StateHandle<TState>;
+          ) as unknown as StateRef<TState>;
         };
 
         if (siblingRegistry !== undefined && siblingRegistry.length > 0) {
@@ -1722,7 +1722,7 @@ export async function createExecutionContext<
           for (let index = searchFrom; index >= 0; index -= 1) {
             const sibling = siblingRegistry[index];
             if (sibling?.parent.name === name) {
-              return toTargetHandle(sibling);
+              return toTargetRef(sibling);
             }
           }
         }
@@ -1746,7 +1746,7 @@ export async function createExecutionContext<
           );
         }
 
-        return toTargetHandle(matches[0]!);
+        return toTargetRef(matches[0]!);
       },
 
       getBlockOutput: (block) => {

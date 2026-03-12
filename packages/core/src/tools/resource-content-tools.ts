@@ -1,13 +1,13 @@
 import { z } from "zod";
 import type { BlockContext } from "../types/block";
-import type { ResourceHandle } from "../types/resource";
+import type { ResourceRef } from "../types/resource";
 import { handler } from "../blocks/handler";
 
-function toResourcePath(resource: ResourceHandle<any>): string {
+function toResourcePath(resource: ResourceRef<any>): string {
   return `${resource.scope}/${resource.name}`;
 }
 
-function listResources(ctx: BlockContext): ResourceHandle<any>[] {
+function listResources(ctx: BlockContext): ResourceRef<any>[] {
   const registries = [ctx.session?.resources, ctx.user?.resources, ctx.project?.resources];
 
   return registries.flatMap((registry) => {

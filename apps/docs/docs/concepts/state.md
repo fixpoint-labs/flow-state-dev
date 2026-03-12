@@ -278,7 +278,7 @@ const progressReporter = handler({
     research: z.object({ progress: z.number() }),
   },
   execute: async (input, ctx) => {
-    // ctx.targets.research is StateHandle<{ progress: number }> | undefined
+    // ctx.targets.research is StateRef<{ progress: number }> | undefined
     await ctx.targets.research?.patchState({ progress: input.step });
     return input.step;
   },
@@ -291,7 +291,7 @@ Each entry in `targetStateSchemas` declares:
 
 ### Using targets
 
-Targets are accessed via `ctx.targets.<name>`, which returns a fully-typed `StateHandle | undefined`:
+Targets are accessed via `ctx.targets.<name>`, which returns a fully-typed `StateRef | undefined`:
 
 ```ts
 // Read state from a named ancestor

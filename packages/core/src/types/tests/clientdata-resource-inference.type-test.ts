@@ -29,7 +29,7 @@ const clientDataResourceInferenceSmoke = defineFlow({
         const mode = ctx.state.mode;
         void mode;
 
-        // ctx.resources.artifacts should be typed with ResourceHandle
+        // ctx.resources.artifacts should be typed with ResourceRef
         const artifacts = ctx.resources.artifacts.state;
         const firstId = artifacts.order[0];
         const title = firstId === undefined ? undefined : artifacts.byId[firstId]?.title;
