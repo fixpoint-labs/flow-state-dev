@@ -11,7 +11,7 @@ This package is in Wave 1 foundation mode.
 | Domain | Namespace | Status |
 |--------|-----------|--------|
 | Attention | `attention` | Salience scoring + relevance filtering implemented |
-| Memory | `memory` | Scaffold |
+| Memory | `memory` | Working memory implemented |
 | Identity | `identity` | Scaffold |
 | Perception | — | Wave 2+ |
 | Reasoning | — | Wave 2+ |
@@ -21,8 +21,9 @@ This package is in Wave 1 foundation mode.
 ## Usage
 
 ```ts
-import { attention } from '@thought-fabric/core'
+import { attention, memory } from '@thought-fabric/core'
 
+// Attention
 const salienceBlock = attention.scoreSalience({
   name: 'task-salience'
 })
@@ -31,6 +32,11 @@ const filterBlock = attention.filterRelevance({
   name: 'reasoning-filter',
   mode: 'hard',
   threshold: 0.6
+})
+
+// Memory — one-line working memory capture
+const memoryCapture = memory.workingMemoryCapture({
+  model: 'gpt-5-mini'
 })
 ```
 
@@ -50,7 +56,33 @@ const filterBlock = attention.filterRelevance({
 
 ### Memory
 
-- `workingMemory(config?)` — Placeholder (not implemented)
+**Resource:**
+
+- `workingMemoryResource` — Session-scoped resource definition for working memory state. Declare via `sessionResources: { workingMemory: workingMemoryResource }`.
+
+**Blocks:**
+
+- `workingMemoryCapture(config?)` → sequencer — Bundled observe + tick pipeline. One line to add working memory to a flow. Input: `z.string()` (text to extract memories from).
+- `workingMemoryObserve(config?)` → generator — LLM-based memory extraction. For advanced composition when you want to control observe and tick independently.
+- `workingMemoryTick(config?)` → handler — Advances the decay clock and recomputes salience. Use with `.tap()`.
+- `workingMemorySnapshot()` → handler — Returns current entries sorted by salience + turn counter.
+- `workingMemoryAdd(config?)` → handler — Directly add an entry without LLM extraction.
+
+**Helpers (raw resource operations):**
+
+- `add(ref, entry, config?)` — Add entry with auto-eviction at capacity
+- `evict(ref, id)` — Remove by ID (overrides pin)
+- `pin(ref, id, config?)` / `unpin(ref, id)` — Pin/unpin protection
+- `refresh(ref, id, config?)` — Reset access time (access boost)
+- `tick(ref, config?)` — Advance turn counter, recompute salience
+- `items(ref)` — Entries sorted by salience descending
+- `formatForContext(ref)` — Numbered list for LLM context injection
+- `workingMemoryContext(input, ctx)` — Ready-made `context:` slot for generators (reads resource + formats)
+
+**Math:**
+
+- `computeDecay(elapsed, strategy, rate)` — ACT-R power-law, exponential, or none
+- `computeSalience(entry, currentTurn, decay)` — `importance × decay(elapsed)`
 
 ### Identity
 

@@ -38,6 +38,7 @@ const sidebars: SidebarsConfig = {
         "guides/sequencer-patterns",
         "guides/state-storage",
         "guides/utility-blocks",
+        "guides/working-memory",
         "guides/voice",
       ],
     },
