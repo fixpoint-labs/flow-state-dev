@@ -8,7 +8,7 @@ import type {
   InferStateFromSchema,
   RetryPolicy
 } from "../types/block";
-import type { DefinedResource, ResourceHandle } from "../types/resource";
+import type { DefinedResource, ResourceRef } from "../types/resource";
 import type {
   GeneratorModel,
   GeneratorModelResult,
@@ -135,10 +135,10 @@ export interface GeneratorConfig<
   TSessionResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
   TUserResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
   TProjectResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
-  // Derive-once: map resource schemas/definitions to typed ResourceHandle records
-  TSessionResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
-  TUserResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
-  TProjectResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  // Derive-once: map resource schemas/definitions to typed ResourceRef records
+  TSessionResources extends Record<string, ResourceRef<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
+  TUserResources extends Record<string, ResourceRef<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
+  TProjectResources extends Record<string, ResourceRef<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
@@ -187,6 +187,8 @@ export interface GeneratorConfig<
   /** When true (default), auto-inject tool name+description pairs into the system context. */
   describeTools?: boolean;
 }
+
+
 
 async function resolveString<TInput, TCtx extends BlockContext>(
   value: ResolvableString<TInput, TCtx>,
@@ -798,9 +800,9 @@ export function generator<
   TSessionResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
   TUserResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
   TProjectResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
-  TSessionResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
-  TUserResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
-  TProjectResources extends Record<string, ResourceHandle<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TSessionResources extends Record<string, ResourceRef<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
+  TUserResources extends Record<string, ResourceRef<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
+  TProjectResources extends Record<string, ResourceRef<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,

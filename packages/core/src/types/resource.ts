@@ -11,6 +11,11 @@ import type { JsonObject, JsonValue } from "../schema/common";
 export type ResourceConfig = {
   stateSchema: ZodTypeAny;
   default?: JsonValue;
+  content?: string;
+  contentFile?: string;
+  render?: (content: string, state: JsonObject) => string | Promise<string>;
+  llmReadable?: boolean;
+  llmWritable?: boolean;
   dynamic?: boolean;
   writable?: boolean;
   allowedExtensions?: string[];
@@ -34,22 +39,27 @@ export type MessageLike = {
   content: string | JsonObject | JsonObject[];
 };
 
-export interface ResourceHandle<TState extends JsonObject = JsonObject> {
+export interface ResourceRef<TState extends JsonObject = JsonObject> {
   name: string;
   scope: ScopeType;
   state: Readonly<TState>;
   patchState(updates: Partial<TState>): Promise<void>;
   setState(nextState: TState): Promise<void>;
   updateState(updater: (state: TState) => TState | Promise<TState>): Promise<void>;
-  readContent(): Promise<string>;
+  readContent(): Promise<string | null>;
+  readContentRaw(): Promise<string | null>;
   writeContent(content: string): Promise<void>;
   contentType?: string;
   extension?: string;
   config: Readonly<ResourceConfig>;
 }
 
+
+
+/** @deprecated Use ResourceRef instead. */
+export type ResourceHandle<TState extends JsonObject = JsonObject> = ResourceRef<TState>;
 export type ResourceRegistry<
-  TResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
+  TResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>
 > = TResources & {
   get<TKey extends keyof TResources>(name: TKey): TResources[TKey];
   list(): Array<TResources[keyof TResources]>;
@@ -66,7 +76,7 @@ type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
 export type ContextOf<
   T,
   TKind extends "resource" | "request" | "session" | "user" | "project" = "resource",
-  TSessionResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
+  TSessionResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>
 > = TKind extends "resource"
   ? ResourceContext<AsStateObject<StateOf<T>>>
   : TKind extends "session"
@@ -87,9 +97,13 @@ export type ResourceRefOptions = {
 export function defineResource<
   const TStateSchema extends ZodTypeAny,
   const TConfig extends ResourceConfig & { stateSchema: TStateSchema }
->(
+>( 
   config: TConfig
 ): TConfig & DefinedResource<AsStateObject<TStateSchema["_output"]>> {
+  if (config.content !== undefined && config.contentFile !== undefined) {
+    throw new Error("defineResource() accepts either content or contentFile, not both");
+  }
+
   return config as unknown as TConfig & DefinedResource<AsStateObject<TStateSchema["_output"]>>;
 }
 

@@ -491,7 +491,7 @@ The `sequencerStateSchema` on each block declares what state shape it expects fr
 
 ### Finding blocks with `getTarget`
 
-Sequencer scope enables another pattern: blocks finding and reading state from specific siblings or ancestors by name. The `ctx.getTarget(name)` method returns a `TargetHandle` for the named block:
+Sequencer scope enables another pattern: blocks finding and reading state from specific siblings or ancestors by name. The `ctx.getTarget(name)` method returns a `TargetRef` for the named block:
 
 ```ts
 execute: async (input, ctx) => {
@@ -513,7 +513,7 @@ execute: async (input, ctx) => {
 
 Returns `undefined` if no block with that name is found. Throws `AmbiguousBlockNameError` if multiple ancestors share the same name — this forces you to be explicit about which block you mean.
 
-A `TargetHandle` provides the same state operations as other scopes (`patchState`, `setState`, `incState`, `pushState`, etc.), but only if the target block has a `stateSchema`. Calling state operations on a target without state throws an error.
+A `TargetRef` provides the same state operations as other scopes (`patchState`, `setState`, `incState`, `pushState`, etc.), but only if the target block has a `stateSchema`. Calling state operations on a target without state throws an error.
 
 ## Scope hierarchy and resolution
 
@@ -538,9 +538,9 @@ execute: async (input, ctx) => {
   ctx.session    // Always available — SessionScopeHandle
   ctx.user       // Always available — UserScopeHandle
   ctx.project    // Optional — ProjectScopeHandle | undefined
-  ctx.sequencer  // Optional — TargetHandle | undefined (when inside a sequencer with stateSchema)
+  ctx.sequencer  // Optional — TargetRef | undefined (when inside a sequencer with stateSchema)
 
-  ctx.getTarget("block-name")  // Find sibling/ancestor by name — TargetHandle | undefined
+  ctx.getTarget("block-name")  // Find sibling/ancestor by name — TargetRef | undefined
 }
 ```
 

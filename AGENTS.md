@@ -87,3 +87,15 @@ Update when integration patterns change — server setup, React hooks usage, tes
 - Update `README.md` when onboarding-relevant facts change (setup, package roles, key concepts).
 - Update `CLAUDE.md` when project orientation, key constraints, or package roles change.
 - Update this file (`AGENTS.md`) when process protocol or collaboration rules change.
+
+## Cursor Cloud specific instructions
+
+This is a pnpm monorepo (pnpm@10.4.1, Node 22). No Docker, databases, or external services are required. All tests use mocked generators — no API keys needed for `pnpm test`.
+
+**Build order matters for typecheck.** `pnpm typecheck` requires `packages/core` to be built first (its `dist/` must exist). The update script handles this, but if you see TS6305 errors about missing output files, run `pnpm --filter @flow-state-dev/core build` before retrying. The full build order is: core → server + client → react + testing → cli (see `docs/contributing/development-setup.md`).
+
+**Key commands** are documented in `CLAUDE.md` and `docs/contributing/development-setup.md`. Summary: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm --filter <pkg> test`.
+
+**Running example apps** (hello-chat, kitchen-sink) requires `OPENAI_API_KEY` for real LLM calls but works without it via the CLI: `pnpm fsdev run hello-chat chat -i '{"message": "Hello"}'` falls back to mock generation.
+
+**Docs site**: `cd apps/docs && npx docusaurus start --port 3000` (do not use `pnpm docs:dev` with extra `--` flags — argument forwarding breaks).

@@ -280,7 +280,7 @@ execute: async (input, ctx) => {
   const model = ctx.resolveModel("gpt-5-mini");
 
   // Access typed targets — named ancestor blocks declared in config
-  const research = ctx.targets.research;  // StateHandle<{ progress: number }> | undefined
+  const research = ctx.targets.research;  // StateRef<{ progress: number }> | undefined
   await research?.patchState({ progress: 75 });
 
   // Or use getTarget for dynamic/untyped access

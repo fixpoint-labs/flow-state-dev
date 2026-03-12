@@ -243,7 +243,7 @@ const processChunk = handler({
   },
   execute: async (input, ctx) => {
     const pct = Math.round(((input.index + 1) / input.total) * 100);
-    // Fully typed: StateHandle<{ progress: number }> | undefined
+    // Fully typed: StateRef<{ progress: number }> | undefined
     await ctx.targets["research-pipeline"]?.patchState({ progress: pct });
     return `processed:${input.chunk}`;
   },

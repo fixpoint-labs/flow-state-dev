@@ -3,15 +3,15 @@ import type { BlockContext, BlockDefinition, RetryPolicy } from "./block";
 import type { Middleware } from "./middleware";
 import type {
   ResourceConfig,
-  ResourceHandle,
+  ResourceRef,
   StateOf
 } from "./resource";
 import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { VoiceConfig } from "./speech";
 
-type InferResourceHandles<TResources extends Record<string, ResourceConfig>> = {
-  [K in keyof TResources]: ResourceHandle<StateOf<TResources[K]>>;
+type InferResourceRefs<TResources extends Record<string, ResourceConfig>> = {
+  [K in keyof TResources]: ResourceRef<StateOf<TResources[K]>>;
 };
 
 /**
@@ -20,7 +20,7 @@ type InferResourceHandles<TResources extends Record<string, ResourceConfig>> = {
  */
 export type ClientDataContext<
   TState extends JsonObject = JsonObject,
-  TResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
+  TResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>
 > = {
   state: Readonly<TState>;
   resources: TResources;
@@ -32,7 +32,7 @@ export type ClientDataContext<
  */
 export type ClientDataComputeFn<
   TState extends JsonObject = JsonObject,
-  TResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
+  TResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>
 > = (
   ctx: ClientDataContext<TState, TResources>
 ) => JsonValue | Promise<JsonValue>;
@@ -104,7 +104,7 @@ export type SessionConfig<
   metadata?: ZodTypeAny;
   stateSchema?: ZodTypeAny;
   resources?: TResources;
-  clientData?: Record<string, ClientDataComputeFn<JsonObject, InferResourceHandles<TResources>>>;
+  clientData?: Record<string, ClientDataComputeFn<JsonObject, InferResourceRefs<TResources>>>;
 };
 
 export type RequestConfig = {
@@ -121,7 +121,7 @@ export type UserConfig<
 > = {
   stateSchema?: ZodTypeAny;
   resources?: TResources;
-  clientData?: Record<string, ClientDataComputeFn<JsonObject, InferResourceHandles<TResources>>>;
+  clientData?: Record<string, ClientDataComputeFn<JsonObject, InferResourceRefs<TResources>>>;
 };
 
 export type ProjectConfig<
@@ -129,7 +129,7 @@ export type ProjectConfig<
 > = {
   stateSchema?: ZodTypeAny;
   resources?: TResources;
-  clientData?: Record<string, ClientDataComputeFn<JsonObject, InferResourceHandles<TResources>>>;
+  clientData?: Record<string, ClientDataComputeFn<JsonObject, InferResourceRefs<TResources>>>;
 };
 
 export type WorkConfig = {
@@ -272,7 +272,7 @@ export type FlowActionInput<TAction extends ActionConfig> = TAction["inputSchema
 export type FlowActionBlock<TAction extends ActionConfig> = TAction["block"];
 
 export type FlowToolContext<
-  TResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
+  TResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>
 > = {
   resources?: TResources;
   retry?: RetryPolicy;

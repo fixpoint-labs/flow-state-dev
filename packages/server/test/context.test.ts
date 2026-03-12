@@ -169,4 +169,81 @@ describe("createExecutionContext", () => {
     const messages = await ctx.session.items.llm({ limit: { tokens: 28 } });
     expect(messages).toHaveLength(1);
   });
+
+  it("supports resource definition-time content with rendering", async () => {
+    const flow = defineFlow({
+      kind: "resource-content-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: handler({
+            name: "noop",
+            inputSchema: z.object({ value: z.string() }),
+            outputSchema: z.object({ ok: z.boolean() }),
+            execute: () => ({ ok: true })
+          })
+        }
+      },
+      session: {
+        resources: {
+          soul: {
+            stateSchema: z.object({ values: z.array(z.string()).default([]), tone: z.string().default("Direct") }),
+            content: "## Values\n{{#each values}}- {{this}}\n{{/each}}Tone: {{tone}}",
+            render: (content, state) => content
+              .replace("{{#each values}}", "")
+              .replace("{{/each}}", "")
+              .replace("{{this}}", (state.values as string[])[0] ?? "")
+              .replace("{{tone}}", String(state.tone ?? ""))
+          }
+        }
+      }
+    })();
+
+    const stores = createInMemoryStores();
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_content",
+      sessionId: "sess_content",
+      userId: "user_content",
+      stores
+    });
+
+    await ctx.session.resources.soul.patchState({ values: ["Honesty"], tone: "Calm" });
+    await expect(ctx.session.resources.soul.readContent()).resolves.toContain("Tone: Calm");
+    await expect(ctx.session.resources.soul.readContentRaw()).resolves.toContain("{{tone}}");
+  });
+
+  it("returns null from readContent when no resource content is defined", async () => {
+    const flow = defineFlow({
+      kind: "resource-empty-content-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: handler({ name: "noop", execute: () => ({ ok: true }) })
+        }
+      },
+      session: {
+        resources: {
+          notes: {
+            stateSchema: z.object({ value: z.string().default("") })
+          }
+        }
+      }
+    })();
+
+    const stores = createInMemoryStores();
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_null_content",
+      sessionId: "sess_null_content",
+      userId: "user_null_content",
+      stores
+    });
+
+    await expect(ctx.session.resources.notes.readContent()).resolves.toBeNull();
+    await expect(ctx.session.resources.notes.readContentRaw()).resolves.toBeNull();
+  });
+
 });

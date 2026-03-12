@@ -34,14 +34,14 @@ interface BlockContext {
   session?: SessionScopeHandle;
   user: UserScopeHandle;
   project?: ProjectScopeHandle;
-  sequencer?: StateHandle;
+  sequencer?: StateRef;
 
   response: ResponseEmitterHandle;
   signal: AbortSignal;
   resolveModel: ModelResolver;
 
-  getTarget(name: string): StateHandle | undefined;
-  targets: Record<string, StateHandle | undefined>;
+  getTarget(name: string): StateRef | undefined;
+  targets: Record<string, StateRef | undefined>;
 
   getBlockOutput(block: BlockDefinition): unknown | undefined;
   getBlockResult(block: BlockDefinition):
@@ -61,7 +61,7 @@ interface BlockContext {
 Blocks are **silent by default** — if a block doesn't explicitly emit via `ctx` methods, it produces nothing visible to the client or LLM.
 
 
-`ctx.sequencer` resolves to the nearest enclosing sequencer in the execution stack. If that sequencer defines `stateSchema`, the returned `StateHandle` is typed from the schema and exposes mutable instance state (`state`, `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`). Sequencer instance state initializes from `defaultState` when provided, otherwise from schema defaults (`safeParse(undefined)` / `safeParse({})`).
+`ctx.sequencer` resolves to the nearest enclosing sequencer in the execution stack. If that sequencer defines `stateSchema`, the returned `StateRef` is typed from the schema and exposes mutable instance state (`state`, `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`). Sequencer instance state initializes from `defaultState` when provided, otherwise from schema defaults (`safeParse(undefined)` / `safeParse({})`).
 
 When no enclosing sequencer exists, `ctx.sequencer` is `undefined`.
 
