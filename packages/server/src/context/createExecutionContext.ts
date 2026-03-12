@@ -183,7 +183,15 @@ function normalizeScopeResourceContent(
     }
 
     if (typeof config.contentFile === "string") {
-      normalized[resourceName] = readFileSync(config.contentFile, "utf8");
+      try {
+        // contentFile is resolved relative to process.cwd()
+        normalized[resourceName] = readFileSync(config.contentFile, "utf8");
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `Failed to load contentFile for resource "${resourceName}" (path: ${config.contentFile}): ${message}`
+        );
+      }
     }
   }
 

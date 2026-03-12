@@ -42,12 +42,12 @@ type ResourceConfig = {
 
 ### Resource Content
 
-Resources can also carry file-like text content. Use `content` for inline templates or `contentFile` to load at startup (mutually exclusive).
+Resources can also carry file-like text content. Use `content` for inline templates or `contentFile` to load at startup (mutually exclusive). `contentFile` is resolved relative to `process.cwd()` — use absolute paths for predictable behavior.
 
 - `readContent()` returns rendered content (`string`) or `null` if no content exists.
 - `readContentRaw()` returns the stored raw body (`string`) or `null`.
 - Empty content (`""`) is valid and distinct from `null`.
-- Template rendering is **opt-in** via `render`, e.g. `render: renderTemplate` from `@flow-state-dev/server`.
+- Template rendering is **opt-in** via `render`, e.g. `render: renderTemplate` from `@flow-state-dev/server`. Nested `{{#each}}` blocks are not supported. Templates longer than 512 KB are rejected.
 - LLM content access is **tool-driven and opt-in**. Add `readResourceContentTool()` / `writeResourceContentTool()` to a generator's `tools` list when you want these capabilities available.
 
 ```ts

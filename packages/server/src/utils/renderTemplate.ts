@@ -1,3 +1,18 @@
+/**
+ * Minimal Mustache-like template renderer for resource content.
+ *
+ * Supported syntax:
+ *   {{field}}            — scalar interpolation (dot-path, `this`, `@index`)
+ *   {{#each items}}…{{/each}} — iterate over arrays
+ *
+ * Limitations:
+ *   - Nested `{{#each}}` blocks are not supported. Inner blocks are rendered
+ *     as literal text.
+ *   - Templates longer than 512 KB are rejected.
+ */
+
+const MAX_TEMPLATE_LENGTH = 512_000;
+
 type EachContext = {
   this?: unknown;
   index?: number;
@@ -62,19 +77,117 @@ function renderInline(content: string, state: Record<string, unknown>, each: Eac
   });
 }
 
-export function renderTemplate(content: string, state: Record<string, unknown>): string {
-  const eachPattern = /{{#each\s+([\w.]+)\s*}}([\s\S]*?){{\/each}}/g;
+/**
+ * Find the index of the `{{/each}}` that closes the `{{#each}}` whose opening
+ * tag ends at `startIndex`. Uses nesting-depth counting instead of regex
+ * backtracking to guarantee O(n) performance.
+ *
+ * Returns the index of the opening `{` of the matching `{{/each}}`, or -1 if
+ * no matching close tag is found.
+ */
+function findMatchingEachClose(template: string, startIndex: number): number {
+  const openTag = /\{\{#each\s+\S+?\}\}/g;
+  const closeTag = /\{\{\/each\}\}/g;
+  let depth = 1;
+  let pos = startIndex;
 
-  const withEach = content.replace(eachPattern, (_match, targetPath: string, blockBody: string) => {
-    const target = readPath(state, targetPath.trim());
-    if (!Array.isArray(target) || target.length === 0) {
-      return "";
+  while (depth > 0) {
+    openTag.lastIndex = pos;
+    closeTag.lastIndex = pos;
+
+    const nextOpen = openTag.exec(template);
+    const nextClose = closeTag.exec(template);
+
+    if (nextClose === null) {
+      return -1;
     }
 
-    return target
-      .map((entry, index) => renderInline(blockBody, state, { this: entry, index }))
-      .join("");
-  });
+    if (nextOpen !== null && nextOpen.index < nextClose.index) {
+      depth++;
+      pos = nextOpen.index + nextOpen[0].length;
+    } else {
+      depth--;
+      if (depth === 0) {
+        return nextClose.index;
+      }
+      pos = nextClose.index + nextClose[0].length;
+    }
+  }
 
+  return -1;
+}
+
+function renderEachBody(
+  body: string,
+  state: Record<string, unknown>,
+  target: unknown[]
+): string {
+  return target
+    .map((entry, index) => renderInline(body, state, { this: entry, index }))
+    .join("");
+}
+
+/**
+ * Process all `{{#each …}}…{{/each}}` blocks using forward-only scanning.
+ * Unmatched opening tags are left as literal text.
+ */
+function processEachBlocks(
+  content: string,
+  state: Record<string, unknown>
+): string {
+  const openPattern = /\{\{#each\s+([\w.]+)\s*\}\}/g;
+  let result = "";
+  let lastIndex = 0;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    openPattern.lastIndex = lastIndex;
+    const openMatch = openPattern.exec(content);
+
+    if (openMatch === null) {
+      break;
+    }
+
+    const closeIndex = findMatchingEachClose(
+      content,
+      openMatch.index + openMatch[0].length
+    );
+
+    if (closeIndex === -1) {
+      // Unmatched — leave as literal text
+      result += content.slice(lastIndex, openMatch.index + openMatch[0].length);
+      lastIndex = openMatch.index + openMatch[0].length;
+      continue;
+    }
+
+    // Append text before the opening tag
+    result += content.slice(lastIndex, openMatch.index);
+
+    const targetPath = openMatch[1].trim();
+    const body = content.slice(
+      openMatch.index + openMatch[0].length,
+      closeIndex
+    );
+    const target = readPath(state, targetPath);
+
+    if (Array.isArray(target) && target.length > 0) {
+      result += renderEachBody(body, state, target);
+    }
+
+    lastIndex = closeIndex + "{{/each}}".length;
+  }
+
+  result += content.slice(lastIndex);
+  return result;
+}
+
+export function renderTemplate(content: string, state: Record<string, unknown>): string {
+  if (content.length > MAX_TEMPLATE_LENGTH) {
+    throw new Error(
+      `Template exceeds maximum length (${MAX_TEMPLATE_LENGTH} characters)`
+    );
+  }
+
+  const withEach = processEachBlocks(content, state);
   return renderInline(withEach, state, {});
 }
