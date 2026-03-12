@@ -27,11 +27,37 @@ session: {
 type ResourceConfig = {
   stateSchema: ZodTypeAny;     // Required: defines the data shape
   default?: JsonValue;          // Default initial value
+  content?: string;             // Optional definition-time content body
+  contentFile?: string;         // Optional path to initial content template
+  render?: (content: string, state: JsonObject) => string | Promise<string>; // Optional renderer
+  llmReadable?: boolean;        // Allows read tool access when readResourceContentTool is installed
+  llmWritable?: boolean;        // Allows write tool access when writeResourceContentTool is installed
   dynamic?: boolean;            // Resolved at runtime
   writable?: boolean;           // Allow mutation from blocks
   allowedExtensions?: string[]; // Content type restrictions
   metadata?: Record<string, unknown>;
 };
+```
+
+
+### Resource Content
+
+Resources can also carry file-like text content. Use `content` for inline templates or `contentFile` to load at startup (mutually exclusive).
+
+- `readContent()` returns rendered content (`string`) or `null` if no content exists.
+- `readContentRaw()` returns the stored raw body (`string`) or `null`.
+- Empty content (`""`) is valid and distinct from `null`.
+- Template rendering is **opt-in** via `render`, e.g. `render: renderTemplate` from `@flow-state-dev/server`.
+- LLM content access is **tool-driven and opt-in**. Add `readResourceContentTool()` / `writeResourceContentTool()` to a generator's `tools` list when you want these capabilities available.
+
+```ts
+const soul = defineResource({
+  stateSchema: z.object({ values: z.array(z.string()), tone: z.string() }),
+  content: "## Values\n{{#each values}}- {{this}}\n{{/each}}Tone: {{tone}}",
+  render: renderTemplate,
+  llmReadable: true,
+  llmWritable: false,
+});
 ```
 
 ### Accessing Resources

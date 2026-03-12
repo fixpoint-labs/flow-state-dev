@@ -142,6 +142,38 @@ const myHandler = handler({
 });
 ```
 
+
+Resource content options:
+
+- `content?: string` — inline definition-time body
+- `contentFile?: string` — load initial body from a file path (mutually exclusive with `content`)
+- `render?: (content, state) => string | Promise<string>` — optional renderer for `readContent()`
+- `llmReadable?: boolean` — allows read access when `readResourceContentTool()` is installed
+- `llmWritable?: boolean` — allows write access when `writeResourceContentTool()` is installed
+
+Runtime resource content methods:
+
+- `await ctx.session.resources.plan.readContent()` → rendered content or `null`
+- `await ctx.session.resources.plan.readContentRaw()` → raw stored content or `null`
+- `await ctx.session.resources.plan.writeContent("...")` → overwrite stored content
+
+For explicit LLM access, add tools manually to generators:
+
+```ts
+import {
+  generator,
+  readResourceContentTool,
+  writeResourceContentTool,
+} from "@flow-state-dev/core";
+
+const agent = generator({
+  name: "agent",
+  model: "gpt-5-mini",
+  prompt: "You can inspect and edit approved resource files.",
+  tools: [readResourceContentTool(), writeResourceContentTool()],
+});
+```
+
 ## Context Functions
 
 ### `contextFn(schemas, fn)`

@@ -11,6 +11,11 @@ import type { JsonObject, JsonValue } from "../schema/common";
 export type ResourceConfig = {
   stateSchema: ZodTypeAny;
   default?: JsonValue;
+  content?: string;
+  contentFile?: string;
+  render?: (content: string, state: JsonObject) => string | Promise<string>;
+  llmReadable?: boolean;
+  llmWritable?: boolean;
   dynamic?: boolean;
   writable?: boolean;
   allowedExtensions?: string[];
@@ -41,7 +46,8 @@ export interface ResourceHandle<TState extends JsonObject = JsonObject> {
   patchState(updates: Partial<TState>): Promise<void>;
   setState(nextState: TState): Promise<void>;
   updateState(updater: (state: TState) => TState | Promise<TState>): Promise<void>;
-  readContent(): Promise<string>;
+  readContent(): Promise<string | null>;
+  readContentRaw(): Promise<string | null>;
   writeContent(content: string): Promise<void>;
   contentType?: string;
   extension?: string;
@@ -87,9 +93,13 @@ export type ResourceRefOptions = {
 export function defineResource<
   const TStateSchema extends ZodTypeAny,
   const TConfig extends ResourceConfig & { stateSchema: TStateSchema }
->(
+>( 
   config: TConfig
 ): TConfig & DefinedResource<AsStateObject<TStateSchema["_output"]>> {
+  if (config.content !== undefined && config.contentFile !== undefined) {
+    throw new Error("defineResource() accepts either content or contentFile, not both");
+  }
+
   return config as unknown as TConfig & DefinedResource<AsStateObject<TStateSchema["_output"]>>;
 }
 
