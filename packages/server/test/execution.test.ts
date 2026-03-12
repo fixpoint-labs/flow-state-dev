@@ -1801,3 +1801,108 @@ describe("transient block output", () => {
     expect(storedStatus.length).toBe(0);
   });
 });
+
+describe("rescue boundary in nested sequencer", () => {
+  it("rescues inner block failure and produces rescue output as sequencer result", async () => {
+    const executionOrder: string[] = [];
+
+    const step1 = handler({
+      name: "step-1",
+      inputSchema: z.object({ value: z.string() }),
+      outputSchema: z.object({ value: z.string(), step: z.number() }),
+      execute: (input) => {
+        executionOrder.push("step-1");
+        return { value: input.value, step: 1 };
+      }
+    });
+
+    const failingStep = handler({
+      name: "failing-step",
+      inputSchema: z.any(),
+      outputSchema: z.object({ value: z.string(), step: z.number() }),
+      execute: () => {
+        executionOrder.push("failing-step");
+        throw new Error("inner block failure");
+      }
+    });
+
+    const rescueStep = handler({
+      name: "rescue-handler",
+      inputSchema: z.any(),
+      outputSchema: z.object({ value: z.string() }),
+      execute: () => {
+        executionOrder.push("rescue-handler");
+        return { value: "rescued" };
+      }
+    });
+
+    // Rescue is a sequencer-level boundary: when rescue fires, the rescue
+    // handler's output becomes the sequencer's output. Steps chained AFTER
+    // .rescue() start a new sequencer wrapping the rescued one.
+    const innerSeq = sequencer({
+      name: "inner-seq",
+      inputSchema: z.object({ value: z.string() })
+    })
+      .then(step1)
+      .then(failingStep)
+      .rescue([{ block: rescueStep }]);
+
+    const outerStep = handler({
+      name: "outer-step",
+      inputSchema: z.any(),
+      outputSchema: z.object({ result: z.string() }),
+      execute: (input: any) => {
+        executionOrder.push("outer-step");
+        return { result: `final: ${input.value}` };
+      }
+    });
+
+    // Chain: innerSeq (with rescue) → outerStep
+    const fullSeq = sequencer({
+      name: "outer-seq",
+      inputSchema: z.object({ value: z.string() }),
+      outputSchema: z.object({ result: z.string() })
+    })
+      .then(innerSeq)
+      .then(outerStep);
+
+    const flow = defineFlow({
+      kind: "rescue-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: fullSeq
+        }
+      }
+    })();
+
+    const stores = createInMemoryStores();
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: { value: "test" },
+      userId: "user_test",
+      stores,
+      modelResolver: (id) => ({
+        modelId: id,
+        async generate() {
+          return { text: "mock" };
+        }
+      })
+    });
+
+    // Execution should complete without error — rescue caught the failure
+    expect(result.error).toBeUndefined();
+
+    // Execution order: step-1, failing-step (throws), rescue-handler, outer-step
+    expect(executionOrder).toEqual([
+      "step-1",
+      "failing-step",
+      "rescue-handler",
+      "outer-step"
+    ]);
+
+    // The outer step receives rescue's output and transforms it
+    expect(result.output).toEqual({ result: "final: rescued" });
+  });
+});

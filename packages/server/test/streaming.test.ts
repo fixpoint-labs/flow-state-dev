@@ -340,4 +340,77 @@ describe("streaming runtime", () => {
       }).map((event) => event.sequence_number)
     ).toEqual([1, 2, 3]);
   });
+
+  it("replays only events after Last-Event-ID cursor across full emitter lifecycle", async () => {
+    const requestId = "req_resume_test";
+    const emitter = createResponseEmitter({ requestId, now: () => 100 });
+
+    await emitter.emitRequestCreated();                   // seq 1
+    await emitter.emitRequestStatus("in_progress");       // seq 2
+    await emitter.emitItemAdded(makeMessageItem({ requestId, itemIndex: 0, ts: 100 })); // seq 3
+    await emitter.emitItemDone(makeMessageItem({ requestId, itemIndex: 0, ts: 100 }));  // seq 4
+    await emitter.emitItemAdded(makeMessageItem({ requestId, itemIndex: 1, ts: 100 })); // seq 5
+    await emitter.emitRequestStatus("completed");         // seq 6
+
+    const allEvents = emitter.getEvents();
+    expect(allEvents).toHaveLength(6);
+
+    // Client disconnected at sequence 3. Resume with Last-Event-ID = "req_resume_test:3"
+    const resumed = replayRequestEvents({
+      requestId,
+      lastEventId: `${requestId}:3`,
+      events: allEvents
+    });
+
+    // Should only include events with sequence_number > 3 (i.e., 4, 5, 6)
+    expect(resumed).toHaveLength(3);
+    expect(resumed[0]!.sequence_number).toBe(4);
+    expect(resumed[1]!.sequence_number).toBe(5);
+    expect(resumed[2]!.sequence_number).toBe(6);
+  });
+
+  it("replays only events after starting_after cursor, ignoring Last-Event-ID", async () => {
+    const requestId = "req_starting_after";
+    const emitter = createResponseEmitter({ requestId, now: () => 200 });
+
+    await emitter.emitRequestCreated();                 // seq 1
+    await emitter.emitRequestStatus("in_progress");     // seq 2
+    await emitter.emitItemAdded(makeMessageItem({ requestId, itemIndex: 0, ts: 200 })); // seq 3
+    await emitter.emitRequestStatus("completed");       // seq 4
+
+    const allEvents = emitter.getEvents();
+
+    // starting_after takes priority over lastEventId
+    const resumed = replayRequestEvents({
+      requestId,
+      startingAfter: 2,
+      lastEventId: `${requestId}:1`,
+      events: allEvents
+    });
+
+    expect(resumed).toHaveLength(2);
+    expect(resumed[0]!.sequence_number).toBe(3);
+    expect(resumed[1]!.sequence_number).toBe(4);
+  });
+
+  it("returns all non-ping events when no cursor is provided", async () => {
+    const requestId = "req_no_cursor";
+    const emitter = createResponseEmitter({ requestId, now: () => 300 });
+
+    await emitter.emitRequestCreated();
+    await emitter.emitPing();
+    await emitter.emitRequestStatus("completed");
+
+    const allEvents = emitter.getEvents();
+    expect(allEvents).toHaveLength(3);
+
+    const resumed = replayRequestEvents({
+      requestId,
+      events: allEvents
+    });
+
+    // Ping events are filtered out by replay
+    expect(resumed).toHaveLength(2);
+    expect(resumed.every(e => e.type !== "ping")).toBe(true);
+  });
 });

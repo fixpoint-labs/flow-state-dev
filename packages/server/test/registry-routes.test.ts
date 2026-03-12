@@ -491,6 +491,74 @@ describe("createFlowApiRouter", () => {
     });
   });
 
+  it("computes clientData from mutated session state", async () => {
+    const flow = defineFlow({
+      kind: "stateful-cd",
+      actions: {
+        increment: {
+          inputSchema: z.object({ amount: z.number() }),
+          block: handler({
+            name: "incrementer",
+            inputSchema: z.object({ amount: z.number() }),
+            outputSchema: z.object({ ok: z.boolean() }),
+            sessionStateSchema: z.object({
+              count: z.number().default(0)
+            }),
+            execute: async (input, ctx) => {
+              const current = ctx.session.state.count ?? 0;
+              await ctx.session.patchState({ count: current + input.amount });
+              return { ok: true };
+            }
+          })
+        }
+      },
+      session: {
+        stateSchema: z.object({ count: z.number().default(0) }),
+        clientData: {
+          summary: (ctx) => ({
+            totalCount: (ctx.state as { count?: number }).count ?? 0,
+            label: `Count is ${(ctx.state as { count?: number }).count ?? 0}`
+          })
+        }
+      }
+    })();
+
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    registry.register(flow);
+    const router = createFlowApiRouter({ registry, stores });
+
+    await router.POST(
+      new Request("http://localhost/api/flows/stateful-cd/sess_cd/actions/increment", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: "user_cd",
+          input: { amount: 5 }
+        })
+      }),
+      { params: { path: ["stateful-cd", "sess_cd", "actions", "increment"] } }
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const stateResponse = await router.GET(
+      new Request("http://localhost/api/flows/sessions/sess_cd/state"),
+      { params: { path: ["sessions", "sess_cd", "state"] } }
+    );
+
+    expect(stateResponse.status).toBe(200);
+    const stateBody = (await stateResponse.json()) as {
+      clientData: Record<string, Record<string, unknown>>;
+    };
+
+    expect(stateBody.clientData).toBeDefined();
+    expect(stateBody.clientData.session).toBeDefined();
+    expect(stateBody.clientData.session!.summary).toEqual({
+      totalCount: 5,
+      label: "Count is 5"
+    });
+  });
+
   it("returns 503 when active stream capacity is reached", async () => {
     const registry = createFlowRegistry();
     const stores = createInMemoryStores();
