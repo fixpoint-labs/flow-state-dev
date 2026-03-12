@@ -14,7 +14,10 @@ export type {
   RescueHandlerSpec,
   ResponseEmitterHandle,
   RetryPolicy,
-  StateHandle
+  StateRef,
+  StateHandle,
+  TargetRef,
+  TargetHandle
 } from "./block";
 
 export type {
@@ -71,6 +74,7 @@ export type {
   MessageLike,
   ResourceConfig,
   ResourceContext,
+  ResourceRef,
   ResourceHandle,
   ResourceRefOptions,
   ResourceRegistry,

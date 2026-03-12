@@ -25,7 +25,7 @@ const myHandler = handler({
   },
   execute: async (input, ctx) => {
     await ctx.session.incState({ count: 1 });
-    // ctx.targets.research is StateHandle<{ progress: number }> | undefined
+    // ctx.targets.research is StateRef<{ progress: number }> | undefined
     await ctx.targets.research?.patchState({ progress: 50 });
     return { result: input.value.toUpperCase() };
   },

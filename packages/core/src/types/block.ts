@@ -5,7 +5,7 @@ import type {
   SessionScopeHandle,
   UserScopeHandle
 } from "./scope";
-import type { DefinedResource, ResourceHandle } from "./resource";
+import type { DefinedResource, ResourceRef } from "./resource";
 import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
@@ -33,7 +33,7 @@ export interface ResponseEmitterHandle {
   emit(event: unknown): void | Promise<void>;
 }
 
-export type StateHandle<TState extends object = Record<string, unknown>> = {
+export type StateRef<TState extends object = Record<string, unknown>> = {
   name: string;
   instanceId: string;
   state: Readonly<TState>;
@@ -47,6 +47,15 @@ export type StateHandle<TState extends object = Record<string, unknown>> = {
   | "deleteStateRecord"
   | "atomicState"
 >;
+
+/** Stable typed reference to a target block's stateful instance. */
+export type TargetRef<TState extends object = Record<string, unknown>> = StateRef<TState>;
+
+/** @deprecated Use StateRef instead. */
+export type StateHandle<TState extends object = Record<string, unknown>> = StateRef<TState>;
+
+/** @deprecated Use TargetRef instead. */
+export type TargetHandle<TState extends object = Record<string, unknown>> = TargetRef<TState>;
 
 
 export type BlockResult<TOutput> =
@@ -71,9 +80,9 @@ export interface BlockContext<
   TSessionState extends object = Record<string, unknown>,
   TUserState extends object = Record<string, unknown>,
   TProjectState extends object = Record<string, unknown>,
-  TSessionResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
-  TUserResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
-  TProjectResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>,
+  TSessionResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>,
+  TUserResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>,
+  TProjectResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>,
   TSequencerState extends object = Record<string, unknown>,
   TTargets extends Record<string, ZodTypeAny> | undefined = undefined,
 > {
@@ -81,7 +90,7 @@ export interface BlockContext<
   session: SessionScopeHandle<TSessionState, TSessionResources>;
   user: UserScopeHandle<TUserState, TUserResources>;
   project?: ProjectScopeHandle<TProjectState, TProjectResources>;
-  sequencer?: StateHandle<TSequencerState>;
+  sequencer?: StateRef<TSequencerState>;
 
   response: ResponseEmitterHandle;
   signal: AbortSignal;
@@ -89,7 +98,7 @@ export interface BlockContext<
 
   getTarget<TState extends object = Record<string, unknown>>(
     name: string
-  ): StateHandle<TState> | undefined;
+  ): StateRef<TState> | undefined;
 
   getBlockOutput<TBlock extends BlockDefinition>(
     block: TBlock
@@ -233,23 +242,23 @@ export type InferStateFromSchema<T> =
 /**
  * Derive-once utility for block-level resource schemas.
  * Given a Zod object schema like `z.object({ artifacts: artifactStateSchema })`,
- * produces a typed resource handle map: `{ artifacts: ResourceHandle<ArtifactState> }`.
+ * produces a typed resource handle map: `{ artifacts: ResourceRef<ArtifactState> }`.
  * When absent (undefined), falls back to the untyped default.
  */
 export type InferResourcesFromSchemas<T> =
   T extends ZodTypeAny
-    ? { [K in keyof z.infer<T>]: ResourceHandle<z.infer<T>[K]> }
-    : Record<string, ResourceHandle<any>>;
+    ? { [K in keyof z.infer<T>]: ResourceRef<z.infer<T>[K]> }
+    : Record<string, ResourceRef<any>>;
 
 /**
- * Derive typed ResourceHandle records from a `Record<string, DefinedResource>`.
+ * Derive typed ResourceRef records from a `Record<string, DefinedResource>`.
  * Each DefinedResource carries a phantom `StateType` that maps to
- * `ResourceHandle<StateType>`.
+ * `ResourceRef<StateType>`.
  */
 export type InferResourcesFromDefinitions<T> =
   T extends Record<string, DefinedResource>
-    ? { [K in keyof T]: ResourceHandle<T[K] extends DefinedResource<infer S> ? S : JsonObject> }
-    : Record<string, ResourceHandle<any>>;
+    ? { [K in keyof T]: ResourceRef<T[K] extends DefinedResource<infer S> ? S : JsonObject> }
+    : Record<string, ResourceRef<any>>;
 
 /**
  * Combined resource inference: prefers DefinedResource-based definitions
@@ -262,9 +271,9 @@ export type InferBlockResources<TSchemas, TDefs> =
 
 /**
  * Derive typed state handles from block-level target state schemas.
- * Each declared target name maps to `StateHandle<z.infer<schema>> | undefined`.
+ * Each declared target name maps to `StateRef<z.infer<schema>> | undefined`.
  */
 export type InferTargetStatesFromSchemas<TSchemas> =
   TSchemas extends Record<string, ZodTypeAny>
-    ? { [K in keyof TSchemas]: StateHandle<z.infer<TSchemas[K]>> | undefined }
+    ? { [K in keyof TSchemas]: StateRef<z.infer<TSchemas[K]>> | undefined }
     : Record<string, never>;

@@ -1,6 +1,6 @@
 import type { ItemStatus } from "../items/types";
 import type { JsonObject } from "../schema/common";
-import type { ResourceHandle, ResourceRegistry } from "./resource";
+import type { ResourceRef, ResourceRegistry } from "./resource";
 import type { CostEstimate, TokenLedger } from "./flow";
 import type { ScopeStateOps } from "./state";
 
@@ -80,7 +80,7 @@ export type RequestScopeHandle<TState extends object = Record<string, unknown>> 
 
 export type SessionScopeHandle<
   TState extends object = Record<string, unknown>,
-  TResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
+  TResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>
 > = {
   identity: ScopeIdentity;
   state: Readonly<TState>;
@@ -92,7 +92,7 @@ export type SessionScopeHandle<
 
 export type UserScopeHandle<
   TState extends object = Record<string, unknown>,
-  TResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
+  TResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>
 > = {
   identity: ScopeIdentity;
   state: Readonly<TState>;
@@ -101,7 +101,7 @@ export type UserScopeHandle<
 
 export type ProjectScopeHandle<
   TState extends object = Record<string, unknown>,
-  TResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
+  TResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>
 > = {
   identity: ScopeIdentity;
   state: Readonly<TState>;

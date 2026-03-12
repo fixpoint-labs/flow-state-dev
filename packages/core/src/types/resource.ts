@@ -39,7 +39,7 @@ export type MessageLike = {
   content: string | JsonObject | JsonObject[];
 };
 
-export interface ResourceHandle<TState extends JsonObject = JsonObject> {
+export interface ResourceRef<TState extends JsonObject = JsonObject> {
   name: string;
   scope: ScopeType;
   state: Readonly<TState>;
@@ -54,8 +54,12 @@ export interface ResourceHandle<TState extends JsonObject = JsonObject> {
   config: Readonly<ResourceConfig>;
 }
 
+
+
+/** @deprecated Use ResourceRef instead. */
+export type ResourceHandle<TState extends JsonObject = JsonObject> = ResourceRef<TState>;
 export type ResourceRegistry<
-  TResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
+  TResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>
 > = TResources & {
   get<TKey extends keyof TResources>(name: TKey): TResources[TKey];
   list(): Array<TResources[keyof TResources]>;
@@ -72,7 +76,7 @@ type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
 export type ContextOf<
   T,
   TKind extends "resource" | "request" | "session" | "user" | "project" = "resource",
-  TSessionResources extends Record<string, ResourceHandle<any>> = Record<string, ResourceHandle<any>>
+  TSessionResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>
 > = TKind extends "resource"
   ? ResourceContext<AsStateObject<StateOf<T>>>
   : TKind extends "session"

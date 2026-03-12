@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { generator, handler, router } from "../../blocks";
-import type { StateHandle } from "../block";
+import type { StateRef } from "../block";
 
 const routeA = handler({
   name: "route-a",
@@ -63,9 +63,9 @@ const typedRouter = router({
 type HandlerCtx = Parameters<NonNullable<(typeof typedHandler.config)["execute"]>>[1];
 type RouterCtx = Parameters<NonNullable<(typeof typedRouter.config)["execute"]>>[1];
 
-const handlerTargetCheck: StateHandle<{ progress: number }> | undefined =
+const handlerTargetCheck: StateRef<{ progress: number }> | undefined =
   (null as unknown as HandlerCtx).targets.research;
-const routerTargetCheck: StateHandle<{ step: number }> | undefined =
+const routerTargetCheck: StateRef<{ step: number }> | undefined =
   (null as unknown as RouterCtx).targets.coordinator;
 
 void handlerTargetCheck;
