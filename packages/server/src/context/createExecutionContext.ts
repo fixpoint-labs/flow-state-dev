@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { readFileSync } from "node:fs";
 import type {
   ItemQuery,
   JournalEntry,
@@ -163,6 +164,32 @@ function normalizeScopeResources(
   return normalized;
 }
 
+function normalizeScopeResourceContent(
+  configs: Record<string, ResourceConfig> | undefined,
+  seed: Record<string, unknown> | undefined
+): Record<string, string> {
+  const normalized: Record<string, string> = {};
+
+  for (const [resourceName, config] of Object.entries(configs ?? {})) {
+    const existing = seed?.[resourceName];
+    if (typeof existing === "string") {
+      normalized[resourceName] = existing;
+      continue;
+    }
+
+    if (typeof config.content === "string") {
+      normalized[resourceName] = config.content;
+      continue;
+    }
+
+    if (typeof config.contentFile === "string") {
+      normalized[resourceName] = readFileSync(config.contentFile, "utf8");
+    }
+  }
+
+  return normalized;
+}
+
 function asJsonValue(value: unknown): JsonValue {
   if (
     value === null ||
@@ -215,6 +242,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceH
     configs: Record<string, ResourceConfig> | undefined;
     readResources: () => Record<string, JsonObject>;
     persistResources: (next: Record<string, JsonObject>) => Promise<void>;
+    readResourceContent: () => Record<string, string>;
+    persistResourceContent: (next: Record<string, string>) => Promise<void>;
   }
 ): ResourceRegistry<TResources> {
   const handles = {} as Record<string, ResourceHandle<JsonObject>>;
@@ -235,6 +264,18 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceH
     };
 
     await options.persistResources(nextResources);
+  };
+
+  const persistResourceContent = async (
+    name: string,
+    content: string
+  ): Promise<void> => {
+    const nextContent = {
+      ...options.readResourceContent(),
+      [name]: content
+    };
+
+    await options.persistResourceContent(nextContent);
   };
 
   for (const [resourceName, config] of Object.entries(configs)) {
@@ -269,24 +310,28 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceH
         const next = await updater(readState());
         await persistResourceState(resourceName, config, next);
       },
-      async readContent(): Promise<string> {
-        const state = readState();
-        const content = state.content;
-
-        if (typeof content === "string") {
-          return content;
+      async readContentRaw(): Promise<string | null> {
+        const content = options.readResourceContent()[resourceName];
+        return typeof content === "string" ? content : null;
+      },
+      async readContent(): Promise<string | null> {
+        const raw = options.readResourceContent()[resourceName];
+        if (typeof raw !== "string") {
+          return null;
         }
 
-        return JSON.stringify(state);
+        if (config.render === undefined) {
+          return raw;
+        }
+
+        return await config.render(raw, readState());
       },
       async writeContent(content: string): Promise<void> {
-        const state = readState();
-        const nextState = {
-          ...state,
-          content: asJsonValue(content)
-        };
+        if (config.writable === false) {
+          throw new Error(`Resource "${resourceName}" content is read-only`);
+        }
 
-        await persistResourceState(resourceName, config, nextState);
+        await persistResourceContent(resourceName, content);
       }
     };
   }
@@ -979,6 +1024,7 @@ export async function createExecutionContext<
       userId,
       state: (options.userState ?? {}) as TUserState,
       resources: normalizeScopeResources(userResourceConfigs, undefined),
+      resourceContent: normalizeScopeResourceContent(userResourceConfigs, undefined),
       version: 0,
       createdAt: now,
       updatedAt: now
@@ -995,6 +1041,7 @@ export async function createExecutionContext<
       projectId: options.projectId,
       state: (options.sessionState ?? {}) as TSessionState,
       resources: normalizeScopeResources(sessionResourceConfigs, undefined),
+      resourceContent: normalizeScopeResourceContent(sessionResourceConfigs, undefined),
       version: 0,
       createdAt: now,
       updatedAt: now,
@@ -1016,6 +1063,7 @@ export async function createExecutionContext<
         userId,
         state: (options.projectState ?? {}) as TProjectState,
         resources: normalizeScopeResources(projectResourceConfigs, undefined),
+        resourceContent: normalizeScopeResourceContent(projectResourceConfigs, undefined),
         version: 0,
         createdAt: now,
         updatedAt: now
@@ -1068,10 +1116,22 @@ export async function createExecutionContext<
       sessionRef.current.resources as Record<string, unknown> | undefined
     );
 
+  const readSessionResourceContent = (): Record<string, string> =>
+    normalizeScopeResourceContent(
+      sessionResourceConfigs,
+      sessionRef.current.resourceContent as Record<string, unknown> | undefined
+    );
+
   const readUserResources = (): Record<string, JsonObject> =>
     normalizeScopeResources(
       userResourceConfigs,
       userRef.current.resources as Record<string, unknown> | undefined
+    );
+
+  const readUserResourceContent = (): Record<string, string> =>
+    normalizeScopeResourceContent(
+      userResourceConfigs,
+      userRef.current.resourceContent as Record<string, unknown> | undefined
     );
 
   const readProjectResources = (): Record<string, JsonObject> =>
@@ -1080,12 +1140,29 @@ export async function createExecutionContext<
       projectRef.current?.resources as Record<string, unknown> | undefined
     );
 
+  const readProjectResourceContent = (): Record<string, string> =>
+    normalizeScopeResourceContent(
+      projectResourceConfigs,
+      projectRef.current?.resourceContent as Record<string, unknown> | undefined
+    );
+
   const persistSessionResources = async (
     next: Record<string, JsonObject>
   ): Promise<void> => {
     sessionRef.current = {
       ...sessionRef.current,
       resources: normalizeScopeResources(sessionResourceConfigs, next),
+      updatedAt: Date.now()
+    };
+    await stores.session.set(sessionRef.current.id, sessionRef.current);
+  };
+
+  const persistSessionResourceContent = async (
+    next: Record<string, string>
+  ): Promise<void> => {
+    sessionRef.current = {
+      ...sessionRef.current,
+      resourceContent: normalizeScopeResourceContent(sessionResourceConfigs, next),
       updatedAt: Date.now()
     };
     await stores.session.set(sessionRef.current.id, sessionRef.current);
@@ -1102,6 +1179,17 @@ export async function createExecutionContext<
     await stores.user.set(userRef.current.id, userRef.current);
   };
 
+  const persistUserResourceContent = async (
+    next: Record<string, string>
+  ): Promise<void> => {
+    userRef.current = {
+      ...userRef.current,
+      resourceContent: normalizeScopeResourceContent(userResourceConfigs, next),
+      updatedAt: Date.now()
+    };
+    await stores.user.set(userRef.current.id, userRef.current);
+  };
+
   const persistProjectResources = async (
     next: Record<string, JsonObject>
   ): Promise<void> => {
@@ -1113,6 +1201,22 @@ export async function createExecutionContext<
     projectRef.current = {
       ...current,
       resources: normalizeScopeResources(projectResourceConfigs, next),
+      updatedAt: Date.now()
+    };
+    await stores.project.set(projectRef.current.id, projectRef.current);
+  };
+
+  const persistProjectResourceContent = async (
+    next: Record<string, string>
+  ): Promise<void> => {
+    const current = projectRef.current;
+    if (current === undefined) {
+      return;
+    }
+
+    projectRef.current = {
+      ...current,
+      resourceContent: normalizeScopeResourceContent(projectResourceConfigs, next),
       updatedAt: Date.now()
     };
     await stores.project.set(projectRef.current.id, projectRef.current);
@@ -1215,14 +1319,18 @@ export async function createExecutionContext<
     scope: "user",
     configs: userResourceConfigs,
     readResources: readUserResources,
-    persistResources: persistUserResources
+    persistResources: persistUserResources,
+    readResourceContent: readUserResourceContent,
+    persistResourceContent: persistUserResourceContent
   });
 
   const sessionResources = createScopeResourceRegistry({
     scope: "session",
     configs: sessionResourceConfigs,
     readResources: readSessionResources,
-    persistResources: persistSessionResources
+    persistResources: persistSessionResources,
+    readResourceContent: readSessionResourceContent,
+    persistResourceContent: persistSessionResourceContent
   });
 
   const projectResources =
@@ -1232,7 +1340,9 @@ export async function createExecutionContext<
           scope: "project",
           configs: projectResourceConfigs,
           readResources: readProjectResources,
-          persistResources: persistProjectResources
+          persistResources: persistProjectResources,
+          readResourceContent: readProjectResourceContent,
+          persistResourceContent: persistProjectResourceContent
         });
 
 

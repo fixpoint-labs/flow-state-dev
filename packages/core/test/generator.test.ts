@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   generator,
-  handler
+  handler,
+  readResourceContentTool,
+  writeResourceContentTool
 } from "../src";
 import { createMockContext } from "./helpers";
 
@@ -208,6 +210,56 @@ describe("generator builder", () => {
     expect(receivedMaxSteps).toBe(4);
   });
 
+
+  it("does not auto-inject resource content tools", async () => {
+    const block = generator({
+      name: "no-auto-resource-tools",
+      model: "m",
+      prompt: "p"
+    });
+
+    const ctx = createMockContext({
+      session: {
+        identity: { type: "session", id: "s1", userId: "u1" },
+        state: {},
+        resources: {
+          get: () => ({}) as any,
+          list: () => [
+            {
+              name: "soul",
+              scope: "session",
+              config: { llmReadable: true, llmWritable: true },
+              state: {},
+              patchState: async () => undefined,
+              setState: async () => undefined,
+              updateState: async () => undefined,
+              readContent: async () => "x",
+              readContentRaw: async () => "x",
+              writeContent: async () => undefined
+            } as any
+          ]
+        },
+        patchState: async () => undefined,
+        setState: async () => undefined,
+        incState: async () => undefined,
+        pushState: async () => undefined,
+        setStateRecord: async () => undefined,
+        deleteStateRecord: async () => undefined,
+        atomicState: async () => undefined,
+        appendJournal: async () => undefined,
+        getJournal: async () => []
+      } as any,
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          expect(options.tools).toBeUndefined();
+          return { text: "ok" };
+        }
+      })
+    });
+
+    await expect(block.run({ value: "x" }, ctx)).resolves.toBe("ok");
+  });
   it("skips tool invocation when loop.runTools is false", async () => {
     const toolCall = vi.fn();
     const tool = handler({
@@ -250,4 +302,84 @@ describe("generator builder", () => {
     await expect(block.run({ value: 1 }, ctx)).resolves.toEqual({ ok: true });
     expect(toolCall).not.toHaveBeenCalled();
   });
+});
+
+it("supports manually adding unified resource content tools", async () => {
+  const calls: Array<{ name: string; args: any }> = [];
+
+  const readableResource = {
+    name: "soul",
+    scope: "session",
+    config: { llmReadable: true, llmWritable: false },
+    state: {},
+    patchState: async () => undefined,
+    setState: async () => undefined,
+    updateState: async () => undefined,
+    readContent: async () => "rendered",
+    readContentRaw: async () => "raw",
+    writeContent: async () => undefined
+  } as any;
+
+  const writableResource = {
+    ...readableResource,
+    name: "notes",
+    config: { llmReadable: true, llmWritable: true },
+    writeContent: async (content: string) => {
+      calls.push({ name: "write", args: content });
+    }
+  } as any;
+
+  const block = generator({
+    name: "resource-tools",
+    model: "m",
+    prompt: "p",
+    tools: [readResourceContentTool(), writeResourceContentTool()]
+  });
+
+  const ctx = createMockContext({
+    session: {
+      identity: { type: "session", id: "s1", userId: "u1" },
+      state: {},
+      resources: {
+        get: () => readableResource,
+        list: () => [readableResource, writableResource]
+      },
+      patchState: async () => undefined,
+      setState: async () => undefined,
+      incState: async () => undefined,
+      pushState: async () => undefined,
+      setStateRecord: async () => undefined,
+      deleteStateRecord: async () => undefined,
+      atomicState: async () => undefined,
+      appendJournal: async () => undefined,
+      getJournal: async () => []
+    } as any,
+    resolveModel: () => ({
+      modelId: "m",
+      async generate(options: any) {
+        const readTool = options.tools.find((tool: any) => tool.name === "readResourceContent");
+        const writeTool = options.tools.find((tool: any) => tool.name === "writeResourceContent");
+        expect(readTool).toBeDefined();
+        expect(writeTool).toBeDefined();
+        expect(options.tools).toHaveLength(2);
+
+        const listed = await readTool.execute({});
+        calls.push({ name: "list", args: listed.paths });
+
+        const readResult = await readTool.execute({ path: "session/soul" });
+        calls.push({ name: "read", args: readResult.content });
+
+        await writeTool.execute({ path: "session/notes", content: "updated" });
+
+        return { text: "done" };
+      }
+    })
+  });
+
+  await expect(block.run({ value: "x" }, ctx)).resolves.toBe("done");
+  expect(calls).toEqual([
+    { name: "list", args: ["session/notes", "session/soul"] },
+    { name: "read", args: "rendered" },
+    { name: "write", args: "updated" }
+  ]);
 });

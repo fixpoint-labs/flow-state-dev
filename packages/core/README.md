@@ -115,6 +115,7 @@ export default defineFlow({
 
 **Resources:**
 - `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `projectResources`)
+  - Supports optional `content`/`contentFile` (mutually exclusive), `render`, `llmReadable`, and `llmWritable` for resource content workflows
 
 **Context & client data:**
 - `contextFn(schemas, fn)` — Typed context function for generators (scope-aware, portable)
@@ -144,6 +145,10 @@ Output item unions, content types, and stream event helpers. Item types: `messag
 **Silent by default.** Blocks emit nothing to the client unless they explicitly call `ctx.emitMessage()`, `ctx.emitComponent()`, or `ctx.emitStatus()`. Generators are the exception — they auto-emit messages and reasoning. This gives you precise control over what the user sees.
 
 **Automatic resource collection.** Blocks declare their resource dependencies via `sessionResources`/`userResources`/`projectResources` using `defineResource()` values. Sequencers collect these from child blocks. `defineFlow` merges them into the flow's scope configs automatically — blocks bring their own resource requirements, just like partial state schemas. Flow-level declarations take priority.
+
+**Resource content handles.** `ResourceHandle.readContent()` returns rendered text or `null`; `readContentRaw()` returns raw text or `null`; `writeContent()` overwrites content when writable.
+
+**LLM content tools are explicit.** Use `readResourceContentTool()` / `writeResourceContentTool()` in a generator's `tools` array when you want LLM access. These are not auto-injected.
 
 **Typed target state declarations.** Handler, generator, and router blocks can declare `targetStateSchemas` with Zod schemas. Declared names type `ctx.targets.<name>` as `StateHandle<...> | undefined` for state coordination. Use `ctx.getBlockOutput(blockDef)` / `ctx.getBlockResult(blockDef)` for explicit output dependencies.
 

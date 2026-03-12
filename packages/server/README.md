@@ -25,6 +25,7 @@ That's a full API with action execution, session management, SSE streaming with 
 - **Flow registry** — Register multiple flows, routes are derived automatically
 - **Error normalization** — All errors become typed `FlowError` instances with codes, retry signals, and scope context
 - **Structured logging** — Every action execution logs flow/action/block IDs, attempt numbers, timing, and summarized payloads
+- **Template utility** — `renderTemplate(content, state)` for opt-in Handlebars-style resource rendering
 
 ## Store configuration
 
@@ -81,6 +82,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 ## Public API
 
 **Runtime:**
+- `renderTemplate` — Handlebars-style template rendering utility for resource content
 - `createExecutionContext` — Build a block execution context
 - `runAction` — Execute a flow action end-to-end
 - `executeBlock` — Execute a single block with context

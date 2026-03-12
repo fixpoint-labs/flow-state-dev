@@ -81,3 +81,5 @@ export { createBindingCache, type CachedBindingProvider } from "./bindings";
 export * from "./middleware";
 
 export const serverPackageMarker = "@flow-state-dev/server";
+
+export { renderTemplate } from "./utils/renderTemplate";

@@ -19,6 +19,7 @@ export {
   sequencer
 } from "./blocks";
 export { defineFlow } from "./flow";
+export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
 export {
   DEFAULT_MODEL_LOOKUP,
   findModelEntry,

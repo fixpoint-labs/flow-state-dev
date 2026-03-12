@@ -59,6 +59,13 @@ Use resources when data has **its own identity, structure, and lifecycle** — w
 - **File-like objects** — anything that combines content with structured metadata
 - **Configuration bundles** — complex settings objects that are managed as a unit
 
+Resource content notes:
+
+- Content is optional (`content` or `contentFile` at definition time).
+- `readContent()` returns rendered text (or `null` when no content is defined).
+- `readContentRaw()` returns the stored raw body.
+- LLM content access is explicit: add `readResourceContentTool()` / `writeResourceContentTool()` to a generator when needed.
+
 The key signal: if the data has **content plus metadata**, or if you'd naturally think of it as a named object rather than a field, it belongs in a resource.
 
 ### Quick decision table
