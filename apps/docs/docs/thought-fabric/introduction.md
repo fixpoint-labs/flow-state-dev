@@ -4,19 +4,39 @@ sidebar_position: 1
 
 # Introduction
 
-Thought Fabric is a cognitive architecture layer built on top of flow-state-dev. The low-level framework gives you blocks, flows, and streaming. Thought Fabric adds higher-level abstractions for building agents that think more like humans: what to focus on, what to remember, and how to behave.
+flow-state-dev gives you blocks, flows, state, and streaming. Those are execution primitives. They don't have opinions about how an agent should think.
 
-## Three Domains
+Thought Fabric is the cognitive layer. It's a separate framework built on top of flow-state-dev that models how agents manage attention, form memories, develop identity, perceive their environment, and reason about problems. Where flow-state-dev handles the "how does this run" question, Thought Fabric handles "how does this think."
 
-The package is organized into three domains:
+The separation is deliberate. Not every flow needs cognition. A data pipeline that validates, transforms, and stores doesn't need working memory or salience scoring. But an agent that maintains context across long conversations, prioritizes what matters, and behaves consistently across interactions does. Thought Fabric is for that second case.
 
-- **Attention** — What to focus on. Relevance filtering and salience scoring so the agent prioritizes information that matters for the current task.
-- **Memory** — What to remember. Working memory: a bounded, decaying store that tracks what stays in cognitive focus.
-- **Identity** — How to behave. Perspective (role and expertise) and constitution (values and constraints). Placeholders for Wave 2.
+## The vision
 
-Each domain exports blocks, helpers, and resource definitions. They compose with flow-state-dev primitives. A Thought Fabric block is a standard flow-state-dev block.
+Thought Fabric maps cognitive science concepts onto composable building blocks. The full architecture spans seven domains:
 
-## Import Paths
+| Domain | What it models | Status |
+|--------|---------------|--------|
+| **Attention** | What to focus on. Relevance filtering and salience scoring. | Shipped |
+| **Memory** | What to remember. Bounded working memory with decay and eviction. | Shipped |
+| **Identity** | How to behave. Perspective (role/expertise) and constitution (values/constraints). | Coming soon |
+| **Perception** | How to interpret input. Sensory processing, context framing, signal extraction. | Coming soon |
+| **Reasoning** | How to think. Structured deliberation, chain-of-thought, planning strategies. | Coming soon |
+| **Metacognition** | How to self-monitor. Confidence calibration, strategy selection, self-correction. | Planned |
+| **Learning** | How to improve. Pattern extraction, skill acquisition, feedback integration. | Planned |
+
+Each domain will export blocks, helpers, and resource definitions that compose with flow-state-dev primitives. A Thought Fabric block is a standard flow-state-dev block. You use it in sequencers, pass it as a tool, register it in flows. No special runtime, no separate execution model.
+
+The goal isn't to simulate human cognition. It's to give agent builders a structured vocabulary for the cognitive behaviors they're already implementing ad-hoc. Instead of hand-rolling memory management or bolting salience heuristics onto prompt templates, you compose purpose-built blocks that handle these concerns with tested, configurable implementations.
+
+## What's shipped today
+
+**Memory** is fully implemented. Working memory gives your agents a bounded, salience-scored store that tracks what stays in cognitive focus during a conversation. Entries decay over time using configurable strategies (ACT-R power-law by default). The `workingMemoryCapture` block extracts memories via LLM, persists them, and advances the decay clock. One line to add to a pipeline. See [Memory](./memory.md).
+
+**Attention** ships two blocks. `filterRelevance` does deterministic keyword-based relevance filtering: fast, no LLM, good for cutting noise before expensive operations. `scoreSalience` uses an LLM to score items along configurable dimensions (goal relevance, recency, novelty, emotional weight). Use them together: filter first, then score the survivors. See [Attention](./attention.md).
+
+**Identity** has placeholder types. `perspective()` and `constitution()` define the interfaces but throw "Not implemented" until the next wave. The design is set; the implementation is queued. See [Identity](./identity.md).
+
+## Import paths
 
 Use subpath exports for tree-shaking:
 
@@ -26,7 +46,7 @@ import { workingMemoryCapture, workingMemoryContextFormatter } from '@thought-fa
 import { perspective, constitution } from '@thought-fabric/core/identity'
 ```
 
-The memory domain has a dedicated subpath. For attention and identity, you can also import from the main package:
+Or import domain namespaces from the main package:
 
 ```ts
 import { attention, memory, identity } from '@thought-fabric/core'
@@ -35,7 +55,7 @@ import { attention, memory, identity } from '@thought-fabric/core'
 
 The package depends on `@flow-state-dev/core`. Build core first if you hit type resolution issues.
 
-## Naming Convention
+## Naming convention
 
 Word order encodes the category:
 
@@ -45,25 +65,3 @@ Word order encodes the category:
 | `[verb]WorkingMemory` | Helper (verb first) | `addWorkingMemory`, `evictWorkingMemory` |
 
 `workingMemoryAdd` is a block you compose in a pipeline. `addWorkingMemory` is a helper you call on a resource ref. The inversion tells you which is which without checking docs.
-
-## What's Shipped Today
-
-**Memory domain** — Working memory is fully implemented. Capture block, observe/remember/tick blocks, helpers, resource, context formatter. Entries decay with power-law (ACT-R style) by default. See [Memory](./memory.md) for details.
-
-**Attention domain** — `filterRelevance` (deterministic keyword-based relevance filtering) and `scoreSalience` (LLM-based salience scoring). Both are production-ready. See [Attention](./attention.md).
-
-**Identity domain** — Placeholder types only. `perspective()` and `constitution()` throw "Not implemented" and will ship in Wave 2. See [Identity](./identity.md).
-
-## Domain Overview
-
-### Attention
-
-Relevance and salience determine what the agent attends to. `filterRelevance` removes or annotates items below a threshold using keyword overlap heuristics. No LLM, fast, deterministic. `scoreSalience` uses an LLM to score items along configurable dimensions (goal relevance, recency, novelty, emotional weight). Use them together: filter first to cut noise, then score the survivors for ranking.
-
-### Memory
-
-Working memory is a session-scoped resource. Capacity defaults to 7 (Miller's number). Entries have importance and optional pins. Decay strategies: power-law (default), exponential, or none. The `workingMemoryCapture` block extracts memories via LLM, persists them, and advances the decay clock. Use `workingMemoryContextFormatter` in a generator's `context` array to inject active memories into prompts.
-
-### Identity
-
-Placeholders for how an agent interprets and constrains itself. `perspective` will define role and expertise. `constitution` will define values and constraints. Both influence behavior at interpretation time. Not implemented yet.

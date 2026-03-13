@@ -85,7 +85,7 @@ const config: Config = {
           items: [
             {
               label: "Building a Chat App",
-              to: "/docs/tutorials/building-a-chat-app",
+              to: "/docs/guides/building-a-chat-app",
             },
             { label: "Server Setup", to: "/docs/server/setup" },
             {

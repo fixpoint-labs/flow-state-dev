@@ -2,43 +2,13 @@
 sidebar_position: 1
 ---
 
-# Streaming
+# Overview
 
-Most frameworks bolt streaming on as an afterthought — raw text over a WebSocket, maybe some SSE. flow-state.dev makes streaming structural. Instead of raw text, the framework streams **typed items**: messages, tool calls, state changes, reasoning, custom components. Each item has a lifecycle and a sequence number, so clients can disconnect and resume without losing a single event.
-
-## How it works
-
-When a client invokes an action, the server starts executing blocks and streaming results immediately:
-
-```
-POST /api/flows/:kind/actions/:action  -->  202 { requestId }
-GET  /api/flows/:kind/requests/:requestId/stream  -->  SSE events
-```
-
-Events flow in real time as blocks execute:
-
-```
-event: item.added
-data: { "item": { "type": "message", "role": "assistant", "status": "in_progress" } }
-
-event: content.delta
-data: { "itemId": "msg_1", "delta": { "text": "Hello" } }
-
-event: content.delta
-data: { "itemId": "msg_1", "delta": { "text": " there!" } }
-
-event: item.done
-data: { "item": { "type": "message", "role": "assistant", "status": "completed" } }
-
-event: request.completed
-data: { "status": "completed" }
-```
-
-The client assembles content progressively from deltas. Text appears token by token. When the request completes, the client refetches the state snapshot for the authoritative final state.
+Items are the unit of communication between blocks and clients. Every artifact your blocks produce — a chat message, a tool result, a state change, a custom UI component — is an item. Items are typed, carry provenance, and route by audience. They accumulate in sessions, stream to clients in real time, and feed back into LLM context on subsequent requests.
 
 ## Item types
 
-Every streamed event is a typed item. This means the client always knows what it's rendering:
+Every item has a type that determines how it's routed and rendered:
 
 | Type | What it is |
 |------|-----------|
@@ -47,13 +17,35 @@ Every streamed event is a typed item. This means the client always knows what it
 | `block_output` | Structured output from any block |
 | `component` | Custom UI component with typed props |
 | `container` | Groups child items for visual layout |
-| `tool_call` | Tool invocation with arguments |
-| `tool_result` | Tool execution result |
 | `state_change` | State mutation notification |
 | `resource_change` | Resource mutation notification |
 | `step_error` | Non-terminal error in a pipeline step |
 | `error` | Terminal request error |
 | `status` | Transient progress updates |
+| `context` | Hidden context for LLMs only. Not sent to the client. |
+
+Tool invocations use `block_output` items: `item.added` with `toolCall` populated (no output yet), then `item.done` with `output` populated after the tool block runs.
+
+## Emitting items
+
+Generators emit items automatically as they stream. Handlers are silent by default. To emit items from a handler (or any block), use the context methods:
+
+```ts
+execute: async (input, ctx) => {
+  // Send a text message to the client
+  await ctx.emitMessage("Processing your request...");
+
+  // Emit a custom UI component
+  await ctx.emitComponent("progress-bar", { percent: 50, label: "Analyzing..." });
+
+  // Emit a status update (transient, not persisted)
+  await ctx.emitStatus("Fetching data from external API...");
+
+  return result;
+}
+```
+
+`emitMessage()` creates a `message` item. `emitComponent()` creates a `component` item with the component name and typed props. `emitStatus()` creates a transient `status` item for progress indicators. These all stream to the client immediately.
 
 ## Content model
 
@@ -76,55 +68,68 @@ When [voice](/docs/fundamentals/voice) is enabled, audio content parts also arri
 { type: "output_audio", audio: "base64...", mediaType: "audio/mp3", transcript: "Here's what I found:" }
 ```
 
-Content is assembled progressively from `content.delta` events — the framework handles buffering and assembly so you don't have to.
+Content is assembled progressively from `content.delta` events during streaming. The framework handles buffering and assembly.
 
-## Resume and replay
+## Audiences
 
-This is where flow-state.dev's streaming really shines. Every event has a **sequence number**. When a client disconnects — network blip, tab backgrounded, mobile app suspended — it can resume from exactly where it left off:
+Not all items go everywhere. The framework uses type-based audience routing:
 
-```
-GET /api/flows/:kind/requests/:requestId/stream
-Last-Event-ID: 42
-```
-
-The server replays all events after sequence 42, then switches to live streaming. No data loss. No duplicate events. No application-level retry logic needed.
-
-You can also use the `starting_after` query parameter:
-
-```
-GET /api/flows/:kind/requests/:requestId/stream?starting_after=42
-```
-
-## Item audiences
-
-Not all items go everywhere. The framework uses type-based audience routing — each item type has a fixed audience:
-
-| Audience | Item types |
-|----------|-----------|
+| Audience | Types |
+|----------|-------|
 | **Client** | `message`, `reasoning`, `component`, `container`, `status`, `state_change`, `resource_change`, `error`, `step_error` |
-| **LLM** | `message`, `reasoning`, `context`, `block_output` |
-| **Internal** | `block_output` (devtools only unless it's a tool call) |
+| **LLM** | `message`, `reasoning`, `context`, `block_output` (when it has `toolCall` — the tool result) |
+| **Internal** | `block_output` without `toolCall` — devtools only |
 
-Generators access LLM-audience items via `session.items.llm()` — the framework automatically filters to items the model should see (messages, reasoning, context) and excludes UI-only items (status, components).
+Generators access LLM-audience items via `session.items.llm()`. The framework automatically filters to items the model should see (messages, reasoning, context) and excludes UI-only items (status, components).
 
-## React integration
+## Session items
 
-On the React side, streaming is automatic. The `useSession` hook connects to the SSE stream, processes events, and updates items reactively:
+Items accumulate in the session across requests. When a user sends a second message, the session already holds items from the first request. Generators use this for conversation history.
 
-```tsx
-const session = useSession(sessionId);
+Three views for accessing session items:
 
-// Items update in real time as the stream delivers them
-{session.items.map((item) => (
-  <ItemRenderer key={item.id} item={item} />
-))}
+- **`items.all()`** — Everything in the session. Useful for debugging and the DevTool.
+- **`items.client()`** — Items intended for the client. Excludes `context` and internal `block_output`.
+- **`items.llm()`** — Items formatted for the model. Supports token limiting: `items.llm({ limit: { tokens: 20_000 } })` packs from newest to oldest within the budget.
 
-// Filtered views
-{session.messages.map(...)}        // Only message items
-{session.blockOutputs.map(...)}    // Only block outputs
+## Item lifecycle
 
-// Status
-{session.isStreaming && <Spinner />}
+Items follow a three-phase lifecycle:
+
+1. **Added** — `item.added` event. Item exists with `status: "in_progress"`.
+2. **Content deltas** — For streaming content (messages, reasoning), text arrives in chunks via `content.delta` events. The client accumulates deltas.
+3. **Done** — `item.done` event. Item finalized with `status: "completed"`, `"incomplete"`, or `"failed"`. Terminal states are immutable.
+
+## Provenance
+
+Every item carries provenance metadata — which block produced it, where in the execution tree it came from:
+
+```ts
+type ItemProvenance = {
+  blockName: string;
+  blockInstanceId: string;
+  parentBlockInstanceId?: string;
+  phase: "main" | "work";
+  stepIndex?: number;
+};
 ```
 
-No manual stream management. No event listeners. No reconnection logic. The hooks handle all of it.
+This powers UI grouping, the DevTool timeline, and correlating items to specific block executions.
+
+## Persistence
+
+Most items are persisted to the session. A few exceptions:
+
+- `status` items are always transient (stream-only, not persisted).
+- `state_change` and `resource_change` are transient by default in production; persisted in dev mode for the DevTool state timeline.
+- Other item types are persisted by default.
+
+## Custom components
+
+Emit custom UI components from any block:
+
+```ts
+ctx.emitComponent("chart", { data: chartData, title: "Monthly Revenue" });
+```
+
+Register component renderers on the React side. The client receives `component` items with `component` and `data` fields, and the `ItemsRenderer` dispatches to your registered renderers. See [React Integration](/docs/client/react) for renderer setup.

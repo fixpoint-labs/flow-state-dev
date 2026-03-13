@@ -15,7 +15,7 @@ State is organized into four hierarchical scopes:
 | **Request** | What does this single action execution need right now? | One action execution |
 | **Session** | What does this conversation need to remember? | Across requests in a conversation |
 | **User** | What does this person need across all their conversations? | Across sessions for a user |
-| **Project** | What does the team need to share? | Across users in a project |
+| **Project** | What does the team need to share? | Across sessions in a project |
 
 Each scope has its own state, resources, and client data. Most of your state lives at the session level.
 
@@ -213,7 +213,7 @@ await artifacts.patchState({
 });
 ```
 
-Resources are scoped — session-level resources persist across requests in a conversation, user-level resources persist across sessions, project-level resources are shared across users. This gives you a natural hierarchy: scratch artifacts in a session, personal notes per user, shared knowledge bases per project.
+Resources are scoped — session-level resources persist across requests in a conversation, user-level resources persist across sessions, project-level resources are shared across sessions in a project. This gives you a natural hierarchy: scratch artifacts in a session, personal notes per user, shared knowledge bases per project.
 
 ## Client Data
 
@@ -333,7 +333,7 @@ The four scopes map to real isolation needs:
 - **Request** exists because blocks need scratch space that doesn't pollute the conversation. Intermediate processing results, temporary flags, retry counters — data that's useful during execution but meaningless afterward.
 - **Session** exists because conversations have memory. Chat history, the current operating mode, a plan being assembled step-by-step — data that builds up across multiple request/response cycles but belongs to one conversation.
 - **User** exists because people come back. Their preferences, accumulated knowledge, personal resource collections — data that should follow them across sessions, not reset every time they start a new conversation.
-- **Project** exists because teams share context. Configuration, knowledge bases, shared settings — data that multiple users need access to, not tied to any individual.
+- **Project** exists because teams share context. Configuration, knowledge bases, shared settings — data that multiple sessions need access to, not tied to any individual conversation.
 
 Two scopes would force you to choose between "per-request" and "everything else." Six scopes would create unnecessary ceremony. Four maps cleanly to the real boundaries in AI applications.
 
@@ -612,7 +612,7 @@ await snippets.patchState({
 
 ## Project scope
 
-Project scope is shared across users — the team-level boundary for configuration, knowledge, and shared resources.
+Project scope groups sessions together — the team-level boundary for configuration, knowledge, and shared resources.
 
 ### Providing project identity
 
@@ -719,7 +719,7 @@ execute: async (input, ctx) => {
 
 ### When to use project scope vs user scope
 
-Use **project scope** when multiple users need to read or write the same data — configuration that applies to the whole team, shared knowledge that anyone can contribute to, settings that an admin controls for everyone.
+Use **project scope** when multiple sessions need to read or write the same data — configuration that applies to the whole team, shared knowledge that anyone can contribute to, settings that an admin controls for everyone.
 
 Use **user scope** when the data belongs to one person — their preferences, their saved items, their accumulated context. Even if it *looks* shared (like "preferred model"), if each user should have their own value, it's user scope.
 
@@ -833,7 +833,7 @@ request → session → user → project
   (narrowest)                (broadest)
 ```
 
-"Higher" means broader lifetime and wider sharing. Request is the narrowest — one execution, one user, gone when done. Project is the broadest — persists indefinitely, shared across users.
+"Higher" means broader lifetime and wider sharing. Request is the narrowest — one execution, one user, gone when done. Project is the broadest — persists indefinitely, shared across sessions.
 
 Sequencer scope is orthogonal to this hierarchy — it's scoped to execution structure rather than identity, and exists only for the duration of a sequencer's execution.
 

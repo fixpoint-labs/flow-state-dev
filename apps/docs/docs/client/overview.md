@@ -127,6 +127,7 @@ Use this to convert user audio to text before sending to an action.
 
 ## See also
 
-- [Streaming Overview](/docs/streaming/overview) — SSE protocol, event types, resume semantics
+- [Items](/docs/streaming/overview) — Item types, audiences, emitting
+- [Streaming](/docs/streaming/items) — SSE protocol, event types, resume semantics
 - [Client > React](/docs/client/react) — React hooks that wrap this client
 - [API Reference: client](/docs/api/client) — Full API surface

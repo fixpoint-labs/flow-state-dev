@@ -4,7 +4,9 @@ sidebar_position: 1
 
 # Overview
 
-Resources are named, schema-typed containers attached to scopes (session, user, project). Each resource combines structured state with optional rich text content. Unlike scope state, which is a flat key-value object, resources are self-contained units with identity. Use them when data has structure, lifecycle, or content that doesn't fit a simple field.
+Think of resources as files your AI can work with. Each resource has content — a document, a plan, a code snippet, a template — alongside structured metadata about that content: title, status, tags, timestamps. Both live in one typed container with atomic operations.
+
+Regular scope state is a flat object. Good for flags, counters, mode switches. But when your AI needs to manage artifacts with real content — design documents, research notes, generated code, plans with steps — scope state gets awkward fast. Resources give you named, schema-typed containers where content and metadata coexist naturally.
 
 ## defineResource
 
@@ -14,79 +16,97 @@ Declare a reusable resource with `defineResource()`:
 import { defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const planResource = defineResource({
+const artifactResource = defineResource({
   stateSchema: z.object({
-    steps: z.array(z.string()).default([]),
-    status: z.enum(["draft", "active", "complete"]).default("draft"),
+    title: z.string().default("Untitled"),
+    tags: z.array(z.string()).default([]),
+    status: z.enum(["draft", "review", "final"]).default("draft"),
     updatedAt: z.number().default(0),
   }),
+  content: "",
   writable: true,
 });
 ```
 
+The `stateSchema` defines the structured metadata. The `content` field holds the body — the "file" part. Both are versioned, both support atomic operations.
+
 Config options:
 
-- **stateSchema** — Zod schema for structured state
-- **content** or **contentFile** — optional rich text body (mutually exclusive)
-- **render** — optional template renderer `(content, state) => string`
-- **writable** — whether blocks can patch/write the resource
-- **llmReadable**, **llmWritable** — control LLM access (see [LLM access](#llm-access-patterns))
+- **stateSchema** — Zod schema for structured metadata
+- **content** — initial content body (a string: markdown, code, prose, anything)
+- **contentFile** — load initial content from a file path (mutually exclusive with `content`)
+- **render** — template renderer: `(content, state) => string` for interpolating state into content
+- **writable** — whether blocks can modify the resource
+- **llmReadable**, **llmWritable** — control whether generators can read/write the content
 
 ## Resources vs scope state
 
 | | Scope state | Resources |
 |--|-------------|-----------|
-| Shape | Flat key-value | Named container with state + optional content |
-| Identity | Field names | Resource name |
-| Content | No | Yes (optional) |
-| Namespace | Shared across blocks (bubbles up) | Per-resource, no collision |
+| **Mental model** | Config flags and counters | Files with structured metadata |
+| **Shape** | Flat key-value object | Named container: content body + typed state |
+| **Content** | No | Yes — rich text, markdown, code, templates |
+| **Identity** | Field names (shared namespace) | Resource name (isolated namespace) |
+| **Collision risk** | Fields can conflict across blocks | Each resource is self-contained |
 
-Use **scope state** for simple fields: mode flags, counters, config values. Use **resources** when data has identity, structure, or content. See [State Storage](/docs/resources/storage) for the full decision guide.
+Use **scope state** for simple fields: mode flags, counters, config values. Use **resources** when you're working with content that has structure — documents, plans, artifacts, knowledge bases. See [Storage](/docs/resources/storage) for the full decision guide.
 
-## Resource config
+## Working with content
+
+Read content with `readContent()` (renders templates) or `readContentRaw()` (returns the stored body):
+
+```ts
+execute: async (input, ctx) => {
+  const artifact = ctx.session.resources.get("artifact");
+
+  // Read the content body
+  const raw = artifact.readContentRaw();     // "# {{ title }}\n\nDraft content..."
+  const rendered = artifact.readContent();   // "# My Document\n\nDraft content..."
+
+  // Read structured metadata
+  const { title, status, tags } = artifact.state;
+}
+```
+
+### Templates
+
+Use `render` to interpolate state into content templates:
 
 ```ts
 defineResource({
-  stateSchema: z.object({ ... }),
-  default: { ... },           // initial state
-  content: "# Hello {{ title }}",  // static template
-  contentFile: "./templates/plan.md",  // or load from file
-  render: (content, state) => content.replace(/\{\{(\w+)\}\}/g, (_, k) => state[k]),
+  stateSchema: z.object({
+    title: z.string().default("Untitled"),
+    author: z.string().default(""),
+  }),
+  content: "# {{ title }}\n\nBy {{ author }}",
+  render: (content, state) =>
+    content.replace(/\{\{(\w+)\}\}/g, (_, key) => state[key] ?? ""),
   writable: true,
-  llmReadable: true,
-  llmWritable: false,
 });
 ```
 
-`content` and `contentFile` are mutually exclusive. `readContent()` returns the rendered text; `readContentRaw()` returns the stored body. Use `render` to interpolate state into templates.
+`readContent()` returns the rendered result. `readContentRaw()` returns the template with placeholders intact.
 
 ## LLM access patterns
 
-Resources are not automatically exposed to generators. Add `readResourceContentTool()` or `writeResourceContentTool()` to a generator when you want the LLM to read or write resource content. Set `llmReadable` / `llmWritable` on the resource to control what the tools can do. See the API docs for tool wiring.
+Resources are not automatically exposed to generators. Use `llmReadable` and `llmWritable` flags to control access, and wire `readResourceContentTool()` or `writeResourceContentTool()` to a generator's tools array when you want the model to interact with resource content directly.
 
 ## Block-level resource declarations
 
 Blocks declare resource dependencies with `sessionResources`, `userResources`, and `projectResources`:
 
 ```ts
-import { defineResource, handler } from "@flow-state-dev/core";
-
-const planResource = defineResource({
-  stateSchema: z.object({ steps: z.array(z.string()).default([]) }),
-  writable: true,
-});
-
 const planManager = handler({
   name: "plan-manager",
   sessionResources: { plan: planResource },
   execute: async (input, ctx) => {
-    await ctx.session.resources.plan.patchState({ steps: ["step1", "step2"] });
+    await ctx.session.resources.plan.patchState({ status: "active" });
     return input;
   },
 });
 ```
 
-The block brings its own resource requirements. No need to repeat them in the flow.
+The block brings its own resource requirements. No need to repeat them in the flow definition.
 
 ## Automatic resource collection
 
@@ -98,9 +118,9 @@ Sequencers merge `declaredResources` from all child blocks. `defineFlow` collect
 |-------|----------|
 | **session** | One conversation |
 | **user** | Across sessions for a user |
-| **project** | Shared across users in a project |
+| **project** | Shared across sessions in a project |
 
-Choose the scope that matches the data's lifetime. Session for conversation-local data, user for personal persistence, project for team-shared data.
+Choose the scope that matches the data's lifetime. Session for conversation-local artifacts, user for personal notes and saved snippets, project for shared knowledge bases and team documents.
 
 ## Where to go next
 

@@ -46,7 +46,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
-      label: "Streaming",
+      label: "Items",
       items: [
         "streaming/overview",
         "streaming/items",
@@ -88,9 +88,9 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
-      label: "Tutorials",
+      label: "Guides",
       items: [
-        "tutorials/building-a-chat-app",
+        "guides/building-a-chat-app",
       ],
     },
     "roadmap",

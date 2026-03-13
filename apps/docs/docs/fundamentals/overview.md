@@ -15,7 +15,7 @@ Every piece of logic is exactly one of four kinds:
 - **Sequencer** — Compose blocks into pipelines. Chain steps, run work in parallel, add rescue boundaries for error recovery.
 - **Router** — Dispatch to different blocks at runtime based on input or state. Mode switching, intent routing, conditional flows.
 
-All blocks share the same contract: `block.run(input, ctx)`. Any block composes with any other. Any block or pipeline can be used as a tool.
+All blocks share the same typed contract: input in, output out. Any block composes with any other. Chain them in sequencers, nest them in routers, pass them as tools to generators.
 
 ## Flows tie everything together
 
@@ -32,7 +32,7 @@ State lives in four nested scopes with atomic operations:
 | Request | Single action run |
 | Session | Across requests in a conversation |
 | User | Across sessions for a user |
-| Project | Shared across users |
+| Project | Shared across sessions in a project |
 
 Each scope supports `patchState`, `setState`, `incState`, `pushState`, `atomicState`. Operations are CAS-guarded. Blocks declare only the state fields they need.
 
@@ -42,7 +42,7 @@ See [State and Scopes](/docs/fundamentals/state-and-scopes).
 
 Streaming is not raw text. The framework streams **typed items** — messages, reasoning, tool calls, state changes, custom components. Each item has a type, a lifecycle (added → content.delta → done), and a sequence number. Clients can disconnect and resume from a cursor. No data loss.
 
-See [Streaming](/docs/streaming/overview) and [Items](/docs/streaming/items).
+See [Items](/docs/streaming/overview) and [Streaming](/docs/streaming/items).
 
 ## Everything composes
 
@@ -52,4 +52,4 @@ Blocks inside blocks. Sequencers as tools. Routers dispatching to sequencers. Ty
 
 - [Blocks](/docs/fundamentals/blocks) — Deep dive into the four primitives
 - [Quick Start](/docs/getting-started/quick-start) — Build a streaming chat app in 5 minutes
-- [Building a Chat App](/docs/tutorials/building-a-chat-app) — Full walkthrough
+- [Building a Chat App](/docs/guides/building-a-chat-app) — Full walkthrough
