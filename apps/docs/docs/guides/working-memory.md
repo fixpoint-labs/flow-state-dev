@@ -64,7 +64,7 @@ To inject memory into an LLM's system context, pass `workingMemoryContextFormatt
 ```ts
 import { generator } from '@flow-state-dev/core'
 import {
-  workingMemoryResource,
+  workingMemoryResources,
   workingMemoryContextFormatter,
 } from '@thought-fabric/core/memory'
 
@@ -72,7 +72,7 @@ const chat = generator({
   name: 'chat',
   model: 'gpt-5',
   inputSchema: z.string(),
-  sessionResources: { workingMemory: workingMemoryResource },
+  sessionResources: workingMemoryResources,
   context: [workingMemoryContextFormatter],
   user: (input) => input,
 })
@@ -96,6 +96,29 @@ context: [workingMemoryContextFormatter, identityContextFormatter],
 ```
 
 If you need custom formatting, use `formatWorkingMemoryEntries(ref)` directly — it returns the raw bullet list without the header.
+
+### Composing Resources
+
+`workingMemoryResources` is a pre-keyed object that maps the correct resource key for you. Use it directly, or spread it alongside other resources:
+
+```ts
+// Simple — just working memory
+sessionResources: workingMemoryResources
+
+// Composing with other pattern resources
+sessionResources: {
+  ...workingMemoryResources,
+  ...episodicMemoryResources,
+}
+
+// Composing with custom resources
+sessionResources: {
+  ...workingMemoryResources,
+  userPrefs: userPrefsResource,
+}
+```
+
+This avoids hard-coding the resource key name, which is an internal contract between the blocks and the resource declaration.
 
 ### Snapshot and Manual Store
 
@@ -179,6 +202,53 @@ workingMemoryCapture({
 - **`exponential`** — `exp(-rate × elapsed)`. Steeper, more aggressive decay.
 - **`none`** — No decay. Salience equals importance forever. Useful for testing or fixed-context scenarios.
 
+## Complete Export Reference
+
+All exports available from `@thought-fabric/core/memory` for working memory:
+
+| Export | Kind | Description |
+|--------|------|-------------|
+| **Block factories** | | |
+| `workingMemoryCapture(config?)` | sequencer | Bundled observe → remember → tick pipeline |
+| `workingMemoryObserve(config?)` | generator | LLM-based memory extraction |
+| `workingMemoryRemember(config?)` | handler | Persists observations into the resource |
+| `workingMemoryTick(config?)` | handler | Advances the decay clock, recomputes salience |
+| `workingMemorySnapshot()` | handler | Returns current entries + turn counter |
+| `workingMemoryAdd(config?)` | handler | Directly add an entry (no LLM) |
+| **Resource** | | |
+| `workingMemoryResource` | resource definition | Session-scoped resource definition |
+| `workingMemoryResources` | pre-keyed object | `{ workingMemory: workingMemoryResource }` for `sessionResources` |
+| **Helpers** | | |
+| `addWorkingMemory(ref, entry, config?)` | helper | Add entry with auto-eviction at capacity |
+| `evictWorkingMemory(ref, id)` | helper | Remove by ID (overrides pin) |
+| `pinWorkingMemory(ref, id, config?)` | helper | Pin an entry to protect from eviction |
+| `unpinWorkingMemory(ref, id)` | helper | Remove pin protection |
+| `refreshWorkingMemory(ref, id, config?)` | helper | Reset access time (access boost) |
+| `advanceWorkingMemory(ref, config?)` | helper | Advance turn counter, recompute salience |
+| **Accessors & formatters** | | |
+| `workingMemoryItems(ref)` | accessor | Entries sorted by salience descending |
+| `formatWorkingMemoryEntries(ref)` | helper | Bullet list for LLM context (no scores/IDs) |
+| `workingMemoryContextFormatter(input, ctx)` | formatter | Ready-made `context:` slot for generators |
+| **Schemas** | | |
+| `workingMemoryEntrySchema` | Zod schema | Single entry schema |
+| `workingMemoryStateSchema` | Zod schema | Full state schema (entries + turn counter) |
+| `workingMemoryObservationsSchema` | Zod schema | Observe block output schema |
+| **Config & math** | | |
+| `DEFAULT_WORKING_MEMORY_CONFIG` | const | Defaults: capacity 7, maxPinnedSlots 2, power-law 0.5 |
+| `computeDecay(elapsed, strategy, rate)` | pure function | Decay factor computation |
+| `computeSalience(entry, currentTurn, decay)` | pure function | `importance × decay(elapsed)` |
+| **Types** | | |
+| `WorkingMemoryEntry` | type | Single entry |
+| `WorkingMemoryState` | type | Full state |
+| `DecayStrategy` | type | `'power-law' \| 'exponential' \| 'none'` |
+| `WorkingMemoryDecayConfig` | type | Decay strategy + rate |
+| `WorkingMemoryHelperConfig` | type | Capacity, maxPinnedSlots, decay |
+| `AddEntryInput` | type | Input for adding an entry |
+| `Observations` | type | Observe block output type |
+| `WorkingMemoryBlockConfig` | type | Base block config |
+| `WorkingMemoryCaptureConfig` | type | Capture sequencer config |
+| `WorkingMemoryObserveConfig` | type | Observe generator config |
+
 ## Naming Conventions
 
 Word order encodes the category:
@@ -191,6 +261,8 @@ Word order encodes the category:
 | Formatter | `workingMemory[Noun]Formatter` | `workingMemoryContextFormatter` |
 
 `workingMemoryAdd` is a block you compose in a pipeline. `addWorkingMemory` is a helper you call on a resource ref. The inversion tells you which is which without checking docs.
+
+See the full [naming conventions](../../packages/thought-fabric-core/docs/naming-conventions.md) doc for the complete pattern.
 
 ## Edge Cases
 

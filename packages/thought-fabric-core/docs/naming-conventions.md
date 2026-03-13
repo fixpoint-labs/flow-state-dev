@@ -21,6 +21,7 @@ The English reads naturally either way. "The working memory capture block" vs "a
 |----------|---------|---------|
 | Block factory | `[pattern][Verb]` | `workingMemoryCapture`, `workingMemoryTick`, `workingMemoryAdd` |
 | Resource | `[pattern]Resource` | `workingMemoryResource` |
+| Pre-keyed resources | `[pattern]Resources` (plural) | `workingMemoryResources` |
 | Schema | `[pattern][Noun]Schema` | `workingMemoryEntrySchema`, `workingMemoryObservationsSchema` |
 | Formatter | `[pattern][Noun]Formatter` | `workingMemoryContextFormatter` |
 | Accessor | `[pattern][Noun]` | `workingMemoryItems` |
@@ -53,6 +54,31 @@ import { memory } from '@thought-fabric/core'
 memory.workingMemoryCapture  // same function
 ```
 
+## Pre-keyed Resources
+
+Each pattern exports a plural `[pattern]Resources` object that maps the correct resource key. This avoids consumers hard-coding a key name that's really an internal contract between the blocks and the resource.
+
+```ts
+// workingMemoryResources = { workingMemory: workingMemoryResource } as const
+
+// Simple — just working memory
+sessionResources: workingMemoryResources
+
+// Compose multiple pattern resources
+sessionResources: {
+  ...workingMemoryResources,
+  ...episodicMemoryResources,
+}
+
+// Mix with custom resources
+sessionResources: {
+  ...workingMemoryResources,
+  userPrefs: userPrefsResource,
+}
+```
+
+The singular `workingMemoryResource` still exists for cases where you need the raw resource definition (e.g., passing to `defineResource` utilities or inspecting the schema). But `workingMemoryResources` (plural) is the preferred way to declare resources on blocks and generators.
+
 ## Context Formatters
 
 Formatters designed for a generator's `context` field follow `[pattern]ContextFormatter` naming.
@@ -71,10 +97,18 @@ context: [workingMemoryContextFormatter, identityContextFormatter]
 
 When adding a new pattern (e.g., episodic memory):
 
-1. All block factories: `episodicMemory[Verb]` (e.g., `episodicMemoryStore`, `episodicMemoryRecall`)
+1. Block factories: `episodicMemory[Verb]` (e.g., `episodicMemoryStore`, `episodicMemoryRecall`)
 2. Resource: `episodicMemoryResource`
-3. Schemas: `episodicMemory[Noun]Schema`
-4. Helpers: `[verb]EpisodicMemory` (e.g., `addEpisodicMemory`, `queryEpisodicMemory`)
-5. Context formatter: `episodicMemoryContextFormatter`
+3. Pre-keyed resources: `episodicMemoryResources` (e.g., `{ episodicStore: ..., episodicIndex: ... }`)
+4. Schemas: `episodicMemory[Noun]Schema`
+5. Helpers: `[verb]EpisodicMemory` (e.g., `addEpisodicMemory`, `queryEpisodicMemory`)
+6. Context formatter: `episodicMemoryContextFormatter`
 
-The qualified names prevent collisions at the `memory.*` barrel level. `addWorkingMemory` and `addEpisodicMemory` coexist without ambiguity.
+The qualified names prevent collisions at the `memory.*` barrel level. `addWorkingMemory` and `addEpisodicMemory` coexist without ambiguity. Pre-keyed resources compose cleanly:
+
+```ts
+sessionResources: {
+  ...workingMemoryResources,
+  ...episodicMemoryResources,
+}
+```
