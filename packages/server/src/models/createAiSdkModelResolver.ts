@@ -8,6 +8,7 @@ import type {
   ModelResolver,
   PrepareStepFn
 } from "@flow-state-dev/core/types";
+import { makeSchemaStrict } from "./makeSchemaStrict.js";
 
 export type ResolveAiSdkLanguageModel = (modelId: string) => unknown;
 
@@ -235,7 +236,12 @@ function buildAiSdkRequest(
   }
 
   if (options.outputSchema !== undefined) {
-    request.output = Output.object({ schema: options.outputSchema as any });
+    // Transform the schema so all properties are required — OpenAI's
+    // structured output API rejects schemas with optional properties.
+    // The original schema is still used for response validation, where
+    // Zod's .safeParse() applies .default() values automatically.
+    const strictSchema = makeSchemaStrict(options.outputSchema as any);
+    request.output = Output.object({ schema: strictSchema as any });
   }
 
   if (options.maxTokens !== undefined) {

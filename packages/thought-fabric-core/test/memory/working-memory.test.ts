@@ -768,7 +768,9 @@ describe('memory/workingMemory', () => {
         session: { resources: { get: () => ref } },
         response: { emit: async () => {} },
       } as any
-      return block.run({ observations }, ctx)
+      // The schema uses .default() for pinned and replaces, so Zod applies
+      // defaults during input validation — no manual normalization needed.
+      return block.run({ observations } as any, ctx)
     }
 
     it('persists observations as entries', async () => {
