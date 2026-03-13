@@ -60,7 +60,10 @@ export type Observations = z.infer<typeof observationsSchema>
 /**
  * Generator that uses an LLM to extract memories from input text.
  *
- * Input: a string (the text to analyze).
+ * Input: a string — typically the user's message, since that's where new
+ * facts, preferences, and goals live. The assistant's response rarely
+ * contains novel information worth storing.
+ *
  * Output: structured observations (content, importance, pinned, replaces).
  *
  * This block only *extracts* — it does not persist anything. Pair it with
@@ -252,11 +255,15 @@ export function workingMemoryAdd(config?: WorkingMemoryBlockConfig) {
  * import { workingMemoryCapture } from '@thought-fabric/core/memory'
  *
  * const pipeline = sequencer({ name: 'pipeline', inputSchema: chatInput })
+ *   .work((input) => input.message, workingMemoryCapture({ model: 'gpt-5-mini' }))
  *   .then(chat)
- *   .work(workingMemoryCapture({ model: 'gpt-5-mini' }))
  * ```
  *
- * Input: `z.string()` — the text to extract memories from.
+ * Input: `z.string()` — the user's message (where new facts, preferences,
+ * and goals live). Use a connector function with `.work()` to extract the
+ * message string from your pipeline's input. Place it early in the pipeline
+ * so capture runs in the background while the generator responds.
+ *
  * Runs observe first (LLM extraction), then remember (persists observations),
  * then tick advances the clock and recomputes salience on all entries.
  */

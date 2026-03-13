@@ -31,10 +31,11 @@ import { sequencer, generator } from '@flow-state-dev/core'
 // One-line working memory capture
 const memoryCapture = workingMemoryCapture({ model: 'gpt-5-mini' })
 
-// Add to a pipeline
-const pipeline = sequencer({ name: 'chat', inputSchema: z.string() })
+// Add to a pipeline — capture runs on the user's message in the background
+// while the rest of the pipeline continues
+const pipeline = sequencer({ name: 'chat', inputSchema: chatInput })
+  .work((input) => input.message, memoryCapture)
   .then(chatGenerator)
-  .work(memoryCapture)
 
 // Inject memory into a generator's context
 const chat = generator({

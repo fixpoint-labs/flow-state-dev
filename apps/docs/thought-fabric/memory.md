@@ -16,10 +16,12 @@ import { sequencer } from '@flow-state-dev/core'
 
 const memoryCapture = workingMemoryCapture({ model: 'gpt-5-mini' })
 
-const pipeline = sequencer({ name: 'chat', inputSchema: z.string() })
+const pipeline = sequencer({ name: 'chat', inputSchema: chatInput })
+  .work((input) => input.message, memoryCapture)
   .then(chatGenerator)
-  .work(memoryCapture)
 ```
+
+Capture runs on the **user's message** — that's where new facts, preferences, and goals live. Use a connector function with `.work()` to extract the message string from your pipeline's input. The capture block runs in the background while the rest of the pipeline continues, so it doesn't add latency.
 
 The capture block declares its own session resource. The framework installs it automatically when the flow runs. No manual resource setup needed.
 
@@ -34,7 +36,7 @@ The capture block declares its own session resource. The framework installs it a
 
 ### workingMemoryCapture
 
-Bundled sequencer: observe → remember → tick. One block for the common case. Input: a string (the text to extract from).
+Bundled sequencer: observe → remember → tick. One block for the common case. Input: a string — typically the user's message, since that's where new facts live. Use a connector function with `.work()` to extract the message from your pipeline input.
 
 ```ts
 import { workingMemoryCapture } from '@thought-fabric/core/memory'
@@ -88,14 +90,15 @@ import {
   workingMemoryTick,
 } from '@thought-fabric/core/memory'
 
-const pipeline = sequencer({ name: 'chat', inputSchema: z.string() })
-  .then(chatGenerator)
+const pipeline = sequencer({ name: 'chat', inputSchema: chatInput })
   .work(
+    (input) => input.message,
     sequencer({ name: 'memory', inputSchema: z.string() })
       .then(workingMemoryObserve({ model: 'gpt-5-mini', maxExtractPerTurn: 5 }))
       .then(workingMemoryRemember())
       .tap(workingMemoryTick())
   )
+  .then(chatGenerator)
 ```
 
 ## Injecting Memory into Prompts
