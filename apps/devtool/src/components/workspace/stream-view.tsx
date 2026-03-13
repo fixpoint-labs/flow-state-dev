@@ -1,3 +1,8 @@
+/**
+ * Stream view: renders request groups with chat-first layout.
+ * Items are displayed using tier-based progressive disclosure
+ * (see item-renderer.tsx).
+ */
 import { useEffect, useMemo, useRef } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { Inbox } from "lucide-react";
@@ -85,13 +90,15 @@ export function StreamView({
               onReplayFromCursor={onReplayFromCursor ? () => onReplayFromCursor(group.requestId) : undefined}
               onReconnect={onReconnect ? () => onReconnect(group.requestId) : undefined}
             />
-            {group.items.map((item) => (
-              <ItemRenderer
-                key={item.id}
-                item={item}
-                sequenceNumber={sequenceMap.get(item.id)}
-              />
-            ))}
+            <div className="py-1">
+              {group.items.map((item) => (
+                <ItemRenderer
+                  key={item.id}
+                  item={item}
+                  sequenceNumber={sequenceMap.get(item.id)}
+                />
+              ))}
+            </div>
           </div>
         );
       })}

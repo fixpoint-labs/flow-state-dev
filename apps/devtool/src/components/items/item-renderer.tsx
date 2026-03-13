@@ -1,3 +1,11 @@
+/**
+ * Central item renderer with tier-based progressive disclosure.
+ *
+ * Tier 1 (always visible): message, error — rendered in chat-style layout.
+ * Tier 2 (collapsed summary, expandable): block_output, reasoning, component,
+ *         container, step_error, status.
+ * Tier 3 (debug-only): context, state_change, resource_change.
+ */
 import { memo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { MessageItemView } from "./message-item";
@@ -21,46 +29,94 @@ type ItemRendererProps = {
   sequenceNumber?: number;
 };
 
+const TIER_1_TYPES = new Set(["message", "error"]);
+const TIER_3_TYPES = new Set(["context", "state_change", "resource_change"]);
+
 export const ItemRenderer = memo(function ItemRenderer({ item, sequenceNumber }: ItemRendererProps) {
   const { isDebugMode } = useDebug();
   const { selectedItemId, selectItem } = useSelection();
   const isSelected = selectedItemId === item.id;
 
-  if (item.type === "context" && !isDebugMode) {
+  const isTier3 = TIER_3_TYPES.has(item.type);
+  if (isTier3 && !isDebugMode) {
     return null;
   }
 
+  const isTier1 = TIER_1_TYPES.has(item.type);
+  const isMessage = item.type === "message";
+  const isUserMessage = isMessage && (item as { role: string }).role === "user";
+
   const handleClick = () => selectItem(item.id, item);
 
+  if (isTier1) {
+    return (
+      <div
+        className={cn(
+          "relative cursor-pointer",
+          isMessage ? "px-4 py-2" : "px-4 py-1",
+          isSelected && "ring-1 ring-inset ring-green-500/40",
+        )}
+        onClick={handleClick}
+      >
+        {isDebugMode && (
+          <DebugMeta item={item} sequenceNumber={sequenceNumber} />
+        )}
+        <ItemContent item={item} />
+        {isDebugMode && <DebugOverlay item={item} />}
+      </div>
+    );
+  }
+
+  if (isTier3) {
+    return (
+      <div
+        className={cn(
+          "relative cursor-pointer px-4 py-0.5 opacity-40 hover:opacity-70",
+          isSelected && "ring-1 ring-inset ring-green-500/40 opacity-70",
+        )}
+        onClick={handleClick}
+      >
+        {isDebugMode && (
+          <DebugMeta item={item} sequenceNumber={sequenceNumber} />
+        )}
+        <ItemContent item={item} />
+        {isDebugMode && <DebugOverlay item={item} />}
+      </div>
+    );
+  }
+
+  // Tier 2: collapsed/expandable items
   return (
     <div
       className={cn(
-        "group relative px-3 py-1.5 cursor-pointer hover:bg-slate-800/30",
-        isSelected && "bg-slate-800/50 border-l-2 border-green-500",
-        item.type === "context" && "opacity-50",
+        "relative cursor-pointer px-4 py-0.5",
+        "hover:bg-slate-800/20",
+        isSelected && "bg-slate-800/30 ring-1 ring-inset ring-green-500/40",
       )}
       onClick={handleClick}
     >
-      <div className="flex items-start gap-2">
-        {isDebugMode && sequenceNumber !== undefined && (
-          <span className="shrink-0 text-[10px] font-mono text-slate-600 mt-0.5">
-            #{sequenceNumber}
-          </span>
-        )}
-        <div className="min-w-0 flex-1">
-          {isDebugMode && (
-            <div className="text-[10px] text-slate-600 font-mono mb-0.5">
-              {item.type} | {item.provenance.blockName} | {item.provenance.blockInstanceId.slice(0, 12)}
-              {item.provenance.attempt && item.provenance.attempt > 1 ? ` | attempt:${item.provenance.attempt}` : ""}
-            </div>
-          )}
-          <ItemContent item={item} />
-        </div>
-      </div>
+      {isDebugMode && (
+        <DebugMeta item={item} sequenceNumber={sequenceNumber} />
+      )}
+      <ItemContent item={item} />
       {isDebugMode && <DebugOverlay item={item} />}
     </div>
   );
 });
+
+function DebugMeta({ item, sequenceNumber }: { item: OutputItem; sequenceNumber?: number }) {
+  return (
+    <div className="flex items-center gap-2 text-[10px] text-slate-600 font-mono mb-0.5">
+      {sequenceNumber !== undefined && <span>#{sequenceNumber}</span>}
+      <span>{item.type}</span>
+      <span>{item.provenance.blockName}</span>
+      <span>{item.provenance.blockInstanceId.slice(0, 12)}</span>
+      {item.provenance.attempt && item.provenance.attempt > 1 && (
+        <span>attempt:{item.provenance.attempt}</span>
+      )}
+    </div>
+  );
+}
 
 function ItemContent({ item }: { item: OutputItem }) {
   switch (item.type) {

@@ -1,20 +1,31 @@
+/**
+ * Tier 2: Collapsed component identifier, expandable to data/props JSON.
+ */
+import { useState } from "react";
 import type { ComponentItem } from "@flow-state-dev/core/items";
-import { Puzzle } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Puzzle, ChevronDown, ChevronRight } from "lucide-react";
+import { JsonViewer } from "@/components/shared/json-viewer";
 
 export function ComponentItemView({ item }: { item: ComponentItem }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasData = Object.keys(item.data).length > 0;
+
   return (
-    <div className="rounded bg-slate-900/50 border border-slate-800 px-2 py-1.5">
-      <div className="flex items-center gap-1.5">
-        <Puzzle className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-        <Badge variant="outline" className="text-[10px] px-1 py-0 border-slate-700 text-slate-400">
-          component
-        </Badge>
-        <span className="text-xs text-slate-300 font-mono">{item.component}</span>
-      </div>
-      {Object.keys(item.data).length > 0 && (
-        <div className="mt-1 pl-5 text-[10px] text-slate-500 font-mono">
-          props: {JSON.stringify(item.data).slice(0, 100)}
+    <div>
+      <button
+        className="flex items-center gap-1.5 w-full text-left text-xs"
+        onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+      >
+        {expanded
+          ? <ChevronDown className="h-3 w-3 shrink-0 text-slate-500" />
+          : <ChevronRight className="h-3 w-3 shrink-0 text-slate-500" />
+        }
+        <Puzzle className="h-3 w-3 shrink-0 text-cyan-400" />
+        <span className="font-mono text-cyan-300">{item.component}</span>
+      </button>
+      {expanded && hasData && (
+        <div className="ml-7 mt-1.5">
+          <JsonViewer data={item.data} className="mt-0.5" />
         </div>
       )}
     </div>
