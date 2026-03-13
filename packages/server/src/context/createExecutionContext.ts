@@ -1025,7 +1025,17 @@ export async function createExecutionContext<
   const sessionId = options.sessionId ?? `ephemeral_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const requestId = options.requestId;
 
-  let userRecord = await stores.user.get(userId);
+  // Parallelize independent store lookups — user, session, project, and request
+  // records don't depend on each other for the initial load.
+  const optionsProjectId = options.projectId;
+  const [loadedUser, loadedSession, loadedProject, loadedRequest] = await Promise.all([
+    stores.user.get(userId),
+    stores.session.get(sessionId),
+    optionsProjectId !== undefined ? stores.project.get(optionsProjectId) : undefined,
+    stores.request.get(requestId)
+  ]);
+
+  let userRecord = loadedUser;
   if (userRecord === undefined) {
     userRecord = {
       id: userId,
@@ -1040,7 +1050,7 @@ export async function createExecutionContext<
     await stores.user.set(userRecord.id, userRecord);
   }
 
-  let sessionRecord = await stores.session.get(sessionId);
+  let sessionRecord = loadedSession;
   if (sessionRecord === undefined) {
     sessionRecord = {
       id: sessionId,
@@ -1060,27 +1070,30 @@ export async function createExecutionContext<
     ensureJournalDefaults(sessionRecord);
   }
 
-  const projectId = options.projectId ?? sessionRecord?.projectId;
-  let projectRecord: ProjectRecord | undefined;
-  if (projectId !== undefined) {
-    projectRecord = await stores.project.get(projectId);
-    if (projectRecord === undefined) {
-      projectRecord = {
-        id: projectId,
-        projectId,
-        userId,
-        state: (options.projectState ?? {}) as TProjectState,
-        resources: normalizeScopeResources(projectResourceConfigs, undefined),
-        resourceContent: normalizeScopeResourceContent(projectResourceConfigs, undefined),
-        version: 0,
-        createdAt: now,
-        updatedAt: now
-      };
-      await stores.project.set(projectRecord.id, projectRecord);
-    }
+  // Resolve projectId: prefer options, fall back to session record.
+  // If session had a projectId we didn't know about at parallel-load time,
+  // we need a separate fetch.
+  const resolvedProjectId = optionsProjectId ?? sessionRecord?.projectId;
+  let projectRecord: ProjectRecord | undefined = loadedProject;
+  if (projectRecord === undefined && resolvedProjectId !== undefined && resolvedProjectId !== optionsProjectId) {
+    projectRecord = await stores.project.get(resolvedProjectId);
+  }
+  if (resolvedProjectId !== undefined && projectRecord === undefined) {
+    projectRecord = {
+      id: resolvedProjectId,
+      projectId: resolvedProjectId,
+      userId,
+      state: (options.projectState ?? {}) as TProjectState,
+      resources: normalizeScopeResources(projectResourceConfigs, undefined),
+      resourceContent: normalizeScopeResourceContent(projectResourceConfigs, undefined),
+      version: 0,
+      createdAt: now,
+      updatedAt: now
+    };
+    await stores.project.set(projectRecord.id, projectRecord);
   }
 
-  let requestRecord = await stores.request.get(requestId);
+  let requestRecord = loadedRequest;
   if (requestRecord === undefined) {
     requestRecord = {
       id: requestId,

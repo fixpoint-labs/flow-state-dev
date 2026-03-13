@@ -353,6 +353,41 @@ export async function runActionInternal<
     response.addEventObserver((event) => ttsHook!.onEvent(event));
   }
 
+  // Emit initial status events early — before the potentially expensive
+  // createExecutionContext call. This ensures the SSE stream starts delivering
+  // events as fast as possible.
+  await response.emitRequestCreated();
+  await response.emitRequestStatus("in_progress");
+
+  // Parse input and emit user message early too. If parsing fails, we still
+  // need the execution context for proper error handling, so we defer the
+  // throw until after context creation.
+  let parsedInput: unknown;
+  let parseError: unknown;
+  try {
+    parsedInput = parseActionInput(action, options.input);
+
+    if (action.userMessage !== undefined) {
+      const text = action.userMessage(parsedInput);
+      const userItem: MessageItem = {
+        id: `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+        type: "message",
+        role: "user",
+        status: "completed",
+        transient: false,
+        requestId,
+        itemIndex: response.getItems().length,
+        provenance: RUNTIME_PROVENANCE,
+        ts: Date.now(),
+        content: [{ type: "output_text", text }]
+      };
+      await response.emitItemAdded(userItem);
+      await response.emitItemDone(userItem);
+    }
+  } catch (error) {
+    parseError = error;
+  }
+
   const ctx = await createExecutionContext({
     flow: options.flow,
     actionName: options.actionName,
@@ -379,8 +414,6 @@ export async function runActionInternal<
   });
 
   await emitActionLifecycleSeam(internalSeams, "started", metadata);
-  await response.emitRequestCreated();
-  await response.emitRequestStatus("in_progress");
 
   await runObserver(options.flow.request?.onStarted, {
     requestId,
@@ -388,25 +421,9 @@ export async function runActionInternal<
   }, ctx, { internalSeams });
 
   try {
-    const parsedInput = parseActionInput(action, options.input);
-
-    // Emit user message item when the action defines a userMessage extractor.
-    if (action.userMessage !== undefined) {
-      const text = action.userMessage(parsedInput);
-      const userItem: MessageItem = {
-        id: `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-        type: "message",
-        role: "user",
-        status: "completed",
-        transient: false,
-        requestId,
-        itemIndex: response.getItems().length,
-        provenance: RUNTIME_PROVENANCE,
-        ts: Date.now(),
-        content: [{ type: "output_text", text }]
-      };
-      await response.emitItemAdded(userItem);
-      await response.emitItemDone(userItem);
+    // Re-throw deferred parse error now that we have ctx for error handling.
+    if (parseError !== undefined) {
+      throw parseError;
     }
 
     // Compose middleware: global (from caller) → flow-level.
