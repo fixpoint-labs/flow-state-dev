@@ -246,4 +246,45 @@ describe("createExecutionContext", () => {
     await expect(ctx.session.resources.notes.readContentRaw()).resolves.toBeNull();
   });
 
+  it("throws when writeContent is called on a read-only resource", async () => {
+    const block = handler<{ msg: string }, { ok: boolean }>({
+      name: "readonly-content-handler",
+      execute: () => ({ ok: true })
+    });
+
+    const flow = defineFlow({
+      kind: "readonly-content-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ msg: z.string() }),
+          block
+        }
+      },
+      session: {
+        stateSchema: z.object({}),
+        resources: {
+          readme: {
+            stateSchema: z.object({}),
+            content: "original content",
+            writable: false
+          }
+        }
+      }
+    })();
+
+    const stores = createInMemoryStores();
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_readonly_content",
+      sessionId: "sess_readonly_content",
+      userId: "user_readonly_content",
+      stores
+    });
+
+    await expect(
+      ctx.session.resources.readme.writeContent("new content")
+    ).rejects.toThrow("read-only");
+  });
+
 });

@@ -12,6 +12,8 @@ export type ResourceConfig = {
   stateSchema: ZodTypeAny;
   default?: JsonValue;
   content?: string;
+  /** Path to a file on disk to load as the content body template. Mutually exclusive with `content`.
+   * Resolved relative to `process.cwd()` — use absolute paths for predictable behavior. */
   contentFile?: string;
   render?: (content: string, state: JsonObject) => string | Promise<string>;
   llmReadable?: boolean;
