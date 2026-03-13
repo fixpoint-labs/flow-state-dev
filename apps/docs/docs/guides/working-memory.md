@@ -262,8 +262,6 @@ Word order encodes the category:
 
 `workingMemoryAdd` is a block you compose in a pipeline. `addWorkingMemory` is a helper you call on a resource ref. The inversion tells you which is which without checking docs.
 
-See the full [naming conventions](../../packages/thought-fabric-core/docs/naming-conventions.md) doc for the complete pattern.
-
 ## Edge Cases
 
 | Situation | Behavior |
