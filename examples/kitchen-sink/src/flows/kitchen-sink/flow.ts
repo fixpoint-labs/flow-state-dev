@@ -25,6 +25,7 @@
  *   - Working memory — bounded, salience-scored cognitive workspace via @thought-fabric/core
  */
 import {
+  contextFn,
   defineFlow,
   generator,
   handler,
@@ -168,7 +169,7 @@ Be concise and helpful. Never show the artifact id unless specifically asked to 
   ],
 
   inputSchema: analysisOutputSchema,
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
   user: (input) => input.message,
   tools: [readArtifact, updateArtifact],
   maxIterations: 5,
@@ -227,21 +228,21 @@ const planFallback = handler({
 //   .rescue([...])        — catch errors and route to fallback blocks
 
 const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema })
+  // Working memory capture runs in the background (.work) It extracts key facts, preferences, and goals from the LLM's
+  // output, persists them as salience-scored entries, and advances the decay
+  // clock — all without blocking the response to the user.
+  .work((input) => input.message, workingMemoryCapture({ model: MODEL_ID }))
   .then(applyRequestedMode)
   .then(analyzeInput)
   .thenIf((result) => result.needsContext, formatReport)
-  .then(agentGenerator)
-  // Working memory capture runs in the background (.work) after the generator
-  // responds. It extracts key facts, preferences, and goals from the LLM's
-  // output, persists them as salience-scored entries, and advances the decay
-  // clock — all without blocking the response to the user.
-  .work(workingMemoryCapture({ model: MODEL_ID }))
+  .then(agentGenerator)  
   .then(incrementRequestCount)
   .tap(async (output) => {
     console.log(`Chat completed: ${output.slice(0, 50)}...`);
   });
 
 const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
+  .work((input) => input.message, workingMemoryCapture({ model: MODEL_ID }))
   .then(applyRequestedMode)
   .then(analyzeInput)
   .map((result) => ({
@@ -249,7 +250,6 @@ const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
     instructions: "Create a step-by-step plan."
   }))
   .then(agentGenerator)
-  .work(workingMemoryCapture({ model: MODEL_ID }))
   .then(incrementRequestCount)
   .rescue([
     {
@@ -308,7 +308,7 @@ const kitchenSinkFlow = defineFlow({
   actions: {
     run: {
       inputSchema,
-      block: modeRouter,
+      block: modeRouter,      
       userMessage: (input: z.infer<typeof inputSchema>) => input.message
     },
     saveArtifact: {
