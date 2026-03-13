@@ -32,6 +32,7 @@ function collectSourceFiles(dir: string): string[] {
 }
 
 const emptyArtifacts = { byId: {}, order: [] as string[] };
+const emptyWorkingMemory = { entries: [], currentTurn: 0 };
 
 const agentFixture = mockGenerator({
   name: "agent-generator",
@@ -40,12 +41,19 @@ const agentFixture = mockGenerator({
   ]
 });
 
+const observeFixture = mockGenerator({
+  name: "workingMemory/observe",
+  script: [
+    { structuredOutput: { observations: [] } }
+  ]
+});
+
 describe("kitchen-sink flow", () => {
   it("completes a chat action via modeRouter", async () => {
     const result = await testBlock(modeRouter, {
       input: { message: "Hello kitchen sink", mode: "chat" },
-      session: { resources: { artifacts: emptyArtifacts } },
-      generators: { "agent-generator": agentFixture }
+      session: { resources: { artifacts: emptyArtifacts, workingMemory: emptyWorkingMemory } },
+      generators: { "agent-generator": agentFixture, "workingMemory/observe": observeFixture }
     });
 
     expect(result.error).toBeNull();
@@ -54,10 +62,11 @@ describe("kitchen-sink flow", () => {
 
   it("routes to plan pipeline when mode is plan", async () => {
     agentFixture.reset();
+    observeFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Create a deployment plan", mode: "plan" },
-      session: { resources: { artifacts: emptyArtifacts } },
-      generators: { "agent-generator": agentFixture }
+      session: { resources: { artifacts: emptyArtifacts, workingMemory: emptyWorkingMemory } },
+      generators: { "agent-generator": agentFixture, "workingMemory/observe": observeFixture }
     });
 
     expect(result.error).toBeNull();
@@ -77,16 +86,17 @@ describe("kitchen-sink flow", () => {
 
   it("reads preferredModel from user state", async () => {
     agentFixture.reset();
+    observeFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Test with custom model", mode: "chat" },
-      session: { resources: { artifacts: emptyArtifacts } },
+      session: { resources: { artifacts: emptyArtifacts, workingMemory: emptyWorkingMemory } },
       user: {
         state: {
           displayName: "TestUser",
           preferredModel: "gpt-4o"
         }
       },
-      generators: { "agent-generator": agentFixture }
+      generators: { "agent-generator": agentFixture, "workingMemory/observe": observeFixture }
     });
 
     expect(result.error).toBeNull();
@@ -94,10 +104,11 @@ describe("kitchen-sink flow", () => {
 
   it("emits block_output items", async () => {
     agentFixture.reset();
+    observeFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Check items", mode: "chat" },
-      session: { resources: { artifacts: emptyArtifacts } },
-      generators: { "agent-generator": agentFixture }
+      session: { resources: { artifacts: emptyArtifacts, workingMemory: emptyWorkingMemory } },
+      generators: { "agent-generator": agentFixture, "workingMemory/observe": observeFixture }
     });
 
     const blockOutputs = result.items.filter((item) => item.type === "block_output");
@@ -106,6 +117,7 @@ describe("kitchen-sink flow", () => {
 
   it("seeds session resources for artifact access", async () => {
     agentFixture.reset();
+    observeFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Read artifact doc-1", mode: "chat" },
       session: {
@@ -121,10 +133,11 @@ describe("kitchen-sink flow", () => {
               }
             },
             order: ["doc-1"]
-          }
+          },
+          workingMemory: emptyWorkingMemory
         }
       },
-      generators: { "agent-generator": agentFixture }
+      generators: { "agent-generator": agentFixture, "workingMemory/observe": observeFixture }
     });
 
     expect(result.error).toBeNull();

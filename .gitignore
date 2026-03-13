@@ -10,7 +10,5 @@ apps/docs/build
 .claude/settings.local.json
 .codex/
 .zenflow/
-**/.fsdev/data/*
-packages/cli/.fsdev/data/*
 /todos/*
-examples/kitchen-sink/.fsdev/data/requests/req_1773430081090_57c5dd9fae3d9.json
+**/.fsdev/*

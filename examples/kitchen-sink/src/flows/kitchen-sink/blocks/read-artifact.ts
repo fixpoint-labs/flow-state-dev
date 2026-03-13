@@ -1,6 +1,6 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { artifactResourceStateSchema } from "../schemas";
+import { artifactResources } from "../schemas";
 
 export const readArtifactInputSchema = z.object({
   artifactId: z.string()
@@ -23,10 +23,9 @@ export const readArtifact = handler({
   inputSchema: readArtifactInputSchema,
   outputSchema: readArtifactOutputSchema,
 
-  // Typed resource schemas: declares that this block expects a session resource
-  // named "artifacts" with the given state shape. ctx.session.resources.get()
-  // returns a typed ResourceHandle — no manual .parse() needed.
-  sessionResourceSchemas: z.object({ artifacts: artifactResourceStateSchema }),
+  // Typed resource declaration: this block expects a session resource named
+  // "artifacts". ctx.session.resources.artifacts gives typed access.
+  sessionResources: artifactResources,
 
   execute: async (input, ctx) => {
     const artifactsHandle = ctx.session.resources.get("artifacts");

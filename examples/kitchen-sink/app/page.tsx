@@ -52,7 +52,7 @@ const ITEM_TYPES = ["message", "reasoning", "status", "error", "step_error"];
 type MobilePanel = "chat" | "artifacts";
 
 const CLIENT_DATA_OPTIONS = {
-  session: ["artifactsList", "artifactsDetail", "modeStatus"] as string[],
+  session: ["artifactsList", "artifactsDetail", "modeStatus", "workingMemory"] as string[],
   user: ["preferences"] as string[],
 };
 
