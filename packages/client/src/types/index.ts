@@ -175,6 +175,11 @@ export type SessionStateSnapshotResponse = {
     user?: Record<string, unknown>;
     project?: Record<string, unknown>;
   };
+  resources?: {
+    session?: Record<string, Record<string, unknown>>;
+    user?: Record<string, Record<string, unknown>>;
+    project?: Record<string, Record<string, unknown>>;
+  };
   items?: OutputItem[];
   pagination?: {
     offset: number;
