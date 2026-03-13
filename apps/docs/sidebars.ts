@@ -54,6 +54,13 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
+      label: "Persistence",
+      items: [
+        "persistence/overview",
+      ],
+    },
+    {
+      type: "category",
       label: "Server",
       items: [
         "server/setup",
@@ -76,23 +83,6 @@ const sidebars: SidebarsConfig = {
         "testing/testing-flows",
       ],
     },
-    {
-      type: "category",
-      label: "Thought Fabric",
-      items: [
-        "thought-fabric/introduction",
-        "thought-fabric/attention",
-        "thought-fabric/memory",
-        "thought-fabric/identity",
-      ],
-    },
-    {
-      type: "category",
-      label: "Guides",
-      items: [
-        "guides/building-a-chat-app",
-      ],
-    },
     "roadmap",
     {
       type: "category",
@@ -104,7 +94,6 @@ const sidebars: SidebarsConfig = {
         "api/react",
         "api/testing",
         "api/cli",
-        "api/thought-fabric-core",
       ],
     },
   ],

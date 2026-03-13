@@ -122,4 +122,4 @@ Define a Zod schema once. It validates at runtime, infers at compile time, and f
 
 - **[Quick Start](/docs/getting-started/quick-start)** — Build a streaming chat app in 5 minutes
 - **[Blocks](/docs/fundamentals/blocks)** — Deep dive into the four primitives
-- **[Building a Chat App](/docs/guides/building-a-chat-app)** — Complete walkthrough from blocks to React UI to tests
+- **[Building a Chat App](/guides/building-a-chat-app)** — Complete walkthrough from blocks to React UI to tests

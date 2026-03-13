@@ -4,11 +4,13 @@ sidebar_position: 1
 
 # Overview
 
-Items are the unit of communication between blocks and clients. Every artifact your blocks produce — a chat message, a tool result, a state change, a custom UI component — is an item. Items are typed, carry provenance, and route by audience. They accumulate in sessions, stream to clients in real time, and feed back into LLM context on subsequent requests.
+Items are a core part of the data model. Every artifact produced during block execution — a chat message, a tool call result, a state change, a custom UI component — is persisted as an item. Items accumulate in sessions to form the conversation log. They power streaming to clients, provide conversation history to LLMs, enable the DevTool's trace view, and support resumable connections.
+
+Items aren't just a transport mechanism. They're the durable record of what happened.
 
 ## Item types
 
-Every item has a type that determines how it's routed and rendered:
+Every item has a type that determines how it's persisted, routed, and rendered:
 
 | Type | What it is |
 |------|-----------|
@@ -21,7 +23,7 @@ Every item has a type that determines how it's routed and rendered:
 | `resource_change` | Resource mutation notification |
 | `step_error` | Non-terminal error in a pipeline step |
 | `error` | Terminal request error |
-| `status` | Transient progress updates |
+| `status` | Transient progress updates (not persisted) |
 | `context` | Hidden context for LLMs only. Not sent to the client. |
 
 Tool invocations use `block_output` items: `item.added` with `toolCall` populated (no output yet), then `item.done` with `output` populated after the tool block runs.
@@ -32,20 +34,34 @@ Generators emit items automatically as they stream. Handlers are silent by defau
 
 ```ts
 execute: async (input, ctx) => {
-  // Send a text message to the client
   await ctx.emitMessage("Processing your request...");
-
-  // Emit a custom UI component
   await ctx.emitComponent("progress-bar", { percent: 50, label: "Analyzing..." });
-
-  // Emit a status update (transient, not persisted)
   await ctx.emitStatus("Fetching data from external API...");
-
   return result;
 }
 ```
 
-`emitMessage()` creates a `message` item. `emitComponent()` creates a `component` item with the component name and typed props. `emitStatus()` creates a transient `status` item for progress indicators. These all stream to the client immediately.
+`emitMessage()` creates a `message` item. `emitComponent()` creates a `component` item with the component name and typed props. `emitStatus()` creates a transient `status` item for progress indicators.
+
+## Session items
+
+Items accumulate in the session across requests. When a user sends a second message, the session already holds every item from the first request. This is how conversation history works — generators read from session items to build context.
+
+Three views for accessing session items:
+
+- **`items.all()`** — Everything in the session. The full log.
+- **`items.client()`** — Items intended for the client UI. Excludes `context` and internal `block_output`.
+- **`items.llm()`** — Items formatted for the model. Supports token limiting: `items.llm({ limit: { tokens: 20_000 } })` packs from newest to oldest within the budget.
+
+## Audiences
+
+Not all items go everywhere. The framework uses type-based audience routing:
+
+| Audience | Types |
+|----------|-------|
+| **Client** | `message`, `reasoning`, `component`, `container`, `status`, `state_change`, `resource_change`, `error`, `step_error` |
+| **LLM** | `message`, `reasoning`, `context`, `block_output` (when it has `toolCall` — the tool result) |
+| **Internal** | `block_output` without `toolCall` — devtools only |
 
 ## Content model
 
@@ -62,43 +78,19 @@ Message and reasoning items have a **content array** with typed parts:
 }
 ```
 
-When [voice](/docs/fundamentals/voice) is enabled, audio content parts also arrive on the same message:
+When [voice](/docs/fundamentals/voice) is enabled, audio content parts arrive on the same message:
 
 ```ts
 { type: "output_audio", audio: "base64...", mediaType: "audio/mp3", transcript: "Here's what I found:" }
 ```
 
-Content is assembled progressively from `content.delta` events during streaming. The framework handles buffering and assembly.
-
-## Audiences
-
-Not all items go everywhere. The framework uses type-based audience routing:
-
-| Audience | Types |
-|----------|-------|
-| **Client** | `message`, `reasoning`, `component`, `container`, `status`, `state_change`, `resource_change`, `error`, `step_error` |
-| **LLM** | `message`, `reasoning`, `context`, `block_output` (when it has `toolCall` — the tool result) |
-| **Internal** | `block_output` without `toolCall` — devtools only |
-
-Generators access LLM-audience items via `session.items.llm()`. The framework automatically filters to items the model should see (messages, reasoning, context) and excludes UI-only items (status, components).
-
-## Session items
-
-Items accumulate in the session across requests. When a user sends a second message, the session already holds items from the first request. Generators use this for conversation history.
-
-Three views for accessing session items:
-
-- **`items.all()`** — Everything in the session. Useful for debugging and the DevTool.
-- **`items.client()`** — Items intended for the client. Excludes `context` and internal `block_output`.
-- **`items.llm()`** — Items formatted for the model. Supports token limiting: `items.llm({ limit: { tokens: 20_000 } })` packs from newest to oldest within the budget.
-
 ## Item lifecycle
 
 Items follow a three-phase lifecycle:
 
-1. **Added** — `item.added` event. Item exists with `status: "in_progress"`.
-2. **Content deltas** — For streaming content (messages, reasoning), text arrives in chunks via `content.delta` events. The client accumulates deltas.
-3. **Done** — `item.done` event. Item finalized with `status: "completed"`, `"incomplete"`, or `"failed"`. Terminal states are immutable.
+1. **Added** — Item exists with `status: "in_progress"`. Persisted immediately.
+2. **Content deltas** — For streaming content (messages, reasoning), text arrives in chunks. The client accumulates deltas.
+3. **Done** — Item finalized with `status: "completed"`, `"incomplete"`, or `"failed"`. Terminal states are immutable.
 
 ## Provenance
 
@@ -114,15 +106,17 @@ type ItemProvenance = {
 };
 ```
 
-This powers UI grouping, the DevTool timeline, and correlating items to specific block executions.
+This powers the DevTool's trace timeline, UI grouping, and correlating items to specific block executions.
 
-## Persistence
+## Persistence behavior
 
-Most items are persisted to the session. A few exceptions:
+Most items are persisted to the session store. Exceptions:
 
 - `status` items are always transient (stream-only, not persisted).
-- `state_change` and `resource_change` are transient by default in production; persisted in dev mode for the DevTool state timeline.
-- Other item types are persisted by default.
+- `state_change` and `resource_change` are transient by default in production; persisted in dev mode for the DevTool.
+- Everything else is persisted by default.
+
+See [Persistence](/docs/persistence/overview) for store configuration.
 
 ## Custom components
 
@@ -132,4 +126,4 @@ Emit custom UI components from any block:
 ctx.emitComponent("chart", { data: chartData, title: "Monthly Revenue" });
 ```
 
-Register component renderers on the React side. The client receives `component` items with `component` and `data` fields, and the `ItemsRenderer` dispatches to your registered renderers. See [React Integration](/docs/client/react) for renderer setup.
+Register component renderers on the React side. The `ItemsRenderer` dispatches to your registered renderers based on the component name. See [React Integration](/docs/client/react) for renderer setup.

@@ -171,5 +171,5 @@ This streams NDJSON events to stdout as blocks execute. See the [CLI reference](
 - **[Installation](/docs/getting-started/installation)** — Package options, peer dependencies, TypeScript config
 - **[Project Structure](/docs/getting-started/project-structure)** — How to organize flows, blocks, and tools
 - **[Blocks](/docs/fundamentals/blocks)** — Deep dive into handler, generator, sequencer, and router
-- **[Building a Chat App](/docs/guides/building-a-chat-app)** — Full walkthrough with state, clientData, tools, and tests
+- **[Building a Chat App](/guides/building-a-chat-app)** — Full walkthrough with state, clientData, tools, and tests
 - **[CLI Reference](/docs/api/cli)** — Run flows and blocks from the terminal

@@ -180,4 +180,4 @@ await pinWorkingMemory(ref, 'entry-id')
 
 ## Further Reading
 
-The full working memory API is documented in the [@thought-fabric/core API reference](/docs/api/thought-fabric-core).
+The full working memory API is documented in the [API Reference](/thought-fabric/api).

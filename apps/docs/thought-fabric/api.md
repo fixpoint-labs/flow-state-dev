@@ -1,4 +1,8 @@
-# @thought-fabric/core
+---
+sidebar_position: 6
+---
+
+# API Reference
 
 Cognitive architecture primitives built on flow-state-dev. Provides attention, memory, and identity domains for agentic workflows.
 
@@ -107,4 +111,4 @@ const filter = filterRelevance({ name: "filter" });
 const salience = scoreSalience({ name: "rank" });
 ```
 
-See [Memory](/docs/thought-fabric/memory) for a full guide.
+See [Memory](/thought-fabric/memory) for a full guide.
