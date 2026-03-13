@@ -62,7 +62,7 @@ Every piece of logic — calling an LLM, validating input, choosing a path, comp
 | **Sequencer** | Compose blocks into pipelines | Multi-step workflows with branching, parallelism, error recovery |
 | **Router** | Dispatch to different pipelines at runtime | Mode switching, intent routing, conditional flows |
 
-All blocks share the same contract: `block.run(input, ctx)`. Any block composes with any other block — and any block or sequence of blocks can be used as a tool. That means a single tool call can trigger a handler, a multi-step sequencer pipeline, or even a router that dispatches to different strategies. Your AI's tools can be as simple or as sophisticated as any other part of your workflow.
+All blocks share the same typed contract: input in, output out. Any block composes with any other block — chain them in sequencers, nest them in routers, or pass them as tools to generators. That means a single tool call can trigger a handler, a multi-step sequencer pipeline, or even a router that dispatches to different strategies. Your AI's tools can be as simple or as sophisticated as any other part of your workflow.
 
 ### Flows are full APIs
 
@@ -89,13 +89,13 @@ Four isolation levels with atomic operations:
 | **Request** | Single action execution | Temporary processing data |
 | **Session** | Across requests in a conversation | Chat history, mode, counters |
 | **User** | Across sessions for a user | Preferences, accumulated knowledge |
-| **Project** | Shared across users | Configuration, global data |
+| **Project** | Shared across sessions in a project | Configuration, global data |
 
 Each block declares only the state fields it needs via partial schemas. A counter block doesn't need to know about a preferences block's state.
 
-### Resources: hybrid memory and filesystem
+### Resources: files with structured metadata
 
-**Resources** are more than key-value stores. Each resource combines rich text content with structured atomic state — like a file that carries metadata. An artifact resource can hold a document's full text alongside its title, tags, and timestamps, all in one typed container with atomic operations. Scoped to sessions, users, or projects, resources give your AI a persistent, typed workspace.
+**Resources** are like files your AI can work with. Each resource has a content body — a document, a plan, a code snippet — alongside structured metadata: title, status, tags, timestamps. Both live in one typed container with atomic operations. An artifact resource can hold a document's full text alongside its title, tags, and timestamps. Scoped to sessions, users, or projects, resources give your AI a persistent, typed workspace.
 
 **clientData** entries are derived values computed from state and resources — the mechanism for exposing data to clients. You can't accidentally leak internal state because clientData is the sole data gateway.
 
@@ -121,5 +121,5 @@ Define a Zod schema once. It validates at runtime, infers at compile time, and f
 ## Next steps
 
 - **[Quick Start](/docs/getting-started/quick-start)** — Build a streaming chat app in 5 minutes
-- **[Blocks](/docs/concepts/blocks)** — Deep dive into the four primitives
-- **[Building a Chat App](/docs/guides/building-a-chat-app)** — Complete walkthrough from blocks to React UI to tests
+- **[Blocks](/docs/fundamentals/blocks)** — Deep dive into the four primitives
+- **[Building a Chat App](/guides/building-a-chat-app)** — Complete walkthrough from blocks to React UI to tests

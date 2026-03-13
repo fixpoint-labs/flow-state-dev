@@ -768,14 +768,9 @@ describe('memory/workingMemory', () => {
         session: { resources: { get: () => ref } },
         response: { emit: async () => {} },
       } as any
-      // Normalize observations: pinned and replaces are required by the schema
-      // (for OpenAI structured output compatibility) but tests can omit them.
-      const normalized = observations.map((obs) => ({
-        ...obs,
-        pinned: obs.pinned ?? false,
-        replaces: obs.replaces ?? '',
-      }))
-      return block.run({ observations: normalized }, ctx)
+      // The schema uses .default() for pinned and replaces, so Zod applies
+      // defaults during input validation — no manual normalization needed.
+      return block.run({ observations } as any, ctx)
     }
 
     it('persists observations as entries', async () => {

@@ -9,9 +9,17 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./attention": {
+      "types": "./dist/attention/index.d.ts",
+      "default": "./dist/attention/index.js"
+    },
     "./memory": {
       "types": "./dist/memory/index.d.ts",
       "default": "./dist/memory/index.js"
+    },
+    "./identity": {
+      "types": "./dist/identity/index.d.ts",
+      "default": "./dist/identity/index.js"
     }
   },
   "license": "MIT",

@@ -47,6 +47,31 @@ const config: Config = {
     ],
   ],
 
+  plugins: [
+    [
+      "@docusaurus/plugin-content-docs",
+      {
+        id: "guides",
+        path: "guides",
+        routeBasePath: "guides",
+        sidebarPath: "./sidebarsGuides.ts",
+        editUrl:
+          "https://github.com/fixpoint-labs/flow-state-dev/tree/main/implementation/apps/docs/",
+      },
+    ],
+    [
+      "@docusaurus/plugin-content-docs",
+      {
+        id: "thought-fabric",
+        path: "thought-fabric",
+        routeBasePath: "thought-fabric",
+        sidebarPath: "./sidebarsThoughtFabric.ts",
+        editUrl:
+          "https://github.com/fixpoint-labs/flow-state-dev/tree/main/implementation/apps/docs/",
+      },
+    ],
+  ],
+
   themeConfig: {
     navbar: {
       title: "flow-state.dev",
@@ -60,6 +85,20 @@ const config: Config = {
           sidebarId: "docsSidebar",
           position: "left",
           label: "Docs",
+        },
+        {
+          type: "docSidebar",
+          sidebarId: "guidesSidebar",
+          docsPluginId: "guides",
+          position: "left",
+          label: "Guides",
+        },
+        {
+          type: "docSidebar",
+          sidebarId: "thoughtFabricSidebar",
+          docsPluginId: "thought-fabric",
+          position: "left",
+          label: "Thought Fabric",
         },
         { to: "/blog", label: "Blog", position: "left" },
         {
@@ -77,20 +116,20 @@ const config: Config = {
           items: [
             { label: "Introduction", to: "/docs/intro" },
             { label: "Quick Start", to: "/docs/getting-started/quick-start" },
-            { label: "Concepts", to: "/docs/concepts/blocks" },
+            { label: "Fundamentals", to: "/docs/fundamentals/overview" },
           ],
         },
         {
-          title: "Guides",
+          title: "Learn",
           items: [
             {
               label: "Building a Chat App",
-              to: "/docs/guides/building-a-chat-app",
+              to: "/guides/building-a-chat-app",
             },
-            { label: "Server Setup", to: "/docs/guides/server-setup" },
+            { label: "Server Setup", to: "/docs/server/setup" },
             {
-              label: "React Integration",
-              to: "/docs/guides/react-integration",
+              label: "Thought Fabric",
+              to: "/thought-fabric/introduction",
             },
           ],
         },

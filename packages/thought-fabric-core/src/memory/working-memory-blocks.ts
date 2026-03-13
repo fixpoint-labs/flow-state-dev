@@ -46,8 +46,8 @@ export const observationsSchema = z.object({
   observations: z.array(z.object({
     content: z.string(),
     importance: z.number().min(0).max(1),
-    pinned: z.boolean(),
-    replaces: z.string(),
+    pinned: z.boolean().default(false),
+    replaces: z.string().default(""),
   })),
 })
 
