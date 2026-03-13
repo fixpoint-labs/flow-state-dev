@@ -1,4 +1,4 @@
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, handler, defineResource } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it, vi } from "vitest";
@@ -557,6 +557,65 @@ describe("createFlowApiRouter", () => {
       totalCount: 5,
       label: "Count is 5"
     });
+  });
+
+  it("returns raw resources in session state response", async () => {
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    const counterResource = defineResource({
+      stateSchema: z.object({ count: z.number().default(0) })
+    });
+
+    const flow = defineFlow({
+      kind: "res-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: handler({
+            name: "res-run",
+            inputSchema: z.object({ value: z.string() }),
+            outputSchema: z.object({ ok: z.boolean() }),
+            sessionStateSchema: z.object({}),
+            execute: async () => {
+              return { ok: true };
+            }
+          })
+        }
+      },
+      session: {
+        resources: {
+          counter: counterResource
+        }
+      }
+    })({ id: "res-flow" });
+
+    registry.register(flow);
+    const router = createFlowApiRouter({ registry, stores });
+
+    await router.POST(
+      new Request("http://localhost/api/flows/res-flow/sess_res/actions/run", {
+        method: "POST",
+        body: JSON.stringify({ userId: "user_res", input: { value: "ok" } })
+      }),
+      { params: { path: ["res-flow", "sess_res", "actions", "run"] } }
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const stateResponse = await router.GET(
+      new Request("http://localhost/api/flows/sessions/sess_res/state"),
+      { params: { path: ["sessions", "sess_res", "state"] } }
+    );
+    expect(stateResponse.status).toBe(200);
+    const body = (await stateResponse.json()) as {
+      resources?: {
+        session?: Record<string, Record<string, unknown>>;
+        user?: Record<string, Record<string, unknown>>;
+        project?: Record<string, Record<string, unknown>>;
+      };
+    };
+    expect(body.resources).toBeDefined();
+    expect(body.resources!.session).toBeDefined();
+    expect(body.resources!.session!.counter).toEqual({ count: 0 });
   });
 
   it("returns 503 when active stream capacity is reached", async () => {

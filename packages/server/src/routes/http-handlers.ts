@@ -843,6 +843,15 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           resources: projectResources
         });
 
+        const rawResources = {
+          session: session.resources,
+          user: user?.resources,
+          project: project?.resources
+        };
+        const hasResources = Object.values(rawResources).some(
+          (v) => v !== undefined && Object.keys(v).length > 0
+        );
+
         return jsonResponse(200, {
           sessionId: session.id,
           flowKind: session.flowKind,
@@ -866,6 +875,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
                 ? projectClientData
                 : undefined
           },
+          resources: hasResources ? rawResources : undefined,
           items: includeItems
             ? aggregatedItems
             : undefined,
