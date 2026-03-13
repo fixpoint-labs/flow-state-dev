@@ -1,23 +1,22 @@
 ---
-sidebar_position: 1
+sidebar_position: 2
 ---
 
 # Building a Chat App
 
-This guide walks you through building a complete chat application — from blocks to React UI to deterministic tests. Along the way, you'll see how conversation history, session state, clientData, and streaming fit together.
+This guide walks you through building a complete chat application from blocks to React UI to tests. Along the way, you'll understand what the framework does behind the scenes and how the concepts connect.
 
-## What we're building
+**What we're building:** A chat app where an LLM generates responses, a handler tracks message count in session state, and a React UI shows the conversation plus the count. Items stream in real time. Tests run without real LLM calls.
 
-A chat app where:
-- An LLM generates responses via a generator block
-- A handler tracks message count in session state
-- A clientData function exposes the count to the React UI
-- Items stream to the frontend in real time
-- Tests run deterministically with mocked generators
+**Concepts we'll cover:** Generator slots (model, prompt, history, user), partial state schemas, sequencer composition, flow definition (kind, actions, userMessage, clientData), server registration, React hooks, and deterministic testing.
+
+---
 
 ## 1. Define the blocks
 
 ### The generator — talks to the LLM
+
+Generators are where AI happens. The framework manages the tool loop, streaming, and prompt assembly. You configure how the model receives context through four slots.
 
 ```ts title="src/flows/hello-chat/blocks/chat-gen.ts"
 import { generator } from "@flow-state-dev/core";
@@ -33,9 +32,20 @@ export const chatGen = generator({
 });
 ```
 
-The `history` slot loads prior conversation from persisted request items. `session.items.llm()` returns completed messages in `{role, content}` format — the framework handles filtering and formatting. The `user` slot extracts the current message from input.
+**What each slot does:**
+
+- **`model`** — The model ID. The framework resolves this at runtime via a model resolver (OpenAI, Anthropic, etc.). You can override it per request for testing or A/B runs.
+- **`prompt`** — The system instruction. Sent first in every model call. Can be a string or a function `(input, ctx) => string` for dynamic prompts.
+- **`history`** — Prior conversation messages. This is how the model remembers what was said before. The framework calls `ctx.session.items.llm()` to get completed messages in `{ role, content }` format, filters and formats them, and injects them into the prompt. Without this, each request would be stateless.
+- **`user`** — The current user input. Extracted from the action input. In our case, it's `input.message`. The framework adds this as the final user-role message before calling the model.
+
+The framework assembles the full prompt in order: prompt, context (if any), history, user. It handles tool calls, retries, and streaming. You focus on what goes in, not how it gets there.
+
+**Optional slots:** You can add a `context` slot for extra data (e.g. retrieved documents). You can add `tools` to enable function calling. The generator will loop: call model, execute tool, call model again, until the model stops or hits a bound. All of that is framework-managed.
 
 ### The handler — tracks usage
+
+Handlers are pure logic. No LLM. They validate, transform, and mutate state.
 
 ```ts title="src/flows/hello-chat/blocks/counter.ts"
 import { handler } from "@flow-state-dev/core";
@@ -53,9 +63,29 @@ export const counter = handler({
 });
 ```
 
-Notice the **partial state schema** — this handler only declares `messageCount`. It doesn't need to know about any other session state fields. `incState` is an atomic increment — safe even under concurrent requests.
+**Partial state schema:** The handler declares only `messageCount`. It doesn't need to know about other session state fields. This partial schema bubbles up to the flow level, where the framework merges it with any other blocks' declarations. The benefit: blocks stay portable and self-documenting. A counter block can be reused in flows that have different full schemas.
+
+**`incState` is atomic:** Unlike `patchState` (which does a read-modify-write), `incState` is a single CAS-guarded operation. Safe under concurrent requests. If two messages arrive at once, the count increments correctly. Use `incState` for counters and other commutative updates. Use `patchState` when you need to set specific values.
+
+---
 
 ## 2. Compose the pipeline and flow
+
+### The sequencer — composition primitive
+
+A sequencer chains blocks into a pipeline. Each step's output becomes the next step's input.
+
+```ts
+const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
+  .then(chatGen)
+  .then(counter);
+```
+
+**Why this order?** The generator produces the assistant response. The handler runs after, using that output (we pass it through) and the session context to increment the count. If we put the counter first, we'd count before the LLM replied. Order encodes data flow.
+
+The sequencer is the composition primitive. It replaces the agent-vs-workflow split. You chain blocks. Conditional logic, parallelism, and error recovery come from sequencer methods like `thenIf`, `parallel`, and `rescue`. For a simple chat pipeline, `.then()` is all you need. As flows grow, you'll use more of the DSL.
+
+### The flow definition
 
 ```ts title="src/flows/hello-chat/flow.ts"
 import { defineFlow, sequencer } from "@flow-state-dev/core";
@@ -95,12 +125,18 @@ const chatFlow = defineFlow({
 export default chatFlow({ id: "default" });
 ```
 
-Key details:
-- The sequencer chains `chatGen` then `counter` — every message gets an LLM response and increments the count
-- `userMessage: (input) => input.message` tells the framework to emit a user-role message item before execution, so the conversation stream shows what the user said
-- The `messageCount` clientData function exposes the count to the React UI — this is the *only* way the client sees this value
+**What each part means:**
+
+- **`kind`** — The flow identifier. Becomes the URL path: `/api/flows/hello-chat/actions/chat`. Clients use it to target this flow.
+- **`actions`** — The flow's public API. Each action is an entry point. Clients invoke them by name: `sendAction("chat", { message: "Hello" })`. The framework validates input against `inputSchema`, resolves the session, and executes the block.
+- **`userMessage: (input) => input.message`** — Before block execution, the framework emits a user-role message item with this text. That way the conversation stream shows what the user said. Without it, you'd only see assistant messages.
+- **`clientData`** — The sole gateway for exposing server state to clients. Raw state never leaves the server. Every `clientData` entry is client-visible. Here we expose `messageCount` so the UI can display it. The clientData functions run when the framework builds a state snapshot (e.g. after `request.completed`). The client fetches snapshots via `GET /api/flows/sessions/:sessionId/state`.
+
+---
 
 ## 3. Set up the server
+
+Register the flow. Get a complete REST API.
 
 ```ts title="app/api/flows/[...path]/route.ts"
 import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
@@ -116,9 +152,20 @@ export const POST = router.POST;
 export const DELETE = router.DELETE;
 ```
 
-Three lines of setup. You now have action execution, session management, SSE streaming, and state snapshots.
+**What you get:** Action execution, session management, SSE streaming with resume, and state snapshots. No route wiring.
+
+**Key endpoints:**
+- `POST /api/flows/hello-chat/actions/chat` — Execute the chat action (new or existing session)
+- `GET /api/flows/hello-chat/requests/:requestId/stream` — SSE stream for that request
+- `GET /api/flows/sessions/:sessionId/state` — State snapshot (clientData)
+
+The catch-all route `[...path]` lets the framework handle routing internally. One file, full API. You can add a custom model resolver, store adapters, or middleware by passing options to `createFlowApiRouter`. See [Server Setup](/docs/server/setup) for details.
+
+---
 
 ## 4. Build the React UI
+
+The React hooks handle streaming, reconnection, and state sync. You render.
 
 ```tsx title="src/components/ChatApp.tsx"
 import {
@@ -185,14 +232,18 @@ function ChatUI() {
 }
 ```
 
-What each hook does:
-- `useFlow({ autoCreateSession: true })` — creates a session on mount, tracks the active session ID
-- `useSession(id, { items: { visibility: "ui" } })` — connects to the SSE stream, delivers items in real time, provides `sendAction` and `isStreaming`
-- `useClientData(session, { session: ["messageCount"] })` — reads the `messageCount` clientData from the latest state snapshot
+**What each hook does:**
+
+- **FlowProvider** — Sets up context. Every hook below it receives `flowKind` and `userId`. Child components use this to target the right flow and user. Wrap your app or a section of it.
+- **useFlow({ autoCreateSession: true })** — On mount, creates a session if none exists. Tracks `activeSessionId`. Use it to know which session `useSession` should subscribe to.
+- **useSession(id, { items: { visibility: "ui" } })** — Connects to the SSE stream for that session. Delivers items in real time. `visibility: "ui"` filters to items the client should display (messages, components, etc.). Provides `sendAction` and `isStreaming`. Re-renders when items or status change.
+- **useClientData(session, { session: ["messageCount"] })** — Reads from the latest state snapshot. The second argument lists which clientData keys to subscribe to. The hook refetches when the snapshot changes (e.g. after `request.completed`). If you omit keys, you get all clientData for that scope. Typing flows from the flow definition, so you get autocomplete for available keys.
+
+---
 
 ## 5. Write tests
 
-No real LLM calls. No network. Deterministic results:
+No real LLM calls. No network. Deterministic results.
 
 ```ts title="src/flows/hello-chat/__tests__/flow.test.ts"
 import { testFlow } from "@flow-state-dev/testing";
@@ -241,11 +292,17 @@ test("message count accumulates across requests", async () => {
 });
 ```
 
-The test harness creates an isolated runtime with in-memory stores, mocks the generator, and executes the full action pipeline — validation, session resolution, block execution, state persistence, lifecycle hooks. Same contracts as production.
+**Testing philosophy:** The test harness creates an isolated runtime with in-memory stores. It mocks generators by name: `generators.chat.output` replaces the real LLM call with that string. Same contracts as production: validation, session resolution, block execution, state persistence, lifecycle hooks. No flakiness from API latency or rate limits.
+
+**Seeding state:** Use `seed.session`, `seed.user`, or `seed.project` to simulate scenarios. Here we start with `messageCount: 3` and verify the handler increments to 4. Useful for multi-turn flows, permission checks, and state-dependent behavior.
+
+**Generator mocking:** The key in `generators` matches the block name. Our generator is named `"chat"`, so `generators.chat.output` replaces its output. For generators with tools, you can mock tool results too. See the [Testing docs](/docs/testing/testing-flows) for the full API.
+
+---
 
 ## Next steps
 
 - Add **[custom renderers](/docs/client/react)** to style messages, reasoning, and components
 - Add **tools** to the generator for [function calling](/docs/fundamentals/blocks#generator--the-ai-block) (search, create artifacts, etc.)
 - Use **[sequencer patterns](/docs/sequencers/patterns)** for conditional logic, parallelism, and error recovery
-- Add **resources and clientData** for richer state — see the [kitchen-sink example](https://github.com/fixpoint-labs/flow-state-dev) for a full demonstration
+- Add **resources and clientData** for richer state. See the [kitchen-sink example](https://github.com/fixpoint-labs/flow-state-dev) for a full demonstration
