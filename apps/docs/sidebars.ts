@@ -3,7 +3,6 @@ import type { SidebarsConfig } from "@docusaurus/plugin-content-docs";
 const sidebars: SidebarsConfig = {
   docsSidebar: [
     "intro",
-    "fundamentals/overview",
     {
       type: "category",
       label: "Getting Started",
@@ -15,27 +14,17 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
-      label: "Concepts",
+      label: "Fundamentals",
       items: [
-        "concepts/blocks",
-        "concepts/flows",
-        "concepts/actions",
-        "concepts/state",
-        "concepts/scopes",
-        "concepts/type-system",
-        "concepts/streaming",
-        "concepts/testing",
+        "fundamentals/overview",
+        "fundamentals/blocks",
+        "fundamentals/flows",
+        "fundamentals/actions",
+        "fundamentals/state-and-scopes",
+        "fundamentals/type-system",
+        "fundamentals/utility-blocks",
+        "fundamentals/voice",
       ],
-    },
-    {
-      type: "category",
-      label: "Streaming",
-      items: ["streaming/overview", "streaming/items"],
-    },
-    {
-      type: "category",
-      label: "Client",
-      items: ["client/overview", "client/react"],
     },
     {
       type: "category",
@@ -57,6 +46,38 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
+      label: "Streaming",
+      items: [
+        "streaming/overview",
+        "streaming/items",
+      ],
+    },
+    {
+      type: "category",
+      label: "Server",
+      items: [
+        "server/setup",
+        "server/custom-model-resolver",
+      ],
+    },
+    {
+      type: "category",
+      label: "Client",
+      items: [
+        "client/overview",
+        "client/react",
+      ],
+    },
+    {
+      type: "category",
+      label: "Testing",
+      items: [
+        "testing/overview",
+        "testing/testing-flows",
+      ],
+    },
+    {
+      type: "category",
       label: "Thought Fabric",
       items: [
         "thought-fabric/introduction",
@@ -67,18 +88,9 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
-      label: "Guides",
+      label: "Tutorials",
       items: [
-        "guides/building-a-chat-app",
-        "guides/server-setup",
-        "guides/react-integration",
-        "guides/testing-flows",
-        "guides/custom-model-resolver",
-        "guides/sequencer-patterns",
-        "guides/state-storage",
-        "guides/utility-blocks",
-        "guides/working-memory",
-        "guides/voice",
+        "tutorials/building-a-chat-app",
       ],
     },
     "roadmap",

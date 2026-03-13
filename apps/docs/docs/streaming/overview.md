@@ -1,5 +1,5 @@
 ---
-sidebar_position: 6
+sidebar_position: 1
 ---
 
 # Streaming
@@ -70,7 +70,7 @@ Message and reasoning items have a **content array** with typed parts:
 }
 ```
 
-When [voice](/docs/guides/voice) is enabled, audio content parts also arrive on the same message:
+When [voice](/docs/fundamentals/voice) is enabled, audio content parts also arrive on the same message:
 
 ```ts
 { type: "output_audio", audio: "base64...", mediaType: "audio/mp3", transcript: "Here's what I found:" }

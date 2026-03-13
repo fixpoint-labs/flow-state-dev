@@ -77,20 +77,20 @@ const config: Config = {
           items: [
             { label: "Introduction", to: "/docs/intro" },
             { label: "Quick Start", to: "/docs/getting-started/quick-start" },
-            { label: "Concepts", to: "/docs/concepts/blocks" },
+            { label: "Fundamentals", to: "/docs/fundamentals/overview" },
           ],
         },
         {
-          title: "Guides",
+          title: "Learn",
           items: [
             {
               label: "Building a Chat App",
-              to: "/docs/guides/building-a-chat-app",
+              to: "/docs/tutorials/building-a-chat-app",
             },
-            { label: "Server Setup", to: "/docs/guides/server-setup" },
+            { label: "Server Setup", to: "/docs/server/setup" },
             {
               label: "React Integration",
-              to: "/docs/guides/react-integration",
+              to: "/docs/client/react",
             },
           ],
         },

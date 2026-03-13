@@ -52,4 +52,4 @@ Blocks inside blocks. Sequencers as tools. Routers dispatching to sequencers. Ty
 
 - [Blocks](/docs/fundamentals/blocks) — Deep dive into the four primitives
 - [Quick Start](/docs/getting-started/quick-start) — Build a streaming chat app in 5 minutes
-- [Building a Chat App](/docs/guides/building-a-chat-app) — Full walkthrough
+- [Building a Chat App](/docs/tutorials/building-a-chat-app) — Full walkthrough

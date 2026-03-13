@@ -1,5 +1,5 @@
 ---
-sidebar_position: 1
+sidebar_position: 2
 ---
 
 # Blocks
@@ -288,7 +288,7 @@ execute: async (input, ctx) => {
 }
 ```
 
-Targets give a block typed access to the state of named ancestor blocks in the execution tree. They are declared via `targetStateSchemas` in the block config — see [Target state](/docs/concepts/state#target-state) for details.
+Targets give a block typed access to the state of named ancestor blocks in the execution tree. They are declared via `targetStateSchemas` in the block config — see [Target state](/docs/fundamentals/state-and-scopes#target-state) for details.
 
 ## Blocks are composable
 
@@ -416,7 +416,7 @@ const decompose = utility.decomposer({ name: "plan" });
 
 Each utility returns a standard block — composable in sequencers, routers, and flows like any block you build yourself. Nine utilities produce generator blocks (LLM-powered), and one (`combiner`) produces a handler block (deterministic, no LLM).
 
-See the [Utility Blocks guide](/docs/guides/utility-blocks) for the full catalog with examples and output schemas.
+See the [Utility Blocks guide](/docs/fundamentals/utility-blocks) for the full catalog with examples and output schemas.
 
 ## Key rules
 

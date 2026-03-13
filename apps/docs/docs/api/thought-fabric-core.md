@@ -107,4 +107,4 @@ const filter = filterRelevance({ name: "filter" });
 const salience = scoreSalience({ name: "rank" });
 ```
 
-See [Working Memory](/docs/guides/working-memory) for a full guide.
+See [Memory](/docs/thought-fabric/memory) for a full guide.

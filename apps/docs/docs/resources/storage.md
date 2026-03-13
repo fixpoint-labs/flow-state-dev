@@ -1,12 +1,12 @@
 ---
-sidebar_position: 7
+sidebar_position: 2
 ---
 
 # State Storage Decision Guide
 
 You have two primary ways to store data in flow-state.dev: **scope state** and **resources**. Both live on the same scopes (session, user, project), both use the same atomic operations, and both are invisible to clients without clientData. But they serve different purposes and choosing the wrong one leads to either namespace collisions or unnecessary complexity.
 
-This guide helps you decide which to use. For the mechanics of state operations, schemas, and clientData, see [State Management](/docs/concepts/state).
+This guide helps you decide which to use. For the mechanics of state operations, schemas, and clientData, see [State Management](/docs/fundamentals/state-and-scopes).
 
 ## Scope state vs resources
 

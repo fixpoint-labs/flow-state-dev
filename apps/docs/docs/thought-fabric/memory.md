@@ -180,4 +180,4 @@ await pinWorkingMemory(ref, 'entry-id')
 
 ## Further Reading
 
-The [Working Memory guide](/docs/guides/working-memory) has a complete export reference, edge-case table, and detailed examples.
+The full working memory API is documented in the [@thought-fabric/core API reference](/docs/api/thought-fabric-core).
