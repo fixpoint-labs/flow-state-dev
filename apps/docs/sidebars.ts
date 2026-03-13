@@ -54,17 +54,11 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
-      label: "Persistence",
-      items: [
-        "persistence/overview",
-      ],
-    },
-    {
-      type: "category",
       label: "Server",
       items: [
         "server/setup",
         "server/custom-model-resolver",
+        "persistence/overview",
       ],
     },
     {
@@ -85,16 +79,10 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
-      label: "DevTool",
-      items: [
-        "devtool/overview",
-      ],
-    },
-    {
-      type: "category",
-      label: "CLI",
+      label: "Dev Experience",
       items: [
         "cli/overview",
+        "devtool/overview",
       ],
     },
     "roadmap",
