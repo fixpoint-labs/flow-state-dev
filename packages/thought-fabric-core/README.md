@@ -11,7 +11,7 @@ This package is in Wave 1 foundation mode.
 | Domain | Namespace | Status |
 |--------|-----------|--------|
 | Attention | `attention` | Salience scoring + relevance filtering implemented |
-| Memory | `memory` | Scaffold |
+| Memory | `memory` | Working memory implemented |
 | Identity | `identity` | Scaffold |
 | Perception | — | Wave 2+ |
 | Reasoning | — | Wave 2+ |
@@ -21,22 +21,121 @@ This package is in Wave 1 foundation mode.
 ## Usage
 
 ```ts
-import { attention } from '@thought-fabric/core'
+import {
+  workingMemoryCapture,
+  workingMemoryResources,
+  workingMemoryContextFormatter,
+} from '@thought-fabric/core/memory'
+import { sequencer, generator } from '@flow-state-dev/core'
 
-const salienceBlock = attention.scoreSalience({
-  name: 'task-salience'
+// One-line working memory capture
+const memoryCapture = workingMemoryCapture({ model: 'gpt-5-mini' })
+
+// Add to a pipeline
+const pipeline = sequencer({ name: 'chat', inputSchema: z.string() })
+  .then(chatGenerator)
+  .work(memoryCapture)
+
+// Inject memory into a generator's context
+const chat = generator({
+  name: 'chat',
+  model: 'gpt-5',
+  inputSchema: z.string(),
+  sessionResources: workingMemoryResources,
+  context: [workingMemoryContextFormatter],
+  user: (input) => input,
 })
 
+// Attention (namespace import)
+import { attention } from '@thought-fabric/core'
+
+const salienceBlock = attention.scoreSalience({ name: 'task-salience' })
 const filterBlock = attention.filterRelevance({
   name: 'reasoning-filter',
   mode: 'hard',
-  threshold: 0.6
+  threshold: 0.6,
 })
 ```
 
-## API Surface
+## Import Paths
 
-### Attention
+Each domain exposes a subpath: `@thought-fabric/core/memory`, `@thought-fabric/core/attention`, etc. The root export aggregates domains into namespace objects.
+
+```ts
+// Subpath — direct named imports (tree-shakeable)
+import { workingMemoryCapture, addWorkingMemory } from '@thought-fabric/core/memory'
+
+// Root — namespace imports
+import { memory } from '@thought-fabric/core'
+memory.workingMemoryCapture(...)
+```
+
+Both paths use the same qualified names. No short aliases, no default namespace objects.
+
+## Naming Conventions
+
+Word order encodes category:
+
+| Category | Pattern | Example |
+|----------|---------|---------|
+| Block factory | `workingMemory[Verb]` | `workingMemoryCapture`, `workingMemoryTick` |
+| Resource | `workingMemory[Noun]` | `workingMemoryResource`, `workingMemoryResources` |
+| Schema | `workingMemory[Noun]Schema` | `workingMemoryEntrySchema` |
+| Formatter | `workingMemory[Noun]Formatter` | `workingMemoryContextFormatter` |
+| Accessor | `workingMemory[Noun]` | `workingMemoryItems` |
+| Helper | `[verb]WorkingMemory` | `addWorkingMemory`, `advanceWorkingMemory` |
+| Pure math | no prefix | `computeDecay`, `computeSalience` |
+
+The inversion is the signal: `workingMemoryAdd` is a block (a thing you compose in a pipeline). `addWorkingMemory` is a helper (an action on a resource ref). The English reads naturally either way.
+
+## Working Memory Exports
+
+All exports from `@thought-fabric/core/memory` related to working memory:
+
+| Export | Kind | Description |
+|--------|------|-------------|
+| **Block factories** | | |
+| `workingMemoryCapture(config?)` | sequencer | Bundled observe → remember → tick pipeline. Input: `z.string()`. |
+| `workingMemoryObserve(config?)` | generator | LLM-based memory extraction. Returns structured observations. |
+| `workingMemoryRemember(config?)` | handler | Persists observations into the resource. Handles `replaces` eviction. |
+| `workingMemoryTick(config?)` | handler | Advances the decay clock and recomputes salience. Use with `.tap()`. |
+| `workingMemorySnapshot()` | handler | Returns current entries sorted by salience + turn counter. |
+| `workingMemoryAdd(config?)` | handler | Directly add an entry without LLM extraction. |
+| **Resource** | | |
+| `workingMemoryResource` | resource definition | Session-scoped resource definition for working memory state. |
+| `workingMemoryResources` | pre-keyed object | `{ workingMemory: workingMemoryResource }` — use in `sessionResources`. |
+| **Helpers** | | |
+| `addWorkingMemory(ref, entry, config?)` | helper | Add entry with auto-eviction at capacity. |
+| `evictWorkingMemory(ref, id)` | helper | Remove by ID (overrides pin). |
+| `pinWorkingMemory(ref, id, config?)` | helper | Pin an entry to protect from eviction. |
+| `unpinWorkingMemory(ref, id)` | helper | Remove pin protection from an entry. |
+| `refreshWorkingMemory(ref, id, config?)` | helper | Reset access time (access boost). |
+| `advanceWorkingMemory(ref, config?)` | helper | Advance turn counter, recompute salience. |
+| **Accessors & formatters** | | |
+| `workingMemoryItems(ref)` | accessor | Entries sorted by salience descending. |
+| `formatWorkingMemoryEntries(ref)` | helper | Bullet list for LLM context (no scores or IDs). |
+| `workingMemoryContextFormatter(input, ctx)` | formatter | Ready-made `context:` slot for generators. |
+| **Schemas** | | |
+| `workingMemoryEntrySchema` | Zod schema | Schema for a single working memory entry. |
+| `workingMemoryStateSchema` | Zod schema | Schema for the full working memory state. |
+| `workingMemoryObservationsSchema` | Zod schema | Schema for observe block output. |
+| **Config** | | |
+| `DEFAULT_WORKING_MEMORY_CONFIG` | const | Default capacity (7), maxPinnedSlots (2), decay (power-law, 0.5). |
+| `computeDecay(elapsed, strategy, rate)` | pure function | ACT-R power-law, exponential, or none. |
+| `computeSalience(entry, currentTurn, decay)` | pure function | `importance × decay(elapsed)`, clamped to [0, 1]. |
+| **Types** | | |
+| `WorkingMemoryEntry` | type | A single working memory entry. |
+| `WorkingMemoryState` | type | Full state: entries + turn counter. |
+| `DecayStrategy` | type | `'power-law' \| 'exponential' \| 'none'` |
+| `WorkingMemoryDecayConfig` | type | Decay strategy + rate. |
+| `WorkingMemoryHelperConfig` | type | Capacity, maxPinnedSlots, decay. |
+| `AddEntryInput` | type | Input for adding an entry (content, importance, pinned?, id?, metadata?). |
+| `Observations` | type | Inferred type from `workingMemoryObservationsSchema`. |
+| `WorkingMemoryBlockConfig` | type | Base config shared by all working memory blocks. |
+| `WorkingMemoryCaptureConfig` | type | Config for the capture sequencer. |
+| `WorkingMemoryObserveConfig` | type | Config for the observe generator. |
+
+## Attention Exports
 
 - `scoreSalience(config)` → generator `BlockDefinition`
   - Dimension-based salience scoring with configurable weights
@@ -48,11 +147,7 @@ const filterBlock = attention.filterRelevance({
   - `soft` mode returns all items annotated with relevance scores
   - Uses pre-scored signals when available, with keyword-overlap fallback for raw strings
 
-### Memory
-
-- `workingMemory(config?)` — Placeholder (not implemented)
-
-### Identity
+## Identity
 
 - `constitution(config)` — Placeholder (not implemented)
 - `perspective(config)` — Placeholder (not implemented)
