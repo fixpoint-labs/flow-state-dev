@@ -57,6 +57,16 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
+      label: "Thought Fabric",
+      items: [
+        "thought-fabric/introduction",
+        "thought-fabric/attention",
+        "thought-fabric/memory",
+        "thought-fabric/identity",
+      ],
+    },
+    {
+      type: "category",
       label: "Guides",
       items: [
         "guides/building-a-chat-app",
