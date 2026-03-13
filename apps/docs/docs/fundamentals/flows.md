@@ -1,5 +1,5 @@
 ---
-sidebar_position: 2
+sidebar_position: 3
 ---
 
 # Flows
@@ -95,7 +95,7 @@ When an action executes:
 4. The root block executes asynchronously
 5. Lifecycle hooks fire on completion or error
 
-See [Actions](/docs/concepts/actions) for the full picture.
+See [Actions](/docs/fundamentals/actions) for the full picture.
 
 ## Session configuration
 
@@ -145,7 +145,7 @@ const myFlow = defineFlow({
 
 Flow-level resource declarations take priority. If both a block and the flow declare a resource with the same name, the flow's version wins.
 
-See [State](/docs/concepts/state) for details on scopes, resources, and clientData.
+See [State](/docs/fundamentals/state-and-scopes) for details on scopes, resources, and clientData.
 
 ## Lifecycle hooks
 

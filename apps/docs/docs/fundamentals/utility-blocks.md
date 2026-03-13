@@ -1,5 +1,5 @@
 ---
-sidebar_position: 8
+sidebar_position: 7
 ---
 
 # Utility Blocks
@@ -1141,6 +1141,6 @@ const customAnalyzer = utility.analyzer({
 
 ## Next steps
 
-- See the [Sequencer Patterns](/docs/guides/sequencer-patterns) guide for more composition techniques
-- Read about [Blocks](/docs/concepts/blocks) to understand how utilities fit into the four-primitive model
-- Check [Testing Flows](/docs/guides/testing-flows) for how to test utility-based pipelines with mocked generators
+- See the [Sequencer Patterns](/docs/sequencers/patterns) guide for more composition techniques
+- Read about [Blocks](/docs/fundamentals/blocks) to understand how utilities fit into the four-primitive model
+- Check [Testing Flows](/docs/testing/testing-flows) for how to test utility-based pipelines with mocked generators

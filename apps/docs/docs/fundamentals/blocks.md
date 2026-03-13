@@ -1,5 +1,5 @@
 ---
-sidebar_position: 1
+sidebar_position: 2
 ---
 
 # Blocks
@@ -288,7 +288,7 @@ execute: async (input, ctx) => {
 }
 ```
 
-Targets give a block typed access to the state of named ancestor blocks in the execution tree. They are declared via `targetStateSchemas` in the block config — see [Target state](/docs/concepts/state#target-state) for details.
+Targets give a block typed access to the state of named ancestor blocks in the execution tree. They are declared via `targetStateSchemas` in the block config — see [Target state](/docs/fundamentals/state-and-scopes#target-state) for details.
 
 ## Blocks are composable
 
@@ -416,11 +416,11 @@ const decompose = utility.decomposer({ name: "plan" });
 
 Each utility returns a standard block — composable in sequencers, routers, and flows like any block you build yourself. Nine utilities produce generator blocks (LLM-powered), and one (`combiner`) produces a handler block (deterministic, no LLM).
 
-See the [Utility Blocks guide](/docs/guides/utility-blocks) for the full catalog with examples and output schemas.
+See the [Utility Blocks guide](/docs/fundamentals/utility-blocks) for the full catalog with examples and output schemas.
 
 ## Key rules
 
-- **Always use `block.run()`** — never call `block.config.execute` directly. The framework manages validation, retry, lifecycle, and streaming through `block.run()`.
+- **Let the framework run your blocks** — compose blocks into sequencers, register them as flow actions, or pass them as tools. The framework handles validation, retry, lifecycle, and streaming. Don't call block internals directly.
 - **Schemas are contracts** — `inputSchema` and `outputSchema` are validated at runtime. TypeScript catches mismatches at compile time.
 - **Names must be unique** — within a flow, each block needs a unique `name` for provenance tracking and debugging.
 - **Partial state schemas** — each block declares only the state fields it touches, not the full flow-level schema. This keeps blocks reusable.
