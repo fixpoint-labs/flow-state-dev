@@ -83,6 +83,20 @@ const sidebars: SidebarsConfig = {
         "testing/testing-flows",
       ],
     },
+    {
+      type: "category",
+      label: "DevTool",
+      items: [
+        "devtool/overview",
+      ],
+    },
+    {
+      type: "category",
+      label: "CLI",
+      items: [
+        "cli/overview",
+      ],
+    },
     "roadmap",
     {
       type: "category",

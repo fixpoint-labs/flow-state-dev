@@ -234,10 +234,10 @@ function ChatUI() {
 
 **What each hook does:**
 
-- **FlowProvider** — Sets up context. Every hook below it receives `flowKind` and `userId`. Child components use this to target the right flow and user. Wrap your app or a section of it.
-- **useFlow({ autoCreateSession: true })** — On mount, creates a session if none exists. Tracks `activeSessionId`. Use it to know which session `useSession` should subscribe to.
-- **useSession(id, { items: { visibility: "ui" } })** — Connects to the SSE stream for that session. Delivers items in real time. `visibility: "ui"` filters to items the client should display (messages, components, etc.). Provides `sendAction` and `isStreaming`. Re-renders when items or status change.
-- **useClientData(session, { session: ["messageCount"] })** — Reads from the latest state snapshot. The second argument lists which clientData keys to subscribe to. The hook refetches when the snapshot changes (e.g. after `request.completed`). If you omit keys, you get all clientData for that scope. Typing flows from the flow definition, so you get autocomplete for available keys.
+- **`FlowProvider`** sets up context. Every hook below it receives `flowKind` and `userId`. Child components use this to target the right flow and user. Wrap your app or a section of it.
+- **`useFlow`** with `autoCreateSession: true` creates a session on mount if none exists. It tracks `activeSessionId` so you know which session to subscribe to.
+- **`useSession`** connects to the SSE stream for that session. It delivers items in real time, provides `sendAction` and `isStreaming`, and re-renders when items or status change. The `visibility: "ui"` option filters to items the client should display (messages, components, etc.).
+- **`useClientData`** reads from the latest state snapshot. You list which clientData keys to subscribe to. The hook refetches when the snapshot changes (e.g. after `request.completed`).
 
 ---
 
