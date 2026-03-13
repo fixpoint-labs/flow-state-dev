@@ -1,6 +1,6 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { artifactResourceStateSchema } from "../schemas";
+import { artifactResources } from "../schemas";
 
 export const updateArtifactInputSchema = z.object({
   id: z.string(),
@@ -21,10 +21,10 @@ export const updateArtifact = handler({
   description: "Create or update an artifact in the session artifacts resource.",
   inputSchema: updateArtifactInputSchema,
   outputSchema: updateArtifactOutputSchema,
-  sessionResourceSchemas: z.object({ artifacts: artifactResourceStateSchema }),
+  sessionResources: artifactResources,
 
   execute: async (input, ctx) => {
-    const artifacts = ctx.session.resources.get("artifacts");
+    const artifacts = ctx.session.resources.artifacts;
     if (artifacts === undefined) {
       return {
         success: false,

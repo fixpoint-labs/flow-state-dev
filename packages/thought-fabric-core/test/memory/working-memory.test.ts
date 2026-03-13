@@ -768,7 +768,14 @@ describe('memory/workingMemory', () => {
         session: { resources: { get: () => ref } },
         response: { emit: async () => {} },
       } as any
-      return block.run({ observations }, ctx)
+      // Normalize observations: pinned and replaces are required by the schema
+      // (for OpenAI structured output compatibility) but tests can omit them.
+      const normalized = observations.map((obs) => ({
+        ...obs,
+        pinned: obs.pinned ?? false,
+        replaces: obs.replaces ?? '',
+      }))
+      return block.run({ observations: normalized }, ctx)
     }
 
     it('persists observations as entries', async () => {

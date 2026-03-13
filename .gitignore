@@ -10,9 +10,7 @@ apps/docs/build
 .claude/settings.local.json
 .codex/
 .zenflow/
-<<<<<<< feat/fix-212-fsdev-run-command
 .fsdev/data/*
 packages/cli/.fsdev/data/*
-=======
 /todos/*
->>>>>>> main
+**/.fsdev/*

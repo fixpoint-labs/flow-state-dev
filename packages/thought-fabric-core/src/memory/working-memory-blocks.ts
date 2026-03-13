@@ -46,8 +46,8 @@ export const observationsSchema = z.object({
   observations: z.array(z.object({
     content: z.string(),
     importance: z.number().min(0).max(1),
-    pinned: z.boolean().optional(),
-    replaces: z.string().optional(),
+    pinned: z.boolean(),
+    replaces: z.string(),
   })),
 })
 
@@ -85,8 +85,8 @@ export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
       `Extract 0-${maxExtract} items. For each:`,
       '- content: what to remember (be concise)',
       '- importance: 0-1 (goals/constraints: 0.8-1.0, key facts: 0.5-0.8, context: 0.3-0.5)',
-      '- pinned: true only for explicit user goals or critical constraints',
-      '- replaces: the exact ID of an existing entry this supersedes (e.g. "wm_abc1"). Use the value shown in [id=...] brackets, not the brackets themselves. Optional.',
+      '- pinned: true only for explicit user goals or critical constraints, false otherwise',
+      '- replaces: the exact ID of an existing entry this supersedes (e.g. "wm_abc1"), or empty string "" if not replacing anything',
       '',
       'Rules:',
       '- Don\'t duplicate what\'s already in working memory',
