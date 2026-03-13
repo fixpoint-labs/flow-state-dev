@@ -302,7 +302,7 @@ export function items(ref: WmRef): WorkingMemoryEntry[] {
  * confidence signal, and risk being over-interpreted by the consuming LLM.
  *
  * Use this when injecting memory into a generator's `context:` slot.
- * For a ready-made slot function, see {@link workingMemoryContext}.
+ * For a ready-made slot function, see {@link workingMemoryContextFormatter}.
  */
 export function formatForContext(ref: WmRef): string {
   const sorted = items(ref)
@@ -342,8 +342,9 @@ export function formatForObserveContext(ref: WmRef): string {
 /**
  * Ready-made `context:` slot for generators that need working memory.
  *
- * Reads the `workingMemory` session resource and formats it as a numbered
- * list. The generator must declare `sessionResources: { workingMemory: workingMemoryResource }`.
+ * Reads the `workingMemory` session resource and formats it as a bullet
+ * list. Assign to the generator's `context` array. The generator must
+ * declare `sessionResources: { workingMemory: workingMemoryResource }`.
  *
  * ```ts
  * const chat = generator({
@@ -351,7 +352,7 @@ export function formatForObserveContext(ref: WmRef): string {
  *   model: 'gpt-5',
  *   inputSchema: z.string(),
  *   sessionResources: { workingMemory: workingMemoryResource },
- *   context: workingMemoryContext,
+ *   context: [workingMemoryContextFormatter],
  *   user: (input) => input,
  * })
  * ```
@@ -361,7 +362,7 @@ export function formatForObserveContext(ref: WmRef): string {
  * `@flow-state-dev/core`'s public API. The structural type matches the
  * subset of BlockContext that this function actually uses.
  */
-export function workingMemoryContext(_input: unknown, ctx: { session: { resources: { get(name: 'workingMemory'): WmRef } } }): string {
+export function workingMemoryContextFormatter(_input: unknown, ctx: { session: { resources: { get(name: 'workingMemory'): WmRef } } }): string {
   const ref = ctx.session.resources.get('workingMemory')
   const formatted = formatForContext(ref)
   return formatted ? `Active memories:\n${formatted}` : ''

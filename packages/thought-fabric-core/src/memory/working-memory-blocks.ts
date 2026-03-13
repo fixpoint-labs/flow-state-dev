@@ -249,9 +249,11 @@ export function workingMemoryAdd(config?: WorkingMemoryBlockConfig) {
  * working memory capture to a pipeline:
  *
  * ```ts
+ * import { workingMemoryCapture } from '@thought-fabric/core/memory'
+ *
  * const pipeline = sequencer({ name: 'pipeline', inputSchema: chatInput })
  *   .then(chat)
- *   .work(memory.workingMemoryCapture({ model: 'gpt-5-mini' }))
+ *   .work(workingMemoryCapture({ model: 'gpt-5-mini' }))
  * ```
  *
  * Input: `z.string()` — the text to extract memories from.

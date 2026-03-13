@@ -90,9 +90,10 @@ Phase 1 (Foundation): Waves 1.a–1.k complete. Remaining: 1.l (CLI), 1.m (devto
 
 ## @thought-fabric/core Conventions
 
-- **Subpath exports**: Domains expose `@thought-fabric/core/<domain>` (e.g., `@thought-fabric/core/working-memory`) with clean short names + default namespace export
-- **Block vs helper naming**: Blocks get clean names (`tick`, `store`), helpers get distinct vocabulary (`advance`, `add`) to avoid collisions
-- **Domain-qualified helpers**: In the `memory.*` barrel, helpers are suffixed (`addWorkingMemory`, `advanceWorkingMemory`) to prevent future collisions across memory types
+- **Subpath exports**: Domains expose `@thought-fabric/core/<domain>` (e.g., `@thought-fabric/core/memory`). Named exports only (tree-shakeable). No default namespace objects.
+- **Naming — word order encodes category**: `workingMemory[Verb]` = block/item (prefix first). `[verb]WorkingMemory` = helper (verb first). The inversion signals the category without needing docs.
+- **Naming examples**: `workingMemoryCapture` (block), `workingMemoryResource` (resource), `workingMemoryContextFormatter` (formatter), `addWorkingMemory` (helper), `workingMemoryItems` (accessor)
+- **Context formatters**: Use `[domain]ContextFormatter` naming. Always assign to `context` as an array: `context: [workingMemoryContextFormatter]`
 - **Build dependency**: `@thought-fabric/core` depends on `@flow-state-dev/core` — build core first (`pnpm --filter @flow-state-dev/core build`)
 
 ## Using Bash

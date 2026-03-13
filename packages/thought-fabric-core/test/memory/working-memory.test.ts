@@ -18,7 +18,7 @@ import {
   items,
   formatForContext,
   formatForObserveContext,
-  workingMemoryContext,
+  workingMemoryContextFormatter,
   DEFAULT_WORKING_MEMORY_CONFIG,
 } from '../../src/memory/working-memory-helpers.js'
 import {
@@ -586,10 +586,10 @@ describe('memory/workingMemory', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Helper: workingMemoryContext
+  // Helper: workingMemoryContextFormatter
   // ---------------------------------------------------------------------------
 
-  describe('workingMemoryContext()', () => {
+  describe('workingMemoryContextFormatter()', () => {
     it('returns formatted string with header when entries exist', () => {
       const ref = createMockRef({
         entries: [
@@ -598,7 +598,7 @@ describe('memory/workingMemory', () => {
       })
       const ctx = { session: { resources: { get: () => ref } } } as any
 
-      const result = workingMemoryContext(undefined, ctx)
+      const result = workingMemoryContextFormatter(undefined, ctx)
       expect(result).toContain('Active memories:')
       expect(result).toContain('User prefers TypeScript')
       expect(result).not.toContain('[0.')
@@ -608,7 +608,7 @@ describe('memory/workingMemory', () => {
       const ref = createMockRef()
       const ctx = { session: { resources: { get: () => ref } } } as any
 
-      const result = workingMemoryContext(undefined, ctx)
+      const result = workingMemoryContextFormatter(undefined, ctx)
       expect(result).toBe('')
     })
   })

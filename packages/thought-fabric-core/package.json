@@ -9,9 +9,9 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./working-memory": {
-      "types": "./dist/memory/wm.d.ts",
-      "default": "./dist/memory/wm.js"
+    "./memory": {
+      "types": "./dist/memory/index.d.ts",
+      "default": "./dist/memory/index.js"
     }
   },
   "license": "MIT",

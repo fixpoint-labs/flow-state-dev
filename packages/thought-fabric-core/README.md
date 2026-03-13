@@ -21,19 +21,30 @@ This package is in Wave 1 foundation mode.
 ## Usage
 
 ```ts
-// Preferred: subpath import with clean names
-import { capture, observe, resource, context } from '@thought-fabric/core/working-memory'
-// OR as a namespace
-import workingMemory from '@thought-fabric/core/working-memory'
+import {
+  workingMemoryCapture,
+  workingMemoryResource,
+  workingMemoryContextFormatter,
+} from '@thought-fabric/core/memory'
+import { sequencer, generator } from '@flow-state-dev/core'
 
 // One-line working memory capture
-const memoryCapture = capture({ model: 'gpt-5-mini' })
+const memoryCapture = workingMemoryCapture({ model: 'gpt-5-mini' })
 
-// Compose your own pipeline
-const pipeline = sequencer({ name: 'custom', inputSchema: z.string() })
-  .then(observe({ model: 'gpt-5-mini' }))
-  .then(remember())
-  .tap(tick())
+// Add to a pipeline
+const pipeline = sequencer({ name: 'chat', inputSchema: z.string() })
+  .then(chatGenerator)
+  .work(memoryCapture)
+
+// Inject memory into a generator's context
+const chat = generator({
+  name: 'chat',
+  model: 'gpt-5',
+  inputSchema: z.string(),
+  sessionResources: { workingMemory: workingMemoryResource },
+  context: [workingMemoryContextFormatter],
+  user: (input) => input,
+})
 
 // Attention (namespace import)
 import { attention } from '@thought-fabric/core'
@@ -46,20 +57,35 @@ const filterBlock = attention.filterRelevance({
 })
 ```
 
-## Import Patterns
+## Import Paths
 
-Working memory supports two import styles:
+Each domain exposes a subpath: `@thought-fabric/core/memory`, `@thought-fabric/core/attention`, etc. The root export aggregates domains into namespace objects.
 
 ```ts
-// Named imports — pick what you need
-import { capture, observe, resource, add, advance } from '@thought-fabric/core/working-memory'
+// Subpath — direct named imports (tree-shakeable)
+import { workingMemoryCapture, addWorkingMemory } from '@thought-fabric/core/memory'
 
-// Default import — namespace object
-import workingMemory from '@thought-fabric/core/working-memory'
-workingMemory.capture({ model: 'gpt-5-mini' })
+// Root — namespace imports
+import { memory } from '@thought-fabric/core'
+memory.workingMemoryCapture(...)
 ```
 
-Block factories and helpers use distinct vocabulary to avoid collisions. `tick` is always the block (pipeline step). `advance` is always the helper (direct resource operation).
+Both paths use the same qualified names. No short aliases, no default namespace objects.
+
+## Naming Conventions
+
+Word order encodes category:
+
+| Category | Pattern | Example |
+|----------|---------|---------|
+| Block factory | `workingMemory[Verb]` | `workingMemoryCapture`, `workingMemoryTick` |
+| Resource/schema | `workingMemory[Noun]` | `workingMemoryResource`, `workingMemoryEntrySchema` |
+| Formatter | `workingMemory[Noun]Formatter` | `workingMemoryContextFormatter` |
+| Accessor | `workingMemory[Noun]` | `workingMemoryItems` |
+| Helper | `[verb]WorkingMemory` | `addWorkingMemory`, `advanceWorkingMemory` |
+| Pure math | no prefix | `computeDecay`, `computeSalience` |
+
+The inversion is the signal: `workingMemoryAdd` is a block (a thing you compose in a pipeline). `addWorkingMemory` is a helper (an action on a resource ref). The English reads naturally either way.
 
 ## API Surface
 
@@ -79,27 +105,35 @@ Block factories and helpers use distinct vocabulary to avoid collisions. `tick` 
 
 **Resource:**
 
-- `resource` — Session-scoped resource definition for working memory state. Declare via `sessionResources: { workingMemory: resource }`.
+- `workingMemoryResource` — Session-scoped resource definition. Declare via `sessionResources: { workingMemory: workingMemoryResource }`.
 
-**Blocks:**
+**Blocks** (pipeline composition, `workingMemory[Verb]` prefix):
 
-- `capture(config?)` → sequencer — Bundled observe → remember → tick pipeline. One line to add working memory to a flow. Input: `z.string()` (text to extract memories from).
-- `observe(config?)` → generator — LLM-based memory extraction. Returns structured observations without persisting them. Pair with `remember` for full control.
-- `remember(config?)` → handler — Persists observations into the resource. Handles `replaces` eviction. Graceful per-observation error handling.
-- `tick(config?)` → handler — Advances the decay clock and recomputes salience. Use with `.tap()`.
-- `snapshot()` → handler — Returns current entries sorted by salience + turn counter.
-- `store(config?)` → handler — Directly add an entry without LLM extraction.
+- `workingMemoryCapture(config?)` → sequencer — Bundled observe → remember → tick pipeline. Input: `z.string()`.
+- `workingMemoryObserve(config?)` → generator — LLM-based memory extraction. Returns structured observations without persisting them.
+- `workingMemoryRemember(config?)` → handler — Persists observations into the resource. Handles `replaces` eviction.
+- `workingMemoryTick(config?)` → handler — Advances the decay clock and recomputes salience. Use with `.tap()`.
+- `workingMemorySnapshot()` → handler — Returns current entries sorted by salience + turn counter.
+- `workingMemoryAdd(config?)` → handler — Directly add an entry without LLM extraction.
 
-**Helpers (direct resource operations):**
+**Helpers** (direct resource operations, verb-first):
 
-- `add(ref, entry, config?)` — Add entry with auto-eviction at capacity
-- `evict(ref, id)` — Remove by ID (overrides pin)
-- `pin(ref, id, config?)` / `unpin(ref, id)` — Pin/unpin protection
-- `refresh(ref, id, config?)` — Reset access time (access boost)
-- `advance(ref, config?)` — Advance turn counter, recompute salience
-- `items(ref)` — Entries sorted by salience descending
-- `formatForContext(ref)` — Bullet list for LLM context injection (no scores or IDs)
-- `context(input, ctx)` — Ready-made `context:` slot for generators (reads resource + formats)
+- `addWorkingMemory(ref, entry, config?)` — Add entry with auto-eviction at capacity
+- `evictWorkingMemory(ref, id)` — Remove by ID (overrides pin)
+- `pinWorkingMemory(ref, id, config?)` / `unpinWorkingMemory(ref, id)` — Pin/unpin protection
+- `refreshWorkingMemory(ref, id, config?)` — Reset access time (access boost)
+- `advanceWorkingMemory(ref, config?)` — Advance turn counter, recompute salience
+
+**Accessors and formatters:**
+
+- `workingMemoryItems(ref)` — Entries sorted by salience descending
+- `formatWorkingMemoryEntries(ref)` — Bullet list for LLM context injection (no scores or IDs)
+- `workingMemoryContextFormatter(input, ctx)` — Ready-made `context:` slot for generators (reads resource + formats)
+
+**Schemas:**
+
+- `workingMemoryEntrySchema` / `workingMemoryStateSchema` — Zod schemas
+- `workingMemoryObservationsSchema` — Schema for observe block output
 
 **Math:**
 
