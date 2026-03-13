@@ -4,68 +4,77 @@ sidebar_position: 9
 
 # Working Memory
 
-Working memory is a bounded, salience-scored store that tracks what stays in cognitive focus during a conversation. It sits in the `memory` namespace of `@thought-fabric/core`.
+Working memory is a bounded, salience-scored store that tracks what stays in cognitive focus during a conversation. It lives in the `memory` domain of `@thought-fabric/core`.
 
 Entries decay over time based on a configurable strategy (ACT-R power-law by default). As new information arrives, old low-salience entries get evicted automatically. Pinned entries survive eviction, up to a configurable limit.
 
 ## Quick Start
 
-The fastest way to add working memory is `workingMemoryCapture`. It's a sequencer that extracts memories from text using an LLM, then advances the decay clock:
+The fastest way to add working memory is `capture`. It's a sequencer that extracts memories from text using an LLM, persists them, then advances the decay clock:
 
 ```ts
-import { memory } from '@thought-fabric/core'
+import { capture, resource } from '@thought-fabric/core/working-memory'
 import { sequencer } from '@flow-state-dev/core'
 
-const capture = memory.workingMemoryCapture({
-  model: 'gpt-5-mini',
-})
+const memoryCapture = capture({ model: 'gpt-5-mini' })
 
 // Add to a pipeline with .work() — runs in the background
 const pipeline = sequencer({ name: 'chat', inputSchema: z.string() })
   .then(chatGenerator)
-  .work(capture)
+  .work(memoryCapture)
 ```
 
 The capture block declares its own session resource. The framework installs it automatically when the flow runs. No manual resource setup needed.
 
-## Composable Blocks
-
-If you need more control, use the individual blocks that `workingMemoryCapture` bundles together.
-
-### Observe + Tick (separate)
+You can also import the whole domain as a namespace:
 
 ```ts
-const observe = memory.workingMemoryObserve({
-  model: 'gpt-5-mini',
-  maxExtractPerTurn: 5,
-})
+import workingMemory from '@thought-fabric/core/working-memory'
 
-const tick = memory.workingMemoryTick()
+const memoryCapture = workingMemory.capture({ model: 'gpt-5-mini' })
+```
+
+## Composable Blocks
+
+If you need more control, use the individual blocks that `capture` bundles together.
+
+### Observe → Remember → Tick
+
+```ts
+import { observe, remember, tick } from '@thought-fabric/core/working-memory'
 
 const pipeline = sequencer({ name: 'chat', inputSchema: z.string() })
   .then(chatGenerator)
-  .work(observe)
-  .tap(tick)
+  .work(
+    sequencer({ name: 'memory', inputSchema: z.string() })
+      .then(observe({ model: 'gpt-5-mini', maxExtractPerTurn: 5 }))
+      .then(remember())
+      .tap(tick())
+  )
 ```
 
-`workingMemoryObserve` is a generator that analyzes input text and extracts structured observations. It stores them in the working memory resource via its `onCompleted` hook. If an observation includes a `replaces` field, the old entry is evicted before the new one is added.
+Three blocks, three responsibilities:
 
-`workingMemoryTick` advances the turn counter by 1 and recomputes salience for every entry. Use it with `.tap()` since it's a side-effect with no meaningful output.
+- **`observe`** is a generator that analyzes input text and extracts structured observations. It returns an array of `{ content, importance, pinned?, replaces? }` objects. It does not persist anything on its own.
+- **`remember`** is a handler that takes the observations from observe and writes them to the working memory resource. If an observation includes a `replaces` field, the old entry is evicted before the new one is added. Errors on individual observations are caught and skipped, so one bad observation doesn't abort the batch.
+- **`tick`** advances the turn counter by 1 and recomputes salience for every entry. Use it with `.tap()` since it's a side-effect with no meaningful output.
+
+This separation lets you insert custom logic between steps. For example, you could filter observations before persisting them, or log what was extracted without modifying the pipeline.
 
 ### Reading Memory
 
-To inject memory into an LLM's system context, pass `workingMemoryContext` as the `context:` slot:
+To inject memory into an LLM's system context, pass `context` as the `context:` slot:
 
 ```ts
 import { generator } from '@flow-state-dev/core'
-import { memory } from '@thought-fabric/core'
+import { resource, context } from '@thought-fabric/core/working-memory'
 
 const chat = generator({
   name: 'chat',
   model: 'gpt-5',
   inputSchema: z.string(),
-  sessionResources: { workingMemory: memory.workingMemoryResource },
-  context: memory.workingMemoryContext,
+  sessionResources: { workingMemory: resource },
+  context: context,
   user: (input) => input,
 })
 ```
@@ -83,51 +92,53 @@ Salience scores are intentionally omitted from the public format. They're an int
 
 If you need custom formatting, use `formatForContext(ref)` directly — it returns the raw bullet list without the header.
 
-### Snapshot and Manual Add
+### Snapshot and Manual Store
 
-`workingMemorySnapshot` returns the current state as structured data:
+`snapshot` returns the current state as structured data:
 
 ```ts
-const snapshot = memory.workingMemorySnapshot()
+import { snapshot } from '@thought-fabric/core/working-memory'
 // Output: { entries: WorkingMemoryEntry[], currentTurn: number }
 ```
 
-`workingMemoryAdd` lets you insert entries directly without LLM extraction:
+`store` lets you insert entries directly without LLM extraction:
 
 ```ts
-const addBlock = memory.workingMemoryAdd()
+import { store } from '@thought-fabric/core/working-memory'
 // Input: { content: string, importance: number, pinned?: boolean, id?: string, metadata?: object }
 ```
 
 ## Helpers
 
-For direct resource manipulation outside of blocks, the helper functions operate on a resource ref:
+For direct resource manipulation outside of blocks, the helper functions operate on a resource ref. Blocks and helpers use distinct vocabulary — `tick` is the pipeline block, `advance` is the direct helper.
 
 ```ts
+import { add, items, pin, unpin, refresh, evict, advance } from '@thought-fabric/core/working-memory'
+
 const ref = ctx.session.resources.get('workingMemory')
 
 // Add an entry
-await memory.add(ref, {
+await add(ref, {
   content: 'User wants to build a REST API',
   importance: 0.8,
   pinned: true,
 })
 
 // Read entries sorted by salience
-const sorted = memory.items(ref)
+const sorted = items(ref)
 
 // Pin/unpin
-await memory.pin(ref, 'entry-id')
-await memory.unpin(ref, 'entry-id')
+await pin(ref, 'entry-id')
+await unpin(ref, 'entry-id')
 
 // Refresh access time (models "re-accessing" a memory)
-await memory.refresh(ref, 'entry-id')
+await refresh(ref, 'entry-id')
 
 // Manually evict (overrides pin)
-await memory.evict(ref, 'entry-id')
+await evict(ref, 'entry-id')
 
-// Advance the clock
-await memory.tick(ref)
+// Advance the clock (recompute salience for all entries)
+await advance(ref)
 ```
 
 ## Configuration
@@ -135,7 +146,9 @@ await memory.tick(ref)
 All blocks accept an optional config:
 
 ```ts
-memory.workingMemoryCapture({
+import { capture } from '@thought-fabric/core/working-memory'
+
+capture({
   model: 'gpt-5-mini',        // LLM for extraction
   capacity: 7,                 // Max entries (default: 7, Miller's number)
   maxPinnedSlots: 2,           // Max pinned entries (default: 2)
@@ -162,4 +175,5 @@ memory.workingMemoryCapture({
 | Explicit `evict()` on a pinned entry | Removes it (explicit eviction overrides pin) |
 | Same salience at eviction time | First entry in array order is evicted (stable) |
 | Observe extracts 0 items | No entries added, tick still advances the clock |
-| Observe `replaces` references a non-existent ID | Evict is a no-op, new entry is still added |
+| Remember receives `replaces` with non-existent ID | Evict is a no-op, new entry is still added |
+| Remember fails on one observation | Skips it, persists the rest (partial success) |

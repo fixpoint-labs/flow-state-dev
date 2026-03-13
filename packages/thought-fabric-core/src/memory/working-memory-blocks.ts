@@ -4,10 +4,10 @@ import { workingMemoryEntrySchema, workingMemoryResource } from './working-memor
 import type { WorkingMemoryDecayConfig } from './working-memory-helpers.js'
 import {
   add,
+  advance,
   evict,
   formatForObserveContext,
   items,
-  tick,
 } from './working-memory-helpers.js'
 
 // ---------------------------------------------------------------------------
@@ -34,10 +34,15 @@ export interface WorkingMemoryObserveConfig extends WorkingMemoryBlockConfig {
 export interface WorkingMemoryCaptureConfig extends WorkingMemoryObserveConfig {}
 
 // ---------------------------------------------------------------------------
-// Internal schemas
+// Shared schemas
 // ---------------------------------------------------------------------------
 
-const observeOutputSchema = z.object({
+/**
+ * Schema for the observations array produced by the observe block and
+ * consumed by the remember block. Exported so flow authors can build
+ * custom pipelines between observe and remember.
+ */
+export const observationsSchema = z.object({
   observations: z.array(z.object({
     content: z.string(),
     importance: z.number().min(0).max(1),
@@ -46,7 +51,7 @@ const observeOutputSchema = z.object({
   })),
 })
 
-type ObserveOutput = z.infer<typeof observeOutputSchema>
+export type Observations = z.infer<typeof observationsSchema>
 
 // ---------------------------------------------------------------------------
 // Block factories
@@ -56,28 +61,20 @@ type ObserveOutput = z.infer<typeof observeOutputSchema>
  * Generator that uses an LLM to extract memories from input text.
  *
  * Input: a string (the text to analyze).
- * Output: structured observations.
+ * Output: structured observations (content, importance, pinned, replaces).
  *
- * On completion, extracted observations are persisted to the working memory
- * resource. If an observation includes a `replaces` field, the old entry is
- * evicted before the new one is added.
- *
- * Exported for flow authors who want to compose observe and tick independently
- * (the "full control" path). Most users should use `workingMemoryCapture` instead.
+ * This block only *extracts* — it does not persist anything. Pair it with
+ * `workingMemoryRemember` to write observations into the resource, or use
+ * the bundled `workingMemoryCapture` sequencer which wires both together.
  */
 export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
   const maxExtract = config?.maxExtractPerTurn ?? 3
-  const helperConfig = {
-    capacity: config?.capacity,
-    maxPinnedSlots: config?.maxPinnedSlots,
-    decay: config?.decay,
-  }
 
   return generator({
     name: config?.name ?? 'workingMemory/observe',
     model: config?.model ?? 'gpt-5-mini',
     inputSchema: z.string(),
-    outputSchema: observeOutputSchema,
+    outputSchema: observationsSchema,
     sessionResources: { workingMemory: workingMemoryResource },
     prompt: [
       'You are a working memory manager for a cognitive AI system.',
@@ -89,7 +86,7 @@ export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
       '- content: what to remember (be concise)',
       '- importance: 0-1 (goals/constraints: 0.8-1.0, key facts: 0.5-0.8, context: 0.3-0.5)',
       '- pinned: true only for explicit user goals or critical constraints',
-      '- replaces: ID of an existing entry this supersedes (optional)',
+      '- replaces: the exact ID of an existing entry this supersedes (e.g. "wm_abc1"). Use the value shown in [id=...] brackets, not the brackets themselves. Optional.',
       '',
       'Rules:',
       '- Don\'t duplicate what\'s already in working memory',
@@ -103,23 +100,64 @@ export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
       return formatted || 'Working memory is empty.'
     },
     user: (input: string) => input,
-    emit: { messages: false },
-    onCompleted: async (output: ObserveOutput, ctx) => {
+    // Suppress all item emission — this is an internal extraction step,
+    // not a conversational response visible to the end user.
+    emit: { messages: false, reasoning: false, toolCalls: false },
+  })
+}
+
+/**
+ * Handler that persists observations into the working memory resource.
+ *
+ * Input: the structured output from `workingMemoryObserve` (observations array).
+ * Output: the array of entries that were successfully added.
+ *
+ * For each observation:
+ * - If `replaces` is set, the referenced entry is evicted first (no-op if ID doesn't exist).
+ * - The observation is added as a new entry with auto-eviction at capacity.
+ *
+ * Errors on individual observations are caught and skipped — partial persistence
+ * is preferred over all-or-nothing failure for a background memory system.
+ */
+export function workingMemoryRemember(config?: WorkingMemoryBlockConfig) {
+  const helperConfig = {
+    capacity: config?.capacity,
+    maxPinnedSlots: config?.maxPinnedSlots,
+    decay: config?.decay,
+  }
+
+  return handler({
+    name: 'workingMemory/remember',
+    inputSchema: observationsSchema,
+    outputSchema: z.array(workingMemoryEntrySchema),
+    sessionResources: { workingMemory: workingMemoryResource },
+    execute: async (input, ctx) => {
       const ref = ctx.session.resources.get('workingMemory')
+      const added: z.infer<typeof workingMemoryEntrySchema>[] = []
 
-      for (const obs of output.observations) {
-        // Handle replacements: evict old entry before adding new one.
-        // If the replaced ID doesn't exist, evict is a no-op.
-        if (obs.replaces) {
-          await evict(ref, obs.replaces)
+      for (const obs of input.observations) {
+        try {
+          // Handle replacements: evict old entry before adding new one.
+          // If the replaced ID doesn't exist, evict is a no-op.
+          if (obs.replaces) {
+            await evict(ref, obs.replaces)
+          }
+
+          const entry = await add(ref, {
+            content: obs.content,
+            importance: obs.importance,
+            pinned: obs.pinned ?? false,
+          }, helperConfig)
+
+          added.push(entry)
+        } catch (_err) {
+          // Skip failed observations rather than aborting the entire batch.
+          // In a background memory system, partial persistence is better than
+          // losing all observations because one failed.
         }
-
-        await add(ref, {
-          content: obs.content,
-          importance: obs.importance,
-          pinned: obs.pinned ?? false,
-        }, helperConfig)
       }
+
+      return added
     },
   })
 }
@@ -141,7 +179,7 @@ export function workingMemoryTick(config?: WorkingMemoryBlockConfig) {
     sessionResources: { workingMemory: workingMemoryResource },
     execute: async (_input, ctx) => {
       const ref = ctx.session.resources.get('workingMemory')
-      await tick(ref, helperConfig)
+      await advance(ref, helperConfig)
     },
   })
 }
@@ -187,7 +225,7 @@ export function workingMemoryAdd(config?: WorkingMemoryBlockConfig) {
       importance: z.number().min(0).max(1),
       pinned: z.boolean().optional(),
       id: z.string().optional(),
-      metadata: z.record(z.unknown()).optional(),
+      metadata: z.record(z.any()).optional(),
     }),
     outputSchema: workingMemoryEntrySchema,
     sessionResources: { workingMemory: workingMemoryResource },
@@ -205,7 +243,7 @@ export function workingMemoryAdd(config?: WorkingMemoryBlockConfig) {
 }
 
 /**
- * Bundled sequencer: observe (LLM extraction) → tick (decay clock).
+ * Bundled sequencer: observe → remember → tick.
  *
  * This is the primary block most flow authors will use. One line to add
  * working memory capture to a pipeline:
@@ -217,8 +255,8 @@ export function workingMemoryAdd(config?: WorkingMemoryBlockConfig) {
  * ```
  *
  * Input: `z.string()` — the text to extract memories from.
- * Runs observe first (extracts and stores memories), then tick advances the
- * clock and recomputes salience on all entries.
+ * Runs observe first (LLM extraction), then remember (persists observations),
+ * then tick advances the clock and recomputes salience on all entries.
  */
 export function workingMemoryCapture(config?: WorkingMemoryCaptureConfig) {
   const observeBlock = workingMemoryObserve({
@@ -230,6 +268,12 @@ export function workingMemoryCapture(config?: WorkingMemoryCaptureConfig) {
     maxExtractPerTurn: config?.maxExtractPerTurn,
   })
 
+  const rememberBlock = workingMemoryRemember({
+    capacity: config?.capacity,
+    maxPinnedSlots: config?.maxPinnedSlots,
+    decay: config?.decay,
+  })
+
   const tickBlock = workingMemoryTick({
     capacity: config?.capacity,
     maxPinnedSlots: config?.maxPinnedSlots,
@@ -238,5 +282,6 @@ export function workingMemoryCapture(config?: WorkingMemoryCaptureConfig) {
 
   return sequencer({ name: config?.name ?? 'workingMemory/capture', inputSchema: z.string() })
     .then(observeBlock)
+    .then(rememberBlock)
     .tap(tickBlock)
 }

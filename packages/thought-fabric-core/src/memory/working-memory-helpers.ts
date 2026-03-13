@@ -91,7 +91,15 @@ export type AddEntryInput = {
   metadata?: Record<string, any>
 }
 
-let addCounter = 0
+/** Generate a short random ID. 4 alphanumeric characters ≈ 1.7M combinations. */
+function shortId(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  let id = ''
+  for (let i = 0; i < 4; i++) {
+    id += chars[Math.floor(Math.random() * chars.length)]
+  }
+  return id
+}
 
 /**
  * Add an entry to working memory.
@@ -111,7 +119,7 @@ export async function add(
   const state = ref.state
 
   const newEntry: WorkingMemoryEntry = {
-    id: entry.id ?? `wm_${Date.now()}_${++addCounter}`,
+    id: entry.id ?? `wm_${shortId()}`,
     content: entry.content,
     importance: entry.importance,
     salience: entry.importance, // initial salience = importance (no decay yet)
@@ -258,7 +266,7 @@ export async function refresh(
  * Advance the turn counter by 1 and recompute salience for all entries.
  * This is the "clock" for decay — call it once per interaction turn.
  */
-export async function tick(
+export async function advance(
   ref: WmRef,
   config?: WorkingMemoryHelperConfig,
 ): Promise<void> {
@@ -347,6 +355,11 @@ export function formatForObserveContext(ref: WmRef): string {
  *   user: (input) => input,
  * })
  * ```
+ *
+ * Note: the `ctx` parameter uses an inline structural type rather than
+ * importing `BlockContext` because `BlockContext` is not part of
+ * `@flow-state-dev/core`'s public API. The structural type matches the
+ * subset of BlockContext that this function actually uses.
  */
 export function workingMemoryContext(_input: unknown, ctx: { session: { resources: { get(name: 'workingMemory'): WmRef } } }): string {
   const ref = ctx.session.resources.get('workingMemory')

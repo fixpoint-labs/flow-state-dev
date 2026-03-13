@@ -4,6 +4,9 @@ import {
   workingMemoryEntrySchema,
   workingMemoryStateSchema,
   workingMemoryResource,
+} from '../../src/memory/working-memory.js'
+import type { WorkingMemoryEntry, WorkingMemoryState } from '../../src/memory/working-memory.js'
+import {
   computeDecay,
   computeSalience,
   add,
@@ -11,20 +14,20 @@ import {
   pin,
   unpin,
   refresh,
-  tick,
+  advance,
   items,
   formatForContext,
   formatForObserveContext,
   workingMemoryContext,
   DEFAULT_WORKING_MEMORY_CONFIG,
-} from '../../src/memory/index.js'
-import type { WorkingMemoryEntry, WorkingMemoryState } from '../../src/memory/index.js'
+} from '../../src/memory/working-memory-helpers.js'
 import {
   workingMemoryTick,
   workingMemorySnapshot,
   workingMemoryAdd,
   workingMemoryObserve,
   workingMemoryCapture,
+  workingMemoryRemember,
 } from '../../src/memory/working-memory-blocks.js'
 
 // ---------------------------------------------------------------------------
@@ -208,17 +211,27 @@ describe('memory/workingMemory', () => {
       expect(ref.state.entries).toHaveLength(1)
     })
 
-    it('generates id when not provided', async () => {
+    it('generates a short random id when not provided', async () => {
       const ref = createMockRef()
       const result = await add(ref, { content: 'test', importance: 0.5 })
-      expect(result.id).toBeTruthy()
-      expect(typeof result.id).toBe('string')
+      expect(result.id).toMatch(/^wm_[A-Za-z0-9]{4}$/)
     })
 
     it('uses provided id', async () => {
       const ref = createMockRef()
       const result = await add(ref, { id: 'custom-id', content: 'test', importance: 0.5 })
       expect(result.id).toBe('custom-id')
+    })
+
+    it('preserves metadata on added entry', async () => {
+      const ref = createMockRef()
+      const result = await add(ref, {
+        content: 'test',
+        importance: 0.5,
+        metadata: { source: 'user', tags: ['important'] },
+      })
+      expect(result.metadata).toEqual({ source: 'user', tags: ['important'] })
+      expect(ref.state.entries[0].metadata).toEqual({ source: 'user', tags: ['important'] })
     })
 
     it('evicts lowest-salience non-pinned entry at capacity', async () => {
@@ -384,6 +397,24 @@ describe('memory/workingMemory', () => {
       expect(ref.state.entries[0].salience).toBeCloseTo(0.8, 3)
     })
 
+    it('boosts salience of a decayed entry back to importance', async () => {
+      // Entry was added at turn 0, decayed over 10 turns
+      const entry = makeEntry({
+        id: 'e1',
+        importance: 0.8,
+        lastAccessedAtTurn: 0,
+        // salience after 10 turns: 0.8 * (1+10)^(-0.5) ≈ 0.241
+        salience: 0.241,
+      })
+      const ref = createMockRef({ currentTurn: 10, entries: [entry] })
+
+      await refresh(ref, 'e1')
+
+      // After refresh: lastAccessedAtTurn = 10, elapsed = 0, salience = 0.8 * 1.0
+      expect(ref.state.entries[0].lastAccessedAtTurn).toBe(10)
+      expect(ref.state.entries[0].salience).toBeCloseTo(0.8, 3)
+    })
+
     it('returns false for non-existent id (no-op)', async () => {
       const ref = createMockRef({ entries: [makeEntry({ id: 'e1' })] })
       const result = await refresh(ref, 'missing')
@@ -392,13 +423,13 @@ describe('memory/workingMemory', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Helper: tick
+  // Helper: advance
   // ---------------------------------------------------------------------------
 
-  describe('tick()', () => {
+  describe('advance()', () => {
     it('increments currentTurn by 1', async () => {
       const ref = createMockRef({ currentTurn: 3 })
-      await tick(ref)
+      await advance(ref)
       expect(ref.state.currentTurn).toBe(4)
     })
 
@@ -410,17 +441,59 @@ describe('memory/workingMemory', () => {
         ],
       })
 
-      await tick(ref)
+      await advance(ref)
 
-      // After tick: currentTurn=1, elapsed=1, salience = 1.0 * (1+1)^(-0.5) ≈ 0.7071
+      // After advance: currentTurn=1, elapsed=1, salience = 1.0 * (1+1)^(-0.5) ≈ 0.7071
       expect(ref.state.entries[0].salience).toBeCloseTo(0.7071, 3)
     })
 
     it('handles empty entries (increments turn only)', async () => {
       const ref = createMockRef({ currentTurn: 0 })
-      await tick(ref)
+      await advance(ref)
       expect(ref.state.currentTurn).toBe(1)
       expect(ref.state.entries).toHaveLength(0)
+    })
+
+    it('cumulative decay over multiple advances', async () => {
+      const ref = createMockRef({
+        currentTurn: 0,
+        entries: [
+          makeEntry({ id: 'e1', importance: 0.8, lastAccessedAtTurn: 0, salience: 0.8 }),
+        ],
+      })
+
+      // Advance 4 times
+      await advance(ref)
+      await advance(ref)
+      await advance(ref)
+      await advance(ref)
+
+      expect(ref.state.currentTurn).toBe(4)
+      // salience = 0.8 * (1+4)^(-0.5) = 0.8 * 5^(-0.5) ≈ 0.8 * 0.4472 ≈ 0.3578
+      expect(ref.state.entries[0].salience).toBeCloseTo(0.3578, 3)
+    })
+
+    it('decayed entry eventually loses to newer entry at eviction', async () => {
+      const ref = createMockRef({
+        currentTurn: 0,
+        entries: [
+          makeEntry({ id: 'old', importance: 0.6, lastAccessedAtTurn: 0, salience: 0.6 }),
+          makeEntry({ id: 'recent', importance: 0.6, lastAccessedAtTurn: 0, salience: 0.6 }),
+        ],
+      })
+
+      // Advance 5 turns — both decay equally
+      for (let i = 0; i < 5; i++) await advance(ref)
+
+      // Refresh 'recent' so its salience recovers
+      await refresh(ref, 'recent')
+
+      // Now add a new entry at capacity 2 — old should be evicted
+      await add(ref, { content: 'newcomer', importance: 0.5 }, { capacity: 2 })
+
+      const ids = ref.state.entries.map((e) => e.id)
+      expect(ids).not.toContain('old')
+      expect(ids).toContain('recent')
     })
   })
 
@@ -520,7 +593,7 @@ describe('memory/workingMemory', () => {
     it('returns formatted string with header when entries exist', () => {
       const ref = createMockRef({
         entries: [
-          makeEntry({ salience: 0.85, content: 'User prefers TypeScript' }),
+          makeEntry({ id: 'e1', salience: 0.85, content: 'User prefers TypeScript' }),
         ],
       })
       const ctx = { session: { resources: { get: () => ref } } } as any
@@ -609,6 +682,23 @@ describe('memory/workingMemory', () => {
       })
     })
 
+    describe('workingMemoryRemember', () => {
+      it('returns a handler BlockDefinition', () => {
+        const block = workingMemoryRemember()
+        expect(block.kind).toBe('handler')
+      })
+
+      it('has correct name', () => {
+        const block = workingMemoryRemember()
+        expect(block.name).toBe('workingMemory/remember')
+      })
+
+      it('declares workingMemory sessionResource', () => {
+        const block = workingMemoryRemember()
+        expect(block.declaredResources?.session).toHaveProperty('workingMemory')
+      })
+    })
+
     describe('workingMemoryObserve', () => {
       it('returns a generator BlockDefinition', () => {
         const block = workingMemoryObserve()
@@ -628,6 +718,11 @@ describe('memory/workingMemory', () => {
       it('declares workingMemory sessionResource', () => {
         const block = workingMemoryObserve()
         expect(block.declaredResources?.session).toHaveProperty('workingMemory')
+      })
+
+      it('has no onCompleted hook (persistence moved to remember block)', () => {
+        const block = workingMemoryObserve()
+        expect((block.config as any).onCompleted).toBeUndefined()
       })
     })
 
@@ -651,6 +746,112 @@ describe('memory/workingMemory', () => {
         const block = workingMemoryCapture()
         expect(block.declaredResources?.session).toHaveProperty('workingMemory')
       })
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Remember block: persistence behavior
+  // ---------------------------------------------------------------------------
+
+  describe('workingMemoryRemember (persistence)', () => {
+    // We can test the remember block's execute function directly by extracting
+    // it from the block definition. The block accepts observations as input
+    // and persists them to the mock resource.
+
+    async function runRemember(
+      ref: ResourceHandle<WorkingMemoryState>,
+      observations: Array<{ content: string; importance: number; pinned?: boolean; replaces?: string }>,
+      config?: { capacity?: number; maxPinnedSlots?: number },
+    ) {
+      const block = workingMemoryRemember(config)
+      const ctx = {
+        session: { resources: { get: () => ref } },
+        response: { emit: async () => {} },
+      } as any
+      return block.run({ observations }, ctx)
+    }
+
+    it('persists observations as entries', async () => {
+      const ref = createMockRef()
+      const result = await runRemember(ref, [
+        { content: 'User wants REST API', importance: 0.8 },
+        { content: 'Using TypeScript', importance: 0.6 },
+      ])
+
+      expect(result).toHaveLength(2)
+      expect(ref.state.entries).toHaveLength(2)
+      expect(ref.state.entries[0].content).toBe('User wants REST API')
+      expect(ref.state.entries[1].content).toBe('Using TypeScript')
+    })
+
+    it('handles replaces by evicting old entry before adding', async () => {
+      const ref = createMockRef({
+        entries: [makeEntry({ id: 'old-goal', content: 'Build a CLI tool' })],
+      })
+
+      await runRemember(ref, [
+        { content: 'Build a REST API', importance: 0.8, replaces: 'old-goal' },
+      ])
+
+      expect(ref.state.entries).toHaveLength(1)
+      expect(ref.state.entries[0].content).toBe('Build a REST API')
+    })
+
+    it('ignores replaces for non-existent IDs (no-op eviction)', async () => {
+      const ref = createMockRef()
+
+      await runRemember(ref, [
+        { content: 'New memory', importance: 0.5, replaces: 'nonexistent' },
+      ])
+
+      expect(ref.state.entries).toHaveLength(1)
+      expect(ref.state.entries[0].content).toBe('New memory')
+    })
+
+    it('handles empty observations array', async () => {
+      const ref = createMockRef()
+      const result = await runRemember(ref, [])
+
+      expect(result).toHaveLength(0)
+      expect(ref.state.entries).toHaveLength(0)
+    })
+
+    it('respects pinned flag from observations', async () => {
+      const ref = createMockRef()
+
+      await runRemember(ref, [
+        { content: 'Critical goal', importance: 0.9, pinned: true },
+      ])
+
+      expect(ref.state.entries[0].pinned).toBe(true)
+    })
+
+    it('defaults pinned to false when not specified', async () => {
+      const ref = createMockRef()
+
+      await runRemember(ref, [
+        { content: 'Regular fact', importance: 0.5 },
+      ])
+
+      expect(ref.state.entries[0].pinned).toBe(false)
+    })
+
+    it('respects capacity config for eviction', async () => {
+      const ref = createMockRef({
+        entries: [
+          makeEntry({ id: 'low', salience: 0.1, importance: 0.1 }),
+          makeEntry({ id: 'high', salience: 0.9, importance: 0.9 }),
+        ],
+      })
+
+      await runRemember(ref, [
+        { content: 'New memory', importance: 0.5 },
+      ], { capacity: 2 })
+
+      expect(ref.state.entries).toHaveLength(2)
+      const ids = ref.state.entries.map((e) => e.id)
+      expect(ids).not.toContain('low')
+      expect(ids).toContain('high')
     })
   })
 })

@@ -25,6 +25,7 @@
 | `@flow-state-dev/react` | React hooks and renderers (wraps client) |
 | `@flow-state-dev/testing` | Test harnesses and mocks |
 | `@flow-state-dev/cli` | Terminal interface (`fsdev`) |
+| `@thought-fabric/core` | Cognitive architecture primitives (attention, memory, identity) |
 | `apps/devtool` | First-party inspector app |
 | `apps/docs` | Documentation site (Docusaurus) |
 
@@ -65,6 +66,8 @@ pnpm typecheck        # TypeCheck all packages
 pnpm test             # Run all tests
 pnpm test:watch       # Watch mode
 pnpm --filter @flow-state-dev/core test    # Test single package
+pnpm --filter @thought-fabric/core test       # Test thought-fabric (builds core dep first)
+pnpm --filter @thought-fabric/core typecheck  # Typecheck thought-fabric
 ```
 
 ## Writing Style (site content)
@@ -84,6 +87,13 @@ The philosophy blog post (`apps/docs/blog/2026-03-06-philosophy.md`) is the refe
 ## Current Phase
 
 Phase 1 (Foundation): Waves 1.a–1.k complete. Remaining: 1.l (CLI), 1.m (devtool), 1.n (cross-package validation).
+
+## @thought-fabric/core Conventions
+
+- **Subpath exports**: Domains expose `@thought-fabric/core/<domain>` (e.g., `@thought-fabric/core/working-memory`) with clean short names + default namespace export
+- **Block vs helper naming**: Blocks get clean names (`tick`, `store`), helpers get distinct vocabulary (`advance`, `add`) to avoid collisions
+- **Domain-qualified helpers**: In the `memory.*` barrel, helpers are suffixed (`addWorkingMemory`, `advanceWorkingMemory`) to prevent future collisions across memory types
+- **Build dependency**: `@thought-fabric/core` depends on `@flow-state-dev/core` — build core first (`pnpm --filter @flow-state-dev/core build`)
 
 ## Using Bash
 It is important that you not bother the user with a permission approval that isn't necessary. Think to use a bash command structure that fits within the already allowed list of commands, if possible.
