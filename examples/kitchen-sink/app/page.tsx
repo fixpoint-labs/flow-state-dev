@@ -103,7 +103,7 @@ function KitchenSinkApp() {
       await session.sendAction("run", {
         message: text,
         mode,
-      });
+      }, { userMessage: text });
     },
     [flow.activeSessionId, mode, session]
   );
