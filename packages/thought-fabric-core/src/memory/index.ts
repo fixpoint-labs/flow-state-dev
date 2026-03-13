@@ -6,6 +6,7 @@ export {
   workingMemoryEntrySchema,
   workingMemoryStateSchema,
   workingMemoryResource,
+  workingMemoryResources,
 } from './working-memory.js'
 export type {
   WorkingMemoryEntry,

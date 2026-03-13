@@ -48,3 +48,18 @@ export const workingMemoryResource = defineResource({
   default: { entries: [], currentTurn: 0 },
   writable: true,
 })
+
+/**
+ * Pre-keyed resource declaration for working memory.
+ *
+ * Use this in `sessionResources` to avoid hard-coding the resource key:
+ *
+ * ```ts
+ * sessionResources: workingMemoryResources
+ * // or compose with other resources:
+ * sessionResources: { ...workingMemoryResources, myResource }
+ * ```
+ */
+export const workingMemoryResources = {
+  workingMemory: workingMemoryResource,
+} as const
