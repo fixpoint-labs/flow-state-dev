@@ -18,6 +18,8 @@ export type OutputItemBase = {
   type: string;
   status: ItemStatus;
   transient?: boolean;
+  /** Structural lifecycle item — excluded from LLM context, visible in devtool trace. */
+  trace?: boolean;
   requestId: string;
   itemIndex: number;
   provenance: ItemProvenance;
@@ -27,7 +29,14 @@ export type OutputItemBase = {
 export type BlockOutputItem = OutputItemBase & {
   type: "block_output";
   blockName: string;
+  blockKind?: string;
   output: unknown;
+  /** Epoch ms when block execution started. */
+  startedAt?: number;
+  /** Epoch ms when block execution completed or failed. */
+  completedAt?: number;
+  /** Duration in ms (completedAt - startedAt). */
+  duration?: number;
   modelUsage?: {
     model: string;
     promptTokens: number;
@@ -42,6 +51,12 @@ export type BlockOutputItem = OutputItemBase & {
     arguments: string;
     generatorBlock: string;
   };
+};
+
+export type RouterDecisionItem = OutputItemBase & {
+  type: "router_decision";
+  routerName: string;
+  selectedRoute: string;
 };
 
 export type MessageItem = OutputItemBase & {
@@ -115,6 +130,7 @@ export type StepErrorItem = OutputItemBase & {
 
 export type OutputItem =
   | BlockOutputItem
+  | RouterDecisionItem
   | MessageItem
   | ReasoningItem
   | ComponentItem

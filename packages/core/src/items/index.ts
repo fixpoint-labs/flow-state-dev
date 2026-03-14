@@ -23,6 +23,7 @@ export type {
   OutputItemBase,
   ReasoningItem,
   ResourceChangeItem,
+  RouterDecisionItem,
   StateChangeItem,
   StatusItem,
   StepErrorItem
