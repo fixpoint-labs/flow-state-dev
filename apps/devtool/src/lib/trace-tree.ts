@@ -80,6 +80,9 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
         if (item.status === "completed") blockNode.blockStatus = "completed";
         if (item.status === "failed") blockNode.blockStatus = "failed";
       }
+      if (item.type === "block_tool_output") {
+        blockNode.blockKind = blockNode.blockKind ?? "generator";
+      }
       if (item.type === "router_decision") {
         blockNode.blockKind = blockNode.blockKind ?? "router";
       }

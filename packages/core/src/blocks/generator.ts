@@ -323,7 +323,8 @@ function compileToolsForModel(tools: GeneratorTool[]): GeneratorModelTool[] {
 function compileToolsWithExecute(
   tools: GeneratorTool[],
   ctx: BlockContext,
-  flowTools: ToolsConfig | undefined
+  flowTools: ToolsConfig | undefined,
+  generatorBlockName: string
 ): GeneratorModelTool[] {
   const timeoutMs = flowTools?.defaults?.timeoutMs;
   const retry = flowTools?.defaults?.retry;
@@ -331,7 +332,7 @@ function compileToolsWithExecute(
     name: tool.name,
     description: tool.description,
     parameters: tool.inputSchema,
-    execute: async (args: unknown) => {
+    execute: async (args: unknown, options?: { toolCallId?: string }) => {
       const runTool = async (scopedCtx: BlockContext): Promise<unknown> => {
         await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
         try {
@@ -340,6 +341,35 @@ function compileToolsWithExecute(
             retry
           );
           await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
+
+          // Emit block_tool_output item so tool results appear in the stream
+          // and can be replayed into LLM context on subsequent requests.
+          if (options?.toolCallId !== undefined) {
+            const toolOutputItem = {
+              id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+              type: "block_tool_output" as const,
+              status: "completed" as const,
+              requestId: scopedCtx.request.identity.id,
+              itemIndex: getEmitterItemCount(scopedCtx.response),
+              provenance: {
+                blockName: tool.name,
+                blockInstanceId: tool.name,
+                phase: "main" as const
+              },
+              ts: Date.now(),
+              blockName: tool.name,
+              output,
+              toolCall: {
+                callId: options.toolCallId,
+                name: tool.name,
+                arguments: typeof args === "string" ? args : JSON.stringify(args),
+                generatorBlock: generatorBlockName
+              }
+            };
+            await scopedCtx.response.emit({ type: "item.added", item: toolOutputItem });
+            await scopedCtx.response.emit({ type: "item.done", item: toolOutputItem });
+          }
+
           return output;
         } catch (error) {
           const err = toError(error);
@@ -926,7 +956,7 @@ export function generator<
       // without (model suggests calls but doesn't execute them).
       const compiledTools = toolBlocks.length > 0
         ? (runTools
-            ? compileToolsWithExecute(toolBlocks, ctx, normalizedConfig.flowTools)
+            ? compileToolsWithExecute(toolBlocks, ctx, normalizedConfig.flowTools, blockName)
             : compileToolsForModel(toolBlocks))
         : [];
 

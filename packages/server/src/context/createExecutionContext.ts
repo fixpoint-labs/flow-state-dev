@@ -23,6 +23,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type {
   BlockOutputItem,
+  BlockToolOutputItem,
   ComponentItem,
   ContainerItem,
   Content,
@@ -379,13 +380,15 @@ function defineStateProperty<THandle extends object, TState extends object>(
 
 /**
  * Set of item types that enter LLM context.
- * `block_output` is conditional — only when it has a `toolCall` field.
+ * `block_output` is conditional — only when it has a `toolCall` field (legacy).
+ * `block_tool_output` is the dedicated tool-result type.
  */
 const LLM_AUDIENCE_TYPES = new Set([
   "message",
   "reasoning",
   "context",
-  "block_output"
+  "block_output",
+  "block_tool_output"
 ]);
 
 /**
@@ -453,7 +456,7 @@ function itemToLLMMessage(item: OutputItem): LLMMessage | null {
 
   if (item.type === "block_output") {
     const bo = item as BlockOutputItem;
-    // Only enters LLM context when invoked as a tool by a generator.
+    // Only enters LLM context when invoked as a tool by a generator (legacy path).
     if (bo.toolCall === undefined) {
       return null;
     }
@@ -463,6 +466,16 @@ function itemToLLMMessage(item: OutputItem): LLMMessage | null {
       content: typeof bo.output === "string"
         ? bo.output
         : JSON.stringify(bo.output)
+    };
+  }
+
+  if (item.type === "block_tool_output") {
+    const bto = item as BlockToolOutputItem;
+    return {
+      role: "tool",
+      content: typeof bto.output === "string"
+        ? bto.output
+        : JSON.stringify(bto.output)
     };
   }
 

@@ -53,6 +53,19 @@ export type BlockOutputItem = OutputItemBase & {
   };
 };
 
+/** Tool result emitted when a block executes as a tool within a generator. */
+export type BlockToolOutputItem = OutputItemBase & {
+  type: "block_tool_output";
+  blockName: string;
+  output: unknown;
+  toolCall: {
+    callId: string;
+    name: string;
+    arguments: string;
+    generatorBlock: string;
+  };
+};
+
 export type RouterDecisionItem = OutputItemBase & {
   type: "router_decision";
   routerName: string;
@@ -130,6 +143,7 @@ export type StepErrorItem = OutputItemBase & {
 
 export type OutputItem =
   | BlockOutputItem
+  | BlockToolOutputItem
   | RouterDecisionItem
   | MessageItem
   | ReasoningItem

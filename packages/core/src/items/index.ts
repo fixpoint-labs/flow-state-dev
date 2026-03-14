@@ -12,6 +12,7 @@ export { isEphemeralContent } from "./content";
 
 export type {
   BlockOutputItem,
+  BlockToolOutputItem,
   ComponentItem,
   ContainerItem,
   ContextItem,
