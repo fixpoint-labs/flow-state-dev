@@ -40,10 +40,16 @@ Items are the canonical persisted artifacts. Their type determines audience rout
 | `state_change` | Yes | No | Scope state mutation record |
 | `resource_change` | Yes | No | Resource mutation record |
 | `block_output` | No | Conditional | Execution record (every block) |
+| `block_tool_output` | No | Yes | Tool result from generator tool invocation |
+| `router_decision` | No | No | Route selection record (trace only) |
 | `error` | Yes | No | Terminal errors |
 | `step_error` | Yes | No | Recoverable step errors |
 
-For `block_output`: When the item has `toolCall` metadata (tool invocation by a generator), the output enters LLM context as the tool result. Otherwise, it's internal/devtools only.
+For `block_output`: When the item has `toolCall` metadata (legacy tool invocation by a generator), the output enters LLM context as the tool result. Otherwise, it's internal/devtools only. New tool invocations emit `block_tool_output` items instead.
+
+### Trace Flag
+
+Items may carry `trace: true` on `OutputItemBase` to mark them as structural lifecycle metadata. Trace items are always excluded from LLM context (filtered by `itemToLLMMessage`) but remain visible in the devtool trace tree for debugging and performance analysis. Currently, `block_output` items from lifecycle tracing and `router_decision` items are marked as trace. Tool result items (`block_tool_output`) are never trace-flagged because they must enter LLM context for multi-turn tool calling.
 
 ## Content Model
 
@@ -137,10 +143,10 @@ GET /stream?starting_after=42
 
 All blocks can emit explicitly via `ctx` methods. Additionally:
 
-- **Generator**: Auto-emits `reasoning`, `message` (streaming), `block_output` with `toolCall`, final `block_output`
+- **Generator**: Auto-emits `reasoning`, `message` (streaming), `block_tool_output` per tool invocation, final `block_output`
 - **Handler**: Auto-emits `block_output` (internal only). Silent to client/LLM by default.
 - **Sequencer**: Emits child block items. Optional `container` config for visual grouping.
-- **Router**: Emits items from selected path. Optional `container` config.
+- **Router**: Emits `router_decision` (trace) when a route is selected, then items from selected path. Optional `container` config.
 
 State/resource mutations auto-emit `state_change` and `resource_change` items.
 
