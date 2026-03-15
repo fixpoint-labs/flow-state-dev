@@ -345,6 +345,7 @@ function compileToolsWithExecute(
           // Emit block_tool_output item so tool results appear in the stream
           // and can be replayed into LLM context on subsequent requests.
           if (options?.toolCallId !== undefined) {
+            const identity = scopedCtx._blockIdentity;
             const toolOutputItem = {
               id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
               type: "block_tool_output" as const,
@@ -352,8 +353,9 @@ function compileToolsWithExecute(
               requestId: scopedCtx.request.identity.id,
               itemIndex: getEmitterItemCount(scopedCtx.response),
               provenance: {
-                blockName: tool.name,
-                blockInstanceId: tool.name,
+                blockName: identity?.blockName ?? tool.name,
+                blockInstanceId: identity?.blockInstanceId ?? tool.name,
+                parentBlockInstanceId: identity?.parentBlockInstanceId,
                 phase: "main" as const
               },
               ts: Date.now(),

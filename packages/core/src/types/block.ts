@@ -131,12 +131,19 @@ export interface BlockContext<
     onBlockStart?: (blockName: string, blockKind: string, input: unknown) => void;
     onBlockComplete?: (blockName: string, blockKind: string, output: unknown, durationMs: number) => void;
     onBlockError?: (blockName: string, blockKind: string, error: unknown, durationMs: number) => void;
-    onRouteSelected?: (routerName: string, selectedBlockName: string) => void;
+    onRouteSelected?: (routerName: string, selectedBlockName: string, blockInstanceId?: string) => void;
     onGeneratorModelResult?: (payload: {
       model: string;
       usage?: GeneratorModelUsage;
       providerMetadata?: GeneratorModelResult["providerMetadata"];
     }) => void;
+  };
+
+  /** @internal Current block's identity within the execution chain. */
+  _blockIdentity?: {
+    blockName: string;
+    blockInstanceId: string;
+    parentBlockInstanceId?: string;
   };
 
   /** @internal Runtime hook that executes nested blocks with parent-chain metadata. */

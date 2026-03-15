@@ -1704,7 +1704,7 @@ export async function createExecutionContext<
           });
         }
       : undefined,
-    onRouteSelected: (routerName, selectedBlockName) => {
+    onRouteSelected: (routerName, selectedBlockName, routerInstanceId) => {
       if (logger) {
         logRuntimeEvent(logger, "debug", "[flow-state] router selected route", {
           ...baseLogContext,
@@ -1724,7 +1724,7 @@ export async function createExecutionContext<
         itemIndex,
         provenance: {
           blockName: routerName,
-          blockInstanceId: `${routerName}_${requestRef.current.id}`,
+          blockInstanceId: routerInstanceId ?? `${routerName}_${requestRef.current.id}`,
           phase: "main"
         },
         ts: Date.now(),
@@ -1993,6 +1993,15 @@ export async function createExecutionContext<
           childSiblingRegistry.length - 1,
           childEmCtx
         );
+
+        // Expose the block's identity so nested code (e.g. generator tool
+        // output emission) can construct provenance without reaching into
+        // server-internal structures.
+        (childContext as { _blockIdentity?: unknown })._blockIdentity = {
+          blockName: resolvedParent.name,
+          blockInstanceId: resolvedParent.instanceId,
+          parentBlockInstanceId: resolvedParent.parentInstanceId
+        };
 
         // Capture start time before execution — this is the only trace cost paid
         // unconditionally. Item construction and emission happen post-execution.

@@ -151,7 +151,7 @@ export function router<
         );
       }
 
-      ctx._runtimeHooks?.onRouteSelected?.(config.name, selected.name);
+      ctx._runtimeHooks?.onRouteSelected?.(config.name, selected.name, ctx._blockIdentity?.blockInstanceId);
 
       const startedAt = Date.now();
       const runSelected = async (scopedCtx: BlockContext): Promise<TOutput> => {
