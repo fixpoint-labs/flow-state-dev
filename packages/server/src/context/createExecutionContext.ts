@@ -23,6 +23,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import type {
   BlockOutputItem,
+  BlockToolOutputItem,
   ComponentItem,
   ContainerItem,
   Content,
@@ -30,6 +31,7 @@ import type {
   ItemProvenance,
   MessageItem,
   OutputItem,
+  RouterDecisionItem,
   StateChangeItem,
   StatusItem
 } from "@flow-state-dev/core/items";
@@ -378,13 +380,15 @@ function defineStateProperty<THandle extends object, TState extends object>(
 
 /**
  * Set of item types that enter LLM context.
- * `block_output` is conditional — only when it has a `toolCall` field.
+ * `block_output` is conditional — only when it has a `toolCall` field (legacy).
+ * `block_tool_output` is the dedicated tool-result type.
  */
 const LLM_AUDIENCE_TYPES = new Set([
   "message",
   "reasoning",
   "context",
-  "block_output"
+  "block_output",
+  "block_tool_output"
 ]);
 
 /**
@@ -407,9 +411,16 @@ const CLIENT_AUDIENCE_TYPES = new Set([
  * Converts a persisted OutputItem into an LLM-ready message.
  * Uses type-based audience routing: message, reasoning, context, and
  * block_output (with toolCall) enter LLM context.
+ * Structural trace items (trace: true) are always excluded — they carry
+ * lifecycle metadata for debugging, not conversational content.
  * Returns null for item types that don't map to conversation messages.
  */
 function itemToLLMMessage(item: OutputItem): LLMMessage | null {
+  // Fast path: structural trace items never enter LLM context.
+  if (item.trace === true) {
+    return null;
+  }
+
   if (item.type === "message") {
     const msg = item as MessageItem;
     const text = (msg.content ?? [])
@@ -445,7 +456,7 @@ function itemToLLMMessage(item: OutputItem): LLMMessage | null {
 
   if (item.type === "block_output") {
     const bo = item as BlockOutputItem;
-    // Only enters LLM context when invoked as a tool by a generator.
+    // Only enters LLM context when invoked as a tool by a generator (legacy path).
     if (bo.toolCall === undefined) {
       return null;
     }
@@ -455,6 +466,16 @@ function itemToLLMMessage(item: OutputItem): LLMMessage | null {
       content: typeof bo.output === "string"
         ? bo.output
         : JSON.stringify(bo.output)
+    };
+  }
+
+  if (item.type === "block_tool_output") {
+    const bto = item as BlockToolOutputItem;
+    return {
+      role: "tool",
+      content: typeof bto.output === "string"
+        ? bto.output
+        : JSON.stringify(bto.output)
     };
   }
 
@@ -1551,6 +1572,48 @@ export async function createExecutionContext<
           () => projectContainer.read()
         ) as ProjectScopeHandle<TProjectState>);
 
+  /**
+   * Fire-and-forget lifecycle trace item for nested blocks.
+   * Single emission (completed or failed) with timing, avoiding two-phase overhead.
+   * Uses void + catch to avoid blocking the execution hot path.
+   */
+  function emitNestedBlockTrace(
+    parent: ExecutionParent,
+    startedAt: number,
+    status: "completed" | "failed",
+    emitter: EmissionContext["response"],
+    reqRef: { current: { id: string } },
+    nextIndex: () => number
+  ): void {
+    const completedAt = Date.now();
+    const itemIndex = nextIndex();
+    const item: BlockOutputItem = {
+      id: `item_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+      type: "block_output",
+      status,
+      trace: true,
+      transient: parent.transient || undefined,
+      requestId: reqRef.current.id,
+      itemIndex,
+      provenance: {
+        blockName: parent.name,
+        blockInstanceId: parent.instanceId,
+        parentBlockInstanceId: parent.parentInstanceId,
+        phase: "main"
+      },
+      ts: completedAt,
+      blockName: parent.name,
+      blockKind: parent.kind,
+      output: undefined,
+      startedAt,
+      completedAt,
+      duration: completedAt - startedAt
+    };
+    void emitter.emitItemAdded(item)
+      .then(() => emitter.emitItemDone(item))
+      .catch(() => { /* trace emission is best-effort */ });
+  }
+
   type ExecutionParentNode = {
     parent: ExecutionParent;
     parentStateContainer?: ReturnType<typeof createStateContainer<JsonObject>>;
@@ -1608,17 +1671,19 @@ export async function createExecutionContext<
     flowKind: flow.kind
   };
 
-  const _runtimeHooks: ExecutionContext["_runtimeHooks"] = logger
-    ? {
-        onBlockStart: (blockName, blockKind, input) => {
+  const _runtimeHooks: ExecutionContext["_runtimeHooks"] = {
+    onBlockStart: logger
+      ? (blockName, blockKind, input) => {
           logRuntimeEvent(logger, "debug", "[flow-state] nested block started", {
             ...baseLogContext,
             blockName,
             blockKind,
             input: summarizeForLog(input)
           });
-        },
-        onBlockComplete: (blockName, blockKind, output, durationMs) => {
+        }
+      : undefined,
+    onBlockComplete: logger
+      ? (blockName, blockKind, output, durationMs) => {
           logRuntimeEvent(logger, "debug", "[flow-state] nested block completed", {
             ...baseLogContext,
             blockName,
@@ -1626,8 +1691,10 @@ export async function createExecutionContext<
             durationMs,
             output: summarizeForLog(output)
           });
-        },
-        onBlockError: (blockName, blockKind, error, durationMs) => {
+        }
+      : undefined,
+    onBlockError: logger
+      ? (blockName, blockKind, error, durationMs) => {
           logRuntimeEvent(logger, "error", "[flow-state] nested block failed", {
             ...baseLogContext,
             blockName,
@@ -1635,16 +1702,40 @@ export async function createExecutionContext<
             durationMs,
             error: summarizeForLog(error)
           });
-        },
-        onRouteSelected: (routerName, selectedBlockName) => {
-          logRuntimeEvent(logger, "debug", "[flow-state] router selected route", {
-            ...baseLogContext,
-            routerName,
-            selectedRoute: selectedBlockName
-          });
         }
+      : undefined,
+    onRouteSelected: (routerName, selectedBlockName, routerInstanceId) => {
+      if (logger) {
+        logRuntimeEvent(logger, "debug", "[flow-state] router selected route", {
+          ...baseLogContext,
+          routerName,
+          selectedRoute: selectedBlockName
+        });
       }
-    : undefined;
+
+      // Emit router_decision trace item — fire-and-forget to avoid blocking routing.
+      const itemIndex = emittedItemCount++;
+      const decisionItem: RouterDecisionItem = {
+        id: `item_router_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+        type: "router_decision",
+        status: "completed",
+        trace: true,
+        requestId: requestRef.current.id,
+        itemIndex,
+        provenance: {
+          blockName: routerName,
+          blockInstanceId: routerInstanceId ?? `${routerName}_${requestRef.current.id}`,
+          phase: "main"
+        },
+        ts: Date.now(),
+        routerName,
+        selectedRoute: selectedBlockName
+      };
+      void emissionResponse.emitItemAdded(decisionItem)
+        .then(() => emissionResponse.emitItemDone(decisionItem))
+        .catch(() => { /* trace emission is best-effort */ });
+    }
+  };
 
   const createContext = (
     parentChain: ExecutionParentNode | undefined,
@@ -1903,16 +1994,47 @@ export async function createExecutionContext<
           childEmCtx
         );
 
+        // Expose the block's identity so nested code (e.g. generator tool
+        // output emission) can construct provenance without reaching into
+        // server-internal structures.
+        (childContext as { _blockIdentity?: unknown })._blockIdentity = {
+          blockName: resolvedParent.name,
+          blockInstanceId: resolvedParent.instanceId,
+          parentBlockInstanceId: resolvedParent.parentInstanceId
+        };
+
+        // Capture start time before execution — this is the only trace cost paid
+        // unconditionally. Item construction and emission happen post-execution.
+        const traceStartedAt = Date.now();
+
         try {
           const output = await execute(childContext);
           siblingEntry.result.status = "completed";
           siblingEntry.result.output = output;
           siblingEntry.result.error = undefined;
+
+          // Emit lifecycle trace item for nested blocks only.
+          // Root blocks are traced by executeBlock's emitBlockOutputItem.
+          if (parentChain !== undefined) {
+            emitNestedBlockTrace(
+              resolvedParent, traceStartedAt, "completed",
+              emissionResponse, requestRef, () => emittedItemCount++
+            );
+          }
+
           return output;
         } catch (error) {
           siblingEntry.result.status = "failed";
           siblingEntry.result.error = error instanceof Error ? error : new Error(String(error));
           siblingEntry.result.output = undefined;
+
+          if (parentChain !== undefined) {
+            emitNestedBlockTrace(
+              resolvedParent, traceStartedAt, "failed",
+              emissionResponse, requestRef, () => emittedItemCount++
+            );
+          }
+
           throw error;
         }
       }

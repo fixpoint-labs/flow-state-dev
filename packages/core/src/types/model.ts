@@ -34,7 +34,7 @@ export type GeneratorModelTool = {
   name: string;
   description?: string;
   parameters?: ZodTypeAny;
-  execute?: (args: unknown) => Promise<unknown>;
+  execute?: (args: unknown, options?: { toolCallId?: string }) => Promise<unknown>;
 };
 
 export type GeneratorModelStreamChunk = {

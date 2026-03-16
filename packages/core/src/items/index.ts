@@ -12,6 +12,7 @@ export { isEphemeralContent } from "./content";
 
 export type {
   BlockOutputItem,
+  BlockToolOutputItem,
   ComponentItem,
   ContainerItem,
   ContextItem,
@@ -23,6 +24,7 @@ export type {
   OutputItemBase,
   ReasoningItem,
   ResourceChangeItem,
+  RouterDecisionItem,
   StateChangeItem,
   StatusItem,
   StepErrorItem
