@@ -22,14 +22,21 @@
  *   - Resources   — named, typed state containers (artifacts) scoped to a session
  *   - clientData  — derived client-facing values computed from scope state and resources
  *   - Emission API — blocks emit items explicitly via ctx.emitMessage(), ctx.emitComponent(), etc.
+ *   - Working memory — bounded, salience-scored cognitive workspace via @thought-fabric/core
  */
 import {
+  contextFn,
   defineFlow,
   generator,
   handler,
   router,
   sequencer
 } from "@flow-state-dev/core";
+import {
+  workingMemoryCapture,
+  workingMemoryResources,
+  workingMemoryContextFormatter,
+} from "@thought-fabric/core/memory";
 import { z } from "zod";
 import {
   analyzeInput,
@@ -41,7 +48,7 @@ import {
 } from "./blocks";
 import {
   modeSchema,
-  artifactResourceStateSchema
+  artifactResources,
 } from "./schemas";
 
 const MODEL_ID = "gpt-5-mini";
@@ -111,7 +118,10 @@ const applyRequestedMode = handler({
 const agentGenerator = generator({
   name: "agent-generator",
   userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
-  sessionResourceSchemas: z.object({ artifacts: artifactResourceStateSchema }),
+  sessionResources: {
+    ...artifactResources,
+    ...workingMemoryResources,
+  },
   model: (_input, ctx) => ctx.user?.state.preferredModel ?? MODEL_ID,
 
   prompt: `You are a helpful development assistant. You help users create, read, and manage project artifacts.
@@ -123,6 +133,9 @@ When users ask about existing artifacts, use the read-artifact tool to fetch the
 Be concise and helpful. Never show the artifact id unless specifically asked to do so.`,
 
   context: [
+    // Working memory: injects active memories into the LLM context so it
+    // can reference prior conversation facts, user preferences, and goals.
+    workingMemoryContextFormatter,
     // Dynamic: current artifact list, re-evaluated each tool loop step so
     // the LLM sees artifacts created by earlier tool calls in the same turn.
     (_input, ctx) => {
@@ -156,7 +169,7 @@ Be concise and helpful. Never show the artifact id unless specifically asked to 
   ],
 
   inputSchema: analysisOutputSchema,
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
   user: (input) => input.message,
   tools: [readArtifact, updateArtifact],
   maxIterations: 5,
@@ -215,16 +228,21 @@ const planFallback = handler({
 //   .rescue([...])        — catch errors and route to fallback blocks
 
 const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema })
+  // Working memory capture runs in the background (.work) It extracts key facts, preferences, and goals from the LLM's
+  // output, persists them as salience-scored entries, and advances the decay
+  // clock — all without blocking the response to the user.
+  .work((input) => input.message, workingMemoryCapture({ model: MODEL_ID }))
   .then(applyRequestedMode)
   .then(analyzeInput)
   .thenIf((result) => result.needsContext, formatReport)
-  .then(agentGenerator)
+  .then(agentGenerator)  
   .then(incrementRequestCount)
   .tap(async (output) => {
     console.log(`Chat completed: ${output.slice(0, 50)}...`);
   });
 
 const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
+  .work((input) => input.message, workingMemoryCapture({ model: MODEL_ID }))
   .then(applyRequestedMode)
   .then(analyzeInput)
   .map((result) => ({
@@ -290,7 +308,7 @@ const kitchenSinkFlow = defineFlow({
   actions: {
     run: {
       inputSchema,
-      block: modeRouter,
+      block: modeRouter,      
       userMessage: (input: z.infer<typeof inputSchema>) => input.message
     },
     saveArtifact: {
@@ -307,10 +325,8 @@ const kitchenSinkFlow = defineFlow({
     // They live alongside session state but have their own schemas and can
     // be independently writable.
     resources: {
-      artifacts: {
-        stateSchema: artifactResourceStateSchema,
-        writable: true
-      },
+      ...artifactResources,
+      ...workingMemoryResources,
     },
 
     // clientData entries are derived values computed from scope state and

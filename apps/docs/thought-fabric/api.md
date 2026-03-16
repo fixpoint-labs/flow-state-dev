@@ -103,9 +103,9 @@ Wave 2 placeholders. Not yet implemented.
 import { workingMemoryCapture } from "@thought-fabric/core/memory";
 import { filterRelevance, scoreSalience } from "@thought-fabric/core/attention";
 
-const pipeline = sequencer({ name: "pipeline" })
-  .then(chat)
-  .work(workingMemoryCapture({ model: "gpt-5-mini" }));
+const pipeline = sequencer({ name: "pipeline", inputSchema: chatInput })
+  .work((input) => input.message, workingMemoryCapture({ model: "gpt-5-mini" }))
+  .then(chat);
 
 const filter = filterRelevance({ name: "filter" });
 const salience = scoreSalience({ name: "rank" });

@@ -1,4 +1,4 @@
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
 import type { RequestGroup } from "@/components/workspace/stream-view";
 
 export type TraceNode = {
@@ -13,6 +13,8 @@ export type TraceNode = {
   blockInstanceId?: string;
   blockStatus?: string;
   blockDuration?: number;
+  blockStartedAt?: number;
+  blockCompletedAt?: number;
   item?: OutputItem;
   children: TraceNode[];
   isExpanded: boolean;
@@ -62,8 +64,27 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       });
 
       if (item.type === "block_output") {
-        blockNode.blockKind = blockNode.blockKind ?? inferBlockKind(item);
+        const bo = item as BlockOutputItem;
+        // Prefer explicit blockKind from lifecycle metadata over inference.
+        blockNode.blockKind = blockNode.blockKind ?? bo.blockKind ?? inferBlockKind(item);
+        // Use precise timing from lifecycle items when available.
+        if (bo.startedAt !== undefined) {
+          blockNode.blockStartedAt = bo.startedAt;
+        }
+        if (bo.completedAt !== undefined) {
+          blockNode.blockCompletedAt = bo.completedAt;
+        }
+        if (bo.duration !== undefined) {
+          blockNode.blockDuration = bo.duration;
+        }
         if (item.status === "completed") blockNode.blockStatus = "completed";
+        if (item.status === "failed") blockNode.blockStatus = "failed";
+      }
+      if (item.type === "block_tool_output") {
+        blockNode.blockKind = blockNode.blockKind ?? "generator";
+      }
+      if (item.type === "router_decision") {
+        blockNode.blockKind = blockNode.blockKind ?? "router";
       }
       if (item.type === "error") blockNode.blockStatus = "failed";
     }
@@ -85,8 +106,11 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       }
     }
 
-    const timestamps = group.items.map((i) => i.ts).filter(Boolean);
+    // Fall back to timestamp-based duration when lifecycle metadata is not available.
     for (const blockNode of blockMap.values()) {
+      if (blockNode.blockDuration !== undefined) {
+        continue;
+      }
       const blockItems = group.items.filter(
         (i) => i.provenance?.blockInstanceId === blockNode.blockInstanceId,
       );
@@ -110,6 +134,6 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
 }
 
 function inferBlockKind(item: OutputItem): string | undefined {
-  if (item.type === "block_output" && item.toolCall) return "generator";
+  if (item.type === "block_output" && (item as BlockOutputItem).toolCall) return "generator";
   return undefined;
 }

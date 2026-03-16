@@ -302,6 +302,64 @@ describe("generator builder", () => {
     await expect(block.run({ value: 1 }, ctx)).resolves.toEqual({ ok: true });
     expect(toolCall).not.toHaveBeenCalled();
   });
+
+  it("emits block_tool_output items when a tool executes with toolCallId", async () => {
+    const emittedEvents: Array<{ type: string; item?: Record<string, unknown> }> = [];
+    const tool = handler({
+      name: "lookup-tool",
+      inputSchema: z.object({ query: z.string() }),
+      outputSchema: z.object({ answer: z.string() }),
+      execute: (input) => ({ answer: `result for ${input.query}` })
+    });
+
+    const block = generator({
+      name: "tool-generator",
+      model: "m",
+      prompt: "Use the tool",
+      tools: [tool]
+    });
+
+    let toolExecutionCount = 0;
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          if (toolExecutionCount === 0) {
+            toolExecutionCount++;
+            // Simulate AI SDK calling the tool's execute with toolCallId.
+            const toolDef = (options.tools as any[])?.find(
+              (t: any) => t.name === "lookup-tool"
+            );
+            if (toolDef?.execute) {
+              await toolDef.execute({ query: "test" }, { toolCallId: "call_123" });
+            }
+            return { text: "done" };
+          }
+          return { text: "done" };
+        }
+      }),
+      response: {
+        emit: (event: unknown) => {
+          emittedEvents.push(event as any);
+        },
+        getItems: () => emittedEvents.filter((e: any) => e.item).map((e: any) => e.item)
+      } as any
+    });
+
+    await block.run({ value: "x" }, ctx);
+
+    const toolOutputEvents = emittedEvents.filter(
+      (e) => e.type === "item.added" && e.item?.type === "block_tool_output"
+    );
+    expect(toolOutputEvents.length).toBe(1);
+
+    const toolOutput = toolOutputEvents[0]!.item!;
+    expect(toolOutput.blockName).toBe("lookup-tool");
+    expect(toolOutput.output).toEqual({ answer: "result for test" });
+    expect((toolOutput.toolCall as any).callId).toBe("call_123");
+    expect((toolOutput.toolCall as any).name).toBe("lookup-tool");
+    expect((toolOutput.toolCall as any).generatorBlock).toBe("tool-generator");
+  });
 });
 
 it("supports manually adding unified resource content tools", async () => {

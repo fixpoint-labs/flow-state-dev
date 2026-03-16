@@ -60,7 +60,10 @@ export type Observations = z.infer<typeof observationsSchema>
 /**
  * Generator that uses an LLM to extract memories from input text.
  *
- * Input: a string (the text to analyze).
+ * Input: a string — typically the user's message, since that's where new
+ * facts, preferences, and goals live. The assistant's response rarely
+ * contains novel information worth storing.
+ *
  * Output: structured observations (content, importance, pinned, replaces).
  *
  * This block only *extracts* — it does not persist anything. Pair it with
@@ -85,8 +88,8 @@ export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
       `Extract 0-${maxExtract} items. For each:`,
       '- content: what to remember (be concise)',
       '- importance: 0-1 (goals/constraints: 0.8-1.0, key facts: 0.5-0.8, context: 0.3-0.5)',
-      '- pinned: true only for explicit user goals or critical constraints (default: false)',
-      '- replaces: the exact ID of an existing entry this supersedes (e.g. "wm_abc1"), or omit if not replacing',
+      '- pinned: true only for explicit user goals or critical constraints, false otherwise',
+      '- replaces: the exact ID of an existing entry this supersedes (e.g. "wm_abc1"), or empty string "" if not replacing anything',
       '',
       'Rules:',
       '- Don\'t duplicate what\'s already in working memory',
@@ -252,11 +255,15 @@ export function workingMemoryAdd(config?: WorkingMemoryBlockConfig) {
  * import { workingMemoryCapture } from '@thought-fabric/core/memory'
  *
  * const pipeline = sequencer({ name: 'pipeline', inputSchema: chatInput })
+ *   .work((input) => input.message, workingMemoryCapture({ model: 'gpt-5-mini' }))
  *   .then(chat)
- *   .work(workingMemoryCapture({ model: 'gpt-5-mini' }))
  * ```
  *
- * Input: `z.string()` — the text to extract memories from.
+ * Input: `z.string()` — the user's message (where new facts, preferences,
+ * and goals live). Use a connector function with `.work()` to extract the
+ * message string from your pipeline's input. Place it early in the pipeline
+ * so capture runs in the background while the generator responds.
+ *
  * Runs observe first (LLM extraction), then remember (persists observations),
  * then tick advances the clock and recomputes salience on all entries.
  */

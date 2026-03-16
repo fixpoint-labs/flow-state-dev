@@ -16,6 +16,7 @@
     "@ai-sdk/openai": "^3.0.30",
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
+    "@thought-fabric/core": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
     "@radix-ui/react-use-controllable-state": "^1.2.2",

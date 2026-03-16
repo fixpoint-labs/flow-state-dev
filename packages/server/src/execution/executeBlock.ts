@@ -80,6 +80,7 @@ async function emitBlockOutputItem(
     output: unknown;
     ctx: ExecuteBlockContext;
     metadata: ExecutionMetadata;
+    startedAt: number;
     modelUsage?: GeneratorModelUsageMeta;
   }
 ): Promise<void> {
@@ -87,18 +88,27 @@ async function emitBlockOutputItem(
     return;
   }
 
+  const completedAt = Date.now();
   const itemIndex = getResponseItems(options.ctx.response).length;
+  // Root block_output items carry lifecycle timing and are marked trace: true.
+  // Items with toolCall (generator tool results) are emitted separately and
+  // do NOT pass through this function — they retain their existing LLM audience.
   const item: BlockOutputItem = {
     id: `item_block_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "block_output",
     status: "completed",
+    trace: true,
     transient: options.block.transient || undefined,
     requestId: options.metadata.requestId,
     itemIndex,
     provenance: createBlockOutputProvenance(options.metadata, options.block.name),
-    ts: Date.now(),
+    ts: completedAt,
     blockName: options.block.name,
+    blockKind: options.block.kind,
     output: options.output,
+    startedAt: options.startedAt,
+    completedAt,
+    duration: completedAt - options.startedAt,
     modelUsage: options.modelUsage
   };
 
@@ -364,6 +374,7 @@ export async function executeBlock(
         ...metadata,
         attempt
       },
+      startedAt,
       modelUsage: executionResult.modelUsage
     });
 

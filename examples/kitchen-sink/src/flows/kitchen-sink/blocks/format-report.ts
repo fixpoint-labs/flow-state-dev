@@ -1,7 +1,7 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { analysisOutputSchema } from "./analyze-input";
-import { artifactResourceStateSchema, modeSchema } from "../schemas";
+import { artifactResources, modeSchema } from "../schemas";
 
 // Handler block: enriches analysis output with contextual information.
 // Used conditionally in chatPipeline via .thenIf() — only runs when
@@ -11,14 +11,13 @@ export const formatReport = handler({
   inputSchema: analysisOutputSchema,
   outputSchema: analysisOutputSchema,
   sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
-  sessionResourceSchemas: z.object({ artifacts: artifactResourceStateSchema }),
+  sessionResources: artifactResources,
 
   execute: async (input, ctx) => {
     // Resources are accessed via the scope handle's typed .resources map.
     // Because we declared sessionResourceSchemas above, .get("artifacts")
     // returns a typed ResourceHandle — no manual .parse() needed.
-    const artifactsHandle = ctx.session.resources.get("artifacts");
-
+    const artifactsHandle = ctx.session.resources.artifacts;
     return {
       ...input,
       instructions:

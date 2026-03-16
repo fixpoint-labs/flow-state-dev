@@ -78,7 +78,7 @@ export type SessionView = {
   sendAction: (
     action: string,
     input: unknown,
-    options?: { metadata?: Record<string, unknown> }
+    options?: { metadata?: Record<string, unknown>; userMessage?: string }
   ) => Promise<ExecuteActionResponse>;
   refresh: () => Promise<void>;
 };
@@ -449,8 +449,26 @@ export function useSession(
     }
   }, [sessionId, sessionClient, itemConfig.enabled, itemConfig.itemTypes, applySnapshot]);
 
+  // Debounced snapshot refresh: batches multiple rapid resource_change events
+  // (e.g., working memory + artifact writes in the same request) into a single
+  // refresh call. Fires 300ms after the last trigger.
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleRefreshSnapshot = useCallback(() => {
+    if (refreshTimerRef.current !== null) {
+      clearTimeout(refreshTimerRef.current);
+    }
+    refreshTimerRef.current = setTimeout(() => {
+      refreshTimerRef.current = null;
+      void refreshSnapshot();
+    }, 300);
+  }, [refreshSnapshot]);
+
   useEffect(() => {
     if (sessionId === undefined) {
+      if (refreshTimerRef.current !== null) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
       itemsByIdRef.current = new Map();
       sortedItemIdsRef.current = [];
       deltaQueueRef.current.clear();
@@ -512,7 +530,7 @@ export function useSession(
     async (
       action: string,
       input: unknown,
-      actionOptions?: { metadata?: Record<string, unknown> }
+      actionOptions?: { metadata?: Record<string, unknown>; userMessage?: string }
     ): Promise<ExecuteActionResponse> => {
       if (sessionId === undefined) {
         throw new Error("useSession.sendAction requires a sessionId");
@@ -526,6 +544,32 @@ export function useSession(
       setError(null);
 
       const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+      // Optimistic user message: inject immediately so the user sees their own
+      // message without waiting for the server round-trip. The server will emit
+      // the real user message item via SSE, which replaces this optimistic one.
+      if (actionOptions?.userMessage !== undefined && itemConfig.enabled) {
+        const optimisticId = `item_msg_optimistic_${requestId}`;
+        const optimisticItem: OutputItem = {
+          id: optimisticId,
+          type: "message",
+          role: "user",
+          status: "completed",
+          transient: false,
+          requestId,
+          itemIndex: -1,
+          provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
+          ts: Date.now(),
+          content: [{ type: "output_text", text: actionOptions.userMessage }]
+        } as OutputItem;
+
+        itemsByIdRef.current.set(optimisticId, optimisticItem);
+        const ordered = sortItemsChronologically([
+          ...itemsByIdRef.current.values()
+        ]);
+        sortedItemIdsRef.current = ordered.map((item) => item.id);
+        setItems(ordered);
+      }
 
       try {
         const postPromise = client.sendAction(action, input, {
@@ -549,6 +593,16 @@ export function useSession(
                 return;
               }
 
+              // When the real server user message arrives, remove the optimistic
+              // placeholder so we don't show duplicates.
+              const serverItem = event.item as OutputItem & { role?: string };
+              if (serverItem.type === "message" && serverItem.role === "user") {
+                const optimisticId = `item_msg_optimistic_${requestId}`;
+                if (itemsByIdRef.current.has(optimisticId)) {
+                  itemsByIdRef.current.delete(optimisticId);
+                }
+              }
+
               const existing = itemsByIdRef.current.get(event.item.id);
               const isNewItem = existing === undefined;
               const orderChanged =
@@ -567,7 +621,7 @@ export function useSession(
               }
 
               if (event.item.type === "resource_change") {
-                void refreshSnapshot();
+                scheduleRefreshSnapshot();
               }
             },
             onItemDone: (event) => {
@@ -672,6 +726,7 @@ export function useSession(
       resolvedFlowKind,
       baseUrl,
       refreshSnapshot,
+      scheduleRefreshSnapshot,
       scheduleContentFlush,
       flushContentDeltas
     ]

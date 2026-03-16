@@ -52,6 +52,7 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
 
   const hasState = snapshot.state && Object.values(snapshot.state).some((v) => v && Object.keys(v).length > 0);
   const hasClientData = snapshot.clientData && Object.values(snapshot.clientData).some((v) => v && Object.keys(v).length > 0);
+  const hasResources = snapshot.resources && Object.values(snapshot.resources).some((v) => v && Object.keys(v).length > 0);
 
   return (
     <div className="space-y-2 text-xs">
@@ -65,7 +66,7 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
         </div>
       </div>
 
-      {!hasState && !hasClientData && (
+      {!hasState && !hasClientData && !hasResources && (
         <EmptyState message="Session state is empty. Execute an action to populate state." />
       )}
 
@@ -96,6 +97,20 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
           )}
           {snapshot.clientData.project && Object.keys(snapshot.clientData.project).length > 0 && (
             <ScopeBlock label="Project" data={snapshot.clientData.project} />
+          )}
+        </CollapsibleSection>
+      )}
+
+      {hasResources && (
+        <CollapsibleSection title="Resources" defaultOpen>
+          {snapshot.resources!.session && Object.keys(snapshot.resources!.session).length > 0 && (
+            <ScopeBlock label="Session Scope" data={snapshot.resources!.session} />
+          )}
+          {snapshot.resources!.user && Object.keys(snapshot.resources!.user).length > 0 && (
+            <ScopeBlock label="User Scope" data={snapshot.resources!.user} />
+          )}
+          {snapshot.resources!.project && Object.keys(snapshot.resources!.project).length > 0 && (
+            <ScopeBlock label="Project Scope" data={snapshot.resources!.project} />
           )}
         </CollapsibleSection>
       )}

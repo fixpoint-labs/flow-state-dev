@@ -1,3 +1,4 @@
+import { defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
 
 // Shared domain schemas for the kitchen-sink flow.
@@ -19,3 +20,15 @@ export const artifactResourceStateSchema = z.object({
   byId: z.record(z.string(), artifactSchema).default({}),
   order: z.array(z.string()).default([])
 });
+
+// Defined resource for artifacts. Blocks reference this directly via
+// sessionResources instead of repeating the schema with sessionResourceSchemas.
+export const artifactResource = defineResource({
+  stateSchema: artifactResourceStateSchema,
+  default: { byId: {}, order: [] },
+  writable: true,
+});
+
+export const artifactResources = {
+  artifacts: artifactResource,
+}
