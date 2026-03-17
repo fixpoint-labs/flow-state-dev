@@ -205,9 +205,11 @@ const { sessions, activeSessionId, createSession, selectSession } = useFlow();
 **`useSession`** — Primary hook for session data and actions:
 
 ```tsx
-const { detail, items, isStreaming, sendAction, refresh } = useSession(sessionId);
+const { detail, items, isStreaming, isFinishing, sendAction, refresh } = useSession(sessionId);
 
 await sendAction("chat", { message: "Hello!" });
+// isFinishing: true when main chain is done but background .work() tasks are still running.
+// Use (isStreaming && !isFinishing) to block UI only during main chain execution.
 ```
 
 **`useClientData`** — Scope-grouped client data subscriptions:
