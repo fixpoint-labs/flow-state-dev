@@ -19,6 +19,8 @@ import { ContainerItemView } from "./container-item";
 import { ContextItemView } from "./context-item";
 import { StateChangeItemView } from "./state-change-item";
 import { ResourceChangeItemView } from "./resource-change-item";
+import { BlockToolOutputItemView } from "./block-tool-output-item";
+import { RouterDecisionItemView } from "./router-decision-item";
 import { useDebug } from "@/context/debug-context";
 import { useSelection } from "@/context/selection-context";
 import { DebugOverlay } from "./debug-overlay";
@@ -142,6 +144,10 @@ function ItemContent({ item }: { item: OutputItem }) {
       return <StateChangeItemView item={item} />;
     case "resource_change":
       return <ResourceChangeItemView item={item} />;
+    case "block_tool_output":
+      return <BlockToolOutputItemView item={item} />;
+    case "router_decision":
+      return <RouterDecisionItemView item={item} />;
     default:
       return <div className="text-xs text-slate-500">Unknown item type: {(item as OutputItem).type}</div>;
   }

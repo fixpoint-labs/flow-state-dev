@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { ChevronDown, ChevronRight, Clock, Minus, Inbox } from "lucide-react";
 import type { TraceNode } from "@/lib/trace-tree";
@@ -18,6 +18,29 @@ type TraceViewProps = {
 export function TraceView({ requestGroups }: TraceViewProps) {
   const tree = useMemo(() => buildTraceTree(requestGroups), [requestGroups]);
   const [expandState, setExpandState] = useState<Record<string, boolean>>({});
+  const prevLastIdRef = useRef<string | null>(null);
+
+  // Auto-expand new nodes in the latest request when it changes.
+  useEffect(() => {
+    if (tree.length === 0) return;
+    const lastNode = tree[tree.length - 1];
+    if (lastNode.id === prevLastIdRef.current) return;
+    prevLastIdRef.current = lastNode.id;
+
+    // Expand the latest request and all its block children.
+    const autoExpand: Record<string, boolean> = { [lastNode.id]: true };
+    const expandChildren = (node: TraceNode) => {
+      for (const child of node.children) {
+        if (child.type === "block") {
+          autoExpand[child.id] = true;
+          expandChildren(child);
+        }
+      }
+    };
+    expandChildren(lastNode);
+
+    setExpandState((prev) => ({ ...prev, ...autoExpand }));
+  }, [tree]);
 
   const toggleNode = useCallback((nodeId: string) => {
     setExpandState((prev) => ({ ...prev, [nodeId]: !prev[nodeId] }));
@@ -91,12 +114,24 @@ function TraceNodeView({
   }
 
   if (node.type === "block") {
+    const isBlockSelected = node.traceItem ? selectedItemId === node.traceItem.id : false;
+
+    const handleBlockClick = () => {
+      toggleNode(node.id);
+      if (node.traceItem) {
+        selectItem(node.traceItem.id, node.traceItem);
+      }
+    };
+
     return (
       <div>
         <button
-          className="flex w-full items-center gap-1.5 py-1 text-left hover:bg-slate-800/30"
+          className={cn(
+            "flex w-full items-center gap-1.5 py-1 text-left hover:bg-slate-800/30",
+            isBlockSelected && "bg-slate-800/50 border-l-2 border-green-500",
+          )}
           style={{ paddingLeft: `${depth * 16 + 12}px` }}
-          onClick={() => toggleNode(node.id)}
+          onClick={handleBlockClick}
         >
           {hasChildren &&
             (isExpanded ? <ChevronDown className="h-3 w-3 text-slate-500" /> : <ChevronRight className="h-3 w-3 text-slate-500" />)}
@@ -167,6 +202,8 @@ function getItemIcon(type: string): string {
     context: "👁",
     state_change: "Δ",
     resource_change: "📄",
+    block_tool_output: "{}",
+    router_decision: "🔀",
   };
   return icons[type] ?? "?";
 }
@@ -203,6 +240,10 @@ function getItemPreview(item: OutputItem): string {
       return `${item.scope}.${item.path ?? ""} ${item.operation}`;
     case "resource_change":
       return `${item.resourcePath} ${item.changeType}`;
+    case "block_tool_output":
+      return `${item.toolCall.name}(${item.toolCall.arguments.slice(0, 40)})`;
+    case "router_decision":
+      return `${item.routerName} → ${item.selectedRoute}`;
     default:
       return "";
   }

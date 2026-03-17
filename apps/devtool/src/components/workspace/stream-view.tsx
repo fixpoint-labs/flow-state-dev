@@ -38,33 +38,43 @@ export function StreamView({
   onReconnect,
 }: StreamViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const lastScrollRef = useRef(0);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const userScrolledUpRef = useRef(false);
 
-  // Throttle scrollIntoView to at most once per 200ms during streaming
-  useEffect(() => {
-    if (streamStatus === "streaming") {
-      const now = Date.now();
-      if (now - lastScrollRef.current >= 200) {
-        lastScrollRef.current = now;
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-      }
-    }
-  }, [requestGroups, streamStatus]);
-
-  // Pre-compute sequence numbers from indices instead of mutating during render
-  const sequenceMap = useMemo(() => {
+  // Pre-compute filtered items (exclude trace-only items) and sequence numbers
+  const { filteredGroups, sequenceMap } = useMemo(() => {
     const map = new Map<string, number>();
     let seq = 0;
-    for (const group of requestGroups) {
-      for (const item of group.items) {
+    const groups = requestGroups.map((group) => {
+      const items = group.items.filter((item) => !item.trace);
+      for (const item of items) {
         seq++;
         map.set(item.id, seq);
       }
-    }
-    return map;
+      return { ...group, items };
+    });
+    return { filteredGroups: groups, sequenceMap: map };
   }, [requestGroups]);
 
-  if (requestGroups.length === 0) {
+  // Track if user has scrolled away from the bottom.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const handleScroll = () => {
+      const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+      userScrolledUpRef.current = !atBottom;
+    };
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Auto-scroll to bottom when items change, unless user scrolled up.
+  useEffect(() => {
+    if (userScrolledUpRef.current) return;
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [filteredGroups]);
+
+  if (filteredGroups.length === 0) {
     return (
       <EmptyState
         icon={<Inbox className="h-8 w-8" />}
@@ -75,9 +85,9 @@ export function StreamView({
   }
 
   return (
-    <div className="flex flex-col gap-0 overflow-auto h-full">
-      {requestGroups.map((group, groupIndex) => {
-        const isLast = groupIndex === requestGroups.length - 1;
+    <div ref={scrollContainerRef} className="flex flex-col gap-0 overflow-auto h-full">
+      {filteredGroups.map((group, groupIndex) => {
+        const isLast = groupIndex === filteredGroups.length - 1;
         return (
           <div key={group.requestId}>
             <RequestSeparator

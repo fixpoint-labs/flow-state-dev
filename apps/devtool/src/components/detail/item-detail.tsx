@@ -100,6 +100,10 @@ function ItemTypeDetail({ item }: { item: OutputItem }) {
       return <ContextDetail item={item} />;
     case "status":
       return <StatusDetail item={item} />;
+    case "block_tool_output":
+      return <BlockToolOutputDetail item={item} />;
+    case "router_decision":
+      return <RouterDecisionDetail item={item} />;
     default:
       return <JsonViewer data={item} />;
   }
@@ -261,6 +265,34 @@ function StatusDetail({ item }: { item: OutputItem & { type: "status" } }) {
   );
 }
 
+function BlockToolOutputDetail({ item }: { item: OutputItem & { type: "block_tool_output" } }) {
+  return (
+    <div className="space-y-2">
+      <MetadataRow label="Block" value={item.blockName} mono />
+      <MetadataRow label="Tool" value={item.toolCall.name} mono />
+      <MetadataRow label="Call ID" value={item.toolCall.callId} mono />
+      <MetadataRow label="Generator" value={item.toolCall.generatorBlock} />
+      <CollapsibleSection title="Arguments" defaultOpen>
+        <JsonViewer data={safeParseJson(item.toolCall.arguments)} />
+      </CollapsibleSection>
+      {item.output !== undefined && (
+        <CollapsibleSection title="Output" defaultOpen>
+          <JsonViewer data={item.output} />
+        </CollapsibleSection>
+      )}
+    </div>
+  );
+}
+
+function RouterDecisionDetail({ item }: { item: OutputItem & { type: "router_decision" } }) {
+  return (
+    <div className="space-y-1">
+      <MetadataRow label="Router" value={item.routerName} mono />
+      <MetadataRow label="Selected Route" value={item.selectedRoute} />
+    </div>
+  );
+}
+
 /* --- Shared components --- */
 
 function TypePill({ type }: { type: string }) {
@@ -276,6 +308,8 @@ function TypePill({ type }: { type: string }) {
     state_change: "text-amber-500 border-amber-800/50",
     resource_change: "text-blue-500 border-blue-800/50",
     status: "text-slate-500 border-slate-700",
+    block_tool_output: "text-purple-400 border-purple-800/50",
+    router_decision: "text-orange-400 border-orange-800/50",
   };
   return (
     <span className={`text-[10px] font-mono px-1.5 py-0 rounded border ${colors[type] ?? "text-slate-500 border-slate-700"}`}>
