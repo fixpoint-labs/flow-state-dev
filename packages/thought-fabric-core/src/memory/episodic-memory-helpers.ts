@@ -1,17 +1,8 @@
 import type { ResourceContext } from '@flow-state-dev/core'
 import type { Episode, EpisodicMemoryState } from './episodic-memory.js'
+import { shortId } from '../helpers.js'
 
 type EpRef = ResourceContext<EpisodicMemoryState>
-
-/** Generate a short random ID for episodes. */
-function shortId(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  let id = ''
-  for (let i = 0; i < 6; i++) {
-    id += chars[Math.floor(Math.random() * chars.length)]
-  }
-  return id
-}
 
 /**
  * Input for encoding a new episode — ID, encodedAt, and consolidated
@@ -34,7 +25,7 @@ export async function encode(
 ): Promise<Episode> {
   const newEpisode: Episode = {
     ...episode,
-    id: `ep_${shortId()}`,
+    id: `ep_${shortId(6)}`,
     encodedAt: new Date().toISOString(),
     consolidated: false,
   }

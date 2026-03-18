@@ -1,7 +1,6 @@
 import { generator, handler, sequencer } from '@flow-state-dev/core'
-import type { ResourceContext } from '@flow-state-dev/core'
 import { z } from 'zod'
-import { workingMemoryResource, type WorkingMemoryState } from './working-memory.js'
+import { workingMemoryResource } from './working-memory.js'
 import type { WorkingMemoryHelperConfig } from './working-memory-helpers.js'
 import {
   add,
@@ -11,10 +10,8 @@ import {
   items as wmItems,
   pin,
 } from './working-memory-helpers.js'
-import type { EpisodicMemoryState } from './episodic-memory.js'
 import { createEpisodicMemoryResource } from './episodic-memory.js'
 import { encode, recent } from './episodic-memory-helpers.js'
-import type { MemorySystemState } from './memory-system.js'
 import { memorySystemResource } from './memory-system.js'
 
 // ---------------------------------------------------------------------------
@@ -53,14 +50,6 @@ export const unifiedObservationsSchema = z.object({
 export type UnifiedObservations = z.infer<typeof unifiedObservationsSchema>
 
 // ---------------------------------------------------------------------------
-// Internal type aliases
-// ---------------------------------------------------------------------------
-
-type WmRef = ResourceContext<WorkingMemoryState>
-type SysRef = ResourceContext<MemorySystemState>
-type EpRef = ResourceContext<EpisodicMemoryState>
-
-// ---------------------------------------------------------------------------
 // Block factories
 // ---------------------------------------------------------------------------
 
@@ -75,21 +64,106 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     ? createEpisodicMemoryResource(config.episodic.scope)
     : undefined)
 
-  // Build resource declarations
-  const sessionResources: Record<string, any> = {
+  const sessionResources = {
     workingMemory: workingMemoryResource,
     memorySystem: memorySystemResource,
   }
 
-  const userResources: Record<string, any> | undefined =
-    config.episodic?.scope === 'user' && episodicResource
-      ? { episodicMemory: episodicResource }
-      : undefined
+  const observePrompt = [
+    'You are a memory system for a cognitive AI agent.',
+    'Analyze the conversation items below and extract information worth remembering.',
+    '',
+    'For each item, classify:',
+    '- content: concise statement of what to remember',
+    '- importance: 0-1 (goals/constraints: 0.8-1.0, key facts: 0.5-0.8, context: 0.3-0.5, trivial: 0.1-0.3)',
+    '- durability: how long this should persist:',
+    '  * transient: only relevant to current turn',
+    '  * session: relevant for this session only',
+    '  * persistent: should be remembered across sessions (e.g., user preferences, important facts)',
+    '  * permanent: fundamental facts that never change (e.g., user\'s name, core identity facts)',
+    '- category: fact | event | preference | task | relationship',
+    '- replaces: exact ID of an existing working memory entry this supersedes, or empty string',
+    '',
+    'Rules:',
+    '- Don\'t duplicate what\'s already in memory',
+    '- When information is updated, use replaces to supersede the old entry',
+    '- Prefer fewer, higher-quality memories over many low-quality ones',
+    '- Return empty items array if nothing new is worth storing',
+  ].join('\n')
 
-  const projectResources: Record<string, any> | undefined =
-    config.episodic?.scope === 'project' && episodicResource
-      ? { episodicMemory: episodicResource }
-      : undefined
+  // Context function reads from session items using the watermark.
+  // Uses `any` ctx since the generator context slot signature is (input, ctx) => unknown
+  // and the context arg type is a structural subset, not the full BlockContext.
+  function buildContext(_input: unknown, ctx: any): string {
+    const sysRef = ctx.session.resources.memorySystem
+    const sysState = sysRef.state
+
+    // Get items from session
+    let newItemsText: string
+    if (config.source) {
+      newItemsText = config.source(_input, ctx)
+      if (!newItemsText) return '__SKIP__'
+    } else {
+      const allItems = ctx.session?.items?.all?.() ?? []
+      const newItems = allItems.filter((_item: any, idx: number) => idx > sysState.lastProcessedIndex)
+      if (newItems.length === 0) return '__SKIP__'
+      newItemsText = newItems
+        .map((item: any) => `[${item.type ?? item.role ?? 'unknown'}] ${typeof item.content === 'string' ? item.content : JSON.stringify(item.payload ?? item.content ?? item)}`)
+        .join('\n')
+    }
+
+    // Current working memory for dedup context
+    const wmRef = ctx.session.resources.workingMemory
+    const wmContext = formatForObserveContext(wmRef)
+
+    // Episodic context for dedup (if installed)
+    let episodicContext = ''
+    try {
+      const epRef = config.episodic?.scope === 'user'
+        ? ctx.user?.resources?.episodicMemory
+        : ctx.project?.resources?.episodicMemory
+      if (epRef) {
+        const recentEps = recent(epRef, 5)
+        if (recentEps.length > 0) {
+          episodicContext = '\n\nRecent episodic memories:\n' +
+            recentEps.map((e: any) => `- ${e.content}`).join('\n')
+        }
+      }
+    } catch { /* episodic not installed — skip */ }
+
+    return `New items to analyze:\n${newItemsText}\n\nCurrent working memory:\n${wmContext || '(empty)'}${episodicContext}`
+  }
+
+  // Build the generator with typed sessionResources and conditional episodic scope
+  if (config.episodic?.scope === 'user' && episodicResource) {
+    return generator({
+      name: config.name ? `${config.name}/observe` : 'tf.memory/observe',
+      model: config.model,
+      inputSchema: z.any(),
+      outputSchema: unifiedObservationsSchema,
+      sessionResources,
+      userResources: { episodicMemory: episodicResource },
+      prompt: observePrompt,
+      context: buildContext,
+      user: (_input: unknown) => 'Analyze the items in context and extract memories.',
+      emit: false as any,
+    })
+  }
+
+  if (config.episodic?.scope === 'project' && episodicResource) {
+    return generator({
+      name: config.name ? `${config.name}/observe` : 'tf.memory/observe',
+      model: config.model,
+      inputSchema: z.any(),
+      outputSchema: unifiedObservationsSchema,
+      sessionResources,
+      projectResources: { episodicMemory: episodicResource },
+      prompt: observePrompt,
+      context: buildContext,
+      user: (_input: unknown) => 'Analyze the items in context and extract memories.',
+      emit: false as any,
+    })
+  }
 
   return generator({
     name: config.name ? `${config.name}/observe` : 'tf.memory/observe',
@@ -97,71 +171,10 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     inputSchema: z.any(),
     outputSchema: unifiedObservationsSchema,
     sessionResources,
-    ...(userResources ? { userResources } : {}),
-    ...(projectResources ? { projectResources } : {}),
-    prompt: [
-      'You are a memory system for a cognitive AI agent.',
-      'Analyze the conversation items below and extract information worth remembering.',
-      '',
-      'For each item, classify:',
-      '- content: concise statement of what to remember',
-      '- importance: 0-1 (goals/constraints: 0.8-1.0, key facts: 0.5-0.8, context: 0.3-0.5, trivial: 0.1-0.3)',
-      '- durability: how long this should persist:',
-      '  * transient: only relevant to current turn',
-      '  * session: relevant for this session only',
-      '  * persistent: should be remembered across sessions (e.g., user preferences, important facts)',
-      '  * permanent: fundamental facts that never change (e.g., user\'s name, core identity facts)',
-      '- category: fact | event | preference | task | relationship',
-      '- replaces: exact ID of an existing working memory entry this supersedes, or empty string',
-      '',
-      'Rules:',
-      '- Don\'t duplicate what\'s already in memory',
-      '- When information is updated, use replaces to supersede the old entry',
-      '- Prefer fewer, higher-quality memories over many low-quality ones',
-      '- Return empty items array if nothing new is worth storing',
-    ].join('\n'),
-    context: (_input: unknown, ctx: any) => {
-      // Read watermark from memory system resource
-      const sysRef = ctx.session.resources.get('memorySystem') as SysRef
-      const sysState = sysRef.state
-
-      // Get items from session
-      let newItemsText: string
-      if (config.source) {
-        newItemsText = config.source(_input, ctx)
-        if (!newItemsText) return '__SKIP__'
-      } else {
-        const allItems = ctx.session?.items?.all?.() ?? []
-        const newItems = allItems.filter((_item: any, idx: number) => idx > sysState.lastProcessedIndex)
-        if (newItems.length === 0) return '__SKIP__'
-        newItemsText = newItems
-          .map((item: any) => `[${item.type ?? item.role ?? 'unknown'}] ${typeof item.content === 'string' ? item.content : JSON.stringify(item.payload ?? item.content ?? item)}`)
-          .join('\n')
-      }
-
-      // Current working memory for dedup context
-      const wmRef = ctx.session.resources.get('workingMemory') as WmRef
-      const wmContext = formatForObserveContext(wmRef)
-
-      // Episodic context for dedup (if installed)
-      let episodicContext = ''
-      try {
-        const epRef = (config.episodic?.scope === 'user'
-          ? ctx.user?.resources?.get?.('episodicMemory')
-          : ctx.project?.resources?.get?.('episodicMemory')) as EpRef | undefined
-        if (epRef) {
-          const recentEps = recent(epRef, 5)
-          if (recentEps.length > 0) {
-            episodicContext = '\n\nRecent episodic memories:\n' +
-              recentEps.map((e) => `- ${e.content}`).join('\n')
-          }
-        }
-      } catch { /* episodic not installed — skip */ }
-
-      return `New items to analyze:\n${newItemsText}\n\nCurrent working memory:\n${wmContext || '(empty)'}${episodicContext}`
-    },
+    prompt: observePrompt,
+    context: buildContext,
     user: (_input: unknown) => 'Analyze the items in context and extract memories.',
-    emit: { messages: false, reasoning: false, toolCalls: false },
+    emit: false as any,
   })
 }
 
@@ -177,20 +190,10 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
     ? createEpisodicMemoryResource(config.episodic.scope)
     : undefined)
 
-  const sessionResources: Record<string, any> = {
+  const sessionResources = {
     workingMemory: workingMemoryResource,
     memorySystem: memorySystemResource,
   }
-
-  const userResources: Record<string, any> | undefined =
-    config.episodic?.scope === 'user' && episodicResource
-      ? { episodicMemory: episodicResource }
-      : undefined
-
-  const projectResources: Record<string, any> | undefined =
-    config.episodic?.scope === 'project' && episodicResource
-      ? { episodicMemory: episodicResource }
-      : undefined
 
   const helperConfig: WorkingMemoryHelperConfig = {
     capacity: config.working.capacity,
@@ -198,90 +201,112 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
     decay: config.working.decay,
   }
 
+  // Shared execute logic — extracted to avoid duplication across scope variants
+  async function executeReflect(input: UnifiedObservations, ctx: any) {
+    const wmRef = ctx.session.resources.workingMemory
+    const sysRef = ctx.session.resources.memorySystem
+
+    // Get episodic ref if available
+    let epRef: any = undefined
+    try {
+      epRef = config.episodic?.scope === 'user'
+        ? ctx.user?.resources?.episodicMemory
+        : ctx.project?.resources?.episodicMemory
+    } catch { /* not installed */ }
+
+    let episodicWrites = 0
+    let evictedPersistent = 0
+
+    for (const item of input.items) {
+      try {
+        // Handle superseded entries
+        if (item.replaces) {
+          const existingEntries = wmItems(wmRef)
+          const evictedEntry = existingEntries.find((e) => e.id === item.replaces)
+          if (evictedEntry && (evictedEntry.durability === 'persistent' || evictedEntry.durability === 'permanent')) {
+            evictedPersistent++
+          }
+          await evict(wmRef, item.replaces)
+        }
+
+        // Add to working memory (all durabilities)
+        const entry = await add(wmRef, {
+          content: item.content,
+          importance: item.importance,
+          pinned: false,
+          durability: item.durability,
+          category: item.category,
+        }, helperConfig)
+
+        // Auto-pin high-importance items
+        if (item.importance >= 0.85) {
+          await pin(wmRef, entry.id, helperConfig)
+        }
+
+        // Route to episodic memory if applicable
+        if (
+          epRef &&
+          config.episodic &&
+          (item.durability === 'persistent' || item.durability === 'permanent') &&
+          item.importance >= config.episodic.significanceThreshold
+        ) {
+          await encode(epRef, {
+            content: item.content,
+            occurredAtTurn: wmRef.state.currentTurn,
+            significance: item.importance,
+            category: item.category,
+            context: {
+              sessionId: ctx.session?.instanceId ?? 'unknown',
+              precedingTopic: undefined,
+            },
+          }, config.episodic.maxEpisodes)
+          episodicWrites++
+        }
+      } catch (err) {
+        console.warn('[tf.memory] Failed to persist memory item:', (err as Error).message ?? err)
+      }
+    }
+
+    // Update tracking counters
+    const allItems = ctx.session?.items?.all?.() ?? []
+    await sysRef.updateState((s: any) => ({
+      ...s,
+      lastProcessedIndex: allItems.length > 0 ? allItems.length - 1 : s.lastProcessedIndex,
+      episodicWritesSinceLastConsolidation: s.episodicWritesSinceLastConsolidation + episodicWrites,
+      evictedPersistentSinceLastConsolidation: s.evictedPersistentSinceLastConsolidation + evictedPersistent,
+    }))
+
+    return { episodicWrites, evictedPersistent }
+  }
+
+  if (config.episodic?.scope === 'user' && episodicResource) {
+    return handler({
+      name: config.name ? `${config.name}/reflect` : 'tf.memory/reflect',
+      inputSchema: unifiedObservationsSchema,
+      outputSchema: z.any(),
+      sessionResources,
+      userResources: { episodicMemory: episodicResource },
+      execute: executeReflect,
+    })
+  }
+
+  if (config.episodic?.scope === 'project' && episodicResource) {
+    return handler({
+      name: config.name ? `${config.name}/reflect` : 'tf.memory/reflect',
+      inputSchema: unifiedObservationsSchema,
+      outputSchema: z.any(),
+      sessionResources,
+      projectResources: { episodicMemory: episodicResource },
+      execute: executeReflect,
+    })
+  }
+
   return handler({
     name: config.name ? `${config.name}/reflect` : 'tf.memory/reflect',
     inputSchema: unifiedObservationsSchema,
     outputSchema: z.any(),
     sessionResources,
-    ...(userResources ? { userResources } : {}),
-    ...(projectResources ? { projectResources } : {}),
-    execute: async (input, ctx) => {
-      const wmRef = (ctx as any).session.resources.get('workingMemory') as WmRef
-      const sysRef = (ctx as any).session.resources.get('memorySystem') as SysRef
-
-      // Get episodic ref if available
-      let epRef: EpRef | undefined = undefined
-      try {
-        epRef = (config.episodic?.scope === 'user'
-          ? (ctx as any).user?.resources?.get?.('episodicMemory')
-          : (ctx as any).project?.resources?.get?.('episodicMemory')) as EpRef | undefined
-      } catch { /* not installed */ }
-
-      let episodicWrites = 0
-      let evictedPersistent = 0
-
-      for (const item of input.items) {
-        try {
-          // Handle superseded entries
-          if (item.replaces) {
-            // Check if the evicted entry was persistent/permanent
-            const existingEntries = wmItems(wmRef)
-            const evictedEntry = existingEntries.find((e) => e.id === item.replaces)
-            if (evictedEntry && (evictedEntry.durability === 'persistent' || evictedEntry.durability === 'permanent')) {
-              evictedPersistent++
-            }
-            await evict(wmRef, item.replaces)
-          }
-
-          // Add to working memory (all durabilities)
-          const entry = await add(wmRef, {
-            content: item.content,
-            importance: item.importance,
-            pinned: false,
-            durability: item.durability,
-            category: item.category,
-          }, helperConfig)
-
-          // Auto-pin high-importance items
-          if (item.importance >= 0.85) {
-            await pin(wmRef, entry.id, helperConfig)
-          }
-
-          // Route to episodic memory if applicable
-          if (
-            epRef &&
-            config.episodic &&
-            (item.durability === 'persistent' || item.durability === 'permanent') &&
-            item.importance >= config.episodic.significanceThreshold
-          ) {
-            await encode(epRef, {
-              content: item.content,
-              occurredAtTurn: wmRef.state.currentTurn,
-              significance: item.importance,
-              category: item.category,
-              context: {
-                sessionId: (ctx as any).session?.instanceId ?? 'unknown',
-                precedingTopic: undefined,
-              },
-            }, config.episodic.maxEpisodes)
-            episodicWrites++
-          }
-        } catch (_err) {
-          // Skip failed items — partial persistence preferred
-        }
-      }
-
-      // Update tracking counters
-      const allItems = (ctx as any).session?.items?.all?.() ?? []
-      await sysRef.updateState((s) => ({
-        ...s,
-        lastProcessedIndex: allItems.length > 0 ? allItems.length - 1 : s.lastProcessedIndex,
-        episodicWritesSinceLastConsolidation: s.episodicWritesSinceLastConsolidation + episodicWrites,
-        evictedPersistentSinceLastConsolidation: s.evictedPersistentSinceLastConsolidation + evictedPersistent,
-      }))
-
-      return { episodicWrites, evictedPersistent }
-    },
+    execute: executeReflect,
   })
 }
 
@@ -305,8 +330,8 @@ export function memorySystemTick(config: MemorySystemBlocksConfig) {
       memorySystem: memorySystemResource,
     },
     execute: async (_input, ctx) => {
-      const wmRef = ctx.session.resources.get('workingMemory')
-      const sysRef = ctx.session.resources.get('memorySystem')
+      const wmRef = ctx.session.resources.workingMemory
+      const sysRef = ctx.session.resources.memorySystem
 
       // Advance working memory turn counter and recompute salience
       await advance(wmRef, helperConfig)

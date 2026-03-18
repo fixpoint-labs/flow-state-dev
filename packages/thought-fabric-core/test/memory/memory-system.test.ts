@@ -93,6 +93,18 @@ function createMockEpRef(
   } as ResourceHandle<EpisodicMemoryState>
 }
 
+/**
+ * Create a mock resource registry that supports both property access
+ * (ctx.session.resources.workingMemory) and .get() method.
+ */
+function createMockResources(refs: Record<string, any>) {
+  return {
+    ...refs,
+    get: (name: string) => refs[name],
+    list: () => Object.values(refs),
+  }
+}
+
 function makeEpisode(overrides: Partial<Episode> & { id: string }): Episode {
   return {
     content: `episode ${overrides.id}`,
@@ -343,7 +355,7 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true })
       const ctx = {
-        session: { resources: { get: (name: string) => name === 'workingMemory' ? wmRef : undefined } },
+        session: { resources: createMockResources({ workingMemory: wmRef }) },
       }
 
       const result = mem.recall(ctx)
@@ -357,7 +369,7 @@ describe('memory/memorySystem', () => {
       const wmRef = createMockWmRef()
       const mem = system({ model: 'gpt-5-mini', working: true })
       const ctx = {
-        session: { resources: { get: () => wmRef } },
+        session: { resources: createMockResources({ workingMemory: wmRef }) },
       }
 
       const result = mem.recall(ctx)
@@ -374,8 +386,8 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true, episodic: true })
       const ctx = {
-        session: { resources: { get: () => wmRef } },
-        user: { resources: { get: () => epRef } },
+        session: { resources: createMockResources({ workingMemory: wmRef }) },
+        user: { resources: createMockResources({ episodicMemory: epRef }) },
       }
 
       const result = mem.recall(ctx)
@@ -398,8 +410,8 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true, episodic: true })
       const ctx = {
-        session: { resources: { get: () => wmRef } },
-        user: { resources: { get: () => epRef } },
+        session: { resources: createMockResources({ workingMemory: wmRef }) },
+        user: { resources: createMockResources({ episodicMemory: epRef }) },
       }
 
       const result = mem.recall(ctx)
@@ -418,7 +430,7 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true })
       const ctx = {
-        session: { resources: { get: () => wmRef } },
+        session: { resources: createMockResources({ workingMemory: wmRef }) },
       }
 
       const withCue = mem.recall(ctx, 'React')
@@ -443,7 +455,7 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true })
       const ctx = {
-        session: { resources: { get: () => wmRef } },
+        session: { resources: createMockResources({ workingMemory: wmRef }) },
       }
 
       const result = mem.contextFormatter(undefined, ctx)
@@ -459,7 +471,7 @@ describe('memory/memorySystem', () => {
       const wmRef = createMockWmRef()
       const mem = system({ model: 'gpt-5-mini', working: true })
       const ctx = {
-        session: { resources: { get: () => wmRef } },
+        session: { resources: createMockResources({ workingMemory: wmRef }) },
       }
 
       const result = mem.contextFormatter(undefined, ctx)
@@ -475,7 +487,7 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true })
       const ctx = {
-        session: { resources: { get: () => wmRef } },
+        session: { resources: createMockResources({ workingMemory: wmRef }) },
       }
 
       const result = mem.contextFormatter(undefined, ctx)
@@ -505,11 +517,11 @@ describe('memory/memorySystem', () => {
       const block = memorySystemReflect(config ?? baseConfig)
       const ctx = {
         session: {
-          resources: { get: (name: string) => name === 'workingMemory' ? wmRef : sysRef },
+          resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
           items: { all: () => [] },
           instanceId: 'test-session',
         },
-        user: epRef ? { resources: { get: () => epRef } } : undefined,
+        user: epRef ? { resources: createMockResources({ episodicMemory: epRef }) } : undefined,
         response: { emit: async () => {} },
       } as any
       return block.run({ items } as any, ctx)
@@ -645,7 +657,7 @@ describe('memory/memorySystem', () => {
       const block = memorySystemTick(baseConfig)
       const ctx = {
         session: {
-          resources: { get: (name: string) => name === 'workingMemory' ? wmRef : sysRef },
+          resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
         },
         response: { emit: async () => {} },
       } as any

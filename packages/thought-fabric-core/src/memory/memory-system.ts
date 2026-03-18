@@ -188,7 +188,7 @@ function createRecall(
 
     // Read working memory
     try {
-      const wmRef = ctx.session?.resources?.get?.('workingMemory') as ResourceContext<WorkingMemoryState> | undefined
+      const wmRef = ctx.session?.resources?.workingMemory as ResourceContext<WorkingMemoryState> | undefined
       if (wmRef) {
         const entries = wmItems(wmRef)
         for (const entry of entries) {
@@ -213,8 +213,8 @@ function createRecall(
     if (episodicConfig) {
       try {
         const epRef = episodicConfig.scope === 'user'
-          ? ctx.user?.resources?.get?.('episodicMemory') as ResourceContext<EpisodicMemoryState> | undefined
-          : ctx.project?.resources?.get?.('episodicMemory') as ResourceContext<EpisodicMemoryState> | undefined
+          ? ctx.user?.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
+          : ctx.project?.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
 
         if (epRef) {
           const episodes = recent(epRef)

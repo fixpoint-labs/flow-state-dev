@@ -1,5 +1,6 @@
 import type { ResourceContext } from '@flow-state-dev/core'
 import type { DecayStrategy, WorkingMemoryEntry, WorkingMemoryState } from './working-memory.js'
+import { shortId } from '../helpers.js'
 
 /** Decay configuration for working memory salience computation. */
 export interface WorkingMemoryDecayConfig {
@@ -93,15 +94,6 @@ export type AddEntryInput = {
   metadata?: Record<string, any>
 }
 
-/** Generate a short random ID. 4 alphanumeric characters ≈ 1.7M combinations. */
-function shortId(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  let id = ''
-  for (let i = 0; i < 4; i++) {
-    id += chars[Math.floor(Math.random() * chars.length)]
-  }
-  return id
-}
 
 /**
  * Add an entry to working memory.
