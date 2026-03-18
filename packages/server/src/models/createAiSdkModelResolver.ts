@@ -294,7 +294,10 @@ function normalizeFinishChunk(
       text,
       toolCalls: normalizeToolCalls(result.toolCalls),
       finishReason: normalizeFinishReason(result.finishReason),
-      usage: normalizeUsage(result.usage)
+      usage: normalizeUsage(result.usage),
+      providerMetadata: asProviderMetadata(
+        result.providerMetadata ?? result.experimental_providerMetadata
+      )
     }
   };
 }

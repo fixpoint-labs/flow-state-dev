@@ -18,6 +18,7 @@ import { TraceView } from "@/components/workspace/trace-view";
 import { ActionBar } from "@/components/workspace/action-bar";
 import { StreamStatusIndicator } from "@/components/workspace/stream-status";
 import { SessionContextPanel } from "@/components/detail/session-context";
+import { TokenUsageSummary } from "@/components/detail/token-usage-summary";
 import { ItemDetail } from "@/components/detail/item-detail";
 
 import { useActiveSession } from "@/hooks/use-active-session";
@@ -293,6 +294,8 @@ function AppContent() {
           style={{ width: `${detailWidth}px` }}
         >
           <div className="flex-1 p-3 space-y-4">
+            <TokenUsageSummary requestGroups={requestGroups} />
+            <Separator />
             <SessionContextPanel sessionId={effectiveSessionId} refreshKey={stateRefreshKey} />
             <Separator />
             <ItemDetail />

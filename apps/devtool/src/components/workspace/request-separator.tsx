@@ -8,6 +8,7 @@ import { MoreHorizontal, Play, SkipForward, RefreshCw } from "lucide-react";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { useDebug } from "@/context/debug-context";
+import { formatTokenCount } from "@/lib/token-utils";
 
 type RequestSeparatorProps = {
   requestId: string;
@@ -15,6 +16,7 @@ type RequestSeparatorProps = {
   status: string;
   duration?: number;
   isActive?: boolean;
+  totalTokens?: number;
   onReplayFull?: () => void;
   onReplayFromCursor?: () => void;
   onReconnect?: () => void;
@@ -32,6 +34,7 @@ export function RequestSeparator({
   status,
   duration,
   isActive,
+  totalTokens,
   onReplayFull,
   onReplayFromCursor,
   onReconnect,
@@ -48,6 +51,11 @@ export function RequestSeparator({
       <StatusBadge status={status} />
       {durationText && (
         <span className="text-[11px] text-slate-500 font-mono tabular-nums">{durationText}</span>
+      )}
+      {totalTokens !== undefined && totalTokens > 0 && (
+        <span className="text-[10px] text-slate-600 font-mono tabular-nums">
+          {formatTokenCount(totalTokens)} tok
+        </span>
       )}
 
       <span className="flex-1" />

@@ -18,6 +18,7 @@ import { Inbox } from "lucide-react";
 import { ItemRenderer } from "@/components/items/item-renderer";
 import { RequestSeparator } from "./request-separator";
 import { EmptyState } from "@/components/shared/empty-state";
+import { aggregateTokenUsage } from "@/lib/token-utils";
 import type { StreamStatus } from "@/hooks/use-request-stream";
 
 type RequestGroup = {
@@ -61,13 +62,15 @@ export function StreamView({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
 
-  // Sort chronologically (oldest first) and filter to chat-relevant items.
+  // Sort chronologically (oldest first), compute token totals from all items,
+  // then filter to chat-relevant items for display.
   const filteredGroups = useMemo(
     () =>
       [...requestGroups]
         .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0))
         .map((group) => ({
           ...group,
+          totalTokens: aggregateTokenUsage(group.items).totalTokens,
           items: group.items.filter((item) => STREAM_TYPES.has(item.type)),
         })),
     [requestGroups],
@@ -114,6 +117,7 @@ export function StreamView({
               status={group.status}
               duration={group.duration}
               isActive={isActive}
+              totalTokens={group.totalTokens}
               onReplayFull={onReplayFull ? () => onReplayFull(group.requestId) : undefined}
               onReplayFromCursor={onReplayFromCursor ? () => onReplayFromCursor(group.requestId) : undefined}
               onReconnect={onReconnect ? () => onReconnect(group.requestId) : undefined}

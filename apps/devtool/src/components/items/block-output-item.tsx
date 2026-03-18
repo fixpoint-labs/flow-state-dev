@@ -82,10 +82,21 @@ export function BlockOutputItemView({ item }: { item: BlockOutputItem }) {
         {isInProgress && <Loader2 className="h-3 w-3 animate-spin text-amber-400 shrink-0" />}
       </button>
 
-      {expanded && item.output !== undefined && (
-        <div className="ml-7 mt-1.5">
-          <span className="text-[10px] uppercase text-slate-500 font-medium">Output</span>
-          <JsonViewer data={item.output} className="mt-0.5" />
+      {expanded && (
+        <div className="ml-7 mt-1.5 space-y-2">
+          {item.output !== undefined && (
+            <div>
+              <span className="text-[10px] uppercase text-slate-500 font-medium">Output</span>
+              <JsonViewer data={item.output} className="mt-0.5" />
+            </div>
+          )}
+          {item.modelUsage && (
+            <div className="flex items-center gap-3 text-[10px] text-slate-500 font-mono">
+              {item.modelUsage.model && <span>{item.modelUsage.model}</span>}
+              {item.modelUsage.promptTokens !== undefined && <span>{item.modelUsage.promptTokens} in</span>}
+              {item.modelUsage.completionTokens !== undefined && <span>{item.modelUsage.completionTokens} out</span>}
+            </div>
+          )}
         </div>
       )}
     </div>

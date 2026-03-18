@@ -100,6 +100,67 @@ function isConcurrencyOptions(value: unknown): value is { maxConcurrency?: numbe
   return "maxConcurrency" in record || Object.keys(record).length === 0;
 }
 
+type GeneratorModelUsageMeta = {
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  providerMetadata?: Record<string, Record<string, unknown>>;
+  cacheReadTokens?: number;
+  cacheCreationTokens?: number;
+};
+
+/** Duck-typed helper — reused from generator.ts to get item count from emitter. */
+function getSequencerEmitterItemCount(response: unknown): number {
+  if (
+    typeof response === "object" &&
+    response !== null &&
+    "getItems" in response &&
+    typeof (response as { getItems?: unknown }).getItems === "function"
+  ) {
+    const items = (response as { getItems: () => unknown[] }).getItems();
+    return Array.isArray(items) ? items.length : 0;
+  }
+  return 0;
+}
+
+/** Emit a block_output item with optional modelUsage for generator blocks run inside a sequencer. */
+async function emitGeneratorBlockOutput(
+  block: BlockDefinition<any, any>,
+  output: unknown,
+  ctx: BlockContext,
+  startedAt: number,
+  instanceId: string,
+  modelUsage: GeneratorModelUsageMeta
+): Promise<void> {
+  const completedAt = Date.now();
+  const item = {
+    id: `item_block_output_${completedAt}_${Math.random().toString(16).slice(2)}`,
+    type: "block_output" as const,
+    status: "completed" as const,
+    trace: true,
+    transient: block.transient || undefined,
+    requestId: ctx.request.identity.id,
+    itemIndex: getSequencerEmitterItemCount(ctx.response),
+    provenance: {
+      blockName: block.name,
+      blockInstanceId: instanceId,
+      phase: "main" as const,
+    },
+    ts: completedAt,
+    blockName: block.name,
+    blockKind: block.kind,
+    output,
+    startedAt,
+    completedAt,
+    duration: completedAt - startedAt,
+    modelUsage,
+  };
+
+  await ctx.response.emit({ type: "item.added", item });
+  await ctx.response.emit({ type: "item.done", item });
+}
+
 async function executeBlock(
   block: BlockDefinition<any, any>,
   input: unknown,
@@ -108,9 +169,50 @@ async function executeBlock(
   const startedAt = Date.now();
   const run = async (scopedCtx: BlockContext): Promise<unknown> => {
     scopedCtx._runtimeHooks?.onBlockStart?.(block.name, block.kind, input);
+
+    // For generator blocks, intercept onGeneratorModelResult to capture token usage.
+    let modelUsage: GeneratorModelUsageMeta | undefined;
+    const execCtx = block.kind === "generator"
+      ? {
+          ...scopedCtx,
+          _runtimeHooks: {
+            ...scopedCtx._runtimeHooks,
+            onGeneratorModelResult: (payload: {
+              model: string;
+              usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+              providerMetadata?: Record<string, Record<string, unknown>>;
+            }) => {
+              if (payload.usage) {
+                const anthropic = payload.providerMetadata?.anthropic ?? {};
+                modelUsage = {
+                  model: payload.model,
+                  promptTokens: payload.usage.promptTokens,
+                  completionTokens: payload.usage.completionTokens,
+                  totalTokens: payload.usage.totalTokens,
+                  providerMetadata: payload.providerMetadata,
+                  cacheReadTokens: typeof anthropic.cacheReadInputTokens === "number"
+                    ? anthropic.cacheReadInputTokens : undefined,
+                  cacheCreationTokens: typeof anthropic.cacheCreationInputTokens === "number"
+                    ? anthropic.cacheCreationInputTokens : undefined,
+                };
+              }
+              // Chain to original hook
+              scopedCtx._runtimeHooks?.onGeneratorModelResult?.(payload);
+            },
+          },
+        } as BlockContext
+      : scopedCtx;
+
     try {
-      const output = await block.run(input, scopedCtx);
+      const output = await block.run(input, execCtx);
       scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt);
+
+      // Emit block_output with modelUsage for nested generator blocks.
+      if (modelUsage) {
+        const instanceId = `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        await emitGeneratorBlockOutput(block, output, scopedCtx, startedAt, instanceId, modelUsage);
+      }
+
       return output;
     } catch (error) {
       scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt);
