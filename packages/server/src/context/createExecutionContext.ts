@@ -571,31 +571,65 @@ async function loadLLMHistory(
   return messages.slice(startIndex);
 }
 
+/**
+ * Converts an OutputItem (from the response emitter) to a SessionItem
+ * so it can be included in the all() view alongside historical items.
+ */
+function outputItemToSessionItem(item: OutputItem): SessionItem {
+  // Extract readable content for the payload based on item type.
+  // Message items get their text extracted; other items pass through.
+  let payload: unknown;
+  if (item.type === "message") {
+    const msg = item as MessageItem;
+    const texts = msg.content
+      .filter((c: Content) => c.type === "output_text")
+      .map((c) => (c as { type: "output_text"; text: string }).text);
+    payload = texts.length > 0 ? texts.join("") : msg.content;
+  } else {
+    payload = (item as Record<string, unknown>).output ?? item;
+  }
+
+  return {
+    id: item.id,
+    type: item.type,
+    status: item.status,
+    transient: item.transient,
+    requestId: item.requestId,
+    itemIndex: item.itemIndex,
+    payload,
+    ts: item.ts,
+  };
+}
+
 function createSessionItemViews(
-  readRecord: () => SessionRecord | undefined,
+  priorItems: SessionItem[],
   options: {
     stores: StoreRegistry;
     sessionId: string;
     currentRequestId: string;
     tokenCounter: TokenCounter;
     resolveModelId: () => string;
+    readLiveItems?: () => OutputItem[];
   }
 ): SessionItemViews {
   const select = (
     query: ItemQuery | undefined,
     audienceTypes?: Set<string>
   ): SessionItem[] => {
-    const record = readRecord();
-    if (record === undefined) {
-      return [];
-    }
-
     const includeTransient = query?.includeTransient === true;
     const itemTypeFilter = query?.itemTypes
       ? new Set(query.itemTypes)
       : undefined;
 
-    const filtered = (record.items ?? []).filter((item) => {
+    // Merge prior request items (loaded eagerly at context creation) with
+    // live items from the current request's response emitter.
+    const liveItems = options.readLiveItems?.() ?? [];
+    const liveSessionItems = liveItems.map(outputItemToSessionItem);
+    const priorIds = new Set(priorItems.map((i) => i.id));
+    const deduplicatedLive = liveSessionItems.filter((i) => !priorIds.has(i.id));
+    const allItems = [...priorItems, ...deduplicatedLive];
+
+    const filtered = allItems.filter((item) => {
       if (!includeTransient && item.transient === true) {
         return false;
       }
@@ -1049,12 +1083,31 @@ export async function createExecutionContext<
   // Parallelize independent store lookups — user, session, project, and request
   // records don't depend on each other for the initial load.
   const optionsProjectId = options.projectId;
-  const [loadedUser, loadedSession, loadedProject, loadedRequest] = await Promise.all([
+  const [loadedUser, loadedSession, loadedProject, loadedRequest, priorRequests] = await Promise.all([
     stores.user.get(userId),
     stores.session.get(sessionId),
     optionsProjectId !== undefined ? stores.project.get(optionsProjectId) : undefined,
-    stores.request.get(requestId)
+    stores.request.get(requestId),
+    stores.request.list({ sessionId })
   ]);
+
+  // Build prior items from completed request records (excluding the current
+  // request). This replaces the deprecated SessionRecord.items field — items
+  // are canonical on request records.
+  const priorItems: SessionItem[] = [];
+  for (const req of priorRequests) {
+    if (req.id === requestId || req.status !== "completed" || req.items === undefined) {
+      continue;
+    }
+    for (const item of req.items) {
+      priorItems.push(outputItemToSessionItem(item));
+    }
+  }
+  // Sort by timestamp then index for stable ordering
+  priorItems.sort((a, b) => {
+    const tsDiff = (a.ts ?? 0) - (b.ts ?? 0);
+    return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
+  });
 
   let userRecord = loadedUser;
   if (userRecord === undefined) {
@@ -1502,11 +1555,12 @@ export async function createExecutionContext<
         projectId: sessionRef.current.projectId
       },
       resources: sessionResources,
-      items: createSessionItemViews(() => sessionRef.current, {
+      items: createSessionItemViews(priorItems, {
         stores,
         sessionId,
         currentRequestId: requestId,
         tokenCounter,
+        readLiveItems,
         resolveModelId: () => {
           const active = resolvedModelStorage.getStore();
           if (typeof active === "string") {

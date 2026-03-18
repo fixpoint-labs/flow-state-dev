@@ -106,10 +106,25 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     } else {
       const allItems = ctx.session?.items?.all?.() ?? []
       const newItems = allItems.filter((_item: any, idx: number) => idx > sysState.lastProcessedIndex)
-      if (newItems.length === 0) return '__SKIP__'
-      newItemsText = newItems
-        .map((item: any) => `[${item.type ?? item.role ?? 'unknown'}] ${typeof item.content === 'string' ? item.content : JSON.stringify(item.payload ?? item.content ?? item)}`)
-        .join('\n')
+      if (newItems.length > 0) {
+        newItemsText = newItems
+          .map((item: any) => {
+            const label = item.role ?? item.type ?? 'unknown'
+            const text = typeof item.payload === 'string'
+              ? item.payload
+              : typeof item.content === 'string'
+                ? item.content
+                : JSON.stringify(item.payload ?? item.content ?? item)
+            return `[${label}] ${text}`
+          })
+          .join('\n')
+      } else if (typeof _input === 'string' && _input.trim().length > 0) {
+        // Fallback: live items from the current request may not yet be
+        // flushed when the observer runs. Use the block input directly.
+        newItemsText = `[user] ${_input}`
+      } else {
+        return '__SKIP__'
+      }
     }
 
     // Current working memory for dedup context
