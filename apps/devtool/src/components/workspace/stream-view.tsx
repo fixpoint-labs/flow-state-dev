@@ -1,7 +1,16 @@
 /**
- * Stream view: renders request groups with chat-first layout.
- * Items are displayed using tier-based progressive disclosure
- * (see item-renderer.tsx).
+ * Stream view: chat-first layout.
+ *
+ * Only shows items that belong in a conversation:
+ *   - Messages (user + assistant)
+ *   - Reasoning (collapsible)
+ *   - Tool calls (block_tool_output — collapsible)
+ *   - Errors / step errors
+ *   - Components / containers
+ *
+ * Operational items (block_output lifecycle, status signals, router_decision,
+ * context, state_change, resource_change) are filtered out — they live in
+ * trace view.
  */
 import { useEffect, useMemo, useRef } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -19,6 +28,17 @@ type RequestGroup = {
   duration?: number;
   items: OutputItem[];
 };
+
+/** Item types that belong in a chat-like stream. */
+const STREAM_TYPES = new Set([
+  "message",
+  "reasoning",
+  "block_tool_output",
+  "error",
+  "step_error",
+  "component",
+  "container",
+]);
 
 type StreamViewProps = {
   requestGroups: RequestGroup[];
@@ -41,20 +61,17 @@ export function StreamView({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
 
-  // Pre-compute filtered items (exclude trace-only items) and sequence numbers
-  const { filteredGroups, sequenceMap } = useMemo(() => {
-    const map = new Map<string, number>();
-    let seq = 0;
-    const groups = requestGroups.map((group) => {
-      const items = group.items.filter((item) => !item.trace);
-      for (const item of items) {
-        seq++;
-        map.set(item.id, seq);
-      }
-      return { ...group, items };
-    });
-    return { filteredGroups: groups, sequenceMap: map };
-  }, [requestGroups]);
+  // Sort chronologically (oldest first) and filter to chat-relevant items.
+  const filteredGroups = useMemo(
+    () =>
+      [...requestGroups]
+        .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0))
+        .map((group) => ({
+          ...group,
+          items: group.items.filter((item) => STREAM_TYPES.has(item.type)),
+        })),
+    [requestGroups],
+  );
 
   // Track if user has scrolled away from the bottom.
   useEffect(() => {
@@ -85,9 +102,10 @@ export function StreamView({
   }
 
   return (
-    <div ref={scrollContainerRef} className="flex flex-col gap-0 overflow-auto h-full">
+    <div ref={scrollContainerRef} className="flex flex-col overflow-auto h-full">
       {filteredGroups.map((group, groupIndex) => {
         const isLast = groupIndex === filteredGroups.length - 1;
+        const isActive = isLast && streamStatus === "streaming";
         return (
           <div key={group.requestId}>
             <RequestSeparator
@@ -95,18 +113,14 @@ export function StreamView({
               action={group.action}
               status={group.status}
               duration={group.duration}
-              isActive={isLast && streamStatus === "streaming"}
+              isActive={isActive}
               onReplayFull={onReplayFull ? () => onReplayFull(group.requestId) : undefined}
               onReplayFromCursor={onReplayFromCursor ? () => onReplayFromCursor(group.requestId) : undefined}
               onReconnect={onReconnect ? () => onReconnect(group.requestId) : undefined}
             />
-            <div className="py-1">
+            <div className="px-4 py-2 space-y-1">
               {group.items.map((item) => (
-                <ItemRenderer
-                  key={item.id}
-                  item={item}
-                  sequenceNumber={sequenceMap.get(item.id)}
-                />
+                <ItemRenderer key={item.id} item={item} />
               ))}
             </div>
           </div>

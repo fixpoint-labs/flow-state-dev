@@ -1,10 +1,9 @@
 /**
- * Central item renderer with tier-based progressive disclosure.
+ * Central item renderer for stream view.
  *
- * Tier 1 (always visible): message, error — rendered in chat-style layout.
- * Tier 2 (collapsed summary, expandable): block_output, reasoning, component,
- *         container, step_error, status.
- * Tier 3 (debug-only): context, state_change, resource_change.
+ * Chat-first: messages and errors render inline. Tool calls and reasoning
+ * are compact collapsibles. Clicking any item opens detail in the sidebar.
+ * Debug overlays only appear in debug mode.
  */
 import { memo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -28,97 +27,69 @@ import { cn } from "@/lib/utils";
 
 type ItemRendererProps = {
   item: OutputItem;
-  sequenceNumber?: number;
 };
 
-const TIER_1_TYPES = new Set(["message", "error"]);
 const TIER_3_TYPES = new Set(["context", "state_change", "resource_change"]);
 
-export const ItemRenderer = memo(function ItemRenderer({ item, sequenceNumber }: ItemRendererProps) {
+export const ItemRenderer = memo(function ItemRenderer({ item }: ItemRendererProps) {
   const { isDebugMode } = useDebug();
   const { selectedItemId, selectItem } = useSelection();
   const isSelected = selectedItemId === item.id;
 
   const isTier3 = TIER_3_TYPES.has(item.type);
-  if (isTier3 && !isDebugMode) {
-    return null;
-  }
+  if (isTier3 && !isDebugMode) return null;
 
-  const isTier1 = TIER_1_TYPES.has(item.type);
   const isMessage = item.type === "message";
-  const isUserMessage = isMessage && (item as { role: string }).role === "user";
-
+  const isError = item.type === "error";
   const handleClick = () => selectItem(item.id, item);
 
-  if (isTier1) {
+  // Messages and errors: primary content, no background hover.
+  if (isMessage || isError) {
     return (
       <div
         className={cn(
           "relative cursor-pointer",
-          isMessage ? "px-4 py-2" : "px-4 py-1",
-          isSelected && "ring-1 ring-inset ring-green-500/40",
+          isMessage ? "py-1" : "py-0.5",
+          isSelected && "ring-1 ring-inset ring-green-500/40 rounded",
         )}
         onClick={handleClick}
       >
-        {isDebugMode && (
-          <DebugMeta item={item} sequenceNumber={sequenceNumber} />
-        )}
         <ItemContent item={item} />
         {isDebugMode && <DebugOverlay item={item} />}
       </div>
     );
   }
 
+  // Tier 3: debug-only, dimmed.
   if (isTier3) {
     return (
       <div
         className={cn(
-          "relative cursor-pointer px-4 py-0.5 opacity-40 hover:opacity-70",
+          "relative cursor-pointer py-0.5 opacity-40 hover:opacity-70",
           isSelected && "ring-1 ring-inset ring-green-500/40 opacity-70",
         )}
         onClick={handleClick}
       >
-        {isDebugMode && (
-          <DebugMeta item={item} sequenceNumber={sequenceNumber} />
-        )}
         <ItemContent item={item} />
         {isDebugMode && <DebugOverlay item={item} />}
       </div>
     );
   }
 
-  // Tier 2: collapsed/expandable items
+  // Everything else (reasoning, tool calls, components, etc.): compact inline.
   return (
     <div
       className={cn(
-        "relative cursor-pointer px-4 py-0.5",
-        "hover:bg-slate-800/20",
-        isSelected && "bg-slate-800/30 ring-1 ring-inset ring-green-500/40",
+        "relative cursor-pointer py-0.5",
+        isSelected && "bg-slate-800/30 ring-1 ring-inset ring-green-500/40 rounded",
       )}
       onClick={handleClick}
     >
-      {isDebugMode && (
-        <DebugMeta item={item} sequenceNumber={sequenceNumber} />
-      )}
       <ItemContent item={item} />
       {isDebugMode && <DebugOverlay item={item} />}
     </div>
   );
 });
-
-function DebugMeta({ item, sequenceNumber }: { item: OutputItem; sequenceNumber?: number }) {
-  return (
-    <div className="flex items-center gap-2 text-[10px] text-slate-600 font-mono mb-0.5">
-      {sequenceNumber !== undefined && <span>#{sequenceNumber}</span>}
-      <span>{item.type}</span>
-      <span>{item.provenance.blockName}</span>
-      <span>{item.provenance.blockInstanceId.slice(0, 12)}</span>
-      {item.provenance.attempt && item.provenance.attempt > 1 && (
-        <span>attempt:{item.provenance.attempt}</span>
-      )}
-    </div>
-  );
-}
 
 function ItemContent({ item }: { item: OutputItem }) {
   switch (item.type) {
@@ -149,6 +120,6 @@ function ItemContent({ item }: { item: OutputItem }) {
     case "router_decision":
       return <RouterDecisionItemView item={item} />;
     default:
-      return <div className="text-xs text-slate-500">Unknown item type: {(item as OutputItem).type}</div>;
+      return null;
   }
 }
