@@ -132,6 +132,9 @@ export function ActionBar({
 
   const handleSend = useCallback(async () => {
     if (!selectedAction || !flowKind || !sessionId) return;
+    // Remember which field is focused so we can restore it after reset.
+    const activeEl = document.activeElement as HTMLElement | null;
+    const focusedField = activeEl?.closest("[data-field]")?.getAttribute("data-field");
     try {
       let input: unknown;
       if (inputMode === "json") {
@@ -141,6 +144,18 @@ export function ActionBar({
       }
       setJsonError(null);
       await onSendAction(selectedAction, input);
+      // Reset fields to defaults — clears text inputs but preserves defaults/enums.
+      const defaults = getDefaults(currentSchema);
+      setFormValues(defaults);
+      setJsonInput(isRenderable(currentSchema) ? JSON.stringify(defaults, null, 2) : "{}");
+      // Restore focus to the same field after React re-renders.
+      if (focusedField) {
+        requestAnimationFrame(() => {
+          const container = document.querySelector(`[data-field="${focusedField}"]`);
+          const input = container?.querySelector("input, textarea, select") as HTMLElement | null;
+          input?.focus();
+        });
+      }
     } catch (err) {
       if (err instanceof SyntaxError) {
         setJsonError(err.message);

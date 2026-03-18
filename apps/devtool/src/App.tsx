@@ -30,7 +30,7 @@ import { useReplay } from "@/hooks/use-replay";
 const NAV_EXPANDED_WIDTH = 240;
 const NAV_COLLAPSED_WIDTH = 64;
 const NAV_MAX_WIDTH = 320;
-const DETAIL_DEFAULT_WIDTH = 360;
+const DETAIL_DEFAULT_WIDTH = 420;
 const DETAIL_MIN_WIDTH = 280;
 const DETAIL_MAX_WIDTH = 520;
 const MAIN_MIN_WIDTH = 560;

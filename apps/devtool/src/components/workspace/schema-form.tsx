@@ -55,7 +55,7 @@ function FieldInput({ name, field, value, onChange, disabled }: FieldInputProps)
   const placeholder = field.description ?? formatPlaceholder(name, field);
 
   return (
-    <div className="min-w-[180px] flex-1 space-y-1">
+    <div className="min-w-[180px] flex-1 space-y-1" data-field={name}>
       <Label className="text-[10px] uppercase text-slate-500">
         {label}
         {!field.required && <span className="ml-1 normal-case text-slate-600">(optional)</span>}
