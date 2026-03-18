@@ -29,12 +29,7 @@ function makeSessionRecord(
     version: 0,
     createdAt: ts,
     updatedAt: ts,
-    journal: [],
-    items: [],
-    messages: {
-      ui: [],
-      llm: []
-    }
+    journal: []
   };
 }
 

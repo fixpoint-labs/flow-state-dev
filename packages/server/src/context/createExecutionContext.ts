@@ -41,7 +41,6 @@ import type {
   ProjectRecord,
   RequestRecord,
   SessionRecord,
-  StoreRegistry,
   UserRecord
 } from "../stores/types";
 import { createDefaultModelResolver } from "../models/createDefaultModelResolver";
@@ -487,18 +486,11 @@ function itemToLLMMessage(item: OutputItem): LLMMessage | null {
  * converts to LLM-ready messages, and applies filtering/limiting.
  */
 async function loadLLMHistory(
-  stores: StoreRegistry,
-  sessionId: string,
-  currentRequestId: string,
+  priorRequests: RequestRecord[],
   tokenCounter: TokenCounter,
   resolveModelId: () => string,
   query?: ItemQuery
 ): Promise<LLMMessage[]> {
-  const requests = await stores.request.list({ sessionId });
-
-  const priorRequests = requests
-    .filter((r) => r.id !== currentRequestId && r.status === "completed")
-    .sort((a, b) => a.startedAtMs - b.startedAtMs);
 
   const allowedTypes = query?.itemTypes
     ? new Set(query.itemTypes)
@@ -603,15 +595,16 @@ function outputItemToSessionItem(item: OutputItem): SessionItem {
 
 function createSessionItemViews(
   priorItems: SessionItem[],
+  priorRequests: RequestRecord[],
   options: {
-    stores: StoreRegistry;
-    sessionId: string;
-    currentRequestId: string;
     tokenCounter: TokenCounter;
     resolveModelId: () => string;
     readLiveItems?: () => OutputItem[];
   }
 ): SessionItemViews {
+  // Compute once — priorItems is immutable for the request lifetime.
+  const priorIds = new Set(priorItems.map((i) => i.id));
+
   const select = (
     query: ItemQuery | undefined,
     audienceTypes?: Set<string>
@@ -625,7 +618,6 @@ function createSessionItemViews(
     // live items from the current request's response emitter.
     const liveItems = options.readLiveItems?.() ?? [];
     const liveSessionItems = liveItems.map(outputItemToSessionItem);
-    const priorIds = new Set(priorItems.map((i) => i.id));
     const deduplicatedLive = liveSessionItems.filter((i) => !priorIds.has(i.id));
     const allItems = [...priorItems, ...deduplicatedLive];
 
@@ -655,9 +647,7 @@ function createSessionItemViews(
     client: (query) => select(query, CLIENT_AUDIENCE_TYPES),
     llm: (query) =>
       loadLLMHistory(
-        options.stores,
-        options.sessionId,
-        options.currentRequestId,
+        priorRequests,
         options.tokenCounter,
         options.resolveModelId,
         query
@@ -1091,12 +1081,17 @@ export async function createExecutionContext<
     stores.request.list({ sessionId })
   ]);
 
-  // Build prior items from completed request records (excluding the current
-  // request). This replaces the deprecated SessionRecord.items field — items
-  // are canonical on request records.
+  // Filter to completed prior requests once — reused by both all()/client()
+  // (via priorItems) and llm() (via loadLLMHistory).
+  const completedPriorRequests = priorRequests
+    .filter((r) => r.id !== requestId && r.status === "completed")
+    .sort((a, b) => a.startedAtMs - b.startedAtMs);
+
+  // Build prior items from completed request records. This replaces the
+  // deprecated SessionRecord.items field — items are canonical on request records.
   const priorItems: SessionItem[] = [];
-  for (const req of priorRequests) {
-    if (req.id === requestId || req.status !== "completed" || req.items === undefined) {
+  for (const req of completedPriorRequests) {
+    if (req.items === undefined) {
       continue;
     }
     for (const item of req.items) {
@@ -1555,10 +1550,7 @@ export async function createExecutionContext<
         projectId: sessionRef.current.projectId
       },
       resources: sessionResources,
-      items: createSessionItemViews(priorItems, {
-        stores,
-        sessionId,
-        currentRequestId: requestId,
+      items: createSessionItemViews(priorItems, completedPriorRequests, {
         tokenCounter,
         readLiveItems,
         resolveModelId: () => {
