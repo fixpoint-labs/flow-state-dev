@@ -20,6 +20,10 @@ export const workingMemoryEntrySchema = z.object({
   lastAccessedAtTurn: z.number().int().min(0),
   /** Base importance score set at extraction time. Range [0, 1]. */
   importance: z.number().min(0).max(1),
+  /** How long this memory should persist. Default: 'session'. */
+  durability: z.enum(['transient', 'session', 'persistent', 'permanent']).default('session'),
+  /** Semantic category of this memory. Default: 'fact'. */
+  category: z.enum(['fact', 'event', 'preference', 'task', 'relationship']).default('fact'),
   /** Optional metadata attached to this entry. */
   metadata: z.record(z.any()).optional(),
 })
