@@ -1,6 +1,13 @@
 export type { BlockInput, BlockOutput, DeclaredResources } from "./types/block";
 export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
 export type {
+  DefinedResourceNamespace,
+  EvictionPolicy,
+  ResourceNamespaceConfig,
+  ResourceNamespaceHandle,
+  ResourceNamespaceRef,
+} from "./types/resource-namespace";
+export type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
@@ -10,6 +17,7 @@ export type {
 } from "./schema/common";
 
 export { defineResource, resource } from "./types/resource";
+export { defineResourceNamespace, isDefinedResourceNamespace } from "./types/resource-namespace";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
 export {
@@ -20,6 +28,7 @@ export {
 } from "./blocks";
 export { defineFlow } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
+export { resourceTools } from "./tools/resource-tools";
 export {
   DEFAULT_MODEL_LOOKUP,
   findModelEntry,

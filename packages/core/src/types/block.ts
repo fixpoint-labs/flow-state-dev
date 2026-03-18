@@ -6,6 +6,7 @@ import type {
   UserScopeHandle
 } from "./scope";
 import type { DefinedResource, ResourceRef } from "./resource";
+import type { DefinedResourceNamespace, ResourceNamespaceRef } from "./resource-namespace";
 import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
@@ -199,10 +200,12 @@ export interface BlockConfig<
   middleware?: Middleware[];
 }
 
+export type DeclaredResourceEntry = DefinedResource | DefinedResourceNamespace;
+
 export type DeclaredResources = {
-  session?: Record<string, DefinedResource>;
-  user?: Record<string, DefinedResource>;
-  project?: Record<string, DefinedResource>;
+  session?: Record<string, DeclaredResourceEntry>;
+  user?: Record<string, DeclaredResourceEntry>;
+  project?: Record<string, DeclaredResourceEntry>;
 };
 
 export interface BlockDefinition<
@@ -258,13 +261,19 @@ export type InferResourcesFromSchemas<T> =
     : Record<string, ResourceRef<any>>;
 
 /**
- * Derive typed ResourceRef records from a `Record<string, DefinedResource>`.
- * Each DefinedResource carries a phantom `StateType` that maps to
- * `ResourceRef<StateType>`.
+ * Derive typed ResourceRef / ResourceNamespaceRef records from a
+ * `Record<string, DefinedResource | DefinedResourceNamespace>`.
+ * DefinedResource → ResourceRef, DefinedResourceNamespace → ResourceNamespaceRef.
  */
 export type InferResourcesFromDefinitions<T> =
-  T extends Record<string, DefinedResource>
-    ? { [K in keyof T]: ResourceRef<T[K] extends DefinedResource<infer S> ? S : JsonObject> }
+  T extends Record<string, DeclaredResourceEntry>
+    ? {
+        [K in keyof T]: T[K] extends DefinedResourceNamespace<infer S>
+          ? ResourceNamespaceRef<S>
+          : T[K] extends DefinedResource<infer S>
+            ? ResourceRef<S>
+            : ResourceRef<JsonObject>;
+      }
     : Record<string, ResourceRef<any>>;
 
 /**

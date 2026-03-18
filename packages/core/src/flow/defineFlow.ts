@@ -15,6 +15,8 @@ import type {
   WorkConfig
 } from "../types/flow";
 import type { ResourceConfig } from "../types/resource";
+import type { ResourceNamespaceConfig } from "../types/resource-namespace";
+import type { ScopeResourceConfig } from "../types/flow";
 
 type AnyActions = Record<string, ActionConfig>;
 
@@ -117,7 +119,7 @@ function mergeActions(
   return merged;
 }
 
-type ScopeResources = Record<string, ResourceConfig>;
+type ScopeResources = Record<string, ScopeResourceConfig>;
 
 /**
  * Collect declaredResources from all action blocks in the flow and merge
@@ -137,7 +139,7 @@ function collectBlockResources(actions: AnyActions): DeclaredResources | undefin
  */
 function mergeBlockResourcesIntoScope(
   flowResources: ScopeResources | undefined,
-  blockResources: Record<string, ResourceConfig> | undefined
+  blockResources: Record<string, ScopeResourceConfig> | undefined
 ): ScopeResources | undefined {
   if (blockResources === undefined) return flowResources;
   if (flowResources === undefined) return { ...blockResources };

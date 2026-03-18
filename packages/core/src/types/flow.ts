@@ -6,13 +6,24 @@ import type {
   ResourceRef,
   StateOf
 } from "./resource";
+import type {
+  ResourceNamespaceConfig,
+  ResourceNamespaceRef
+} from "./resource-namespace";
 import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { VoiceConfig } from "./speech";
 
-type InferResourceRefs<TResources extends Record<string, ResourceConfig>> = {
-  [K in keyof TResources]: ResourceRef<StateOf<TResources[K]>>;
+export type ScopeResourceConfig = ResourceConfig | ResourceNamespaceConfig;
+
+type InferResourceRefs<TResources extends Record<string, ScopeResourceConfig>> = {
+  [K in keyof TResources]: TResources[K] extends ResourceNamespaceConfig
+    ? ResourceNamespaceRef<StateOf<TResources[K]> extends import("../schema/common").JsonObject ? StateOf<TResources[K]> : import("../schema/common").JsonObject>
+    : ResourceRef<StateOf<TResources[K]>>;
 };
+
+/** Union of handle types that can appear in a resource registry. */
+export type AnyResourceHandle = ResourceRef<any> | ResourceNamespaceRef<any>;
 
 /**
  * Context provided to a clientData compute function.
@@ -20,7 +31,7 @@ type InferResourceRefs<TResources extends Record<string, ResourceConfig>> = {
  */
 export type ClientDataContext<
   TState extends JsonObject = JsonObject,
-  TResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>
+  TResources extends Record<string, AnyResourceHandle> = Record<string, AnyResourceHandle>
 > = {
   state: Readonly<TState>;
   resources: TResources;
@@ -32,7 +43,7 @@ export type ClientDataContext<
  */
 export type ClientDataComputeFn<
   TState extends JsonObject = JsonObject,
-  TResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>
+  TResources extends Record<string, AnyResourceHandle> = Record<string, AnyResourceHandle>
 > = (
   ctx: ClientDataContext<TState, TResources>
 ) => JsonValue | Promise<JsonValue>;
@@ -99,7 +110,7 @@ export type ActionConfig<
 };
 
 export type SessionConfig<
-  TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>
+  TResources extends Record<string, ScopeResourceConfig> = Record<string, ScopeResourceConfig>
 > = {
   metadata?: ZodTypeAny;
   stateSchema?: ZodTypeAny;
@@ -117,7 +128,7 @@ export type RequestConfig = {
 };
 
 export type UserConfig<
-  TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>
+  TResources extends Record<string, ScopeResourceConfig> = Record<string, ScopeResourceConfig>
 > = {
   stateSchema?: ZodTypeAny;
   resources?: TResources;
@@ -125,7 +136,7 @@ export type UserConfig<
 };
 
 export type ProjectConfig<
-  TResources extends Record<string, ResourceConfig> = Record<string, ResourceConfig>
+  TResources extends Record<string, ScopeResourceConfig> = Record<string, ScopeResourceConfig>
 > = {
   stateSchema?: ZodTypeAny;
   resources?: TResources;
@@ -272,7 +283,7 @@ export type FlowActionInput<TAction extends ActionConfig> = TAction["inputSchema
 export type FlowActionBlock<TAction extends ActionConfig> = TAction["block"];
 
 export type FlowToolContext<
-  TResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>
+  TResources extends Record<string, AnyResourceHandle> = Record<string, AnyResourceHandle>
 > = {
   resources?: TResources;
   retry?: RetryPolicy;

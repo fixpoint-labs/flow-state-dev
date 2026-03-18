@@ -82,6 +82,24 @@ export type {
 } from "./resource";
 
 export type {
+  DefinedResourceNamespace,
+  EvictionPolicy,
+  ResourceNamespaceConfig,
+  ResourceNamespaceHandle,
+  ResourceNamespaceRef,
+} from "./resource-namespace";
+
+export {
+  defineResourceNamespace,
+  isDefinedResourceNamespace,
+  resolveNamespaceKey,
+  normalizeResourcePath,
+  matchesPattern,
+  getPatternPrefix,
+  extractPatternParams,
+} from "./resource-namespace";
+
+export type {
   JournalEntry,
   JournalEntryInput,
   ItemQuery,
