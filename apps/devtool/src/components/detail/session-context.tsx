@@ -1,9 +1,9 @@
 /**
  * Session context sidebar panel.
  * Structured key-value layout with copy buttons per scope.
- * Replaces raw JSON dump with readable accordion sections.
+ * Sections collapsed by default with count + change badges.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, RefreshCw, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { JsonViewer } from "@/components/shared/json-viewer";
@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorAlert } from "@/components/shared/error-alert";
 import { useSessionState } from "@/hooks/use-session-state";
 import { useRelativeTime } from "@/hooks/use-relative-time";
+import { deepEqual } from "@/lib/utils";
 
 type SessionContextPanelProps = {
   sessionId: string | null;
@@ -18,7 +19,7 @@ type SessionContextPanelProps = {
 };
 
 export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPanelProps) {
-  const { snapshot, isLoading, error, lastFetchedAt, refresh } = useSessionState(sessionId);
+  const { snapshot, prevSnapshot, isLoading, error, lastFetchedAt, refresh } = useSessionState(sessionId);
 
   // Refresh when parent signals a state change (e.g., after stream completes)
   useEffect(() => {
@@ -28,6 +29,16 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
   }, [refreshKey, refresh]);
 
   const relativeTime = useRelativeTime(lastFetchedAt);
+
+  // Count items and changes per section.
+  const stats = useMemo(() => {
+    if (!snapshot) return null;
+    return {
+      state: sectionStats(snapshot.state, prevSnapshot?.state),
+      clientData: sectionStats(snapshot.clientData, prevSnapshot?.clientData),
+      resources: sectionStats(snapshot.resources, prevSnapshot?.resources),
+    };
+  }, [snapshot, prevSnapshot]);
 
   if (!sessionId) {
     return <EmptyState message="Select a session to view its state." />;
@@ -71,7 +82,7 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
       )}
 
       {hasState && (
-        <CollapsibleSection title="Server State" defaultOpen>
+        <CollapsibleSection title="Server State" count={stats?.state.count} changed={stats?.state.changed}>
           {snapshot.state.session && Object.keys(snapshot.state.session).length > 0 && (
             <ScopeBlock label="Session" data={snapshot.state.session} />
           )}
@@ -88,7 +99,7 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
       )}
 
       {hasClientData && (
-        <CollapsibleSection title="Client Data" defaultOpen>
+        <CollapsibleSection title="Client Data" count={stats?.clientData.count} changed={stats?.clientData.changed}>
           {snapshot.clientData.session && Object.keys(snapshot.clientData.session).length > 0 && (
             <ScopeBlock label="Session" data={snapshot.clientData.session} />
           )}
@@ -102,7 +113,7 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
       )}
 
       {hasResources && (
-        <CollapsibleSection title="Resources" defaultOpen>
+        <CollapsibleSection title="Resources" count={stats?.resources.count} changed={stats?.resources.changed}>
           {snapshot.resources!.session && Object.keys(snapshot.resources!.session).length > 0 && (
             <ScopeBlock label="Session Scope" data={snapshot.resources!.session} />
           )}
@@ -154,14 +165,16 @@ function ScopeBlock({ label, data }: { label: string; data: Record<string, unkno
 
 function CollapsibleSection({
   title,
-  defaultOpen = true,
+  count,
+  changed,
   children,
 }: {
   title: string;
-  defaultOpen?: boolean;
+  count?: number;
+  changed?: number;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(false);
   return (
     <div>
       <button
@@ -170,8 +183,49 @@ function CollapsibleSection({
       >
         {open ? <ChevronDown className="h-3 w-3 text-slate-500" /> : <ChevronRight className="h-3 w-3 text-slate-500" />}
         <span className="text-xs font-medium text-slate-400">{title}</span>
+        {count !== undefined && count > 0 && (
+          <span className="text-[10px] font-mono text-slate-600 bg-slate-800/60 px-1.5 rounded-full">
+            {count}
+          </span>
+        )}
+        {changed !== undefined && changed > 0 && (
+          <span className="text-[10px] font-mono text-amber-500 bg-amber-900/20 px-1.5 rounded-full">
+            {changed} changed
+          </span>
+        )}
       </button>
       {open && <div className="pl-4">{children}</div>}
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Helpers for counting keys and detecting changes between snapshots
+// ---------------------------------------------------------------------------
+
+type ScopeData = Record<string, unknown> | undefined;
+type SectionData = Record<string, ScopeData> | undefined;
+
+function sectionStats(
+  current: SectionData,
+  previous: SectionData,
+): { count: number; changed: number } {
+  if (!current) return { count: 0, changed: 0 };
+  let count = 0;
+  let changed = 0;
+  for (const [scope, data] of Object.entries(current)) {
+    if (!data) continue;
+    const keys = Object.keys(data);
+    count += keys.length;
+    if (previous) {
+      const prevData = previous[scope] as ScopeData;
+      for (const key of keys) {
+        if (!prevData || !deepEqual(data[key], prevData[key])) {
+          changed++;
+        }
+      }
+    }
+  }
+  return { count, changed };
+}
+

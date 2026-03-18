@@ -96,5 +96,9 @@ Phase 1 (Foundation): Waves 1.a–1.k complete. Remaining: 1.l (CLI), 1.m (devto
 - **Context formatters**: Use `[domain]ContextFormatter` naming. Always assign to `context` as an array: `context: [workingMemoryContextFormatter]`
 - **Build dependency**: `@thought-fabric/core` depends on `@flow-state-dev/core` — build core first (`pnpm --filter @flow-state-dev/core build`)
 
+## Coding Conventions
+
+- **Common helper functions (e.g., `deepEqual`, formatting utilities, etc) should live in a common use-case specific helpers or common utils file rather than inline in files. We want to avoid having duplicate copies of utils spread out throughout our package/app codebases.
+
 ## Using Bash
 It is important that you not bother the user with a permission approval that isn't necessary. Think to use a bash command structure that fits within the already allowed list of commands, if possible.
