@@ -188,9 +188,11 @@ pipeline.work(
 
 **Key:** Work failures do NOT abort the main chain. They emit `step_error` items.
 
+**Auto-await:** When the sequencer's main chain finishes, any outstanding work tasks are automatically awaited before the sequencer returns. This ensures the request stream stays open until all background work completes. Before the auto-await, the sequencer emits a `StatusItem` with message `"finishing"` — clients can use this signal to know the main chain's output is ready and it's safe to accept new user input (see `isFinishing` on `SessionView` / `UseRequestStreamResult`).
+
 ### `waitForWork(opts)` — Converge Work Queue
 
-Wait for all queued work to complete.
+Wait for all queued work to complete at a specific point in the pipeline. This is useful when a later step depends on work task results. If you don't need the results mid-pipeline, the auto-await at the end of the sequencer handles it automatically.
 
 ```ts
 pipeline

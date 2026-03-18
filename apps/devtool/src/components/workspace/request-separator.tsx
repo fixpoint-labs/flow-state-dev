@@ -1,6 +1,13 @@
-import { Play, SkipForward, RefreshCw } from "lucide-react";
+/**
+ * Simplified request header.
+ * Shows: action name + status pill + duration.
+ * Request ID and replay/cursor/reconnect controls behind overflow menu.
+ */
+import { useState } from "react";
+import { MoreHorizontal, Play, SkipForward, RefreshCw } from "lucide-react";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
+import { useDebug } from "@/context/debug-context";
 
 type RequestSeparatorProps = {
   requestId: string;
@@ -14,9 +21,9 @@ type RequestSeparatorProps = {
 };
 
 function formatDuration(ms?: number, isActive?: boolean): string {
-  if (ms === undefined || ms === null) return isActive ? "0.0s..." : "";
+  if (ms === undefined || ms === null) return isActive ? "0.0s…" : "";
   const seconds = ms / 1000;
-  return isActive ? `${seconds.toFixed(1)}s...` : `${seconds.toFixed(1)}s`;
+  return isActive ? `${seconds.toFixed(1)}s…` : `${seconds.toFixed(1)}s`;
 }
 
 export function RequestSeparator({
@@ -29,39 +36,74 @@ export function RequestSeparator({
   onReplayFromCursor,
   onReconnect,
 }: RequestSeparatorProps) {
-  const shortId = requestId.length > 10 ? requestId.slice(0, 10) : requestId;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { isDebugMode } = useDebug();
   const showReplayControls = status === "completed" || status === "failed";
+  const hasOverflow = showReplayControls || isDebugMode;
+  const durationText = formatDuration(duration, isActive);
 
   return (
-    <div className="sticky top-0 z-10 flex items-center gap-2 border-y border-slate-800/50 bg-slate-950/90 backdrop-blur px-3 py-1.5">
-      <span className="text-[10px] font-mono text-slate-600">{shortId}</span>
-      <span className="text-[10px] text-slate-700">·</span>
-      <span className="text-xs text-slate-300">{action}</span>
-      <span className="text-[10px] text-slate-700">·</span>
+    <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-800/40 bg-slate-950/95 backdrop-blur-sm px-4 py-1.5">
+      <span className="text-xs font-medium text-slate-300">{action}</span>
       <StatusBadge status={status} />
-      <span className="text-[10px] text-slate-500 font-mono">
-        {formatDuration(duration, isActive)}
-      </span>
+      {durationText && (
+        <span className="text-[11px] text-slate-500 font-mono tabular-nums">{durationText}</span>
+      )}
+
       <span className="flex-1" />
-      {showReplayControls && (
-        <div className="flex items-center gap-0.5">
-          {onReplayFull && (
-            <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px] text-slate-500" onClick={onReplayFull} title="Replay from beginning">
-              <Play className="h-3 w-3 mr-0.5" /> Replay
-            </Button>
-          )}
-          {onReplayFromCursor && (
-            <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px] text-slate-500" onClick={onReplayFromCursor} title="Replay from cursor">
-              <SkipForward className="h-3 w-3 mr-0.5" /> Cursor
-            </Button>
-          )}
-          {onReconnect && (
-            <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px] text-slate-500" onClick={onReconnect} title="Simulate reconnect">
-              <RefreshCw className="h-3 w-3 mr-0.5" /> Reconnect
-            </Button>
+
+      {isDebugMode && (
+        <span className="text-[10px] font-mono text-slate-700">{requestId.slice(0, 10)}</span>
+      )}
+
+      {hasOverflow && (
+        <div className="relative">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="text-slate-600 hover:text-slate-400"
+            onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
+            title="More actions"
+          >
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </Button>
+
+          {menuOpen && (
+            <>
+              {/* Click-away backdrop */}
+              <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 top-full z-30 mt-1 min-w-[140px] rounded-md border border-slate-800 bg-slate-900 py-1 shadow-lg">
+                {isDebugMode && (
+                  <div className="px-3 py-1.5 text-[10px] font-mono text-slate-600 select-all border-b border-slate-800/50">
+                    {requestId}
+                  </div>
+                )}
+                {onReplayFull && (
+                  <OverflowButton icon={<Play className="h-3 w-3" />} label="Replay" onClick={() => { setMenuOpen(false); onReplayFull(); }} />
+                )}
+                {onReplayFromCursor && (
+                  <OverflowButton icon={<SkipForward className="h-3 w-3" />} label="From cursor" onClick={() => { setMenuOpen(false); onReplayFromCursor(); }} />
+                )}
+                {onReconnect && (
+                  <OverflowButton icon={<RefreshCw className="h-3 w-3" />} label="Reconnect" onClick={() => { setMenuOpen(false); onReconnect(); }} />
+                )}
+              </div>
+            </>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+function OverflowButton({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
+  return (
+    <button
+      className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+      onClick={onClick}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

@@ -1583,7 +1583,8 @@ export async function createExecutionContext<
     status: "completed" | "failed",
     emitter: EmissionContext["response"],
     reqRef: { current: { id: string } },
-    nextIndex: () => number
+    nextIndex: () => number,
+    blockOutput?: unknown
   ): void {
     const completedAt = Date.now();
     const itemIndex = nextIndex();
@@ -1604,7 +1605,7 @@ export async function createExecutionContext<
       ts: completedAt,
       blockName: parent.name,
       blockKind: parent.kind,
-      output: undefined,
+      output: blockOutput,
       startedAt,
       completedAt,
       duration: completedAt - startedAt
@@ -2018,7 +2019,8 @@ export async function createExecutionContext<
           if (parentChain !== undefined) {
             emitNestedBlockTrace(
               resolvedParent, traceStartedAt, "completed",
-              emissionResponse, requestRef, () => emittedItemCount++
+              emissionResponse, requestRef, () => emittedItemCount++,
+              output
             );
           }
 

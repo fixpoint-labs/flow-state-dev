@@ -16,6 +16,8 @@ export type TraceNode = {
   blockStartedAt?: number;
   blockCompletedAt?: number;
   item?: OutputItem;
+  /** The lifecycle trace item for this block (used for detail panel on click). */
+  traceItem?: OutputItem;
   children: TraceNode[];
   isExpanded: boolean;
 };
@@ -55,19 +57,10 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
         blockMap.set(prov.blockInstanceId, blockNode);
       }
 
-      blockNode.children.push({
-        type: "item",
-        id: item.id,
-        item,
-        children: [],
-        isExpanded: false,
-      });
-
+      // Extract metadata from block_output items into the block node header.
       if (item.type === "block_output") {
         const bo = item as BlockOutputItem;
-        // Prefer explicit blockKind from lifecycle metadata over inference.
         blockNode.blockKind = blockNode.blockKind ?? bo.blockKind ?? inferBlockKind(item);
-        // Use precise timing from lifecycle items when available.
         if (bo.startedAt !== undefined) {
           blockNode.blockStartedAt = bo.startedAt;
         }
@@ -79,6 +72,17 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
         }
         if (item.status === "completed") blockNode.blockStatus = "completed";
         if (item.status === "failed") blockNode.blockStatus = "failed";
+        // Trace block_output items are lifecycle metadata already reflected
+        // in the block node header — don't add as visible children.
+        // Store as traceItem so block nodes can be selected for detail view.
+        if (item.trace) {
+          // Two trace sources emit for the same block: executeBlock (has output)
+          // and emitNestedBlockTrace (output: undefined). Keep whichever has output.
+          if (!blockNode.traceItem || bo.output !== undefined) {
+            blockNode.traceItem = item;
+          }
+          continue;
+        }
       }
       if (item.type === "block_tool_output") {
         blockNode.blockKind = blockNode.blockKind ?? "generator";
@@ -87,13 +91,21 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
         blockNode.blockKind = blockNode.blockKind ?? "router";
       }
       if (item.type === "error") blockNode.blockStatus = "failed";
+
+      blockNode.children.push({
+        type: "item",
+        id: item.id,
+        item,
+        children: [],
+        isExpanded: false,
+      });
     }
 
     for (const [instanceId, blockNode] of blockMap) {
       const firstItem = group.items.find((i) => i.provenance?.blockInstanceId === instanceId);
       const parentId = firstItem?.provenance?.parentBlockInstanceId;
 
-      if (parentId && blockMap.has(parentId)) {
+      if (parentId && parentId !== instanceId && blockMap.has(parentId)) {
         const parent = blockMap.get(parentId)!;
         const insertIndex = parent.children.findIndex((c) => c.type === "item");
         if (insertIndex >= 0) {
@@ -120,6 +132,17 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       }
     }
 
+    // Propagate status to blocks that never received a block_output trace item.
+    // If the request is completed/failed and a block still shows "in_progress",
+    // infer its status from its children or the request.
+    if (group.status === "completed" || group.status === "failed") {
+      for (const blockNode of blockMap.values()) {
+        if (blockNode.blockStatus === "in_progress") {
+          blockNode.blockStatus = inferBlockStatus(blockNode, group.status);
+        }
+      }
+    }
+
     return {
       type: "request" as const,
       id: `req-${group.requestId}`,
@@ -136,4 +159,17 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
 function inferBlockKind(item: OutputItem): string | undefined {
   if (item.type === "block_output" && (item as BlockOutputItem).toolCall) return "generator";
   return undefined;
+}
+
+function inferBlockStatus(node: TraceNode, requestStatus: string): string {
+  const childBlocks = node.children.filter((c) => c.type === "block");
+  if (childBlocks.length > 0) {
+    const anyFailed = childBlocks.some((c) => c.blockStatus === "failed");
+    if (anyFailed) return "failed";
+    const allDone = childBlocks.every(
+      (c) => c.blockStatus === "completed" || c.blockStatus === "failed",
+    );
+    if (allDone) return "completed";
+  }
+  return requestStatus;
 }

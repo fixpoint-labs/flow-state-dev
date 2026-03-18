@@ -1,3 +1,17 @@
+/**
+ * Stream view: chat-first layout.
+ *
+ * Only shows items that belong in a conversation:
+ *   - Messages (user + assistant)
+ *   - Reasoning (collapsible)
+ *   - Tool calls (block_tool_output — collapsible)
+ *   - Errors / step errors
+ *   - Components / containers
+ *
+ * Operational items (block_output lifecycle, status signals, router_decision,
+ * context, state_change, resource_change) are filtered out — they live in
+ * trace view.
+ */
 import { useEffect, useMemo, useRef } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { Inbox } from "lucide-react";
@@ -14,6 +28,17 @@ type RequestGroup = {
   duration?: number;
   items: OutputItem[];
 };
+
+/** Item types that belong in a chat-like stream. */
+const STREAM_TYPES = new Set([
+  "message",
+  "reasoning",
+  "block_tool_output",
+  "error",
+  "step_error",
+  "component",
+  "container",
+]);
 
 type StreamViewProps = {
   requestGroups: RequestGroup[];
@@ -33,33 +58,40 @@ export function StreamView({
   onReconnect,
 }: StreamViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const lastScrollRef = useRef(0);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const userScrolledUpRef = useRef(false);
 
-  // Throttle scrollIntoView to at most once per 200ms during streaming
+  // Sort chronologically (oldest first) and filter to chat-relevant items.
+  const filteredGroups = useMemo(
+    () =>
+      [...requestGroups]
+        .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0))
+        .map((group) => ({
+          ...group,
+          items: group.items.filter((item) => STREAM_TYPES.has(item.type)),
+        })),
+    [requestGroups],
+  );
+
+  // Track if user has scrolled away from the bottom.
   useEffect(() => {
-    if (streamStatus === "streaming") {
-      const now = Date.now();
-      if (now - lastScrollRef.current >= 200) {
-        lastScrollRef.current = now;
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-      }
-    }
-  }, [requestGroups, streamStatus]);
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const handleScroll = () => {
+      const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+      userScrolledUpRef.current = !atBottom;
+    };
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
 
-  // Pre-compute sequence numbers from indices instead of mutating during render
-  const sequenceMap = useMemo(() => {
-    const map = new Map<string, number>();
-    let seq = 0;
-    for (const group of requestGroups) {
-      for (const item of group.items) {
-        seq++;
-        map.set(item.id, seq);
-      }
-    }
-    return map;
-  }, [requestGroups]);
+  // Auto-scroll to bottom when items change, unless user scrolled up.
+  useEffect(() => {
+    if (userScrolledUpRef.current) return;
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [filteredGroups]);
 
-  if (requestGroups.length === 0) {
+  if (filteredGroups.length === 0) {
     return (
       <EmptyState
         icon={<Inbox className="h-8 w-8" />}
@@ -70,9 +102,10 @@ export function StreamView({
   }
 
   return (
-    <div className="flex flex-col gap-0 overflow-auto h-full">
-      {requestGroups.map((group, groupIndex) => {
-        const isLast = groupIndex === requestGroups.length - 1;
+    <div ref={scrollContainerRef} className="flex flex-col overflow-auto h-full">
+      {filteredGroups.map((group, groupIndex) => {
+        const isLast = groupIndex === filteredGroups.length - 1;
+        const isActive = isLast && streamStatus === "streaming";
         return (
           <div key={group.requestId}>
             <RequestSeparator
@@ -80,18 +113,16 @@ export function StreamView({
               action={group.action}
               status={group.status}
               duration={group.duration}
-              isActive={isLast && streamStatus === "streaming"}
+              isActive={isActive}
               onReplayFull={onReplayFull ? () => onReplayFull(group.requestId) : undefined}
               onReplayFromCursor={onReplayFromCursor ? () => onReplayFromCursor(group.requestId) : undefined}
               onReconnect={onReconnect ? () => onReconnect(group.requestId) : undefined}
             />
-            {group.items.map((item) => (
-              <ItemRenderer
-                key={item.id}
-                item={item}
-                sequenceNumber={sequenceMap.get(item.id)}
-              />
-            ))}
+            <div className="px-4 py-2 space-y-1">
+              {group.items.map((item) => (
+                <ItemRenderer key={item.id} item={item} />
+              ))}
+            </div>
           </div>
         );
       })}

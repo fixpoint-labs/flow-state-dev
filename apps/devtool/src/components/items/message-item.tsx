@@ -1,6 +1,9 @@
+/**
+ * Chat-style message renderer.
+ * User messages align right, assistant messages align left.
+ * No role badges — position implies role.
+ */
 import type { MessageItem } from "@flow-state-dev/core/items";
-import { MessageSquare } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 
 export function MessageItemView({ item }: { item: MessageItem }) {
   const textParts = item.content
@@ -8,20 +11,27 @@ export function MessageItemView({ item }: { item: MessageItem }) {
     .map((c) => ("text" in c ? c.text : ""));
   const text = textParts.join("");
   const isStreaming = item.status === "in_progress";
+  const isUser = item.role === "user";
+
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-blue-600/20 border border-blue-500/20 px-3.5 py-2">
+          <p className="text-sm text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
+            {text}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex items-start gap-2">
-      <MessageSquare className="h-3.5 w-3.5 shrink-0 text-slate-500 mt-0.5" />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <Badge variant="outline" className="text-[10px] px-1 py-0 border-slate-700 text-slate-500">
-            {item.role}
-          </Badge>
-        </div>
-        <div className="text-sm text-slate-200 whitespace-pre-wrap break-words">
-          {text}
-          {isStreaming && <span className="inline-block w-1.5 h-3.5 bg-slate-400 animate-pulse ml-0.5 align-text-bottom" />}
-        </div>
+    <div className="max-w-[95%]">
+      <div className="text-sm text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
+        {text}
+        {isStreaming && (
+          <span className="inline-block w-1.5 h-4 bg-green-400/80 animate-pulse ml-0.5 align-text-bottom rounded-sm" />
+        )}
       </div>
     </div>
   );

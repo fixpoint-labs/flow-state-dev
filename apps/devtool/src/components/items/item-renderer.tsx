@@ -1,3 +1,10 @@
+/**
+ * Central item renderer for stream view.
+ *
+ * Chat-first: messages and errors render inline. Tool calls and reasoning
+ * are compact collapsibles. Clicking any item opens detail in the sidebar.
+ * Debug overlays only appear in debug mode.
+ */
 import { memo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { MessageItemView } from "./message-item";
@@ -11,6 +18,8 @@ import { ContainerItemView } from "./container-item";
 import { ContextItemView } from "./context-item";
 import { StateChangeItemView } from "./state-change-item";
 import { ResourceChangeItemView } from "./resource-change-item";
+import { BlockToolOutputItemView } from "./block-tool-output-item";
+import { RouterDecisionItemView } from "./router-decision-item";
 import { useDebug } from "@/context/debug-context";
 import { useSelection } from "@/context/selection-context";
 import { DebugOverlay } from "./debug-overlay";
@@ -18,45 +27,65 @@ import { cn } from "@/lib/utils";
 
 type ItemRendererProps = {
   item: OutputItem;
-  sequenceNumber?: number;
 };
 
-export const ItemRenderer = memo(function ItemRenderer({ item, sequenceNumber }: ItemRendererProps) {
+const TIER_3_TYPES = new Set(["context", "state_change", "resource_change"]);
+
+export const ItemRenderer = memo(function ItemRenderer({ item }: ItemRendererProps) {
   const { isDebugMode } = useDebug();
   const { selectedItemId, selectItem } = useSelection();
   const isSelected = selectedItemId === item.id;
 
-  if (item.type === "context" && !isDebugMode) {
-    return null;
-  }
+  const isTier3 = TIER_3_TYPES.has(item.type);
+  if (isTier3 && !isDebugMode) return null;
 
+  const isMessage = item.type === "message";
+  const isError = item.type === "error";
   const handleClick = () => selectItem(item.id, item);
 
+  // Messages and errors: primary content, no background hover.
+  if (isMessage || isError) {
+    return (
+      <div
+        className={cn(
+          "relative cursor-pointer",
+          isMessage ? "py-1" : "py-0.5",
+          isSelected && "ring-1 ring-inset ring-green-500/40 rounded",
+        )}
+        onClick={handleClick}
+      >
+        <ItemContent item={item} />
+        {isDebugMode && <DebugOverlay item={item} />}
+      </div>
+    );
+  }
+
+  // Tier 3: debug-only, dimmed.
+  if (isTier3) {
+    return (
+      <div
+        className={cn(
+          "relative cursor-pointer py-0.5 opacity-40 hover:opacity-70",
+          isSelected && "ring-1 ring-inset ring-green-500/40 opacity-70",
+        )}
+        onClick={handleClick}
+      >
+        <ItemContent item={item} />
+        {isDebugMode && <DebugOverlay item={item} />}
+      </div>
+    );
+  }
+
+  // Everything else (reasoning, tool calls, components, etc.): compact inline.
   return (
     <div
       className={cn(
-        "group relative px-3 py-1.5 cursor-pointer hover:bg-slate-800/30",
-        isSelected && "bg-slate-800/50 border-l-2 border-green-500",
-        item.type === "context" && "opacity-50",
+        "relative cursor-pointer py-0.5",
+        isSelected && "bg-slate-800/30 ring-1 ring-inset ring-green-500/40 rounded",
       )}
       onClick={handleClick}
     >
-      <div className="flex items-start gap-2">
-        {isDebugMode && sequenceNumber !== undefined && (
-          <span className="shrink-0 text-[10px] font-mono text-slate-600 mt-0.5">
-            #{sequenceNumber}
-          </span>
-        )}
-        <div className="min-w-0 flex-1">
-          {isDebugMode && (
-            <div className="text-[10px] text-slate-600 font-mono mb-0.5">
-              {item.type} | {item.provenance.blockName} | {item.provenance.blockInstanceId.slice(0, 12)}
-              {item.provenance.attempt && item.provenance.attempt > 1 ? ` | attempt:${item.provenance.attempt}` : ""}
-            </div>
-          )}
-          <ItemContent item={item} />
-        </div>
-      </div>
+      <ItemContent item={item} />
       {isDebugMode && <DebugOverlay item={item} />}
     </div>
   );
@@ -86,7 +115,11 @@ function ItemContent({ item }: { item: OutputItem }) {
       return <StateChangeItemView item={item} />;
     case "resource_change":
       return <ResourceChangeItemView item={item} />;
+    case "block_tool_output":
+      return <BlockToolOutputItemView item={item} />;
+    case "router_decision":
+      return <RouterDecisionItemView item={item} />;
     default:
-      return <div className="text-xs text-slate-500">Unknown item type: {(item as OutputItem).type}</div>;
+      return null;
   }
 }

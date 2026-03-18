@@ -71,6 +71,10 @@ export type SessionView = {
   readonly userId: string;
   readonly isLoading: boolean;
   readonly isStreaming: boolean;
+  /** True when the main execution chain has completed but background work tasks are still running. */
+  readonly isFinishing: boolean;
+  /** True when the session can accept a new sendAction call (not blocked by an in-flight request). */
+  readonly canSendAction: boolean;
   readonly error: Error | null;
   readonly detail: SessionDetail | null;
   readonly snapshot: SessionStateSnapshotResponse | null;
@@ -255,6 +259,7 @@ export function useSession(
   const [items, setItems] = useState<OutputItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isFinishing, setIsFinishing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   const streamHandleRef = useRef<RequestStreamHandle | null>(null);
@@ -542,6 +547,7 @@ export function useSession(
       }
 
       setError(null);
+      setIsFinishing(false);
 
       const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
@@ -589,6 +595,11 @@ export function useSession(
             url: `/api/flows/${encodeURIComponent(resolvedFlowKind)}/requests/${encodeURIComponent(requestId)}/stream`,
             baseUrl,
             onItemAdded: (event) => {
+              // Detect the "finishing" signal from sequencer auto-await.
+              if (event.item.type === "status" && (event.item as OutputItem & { message?: string }).message === "finishing") {
+                setIsFinishing(true);
+              }
+
               if (!passesItemFilter(event.item, filter)) {
                 return;
               }
@@ -684,6 +695,7 @@ export function useSession(
               ) {
                 flushContentDeltas();
                 setIsStreaming(false);
+                setIsFinishing(false);
                 streamHandleRef.current?.close();
                 streamHandleRef.current = null;
 
@@ -742,6 +754,8 @@ export function useSession(
     userId,
     isLoading,
     isStreaming,
+    isFinishing,
+    canSendAction: !isStreaming || isFinishing,
     error,
     detail,
     snapshot,

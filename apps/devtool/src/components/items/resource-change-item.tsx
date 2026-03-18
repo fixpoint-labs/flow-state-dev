@@ -1,16 +1,15 @@
+/**
+ * Tier 3 (debug-only): Resource change indicator — subtle dot/line.
+ */
 import type { ResourceChangeItem } from "@flow-state-dev/core/items";
-import { FileText } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 
 export function ResourceChangeItemView({ item }: { item: ResourceChangeItem }) {
   return (
-    <div className="flex items-center gap-1.5 text-xs text-slate-500">
-      <FileText className="h-3.5 w-3.5 shrink-0" />
-      <Badge variant="outline" className="text-[10px] px-1 py-0 border-slate-700 text-slate-500">
-        {item.changeType}
-      </Badge>
-      <span className="font-mono">{item.resourcePath}</span>
-      <span className="text-slate-600">({item.scope})</span>
+    <div className="flex items-center gap-1.5 text-[11px] text-slate-600 font-mono">
+      <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-600/60 shrink-0" />
+      <span className="text-slate-500">{item.changeType}</span>
+      <span className="truncate">{item.resourcePath}</span>
+      <span className="text-slate-700">({item.scope})</span>
     </div>
   );
 }

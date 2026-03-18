@@ -44,6 +44,8 @@ export type UseRequestStreamResult = {
   readonly blockOutputs: BlockOutputItem[];
   readonly currentStatus?: StatusItem;
   readonly isStreaming: boolean;
+  /** True when the main execution chain has completed but background work tasks are still running. */
+  readonly isFinishing: boolean;
   readonly lastEventId?: string;
   close: () => void;
 };
@@ -71,12 +73,14 @@ export function useRequestStream(
   const [items, setItems] = useState<OutputItem[]>([]);
   const [status, setStatus] = useState<RequestStatus>("in_progress");
   const [isStreaming, setIsStreaming] = useState(true);
+  const [isFinishing, setIsFinishing] = useState(false);
   const handleRef = useRef<RequestStreamHandle | null>(null);
 
   useEffect(() => {
     setItems([]);
     setStatus("in_progress");
     setIsStreaming(true);
+    setIsFinishing(false);
 
     const handle = createSSEClient({
       url: `/api/flows/${encodeURIComponent(flowKind!)}/requests/${encodeURIComponent(options.requestId)}/stream`,
@@ -92,10 +96,16 @@ export function useRequestStream(
           event.status === "incomplete"
         ) {
           setIsStreaming(false);
+          setIsFinishing(false);
         }
       },
       onItemAdded: (event) => {
         if (!passesTypeFilter(event.item, options.filter)) return;
+
+        // Detect the "finishing" signal from sequencer auto-await.
+        if (event.item.type === "status" && (event.item as StatusItem).message === "finishing") {
+          setIsFinishing(true);
+        }
 
         setItems((prev: OutputItem[]) => {
           const next = [...prev, event.item];
@@ -164,6 +174,7 @@ export function useRequestStream(
     blockOutputs,
     currentStatus,
     isStreaming,
+    isFinishing,
     get lastEventId() {
       return handleRef.current?.lastEventId;
     },

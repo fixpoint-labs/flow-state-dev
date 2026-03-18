@@ -231,6 +231,14 @@ function runSequencerOperations(
         }
       }
 
+      // Auto-await any outstanding .work() tasks so the block (and its
+      // parent stream) stays alive until background work finishes.
+      if (runtime.workTasks.length > 0) {
+        ctx.emitStatus("finishing");
+        const pending = runtime.workTasks.splice(0, runtime.workTasks.length);
+        await Promise.allSettled(pending.map((t) => t.promise));
+      }
+
       return currentValue;
     } catch (error) {
       const normalizedError = toError(error);

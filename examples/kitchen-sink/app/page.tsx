@@ -135,7 +135,7 @@ function KitchenSinkApp() {
     [flow.activeSessionId, session]
   );
 
-  const isDisabled = session.isStreaming || !flow.activeSessionId || flow.isLoading;
+  const isDisabled = !session.canSendAction || !flow.activeSessionId || flow.isLoading;
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-background">

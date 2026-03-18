@@ -107,7 +107,7 @@ function ChatApp() {
           value={message}
           onChange={setMessage}
           onSend={() => void handleSend()}
-          disabled={session.isStreaming || !flow.activeSessionId}
+          disabled={!session.canSendAction || !flow.activeSessionId}
         />
       </main>
     </div>
