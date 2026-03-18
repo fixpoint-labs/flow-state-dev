@@ -58,3 +58,59 @@ export type {
   WorkingMemoryCaptureConfig,
   WorkingMemoryObserveConfig,
 } from './working-memory-blocks.js'
+
+// ---------------------------------------------------------------------------
+// Layer 1: Episodic memory schemas, types, resource factory
+// ---------------------------------------------------------------------------
+
+export {
+  episodeSchema,
+  episodicMemoryStateSchema,
+  createEpisodicMemoryResource,
+} from './episodic-memory.js'
+export type { Episode, EpisodicMemoryState } from './episodic-memory.js'
+
+// ---------------------------------------------------------------------------
+// Layer 1: Memory system tracking resource
+// ---------------------------------------------------------------------------
+
+export {
+  memorySystemStateSchema,
+  memorySystemResource,
+} from './memory-system.js'
+export type { MemorySystemState } from './memory-system.js'
+
+// ---------------------------------------------------------------------------
+// Layer 2: Episodic memory helpers (verb-first naming)
+// ---------------------------------------------------------------------------
+
+export { encode as encodeEpisode } from './episodic-memory-helpers.js'
+export { recent as recentEpisodes } from './episodic-memory-helpers.js'
+export { markConsolidated as markEpisodesConsolidated } from './episodic-memory-helpers.js'
+export type { EncodeEpisodeInput } from './episodic-memory-helpers.js'
+
+// ---------------------------------------------------------------------------
+// Layer 3: Unified memory system factory
+// ---------------------------------------------------------------------------
+
+export { system } from './memory-system.js'
+export type {
+  MemorySystemConfig,
+  MemorySystem,
+  RankedMemoryItem,
+  WorkingMemorySystemConfig,
+  EpisodicMemoryConfig,
+} from './memory-system.js'
+
+// ---------------------------------------------------------------------------
+// Layer 3: Memory system block factories
+// ---------------------------------------------------------------------------
+
+export {
+  unifiedObservationsSchema,
+  memorySystemObserve,
+  memorySystemReflect,
+  memorySystemTick,
+  memorySystemCapture,
+} from './memory-system-blocks.js'
+export type { UnifiedObservations } from './memory-system-blocks.js'

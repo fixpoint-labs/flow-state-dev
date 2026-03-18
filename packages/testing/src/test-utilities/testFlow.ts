@@ -118,12 +118,7 @@ async function seedFlowStores(options: {
       version: 0,
       createdAt: now,
       updatedAt: now,
-      journal: [],
-      items: [],
-      messages: {
-        ui: [],
-        llm: []
-      }
+      journal: []
     });
   }
 

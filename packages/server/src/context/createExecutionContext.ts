@@ -41,7 +41,6 @@ import type {
   ProjectRecord,
   RequestRecord,
   SessionRecord,
-  StoreRegistry,
   UserRecord
 } from "../stores/types";
 import { createDefaultModelResolver } from "../models/createDefaultModelResolver";
@@ -487,18 +486,11 @@ function itemToLLMMessage(item: OutputItem): LLMMessage | null {
  * converts to LLM-ready messages, and applies filtering/limiting.
  */
 async function loadLLMHistory(
-  stores: StoreRegistry,
-  sessionId: string,
-  currentRequestId: string,
+  priorRequests: RequestRecord[],
   tokenCounter: TokenCounter,
   resolveModelId: () => string,
   query?: ItemQuery
 ): Promise<LLMMessage[]> {
-  const requests = await stores.request.list({ sessionId });
-
-  const priorRequests = requests
-    .filter((r) => r.id !== currentRequestId && r.status === "completed")
-    .sort((a, b) => a.startedAtMs - b.startedAtMs);
 
   const allowedTypes = query?.itemTypes
     ? new Set(query.itemTypes)
@@ -571,31 +563,65 @@ async function loadLLMHistory(
   return messages.slice(startIndex);
 }
 
+/**
+ * Converts an OutputItem (from the response emitter) to a SessionItem
+ * so it can be included in the all() view alongside historical items.
+ */
+function outputItemToSessionItem(item: OutputItem): SessionItem {
+  // Extract readable content for the payload based on item type.
+  // Message items get their text extracted; other items pass through.
+  let payload: unknown;
+  if (item.type === "message") {
+    const msg = item as MessageItem;
+    const texts = msg.content
+      .filter((c: Content) => c.type === "output_text")
+      .map((c) => (c as { type: "output_text"; text: string }).text);
+    payload = texts.length > 0 ? texts.join("") : msg.content;
+  } else {
+    payload = (item as Record<string, unknown>).output ?? item;
+  }
+
+  return {
+    id: item.id,
+    type: item.type,
+    status: item.status,
+    transient: item.transient,
+    requestId: item.requestId,
+    itemIndex: item.itemIndex,
+    payload,
+    ts: item.ts,
+  };
+}
+
 function createSessionItemViews(
-  readRecord: () => SessionRecord | undefined,
+  priorItems: SessionItem[],
+  priorRequests: RequestRecord[],
   options: {
-    stores: StoreRegistry;
-    sessionId: string;
-    currentRequestId: string;
     tokenCounter: TokenCounter;
     resolveModelId: () => string;
+    readLiveItems?: () => OutputItem[];
   }
 ): SessionItemViews {
+  // Compute once — priorItems is immutable for the request lifetime.
+  const priorIds = new Set(priorItems.map((i) => i.id));
+
   const select = (
     query: ItemQuery | undefined,
     audienceTypes?: Set<string>
   ): SessionItem[] => {
-    const record = readRecord();
-    if (record === undefined) {
-      return [];
-    }
-
     const includeTransient = query?.includeTransient === true;
     const itemTypeFilter = query?.itemTypes
       ? new Set(query.itemTypes)
       : undefined;
 
-    const filtered = (record.items ?? []).filter((item) => {
+    // Merge prior request items (loaded eagerly at context creation) with
+    // live items from the current request's response emitter.
+    const liveItems = options.readLiveItems?.() ?? [];
+    const liveSessionItems = liveItems.map(outputItemToSessionItem);
+    const deduplicatedLive = liveSessionItems.filter((i) => !priorIds.has(i.id));
+    const allItems = [...priorItems, ...deduplicatedLive];
+
+    const filtered = allItems.filter((item) => {
       if (!includeTransient && item.transient === true) {
         return false;
       }
@@ -621,9 +647,7 @@ function createSessionItemViews(
     client: (query) => select(query, CLIENT_AUDIENCE_TYPES),
     llm: (query) =>
       loadLLMHistory(
-        options.stores,
-        options.sessionId,
-        options.currentRequestId,
+        priorRequests,
         options.tokenCounter,
         options.resolveModelId,
         query
@@ -1049,12 +1073,36 @@ export async function createExecutionContext<
   // Parallelize independent store lookups — user, session, project, and request
   // records don't depend on each other for the initial load.
   const optionsProjectId = options.projectId;
-  const [loadedUser, loadedSession, loadedProject, loadedRequest] = await Promise.all([
+  const [loadedUser, loadedSession, loadedProject, loadedRequest, priorRequests] = await Promise.all([
     stores.user.get(userId),
     stores.session.get(sessionId),
     optionsProjectId !== undefined ? stores.project.get(optionsProjectId) : undefined,
-    stores.request.get(requestId)
+    stores.request.get(requestId),
+    stores.request.list({ sessionId })
   ]);
+
+  // Filter to completed prior requests once — reused by both all()/client()
+  // (via priorItems) and llm() (via loadLLMHistory).
+  const completedPriorRequests = priorRequests
+    .filter((r) => r.id !== requestId && r.status === "completed")
+    .sort((a, b) => a.startedAtMs - b.startedAtMs);
+
+  // Build prior items from completed request records. This replaces the
+  // deprecated SessionRecord.items field — items are canonical on request records.
+  const priorItems: SessionItem[] = [];
+  for (const req of completedPriorRequests) {
+    if (req.items === undefined) {
+      continue;
+    }
+    for (const item of req.items) {
+      priorItems.push(outputItemToSessionItem(item));
+    }
+  }
+  // Sort by timestamp then index for stable ordering
+  priorItems.sort((a, b) => {
+    const tsDiff = (a.ts ?? 0) - (b.ts ?? 0);
+    return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
+  });
 
   let userRecord = loadedUser;
   if (userRecord === undefined) {
@@ -1502,11 +1550,9 @@ export async function createExecutionContext<
         projectId: sessionRef.current.projectId
       },
       resources: sessionResources,
-      items: createSessionItemViews(() => sessionRef.current, {
-        stores,
-        sessionId,
-        currentRequestId: requestId,
+      items: createSessionItemViews(priorItems, completedPriorRequests, {
         tokenCounter,
+        readLiveItems,
         resolveModelId: () => {
           const active = resolvedModelStorage.getStore();
           if (typeof active === "string") {

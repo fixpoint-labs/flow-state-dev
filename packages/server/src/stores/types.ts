@@ -1,8 +1,5 @@
 import type {
-  JournalEntry,
-  LLMMessage,
-  Message,
-  SessionItem
+  JournalEntry
 } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -26,13 +23,6 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   metadata?: Record<string, unknown>;
   latestRequestId?: string;
   journal: JournalEntry[];
-  /** @deprecated Items are canonical on RequestRecord; aggregated on read via session state endpoint. */
-  items?: SessionItem[];
-  /** @deprecated Messages are derived from items; not stored on session. */
-  messages?: {
-    ui: Message[];
-    llm: LLMMessage[];
-  };
 };
 
 export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
