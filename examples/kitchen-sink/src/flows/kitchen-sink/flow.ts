@@ -32,6 +32,7 @@ import {
   router,
   sequencer
 } from "@flow-state-dev/core";
+import { tools } from "@flow-state-dev/tools";
 import {
   system as memorySystem,
   memorySystemResource,
@@ -138,6 +139,8 @@ When users ask you to create or write something, save it as an artifact using th
 
 When users ask about existing artifacts, use the read-artifact tool to fetch the full content before responding.
 
+When users ask questions that require up-to-date information, use the search tool to find relevant results from the web.
+
 Be concise and helpful. Never show the artifact id unless specifically asked to do so.`,
 
   context: [
@@ -179,7 +182,7 @@ Be concise and helpful. Never show the artifact id unless specifically asked to 
   inputSchema: analysisOutputSchema,
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
   user: (input) => input.message,
-  tools: [readArtifact, updateArtifact],
+  tools: [readArtifact, updateArtifact, tools.search()],
   maxIterations: 5,
   outputSchema: z.string(),
   emit: {
