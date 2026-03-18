@@ -1,3 +1,4 @@
+import path from "node:path";
 import { openai } from "@ai-sdk/openai";
 import {
   createFlowApiRouter,
@@ -5,6 +6,8 @@ import {
   createAiSdkModelResolver,
   createAiSdkSpeechResolver,
   createAiSdkTranscriptionResolver,
+  createFilesystemStores,
+  createInMemoryStores,
 } from "@flow-state-dev/server";
 import kitchenSinkFlow from "@/src/flows/kitchen-sink/flow";
 
@@ -17,11 +20,17 @@ const modelResolver = createAiSdkModelResolver(openai);
 const speechResolver = createAiSdkSpeechResolver((modelId) => openai.speech(modelId));
 const transcriptionResolver = createAiSdkTranscriptionResolver((modelId) => openai.transcription(modelId));
 
+// Store type: "filesystem" persists to .fsdev/data/, "memory" (default) is ephemeral.
+const stores = process.env.STORE_TYPE === "filesystem"
+  ? createFilesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
+  : createInMemoryStores();
+
 const registry = createFlowRegistry();
 registry.register(kitchenSinkFlow);
 
 export const router = createFlowApiRouter({
   registry,
+  stores,
   modelResolver,
   speechResolver,
   transcriptionResolver,
