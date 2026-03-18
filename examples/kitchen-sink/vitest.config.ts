@@ -1,7 +1,8 @@
 import { defineConfig } from "vitest/config";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = resolve(import.meta.dirname, "../..");
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 export default defineConfig({
   resolve: {
