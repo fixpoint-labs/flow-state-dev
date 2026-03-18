@@ -154,6 +154,7 @@ export type SessionRequestSummary = {
   failedAtMs?: number;
   metadata?: Record<string, unknown>;
   state?: Record<string, unknown>;
+  items?: OutputItem[];
   createdAt: number;
   updatedAt: number;
 };

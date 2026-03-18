@@ -72,6 +72,13 @@ function AppContent() {
 
   const { replayState, isReplaying, replayFull, replayFromCursor, simulateReconnect, clearReplay } = useReplay();
 
+  // Reset transient state when switching sessions.
+  useEffect(() => {
+    setActiveRequestId(null);
+    clearReplay();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveSessionId]);
+
   const streamRequestId = replayState.requestId ?? activeRequestId;
   const { streamState, streamStatus, items: streamItems } = useRequestStream({
     flowKind: activeFlowKind,
@@ -99,7 +106,7 @@ function AppContent() {
         return next;
       });
     }
-  }, [streamRequestId, streamItems]);
+  }, [streamRequestId, streamItems, effectiveSessionId]);
 
   const requestGroups: RequestGroup[] = useMemo(() => {
     const groups: RequestGroup[] = [];
@@ -110,7 +117,7 @@ function AppContent() {
         status: req.status,
         startedAt: req.startedAtMs ?? req.createdAt,
         duration: req.completedAtMs && req.startedAtMs ? req.completedAtMs - req.startedAtMs : undefined,
-        items: liveItems.get(req.id) ?? [],
+        items: liveItems.get(req.id) ?? req.items ?? [],
       });
     }
     if (activeRequestId && !requests.find((r) => r.id === activeRequestId)) {
@@ -253,6 +260,7 @@ function AppContent() {
 
             <TabsContent value="stream" className="flex-1 min-h-0 m-0">
               <StreamView
+                key={effectiveSessionId ?? "none"}
                 requestGroups={requestGroups}
                 streamStatus={streamStatus}
                 isReplaying={isReplaying}
@@ -263,7 +271,7 @@ function AppContent() {
             </TabsContent>
 
             <TabsContent value="trace" className="flex-1 min-h-0 m-0">
-              <TraceView requestGroups={requestGroups} />
+              <TraceView key={effectiveSessionId ?? "none"} requestGroups={requestGroups} />
             </TabsContent>
 
             <Separator />
