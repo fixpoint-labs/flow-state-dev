@@ -22,7 +22,7 @@
  *   - Resources   — named, typed state containers (artifacts) scoped to a session
  *   - clientData  — derived client-facing values computed from scope state and resources
  *   - Emission API — blocks emit items explicitly via ctx.emitMessage(), ctx.emitComponent(), etc.
- *   - Working memory — bounded, salience-scored cognitive workspace via @thought-fabric/core
+ *   - Unified memory — working memory + episodic memory via @thought-fabric/core's memory.system()
  */
 import {
   contextFn,
@@ -33,9 +33,8 @@ import {
   sequencer
 } from "@flow-state-dev/core";
 import {
-  workingMemoryCapture,
-  workingMemoryResources,
-  workingMemoryContextFormatter,
+  system as memorySystem,
+  memorySystemResource,
 } from "@thought-fabric/core/memory";
 import { z } from "zod";
 import {
@@ -52,6 +51,15 @@ import {
 } from "./schemas";
 
 const MODEL_ID = "gpt-5-mini";
+
+// Unified memory system: working memory + user-scoped episodic memory.
+// Provides a single capture pipeline, cross-store recall, and context formatter.
+const mem = memorySystem({
+  model: MODEL_ID,
+  working: { capacity: 7 },
+  episodic: true,
+});
+
 // ---------------------------------------------------------------------------
 // Flow-level schemas
 // ---------------------------------------------------------------------------
@@ -120,7 +128,7 @@ const agentGenerator = generator({
   userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
   sessionResources: {
     ...artifactResources,
-    ...workingMemoryResources,
+    workingMemory: mem.working.resource,
   },
   model: (_input, ctx) => ctx.user?.state.preferredModel ?? MODEL_ID,
 
@@ -133,9 +141,9 @@ When users ask about existing artifacts, use the read-artifact tool to fetch the
 Be concise and helpful. Never show the artifact id unless specifically asked to do so.`,
 
   context: [
-    // Working memory: injects active memories into the LLM context so it
-    // can reference prior conversation facts, user preferences, and goals.
-    workingMemoryContextFormatter,
+    // Memory system: injects active memories (working + episodic) into the
+    // LLM context, categorized as facts, current focus, and preferences.
+    mem.contextFormatter,
     // Dynamic: current artifact list, re-evaluated each tool loop step so
     // the LLM sees artifacts created by earlier tool calls in the same turn.
     (_input, ctx) => {
@@ -228,10 +236,10 @@ const planFallback = handler({
 //   .rescue([...])        — catch errors and route to fallback blocks
 
 const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema })
-  // Working memory capture runs in the background (.work) It extracts key facts, preferences, and goals from the LLM's
-  // output, persists them as salience-scored entries, and advances the decay
-  // clock — all without blocking the response to the user.
-  .work((input) => input.message, workingMemoryCapture({ model: MODEL_ID }))
+  // Memory capture runs in the background (.work): observes new session items,
+  // classifies them with durability and category, routes to working + episodic
+  // memory stores, and advances the decay clock.
+  .work((input) => input.message, mem.capture)
   .then(applyRequestedMode)
   .then(analyzeInput)
   .thenIf((result) => result.needsContext, formatReport)
@@ -242,7 +250,7 @@ const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema })
   });
 
 const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
-  .work((input) => input.message, workingMemoryCapture({ model: MODEL_ID }))
+  .work((input) => input.message, mem.capture)
   .then(applyRequestedMode)
   .then(analyzeInput)
   .map((result) => ({
@@ -326,7 +334,8 @@ const kitchenSinkFlow = defineFlow({
     // be independently writable.
     resources: {
       ...artifactResources,
-      ...workingMemoryResources,
+      workingMemory: mem.working.resource,
+      memorySystem: memorySystemResource,
     },
 
     // clientData entries are derived values computed from scope state and
@@ -363,6 +372,9 @@ const kitchenSinkFlow = defineFlow({
   // User scope: state and clientData that persist across sessions for a user.
   user: {
     stateSchema: userStateSchema,
+    resources: {
+      ...(mem.episodic ? { episodicMemory: mem.episodic.resource } : {}),
+    },
     clientData: {
       preferences: (ctx) => ({
         displayName: String(ctx.state.displayName ?? "Developer"),
