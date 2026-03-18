@@ -115,13 +115,13 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
       {hasResources && (
         <CollapsibleSection title="Resources" count={stats?.resources.count} changed={stats?.resources.changed}>
           {snapshot.resources!.session && Object.keys(snapshot.resources!.session).length > 0 && (
-            <ScopeBlock label="Session Scope" data={snapshot.resources!.session} />
+            <ResourceScope label="Session" resources={snapshot.resources!.session} prevResources={prevSnapshot?.resources?.session} />
           )}
           {snapshot.resources!.user && Object.keys(snapshot.resources!.user).length > 0 && (
-            <ScopeBlock label="User Scope" data={snapshot.resources!.user} />
+            <ResourceScope label="User" resources={snapshot.resources!.user} prevResources={prevSnapshot?.resources?.user} />
           )}
           {snapshot.resources!.project && Object.keys(snapshot.resources!.project).length > 0 && (
-            <ScopeBlock label="Project Scope" data={snapshot.resources!.project} />
+            <ResourceScope label="Project" resources={snapshot.resources!.project} prevResources={prevSnapshot?.resources?.project} />
           )}
         </CollapsibleSection>
       )}
@@ -195,6 +195,93 @@ function CollapsibleSection({
         )}
       </button>
       {open && <div className="pl-4">{children}</div>}
+    </div>
+  );
+}
+
+function ResourceScope({
+  label,
+  resources,
+  prevResources,
+}: {
+  label: string;
+  resources: Record<string, Record<string, unknown>>;
+  prevResources?: Record<string, Record<string, unknown>>;
+}) {
+  const entries = Object.entries(resources);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="mb-2">
+      <span className="text-[10px] text-slate-600 uppercase">{label}</span>
+      <div className="mt-0.5 space-y-0.5">
+        {entries.map(([name, state]) => {
+          const prev = prevResources?.[name];
+          const changed = prev !== undefined && !deepEqual(state, prev);
+          const isNew = prev === undefined && prevResources !== undefined;
+          return (
+            <ResourceItem
+              key={name}
+              name={name}
+              state={state}
+              changed={changed}
+              isNew={isNew}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ResourceItem({
+  name,
+  state,
+  changed,
+  isNew,
+}: {
+  name: string;
+  state: Record<string, unknown>;
+  changed: boolean;
+  isNew: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const stateKeys = Object.keys(state);
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    void navigator.clipboard.writeText(JSON.stringify(state, null, 2));
+  };
+
+  return (
+    <div>
+      <button
+        className="flex items-center gap-1.5 w-full text-left py-0.5 hover:bg-slate-800/30 rounded px-1 -mx-1"
+        onClick={() => setOpen(!open)}
+      >
+        {open
+          ? <ChevronDown className="h-2.5 w-2.5 text-slate-600 shrink-0" />
+          : <ChevronRight className="h-2.5 w-2.5 text-slate-600 shrink-0" />}
+        <span className="text-[11px] font-mono text-slate-400 truncate">{name}</span>
+        <span className="text-[10px] font-mono text-slate-700">
+          {stateKeys.length} {stateKeys.length === 1 ? "key" : "keys"}
+        </span>
+        {isNew && (
+          <span className="text-[9px] font-mono text-green-500 bg-green-900/20 px-1 rounded-full">new</span>
+        )}
+        {changed && (
+          <span className="text-[9px] font-mono text-amber-500 bg-amber-900/20 px-1 rounded-full">changed</span>
+        )}
+        <span className="flex-1" />
+        <Button variant="ghost" size="icon-xs" onClick={handleCopy} title="Copy resource state">
+          <Copy className="h-2.5 w-2.5 text-slate-700" />
+        </Button>
+      </button>
+      {open && (
+        <div className="pl-4 mt-0.5">
+          <JsonViewer data={state} className="mt-0" />
+        </div>
+      )}
     </div>
   );
 }
