@@ -87,11 +87,6 @@ export interface GeneratorToolResult {
 export type GeneratorTool = BlockDefinition<any, any>;
 
 /**
- * @deprecated Use GeneratorTool. Kept as an alias for compatibility.
- */
-export type ToolBinding = GeneratorTool;
-
-/**
  * Non-function slot entry forms (strings, objects, arrays).
  */
 export type GeneratorSlotStatic =
