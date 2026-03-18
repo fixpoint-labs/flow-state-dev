@@ -46,6 +46,8 @@ import type {
 import { createDefaultModelResolver } from "../models/createDefaultModelResolver";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
+import { cloneValue } from "../utils/clone";
+import { isJsonObject, asJsonObject } from "../utils/json-helpers";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 
 function normalizeLimit(
@@ -73,30 +75,6 @@ function listByQuery<TValue>(
   }
 
   return values.slice(Math.max(0, values.length - max));
-}
-
-function cloneValue<TValue>(value: TValue): TValue {
-  if (typeof globalThis.structuredClone === "function") {
-    return globalThis.structuredClone(value) as TValue;
-  }
-
-  return JSON.parse(JSON.stringify(value)) as TValue;
-}
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value)
-  );
-}
-
-function asJsonObject(value: unknown): JsonObject {
-  if (!isJsonObject(value)) {
-    return {};
-  }
-
-  return value;
 }
 
 function normalizeResourceDefault(config: ResourceConfig): JsonObject {

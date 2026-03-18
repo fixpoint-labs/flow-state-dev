@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { applyOffsetLimit } from "../shared";
+import { sortByUpdatedAtDesc } from "../../utils/sort";
 
 function toFileName(id: string): string {
   return `${encodeURIComponent(id)}.json`;
@@ -111,13 +112,6 @@ export type CreateFilesystemRecordStoreOptions<
   sort?: (left: TRecord, right: TRecord) => number;
 };
 
-function defaultSortByUpdatedAt<TRecord extends RecordWithIdentity>(
-  left: TRecord,
-  right: TRecord
-): number {
-  return right.updatedAt - left.updatedAt;
-}
-
 export function createFilesystemRecordStore<
   TRecord extends RecordWithIdentity,
   TListOptions extends StoreListOptions
@@ -126,7 +120,7 @@ export function createFilesystemRecordStore<
 ): FilesystemRecordStore<TRecord, TListOptions> {
   const { rootDir } = options;
   const filter = options.filter;
-  const sort = options.sort ?? defaultSortByUpdatedAt<TRecord>;
+  const sort = options.sort ?? sortByUpdatedAtDesc;
 
   return {
     get: async (id: string): Promise<TRecord | undefined> =>
