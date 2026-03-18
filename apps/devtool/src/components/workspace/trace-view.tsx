@@ -16,37 +16,104 @@ type TraceViewProps = {
 };
 
 export function TraceView({ requestGroups }: TraceViewProps) {
-  const tree = useMemo(() => buildTraceTree(requestGroups), [requestGroups]);
-  const [expandState, setExpandState] = useState<Record<string, boolean>>({});
-  const prevLastIdRef = useRef<string | null>(null);
+  const { selectedItemId } = useSelection();
+  // Manual overrides from user clicks. `undefined` = no override (use computed).
+  const [manualExpand, setManualExpand] = useState<Record<string, boolean>>({});
+  // Track which request was last active so it stays expanded after completion.
+  const [lastActiveId, setLastActiveId] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const activeNodeRef = useRef<HTMLDivElement>(null);
 
-  // Auto-expand new nodes in the latest request when it changes.
+  // Stable chronological ordering — sort requestGroups by startedAt before
+  // building the tree so completed requests don't jump position on API refresh.
+  const sortedTree = useMemo(() => {
+    const sorted = [...requestGroups].sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0));
+    return buildTraceTree(sorted);
+  }, [requestGroups]);
+
+  // Determine active request IDs.
+  const activeRequestIds = useMemo(
+    () => new Set(
+      sortedTree
+        .filter((n) => n.status === "in_progress" || n.status === "finishing")
+        .map((n) => n.id)
+    ),
+    [sortedTree],
+  );
+
+  // IDs of requests that should have their full tree expanded (active + last-active).
+  const expandedRequestIds = useMemo(() => {
+    const ids = new Set(activeRequestIds);
+    if (lastActiveId) ids.add(lastActiveId);
+    return ids;
+  }, [activeRequestIds, lastActiveId]);
+
+  // Update last-active tracker.
   useEffect(() => {
-    if (tree.length === 0) return;
-    const lastNode = tree[tree.length - 1];
-    if (lastNode.id === prevLastIdRef.current) return;
-    prevLastIdRef.current = lastNode.id;
-
-    // Expand the latest request and all its block children.
-    const autoExpand: Record<string, boolean> = { [lastNode.id]: true };
-    const expandChildren = (node: TraceNode) => {
-      for (const child of node.children) {
-        if (child.type === "block") {
-          autoExpand[child.id] = true;
-          expandChildren(child);
-        }
+    for (let i = sortedTree.length - 1; i >= 0; i--) {
+      if (activeRequestIds.has(sortedTree[i].id)) {
+        setLastActiveId(sortedTree[i].id);
+        break;
       }
-    };
-    expandChildren(lastNode);
+    }
+  }, [sortedTree, activeRequestIds]);
 
-    setExpandState((prev) => ({ ...prev, ...autoExpand }));
-  }, [tree]);
+  // Check if a selected item lives inside a given request node.
+  const selectionInNode = useCallback(
+    (node: TraceNode): boolean => {
+      if (!selectedItemId) return false;
+      const search = (n: TraceNode): boolean => {
+        if (n.item?.id === selectedItemId) return true;
+        if (n.traceItem?.id === selectedItemId) return true;
+        return n.children.some(search);
+      };
+      return search(node);
+    },
+    [selectedItemId],
+  );
 
-  const toggleNode = useCallback((nodeId: string) => {
-    setExpandState((prev) => ({ ...prev, [nodeId]: !prev[nodeId] }));
+  // Computed expansion.
+  // Rules:
+  //   1. Active requests (and all their children) → always expanded
+  //   2. Last-active request (and all children) → stays expanded after completion
+  //   3. Others → collapsed, UNLESS they contain the selected item
+  const shouldExpand = useCallback(
+    (node: TraceNode, parentRequestExpanded: boolean): boolean => {
+      // Manual override takes precedence.
+      if (manualExpand[node.id] !== undefined) return manualExpand[node.id];
+
+      if (node.type === "request") {
+        if (expandedRequestIds.has(node.id)) return true;
+        if (selectionInNode(node)) return true;
+        return false;
+      }
+
+      // Block nodes: expand when parent request is in the expanded set.
+      if (parentRequestExpanded) return true;
+      return false;
+    },
+    [manualExpand, expandedRequestIds, selectionInNode],
+  );
+
+  const toggleNode = useCallback((nodeId: string, currentlyExpanded: boolean) => {
+    setManualExpand((prev) => ({ ...prev, [nodeId]: !currentlyExpanded }));
   }, []);
 
-  if (tree.length === 0) {
+  // Clear manual overrides when active request changes so computed rules take over.
+  useEffect(() => {
+    if (activeRequestIds.size > 0) {
+      setManualExpand({});
+    }
+  }, [activeRequestIds]);
+
+  // Auto-scroll to keep the active trace in view.
+  useEffect(() => {
+    if (activeNodeRef.current) {
+      activeNodeRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  });
+
+  if (sortedTree.length === 0) {
     return (
       <EmptyState
         icon={<Inbox className="h-8 w-8" />}
@@ -57,14 +124,18 @@ export function TraceView({ requestGroups }: TraceViewProps) {
   }
 
   return (
-    <div className="overflow-auto h-full">
-      {tree.map((node) => (
+    <div ref={scrollContainerRef} className="overflow-auto h-full">
+      {sortedTree.map((node, index) => (
         <TraceNodeView
           key={node.id}
           node={node}
           depth={0}
-          expandState={expandState}
+          index={index + 1}
+          shouldExpand={shouldExpand}
+          parentRequestExpanded={false}
           toggleNode={toggleNode}
+          isActive={activeRequestIds.has(node.id)}
+          activeNodeRef={activeNodeRef}
         />
       ))}
     </div>
@@ -74,30 +145,40 @@ export function TraceView({ requestGroups }: TraceViewProps) {
 function TraceNodeView({
   node,
   depth,
-  expandState,
+  index,
+  shouldExpand,
+  parentRequestExpanded,
   toggleNode,
+  isActive,
+  activeNodeRef,
 }: {
   node: TraceNode;
   depth: number;
-  expandState: Record<string, boolean>;
-  toggleNode: (id: string) => void;
+  index?: number;
+  shouldExpand: (node: TraceNode, parentRequestExpanded: boolean) => boolean;
+  parentRequestExpanded: boolean;
+  toggleNode: (id: string, currentlyExpanded: boolean) => void;
+  isActive?: boolean;
+  activeNodeRef?: React.RefObject<HTMLDivElement | null>;
 }) {
   const { selectedItemId, selectItem } = useSelection();
   const { isDebugMode } = useDebug();
-  const isExpanded = expandState[node.id] ?? node.isExpanded;
+  const isExpanded = shouldExpand(node, parentRequestExpanded);
   const hasChildren = node.children.length > 0;
 
   if (node.type === "request") {
     return (
-      <div>
+      <div ref={isActive ? activeNodeRef : undefined}>
         <button
           className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left hover:bg-slate-800/30"
           style={{ paddingLeft: `${depth * 16 + 12}px` }}
-          onClick={() => toggleNode(node.id)}
+          onClick={() => toggleNode(node.id, isExpanded)}
         >
           {hasChildren &&
             (isExpanded ? <ChevronDown className="h-3 w-3 text-slate-500" /> : <ChevronRight className="h-3 w-3 text-slate-500" />)}
-          <span className="text-[10px] font-mono text-slate-500">{node.requestId?.slice(0, 10)}</span>
+          {index !== undefined && (
+            <span className="text-[10px] font-mono text-slate-600">#{index}</span>
+          )}
           <span className="text-xs text-slate-300">{node.action}</span>
           {node.status && <StatusBadge status={node.status} />}
           <span className="flex-1" />
@@ -107,7 +188,7 @@ function TraceNodeView({
         </button>
         {isExpanded &&
           node.children.map((child) => (
-            <TraceNodeView key={child.id} node={child} depth={depth + 1} expandState={expandState} toggleNode={toggleNode} />
+            <TraceNodeView key={child.id} node={child} depth={depth + 1} shouldExpand={shouldExpand} parentRequestExpanded={isExpanded} toggleNode={toggleNode} />
           ))}
       </div>
     );
@@ -117,7 +198,7 @@ function TraceNodeView({
     const isBlockSelected = node.traceItem ? selectedItemId === node.traceItem.id : false;
 
     const handleBlockClick = () => {
-      toggleNode(node.id);
+      toggleNode(node.id, isExpanded);
       if (node.traceItem) {
         selectItem(node.traceItem.id, node.traceItem);
       }
@@ -152,7 +233,7 @@ function TraceNodeView({
         </button>
         {isExpanded &&
           node.children.map((child) => (
-            <TraceNodeView key={child.id} node={child} depth={depth + 1} expandState={expandState} toggleNode={toggleNode} />
+            <TraceNodeView key={child.id} node={child} depth={depth + 1} shouldExpand={shouldExpand} parentRequestExpanded={parentRequestExpanded} toggleNode={toggleNode} />
           ))}
       </div>
     );
