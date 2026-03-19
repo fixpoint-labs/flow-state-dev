@@ -48,7 +48,7 @@ Use this protocol when work is wave-based:
    need functionality that doesn't exist, flag it as a gap — do not pretend it exists.
 
 4. **No internal API access.** Never reach into `block.config.execute`. Never construct
-   `ToolBinding` objects manually. Use the public API surface.
+   `GeneratorTool` objects manually. Use the public API surface.
 
 5. **No identity handlers.** A handler that returns its input unchanged exists only to satisfy
    a type requirement. Find a better composition, or remove the step.
