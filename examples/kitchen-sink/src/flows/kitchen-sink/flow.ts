@@ -22,7 +22,7 @@
  *   - Resources   — named, typed state containers (artifacts) scoped to a session
  *   - clientData  — derived client-facing values computed from scope state and resources
  *   - Emission API — blocks emit items explicitly via ctx.emitMessage(), ctx.emitComponent(), etc.
- *   - Unified memory — working memory + episodic memory via @thought-fabric/core's memory.system()
+ *   - Unified memory — working + episodic + semantic memory via @thought-fabric/core's memory.system()
  */
 import {
   contextFn,
@@ -52,12 +52,15 @@ import {
 
 const MODEL_ID = "gpt-5-mini";
 
-// Unified memory system: working memory + user-scoped episodic memory.
+// Unified memory system: working memory + user-scoped episodic + semantic memory.
 // Provides a single capture pipeline, cross-store recall, and context formatter.
+// Semantic memory distills repeated episodic experiences into stable knowledge
+// (facts, preferences, patterns) via LLM-based consolidation.
 const mem = memorySystem({
   model: MODEL_ID,
   working: { capacity: 7 },
   episodic: true,
+  semantic: true,
 });
 
 // ---------------------------------------------------------------------------
@@ -377,6 +380,7 @@ const kitchenSinkFlow = defineFlow({
     stateSchema: userStateSchema,
     resources: {
       ...(mem.episodic ? { episodicMemory: mem.episodic.resource } : {}),
+      ...(mem.semantic ? { semanticMemory: mem.semantic.resource } : {}),
     },
     clientData: {
       preferences: (ctx) => ({
