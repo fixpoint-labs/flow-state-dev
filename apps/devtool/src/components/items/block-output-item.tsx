@@ -8,6 +8,7 @@ import { useState } from "react";
 import type { BlockOutputItem } from "@flow-state-dev/core/items";
 import { Braces, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { JsonViewer } from "@/components/shared/json-viewer";
+import { safeParseJson } from "@/lib/utils";
 
 export function BlockOutputItemView({ item }: { item: BlockOutputItem }) {
   const [expanded, setExpanded] = useState(false);
@@ -120,12 +121,4 @@ function formatToolArgs(raw: string): string {
     // fall through
   }
   return raw.length > 60 ? raw.slice(0, 60) + "…" : raw;
-}
-
-function safeParseJson(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw;
-  }
 }

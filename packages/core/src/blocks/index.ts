@@ -1,5 +1,5 @@
 export { handler } from "./handler";
-export { generator } from "./generator";
+export { generator, providerTool } from "./generator";
 export { sequencer } from "./sequencer";
 export { router } from "./router";
 

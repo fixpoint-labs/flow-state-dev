@@ -472,11 +472,31 @@ describe("execution trace system", () => {
 
       const llmMessages = await ctx.session.items.llm();
 
-      // Should contain the two messages and the tool output.
-      expect(llmMessages).toHaveLength(3);
+      // Should contain the two messages, plus the tool-call/tool-result pair.
+      // AI SDK v6 requires tool results to be preceded by an assistant message
+      // with a matching tool-call part, so block_tool_output items expand into
+      // two messages (assistant tool-call + tool result).
+      expect(llmMessages).toHaveLength(4);
       expect(llmMessages[0]).toEqual({ role: "user", content: "hello" });
       expect(llmMessages[1]).toEqual({ role: "assistant", content: "world" });
-      expect(llmMessages[2]).toEqual({ role: "tool", content: "tool result" });
+      expect(llmMessages[2]).toEqual({
+        role: "assistant",
+        content: [{
+          type: "tool-call",
+          toolCallId: "call_1",
+          toolName: "tool-block",
+          args: {}
+        }]
+      });
+      expect(llmMessages[3]).toEqual({
+        role: "tool",
+        content: [{
+          type: "tool-result",
+          toolCallId: "call_1",
+          toolName: "tool-block",
+          output: { type: "text", value: "tool result" }
+        }]
+      });
 
       // Verify none of the trace items leaked through.
       const allContents = llmMessages.map((m: any) => m.content);

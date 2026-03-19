@@ -15,6 +15,7 @@ export type { ContextFunction } from "./context";
 export {
   generator,
   handler,
+  providerTool,
   router,
   sequencer
 } from "./blocks";
@@ -75,11 +76,14 @@ export type {
 export type {
   GeneratorModel,
   GeneratorModelResult,
+  GeneratorModelSource,
   GeneratorModelTool,
   GeneratorModelToolCall,
   GeneratorModelUsage,
+  GeneratorSearchConfig,
   ModelResolver,
-  PrepareStepFn
+  PrepareStepFn,
+  ProviderTool
 } from "./types/model";
 
 export type {

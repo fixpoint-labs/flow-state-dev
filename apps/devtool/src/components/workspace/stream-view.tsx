@@ -7,10 +7,11 @@
  *   - Tool calls (block_tool_output — collapsible)
  *   - Errors / step errors
  *   - Components / containers
+ *   - Status (transient progress indicators, e.g. "Using web_search…")
+ *   - Sources (citation URLs from provider-native search)
  *
- * Operational items (block_output lifecycle, status signals, router_decision,
- * context, state_change, resource_change) are filtered out — they live in
- * trace view.
+ * Operational items (block_output lifecycle, router_decision, context,
+ * state_change, resource_change) are filtered out — they live in trace view.
  */
 import { useEffect, useMemo, useRef } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
@@ -39,6 +40,8 @@ const STREAM_TYPES = new Set([
   "step_error",
   "component",
   "container",
+  "status",
+  "source",
 ]);
 
 type StreamViewProps = {
@@ -63,16 +66,22 @@ export function StreamView({
   const userScrolledUpRef = useRef(false);
 
   // Sort chronologically (oldest first), compute token totals from all items,
-  // then filter to chat-relevant items for display.
+  // then filter to chat-relevant items for display. Transient items (status
+  // indicators) are stripped once the request finishes so they don't linger.
   const filteredGroups = useMemo(
     () =>
       [...requestGroups]
         .sort((a, b) => (a.startedAt ?? 0) - (b.startedAt ?? 0))
-        .map((group) => ({
-          ...group,
-          totalTokens: aggregateTokenUsage(group.items).totalTokens,
-          items: group.items.filter((item) => STREAM_TYPES.has(item.type)),
-        })),
+        .map((group) => {
+          const isDone = group.status === "completed" || group.status === "failed" || group.status === "incomplete";
+          return {
+            ...group,
+            totalTokens: aggregateTokenUsage(group.items).totalTokens,
+            items: group.items.filter((item) =>
+              STREAM_TYPES.has(item.type) && !(isDone && item.transient)
+            ),
+          };
+        }),
     [requestGroups],
   );
 

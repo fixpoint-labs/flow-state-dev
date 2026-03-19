@@ -90,6 +90,91 @@ const agent = generator({
 
 When the LLM calls `deep-research`, the framework runs the full sequencer pipeline, collects the output, and feeds it back as the tool result — all within the generator's tool loop. Your tools can be as sophisticated as any other part of your workflow.
 
+#### Web search
+
+Generators have first-class support for provider-native web search. Add `search: true` and the framework handles the rest — detecting your provider, creating the right search tool, and returning grounded results with source citations:
+
+```ts
+const agent = generator({
+  name: "research-agent",
+  model: "claude-sonnet-4-20250514",
+  prompt: "You are a research assistant. Search the web when needed.",
+  search: true,
+  tools: [readDoc, updateDoc],
+  // ...
+});
+```
+
+The model decides when to search, the provider executes the search server-side, and source URLs come back as `source` items in the stream. No API keys for a separate search service. No extra handler block. The search runs inside the model's tool loop at the provider level.
+
+For fine-grained control, pass a config object instead of `true`:
+
+```ts
+const agent = generator({
+  name: "docs-agent",
+  model: "claude-sonnet-4-20250514",
+  search: {
+    maxUses: 3,
+    allowedDomains: ["docs.anthropic.com", "developer.mozilla.org"],
+    blockedDomains: ["pinterest.com"],
+    userLocation: { type: "approximate", country: "US", region: "CA" },
+    searchDepth: "high",
+  },
+  // ...
+});
+```
+
+All config fields are optional and provider-normalized. The framework maps them to the right provider-specific parameters:
+
+| Field | Anthropic | OpenAI | Google |
+|-------|-----------|--------|--------|
+| `maxUses` | `maxUses` | — | — |
+| `allowedDomains` | `allowedDomains` | — | — |
+| `blockedDomains` | `blockedDomains` | — | — |
+| `userLocation` | `userLocation` | `userLocation` | — |
+| `searchDepth` | — | `searchContextSize` | — |
+
+Fields that a provider doesn't support are silently ignored. This means you can write `search: { maxUses: 3, searchDepth: "high" }` and it works across Anthropic and OpenAI — each provider picks up the fields it understands.
+
+Search requires your model resolver to receive the provider object directly (not just a model factory function). See [Custom Model Resolver](/docs/server/custom-model-resolver#provider-search-tools) for setup details.
+
+#### Provider tools
+
+Block tools go through the full framework lifecycle — schema compilation, execution tracking, item emission, retry. But some AI SDK providers offer **provider-defined tools** that execute server-side (code execution, search, file analysis). These can't be handler blocks because the provider handles execution, not your code.
+
+The `providerTools` escape hatch passes raw provider tool objects directly to the AI SDK:
+
+```ts
+import { generator, providerTool } from "@flow-state-dev/core";
+import { anthropic } from "@ai-sdk/anthropic";
+
+const agent = generator({
+  name: "code-agent",
+  model: "claude-sonnet-4-20250514",
+  providerTools: [
+    providerTool("code_execution", anthropic.tools.codeExecution()),
+  ],
+  tools: [readDoc, updateDoc],  // block tools work alongside
+  // ...
+});
+```
+
+Provider tools bypass the block lifecycle entirely — no `inputSchema` validation, no item emission, no retry. They're opaque objects passed through to the AI SDK. Use block tools when you want framework integration; use `providerTools` when you need raw provider capabilities.
+
+You can combine `search`, `providerTools`, and block `tools` freely. They all merge into the same generation request:
+
+```ts
+const agent = generator({
+  name: "full-agent",
+  model: "claude-sonnet-4-20250514",
+  search: true,                                    // provider-native search
+  providerTools: [                                  // raw provider tools
+    providerTool("code_exec", anthropic.tools.codeExecution()),
+  ],
+  tools: [readDoc, updateDoc],                     // block tools
+});
+```
+
 ### Sequencer — the composition engine
 
 Sequencers compose blocks into pipelines using a fluent DSL with 15 chainable methods. Each step's output feeds into the next step's input, with full type inference through the chain.

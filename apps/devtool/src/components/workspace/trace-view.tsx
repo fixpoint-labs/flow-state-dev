@@ -111,7 +111,7 @@ export function TraceView({ requestGroups }: TraceViewProps) {
     if (activeNodeRef.current) {
       activeNodeRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
-  });
+  }, [sortedTree, activeRequestIds]);
 
   if (sortedTree.length === 0) {
     return (
@@ -285,6 +285,7 @@ function getItemIcon(type: string): string {
     resource_change: "📄",
     block_tool_output: "{}",
     router_decision: "🔀",
+    source: "🔗",
   };
   return icons[type] ?? "?";
 }
@@ -325,6 +326,8 @@ function getItemPreview(item: OutputItem): string {
       return `${item.toolCall.name}(${item.toolCall.arguments.slice(0, 40)})`;
     case "router_decision":
       return `${item.routerName} → ${item.selectedRoute}`;
+    case "source":
+      return (item as any).title ?? (item as any).url ?? "source";
     default:
       return "";
   }
