@@ -441,3 +441,122 @@ it("supports manually adding unified resource content tools", async () => {
     { name: "write", args: "updated" }
   ]);
 });
+
+describe("generator streaming", () => {
+  it("passes outputSchema to model.stream()", async () => {
+    let receivedOutputSchema: unknown;
+    const block = generator({
+      name: "stream-schema",
+      model: "mock-model",
+      prompt: "Return text"
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "mock-model",
+        async generate() {
+          return { text: "fallback" };
+        },
+        async *stream(options: any) {
+          receivedOutputSchema = options.outputSchema;
+          yield { type: "text_delta" as const, textDelta: "hello" };
+          yield {
+            type: "finish" as const,
+            fullResult: { text: "hello" }
+          };
+        }
+      })
+    });
+
+    await block.run({ value: "x" }, ctx);
+    // Default text generator has ZodString schema — it should be passed through
+    expect(receivedOutputSchema).toBeDefined();
+  });
+
+  it("emits tool_call_progress items for tool_call_delta chunks", async () => {
+    const emitted: Array<{ type: string; item?: any }> = [];
+    const block = generator({
+      name: "stream-tool-delta",
+      model: "mock-model",
+      prompt: "Use tools"
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "mock-model",
+        async generate() {
+          return { text: "fallback" };
+        },
+        async *stream() {
+          yield {
+            type: "tool_call_delta" as const,
+            toolCallDelta: { toolCallId: "tc_1", toolName: "search", argsDelta: '{"q":"test"}' }
+          };
+          yield { type: "text_delta" as const, textDelta: "result" };
+          yield {
+            type: "finish" as const,
+            fullResult: { text: "result" }
+          };
+        }
+      }),
+      response: {
+        emit: (event: any) => {
+          emitted.push(event);
+        }
+      }
+    });
+
+    await block.run({ value: "x" }, ctx);
+
+    const toolCallItems = emitted.filter(
+      e => e.type === "item.added" && e.item?.type === "tool_call_progress"
+    );
+    expect(toolCallItems.length).toBe(1);
+    expect(toolCallItems[0].item.toolCallId).toBe("tc_1");
+    expect(toolCallItems[0].item.toolName).toBe("search");
+    expect(toolCallItems[0].item.argsDelta).toBe('{"q":"test"}');
+  });
+
+  it("emits completed tool_call_progress items for tool_result chunks", async () => {
+    const emitted: Array<{ type: string; item?: any }> = [];
+    const block = generator({
+      name: "stream-tool-result",
+      model: "mock-model",
+      prompt: "Use tools"
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "mock-model",
+        async generate() {
+          return { text: "fallback" };
+        },
+        async *stream() {
+          yield {
+            type: "tool_result" as const,
+            toolResult: { toolCallId: "tc_1", toolName: "search", result: { found: true } }
+          };
+          yield { type: "text_delta" as const, textDelta: "done" };
+          yield {
+            type: "finish" as const,
+            fullResult: { text: "done" }
+          };
+        }
+      }),
+      response: {
+        emit: (event: any) => {
+          emitted.push(event);
+        }
+      }
+    });
+
+    await block.run({ value: "x" }, ctx);
+
+    const toolResultItems = emitted.filter(
+      e => e.type === "item.added" && e.item?.type === "tool_call_progress" && e.item?.status === "completed"
+    );
+    expect(toolResultItems.length).toBe(1);
+    expect(toolResultItems[0].item.toolCallId).toBe("tc_1");
+    expect(toolResultItems[0].item.result).toEqual({ found: true });
+  });
+});

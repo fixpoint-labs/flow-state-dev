@@ -727,6 +727,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     messages,
     tools: compiledTools.length > 0 ? compiledTools : undefined,
     providerTools: providerTools.length > 0 ? providerTools : undefined,
+    outputSchema,
     maxTokens: config.maxTokens,
     signal: ctx.signal,
     maxSteps,
@@ -837,6 +838,44 @@ async function executeStreamingGeneration<TInput, TOutput>(
       };
       await ctx.response.emit({ type: "item.added", item: statusItem });
       await ctx.response.emit({ type: "item.done", item: statusItem });
+    } else if (chunk.type === "tool_call_delta" && chunk.toolCallDelta !== undefined) {
+      // Emit tool call progress so clients can show incremental tool call args.
+      // Each delta is emitted as a transient status update — the full tool call
+      // lifecycle (start → args → result) is tracked by toolCallId.
+      const delta = chunk.toolCallDelta;
+      const toolCallItem = {
+        id: `item_toolcall_${delta.toolCallId}`,
+        type: "tool_call_progress" as const,
+        status: "in_progress" as const,
+        transient: true,
+        requestId: ctx.request.identity.id,
+        itemIndex: getEmitterItemCount(ctx.response),
+        provenance,
+        ts: Date.now(),
+        toolCallId: delta.toolCallId,
+        toolName: delta.toolName,
+        argsDelta: delta.argsDelta
+      };
+      await ctx.response.emit({ type: "item.added", item: toolCallItem });
+      await ctx.response.emit({ type: "item.done", item: toolCallItem });
+    } else if (chunk.type === "tool_result" && chunk.toolResult !== undefined) {
+      // Emit completed tool result so clients see the outcome of tool execution.
+      const tr = chunk.toolResult;
+      const toolResultItem = {
+        id: `item_toolresult_${tr.toolCallId}`,
+        type: "tool_call_progress" as const,
+        status: "completed" as const,
+        transient: true,
+        requestId: ctx.request.identity.id,
+        itemIndex: getEmitterItemCount(ctx.response),
+        provenance,
+        ts: Date.now(),
+        toolCallId: tr.toolCallId,
+        toolName: tr.toolName,
+        result: tr.result
+      };
+      await ctx.response.emit({ type: "item.added", item: toolResultItem });
+      await ctx.response.emit({ type: "item.done", item: toolResultItem });
     } else if (chunk.type === "source_url" && chunk.source !== undefined) {
       const sourceItem = buildSourceItem(chunk.source, ctx, provenance);
       await ctx.response.emit({ type: "item.added", item: sourceItem });
@@ -1035,7 +1074,7 @@ export function generator<
 
       let prepareStepFn: PrepareStepFn | undefined;
       if (hasDynamicPrompt || hasDynamicContext || hasDynamicTools) {
-        prepareStepFn = async ({ stepNumber, messages: currentMessages }) => {
+        prepareStepFn = async ({ stepNumber, messages: currentMessages, steps: _steps }) => {
           if (stepNumber === 0) {
             return undefined;
           }
