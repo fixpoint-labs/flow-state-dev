@@ -104,6 +104,8 @@ function ItemTypeDetail({ item }: { item: OutputItem }) {
       return <BlockToolOutputDetail item={item} />;
     case "router_decision":
       return <RouterDecisionDetail item={item} />;
+    case "source":
+      return <SourceDetail item={item} />;
     default:
       return <JsonViewer data={item} />;
   }
@@ -303,6 +305,25 @@ function RouterDecisionDetail({ item }: { item: OutputItem & { type: "router_dec
   );
 }
 
+function SourceDetail({ item }: { item: OutputItem & { type: "source" } }) {
+  return (
+    <div className="space-y-1">
+      <MetadataRow label="Source ID" value={item.sourceId} mono />
+      <MetadataRow label="URL">
+        <a
+          href={item.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-400 hover:underline break-all text-right"
+        >
+          {item.url}
+        </a>
+      </MetadataRow>
+      {item.title && <MetadataRow label="Title" value={item.title} />}
+    </div>
+  );
+}
+
 /* --- Shared components --- */
 
 function TypePill({ type }: { type: string }) {
@@ -320,6 +341,7 @@ function TypePill({ type }: { type: string }) {
     status: "text-slate-500 border-slate-700",
     block_tool_output: "text-purple-400 border-purple-800/50",
     router_decision: "text-orange-400 border-orange-800/50",
+    source: "text-blue-400 border-blue-800/50",
   };
   return (
     <span className={`text-[10px] font-mono px-1.5 py-0 rounded border ${colors[type] ?? "text-slate-500 border-slate-700"}`}>

@@ -2,11 +2,14 @@ import { generateText, streamText, Output, stepCountIs } from "ai";
 import type {
   GeneratorModel,
   GeneratorModelResult,
+  GeneratorModelSource,
   GeneratorModelStreamChunk,
   GeneratorModelTool,
   GeneratorModelToolCall,
+  GeneratorSearchConfig,
   ModelResolver,
-  PrepareStepFn
+  PrepareStepFn,
+  ProviderTool
 } from "@flow-state-dev/core/types";
 import { makeSchemaStrict } from "./makeSchemaStrict.js";
 
@@ -184,6 +187,7 @@ function buildAiSdkRequest(
   options: {
     messages: unknown[];
     tools?: GeneratorModelTool[];
+    providerTools?: ProviderTool[];
     outputSchema?: unknown;
     maxTokens?: number;
     signal?: AbortSignal;
@@ -197,24 +201,40 @@ function buildAiSdkRequest(
     messages: options.messages
   };
 
-  // Compile tools — include execute if provided (enables AI SDK auto-execution)
-  if (options.tools !== undefined && options.tools.length > 0) {
+  // Compile block tools — include execute if provided (enables AI SDK auto-execution)
+  const hasBlockTools = options.tools !== undefined && options.tools.length > 0;
+  const hasProviderTools = options.providerTools !== undefined && options.providerTools.length > 0;
+
+  if (hasBlockTools || hasProviderTools) {
     const compiled: Record<string, unknown> = {};
-    for (const tool of options.tools) {
-      const entry: Record<string, unknown> = {
-        description: tool.description,
-        inputSchema:
-          tool.parameters ?? {
-            type: "object",
-            properties: {},
-            additionalProperties: true
-          }
-      };
-      if (tool.execute !== undefined) {
-        entry.execute = tool.execute;
+
+    // Block tools: compiled with description, inputSchema, optional execute
+    if (hasBlockTools) {
+      for (const tool of options.tools!) {
+        const entry: Record<string, unknown> = {
+          description: tool.description,
+          inputSchema:
+            tool.parameters ?? {
+              type: "object",
+              properties: {},
+              additionalProperties: true
+            }
+        };
+        if (tool.execute !== undefined) {
+          entry.execute = tool.execute;
+        }
+        compiled[tool.name] = entry;
       }
-      compiled[tool.name] = entry;
     }
+
+    // Provider tools: raw AI SDK tool objects, passed through without compilation.
+    // The provider handles execution server-side.
+    if (hasProviderTools) {
+      for (const pt of options.providerTools!) {
+        compiled[pt.name] = pt.tool;
+      }
+    }
+
     request.tools = compiled;
   }
 
@@ -263,6 +283,34 @@ function buildAiSdkRequest(
 // Result normalisers — extract framework types from AI SDK results
 // ---------------------------------------------------------------------------
 
+function normalizeSources(value: unknown): GeneratorModelSource[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const sources: GeneratorModelSource[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const rec = asRecord(value[index]);
+    if (rec === undefined || typeof rec.url !== "string") {
+      continue;
+    }
+
+    sources.push({
+      type: "source",
+      sourceType: "url",
+      id:
+        (typeof rec.id === "string" ? rec.id : undefined) ??
+        (typeof rec.sourceId === "string" ? rec.sourceId : undefined) ??
+        `source_${index}`,
+      url: rec.url,
+      title: typeof rec.title === "string" ? rec.title : undefined,
+      providerMetadata: asProviderMetadata(rec.providerMetadata)
+    });
+  }
+
+  return sources.length > 0 ? sources : undefined;
+}
+
 function normalizeGenerateResult(
   result: Record<string, unknown>
 ): GeneratorModelResult {
@@ -279,7 +327,8 @@ function normalizeGenerateResult(
     usage: normalizeUsage(result.usage),
     providerMetadata: asProviderMetadata(
       result.providerMetadata ?? result.experimental_providerMetadata
-    )
+    ),
+    sources: normalizeSources(result.sources)
   };
 }
 
@@ -297,9 +346,112 @@ function normalizeFinishChunk(
       usage: normalizeUsage(result.usage),
       providerMetadata: asProviderMetadata(
         result.providerMetadata ?? result.experimental_providerMetadata
-      )
+      ),
+      sources: normalizeSources(result.sources)
     }
   };
+}
+
+// ---------------------------------------------------------------------------
+// Provider search tool mapping
+// ---------------------------------------------------------------------------
+
+/**
+ * Detects whether an object looks like an AI SDK provider with a `.tools`
+ * namespace (e.g., the `openai` export from `@ai-sdk/openai`).
+ */
+function hasProviderTools(value: unknown): boolean {
+  if (typeof value !== "function") {
+    return false;
+  }
+
+  const obj = value as unknown as Record<string, unknown>;
+  return typeof obj.tools === "object" && obj.tools !== null;
+}
+
+/**
+ * Extracts the base provider name from an AI SDK language model's `provider`
+ * property. Provider strings use dot-notation (e.g., "anthropic.chat",
+ * "openai.chat") — we extract the prefix before the first dot.
+ */
+function detectProviderName(languageModel: unknown): string | undefined {
+  const model = languageModel as Record<string, unknown> | undefined;
+  const provider = model?.provider;
+  if (typeof provider !== "string") {
+    return undefined;
+  }
+
+  const dotIndex = provider.indexOf(".");
+  return dotIndex > 0 ? provider.slice(0, dotIndex) : provider;
+}
+
+/**
+ * Maps a normalized GeneratorSearchConfig to a provider-specific search tool.
+ * Returns the raw AI SDK tool object + a display name, or undefined if the
+ * provider doesn't support search tools.
+ *
+ * Unsupported config fields for a given provider are silently ignored.
+ */
+function mapToProviderSearchTool(
+  providerName: string,
+  providerTools: Record<string, unknown>,
+  config: GeneratorSearchConfig
+): { name: string; tool: unknown } | undefined {
+  // Anthropic: webSearch_20250305 or webSearch
+  if (providerName === "anthropic") {
+    const factory =
+      (providerTools as any).webSearch_20250305 ??
+      (providerTools as any).webSearch;
+    if (typeof factory !== "function") {
+      return undefined;
+    }
+
+    const opts: Record<string, unknown> = {};
+    if (config.maxUses !== undefined) opts.maxUses = config.maxUses;
+    if (config.allowedDomains !== undefined) opts.allowedDomains = config.allowedDomains;
+    if (config.blockedDomains !== undefined) opts.blockedDomains = config.blockedDomains;
+    if (config.userLocation !== undefined) opts.userLocation = config.userLocation;
+
+    return {
+      name: "web_search",
+      tool: Object.keys(opts).length > 0 ? factory(opts) : factory()
+    };
+  }
+
+  // OpenAI: webSearch
+  if (providerName === "openai") {
+    if (typeof (providerTools as any).webSearch !== "function") {
+      return undefined;
+    }
+
+    const opts: Record<string, unknown> = {};
+    if (config.searchDepth !== undefined) opts.searchContextSize = config.searchDepth;
+    if (config.userLocation !== undefined) opts.userLocation = config.userLocation;
+
+    return {
+      name: "web_search",
+      tool: Object.keys(opts).length > 0
+        ? (providerTools as any).webSearch(opts)
+        : (providerTools as any).webSearch()
+    };
+  }
+
+  // Google / Vertex: googleSearch
+  if (providerName === "google" || providerName === "vertex") {
+    const factory =
+      (providerTools as any).googleSearch ??
+      (providerTools as any).google_search;
+    if (typeof factory !== "function") {
+      return undefined;
+    }
+
+    return {
+      name: "google_search",
+      tool: factory()
+    };
+  }
+
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -321,12 +473,13 @@ export function wrapAiSdkModel(
       ? (languageModel as Record<string, unknown>).modelId as string
       : "unknown");
 
-  return createGeneratorModelFromAiSdk(resolvedId, languageModel);
+  return createGeneratorModelFromAiSdk(resolvedId, languageModel, undefined);
 }
 
 function createGeneratorModelFromAiSdk(
   modelId: string,
-  languageModel: unknown
+  languageModel: unknown,
+  providerWithTools: unknown | undefined
 ): GeneratorModel {
   return {
     modelId,
@@ -345,7 +498,7 @@ function createGeneratorModelFromAiSdk(
 
       // Iterate fullStream to capture tool-call events during multi-step loops,
       // not just text deltas. AI SDK v6 fullStream part types use hyphenated
-      // names: "text-delta", "reasoning-delta", "tool-call", etc.
+      // names: "text-delta", "reasoning-delta", "tool-call", "source", etc.
       for await (const part of (result as any).fullStream) {
         const partRecord = part as Record<string, unknown>;
 
@@ -368,6 +521,25 @@ function createGeneratorModelFromAiSdk(
               argsDelta: JSON.stringify(partRecord.args)
             }
           };
+        } else if (partRecord.type === "source" || partRecord.type === "source-url") {
+          // Source references from provider-native tools (e.g., web search).
+          const url = partRecord.url as string | undefined;
+          if (typeof url === "string") {
+            yield {
+              type: "source_url",
+              source: {
+                type: "source",
+                sourceType: "url",
+                id:
+                  (typeof partRecord.sourceId === "string" ? partRecord.sourceId : undefined) ??
+                  (typeof partRecord.id === "string" ? partRecord.id : undefined) ??
+                  `source_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+                url,
+                title: typeof partRecord.title === "string" ? partRecord.title : undefined,
+                providerMetadata: asProviderMetadata(partRecord.providerMetadata)
+              }
+            };
+          }
         }
       }
 
@@ -376,6 +548,22 @@ function createGeneratorModelFromAiSdk(
         type: "finish",
         ...normalizeFinishChunk(finalResult)
       };
+    },
+
+    resolveSearchTool(config: GeneratorSearchConfig) {
+      // Detect provider from the language model's .provider property
+      const providerName = detectProviderName(languageModel);
+      if (providerName === undefined) {
+        return undefined;
+      }
+
+      // Get the provider's tools namespace from the stored provider reference
+      const tools = (providerWithTools as Record<string, unknown> | undefined)?.tools;
+      if (typeof tools !== "object" || tools === null) {
+        return undefined;
+      }
+
+      return mapToProviderSearchTool(providerName, tools as Record<string, unknown>, config);
     }
   };
 }
@@ -386,6 +574,10 @@ function createGeneratorModelFromAiSdk(
  * to AI SDK language model instances (e.g. the `openai` export from
  * `@ai-sdk/openai`).
  *
+ * When the resolver is a provider object with `.tools` (e.g., the `openai`
+ * or `anthropic` export), provider-native search tools are automatically
+ * available via generator's `search` config field.
+ *
  * Both generate and stream paths use a shared request builder, so tools,
  * maxSteps, outputSchema, etc. are compiled identically regardless of
  * whether the caller requests full or streamed output.
@@ -393,6 +585,16 @@ function createGeneratorModelFromAiSdk(
 export function createAiSdkModelResolver(
   resolveLanguageModel: ResolveAiSdkLanguageModel
 ): ModelResolver {
+  // Detect if the resolver itself is a provider object with .tools
+  // (e.g., the `openai` or `anthropic` export from @ai-sdk/* packages).
+  const providerWithTools = hasProviderTools(resolveLanguageModel)
+    ? resolveLanguageModel
+    : undefined;
+
   return (modelId: string) =>
-    createGeneratorModelFromAiSdk(modelId, resolveLanguageModel(modelId));
+    createGeneratorModelFromAiSdk(
+      modelId,
+      resolveLanguageModel(modelId),
+      providerWithTools
+    );
 }

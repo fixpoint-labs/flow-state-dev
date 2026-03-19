@@ -146,6 +146,16 @@ export type StepErrorItem = OutputItemBase & {
   recovered: boolean;
 };
 
+/** Source reference emitted by provider-native tools (e.g., web search). */
+export type SourceItem = OutputItemBase & {
+  type: "source";
+  sourceType: "url";
+  sourceId: string;
+  url: string;
+  title?: string;
+  providerMetadata?: Record<string, Record<string, unknown>>;
+};
+
 export type OutputItem =
   | BlockOutputItem
   | BlockToolOutputItem
@@ -159,4 +169,5 @@ export type OutputItem =
   | StateChangeItem
   | ResourceChangeItem
   | ErrorItem
-  | StepErrorItem;
+  | StepErrorItem
+  | SourceItem;

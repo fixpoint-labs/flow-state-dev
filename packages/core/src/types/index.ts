@@ -59,13 +59,16 @@ export type {
 export type {
   GeneratorModel,
   GeneratorModelResult,
+  GeneratorModelSource,
   GeneratorModelStreamChunk,
   GeneratorModelTool,
   GeneratorModelToolCall,
   GeneratorModelUsage,
+  GeneratorSearchConfig,
   GeneratorStepResult,
   ModelResolver,
-  PrepareStepFn
+  PrepareStepFn,
+  ProviderTool
 } from "./model";
 
 export type {
