@@ -266,16 +266,26 @@ function StatusDetail({ item }: { item: OutputItem & { type: "status" } }) {
 }
 
 function BlockToolOutputDetail({ item }: { item: OutputItem & { type: "block_tool_output" } }) {
+  const isFailed = item.status === "failed";
   return (
     <div className="space-y-2">
       <MetadataRow label="Block" value={item.blockName} mono />
       <MetadataRow label="Tool" value={item.toolCall.name} mono />
       <MetadataRow label="Call ID" value={item.toolCall.callId} mono />
       <MetadataRow label="Generator" value={item.toolCall.generatorBlock} />
+      {isFailed && item.error && (
+        <div className="rounded bg-red-950/30 border border-red-800/50 px-3 py-2">
+          <span className="text-[10px] uppercase text-red-400 font-medium">Error</span>
+          <p className="text-xs text-red-300 mt-0.5 font-mono">{item.error.message}</p>
+          {item.error.code && (
+            <p className="text-[10px] text-red-400/60 mt-0.5 font-mono">{item.error.code}</p>
+          )}
+        </div>
+      )}
       <CollapsibleSection title="Arguments" defaultOpen>
         <JsonViewer data={safeParseJson(item.toolCall.arguments)} />
       </CollapsibleSection>
-      {item.output !== undefined && (
+      {!isFailed && item.output !== undefined && (
         <CollapsibleSection title="Output" defaultOpen>
           <JsonViewer data={item.output} />
         </CollapsibleSection>

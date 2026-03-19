@@ -64,6 +64,11 @@ export type BlockToolOutputItem = OutputItemBase & {
     arguments: string;
     generatorBlock: string;
   };
+  /** Present when the tool execution failed (status will be "failed"). */
+  error?: {
+    message: string;
+    code?: string;
+  };
 };
 
 export type RouterDecisionItem = OutputItemBase & {

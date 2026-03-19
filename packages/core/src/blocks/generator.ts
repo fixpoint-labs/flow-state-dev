@@ -376,6 +376,40 @@ function compileToolsWithExecute(
         } catch (error) {
           const err = toError(error);
           await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, scopedCtx);
+
+          // Emit a failed block_tool_output so the devtool can display the error
+          if (options?.toolCallId !== undefined) {
+            const identity = scopedCtx._blockIdentity;
+            const toolErrorItem = {
+              id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+              type: "block_tool_output" as const,
+              status: "failed" as const,
+              requestId: scopedCtx.request.identity.id,
+              itemIndex: getEmitterItemCount(scopedCtx.response),
+              provenance: {
+                blockName: identity?.blockName ?? tool.name,
+                blockInstanceId: identity?.blockInstanceId ?? tool.name,
+                parentBlockInstanceId: identity?.parentBlockInstanceId,
+                phase: "main" as const
+              },
+              ts: Date.now(),
+              blockName: tool.name,
+              output: undefined,
+              toolCall: {
+                callId: options.toolCallId,
+                name: tool.name,
+                arguments: typeof args === "string" ? args : JSON.stringify(args),
+                generatorBlock: generatorBlockName
+              },
+              error: {
+                message: err.message,
+                code: (err as any).code
+              }
+            };
+            await scopedCtx.response.emit({ type: "item.added", item: toolErrorItem });
+            await scopedCtx.response.emit({ type: "item.done", item: toolErrorItem });
+          }
+
           throw err;
         }
       };

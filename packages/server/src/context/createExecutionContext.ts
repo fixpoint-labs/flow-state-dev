@@ -470,6 +470,12 @@ function itemToLLMMessage(item: OutputItem): LLMMessage | null {
 
   if (item.type === "block_tool_output") {
     const bto = item as BlockToolOutputItem;
+    if (bto.status === "failed" && bto.error) {
+      return {
+        role: "tool",
+        content: `Tool "${bto.toolCall.name}" failed: ${bto.error.message}`
+      };
+    }
     return {
       role: "tool",
       content: typeof bto.output === "string"
