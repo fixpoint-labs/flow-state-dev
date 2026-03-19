@@ -1,0 +1,53 @@
+{
+  "name": "@flow-state-dev/tools",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./search": {
+      "types": "./dist/search/index.d.ts",
+      "default": "./dist/search/index.js"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "zod": "^3.24.1"
+  },
+  "peerDependencies": {
+    "@tavily/core": "^0.7.0",
+    "exa-js": "^1.5.0"
+  },
+  "peerDependenciesMeta": {
+    "@tavily/core": {
+      "optional": true
+    },
+    "exa-js": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@flow-state-dev/testing": "workspace:*",
+    "@types/node": "^22.0.0",
+    "vitest": "^3.2.4",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "node ../../scripts/typecheck.mjs",
+    "lint": "echo 'lint not configured yet'",
+    "test": "pnpm --filter @flow-state-dev/testing build && vitest run --root .",
+    "test:watch": "vitest --root ."
+  }
+}

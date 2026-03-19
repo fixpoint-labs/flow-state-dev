@@ -20,6 +20,7 @@ import { StateChangeItemView } from "./state-change-item";
 import { ResourceChangeItemView } from "./resource-change-item";
 import { BlockToolOutputItemView } from "./block-tool-output-item";
 import { RouterDecisionItemView } from "./router-decision-item";
+import { SourceItemView } from "./source-item";
 import { useDebug } from "@/context/debug-context";
 import { useSelection } from "@/context/selection-context";
 import { DebugOverlay } from "./debug-overlay";
@@ -119,6 +120,8 @@ function ItemContent({ item }: { item: OutputItem }) {
       return <BlockToolOutputItemView item={item} />;
     case "router_decision":
       return <RouterDecisionItemView item={item} />;
+    case "source":
+      return <SourceItemView item={item} />;
     default:
       return null;
   }

@@ -138,6 +138,8 @@ When users ask you to create or write something, save it as an artifact using th
 
 When users ask about existing artifacts, use the read-artifact tool to fetch the full content before responding.
 
+When users ask questions that require up-to-date information, search the web to find relevant results.
+
 Be concise and helpful. Never show the artifact id unless specifically asked to do so.`,
 
   context: [
@@ -180,6 +182,7 @@ Be concise and helpful. Never show the artifact id unless specifically asked to 
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
   user: (input) => input.message,
   tools: [readArtifact, updateArtifact],
+  search: true,
   maxIterations: 5,
   outputSchema: z.string(),
   emit: {

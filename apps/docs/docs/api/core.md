@@ -53,11 +53,33 @@ const myGenerator = generator({
     return `progress:${progress} — ${input.message}`;
   },
   tools: [myTool],
+  search: true,
   context: [myContextFn],
   history: (_input, ctx) => ctx.session.items.llm(),
   repair: { mode: "auto", maxAttempts: 3 },
 });
 ```
+
+**Search config:**
+
+- `search?: boolean | GeneratorSearchConfig` — Enable provider-native web search. `true` uses defaults; pass a config object for fine-grained control (`maxUses`, `allowedDomains`, `blockedDomains`, `userLocation`, `searchDepth`).
+
+**Provider tools:**
+
+- `providerTools?: ProviderTool[]` — Raw provider-defined tool objects passed directly to the AI SDK, bypassing the block lifecycle.
+
+### `providerTool(name, tool)`
+
+Create a provider tool wrapper for use in `generator({ providerTools })`.
+
+```ts
+import { providerTool } from "@flow-state-dev/core";
+import { anthropic } from "@ai-sdk/anthropic";
+
+const codeExec = providerTool("code_execution", anthropic.tools.codeExecution());
+```
+
+Returns `{ __providerTool: true, name: string, tool: unknown }`.
 
 ### `sequencer(config)`
 

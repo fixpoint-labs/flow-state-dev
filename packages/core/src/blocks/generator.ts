@@ -12,8 +12,11 @@ import type { DefinedResource, ResourceRef } from "../types/resource";
 import type {
   GeneratorModel,
   GeneratorModelResult,
+  GeneratorModelSource,
   GeneratorModelTool,
-  PrepareStepFn
+  GeneratorSearchConfig,
+  PrepareStepFn,
+  ProviderTool
 } from "../types/model";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
 import { buildBlock, extractDeclaredResources } from "./internal/build-block";
@@ -92,6 +95,25 @@ export type GeneratorTool = BlockDefinition<any, any>;
 export type ToolBinding = GeneratorTool;
 
 /**
+ * Wraps a Vercel AI SDK provider-defined tool for use in a generator's
+ * `providerTools` array. The tool is passed through to the AI SDK without
+ * compilation — the provider executes it server-side.
+ *
+ * @example
+ * import { anthropic } from '@ai-sdk/anthropic';
+ * import { providerTool } from '@flow-state-dev/core';
+ *
+ * generator({
+ *   providerTools: [
+ *     providerTool('webSearch', anthropic.tools.webSearch_20250305({ maxUses: 3 }))
+ *   ],
+ * })
+ */
+export function providerTool(name: string, tool: unknown): ProviderTool {
+  return { __providerTool: true, tool, name } as const;
+}
+
+/**
  * Non-function slot entry forms (strings, objects, arrays).
  */
 export type GeneratorSlotStatic =
@@ -166,6 +188,14 @@ export interface GeneratorConfig<
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
   user?: TypedUserSlotFn<TInput, TCtx> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
   tools?: GeneratorTool[] | ((ctx: TCtx) => MaybePromise<GeneratorTool[]>);
+  /**
+   * Enable provider-native web search. When `true`, uses defaults.
+   * When an object, maps normalized config to the provider's native search tool.
+   * The provider is detected at execution time from the resolved model.
+   */
+  search?: boolean | GeneratorSearchConfig;
+  /** Provider-defined tools passed through to the AI SDK without block compilation. */
+  providerTools?: ProviderTool[];
   loop?: GeneratorLoopConfig<TInput, TCtx>;
   maxIterations?: number;
   maxTokens?: number;
@@ -376,6 +406,40 @@ function compileToolsWithExecute(
         } catch (error) {
           const err = toError(error);
           await runToolObserver(flowTools?.onToolErrored, { toolName: tool.name, input: args, error: err }, scopedCtx);
+
+          // Emit a failed block_tool_output so the devtool can display the error
+          if (options?.toolCallId !== undefined) {
+            const identity = scopedCtx._blockIdentity;
+            const toolErrorItem = {
+              id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+              type: "block_tool_output" as const,
+              status: "failed" as const,
+              requestId: scopedCtx.request.identity.id,
+              itemIndex: getEmitterItemCount(scopedCtx.response),
+              provenance: {
+                blockName: identity?.blockName ?? tool.name,
+                blockInstanceId: identity?.blockInstanceId ?? tool.name,
+                parentBlockInstanceId: identity?.parentBlockInstanceId,
+                phase: "main" as const
+              },
+              ts: Date.now(),
+              blockName: tool.name,
+              output: undefined,
+              toolCall: {
+                callId: options.toolCallId,
+                name: tool.name,
+                arguments: typeof args === "string" ? args : JSON.stringify(args),
+                generatorBlock: generatorBlockName
+              },
+              error: {
+                message: err.message,
+                code: (err as any).code
+              }
+            };
+            await scopedCtx.response.emit({ type: "item.added", item: toolErrorItem });
+            await scopedCtx.response.emit({ type: "item.done", item: toolErrorItem });
+          }
+
           throw err;
         }
       };
@@ -574,6 +638,31 @@ function resolveMaxIterations(config: { loop?: GeneratorLoopConfig<unknown>; max
 }
 
 /**
+ * Builds a SourceItem from a GeneratorModelSource for emission into the
+ * item stream. Used by both streaming and non-streaming paths.
+ */
+function buildSourceItem(
+  source: GeneratorModelSource,
+  ctx: BlockContext,
+  provenance: { blockName: string; blockInstanceId: string; phase: "main" | "work" }
+) {
+  return {
+    id: `item_source_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: "source" as const,
+    status: "completed" as const,
+    requestId: ctx.request.identity.id,
+    itemIndex: getEmitterItemCount(ctx.response),
+    provenance,
+    ts: Date.now(),
+    sourceType: "url" as const,
+    sourceId: source.id,
+    url: source.url,
+    title: source.title,
+    providerMetadata: source.providerMetadata
+  };
+}
+
+/**
  * Duck-typed helper to get the current item count from the response emitter.
  * The core ResponseEmitterHandle only exposes `emit()`, but the server-side
  * ResponseEmitter also has `getItems()`. We use duck-typing so the generator
@@ -604,6 +693,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
   model: GeneratorModel,
   messages: unknown[],
   compiledTools: GeneratorModelTool[],
+  providerTools: ProviderTool[],
   config: GeneratorConfig<any, any, TInput, TOutput>,
   outputSchema: ZodTypeAny,
   blockName: string,
@@ -636,6 +726,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
   for await (const chunk of model.stream!({
     messages,
     tools: compiledTools.length > 0 ? compiledTools : undefined,
+    providerTools: providerTools.length > 0 ? providerTools : undefined,
     maxTokens: config.maxTokens,
     signal: ctx.signal,
     maxSteps,
@@ -729,6 +820,27 @@ async function executeStreamingGeneration<TInput, TOutput>(
         contentIndex: contentPartIndex,
         delta: chunk.textDelta
       });
+    } else if (chunk.type === "tool_input_start" && chunk.toolInput !== undefined) {
+      // Emit a status item so clients see progress during provider tool execution
+      const toolName = chunk.toolInput.toolName;
+      const statusItem = {
+        id: `item_status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+        type: "status" as const,
+        status: "completed" as const,
+        transient: true,
+        requestId: ctx.request.identity.id,
+        itemIndex: getEmitterItemCount(ctx.response),
+        provenance,
+        ts: Date.now(),
+        message: `Using ${toolName}…`,
+        detail: { toolName, providerExecuted: chunk.toolInput.providerExecuted ?? false }
+      };
+      await ctx.response.emit({ type: "item.added", item: statusItem });
+      await ctx.response.emit({ type: "item.done", item: statusItem });
+    } else if (chunk.type === "source_url" && chunk.source !== undefined) {
+      const sourceItem = buildSourceItem(chunk.source, ctx, provenance);
+      await ctx.response.emit({ type: "item.added", item: sourceItem });
+      await ctx.response.emit({ type: "item.done", item: sourceItem });
     } else if (chunk.type === "finish") {
       finalResult = chunk.fullResult;
     }
@@ -869,6 +981,18 @@ export function generator<
         blockName
       );
 
+      // Resolve provider-native tools (search + explicit providerTools).
+      const resolvedProviderTools: ProviderTool[] = [
+        ...(normalizedConfig.providerTools ?? [])
+      ];
+      if (normalizedConfig.search) {
+        const searchConfig = normalizedConfig.search === true ? {} : normalizedConfig.search;
+        const searchTool = model.resolveSearchTool?.(searchConfig);
+        if (searchTool) {
+          resolvedProviderTools.push({ __providerTool: true, ...searchTool });
+        }
+      }
+
       const autoDescribe = normalizedConfig.describeTools !== false;
       const toolBlocks = await resolveTools(normalizedConfig.tools, ctx);
 
@@ -972,6 +1096,7 @@ export function generator<
           model,
           messages,
           compiledTools,
+          resolvedProviderTools,
           normalizedConfig,
           outputSchema,
           blockName,
@@ -985,6 +1110,7 @@ export function generator<
       const generation = await model.generate({
         messages,
         tools: compiledTools.length > 0 ? compiledTools : undefined,
+        providerTools: resolvedProviderTools.length > 0 ? resolvedProviderTools : undefined,
         outputSchema,
         maxTokens: normalizedConfig.maxTokens,
         signal: ctx.signal,
@@ -999,6 +1125,16 @@ export function generator<
         usage: generation.usage,
         providerMetadata: generation.providerMetadata
       });
+
+      // Emit source items from provider-native tools (e.g., web search).
+      if (generation.sources !== undefined && generation.sources.length > 0) {
+        const sourceProv = { blockName, blockInstanceId: blockName, phase: "main" as const };
+        for (const source of generation.sources) {
+          const sourceItem = buildSourceItem(source, ctx, sourceProv);
+          await ctx.response.emit({ type: "item.added", item: sourceItem });
+          await ctx.response.emit({ type: "item.done", item: sourceItem });
+        }
+      }
       if (candidate === undefined) {
         throw new Error(`Generator "${blockName}" did not produce output after ${maxSteps} step(s)`);
       }

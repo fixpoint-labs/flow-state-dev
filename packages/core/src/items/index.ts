@@ -26,6 +26,7 @@ export type {
   ResourceChangeItem,
   RouterDecisionItem,
   StateChangeItem,
+  SourceItem,
   StatusItem,
   StepErrorItem
 } from "./types";

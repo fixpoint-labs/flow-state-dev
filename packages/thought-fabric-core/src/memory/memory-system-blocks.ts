@@ -94,7 +94,7 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
   // Context function reads from session items using the watermark.
   // Uses `any` ctx since the generator context slot signature is (input, ctx) => unknown
   // and the context arg type is a structural subset, not the full BlockContext.
-  function buildContext(_input: unknown, ctx: any): string {
+  function buildContext(_input: unknown, ctx: any): string | undefined {
     const sysRef = ctx.session.resources.memorySystem
     const sysState = sysRef.state
 
@@ -102,7 +102,7 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     let newItemsText: string
     if (config.source) {
       newItemsText = config.source(_input, ctx)
-      if (!newItemsText) return '__SKIP__'
+      if (!newItemsText) return undefined
     } else {
       const allItems = ctx.session?.items?.all?.() ?? []
       const newItems = allItems.filter((_item: any, idx: number) => idx > sysState.lastProcessedIndex)
@@ -123,7 +123,7 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
         // flushed when the observer runs. Use the block input directly.
         newItemsText = `[user] ${_input}`
       } else {
-        return '__SKIP__'
+        return undefined
       }
     }
 
@@ -161,7 +161,7 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
       prompt: observePrompt,
       context: buildContext,
       user: (_input: unknown) => 'Analyze the items in context and extract memories.',
-      emit: false as any,
+      emit: { messages: false, reasoning: false, toolCalls: false },
     })
   }
 
@@ -176,7 +176,7 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
       prompt: observePrompt,
       context: buildContext,
       user: (_input: unknown) => 'Analyze the items in context and extract memories.',
-      emit: false as any,
+      emit: { messages: false, reasoning: false, toolCalls: false },
     })
   }
 
@@ -189,7 +189,7 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     prompt: observePrompt,
     context: buildContext,
     user: (_input: unknown) => 'Analyze the items in context and extract memories.',
-    emit: false as any,
+    emit: { messages: false, reasoning: false, toolCalls: false },
   })
 }
 

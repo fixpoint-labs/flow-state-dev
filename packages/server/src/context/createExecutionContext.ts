@@ -414,10 +414,10 @@ const CLIENT_AUDIENCE_TYPES = new Set([
  * lifecycle metadata for debugging, not conversational content.
  * Returns null for item types that don't map to conversation messages.
  */
-function itemToLLMMessage(item: OutputItem): LLMMessage | null {
+function itemToLLMMessages(item: OutputItem): LLMMessage[] {
   // Fast path: structural trace items never enter LLM context.
   if (item.trace === true) {
-    return null;
+    return [];
   }
 
   if (item.type === "message") {
@@ -428,10 +428,10 @@ function itemToLLMMessage(item: OutputItem): LLMMessage | null {
       .join("");
 
     if (text.length === 0) {
-      return null;
+      return [];
     }
 
-    return { role: msg.role, content: text };
+    return [{ role: msg.role, content: text }];
   }
 
   if (item.type === "reasoning") {
@@ -442,43 +442,87 @@ function itemToLLMMessage(item: OutputItem): LLMMessage | null {
       .join("");
 
     return text.length > 0
-      ? { role: "assistant", content: text }
-      : null;
+      ? [{ role: "assistant", content: text }]
+      : [];
   }
 
   if (item.type === "context") {
     const ctx = item as ContextItem;
     return ctx.text.length > 0
-      ? { role: "system", content: ctx.text }
-      : null;
+      ? [{ role: "system", content: ctx.text }]
+      : [];
   }
 
   if (item.type === "block_output") {
     const bo = item as BlockOutputItem;
     // Only enters LLM context when invoked as a tool by a generator (legacy path).
     if (bo.toolCall === undefined) {
-      return null;
+      return [];
     }
 
-    return {
-      role: "tool",
-      content: typeof bo.output === "string"
-        ? bo.output
-        : JSON.stringify(bo.output)
-    };
+    // AI SDK v6 requires tool messages as Array<ToolResultPart> (not strings)
+    // and each tool result must be preceded by an assistant message containing
+    // the matching tool-call part. Emit both in order.
+    const resultText = typeof bo.output === "string"
+      ? bo.output
+      : JSON.stringify(bo.output);
+    let args: Record<string, unknown> = {};
+    try { args = JSON.parse(bo.toolCall.arguments); } catch { /* use empty */ }
+    return [
+      {
+        role: "assistant",
+        content: [{
+          type: "tool-call",
+          toolCallId: bo.toolCall.callId,
+          toolName: bo.blockName,
+          args
+        }]
+      },
+      {
+        role: "tool",
+        content: [{
+          type: "tool-result",
+          toolCallId: bo.toolCall.callId,
+          toolName: bo.blockName,
+          output: { type: "text", value: resultText }
+        }]
+      }
+    ];
   }
 
   if (item.type === "block_tool_output") {
     const bto = item as BlockToolOutputItem;
-    return {
-      role: "tool",
-      content: typeof bto.output === "string"
+    const resultText = bto.status === "failed" && bto.error
+      ? `Tool "${bto.toolCall.name}" failed: ${bto.error.message}`
+      : typeof bto.output === "string"
         ? bto.output
-        : JSON.stringify(bto.output)
-    };
+        : JSON.stringify(bto.output);
+
+    let args: Record<string, unknown> = {};
+    try { args = JSON.parse(bto.toolCall.arguments); } catch { /* use empty */ }
+    return [
+      {
+        role: "assistant",
+        content: [{
+          type: "tool-call",
+          toolCallId: bto.toolCall.callId,
+          toolName: bto.toolCall.name,
+          args
+        }]
+      },
+      {
+        role: "tool",
+        content: [{
+          type: "tool-result",
+          toolCallId: bto.toolCall.callId,
+          toolName: bto.toolCall.name,
+          output: { type: "text", value: resultText }
+        }]
+      }
+    ];
   }
 
-  return null;
+  return [];
 }
 
 /**
@@ -519,16 +563,14 @@ async function loadLLMHistory(
         continue;
       }
 
-      const llmMessage = itemToLLMMessage(item);
-      if (llmMessage === null) {
-        continue;
-      }
+      const llmMessages = itemToLLMMessages(item);
+      for (const llmMessage of llmMessages) {
+        if (allowedRoles !== undefined && !allowedRoles.has(llmMessage.role as "user" | "assistant" | "system" | "developer" | "tool")) {
+          continue;
+        }
 
-      if (allowedRoles !== undefined && !allowedRoles.has(llmMessage.role as "user" | "assistant" | "system" | "developer" | "tool")) {
-        continue;
+        messages.push(llmMessage);
       }
-
-      messages.push(llmMessage);
     }
   }
 

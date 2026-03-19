@@ -15,6 +15,13 @@ const nextConfig = {
   turbopack: {
     root: resolve(__dirname, "../../"),
   },
+  webpack: (config) => {
+    config.watchOptions = {
+      ...config.watchOptions,
+      ignored: [...(config.watchOptions?.ignored || []), "**/.fsdev/**"],
+    };
+    return config;
+  },
 };
 
 export default nextConfig;

@@ -84,6 +84,41 @@ const resolver = createAiSdkModelResolver((modelId) => {
 });
 ```
 
+## Provider Search Tools
+
+When generators use `search: true`, the framework needs access to the provider's tool namespace (e.g., `anthropic.tools.webSearch_20250305()`). This works automatically when you pass the provider object directly:
+
+```ts
+import { createAiSdkModelResolver } from "@flow-state-dev/server";
+import { anthropic } from "@ai-sdk/anthropic";
+
+// Pass the provider directly — it's both a model factory AND has .tools
+const resolver = createAiSdkModelResolver(anthropic);
+```
+
+The `anthropic` object from `@ai-sdk/anthropic` is callable (returns a model when called with a model ID) and has a `.tools` property. The resolver detects this and uses it for search tool resolution.
+
+For multi-provider setups, pass the primary provider that should handle search:
+
+```ts
+import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
+
+// OpenAI as default with search support
+const resolver = createAiSdkModelResolver(openai);
+
+// Or use a custom function — search still works if you also
+// pass the provider's tools separately
+const resolver = createAiSdkModelResolver((modelId) => {
+  if (modelId.startsWith("claude-")) return anthropic(modelId);
+  return openai(modelId);
+});
+```
+
+When using a plain function resolver (no `.tools` property), `search: true` on generators will be silently ignored — the model just won't have search available. No error is thrown.
+
+The framework auto-detects the provider from the model's `provider` string and maps normalized search config to provider-specific parameters. See [Web search](/docs/fundamentals/blocks#web-search) for generator-side configuration.
+
 ## Testing
 
 In tests, use `createMockModelResolver` to avoid real API calls:
