@@ -437,7 +437,7 @@ function itemToLLMMessages(item: OutputItem): LLMMessage[] {
   if (item.type === "reasoning") {
     const summary = (item as { summary: Content[] }).summary ?? [];
     const text = summary
-      .filter((c) => c.type === "output_text")
+      .filter((c) => c.type === "output_text" || c.type === "reasoning_text")
       .map((c) => (c as { text: string }).text)
       .join("");
 
@@ -466,8 +466,8 @@ function itemToLLMMessages(item: OutputItem): LLMMessage[] {
     const resultText = typeof bo.output === "string"
       ? bo.output
       : JSON.stringify(bo.output);
-    let args: Record<string, unknown> = {};
-    try { args = JSON.parse(bo.toolCall.arguments); } catch { /* use empty */ }
+    let input: Record<string, unknown> = {};
+    try { input = JSON.parse(bo.toolCall.arguments); } catch { /* use empty */ }
     return [
       {
         role: "assistant",
@@ -475,7 +475,7 @@ function itemToLLMMessages(item: OutputItem): LLMMessage[] {
           type: "tool-call",
           toolCallId: bo.toolCall.callId,
           toolName: bo.blockName,
-          args
+          input
         }]
       },
       {
@@ -498,8 +498,8 @@ function itemToLLMMessages(item: OutputItem): LLMMessage[] {
         ? bto.output
         : JSON.stringify(bto.output);
 
-    let args: Record<string, unknown> = {};
-    try { args = JSON.parse(bto.toolCall.arguments); } catch { /* use empty */ }
+    let input: Record<string, unknown> = {};
+    try { input = JSON.parse(bto.toolCall.arguments); } catch { /* use empty */ }
     return [
       {
         role: "assistant",
@@ -507,7 +507,7 @@ function itemToLLMMessages(item: OutputItem): LLMMessage[] {
           type: "tool-call",
           toolCallId: bto.toolCall.callId,
           toolName: bto.toolCall.name,
-          args
+          input
         }]
       },
       {
@@ -523,6 +523,40 @@ function itemToLLMMessages(item: OutputItem): LLMMessage[] {
   }
 
   return [];
+}
+
+/**
+ * Trims orphaned tool messages from the start/end of a sliced message array.
+ * AI SDK v6 requires assistant tool-call messages to be immediately followed
+ * by their matching tool-result messages. When a numeric or token-based limit
+ * slices mid-pair, the orphaned message causes models to produce empty output
+ * (AI_NoOutputGeneratedError). This function:
+ *  - Drops leading `tool` role messages (orphaned results without their call)
+ *  - Drops trailing `assistant` messages that contain only tool-call parts
+ *    (orphaned calls without their result)
+ */
+function trimOrphanedToolMessages(messages: LLMMessage[]): LLMMessage[] {
+  let start = 0;
+  let end = messages.length;
+
+  // Trim leading orphaned tool-result messages
+  while (start < end && messages[start]!.role === "tool") {
+    start++;
+  }
+
+  // Trim trailing orphaned assistant tool-call messages
+  while (end > start) {
+    const last = messages[end - 1]!;
+    if (last.role !== "assistant" || !Array.isArray(last.content)) break;
+    const isToolCallOnly = last.content.every(
+      (part: any) => part.type === "tool-call"
+    );
+    if (!isToolCallOnly) break;
+    end--;
+  }
+
+  if (start === 0 && end === messages.length) return messages;
+  return messages.slice(start, end);
 }
 
 /**
@@ -581,9 +615,13 @@ async function loadLLMHistory(
   }
 
   if (typeof limit === "number") {
-    return limit < messages.length
+    const sliced = limit < messages.length
       ? messages.slice(messages.length - limit)
       : messages;
+    // Ensure the slice didn't orphan a tool-result from its preceding
+    // assistant tool-call. AI SDK v6 requires tool-call/tool-result pairs;
+    // an orphaned tool-result causes models to produce empty output.
+    return trimOrphanedToolMessages(sliced);
   }
 
   // Token-based limit: pack from end within budget
@@ -602,7 +640,7 @@ async function loadLLMHistory(
     startIndex = i;
   }
 
-  return messages.slice(startIndex);
+  return trimOrphanedToolMessages(messages.slice(startIndex));
 }
 
 /**
