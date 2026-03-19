@@ -53,8 +53,7 @@ export type {
   ParallelStepOutput,
   RouterConfig,
   SequencerConfig,
-  SequencerDefinition,
-  ToolBinding
+  SequencerDefinition
 } from "./blocks";
 export type {
   CostEstimate,

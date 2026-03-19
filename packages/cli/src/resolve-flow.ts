@@ -7,8 +7,8 @@
 import { resolve, isAbsolute } from "node:path";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import type { FlowInstance } from "@flow-state-dev/core/types";
-import { CliError } from "./resolve-block.js";
-import { EXIT_INVALID_ARGS } from "./exit-codes.js";
+import { CliError } from "./resolve-block";
+import { EXIT_INVALID_ARGS, EXIT_DISCOVERY_ERROR } from "./exit-codes";
 
 /**
  * Structural check for a FlowInstance. Uses duck-typing because flow instances
@@ -193,7 +193,7 @@ export async function resolveFlow(specifier: string): Promise<FlowInstance> {
   const filePath = isAbsolute(specifier) ? specifier : resolve(process.cwd(), specifier);
 
   if (!existsSync(filePath)) {
-    throw new CliError(`Flow file not found: ${filePath}`, EXIT_INVALID_ARGS);
+    throw new CliError(`Flow file not found: ${filePath}`, EXIT_DISCOVERY_ERROR);
   }
 
   let mod: Record<string, unknown>;
@@ -201,21 +201,21 @@ export async function resolveFlow(specifier: string): Promise<FlowInstance> {
     mod = await import(filePath);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new CliError(`Failed to import flow file: ${message}`, EXIT_INVALID_ARGS);
+    throw new CliError(`Failed to import flow file: ${message}`, EXIT_DISCOVERY_ERROR);
   }
 
   const flow = mod.default;
   if (flow === undefined) {
     throw new CliError(
       `Flow file has no default export: ${filePath}`,
-      EXIT_INVALID_ARGS,
+      EXIT_DISCOVERY_ERROR,
     );
   }
 
   if (!isFlowInstance(flow)) {
     throw new CliError(
       `Default export is not a valid FlowInstance (must have kind and actions): ${filePath}`,
-      EXIT_INVALID_ARGS,
+      EXIT_DISCOVERY_ERROR,
     );
   }
 

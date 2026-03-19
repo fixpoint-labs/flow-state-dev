@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { resolve } from "node:path";
-import { executeBlockCommand, type BlockExecResult } from "../src/commands/block.js";
+import { executeBlockCommand, type BlockExecResult } from "../src/commands/block";
 
 const fixturesDir = resolve(import.meta.dirname, "fixtures");
 

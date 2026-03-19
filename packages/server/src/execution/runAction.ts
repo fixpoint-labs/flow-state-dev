@@ -37,6 +37,7 @@ import type {
 } from "./types";
 import { createExecutionMetadata } from "./types";
 import { createTTSEmitterHook, type TTSEmitterHook } from "../voice/tts-emitter-hook";
+import { generateId } from "../utils/generate-id";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -50,13 +51,6 @@ const RUNTIME_PROVENANCE: ItemProvenance = {
   blockInstanceId: "runtime",
   phase: "main"
 };
-
-/**
- * Creates a request id when the caller does not provide one.
- */
-function generateRequestId(): string {
-  return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
 
 /**
  * Resolves an action definition from a flow and validates that it exists.
@@ -317,7 +311,7 @@ export async function runActionInternal<
 ): Promise<ExecutionResult> {
   const startedAt = Date.now();
   const action = resolveAction(options.flow, options.actionName);
-  const requestId = options.requestId ?? generateRequestId();
+  const requestId = options.requestId ?? generateId("req");
   const internalSeams = options.internalSeams ?? NOOP_INTERNAL_EXECUTION_SEAMS;
   const response = options.responseEmitter ?? createInternalResponseEmitter({
     requestId,

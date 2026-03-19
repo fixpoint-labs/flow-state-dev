@@ -2,6 +2,6 @@
 /**
  * CLI entrypoint for `fsdev`. Parses argv and dispatches to the appropriate command.
  */
-import { program } from "./cli.js";
+import { program } from "./cli";
 
 program.parse();

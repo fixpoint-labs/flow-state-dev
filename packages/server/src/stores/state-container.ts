@@ -4,14 +4,7 @@ import type {
   StateContainer
 } from "@flow-state-dev/core/types";
 import { runWithCAS } from "./cas";
-
-function cloneValue<TValue>(value: TValue): TValue {
-  if (typeof globalThis.structuredClone === "function") {
-    return globalThis.structuredClone(value);
-  }
-
-  return JSON.parse(JSON.stringify(value)) as TValue;
-}
+import { cloneValue } from "../utils/clone";
 
 function toRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {

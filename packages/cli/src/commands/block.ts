@@ -4,10 +4,10 @@
 import type { Command } from "commander";
 import type { BlockKind } from "@flow-state-dev/core/types";
 import { createTestContext } from "@flow-state-dev/testing";
-import { resolveBlock, CliError } from "../resolve-block.js";
-import { parseInputArg } from "../parse-input.js";
-import { formatOutput } from "../format-output.js";
-import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS } from "../exit-codes.js";
+import { resolveBlock, CliError } from "../resolve-block";
+import { parseInputArg } from "../parse-input";
+import { formatOutput } from "../format-output";
+import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS, EXIT_INTERNAL_ERROR } from "../exit-codes";
 
 /** Structured output shape for `fsdev block`. */
 export interface BlockExecResult {
@@ -75,7 +75,7 @@ export function registerBlockCommand(program: Command): void {
         process.stderr.write(
           `Unexpected error: ${err instanceof Error ? err.message : String(err)}\n`,
         );
-        process.exitCode = EXIT_EXECUTION_ERROR;
+        process.exitCode = EXIT_INTERNAL_ERROR;
       }
     });
 }

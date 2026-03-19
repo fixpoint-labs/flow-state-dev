@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { resolve } from "node:path";
-import { parseInputArg } from "../src/parse-input.js";
-import { CliError } from "../src/resolve-block.js";
-import { EXIT_INVALID_ARGS } from "../src/exit-codes.js";
+import { parseInputArg } from "../src/parse-input";
+import { CliError } from "../src/resolve-block";
+import { EXIT_INVALID_ARGS } from "../src/exit-codes";
 
 const fixturesDir = resolve(import.meta.dirname, "fixtures");
 
