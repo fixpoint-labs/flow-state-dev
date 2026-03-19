@@ -820,6 +820,23 @@ async function executeStreamingGeneration<TInput, TOutput>(
         contentIndex: contentPartIndex,
         delta: chunk.textDelta
       });
+    } else if (chunk.type === "tool_input_start" && chunk.toolInput !== undefined) {
+      // Emit a status item so clients see progress during provider tool execution
+      const toolName = chunk.toolInput.toolName;
+      const statusItem = {
+        id: `item_status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+        type: "status" as const,
+        status: "completed" as const,
+        transient: true,
+        requestId: ctx.request.identity.id,
+        itemIndex: getEmitterItemCount(ctx.response),
+        provenance,
+        ts: Date.now(),
+        message: `Using ${toolName}…`,
+        detail: { toolName, providerExecuted: chunk.toolInput.providerExecuted ?? false }
+      };
+      await ctx.response.emit({ type: "item.added", item: statusItem });
+      await ctx.response.emit({ type: "item.done", item: statusItem });
     } else if (chunk.type === "source_url" && chunk.source !== undefined) {
       const sourceItem = buildSourceItem(chunk.source, ctx, provenance);
       await ctx.response.emit({ type: "item.added", item: sourceItem });

@@ -512,6 +512,14 @@ function createGeneratorModelFromAiSdk(
             type: "reasoning_delta",
             reasoningDelta: (partRecord.textDelta ?? partRecord.delta ?? partRecord.text) as string
           };
+        } else if (partRecord.type === "tool-input-start") {
+          yield {
+            type: "tool_input_start",
+            toolInput: {
+              toolName: partRecord.toolName as string,
+              providerExecuted: partRecord.providerExecuted === true ? true : undefined
+            }
+          };
         } else if (partRecord.type === "tool-call") {
           yield {
             type: "tool_call_delta",

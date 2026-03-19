@@ -30,6 +30,7 @@ import { KitchenSinkMessage } from "@/components/kitchen-sink-message";
 import { KitchenSinkReasoning } from "@/components/kitchen-sink-reasoning";
 import { KitchenSinkStatus } from "@/components/kitchen-sink-status";
 import { KitchenSinkError } from "@/components/kitchen-sink-error";
+import { SourcesGroup } from "@/components/kitchen-sink-source";
 
 import { SessionSidebar } from "@/components/session-sidebar";
 import { ModeSelector, type Mode } from "@/components/mode-selector";
@@ -43,11 +44,12 @@ const renderers: RendererRegistry = {
   message: KitchenSinkMessage,
   reasoning: KitchenSinkReasoning,
   status: KitchenSinkStatus,
+  source: false, // Sources are grouped separately via SourcesGroup
   error: KitchenSinkError,
   step_error: KitchenSinkError,
 };
 
-const ITEM_TYPES = ["message", "reasoning", "status", "error", "step_error"];
+const ITEM_TYPES = ["message", "reasoning", "status", "source", "error", "step_error"];
 
 type MobilePanel = "chat" | "artifacts";
 
@@ -319,6 +321,7 @@ function ChatPanel({
             />
           )}
           <ItemsRenderer items={session.items} />
+          <SourcesGroup items={session.items} />
           {session.error && (
             <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
               <span>{session.error.message}</span>

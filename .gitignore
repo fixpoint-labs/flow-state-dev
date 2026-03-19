@@ -11,4 +11,4 @@ apps/docs/build
 .codex/
 .zenflow/
 /todos/*
-**/.fsdev/*
+**/.fsdev/**

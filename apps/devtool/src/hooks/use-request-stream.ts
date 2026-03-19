@@ -176,11 +176,18 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         state.contentBuffers.set(key, existing + event.delta);
 
         const item = state.items.get(event.itemId);
-        if (item && "content" in item && Array.isArray(item.content)) {
-          const part = item.content[event.contentIndex];
-          if (part && "text" in part) {
-            part.text = state.contentBuffers.get(key) ?? "";
-            state.items.set(event.itemId, { ...item });
+        if (item) {
+          // Items use either `content` (messages) or `summary` (reasoning)
+          const contentArray =
+            ("content" in item && Array.isArray(item.content)) ? item.content :
+            ("summary" in item && Array.isArray(item.summary)) ? item.summary :
+            null;
+          if (contentArray) {
+            const part = contentArray[event.contentIndex];
+            if (part && "text" in part) {
+              part.text = state.contentBuffers.get(key) ?? "";
+              state.items.set(event.itemId, { ...item });
+            }
           }
         }
         scheduleFlush();
@@ -188,22 +195,34 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
       onContentAdded: (event) => {
         state.lastSequenceNumber = event.sequence_number;
         const item = state.items.get(event.itemId);
-        if (item && "content" in item && Array.isArray(item.content)) {
-          if (item.content.length <= event.contentIndex) {
-            item.content.push(event.content);
-          } else {
-            item.content[event.contentIndex] = event.content;
+        if (item) {
+          const contentArray =
+            ("content" in item && Array.isArray(item.content)) ? item.content :
+            ("summary" in item && Array.isArray(item.summary)) ? item.summary :
+            null;
+          if (contentArray) {
+            if (contentArray.length <= event.contentIndex) {
+              contentArray.push(event.content);
+            } else {
+              contentArray[event.contentIndex] = event.content;
+            }
+            state.items.set(event.itemId, { ...item });
           }
-          state.items.set(event.itemId, { ...item });
         }
         scheduleFlush();
       },
       onContentDone: (event) => {
         state.lastSequenceNumber = event.sequence_number;
         const item = state.items.get(event.itemId);
-        if (item && "content" in item && Array.isArray(item.content)) {
-          item.content[event.contentIndex] = event.content;
-          state.items.set(event.itemId, { ...item });
+        if (item) {
+          const contentArray =
+            ("content" in item && Array.isArray(item.content)) ? item.content :
+            ("summary" in item && Array.isArray(item.summary)) ? item.summary :
+            null;
+          if (contentArray) {
+            contentArray[event.contentIndex] = event.content;
+            state.items.set(event.itemId, { ...item });
+          }
         }
         const key = `${event.itemId}:${event.contentIndex}`;
         state.contentBuffers.delete(key);

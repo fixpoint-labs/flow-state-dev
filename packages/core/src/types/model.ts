@@ -96,10 +96,12 @@ export type GeneratorModelTool = {
 };
 
 export type GeneratorModelStreamChunk = {
-  type: "text_delta" | "tool_call_delta" | "reasoning_delta" | "source_url" | "finish";
+  type: "text_delta" | "tool_call_delta" | "reasoning_delta" | "source_url" | "tool_input_start" | "finish";
   textDelta?: string;
   reasoningDelta?: string;
   toolCallDelta?: { toolCallId: string; toolName: string; argsDelta?: string };
+  /** Info about a tool that started executing (including provider-executed tools). */
+  toolInput?: { toolName: string; providerExecuted?: boolean };
   /** Source reference from a provider-native tool (e.g., web search). */
   source?: GeneratorModelSource;
   finishReason?: string;
