@@ -24,9 +24,9 @@ export function search(config: SearchConfig = {}) {
     execute: async (input: SearchInput): Promise<SearchOutput> => {
       const { adapter, apiKey } = resolveProvider(config);
       return adapter.search(input.query, {
-        maxResults: input.maxResults ?? config.maxResults ?? 5,
+        maxResults: input.maxResults,
         searchDepth: config.searchDepth ?? "basic",
-        topic: input.topic ?? config.topic ?? "general",
+        topic: input.topic,
         apiKey,
       });
     },

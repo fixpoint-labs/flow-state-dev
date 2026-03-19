@@ -32,7 +32,7 @@ export const exaAdapter: SearchProviderAdapter = {
         snippet: r.highlights?.[0] ?? r.text?.slice(0, 300) ?? "",
         content:
           options.searchDepth === "advanced"
-            ? (r.text ?? undefined)
+            ? r.text
             : undefined,
         score: r.score ?? undefined,
         publishedDate: r.publishedDate ?? undefined,

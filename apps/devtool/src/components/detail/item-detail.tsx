@@ -17,6 +17,7 @@ import { useSelection } from "@/context/selection-context";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { JsonViewer } from "@/components/shared/json-viewer";
 import { EmptyState } from "@/components/shared/empty-state";
+import { safeParseJson } from "@/lib/utils";
 
 export function ItemDetail() {
   const { selectedItem } = useSelection();
@@ -387,10 +388,3 @@ function CollapsibleSection({
   );
 }
 
-function safeParseJson(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw;
-  }
-}
