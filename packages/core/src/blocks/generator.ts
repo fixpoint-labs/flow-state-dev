@@ -727,7 +727,6 @@ async function executeStreamingGeneration<TInput, TOutput>(
     messages,
     tools: compiledTools.length > 0 ? compiledTools : undefined,
     providerTools: providerTools.length > 0 ? providerTools : undefined,
-    outputSchema,
     maxTokens: config.maxTokens,
     signal: ctx.signal,
     maxSteps,

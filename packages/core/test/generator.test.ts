@@ -443,8 +443,8 @@ it("supports manually adding unified resource content tools", async () => {
 });
 
 describe("generator streaming", () => {
-  it("passes outputSchema to model.stream()", async () => {
-    let receivedOutputSchema: unknown;
+  it("does not pass outputSchema to model.stream() for text generators", async () => {
+    let receivedOutputSchema: unknown = "NOT_CALLED";
     const block = generator({
       name: "stream-schema",
       model: "mock-model",
@@ -469,8 +469,10 @@ describe("generator streaming", () => {
     });
 
     await block.run({ value: "x" }, ctx);
-    // Default text generator has ZodString schema — it should be passed through
-    expect(receivedOutputSchema).toBeDefined();
+    // Text generators (z.string()) should NOT pass outputSchema to the model —
+    // it would trigger structured output mode (Output.object) which prevents
+    // normal text delta streaming.
+    expect(receivedOutputSchema).toBeUndefined();
   });
 
   it("emits tool_call_progress items for tool_call_delta chunks", async () => {
