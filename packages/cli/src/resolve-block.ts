@@ -5,7 +5,7 @@
 import { resolve, isAbsolute } from "node:path";
 import { existsSync } from "node:fs";
 import type { BlockDefinition, BlockKind } from "@flow-state-dev/core/types";
-import { EXIT_INVALID_ARGS } from "./exit-codes.js";
+import { EXIT_INVALID_ARGS, EXIT_DISCOVERY_ERROR } from "./exit-codes";
 
 const VALID_BLOCK_KINDS: ReadonlySet<string> = new Set<BlockKind>([
   "handler",
@@ -51,7 +51,7 @@ export async function resolveBlock(specifier: string): Promise<BlockDefinition> 
   const filePath = isAbsolute(specifier) ? specifier : resolve(process.cwd(), specifier);
 
   if (!existsSync(filePath)) {
-    throw new CliError(`Block file not found: ${filePath}`, EXIT_INVALID_ARGS);
+    throw new CliError(`Block file not found: ${filePath}`, EXIT_DISCOVERY_ERROR);
   }
 
   let mod: Record<string, unknown>;
@@ -59,21 +59,21 @@ export async function resolveBlock(specifier: string): Promise<BlockDefinition> 
     mod = await import(filePath);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    throw new CliError(`Failed to import block file: ${message}`, EXIT_INVALID_ARGS);
+    throw new CliError(`Failed to import block file: ${message}`, EXIT_DISCOVERY_ERROR);
   }
 
   const block = mod.default;
   if (block === undefined) {
     throw new CliError(
       `Block file has no default export: ${filePath}`,
-      EXIT_INVALID_ARGS,
+      EXIT_DISCOVERY_ERROR,
     );
   }
 
   if (!isBlockDefinition(block)) {
     throw new CliError(
       `Default export is not a valid BlockDefinition (must have kind, name, and run): ${filePath}`,
-      EXIT_INVALID_ARGS,
+      EXIT_DISCOVERY_ERROR,
     );
   }
 

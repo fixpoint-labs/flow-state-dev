@@ -15,12 +15,12 @@ import {
   type RequestStreamEventWithId,
   type StoreRegistry
 } from "@flow-state-dev/server";
-import type { FlowInstance, ModelResolver } from "@flow-state-dev/core/types";
-import { discoverFlows, getSearchedDirs, type DiscoverFlowsOptions } from "../resolve-flow.js";
-import { parseInputArg } from "../parse-input.js";
-import { CliError } from "../resolve-block.js";
-import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS } from "../exit-codes.js";
-import { loadEnvFiles } from "../load-env.js";
+import type { FlowInstance, ModelResolver, JsonObject } from "@flow-state-dev/core/types";
+import { discoverFlows, getSearchedDirs, type DiscoverFlowsOptions } from "../resolve-flow";
+import { parseInputArg } from "../parse-input";
+import { CliError } from "../resolve-block";
+import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_INVALID_ARGS, EXIT_DISCOVERY_ERROR, EXIT_INTERNAL_ERROR } from "../exit-codes";
+import { loadEnvFiles } from "../load-env";
 
 /** NDJSON event types emitted to stdout during flow execution. */
 export type FlowEvent =
@@ -106,7 +106,7 @@ export function registerRunCommand(program: Command): void {
         process.stderr.write(
           `Unexpected error: ${err instanceof Error ? err.message : String(err)}\n`,
         );
-        process.exitCode = EXIT_EXECUTION_ERROR;
+        process.exitCode = EXIT_INTERNAL_ERROR;
       }
     });
 }
@@ -155,7 +155,7 @@ export async function executeRunCommand(
     throw new CliError(
       `Flow "${flowKind}" not found. Available flows: ${available}\n` +
       `Searched: ${searched}`,
-      EXIT_INVALID_ARGS,
+      EXIT_DISCOVERY_ERROR,
     );
   }
 
@@ -174,6 +174,32 @@ export async function executeRunCommand(
 
   // 4. Set up stores
   const stores = options.stores ?? createFilesystemStores({ rootDir: ".fsdev/data" });
+
+  // 4b. Parse and apply seed state
+  const sessionId = options.session ?? `sess_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+  if (options.seedSession !== undefined) {
+    const seedData = parseSeedArg(options.seedSession, "session") as JsonObject;
+    const existing = await stores.session.get(sessionId);
+    if (existing !== undefined) {
+      await stores.session.set(sessionId, {
+        ...existing,
+        state: { ...existing.state, ...seedData },
+        updatedAt: Date.now(),
+      });
+    } else {
+      await stores.session.set(sessionId, {
+        id: sessionId,
+        flowKind: flowKind,
+        userId: "cli-user",
+        state: seedData,
+        version: 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        journal: [],
+      });
+    }
+  }
 
   // 5. Set up model resolver (override all generators when --model is set)
   let modelResolver: ModelResolver | undefined;
@@ -208,7 +234,7 @@ export async function executeRunCommand(
       actionName,
       input: input ?? {},
       userId: "cli-user",
-      sessionId: options.session,
+      sessionId,
       stores,
       modelResolver,
       responseEmitter,

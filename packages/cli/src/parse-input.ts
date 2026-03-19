@@ -3,8 +3,8 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve, isAbsolute } from "node:path";
-import { CliError } from "./resolve-block.js";
-import { EXIT_INVALID_ARGS } from "./exit-codes.js";
+import { CliError } from "./resolve-block";
+import { EXIT_INVALID_ARGS } from "./exit-codes";
 
 export interface ParseInputOptions {
   input?: string;

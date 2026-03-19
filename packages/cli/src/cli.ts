@@ -2,8 +2,8 @@
  * Commander program definition for the fsdev CLI.
  */
 import { Command } from "commander";
-import { registerBlockCommand } from "./commands/block.js";
-import { registerRunCommand } from "./commands/run.js";
+import { registerBlockCommand } from "./commands/block";
+import { registerRunCommand } from "./commands/run";
 
 export const program = new Command();
 

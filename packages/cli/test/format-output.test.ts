@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatOutput } from "../src/format-output.js";
+import { formatOutput } from "../src/format-output";
 
 describe("formatOutput", () => {
   it("formats object as indented JSON", () => {

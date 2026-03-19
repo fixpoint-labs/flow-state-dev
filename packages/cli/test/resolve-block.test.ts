@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { resolve } from "node:path";
-import { resolveBlock, isBlockDefinition, CliError } from "../src/resolve-block.js";
-import { EXIT_INVALID_ARGS } from "../src/exit-codes.js";
+import { resolveBlock, isBlockDefinition, CliError } from "../src/resolve-block";
+import { EXIT_DISCOVERY_ERROR } from "../src/exit-codes";
 
 const fixturesDir = resolve(import.meta.dirname, "fixtures");
 
 describe("isBlockDefinition", () => {
   it("returns true for a valid block definition", async () => {
-    const mod = await import("./fixtures/valid-block.js");
+    const mod = await import("./fixtures/valid-block");
     expect(isBlockDefinition(mod.default)).toBe(true);
   });
 
@@ -38,7 +38,7 @@ describe("resolveBlock", () => {
       expect.fail("Should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(CliError);
-      expect((err as CliError).exitCode).toBe(EXIT_INVALID_ARGS);
+      expect((err as CliError).exitCode).toBe(EXIT_DISCOVERY_ERROR);
       expect((err as CliError).message).toContain("not found");
     }
   });
@@ -49,7 +49,7 @@ describe("resolveBlock", () => {
       expect.fail("Should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(CliError);
-      expect((err as CliError).exitCode).toBe(EXIT_INVALID_ARGS);
+      expect((err as CliError).exitCode).toBe(EXIT_DISCOVERY_ERROR);
       expect((err as CliError).message).toContain("no default export");
     }
   });
@@ -60,7 +60,7 @@ describe("resolveBlock", () => {
       expect.fail("Should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(CliError);
-      expect((err as CliError).exitCode).toBe(EXIT_INVALID_ARGS);
+      expect((err as CliError).exitCode).toBe(EXIT_DISCOVERY_ERROR);
       expect((err as CliError).message).toContain("not a valid BlockDefinition");
     }
   });
