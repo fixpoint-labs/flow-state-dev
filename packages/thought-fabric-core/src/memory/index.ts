@@ -81,6 +81,17 @@ export {
 export type { MemorySystemState } from './memory-system.js'
 
 // ---------------------------------------------------------------------------
+// Layer 1: Semantic memory schemas, types, resource factory
+// ---------------------------------------------------------------------------
+
+export {
+  semanticFactSchema,
+  semanticMemoryStateSchema,
+  createSemanticMemoryResource,
+} from './semantic-memory.js'
+export type { SemanticFact, SemanticMemoryState } from './semantic-memory.js'
+
+// ---------------------------------------------------------------------------
 // Layer 2: Episodic memory helpers (verb-first naming)
 // ---------------------------------------------------------------------------
 
@@ -88,6 +99,17 @@ export { encode as encodeEpisode } from './episodic-memory-helpers.js'
 export { recent as recentEpisodes } from './episodic-memory-helpers.js'
 export { markConsolidated as markEpisodesConsolidated } from './episodic-memory-helpers.js'
 export type { EncodeEpisodeInput } from './episodic-memory-helpers.js'
+
+// ---------------------------------------------------------------------------
+// Layer 2: Semantic memory helpers (verb-first naming)
+// ---------------------------------------------------------------------------
+
+export { addFact as addSemanticFact } from './semantic-memory-helpers.js'
+export { updateFact as updateSemanticFact } from './semantic-memory-helpers.js'
+export { reinforce as reinforceSemanticFact } from './semantic-memory-helpers.js'
+export { removeFact as removeSemanticFact } from './semantic-memory-helpers.js'
+export { allFacts as semanticFacts } from './semantic-memory-helpers.js'
+export { query as querySemanticFacts } from './semantic-memory-helpers.js'
 
 // ---------------------------------------------------------------------------
 // Layer 3: Unified memory system factory
@@ -100,6 +122,7 @@ export type {
   RankedMemoryItem,
   WorkingMemorySystemConfig,
   EpisodicMemoryConfig,
+  SemanticMemoryConfig,
 } from './memory-system.js'
 
 // ---------------------------------------------------------------------------
@@ -108,9 +131,11 @@ export type {
 
 export {
   unifiedObservationsSchema,
+  consolidationOutputSchema,
   memorySystemObserve,
   memorySystemReflect,
   memorySystemTick,
   memorySystemCapture,
+  memorySystemConsolidate,
 } from './memory-system-blocks.js'
-export type { UnifiedObservations } from './memory-system-blocks.js'
+export type { UnifiedObservations, ConsolidationOutput } from './memory-system-blocks.js'

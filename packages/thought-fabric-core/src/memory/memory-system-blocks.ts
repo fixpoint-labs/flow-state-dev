@@ -11,7 +11,15 @@ import {
   pin,
 } from './working-memory-helpers.js'
 import { createEpisodicMemoryResource } from './episodic-memory.js'
-import { encode, recent } from './episodic-memory-helpers.js'
+import { encode, recent, markConsolidated } from './episodic-memory-helpers.js'
+import { createSemanticMemoryResource } from './semantic-memory.js'
+import {
+  addFact,
+  updateFact,
+  reinforce,
+  removeFact,
+  allFacts,
+} from './semantic-memory-helpers.js'
 import { memorySystemResource } from './memory-system.js'
 
 // ---------------------------------------------------------------------------
@@ -29,6 +37,17 @@ export interface MemorySystemBlocksConfig {
   }
   /** Shared episodic resource reference — must be the same instance across blocks. */
   _episodicResource?: ReturnType<typeof createEpisodicMemoryResource>
+  /** Semantic memory config. */
+  semantic?: {
+    scope: 'user' | 'project'
+    consolidation: {
+      episodicThreshold: number
+      onEviction: boolean
+      minInterval: number
+    }
+  }
+  /** Shared semantic resource reference — must be the same instance across blocks. */
+  _semanticResource?: ReturnType<typeof createSemanticMemoryResource>
   source?: (input: unknown, ctx: any) => string
 }
 
@@ -48,6 +67,22 @@ export const unifiedObservationsSchema = z.object({
 })
 
 export type UnifiedObservations = z.infer<typeof unifiedObservationsSchema>
+
+/** Output schema for the consolidation generator. */
+export const consolidationOutputSchema = z.object({
+  facts: z.array(z.object({
+    content: z.string(),
+    confidence: z.number().min(0).max(1),
+    category: z.enum(['fact', 'preference', 'relationship', 'pattern']),
+    sourceEpisodeIds: z.array(z.string()),
+    /** What to do with this fact. */
+    action: z.enum(['new', 'reinforce', 'update', 'invalidate']),
+    /** ID of existing fact for reinforce/update/invalidate actions. Empty for 'new'. */
+    targetFactId: z.string().default(''),
+  })),
+})
+
+export type ConsolidationOutput = z.infer<typeof consolidationOutputSchema>
 
 // ---------------------------------------------------------------------------
 // Block factories
@@ -86,7 +121,13 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     '',
     'Rules:',
     '- Don\'t duplicate what\'s already in memory',
-    '- When information is updated, use replaces to supersede the old entry',
+    '- CRITICAL: Check for contradictions with existing working memory entries.',
+    '  When new information contradicts, corrects, or updates an existing memory,',
+    '  use \'replaces\' with that entry\'s exact ID. Examples:',
+    '  * "works at Google" in memory + user says "I joined Stripe" → replaces the Google entry',
+    '  * "prefers TypeScript" in memory + user says "I\'ve switched to Go" → replaces the TS entry',
+    '  * "name is Jon" in memory + user says "it\'s actually John" → replaces the name entry',
+    '- Stale memories are worse than missing memories — always prefer updating over adding alongside',
     '- Prefer fewer, higher-quality memories over many low-quality ones',
     '- Return empty items array if nothing new is worth storing',
   ].join('\n')
@@ -199,10 +240,15 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
  * Routes observer output to appropriate stores:
  * - All items go to working memory
  * - Persistent/permanent items above significance threshold go to episodic memory
+ * - Permanent facts go directly to semantic memory (direct extraction)
  */
 export function memorySystemReflect(config: MemorySystemBlocksConfig) {
   const episodicResource = config._episodicResource ?? (config.episodic
     ? createEpisodicMemoryResource(config.episodic.scope)
+    : undefined)
+
+  const semanticResource = config._semanticResource ?? (config.semantic
+    ? createSemanticMemoryResource(config.semantic.scope)
     : undefined)
 
   const sessionResources = {
@@ -227,6 +273,14 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
       epRef = config.episodic?.scope === 'user'
         ? ctx.user?.resources?.episodicMemory
         : ctx.project?.resources?.episodicMemory
+    } catch { /* not installed */ }
+
+    // Get semantic ref if available
+    let semRef: any = undefined
+    try {
+      semRef = config.semantic?.scope === 'user'
+        ? ctx.user?.resources?.semanticMemory
+        : ctx.project?.resources?.semanticMemory
     } catch { /* not installed */ }
 
     let episodicWrites = 0
@@ -277,6 +331,21 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
           }, config.episodic.maxEpisodes)
           episodicWrites++
         }
+
+        // Direct extraction to semantic memory: permanent facts bypass consolidation
+        if (
+          semRef &&
+          config.semantic &&
+          item.durability === 'permanent' &&
+          item.category === 'fact'
+        ) {
+          await addFact(semRef, {
+            content: item.content,
+            confidence: item.importance,
+            category: 'fact',
+            sourceEpisodeIds: [],
+          })
+        }
       } catch (err) {
         console.warn('[tf.memory] Failed to persist memory item:', (err as Error).message ?? err)
       }
@@ -294,24 +363,53 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
     return { episodicWrites, evictedPersistent }
   }
 
-  if (config.episodic?.scope === 'user' && episodicResource) {
+  // Build handler variants for scope-dependent resource declarations.
+  // When semantic is configured, we need to declare the semantic resource on the same scope.
+  const epScope = config.episodic?.scope
+  const semScope = config.semantic?.scope
+
+  // Combine user/project resources for both episodic and semantic
+  const userResources: Record<string, any> = {}
+  const projectResources: Record<string, any> = {}
+
+  if (epScope === 'user' && episodicResource) userResources.episodicMemory = episodicResource
+  if (epScope === 'project' && episodicResource) projectResources.episodicMemory = episodicResource
+  if (semScope === 'user' && semanticResource) userResources.semanticMemory = semanticResource
+  if (semScope === 'project' && semanticResource) projectResources.semanticMemory = semanticResource
+
+  const hasUser = Object.keys(userResources).length > 0
+  const hasProject = Object.keys(projectResources).length > 0
+
+  if (hasUser && hasProject) {
     return handler({
       name: config.name ? `${config.name}/reflect` : 'tf.memory/reflect',
       inputSchema: unifiedObservationsSchema,
       outputSchema: z.any(),
       sessionResources,
-      userResources: { episodicMemory: episodicResource },
+      userResources,
+      projectResources,
       execute: executeReflect,
     })
   }
 
-  if (config.episodic?.scope === 'project' && episodicResource) {
+  if (hasUser) {
     return handler({
       name: config.name ? `${config.name}/reflect` : 'tf.memory/reflect',
       inputSchema: unifiedObservationsSchema,
       outputSchema: z.any(),
       sessionResources,
-      projectResources: { episodicMemory: episodicResource },
+      userResources,
+      execute: executeReflect,
+    })
+  }
+
+  if (hasProject) {
+    return handler({
+      name: config.name ? `${config.name}/reflect` : 'tf.memory/reflect',
+      inputSchema: unifiedObservationsSchema,
+      outputSchema: z.any(),
+      sessionResources,
+      projectResources,
       execute: executeReflect,
     })
   }
@@ -328,9 +426,13 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
 /**
  * Creates the tick handler.
  *
- * Advances the decay clock and checks consolidation triggers.
+ * Advances the decay clock. When semantic memory is NOT configured, also checks
+ * consolidation triggers and resets counters. When semantic IS configured, counter
+ * resets are handled by the consolidation persist handler.
  */
 export function memorySystemTick(config: MemorySystemBlocksConfig) {
+  const hasSemantic = !!config.semantic
+
   const helperConfig: WorkingMemoryHelperConfig = {
     capacity: config.working.capacity,
     maxPinnedSlots: config.working.maxPinnedSlots,
@@ -351,8 +453,11 @@ export function memorySystemTick(config: MemorySystemBlocksConfig) {
       // Advance working memory turn counter and recompute salience
       await advance(wmRef, helperConfig)
 
-      // Check consolidation trigger (infrastructure only — actual consolidation
-      // is deferred to the semantic memory ticket FIX-268)
+      // When semantic is configured, consolidation counters are managed by
+      // the consolidation persist handler — tick only advances decay.
+      if (hasSemantic) return
+
+      // Legacy behavior (no semantic): check trigger and reset counters here
       const sysState = sysRef.state
       const turnsSinceConsolidation = wmRef.state.currentTurn - sysState.lastConsolidationTurn
       const minInterval = 10
@@ -362,8 +467,6 @@ export function memorySystemTick(config: MemorySystemBlocksConfig) {
         (sysState.episodicWritesSinceLastConsolidation >= 5 ||
           sysState.evictedPersistentSinceLastConsolidation > 0)
       ) {
-        // Consolidation trigger met — reset counters
-        // Actual consolidation LLM call will be added with semantic memory
         await sysRef.updateState((s) => ({
           ...s,
           episodicWritesSinceLastConsolidation: 0,
@@ -375,19 +478,356 @@ export function memorySystemTick(config: MemorySystemBlocksConfig) {
   })
 }
 
+// ---------------------------------------------------------------------------
+// Consolidation blocks
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates the consolidation guard handler.
+ * Checks whether consolidation should run based on trigger conditions.
+ */
+export function consolidationGuard(config: MemorySystemBlocksConfig) {
+  const semanticResource = config._semanticResource ?? (config.semantic
+    ? createSemanticMemoryResource(config.semantic.scope)
+    : undefined)
+
+  const episodicResource = config._episodicResource ?? (config.episodic
+    ? createEpisodicMemoryResource(config.episodic.scope)
+    : undefined)
+
+  const guardOutputSchema = z.object({
+    triggered: z.boolean(),
+    episodes: z.array(z.any()),
+    existingFacts: z.array(z.any()),
+  })
+
+  const sessionResources = {
+    workingMemory: workingMemoryResource,
+    memorySystem: memorySystemResource,
+  }
+
+  async function executeGuard(_input: unknown, ctx: any) {
+    const sysRef = ctx.session.resources.memorySystem
+    const wmRef = ctx.session.resources.workingMemory
+    const sysState = sysRef.state
+
+    const minInterval = config.semantic?.consolidation?.minInterval ?? 10
+    const episodicThreshold = config.semantic?.consolidation?.episodicThreshold ?? 5
+    const onEviction = config.semantic?.consolidation?.onEviction ?? true
+
+    const turnsSinceConsolidation = wmRef.state.currentTurn - sysState.lastConsolidationTurn
+
+    const triggered = turnsSinceConsolidation >= minInterval &&
+      (sysState.episodicWritesSinceLastConsolidation >= episodicThreshold ||
+        (onEviction && sysState.evictedPersistentSinceLastConsolidation > 0))
+
+    if (!triggered) return { triggered: false, episodes: [], existingFacts: [] }
+
+    // Read unconsolidated episodes
+    let epRef: any = undefined
+    try {
+      epRef = config.episodic?.scope === 'user'
+        ? ctx.user?.resources?.episodicMemory
+        : ctx.project?.resources?.episodicMemory
+    } catch { /* not installed */ }
+
+    const unconsolidated = epRef
+      ? epRef.state.episodes.filter((e: any) => !e.consolidated)
+      : []
+
+    // Read existing semantic facts
+    let semRef: any = undefined
+    try {
+      semRef = config.semantic?.scope === 'user'
+        ? ctx.user?.resources?.semanticMemory
+        : ctx.project?.resources?.semanticMemory
+    } catch { /* not installed */ }
+
+    const existingFacts = semRef ? allFacts(semRef) : []
+
+    return { triggered: true, episodes: unconsolidated, existingFacts }
+  }
+
+  // Build handler with scope-dependent resource declarations
+  const epScope = config.episodic?.scope
+  const semScope = config.semantic?.scope
+  const userResources: Record<string, any> = {}
+  const projectResources: Record<string, any> = {}
+
+  if (epScope === 'user' && episodicResource) userResources.episodicMemory = episodicResource
+  if (epScope === 'project' && episodicResource) projectResources.episodicMemory = episodicResource
+  if (semScope === 'user' && semanticResource) userResources.semanticMemory = semanticResource
+  if (semScope === 'project' && semanticResource) projectResources.semanticMemory = semanticResource
+
+  const hasUser = Object.keys(userResources).length > 0
+  const hasProject = Object.keys(projectResources).length > 0
+
+  const base = {
+    name: config.name ? `${config.name}/consolidate/guard` : 'tf.memory/consolidate/guard',
+    inputSchema: z.any(),
+    outputSchema: guardOutputSchema,
+    sessionResources,
+    execute: executeGuard,
+  }
+
+  if (hasUser && hasProject) return handler({ ...base, userResources, projectResources })
+  if (hasUser) return handler({ ...base, userResources })
+  if (hasProject) return handler({ ...base, projectResources })
+  return handler(base)
+}
+
+/**
+ * Creates the consolidation generator.
+ * LLM call that synthesizes semantic facts from episodic observations.
+ */
+export function consolidationGenerate(config: MemorySystemBlocksConfig) {
+  const consolidationPrompt = [
+    'You are a knowledge consolidation system. You receive a batch of episodic memories',
+    '(individual observations from conversations) and a set of existing semantic facts',
+    '(stable knowledge).',
+    '',
+    'Your job is to:',
+    '1. Identify patterns, recurring themes, and stable knowledge from the episodes',
+    '2. Extract new semantic facts that aren\'t already captured',
+    '3. Detect when an episode reinforces an existing fact — use action: \'reinforce\'',
+    '4. Detect when new information CONTRADICTS or UPDATES an existing fact — use action: \'update\'',
+    '   with the corrected content, or action: \'invalidate\' if the fact is simply no longer true',
+    '5. Assign confidence based on evidence strength:',
+    '   - Single source episode: 0.4-0.6',
+    '   - Multiple corroborating episodes: 0.6-0.8',
+    '   - Reinforcing an existing high-confidence fact: 0.8-1.0',
+    '',
+    'Contradiction handling is critical. Examples:',
+    '- Existing: "User works at Google" + Episode: "User mentions they joined Stripe last month"',
+    '  → action: \'update\', targetFactId: <id>, content: "User works at Stripe"',
+    '- Existing: "User is learning Python" + Episode: "User says they gave up on Python"',
+    '  → action: \'invalidate\', targetFactId: <id>',
+    '- Existing: "User prefers dark mode" + Episode: "User switched to light mode"',
+    '  → action: \'update\', targetFactId: <id>, content: "User prefers light mode"',
+    '- Existing: "User\'s name is Jake" + Episode: "User spells their name Jake"',
+    '  → action: \'reinforce\', targetFactId: <id> (confirmation, not contradiction)',
+    '',
+    'Rules:',
+    '- Only extract facts that are explicitly supported by the episodes',
+    '- Do not infer or hallucinate facts beyond what the episodes state',
+    '- Prefer reinforcing existing facts over creating near-duplicates',
+    '- ALWAYS check if new episodes contradict existing facts — stale facts are worse than missing facts',
+    '- Return empty facts array if no new knowledge can be extracted',
+    '- Categories: fact (objective info), preference (user likes/dislikes),',
+    '  relationship (connections between entities), pattern (recurring behaviors)',
+  ].join('\n')
+
+  function buildContext(input: any): string {
+    if (!input.triggered) return 'No consolidation needed. Return empty facts array.'
+
+    let ctx = 'Episodes to consolidate:\n'
+    for (const ep of input.episodes) {
+      ctx += `- [${ep.id}] (${ep.category}) ${ep.content}\n`
+    }
+
+    if (input.existingFacts.length > 0) {
+      ctx += '\nExisting semantic facts (check for contradictions):\n'
+      for (const f of input.existingFacts) {
+        ctx += `- [${f.id}] (${f.category}, confidence: ${f.confidence}, ×${f.reinforcementCount}) ${f.content}\n`
+      }
+    } else {
+      ctx += '\nNo existing semantic facts yet.\n'
+    }
+
+    return ctx
+  }
+
+  return generator({
+    name: config.name ? `${config.name}/consolidate/generate` : 'tf.memory/consolidate/generate',
+    model: config.model,
+    inputSchema: z.any(),
+    outputSchema: consolidationOutputSchema,
+    prompt: consolidationPrompt,
+    context: buildContext,
+    user: (_input: unknown) => 'Consolidate the episodes into semantic facts.',
+    emit: { messages: false, reasoning: false, toolCalls: false },
+  })
+}
+
+/**
+ * Creates the consolidation persist handler.
+ * Processes the consolidation output and writes to stores.
+ */
+export function consolidationPersist(config: MemorySystemBlocksConfig) {
+  const semanticResource = config._semanticResource ?? (config.semantic
+    ? createSemanticMemoryResource(config.semantic.scope)
+    : undefined)
+
+  const episodicResource = config._episodicResource ?? (config.episodic
+    ? createEpisodicMemoryResource(config.episodic.scope)
+    : undefined)
+
+  const sessionResources = {
+    workingMemory: workingMemoryResource,
+    memorySystem: memorySystemResource,
+  }
+
+  async function executePersist(input: ConsolidationOutput, ctx: any) {
+    if (input.facts.length === 0) return { added: 0, reinforced: 0, updated: 0, invalidated: 0 }
+
+    // Get semantic ref
+    let semRef: any = undefined
+    try {
+      semRef = config.semantic?.scope === 'user'
+        ? ctx.user?.resources?.semanticMemory
+        : ctx.project?.resources?.semanticMemory
+    } catch { /* not installed */ }
+
+    if (!semRef) return { added: 0, reinforced: 0, updated: 0, invalidated: 0 }
+
+    // Get episodic ref for marking consolidated
+    let epRef: any = undefined
+    try {
+      epRef = config.episodic?.scope === 'user'
+        ? ctx.user?.resources?.episodicMemory
+        : ctx.project?.resources?.episodicMemory
+    } catch { /* not installed */ }
+
+    const sysRef = ctx.session.resources.memorySystem
+    const wmRef = ctx.session.resources.workingMemory
+
+    let added = 0
+    let reinforced = 0
+    let updated = 0
+    let invalidated = 0
+    const consolidatedEpisodeIds = new Set<string>()
+
+    for (const fact of input.facts) {
+      try {
+        for (const id of fact.sourceEpisodeIds) consolidatedEpisodeIds.add(id)
+
+        switch (fact.action) {
+          case 'new':
+            await addFact(semRef, {
+              content: fact.content,
+              confidence: fact.confidence,
+              category: fact.category,
+              sourceEpisodeIds: fact.sourceEpisodeIds,
+            })
+            added++
+            break
+
+          case 'reinforce':
+            if (fact.targetFactId) {
+              const result = await reinforce(semRef, fact.targetFactId, fact.sourceEpisodeIds)
+              if (result) reinforced++
+              else console.warn(`[tf.memory] Reinforce target not found: ${fact.targetFactId}`)
+            }
+            break
+
+          case 'update':
+            if (fact.targetFactId) {
+              const result = await updateFact(semRef, fact.targetFactId, fact.content, fact.sourceEpisodeIds, fact.confidence)
+              if (result) updated++
+              else console.warn(`[tf.memory] Update target not found: ${fact.targetFactId}`)
+            }
+            break
+
+          case 'invalidate':
+            if (fact.targetFactId) {
+              await removeFact(semRef, fact.targetFactId)
+              invalidated++
+            }
+            break
+        }
+      } catch (err) {
+        console.warn('[tf.memory] Failed to process consolidation fact:', (err as Error).message ?? err)
+      }
+    }
+
+    // Mark episodes as consolidated
+    if (epRef && consolidatedEpisodeIds.size > 0) {
+      await markConsolidated(epRef, [...consolidatedEpisodeIds])
+    }
+
+    // Increment consolidation counter
+    await semRef.updateState((s: any) => ({
+      ...s,
+      totalConsolidations: s.totalConsolidations + 1,
+    }))
+
+    // Reset memory system consolidation counters
+    await sysRef.updateState((s: any) => ({
+      ...s,
+      episodicWritesSinceLastConsolidation: 0,
+      evictedPersistentSinceLastConsolidation: 0,
+      lastConsolidationTurn: wmRef.state.currentTurn,
+    }))
+
+    return { added, reinforced, updated, invalidated }
+  }
+
+  // Build handler with scope-dependent resource declarations
+  const epScope = config.episodic?.scope
+  const semScope = config.semantic?.scope
+  const userResources: Record<string, any> = {}
+  const projectResources: Record<string, any> = {}
+
+  if (epScope === 'user' && episodicResource) userResources.episodicMemory = episodicResource
+  if (epScope === 'project' && episodicResource) projectResources.episodicMemory = episodicResource
+  if (semScope === 'user' && semanticResource) userResources.semanticMemory = semanticResource
+  if (semScope === 'project' && semanticResource) projectResources.semanticMemory = semanticResource
+
+  const hasUser = Object.keys(userResources).length > 0
+  const hasProject = Object.keys(projectResources).length > 0
+
+  const base = {
+    name: config.name ? `${config.name}/consolidate/persist` : 'tf.memory/consolidate/persist',
+    inputSchema: consolidationOutputSchema,
+    outputSchema: z.any(),
+    sessionResources,
+    execute: executePersist,
+  }
+
+  if (hasUser && hasProject) return handler({ ...base, userResources, projectResources })
+  if (hasUser) return handler({ ...base, userResources })
+  if (hasProject) return handler({ ...base, projectResources })
+  return handler(base)
+}
+
+/**
+ * Assembles the consolidation sequencer: guard → generate → persist.
+ */
+export function memorySystemConsolidate(config: MemorySystemBlocksConfig) {
+  const guardBlock = consolidationGuard(config)
+  const generateBlock = consolidationGenerate(config)
+  const persistBlock = consolidationPersist(config)
+
+  return sequencer({
+    name: config.name ? `${config.name}/consolidate` : 'tf.memory/consolidate',
+    inputSchema: z.any(),
+  })
+    .then(guardBlock)
+    .then(generateBlock)
+    .then(persistBlock)
+}
+
 /**
  * Assembles the full capture pipeline: observe → reflect → tick.
+ * When semantic is configured, adds consolidation as a .work() step.
  */
 export function memorySystemCapture(config: MemorySystemBlocksConfig) {
   const observeBlock = memorySystemObserve(config)
   const reflectBlock = memorySystemReflect(config)
   const tickBlock = memorySystemTick(config)
 
-  return sequencer({
+  const pipeline = sequencer({
     name: config.name ?? 'tf.memory/capture',
     inputSchema: z.any(),
   })
     .then(observeBlock)
     .then(reflectBlock)
     .tap(tickBlock)
+
+  if (config.semantic) {
+    const consolidateBlock = memorySystemConsolidate(config)
+    return pipeline.work(consolidateBlock)
+  }
+
+  return pipeline
 }

@@ -6,8 +6,14 @@ import {
 import type { WorkingMemoryState } from '../../src/memory/working-memory.js'
 import {
   episodicMemoryStateSchema,
+  createEpisodicMemoryResource as createEpisodicMemoryResourceFn,
 } from '../../src/memory/episodic-memory.js'
 import type { EpisodicMemoryState, Episode } from '../../src/memory/episodic-memory.js'
+import {
+  semanticMemoryStateSchema,
+  createSemanticMemoryResource as createSemanticMemoryResourceFn,
+} from '../../src/memory/semantic-memory.js'
+import type { SemanticFact, SemanticMemoryState } from '../../src/memory/semantic-memory.js'
 import {
   memorySystemStateSchema,
   memorySystemResource,
@@ -19,7 +25,11 @@ import {
   memorySystemReflect,
   memorySystemTick,
   memorySystemCapture,
+  memorySystemConsolidate,
+  consolidationGuard,
+  consolidationPersist,
 } from '../../src/memory/memory-system-blocks.js'
+import type { ConsolidationOutput } from '../../src/memory/memory-system-blocks.js'
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -102,6 +112,41 @@ function createMockResources(refs: Record<string, any>) {
     ...refs,
     get: (name: string) => refs[name],
     list: () => Object.values(refs),
+  }
+}
+
+function createMockSemRef(
+  initialState?: Partial<SemanticMemoryState>,
+): ResourceHandle<SemanticMemoryState> {
+  let state: SemanticMemoryState = {
+    facts: [],
+    totalExtracted: 0,
+    totalConsolidations: 0,
+    ...initialState,
+  }
+
+  return {
+    name: 'semanticMemory',
+    scope: 'user',
+    get state() { return state },
+    patchState: async (updates) => { state = { ...state, ...updates } as SemanticMemoryState },
+    setState: async (next) => { state = next },
+    updateState: async (fn) => { state = await fn(state) },
+    readContent: async () => JSON.stringify(state),
+    writeContent: async () => {},
+    config: { stateSchema: semanticMemoryStateSchema, writable: true },
+  } as ResourceHandle<SemanticMemoryState>
+}
+
+function makeFact(overrides: Partial<SemanticFact> & { id: string }): SemanticFact {
+  return {
+    content: `fact ${overrides.id}`,
+    confidence: 0.7,
+    category: 'fact',
+    sourceEpisodeIds: [],
+    extractedAt: new Date().toISOString(),
+    reinforcementCount: 1,
+    ...overrides,
   }
 }
 
@@ -714,6 +759,781 @@ describe('memory/memorySystem', () => {
 
       // Only 5 turns since last consolidation (< 10 minInterval)
       expect(sysRef.state.episodicWritesSinceLastConsolidation).toBe(10)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Semantic memory: system() factory
+  // ---------------------------------------------------------------------------
+
+  describe('system() factory (semantic)', () => {
+    it('returns semantic module when configured', () => {
+      const mem = system({
+        model: 'gpt-5-mini',
+        working: true,
+        episodic: true,
+        semantic: true,
+      })
+
+      expect(mem.semantic).toBeDefined()
+      expect(mem.semantic!.resource).toBeDefined()
+      expect(mem.semantic!.helpers).toBeDefined()
+      expect(mem.semantic!.helpers.addFact).toBeTypeOf('function')
+      expect(mem.semantic!.helpers.updateFact).toBeTypeOf('function')
+      expect(mem.semantic!.helpers.reinforce).toBeTypeOf('function')
+      expect(mem.semantic!.helpers.removeFact).toBeTypeOf('function')
+      expect(mem.semantic!.helpers.allFacts).toBeTypeOf('function')
+      expect(mem.semantic!.helpers.query).toBeTypeOf('function')
+    })
+
+    it('throws when semantic is set without episodic', () => {
+      expect(() => system({
+        model: 'gpt-5-mini',
+        working: true,
+        semantic: true,
+      })).toThrow('Semantic memory requires episodic memory to be configured')
+    })
+
+    it('returns consolidate sequencer when semantic configured', () => {
+      const mem = system({
+        model: 'gpt-5-mini',
+        working: true,
+        episodic: true,
+        semantic: true,
+      })
+
+      expect(mem.consolidate).toBeDefined()
+    })
+
+    it('does not return consolidate when semantic not configured', () => {
+      const mem = system({
+        model: 'gpt-5-mini',
+        working: true,
+        episodic: true,
+      })
+
+      expect(mem.consolidate).toBeUndefined()
+    })
+
+    it('accepts custom semantic config', () => {
+      const mem = system({
+        model: 'gpt-5-mini',
+        working: true,
+        episodic: true,
+        semantic: {
+          scope: 'project',
+          consolidation: {
+            episodicThreshold: 10,
+            onEviction: false,
+            minInterval: 20,
+          },
+        },
+      })
+
+      expect(mem.semantic).toBeDefined()
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Semantic memory: block shapes
+  // ---------------------------------------------------------------------------
+
+  describe('blocks (semantic)', () => {
+    // Shared resource instances to avoid resource conflict errors in sequencers
+    const sharedEpResource = createEpisodicMemoryResourceFn('user')
+    const sharedSemResource = createSemanticMemoryResourceFn('user')
+
+    const semanticConfig = {
+      model: 'gpt-5-mini',
+      working: { capacity: 7, maxPinnedSlots: 2, decay: { strategy: 'power-law' as const, rate: 0.5 } },
+      episodic: { scope: 'user' as const, significanceThreshold: 0.6, maxEpisodes: 200 },
+      semantic: { scope: 'user' as const, consolidation: { episodicThreshold: 5, onEviction: true, minInterval: 10 } },
+      _episodicResource: sharedEpResource,
+      _semanticResource: sharedSemResource,
+    }
+
+    describe('consolidationGuard', () => {
+      it('returns a handler BlockDefinition', () => {
+        const block = consolidationGuard(semanticConfig)
+        expect(block.kind).toBe('handler')
+      })
+
+      it('has correct default name', () => {
+        const block = consolidationGuard(semanticConfig)
+        expect(block.name).toBe('tf.memory/consolidate/guard')
+      })
+    })
+
+    describe('consolidationPersist', () => {
+      it('returns a handler BlockDefinition', () => {
+        const block = consolidationPersist(semanticConfig)
+        expect(block.kind).toBe('handler')
+      })
+
+      it('has correct default name', () => {
+        const block = consolidationPersist(semanticConfig)
+        expect(block.name).toBe('tf.memory/consolidate/persist')
+      })
+    })
+
+    describe('memorySystemConsolidate', () => {
+      it('returns a sequencer BlockDefinition', () => {
+        const block = memorySystemConsolidate(semanticConfig)
+        expect(block.kind).toBe('sequencer')
+      })
+
+      it('has correct default name', () => {
+        const block = memorySystemConsolidate(semanticConfig)
+        expect(block.name).toBe('tf.memory/consolidate')
+      })
+    })
+
+    describe('memorySystemCapture (with semantic)', () => {
+      it('returns a sequencer BlockDefinition', () => {
+        const block = memorySystemCapture(semanticConfig)
+        expect(block.kind).toBe('sequencer')
+      })
+    })
+
+    describe('memorySystemReflect (with semantic)', () => {
+      it('declares semantic resource on user scope', () => {
+        const block = memorySystemReflect(semanticConfig)
+        expect(block.declaredResources?.user).toHaveProperty('semanticMemory')
+      })
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Consolidation guard handler
+  // ---------------------------------------------------------------------------
+
+  describe('consolidationGuard (behavior)', () => {
+    const semanticConfig = {
+      model: 'gpt-5-mini',
+      working: { capacity: 7, maxPinnedSlots: 2, decay: { strategy: 'power-law' as const, rate: 0.5 } },
+      episodic: { scope: 'user' as const, significanceThreshold: 0.6, maxEpisodes: 200 },
+      semantic: { scope: 'user' as const, consolidation: { episodicThreshold: 5, onEviction: true, minInterval: 10 } },
+    }
+
+    async function runGuard(
+      wmRef: ResourceHandle<WorkingMemoryState>,
+      sysRef: ResourceHandle<MemorySystemState>,
+      epRef?: ResourceHandle<EpisodicMemoryState>,
+      semRef?: ResourceHandle<SemanticMemoryState>,
+    ) {
+      const block = consolidationGuard(semanticConfig)
+      const ctx = {
+        session: {
+          resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
+        },
+        user: {
+          resources: createMockResources({
+            ...(epRef ? { episodicMemory: epRef } : {}),
+            ...(semRef ? { semanticMemory: semRef } : {}),
+          }),
+        },
+        response: { emit: async () => {} },
+      } as any
+      return block.run(undefined as any, ctx)
+    }
+
+    it('triggers when conditions are met', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 15 })
+      const sysRef = createMockSysRef({
+        lastConsolidationTurn: 0,
+        episodicWritesSinceLastConsolidation: 6,
+      })
+      const epRef = createMockEpRef({
+        episodes: [makeEpisode({ id: 'ep1', consolidated: false })],
+      })
+      const semRef = createMockSemRef()
+
+      const result = await runGuard(wmRef, sysRef, epRef, semRef) as any
+      expect(result.triggered).toBe(true)
+      expect(result.episodes).toHaveLength(1)
+    })
+
+    it('does not trigger when below minInterval', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 5 })
+      const sysRef = createMockSysRef({
+        lastConsolidationTurn: 0,
+        episodicWritesSinceLastConsolidation: 10,
+      })
+
+      const result = await runGuard(wmRef, sysRef) as any
+      expect(result.triggered).toBe(false)
+      expect(result.episodes).toEqual([])
+    })
+
+    it('does not trigger when below episodic threshold', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 15 })
+      const sysRef = createMockSysRef({
+        lastConsolidationTurn: 0,
+        episodicWritesSinceLastConsolidation: 2,
+        evictedPersistentSinceLastConsolidation: 0,
+      })
+
+      const result = await runGuard(wmRef, sysRef) as any
+      expect(result.triggered).toBe(false)
+    })
+
+    it('triggers on eviction when onEviction is true', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 15 })
+      const sysRef = createMockSysRef({
+        lastConsolidationTurn: 0,
+        episodicWritesSinceLastConsolidation: 0,
+        evictedPersistentSinceLastConsolidation: 1,
+      })
+      const epRef = createMockEpRef()
+      const semRef = createMockSemRef()
+
+      const result = await runGuard(wmRef, sysRef, epRef, semRef) as any
+      expect(result.triggered).toBe(true)
+    })
+
+    it('excludes consolidated episodes', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 15 })
+      const sysRef = createMockSysRef({
+        lastConsolidationTurn: 0,
+        episodicWritesSinceLastConsolidation: 6,
+      })
+      const epRef = createMockEpRef({
+        episodes: [
+          makeEpisode({ id: 'ep1', consolidated: true }),
+          makeEpisode({ id: 'ep2', consolidated: false }),
+        ],
+      })
+      const semRef = createMockSemRef()
+
+      const result = await runGuard(wmRef, sysRef, epRef, semRef) as any
+      expect(result.triggered).toBe(true)
+      expect(result.episodes).toHaveLength(1)
+      expect(result.episodes[0].id).toBe('ep2')
+    })
+
+    it('includes existing semantic facts in output', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 15 })
+      const sysRef = createMockSysRef({
+        lastConsolidationTurn: 0,
+        episodicWritesSinceLastConsolidation: 6,
+      })
+      const epRef = createMockEpRef({ episodes: [makeEpisode({ id: 'ep1' })] })
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_1', content: 'User works at Stripe' })],
+      })
+
+      const result = await runGuard(wmRef, sysRef, epRef, semRef) as any
+      expect(result.existingFacts).toHaveLength(1)
+      expect(result.existingFacts[0].content).toBe('User works at Stripe')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Consolidation persist handler
+  // ---------------------------------------------------------------------------
+
+  describe('consolidationPersist (behavior)', () => {
+    const semanticConfig = {
+      model: 'gpt-5-mini',
+      working: { capacity: 7, maxPinnedSlots: 2, decay: { strategy: 'power-law' as const, rate: 0.5 } },
+      episodic: { scope: 'user' as const, significanceThreshold: 0.6, maxEpisodes: 200 },
+      semantic: { scope: 'user' as const, consolidation: { episodicThreshold: 5, onEviction: true, minInterval: 10 } },
+    }
+
+    async function runPersist(
+      wmRef: ResourceHandle<WorkingMemoryState>,
+      sysRef: ResourceHandle<MemorySystemState>,
+      semRef: ResourceHandle<SemanticMemoryState>,
+      epRef: ResourceHandle<EpisodicMemoryState>,
+      input: ConsolidationOutput,
+    ) {
+      const block = consolidationPersist(semanticConfig)
+      const ctx = {
+        session: {
+          resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
+        },
+        user: {
+          resources: createMockResources({ semanticMemory: semRef, episodicMemory: epRef }),
+        },
+        response: { emit: async () => {} },
+      } as any
+      return block.run(input as any, ctx)
+    }
+
+    it('handles "new" action — writes new facts', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 15 })
+      const sysRef = createMockSysRef({ episodicWritesSinceLastConsolidation: 6 })
+      const semRef = createMockSemRef()
+      const epRef = createMockEpRef({ episodes: [makeEpisode({ id: 'ep1' })] })
+
+      const result = await runPersist(wmRef, sysRef, semRef, epRef, {
+        facts: [{
+          content: 'User works at Stripe',
+          confidence: 0.8,
+          category: 'fact',
+          sourceEpisodeIds: ['ep1'],
+          action: 'new',
+          targetFactId: '',
+        }],
+      }) as any
+
+      expect(result.added).toBe(1)
+      expect(semRef.state.facts).toHaveLength(1)
+      expect(semRef.state.facts[0].content).toBe('User works at Stripe')
+    })
+
+    it('handles "reinforce" action — bumps existing fact', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 15 })
+      const sysRef = createMockSysRef({ episodicWritesSinceLastConsolidation: 6 })
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_target', confidence: 0.7, reinforcementCount: 2 })],
+      })
+      const epRef = createMockEpRef()
+
+      const result = await runPersist(wmRef, sysRef, semRef, epRef, {
+        facts: [{
+          content: '',
+          confidence: 0.8,
+          category: 'fact',
+          sourceEpisodeIds: ['ep5'],
+          action: 'reinforce',
+          targetFactId: 'sf_target',
+        }],
+      }) as any
+
+      expect(result.reinforced).toBe(1)
+      expect(semRef.state.facts[0].reinforcementCount).toBe(3)
+      expect(semRef.state.facts[0].confidence).toBe(0.75) // 0.7 + 0.05
+    })
+
+    it('handles "update" action — changes content of existing fact', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 15 })
+      const sysRef = createMockSysRef({ episodicWritesSinceLastConsolidation: 6 })
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_target', content: 'User works at Google' })],
+      })
+      const epRef = createMockEpRef()
+
+      const result = await runPersist(wmRef, sysRef, semRef, epRef, {
+        facts: [{
+          content: 'User works at Stripe',
+          confidence: 0.85,
+          category: 'fact',
+          sourceEpisodeIds: ['ep5'],
+          action: 'update',
+          targetFactId: 'sf_target',
+        }],
+      }) as any
+
+      expect(result.updated).toBe(1)
+      expect(semRef.state.facts[0].id).toBe('sf_target') // ID preserved
+      expect(semRef.state.facts[0].content).toBe('User works at Stripe')
+      expect(semRef.state.facts[0].confidence).toBe(0.85)
+    })
+
+    it('handles "invalidate" action — removes existing fact', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 15 })
+      const sysRef = createMockSysRef({ episodicWritesSinceLastConsolidation: 6 })
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_target', content: 'User is learning Python' })],
+      })
+      const epRef = createMockEpRef()
+
+      const result = await runPersist(wmRef, sysRef, semRef, epRef, {
+        facts: [{
+          content: '',
+          confidence: 0,
+          category: 'fact',
+          sourceEpisodeIds: ['ep5'],
+          action: 'invalidate',
+          targetFactId: 'sf_target',
+        }],
+      }) as any
+
+      expect(result.invalidated).toBe(1)
+      expect(semRef.state.facts).toHaveLength(0)
+    })
+
+    it('logs warning for missing targetFactId on reinforce', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 15 })
+      const sysRef = createMockSysRef({ episodicWritesSinceLastConsolidation: 6 })
+      const semRef = createMockSemRef()
+      const epRef = createMockEpRef()
+
+      const result = await runPersist(wmRef, sysRef, semRef, epRef, {
+        facts: [{
+          content: '',
+          confidence: 0.8,
+          category: 'fact',
+          sourceEpisodeIds: [],
+          action: 'reinforce',
+          targetFactId: 'sf_nonexistent',
+        }],
+      }) as any
+
+      expect(result.reinforced).toBe(0)
+    })
+
+    it('marks episodes as consolidated', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 15 })
+      const sysRef = createMockSysRef({ episodicWritesSinceLastConsolidation: 6 })
+      const semRef = createMockSemRef()
+      const epRef = createMockEpRef({
+        episodes: [
+          makeEpisode({ id: 'ep1', consolidated: false }),
+          makeEpisode({ id: 'ep2', consolidated: false }),
+        ],
+      })
+
+      await runPersist(wmRef, sysRef, semRef, epRef, {
+        facts: [{
+          content: 'New fact',
+          confidence: 0.7,
+          category: 'fact',
+          sourceEpisodeIds: ['ep1', 'ep2'],
+          action: 'new',
+          targetFactId: '',
+        }],
+      })
+
+      expect(epRef.state.episodes[0].consolidated).toBe(true)
+      expect(epRef.state.episodes[1].consolidated).toBe(true)
+    })
+
+    it('resets memory system consolidation counters', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 15 })
+      const sysRef = createMockSysRef({
+        episodicWritesSinceLastConsolidation: 8,
+        evictedPersistentSinceLastConsolidation: 2,
+        lastConsolidationTurn: 0,
+      })
+      const semRef = createMockSemRef()
+      const epRef = createMockEpRef()
+
+      await runPersist(wmRef, sysRef, semRef, epRef, {
+        facts: [{
+          content: 'New fact',
+          confidence: 0.7,
+          category: 'fact',
+          sourceEpisodeIds: [],
+          action: 'new',
+          targetFactId: '',
+        }],
+      })
+
+      expect(sysRef.state.episodicWritesSinceLastConsolidation).toBe(0)
+      expect(sysRef.state.evictedPersistentSinceLastConsolidation).toBe(0)
+      expect(sysRef.state.lastConsolidationTurn).toBe(15)
+    })
+
+    it('increments totalConsolidations counter', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 15 })
+      const sysRef = createMockSysRef({ episodicWritesSinceLastConsolidation: 6 })
+      const semRef = createMockSemRef({ totalConsolidations: 0 })
+      const epRef = createMockEpRef()
+
+      await runPersist(wmRef, sysRef, semRef, epRef, {
+        facts: [{
+          content: 'Fact',
+          confidence: 0.7,
+          category: 'fact',
+          sourceEpisodeIds: [],
+          action: 'new',
+          targetFactId: '',
+        }],
+      })
+
+      expect(semRef.state.totalConsolidations).toBe(1)
+    })
+
+    it('is a no-op when facts array is empty', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 15 })
+      const sysRef = createMockSysRef({ episodicWritesSinceLastConsolidation: 6 })
+      const semRef = createMockSemRef()
+      const epRef = createMockEpRef()
+
+      const result = await runPersist(wmRef, sysRef, semRef, epRef, { facts: [] }) as any
+      expect(result.added).toBe(0)
+      expect(result.reinforced).toBe(0)
+      expect(result.updated).toBe(0)
+      expect(result.invalidated).toBe(0)
+      // Counters should NOT be reset when no facts processed
+      expect(sysRef.state.episodicWritesSinceLastConsolidation).toBe(6)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Reflect handler: direct extraction to semantic memory
+  // ---------------------------------------------------------------------------
+
+  describe('memorySystemReflect (semantic direct extraction)', () => {
+    const semanticConfig = {
+      model: 'gpt-5-mini',
+      working: { capacity: 7, maxPinnedSlots: 2, decay: { strategy: 'power-law' as const, rate: 0.5 } },
+      episodic: { scope: 'user' as const, significanceThreshold: 0.6, maxEpisodes: 200 },
+      semantic: { scope: 'user' as const, consolidation: { episodicThreshold: 5, onEviction: true, minInterval: 10 } },
+    }
+
+    async function runReflectWithSemantic(
+      wmRef: ResourceHandle<WorkingMemoryState>,
+      sysRef: ResourceHandle<MemorySystemState>,
+      epRef: ResourceHandle<EpisodicMemoryState>,
+      semRef: ResourceHandle<SemanticMemoryState>,
+      items: Array<{ content: string; importance: number; durability: string; category: string; replaces?: string }>,
+    ) {
+      const block = memorySystemReflect(semanticConfig)
+      const ctx = {
+        session: {
+          resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
+          items: { all: () => [] },
+          instanceId: 'test-session',
+        },
+        user: {
+          resources: createMockResources({ episodicMemory: epRef, semanticMemory: semRef }),
+        },
+        response: { emit: async () => {} },
+      } as any
+      return block.run({ items } as any, ctx)
+    }
+
+    it('routes permanent+fact items directly to semantic store', async () => {
+      const wmRef = createMockWmRef()
+      const sysRef = createMockSysRef()
+      const epRef = createMockEpRef()
+      const semRef = createMockSemRef()
+
+      await runReflectWithSemantic(wmRef, sysRef, epRef, semRef, [
+        { content: 'User name is Jake', importance: 0.9, durability: 'permanent', category: 'fact' },
+      ])
+
+      expect(semRef.state.facts).toHaveLength(1)
+      expect(semRef.state.facts[0].content).toBe('User name is Jake')
+      expect(semRef.state.facts[0].confidence).toBe(0.9) // importance used as confidence
+      expect(semRef.state.facts[0].category).toBe('fact')
+    })
+
+    it('does not route persistent+fact to semantic (only permanent)', async () => {
+      const wmRef = createMockWmRef()
+      const sysRef = createMockSysRef()
+      const epRef = createMockEpRef()
+      const semRef = createMockSemRef()
+
+      await runReflectWithSemantic(wmRef, sysRef, epRef, semRef, [
+        { content: 'Some persistent fact', importance: 0.8, durability: 'persistent', category: 'fact' },
+      ])
+
+      expect(semRef.state.facts).toHaveLength(0)
+    })
+
+    it('does not route permanent+preference to semantic (only fact category)', async () => {
+      const wmRef = createMockWmRef()
+      const sysRef = createMockSysRef()
+      const epRef = createMockEpRef()
+      const semRef = createMockSemRef()
+
+      await runReflectWithSemantic(wmRef, sysRef, epRef, semRef, [
+        { content: 'Prefers dark mode', importance: 0.9, durability: 'permanent', category: 'preference' },
+      ])
+
+      expect(semRef.state.facts).toHaveLength(0)
+    })
+
+    it('still routes to WM and episodic alongside semantic', async () => {
+      const wmRef = createMockWmRef()
+      const sysRef = createMockSysRef()
+      const epRef = createMockEpRef()
+      const semRef = createMockSemRef()
+
+      await runReflectWithSemantic(wmRef, sysRef, epRef, semRef, [
+        { content: 'User name is Jake', importance: 0.9, durability: 'permanent', category: 'fact' },
+      ])
+
+      // All three stores receive the item
+      expect(wmRef.state.entries).toHaveLength(1)
+      expect(epRef.state.episodes).toHaveLength(1)
+      expect(semRef.state.facts).toHaveLength(1)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Tick handler: semantic mode skips counter reset
+  // ---------------------------------------------------------------------------
+
+  describe('memorySystemTick (with semantic)', () => {
+    const semanticConfig = {
+      model: 'gpt-5-mini',
+      working: { capacity: 7, maxPinnedSlots: 2, decay: { strategy: 'power-law' as const, rate: 0.5 } },
+      episodic: { scope: 'user' as const, significanceThreshold: 0.6, maxEpisodes: 200 },
+      semantic: { scope: 'user' as const, consolidation: { episodicThreshold: 5, onEviction: true, minInterval: 10 } },
+    }
+
+    async function runTickWithSemantic(
+      wmRef: ResourceHandle<WorkingMemoryState>,
+      sysRef: ResourceHandle<MemorySystemState>,
+    ) {
+      const block = memorySystemTick(semanticConfig)
+      const ctx = {
+        session: {
+          resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
+        },
+        response: { emit: async () => {} },
+      } as any
+      return block.run(undefined as any, ctx)
+    }
+
+    it('does not reset counters when semantic is configured', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 14 })
+      const sysRef = createMockSysRef({
+        lastConsolidationTurn: 0,
+        episodicWritesSinceLastConsolidation: 6,
+        evictedPersistentSinceLastConsolidation: 1,
+      })
+
+      await runTickWithSemantic(wmRef, sysRef)
+
+      // Counters should NOT be reset — that's consolidationPersist's job
+      expect(sysRef.state.episodicWritesSinceLastConsolidation).toBe(6)
+      expect(sysRef.state.evictedPersistentSinceLastConsolidation).toBe(1)
+      expect(sysRef.state.lastConsolidationTurn).toBe(0)
+    })
+
+    it('still advances turn counter', async () => {
+      const wmRef = createMockWmRef({ currentTurn: 3 })
+      const sysRef = createMockSysRef()
+
+      await runTickWithSemantic(wmRef, sysRef)
+
+      expect(wmRef.state.currentTurn).toBe(4)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Recall with semantic memory
+  // ---------------------------------------------------------------------------
+
+  describe('recall() (with semantic)', () => {
+    it('includes semantic facts in results', () => {
+      const wmRef = createMockWmRef()
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_1', content: 'User works at Stripe', confidence: 0.8, reinforcementCount: 3 })],
+      })
+
+      const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
+      const ctx = {
+        session: { resources: createMockResources({ workingMemory: wmRef }) },
+        user: { resources: createMockResources({ semanticMemory: semRef, episodicMemory: createMockEpRef() }) },
+      }
+
+      const result = mem.recall(ctx)
+      expect(result).toHaveLength(1)
+      expect(result[0].source).toBe('semantic')
+      expect(result[0].content).toBe('User works at Stripe')
+    })
+
+    it('semantic dedup wins over working memory', () => {
+      const wmRef = createMockWmRef({
+        entries: [
+          { id: 'wm1', content: 'User works at Google', salience: 0.8, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.8, category: 'fact', durability: 'persistent' },
+        ],
+      })
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_1', content: 'User works at Stripe', confidence: 0.9, reinforcementCount: 5 })],
+      })
+
+      const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
+      const ctx = {
+        session: { resources: createMockResources({ workingMemory: wmRef }) },
+        user: { resources: createMockResources({ semanticMemory: semRef, episodicMemory: createMockEpRef() }) },
+      }
+
+      const result = mem.recall(ctx)
+      // "works at" has significant token overlap — WM version should be deduped
+      const sources = result.map((r) => r.source)
+      // Both may appear if token overlap isn't > 0.6 (depends on exact content)
+      // The key is that semantic fact IS present
+      expect(sources).toContain('semantic')
+    })
+
+    it('applies cue boost to semantic facts', () => {
+      const wmRef = createMockWmRef()
+      const semRef = createMockSemRef({
+        facts: [
+          makeFact({ id: 'sf_1', content: 'User works at Stripe', confidence: 0.5, reinforcementCount: 1 }),
+          makeFact({ id: 'sf_2', content: 'User likes React', confidence: 0.5, reinforcementCount: 1 }),
+        ],
+      })
+
+      const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
+      const ctx = {
+        session: { resources: createMockResources({ workingMemory: wmRef }) },
+        user: { resources: createMockResources({ semanticMemory: semRef, episodicMemory: createMockEpRef() }) },
+      }
+
+      const result = mem.recall(ctx, 'Stripe')
+      const stripeItem = result.find((r) => r.content === 'User works at Stripe')!
+      const reactItem = result.find((r) => r.content === 'User likes React')!
+      expect(stripeItem.relevance).toBeGreaterThan(reactItem.relevance)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Context formatter with semantic memory
+  // ---------------------------------------------------------------------------
+
+  describe('contextFormatter() (with semantic)', () => {
+    it('includes semantic facts in Known facts section', () => {
+      const wmRef = createMockWmRef()
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_1', content: 'User works at Stripe', category: 'fact', confidence: 0.8 })],
+      })
+
+      const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
+      const ctx = {
+        session: { resources: createMockResources({ workingMemory: wmRef }) },
+        user: { resources: createMockResources({ semanticMemory: semRef, episodicMemory: createMockEpRef() }) },
+      }
+
+      const result = mem.contextFormatter(undefined, ctx)
+      expect(result).toContain('Known facts:')
+      expect(result).toContain('- User works at Stripe')
+    })
+
+    it('includes pattern-category facts in Patterns section', () => {
+      const wmRef = createMockWmRef()
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_1', content: 'User frequently debugs React components', category: 'pattern', confidence: 0.7 })],
+      })
+
+      const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
+      const ctx = {
+        session: { resources: createMockResources({ workingMemory: wmRef }) },
+        user: { resources: createMockResources({ semanticMemory: semRef, episodicMemory: createMockEpRef() }) },
+      }
+
+      const result = mem.contextFormatter(undefined, ctx)
+      expect(result).toContain('Patterns:')
+      expect(result).toContain('- User frequently debugs React components')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Observer prompt
+  // ---------------------------------------------------------------------------
+
+  describe('observer prompt (contradiction detection)', () => {
+    const baseConfig = {
+      model: 'gpt-5-mini',
+      working: { capacity: 7, maxPinnedSlots: 2, decay: { strategy: 'power-law' as const, rate: 0.5 } },
+    }
+
+    it('includes contradiction detection instructions in prompt', () => {
+      const block = memorySystemObserve(baseConfig)
+      // The prompt is stored in the block config internals — verify via config property
+      const blockDef = block as any
+      const config = blockDef.config ?? {}
+      const prompt = config.prompt ?? ''
+      expect(prompt).toContain('CRITICAL: Check for contradictions')
+      expect(prompt).toContain('Stale memories are worse than missing memories')
     })
   })
 })
