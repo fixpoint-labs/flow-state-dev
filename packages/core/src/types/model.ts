@@ -96,10 +96,12 @@ export type GeneratorModelTool = {
 };
 
 export type GeneratorModelStreamChunk = {
-  type: "text_delta" | "tool_call_delta" | "reasoning_delta" | "source_url" | "tool_input_start" | "finish";
+  type: "text_delta" | "tool_call_delta" | "tool_result" | "reasoning_delta" | "source_url" | "tool_input_start" | "finish";
   textDelta?: string;
   reasoningDelta?: string;
   toolCallDelta?: { toolCallId: string; toolName: string; argsDelta?: string };
+  /** Completed tool result from the AI SDK's multi-step loop. */
+  toolResult?: { toolCallId: string; toolName: string; result: unknown };
   /** Info about a tool that started executing (including provider-executed tools). */
   toolInput?: { toolName: string; providerExecuted?: boolean };
   /** Source reference from a provider-native tool (e.g., web search). */
@@ -124,6 +126,7 @@ export type PrepareStepResult = {
 export type PrepareStepFn = (stepInfo: {
   stepNumber: number;
   messages: unknown[];
+  steps: GeneratorStepResult[];
 }) => Promise<PrepareStepResult | undefined | void>;
 
 export interface GeneratorModel {
@@ -143,6 +146,7 @@ export interface GeneratorModel {
     messages: unknown[];
     tools?: GeneratorModelTool[];
     providerTools?: ProviderTool[];
+    outputSchema?: ZodTypeAny;
     maxTokens?: number;
     signal?: AbortSignal;
     maxSteps?: number;

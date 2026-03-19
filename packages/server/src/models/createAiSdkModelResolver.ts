@@ -7,6 +7,7 @@ import type {
   GeneratorModelTool,
   GeneratorModelToolCall,
   GeneratorSearchConfig,
+  GeneratorStepResult,
   ModelResolver,
   PrepareStepFn,
   ProviderTool
@@ -250,8 +251,17 @@ function buildAiSdkRequest(
   // slot functions so the LLM sees fresh state on every iteration.
   if (options.prepareStep !== undefined) {
     const fn = options.prepareStep;
-    request.prepareStep = async (stepInfo: { stepNumber: number; messages: unknown[] }) => {
-      return fn(stepInfo);
+    request.prepareStep = async (stepInfo: {
+      stepNumber: number;
+      messages: unknown[];
+      steps: unknown[];
+      model: unknown;
+    }) => {
+      return fn({
+        stepNumber: stepInfo.stepNumber,
+        messages: stepInfo.messages,
+        steps: normalizeSteps(stepInfo.steps) ?? []
+      });
     };
   }
 
@@ -311,6 +321,56 @@ function normalizeSources(value: unknown): GeneratorModelSource[] | undefined {
   return sources.length > 0 ? sources : undefined;
 }
 
+function normalizeToolResults(
+  value: unknown
+): Array<{ toolCallId: string; toolName: string; result: unknown }> | undefined {
+  if (!Array.isArray(value) || value.length === 0) {
+    return undefined;
+  }
+
+  const results: Array<{ toolCallId: string; toolName: string; result: unknown }> = [];
+  for (const item of value) {
+    const record = asRecord(item);
+    if (record === undefined) continue;
+
+    const toolCallId =
+      typeof record.toolCallId === "string" ? record.toolCallId : undefined;
+    const toolName =
+      typeof record.toolName === "string" ? record.toolName : undefined;
+    if (toolCallId === undefined || toolName === undefined) continue;
+
+    results.push({
+      toolCallId,
+      toolName,
+      result: record.result ?? record.output
+    });
+  }
+
+  return results.length === 0 ? undefined : results;
+}
+
+function normalizeSteps(value: unknown): GeneratorStepResult[] | undefined {
+  if (!Array.isArray(value) || value.length === 0) {
+    return undefined;
+  }
+
+  const steps: GeneratorStepResult[] = [];
+  for (const step of value) {
+    const record = asRecord(step);
+    if (record === undefined) continue;
+
+    steps.push({
+      text: typeof record.text === "string" ? record.text : undefined,
+      toolCalls: normalizeToolCalls(record.toolCalls),
+      toolResults: normalizeToolResults(record.toolResults),
+      finishReason: normalizeFinishReason(record.finishReason),
+      usage: normalizeUsage(record.usage)
+    });
+  }
+
+  return steps.length === 0 ? undefined : steps;
+}
+
 function normalizeGenerateResult(
   result: Record<string, unknown>
 ): GeneratorModelResult {
@@ -328,6 +388,7 @@ function normalizeGenerateResult(
     providerMetadata: asProviderMetadata(
       result.providerMetadata ?? result.experimental_providerMetadata
     ),
+    steps: normalizeSteps(result.steps),
     sources: normalizeSources(result.sources)
   };
 }
@@ -526,6 +587,17 @@ function createGeneratorModelFromAiSdk(
               providerExecuted: partRecord.providerExecuted === true ? true : undefined
             }
           };
+        } else if (partRecord.type === "tool-input-delta") {
+          // AI SDK v6 fullStream emits tool-input-delta with incremental args.
+          // Map to framework tool_call_delta so clients can show progress.
+          yield {
+            type: "tool_call_delta",
+            toolCallDelta: {
+              toolCallId: partRecord.id as string,
+              toolName: (partRecord.toolName as string | undefined) ?? "",
+              argsDelta: partRecord.delta as string
+            }
+          };
         } else if (partRecord.type === "tool-call") {
           yield {
             type: "tool_call_delta",
@@ -533,6 +605,15 @@ function createGeneratorModelFromAiSdk(
               toolCallId: partRecord.toolCallId as string,
               toolName: partRecord.toolName as string,
               argsDelta: JSON.stringify(partRecord.args)
+            }
+          };
+        } else if (partRecord.type === "tool-result") {
+          yield {
+            type: "tool_result",
+            toolResult: {
+              toolCallId: partRecord.toolCallId as string,
+              toolName: partRecord.toolName as string,
+              result: partRecord.output ?? partRecord.result
             }
           };
         } else if (partRecord.type === "source" || partRecord.type === "source-url") {

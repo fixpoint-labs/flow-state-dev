@@ -485,7 +485,7 @@ describe("execution trace system", () => {
           type: "tool-call",
           toolCallId: "call_1",
           toolName: "tool-block",
-          args: {}
+          input: {}
         }]
       });
       expect(llmMessages[3]).toEqual({
