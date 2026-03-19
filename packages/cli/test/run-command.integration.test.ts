@@ -1,9 +1,10 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { resolve } from "node:path";
 import { createInMemoryStores } from "@flow-state-dev/server";
-import { executeRunCommand, type FlowRunResult, type FlowEvent } from "../src/commands/run.js";
-import { discoverFlows } from "../src/resolve-flow.js";
-import { CliError } from "../src/resolve-block.js";
+import { executeRunCommand, type FlowRunResult, type FlowEvent } from "../src/commands/run";
+import { discoverFlows } from "../src/resolve-flow";
+import { CliError } from "../src/resolve-block";
+import { EXIT_DISCOVERY_ERROR, EXIT_INVALID_ARGS } from "../src/exit-codes";
 
 const fixturesDir = resolve(import.meta.dirname, "fixtures");
 
@@ -284,5 +285,98 @@ describe("--flow-dir explicit override", () => {
       const message = (err as CliError).message;
       expect(message).toContain("custom/path");
     }
+  });
+});
+
+describe("exit codes", () => {
+  it("uses exit code 4 (discovery) when flow is not found", async () => {
+    try {
+      await executeRunCommand("nonexistent", "action", {
+        input: '{}',
+        cwd: fixturesDir,
+        stores: createInMemoryStores(),
+      });
+      expect.fail("Should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(CliError);
+      expect((err as CliError).exitCode).toBe(EXIT_DISCOVERY_ERROR);
+    }
+  });
+
+  it("uses exit code 2 (input) when action is not found", async () => {
+    try {
+      await executeRunCommand("echo", "nonexistent", {
+        input: '{}',
+        cwd: fixturesDir,
+        stores: createInMemoryStores(),
+      });
+      expect.fail("Should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(CliError);
+      expect((err as CliError).exitCode).toBe(EXIT_INVALID_ARGS);
+    }
+  });
+
+  it("uses exit code 0 on successful execution", async () => {
+    await executeRunCommand("echo", "respond", {
+      input: '{"message": "hello"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+    });
+
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("uses exit code 1 on execution error", async () => {
+    await executeRunCommand("throwing", "fail", {
+      input: '{"message": "test"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+    });
+
+    expect(process.exitCode).toBe(1);
+  });
+});
+
+describe("seed state", () => {
+  it("seeds session state with inline JSON via --seed-session", async () => {
+    const stores = createInMemoryStores();
+
+    const result = await executeRunCommand("stateful", "increment", {
+      input: '{"increment": 1}',
+      seedSession: '{"count": 10}',
+      cwd: fixturesDir,
+      stores,
+    });
+
+    expect(result.success).toBe(true);
+    // Should start from seeded value 10 and increment by 1
+    expect(result.output).toEqual({ count: 11 });
+  });
+
+  it("seeds session state from file via --seed-session", async () => {
+    const stores = createInMemoryStores();
+    const seedFile = resolve(fixturesDir, "seed-session.json");
+
+    const result = await executeRunCommand("stateful", "increment", {
+      input: '{"increment": 1}',
+      seedSession: seedFile,
+      cwd: fixturesDir,
+      stores,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.output).toEqual({ count: 6 });
+  });
+
+  it("throws CliError for invalid seed JSON", async () => {
+    await expect(
+      executeRunCommand("stateful", "increment", {
+        input: '{"increment": 1}',
+        seedSession: '{invalid json}',
+        cwd: fixturesDir,
+        stores: createInMemoryStores(),
+      }),
+    ).rejects.toThrow(CliError);
   });
 });
