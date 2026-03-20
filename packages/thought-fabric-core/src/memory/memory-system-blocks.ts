@@ -332,17 +332,21 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
           episodicWrites++
         }
 
-        // Direct extraction to semantic memory: permanent facts bypass consolidation
+        // Direct extraction to semantic memory: persistent/permanent items with
+        // stable categories bypass consolidation. This avoids waiting 10+ turns
+        // for consolidation to distill clearly stable knowledge like user facts
+        // and preferences.
+        const isStableCategory = item.category === 'fact' || item.category === 'preference' || item.category === 'relationship'
         if (
           semRef &&
           config.semantic &&
-          item.durability === 'permanent' &&
-          item.category === 'fact'
+          (item.durability === 'permanent' || item.durability === 'persistent') &&
+          isStableCategory
         ) {
           await addFact(semRef, {
             content: item.content,
             confidence: item.importance,
-            category: 'fact',
+            category: item.category as 'fact' | 'preference' | 'relationship',
             sourceEpisodeIds: [],
           })
         }
@@ -563,7 +567,7 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
   const hasProject = Object.keys(projectResources).length > 0
 
   const base = {
-    name: config.name ? `${config.name}/consolidate/guard` : 'tf.memory/consolidate/guard',
+    name: config.name ? `${config?.name ?? 'tf.memory'}/consolidate/guard` : 'tf.memory/consolidate/guard',
     inputSchema: z.any(),
     outputSchema: guardOutputSchema,
     sessionResources,
@@ -792,19 +796,27 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
 
 /**
  * Assembles the consolidation sequencer: guard → generate → persist.
+ * Generate and persist are gated behind the guard's `triggered` flag so
+ * the LLM call is skipped entirely when consolidation isn't needed.
  */
 export function memorySystemConsolidate(config: MemorySystemBlocksConfig) {
   const guardBlock = consolidationGuard(config)
   const generateBlock = consolidationGenerate(config)
   const persistBlock = consolidationPersist(config)
 
+  const generateAndPersist = sequencer({
+    name: config.name ? `${config.name}/consolidate/generate-and-persist` : 'tf.memory/consolidate/generate-and-persist',
+    inputSchema: z.any(),
+  })
+    .then(generateBlock)
+    .then(persistBlock)
+
   return sequencer({
     name: config.name ? `${config.name}/consolidate` : 'tf.memory/consolidate',
     inputSchema: z.any(),
   })
     .then(guardBlock)
-    .then(generateBlock)
-    .then(persistBlock)
+    .thenIf((result) => result.triggered, generateAndPersist)
 }
 
 /**

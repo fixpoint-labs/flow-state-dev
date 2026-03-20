@@ -1312,7 +1312,7 @@ describe('memory/memorySystem', () => {
       expect(semRef.state.facts[0].category).toBe('fact')
     })
 
-    it('does not route persistent+fact to semantic (only permanent)', async () => {
+    it('routes persistent+fact items directly to semantic store', async () => {
       const wmRef = createMockWmRef()
       const sysRef = createMockSysRef()
       const epRef = createMockEpRef()
@@ -1322,10 +1322,12 @@ describe('memory/memorySystem', () => {
         { content: 'Some persistent fact', importance: 0.8, durability: 'persistent', category: 'fact' },
       ])
 
-      expect(semRef.state.facts).toHaveLength(0)
+      expect(semRef.state.facts).toHaveLength(1)
+      expect(semRef.state.facts[0].content).toBe('Some persistent fact')
+      expect(semRef.state.facts[0].category).toBe('fact')
     })
 
-    it('does not route permanent+preference to semantic (only fact category)', async () => {
+    it('routes permanent+preference to semantic store', async () => {
       const wmRef = createMockWmRef()
       const sysRef = createMockSysRef()
       const epRef = createMockEpRef()
@@ -1333,6 +1335,34 @@ describe('memory/memorySystem', () => {
 
       await runReflectWithSemantic(wmRef, sysRef, epRef, semRef, [
         { content: 'Prefers dark mode', importance: 0.9, durability: 'permanent', category: 'preference' },
+      ])
+
+      expect(semRef.state.facts).toHaveLength(1)
+      expect(semRef.state.facts[0].content).toBe('Prefers dark mode')
+      expect(semRef.state.facts[0].category).toBe('preference')
+    })
+
+    it('does not route persistent+event to semantic (unstable category)', async () => {
+      const wmRef = createMockWmRef()
+      const sysRef = createMockSysRef()
+      const epRef = createMockEpRef()
+      const semRef = createMockSemRef()
+
+      await runReflectWithSemantic(wmRef, sysRef, epRef, semRef, [
+        { content: 'User asked about deployment', importance: 0.7, durability: 'persistent', category: 'event' },
+      ])
+
+      expect(semRef.state.facts).toHaveLength(0)
+    })
+
+    it('does not route persistent+task to semantic (unstable category)', async () => {
+      const wmRef = createMockWmRef()
+      const sysRef = createMockSysRef()
+      const epRef = createMockEpRef()
+      const semRef = createMockSemRef()
+
+      await runReflectWithSemantic(wmRef, sysRef, epRef, semRef, [
+        { content: 'Fix the login bug', importance: 0.8, durability: 'persistent', category: 'task' },
       ])
 
       expect(semRef.state.facts).toHaveLength(0)
