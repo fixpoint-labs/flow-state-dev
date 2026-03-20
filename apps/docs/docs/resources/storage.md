@@ -68,6 +68,30 @@ Resource content notes:
 
 The key signal: if the data has **content plus metadata**, or if you'd naturally think of it as a named object rather than a field, it belongs in a resource.
 
+### When to use resource namespaces
+
+Use a resource namespace when the number of resource instances isn't known ahead of time. Static resources are declared by name. Namespaces let you create instances dynamically at runtime with a shared schema.
+
+Good fits for namespaces:
+- **File collections** — an AI managing many documents, code files, or notes
+- **Per-topic knowledge** — separate observation logs per subject area
+- **Dynamic workspaces** — user-created artifacts that come and go
+
+```ts
+import { defineResourceNamespace } from "@flow-state-dev/core";
+
+const filesNamespace = defineResourceNamespace({
+  pattern: "files/**",
+  stateSchema: z.object({ language: z.string().default("text") }),
+  maxInstances: 200,
+  eviction: "lru",
+});
+```
+
+Namespace instances are stored in the same flat map as static resources. They support all the same operations (patchState, setState, readContent, etc.) plus namespace-specific methods like `create()`, `list()`, `delete()`, and `count()`.
+
+When the collection is bounded and predictable, a static resource with an array or record in its state is simpler. Namespaces shine when instances have independent lifecycles and you need eviction, lifecycle hooks, or pattern-based organization.
+
 ### Quick decision table
 
 | Signal | Scope state | Resource |
@@ -79,6 +103,7 @@ The key signal: if the data has **content plus metadata**, or if you'd naturally
 | Needs its own identity/name | No | Yes |
 | Benefits from isolation | No | Yes |
 | Complex nested structure | Unlikely | Yes |
+| Dynamic collection (unknown count) | No | Namespace |
 
 ## Block-private vs shared state
 

@@ -113,6 +113,126 @@ async function addStep(ctx: PlanContext, step: string) {
 }
 ```
 
+### Resource Namespaces
+
+Static resources are declared by name at definition time. Resource namespaces let you create typed collections of resources dynamically at runtime — useful when the number of instances isn't known ahead of time.
+
+```ts
+import { defineResourceNamespace } from "@flow-state-dev/core";
+
+const filesNamespace = defineResourceNamespace({
+  pattern: "files/**",
+  stateSchema: z.object({ language: z.string().default("text") }),
+  maxInstances: 200,
+  eviction: "lru",
+});
+```
+
+#### Pattern types
+
+| Pattern | Example | Matches |
+|---------|---------|---------|
+| Single-level wildcard | `files/*` | `files/readme.md` but not `files/src/utils.ts` |
+| Deep wildcard | `files/**` | `files/readme.md` and `files/src/deep/nested.ts` |
+| Parameterized | `[topic]/observations` | `react/observations`, `rust/observations` |
+
+`**` must be the last segment. Parameterized segments use `[name]` syntax.
+
+#### Runtime access via `ResourceNamespaceRef`
+
+At runtime, namespace entries on `ctx.session.resources` (or `ctx.user.resources`, `ctx.project.resources`) are `ResourceNamespaceRef` instances:
+
+```ts
+execute: async (input, ctx) => {
+  const files = ctx.session.resources.files;
+
+  // Create a new instance
+  const ref = await files.create("readme.md", { language: "markdown" });
+
+  // Get existing instance (throws if not found)
+  const existing = files.get("utils.ts");
+
+  // Get or create — returns existing if present, creates if not
+  const safe = await files.getOrCreate("config.json", { language: "json" });
+
+  // List all instances, optionally filtered by prefix
+  const srcFiles = files.list("src/");
+
+  // Delete an instance (no-op if not found)
+  await files.delete("old-file.ts");
+
+  // Current instance count
+  const count = files.count();
+}
+```
+
+For parameterized patterns, pass an object key:
+
+```ts
+const observations = defineResourceNamespace({
+  pattern: "[topic]/observations",
+  stateSchema: z.object({ entries: z.array(z.string()).default([]) }),
+});
+
+// At runtime:
+const ref = await ctx.session.resources.observations.create(
+  { topic: "react" },  // object key for parameterized patterns
+  { entries: [] }
+);
+```
+
+#### Eviction policies
+
+When `maxInstances` is set, the namespace enforces a cap on simultaneous instances:
+
+| Policy | Behavior |
+|--------|----------|
+| `"none"` (default) | Throws when cap is reached |
+| `"lru"` | Evicts least-recently-accessed instance |
+| `"oldest"` | Evicts first-created instance |
+
+Setting `eviction` without `maxInstances` throws (except `eviction: "none"`).
+
+#### Lifecycle hooks
+
+Namespaces support per-instance lifecycle hooks:
+
+```ts
+defineResourceNamespace({
+  pattern: "files/**",
+  stateSchema: fileSchema,
+  onInstanceCreated: (key, state, ctx) => {
+    ctx.log(`Created: ${key}`);
+  },
+  onInstanceUpdated: (key, state, prevState, ctx) => {
+    ctx.log(`Updated: ${key}`);
+  },
+  onInstanceDeleted: (key, ctx) => {
+    ctx.log(`Deleted: ${key}`);
+  },
+});
+```
+
+Hook context (`NamespaceHookContext`) provides `log(message)` and `scopeType`.
+
+#### Storage model
+
+Namespace instances are stored in the same flat `resources` map as static resources. A namespace with pattern `files/**` stores instances under keys like `files/readme.md`, `files/src/utils.ts`. No schema changes to session records are required.
+
+#### Block declarations
+
+Namespaces work with block-level resource declarations the same way static resources do:
+
+```ts
+const fileManager = handler({
+  name: "file-manager",
+  sessionResources: { files: filesNamespace },
+  execute: async (input, ctx) => { /* ... */ },
+});
+```
+
+Sequencers collect namespace declarations from child blocks. `defineFlow` merges them into scope configs. Conflict detection applies: two blocks declaring different namespace refs for the same name will throw at build time.
+
 ### Block-Level Resource Declarations
 
 Blocks can declare their resource dependencies directly using `sessionResources`, `userResources`, and `projectResources` properties. These accept `defineResource()` values:

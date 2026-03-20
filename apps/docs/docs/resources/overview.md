@@ -91,6 +91,41 @@ defineResource({
 
 Resources are not automatically exposed to generators. Use `llmReadable` and `llmWritable` flags to control access, and wire `readResourceContentTool()` or `writeResourceContentTool()` to a generator's tools array when you want the model to interact with resource content directly.
 
+## Resource namespaces
+
+Static resources have a fixed name. Resource namespaces create typed collections where instances are added dynamically at runtime. Think of them as directories: the namespace defines the schema and constraints, individual instances are the files.
+
+```ts
+import { defineResourceNamespace } from "@flow-state-dev/core";
+
+const filesNamespace = defineResourceNamespace({
+  pattern: "files/**",
+  stateSchema: z.object({ language: z.string().default("text") }),
+  maxInstances: 200,
+  eviction: "lru",
+});
+```
+
+Three pattern types:
+
+- **`files/*`** — matches one level (`files/readme.md`, not `files/src/utils.ts`)
+- **`files/**`** — matches any depth (`files/readme.md`, `files/src/deep/nested.ts`)
+- **`[topic]/observations`** — parameterized segments (`react/observations`, `rust/observations`)
+
+At runtime, namespace entries on `ctx.session.resources` are `ResourceNamespaceRef` instances with `create()`, `get()`, `getOrCreate()`, `list()`, `delete()`, and `count()` methods.
+
+```ts
+const ref = await ctx.session.resources.files.create("readme.md", { language: "markdown" });
+const allSrc = ctx.session.resources.files.list("src/");
+await ctx.session.resources.files.delete("old-file.ts");
+```
+
+When `maxInstances` is set, you can configure eviction: `"none"` (throws at cap, the default), `"lru"` (least-recently-accessed), or `"oldest"` (first-created).
+
+Namespaces also support lifecycle hooks (`onInstanceCreated`, `onInstanceUpdated`, `onInstanceDeleted`) for logging, side effects, or cleanup.
+
+Namespace instances are stored alongside static resources in the same flat map — no schema changes needed.
+
 ## Block-level resource declarations
 
 Blocks declare resource dependencies with `sessionResources`, `userResources`, and `projectResources`:

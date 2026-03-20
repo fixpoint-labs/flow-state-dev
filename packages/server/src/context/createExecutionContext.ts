@@ -453,7 +453,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
 
   for (const [resourceName, config] of Object.entries(configs)) {
     if (isNamespaceConfig(config)) {
-      // --- Create namespace handle ---
+      // --- Create namespace ref ---
       const nsConfig = config;
       // LRU tracking: storageKey → last access timestamp
       const lruAccess = new Map<string, number>();
