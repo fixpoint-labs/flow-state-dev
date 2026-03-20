@@ -2,6 +2,7 @@ import { defineResource } from '@flow-state-dev/core'
 import type { ResourceContext } from '@flow-state-dev/core'
 import { z } from 'zod'
 import type { ZodTypeAny } from 'zod'
+import { tokenOverlap } from '../helpers.js'
 import {
   workingMemoryResource,
   type WorkingMemoryState,
@@ -223,25 +224,6 @@ export interface MemorySystem {
 // ---------------------------------------------------------------------------
 // Recall helper
 // ---------------------------------------------------------------------------
-
-/**
- * Tokenize a string into lowercase word tokens for comparison.
- */
-function tokenize(text: string): string[] {
-  return text.toLowerCase().split(/\s+/).filter((t) => t.length > 0)
-}
-
-/**
- * Compute token overlap ratio between two strings.
- * Returns a value [0, 1] representing the fraction of tokens in `a` that appear in `b`.
- */
-function tokenOverlap(a: string, b: string): number {
-  const tokensA = tokenize(a)
-  const tokensB = new Set(tokenize(b))
-  if (tokensA.length === 0) return 0
-  const matches = tokensA.filter((t) => tokensB.has(t)).length
-  return matches / tokensA.length
-}
 
 /**
  * Unified cross-store recall.

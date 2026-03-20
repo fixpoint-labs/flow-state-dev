@@ -1,27 +1,8 @@
 import type { ResourceContext } from '@flow-state-dev/core'
 import type { SemanticFact, SemanticMemoryState } from './semantic-memory.js'
-import { shortId } from '../helpers.js'
+import { shortId, tokenOverlap } from '../helpers.js'
 
 type SemRef = ResourceContext<SemanticMemoryState>
-
-/**
- * Tokenize a string into lowercase word tokens.
- */
-function tokenize(text: string): string[] {
-  return text.toLowerCase().split(/\s+/).filter((t) => t.length > 0)
-}
-
-/**
- * Compute token overlap ratio between two strings.
- * Returns the fraction of tokens in `a` that appear in `b`.
- */
-function tokenOverlap(a: string, b: string): number {
-  const tokensA = tokenize(a)
-  const tokensB = new Set(tokenize(b))
-  if (tokensA.length === 0) return 0
-  const matches = tokensA.filter((t) => tokensB.has(t)).length
-  return matches / tokensA.length
-}
 
 /**
  * Add a new semantic fact. Generates ID and sets extractedAt.

@@ -1554,6 +1554,59 @@ describe('memory/memorySystem', () => {
       expect(semRef.state.facts).toHaveLength(0)
     })
 
+    it('updates existing semantic fact when new content has high overlap but is more specific', async () => {
+      const wmRef = createMockWmRef()
+      const sysRef = createMockSysRef()
+      const epRef = createMockEpRef()
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_existing', content: 'User was born in May', confidence: 0.45 })],
+      })
+
+      await runReflectWithSemantic(wmRef, sysRef, epRef, semRef, [
+        { content: 'User was born in May (specifically on the 8th)', importance: 0.78, durability: 'permanent', category: 'fact' },
+      ])
+
+      // Should update existing fact, not create a duplicate
+      expect(semRef.state.facts).toHaveLength(1)
+      expect(semRef.state.facts[0].id).toBe('sf_existing')
+      expect(semRef.state.facts[0].content).toBe('User was born in May (specifically on the 8th)')
+      expect(semRef.state.facts[0].confidence).toBe(0.78)
+    })
+
+    it('reinforces existing semantic fact when content is nearly identical', async () => {
+      const wmRef = createMockWmRef()
+      const sysRef = createMockSysRef()
+      const epRef = createMockEpRef()
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_existing', content: 'User works at Stripe', confidence: 0.7, reinforcementCount: 2 })],
+      })
+
+      await runReflectWithSemantic(wmRef, sysRef, epRef, semRef, [
+        { content: 'User works at Stripe', importance: 0.8, durability: 'permanent', category: 'fact' },
+      ])
+
+      // Should reinforce, not duplicate
+      expect(semRef.state.facts).toHaveLength(1)
+      expect(semRef.state.facts[0].id).toBe('sf_existing')
+      expect(semRef.state.facts[0].reinforcementCount).toBe(3)
+    })
+
+    it('adds new fact when no overlap with existing facts', async () => {
+      const wmRef = createMockWmRef()
+      const sysRef = createMockSysRef()
+      const epRef = createMockEpRef()
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_existing', content: 'User works at Stripe' })],
+      })
+
+      await runReflectWithSemantic(wmRef, sysRef, epRef, semRef, [
+        { content: 'User prefers dark mode', importance: 0.8, durability: 'permanent', category: 'preference' },
+      ])
+
+      // No overlap — should add as new
+      expect(semRef.state.facts).toHaveLength(2)
+    })
+
     it('still routes to WM and episodic alongside semantic', async () => {
       const wmRef = createMockWmRef()
       const sysRef = createMockSysRef()

@@ -21,6 +21,7 @@ import {
   allFacts,
 } from './semantic-memory-helpers.js'
 import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG } from './memory-system.js'
+import { findBestOverlap } from '../helpers.js'
 
 // ---------------------------------------------------------------------------
 // Config types
@@ -340,6 +341,10 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
         // stable categories bypass consolidation. This avoids waiting 10+ turns
         // for consolidation to distill clearly stable knowledge like user facts
         // and preferences.
+        //
+        // Dedup: check existing facts for high token overlap. If found, update
+        // (new content is more specific) or reinforce (same idea). This prevents
+        // near-duplicate entries like "born in May" + "born in May (8th)".
         const isStableCategory = item.category === 'fact' || item.category === 'preference' || item.category === 'relationship'
         if (
           semRef &&
@@ -347,12 +352,28 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
           (item.durability === 'permanent' || item.durability === 'persistent') &&
           isStableCategory
         ) {
-          await addFact(semRef, {
-            content: item.content,
-            confidence: item.importance,
-            category: item.category as 'fact' | 'preference' | 'relationship',
-            sourceEpisodeIds: [],
-          })
+          const existing = allFacts(semRef)
+          const match = findBestOverlap(item.content, existing)
+
+          if (match) {
+            // High overlap — update if content is meaningfully different, reinforce if same.
+            // Use minOverlap (both directions must be high) to detect true identity.
+            // When one is a subset of the other (min < 0.95 but max >= 0.6), update with the richer version.
+            if (match.minOverlap < 0.95) {
+              // Content differs (e.g., "born in May" → "born in May 8th") — update with richer version
+              const richer = item.content.length >= match.fact.content.length ? item.content : match.fact.content
+              await updateFact(semRef, match.fact.id, richer, [], Math.max(match.fact.confidence, item.importance))
+            } else {
+              await reinforce(semRef, match.fact.id, [])
+            }
+          } else {
+            await addFact(semRef, {
+              content: item.content,
+              confidence: item.importance,
+              category: item.category as 'fact' | 'preference' | 'relationship',
+              sourceEpisodeIds: [],
+            })
+          }
         }
       } catch (err) {
         console.warn('[tf.memory] Failed to persist memory item:', (err as Error).message ?? err)
