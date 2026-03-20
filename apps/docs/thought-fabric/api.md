@@ -47,41 +47,90 @@ Returns a `BlockDefinition` (generator). Output schema: `scores`, `composite`, `
 
 ## memory
 
-Working memory: observe, remember, tick, snapshot.
+Three-tier memory: working (session), episodic (cross-session), and semantic (stable knowledge).
 
-### Blocks
+### Unified System
+
+| Function | Purpose |
+|----------|---------|
+| `system(config)` | Factory that wires all three tiers. Returns `capture`, `recall`, `contextFormatter`, and per-tier helpers. |
+
+### Unified System Blocks
 
 | Function | Kind | Purpose |
 |----------|------|---------|
-| `workingMemoryCapture(config?)` | sequencer | Bundled: observe → remember → tick. Primary entry point. |
+| `memorySystemCapture(config)` | sequencer | Full pipeline: observe → reflect → tick (+ consolidation) |
+| `memorySystemObserve(config)` | generator | LLM extraction with durability/category classification |
+| `memorySystemReflect(config)` | handler | Routes observations to working, episodic, and semantic stores |
+| `memorySystemTick(config)` | handler | Advances decay clock |
+| `memorySystemConsolidate(config)` | sequencer | Guard → generate → persist consolidation pipeline |
+
+### Working Memory Blocks
+
+| Function | Kind | Purpose |
+|----------|------|---------|
+| `workingMemoryCapture(config?)` | sequencer | Standalone: observe → remember → tick |
 | `workingMemoryObserve(config?)` | generator | LLM extraction. Output: observations array. |
 | `workingMemoryRemember(config?)` | handler | Persist observations into the resource. |
 | `workingMemoryTick(config?)` | handler | Advance decay clock, recompute salience. |
 | `workingMemorySnapshot()` | handler | Read current entries and turn counter. |
 | `workingMemoryAdd(config?)` | handler | Manual entry. No LLM extraction. |
 
-### Resource
+### Resources
 
-- `workingMemoryResource` — `defineResource()` for working memory. Use in flow `sessionResources`.
-- `workingMemoryResources` — Pre-keyed `{ workingMemory: workingMemoryResource }`.
+| Export | Scope | Purpose |
+|--------|-------|---------|
+| `workingMemoryResource` | session | Working memory resource definition |
+| `workingMemoryResources` | session | Pre-keyed `{ workingMemory: workingMemoryResource }` |
+| `memorySystemResource` | session | Tracking state (watermark, consolidation counters) |
+| `createEpisodicMemoryResource(scope)` | user/project | Episodic memory resource factory |
+| `createSemanticMemoryResource(scope)` | user/project | Semantic memory resource factory |
 
 ### Context
 
-- `workingMemoryContextFormatter` — Context slot for generators. Assign to `context: [workingMemoryContextFormatter]`.
+- `workingMemoryContextFormatter` — Context slot for generators (working memory only).
+- `system().contextFormatter` — Cross-store context formatter (all tiers).
 
-### Helpers (verb-first naming)
+### Working Memory Helpers
 
 | Function | Purpose |
 |----------|---------|
-| `add` | Add entry with auto-eviction at capacity |
-| `evict` | Remove entry by ID |
-| `pin` / `unpin` | Toggle pinned status |
-| `refresh` | Update lastAccessedAtTurn |
-| `advance` | Tick decay, recompute salience for all entries |
-| `items` | Read entries sorted by salience |
-| `formatForContext` | Format entries for LLM context |
+| `addWorkingMemory` | Add entry with auto-eviction at capacity |
+| `evictWorkingMemory` | Remove entry by ID |
+| `pinWorkingMemory` / `unpinWorkingMemory` | Toggle pinned status |
+| `refreshWorkingMemory` | Update lastAccessedAtTurn |
+| `advanceWorkingMemory` | Tick decay, recompute salience for all entries |
+| `workingMemoryItems` | Read entries sorted by salience |
+| `formatWorkingMemoryEntries` | Format entries for LLM context |
 
-### Pure math (no side effects)
+### Episodic Memory Helpers
+
+| Function | Purpose |
+|----------|---------|
+| `encodeEpisode` | Write a new episode |
+| `recentEpisodes` | Get recent episodes |
+| `markEpisodesConsolidated` | Mark episodes as processed by consolidation |
+
+### Semantic Memory Helpers
+
+| Function | Purpose |
+|----------|---------|
+| `addSemanticFact` | Add a new fact |
+| `updateSemanticFact` | Update existing fact content |
+| `reinforceSemanticFact` | Increase confidence via reinforcement |
+| `removeSemanticFact` | Remove a fact (invalidation) |
+| `semanticFacts` | All facts |
+| `querySemanticFacts` | Filter facts by predicate |
+
+### Config Defaults
+
+| Constant | Contents |
+|----------|----------|
+| `DEFAULT_WORKING_MEMORY_CONFIG` | `capacity`, `maxPinnedSlots`, `decay` |
+| `DEFAULT_EPISODIC_CONFIG` | `scope`, `significanceThreshold`, `maxEpisodes` |
+| `DEFAULT_CONSOLIDATION_CONFIG` | `episodicThreshold`, `onEviction`, `minInterval` |
+
+### Pure Math (no side effects)
 
 - `computeDecay(elapsed, strategy, rate)` — Decay factor. Strategies: `power-law`, `exponential`, `none`.
 - `computeSalience(entry, currentTurn, decay)` — `importance × decay(elapsed)`.
@@ -100,11 +149,13 @@ Wave 2 placeholders. Not yet implemented.
 ## Usage
 
 ```ts
-import { workingMemoryCapture } from "@thought-fabric/core/memory";
+import { system as memorySystem } from "@thought-fabric/core/memory";
 import { filterRelevance, scoreSalience } from "@thought-fabric/core/attention";
 
+const mem = memorySystem({ model: "gpt-5-mini", working: true, episodic: true, semantic: true });
+
 const pipeline = sequencer({ name: "pipeline", inputSchema: chatInput })
-  .work((input) => input.message, workingMemoryCapture({ model: "gpt-5-mini" }))
+  .work((input) => input.message, mem.capture)
   .then(chat);
 
 const filter = filterRelevance({ name: "filter" });
