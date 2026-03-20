@@ -32,9 +32,9 @@ describe("defaultGroups", () => {
 
   it("fast group has correct model order", () => {
     expect(defaultGroups.fast!.models).toEqual([
-      "anthropic:claude-haiku",
-      "openai:gpt-4o-mini",
-      "google:gemini-2.0-flash",
+      "anthropic:claude-sonnet-4.6",
+      "openai:gpt-5.4-mini",
+      "google:gemini-3-flash",
     ]);
   });
 

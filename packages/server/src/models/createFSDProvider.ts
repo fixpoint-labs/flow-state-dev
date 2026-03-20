@@ -32,17 +32,17 @@ const DEFAULT_RETRY_POLICY: Required<RetryPolicy> = {
 export const defaultGroups: Record<string, ModelGroupConfig> = {
   fast: {
     models: [
-      "anthropic:claude-haiku",
-      "openai:gpt-4o-mini",
-      "google:gemini-2.0-flash",
+      "anthropic:claude-sonnet-4.6",
+      "openai:gpt-5.4-mini",
+      "google:gemini-3-flash",
     ],
     defaults: { maxTokens: 1024 },
   },
   thinking: {
     models: [
-      "anthropic:claude-sonnet-4",
-      "openai:o3",
-      "google:gemini-2.5-pro",
+      "anthropic:claude-opus-4.6",
+      "openai:gpt-5.4",
+      "google:gemini-3.1-pro-preview",
     ],
     defaults: {
       providerOptions: {
@@ -52,9 +52,9 @@ export const defaultGroups: Record<string, ModelGroupConfig> = {
   },
   balanced: {
     models: [
-      "anthropic:claude-sonnet-4",
-      "openai:gpt-4o",
-      "google:gemini-2.5-flash",
+      "anthropic:claude-sonnet-4.6",
+      "openai:gpt-5.4",
+      "google:gemini-3-flash",
     ],
   },
 };
