@@ -20,7 +20,7 @@ import {
   removeFact,
   allFacts,
 } from './semantic-memory-helpers.js'
-import { memorySystemResource } from './memory-system.js'
+import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG } from './memory-system.js'
 
 // ---------------------------------------------------------------------------
 // Config types
@@ -464,11 +464,10 @@ export function memorySystemTick(config: MemorySystemBlocksConfig) {
       // Legacy behavior (no semantic): check trigger and reset counters here
       const sysState = sysRef.state
       const turnsSinceConsolidation = wmRef.state.currentTurn - sysState.lastConsolidationTurn
-      const minInterval = 10
 
       if (
-        turnsSinceConsolidation >= minInterval &&
-        (sysState.episodicWritesSinceLastConsolidation >= 5 ||
+        turnsSinceConsolidation >= DEFAULT_CONSOLIDATION_CONFIG.minInterval &&
+        (sysState.episodicWritesSinceLastConsolidation >= DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold ||
           sysState.evictedPersistentSinceLastConsolidation > 0)
       ) {
         await sysRef.updateState((s) => ({
@@ -515,9 +514,9 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
     const wmRef = ctx.session.resources.workingMemory
     const sysState = sysRef.state
 
-    const minInterval = config.semantic?.consolidation?.minInterval ?? 10
-    const episodicThreshold = config.semantic?.consolidation?.episodicThreshold ?? 5
-    const onEviction = config.semantic?.consolidation?.onEviction ?? true
+    const minInterval = config.semantic?.consolidation?.minInterval ?? DEFAULT_CONSOLIDATION_CONFIG.minInterval
+    const episodicThreshold = config.semantic?.consolidation?.episodicThreshold ?? DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold
+    const onEviction = config.semantic?.consolidation?.onEviction ?? DEFAULT_CONSOLIDATION_CONFIG.onEviction
 
     const turnsSinceConsolidation = wmRef.state.currentTurn - sysState.lastConsolidationTurn
 

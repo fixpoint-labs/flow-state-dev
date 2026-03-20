@@ -749,7 +749,7 @@ describe('memory/memorySystem', () => {
     })
 
     it('does not trigger consolidation before minInterval', async () => {
-      const wmRef = createMockWmRef({ currentTurn: 4 })
+      const wmRef = createMockWmRef({ currentTurn: 2 })
       const sysRef = createMockSysRef({
         lastConsolidationTurn: 0,
         episodicWritesSinceLastConsolidation: 10,
@@ -757,7 +757,7 @@ describe('memory/memorySystem', () => {
 
       await runTick(wmRef, sysRef)
 
-      // Only 5 turns since last consolidation (< 10 minInterval)
+      // Only 3 turns since last consolidation (< 4 minInterval)
       expect(sysRef.state.episodicWritesSinceLastConsolidation).toBe(10)
     })
   })

@@ -80,6 +80,24 @@ export const memorySystemResource = defineResource({
 })
 
 // ---------------------------------------------------------------------------
+// Default config constants
+// ---------------------------------------------------------------------------
+
+/** Default configuration for episodic memory. */
+export const DEFAULT_EPISODIC_CONFIG = {
+  scope: 'user' as const,
+  significanceThreshold: 0.6,
+  maxEpisodes: 200,
+}
+
+/** Default configuration for semantic memory consolidation. */
+export const DEFAULT_CONSOLIDATION_CONFIG = {
+  episodicThreshold: 5,
+  onEviction: true,
+  minInterval: 4,
+}
+
+// ---------------------------------------------------------------------------
 // Config types
 // ---------------------------------------------------------------------------
 
@@ -109,7 +127,7 @@ export interface SemanticMemoryConfig {
     episodicThreshold?: number
     /** Also consolidate when persistent items evicted from WM. Default: true. */
     onEviction?: boolean
-    /** Don't consolidate more than once per N turns. Default: 10. */
+    /** Don't consolidate more than once per N turns. Default: DEFAULT_CONSOLIDATION_CONFIG.minInterval. */
     minInterval?: number
   }
 }
@@ -421,9 +439,9 @@ export function system(config: MemorySystemConfig): MemorySystem {
   // Resolve episodic config
   const episodicConfig = config.episodic
     ? {
-        scope: (config.episodic === true ? 'user' : config.episodic.scope) ?? 'user' as const,
-        significanceThreshold: config.episodic === true ? 0.6 : (config.episodic.significanceThreshold ?? 0.6),
-        maxEpisodes: config.episodic === true ? 200 : (config.episodic.maxEpisodes ?? 200),
+        scope: (config.episodic === true ? DEFAULT_EPISODIC_CONFIG.scope : config.episodic.scope) ?? DEFAULT_EPISODIC_CONFIG.scope,
+        significanceThreshold: config.episodic === true ? DEFAULT_EPISODIC_CONFIG.significanceThreshold : (config.episodic.significanceThreshold ?? DEFAULT_EPISODIC_CONFIG.significanceThreshold),
+        maxEpisodes: config.episodic === true ? DEFAULT_EPISODIC_CONFIG.maxEpisodes : (config.episodic.maxEpisodes ?? DEFAULT_EPISODIC_CONFIG.maxEpisodes),
       }
     : undefined
 
@@ -431,12 +449,12 @@ export function system(config: MemorySystemConfig): MemorySystem {
   const semanticConfig = config.semantic
     ? {
         scope: ((config.semantic === true
-          ? (episodicConfig?.scope ?? 'user')
-          : config.semantic.scope) ?? (episodicConfig?.scope ?? 'user')) as 'user' | 'project',
+          ? (episodicConfig?.scope ?? DEFAULT_EPISODIC_CONFIG.scope)
+          : config.semantic.scope) ?? (episodicConfig?.scope ?? DEFAULT_EPISODIC_CONFIG.scope)) as 'user' | 'project',
         consolidation: {
-          episodicThreshold: config.semantic === true ? 5 : (config.semantic.consolidation?.episodicThreshold ?? 5),
-          onEviction: config.semantic === true ? true : (config.semantic.consolidation?.onEviction ?? true),
-          minInterval: config.semantic === true ? 10 : (config.semantic.consolidation?.minInterval ?? 10),
+          episodicThreshold: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold : (config.semantic.consolidation?.episodicThreshold ?? DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold),
+          onEviction: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.onEviction : (config.semantic.consolidation?.onEviction ?? DEFAULT_CONSOLIDATION_CONFIG.onEviction),
+          minInterval: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.minInterval : (config.semantic.consolidation?.minInterval ?? DEFAULT_CONSOLIDATION_CONFIG.minInterval),
         },
       }
     : undefined

@@ -77,6 +77,8 @@ export type { Episode, EpisodicMemoryState } from './episodic-memory.js'
 export {
   memorySystemStateSchema,
   memorySystemResource,
+  DEFAULT_EPISODIC_CONFIG,
+  DEFAULT_CONSOLIDATION_CONFIG,
 } from './memory-system.js'
 export type { MemorySystemState } from './memory-system.js'
 
