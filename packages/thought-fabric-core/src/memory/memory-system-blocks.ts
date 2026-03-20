@@ -114,11 +114,19 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     '- importance: 0-1 (goals/constraints: 0.8-1.0, key facts: 0.5-0.8, context: 0.3-0.5, trivial: 0.1-0.3)',
     '- durability: how long this should persist:',
     '  * transient: only relevant to current turn',
-    '  * session: relevant for this session only',
-    '  * persistent: should be remembered across sessions (e.g., user preferences, important facts)',
-    '  * permanent: fundamental facts that never change (e.g., user\'s name, core identity facts)',
+    '  * session: relevant for this session only (e.g., current task, what user asked to do)',
+    '  * persistent: should be remembered across sessions (e.g., user preferences, important facts about the user)',
+    '  * permanent: fundamental facts that never change (e.g., user\'s name, birthday, core identity facts)',
     '- category: fact | event | preference | task | relationship',
     '- replaces: exact ID of an existing working memory entry this supersedes, or empty string',
+    '',
+    'Durability guidance:',
+    '- What the user ASKED the assistant to do → session (it\'s a task, not a fact about the user)',
+    '- What the assistant CREATED or SAVED → session (session activity, not stable knowledge)',
+    '- Specific queries or searches → session (asking about X is not a preference for X)',
+    '- Facts ABOUT THE USER (name, job, location, birthday) → persistent or permanent',
+    '- Explicit preferences the user STATED → persistent',
+    '- Relationships the user described → persistent',
     '',
     'Rules:',
     '- Don\'t duplicate what\'s already in memory',
@@ -135,6 +143,7 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     '  * Corrections or clarifications about user statements',
     '  * Facts about the user or task discovered or inferred (e.g., from tool use)',
     '- Do NOT extract memories from instructional content, code examples, or generic responses',
+    '- Do NOT mark session activities (saved an artifact, ran a search) as persistent',
   ].join('\n')
 
   // Context function reads from session items using the watermark.
@@ -612,36 +621,50 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
   const consolidationPrompt = [
     'You are a knowledge consolidation system. You receive a batch of episodic memories',
     '(individual observations from conversations) and a set of existing semantic facts',
-    '(stable knowledge).',
+    '(stable knowledge about the user).',
     '',
-    'Your job is to:',
-    '1. Identify patterns, recurring themes, and stable knowledge from the episodes',
-    '2. Extract new semantic facts that aren\'t already captured',
-    '3. Detect when an episode reinforces an existing fact — use action: \'reinforce\'',
-    '4. Detect when new information CONTRADICTS or UPDATES an existing fact — use action: \'update\'',
-    '   with the corrected content, or action: \'invalidate\' if the fact is simply no longer true',
+    'Semantic memory stores STABLE KNOWLEDGE that is useful across sessions:',
+    '- Who the user is (name, role, location, background)',
+    '- What the user likes or dislikes (preferences, opinions, style)',
+    '- Relationships between people, projects, or concepts the user cares about',
+    '- Recurring patterns in how the user works or communicates',
+    '',
+    'Semantic memory does NOT store:',
+    '- What happened in a specific session (that\'s episodic memory\'s job)',
+    '- What the user asked the assistant to do or create',
+    '- Specific content the user generated, saved, or viewed',
+    '- One-time requests or queries (asking about X ≠ preferring X)',
+    '- Transient context like current tasks, recent searches, or session activities',
+    '',
+    'Your job:',
+    '1. Look for stable knowledge that will be useful in FUTURE conversations',
+    '2. Reinforce existing facts when episodes confirm them',
+    '3. Update or invalidate existing facts when episodes contradict them',
+    '4. Only create new facts when the evidence clearly points to stable knowledge',
     '5. Assign confidence based on evidence strength:',
     '   - Single source episode: 0.4-0.6',
     '   - Multiple corroborating episodes: 0.6-0.8',
     '   - Reinforcing an existing high-confidence fact: 0.8-1.0',
     '',
-    'Contradiction handling is critical. Examples:',
-    '- Existing: "User works at Google" + Episode: "User mentions they joined Stripe last month"',
+    'Contradiction handling is critical:',
+    '- Existing: "User works at Google" + Episode: "User joined Stripe last month"',
     '  → action: \'update\', targetFactId: <id>, content: "User works at Stripe"',
-    '- Existing: "User is learning Python" + Episode: "User says they gave up on Python"',
+    '- Existing: "User is learning Python" + Episode: "User gave up on Python"',
     '  → action: \'invalidate\', targetFactId: <id>',
-    '- Existing: "User prefers dark mode" + Episode: "User switched to light mode"',
-    '  → action: \'update\', targetFactId: <id>, content: "User prefers light mode"',
     '- Existing: "User\'s name is Jake" + Episode: "User spells their name Jake"',
-    '  → action: \'reinforce\', targetFactId: <id> (confirmation, not contradiction)',
+    '  → action: \'reinforce\', targetFactId: <id>',
     '',
     'Rules:',
-    '- Only extract facts that are explicitly supported by the episodes',
-    '- Do not infer or hallucinate facts beyond what the episodes state',
+    '- Ask: "Would this help me serve this user better in a future conversation?"',
+    '  If not, skip it.',
+    '- Do NOT infer preferences from single interactions. Asking "what are the best',
+    '  restaurants?" does not mean the user prefers a particular ranking system.',
+    '- Do NOT record session activities as facts. "User saved a poem about X" is',
+    '  episodic, not semantic — it describes what happened, not who the user is.',
     '- Prefer reinforcing existing facts over creating near-duplicates',
-    '- ALWAYS check if new episodes contradict existing facts — stale facts are worse than missing facts',
-    '- Return empty facts array if no new knowledge can be extracted',
-    '- Categories: fact (objective info), preference (user likes/dislikes),',
+    '- ALWAYS check existing facts for contradictions — stale facts are worse than missing ones',
+    '- Return empty facts array if nothing qualifies as stable knowledge',
+    '- Categories: fact (objective info), preference (explicit likes/dislikes),',
     '  relationship (connections between entities), pattern (recurring behaviors)',
   ].join('\n')
 
@@ -730,15 +753,32 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
         for (const id of fact.sourceEpisodeIds) consolidatedEpisodeIds.add(id)
 
         switch (fact.action) {
-          case 'new':
-            await addFact(semRef, {
-              content: fact.content,
-              confidence: fact.confidence,
-              category: fact.category,
-              sourceEpisodeIds: fact.sourceEpisodeIds,
-            })
-            added++
+          case 'new': {
+            // Dedup: check existing facts before adding. The consolidation LLM
+            // sometimes creates near-duplicates of existing facts with action 'new'
+            // instead of 'reinforce'.
+            const existing = allFacts(semRef)
+            const match = findBestOverlap(fact.content, existing)
+            if (match) {
+              if (match.minOverlap < 0.95) {
+                const richer = fact.content.length >= match.fact.content.length ? fact.content : match.fact.content
+                await updateFact(semRef, match.fact.id, richer, fact.sourceEpisodeIds, Math.max(match.fact.confidence, fact.confidence))
+                updated++
+              } else {
+                await reinforce(semRef, match.fact.id, fact.sourceEpisodeIds)
+                reinforced++
+              }
+            } else {
+              await addFact(semRef, {
+                content: fact.content,
+                confidence: fact.confidence,
+                category: fact.category,
+                sourceEpisodeIds: fact.sourceEpisodeIds,
+              })
+              added++
+            }
             break
+          }
 
           case 'reinforce':
             if (fact.targetFactId) {

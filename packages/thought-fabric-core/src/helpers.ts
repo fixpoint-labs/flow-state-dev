@@ -19,9 +19,9 @@ export function shortId(length = 4): string {
 // Text matching
 // ---------------------------------------------------------------------------
 
-/** Tokenize a string into lowercase word tokens. */
+/** Tokenize a string into lowercase word tokens, stripping punctuation. */
 export function tokenize(text: string): string[] {
-  return text.toLowerCase().split(/\s+/).filter((t) => t.length > 0)
+  return text.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter((t) => t.length > 0)
 }
 
 /**
