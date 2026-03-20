@@ -7,7 +7,7 @@ import type {
   TranscriptionModel,
   TranscriptionResolver,
   TranscriptionResult
-} from "@flow-state-dev/core/types";
+} from "../types";
 
 export type ResolveAiSdkTranscriptionModel = (modelId: string) => unknown;
 

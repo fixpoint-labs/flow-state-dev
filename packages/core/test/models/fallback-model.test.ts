@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GeneratorModel, GeneratorModelResult } from "@flow-state-dev/core/types";
-import { createFallbackModel, isRetryableError } from "../src/models/fallbackModel";
-import type { FallbackModelEntry } from "../src/models/fallbackModel";
+import { createFallbackModel, isRetryableError } from "../../src/models/fallbackModel";
+import type { FallbackModelEntry } from "../../src/models/fallbackModel";
 
 // ---------------------------------------------------------------------------
 // Helpers

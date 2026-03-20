@@ -87,7 +87,7 @@ const stores = createInMemoryStores();
 Create a model resolver using AI SDK providers.
 
 ```ts
-import { createAiSdkModelResolver } from "@flow-state-dev/server";
+import { createAiSdkModelResolver } from "@flow-state-dev/core/models";
 
 const resolver = createAiSdkModelResolver((modelId) => {
   return openai(modelId);
@@ -105,7 +105,7 @@ Default resolver using Vercel AI Gateway.
 Create a speech resolver (TTS) using AI SDK providers.
 
 ```ts
-import { createAiSdkSpeechResolver } from "@flow-state-dev/server";
+import { createAiSdkSpeechResolver } from "@flow-state-dev/core/models";
 
 const speechResolver = createAiSdkSpeechResolver(
   (modelId) => openai.speech(modelId)
@@ -121,7 +121,7 @@ Wrap a single AI SDK speech model into a framework `SpeechModel`.
 Create a transcription resolver (STT) using AI SDK providers.
 
 ```ts
-import { createAiSdkTranscriptionResolver } from "@flow-state-dev/server";
+import { createAiSdkTranscriptionResolver } from "@flow-state-dev/core/models";
 
 const transcriptionResolver = createAiSdkTranscriptionResolver(
   (modelId) => openai.transcription(modelId)

@@ -1,4 +1,4 @@
-import type { GeneratorModel } from "@flow-state-dev/core/types";
+import type { GeneratorModel } from "../types/model";
 
 // ---------------------------------------------------------------------------
 // Provider names

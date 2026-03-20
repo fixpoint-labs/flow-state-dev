@@ -1,5 +1,5 @@
 import { gateway } from "ai";
-import type { ModelResolver } from "@flow-state-dev/core/types";
+import type { ModelResolver } from "../types";
 import { createAiSdkModelResolver } from "./createAiSdkModelResolver";
 
 function toGatewayModelId(modelId: string): string {

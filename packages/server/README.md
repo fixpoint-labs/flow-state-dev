@@ -50,7 +50,8 @@ const guardedRouter = createFlowApiRouter({
 ## Custom model resolution
 
 ```ts
-import { createFlowApiRouter, createAiSdkModelResolver } from "@flow-state-dev/server";
+import { createAiSdkModelResolver } from "@flow-state-dev/core/models";
+import { createFlowApiRouter } from "@flow-state-dev/server";
 
 const router = createFlowApiRouter({
   registry,

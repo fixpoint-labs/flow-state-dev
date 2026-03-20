@@ -11,7 +11,7 @@ import type {
   ModelResolver,
   PrepareStepFn,
   ProviderTool
-} from "@flow-state-dev/core/types";
+} from "../types";
 import { makeSchemaStrict } from "./makeSchemaStrict";
 
 export type ResolveAiSdkLanguageModel = (modelId: string) => unknown;

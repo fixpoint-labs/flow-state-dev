@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { MockLanguageModelV3 } from "ai/test";
-import { createAiSdkModelResolver, wrapAiSdkModel } from "../src";
+import { createAiSdkModelResolver, wrapAiSdkModel } from "../../src/models";
 
 describe("createAiSdkModelResolver", () => {
   it("maps text, finish reason, and usage into GeneratorModelResult", async () => {

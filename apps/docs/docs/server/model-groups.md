@@ -15,7 +15,7 @@ Model groups solve this. Instead of `model: "gpt-5.4"`, you write `model: provid
 ## Quick Start
 
 ```ts
-import { createFSDProvider, defaultGroups } from "@flow-state-dev/server";
+import { createFSDProvider, defaultGroups } from "@flow-state-dev/core/models";
 import { generator } from "@flow-state-dev/core";
 
 const provider = createFSDProvider({
@@ -110,7 +110,7 @@ Direct API keys take priority over gateways. If you have `ANTHROPIC_API_KEY` set
 Override defaults or add new groups:
 
 ```ts
-import { createFSDProvider, defaultGroups } from "@flow-state-dev/server";
+import { createFSDProvider, defaultGroups } from "@flow-state-dev/core/models";
 
 const provider = createFSDProvider({
   groups: {

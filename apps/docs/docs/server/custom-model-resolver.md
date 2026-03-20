@@ -32,7 +32,8 @@ const router = createFlowApiRouter({ registry });
 Use `createAiSdkModelResolver` to provide your own model mapping:
 
 ```ts
-import { createFlowApiRouter, createAiSdkModelResolver } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createAiSdkModelResolver } from "@flow-state-dev/core/models";
 import { openai } from "@ai-sdk/openai";
 import { anthropic } from "@ai-sdk/anthropic";
 
@@ -89,7 +90,7 @@ const resolver = createAiSdkModelResolver((modelId) => {
 When generators use `search: true`, the framework needs access to the provider's tool namespace (e.g., `anthropic.tools.webSearch_20250305()`). This works automatically when you pass the provider object directly:
 
 ```ts
-import { createAiSdkModelResolver } from "@flow-state-dev/server";
+import { createAiSdkModelResolver } from "@flow-state-dev/core/models";
 import { anthropic } from "@ai-sdk/anthropic";
 
 // Pass the provider directly — it's both a model factory AND has .tools

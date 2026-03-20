@@ -1,8 +1,8 @@
 import { openai } from "@ai-sdk/openai";
+import { createAiSdkModelResolver } from "@flow-state-dev/core/models";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createAiSdkModelResolver,
 } from "@flow-state-dev/server";
 import helloChatFlow from "@/src/flows/hello-chat/flow";
 

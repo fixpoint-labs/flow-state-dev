@@ -43,7 +43,7 @@ import type {
   SessionRecord,
   UserRecord
 } from "../stores/types";
-import { createDefaultModelResolver } from "../models/createDefaultModelResolver";
+import { createDefaultModelResolver } from "@flow-state-dev/core/models";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { cloneValue } from "../utils/clone";

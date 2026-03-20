@@ -36,15 +36,26 @@ export * from "./streaming";
 export * from "./execution";
 export * from "./registry";
 export * from "./routes";
-export { createAiSdkModelResolver, wrapAiSdkModel } from "./models/createAiSdkModelResolver";
-export { createDefaultModelResolver } from "./models/createDefaultModelResolver";
+// Model infrastructure — re-exported from core for backward compatibility.
+// Prefer importing from @flow-state-dev/core or @flow-state-dev/core/models.
+export {
+  createAiSdkModelResolver,
+  wrapAiSdkModel,
+  createDefaultModelResolver,
+  createFSDProvider,
+  defaultGroups,
+  detectAvailableProviders,
+  parseModelId,
+  toGatewayModelId,
+  createFallbackModel,
+  isRetryableError,
+  createAiSdkSpeechResolver,
+  wrapAiSdkSpeechModel,
+  createAiSdkTranscriptionResolver,
+  wrapAiSdkTranscriptionModel
+} from "@flow-state-dev/core/models";
 export type {
-  ResolveAiSdkLanguageModel
-} from "./models/createAiSdkModelResolver";
-export { createFSDProvider, defaultGroups } from "./models/createFSDProvider";
-export { detectAvailableProviders, parseModelId } from "./models/providerDetection";
-export { createFallbackModel, isRetryableError } from "./models/fallbackModel";
-export type {
+  ResolveAiSdkLanguageModel,
   FSDProviderConfig,
   FSDProvider,
   ModelGroupConfig,
@@ -52,28 +63,12 @@ export type {
   GatewayConfig,
   RetryPolicy,
   GatewayType,
-  ProviderName
-} from "./models/types";
-export type {
-  ProviderAvailability
-} from "./models/providerDetection";
-export type {
-  FallbackModelEntry
-} from "./models/fallbackModel";
-export {
-  createAiSdkSpeechResolver,
-  wrapAiSdkSpeechModel
-} from "./models/createAiSdkSpeechResolver";
-export type {
-  ResolveAiSdkSpeechModel
-} from "./models/createAiSdkSpeechResolver";
-export {
-  createAiSdkTranscriptionResolver,
-  wrapAiSdkTranscriptionModel
-} from "./models/createAiSdkTranscriptionResolver";
-export type {
+  ProviderName,
+  ProviderAvailability,
+  FallbackModelEntry,
+  ResolveAiSdkSpeechModel,
   ResolveAiSdkTranscriptionModel
-} from "./models/createAiSdkTranscriptionResolver";
+} from "@flow-state-dev/core/models";
 export {
   FlowError,
   ModelError,

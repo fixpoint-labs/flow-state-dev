@@ -15,37 +15,35 @@ export interface ModelLookupEntry {
 }
 
 export const DEFAULT_MODEL_LOOKUP: ModelLookupEntry[] = [
+  // Anthropic — most-specific first
+  { keyword: "claude-opus-4-6", charsPerToken: 4.0, pricing: { promptPer1M: 15.0, completionPer1M: 75.0 } },
   { keyword: "claude-opus-4", charsPerToken: 4.0, pricing: { promptPer1M: 15.0, completionPer1M: 75.0 } },
+  { keyword: "claude-sonnet-4-6", charsPerToken: 4.0, pricing: { promptPer1M: 3.0, completionPer1M: 15.0 } },
   { keyword: "claude-sonnet-4-5", charsPerToken: 4.0, pricing: { promptPer1M: 3.0, completionPer1M: 15.0 } },
   { keyword: "claude-sonnet-4", charsPerToken: 4.0, pricing: { promptPer1M: 3.0, completionPer1M: 15.0 } },
   { keyword: "claude-haiku-4-5", charsPerToken: 4.0, pricing: { promptPer1M: 0.8, completionPer1M: 4.0 } },
   { keyword: "claude-haiku-4", charsPerToken: 4.0, pricing: { promptPer1M: 0.8, completionPer1M: 4.0 } },
-  { keyword: "claude-opus", charsPerToken: 4.0 },
-  { keyword: "claude-sonnet", charsPerToken: 4.0 },
-  { keyword: "claude-haiku", charsPerToken: 4.0 },
   { keyword: "claude", charsPerToken: 4.0 },
+
+  // OpenAI — most-specific first
+  { keyword: "gpt-5.4-mini", charsPerToken: 3.5, pricing: { promptPer1M: 0.2, completionPer1M: 0.8 } },
+  { keyword: "gpt-5.4-nano", charsPerToken: 3.5, pricing: { promptPer1M: 0.05, completionPer1M: 0.2 } },
+  { keyword: "gpt-5.4", charsPerToken: 3.5, pricing: { promptPer1M: 1.0, completionPer1M: 4.0 } },
   { keyword: "gpt-5-mini", charsPerToken: 3.5, pricing: { promptPer1M: 0.25, completionPer1M: 2.0 } },
   { keyword: "gpt-5-nano", charsPerToken: 3.5, pricing: { promptPer1M: 0.05, completionPer1M: 0.4 } },
   { keyword: "gpt-5", charsPerToken: 3.5, pricing: { promptPer1M: 1.25, completionPer1M: 10.0 } },
   { keyword: "gpt-4.1-mini", charsPerToken: 3.5, pricing: { promptPer1M: 0.4, completionPer1M: 1.6 } },
   { keyword: "gpt-4.1-nano", charsPerToken: 3.5, pricing: { promptPer1M: 0.1, completionPer1M: 0.4 } },
   { keyword: "gpt-4.1", charsPerToken: 3.5, pricing: { promptPer1M: 2.0, completionPer1M: 8.0 } },
-  { keyword: "gpt-4o-mini", charsPerToken: 3.5, pricing: { promptPer1M: 0.15, completionPer1M: 0.6 } },
-  { keyword: "gpt-4o", charsPerToken: 3.5, pricing: { promptPer1M: 2.5, completionPer1M: 10.0 } },
-  { keyword: "gpt-4-turbo", charsPerToken: 3.5, pricing: { promptPer1M: 10.0, completionPer1M: 30.0 } },
-  { keyword: "gpt-4", charsPerToken: 3.5 },
-  { keyword: "gpt-3.5", charsPerToken: 3.75 },
-  { keyword: "o1-mini", charsPerToken: 3.5, pricing: { promptPer1M: 1.1, completionPer1M: 4.4 } },
-  { keyword: "o1", charsPerToken: 3.5, pricing: { promptPer1M: 15.0, completionPer1M: 60.0 } },
-  { keyword: "o3-mini", charsPerToken: 3.5 },
-  { keyword: "o3", charsPerToken: 3.5 },
-  { keyword: "gemini-3.0-pro", charsPerToken: 3.8 },
-  { keyword: "gemini-3.0-flash", charsPerToken: 3.8 },
-  { keyword: "gemini-3", charsPerToken: 3.8 },
+
+  // Google — most-specific first
+  { keyword: "gemini-3.1-flash-lite", charsPerToken: 3.8, pricing: { promptPer1M: 0.02, completionPer1M: 0.08 } },
+  { keyword: "gemini-3.1-pro", charsPerToken: 3.8, pricing: { promptPer1M: 1.25, completionPer1M: 10.0 } },
+  { keyword: "gemini-3-flash", charsPerToken: 3.8, pricing: { promptPer1M: 0.1, completionPer1M: 0.4 } },
   { keyword: "gemini-2.0-flash", charsPerToken: 3.8, pricing: { promptPer1M: 0.1, completionPer1M: 0.4 } },
-  { keyword: "gemini-1.5-pro", charsPerToken: 3.8, pricing: { promptPer1M: 1.25, completionPer1M: 5.0 } },
-  { keyword: "gemini-1.5-flash", charsPerToken: 3.8, pricing: { promptPer1M: 0.075, completionPer1M: 0.3 } },
   { keyword: "gemini", charsPerToken: 3.8 },
+
+  // Meta
   { keyword: "llama-3.3", charsPerToken: 3.9 },
   { keyword: "llama-3", charsPerToken: 3.9 },
   { keyword: "llama", charsPerToken: 3.9 }

@@ -72,7 +72,7 @@ Generators specify a model ID string (e.g. `"gpt-5-mini"`). At runtime, the serv
 **Custom resolver with OpenAI:**
 
 ```ts
-import { createAiSdkModelResolver } from "@flow-state-dev/server";
+import { createAiSdkModelResolver } from "@flow-state-dev/core/models";
 import { openai } from "@ai-sdk/openai";
 
 const router = createFlowApiRouter({

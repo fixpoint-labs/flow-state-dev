@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { MockLanguageModelV3 } from "ai/test";
-import { createFSDProvider, defaultGroups } from "../src/models/createFSDProvider";
+import { createFSDProvider, defaultGroups } from "../../src/models/createFSDProvider";
 
 // ---------------------------------------------------------------------------
 // Helpers

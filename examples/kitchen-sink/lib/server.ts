@@ -1,11 +1,13 @@
 import path from "node:path";
 import { openai } from "@ai-sdk/openai";
 import {
-  createFlowApiRouter,
-  createFlowRegistry,
   createAiSdkModelResolver,
   createAiSdkSpeechResolver,
   createAiSdkTranscriptionResolver,
+} from "@flow-state-dev/core/models";
+import {
+  createFlowApiRouter,
+  createFlowRegistry,
   createFilesystemStores,
   createInMemoryStores,
 } from "@flow-state-dev/server";

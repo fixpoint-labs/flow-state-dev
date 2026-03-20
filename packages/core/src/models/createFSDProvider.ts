@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import type { GeneratorModel } from "@flow-state-dev/core/types";
+import type { GeneratorModel } from "../types/model";
 import type {
   FSDProviderConfig,
   FSDProvider,

@@ -98,3 +98,35 @@ export type {
 } from "./types/speech";
 
 export type { BindingCacheOptions, BindingProvider } from "./types/binding";
+
+// Model infrastructure (AI SDK adapters, provider detection, fallback)
+export {
+  createAiSdkModelResolver,
+  wrapAiSdkModel,
+  createDefaultModelResolver,
+  createAiSdkSpeechResolver,
+  wrapAiSdkSpeechModel,
+  createAiSdkTranscriptionResolver,
+  wrapAiSdkTranscriptionModel,
+  createFSDProvider,
+  defaultGroups,
+  createFallbackModel,
+  isRetryableError,
+  detectAvailableProviders,
+  parseModelId,
+  toGatewayModelId
+} from "./models";
+export type {
+  ResolveAiSdkLanguageModel,
+  ResolveAiSdkSpeechModel,
+  ResolveAiSdkTranscriptionModel,
+  FSDProviderConfig,
+  FSDProvider,
+  ModelGroupConfig,
+  ModelGroupDefaults,
+  GatewayConfig,
+  GatewayType,
+  ProviderName,
+  ProviderAvailability,
+  FallbackModelEntry
+} from "./models";

@@ -96,7 +96,7 @@ const router = createFlowApiRouter({ registry });
 ### Custom Resolver
 
 ```ts
-import { createAiSdkModelResolver } from "@flow-state-dev/server";
+import { createAiSdkModelResolver } from "@flow-state-dev/core/models";
 
 const router = createFlowApiRouter({
   registry,

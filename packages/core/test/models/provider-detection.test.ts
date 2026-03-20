@@ -3,7 +3,7 @@ import {
   detectAvailableProviders,
   parseModelId,
   toGatewayModelId,
-} from "../src/models/providerDetection";
+} from "../../src/models/providerDetection";
 
 describe("parseModelId", () => {
   it("parses provider:model format", () => {

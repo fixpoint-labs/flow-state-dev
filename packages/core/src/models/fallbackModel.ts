@@ -3,7 +3,7 @@ import type {
   GeneratorModelResult,
   GeneratorModelStreamChunk,
   GeneratorSearchConfig,
-} from "@flow-state-dev/core/types";
+} from "../types";
 import type { ModelGroupDefaults, RetryPolicy } from "./types";
 import { deepMerge } from "../utils/deep-merge";
 

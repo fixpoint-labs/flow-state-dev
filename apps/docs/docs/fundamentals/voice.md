@@ -25,10 +25,12 @@ import { openai } from "@ai-sdk/openai";
 import {
   createFlowApiRouter,
   createFlowRegistry,
+} from "@flow-state-dev/server";
+import {
   createAiSdkModelResolver,
   createAiSdkSpeechResolver,
   createAiSdkTranscriptionResolver,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/core/models";
 
 const modelResolver = createAiSdkModelResolver(openai);
 const speechResolver = createAiSdkSpeechResolver(

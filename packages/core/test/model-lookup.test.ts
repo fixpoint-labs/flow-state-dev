@@ -25,18 +25,18 @@ describe("model lookup", () => {
 
 
   it("matches Gemini 3 variants before generic Gemini fallback", () => {
-    const pro = findModelEntry("google:gemini-3.0-pro", DEFAULT_MODEL_LOOKUP);
-    const flash = findModelEntry("google:gemini-3.0-flash", DEFAULT_MODEL_LOOKUP);
+    const pro = findModelEntry("google:gemini-3.1-pro", DEFAULT_MODEL_LOOKUP);
+    const flash = findModelEntry("google:gemini-3-flash", DEFAULT_MODEL_LOOKUP);
     const family = findModelEntry("google:gemini-3", DEFAULT_MODEL_LOOKUP);
 
-    expect(pro?.keyword).toBe("gemini-3.0-pro");
-    expect(flash?.keyword).toBe("gemini-3.0-flash");
-    expect(family?.keyword).toBe("gemini-3");
+    expect(pro?.keyword).toBe("gemini-3.1-pro");
+    expect(flash?.keyword).toBe("gemini-3-flash");
+    expect(family?.keyword).toBe("gemini");
   });
 
   it("estimates counts using model-specific ratios", async () => {
     const counter = createEstimateTokenCounter();
-    const estimated = await counter.count("12345678", "openai:gpt-4o-mini");
+    const estimated = await counter.count("12345678", "openai:gpt-5-mini");
     expect(estimated).toBe(3);
   });
 
