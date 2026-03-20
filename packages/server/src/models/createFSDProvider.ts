@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import type { GeneratorModel } from "@flow-state-dev/core/types";
 import type {
   FSDProviderConfig,
@@ -238,48 +239,90 @@ function createDirectProviderResolver(
   };
 }
 
+/**
+ * Map of provider name → package name and factory export name.
+ * Used for dynamic import of optional peer dependencies.
+ */
+const PROVIDER_PACKAGES: Record<
+  string,
+  { pkg: string; factory: string }
+> = {
+  anthropic: { pkg: "@ai-sdk/anthropic", factory: "createAnthropic" },
+  openai: { pkg: "@ai-sdk/openai", factory: "createOpenAI" },
+  google: { pkg: "@ai-sdk/google", factory: "createGoogleGenerativeAI" },
+};
+
+const GATEWAY_PACKAGES: Record<
+  string,
+  { pkg: string; factory: string }
+> = {
+  vercel: { pkg: "@ai-sdk/gateway", factory: "createGateway" },
+  openrouter: { pkg: "@openrouter/ai-sdk-provider", factory: "createOpenRouter" },
+};
+
+/**
+ * Dynamically import a package at runtime without bundler interference.
+ *
+ * Uses `createRequire` from `node:module` so the specifier is opaque to
+ * webpack/turbopack static analysis. This prevents Next.js builds from
+ * failing when an optional peer dependency is not installed.
+ */
+const _require = createRequire(import.meta.url);
+
+function tryRequire(packageName: string): Record<string, unknown> | undefined {
+  try {
+    return _require(packageName);
+  } catch {
+    return undefined;
+  }
+}
+
 function loadProviderSync(
   providerName: string,
   apiKey: string
 ): (modelId: string) => unknown {
-  // Dynamic require — provider packages are optional peer deps.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  switch (providerName) {
-    case "anthropic": {
-      const { createAnthropic } = require("@ai-sdk/anthropic");
-      return createAnthropic({ apiKey });
-    }
-    case "openai": {
-      const { createOpenAI } = require("@ai-sdk/openai");
-      return createOpenAI({ apiKey });
-    }
-    case "google": {
-      const { createGoogleGenerativeAI } = require("@ai-sdk/google");
-      return createGoogleGenerativeAI({ apiKey });
-    }
-    default:
-      throw new Error(`Unknown provider: "${providerName}"`);
+  const info = PROVIDER_PACKAGES[providerName];
+  if (!info) {
+    throw new Error(`Unknown provider: "${providerName}"`);
   }
+
+  const mod = tryRequire(info.pkg);
+  if (!mod || typeof mod[info.factory] !== "function") {
+    throw new Error(
+      `Provider package "${info.pkg}" is not installed. ` +
+        `Install it to use ${providerName} models directly.`
+    );
+  }
+
+  const factory = mod[info.factory] as (opts: { apiKey: string }) => unknown;
+  return factory({ apiKey }) as (modelId: string) => unknown;
 }
 
 function createGatewayProviderResolver(
   gatewayType: string,
   apiKey: string
 ): ProviderResolver {
-  switch (gatewayType) {
-    case "vercel": {
-      const { createGateway } = require("@ai-sdk/gateway");
-      const gw = createGateway({ apiKey });
-      return (providerName: string, modelId: string) =>
-        gw.languageModel(toGatewayModelId(providerName, modelId));
-    }
-    case "openrouter": {
-      const { createOpenRouter } = require("@openrouter/ai-sdk-provider");
-      const openrouter = createOpenRouter({ apiKey });
-      return (providerName: string, modelId: string) =>
-        openrouter.chat(toGatewayModelId(providerName, modelId));
-    }
-    default:
-      throw new Error(`Unknown gateway type: "${gatewayType}"`);
+  const info = GATEWAY_PACKAGES[gatewayType];
+  if (!info) {
+    throw new Error(`Unknown gateway type: "${gatewayType}"`);
   }
+
+  const mod = tryRequire(info.pkg);
+  if (!mod || typeof mod[info.factory] !== "function") {
+    throw new Error(
+      `Gateway package "${info.pkg}" is not installed. ` +
+        `Install it to use the ${gatewayType} gateway.`
+    );
+  }
+
+  const factory = mod[info.factory] as (opts: { apiKey: string }) => unknown;
+  const gw = factory({ apiKey }) as Record<string, unknown>;
+
+  if (gatewayType === "openrouter") {
+    return (providerName: string, modelId: string) =>
+      (gw as any).chat(toGatewayModelId(providerName, modelId));
+  }
+
+  return (providerName: string, modelId: string) =>
+    (gw as any).languageModel(toGatewayModelId(providerName, modelId));
 }
