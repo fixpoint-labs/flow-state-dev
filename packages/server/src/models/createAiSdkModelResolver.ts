@@ -12,7 +12,7 @@ import type {
   PrepareStepFn,
   ProviderTool
 } from "@flow-state-dev/core/types";
-import { makeSchemaStrict } from "./makeSchemaStrict.js";
+import { makeSchemaStrict } from "./makeSchemaStrict";
 
 export type ResolveAiSdkLanguageModel = (modelId: string) => unknown;
 

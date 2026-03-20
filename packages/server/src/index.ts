@@ -41,6 +41,25 @@ export { createDefaultModelResolver } from "./models/createDefaultModelResolver"
 export type {
   ResolveAiSdkLanguageModel
 } from "./models/createAiSdkModelResolver";
+export { createFSDProvider, defaultGroups } from "./models/createFSDProvider";
+export { detectAvailableProviders, parseModelId } from "./models/providerDetection";
+export { createFallbackModel, isRetryableError } from "./models/fallbackModel";
+export type {
+  FSDProviderConfig,
+  FSDProvider,
+  ModelGroupConfig,
+  ModelGroupDefaults,
+  GatewayConfig,
+  RetryPolicy,
+  GatewayType,
+  ProviderName
+} from "./models/types";
+export type {
+  ProviderAvailability
+} from "./models/providerDetection";
+export type {
+  FallbackModelEntry
+} from "./models/fallbackModel";
 export {
   createAiSdkSpeechResolver,
   wrapAiSdkSpeechModel
