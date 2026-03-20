@@ -130,6 +130,10 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     '- Stale memories are worse than missing memories — always prefer updating over adding alongside',
     '- Prefer fewer, higher-quality memories over many low-quality ones',
     '- Return empty items array if nothing new is worth storing',
+    '- When assistant messages are included, focus on:',
+    '  * Corrections or clarifications about user statements',
+    '  * Facts about the user or task discovered or inferred (e.g., from tool use)',
+    '- Do NOT extract memories from instructional content, code examples, or generic responses',
   ].join('\n')
 
   // Context function reads from session items using the watermark.

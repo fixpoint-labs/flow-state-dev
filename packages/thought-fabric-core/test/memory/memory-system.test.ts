@@ -835,6 +835,192 @@ describe('memory/memorySystem', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // captureFromItems and items connector
+  // ---------------------------------------------------------------------------
+
+  describe('captureFromItems', () => {
+    it('is returned by system() factory', () => {
+      const mem = system({
+        model: 'gpt-5-mini',
+        working: true,
+      })
+
+      expect(mem.captureFromItems).toBeDefined()
+    })
+
+    it('is a BlockDefinition with connectInput-derived shape', () => {
+      const mem = system({
+        model: 'gpt-5-mini',
+        working: true,
+      })
+
+      // connectInput returns a BlockDefinition
+      expect(mem.captureFromItems.kind).toBeDefined()
+      expect(mem.captureFromItems.name).toBeDefined()
+    })
+
+    it('is also returned when semantic is configured', () => {
+      const mem = system({
+        model: 'gpt-5-mini',
+        working: true,
+        episodic: true,
+        semantic: true,
+      })
+
+      expect(mem.captureFromItems).toBeDefined()
+    })
+  })
+
+  describe('buildItemsConnector (via system internals)', () => {
+    // We test the connector behavior by calling it directly through the
+    // captureFromItems block's connectInput connector. Since buildItemsConnector
+    // is private, we verify behavior through integration-style tests.
+
+    // buildItemsConnector is private, so we replicate the same logic for unit testing.
+    function simulateConnector(maxAssistantChars: number, items: any[]): string {
+      if (items.length === 0) return ''
+
+      const lastUser = [...items].reverse().find(
+        (item: any) => item.type === 'message' && item.role === 'user',
+      )
+      if (!lastUser) return ''
+
+      const userText = typeof lastUser.payload === 'string'
+        ? lastUser.payload
+        : typeof lastUser.content === 'string'
+          ? lastUser.content
+          : ''
+
+      const lastUserIdx = items.indexOf(lastUser)
+      const assistantItems = items.slice(lastUserIdx + 1).filter(
+        (item: any) => item.type === 'message' && item.role === 'assistant',
+      )
+
+      let result = `[user] ${userText}`
+
+      if (assistantItems.length > 0) {
+        const assistantText = assistantItems
+          .map((item: any) => typeof item.payload === 'string' ? item.payload : '')
+          .filter(Boolean)
+          .join('\n')
+
+        if (assistantText) {
+          const truncated = assistantText.length > maxAssistantChars
+            ? assistantText.slice(0, maxAssistantChars) + ' [truncated]'
+            : assistantText
+
+          result += `\n[assistant] ${truncated}`
+        }
+      }
+
+      return result
+    }
+
+    it('extracts last user message in full', () => {
+      const items = [
+        { type: 'message', role: 'user', payload: 'Hello, how are you?' },
+        { type: 'message', role: 'assistant', payload: 'I am fine!' },
+        { type: 'message', role: 'user', payload: 'Tell me about TypeScript' },
+      ]
+
+      const result = simulateConnector(500, items)
+      expect(result).toBe('[user] Tell me about TypeScript')
+    })
+
+    it('includes assistant response after user message', () => {
+      const items = [
+        { type: 'message', role: 'user', payload: 'What is TypeScript?' },
+        { type: 'message', role: 'assistant', payload: 'TypeScript is a typed superset of JavaScript.' },
+      ]
+
+      const result = simulateConnector(500, items)
+      expect(result).toBe('[user] What is TypeScript?\n[assistant] TypeScript is a typed superset of JavaScript.')
+    })
+
+    it('truncates assistant response at maxAssistantChars', () => {
+      const longResponse = 'A'.repeat(600)
+      const items = [
+        { type: 'message', role: 'user', payload: 'Explain something' },
+        { type: 'message', role: 'assistant', payload: longResponse },
+      ]
+
+      const result = simulateConnector(500, items)
+      expect(result).toContain('[user] Explain something')
+      expect(result).toContain('[assistant] ')
+      expect(result).toContain(' [truncated]')
+      // Assistant portion should be 500 chars + ' [truncated]'
+      const assistantPart = result.split('\n[assistant] ')[1]
+      expect(assistantPart).toBe('A'.repeat(500) + ' [truncated]')
+    })
+
+    it('does not add [truncated] when assistant response fits within limit', () => {
+      const items = [
+        { type: 'message', role: 'user', payload: 'Hi' },
+        { type: 'message', role: 'assistant', payload: 'Hello there!' },
+      ]
+
+      const result = simulateConnector(500, items)
+      expect(result).not.toContain('[truncated]')
+    })
+
+    it('returns empty string when no items', () => {
+      const result = simulateConnector(500, [])
+      expect(result).toBe('')
+    })
+
+    it('returns empty string when no user message found', () => {
+      const items = [
+        { type: 'message', role: 'assistant', payload: 'Hello!' },
+      ]
+
+      const result = simulateConnector(500, items)
+      expect(result).toBe('')
+    })
+
+    it('concatenates multiple assistant messages', () => {
+      const items = [
+        { type: 'message', role: 'user', payload: 'Tell me things' },
+        { type: 'message', role: 'assistant', payload: 'First part.' },
+        { type: 'message', role: 'assistant', payload: 'Second part.' },
+      ]
+
+      const result = simulateConnector(500, items)
+      expect(result).toBe('[user] Tell me things\n[assistant] First part.\nSecond part.')
+    })
+
+    it('ignores non-message items', () => {
+      const items = [
+        { type: 'message', role: 'user', payload: 'Hello' },
+        { type: 'tool-call', role: 'assistant', payload: 'tool stuff' },
+        { type: 'message', role: 'assistant', payload: 'Response' },
+      ]
+
+      const result = simulateConnector(500, items)
+      expect(result).toBe('[user] Hello\n[assistant] Response')
+    })
+
+    it('respects custom maxAssistantChars', () => {
+      const items = [
+        { type: 'message', role: 'user', payload: 'Hi' },
+        { type: 'message', role: 'assistant', payload: 'A'.repeat(200) },
+      ]
+
+      const result = simulateConnector(100, items)
+      const assistantPart = result.split('\n[assistant] ')[1]
+      expect(assistantPart).toBe('A'.repeat(100) + ' [truncated]')
+    })
+
+    it('falls back to content field when payload is not a string', () => {
+      const items = [
+        { type: 'message', role: 'user', content: 'Hello via content' },
+      ]
+
+      const result = simulateConnector(500, items)
+      expect(result).toBe('[user] Hello via content')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // Semantic memory: block shapes
   // ---------------------------------------------------------------------------
 

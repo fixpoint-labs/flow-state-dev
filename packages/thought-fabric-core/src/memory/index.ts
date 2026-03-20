@@ -79,6 +79,7 @@ export {
   memorySystemResource,
   DEFAULT_EPISODIC_CONFIG,
   DEFAULT_CONSOLIDATION_CONFIG,
+  DEFAULT_OBSERVER_CONFIG,
 } from './memory-system.js'
 export type { MemorySystemState } from './memory-system.js'
 

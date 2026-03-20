@@ -241,21 +241,20 @@ const planFallback = handler({
 //   .rescue([...])        — catch errors and route to fallback blocks
 
 const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema })
-  // Memory capture runs in the background (.work): observes new session items,
-  // classifies them with durability and category, routes to working + episodic
-  // memory stores, and advances the decay clock.
-  .work((input) => input.message, mem.capture)
   .then(applyRequestedMode)
   .then(analyzeInput)
   .thenIf((result) => result.needsContext, formatReport)
-  .then(agentGenerator)  
+  .then(agentGenerator)
+  // Memory capture runs in the background (.work) after the generator so it
+  // sees both the user message and the agent's response. captureFromItems
+  // reads from session items automatically — no connector needed.
+  .work(mem.captureFromItems)
   .then(incrementRequestCount)
   .tap(async (output) => {
     console.log(`Chat completed: ${output.slice(0, 50)}...`);
   });
 
 const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
-  .work((input) => input.message, mem.capture)
   .then(applyRequestedMode)
   .then(analyzeInput)
   .map((result) => ({
@@ -263,6 +262,7 @@ const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
     instructions: "Create a step-by-step plan."
   }))
   .then(agentGenerator)
+  .work(mem.captureFromItems)
   .then(incrementRequestCount)
   .rescue([
     {

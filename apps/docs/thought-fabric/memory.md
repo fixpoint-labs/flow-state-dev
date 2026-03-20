@@ -22,13 +22,21 @@ const mem = memorySystem({
 })
 
 const pipeline = sequencer({ name: 'chat', inputSchema })
+  .then(chatGenerator)
+  .work(mem.captureFromItems)
+```
+
+`mem.captureFromItems` runs in the background via `.work()` after the generator. It reads the last user message and a truncated assistant response from session items, then runs the full capture pipeline: observe, classify, route to the right stores, advance decay, and (when enough evidence accumulates) consolidate into semantic facts. One line to add to a pipeline.
+
+The capture block declares its own resources. The framework installs them automatically when the flow runs. No manual resource setup needed.
+
+If you need to capture from explicit string input instead of session items, use `mem.capture` with a connector:
+
+```ts
+const pipeline = sequencer({ name: 'chat', inputSchema })
   .work((input) => input.message, mem.capture)
   .then(chatGenerator)
 ```
-
-`mem.capture` is a sequencer that runs in the background via `.work()`. It observes the user's message, classifies memories by durability and category, routes them to the right stores, advances the decay clock, and (when enough evidence accumulates) consolidates episodic memories into semantic facts. One line to add to a pipeline.
-
-The capture block declares its own resources. The framework installs them automatically when the flow runs. No manual resource setup needed.
 
 If you only need working memory, you can still use the standalone `workingMemoryCapture` block:
 
@@ -74,6 +82,7 @@ const mem = memorySystem({
 | Property | Type | Purpose |
 |----------|------|---------|
 | `mem.capture` | Sequencer | Full pipeline: observe → reflect → tick (+ consolidation) |
+| `mem.captureFromItems` | Block | Self-serving capture: reads from session items (no input needed) |
 | `mem.consolidate` | Sequencer | Standalone consolidation (when semantic configured) |
 | `mem.recall(ctx, cue?)` | Function | Cross-store recall, ranked by relevance |
 | `mem.contextFormatter` | Context fn | Drop into a generator's `context` array |
@@ -125,6 +134,38 @@ The observer checks existing working memory for contradictions. If a user says "
 **Tick** advances the working memory decay clock and recomputes salience scores.
 
 **Consolidation** (when semantic is configured) runs as `.work()` — background processing that doesn't block the pipeline. It checks whether enough episodic evidence has accumulated, and if so, calls an LLM to distill patterns into semantic facts.
+
+## Capturing Agent Responses
+
+`mem.capture` takes a string input — typically the user's message. But the agent's response often contains valuable context too: corrections, inferred facts, commitments. `mem.captureFromItems` captures both sides of the conversation by reading directly from session items.
+
+```ts
+const pipeline = sequencer({ name: 'chat', inputSchema })
+  .then(analyzeInput)
+  .then(chatGenerator)
+  .work(mem.captureFromItems)  // runs after the generator, sees both user + assistant
+  .then(postProcess)
+```
+
+`captureFromItems` is built using `connectInput` — it's the same capture pipeline, but with a connector that reads the last user message (in full) and the assistant's response (truncated to ~500 characters). The truncation keeps LLM cost low while still catching high-value content like corrections, clarifications, and inferred facts.
+
+Position it after your generator block so it sees the full exchange. It runs as `.work()` (background), so it doesn't block the pipeline.
+
+To customize the truncation limit:
+
+```ts
+const mem = memorySystem({
+  model: 'gpt-5-mini',
+  working: { capacity: 7 },
+  episodic: true,
+  semantic: true,
+  maxAssistantChars: 1000,  // default: 500
+})
+```
+
+**When to use which:**
+- `mem.capture` — when you have explicit string input (e.g., early in a pipeline before the generator)
+- `mem.captureFromItems` — after the generator, to capture both sides of the conversation
 
 ## Injecting Memory into Prompts
 

@@ -85,6 +85,42 @@ describe("buildBlock", () => {
     await expect(block.run("4", ctx)).resolves.toBe("n:8");
   });
 
+  it("connectInput preserves declaredResources", () => {
+    const resources = {
+      session: { myResource: { stateSchema: z.object({ x: z.number() }) } }
+    };
+    const block = buildBlock({
+      kind: "handler",
+      config: {
+        name: "with-resources",
+        execute: (value) => value
+      },
+      declaredResources: resources
+    });
+
+    expect(block.declaredResources).toBe(resources);
+
+    const connected = block.connectInput((value: string) => Number(value));
+    expect(connected.declaredResources).toBe(resources);
+  });
+
+  it("connectOutput preserves declaredResources", () => {
+    const resources = {
+      session: { myResource: { stateSchema: z.object({ x: z.number() }) } }
+    };
+    const block = buildBlock({
+      kind: "handler",
+      config: {
+        name: "with-resources",
+        execute: (value) => value
+      },
+      declaredResources: resources
+    });
+
+    const connected = block.connectOutput((value) => `n:${value}`);
+    expect(connected.declaredResources).toBe(resources);
+  });
+
   it("propagates errors without retry (server owns retry)", async () => {
     let attempts = 0;
     const block = buildBlock({

@@ -97,6 +97,11 @@ export const DEFAULT_CONSOLIDATION_CONFIG = {
   minInterval: 4,
 }
 
+/** Default configuration for the memory observer. */
+export const DEFAULT_OBSERVER_CONFIG = {
+  maxAssistantChars: 500,
+}
+
 // ---------------------------------------------------------------------------
 // Config types
 // ---------------------------------------------------------------------------
@@ -148,6 +153,8 @@ export interface MemorySystemConfig {
   inputSchema?: ZodTypeAny
   /** Optional custom source function — overrides reading from ctx.session.items. */
   source?: (input: unknown, ctx: any) => string
+  /** Max chars of assistant response to include in captureFromItems. Default: 500. */
+  maxAssistantChars?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -165,8 +172,10 @@ export type RankedMemoryItem = {
 
 /** The full memory system returned by memory.system(). */
 export interface MemorySystem {
-  /** Unified capture pipeline: observe → reflect → tick (+ consolidation when semantic). */
+  /** Unified capture pipeline: observe → reflect → tick (+ consolidation when semantic). Takes string input. */
   capture: ReturnType<typeof memorySystemCapture>
+  /** Self-serving capture: reads last user message + truncated assistant response from session items. Use with `.work()` after the generator. */
+  captureFromItems: ReturnType<ReturnType<typeof memorySystemCapture>['connectInput']>
   /** Standalone consolidation sequencer (when semantic configured). */
   consolidate?: ReturnType<typeof memorySystemConsolidate>
   /** Cross-store recall helper. */
@@ -390,6 +399,58 @@ function createContextFormatter(
 }
 
 // ---------------------------------------------------------------------------
+// Items connector for captureFromItems
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a connector function that reads the last user message and truncated
+ * assistant response from session items. Used by `captureFromItems`.
+ */
+function buildItemsConnector(maxAssistantChars: number) {
+  return (_input: unknown, ctx: any): string => {
+    const items = ctx.session?.items?.all?.() ?? []
+    if (items.length === 0) return ''
+
+    // Find last user message
+    const lastUser = [...items].reverse().find(
+      (item: any) => item.type === 'message' && (item as any).role === 'user',
+    )
+    if (!lastUser) return ''
+
+    const userText = typeof lastUser.payload === 'string'
+      ? lastUser.payload
+      : typeof lastUser.content === 'string'
+        ? lastUser.content
+        : ''
+
+    // Find assistant messages after the last user message
+    const lastUserIdx = items.indexOf(lastUser)
+    const assistantItems = items.slice(lastUserIdx + 1).filter(
+      (item: any) => item.type === 'message' && (item as any).role === 'assistant',
+    )
+
+    let result = `[user] ${userText}`
+
+    if (assistantItems.length > 0) {
+      const assistantText = assistantItems
+        .map((item: any) => typeof item.payload === 'string' ? item.payload : '')
+        .filter(Boolean)
+        .join('\n')
+
+      if (assistantText) {
+        const truncated = assistantText.length > maxAssistantChars
+          ? assistantText.slice(0, maxAssistantChars) + ' [truncated]'
+          : assistantText
+
+        result += `\n[assistant] ${truncated}`
+      }
+    }
+
+    return result
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -495,9 +556,14 @@ export function system(config: MemorySystemConfig): MemorySystem {
   )
   const contextFormatterFn = createContextFormatter(recallFn)
 
+  // Create captureFromItems — self-serving variant that reads from session items
+  const maxAssistantChars = config.maxAssistantChars ?? DEFAULT_OBSERVER_CONFIG.maxAssistantChars
+  const captureFromItems = capture.connectInput(buildItemsConnector(maxAssistantChars))
+
   // Assemble the system
   const result: MemorySystem = {
     capture,
+    captureFromItems,
     recall: recallFn,
     contextFormatter: contextFormatterFn,
     working: {

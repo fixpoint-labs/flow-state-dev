@@ -53,7 +53,7 @@ Three-tier memory: working (session), episodic (cross-session), and semantic (st
 
 | Function | Purpose |
 |----------|---------|
-| `system(config)` | Factory that wires all three tiers. Returns `capture`, `recall`, `contextFormatter`, and per-tier helpers. |
+| `system(config)` | Factory that wires all three tiers. Returns `capture`, `captureFromItems`, `recall`, `contextFormatter`, and per-tier helpers. |
 
 ### Unified System Blocks
 
@@ -129,6 +129,7 @@ Three-tier memory: working (session), episodic (cross-session), and semantic (st
 | `DEFAULT_WORKING_MEMORY_CONFIG` | `capacity`, `maxPinnedSlots`, `decay` |
 | `DEFAULT_EPISODIC_CONFIG` | `scope`, `significanceThreshold`, `maxEpisodes` |
 | `DEFAULT_CONSOLIDATION_CONFIG` | `episodicThreshold`, `onEviction`, `minInterval` |
+| `DEFAULT_OBSERVER_CONFIG` | `maxAssistantChars` |
 
 ### Pure Math (no side effects)
 
@@ -155,8 +156,8 @@ import { filterRelevance, scoreSalience } from "@thought-fabric/core/attention";
 const mem = memorySystem({ model: "gpt-5-mini", working: true, episodic: true, semantic: true });
 
 const pipeline = sequencer({ name: "pipeline", inputSchema: chatInput })
-  .work((input) => input.message, mem.capture)
-  .then(chat);
+  .then(chat)
+  .work(mem.captureFromItems);
 
 const filter = filterRelevance({ name: "filter" });
 const salience = scoreSalience({ name: "rank" });
