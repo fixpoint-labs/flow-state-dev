@@ -1,13 +1,34 @@
 import type { ZodTypeAny } from "zod";
 import type { JsonObject } from "../schema/common";
 import type { ScopeType } from "./scope";
-import type { ResourceRef, ResourceConfig } from "./resource";
+import type { ResourceRef } from "./resource";
+
+// Re-export pattern utilities for consumers
+export {
+  extractPatternParams,
+  getPatternPrefix,
+  isDeepWildcard,
+  isParameterizedPattern,
+  isSingleWildcard,
+  matchesPattern,
+  normalizeResourcePath,
+  resolveNamespaceKey,
+  validatePattern,
+} from "./namespace-patterns";
 
 // ---------------------------------------------------------------------------
 // Config & Definition
 // ---------------------------------------------------------------------------
 
 export type EvictionPolicy = "none" | "lru" | "oldest";
+
+/** Context provided to per-instance lifecycle hooks. */
+export type NamespaceHookContext = {
+  /** Log a message associated with this hook invocation. */
+  log: (message: string) => void;
+  /** The scope type this namespace belongs to (session, user, project). */
+  scopeType: ScopeType;
+};
 
 export type ResourceNamespaceConfig = {
   /** Glob-style pattern: `files/*`, `files/**`, or `[topic]/observations`. */
@@ -16,15 +37,17 @@ export type ResourceNamespaceConfig = {
   maxInstances?: number;
   eviction?: EvictionPolicy;
 
-  // Per-instance lifecycle hooks
-  onInstanceCreated?: (key: string, state: JsonObject, ctx: unknown) => void | Promise<void>;
+  /** Fires when a specific instance is created (e.g., files/utils.ts). */
+  onInstanceCreated?: (key: string, state: JsonObject, ctx: NamespaceHookContext) => void | Promise<void>;
+  /** Fires when a specific instance's state is updated. */
   onInstanceUpdated?: (
     key: string,
     state: JsonObject,
     prevState: JsonObject,
-    ctx: unknown
+    ctx: NamespaceHookContext
   ) => void | Promise<void>;
-  onInstanceDeleted?: (key: string, ctx: unknown) => void | Promise<void>;
+  /** Fires when a specific instance is deleted (including eviction). */
+  onInstanceDeleted?: (key: string, ctx: NamespaceHookContext) => void | Promise<void>;
 };
 
 type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
@@ -43,8 +66,11 @@ export type DefinedResourceNamespace<TState extends JsonObject = JsonObject> =
 // Runtime Handle
 // ---------------------------------------------------------------------------
 
+/** Runtime handle for accessing a namespace's dynamic resource instances. */
 export interface ResourceNamespaceRef<TState extends JsonObject = JsonObject> {
+  /** The namespace's declared pattern. */
   pattern: string;
+  /** Scope this namespace is registered in. */
   scope: ScopeType;
 
   /** Get an existing instance. Throws if not found. */
@@ -68,12 +94,13 @@ export interface ResourceNamespaceRef<TState extends JsonObject = JsonObject> {
   /** List all instances, optionally filtered by prefix. */
   list(prefix?: string): ResourceRef<TState>[];
 
-  /** Delete an instance. */
+  /** Delete an instance. No-op if the instance does not exist. */
   delete(key: string | Record<string, string>): Promise<void>;
 
   /** Current instance count. */
   count(): number;
 
+  /** The namespace's config. */
   config: Readonly<ResourceNamespaceConfig>;
 }
 
@@ -84,6 +111,8 @@ export type ResourceNamespaceHandle<TState extends JsonObject = JsonObject> =
 // ---------------------------------------------------------------------------
 // defineResourceNamespace()
 // ---------------------------------------------------------------------------
+
+import { validatePattern } from "./namespace-patterns";
 
 export function defineResourceNamespace<
   const TStateSchema extends ZodTypeAny,
@@ -104,221 +133,6 @@ export function defineResourceNamespace<
   return Object.assign({}, config, {
     __brand: "ResourceNamespace" as const,
   }) as unknown as TConfig & DefinedResourceNamespace<AsStateObject<TStateSchema["_output"]>>;
-}
-
-// ---------------------------------------------------------------------------
-// Pattern utilities
-// ---------------------------------------------------------------------------
-
-const VALID_PATTERN = /^(?:[a-zA-Z0-9_\-.*[\]]+)(?:\/[a-zA-Z0-9_\-.*[\]]+)*$/;
-
-function validatePattern(pattern: string): void {
-  if (typeof pattern !== "string" || pattern.length === 0) {
-    throw new Error("Resource namespace pattern must be a non-empty string");
-  }
-
-  if (!VALID_PATTERN.test(pattern)) {
-    throw new Error(`Invalid resource namespace pattern: "${pattern}"`);
-  }
-
-  // Check that wildcards are used correctly
-  const segments = pattern.split("/");
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i]!;
-    if (seg === "**" && i !== segments.length - 1) {
-      throw new Error(`"**" globstar must be the last segment in pattern: "${pattern}"`);
-    }
-  }
-}
-
-/**
- * Extract parameter names from a pattern like `[topic]/observations`.
- */
-export function extractPatternParams(pattern: string): string[] {
-  const params: string[] = [];
-  const paramRegex = /\[([a-zA-Z0-9_]+)\]/g;
-  let match: RegExpExecArray | null;
-  while ((match = paramRegex.exec(pattern)) !== null) {
-    params.push(match[1]!);
-  }
-  return params;
-}
-
-/**
- * Check whether a pattern uses parameterized segments.
- */
-export function isParameterizedPattern(pattern: string): boolean {
-  return /\[[a-zA-Z0-9_]+\]/.test(pattern);
-}
-
-/**
- * Check whether a pattern uses deep wildcard.
- */
-export function isDeepWildcard(pattern: string): boolean {
-  return pattern.endsWith("/**");
-}
-
-/**
- * Check whether a pattern uses single-level wildcard.
- */
-export function isSingleWildcard(pattern: string): boolean {
-  return pattern.includes("*") && !pattern.includes("**");
-}
-
-/**
- * Resolve a key (string or param object) into a storage path for a given pattern.
- *
- * - For wildcard patterns (`files/*`, `files/**`): key is a string appended to the prefix.
- * - For parameterized patterns (`[topic]/observations`): key is an object like `{ topic: 'react' }`.
- */
-export function resolveNamespaceKey(
-  pattern: string,
-  key: string | Record<string, string>
-): string {
-  if (typeof key === "string") {
-    // Wildcard pattern: prefix + key
-    const prefix = getPatternPrefix(pattern);
-    const normalizedKey = normalizeResourcePath(key);
-    return prefix.length > 0 ? `${prefix}/${normalizedKey}` : normalizedKey;
-  }
-
-  // Parameterized pattern: substitute params
-  const params = extractPatternParams(pattern);
-  if (params.length === 0) {
-    throw new Error(`Pattern "${pattern}" has no parameters but received an object key`);
-  }
-
-  let resolved = pattern;
-  for (const param of params) {
-    const value = key[param];
-    if (value === undefined) {
-      throw new Error(`Missing parameter "${param}" for pattern "${pattern}"`);
-    }
-    validatePathSegment(value);
-    resolved = resolved.replace(`[${param}]`, value);
-  }
-
-  return resolved;
-}
-
-/**
- * Get the static prefix of a pattern (everything before the first wildcard or param).
- */
-export function getPatternPrefix(pattern: string): string {
-  const segments = pattern.split("/");
-  const prefixSegments: string[] = [];
-
-  for (const seg of segments) {
-    if (seg === "*" || seg === "**" || /\[.+\]/.test(seg)) {
-      break;
-    }
-    prefixSegments.push(seg);
-  }
-
-  return prefixSegments.join("/");
-}
-
-/**
- * Check if a storage key matches a namespace pattern.
- */
-export function matchesPattern(pattern: string, storageKey: string): boolean {
-  if (isParameterizedPattern(pattern)) {
-    return matchesParameterizedPattern(pattern, storageKey);
-  }
-
-  const prefix = getPatternPrefix(pattern);
-
-  if (isDeepWildcard(pattern)) {
-    // `files/**` matches `files/anything/at/any/depth`
-    return storageKey.startsWith(prefix + "/") && storageKey.length > prefix.length + 1;
-  }
-
-  if (isSingleWildcard(pattern)) {
-    // `files/*` matches `files/something` but not `files/a/b`
-    if (!storageKey.startsWith(prefix + "/")) return false;
-    const rest = storageKey.slice(prefix.length + 1);
-    return rest.length > 0 && !rest.includes("/");
-  }
-
-  return false;
-}
-
-function matchesParameterizedPattern(pattern: string, storageKey: string): boolean {
-  // Convert pattern to regex: `[topic]/observations` → `^[^/]+/observations$`
-  const regexStr = pattern
-    .split("/")
-    .map((seg) => {
-      if (/^\[.+\]$/.test(seg)) return "[^/]+";
-      return escapeRegex(seg);
-    })
-    .join("/");
-
-  return new RegExp(`^${regexStr}$`).test(storageKey);
-}
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// ---------------------------------------------------------------------------
-// Key validation & normalization
-// ---------------------------------------------------------------------------
-
-/**
- * Normalize a resource path:
- * - Replace backslashes with forward slashes
- * - Strip leading/trailing slashes
- * - Reject path traversal (`..`)
- * - Reject null bytes and control characters
- */
-export function normalizeResourcePath(raw: string): string {
-  if (typeof raw !== "string" || raw.length === 0) {
-    throw new Error("Resource key must be a non-empty string");
-  }
-
-  // Reject null bytes and control characters
-  if (/[\x00-\x1f]/.test(raw)) {
-    throw new Error("Resource key must not contain null bytes or control characters");
-  }
-
-  // Normalize separators
-  let path = raw.replace(/\\/g, "/");
-
-  // Strip leading/trailing slashes
-  path = path.replace(/^\/+|\/+$/g, "");
-
-  if (path.length === 0) {
-    throw new Error("Resource key resolves to empty after normalization");
-  }
-
-  // Reject path traversal
-  const segments = path.split("/");
-  for (const seg of segments) {
-    if (seg === "..") {
-      throw new Error("Resource key must not contain path traversal (..)");
-    }
-    if (seg === "") {
-      // consecutive slashes — collapse
-      continue;
-    }
-  }
-
-  // Collapse consecutive slashes
-  path = segments.filter((s) => s.length > 0).join("/");
-
-  return path;
-}
-
-function validatePathSegment(segment: string): void {
-  if (/[\x00-\x1f]/.test(segment)) {
-    throw new Error("Path segment must not contain control characters");
-  }
-  if (segment.includes("/") || segment.includes("\\")) {
-    throw new Error("Path segment must not contain separators");
-  }
-  if (segment === "..") {
-    throw new Error("Path segment must not be '..'");
-  }
 }
 
 // ---------------------------------------------------------------------------

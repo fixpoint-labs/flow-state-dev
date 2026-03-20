@@ -8,6 +8,7 @@ import type {
   JsonValue,
   LLMMessage,
   MessageLimit,
+  NamespaceHookContext,
   ProjectScopeHandle,
   RequestScopeHandle,
   ResourceConfig,
@@ -371,7 +372,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
    */
   function createNamespaceInstanceRef(
     storageKey: string,
-    nsConfig: ResourceNamespaceConfig
+    nsConfig: ResourceNamespaceConfig,
+    nsHookCtx?: NamespaceHookContext
   ): ResourceRef<JsonObject> {
     const readState = (): JsonObject => {
       const raw = options.readResources()[storageKey];
@@ -395,24 +397,24 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           nsConfig,
           updateObjectState(prev, updates)
         );
-        if (nsConfig.onInstanceUpdated) {
+        if (nsConfig.onInstanceUpdated && nsHookCtx) {
           await nsConfig.onInstanceUpdated(
             storageKey,
             readState(),
             prev,
-            undefined
+            nsHookCtx
           );
         }
       },
       async setState(nextState: JsonObject): Promise<void> {
         const prev = readState();
         await persistNamespaceInstanceState(storageKey, nsConfig, nextState);
-        if (nsConfig.onInstanceUpdated) {
+        if (nsConfig.onInstanceUpdated && nsHookCtx) {
           await nsConfig.onInstanceUpdated(
             storageKey,
             readState(),
             prev,
-            undefined
+            nsHookCtx
           );
         }
       },
@@ -422,12 +424,12 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         const prev = readState();
         const next = await updater(prev);
         await persistNamespaceInstanceState(storageKey, nsConfig, next);
-        if (nsConfig.onInstanceUpdated) {
+        if (nsConfig.onInstanceUpdated && nsHookCtx) {
           await nsConfig.onInstanceUpdated(
             storageKey,
             readState(),
             prev,
-            undefined
+            nsHookCtx
           );
         }
       },
@@ -456,6 +458,15 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
       // LRU tracking: storageKey → last access timestamp
       const lruAccess = new Map<string, number>();
 
+      /** Populated hook context for lifecycle callbacks. */
+      const hookCtx: NamespaceHookContext = {
+        log: (_message: string) => {
+          // Hook log messages are available for debugging; runtime logger
+          // integration is handled at a higher level when available.
+        },
+        scopeType: options.scope,
+      };
+
       const nsHandle: ResourceNamespaceRef<JsonObject> = {
         pattern: nsConfig.pattern,
         scope: options.scope,
@@ -468,7 +479,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             throw new Error(`Resource instance "${storageKey}" not found in namespace "${nsConfig.pattern}"`);
           }
           lruAccess.set(storageKey, Date.now());
-          return createNamespaceInstanceRef(storageKey, nsConfig);
+          return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
         },
 
         getOptional(key: string | Record<string, string>): ResourceRef<JsonObject> | undefined {
@@ -478,7 +489,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             return undefined;
           }
           lruAccess.set(storageKey, Date.now());
-          return createNamespaceInstanceRef(storageKey, nsConfig);
+          return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
         },
 
         async create(
@@ -508,15 +519,23 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
                 `Namespace "${nsConfig.pattern}" has reached maxInstances (${nsConfig.maxInstances})`
               );
             }
-            // Evict one instance
-            await evictInstance(nsConfig, resources, eviction, lruAccess);
+            // Evict one instance — persists the deletion
+            await evictInstance(nsConfig, resources, eviction, lruAccess, options.persistResources, hookCtx);
           }
 
-          // Create the instance
-          const defaultState = nsConfig.stateSchema.safeParse(initial ?? {});
-          const state = defaultState.success && isJsonObject(defaultState.data)
-            ? asJsonObject(defaultState.data)
-            : {};
+          // Validate state via schema — throw on invalid input, never silent fallback
+          const parseResult = nsConfig.stateSchema.safeParse(initial ?? {});
+          if (!parseResult.success) {
+            const issue = parseResult.error.issues[0];
+            const issuePath = issue === undefined ? "" : issue.path.join(".");
+            const issueMessage = issue === undefined ? "schema validation failed" : issue.message;
+            const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
+            throw new Error(
+              `Namespace "${nsConfig.pattern}" create("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
+            );
+          }
+
+          const state = isJsonObject(parseResult.data) ? asJsonObject(parseResult.data) : {};
 
           const nextResources = { ...resources, [storageKey]: state };
           await options.persistResources(nextResources);
@@ -524,10 +543,10 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           lruAccess.set(storageKey, Date.now());
 
           if (nsConfig.onInstanceCreated) {
-            await nsConfig.onInstanceCreated(storageKey, state, undefined);
+            await nsConfig.onInstanceCreated(storageKey, state, hookCtx);
           }
 
-          return createNamespaceInstanceRef(storageKey, nsConfig);
+          return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
         },
 
         async getOrCreate(
@@ -538,7 +557,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           const resources = options.readResources();
           if (storageKey in resources) {
             lruAccess.set(storageKey, Date.now());
-            return createNamespaceInstanceRef(storageKey, nsConfig);
+            return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
           }
           return nsHandle.create(key, initial);
         },
@@ -554,7 +573,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
               const fullPrefix = nsPrefix.length > 0 ? `${nsPrefix}/${prefix}` : prefix;
               if (!storageKey.startsWith(fullPrefix)) continue;
             }
-            instances.push(createNamespaceInstanceRef(storageKey, nsConfig));
+            instances.push(createNamespaceInstanceRef(storageKey, nsConfig, hookCtx));
           }
 
           return instances;
@@ -564,14 +583,15 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           const storageKey = resolveNamespaceKey(nsConfig.pattern, key);
           const resources = options.readResources();
           if (!(storageKey in resources)) {
-            throw new Error(`Resource instance "${storageKey}" not found`);
+            // Idempotent — no-op if instance doesn't exist
+            return;
           }
 
           await deleteNamespaceInstance(storageKey);
           lruAccess.delete(storageKey);
 
           if (nsConfig.onInstanceDeleted) {
-            await nsConfig.onInstanceDeleted(storageKey, undefined);
+            await nsConfig.onInstanceDeleted(storageKey, hookCtx);
           }
         },
 
@@ -674,7 +694,9 @@ async function evictInstance(
   nsConfig: ResourceNamespaceConfig,
   resources: Record<string, JsonObject>,
   policy: "lru" | "oldest",
-  lruAccess: Map<string, number>
+  lruAccess: Map<string, number>,
+  persistResources: (next: Record<string, JsonObject>) => Promise<void>,
+  hookCtx: NamespaceHookContext
 ): Promise<void> {
   const keys = Object.keys(resources).filter((k) =>
     matchesPattern(nsConfig.pattern, k)
@@ -695,11 +717,13 @@ async function evictInstance(
     evictKey = keys[0]!;
   }
 
+  // Remove from in-memory map and persist the deletion
   delete resources[evictKey];
+  await persistResources({ ...resources });
   lruAccess.delete(evictKey);
 
   if (nsConfig.onInstanceDeleted) {
-    await nsConfig.onInstanceDeleted(evictKey, undefined);
+    await nsConfig.onInstanceDeleted(evictKey, hookCtx);
   }
 }
 

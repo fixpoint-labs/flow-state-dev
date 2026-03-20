@@ -3,6 +3,7 @@ export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./typ
 export type {
   DefinedResourceNamespace,
   EvictionPolicy,
+  NamespaceHookContext,
   ResourceNamespaceConfig,
   ResourceNamespaceHandle,
   ResourceNamespaceRef,

@@ -84,6 +84,7 @@ export type {
 export type {
   DefinedResourceNamespace,
   EvictionPolicy,
+  NamespaceHookContext,
   ResourceNamespaceConfig,
   ResourceNamespaceHandle,
   ResourceNamespaceRef,

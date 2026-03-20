@@ -10,7 +10,7 @@ import {
   isParameterizedPattern,
   isDeepWildcard,
   isSingleWildcard,
-} from "../src/types/resource-namespace";
+} from "../src/types/namespace-patterns";
 import { defineResource } from "../src/types/resource";
 import { handler, sequencer } from "../src";
 import { extractDeclaredResources, mergeDeclaredResources } from "../src/blocks/internal/build-block";
@@ -269,6 +269,11 @@ describe("resolveNamespaceKey", () => {
   it("throws on object key for non-parameterized pattern", () => {
     expect(() => resolveNamespaceKey("files/*", { key: "test" }))
       .toThrow("no parameters");
+  });
+
+  it("throws on string key for parameterized pattern", () => {
+    expect(() => resolveNamespaceKey("[topic]/observations", "react"))
+      .toThrow("requires an object key");
   });
 });
 
