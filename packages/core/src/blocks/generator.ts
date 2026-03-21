@@ -31,8 +31,9 @@ type ResolvableString<TInput, TCtx = BlockContext> =
   string | ((input: TInput, ctx: TCtx) => MaybePromise<string>);
 type ResolvableModel<TInput, TCtx = BlockContext> =
   | string
+  | string[]
   | GeneratorModel
-  | ((input: TInput, ctx: TCtx) => MaybePromise<string | GeneratorModel>);
+  | ((input: TInput, ctx: TCtx) => MaybePromise<string | string[] | GeneratorModel>);
 
 export type GeneratorSlotReference<TInput = unknown, TCtx = BlockContext> = (
   input: TInput,
@@ -255,6 +256,28 @@ async function resolveModel<TInput, TCtx extends BlockContext>(
     };
   }
 
+  if (Array.isArray(resolved)) {
+    if (resolved.length === 0) {
+      throw new Error(`Generator "${blockName}" model array cannot be empty`);
+    }
+    const { createFallbackModel } = await import("../models/fallbackModel");
+    const { parseModelString } = await import("../models/providerDetection");
+    const entries = resolved.map((modelStr) => {
+      const parsed = parseModelString(modelStr);
+      return {
+        modelId: modelStr,
+        providerName: parsed.provider ?? "unknown",
+        model: ctx.resolveModel(modelStr, blockName),
+      };
+    });
+    const fallback = createFallbackModel({
+      groupName: `${blockName}-fallback`,
+      models: entries,
+      retryPolicy: { maxAttemptsPerModel: 2, baseDelayMs: 1000, maxDelayMs: 10000 },
+    });
+    return { modelId: resolved[0], model: fallback };
+  }
+
   if (isGeneratorModel(resolved)) {
     return {
       modelId: resolved.modelId,
@@ -263,7 +286,7 @@ async function resolveModel<TInput, TCtx extends BlockContext>(
   }
 
   throw new Error(
-    `Generator "${blockName}" model must resolve to a model id string or GeneratorModel instance`
+    `Generator "${blockName}" model must resolve to a model id string, string array, or GeneratorModel instance`
   );
 }
 

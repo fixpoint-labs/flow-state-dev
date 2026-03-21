@@ -65,25 +65,20 @@ All under `/api/flows/`. Add more flows by registering them in the same registry
 
 ## Model resolution
 
-Generators specify a model ID string (e.g. `"gpt-5-mini"`). At runtime, the server resolves that to an actual AI SDK model. You need a model resolver.
+Generators specify a model string (e.g. `"openai/gpt-5.4-mini"`). At runtime, the server resolves that to an actual AI SDK model. You need a model resolver.
 
-**Default:** The framework can use the Vercel AI Gateway. Set `AI_GATEWAY_API_KEY` or use Vercel OIDC.
-
-**Custom resolver with OpenAI:**
+**Zero-config:** Auto-detects providers from environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.):
 
 ```ts
-import { createAiSdkModelResolver } from "@flow-state-dev/server";
-import { openai } from "@ai-sdk/openai";
+import { createModelResolver } from "@flow-state-dev/core/models";
 
 const router = createFlowApiRouter({
   registry,
-  modelResolver: createAiSdkModelResolver((modelId) => {
-    return openai(modelId);
-  }),
+  modelResolver: createModelResolver(),
 });
 ```
 
-Install the provider: `pnpm add @ai-sdk/openai`. For Anthropic: `pnpm add @ai-sdk/anthropic` and use `anthropic(modelId)`.
+Model strings use slash format: `"openai/gpt-5.4-mini"`, `"anthropic/claude-sonnet-4-6"`. For gateway routing: `"vercel/openai/gpt-5.4"`.
 
 ---
 

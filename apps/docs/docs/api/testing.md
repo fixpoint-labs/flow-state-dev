@@ -77,7 +77,7 @@ const result = await testFlow({
     "chat-gen": { output: "Hi!" },
   },
   models: {
-    "gpt-5-mini": { output: "Fallback" },
+    "openai/gpt-5.4-mini": { output: "Fallback" },
   },
   unmockedGeneratorPolicy: "error",  // "error" | "passthrough"
 });
@@ -110,7 +110,7 @@ import { createMockModelResolver } from "@flow-state-dev/testing";
 
 const resolver = createMockModelResolver({
   models: {
-    "gpt-5-mini": { output: "Mock response" },
+    "openai/gpt-5.4-mini": { output: "Mock response" },
   },
 });
 ```
@@ -363,7 +363,7 @@ const report = await evalBlock(myGenerator, {
         "Response does not hallucinate facts not present in the context",
         "Tone is professional and concise",
       ],
-      model: "claude-haiku",     // optional: cheaper model for grading
+      model: "anthropic/claude-haiku",     // optional: cheaper model for grading
       scoreMapping: "mean",      // "mean" | "min" | { strategy: "weighted", weights }
       threshold: 0.7,            // pass/fail cutoff (default: 0.5)
     }),

@@ -7,7 +7,7 @@ import type {
   SpeechModel,
   SpeechResolver,
   SpeechResult
-} from "@flow-state-dev/core/types";
+} from "../types";
 
 export type ResolveAiSdkSpeechModel = (modelId: string) => unknown;
 

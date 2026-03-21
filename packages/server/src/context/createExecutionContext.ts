@@ -43,7 +43,7 @@ import type {
   SessionRecord,
   UserRecord
 } from "../stores/types";
-import { createDefaultModelResolver } from "../models/createDefaultModelResolver";
+import { createModelResolver } from "@flow-state-dev/core/models";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { cloneValue } from "../utils/clone";
@@ -1495,7 +1495,7 @@ export async function createExecutionContext<
 
 
 
-  const modelResolver = options.modelResolver ?? createDefaultModelResolver();
+  const modelResolver = options.modelResolver ?? createModelResolver();
   const tokenCounter: TokenCounter = flow.tokenCounter ?? {
     async count(text: string): Promise<number> {
       return Math.ceil(text.length / 4);
