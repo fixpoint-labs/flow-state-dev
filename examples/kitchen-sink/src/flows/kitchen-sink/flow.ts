@@ -49,7 +49,7 @@ import {
   artifactResources,
 } from "./schemas";
 
-const MODEL_ID = "openai/gpt-5-mini";
+const MODEL_ID = "openai/gpt-5.4-mini";
 
 // Unified memory system: working memory + user-scoped episodic + semantic memory.
 // Provides a single capture pipeline, cross-store recall, and context formatter.
