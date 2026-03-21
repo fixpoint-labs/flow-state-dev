@@ -46,7 +46,7 @@ function makeEpisode(overrides: Partial<Episode> & { id: string }): Episode {
     occurredAtTurn: 0,
     encodedAt: new Date().toISOString(),
     significance: 0.7,
-    category: 'fact',
+    category: 'identity',
     context: { sessionId: 'test-session' },
     consolidated: false,
     ...overrides,
@@ -80,7 +80,7 @@ describe('memory/episodicMemory', () => {
         occurredAtTurn: 0,
         encodedAt: '2026-01-01T00:00:00.000Z',
         significance: 0.5,
-        category: 'fact',
+        category: 'identity',
         context: { sessionId: 'sess-1' },
       }
       const result = episodeSchema.safeParse(episode)
@@ -97,7 +97,7 @@ describe('memory/episodicMemory', () => {
         occurredAtTurn: 0,
         encodedAt: '2026-01-01T00:00:00.000Z',
         significance: 0.5,
-        category: 'fact',
+        category: 'identity',
         context: { sessionId: 'sess-1', precedingTopic: 'onboarding' },
         consolidated: false,
       }
@@ -125,7 +125,7 @@ describe('memory/episodicMemory', () => {
         occurredAtTurn: 0,
         encodedAt: '2026-01-01T00:00:00.000Z',
         significance: 1.5,
-        category: 'fact',
+        category: 'identity',
         context: { sessionId: 'sess-1' },
         consolidated: false,
       }
@@ -175,7 +175,7 @@ describe('memory/episodicMemory', () => {
         content: 'First',
         occurredAtTurn: 1,
         significance: 0.7,
-        category: 'fact',
+        category: 'identity',
         context: { sessionId: 'sess-1' },
       }, 200)
 
@@ -204,7 +204,7 @@ describe('memory/episodicMemory', () => {
         content: 'New episode',
         occurredAtTurn: 10,
         significance: 0.8,
-        category: 'fact',
+        category: 'identity',
         context: { sessionId: 'sess-1' },
       }, 2)
 
@@ -227,7 +227,7 @@ describe('memory/episodicMemory', () => {
         content: 'New episode',
         occurredAtTurn: 10,
         significance: 0.8,
-        category: 'fact',
+        category: 'identity',
         context: { sessionId: 'sess-1' },
       }, 2)
 
@@ -247,7 +247,7 @@ describe('memory/episodicMemory', () => {
         content: 'Replacement',
         occurredAtTurn: 5,
         significance: 0.9,
-        category: 'fact',
+        category: 'identity',
         context: { sessionId: 'sess-1' },
       }, 1)
 

@@ -14,7 +14,7 @@ export const episodeSchema = z.object({
   /** How significant this episode is. Range [0, 1]. */
   significance: z.number().min(0).max(1),
   /** Semantic category of this episode. */
-  category: z.enum(['fact', 'event', 'preference', 'task', 'relationship']),
+  category: z.enum(['identity', 'event', 'preference', 'task', 'relationship', 'profession', 'belief', 'attribute', 'pattern']),
   /** Contextual metadata about when this episode occurred. */
   context: z.object({
     sessionId: z.string(),

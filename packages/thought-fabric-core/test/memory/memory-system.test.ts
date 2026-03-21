@@ -144,9 +144,10 @@ function createMockSemRef(
 
 function makeFact(overrides: Partial<SemanticFact> & { id: string }): SemanticFact {
   return {
+    subject: 'user',
     content: `fact ${overrides.id}`,
     confidence: 0.7,
-    category: 'fact',
+    category: 'identity',
     sourceEpisodeIds: [],
     extractedAt: new Date().toISOString(),
     reinforcementCount: 1,
@@ -160,7 +161,7 @@ function makeEpisode(overrides: Partial<Episode> & { id: string }): Episode {
     occurredAtTurn: 0,
     encodedAt: new Date().toISOString(),
     significance: 0.7,
-    category: 'fact',
+    category: 'identity',
     context: { sessionId: 'test-session' },
     consolidated: false,
     ...overrides,
@@ -397,7 +398,7 @@ describe('memory/memorySystem', () => {
     it('returns working memory items sorted by salience', () => {
       const wmRef = createMockWmRef({
         entries: [
-          { id: 'e1', content: 'Low priority', salience: 0.3, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.3, category: 'fact', durability: 'session' },
+          { id: 'e1', content: 'Low priority', salience: 0.3, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.3, category: 'identity', durability: 'session' },
           { id: 'e2', content: 'High priority', salience: 0.9, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.9, category: 'task', durability: 'session' },
         ],
       })
@@ -496,7 +497,7 @@ describe('memory/memorySystem', () => {
     it('returns categorized sections when memories exist', () => {
       const wmRef = createMockWmRef({
         entries: [
-          { id: 'e1', content: 'User name is Jake', salience: 0.9, pinned: true, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.9, category: 'fact', durability: 'permanent' },
+          { id: 'e1', content: 'User name is Jake', salience: 0.9, pinned: true, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.9, category: 'identity', durability: 'permanent' },
           { id: 'e2', content: 'Debugging React crash', salience: 0.7, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.7, category: 'task', durability: 'session' },
           { id: 'e3', content: 'Prefers dark mode', salience: 0.6, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.6, category: 'preference', durability: 'persistent' },
         ],
@@ -508,7 +509,8 @@ describe('memory/memorySystem', () => {
       }
 
       const result = mem.contextFormatter(undefined, ctx)
-      expect(result).toContain('Known facts:')
+      // Working memory items go into session sections (not semantic "Known facts")
+      expect(result).toContain('Session context:')
       expect(result).toContain('- User name is Jake')
       expect(result).toContain('Current focus:')
       expect(result).toContain('- Debugging React crash')
@@ -530,7 +532,7 @@ describe('memory/memorySystem', () => {
     it('omits empty sections', () => {
       const wmRef = createMockWmRef({
         entries: [
-          { id: 'e1', content: 'User name is Jake', salience: 0.9, pinned: true, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.9, category: 'fact', durability: 'permanent' },
+          { id: 'e1', content: 'User name is Jake', salience: 0.9, pinned: true, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.9, category: 'identity', durability: 'permanent' },
         ],
       })
 
@@ -540,7 +542,7 @@ describe('memory/memorySystem', () => {
       }
 
       const result = mem.contextFormatter(undefined, ctx)
-      expect(result).toContain('Known facts:')
+      expect(result).toContain('Session context:')
       expect(result).not.toContain('Current focus:')
       expect(result).not.toContain('User preferences:')
     })
@@ -604,7 +606,7 @@ describe('memory/memorySystem', () => {
       const sysRef = createMockSysRef()
 
       await runReflect(wmRef, sysRef, [
-        { content: 'Minor fact', importance: 0.6, durability: 'session', category: 'fact' },
+        { content: 'Minor fact', importance: 0.6, durability: 'session', category: 'identity' },
       ])
 
       expect(wmRef.state.entries[0].pinned).toBe(false)
@@ -621,7 +623,7 @@ describe('memory/memorySystem', () => {
       }
 
       await runReflect(wmRef, sysRef, [
-        { content: 'User name is Jake', importance: 0.9, durability: 'permanent', category: 'fact' },
+        { content: 'User name is Jake', importance: 0.9, durability: 'permanent', category: 'identity' },
       ], configWithEpisodic, epRef)
 
       expect(epRef.state.episodes).toHaveLength(1)
@@ -657,7 +659,7 @@ describe('memory/memorySystem', () => {
       }
 
       await runReflect(wmRef, sysRef, [
-        { content: 'Moderate fact', importance: 0.7, durability: 'persistent', category: 'fact' },
+        { content: 'Moderate fact', importance: 0.7, durability: 'persistent', category: 'identity' },
       ], configWithEpisodic, epRef)
 
       expect(epRef.state.episodes).toHaveLength(0)
@@ -726,7 +728,7 @@ describe('memory/memorySystem', () => {
       const wmRef = createMockWmRef({
         currentTurn: 0,
         entries: [
-          { id: 'e1', content: 'test', salience: 1.0, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 1.0, durability: 'session', category: 'fact' },
+          { id: 'e1', content: 'test', salience: 1.0, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 1.0, durability: 'session', category: 'identity' },
         ],
       })
       const sysRef = createMockSysRef()
@@ -1260,7 +1262,7 @@ describe('memory/memorySystem', () => {
         facts: [{
           content: 'User works at Stripe',
           confidence: 0.8,
-          category: 'fact',
+          category: 'identity',
           sourceEpisodeIds: ['ep1'],
           action: 'new',
           targetFactId: '',
@@ -1284,7 +1286,7 @@ describe('memory/memorySystem', () => {
         facts: [{
           content: '',
           confidence: 0.8,
-          category: 'fact',
+          category: 'identity',
           sourceEpisodeIds: ['ep5'],
           action: 'reinforce',
           targetFactId: 'sf_target',
@@ -1308,7 +1310,7 @@ describe('memory/memorySystem', () => {
         facts: [{
           content: 'User works at Stripe',
           confidence: 0.85,
-          category: 'fact',
+          category: 'identity',
           sourceEpisodeIds: ['ep5'],
           action: 'update',
           targetFactId: 'sf_target',
@@ -1333,7 +1335,7 @@ describe('memory/memorySystem', () => {
         facts: [{
           content: '',
           confidence: 0,
-          category: 'fact',
+          category: 'identity',
           sourceEpisodeIds: ['ep5'],
           action: 'invalidate',
           targetFactId: 'sf_target',
@@ -1354,7 +1356,7 @@ describe('memory/memorySystem', () => {
         facts: [{
           content: '',
           confidence: 0.8,
-          category: 'fact',
+          category: 'identity',
           sourceEpisodeIds: [],
           action: 'reinforce',
           targetFactId: 'sf_nonexistent',
@@ -1379,7 +1381,7 @@ describe('memory/memorySystem', () => {
         facts: [{
           content: 'New fact',
           confidence: 0.7,
-          category: 'fact',
+          category: 'identity',
           sourceEpisodeIds: ['ep1', 'ep2'],
           action: 'new',
           targetFactId: '',
@@ -1404,7 +1406,7 @@ describe('memory/memorySystem', () => {
         facts: [{
           content: 'New fact',
           confidence: 0.7,
-          category: 'fact',
+          category: 'identity',
           sourceEpisodeIds: [],
           action: 'new',
           targetFactId: '',
@@ -1426,7 +1428,7 @@ describe('memory/memorySystem', () => {
         facts: [{
           content: 'Fact',
           confidence: 0.7,
-          category: 'fact',
+          category: 'identity',
           sourceEpisodeIds: [],
           action: 'new',
           targetFactId: '',
@@ -1486,35 +1488,36 @@ describe('memory/memorySystem', () => {
       return block.run({ items } as any, ctx)
     }
 
-    it('routes permanent+fact items directly to semantic store', async () => {
+    it('routes permanent+identity items directly to semantic store', async () => {
       const wmRef = createMockWmRef()
       const sysRef = createMockSysRef()
       const epRef = createMockEpRef()
       const semRef = createMockSemRef()
 
       await runReflectWithSemantic(wmRef, sysRef, epRef, semRef, [
-        { content: 'User name is Jake', importance: 0.9, durability: 'permanent', category: 'fact' },
+        { content: 'User name is Jake', importance: 0.9, durability: 'permanent', category: 'identity' },
       ])
 
       expect(semRef.state.facts).toHaveLength(1)
       expect(semRef.state.facts[0].content).toBe('User name is Jake')
       expect(semRef.state.facts[0].confidence).toBe(0.9) // importance used as confidence
-      expect(semRef.state.facts[0].category).toBe('fact')
+      expect(semRef.state.facts[0].category).toBe('identity')
+      expect(semRef.state.facts[0].subject).toBe('user')
     })
 
-    it('routes persistent+fact items directly to semantic store', async () => {
+    it('routes persistent+identity items directly to semantic store', async () => {
       const wmRef = createMockWmRef()
       const sysRef = createMockSysRef()
       const epRef = createMockEpRef()
       const semRef = createMockSemRef()
 
       await runReflectWithSemantic(wmRef, sysRef, epRef, semRef, [
-        { content: 'Some persistent fact', importance: 0.8, durability: 'persistent', category: 'fact' },
+        { content: 'Some persistent fact', importance: 0.8, durability: 'persistent', category: 'identity' },
       ])
 
       expect(semRef.state.facts).toHaveLength(1)
       expect(semRef.state.facts[0].content).toBe('Some persistent fact')
-      expect(semRef.state.facts[0].category).toBe('fact')
+      expect(semRef.state.facts[0].category).toBe('identity')
     })
 
     it('routes permanent+preference to semantic store', async () => {
@@ -1567,7 +1570,7 @@ describe('memory/memorySystem', () => {
       })
 
       await runReflectWithSemantic(wmRef, sysRef, epRef, semRef, [
-        { content: 'User was born in May (specifically on the 8th)', importance: 0.78, durability: 'permanent', category: 'fact' },
+        { content: 'User was born in May (specifically on the 8th)', importance: 0.78, durability: 'permanent', category: 'identity' },
       ])
 
       // Should update existing fact, not create a duplicate
@@ -1586,7 +1589,7 @@ describe('memory/memorySystem', () => {
       })
 
       await runReflectWithSemantic(wmRef, sysRef, epRef, semRef, [
-        { content: 'User works at Stripe', importance: 0.8, durability: 'permanent', category: 'fact' },
+        { content: 'User works at Stripe', importance: 0.8, durability: 'permanent', category: 'identity' },
       ])
 
       // Should reinforce, not duplicate
@@ -1618,7 +1621,7 @@ describe('memory/memorySystem', () => {
       const semRef = createMockSemRef()
 
       await runReflectWithSemantic(wmRef, sysRef, epRef, semRef, [
-        { content: 'User name is Jake', importance: 0.9, durability: 'permanent', category: 'fact' },
+        { content: 'User name is Jake', importance: 0.9, durability: 'permanent', category: 'identity' },
       ])
 
       // All three stores receive the item
@@ -1706,7 +1709,7 @@ describe('memory/memorySystem', () => {
     it('semantic dedup wins over working memory', () => {
       const wmRef = createMockWmRef({
         entries: [
-          { id: 'wm1', content: 'User works at Google', salience: 0.8, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.8, category: 'fact', durability: 'persistent' },
+          { id: 'wm1', content: 'User works at Google', salience: 0.8, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.8, category: 'identity', durability: 'persistent' },
         ],
       })
       const semRef = createMockSemRef({
@@ -1754,10 +1757,10 @@ describe('memory/memorySystem', () => {
   // ---------------------------------------------------------------------------
 
   describe('contextFormatter() (with semantic)', () => {
-    it('includes semantic facts in Known facts section', () => {
+    it('includes semantic facts in Known facts section (single subject)', () => {
       const wmRef = createMockWmRef()
       const semRef = createMockSemRef({
-        facts: [makeFact({ id: 'sf_1', content: 'User works at Stripe', category: 'fact', confidence: 0.8 })],
+        facts: [makeFact({ id: 'sf_1', subject: 'user', content: 'Works at Stripe', category: 'profession', confidence: 0.8 })],
       })
 
       const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
@@ -1768,13 +1771,16 @@ describe('memory/memorySystem', () => {
 
       const result = mem.contextFormatter(undefined, ctx)
       expect(result).toContain('Known facts:')
-      expect(result).toContain('- User works at Stripe')
+      expect(result).toContain('[profession] Works at Stripe')
     })
 
-    it('includes pattern-category facts in Patterns section', () => {
+    it('groups by subject when multiple subjects exist', () => {
       const wmRef = createMockWmRef()
       const semRef = createMockSemRef({
-        facts: [makeFact({ id: 'sf_1', content: 'User frequently debugs React components', category: 'pattern', confidence: 0.7 })],
+        facts: [
+          makeFact({ id: 'sf_1', subject: 'user', content: 'Name is Jake', category: 'identity', confidence: 0.9 }),
+          makeFact({ id: 'sf_2', subject: 'jennifer', content: 'Is the spouse', category: 'relationship', confidence: 0.8 }),
+        ],
       })
 
       const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
@@ -1784,8 +1790,26 @@ describe('memory/memorySystem', () => {
       }
 
       const result = mem.contextFormatter(undefined, ctx)
-      expect(result).toContain('Patterns:')
-      expect(result).toContain('- User frequently debugs React components')
+      expect(result).toContain('About user:')
+      expect(result).toContain('[identity] Name is Jake')
+      expect(result).toContain('About jennifer:')
+      expect(result).toContain('[relationship] Is the spouse')
+    })
+
+    it('includes category prefix for semantic facts', () => {
+      const wmRef = createMockWmRef()
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_1', subject: 'user', content: 'Frequently debugs React components', category: 'pattern', confidence: 0.7 })],
+      })
+
+      const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
+      const ctx = {
+        session: { resources: createMockResources({ workingMemory: wmRef }) },
+        user: { resources: createMockResources({ semanticMemory: semRef, episodicMemory: createMockEpRef() }) },
+      }
+
+      const result = mem.contextFormatter(undefined, ctx)
+      expect(result).toContain('[pattern] Frequently debugs React components')
     })
   })
 

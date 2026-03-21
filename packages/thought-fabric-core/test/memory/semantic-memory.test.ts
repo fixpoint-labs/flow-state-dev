@@ -44,9 +44,10 @@ function createMockSemRef(
 
 function makeFact(overrides: Partial<SemanticFact> & { id: string }): SemanticFact {
   return {
+    subject: 'user',
     content: `fact ${overrides.id}`,
     confidence: 0.7,
-    category: 'fact',
+    category: 'identity',
     sourceEpisodeIds: [],
     extractedAt: new Date().toISOString(),
     reinforcementCount: 1,
@@ -63,9 +64,10 @@ describe('memory/semanticMemory', () => {
     it('semanticFactSchema validates a complete fact', () => {
       const fact = {
         id: 'sf1',
+        subject: 'user',
         content: 'User works at Stripe',
         confidence: 0.8,
-        category: 'fact',
+        category: 'profession',
         sourceEpisodeIds: ['ep1', 'ep2'],
         extractedAt: '2026-01-01T00:00:00.000Z',
         reinforcementCount: 2,
@@ -73,12 +75,28 @@ describe('memory/semanticMemory', () => {
       expect(semanticFactSchema.safeParse(fact).success).toBe(true)
     })
 
+    it('semanticFactSchema defaults subject to user', () => {
+      const fact = {
+        id: 'sf1',
+        content: 'test',
+        confidence: 0.5,
+        category: 'identity',
+        sourceEpisodeIds: [],
+        extractedAt: '2026-01-01T00:00:00.000Z',
+      }
+      const result = semanticFactSchema.safeParse(fact)
+      expect(result.success).toBe(true)
+      if (result.success) {
+        expect(result.data.subject).toBe('user')
+      }
+    })
+
     it('semanticFactSchema defaults reinforcementCount to 1', () => {
       const fact = {
         id: 'sf1',
         content: 'test',
         confidence: 0.5,
-        category: 'fact',
+        category: 'identity',
         sourceEpisodeIds: [],
         extractedAt: '2026-01-01T00:00:00.000Z',
       }
@@ -94,7 +112,7 @@ describe('memory/semanticMemory', () => {
         id: 'sf1',
         content: 'test',
         confidence: 0.5,
-        category: 'fact',
+        category: 'identity',
         sourceEpisodeIds: [],
         extractedAt: '2026-01-01T00:00:00.000Z',
         lastReinforced: '2026-01-02T00:00:00.000Z',
@@ -117,7 +135,7 @@ describe('memory/semanticMemory', () => {
     })
 
     it('semanticFactSchema accepts all valid categories', () => {
-      for (const cat of ['fact', 'preference', 'relationship', 'pattern']) {
+      for (const cat of ['identity', 'relationship', 'preference', 'belief', 'profession', 'attribute', 'pattern']) {
         const fact = {
           id: 'sf1',
           content: 'test',
@@ -131,12 +149,25 @@ describe('memory/semanticMemory', () => {
       }
     })
 
+    it('semanticFactSchema rejects old "fact" category', () => {
+      const fact = {
+        id: 'sf1',
+        content: 'test',
+        confidence: 0.5,
+        category: 'fact',
+        sourceEpisodeIds: [],
+        extractedAt: '2026-01-01T00:00:00.000Z',
+        reinforcementCount: 1,
+      }
+      expect(semanticFactSchema.safeParse(fact).success).toBe(false)
+    })
+
     it('semanticFactSchema rejects out-of-range confidence', () => {
       const fact = {
         id: 'sf1',
         content: 'test',
         confidence: 1.5,
-        category: 'fact',
+        category: 'identity',
         sourceEpisodeIds: [],
         extractedAt: '2026-01-01T00:00:00.000Z',
         reinforcementCount: 1,
@@ -170,18 +201,32 @@ describe('memory/semanticMemory', () => {
       const result = await addFact(ref, {
         content: 'User works at Stripe',
         confidence: 0.8,
-        category: 'fact',
+        category: 'profession',
         sourceEpisodeIds: ['ep1'],
       })
 
       expect(result.id).toMatch(/^sf_[A-Za-z0-9]{6}$/)
       expect(result.content).toBe('User works at Stripe')
       expect(result.confidence).toBe(0.8)
-      expect(result.category).toBe('fact')
+      expect(result.category).toBe('profession')
+      expect(result.subject).toBe('user')
       expect(result.reinforcementCount).toBe(1)
       expect(result.extractedAt).toBeDefined()
       expect(ref.state.facts).toHaveLength(1)
       expect(ref.state.totalExtracted).toBe(1)
+    })
+
+    it('accepts custom subject', async () => {
+      const ref = createMockSemRef()
+      const result = await addFact(ref, {
+        subject: 'jennifer',
+        content: 'Is the user\'s wife',
+        confidence: 0.9,
+        category: 'relationship',
+        sourceEpisodeIds: [],
+      })
+
+      expect(result.subject).toBe('jennifer')
     })
 
     it('increments totalExtracted on each add', async () => {
@@ -190,7 +235,7 @@ describe('memory/semanticMemory', () => {
       await addFact(ref, {
         content: 'First',
         confidence: 0.7,
-        category: 'fact',
+        category: 'identity',
         sourceEpisodeIds: [],
       })
 
@@ -387,6 +432,35 @@ describe('memory/semanticMemory', () => {
     it('returns empty array for empty state', () => {
       const ref = createMockSemRef()
       expect(allFacts(ref)).toEqual([])
+    })
+
+    it('filters by subject when provided', () => {
+      const ref = createMockSemRef({
+        facts: [
+          makeFact({ id: 'sf_1', subject: 'user', content: 'Name is Jake' }),
+          makeFact({ id: 'sf_2', subject: 'jennifer', content: 'Is the spouse' }),
+          makeFact({ id: 'sf_3', subject: 'user', content: 'Works at Fixpoint Labs' }),
+        ],
+      })
+
+      const userFacts = allFacts(ref, 'user')
+      expect(userFacts).toHaveLength(2)
+      expect(userFacts.every((f) => f.subject === 'user')).toBe(true)
+
+      const jenniferFacts = allFacts(ref, 'jennifer')
+      expect(jenniferFacts).toHaveLength(1)
+      expect(jenniferFacts[0].content).toBe('Is the spouse')
+    })
+
+    it('returns all facts when subject not provided', () => {
+      const ref = createMockSemRef({
+        facts: [
+          makeFact({ id: 'sf_1', subject: 'user' }),
+          makeFact({ id: 'sf_2', subject: 'jennifer' }),
+        ],
+      })
+
+      expect(allFacts(ref)).toHaveLength(2)
     })
   })
 

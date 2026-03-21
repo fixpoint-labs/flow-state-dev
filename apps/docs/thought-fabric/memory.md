@@ -60,7 +60,7 @@ Each tier serves a different purpose:
 | **Episodic** | User or Project | Persistent | Significant experiences: facts, events, preferences worth remembering across sessions |
 | **Semantic** | User or Project | Stable | Distilled knowledge: patterns, preferences, and facts extracted from repeated episodic evidence |
 
-Information flows upward. A user message enters as working memory. If the observer classifies it as `persistent` or `permanent`, it also goes to episodic memory. If it's a stable category (fact, preference, or relationship) with persistent/permanent durability, it goes directly to semantic memory too. Over time, the consolidation pipeline reviews unconsolidated episodes and distills them into semantic facts via an LLM call.
+Information flows upward. A user message enters as working memory. If the observer classifies it as `persistent` or `permanent`, it also goes to episodic memory. If it's a stable category (any semantic category — identity, profession, preference, belief, relationship, attribute, or pattern) with persistent/permanent durability, it goes directly to semantic memory too, tagged with a `subject` identifying who the fact is about. Over time, the consolidation pipeline reviews unconsolidated episodes and distills them into semantic facts via an LLM call.
 
 Working memory is bounded and ephemeral. Episodic memory is an append-only log. Semantic memory is a curated knowledge base where facts get reinforced, updated, or invalidated as new evidence arrives.
 
@@ -117,10 +117,12 @@ Semantic requires episodic. You can't have semantic without episodic, because co
 ```ts
 // Each observation has:
 {
+  subject: string        // Who this is about ('user', 'jennifer', etc.)
   content: string        // What to remember
   importance: number     // 0–1 score
   durability: 'transient' | 'session' | 'persistent' | 'permanent'
-  category: 'fact' | 'event' | 'preference' | 'task' | 'relationship'
+  category: 'identity' | 'event' | 'preference' | 'task' | 'relationship'
+           | 'profession' | 'belief' | 'attribute' | 'pattern'
   replaces: string       // ID of existing entry this supersedes, or ''
 }
 ```
@@ -130,7 +132,7 @@ The observer checks existing working memory for contradictions. If a user says "
 **Reflect** is a handler that routes observations to the right stores:
 - All items → working memory (with auto-eviction at capacity)
 - `persistent`/`permanent` items above the significance threshold → episodic memory
-- `persistent`/`permanent` items with stable categories (`fact`, `preference`, `relationship`) → semantic memory directly
+- `persistent`/`permanent` items with stable categories (all semantic categories — everything except `event` and `task`) → semantic memory directly, scoped by subject
 
 **Tick** advances the working memory decay clock and recomputes salience scores.
 
@@ -186,22 +188,32 @@ const chat = generator({
 })
 ```
 
-The formatter calls `recall()` internally and organizes memories into sections:
+The formatter calls `recall()` internally and organizes memories into sections. Semantic facts are grouped by subject. When there's only one subject (`user`), it renders as a flat list:
 
 ```
 Known facts:
-- User works at Stripe
-- User prefers TypeScript
+- [profession] Works at Stripe
+- [preference] Prefers TypeScript
 
 Current focus:
 - Working on a REST API migration
-
-User preferences:
-- Prefers concise responses
-- Likes code examples over explanations
 ```
 
-Semantic facts appear first (highest authority), then working memory entries, then recent episodic memories. Duplicates across stores are filtered — if semantic memory has "User works at Stripe," the same entry won't appear again from working memory.
+When multiple subjects exist, they're grouped:
+
+```
+About user:
+- [identity] Name is Jake
+- [profession] Works at Fixpoint Labs
+
+About jennifer:
+- [relationship] Spouse, goes by Moni
+
+Current focus:
+- Working on a REST API migration
+```
+
+Semantic facts appear first (highest authority), then working memory entries, then recent episodic memories. Duplicates across stores are filtered — if semantic memory has "Works at Stripe," the same entry won't appear again from working memory.
 
 For direct access, use `mem.recall(ctx, cue?)`:
 
@@ -230,16 +242,20 @@ Contradiction handling is central. If episodic evidence contradicts an existing 
 ```ts
 // Consolidation output per fact:
 {
+  subject: string        // Who this is about
   content: string
   confidence: number     // 0–1, based on evidence strength
-  category: 'fact' | 'preference' | 'relationship' | 'pattern'
+  category: 'identity' | 'relationship' | 'preference' | 'belief'
+           | 'profession' | 'attribute' | 'pattern'
   action: 'new' | 'reinforce' | 'update' | 'invalidate'
   targetFactId: string   // For reinforce/update/invalidate
   sourceEpisodeIds: string[]
 }
 ```
 
-**Direct extraction vs consolidation:** Not everything waits for consolidation. During the reflect step, items classified as `persistent` or `permanent` with stable categories (`fact`, `preference`, `relationship`) go directly to semantic memory. This means a user saying "My name is Jake" gets stored as a semantic fact immediately, without waiting for the consolidation threshold. Consolidation is for finding patterns across multiple episodes — things no single observation makes obvious.
+The consolidation LLM sees existing facts grouped by subject, making it easier to detect contradictions and reinforcements within an entity's knowledge.
+
+**Direct extraction vs consolidation:** Not everything waits for consolidation. During the reflect step, items classified as `persistent` or `permanent` with stable categories (all semantic categories) go directly to semantic memory, tagged with the observer's `subject` field. This means a user saying "My name is Jake" gets stored as a semantic fact immediately, without waiting for the consolidation threshold. Dedup is subject-scoped: "born in May" about `user` only deduplicates against other `user` facts, not against facts about other entities. Consolidation is for finding patterns across multiple episodes — things no single observation makes obvious.
 
 ## Pruning
 
@@ -375,7 +391,7 @@ Semantic memory is a curated knowledge base of stable facts. Unlike episodic mem
 
 Facts enter semantic memory through two paths:
 
-1. **Direct extraction** (during reflect): Items classified as `persistent`/`permanent` with a stable category (`fact`, `preference`, `relationship`) go straight to semantic memory. No waiting for consolidation.
+1. **Direct extraction** (during reflect): Items classified as `persistent`/`permanent` with a stable category (any semantic category — not `event` or `task`) go straight to semantic memory, tagged with a `subject`. Dedup is subject-scoped. No waiting for consolidation.
 2. **Consolidation** (background): After enough episodic evidence accumulates, an LLM reviews unconsolidated episodes and extracts patterns, reinforces existing facts, or corrects outdated ones.
 
 ### Resource
@@ -404,15 +420,31 @@ const semResource = createSemanticMemoryResource('user')   // or 'project'
 ```ts
 {
   id: string              // Auto-generated
+  subject: string         // Who this is about ('user', 'jennifer', etc.)
   content: string         // The fact itself
   confidence: number      // 0–1, increases with reinforcement
-  category: 'fact' | 'preference' | 'relationship' | 'pattern'
+  category: 'identity' | 'relationship' | 'preference' | 'belief'
+           | 'profession' | 'attribute' | 'pattern'
   sourceEpisodeIds: string[]
+  extractedAt: string     // ISO datetime
+  lastReinforced?: string // ISO datetime
   reinforcementCount: number
-  createdAt: number
-  updatedAt: number
 }
 ```
+
+**Subject conventions:**
+- `'user'` — the primary user (default when omitted)
+- Lowercase first name for other people: `'jennifer'`, `'max'`
+- Lowercase hyphenated name for organizations: `'fixpoint-labs'`
+
+**Categories:**
+- `identity` — who someone is: name, birthdate, location, background
+- `profession` — what someone does: job, company, role, skills
+- `preference` — likes, dislikes, style choices
+- `belief` — opinions, worldviews, values
+- `relationship` — connections to other named entities: spouse, pet, employer
+- `attribute` — properties/characteristics: possessions, abilities, circumstances
+- `pattern` — recurring behaviors
 
 ## Configuration Defaults
 

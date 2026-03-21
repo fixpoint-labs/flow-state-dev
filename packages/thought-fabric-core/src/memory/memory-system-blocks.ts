@@ -61,10 +61,11 @@ export interface MemorySystemBlocksConfig {
 /** Output schema for the unified observer generator. */
 export const unifiedObservationsSchema = z.object({
   items: z.array(z.object({
+    subject: z.string().default('user'),
     content: z.string(),
     importance: z.number().min(0).max(1),
     durability: z.enum(['transient', 'session', 'persistent', 'permanent']),
-    category: z.enum(['fact', 'event', 'preference', 'task', 'relationship']),
+    category: z.enum(['identity', 'event', 'preference', 'task', 'relationship', 'profession', 'belief', 'attribute', 'pattern']),
     replaces: z.string().default(''),
   })),
 })
@@ -74,9 +75,10 @@ export type UnifiedObservations = z.infer<typeof unifiedObservationsSchema>
 /** Output schema for the consolidation generator. */
 export const consolidationOutputSchema = z.object({
   facts: z.array(z.object({
+    subject: z.string().default('user'),
     content: z.string(),
     confidence: z.number().min(0).max(1),
-    category: z.enum(['fact', 'preference', 'relationship', 'pattern']),
+    category: z.enum(['identity', 'relationship', 'preference', 'belief', 'profession', 'attribute', 'pattern']),
     sourceEpisodeIds: z.array(z.string()),
     /** What to do with this fact. */
     action: z.enum(['new', 'reinforce', 'update', 'invalidate']),
@@ -112,14 +114,26 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     'Analyze the conversation items below and extract information worth remembering.',
     '',
     'For each item, classify:',
-    '- content: concise statement of what to remember',
+    '- subject: who or what this is about. Use \'user\' for the primary user. For other people,',
+    '  use their lowercase first name. For organizations, use lowercase hyphenated name.',
+    '  Each fact should be about ONE subject — don\'t cram multiple entities into one fact.',
+    '- content: concise statement of what to remember (about the subject)',
     '- importance: 0-1 (goals/constraints: 0.8-1.0, key facts: 0.5-0.8, context: 0.3-0.5, trivial: 0.1-0.3)',
     '- durability: how long this should persist:',
     '  * transient: only relevant to current turn',
     '  * session: relevant for this session only (e.g., current task, what user asked to do)',
-    '  * persistent: should be remembered across sessions (e.g., user preferences, important facts about the user)',
-    '  * permanent: fundamental facts that never change (e.g., user\'s name, birthday, core identity facts)',
-    '- category: fact | event | preference | task | relationship',
+    '  * persistent: should be remembered across sessions (e.g., user preferences, important facts)',
+    '  * permanent: fundamental facts that never change (e.g., user\'s name, birthday)',
+    '- category:',
+    '  * identity: who someone is — name, birthdate, location, background',
+    '  * profession: what someone does — job, company, role, skills',
+    '  * preference: likes, dislikes, style choices',
+    '  * belief: opinions, worldviews, values',
+    '  * relationship: connections to other named entities — spouse, pet, employer',
+    '  * attribute: properties/characteristics — possessions, abilities, circumstances',
+    '  * pattern: recurring behaviors',
+    '  * event: something that happened (session-only)',
+    '  * task: something the user asked to do (session-only)',
     '- replaces: exact ID of an existing working memory entry this supersedes, or empty string',
     '',
     'Durability guidance:',
@@ -131,6 +145,10 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     '- Relationships the user described → persistent',
     '',
     'Rules:',
+    '- ONE fact per subject. If user says "I\'m Joe and my wife is Jane",',
+    '  that\'s TWO facts: subject=user "Name is Joe" + subject=jane "Is the user\'s wife"',
+    '- Do NOT store negative facts ("X is NOT Y"). If something is not true, update or',
+    '  invalidate the positive form using \'replaces\'. Simply omit if no positive form exists.',
     '- Don\'t duplicate what\'s already in memory',
     '- CRITICAL: Check for contradictions with existing working memory entries.',
     '  When new information contradicts, corrects, or updates an existing memory,',
@@ -353,17 +371,22 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
         // for consolidation to distill clearly stable knowledge like user facts
         // and preferences.
         //
-        // Dedup: check existing facts for high token overlap. If found, update
-        // (new content is more specific) or reinforce (same idea). This prevents
-        // near-duplicate entries like "born in May" + "born in May (8th)".
-        const isStableCategory = item.category === 'fact' || item.category === 'preference' || item.category === 'relationship'
+        // Stable categories = all semantic categories. Session-only categories
+        // (event, task) skip semantic — they belong in working/episodic only.
+        //
+        // Dedup is subject-scoped: only compare against facts with the same subject.
+        // This prevents "born in May" about user deduping against an unrelated
+        // fact about a different person.
+        const sessionOnlyCategories = new Set(['event', 'task'])
+        const isStableCategory = !sessionOnlyCategories.has(item.category)
+        const normalizedSubject = (item.subject ?? 'user').toLowerCase()
         if (
           semRef &&
           config.semantic &&
           (item.durability === 'permanent' || item.durability === 'persistent') &&
           isStableCategory
         ) {
-          const existing = allFacts(semRef)
+          const existing = allFacts(semRef, normalizedSubject)
           const match = findBestOverlap(item.content, existing)
 
           if (match) {
@@ -379,9 +402,10 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
             }
           } else {
             await addFact(semRef, {
+              subject: normalizedSubject,
               content: item.content,
               confidence: item.importance,
-              category: item.category as 'fact' | 'preference' | 'relationship',
+              category: item.category as any,
               sourceEpisodeIds: [],
             })
           }
@@ -623,7 +647,7 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
   const consolidationPrompt = [
     'You are a knowledge consolidation system. You receive a batch of episodic memories',
     '(individual observations from conversations) and a set of existing semantic facts',
-    '(stable knowledge about the user).',
+    '(stable knowledge about the user and related entities).',
     '',
     'Semantic memory stores STABLE KNOWLEDGE that is useful across sessions:',
     '- Who the user is (name, role, location, background)',
@@ -638,6 +662,21 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
     '- One-time requests or queries (asking about X ≠ preferring X)',
     '- Transient context like current tasks, recent searches, or session activities',
     '',
+    'Each fact has a SUBJECT — who or what it\'s about:',
+    '- \'user\' for the primary user',
+    '- Lowercase first name for other people (e.g., \'jennifer\', \'max\')',
+    '- Lowercase hyphenated name for organizations (e.g., \'fixpoint-labs\')',
+    '- ONE fact per subject. Don\'t cram multiple entities into one fact.',
+    '',
+    'Categories:',
+    '- identity: who someone is — name, birthdate, location, background',
+    '- profession: what someone does — job, company, role, skills',
+    '- preference: likes, dislikes, style choices',
+    '- belief: opinions, worldviews, values',
+    '- relationship: connections to other named entities — spouse, pet, employer',
+    '- attribute: properties/characteristics — possessions, abilities, circumstances',
+    '- pattern: recurring behaviors',
+    '',
     'Your job:',
     '1. Look for stable knowledge that will be useful in FUTURE conversations',
     '2. Reinforce existing facts when episodes confirm them',
@@ -650,7 +689,7 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
     '',
     'Contradiction handling is critical:',
     '- Existing: "User works at Google" + Episode: "User joined Stripe last month"',
-    '  → action: \'update\', targetFactId: <id>, content: "User works at Stripe"',
+    '  → action: \'update\', targetFactId: <id>, content: "Works at Stripe"',
     '- Existing: "User is learning Python" + Episode: "User gave up on Python"',
     '  → action: \'invalidate\', targetFactId: <id>',
     '- Existing: "User\'s name is Jake" + Episode: "User spells their name Jake"',
@@ -659,6 +698,7 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
     'Rules:',
     '- Ask: "Would this help me serve this user better in a future conversation?"',
     '  If not, skip it.',
+    '- Do NOT store negative facts ("X is NOT Y"). Update or invalidate the positive form.',
     '- Do NOT infer preferences from single interactions. Asking "what are the best',
     '  restaurants?" does not mean the user prefers a particular ranking system.',
     '- Do NOT record session activities as facts. "User saved a poem about X" is',
@@ -666,8 +706,6 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
     '- Prefer reinforcing existing facts over creating near-duplicates',
     '- ALWAYS check existing facts for contradictions — stale facts are worse than missing ones',
     '- Return empty facts array if nothing qualifies as stable knowledge',
-    '- Categories: fact (objective info), preference (explicit likes/dislikes),',
-    '  relationship (connections between entities), pattern (recurring behaviors)',
   ].join('\n')
 
   function buildContext(input: any): string {
@@ -679,9 +717,20 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
     }
 
     if (input.existingFacts.length > 0) {
-      ctx += '\nExisting semantic facts (check for contradictions):\n'
+      // Group existing facts by subject for clearer context
+      const bySubject = new Map<string, typeof input.existingFacts>()
       for (const f of input.existingFacts) {
-        ctx += `- [${f.id}] (${f.category}, confidence: ${f.confidence}, ×${f.reinforcementCount}) ${f.content}\n`
+        const subj = f.subject ?? 'user'
+        if (!bySubject.has(subj)) bySubject.set(subj, [])
+        bySubject.get(subj)!.push(f)
+      }
+
+      ctx += '\nExisting semantic facts (check for contradictions):\n'
+      for (const [subject, facts] of bySubject) {
+        ctx += `\n  About ${subject}:\n`
+        for (const f of facts) {
+          ctx += `  - [${f.id}] (${f.category}, confidence: ${f.confidence}, ×${f.reinforcementCount}) ${f.content}\n`
+        }
       }
     } else {
       ctx += '\nNo existing semantic facts yet.\n'
@@ -756,10 +805,11 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
 
         switch (fact.action) {
           case 'new': {
-            // Dedup: check existing facts before adding. The consolidation LLM
-            // sometimes creates near-duplicates of existing facts with action 'new'
+            // Dedup: check existing facts (same subject) before adding. The consolidation
+            // LLM sometimes creates near-duplicates of existing facts with action 'new'
             // instead of 'reinforce'.
-            const existing = allFacts(semRef)
+            const normalizedSubject = (fact.subject ?? 'user').toLowerCase()
+            const existing = allFacts(semRef, normalizedSubject)
             const match = findBestOverlap(fact.content, existing)
             if (match) {
               if (match.minOverlap < 0.95) {
@@ -772,6 +822,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
               }
             } else {
               await addFact(semRef, {
+                subject: normalizedSubject,
                 content: fact.content,
                 confidence: fact.confidence,
                 category: fact.category,
@@ -979,10 +1030,11 @@ export function pruneGenerate(config: MemorySystemBlocksConfig) {
     '- **Low-value**: Too vague or generic to be useful in future conversations',
     '',
     '## Merges',
-    'Merge facts when 2+ facts each contain unique information about the same topic that',
-    'would be better expressed as a single fact. Example:',
-    '- "User was born in Maryland" + "User was born in May" → "User was born in May in Maryland"',
+    'Merge facts when 2+ facts about the SAME SUBJECT each contain unique information',
+    'about the same topic that would be better expressed as a single fact. Example:',
+    '- "User was born in Maryland" + "User was born in May" → "Born in May in Maryland"',
     '',
+    'Do NOT merge facts about different subjects.',
     'Do NOT merge facts that are about different topics even if related.',
     'The mergedContent should be a natural sentence combining all unique information.',
     '',
@@ -998,10 +1050,21 @@ export function pruneGenerate(config: MemorySystemBlocksConfig) {
   function buildContext(input: any): string {
     if (!input.triggered) return 'Fact count below threshold. Return empty arrays.'
 
-    let ctx = `Current semantic facts (${input.facts.length} total):\n`
+    // Group facts by subject for clearer context
+    const bySubject = new Map<string, typeof input.facts>()
     for (const f of input.facts) {
-      ctx += `- [${f.id}] (${f.category}, confidence: ${f.confidence}, `
-      ctx += `reinforced: ${f.reinforcementCount}x, extracted: ${f.extractedAt}) ${f.content}\n`
+      const subj = f.subject ?? 'user'
+      if (!bySubject.has(subj)) bySubject.set(subj, [])
+      bySubject.get(subj)!.push(f)
+    }
+
+    let ctx = `Current semantic facts (${input.facts.length} total):\n`
+    for (const [subject, facts] of bySubject) {
+      ctx += `\n  About ${subject}:\n`
+      for (const f of facts) {
+        ctx += `  - [${f.id}] (${f.category}, confidence: ${f.confidence}, `
+        ctx += `reinforced: ${f.reinforcementCount}x, extracted: ${f.extractedAt}) ${f.content}\n`
+      }
     }
     return ctx
   }

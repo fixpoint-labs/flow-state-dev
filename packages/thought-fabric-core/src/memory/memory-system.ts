@@ -176,6 +176,8 @@ export type RankedMemoryItem = {
   relevance: number
   category: string
   id: string
+  /** Subject of the fact (semantic items only). */
+  subject?: string
 }
 
 /** The full memory system returned by memory.system(). */
@@ -273,6 +275,7 @@ function createRecall(
               relevance,
               category: fact.category,
               id: fact.id,
+              subject: fact.subject,
             })
           }
         }
@@ -300,7 +303,7 @@ function createRecall(
             content: entry.content,
             source: 'working',
             relevance,
-            category: entry.category ?? 'fact',
+            category: entry.category ?? 'identity',
             id: entry.id,
           })
         }
@@ -366,14 +369,43 @@ function createContextFormatter(
     const items = recallFn(ctx)
     if (items.length === 0) return ''
 
-    const facts = items.filter((i) => i.category === 'fact' || i.category === 'relationship')
-    const focus = items.filter((i) => i.category === 'task' || i.category === 'event')
-    const prefs = items.filter((i) => i.category === 'preference')
-    const patterns = items.filter((i) => i.category === 'pattern')
+    // Separate semantic items (which have subjects) from session items
+    const semanticItems = items.filter((i) => i.source === 'semantic')
+    const sessionItems = items.filter((i) => i.source !== 'semantic')
 
     let output = ''
-    if (facts.length > 0) {
-      output += 'Known facts:\n' + facts.map((i) => `- ${i.content}`).join('\n') + '\n\n'
+
+    // Group semantic items by subject
+    if (semanticItems.length > 0) {
+      const bySubject = new Map<string, RankedMemoryItem[]>()
+      for (const item of semanticItems) {
+        const subject = item.subject ?? 'user'
+        if (!bySubject.has(subject)) bySubject.set(subject, [])
+        bySubject.get(subject)!.push(item)
+      }
+
+      // If only one subject ('user'), omit the grouping header for simplicity
+      if (bySubject.size === 1 && bySubject.has('user')) {
+        const facts = bySubject.get('user')!
+        output += 'Known facts:\n' + facts.map((i) => `- [${i.category}] ${i.content}`).join('\n') + '\n\n'
+      } else {
+        for (const [subject, facts] of bySubject) {
+          output += `About ${subject}:\n` + facts.map((i) => `- [${i.category}] ${i.content}`).join('\n') + '\n\n'
+        }
+      }
+    }
+
+    // Session items (working/episodic) formatted by category
+    const focus = sessionItems.filter((i) => i.category === 'task' || i.category === 'event')
+    const prefs = sessionItems.filter((i) => i.category === 'preference')
+    const patterns = sessionItems.filter((i) => i.category === 'pattern')
+    const other = sessionItems.filter((i) =>
+      i.category !== 'task' && i.category !== 'event' &&
+      i.category !== 'preference' && i.category !== 'pattern',
+    )
+
+    if (other.length > 0) {
+      output += 'Session context:\n' + other.map((i) => `- ${i.content}`).join('\n') + '\n\n'
     }
     if (focus.length > 0) {
       output += 'Current focus:\n' + focus.map((i) => `- ${i.content}`).join('\n') + '\n\n'
@@ -394,37 +426,71 @@ function createContextFormatter(
 // ---------------------------------------------------------------------------
 
 /**
- * Build a connector function that reads the last user message and truncated
- * assistant response from session items. Used by `captureFromItems`.
+ * Extract text content from a session item.
  */
-function buildItemsConnector(maxAssistantChars: number) {
+function extractItemText(item: any): string {
+  return typeof item.payload === 'string'
+    ? item.payload
+    : typeof item.content === 'string'
+      ? item.content
+      : ''
+}
+
+/**
+ * Build a connector function that reads recent conversation context,
+ * the current user message, and truncated assistant response from session
+ * items. Used by `captureFromItems`.
+ *
+ * Includes up to `priorTurns` previous user messages as context so the
+ * observer can resolve pronouns and references (e.g., "her name is Jane"
+ * makes sense when the prior message mentioned "my wife").
+ */
+function buildItemsConnector(maxAssistantChars: number, priorTurns = 3) {
   return (_input: unknown, ctx: any): string => {
     const items = ctx.session?.items?.all?.() ?? []
     if (items.length === 0) return ''
 
-    // Find last user message
-    const lastUser = [...items].reverse().find(
+    // Find all user messages in order
+    const userMessages = items.filter(
       (item: any) => item.type === 'message' && (item as any).role === 'user',
     )
-    if (!lastUser) return ''
+    if (userMessages.length === 0) return ''
 
-    const userText = typeof lastUser.payload === 'string'
-      ? lastUser.payload
-      : typeof lastUser.content === 'string'
-        ? lastUser.content
-        : ''
+    const lastUser = userMessages[userMessages.length - 1]
+    const currentText = extractItemText(lastUser)
+    if (!currentText) return ''
 
-    // Find assistant messages after the last user message
+    // Build result with recent context → current message → assistant response
+    const parts: string[] = []
+
+    // Prior user messages for context (up to priorTurns, excluding current)
+    if (userMessages.length > 1) {
+      const priorMessages = userMessages.slice(
+        Math.max(0, userMessages.length - 1 - priorTurns),
+        userMessages.length - 1,
+      )
+      if (priorMessages.length > 0) {
+        const priorTexts = priorMessages
+          .map((item: any) => extractItemText(item))
+          .filter(Boolean)
+        if (priorTexts.length > 0) {
+          parts.push('Recently said:\n' + priorTexts.map((t: string) => `[user] ${t}`).join('\n'))
+        }
+      }
+    }
+
+    // Current user message
+    parts.push(`Currently told us:\n[user] ${currentText}`)
+
+    // Assistant response after the current user message
     const lastUserIdx = items.indexOf(lastUser)
     const assistantItems = items.slice(lastUserIdx + 1).filter(
       (item: any) => item.type === 'message' && (item as any).role === 'assistant',
     )
 
-    let result = `[user] ${userText}`
-
     if (assistantItems.length > 0) {
       const assistantText = assistantItems
-        .map((item: any) => typeof item.payload === 'string' ? item.payload : '')
+        .map((item: any) => extractItemText(item))
         .filter(Boolean)
         .join('\n')
 
@@ -432,12 +498,11 @@ function buildItemsConnector(maxAssistantChars: number) {
         const truncated = assistantText.length > maxAssistantChars
           ? assistantText.slice(0, maxAssistantChars) + ' [truncated]'
           : assistantText
-
-        result += `\n[assistant] ${truncated}`
+        parts.push(`Assistant response:\n[assistant] ${truncated}`)
       }
     }
 
-    return result
+    return parts.join('\n\n')
   }
 }
 

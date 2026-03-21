@@ -1,16 +1,29 @@
 import { defineResource } from '@flow-state-dev/core'
 import { z } from 'zod'
 
+/** Semantic fact categories. */
+export const semanticCategoryEnum = z.enum([
+  'identity',      // name, birthdate, location, background — who someone IS
+  'relationship',  // connections to other named entities — spouse, pet, employer
+  'preference',    // likes, dislikes, style choices
+  'belief',        // opinions, worldviews, values
+  'profession',    // job, company, role, skills — what someone DOES
+  'attribute',     // properties/characteristics of the subject — no other entity involved
+  'pattern',       // recurring behaviors
+])
+
 /** Schema for a single semantic fact. */
 export const semanticFactSchema = z.object({
   /** Unique identifier for this fact. */
   id: z.string(),
+  /** Who or what this fact is about. 'user' for the primary user, lowercase name for others. */
+  subject: z.string().default('user'),
   /** The knowledge statement. */
   content: z.string(),
   /** Confidence in this fact's accuracy. Range [0, 1]. */
   confidence: z.number().min(0).max(1),
   /** What kind of knowledge this represents. */
-  category: z.enum(['fact', 'preference', 'relationship', 'pattern']),
+  category: semanticCategoryEnum,
   /** Episode IDs that contributed to this fact (provenance). */
   sourceEpisodeIds: z.array(z.string()),
   /** ISO datetime when first extracted. */

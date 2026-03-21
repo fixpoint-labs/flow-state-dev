@@ -9,10 +9,11 @@ type SemRef = ResourceContext<SemanticMemoryState>
  */
 export async function addFact(
   ref: SemRef,
-  fact: Omit<SemanticFact, 'id' | 'extractedAt' | 'lastReinforced' | 'reinforcementCount'>,
+  fact: Omit<SemanticFact, 'id' | 'extractedAt' | 'lastReinforced' | 'reinforcementCount' | 'subject'> & { subject?: string },
 ): Promise<SemanticFact> {
   const newFact: SemanticFact = {
     ...fact,
+    subject: fact.subject ?? 'user',
     id: `sf_${shortId(6)}`,
     extractedAt: new Date().toISOString(),
     reinforcementCount: 1,
@@ -117,18 +118,24 @@ export async function removeFact(ref: SemRef, factId: string): Promise<void> {
 
 /**
  * Get all facts, sorted by reinforcementCount descending (most established first).
+ * When `subject` is provided, returns only facts about that subject.
  */
-export function allFacts(ref: SemRef): SemanticFact[] {
-  return [...ref.state.facts].sort((a, b) => b.reinforcementCount - a.reinforcementCount)
+export function allFacts(ref: SemRef, subject?: string): SemanticFact[] {
+  let facts = [...ref.state.facts]
+  if (subject != null) {
+    facts = facts.filter((f) => f.subject === subject)
+  }
+  return facts.sort((a, b) => b.reinforcementCount - a.reinforcementCount)
 }
 
 /**
  * Query semantic facts by keyword relevance (synchronous, token-overlap).
  * For small stores (≤50), returns all facts sorted by reinforcementCount.
  * For larger stores, filters by token overlap with the query.
+ * When `subject` is provided, scopes to that subject only.
  */
-export function query(ref: SemRef, q: string, limit?: number): SemanticFact[] {
-  const facts = allFacts(ref)
+export function query(ref: SemRef, q: string, limit?: number, subject?: string): SemanticFact[] {
+  const facts = allFacts(ref, subject)
 
   if (facts.length <= 50) {
     return limit != null ? facts.slice(0, limit) : facts

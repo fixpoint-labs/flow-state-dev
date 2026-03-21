@@ -89,6 +89,7 @@ export type { MemorySystemState } from './memory-system.js'
 // ---------------------------------------------------------------------------
 
 export {
+  semanticCategoryEnum,
   semanticFactSchema,
   semanticMemoryStateSchema,
   createSemanticMemoryResource,

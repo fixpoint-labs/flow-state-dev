@@ -119,12 +119,13 @@ Three-tier memory: working (session), episodic (cross-session), and semantic (st
 
 | Function | Purpose |
 |----------|---------|
-| `addSemanticFact` | Add a new fact |
+| `addSemanticFact` | Add a new fact (subject defaults to `'user'`) |
 | `updateSemanticFact` | Update existing fact content |
 | `reinforceSemanticFact` | Increase confidence via reinforcement |
 | `removeSemanticFact` | Remove a fact (invalidation) |
-| `semanticFacts` | All facts |
-| `querySemanticFacts` | Filter facts by predicate |
+| `semanticFacts(ref, subject?)` | All facts, optionally filtered by subject |
+| `querySemanticFacts(ref, q, limit?, subject?)` | Query facts by keyword overlap, optionally scoped to subject |
+| `semanticCategoryEnum` | Zod enum of valid semantic categories |
 
 ### Config Defaults
 
