@@ -665,20 +665,38 @@ describe('memory/memorySystem', () => {
       expect(epRef.state.episodes).toHaveLength(0)
     })
 
-    it('handles replaces by evicting old entry', async () => {
+    it('deduplicates overlapping working memory entries structurally', async () => {
       const wmRef = createMockWmRef({
         entries: [
-          { id: 'old-goal', content: 'Build CLI', salience: 0.7, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.7, durability: 'session', category: 'task' },
+          { id: 'old-goal', content: 'Build CLI tool', salience: 0.7, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.7, durability: 'session', category: 'task' },
         ],
       })
       const sysRef = createMockSysRef()
 
+      // Partial overlap — should evict old entry and add the richer version
       await runReflect(wmRef, sysRef, [
-        { content: 'Build REST API', importance: 0.8, durability: 'session', category: 'task', replaces: 'old-goal' },
+        { content: 'Build CLI tool for deployment', importance: 0.8, durability: 'session', category: 'task' },
       ])
 
       expect(wmRef.state.entries).toHaveLength(1)
-      expect(wmRef.state.entries[0].content).toBe('Build REST API')
+      expect(wmRef.state.entries[0].content).toBe('Build CLI tool for deployment')
+    })
+
+    it('skips near-identical working memory entries', async () => {
+      const wmRef = createMockWmRef({
+        entries: [
+          { id: 'existing', content: 'User lives in Woodstock New York', salience: 0.9, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.9, durability: 'persistent', category: 'attribute' },
+        ],
+      })
+      const sysRef = createMockSysRef()
+
+      // Near-identical content — should be skipped entirely
+      await runReflect(wmRef, sysRef, [
+        { content: 'User lives in Woodstock New York', importance: 0.9, durability: 'persistent', category: 'attribute' },
+      ])
+
+      expect(wmRef.state.entries).toHaveLength(1)
+      expect(wmRef.state.entries[0].id).toBe('existing')
     })
 
     it('handles empty items array', async () => {
@@ -1817,20 +1835,20 @@ describe('memory/memorySystem', () => {
   // Observer prompt
   // ---------------------------------------------------------------------------
 
-  describe('observer prompt (contradiction detection)', () => {
+  describe('observer prompt (extraction focus)', () => {
     const baseConfig = {
       model: 'gpt-5-mini',
       working: { capacity: 7, maxPinnedSlots: 2, decay: { strategy: 'power-law' as const, rate: 0.5 } },
     }
 
-    it('includes contradiction detection instructions in prompt', () => {
+    it('includes subject and category guidance in prompt', () => {
       const block = memorySystemObserve(baseConfig)
-      // The prompt is stored in the block config internals — verify via config property
       const blockDef = block as any
       const config = blockDef.config ?? {}
       const prompt = config.prompt ?? ''
-      expect(prompt).toContain('CONTRADICT')
-      expect(prompt).toContain('Stale memories are worse than missing memories')
+      expect(prompt).toContain('subject')
+      expect(prompt).toContain('ONE fact per subject')
+      expect(prompt).toContain('negative facts')
     })
   })
 

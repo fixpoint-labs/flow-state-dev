@@ -6,12 +6,11 @@ import {
   add,
   advance,
   evict,
-  formatForObserveContext,
   items as wmItems,
   pin,
 } from './working-memory-helpers.js'
 import { createEpisodicMemoryResource } from './episodic-memory.js'
-import { encode, recent, markConsolidated } from './episodic-memory-helpers.js'
+import { encode, markConsolidated } from './episodic-memory-helpers.js'
 import { createSemanticMemoryResource } from './semantic-memory.js'
 import {
   addFact,
@@ -66,7 +65,6 @@ export const unifiedObservationsSchema = z.object({
     importance: z.number().min(0).max(1),
     durability: z.enum(['transient', 'session', 'persistent', 'permanent']),
     category: z.enum(['identity', 'event', 'preference', 'task', 'relationship', 'profession', 'belief', 'attribute', 'pattern']),
-    replaces: z.string().default(''),
   })),
 })
 
@@ -111,15 +109,9 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
 
   const observePrompt = [
     'You are a memory system for a cognitive AI agent.',
-    'Extract NEW information from the "=== NEW ITEMS ===" section ONLY.',
+    'Extract memorable information from the conversation provided in context.',
     '',
-    'The "=== EXISTING MEMORY ===" section is READ-ONLY reference. Do NOT re-extract,',
-    'refresh, or re-emit entries from it. It exists so you can:',
-    '1. Avoid duplicating what\'s already stored',
-    '2. Detect when new items CONTRADICT existing entries (use replaces)',
-    '3. Resolve pronouns/references using prior context',
-    '',
-    'For each new item extracted, classify:',
+    'For each item extracted, classify:',
     '- subject: who or what this is about. Use \'user\' for the primary user. For other people,',
     '  use their lowercase first name. For organizations, use lowercase hyphenated name.',
     '  Each fact should be about ONE subject — don\'t cram multiple entities into one fact.',
@@ -140,9 +132,6 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     '  * pattern: recurring behaviors',
     '  * event: something that happened (session-only)',
     '  * task: something the user asked to do (session-only)',
-    '- replaces: exact ID of an existing working memory entry this supersedes, or empty string.',
-    '  ONLY use replaces when new information CONTRADICTS or CORRECTS an existing entry.',
-    '  Do NOT use replaces to "refresh" or "re-state" an entry that hasn\'t changed.',
     '',
     'Durability guidance:',
     '- What the user ASKED the assistant to do → session (it\'s a task, not a fact about the user)',
@@ -153,15 +142,9 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     '- Relationships the user described → persistent',
     '',
     'Rules:',
-    '- ONLY extract from the "=== NEW ITEMS ===" section. Never from existing memory.',
     '- ONE fact per subject. If user says "I\'m Joe and my wife is Jane",',
     '  that\'s TWO facts: subject=user "Name is Joe" + subject=jane "Is the user\'s wife"',
-    '- Do NOT store negative facts ("X is NOT Y"). If something is not true, update or',
-    '  invalidate the positive form using \'replaces\'. Simply omit if no positive form exists.',
-    '- If a new item contradicts an existing memory, emit the corrected version with replaces.',
-    '  Example: memory has "works at Google" + new item says "I joined Stripe" →',
-    '  emit "Works at Stripe" with replaces pointing to the Google entry',
-    '- Stale memories are worse than missing memories — always prefer updating over adding alongside',
+    '- Do NOT store negative facts ("X is NOT Y"). Simply omit if nothing positive to store.',
     '- Prefer fewer, higher-quality memories over many low-quality ones',
     '- Return empty items array if nothing new is worth storing',
     '- When assistant messages are included, focus on:',
@@ -174,61 +157,44 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
   // Context function reads from session items using the watermark.
   // Uses `any` ctx since the generator context slot signature is (input, ctx) => unknown
   // and the context arg type is a structural subset, not the full BlockContext.
+  //
+  // IMPORTANT: We intentionally do NOT include existing working memory or episodic
+  // memory here. LLMs reliably re-extract from any content they can see, regardless
+  // of instructions. Dedup is handled structurally in the reflect handler via
+  // findBestOverlap. The observer's job is pure extraction from new conversation items.
   function buildContext(_input: unknown, ctx: any): string | undefined {
     const sysRef = ctx.session.resources.memorySystem
     const sysState = sysRef.state
 
     // Get items from session
-    let newItemsText: string
     if (config.source) {
-      newItemsText = config.source(_input, ctx)
-      if (!newItemsText) return undefined
-    } else {
-      const allItems = ctx.session?.items?.all?.() ?? []
-      const newItems = allItems.filter((_item: any, idx: number) => idx > sysState.lastProcessedIndex)
-      if (newItems.length > 0) {
-        newItemsText = newItems
-          .map((item: any) => {
-            const label = item.role ?? item.type ?? 'unknown'
-            const text = typeof item.payload === 'string'
-              ? item.payload
-              : typeof item.content === 'string'
-                ? item.content
-                : JSON.stringify(item.payload ?? item.content ?? item)
-            return `[${label}] ${text}`
-          })
-          .join('\n')
-      } else if (typeof _input === 'string' && _input.trim().length > 0) {
-        // Fallback: live items from the current request may not yet be
-        // flushed when the observer runs. Use the block input directly.
-        newItemsText = `[user] ${_input}`
-      } else {
-        return undefined
-      }
+      const text = config.source(_input, ctx)
+      return text || undefined
     }
 
-    // Current working memory for dedup context
-    const wmRef = ctx.session.resources.workingMemory
-    const wmContext = formatForObserveContext(wmRef)
+    const allItems = ctx.session?.items?.all?.() ?? []
+    const newItems = allItems.filter((_item: any, idx: number) => idx > sysState.lastProcessedIndex)
+    if (newItems.length > 0) {
+      return newItems
+        .map((item: any) => {
+          const label = item.role ?? item.type ?? 'unknown'
+          const text = typeof item.payload === 'string'
+            ? item.payload
+            : typeof item.content === 'string'
+              ? item.content
+              : JSON.stringify(item.payload ?? item.content ?? item)
+          return `[${label}] ${text}`
+        })
+        .join('\n')
+    }
 
-    // Episodic context for dedup (if installed)
-    let episodicContext = ''
-    try {
-      const epRef = config.episodic?.scope === 'user'
-        ? ctx.user?.resources?.episodicMemory
-        : ctx.project?.resources?.episodicMemory
-      if (epRef) {
-        const recentEps = recent(epRef, 5)
-        if (recentEps.length > 0) {
-          episodicContext = '\n\nRecent episodic memories:\n' +
-            recentEps.map((e: any) => `- ${e.content}`).join('\n')
-        }
-      }
-    } catch { /* episodic not installed — skip */ }
+    if (typeof _input === 'string' && _input.trim().length > 0) {
+      // Fallback: live items from the current request may not yet be
+      // flushed when the observer runs. Use the block input directly.
+      return `[user] ${_input}`
+    }
 
-    let existingMemory = `=== EXISTING MEMORY (read-only, do NOT re-extract) ===\n${wmContext || '(empty)'}${episodicContext}`
-
-    return `=== NEW ITEMS (extract from here only) ===\n${newItemsText}\n\n${existingMemory}`
+    return undefined
   }
 
   // Build the generator with typed sessionResources and conditional episodic scope
@@ -329,14 +295,22 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
 
     for (const item of input.items) {
       try {
-        // Handle superseded entries
-        if (item.replaces) {
-          const existingEntries = wmItems(wmRef)
-          const evictedEntry = existingEntries.find((e) => e.id === item.replaces)
-          if (evictedEntry && (evictedEntry.durability === 'persistent' || evictedEntry.durability === 'permanent')) {
+        // Working memory dedup: check if this observation overlaps with an
+        // existing WM entry. The observer doesn't see existing memory (to
+        // prevent re-extraction), so dedup happens here structurally.
+        const existingEntries = wmItems(wmRef)
+        const wmMatch = findBestOverlap(item.content, existingEntries)
+
+        if (wmMatch) {
+          if (wmMatch.minOverlap >= 0.95) {
+            // Near-identical — skip entirely, nothing new to store
+            continue
+          }
+          // Partial overlap — supersede the old entry with the richer version
+          if (wmMatch.fact.durability === 'persistent' || wmMatch.fact.durability === 'permanent') {
             evictedPersistent++
           }
-          await evict(wmRef, item.replaces)
+          await evict(wmRef, wmMatch.fact.id)
         }
 
         // Add to working memory (all durabilities)
