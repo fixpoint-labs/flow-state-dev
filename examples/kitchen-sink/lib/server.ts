@@ -1,7 +1,7 @@
 import path from "node:path";
 import { openai } from "@ai-sdk/openai";
 import {
-  createAiSdkModelResolver,
+  createModelResolver,
   createAiSdkSpeechResolver,
   createAiSdkTranscriptionResolver,
 } from "@flow-state-dev/core/models";
@@ -13,9 +13,9 @@ import {
 } from "@flow-state-dev/server";
 import kitchenSinkFlow from "@/src/flows/kitchen-sink/flow";
 
-// Pass the openai provider directly — reads OPENAI_API_KEY from env.
-// Model strings like "gpt-5-mini" in flow definitions are resolved via openai().
-const modelResolver = createAiSdkModelResolver(openai);
+// Auto-detects providers from env vars (OPENAI_API_KEY, etc.).
+// Model strings like "openai/gpt-5-mini" in flow definitions are resolved automatically.
+const modelResolver = createModelResolver();
 
 // Voice: speech (TTS) and transcription (STT) resolvers.
 // Uses OpenAI's gpt-4o-mini-tts for speech and gpt-4o-mini-transcribe for transcription.

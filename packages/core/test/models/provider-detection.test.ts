@@ -1,37 +1,50 @@
 import { describe, expect, it } from "vitest";
 import {
   detectAvailableProviders,
-  parseModelId,
-  toGatewayModelId,
+  parseModelString,
 } from "../../src/models/providerDetection";
 
-describe("parseModelId", () => {
-  it("parses provider:model format", () => {
-    expect(parseModelId("anthropic:claude-haiku")).toEqual({
+describe("parseModelString", () => {
+  it("parses provider/model format", () => {
+    expect(parseModelString("anthropic/claude-haiku")).toEqual({
+      type: "direct",
       provider: "anthropic",
       modelId: "claude-haiku",
     });
   });
 
-  it("handles model IDs with multiple colons", () => {
-    expect(parseModelId("openai:gpt-4o:latest")).toEqual({
+  it("parses gateway/provider/model format", () => {
+    expect(parseModelString("vercel/openai/gpt-5.4")).toEqual({
+      type: "gateway",
+      gateway: "vercel",
       provider: "openai",
-      modelId: "gpt-4o:latest",
+      modelId: "gpt-5.4",
     });
   });
 
-  it("throws for missing colon", () => {
-    expect(() => parseModelId("gpt-4o")).toThrow(
-      'Invalid model format: "gpt-4o"'
+  it("parses preset/name format", () => {
+    expect(parseModelString("preset/fast")).toEqual({
+      type: "preset",
+      presetName: "fast",
+    });
+  });
+
+  it("throws for single segment (no provider)", () => {
+    expect(() => parseModelString("gpt-5.4")).toThrow(
+      'Invalid model format: "gpt-5.4"'
     );
   });
-});
 
-describe("toGatewayModelId", () => {
-  it("converts to provider/model format", () => {
-    expect(toGatewayModelId("anthropic", "claude-haiku")).toBe(
-      "anthropic/claude-haiku"
-    );
+  it("throws for empty string", () => {
+    expect(() => parseModelString("")).toThrow("Model string cannot be empty");
+  });
+
+  it("trims whitespace", () => {
+    expect(parseModelString("  openai/gpt-5.4  ")).toEqual({
+      type: "direct",
+      provider: "openai",
+      modelId: "gpt-5.4",
+    });
   });
 });
 

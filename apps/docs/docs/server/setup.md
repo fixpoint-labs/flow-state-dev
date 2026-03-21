@@ -82,27 +82,31 @@ const router = createFlowApiRouter({
 
 ## Model Resolution
 
-Generators need models resolved at runtime. The framework provides built-in resolvers:
+Generators need models resolved at runtime. The framework provides a unified model resolver.
 
-### Default Resolver
+### Zero-Config Resolver
 
-Uses the Vercel AI Gateway (requires `AI_GATEWAY_API_KEY` or Vercel OIDC):
-
-```ts
-const router = createFlowApiRouter({ registry });
-// Default model resolution via AI Gateway
-```
-
-### Custom Resolver
+Auto-detects providers from environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.):
 
 ```ts
-import { createAiSdkModelResolver } from "@flow-state-dev/core/models";
+import { createModelResolver } from "@flow-state-dev/core/models";
 
 const router = createFlowApiRouter({
   registry,
-  modelResolver: createAiSdkModelResolver((modelId) => {
-    // Return an AI SDK model for the given modelId
-    return myModelProvider(modelId);
+  modelResolver: createModelResolver(),
+});
+```
+
+### Resolver with Options
+
+```ts
+import { createModelResolver } from "@flow-state-dev/core/models";
+
+const router = createFlowApiRouter({
+  registry,
+  modelResolver: createModelResolver({
+    keys: { openai: process.env.MY_OPENAI_KEY },
+    presets: { fast: { models: ["openai/gpt-5.4-mini"] } },
   }),
 });
 ```

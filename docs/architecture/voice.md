@@ -40,12 +40,12 @@ import {
   createFlowRegistry,
 } from "@flow-state-dev/server";
 import {
-  createAiSdkModelResolver,
+  createModelResolver,
   createAiSdkSpeechResolver,
   createAiSdkTranscriptionResolver,
 } from "@flow-state-dev/core/models";
 
-const modelResolver = createAiSdkModelResolver(openai);
+const modelResolver = createModelResolver();
 
 // Map model IDs like "gpt-4o-mini-tts" to OpenAI speech models
 const speechResolver = createAiSdkSpeechResolver(

@@ -26,7 +26,7 @@ function mockEntry(
   modelId: string,
   overrides: Partial<GeneratorModel> = {}
 ): FallbackModelEntry {
-  const [providerName] = modelId.split(":");
+  const [providerName] = modelId.split("/");
   return {
     modelId,
     providerName: providerName!,
@@ -119,7 +119,7 @@ describe("createFallbackModel", () => {
   it("has modelId of fsd:groupName", () => {
     const model = createFallbackModel({
       groupName: "fast",
-      models: [mockEntry("anthropic:claude-haiku")],
+      models: [mockEntry("anthropic/claude-haiku")],
       retryPolicy: FAST_RETRY,
     });
     expect(model.modelId).toBe("fsd:fast");
@@ -127,15 +127,15 @@ describe("createFallbackModel", () => {
 
   describe("generate", () => {
     it("succeeds with the first model when no errors", async () => {
-      const entry = mockEntry("anthropic:claude-haiku");
+      const entry = mockEntry("anthropic/claude-haiku");
       const model = createFallbackModel({
         groupName: "fast",
-        models: [entry, mockEntry("openai:gpt-4o-mini")],
+        models: [entry, mockEntry("openai/gpt-4o-mini")],
         retryPolicy: FAST_RETRY,
       });
 
       const result = await model.generate({ messages: [{ role: "user", content: "hi" }] });
-      expect(result.text).toBe("response from anthropic:claude-haiku");
+      expect(result.text).toBe("response from anthropic/claude-haiku");
       expect(entry.model.generate).toHaveBeenCalledTimes(1);
     });
 
@@ -147,7 +147,7 @@ describe("createFallbackModel", () => {
 
       const model = createFallbackModel({
         groupName: "fast",
-        models: [mockEntry("anthropic:claude-haiku", { generate })],
+        models: [mockEntry("anthropic/claude-haiku", { generate })],
         retryPolicy: FAST_RETRY,
       });
 
@@ -164,14 +164,14 @@ describe("createFallbackModel", () => {
       const model = createFallbackModel({
         groupName: "fast",
         models: [
-          mockEntry("anthropic:claude-haiku", { generate: failingGenerate }),
-          mockEntry("openai:gpt-4o-mini"),
+          mockEntry("anthropic/claude-haiku", { generate: failingGenerate }),
+          mockEntry("openai/gpt-4o-mini"),
         ],
         retryPolicy: FAST_RETRY,
       });
 
       const result = await model.generate({ messages: [] });
-      expect(result.text).toBe("response from openai:gpt-4o-mini");
+      expect(result.text).toBe("response from openai/gpt-4o-mini");
       expect(failingGenerate).toHaveBeenCalledTimes(2); // maxAttemptsPerModel
     });
 
@@ -183,14 +183,14 @@ describe("createFallbackModel", () => {
       const model = createFallbackModel({
         groupName: "fast",
         models: [
-          mockEntry("anthropic:claude-haiku", { generate: failingGenerate }),
-          mockEntry("openai:gpt-4o-mini"),
+          mockEntry("anthropic/claude-haiku", { generate: failingGenerate }),
+          mockEntry("openai/gpt-4o-mini"),
         ],
         retryPolicy: FAST_RETRY,
       });
 
       const result = await model.generate({ messages: [] });
-      expect(result.text).toBe("response from openai:gpt-4o-mini");
+      expect(result.text).toBe("response from openai/gpt-4o-mini");
       expect(failingGenerate).toHaveBeenCalledTimes(1); // no retry
     });
 
@@ -198,10 +198,10 @@ describe("createFallbackModel", () => {
       const model = createFallbackModel({
         groupName: "fast",
         models: [
-          mockEntry("anthropic:claude-haiku", {
+          mockEntry("anthropic/claude-haiku", {
             generate: vi.fn().mockRejectedValue(retryableError("rate limited")),
           }),
-          mockEntry("openai:gpt-4o-mini", {
+          mockEntry("openai/gpt-4o-mini", {
             generate: vi.fn().mockRejectedValue(retryableError("timeout")),
           }),
         ],
@@ -219,7 +219,7 @@ describe("createFallbackModel", () => {
       const model = createFallbackModel({
         groupName: "fast",
         models: [
-          mockEntry("anthropic:claude-haiku", { stream: undefined }),
+          mockEntry("anthropic/claude-haiku", { stream: undefined }),
         ],
         retryPolicy: FAST_RETRY,
       });
@@ -234,7 +234,7 @@ describe("createFallbackModel", () => {
 
       const model = createFallbackModel({
         groupName: "fast",
-        models: [mockEntry("anthropic:claude-haiku", { stream: fakeStream })],
+        models: [mockEntry("anthropic/claude-haiku", { stream: fakeStream })],
         retryPolicy: FAST_RETRY,
       });
 
@@ -260,8 +260,8 @@ describe("createFallbackModel", () => {
       const model = createFallbackModel({
         groupName: "fast",
         models: [
-          mockEntry("anthropic:claude-haiku", { stream: failingStream }),
-          mockEntry("openai:gpt-4o-mini", { stream: workingStream }),
+          mockEntry("anthropic/claude-haiku", { stream: failingStream }),
+          mockEntry("openai/gpt-4o-mini", { stream: workingStream }),
         ],
         retryPolicy: FAST_RETRY,
       });
@@ -279,7 +279,7 @@ describe("createFallbackModel", () => {
       const generate = vi.fn().mockResolvedValue({ text: "ok" });
       const model = createFallbackModel({
         groupName: "fast",
-        models: [mockEntry("anthropic:claude-haiku", { generate })],
+        models: [mockEntry("anthropic/claude-haiku", { generate })],
         defaults: { maxTokens: 1024 },
         retryPolicy: FAST_RETRY,
       });
@@ -294,7 +294,7 @@ describe("createFallbackModel", () => {
       const generate = vi.fn().mockResolvedValue({ text: "ok" });
       const model = createFallbackModel({
         groupName: "fast",
-        models: [mockEntry("anthropic:claude-haiku", { generate })],
+        models: [mockEntry("anthropic/claude-haiku", { generate })],
         defaults: { maxTokens: 1024 },
         retryPolicy: FAST_RETRY,
       });
@@ -309,7 +309,7 @@ describe("createFallbackModel", () => {
       const generate = vi.fn().mockResolvedValue({ text: "ok" });
       const model = createFallbackModel({
         groupName: "thinking",
-        models: [mockEntry("anthropic:claude-sonnet-4", { generate })],
+        models: [mockEntry("anthropic/claude-sonnet-4", { generate })],
         defaults: {
           providerOptions: {
             anthropic: { thinking: { budgetTokens: 10000 } },
@@ -331,7 +331,7 @@ describe("createFallbackModel", () => {
         groupName: "thinking",
         models: [
           // Simulating fallback to openai - anthropic-specific options should not apply
-          mockEntry("openai:o3", { generate }),
+          mockEntry("openai/o3", { generate }),
         ],
         defaults: {
           providerOptions: {

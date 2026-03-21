@@ -9,7 +9,7 @@ import {
   runAction,
   createInMemoryStores,
   createFilesystemStores,
-  createDefaultModelResolver,
+  createModelResolver,
   createResponseEmitter,
   type ExecutionResult,
   type RequestStreamEventWithId,
@@ -204,7 +204,7 @@ export async function executeRunCommand(
   // 5. Set up model resolver (override all generators when --model is set)
   let modelResolver: ModelResolver | undefined;
   if (options.model !== undefined) {
-    const defaultResolver = createDefaultModelResolver();
+    const defaultResolver = createModelResolver();
     modelResolver = (_modelId: string, blockName?: string) => {
       return defaultResolver(options.model!, blockName);
     };

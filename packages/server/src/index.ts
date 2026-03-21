@@ -36,17 +36,17 @@ export * from "./streaming";
 export * from "./execution";
 export * from "./registry";
 export * from "./routes";
-// Model infrastructure — re-exported from core for backward compatibility.
+// Model infrastructure — re-exported from core.
 // Prefer importing from @flow-state-dev/core or @flow-state-dev/core/models.
 export {
   createAiSdkModelResolver,
   wrapAiSdkModel,
-  createDefaultModelResolver,
+  createModelResolver,
   createFSDProvider,
   defaultGroups,
   detectAvailableProviders,
-  parseModelId,
-  toGatewayModelId,
+  parseModelString,
+  DEFAULT_PRESETS,
   createFallbackModel,
   isRetryableError,
   createAiSdkSpeechResolver,
@@ -56,6 +56,7 @@ export {
 } from "@flow-state-dev/core/models";
 export type {
   ResolveAiSdkLanguageModel,
+  CreateModelResolverOptions,
   FSDProviderConfig,
   FSDProvider,
   ModelGroupConfig,
@@ -65,6 +66,8 @@ export type {
   GatewayType,
   ProviderName,
   ProviderAvailability,
+  ParsedModelString,
+  PresetConfig,
   FallbackModelEntry,
   ResolveAiSdkSpeechModel,
   ResolveAiSdkTranscriptionModel

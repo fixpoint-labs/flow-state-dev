@@ -32,9 +32,9 @@ describe("defaultGroups", () => {
 
   it("fast group has correct model order", () => {
     expect(defaultGroups.fast!.models).toEqual([
-      "anthropic:claude-sonnet-4.6",
-      "openai:gpt-5.4-mini",
-      "google:gemini-3-flash",
+      "anthropic/claude-sonnet-4-6",
+      "openai/gpt-5.4-mini",
+      "google/gemini-3-flash",
     ]);
   });
 
@@ -61,7 +61,7 @@ describe("createFSDProvider", () => {
   it("resolves a group to a GeneratorModel", () => {
     const provider = createFSDProvider({
       groups: {
-        fast: { models: ["openai:gpt-4o-mini"] },
+        fast: { models: ["openai/gpt-4o-mini"] },
       },
       providers: { openai: createMockProvider() },
     });
@@ -72,7 +72,7 @@ describe("createFSDProvider", () => {
 
   it("provider.languageModel is the same as calling provider()", () => {
     const provider = createFSDProvider({
-      groups: { fast: { models: ["openai:gpt-4o-mini"] } },
+      groups: { fast: { models: ["openai/gpt-4o-mini"] } },
       providers: { openai: createMockProvider() },
     });
 
@@ -83,7 +83,7 @@ describe("createFSDProvider", () => {
 
   it("throws for unknown group name", () => {
     const provider = createFSDProvider({
-      groups: { fast: { models: ["openai:gpt-4o-mini"] } },
+      groups: { fast: { models: ["openai/gpt-4o-mini"] } },
       providers: { openai: createMockProvider() },
     });
 
@@ -95,7 +95,7 @@ describe("createFSDProvider", () => {
   it("throws when no models in group are available", () => {
     const provider = createFSDProvider({
       groups: {
-        fast: { models: ["anthropic:claude-haiku"] },
+        fast: { models: ["anthropic/claude-haiku"] },
       },
       providers: { openai: createMockProvider() }, // no anthropic provider
     });
@@ -106,8 +106,8 @@ describe("createFSDProvider", () => {
   it("groups() lists all group names", () => {
     const provider = createFSDProvider({
       groups: {
-        fast: { models: ["openai:gpt-4o-mini"] },
-        slow: { models: ["openai:gpt-4o"] },
+        fast: { models: ["openai/gpt-4o-mini"] },
+        slow: { models: ["openai/gpt-4o"] },
       },
       providers: { openai: createMockProvider() },
     });
@@ -120,9 +120,9 @@ describe("createFSDProvider", () => {
       groups: {
         fast: {
           models: [
-            "anthropic:claude-haiku",
-            "openai:gpt-4o-mini",
-            "google:gemini-2.0-flash",
+            "anthropic/claude-haiku",
+            "openai/gpt-4o-mini",
+            "google/gemini-2.0-flash",
           ],
         },
       },
@@ -130,12 +130,12 @@ describe("createFSDProvider", () => {
     });
 
     // Only openai is available since that's the only provider passed
-    expect(provider.available("fast")).toEqual(["openai:gpt-4o-mini"]);
+    expect(provider.available("fast")).toEqual(["openai/gpt-4o-mini"]);
   });
 
   it("available() returns empty for unknown group", () => {
     const provider = createFSDProvider({
-      groups: { fast: { models: ["openai:gpt-4o-mini"] } },
+      groups: { fast: { models: ["openai/gpt-4o-mini"] } },
       providers: { openai: createMockProvider() },
     });
 
@@ -144,7 +144,7 @@ describe("createFSDProvider", () => {
 
   it("caches group resolution", () => {
     const provider = createFSDProvider({
-      groups: { fast: { models: ["openai:gpt-4o-mini"] } },
+      groups: { fast: { models: ["openai/gpt-4o-mini"] } },
       providers: { openai: createMockProvider() },
     });
 
@@ -155,7 +155,7 @@ describe("createFSDProvider", () => {
 
   it("generate works end-to-end with mock provider", async () => {
     const provider = createFSDProvider({
-      groups: { fast: { models: ["openai:gpt-4o-mini"] } },
+      groups: { fast: { models: ["openai/gpt-4o-mini"] } },
       providers: { openai: createMockProvider() },
     });
 
@@ -174,7 +174,7 @@ describe("createFSDProvider", () => {
     };
 
     const provider = createFSDProvider({
-      groups: { fast: { models: ["custom:model-a"] } },
+      groups: { fast: { models: ["custom/model-a"] } },
       providers: { custom: providerObj },
     });
 
@@ -187,11 +187,11 @@ describe("createFSDProvider", () => {
       groups: {
         ...defaultGroups,
         fast: {
-          models: ["openai:gpt-4o-mini"],
+          models: ["openai/gpt-4o-mini"],
           defaults: { maxTokens: 512 },
         },
         coding: {
-          models: ["openai:codex-mini"],
+          models: ["openai/codex-mini"],
           defaults: { maxTokens: 4096 },
         },
       },
@@ -211,8 +211,8 @@ describe("createFSDProvider", () => {
       groups: {
         fast: {
           models: [
-            "anthropic:claude-haiku", // not available
-            "openai:gpt-4o-mini",     // available
+            "anthropic/claude-haiku", // not available
+            "openai/gpt-4o-mini",     // available
           ],
         },
       },

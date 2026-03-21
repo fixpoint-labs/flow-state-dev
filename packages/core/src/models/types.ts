@@ -19,7 +19,7 @@ export type GatewayType = (typeof gatewayTypes)[number];
 // ---------------------------------------------------------------------------
 
 export interface ModelGroupConfig {
-  /** Ordered preference list. Format: 'provider:model-id'. */
+  /** Ordered preference list. Format: 'provider/model-id'. */
   models: string[];
   /** Default generation settings for this group. User config wins. */
   defaults?: ModelGroupDefaults;

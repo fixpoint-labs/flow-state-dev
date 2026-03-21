@@ -1,10 +1,22 @@
 import { defineFlow, handler } from "@flow-state-dev/core";
+import type { ModelResolver, GeneratorModel } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
   createExecutionContext,
   createInMemoryStores
 } from "../src";
+
+function createStubModelResolver(): ModelResolver {
+  return (modelId: string): GeneratorModel => ({
+    modelId,
+    generate: async () => ({
+      text: `stub response from ${modelId}`,
+      finishReason: "stop",
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+    }),
+  });
+}
 
 function createFlow() {
   const block = handler<{ value: string }, { ok: boolean }>({
@@ -50,6 +62,7 @@ describe("createExecutionContext", () => {
       sessionId: "sess_1",
       userId: "user_1",
       stores,
+      modelResolver: createStubModelResolver(),
       requestState: { count: 0 },
       sessionState: { mode: "chat" },
       userState: { role: "member" }
@@ -72,8 +85,8 @@ describe("createExecutionContext", () => {
     expect(savedUser?.state).toEqual({ role: "admin" });
     expect(savedSession?.journal.length).toBe(1);
     expect(await ctx.session.getJournal()).toHaveLength(1);
-    const model = ctx.resolveModel("openai:gpt-4o-mini", "ctx-handler");
-    expect(model.modelId).toBe("openai:gpt-4o-mini");
+    const model = ctx.resolveModel("openai/gpt-4o-mini", "ctx-handler");
+    expect(model.modelId).toBe("openai/gpt-4o-mini");
     expect(typeof model.generate).toBe("function");
   });
 
@@ -98,7 +111,7 @@ describe("createExecutionContext", () => {
     const block = handler<{ value: string }, { ok: boolean }>({
       name: "ctx-handler",
       execute: async (_input, ctx) => {
-        ctx.resolveModel("openai:gpt-4o-mini", "ctx-handler");
+        ctx.resolveModel("openai/gpt-4o-mini", "ctx-handler");
         return { ok: true };
       }
     });

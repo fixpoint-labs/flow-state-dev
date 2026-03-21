@@ -9,8 +9,7 @@ import type {
 import type { ProviderAvailability } from "./providerDetection";
 import {
   detectAvailableProviders,
-  parseModelId,
-  toGatewayModelId,
+  parseModelString,
 } from "./providerDetection";
 import { createFallbackModel } from "./fallbackModel";
 import { wrapAiSdkModel } from "./createAiSdkModelResolver";
@@ -32,17 +31,17 @@ const DEFAULT_RETRY_POLICY: Required<RetryPolicy> = {
 export const defaultGroups: Record<string, ModelGroupConfig> = {
   fast: {
     models: [
-      "anthropic:claude-sonnet-4.6",
-      "openai:gpt-5.4-mini",
-      "google:gemini-3-flash",
+      "anthropic/claude-sonnet-4-6",
+      "openai/gpt-5.4-mini",
+      "google/gemini-3-flash",
     ],
     defaults: { maxTokens: 1024 },
   },
   thinking: {
     models: [
-      "anthropic:claude-opus-4.6",
-      "openai:gpt-5.4",
-      "google:gemini-3.1-pro-preview",
+      "anthropic/claude-opus-4-6",
+      "openai/gpt-5.4",
+      "google/gemini-3.1-pro-preview",
     ],
     defaults: {
       providerOptions: {
@@ -52,9 +51,9 @@ export const defaultGroups: Record<string, ModelGroupConfig> = {
   },
   balanced: {
     models: [
-      "anthropic:claude-sonnet-4.6",
-      "openai:gpt-5.4",
-      "google:gemini-3-flash",
+      "anthropic/claude-sonnet-4-6",
+      "openai/gpt-5.4",
+      "google/gemini-3-flash",
     ],
   },
 };
@@ -122,7 +121,9 @@ export function createFSDProvider(config: FSDProviderConfig): FSDProvider {
     // Filter to available models and wrap as GeneratorModel
     const availableModels = group.models
       .map((modelString) => {
-        const { provider: providerName, modelId } = parseModelId(modelString);
+        const parsed = parseModelString(modelString);
+        const providerName = parsed.provider!;
+        const modelId = parsed.modelId!;
         const resolver = aiSdkProviders.get(providerName);
         if (!resolver) return null;
 
@@ -164,8 +165,8 @@ export function createFSDProvider(config: FSDProviderConfig): FSDProvider {
     const group = config.groups[groupName];
     if (!group) return [];
     return group.models.filter((modelString) => {
-      const { provider: providerName } = parseModelId(modelString);
-      return aiSdkProviders.has(providerName);
+      const parsed = parseModelString(modelString);
+      return parsed.provider ? aiSdkProviders.has(parsed.provider) : false;
     });
   };
 
@@ -320,9 +321,9 @@ function createGatewayProviderResolver(
 
   if (gatewayType === "openrouter") {
     return (providerName: string, modelId: string) =>
-      (gw as any).chat(toGatewayModelId(providerName, modelId));
+      (gw as any).chat(`${providerName}/${modelId}`);
   }
 
   return (providerName: string, modelId: string) =>
-    (gw as any).languageModel(toGatewayModelId(providerName, modelId));
+    (gw as any).languageModel(`${providerName}/${modelId}`);
 }

@@ -32,14 +32,14 @@ describe("mockGenerator", () => {
 
     const resolver = createMockModelResolver({
       generators: { "chat-generator": byBlock },
-      models: { "openai:gpt-4o-mini": byModel }
+      models: { "openai/gpt-4o-mini": byModel }
     });
 
-    const blockModel = resolver("openai:gpt-4o-mini", "chat-generator");
+    const blockModel = resolver("openai/gpt-4o-mini", "chat-generator");
     const blockResult = await blockModel.generate({ messages: [] });
     expect(blockResult.structuredOutput).toEqual({ source: "block" });
 
-    const modelModel = resolver("openai:gpt-4o-mini", "other-generator");
+    const modelModel = resolver("openai/gpt-4o-mini", "other-generator");
     const modelResult = await modelModel.generate({ messages: [] });
     expect(modelResult.structuredOutput).toEqual({ source: "model" });
   });

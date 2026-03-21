@@ -102,34 +102,57 @@ export function detectAvailableProviders(config: {
 }
 
 // ---------------------------------------------------------------------------
-// Model ID parsing
+// Model string parsing
 // ---------------------------------------------------------------------------
 
-/**
- * Parse 'provider:model-id' format.
- */
-export function parseModelId(modelString: string): {
-  provider: string;
-  modelId: string;
-} {
-  const colonIndex = modelString.indexOf(":");
-  if (colonIndex === -1) {
-    throw new Error(
-      `Invalid model format: "${modelString}". Expected "provider:model-id" (e.g., "anthropic:claude-haiku").`
-    );
-  }
-  return {
-    provider: modelString.slice(0, colonIndex),
-    modelId: modelString.slice(colonIndex + 1),
-  };
+export interface ParsedModelString {
+  /** "direct" = provider/model, "gateway" = gateway/provider/model, "preset" = preset/name */
+  type: "direct" | "gateway" | "preset";
+  /** Provider name (e.g., "openai"). Present for direct and gateway types. */
+  provider?: string;
+  /** Model ID (e.g., "gpt-5.4"). Present for direct and gateway types. */
+  modelId?: string;
+  /** Gateway name (e.g., "vercel"). Only present for gateway type. */
+  gateway?: string;
+  /** Preset name (e.g., "fast"). Only present for preset type. */
+  presetName?: string;
 }
 
 /**
- * Convert our 'provider:model-id' format to the gateway 'provider/model-id' format.
+ * Parse a model string into its components.
+ *
+ * Supported formats:
+ * - `"provider/model"` → direct provider access
+ * - `"gateway/provider/model"` → route through a gateway
+ * - `"preset/name"` → resolve a named preset
  */
-export function toGatewayModelId(
-  provider: string,
-  modelId: string
-): string {
-  return `${provider}/${modelId}`;
+export function parseModelString(modelString: string): ParsedModelString {
+  const trimmed = modelString.trim();
+  if (trimmed.length === 0) {
+    throw new Error("Model string cannot be empty.");
+  }
+
+  const parts = trimmed.split("/");
+
+  if (parts.length === 2) {
+    if (parts[0] === "preset") {
+      return { type: "preset", presetName: parts[1] };
+    }
+    return { type: "direct", provider: parts[0], modelId: parts[1] };
+  }
+
+  if (parts.length === 3) {
+    return {
+      type: "gateway",
+      gateway: parts[0],
+      provider: parts[1],
+      modelId: parts[2],
+    };
+  }
+
+  throw new Error(
+    `Invalid model format: "${modelString}". ` +
+      `Expected "provider/model" (e.g., "openai/gpt-5.4") or ` +
+      `"gateway/provider/model" (e.g., "vercel/openai/gpt-5.4").`
+  );
 }

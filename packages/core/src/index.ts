@@ -103,7 +103,7 @@ export type { BindingCacheOptions, BindingProvider } from "./types/binding";
 export {
   createAiSdkModelResolver,
   wrapAiSdkModel,
-  createDefaultModelResolver,
+  createModelResolver,
   createAiSdkSpeechResolver,
   wrapAiSdkSpeechModel,
   createAiSdkTranscriptionResolver,
@@ -113,13 +113,14 @@ export {
   createFallbackModel,
   isRetryableError,
   detectAvailableProviders,
-  parseModelId,
-  toGatewayModelId
+  parseModelString,
+  DEFAULT_PRESETS
 } from "./models";
 export type {
   ResolveAiSdkLanguageModel,
   ResolveAiSdkSpeechModel,
   ResolveAiSdkTranscriptionModel,
+  CreateModelResolverOptions,
   FSDProviderConfig,
   FSDProvider,
   ModelGroupConfig,
@@ -128,5 +129,7 @@ export type {
   GatewayType,
   ProviderName,
   ProviderAvailability,
+  ParsedModelString,
+  PresetConfig,
   FallbackModelEntry
 } from "./models";

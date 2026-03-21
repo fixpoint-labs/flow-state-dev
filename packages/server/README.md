@@ -50,12 +50,12 @@ const guardedRouter = createFlowApiRouter({
 ## Custom model resolution
 
 ```ts
-import { createAiSdkModelResolver } from "@flow-state-dev/core/models";
+import { createModelResolver } from "@flow-state-dev/core/models";
 import { createFlowApiRouter } from "@flow-state-dev/server";
 
 const router = createFlowApiRouter({
   registry,
-  modelResolver: createAiSdkModelResolver((modelId) => myModels.resolve(modelId)),
+  modelResolver: createModelResolver(),
 });
 ```
 
@@ -113,7 +113,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 - Stream resume supports both `Last-Event-ID` header and `starting_after` query param
 - `GET /sessions/:id/state` supports `offset` + `limit` pagination for `items`
 - Generator blocks resolve models through `ctx.resolveModel` — default uses Vercel AI Gateway
-- `createAiSdkModelResolver` and `createDefaultModelResolver` available for explicit model routing
+- `createModelResolver` available from `@flow-state-dev/core/models` for model routing
 
 ## Scripts
 

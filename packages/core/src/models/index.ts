@@ -2,7 +2,9 @@
 export { createAiSdkModelResolver, wrapAiSdkModel } from "./createAiSdkModelResolver";
 export type { ResolveAiSdkLanguageModel } from "./createAiSdkModelResolver";
 
-export { createDefaultModelResolver } from "./createDefaultModelResolver";
+// Unified model resolver
+export { createModelResolver } from "./createModelResolver";
+export type { CreateModelResolverOptions } from "./createModelResolver";
 
 export { createAiSdkSpeechResolver, wrapAiSdkSpeechModel } from "./createAiSdkSpeechResolver";
 export type { ResolveAiSdkSpeechModel } from "./createAiSdkSpeechResolver";
@@ -15,8 +17,13 @@ export { createFSDProvider, defaultGroups } from "./createFSDProvider";
 export { createFallbackModel, isRetryableError } from "./fallbackModel";
 export type { FallbackModelEntry } from "./fallbackModel";
 
-export { detectAvailableProviders, parseModelId, toGatewayModelId } from "./providerDetection";
-export type { ProviderAvailability } from "./providerDetection";
+// Provider detection and model string parsing
+export { detectAvailableProviders, parseModelString } from "./providerDetection";
+export type { ProviderAvailability, ParsedModelString } from "./providerDetection";
+
+// Presets
+export { DEFAULT_PRESETS } from "./presets";
+export type { PresetConfig } from "./presets";
 
 // Types
 export type {

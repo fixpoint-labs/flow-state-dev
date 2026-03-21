@@ -349,7 +349,7 @@ describe("runAction edge behavior", () => {
   it("enforces token budget with onExceeded=error", async () => {
     const block = generator({
       name: "budget-generator-error",
-      model: "openai:gpt-5-mini",
+      model: "openai/gpt-5-mini",
       prompt: () => "prompt",
       user: () => "hello"
     });
@@ -377,7 +377,7 @@ describe("runAction edge behavior", () => {
       requestId: "req_budget_error",
       stores: createInMemoryStores(),
       modelResolver: () => ({
-        modelId: "openai:gpt-5-mini",
+        modelId: "openai/gpt-5-mini",
         async generate() {
           return {
             text: "ok",
@@ -394,7 +394,7 @@ describe("runAction edge behavior", () => {
   it("emits a single exceeded warning when onExceeded=warn", async () => {
     const block = generator({
       name: "budget-generator-warn",
-      model: "openai:gpt-5-mini",
+      model: "openai/gpt-5-mini",
       prompt: () => "prompt",
       user: () => "hello"
     });
@@ -423,7 +423,7 @@ describe("runAction edge behavior", () => {
       requestId: "req_budget_warn",
       stores: createInMemoryStores(),
       modelResolver: () => ({
-        modelId: "openai:gpt-5-mini",
+        modelId: "openai/gpt-5-mini",
         async generate() {
           return {
             text: "ok",
@@ -441,7 +441,7 @@ describe("runAction edge behavior", () => {
   it("marks request incomplete when onExceeded=stop", async () => {
     const block = generator({
       name: "budget-generator-stop",
-      model: "openai:gpt-5-mini",
+      model: "openai/gpt-5-mini",
       prompt: () => "prompt",
       user: () => "hello"
     });
@@ -476,7 +476,7 @@ describe("runAction edge behavior", () => {
       requestId: "req_budget_stop",
       stores,
       modelResolver: () => ({
-        modelId: "openai:gpt-5-mini",
+        modelId: "openai/gpt-5-mini",
         async generate() {
           return {
             text: "ok",
