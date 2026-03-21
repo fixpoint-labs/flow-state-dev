@@ -53,17 +53,21 @@ Three-tier memory: working (session), episodic (cross-session), and semantic (st
 
 | Function | Purpose |
 |----------|---------|
-| `system(config)` | Factory that wires all three tiers. Returns `capture`, `captureFromItems`, `recall`, `contextFormatter`, and per-tier helpers. |
+| `system(config)` | Factory that wires all three tiers. Returns `capture`, `captureFromItems`, `consolidate`, `prune`, `recall`, `contextFormatter`, and per-tier helpers. |
 
 ### Unified System Blocks
 
 | Function | Kind | Purpose |
 |----------|------|---------|
-| `memorySystemCapture(config)` | sequencer | Full pipeline: observe → reflect → tick (+ consolidation) |
+| `memorySystemCapture(config)` | sequencer | Full pipeline: observe → reflect → tick (+ consolidation + prune) |
 | `memorySystemObserve(config)` | generator | LLM extraction with durability/category classification |
 | `memorySystemReflect(config)` | handler | Routes observations to working, episodic, and semantic stores |
 | `memorySystemTick(config)` | handler | Advances decay clock |
 | `memorySystemConsolidate(config)` | sequencer | Guard → generate → persist consolidation pipeline |
+| `memorySystemPrune(config)` | sequencer | Guard → generate → persist pruning pipeline |
+| `pruneGuard(config)` | handler | Checks fact count against threshold |
+| `pruneGenerate(config)` | generator | LLM identifies removals and merges |
+| `prunePersist(config)` | handler | Applies removals and merges to semantic store |
 
 ### Working Memory Blocks
 
@@ -129,6 +133,7 @@ Three-tier memory: working (session), episodic (cross-session), and semantic (st
 | `DEFAULT_WORKING_MEMORY_CONFIG` | `capacity`, `maxPinnedSlots`, `decay` |
 | `DEFAULT_EPISODIC_CONFIG` | `scope`, `significanceThreshold`, `maxEpisodes` |
 | `DEFAULT_CONSOLIDATION_CONFIG` | `episodicThreshold`, `onEviction`, `minInterval` |
+| `DEFAULT_PRUNE_CONFIG` | `pruneThreshold` |
 | `DEFAULT_OBSERVER_CONFIG` | `maxAssistantChars` |
 
 ### Pure Math (no side effects)

@@ -81,9 +81,10 @@ const mem = memorySystem({
 
 | Property | Type | Purpose |
 |----------|------|---------|
-| `mem.capture` | Sequencer | Full pipeline: observe → reflect → tick (+ consolidation) |
+| `mem.capture` | Sequencer | Full pipeline: observe → reflect → tick (+ consolidation + prune) |
 | `mem.captureFromItems` | Block | Self-serving capture: reads from session items (no input needed) |
 | `mem.consolidate` | Sequencer | Standalone consolidation (when semantic configured) |
+| `mem.prune` | Sequencer | Standalone prune (when semantic configured) |
 | `mem.recall(ctx, cue?)` | Function | Cross-store recall, ranked by relevance |
 | `mem.contextFormatter` | Context fn | Drop into a generator's `context` array |
 | `mem.working` | Object | Resource + helpers for direct manipulation |
@@ -109,7 +110,7 @@ Semantic requires episodic. You can't have semantic without episodic, because co
 
 ## The Capture Pipeline
 
-`mem.capture` is a sequencer: **observe → reflect → tick**, with consolidation running as background work when semantic is configured.
+`mem.capture` is a sequencer: **observe → reflect → tick**, with consolidation and pruning running as background work when semantic is configured.
 
 **Observe** is a generator block. It sends recent conversation items to an LLM and gets back classified observations:
 
@@ -134,6 +135,8 @@ The observer checks existing working memory for contradictions. If a user says "
 **Tick** advances the working memory decay clock and recomputes salience scores.
 
 **Consolidation** (when semantic is configured) runs as `.work()` — background processing that doesn't block the pipeline. It checks whether enough episodic evidence has accumulated, and if so, calls an LLM to distill patterns into semantic facts.
+
+**Pruning** also runs as `.work()` after consolidation. Once the semantic fact store grows past a threshold (default: 20 facts), an LLM evaluates the full fact set and removes redundant, noisy, or low-value facts — and merges facts that cover the same topic with complementary information.
 
 ## Capturing Agent Responses
 
@@ -237,6 +240,43 @@ Contradiction handling is central. If episodic evidence contradicts an existing 
 ```
 
 **Direct extraction vs consolidation:** Not everything waits for consolidation. During the reflect step, items classified as `persistent` or `permanent` with stable categories (`fact`, `preference`, `relationship`) go directly to semantic memory. This means a user saying "My name is Jake" gets stored as a semantic fact immediately, without waiting for the consolidation threshold. Consolidation is for finding patterns across multiple episodes — things no single observation makes obvious.
+
+## Pruning
+
+As the semantic fact store grows, noise accumulates. Near-duplicates slip through dedup guards, session artifacts leak past classification, and related facts fragment across multiple entries. Pruning is an LLM-backed maintenance step that evaluates the full fact set and cleans it up.
+
+**When it triggers:** Pruning runs when the semantic fact count reaches the threshold (default: 20). Like consolidation, it uses a guard → generate → persist pattern and runs as `.work()` in the capture pipeline.
+
+**What it does:**
+
+1. **Guard** — Reads all semantic facts. If the count is below threshold, returns early.
+2. **Generate** — LLM call that reviews the full fact set and identifies:
+   - **Removals**: Facts that are redundant, noisy (session artifacts), contradicted by newer facts, or too vague to be useful.
+   - **Merges**: Groups of 2+ facts that cover the same topic with complementary information. For example, "User was born in Maryland" + "User was born in May" → "User was born in May in Maryland."
+3. **Persist** — Removes identified facts. For merges, updates the first source fact with the merged content and removes the rest, preserving provenance.
+
+The LLM is instructed to be conservative. High-reinforcement facts (≥5) are protected unless clearly contradicted. High-confidence facts (≥0.8) require strong justification. When in doubt, facts are kept.
+
+```ts
+// Prune output:
+{
+  removals: [{ factId: string, reason: string }]
+  merges: [{ sourceFactIds: string[], mergedContent: string, reason: string }]
+}
+```
+
+**Configuration:**
+
+```ts
+const mem = memorySystem({
+  model: 'gpt-5-mini',
+  working: { capacity: 7 },
+  episodic: true,
+  semantic: { pruneThreshold: 30 },  // default: 20, set 0 to disable
+})
+```
+
+You can also run pruning standalone via `mem.prune` if you want to trigger it outside the capture pipeline.
 
 ## Working Memory
 
@@ -390,6 +430,7 @@ All defaults are exported as constants for reference:
 | Consolidation episodic threshold | 5 | `DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold` |
 | Consolidation on eviction | `true` | `DEFAULT_CONSOLIDATION_CONFIG.onEviction` |
 | Consolidation min interval | 4 turns | `DEFAULT_CONSOLIDATION_CONFIG.minInterval` |
+| Prune threshold | 20 facts | `DEFAULT_PRUNE_CONFIG.pruneThreshold` |
 
 ## Naming Convention
 

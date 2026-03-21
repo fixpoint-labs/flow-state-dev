@@ -20,7 +20,7 @@ import {
   removeFact,
   allFacts,
 } from './semantic-memory-helpers.js'
-import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG } from './memory-system.js'
+import { memorySystemResource, DEFAULT_CONSOLIDATION_CONFIG, DEFAULT_PRUNE_CONFIG } from './memory-system.js'
 import { findBestOverlap } from '../helpers.js'
 
 // ---------------------------------------------------------------------------
@@ -46,6 +46,8 @@ export interface MemorySystemBlocksConfig {
       onEviction: boolean
       minInterval: number
     }
+    /** Prune when fact count reaches this threshold. Default: 20. 0 to disable. */
+    pruneThreshold?: number
   }
   /** Shared semantic resource reference — must be the same instance across blocks. */
   _semanticResource?: ReturnType<typeof createSemanticMemoryResource>
@@ -883,9 +885,263 @@ export function memorySystemConsolidate(config: MemorySystemBlocksConfig) {
     .thenIf((result) => result.triggered, generateAndPersist)
 }
 
+// ---------------------------------------------------------------------------
+// Prune blocks
+// ---------------------------------------------------------------------------
+
+/** Output schema for the prune generator. */
+export const pruneOutputSchema = z.object({
+  removals: z.array(z.object({
+    factId: z.string(),
+    reason: z.string(),
+  })),
+  merges: z.array(z.object({
+    sourceFactIds: z.array(z.string()),
+    mergedContent: z.string(),
+    reason: z.string(),
+  })),
+})
+
+export type PruneOutput = z.infer<typeof pruneOutputSchema>
+
+/**
+ * Creates the prune guard handler.
+ * Checks whether the semantic fact store has grown past the prune threshold
+ * and passes all facts forward for evaluation.
+ */
+export function pruneGuard(config: MemorySystemBlocksConfig) {
+  const semanticResource = config._semanticResource ?? (config.semantic
+    ? createSemanticMemoryResource(config.semantic.scope)
+    : undefined)
+
+  const pruneGuardOutputSchema = z.object({
+    triggered: z.boolean(),
+    facts: z.array(z.any()),
+  })
+
+  const threshold = config.semantic?.pruneThreshold ?? DEFAULT_PRUNE_CONFIG.pruneThreshold
+
+  async function executeGuard(_input: unknown, ctx: any) {
+    let semRef: any = undefined
+    try {
+      semRef = config.semantic?.scope === 'user'
+        ? ctx.user?.resources?.semanticMemory
+        : ctx.project?.resources?.semanticMemory
+    } catch { /* not installed */ }
+
+    if (!semRef) return { triggered: false, facts: [] }
+
+    const facts = allFacts(semRef)
+    const triggered = threshold > 0 && facts.length >= threshold
+
+    if (!triggered) return { triggered: false, facts: [] }
+    return { triggered: true, facts }
+  }
+
+  const semScope = config.semantic?.scope
+  const userResources: Record<string, any> = {}
+  const projectResources: Record<string, any> = {}
+
+  if (semScope === 'user' && semanticResource) userResources.semanticMemory = semanticResource
+  if (semScope === 'project' && semanticResource) projectResources.semanticMemory = semanticResource
+
+  const hasUser = Object.keys(userResources).length > 0
+  const hasProject = Object.keys(projectResources).length > 0
+
+  const base = {
+    name: config.name ? `${config.name}/prune/guard` : 'tf.memory/prune/guard',
+    inputSchema: z.any(),
+    outputSchema: pruneGuardOutputSchema,
+    execute: executeGuard,
+  }
+
+  if (hasUser && hasProject) return handler({ ...base, userResources, projectResources })
+  if (hasUser) return handler({ ...base, userResources })
+  if (hasProject) return handler({ ...base, projectResources })
+  return handler(base)
+}
+
+/**
+ * Creates the prune generator.
+ * LLM call that evaluates the full semantic fact set and identifies
+ * facts to remove (noisy/redundant) or merge (overlapping unique info).
+ */
+export function pruneGenerate(config: MemorySystemBlocksConfig) {
+  const prunePrompt = [
+    'You are a knowledge maintenance system. You receive the full set of semantic facts',
+    'stored about a user. Your job is to identify facts to remove and facts to merge.',
+    '',
+    '## Removals',
+    'Remove facts that are:',
+    '- **Redundant**: Fully covered by another fact (use merge instead if both have unique info)',
+    '- **Noisy**: Session artifacts that leaked into semantic memory',
+    '- **Contradicted**: Superseded by a newer/higher-confidence fact',
+    '- **Low-value**: Too vague or generic to be useful in future conversations',
+    '',
+    '## Merges',
+    'Merge facts when 2+ facts each contain unique information about the same topic that',
+    'would be better expressed as a single fact. Example:',
+    '- "User was born in Maryland" + "User was born in May" → "User was born in May in Maryland"',
+    '',
+    'Do NOT merge facts that are about different topics even if related.',
+    'The mergedContent should be a natural sentence combining all unique information.',
+    '',
+    '## Rules',
+    '- Be conservative. When in doubt, keep facts as-is.',
+    '- Never remove facts with reinforcementCount >= 5 unless clearly contradicted.',
+    '- High-confidence facts (>= 0.8) require strong justification to remove.',
+    '- Prefer merging over removing when both facts contribute unique information.',
+    '- A fact referenced in removals must NOT also appear in merges.',
+    '- Return empty arrays if nothing should be changed.',
+  ].join('\n')
+
+  function buildContext(input: any): string {
+    if (!input.triggered) return 'Fact count below threshold. Return empty arrays.'
+
+    let ctx = `Current semantic facts (${input.facts.length} total):\n`
+    for (const f of input.facts) {
+      ctx += `- [${f.id}] (${f.category}, confidence: ${f.confidence}, `
+      ctx += `reinforced: ${f.reinforcementCount}x, extracted: ${f.extractedAt}) ${f.content}\n`
+    }
+    return ctx
+  }
+
+  return generator({
+    name: config.name ? `${config.name}/prune/generate` : 'tf.memory/prune/generate',
+    model: config.model,
+    inputSchema: z.any(),
+    outputSchema: pruneOutputSchema,
+    prompt: prunePrompt,
+    context: buildContext,
+    user: (_input: unknown) => 'Review the facts and identify removals and merges.',
+    emit: { messages: false, reasoning: false, toolCalls: false },
+  })
+}
+
+/**
+ * Creates the prune persist handler.
+ * Processes removals and merges from the prune generator output.
+ */
+export function prunePersist(config: MemorySystemBlocksConfig) {
+  const semanticResource = config._semanticResource ?? (config.semantic
+    ? createSemanticMemoryResource(config.semantic.scope)
+    : undefined)
+
+  async function executePersist(input: PruneOutput, ctx: any) {
+    let semRef: any = undefined
+    try {
+      semRef = config.semantic?.scope === 'user'
+        ? ctx.user?.resources?.semanticMemory
+        : ctx.project?.resources?.semanticMemory
+    } catch { /* not installed */ }
+
+    if (!semRef) return { removed: 0, merged: 0 }
+
+    let removed = 0
+    let merged = 0
+
+    // Track all fact IDs referenced in merges to avoid double-removal
+    const mergedFactIds = new Set<string>()
+    for (const merge of (input.merges ?? [])) {
+      for (const id of merge.sourceFactIds) mergedFactIds.add(id)
+    }
+
+    // Process removals (skip any that are also in a merge)
+    for (const removal of (input.removals ?? [])) {
+      if (mergedFactIds.has(removal.factId)) continue
+      try {
+        await removeFact(semRef, removal.factId)
+        removed++
+      } catch (err) {
+        console.warn('[tf.memory] Failed to remove fact during prune:', (err as Error).message ?? err)
+      }
+    }
+
+    // Process merges: update first source fact with merged content, remove the rest
+    for (const merge of (input.merges ?? [])) {
+      if (merge.sourceFactIds.length < 2) continue
+      try {
+        const [keepId, ...removeIds] = merge.sourceFactIds
+        // Collect source episode IDs from all source facts
+        const existingFacts = allFacts(semRef)
+        const sourceEpisodeIds: string[] = []
+        for (const id of merge.sourceFactIds) {
+          const fact = existingFacts.find((f) => f.id === id)
+          if (fact) sourceEpisodeIds.push(...fact.sourceEpisodeIds)
+        }
+        const uniqueSources = [...new Set(sourceEpisodeIds)]
+
+        await updateFact(semRef, keepId, merge.mergedContent, uniqueSources)
+        for (const id of removeIds) {
+          await removeFact(semRef, id)
+        }
+        merged++
+      } catch (err) {
+        console.warn('[tf.memory] Failed to merge facts during prune:', (err as Error).message ?? err)
+      }
+    }
+
+    return { removed, merged }
+  }
+
+  const semScope = config.semantic?.scope
+  const userResources: Record<string, any> = {}
+  const projectResources: Record<string, any> = {}
+
+  if (semScope === 'user' && semanticResource) userResources.semanticMemory = semanticResource
+  if (semScope === 'project' && semanticResource) projectResources.semanticMemory = semanticResource
+
+  const hasUser = Object.keys(userResources).length > 0
+  const hasProject = Object.keys(projectResources).length > 0
+
+  const base = {
+    name: config.name ? `${config.name}/prune/persist` : 'tf.memory/prune/persist',
+    inputSchema: pruneOutputSchema,
+    outputSchema: z.any(),
+    execute: executePersist,
+  }
+
+  if (hasUser && hasProject) return handler({ ...base, userResources, projectResources })
+  if (hasUser) return handler({ ...base, userResources })
+  if (hasProject) return handler({ ...base, projectResources })
+  return handler(base)
+}
+
+/**
+ * Assembles the prune sequencer: guard → generate → persist.
+ * Generate and persist are gated behind the guard's `triggered` flag so
+ * the LLM call is skipped entirely when the fact store is below threshold.
+ */
+export function memorySystemPrune(config: MemorySystemBlocksConfig) {
+  // Ensure all prune blocks share the same semantic resource reference
+  const sharedResource = config._semanticResource ?? (config.semantic
+    ? createSemanticMemoryResource(config.semantic.scope)
+    : undefined)
+
+  const pruneConfig = { ...config, _semanticResource: sharedResource }
+
+  const guardBlock = pruneGuard(pruneConfig)
+  const generateBlock = pruneGenerate(pruneConfig)
+  const persistBlock = prunePersist(pruneConfig)
+
+  const generateAndPersist = sequencer({
+    name: config.name ? `${config.name}/prune/generate-and-persist` : 'tf.memory/prune/generate-and-persist',
+    inputSchema: z.any(),
+  })
+    .then(generateBlock)
+    .then(persistBlock)
+
+  return sequencer({
+    name: config.name ? `${config.name}/prune` : 'tf.memory/prune',
+    inputSchema: z.any(),
+  })
+    .then(guardBlock)
+    .thenIf((result) => result.triggered, generateAndPersist)
+}
+
 /**
  * Assembles the full capture pipeline: observe → reflect → tick.
- * When semantic is configured, adds consolidation as a .work() step.
+ * When semantic is configured, adds consolidation and prune as .work() steps.
  */
 export function memorySystemCapture(config: MemorySystemBlocksConfig) {
   const observeBlock = memorySystemObserve(config)
@@ -902,7 +1158,8 @@ export function memorySystemCapture(config: MemorySystemBlocksConfig) {
 
   if (config.semantic) {
     const consolidateBlock = memorySystemConsolidate(config)
-    return pipeline.work(consolidateBlock)
+    const pruneBlock = memorySystemPrune(config)
+    return pipeline.work(consolidateBlock).work(pruneBlock)
   }
 
   return pipeline

@@ -80,6 +80,7 @@ export {
   DEFAULT_EPISODIC_CONFIG,
   DEFAULT_CONSOLIDATION_CONFIG,
   DEFAULT_OBSERVER_CONFIG,
+  DEFAULT_PRUNE_CONFIG,
 } from './memory-system.js'
 export type { MemorySystemState } from './memory-system.js'
 
@@ -135,10 +136,15 @@ export type {
 export {
   unifiedObservationsSchema,
   consolidationOutputSchema,
+  pruneOutputSchema,
   memorySystemObserve,
   memorySystemReflect,
   memorySystemTick,
   memorySystemCapture,
   memorySystemConsolidate,
+  memorySystemPrune,
+  pruneGuard,
+  pruneGenerate,
+  prunePersist,
 } from './memory-system-blocks.js'
-export type { UnifiedObservations, ConsolidationOutput } from './memory-system-blocks.js'
+export type { UnifiedObservations, ConsolidationOutput, PruneOutput } from './memory-system-blocks.js'

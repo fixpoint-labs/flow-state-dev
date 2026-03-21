@@ -45,7 +45,7 @@ import {
   allFacts,
   query,
 } from './semantic-memory-helpers.js'
-import { memorySystemCapture, memorySystemConsolidate } from './memory-system-blocks.js'
+import { memorySystemCapture, memorySystemConsolidate, memorySystemPrune } from './memory-system-blocks.js'
 
 // ---------------------------------------------------------------------------
 // Memory system tracking resource
@@ -103,6 +103,11 @@ export const DEFAULT_OBSERVER_CONFIG = {
   maxAssistantChars: 500,
 }
 
+/** Default configuration for semantic memory pruning. */
+export const DEFAULT_PRUNE_CONFIG = {
+  pruneThreshold: 20,
+}
+
 // ---------------------------------------------------------------------------
 // Config types
 // ---------------------------------------------------------------------------
@@ -136,6 +141,8 @@ export interface SemanticMemoryConfig {
     /** Don't consolidate more than once per N turns. Default: DEFAULT_CONSOLIDATION_CONFIG.minInterval. */
     minInterval?: number
   }
+  /** Prune when fact count reaches this threshold. Default: 20. 0 to disable. */
+  pruneThreshold?: number
 }
 
 /** Top-level configuration for memory.system(). */
@@ -179,6 +186,8 @@ export interface MemorySystem {
   captureFromItems: ReturnType<ReturnType<typeof memorySystemCapture>['connectInput']>
   /** Standalone consolidation sequencer (when semantic configured). */
   consolidate?: ReturnType<typeof memorySystemConsolidate>
+  /** Standalone prune sequencer (when semantic configured). */
+  prune?: ReturnType<typeof memorySystemPrune>
   /** Cross-store recall helper. */
   recall: (ctx: any, cue?: string) => RankedMemoryItem[]
   /** Context formatter for generator context arrays. */
@@ -499,6 +508,7 @@ export function system(config: MemorySystemConfig): MemorySystem {
           onEviction: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.onEviction : (config.semantic.consolidation?.onEviction ?? DEFAULT_CONSOLIDATION_CONFIG.onEviction),
           minInterval: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.minInterval : (config.semantic.consolidation?.minInterval ?? DEFAULT_CONSOLIDATION_CONFIG.minInterval),
         },
+        pruneThreshold: config.semantic === true ? DEFAULT_PRUNE_CONFIG.pruneThreshold : (config.semantic.pruneThreshold ?? DEFAULT_PRUNE_CONFIG.pruneThreshold),
       }
     : undefined
 
@@ -526,9 +536,13 @@ export function system(config: MemorySystemConfig): MemorySystem {
   // Create capture pipeline
   const capture = memorySystemCapture(blocksConfig)
 
-  // Create standalone consolidation sequencer (when semantic configured)
+  // Create standalone consolidation and prune sequencers (when semantic configured)
   const consolidate = semanticConfig
     ? memorySystemConsolidate(blocksConfig)
+    : undefined
+
+  const prune = semanticConfig
+    ? memorySystemPrune(blocksConfig)
     : undefined
 
   // Create recall and contextFormatter
@@ -566,6 +580,10 @@ export function system(config: MemorySystemConfig): MemorySystem {
 
   if (consolidate) {
     result.consolidate = consolidate
+  }
+
+  if (prune) {
+    result.prune = prune
   }
 
   if (episodicConfig && episodicResource) {

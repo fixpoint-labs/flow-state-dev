@@ -28,8 +28,12 @@ import {
   memorySystemConsolidate,
   consolidationGuard,
   consolidationPersist,
+  pruneGuard,
+  pruneGenerate,
+  prunePersist,
+  memorySystemPrune,
 } from '../../src/memory/memory-system-blocks.js'
-import type { ConsolidationOutput } from '../../src/memory/memory-system-blocks.js'
+import type { ConsolidationOutput, PruneOutput } from '../../src/memory/memory-system-blocks.js'
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -1803,6 +1807,373 @@ describe('memory/memorySystem', () => {
       const prompt = config.prompt ?? ''
       expect(prompt).toContain('CRITICAL: Check for contradictions')
       expect(prompt).toContain('Stale memories are worse than missing memories')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Prune blocks (factory)
+  // ---------------------------------------------------------------------------
+
+  describe('prune blocks (factory)', () => {
+    const semanticConfig = {
+      model: 'gpt-5-mini',
+      working: { capacity: 7, maxPinnedSlots: 2, decay: { strategy: 'power-law' as const, rate: 0.5 } },
+      episodic: { scope: 'user' as const, significanceThreshold: 0.6, maxEpisodes: 200 },
+      semantic: { scope: 'user' as const, consolidation: { episodicThreshold: 5, onEviction: true, minInterval: 10 } },
+    }
+
+    describe('pruneGuard', () => {
+      it('returns a handler BlockDefinition', () => {
+        const block = pruneGuard(semanticConfig)
+        expect(block.kind).toBe('handler')
+      })
+
+      it('has correct default name', () => {
+        const block = pruneGuard(semanticConfig)
+        expect(block.name).toBe('tf.memory/prune/guard')
+      })
+
+      it('declares semantic resource on user scope', () => {
+        const block = pruneGuard(semanticConfig)
+        expect(block.declaredResources?.user).toHaveProperty('semanticMemory')
+      })
+    })
+
+    describe('pruneGenerate', () => {
+      it('returns a generator BlockDefinition', () => {
+        const block = pruneGenerate(semanticConfig)
+        expect(block.kind).toBe('generator')
+      })
+
+      it('has correct default name', () => {
+        const block = pruneGenerate(semanticConfig)
+        expect(block.name).toBe('tf.memory/prune/generate')
+      })
+    })
+
+    describe('prunePersist', () => {
+      it('returns a handler BlockDefinition', () => {
+        const block = prunePersist(semanticConfig)
+        expect(block.kind).toBe('handler')
+      })
+
+      it('has correct default name', () => {
+        const block = prunePersist(semanticConfig)
+        expect(block.name).toBe('tf.memory/prune/persist')
+      })
+
+      it('declares semantic resource on user scope', () => {
+        const block = prunePersist(semanticConfig)
+        expect(block.declaredResources?.user).toHaveProperty('semanticMemory')
+      })
+    })
+
+    describe('memorySystemPrune', () => {
+      it('returns a sequencer BlockDefinition', () => {
+        const block = memorySystemPrune(semanticConfig)
+        expect(block.kind).toBe('sequencer')
+      })
+
+      it('has correct default name', () => {
+        const block = memorySystemPrune(semanticConfig)
+        expect(block.name).toBe('tf.memory/prune')
+      })
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Prune guard (behavior)
+  // ---------------------------------------------------------------------------
+
+  describe('pruneGuard (behavior)', () => {
+    const semanticConfig = {
+      model: 'gpt-5-mini',
+      working: { capacity: 7, maxPinnedSlots: 2, decay: { strategy: 'power-law' as const, rate: 0.5 } },
+      episodic: { scope: 'user' as const, significanceThreshold: 0.6, maxEpisodes: 200 },
+      semantic: { scope: 'user' as const, consolidation: { episodicThreshold: 5, onEviction: true, minInterval: 10 } },
+    }
+
+    async function runPruneGuard(semRef?: ResourceHandle<SemanticMemoryState>) {
+      const block = pruneGuard(semanticConfig)
+      const ctx = {
+        session: {
+          resources: createMockResources({}),
+        },
+        user: {
+          resources: createMockResources({
+            ...(semRef ? { semanticMemory: semRef } : {}),
+          }),
+        },
+        response: { emit: async () => {} },
+      } as any
+      return block.run(undefined as any, ctx)
+    }
+
+    it('returns triggered: false when fact count is below default threshold (20)', async () => {
+      const semRef = createMockSemRef({
+        facts: Array.from({ length: 5 }, (_, i) => makeFact({ id: `sf_${i}` })),
+      })
+      const result = await runPruneGuard(semRef) as any
+      expect(result.triggered).toBe(false)
+      expect(result.facts).toEqual([])
+    })
+
+    it('returns triggered: true when fact count meets default threshold (20)', async () => {
+      const semRef = createMockSemRef({
+        facts: Array.from({ length: 20 }, (_, i) => makeFact({ id: `sf_${i}` })),
+      })
+      const result = await runPruneGuard(semRef) as any
+      expect(result.triggered).toBe(true)
+      expect(result.facts).toHaveLength(20)
+    })
+
+    it('returns triggered: true when fact count exceeds threshold', async () => {
+      const semRef = createMockSemRef({
+        facts: Array.from({ length: 25 }, (_, i) => makeFact({ id: `sf_${i}` })),
+      })
+      const result = await runPruneGuard(semRef) as any
+      expect(result.triggered).toBe(true)
+      expect(result.facts).toHaveLength(25)
+    })
+
+    it('respects custom pruneThreshold', async () => {
+      const customConfig = {
+        ...semanticConfig,
+        semantic: { ...semanticConfig.semantic, pruneThreshold: 5 },
+      }
+      const block = pruneGuard(customConfig)
+      const semRef = createMockSemRef({
+        facts: Array.from({ length: 5 }, (_, i) => makeFact({ id: `sf_${i}` })),
+      })
+      const ctx = {
+        session: { resources: createMockResources({}) },
+        user: { resources: createMockResources({ semanticMemory: semRef }) },
+        response: { emit: async () => {} },
+      } as any
+      const result = await block.run(undefined as any, ctx) as any
+      expect(result.triggered).toBe(true)
+    })
+
+    it('returns triggered: false when pruneThreshold is 0 (disabled)', async () => {
+      const customConfig = {
+        ...semanticConfig,
+        semantic: { ...semanticConfig.semantic, pruneThreshold: 0 },
+      }
+      const block = pruneGuard(customConfig)
+      const semRef = createMockSemRef({
+        facts: Array.from({ length: 100 }, (_, i) => makeFact({ id: `sf_${i}` })),
+      })
+      const ctx = {
+        session: { resources: createMockResources({}) },
+        user: { resources: createMockResources({ semanticMemory: semRef }) },
+        response: { emit: async () => {} },
+      } as any
+      const result = await block.run(undefined as any, ctx) as any
+      expect(result.triggered).toBe(false)
+    })
+
+    it('returns triggered: false when semantic resource is not available', async () => {
+      const result = await runPruneGuard() as any
+      expect(result.triggered).toBe(false)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Prune persist (behavior)
+  // ---------------------------------------------------------------------------
+
+  describe('prunePersist (behavior)', () => {
+    const semanticConfig = {
+      model: 'gpt-5-mini',
+      working: { capacity: 7, maxPinnedSlots: 2, decay: { strategy: 'power-law' as const, rate: 0.5 } },
+      episodic: { scope: 'user' as const, significanceThreshold: 0.6, maxEpisodes: 200 },
+      semantic: { scope: 'user' as const, consolidation: { episodicThreshold: 5, onEviction: true, minInterval: 10 } },
+    }
+
+    async function runPrunePersist(
+      semRef: ResourceHandle<SemanticMemoryState>,
+      input: PruneOutput,
+    ) {
+      const block = prunePersist(semanticConfig)
+      const ctx = {
+        session: { resources: createMockResources({}) },
+        user: { resources: createMockResources({ semanticMemory: semRef }) },
+        response: { emit: async () => {} },
+      } as any
+      return block.run(input as any, ctx)
+    }
+
+    it('removes facts listed in removals', async () => {
+      const semRef = createMockSemRef({
+        facts: [
+          makeFact({ id: 'sf_1', content: 'User likes coffee' }),
+          makeFact({ id: 'sf_2', content: 'User was born in May' }),
+          makeFact({ id: 'sf_3', content: 'User works at Stripe' }),
+        ],
+      })
+
+      const result = await runPrunePersist(semRef, {
+        removals: [{ factId: 'sf_1', reason: 'low-value' }],
+        merges: [],
+      }) as any
+
+      expect(result.removed).toBe(1)
+      expect(result.merged).toBe(0)
+      expect(semRef.state.facts).toHaveLength(2)
+      expect(semRef.state.facts.find((f: SemanticFact) => f.id === 'sf_1')).toBeUndefined()
+    })
+
+    it('merges facts: updates first, removes rest', async () => {
+      const semRef = createMockSemRef({
+        facts: [
+          makeFact({ id: 'sf_1', content: 'User was born in Maryland', sourceEpisodeIds: ['ep1'] }),
+          makeFact({ id: 'sf_2', content: 'User was born in May', sourceEpisodeIds: ['ep2'] }),
+          makeFact({ id: 'sf_3', content: 'User works at Stripe' }),
+        ],
+      })
+
+      const result = await runPrunePersist(semRef, {
+        removals: [],
+        merges: [{
+          sourceFactIds: ['sf_1', 'sf_2'],
+          mergedContent: 'User was born in May in Maryland',
+          reason: 'same topic — birth details',
+        }],
+      }) as any
+
+      expect(result.merged).toBe(1)
+      expect(result.removed).toBe(0)
+      expect(semRef.state.facts).toHaveLength(2) // sf_1 updated, sf_2 removed
+      const merged = semRef.state.facts.find((f: SemanticFact) => f.id === 'sf_1')
+      expect(merged).toBeDefined()
+      expect(merged!.content).toBe('User was born in May in Maryland')
+      expect(merged!.sourceEpisodeIds).toContain('ep1')
+      expect(merged!.sourceEpisodeIds).toContain('ep2')
+      expect(semRef.state.facts.find((f: SemanticFact) => f.id === 'sf_2')).toBeUndefined()
+    })
+
+    it('handles empty removals and merges (no-op)', async () => {
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_1' })],
+      })
+
+      const result = await runPrunePersist(semRef, {
+        removals: [],
+        merges: [],
+      }) as any
+
+      expect(result.removed).toBe(0)
+      expect(result.merged).toBe(0)
+      expect(semRef.state.facts).toHaveLength(1)
+    })
+
+    it('skips removal if factId is also in a merge', async () => {
+      const semRef = createMockSemRef({
+        facts: [
+          makeFact({ id: 'sf_1', content: 'User was born in Maryland' }),
+          makeFact({ id: 'sf_2', content: 'User was born in May' }),
+        ],
+      })
+
+      const result = await runPrunePersist(semRef, {
+        removals: [{ factId: 'sf_1', reason: 'redundant' }],
+        merges: [{
+          sourceFactIds: ['sf_1', 'sf_2'],
+          mergedContent: 'User was born in May in Maryland',
+          reason: 'same topic',
+        }],
+      }) as any
+
+      // sf_1 should NOT be removed by the removal since it's in the merge
+      // merge keeps sf_1 (updated) and removes sf_2
+      expect(result.removed).toBe(0) // removal skipped
+      expect(result.merged).toBe(1)
+      expect(semRef.state.facts).toHaveLength(1)
+      expect(semRef.state.facts[0].content).toBe('User was born in May in Maryland')
+    })
+
+    it('handles merge with 3+ source facts', async () => {
+      const semRef = createMockSemRef({
+        facts: [
+          makeFact({ id: 'sf_1', content: 'User name is Jake', sourceEpisodeIds: ['ep1'] }),
+          makeFact({ id: 'sf_2', content: 'User was born in May', sourceEpisodeIds: ['ep2'] }),
+          makeFact({ id: 'sf_3', content: 'User was born in Maryland', sourceEpisodeIds: ['ep3'] }),
+          makeFact({ id: 'sf_4', content: 'User works at Stripe' }),
+        ],
+      })
+
+      const result = await runPrunePersist(semRef, {
+        removals: [],
+        merges: [{
+          sourceFactIds: ['sf_2', 'sf_3'],
+          mergedContent: 'User was born in May in Maryland',
+          reason: 'birth details',
+        }],
+      }) as any
+
+      expect(result.merged).toBe(1)
+      expect(semRef.state.facts).toHaveLength(3)
+      const merged = semRef.state.facts.find((f: SemanticFact) => f.id === 'sf_2')
+      expect(merged!.content).toBe('User was born in May in Maryland')
+    })
+
+    it('handles non-existent factId in removal gracefully', async () => {
+      const semRef = createMockSemRef({
+        facts: [makeFact({ id: 'sf_1' })],
+      })
+
+      const result = await runPrunePersist(semRef, {
+        removals: [{ factId: 'sf_nonexistent', reason: 'stale' }],
+        merges: [],
+      }) as any
+
+      // removeFact is a no-op for missing IDs
+      expect(result.removed).toBe(1)
+      expect(semRef.state.facts).toHaveLength(1)
+    })
+
+    it('returns { removed: 0, merged: 0 } when semantic resource is missing', async () => {
+      const block = prunePersist(semanticConfig)
+      const ctx = {
+        session: { resources: createMockResources({}) },
+        user: { resources: createMockResources({}) },
+        response: { emit: async () => {} },
+      } as any
+
+      const result = await block.run({
+        removals: [{ factId: 'sf_1', reason: 'test' }],
+        merges: [],
+      } as any, ctx) as any
+
+      expect(result.removed).toBe(0)
+      expect(result.merged).toBe(0)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // system() factory — prune exposure
+  // ---------------------------------------------------------------------------
+
+  describe('system() factory — prune', () => {
+    it('exposes prune when semantic is configured', () => {
+      const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
+      expect(mem.prune).toBeDefined()
+      expect((mem.prune as any).kind).toBe('sequencer')
+    })
+
+    it('does not expose prune when semantic is not configured', () => {
+      const mem = system({ model: 'gpt-5-mini', working: true })
+      expect(mem.prune).toBeUndefined()
+    })
+
+    it('respects custom pruneThreshold', () => {
+      const mem = system({
+        model: 'gpt-5-mini',
+        working: true,
+        episodic: true,
+        semantic: { pruneThreshold: 50 },
+      })
+      expect(mem.prune).toBeDefined()
     })
   })
 })
