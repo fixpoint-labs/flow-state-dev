@@ -1,0 +1,158 @@
+import type { GatewayConfig } from "./types";
+
+// ---------------------------------------------------------------------------
+// Standard env var mappings
+// ---------------------------------------------------------------------------
+
+const DEFAULT_ENV_VARS: Record<string, string> = {
+  anthropic: "ANTHROPIC_API_KEY",
+  openai: "OPENAI_API_KEY",
+  google: "GOOGLE_GENERATIVE_AI_API_KEY",
+};
+
+const GATEWAY_ENV_VARS: Record<string, string> = {
+  vercel: "AI_GATEWAY_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
+};
+
+/** All major providers that gateways support. */
+const GATEWAY_SUPPORTED_PROVIDERS = ["anthropic", "openai", "google"] as const;
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface ProviderAvailability {
+  provider: string;
+  source: "key" | "gateway";
+  apiKey?: string;
+  gatewayType?: string;
+  gatewayName?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Detect which providers are available based on:
+ * 1. Explicit keys (highest priority)
+ * 2. Environment variables for direct provider keys
+ * 3. Gateway keys (Vercel AI Gateway, OpenRouter) — make all providers available
+ *
+ * Accepts an optional `env` parameter for testing (defaults to `process.env`).
+ */
+export function detectAvailableProviders(config: {
+  keys?: Partial<Record<string, string>>;
+  gateways?: Record<string, GatewayConfig>;
+  env?: Record<string, string | undefined>;
+}): Map<string, ProviderAvailability> {
+  const env = config.env ?? process.env;
+  const available = new Map<string, ProviderAvailability>();
+
+  // Phase 1: Check direct provider keys (explicit config + env vars)
+  for (const [provider, envVar] of Object.entries(DEFAULT_ENV_VARS)) {
+    const key = config.keys?.[provider] ?? env[envVar];
+    if (key) {
+      available.set(provider, { provider, source: "key", apiKey: key });
+    }
+  }
+
+  // Phase 2: Check explicitly configured gateways
+  if (config.gateways) {
+    for (const [name, gwConfig] of Object.entries(config.gateways)) {
+      const envVar = GATEWAY_ENV_VARS[gwConfig.type];
+      const key = gwConfig.apiKey ?? (envVar ? env[envVar] : undefined);
+      if (!key) continue;
+
+      for (const provider of GATEWAY_SUPPORTED_PROVIDERS) {
+        if (!available.has(provider)) {
+          available.set(provider, {
+            provider,
+            source: "gateway",
+            apiKey: key,
+            gatewayType: gwConfig.type,
+            gatewayName: name,
+          });
+        }
+      }
+    }
+  }
+
+  // Phase 3: Auto-detect gateways from env vars (even if not explicitly configured).
+  // This enables zero-config on Vercel deployments.
+  for (const [gwType, envVar] of Object.entries(GATEWAY_ENV_VARS)) {
+    const key = env[envVar];
+    if (!key) continue;
+
+    for (const provider of GATEWAY_SUPPORTED_PROVIDERS) {
+      if (!available.has(provider)) {
+        available.set(provider, {
+          provider,
+          source: "gateway",
+          apiKey: key,
+          gatewayType: gwType,
+          gatewayName: `auto-${gwType}`,
+        });
+      }
+    }
+  }
+
+  return available;
+}
+
+// ---------------------------------------------------------------------------
+// Model string parsing
+// ---------------------------------------------------------------------------
+
+export interface ParsedModelString {
+  /** "direct" = provider/model, "gateway" = gateway/provider/model, "preset" = preset/name */
+  type: "direct" | "gateway" | "preset";
+  /** Provider name (e.g., "openai"). Present for direct and gateway types. */
+  provider?: string;
+  /** Model ID (e.g., "gpt-5.4"). Present for direct and gateway types. */
+  modelId?: string;
+  /** Gateway name (e.g., "vercel"). Only present for gateway type. */
+  gateway?: string;
+  /** Preset name (e.g., "fast"). Only present for preset type. */
+  presetName?: string;
+}
+
+/**
+ * Parse a model string into its components.
+ *
+ * Supported formats:
+ * - `"provider/model"` → direct provider access
+ * - `"gateway/provider/model"` → route through a gateway
+ * - `"preset/name"` → resolve a named preset
+ */
+export function parseModelString(modelString: string): ParsedModelString {
+  const trimmed = modelString.trim();
+  if (trimmed.length === 0) {
+    throw new Error("Model string cannot be empty.");
+  }
+
+  const parts = trimmed.split("/");
+
+  if (parts.length === 2) {
+    if (parts[0] === "preset") {
+      return { type: "preset", presetName: parts[1] };
+    }
+    return { type: "direct", provider: parts[0], modelId: parts[1] };
+  }
+
+  if (parts.length === 3) {
+    return {
+      type: "gateway",
+      gateway: parts[0],
+      provider: parts[1],
+      modelId: parts[2],
+    };
+  }
+
+  throw new Error(
+    `Invalid model format: "${modelString}". ` +
+      `Expected "provider/model" (e.g., "openai/gpt-5.4") or ` +
+      `"gateway/provider/model" (e.g., "vercel/openai/gpt-5.4").`
+  );
+}

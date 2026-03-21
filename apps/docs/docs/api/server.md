@@ -29,7 +29,7 @@ import { createFlowApiRouter } from "@flow-state-dev/server";
 const router = createFlowApiRouter({
   registry,
   stores: createFilesystemStores(),      // optional, default
-  modelResolver: createAiSdkModelResolver(fn),  // optional
+  modelResolver: createModelResolver(),  // optional
   speechResolver: createAiSdkSpeechResolver(fn),       // optional, for TTS
   transcriptionResolver: createAiSdkTranscriptionResolver(fn), // optional, for STT
 });
@@ -82,21 +82,29 @@ const stores = createInMemoryStores();
 
 ## Model Resolution
 
-### `createAiSdkModelResolver(resolver)`
+### `createModelResolver(options?)`
 
-Create a model resolver using AI SDK providers.
+Create a model resolver. Auto-detects providers from environment variables with zero config, or accepts explicit keys, presets, and retry policy.
 
 ```ts
-import { createAiSdkModelResolver } from "@flow-state-dev/server";
+import { createModelResolver } from "@flow-state-dev/core/models";
 
-const resolver = createAiSdkModelResolver((modelId) => {
-  return openai(modelId);
+// Zero-config: auto-detects from env vars
+const resolver = createModelResolver();
+
+// With options:
+const resolver = createModelResolver({
+  keys: { openai: "sk-..." },
+  presets: { fast: { models: ["openai/gpt-5.4-mini"] } },
+  retryPolicy: { maxAttemptsPerModel: 3 },
 });
 ```
 
-### `createDefaultModelResolver()`
+Model strings use slash format: `"openai/gpt-5.4"`, `"anthropic/claude-sonnet-4-6"`, `"vercel/openai/gpt-5.4"`.
 
-Default resolver using Vercel AI Gateway.
+### `parseModelString(modelString)`
+
+Parse a slash-format model string into its components (provider, model, gateway).
 
 ## Voice
 
@@ -105,7 +113,7 @@ Default resolver using Vercel AI Gateway.
 Create a speech resolver (TTS) using AI SDK providers.
 
 ```ts
-import { createAiSdkSpeechResolver } from "@flow-state-dev/server";
+import { createAiSdkSpeechResolver } from "@flow-state-dev/core/models";
 
 const speechResolver = createAiSdkSpeechResolver(
   (modelId) => openai.speech(modelId)
@@ -121,7 +129,7 @@ Wrap a single AI SDK speech model into a framework `SpeechModel`.
 Create a transcription resolver (STT) using AI SDK providers.
 
 ```ts
-import { createAiSdkTranscriptionResolver } from "@flow-state-dev/server";
+import { createAiSdkTranscriptionResolver } from "@flow-state-dev/core/models";
 
 const transcriptionResolver = createAiSdkTranscriptionResolver(
   (modelId) => openai.transcription(modelId)

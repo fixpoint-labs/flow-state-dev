@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { makeSchemaStrict } from "../src/models/makeSchemaStrict";
+import { makeSchemaStrict } from "../../src/models/makeSchemaStrict";
 
 describe("makeSchemaStrict", () => {
   it("strips .optional() from object properties", () => {

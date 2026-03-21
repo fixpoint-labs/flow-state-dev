@@ -58,6 +58,7 @@ const sidebars: SidebarsConfig = {
       items: [
         "server/setup",
         "server/custom-model-resolver",
+        "server/model-groups",
         "persistence/overview",
       ],
     },

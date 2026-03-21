@@ -374,9 +374,16 @@ importers:
 
   packages/core:
     dependencies:
+      ai:
+        specifier: ^6.0.93
+        version: 6.0.97(zod@3.25.76)
       zod:
         specifier: ^3.24.1
         version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.13
 
   packages/patterns:
     dependencies:

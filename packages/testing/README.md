@@ -62,7 +62,7 @@ const result = await testFlow({
       },
     },
     user: {
-      state: { preferredModel: "gpt-4o-mini" },
+      state: { preferredModel: "openai/gpt-5.4-mini" },
     },
   },
 });
@@ -103,7 +103,7 @@ const report = await evalBlock(classifier, {
     exactMatch("sentiment"),
     analyzerScorer({
       criteria: ["Output is relevant to the input"],
-      model: "claude-haiku",
+      model: "anthropic/claude-haiku",
     }),
   ],
   concurrency: 3,

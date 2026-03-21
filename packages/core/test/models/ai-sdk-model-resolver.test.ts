@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { MockLanguageModelV3 } from "ai/test";
-import { createAiSdkModelResolver, wrapAiSdkModel } from "../src";
+import { createAiSdkModelResolver, wrapAiSdkModel } from "../../src/models";
 
 describe("createAiSdkModelResolver", () => {
   it("maps text, finish reason, and usage into GeneratorModelResult", async () => {
     const resolver = createAiSdkModelResolver((modelId) => {
-      expect(modelId).toBe("openai:gpt-4o-mini");
+      expect(modelId).toBe("openai/gpt-4o-mini");
       return new MockLanguageModelV3({
         doGenerate: async () => ({
           content: [{ type: "text", text: "Hello from AI SDK mock" }],
@@ -29,7 +29,7 @@ describe("createAiSdkModelResolver", () => {
       });
     });
 
-    const result = await resolver("openai:gpt-4o-mini", "chat-generator").generate({
+    const result = await resolver("openai/gpt-4o-mini", "chat-generator").generate({
       messages: [{ role: "user", content: "hi" }]
     });
 
@@ -74,7 +74,7 @@ describe("createAiSdkModelResolver", () => {
     const resolver = createAiSdkModelResolver(() => model);
     const abortController = new AbortController();
 
-    const result = await resolver("openai:gpt-4o-mini", "chat-generator").generate({
+    const result = await resolver("openai/gpt-4o-mini", "chat-generator").generate({
       messages: [{ role: "user", content: "run tool" }],
       tools: [
         {
@@ -128,7 +128,7 @@ describe("createAiSdkModelResolver", () => {
       })
     }));
 
-    const result = await resolver("test:model", "gen").generate({
+    const result = await resolver("test/model", "gen").generate({
       messages: [{ role: "user", content: "hi" }]
     });
 
@@ -244,7 +244,7 @@ describe("createAiSdkModelResolver", () => {
       })
     }));
 
-    const result = await resolver("anthropic:claude-sonnet-4-5", "chat-generator").generate({
+    const result = await resolver("anthropic/claude-sonnet-4-5", "chat-generator").generate({
       messages: [{ role: "user", content: "hi" }]
     });
 

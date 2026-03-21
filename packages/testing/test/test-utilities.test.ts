@@ -90,13 +90,13 @@ describe("testing utilities", () => {
   it("testFlow supports generator mocking by block-name and model-id", async () => {
     const chat = generator<{ message: string }, { reply: string }>({
       name: "chat-generator",
-      model: "openai:gpt-4o-mini",
+      model: "openai/gpt-4o-mini",
       prompt: "Reply to the user",
       outputSchema: passthroughSchema as any
     });
     const fallback = generator<{ message: string }, { reply: string }>({
       name: "fallback-generator",
-      model: "openai:gpt-4o-mini",
+      model: "openai/gpt-4o-mini",
       prompt: "Fallback",
       outputSchema: passthroughSchema as any
     });
@@ -122,7 +122,7 @@ describe("testing utilities", () => {
       script: [{ structuredOutput: { reply: "from block-name" } }]
     });
     const byModel = mockGenerator({
-      name: "openai:gpt-4o-mini",
+      name: "openai/gpt-4o-mini",
       script: [{ structuredOutput: { reply: "from model-id" } }]
     });
 
@@ -132,7 +132,7 @@ describe("testing utilities", () => {
       input: { message: "primary" },
       userId: "user_1",
       generators: { "chat-generator": byName },
-      models: { "openai:gpt-4o-mini": byModel }
+      models: { "openai/gpt-4o-mini": byModel }
     });
     expect(primary.status).toBe("completed");
     expect(primary.output).toEqual({ reply: "from block-name" });
@@ -143,7 +143,7 @@ describe("testing utilities", () => {
       input: { message: "secondary" },
       userId: "user_1",
       generators: { "chat-generator": byName },
-      models: { "openai:gpt-4o-mini": byModel }
+      models: { "openai/gpt-4o-mini": byModel }
     });
     expect(secondary.status).toBe("completed");
     expect(secondary.output).toEqual({ reply: "from model-id" });

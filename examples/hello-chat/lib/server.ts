@@ -1,14 +1,13 @@
-import { openai } from "@ai-sdk/openai";
+import { createModelResolver } from "@flow-state-dev/core/models";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createAiSdkModelResolver,
 } from "@flow-state-dev/server";
 import helloChatFlow from "@/src/flows/hello-chat/flow";
 
-// Pass the openai provider directly — reads OPENAI_API_KEY from env.
-// Model strings like "gpt-5" in flow definitions are resolved via openai().
-const modelResolver = createAiSdkModelResolver(openai);
+// Auto-detects providers from env vars (OPENAI_API_KEY, etc.).
+// Model strings like "openai/gpt-5-mini" in flow definitions are resolved automatically.
+const modelResolver = createModelResolver();
 
 const registry = createFlowRegistry();
 registry.register(helloChatFlow);

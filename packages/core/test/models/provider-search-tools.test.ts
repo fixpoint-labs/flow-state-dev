@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MockLanguageModelV3 } from "ai/test";
-import { createAiSdkModelResolver } from "../src";
+import { createAiSdkModelResolver } from "../../src/models";
 
 describe("provider search tool resolution", () => {
   it("detects provider tools on the resolver function", () => {

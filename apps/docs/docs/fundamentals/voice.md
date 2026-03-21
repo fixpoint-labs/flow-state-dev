@@ -18,19 +18,21 @@ Three things to configure:
 
 ## Server setup
 
-Add `speechResolver` and `transcriptionResolver` to your router. These map model ID strings (like `"gpt-4o-mini-tts"` or `"gpt-4o-mini-transcribe"`) to actual provider models, the same way `modelResolver` maps IDs like `"gpt-5-mini"` to language models.
+Add `speechResolver` and `transcriptionResolver` to your router. These map model ID strings (like `"gpt-4o-mini-tts"` or `"gpt-4o-mini-transcribe"`) to actual provider models, the same way `modelResolver` maps IDs like `"openai/gpt-5.4-mini"` to language models.
 
 ```ts title="lib/server.ts"
 import { openai } from "@ai-sdk/openai";
 import {
   createFlowApiRouter,
   createFlowRegistry,
-  createAiSdkModelResolver,
+} from "@flow-state-dev/server";
+import {
+  createModelResolver,
   createAiSdkSpeechResolver,
   createAiSdkTranscriptionResolver,
-} from "@flow-state-dev/server";
+} from "@flow-state-dev/core/models";
 
-const modelResolver = createAiSdkModelResolver(openai);
+const modelResolver = createModelResolver();
 const speechResolver = createAiSdkSpeechResolver(
   (modelId) => openai.speech(modelId)
 );

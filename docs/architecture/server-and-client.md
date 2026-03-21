@@ -82,11 +82,12 @@ export const DELETE = router.DELETE;
 ### Custom Model Resolution
 
 ```ts
-import { createFlowApiRouter, createAiSdkModelResolver } from "@flow-state-dev/server";
+import { createFlowApiRouter } from "@flow-state-dev/server";
+import { createModelResolver } from "@flow-state-dev/core/models";
 
 const router = createFlowApiRouter({
   registry,
-  modelResolver: createAiSdkModelResolver((modelId) => myModelProvider(modelId)),
+  modelResolver: createModelResolver(),
 });
 ```
 

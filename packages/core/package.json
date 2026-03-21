@@ -20,6 +20,10 @@
     "./prompt": {
       "types": "./dist/prompt/index.d.ts",
       "default": "./dist/prompt/index.js"
+    },
+    "./models": {
+      "types": "./dist/models/index.d.ts",
+      "default": "./dist/models/index.js"
     }
   },
   "license": "MIT",
@@ -30,7 +34,11 @@
     "access": "public"
   },
   "dependencies": {
+    "ai": "^6.0.93",
     "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

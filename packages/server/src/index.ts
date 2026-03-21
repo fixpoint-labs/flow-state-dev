@@ -36,25 +36,42 @@ export * from "./streaming";
 export * from "./execution";
 export * from "./registry";
 export * from "./routes";
-export { createAiSdkModelResolver, wrapAiSdkModel } from "./models/createAiSdkModelResolver";
-export { createDefaultModelResolver } from "./models/createDefaultModelResolver";
-export type {
-  ResolveAiSdkLanguageModel
-} from "./models/createAiSdkModelResolver";
+// Model infrastructure — re-exported from core.
+// Prefer importing from @flow-state-dev/core or @flow-state-dev/core/models.
 export {
+  createAiSdkModelResolver,
+  wrapAiSdkModel,
+  createModelResolver,
+  createFSDProvider,
+  defaultGroups,
+  detectAvailableProviders,
+  parseModelString,
+  DEFAULT_PRESETS,
+  createFallbackModel,
+  isRetryableError,
   createAiSdkSpeechResolver,
-  wrapAiSdkSpeechModel
-} from "./models/createAiSdkSpeechResolver";
-export type {
-  ResolveAiSdkSpeechModel
-} from "./models/createAiSdkSpeechResolver";
-export {
+  wrapAiSdkSpeechModel,
   createAiSdkTranscriptionResolver,
   wrapAiSdkTranscriptionModel
-} from "./models/createAiSdkTranscriptionResolver";
+} from "@flow-state-dev/core/models";
 export type {
+  ResolveAiSdkLanguageModel,
+  CreateModelResolverOptions,
+  FSDProviderConfig,
+  FSDProvider,
+  ModelGroupConfig,
+  ModelGroupDefaults,
+  GatewayConfig,
+  RetryPolicy,
+  GatewayType,
+  ProviderName,
+  ProviderAvailability,
+  ParsedModelString,
+  PresetConfig,
+  FallbackModelEntry,
+  ResolveAiSdkSpeechModel,
   ResolveAiSdkTranscriptionModel
-} from "./models/createAiSdkTranscriptionResolver";
+} from "@flow-state-dev/core/models";
 export {
   FlowError,
   ModelError,
