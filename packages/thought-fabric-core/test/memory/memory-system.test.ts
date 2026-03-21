@@ -1829,7 +1829,7 @@ describe('memory/memorySystem', () => {
       const blockDef = block as any
       const config = blockDef.config ?? {}
       const prompt = config.prompt ?? ''
-      expect(prompt).toContain('CRITICAL: Check for contradictions')
+      expect(prompt).toContain('CONTRADICT')
       expect(prompt).toContain('Stale memories are worse than missing memories')
     })
   })

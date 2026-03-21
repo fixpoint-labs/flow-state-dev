@@ -111,9 +111,15 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
 
   const observePrompt = [
     'You are a memory system for a cognitive AI agent.',
-    'Analyze the conversation items below and extract information worth remembering.',
+    'Extract NEW information from the "=== NEW ITEMS ===" section ONLY.',
     '',
-    'For each item, classify:',
+    'The "=== EXISTING MEMORY ===" section is READ-ONLY reference. Do NOT re-extract,',
+    'refresh, or re-emit entries from it. It exists so you can:',
+    '1. Avoid duplicating what\'s already stored',
+    '2. Detect when new items CONTRADICT existing entries (use replaces)',
+    '3. Resolve pronouns/references using prior context',
+    '',
+    'For each new item extracted, classify:',
     '- subject: who or what this is about. Use \'user\' for the primary user. For other people,',
     '  use their lowercase first name. For organizations, use lowercase hyphenated name.',
     '  Each fact should be about ONE subject — don\'t cram multiple entities into one fact.',
@@ -134,7 +140,9 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     '  * pattern: recurring behaviors',
     '  * event: something that happened (session-only)',
     '  * task: something the user asked to do (session-only)',
-    '- replaces: exact ID of an existing working memory entry this supersedes, or empty string',
+    '- replaces: exact ID of an existing working memory entry this supersedes, or empty string.',
+    '  ONLY use replaces when new information CONTRADICTS or CORRECTS an existing entry.',
+    '  Do NOT use replaces to "refresh" or "re-state" an entry that hasn\'t changed.',
     '',
     'Durability guidance:',
     '- What the user ASKED the assistant to do → session (it\'s a task, not a fact about the user)',
@@ -145,17 +153,14 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     '- Relationships the user described → persistent',
     '',
     'Rules:',
+    '- ONLY extract from the "=== NEW ITEMS ===" section. Never from existing memory.',
     '- ONE fact per subject. If user says "I\'m Joe and my wife is Jane",',
     '  that\'s TWO facts: subject=user "Name is Joe" + subject=jane "Is the user\'s wife"',
     '- Do NOT store negative facts ("X is NOT Y"). If something is not true, update or',
     '  invalidate the positive form using \'replaces\'. Simply omit if no positive form exists.',
-    '- Don\'t duplicate what\'s already in memory',
-    '- CRITICAL: Check for contradictions with existing working memory entries.',
-    '  When new information contradicts, corrects, or updates an existing memory,',
-    '  use \'replaces\' with that entry\'s exact ID. Examples:',
-    '  * "works at Google" in memory + user says "I joined Stripe" → replaces the Google entry',
-    '  * "prefers TypeScript" in memory + user says "I\'ve switched to Go" → replaces the TS entry',
-    '  * "name is Jon" in memory + user says "it\'s actually John" → replaces the name entry',
+    '- If a new item contradicts an existing memory, emit the corrected version with replaces.',
+    '  Example: memory has "works at Google" + new item says "I joined Stripe" →',
+    '  emit "Works at Stripe" with replaces pointing to the Google entry',
     '- Stale memories are worse than missing memories — always prefer updating over adding alongside',
     '- Prefer fewer, higher-quality memories over many low-quality ones',
     '- Return empty items array if nothing new is worth storing',
@@ -221,7 +226,9 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
       }
     } catch { /* episodic not installed — skip */ }
 
-    return `New items to analyze:\n${newItemsText}\n\nCurrent working memory:\n${wmContext || '(empty)'}${episodicContext}`
+    let existingMemory = `=== EXISTING MEMORY (read-only, do NOT re-extract) ===\n${wmContext || '(empty)'}${episodicContext}`
+
+    return `=== NEW ITEMS (extract from here only) ===\n${newItemsText}\n\n${existingMemory}`
   }
 
   // Build the generator with typed sessionResources and conditional episodic scope
