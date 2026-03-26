@@ -203,7 +203,8 @@ export function buildBlock<
       return buildBlock<ZodTypeAny, TOutputSchema, unknown, TOutput>({
         kind,
         config: nextConfig,
-        execute: internalExecute as unknown as ExecuteFn<ZodTypeAny, TOutputSchema, unknown, TOutput>
+        execute: internalExecute as unknown as ExecuteFn<ZodTypeAny, TOutputSchema, unknown, TOutput>,
+        declaredResources: definition.declaredResources,
       });
     },
     connectOutput<TTo>(
@@ -223,7 +224,8 @@ export function buildBlock<
       return buildBlock<TInputSchema, ZodTypeAny, TInput, TTo>({
         kind,
         config: nextConfig,
-        execute: mappedExecute
+        execute: mappedExecute,
+        declaredResources: definition.declaredResources,
       });
     }
   };

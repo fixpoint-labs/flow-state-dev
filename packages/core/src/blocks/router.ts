@@ -8,8 +8,23 @@ import type {
   InferStateFromSchema
 } from "../types/block";
 import type { DefinedResource, ResourceRef } from "../types/resource";
-import { buildBlock, extractDeclaredResources } from "./internal/build-block";
+import { buildBlock, extractDeclaredResources, mergeDeclaredResources } from "./internal/build-block";
 import { isBlockDefinition } from "./internal/utils";
+
+/**
+ * Merge the router's own declared resources with resources from all route blocks.
+ * This ensures resources declared deep in route pipelines bubble up through the
+ * router to the flow level.
+ */
+function mergeRouterResources(config: { routes?: BlockDefinition<any, any>[]; sessionResources?: Record<string, DefinedResource>; userResources?: Record<string, DefinedResource>; projectResources?: Record<string, DefinedResource> }) {
+  let merged = extractDeclaredResources(config);
+  if (config.routes) {
+    for (const route of config.routes) {
+      merged = mergeDeclaredResources(merged, route.declaredResources);
+    }
+  }
+  return merged;
+}
 
 function isRouteInCandidates<TInputSchema extends ZodTypeAny, TOutputSchema extends ZodTypeAny>(
   candidate: BlockDefinition<TInputSchema, TOutputSchema>,
@@ -124,7 +139,7 @@ export function router<
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "router",
     config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
-    declaredResources: extractDeclaredResources(config),
+    declaredResources: mergeRouterResources(config),
     execute: async (input, ctx) => {
       const candidate = (config.execute as (input: TInput, ctx: BlockContext) =>
         Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>

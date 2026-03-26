@@ -90,7 +90,7 @@ export type AddEntryInput = {
   importance: number
   pinned?: boolean
   durability?: 'transient' | 'session' | 'persistent' | 'permanent'
-  category?: 'fact' | 'event' | 'preference' | 'task' | 'relationship'
+  category?: 'identity' | 'event' | 'preference' | 'task' | 'relationship' | 'profession' | 'belief' | 'attribute' | 'pattern'
   metadata?: Record<string, any>
 }
 
@@ -121,7 +121,7 @@ export async function add(
     addedAtTurn: state.currentTurn,
     lastAccessedAtTurn: state.currentTurn,
     durability: entry.durability ?? 'session',
-    category: entry.category ?? 'fact',
+    category: entry.category ?? 'identity',
     metadata: entry.metadata,
   }
 

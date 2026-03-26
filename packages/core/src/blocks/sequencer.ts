@@ -338,7 +338,13 @@ function runSequencerOperations(
       if (runtime.workTasks.length > 0) {
         ctx.emitStatus("finishing");
         const pending = runtime.workTasks.splice(0, runtime.workTasks.length);
-        await Promise.allSettled(pending.map((t) => t.promise));
+        const settled = await Promise.allSettled(pending.map((t) => t.promise));
+        for (const result of settled) {
+          if (result.status === "fulfilled" && result.value.status === "rejected") {
+            const { name: taskName, reason } = result.value;
+            console.error(`[sequencer] Background work "${taskName}" failed:`, reason?.message ?? reason);
+          }
+        }
       }
 
       return currentValue;

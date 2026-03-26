@@ -2,6 +2,7 @@ import { defineResource } from '@flow-state-dev/core'
 import type { ResourceContext } from '@flow-state-dev/core'
 import { z } from 'zod'
 import type { ZodTypeAny } from 'zod'
+import { tokenOverlap } from '../helpers.js'
 import {
   workingMemoryResource,
   type WorkingMemoryState,
@@ -31,7 +32,20 @@ import {
   recent,
   markConsolidated,
 } from './episodic-memory-helpers.js'
-import { memorySystemCapture } from './memory-system-blocks.js'
+import {
+  createSemanticMemoryResource,
+  type SemanticMemoryState,
+  type SemanticFact,
+} from './semantic-memory.js'
+import {
+  addFact,
+  updateFact,
+  reinforce,
+  removeFact,
+  allFacts,
+  query,
+} from './semantic-memory-helpers.js'
+import { memorySystemCapture, memorySystemConsolidate, memorySystemPrune } from './memory-system-blocks.js'
 
 // ---------------------------------------------------------------------------
 // Memory system tracking resource
@@ -67,6 +81,34 @@ export const memorySystemResource = defineResource({
 })
 
 // ---------------------------------------------------------------------------
+// Default config constants
+// ---------------------------------------------------------------------------
+
+/** Default configuration for episodic memory. */
+export const DEFAULT_EPISODIC_CONFIG = {
+  scope: 'user' as const,
+  significanceThreshold: 0.6,
+  maxEpisodes: 200,
+}
+
+/** Default configuration for semantic memory consolidation. */
+export const DEFAULT_CONSOLIDATION_CONFIG = {
+  episodicThreshold: 5,
+  onEviction: true,
+  minInterval: 4,
+}
+
+/** Default configuration for the memory observer. */
+export const DEFAULT_OBSERVER_CONFIG = {
+  maxAssistantChars: 500,
+}
+
+/** Default configuration for semantic memory pruning. */
+export const DEFAULT_PRUNE_CONFIG = {
+  pruneThreshold: 20,
+}
+
+// ---------------------------------------------------------------------------
 // Config types
 // ---------------------------------------------------------------------------
 
@@ -87,6 +129,22 @@ export interface EpisodicMemoryConfig {
   maxEpisodes?: number
 }
 
+/** Configuration for the semantic memory module within memory.system(). */
+export interface SemanticMemoryConfig {
+  /** Scope for semantic storage. Default: same as episodic, or 'user'. */
+  scope?: 'user' | 'project'
+  consolidation?: {
+    /** Consolidate after this many new episodic entries. Default: 5. */
+    episodicThreshold?: number
+    /** Also consolidate when persistent items evicted from WM. Default: true. */
+    onEviction?: boolean
+    /** Don't consolidate more than once per N turns. Default: DEFAULT_CONSOLIDATION_CONFIG.minInterval. */
+    minInterval?: number
+  }
+  /** Prune when fact count reaches this threshold. Default: 20. 0 to disable. */
+  pruneThreshold?: number
+}
+
 /** Top-level configuration for memory.system(). */
 export interface MemorySystemConfig {
   /** Model ID for the observer LLM. */
@@ -95,12 +153,16 @@ export interface MemorySystemConfig {
   working: WorkingMemorySystemConfig | true
   /** Episodic memory config. `true` for defaults. Omit to disable. */
   episodic?: EpisodicMemoryConfig | true
+  /** Semantic memory config. `true` for defaults. Omit to disable. Requires episodic. */
+  semantic?: SemanticMemoryConfig | true
   /** Optional custom name for the capture pipeline. */
   name?: string
   /** Optional input schema for source override. */
   inputSchema?: ZodTypeAny
   /** Optional custom source function — overrides reading from ctx.session.items. */
   source?: (input: unknown, ctx: any) => string
+  /** Max chars of assistant response to include in captureFromItems. Default: 500. */
+  maxAssistantChars?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -110,16 +172,24 @@ export interface MemorySystemConfig {
 /** A ranked memory item from cross-store recall. */
 export type RankedMemoryItem = {
   content: string
-  source: 'working' | 'episodic'
+  source: 'working' | 'episodic' | 'semantic'
   relevance: number
   category: string
   id: string
+  /** Subject of the fact (semantic items only). */
+  subject?: string
 }
 
 /** The full memory system returned by memory.system(). */
 export interface MemorySystem {
-  /** Unified capture pipeline: observe → reflect → tick. */
+  /** Unified capture pipeline: observe → reflect → tick (+ consolidation when semantic). Takes string input. */
   capture: ReturnType<typeof memorySystemCapture>
+  /** Self-serving capture: reads last user message + truncated assistant response from session items. Use with `.work()` after the generator. */
+  captureFromItems: ReturnType<ReturnType<typeof memorySystemCapture>['connectInput']>
+  /** Standalone consolidation sequencer (when semantic configured). */
+  consolidate?: ReturnType<typeof memorySystemConsolidate>
+  /** Standalone prune sequencer (when semantic configured). */
+  prune?: ReturnType<typeof memorySystemPrune>
   /** Cross-store recall helper. */
   recall: (ctx: any, cue?: string) => RankedMemoryItem[]
   /** Context formatter for generator context arrays. */
@@ -148,6 +218,18 @@ export interface MemorySystem {
       markConsolidated: typeof markConsolidated
     }
   }
+  /** Semantic memory module — resource and helpers. Undefined if not configured. */
+  semantic?: {
+    resource: ReturnType<typeof createSemanticMemoryResource>
+    helpers: {
+      addFact: typeof addFact
+      updateFact: typeof updateFact
+      reinforce: typeof reinforce
+      removeFact: typeof removeFact
+      allFacts: typeof allFacts
+      query: typeof query
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -155,45 +237,64 @@ export interface MemorySystem {
 // ---------------------------------------------------------------------------
 
 /**
- * Tokenize a string into lowercase word tokens for comparison.
- */
-function tokenize(text: string): string[] {
-  return text.toLowerCase().split(/\s+/).filter((t) => t.length > 0)
-}
-
-/**
- * Compute token overlap ratio between two strings.
- * Returns a value [0, 1] representing the fraction of tokens in `a` that appear in `b`.
- */
-function tokenOverlap(a: string, b: string): number {
-  const tokensA = tokenize(a)
-  const tokensB = new Set(tokenize(b))
-  if (tokensA.length === 0) return 0
-  const matches = tokensA.filter((t) => tokensB.has(t)).length
-  return matches / tokensA.length
-}
-
-/**
  * Unified cross-store recall.
  *
- * Queries working memory and (if installed) episodic memory.
- * Deduplicates across stores — working memory wins over episodic.
+ * Queries working memory, (if installed) episodic memory, and (if installed) semantic memory.
+ * Deduplication priority: semantic > working > episodic.
  * Returns ranked by relevance descending.
  */
 function createRecall(
   episodicConfig?: { scope: 'user' | 'project' },
+  semanticConfig?: { scope: 'user' | 'project' },
 ) {
   return function recall(ctx: any, cue?: string): RankedMemoryItem[] {
     const results: RankedMemoryItem[] = []
 
-    // Read working memory
+    // 1. Read semantic facts first (highest authority)
+    if (semanticConfig) {
+      try {
+        const semRef = semanticConfig.scope === 'user'
+          ? ctx.user?.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
+          : ctx.project?.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
+
+        if (semRef) {
+          const facts = allFacts(semRef)
+          for (const fact of facts) {
+            // Relevance: confidence × (0.5 + 0.5 × normalizedReinforcement)
+            const normalizedReinforcement = Math.min(1, fact.reinforcementCount / 10)
+            let relevance = fact.confidence * (0.5 + 0.5 * normalizedReinforcement)
+
+            if (cue) {
+              const overlap = tokenOverlap(cue, fact.content)
+              if (overlap > 0) relevance = Math.min(1, relevance + overlap * 0.4)
+            }
+
+            results.push({
+              content: fact.content,
+              source: 'semantic',
+              relevance,
+              category: fact.category,
+              id: fact.id,
+              subject: fact.subject,
+            })
+          }
+        }
+      } catch { /* semantic not available */ }
+    }
+
+    // 2. Read working memory
     try {
       const wmRef = ctx.session?.resources?.workingMemory as ResourceContext<WorkingMemoryState> | undefined
       if (wmRef) {
         const entries = wmItems(wmRef)
         for (const entry of entries) {
+          // Dedup: skip if semantic already has similar content
+          const isDupOfSemantic = results.some(
+            (r) => r.source === 'semantic' && tokenOverlap(entry.content, r.content) > 0.6,
+          )
+          if (isDupOfSemantic) continue
+
           let relevance = entry.salience
-          // Boost if cue matches
           if (cue) {
             const overlap = tokenOverlap(cue, entry.content)
             if (overlap > 0) relevance = Math.min(1, relevance + overlap * 0.2)
@@ -202,14 +303,14 @@ function createRecall(
             content: entry.content,
             source: 'working',
             relevance,
-            category: entry.category ?? 'fact',
+            category: entry.category ?? 'identity',
             id: entry.id,
           })
         }
       }
     } catch { /* working memory not available */ }
 
-    // Read episodic memory (if installed)
+    // 3. Read episodic memory (if installed)
     if (episodicConfig) {
       try {
         const epRef = episodicConfig.scope === 'user'
@@ -221,17 +322,16 @@ function createRecall(
           const maxTurn = episodes.length > 0 ? Math.max(...episodes.map((e) => e.occurredAtTurn)) : 1
 
           for (const ep of episodes) {
-            // Check dedup: skip if WM already has similar content
+            // Dedup: skip if semantic or WM already has similar content
             const isDuplicate = results.some(
-              (r) => r.source === 'working' && tokenOverlap(ep.content, r.content) > 0.6,
+              (r) => (r.source === 'working' || r.source === 'semantic') &&
+                tokenOverlap(ep.content, r.content) > 0.6,
             )
             if (isDuplicate) continue
 
-            // Compute relevance from significance × recency
             const recencyFactor = maxTurn > 0 ? (ep.occurredAtTurn / maxTurn) : 1
             let relevance = ep.significance * (0.5 + 0.5 * recencyFactor)
 
-            // Boost if cue matches
             if (cue) {
               const overlap = tokenOverlap(cue, ep.content)
               if (overlap > 0) relevance = Math.min(1, relevance + overlap * 0.3)
@@ -269,13 +369,43 @@ function createContextFormatter(
     const items = recallFn(ctx)
     if (items.length === 0) return ''
 
-    const facts = items.filter((i) => i.category === 'fact' || i.category === 'relationship')
-    const focus = items.filter((i) => i.category === 'task' || i.category === 'event')
-    const prefs = items.filter((i) => i.category === 'preference')
+    // Separate semantic items (which have subjects) from session items
+    const semanticItems = items.filter((i) => i.source === 'semantic')
+    const sessionItems = items.filter((i) => i.source !== 'semantic')
 
     let output = ''
-    if (facts.length > 0) {
-      output += 'Known facts:\n' + facts.map((i) => `- ${i.content}`).join('\n') + '\n\n'
+
+    // Group semantic items by subject
+    if (semanticItems.length > 0) {
+      const bySubject = new Map<string, RankedMemoryItem[]>()
+      for (const item of semanticItems) {
+        const subject = item.subject ?? 'user'
+        if (!bySubject.has(subject)) bySubject.set(subject, [])
+        bySubject.get(subject)!.push(item)
+      }
+
+      // If only one subject ('user'), omit the grouping header for simplicity
+      if (bySubject.size === 1 && bySubject.has('user')) {
+        const facts = bySubject.get('user')!
+        output += 'Known facts:\n' + facts.map((i) => `- [${i.category}] ${i.content}`).join('\n') + '\n\n'
+      } else {
+        for (const [subject, facts] of bySubject) {
+          output += `About ${subject}:\n` + facts.map((i) => `- [${i.category}] ${i.content}`).join('\n') + '\n\n'
+        }
+      }
+    }
+
+    // Session items (working/episodic) formatted by category
+    const focus = sessionItems.filter((i) => i.category === 'task' || i.category === 'event')
+    const prefs = sessionItems.filter((i) => i.category === 'preference')
+    const patterns = sessionItems.filter((i) => i.category === 'pattern')
+    const other = sessionItems.filter((i) =>
+      i.category !== 'task' && i.category !== 'event' &&
+      i.category !== 'preference' && i.category !== 'pattern',
+    )
+
+    if (other.length > 0) {
+      output += 'Session context:\n' + other.map((i) => `- ${i.content}`).join('\n') + '\n\n'
     }
     if (focus.length > 0) {
       output += 'Current focus:\n' + focus.map((i) => `- ${i.content}`).join('\n') + '\n\n'
@@ -283,8 +413,96 @@ function createContextFormatter(
     if (prefs.length > 0) {
       output += 'User preferences:\n' + prefs.map((i) => `- ${i.content}`).join('\n') + '\n\n'
     }
+    if (patterns.length > 0) {
+      output += 'Patterns:\n' + patterns.map((i) => `- ${i.content}`).join('\n') + '\n\n'
+    }
 
     return output.trimEnd()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Items connector for captureFromItems
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract text content from a session item.
+ */
+function extractItemText(item: any): string {
+  return typeof item.payload === 'string'
+    ? item.payload
+    : typeof item.content === 'string'
+      ? item.content
+      : ''
+}
+
+/**
+ * Build a connector function that reads recent conversation context,
+ * the current user message, and truncated assistant response from session
+ * items. Used by `captureFromItems`.
+ *
+ * Includes up to `priorTurns` previous user messages as context so the
+ * observer can resolve pronouns and references (e.g., "her name is Jane"
+ * makes sense when the prior message mentioned "my wife").
+ */
+function buildItemsConnector(maxAssistantChars: number, priorTurns = 3) {
+  return (_input: unknown, ctx: any): string => {
+    const items = ctx.session?.items?.all?.() ?? []
+    if (items.length === 0) return ''
+
+    // Find all user messages in order
+    const userMessages = items.filter(
+      (item: any) => item.type === 'message' && (item as any).role === 'user',
+    )
+    if (userMessages.length === 0) return ''
+
+    const lastUser = userMessages[userMessages.length - 1]
+    const currentText = extractItemText(lastUser)
+    if (!currentText) return ''
+
+    // Build result with recent context → current message → assistant response
+    const parts: string[] = []
+
+    // Prior user messages for context (up to priorTurns, excluding current)
+    if (userMessages.length > 1) {
+      const priorMessages = userMessages.slice(
+        Math.max(0, userMessages.length - 1 - priorTurns),
+        userMessages.length - 1,
+      )
+      if (priorMessages.length > 0) {
+        const priorTexts = priorMessages
+          .map((item: any) => extractItemText(item))
+          .filter(Boolean)
+        if (priorTexts.length > 0) {
+          parts.push('Recently said:\n' + priorTexts.map((t: string) => `[user] ${t}`).join('\n'))
+        }
+      }
+    }
+
+    // Current user message
+    parts.push(`Currently told us:\n[user] ${currentText}`)
+
+    // Assistant response after the current user message
+    const lastUserIdx = items.indexOf(lastUser)
+    const assistantItems = items.slice(lastUserIdx + 1).filter(
+      (item: any) => item.type === 'message' && (item as any).role === 'assistant',
+    )
+
+    if (assistantItems.length > 0) {
+      const assistantText = assistantItems
+        .map((item: any) => extractItemText(item))
+        .filter(Boolean)
+        .join('\n')
+
+      if (assistantText) {
+        const truncated = assistantText.length > maxAssistantChars
+          ? assistantText.slice(0, maxAssistantChars) + ' [truncated]'
+          : assistantText
+        parts.push(`Assistant response:\n[assistant] ${truncated}`)
+      }
+    }
+
+    return parts.join('\n\n')
   }
 }
 
@@ -295,8 +513,9 @@ function createContextFormatter(
 /**
  * Create a unified memory system.
  *
- * Composes working memory and (optionally) episodic memory into a single
- * capture pipeline, recall helper, and context formatter.
+ * Composes working memory, (optionally) episodic memory, and (optionally)
+ * semantic memory into a single capture pipeline, recall helper, and
+ * context formatter.
  *
  * ```ts
  * import { memory } from '@thought-fabric/core'
@@ -305,6 +524,7 @@ function createContextFormatter(
  *   model: 'gpt-5-mini',
  *   working: { capacity: 7 },
  *   episodic: true,
+ *   semantic: true,
  * })
  *
  * // Use in a flow:
@@ -314,6 +534,11 @@ function createContextFormatter(
  * ```
  */
 export function system(config: MemorySystemConfig): MemorySystem {
+  // Validate: semantic requires episodic
+  if (config.semantic && !config.episodic) {
+    throw new Error('Semantic memory requires episodic memory to be configured')
+  }
+
   // Resolve working memory config
   const workingConfig: WorkingMemorySystemConfig = config.working === true
     ? {}
@@ -331,39 +556,75 @@ export function system(config: MemorySystemConfig): MemorySystem {
   // Resolve episodic config
   const episodicConfig = config.episodic
     ? {
-        scope: (config.episodic === true ? 'user' : config.episodic.scope) ?? 'user' as const,
-        significanceThreshold: config.episodic === true ? 0.6 : (config.episodic.significanceThreshold ?? 0.6),
-        maxEpisodes: config.episodic === true ? 200 : (config.episodic.maxEpisodes ?? 200),
+        scope: (config.episodic === true ? DEFAULT_EPISODIC_CONFIG.scope : config.episodic.scope) ?? DEFAULT_EPISODIC_CONFIG.scope,
+        significanceThreshold: config.episodic === true ? DEFAULT_EPISODIC_CONFIG.significanceThreshold : (config.episodic.significanceThreshold ?? DEFAULT_EPISODIC_CONFIG.significanceThreshold),
+        maxEpisodes: config.episodic === true ? DEFAULT_EPISODIC_CONFIG.maxEpisodes : (config.episodic.maxEpisodes ?? DEFAULT_EPISODIC_CONFIG.maxEpisodes),
       }
     : undefined
 
-  // Create episodic resource if configured
+  // Resolve semantic config
+  const semanticConfig = config.semantic
+    ? {
+        scope: ((config.semantic === true
+          ? (episodicConfig?.scope ?? DEFAULT_EPISODIC_CONFIG.scope)
+          : config.semantic.scope) ?? (episodicConfig?.scope ?? DEFAULT_EPISODIC_CONFIG.scope)) as 'user' | 'project',
+        consolidation: {
+          episodicThreshold: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold : (config.semantic.consolidation?.episodicThreshold ?? DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold),
+          onEviction: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.onEviction : (config.semantic.consolidation?.onEviction ?? DEFAULT_CONSOLIDATION_CONFIG.onEviction),
+          minInterval: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.minInterval : (config.semantic.consolidation?.minInterval ?? DEFAULT_CONSOLIDATION_CONFIG.minInterval),
+        },
+        pruneThreshold: config.semantic === true ? DEFAULT_PRUNE_CONFIG.pruneThreshold : (config.semantic.pruneThreshold ?? DEFAULT_PRUNE_CONFIG.pruneThreshold),
+      }
+    : undefined
+
+  // Create resources if configured (shared instances across blocks)
   const episodicResource = episodicConfig
     ? createEpisodicMemoryResource(episodicConfig.scope)
     : undefined
 
-  // Build blocks config — pass shared episodic resource to avoid resource conflicts
+  const semanticResource = semanticConfig
+    ? createSemanticMemoryResource(semanticConfig.scope)
+    : undefined
+
+  // Build blocks config — pass shared resources to avoid resource conflicts
   const blocksConfig = {
     name: config.name,
     model: config.model,
     working: resolvedWorking,
     episodic: episodicConfig,
     _episodicResource: episodicResource,
+    semantic: semanticConfig,
+    _semanticResource: semanticResource,
     source: config.source,
   }
 
   // Create capture pipeline
   const capture = memorySystemCapture(blocksConfig)
 
+  // Create standalone consolidation and prune sequencers (when semantic configured)
+  const consolidate = semanticConfig
+    ? memorySystemConsolidate(blocksConfig)
+    : undefined
+
+  const prune = semanticConfig
+    ? memorySystemPrune(blocksConfig)
+    : undefined
+
   // Create recall and contextFormatter
   const recallFn = createRecall(
     episodicConfig ? { scope: episodicConfig.scope } : undefined,
+    semanticConfig ? { scope: semanticConfig.scope } : undefined,
   )
   const contextFormatterFn = createContextFormatter(recallFn)
+
+  // Create captureFromItems — self-serving variant that reads from session items
+  const maxAssistantChars = config.maxAssistantChars ?? DEFAULT_OBSERVER_CONFIG.maxAssistantChars
+  const captureFromItems = capture.connectInput(buildItemsConnector(maxAssistantChars))
 
   // Assemble the system
   const result: MemorySystem = {
     capture,
+    captureFromItems,
     recall: recallFn,
     contextFormatter: contextFormatterFn,
     working: {
@@ -382,6 +643,14 @@ export function system(config: MemorySystemConfig): MemorySystem {
     },
   }
 
+  if (consolidate) {
+    result.consolidate = consolidate
+  }
+
+  if (prune) {
+    result.prune = prune
+  }
+
   if (episodicConfig && episodicResource) {
     result.episodic = {
       resource: episodicResource,
@@ -389,6 +658,20 @@ export function system(config: MemorySystemConfig): MemorySystem {
         encode,
         recent,
         markConsolidated,
+      },
+    }
+  }
+
+  if (semanticConfig && semanticResource) {
+    result.semantic = {
+      resource: semanticResource,
+      helpers: {
+        addFact,
+        updateFact,
+        reinforce,
+        removeFact,
+        allFacts,
+        query,
       },
     }
   }

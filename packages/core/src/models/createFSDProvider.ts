@@ -269,12 +269,18 @@ const GATEWAY_PACKAGES: Record<
  * failing when an optional peer dependency is not installed.
  */
 const _require = createRequire(import.meta.url);
+const _cwdRequire = createRequire(new URL(`file://${process.cwd()}/`));
 
 function tryRequire(packageName: string): Record<string, unknown> | undefined {
   try {
     return _require(packageName);
   } catch {
-    return undefined;
+    // Fallback: resolve from cwd (app root) for pnpm strict isolation
+    try {
+      return _cwdRequire(packageName);
+    } catch {
+      return undefined;
+    }
   }
 }
 

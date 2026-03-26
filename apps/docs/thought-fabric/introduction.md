@@ -17,7 +17,7 @@ Thought Fabric maps cognitive science concepts onto composable building blocks. 
 | Domain | What it models | Status |
 |--------|---------------|--------|
 | **Attention** | What to focus on. Relevance filtering and salience scoring. | Shipped |
-| **Memory** | What to remember. Bounded working memory with decay and eviction. | Shipped |
+| **Memory** | What to remember. Working memory, episodic memory, and semantic knowledge. | Shipped |
 | **Identity** | How to behave. Perspective (role/expertise) and constitution (values/constraints). | Coming soon |
 | **Perception** | How to interpret input. Sensory processing, context framing, signal extraction. | Coming soon |
 | **Reasoning** | How to think. Structured deliberation, chain-of-thought, planning strategies. | Coming soon |
@@ -30,7 +30,7 @@ The goal isn't to simulate human cognition. It's to give agent builders a struct
 
 ## What's shipped today
 
-**Memory** is fully implemented. Working memory gives your agents a bounded, salience-scored store that tracks what stays in cognitive focus during a conversation. Entries decay over time using configurable strategies (ACT-R power-law by default). The `workingMemoryCapture` block extracts memories via LLM, persists them, and advances the decay clock. One line to add to a pipeline. See [Memory](./memory.md).
+**Memory** spans three tiers. Working memory tracks active context during a conversation with salience-scored entries that decay over time. Episodic memory records significant experiences across sessions. Semantic memory distills stable knowledge — facts, preferences, patterns — from repeated episodic evidence via LLM-based consolidation. The `memory.system()` factory wires all three together into a single capture pipeline. One line to add to a sequencer. See [Memory](./memory.md).
 
 **Attention** ships two blocks. `filterRelevance` does deterministic keyword-based relevance filtering: fast, no LLM, good for cutting noise before expensive operations. `scoreSalience` uses an LLM to score items along configurable dimensions (goal relevance, recency, novelty, emotional weight). Use them together: filter first, then score the survivors. See [Attention](./attention.md).
 

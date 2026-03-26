@@ -22,7 +22,7 @@
  *   - Resources   — named, typed state containers (artifacts) scoped to a session
  *   - clientData  — derived client-facing values computed from scope state and resources
  *   - Emission API — blocks emit items explicitly via ctx.emitMessage(), ctx.emitComponent(), etc.
- *   - Unified memory — working memory + episodic memory via @thought-fabric/core's memory.system()
+ *   - Unified memory — working + episodic + semantic memory via @thought-fabric/core's memory.system()
  */
 import {
   contextFn,
@@ -33,8 +33,7 @@ import {
   sequencer
 } from "@flow-state-dev/core";
 import {
-  system as memorySystem,
-  memorySystemResource,
+  system as memorySystem
 } from "@thought-fabric/core/memory";
 import { z } from "zod";
 import {
@@ -50,15 +49,19 @@ import {
   artifactResources,
 } from "./schemas";
 
-const MODEL_ID = "openai/gpt-5-mini";
+const MODEL_ID = "openai/gpt-5.4-mini";
 
-// Unified memory system: working memory + user-scoped episodic memory.
+// Unified memory system: working memory + user-scoped episodic + semantic memory.
 // Provides a single capture pipeline, cross-store recall, and context formatter.
+// Semantic memory distills repeated episodic experiences into stable knowledge
+// (facts, preferences, patterns) via LLM-based consolidation.
 const mem = memorySystem({
   model: MODEL_ID,
   working: { capacity: 7 },
   episodic: true,
+  semantic: true,
 });
+
 
 // ---------------------------------------------------------------------------
 // Flow-level schemas
@@ -127,8 +130,7 @@ const agentGenerator = generator({
   name: "agent-generator",
   userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
   sessionResources: {
-    ...artifactResources,
-    workingMemory: mem.working.resource,
+    ...artifactResources
   },
   model: (_input, ctx) => ctx.user?.state.preferredModel ?? MODEL_ID,
 
@@ -239,21 +241,20 @@ const planFallback = handler({
 //   .rescue([...])        — catch errors and route to fallback blocks
 
 const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema })
-  // Memory capture runs in the background (.work): observes new session items,
-  // classifies them with durability and category, routes to working + episodic
-  // memory stores, and advances the decay clock.
-  .work((input) => input.message, mem.capture)
   .then(applyRequestedMode)
   .then(analyzeInput)
   .thenIf((result) => result.needsContext, formatReport)
-  .then(agentGenerator)  
+  .then(agentGenerator)
+  // Memory capture runs in the background (.work) after the generator so it
+  // sees both the user message and the agent's response. captureFromItems
+  // reads from session items automatically — no connector needed.
+  .work(mem.captureFromItems)
   .then(incrementRequestCount)
   .tap(async (output) => {
     console.log(`Chat completed: ${output.slice(0, 50)}...`);
   });
 
 const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
-  .work((input) => input.message, mem.capture)
   .then(applyRequestedMode)
   .then(analyzeInput)
   .map((result) => ({
@@ -261,6 +262,7 @@ const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
     instructions: "Create a step-by-step plan."
   }))
   .then(agentGenerator)
+  .work(mem.captureFromItems)
   .then(incrementRequestCount)
   .rescue([
     {
@@ -306,7 +308,6 @@ const kitchenSinkFlow = defineFlow({
 
   // Voice: enable TTS so assistant responses are synthesized to audio.
   // Uses OpenAI's tts-1 model — fast and widely available.
-  // (gpt-4o-mini-tts is higher quality but 5-10x slower, often timing out.)
   voice: {
     tts: {
       model: "tts-1",
@@ -336,9 +337,7 @@ const kitchenSinkFlow = defineFlow({
     // They live alongside session state but have their own schemas and can
     // be independently writable.
     resources: {
-      ...artifactResources,
-      workingMemory: mem.working.resource,
-      memorySystem: memorySystemResource,
+      ...artifactResources
     },
 
     // clientData entries are derived values computed from scope state and
@@ -375,9 +374,6 @@ const kitchenSinkFlow = defineFlow({
   // User scope: state and clientData that persist across sessions for a user.
   user: {
     stateSchema: userStateSchema,
-    resources: {
-      ...(mem.episodic ? { episodicMemory: mem.episodic.resource } : {}),
-    },
     clientData: {
       preferences: (ctx) => ({
         displayName: String(ctx.state.displayName ?? "Developer"),
