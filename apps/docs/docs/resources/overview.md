@@ -49,7 +49,7 @@ Config options:
 | **Identity** | Field names (shared namespace) | Resource name (isolated namespace) |
 | **Collision risk** | Fields can conflict across blocks | Each resource is self-contained |
 
-Use **scope state** for simple fields: mode flags, counters, config values. Use **resources** when you're working with content that has structure — documents, plans, artifacts, knowledge bases. See [Storage](/docs/resources/storage) for the full decision guide.
+Use **scope state** for simple fields: mode flags, counters, config values. Use **resources** when you're working with content that has structure — documents, plans, artifacts, knowledge bases. See [State vs Resources](/docs/resources/storage) for more guidance on when to use which.
 
 ## Working with content
 
@@ -93,7 +93,7 @@ Resources are not automatically exposed to generators. Use `llmReadable` and `ll
 
 ## Resource namespaces
 
-Static resources have a fixed name. Resource namespaces create typed collections where instances are added dynamically at runtime. Think of them as directories: the namespace defines the schema and constraints, individual instances are the files.
+Static resources have a fixed name. Resource namespaces create typed collections where instances are added dynamically at runtime — useful when the number of instances isn't known ahead of time (file collections, per-topic knowledge, dynamic workspaces).
 
 ```ts
 import { defineResourceNamespace } from "@flow-state-dev/core";
@@ -106,25 +106,7 @@ const filesNamespace = defineResourceNamespace({
 });
 ```
 
-Three pattern types:
-
-- **`files/*`** — matches one level (`files/readme.md`, not `files/src/utils.ts`)
-- **`files/**`** — matches any depth (`files/readme.md`, `files/src/deep/nested.ts`)
-- **`[topic]/observations`** — parameterized segments (`react/observations`, `rust/observations`)
-
-At runtime, namespace entries on `ctx.session.resources` are `ResourceNamespaceRef` instances with `create()`, `get()`, `getOrCreate()`, `list()`, `delete()`, and `count()` methods.
-
-```ts
-const ref = await ctx.session.resources.files.create("readme.md", { language: "markdown" });
-const allSrc = ctx.session.resources.files.list("src/");
-await ctx.session.resources.files.delete("old-file.ts");
-```
-
-When `maxInstances` is set, you can configure eviction: `"none"` (throws at cap, the default), `"lru"` (least-recently-accessed), or `"oldest"` (first-created).
-
-Namespaces also support lifecycle hooks (`onInstanceCreated`, `onInstanceUpdated`, `onInstanceDeleted`) for logging, side effects, or cleanup.
-
-Namespace instances are stored alongside static resources in the same flat map — no schema changes needed.
+See [Resource Namespaces](/docs/resources/namespaces) for the full reference: patterns, runtime API, eviction, lifecycle hooks, and storage model.
 
 ## Block-level resource declarations
 
@@ -159,5 +141,6 @@ Choose the scope that matches the data's lifetime. Session for conversation-loca
 
 ## Where to go next
 
-- **[Storage](/docs/resources/storage)** — When to use resources vs scope state, scoping decisions, block-private vs shared
+- **[State vs Resources](/docs/resources/storage)** — When to use resources vs scope state, scoping decisions, shared vs block-private
+- **[Resource Namespaces](/docs/resources/namespaces)** — Dynamic collections with patterns, eviction, and lifecycle hooks
 - **[State & Scopes](/docs/fundamentals/state-and-scopes)** — Broader state model, clientData, targets
