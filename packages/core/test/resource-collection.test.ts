@@ -1,63 +1,63 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineResourceNamespace, isDefinedResourceNamespace } from "../src/types/resource-namespace";
+import { defineResourceCollection, isDefinedResourceCollection } from "../src/types/resource-collection";
 import {
   normalizeResourcePath,
-  resolveNamespaceKey,
+  resolveCollectionKey,
   matchesPattern,
   getPatternPrefix,
   extractPatternParams,
   isParameterizedPattern,
   isDeepWildcard,
   isSingleWildcard,
-} from "../src/types/namespace-patterns";
+} from "../src/types/collection-patterns";
 import { defineResource } from "../src/types/resource";
 import { handler, sequencer } from "../src";
 import { extractDeclaredResources, mergeDeclaredResources } from "../src/blocks/internal/build-block";
 import { createMockContext } from "./helpers";
 
 // ---------------------------------------------------------------------------
-// defineResourceNamespace()
+// defineResourceCollection()
 // ---------------------------------------------------------------------------
 
-describe("defineResourceNamespace", () => {
-  it("creates a namespace with single-level wildcard pattern", () => {
-    const ns = defineResourceNamespace({
+describe("defineResourceCollection", () => {
+  it("creates a collection with single-level wildcard pattern", () => {
+    const coll = defineResourceCollection({
       pattern: "files/*",
       stateSchema: z.object({ language: z.string() }),
     });
 
-    expect(ns.pattern).toBe("files/*");
-    expect(ns.__brand).toBe("ResourceNamespace");
+    expect(coll.pattern).toBe("files/*");
+    expect(coll.__brand).toBe("ResourceCollection");
   });
 
-  it("creates a namespace with deep wildcard pattern", () => {
-    const ns = defineResourceNamespace({
+  it("creates a collection with deep wildcard pattern", () => {
+    const coll = defineResourceCollection({
       pattern: "files/**",
       stateSchema: z.object({ language: z.string() }),
       maxInstances: 200,
       eviction: "lru",
     });
 
-    expect(ns.pattern).toBe("files/**");
-    expect(ns.maxInstances).toBe(200);
-    expect(ns.eviction).toBe("lru");
+    expect(coll.pattern).toBe("files/**");
+    expect(coll.maxInstances).toBe(200);
+    expect(coll.eviction).toBe("lru");
   });
 
-  it("creates a namespace with parameterized pattern", () => {
-    const ns = defineResourceNamespace({
+  it("creates a collection with parameterized pattern", () => {
+    const coll = defineResourceCollection({
       pattern: "[topic]/observations",
       stateSchema: z.object({ entries: z.array(z.string()).default([]) }),
       maxInstances: 50,
     });
 
-    expect(ns.pattern).toBe("[topic]/observations");
-    expect(ns.maxInstances).toBe(50);
+    expect(coll.pattern).toBe("[topic]/observations");
+    expect(coll.maxInstances).toBe(50);
   });
 
   it("throws on invalid pattern (empty)", () => {
     expect(() =>
-      defineResourceNamespace({
+      defineResourceCollection({
         pattern: "",
         stateSchema: z.object({}),
       })
@@ -66,7 +66,7 @@ describe("defineResourceNamespace", () => {
 
   it("throws when ** is not the last segment", () => {
     expect(() =>
-      defineResourceNamespace({
+      defineResourceCollection({
         pattern: "files/**/extra",
         stateSchema: z.object({}),
       })
@@ -75,7 +75,7 @@ describe("defineResourceNamespace", () => {
 
   it("throws when maxInstances is < 1", () => {
     expect(() =>
-      defineResourceNamespace({
+      defineResourceCollection({
         pattern: "files/*",
         stateSchema: z.object({}),
         maxInstances: 0,
@@ -85,7 +85,7 @@ describe("defineResourceNamespace", () => {
 
   it("throws when eviction is set without maxInstances", () => {
     expect(() =>
-      defineResourceNamespace({
+      defineResourceCollection({
         pattern: "files/*",
         stateSchema: z.object({}),
         eviction: "lru",
@@ -95,7 +95,7 @@ describe("defineResourceNamespace", () => {
 
   it("allows eviction: 'none' without maxInstances", () => {
     expect(() =>
-      defineResourceNamespace({
+      defineResourceCollection({
         pattern: "files/*",
         stateSchema: z.object({}),
         eviction: "none",
@@ -105,30 +105,30 @@ describe("defineResourceNamespace", () => {
 });
 
 // ---------------------------------------------------------------------------
-// isDefinedResourceNamespace
+// isDefinedResourceCollection
 // ---------------------------------------------------------------------------
 
-describe("isDefinedResourceNamespace", () => {
-  it("returns true for namespace definitions", () => {
-    const ns = defineResourceNamespace({
+describe("isDefinedResourceCollection", () => {
+  it("returns true for collection definitions", () => {
+    const coll = defineResourceCollection({
       pattern: "files/*",
       stateSchema: z.object({}),
     });
-    expect(isDefinedResourceNamespace(ns)).toBe(true);
+    expect(isDefinedResourceCollection(coll)).toBe(true);
   });
 
   it("returns false for static resource definitions", () => {
     const res = defineResource({
       stateSchema: z.object({ value: z.string() }),
     });
-    expect(isDefinedResourceNamespace(res)).toBe(false);
+    expect(isDefinedResourceCollection(res)).toBe(false);
   });
 
   it("returns false for primitives", () => {
-    expect(isDefinedResourceNamespace(null)).toBe(false);
-    expect(isDefinedResourceNamespace(undefined)).toBe(false);
-    expect(isDefinedResourceNamespace("string")).toBe(false);
-    expect(isDefinedResourceNamespace(42)).toBe(false);
+    expect(isDefinedResourceCollection(null)).toBe(false);
+    expect(isDefinedResourceCollection(undefined)).toBe(false);
+    expect(isDefinedResourceCollection("string")).toBe(false);
+    expect(isDefinedResourceCollection(42)).toBe(false);
   });
 });
 
@@ -247,32 +247,32 @@ describe("matchesPattern", () => {
 });
 
 // ---------------------------------------------------------------------------
-// resolveNamespaceKey
+// resolveCollectionKey
 // ---------------------------------------------------------------------------
 
-describe("resolveNamespaceKey", () => {
+describe("resolveCollectionKey", () => {
   it("resolves string key for wildcard patterns", () => {
-    expect(resolveNamespaceKey("files/*", "readme.md")).toBe("files/readme.md");
-    expect(resolveNamespaceKey("files/**", "src/utils.ts")).toBe("files/src/utils.ts");
+    expect(resolveCollectionKey("files/*", "readme.md")).toBe("files/readme.md");
+    expect(resolveCollectionKey("files/**", "src/utils.ts")).toBe("files/src/utils.ts");
   });
 
   it("resolves object key for parameterized patterns", () => {
-    expect(resolveNamespaceKey("[topic]/observations", { topic: "react" }))
+    expect(resolveCollectionKey("[topic]/observations", { topic: "react" }))
       .toBe("react/observations");
   });
 
   it("throws on missing parameter", () => {
-    expect(() => resolveNamespaceKey("[topic]/observations", {}))
+    expect(() => resolveCollectionKey("[topic]/observations", {}))
       .toThrow('Missing parameter "topic"');
   });
 
   it("throws on object key for non-parameterized pattern", () => {
-    expect(() => resolveNamespaceKey("files/*", { key: "test" }))
+    expect(() => resolveCollectionKey("files/*", { key: "test" }))
       .toThrow("no parameters");
   });
 
   it("throws on string key for parameterized pattern", () => {
-    expect(() => resolveNamespaceKey("[topic]/observations", "react"))
+    expect(() => resolveCollectionKey("[topic]/observations", "react"))
       .toThrow("requires an object key");
   });
 });
@@ -321,7 +321,7 @@ describe("normalizeResourcePath", () => {
 // ---------------------------------------------------------------------------
 
 const fileSchema = z.object({ language: z.string() });
-const filesNamespace = defineResourceNamespace({
+const filesCollection = defineResourceCollection({
   pattern: "files/**",
   stateSchema: fileSchema,
   maxInstances: 200,
@@ -333,72 +333,72 @@ const observationsResource = defineResource({
   })
 });
 
-describe("DeclaredResources with namespaces", () => {
-  it("extractDeclaredResources handles namespace alongside static resource", () => {
+describe("DeclaredResources with collections", () => {
+  it("extractDeclaredResources handles collection alongside static resource", () => {
     const result = extractDeclaredResources({
       sessionResources: {
         observations: observationsResource,
-        files: filesNamespace,
+        files: filesCollection,
       },
     });
 
     expect(result).toBeDefined();
     expect(result!.session!.observations).toBe(observationsResource);
-    expect(result!.session!.files).toBe(filesNamespace);
+    expect(result!.session!.files).toBe(filesCollection);
   });
 
-  it("mergeDeclaredResources works with namespaces", () => {
+  it("mergeDeclaredResources works with collections", () => {
     const target = { session: { observations: observationsResource as any } };
-    const source = { session: { files: filesNamespace as any } };
+    const source = { session: { files: filesCollection as any } };
     const result = mergeDeclaredResources(target, source);
 
     expect(result).toEqual({
-      session: { observations: observationsResource, files: filesNamespace },
+      session: { observations: observationsResource, files: filesCollection },
     });
   });
 
-  it("detects conflict when different namespace refs share a name", () => {
-    const otherNamespace = defineResourceNamespace({
+  it("detects conflict when different collection refs share a name", () => {
+    const otherCollection = defineResourceCollection({
       pattern: "files/*",
       stateSchema: z.object({ name: z.string() }),
     });
 
-    const target = { session: { files: filesNamespace as any } };
-    const source = { session: { files: otherNamespace as any } };
+    const target = { session: { files: filesCollection as any } };
+    const source = { session: { files: otherCollection as any } };
     expect(() => mergeDeclaredResources(target, source)).toThrow("Resource conflict");
   });
 
-  it("allows same namespace reference across blocks (no conflict)", () => {
-    const target = { session: { files: filesNamespace as any } };
-    const source = { session: { files: filesNamespace as any } };
+  it("allows same collection reference across blocks (no conflict)", () => {
+    const target = { session: { files: filesCollection as any } };
+    const source = { session: { files: filesCollection as any } };
     expect(() => mergeDeclaredResources(target, source)).not.toThrow();
   });
 });
 
-describe("handler with namespace resources", () => {
-  it("surfaces declaredResources from sessionResources with namespace", () => {
+describe("handler with collection resources", () => {
+  it("surfaces declaredResources from sessionResources with collection", () => {
     const block = handler({
-      name: "with-ns-resources",
+      name: "with-coll-resources",
       inputSchema: z.string(),
       outputSchema: z.string(),
       sessionResources: {
-        files: filesNamespace,
+        files: filesCollection,
         observations: observationsResource,
       },
       execute: (input) => input,
     });
 
     expect(block.declaredResources).toEqual({
-      session: { files: filesNamespace, observations: observationsResource },
+      session: { files: filesCollection, observations: observationsResource },
     });
   });
 
-  it("still executes normally with namespace in declaredResources", async () => {
+  it("still executes normally with collection in declaredResources", async () => {
     const block = handler({
-      name: "exec-with-ns",
+      name: "exec-with-coll",
       inputSchema: z.string(),
       outputSchema: z.string(),
-      sessionResources: { files: filesNamespace },
+      sessionResources: { files: filesCollection },
       execute: (input) => `processed:${input}`,
     });
 
@@ -407,11 +407,11 @@ describe("handler with namespace resources", () => {
   });
 });
 
-describe("sequencer with namespace resources", () => {
-  it("collects namespace resources from child blocks", () => {
+describe("sequencer with collection resources", () => {
+  it("collects collection resources from child blocks", () => {
     const blockA = handler({
       name: "a",
-      sessionResources: { files: filesNamespace },
+      sessionResources: { files: filesCollection },
       execute: (v) => v,
     });
     const blockB = handler({
@@ -420,23 +420,23 @@ describe("sequencer with namespace resources", () => {
       execute: (v) => v,
     });
 
-    const seq = sequencer({ name: "ns-seq" }).then(blockA).then(blockB);
+    const seq = sequencer({ name: "coll-seq" }).then(blockA).then(blockB);
     expect(seq.declaredResources).toEqual({
-      session: { files: filesNamespace, observations: observationsResource },
+      session: { files: filesCollection, observations: observationsResource },
     });
   });
 
-  it("bubbles namespace resources from nested sequencers", () => {
+  it("bubbles collection resources from nested sequencers", () => {
     const block = handler({
       name: "inner-step",
-      sessionResources: { files: filesNamespace },
+      sessionResources: { files: filesCollection },
       execute: (v) => v,
     });
     const inner = sequencer({ name: "inner" }).then(block);
     const outer = sequencer({ name: "outer" }).then(inner);
 
     expect(outer.declaredResources).toEqual({
-      session: { files: filesNamespace },
+      session: { files: filesCollection },
     });
   });
 });
@@ -451,7 +451,7 @@ describe("lifecycle hooks", () => {
     const updated: string[] = [];
     const deleted: string[] = [];
 
-    const ns = defineResourceNamespace({
+    const coll = defineResourceCollection({
       pattern: "files/**",
       stateSchema: z.object({ lang: z.string().default("text") }),
       onInstanceCreated: (key) => { created.push(key); },
@@ -459,8 +459,8 @@ describe("lifecycle hooks", () => {
       onInstanceDeleted: (key) => { deleted.push(key); },
     });
 
-    expect(ns.onInstanceCreated).toBeDefined();
-    expect(ns.onInstanceUpdated).toBeDefined();
-    expect(ns.onInstanceDeleted).toBeDefined();
+    expect(coll.onInstanceCreated).toBeDefined();
+    expect(coll.onInstanceUpdated).toBeDefined();
+    expect(coll.onInstanceDeleted).toBeDefined();
   });
 });

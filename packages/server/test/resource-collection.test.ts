@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, defineResourceNamespace, handler } from "@flow-state-dev/core";
+import { defineFlow, defineResourceCollection, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores } from "../src";
-import type { ResourceNamespaceRef } from "@flow-state-dev/core/types";
+import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
 
 // ---------------------------------------------------------------------------
@@ -14,48 +14,48 @@ const fileSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 
-const filesNamespace = defineResourceNamespace({
+const filesCollection = defineResourceCollection({
   pattern: "files/**",
   stateSchema: fileSchema,
   maxInstances: 5,
   eviction: "none",
 });
 
-const lruFilesNamespace = defineResourceNamespace({
+const lruFilesCollection = defineResourceCollection({
   pattern: "lrufiles/**",
   stateSchema: fileSchema,
   maxInstances: 3,
   eviction: "lru",
 });
 
-const oldestFilesNamespace = defineResourceNamespace({
+const oldestFilesCollection = defineResourceCollection({
   pattern: "oldestfiles/**",
   stateSchema: fileSchema,
   maxInstances: 2,
   eviction: "oldest",
 });
 
-const topicObsNamespace = defineResourceNamespace({
+const topicObsCollection = defineResourceCollection({
   pattern: "[topic]/observations",
   stateSchema: z.object({ entries: z.array(z.string()).default([]) }),
 });
 
-function makeFlow(namespaces: Record<string, ReturnType<typeof defineResourceNamespace>>) {
+function makeFlow(collections: Record<string, ReturnType<typeof defineResourceCollection>>) {
   const block = handler({
     name: "noop",
-    sessionResources: namespaces,
+    sessionResources: collections,
     execute: () => "ok",
   });
 
   return defineFlow({
-    kind: "ns-test",
+    kind: "coll-test",
     actions: { run: { inputSchema: z.string(), block } },
   })();
 }
 
-async function createCtx(namespaces: Record<string, ReturnType<typeof defineResourceNamespace>>) {
+async function createCtx(collections: Record<string, ReturnType<typeof defineResourceCollection>>) {
   const stores = createInMemoryStores();
-  const flow = makeFlow(namespaces);
+  const flow = makeFlow(collections);
   const ctx = await createExecutionContext({
     flow,
     actionName: "run",
@@ -67,7 +67,7 @@ async function createCtx(namespaces: Record<string, ReturnType<typeof defineReso
   return { ctx, stores };
 }
 
-function getFilesNs(ctx: any): ResourceNamespaceRef<{ language: string; metadata?: Record<string, unknown> }> {
+function getFilesNs(ctx: any): ResourceCollectionRef<{ language: string; metadata?: Record<string, unknown> }> {
   return ctx.session.resources.files as any;
 }
 
@@ -75,9 +75,9 @@ function getFilesNs(ctx: any): ResourceNamespaceRef<{ language: string; metadata
 // CRUD operations
 // ---------------------------------------------------------------------------
 
-describe("namespace CRUD", () => {
+describe("collection CRUD", () => {
   it("create() and get() round-trip", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     const ref = await ns.create("readme.md", { language: "markdown" });
@@ -89,7 +89,7 @@ describe("namespace CRUD", () => {
   });
 
   it("create() throws on duplicate key", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript" });
@@ -97,19 +97,19 @@ describe("namespace CRUD", () => {
   });
 
   it("get() throws for non-existent key", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
     expect(() => ns.get("nope.ts")).toThrow("not found");
   });
 
   it("getOptional() returns undefined for non-existent", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
     expect(ns.getOptional("nope.ts")).toBeUndefined();
   });
 
   it("getOrCreate() creates if absent", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     const ref = await ns.getOrCreate("new.ts", { language: "typescript" });
@@ -118,7 +118,7 @@ describe("namespace CRUD", () => {
   });
 
   it("getOrCreate() returns existing if present", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     await ns.create("exist.ts", { language: "typescript" });
@@ -128,7 +128,7 @@ describe("namespace CRUD", () => {
   });
 
   it("delete() removes instance", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     await ns.create("del.ts", { language: "typescript" });
@@ -139,14 +139,14 @@ describe("namespace CRUD", () => {
   });
 
   it("delete() is idempotent — no-op on non-existent", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
     // Should not throw
     await ns.delete("nonexistent.ts");
   });
 
   it("count() tracks instances", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     expect(ns.count()).toBe(0);
@@ -159,7 +159,7 @@ describe("namespace CRUD", () => {
   });
 
   it("deep nested paths work with ** pattern", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     await ns.create("src/utils/helpers.ts", { language: "typescript" });
@@ -173,9 +173,9 @@ describe("namespace CRUD", () => {
 // State mutations
 // ---------------------------------------------------------------------------
 
-describe("namespace instance state mutations", () => {
+describe("collection instance state mutations", () => {
   it("patchState updates partial state", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript" });
@@ -187,7 +187,7 @@ describe("namespace instance state mutations", () => {
   });
 
   it("setState replaces entire state", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript", metadata: { old: true } });
@@ -199,7 +199,7 @@ describe("namespace instance state mutations", () => {
   });
 
   it("updateState uses functional updater", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript" });
@@ -215,9 +215,9 @@ describe("namespace instance state mutations", () => {
 // Content read/write
 // ---------------------------------------------------------------------------
 
-describe("namespace instance content", () => {
+describe("collection instance content", () => {
   it("readContent returns null initially", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript" });
@@ -227,7 +227,7 @@ describe("namespace instance content", () => {
   });
 
   it("writeContent and readContent round-trip", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript" });
@@ -241,7 +241,7 @@ describe("namespace instance content", () => {
   });
 
   it("content is deleted when instance is deleted", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript" });
@@ -261,9 +261,9 @@ describe("namespace instance content", () => {
 // Prefix filtering
 // ---------------------------------------------------------------------------
 
-describe("namespace list() prefix filtering", () => {
+describe("collection list() prefix filtering", () => {
   it("list() returns all instances", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript" });
@@ -275,7 +275,7 @@ describe("namespace list() prefix filtering", () => {
   });
 
   it("list(prefix) filters by prefix", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript" });
@@ -296,7 +296,7 @@ describe("namespace list() prefix filtering", () => {
   });
 
   it("list(prefix) returns empty when no match", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     await ns.create("a.ts", { language: "typescript" });
@@ -308,10 +308,10 @@ describe("namespace list() prefix filtering", () => {
 // Parameterized patterns
 // ---------------------------------------------------------------------------
 
-describe("parameterized namespace", () => {
+describe("parameterized collection", () => {
   it("create and get with object key", async () => {
-    const { ctx } = await createCtx({ topicObs: topicObsNamespace });
-    const ns = ctx.session.resources.topicObs as any as ResourceNamespaceRef<{ entries: string[] }>;
+    const { ctx } = await createCtx({ topicObs: topicObsCollection });
+    const ns = ctx.session.resources.topicObs as any as ResourceCollectionRef<{ entries: string[] }>;
 
     await ns.create({ topic: "react" }, { entries: ["first"] });
     const ref = ns.get({ topic: "react" });
@@ -320,8 +320,8 @@ describe("parameterized namespace", () => {
   });
 
   it("list returns all parameterized instances", async () => {
-    const { ctx } = await createCtx({ topicObs: topicObsNamespace });
-    const ns = ctx.session.resources.topicObs as any as ResourceNamespaceRef<{ entries: string[] }>;
+    const { ctx } = await createCtx({ topicObs: topicObsCollection });
+    const ns = ctx.session.resources.topicObs as any as ResourceCollectionRef<{ entries: string[] }>;
 
     await ns.create({ topic: "react" }, {});
     await ns.create({ topic: "rust" }, {});
@@ -337,7 +337,7 @@ describe("parameterized namespace", () => {
 
 describe("maxInstances with eviction: none", () => {
   it("throws when maxInstances reached", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     for (let i = 0; i < 5; i++) {
@@ -351,8 +351,8 @@ describe("maxInstances with eviction: none", () => {
 
 describe("maxInstances with eviction: lru", () => {
   it("evicts LRU instance and persists the deletion", async () => {
-    const { ctx, stores } = await createCtx({ lrufiles: lruFilesNamespace });
-    const ns = ctx.session.resources.lrufiles as any as ResourceNamespaceRef<{ language: string }>;
+    const { ctx, stores } = await createCtx({ lrufiles: lruFilesCollection });
+    const ns = ctx.session.resources.lrufiles as any as ResourceCollectionRef<{ language: string }>;
 
     // Fill to capacity
     await ns.create("a.ts", { language: "a" });
@@ -381,8 +381,8 @@ describe("maxInstances with eviction: lru", () => {
 
 describe("maxInstances with eviction: oldest", () => {
   it("evicts oldest (first inserted) instance", async () => {
-    const { ctx } = await createCtx({ oldestfiles: oldestFilesNamespace });
-    const ns = ctx.session.resources.oldestfiles as any as ResourceNamespaceRef<{ language: string }>;
+    const { ctx } = await createCtx({ oldestfiles: oldestFilesCollection });
+    const ns = ctx.session.resources.oldestfiles as any as ResourceCollectionRef<{ language: string }>;
 
     await ns.create("first.ts", { language: "first" });
     await ns.create("second.ts", { language: "second" });
@@ -402,7 +402,7 @@ describe("maxInstances with eviction: oldest", () => {
 
 describe("schema validation on create", () => {
   it("throws on invalid initial state", async () => {
-    const { ctx } = await createCtx({ files: filesNamespace });
+    const { ctx } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     // language is required string — passing a number should fail
@@ -415,13 +415,13 @@ describe("schema validation on create", () => {
     const strictSchema = z.object({
       required: z.string(),
     });
-    const strictNs = defineResourceNamespace({
+    const strictNs = defineResourceCollection({
       pattern: "strict/**",
       stateSchema: strictSchema,
     });
 
     const { ctx } = await createCtx({ strict: strictNs });
-    const ns = ctx.session.resources.strict as any as ResourceNamespaceRef<{ required: string }>;
+    const ns = ctx.session.resources.strict as any as ResourceCollectionRef<{ required: string }>;
 
     // Missing required field should throw, not create with {}
     await expect(ns.create("bad.ts", {})).rejects.toThrow("validation failed");
@@ -437,7 +437,7 @@ describe("lifecycle hooks with context", () => {
     let receivedCtx: any = null;
     let receivedKey = "";
 
-    const hookNs = defineResourceNamespace({
+    const hookNs = defineResourceCollection({
       pattern: "hookfiles/**",
       stateSchema: fileSchema,
       onInstanceCreated: (key, _state, ctx) => {
@@ -447,7 +447,7 @@ describe("lifecycle hooks with context", () => {
     });
 
     const { ctx } = await createCtx({ hookfiles: hookNs });
-    const ns = ctx.session.resources.hookfiles as any as ResourceNamespaceRef<any>;
+    const ns = ctx.session.resources.hookfiles as any as ResourceCollectionRef<any>;
 
     await ns.create("test.ts", { language: "typescript" });
 
@@ -461,7 +461,7 @@ describe("lifecycle hooks with context", () => {
     let updated = false;
     let updatedPrev: any = null;
 
-    const hookNs = defineResourceNamespace({
+    const hookNs = defineResourceCollection({
       pattern: "hookfiles/**",
       stateSchema: fileSchema,
       onInstanceUpdated: (_key, _state, prevState, _ctx) => {
@@ -471,7 +471,7 @@ describe("lifecycle hooks with context", () => {
     });
 
     const { ctx } = await createCtx({ hookfiles: hookNs });
-    const ns = ctx.session.resources.hookfiles as any as ResourceNamespaceRef<any>;
+    const ns = ctx.session.resources.hookfiles as any as ResourceCollectionRef<any>;
 
     await ns.create("test.ts", { language: "typescript" });
     const ref = ns.get("test.ts");
@@ -484,7 +484,7 @@ describe("lifecycle hooks with context", () => {
   it("onInstanceDeleted fires on delete and eviction", async () => {
     const deletedKeys: string[] = [];
 
-    const hookNs = defineResourceNamespace({
+    const hookNs = defineResourceCollection({
       pattern: "hookevict/**",
       stateSchema: fileSchema,
       maxInstances: 2,
@@ -495,7 +495,7 @@ describe("lifecycle hooks with context", () => {
     });
 
     const { ctx } = await createCtx({ hookevict: hookNs });
-    const ns = ctx.session.resources.hookevict as any as ResourceNamespaceRef<any>;
+    const ns = ctx.session.resources.hookevict as any as ResourceCollectionRef<any>;
 
     await ns.create("a.ts", { language: "a" });
     await ns.create("b.ts", { language: "b" });
@@ -515,8 +515,8 @@ describe("lifecycle hooks with context", () => {
 // ---------------------------------------------------------------------------
 
 describe("flat storage model", () => {
-  it("namespace instances stored with path-based keys alongside static resources", async () => {
-    const { ctx, stores } = await createCtx({ files: filesNamespace });
+  it("collection instances stored with path-based keys alongside static resources", async () => {
+    const { ctx, stores } = await createCtx({ files: filesCollection });
     const ns = getFilesNs(ctx);
 
     await ns.create("readme.md", { language: "markdown" });

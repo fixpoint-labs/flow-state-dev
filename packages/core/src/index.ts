@@ -1,13 +1,19 @@
 export type { BlockInput, BlockOutput, DeclaredResources } from "./types/block";
 export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
 export type {
-  DefinedResourceNamespace,
+  CollectionHookContext,
+  DefinedResourceCollection,
   EvictionPolicy,
+  ResourceCollectionConfig,
+  ResourceCollectionRef,
+  ResourceCollectionHandle,
+  // Deprecated aliases
   NamespaceHookContext,
+  DefinedResourceNamespace,
   ResourceNamespaceConfig,
   ResourceNamespaceHandle,
   ResourceNamespaceRef,
-} from "./types/resource-namespace";
+} from "./types/resource-collection";
 export type {
   JsonObject,
   JsonPrimitive,
@@ -18,7 +24,7 @@ export type {
 } from "./schema/common";
 
 export { defineResource, resource } from "./types/resource";
-export { defineResourceNamespace, isDefinedResourceNamespace } from "./types/resource-namespace";
+export { defineResourceCollection, isDefinedResourceCollection, defineResourceNamespace, isDefinedResourceNamespace } from "./types/resource-collection";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
 export {

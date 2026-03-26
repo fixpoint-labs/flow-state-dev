@@ -7,23 +7,23 @@ import type {
   StateOf
 } from "./resource";
 import type {
-  ResourceNamespaceConfig,
-  ResourceNamespaceRef
-} from "./resource-namespace";
+  ResourceCollectionConfig,
+  ResourceCollectionRef
+} from "./resource-collection";
 import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { VoiceConfig } from "./speech";
 
-export type ScopeResourceConfig = ResourceConfig | ResourceNamespaceConfig;
+export type ScopeResourceConfig = ResourceConfig | ResourceCollectionConfig;
 
 type InferResourceRefs<TResources extends Record<string, ScopeResourceConfig>> = {
-  [K in keyof TResources]: TResources[K] extends ResourceNamespaceConfig
-    ? ResourceNamespaceRef<StateOf<TResources[K]> extends import("../schema/common").JsonObject ? StateOf<TResources[K]> : import("../schema/common").JsonObject>
+  [K in keyof TResources]: TResources[K] extends ResourceCollectionConfig
+    ? ResourceCollectionRef<StateOf<TResources[K]> extends import("../schema/common").JsonObject ? StateOf<TResources[K]> : import("../schema/common").JsonObject>
     : ResourceRef<StateOf<TResources[K]>>;
 };
 
 /** Union of handle types that can appear in a resource registry. */
-export type AnyResourceHandle = ResourceRef<any> | ResourceNamespaceRef<any>;
+export type AnyResourceHandle = ResourceRef<any> | ResourceCollectionRef<any>;
 
 /**
  * Context provided to a clientData compute function.

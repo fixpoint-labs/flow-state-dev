@@ -12,9 +12,10 @@ export {
   isSingleWildcard,
   matchesPattern,
   normalizeResourcePath,
+  resolveCollectionKey,
   resolveNamespaceKey,
   validatePattern,
-} from "./namespace-patterns";
+} from "./collection-patterns";
 
 // ---------------------------------------------------------------------------
 // Config & Definition
@@ -23,14 +24,14 @@ export {
 export type EvictionPolicy = "none" | "lru" | "oldest";
 
 /** Context provided to per-instance lifecycle hooks. */
-export type NamespaceHookContext = {
+export type CollectionHookContext = {
   /** Log a message associated with this hook invocation. */
   log: (message: string) => void;
-  /** The scope type this namespace belongs to (session, user, project). */
+  /** The scope type this collection belongs to (session, user, project). */
   scopeType: ScopeType;
 };
 
-export type ResourceNamespaceConfig = {
+export type ResourceCollectionConfig = {
   /** Glob-style pattern: `files/*`, `files/**`, or `[topic]/observations`. */
   pattern: string;
   stateSchema: ZodTypeAny;
@@ -38,39 +39,39 @@ export type ResourceNamespaceConfig = {
   eviction?: EvictionPolicy;
 
   /** Fires when a specific instance is created (e.g., files/utils.ts). */
-  onInstanceCreated?: (key: string, state: JsonObject, ctx: NamespaceHookContext) => void | Promise<void>;
+  onInstanceCreated?: (key: string, state: JsonObject, ctx: CollectionHookContext) => void | Promise<void>;
   /** Fires when a specific instance's state is updated. */
   onInstanceUpdated?: (
     key: string,
     state: JsonObject,
     prevState: JsonObject,
-    ctx: NamespaceHookContext
+    ctx: CollectionHookContext
   ) => void | Promise<void>;
   /** Fires when a specific instance is deleted (including eviction). */
-  onInstanceDeleted?: (key: string, ctx: NamespaceHookContext) => void | Promise<void>;
+  onInstanceDeleted?: (key: string, ctx: CollectionHookContext) => void | Promise<void>;
 };
 
 type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
 
 /**
- * Branded type returned by `defineResourceNamespace()`.
+ * Branded type returned by `defineResourceCollection()`.
  * Carries phantom `StateType` for downstream type inference.
  */
-export type DefinedResourceNamespace<TState extends JsonObject = JsonObject> =
-  ResourceNamespaceConfig & {
-    readonly __brand: "ResourceNamespace";
+export type DefinedResourceCollection<TState extends JsonObject = JsonObject> =
+  ResourceCollectionConfig & {
+    readonly __brand: "ResourceCollection";
     StateType: TState;
   };
 
 // ---------------------------------------------------------------------------
-// Runtime Handle
+// Runtime Ref
 // ---------------------------------------------------------------------------
 
-/** Runtime handle for accessing a namespace's dynamic resource instances. */
-export interface ResourceNamespaceRef<TState extends JsonObject = JsonObject> {
-  /** The namespace's declared pattern. */
+/** Runtime ref for accessing a collection's dynamic resource instances. */
+export interface ResourceCollectionRef<TState extends JsonObject = JsonObject> {
+  /** The collection's declared pattern. */
   pattern: string;
-  /** Scope this namespace is registered in. */
+  /** Scope this collection is registered in. */
   scope: ScopeType;
 
   /** Get an existing instance. Throws if not found. */
@@ -100,51 +101,75 @@ export interface ResourceNamespaceRef<TState extends JsonObject = JsonObject> {
   /** Current instance count. */
   count(): number;
 
-  /** The namespace's config. */
-  config: Readonly<ResourceNamespaceConfig>;
+  /** The collection's config. */
+  config: Readonly<ResourceCollectionConfig>;
 }
 
-/** @deprecated Use ResourceNamespaceRef instead. */
-export type ResourceNamespaceHandle<TState extends JsonObject = JsonObject> =
-  ResourceNamespaceRef<TState>;
-
 // ---------------------------------------------------------------------------
-// defineResourceNamespace()
+// defineResourceCollection()
 // ---------------------------------------------------------------------------
 
-import { validatePattern } from "./namespace-patterns";
+import { validatePattern } from "./collection-patterns";
 
-export function defineResourceNamespace<
+export function defineResourceCollection<
   const TStateSchema extends ZodTypeAny,
-  const TConfig extends ResourceNamespaceConfig & { stateSchema: TStateSchema }
+  const TConfig extends ResourceCollectionConfig & { stateSchema: TStateSchema }
 >(
   config: TConfig
-): TConfig & DefinedResourceNamespace<AsStateObject<TStateSchema["_output"]>> {
+): TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>> {
   validatePattern(config.pattern);
 
   if (config.maxInstances !== undefined && config.maxInstances < 1) {
-    throw new Error("defineResourceNamespace() maxInstances must be >= 1");
+    throw new Error("defineResourceCollection() maxInstances must be >= 1");
   }
 
   if (config.eviction !== undefined && config.eviction !== "none" && config.maxInstances === undefined) {
-    throw new Error("defineResourceNamespace() eviction requires maxInstances");
+    throw new Error("defineResourceCollection() eviction requires maxInstances");
   }
 
   return Object.assign({}, config, {
-    __brand: "ResourceNamespace" as const,
-  }) as unknown as TConfig & DefinedResourceNamespace<AsStateObject<TStateSchema["_output"]>>;
+    __brand: "ResourceCollection" as const,
+  }) as unknown as TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>>;
 }
 
 // ---------------------------------------------------------------------------
 // Type guards
 // ---------------------------------------------------------------------------
 
-export function isDefinedResourceNamespace(
+export function isDefinedResourceCollection(
   value: unknown
-): value is DefinedResourceNamespace {
+): value is DefinedResourceCollection {
   return (
     typeof value === "object" &&
     value !== null &&
-    (value as DefinedResourceNamespace).__brand === "ResourceNamespace"
+    (value as DefinedResourceCollection).__brand === "ResourceCollection"
   );
 }
+
+// ---------------------------------------------------------------------------
+// Deprecated aliases — backward compatibility
+// ---------------------------------------------------------------------------
+
+/** @deprecated Use CollectionHookContext instead. */
+export type NamespaceHookContext = CollectionHookContext;
+
+/** @deprecated Use ResourceCollectionConfig instead. */
+export type ResourceNamespaceConfig = ResourceCollectionConfig;
+
+/** @deprecated Use DefinedResourceCollection instead. */
+export type DefinedResourceNamespace<TState extends JsonObject = JsonObject> = DefinedResourceCollection<TState>;
+
+/** @deprecated Use ResourceCollectionRef instead. */
+export type ResourceNamespaceRef<TState extends JsonObject = JsonObject> = ResourceCollectionRef<TState>;
+
+/** @deprecated Use ResourceCollectionRef instead. */
+export type ResourceNamespaceHandle<TState extends JsonObject = JsonObject> = ResourceCollectionRef<TState>;
+
+/** @deprecated Use ResourceCollectionHandle instead. */
+export type ResourceCollectionHandle<TState extends JsonObject = JsonObject> = ResourceCollectionRef<TState>;
+
+/** @deprecated Use defineResourceCollection instead. */
+export const defineResourceNamespace = defineResourceCollection;
+
+/** @deprecated Use isDefinedResourceCollection instead. */
+export const isDefinedResourceNamespace = isDefinedResourceCollection;

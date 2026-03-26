@@ -8,14 +8,14 @@ import type {
   JsonValue,
   LLMMessage,
   MessageLimit,
-  NamespaceHookContext,
+  CollectionHookContext,
   ProjectScopeHandle,
   RequestScopeHandle,
   ResourceConfig,
   ResourceRef,
   ResourceRegistry,
-  ResourceNamespaceConfig,
-  ResourceNamespaceRef,
+  ResourceCollectionConfig,
+  ResourceCollectionRef,
   ScopeType,
   SessionItem,
   SessionItemViews,
@@ -25,8 +25,8 @@ import type {
   TokenCounter
 } from "@flow-state-dev/core/types";
 import {
-  isDefinedResourceNamespace,
-  resolveNamespaceKey,
+  isDefinedResourceCollection,
+  resolveCollectionKey,
   normalizeResourcePath,
   matchesPattern,
   getPatternPrefix,
@@ -159,24 +159,24 @@ function normalizeResourceState(
   return normalizeResourceDefault(config);
 }
 
-function isNamespaceConfig(config: unknown): config is ResourceNamespaceConfig {
+function isCollectionConfig(config: unknown): config is ResourceCollectionConfig {
   return (
     typeof config === "object" &&
     config !== null &&
     "pattern" in config &&
-    typeof (config as ResourceNamespaceConfig).pattern === "string"
+    typeof (config as ResourceCollectionConfig).pattern === "string"
   );
 }
 
 function normalizeScopeResources(
-  configs: Record<string, ResourceConfig | ResourceNamespaceConfig> | undefined,
+  configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined,
   seed: Record<string, unknown> | undefined
 ): Record<string, JsonObject> {
   const normalized: Record<string, JsonObject> = {};
 
   for (const [resourceName, config] of Object.entries(configs ?? {})) {
-    // Skip namespace configs — their instances are stored with path-based keys
-    if (isNamespaceConfig(config)) continue;
+    // Skip collection configs — their instances are stored with path-based keys
+    if (isCollectionConfig(config)) continue;
 
     normalized[resourceName] = normalizeResourceState(
       config,
@@ -184,7 +184,7 @@ function normalizeScopeResources(
     );
   }
 
-  // Preserve any namespace instance data from seed
+  // Preserve any collection instance data from seed
   if (seed !== undefined) {
     for (const [key, value] of Object.entries(seed)) {
       if (key in normalized) continue; // already handled as static
@@ -198,14 +198,14 @@ function normalizeScopeResources(
 }
 
 function normalizeScopeResourceContent(
-  configs: Record<string, ResourceConfig | ResourceNamespaceConfig> | undefined,
+  configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined,
   seed: Record<string, unknown> | undefined
 ): Record<string, string> {
   const normalized: Record<string, string> = {};
 
   for (const [resourceName, config] of Object.entries(configs ?? {})) {
-    // Skip namespace configs — namespace instances don't have definition-time content
-    if (isNamespaceConfig(config)) continue;
+    // Skip collection configs — collection instances don't have definition-time content
+    if (isCollectionConfig(config)) continue;
 
     const existing = seed?.[resourceName];
     if (typeof existing === "string") {
@@ -231,7 +231,7 @@ function normalizeScopeResourceContent(
     }
   }
 
-  // Preserve any namespace instance content from seed
+  // Preserve any collection instance content from seed
   if (seed !== undefined) {
     for (const [key, value] of Object.entries(seed)) {
       if (key in normalized) continue;
@@ -293,14 +293,14 @@ function updateObjectState(
 function createScopeResourceRegistry<TResources extends Record<string, ResourceRef<any>>>(
   options: {
     scope: ScopeType;
-    configs: Record<string, ResourceConfig | ResourceNamespaceConfig> | undefined;
+    configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined;
     readResources: () => Record<string, JsonObject>;
     persistResources: (next: Record<string, JsonObject>) => Promise<void>;
     readResourceContent: () => Record<string, string>;
     persistResourceContent: (next: Record<string, string>) => Promise<void>;
   }
 ): ResourceRegistry<TResources> {
-  const handles = {} as Record<string, ResourceRef<JsonObject> | ResourceNamespaceRef<JsonObject>>;
+  const handles = {} as Record<string, ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>>;
   const configs = options.configs ?? {};
 
   const persistResourceState = async (
@@ -335,7 +335,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
   // --- Namespace instance persistence helpers ---
   const persistNamespaceInstanceState = async (
     storageKey: string,
-    nsConfig: ResourceNamespaceConfig,
+    nsConfig: ResourceCollectionConfig,
     next: unknown
   ): Promise<void> => {
     const parsed = nsConfig.stateSchema.safeParse(next);
@@ -368,12 +368,12 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
   };
 
   /**
-   * Create a ResourceRef for a namespace instance at a given storage key.
+   * Create a ResourceRef for a collection instance at a given storage key.
    */
   function createNamespaceInstanceRef(
     storageKey: string,
-    nsConfig: ResourceNamespaceConfig,
-    nsHookCtx?: NamespaceHookContext
+    nsConfig: ResourceCollectionConfig,
+    nsHookCtx?: CollectionHookContext
   ): ResourceRef<JsonObject> {
     const readState = (): JsonObject => {
       const raw = options.readResources()[storageKey];
@@ -452,14 +452,14 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
   }
 
   for (const [resourceName, config] of Object.entries(configs)) {
-    if (isNamespaceConfig(config)) {
-      // --- Create namespace ref ---
+    if (isCollectionConfig(config)) {
+      // --- Create collection ref ---
       const nsConfig = config;
       // LRU tracking: storageKey → last access timestamp
       const lruAccess = new Map<string, number>();
 
       /** Populated hook context for lifecycle callbacks. */
-      const hookCtx: NamespaceHookContext = {
+      const hookCtx: CollectionHookContext = {
         log: (_message: string) => {
           // Hook log messages are available for debugging; runtime logger
           // integration is handled at a higher level when available.
@@ -467,23 +467,23 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         scopeType: options.scope,
       };
 
-      const nsHandle: ResourceNamespaceRef<JsonObject> = {
+      const nsHandle: ResourceCollectionRef<JsonObject> = {
         pattern: nsConfig.pattern,
         scope: options.scope,
         config: nsConfig,
 
         get(key: string | Record<string, string>): ResourceRef<JsonObject> {
-          const storageKey = resolveNamespaceKey(nsConfig.pattern, key);
+          const storageKey = resolveCollectionKey(nsConfig.pattern, key);
           const resources = options.readResources();
           if (!(storageKey in resources)) {
-            throw new Error(`Resource instance "${storageKey}" not found in namespace "${nsConfig.pattern}"`);
+            throw new Error(`Resource instance "${storageKey}" not found in collection "${nsConfig.pattern}"`);
           }
           lruAccess.set(storageKey, Date.now());
           return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
         },
 
         getOptional(key: string | Record<string, string>): ResourceRef<JsonObject> | undefined {
-          const storageKey = resolveNamespaceKey(nsConfig.pattern, key);
+          const storageKey = resolveCollectionKey(nsConfig.pattern, key);
           const resources = options.readResources();
           if (!(storageKey in resources)) {
             return undefined;
@@ -496,12 +496,12 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           key: string | Record<string, string>,
           initial?: Partial<JsonObject>
         ): Promise<ResourceRef<JsonObject>> {
-          const storageKey = resolveNamespaceKey(nsConfig.pattern, key);
+          const storageKey = resolveCollectionKey(nsConfig.pattern, key);
 
           // Validate that key matches pattern
           if (!matchesPattern(nsConfig.pattern, storageKey)) {
             throw new Error(
-              `Key "${storageKey}" does not match namespace pattern "${nsConfig.pattern}"`
+              `Key "${storageKey}" does not match collection pattern "${nsConfig.pattern}"`
             );
           }
 
@@ -553,7 +553,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           key: string | Record<string, string>,
           initial?: Partial<JsonObject>
         ): Promise<ResourceRef<JsonObject>> {
-          const storageKey = resolveNamespaceKey(nsConfig.pattern, key);
+          const storageKey = resolveCollectionKey(nsConfig.pattern, key);
           const resources = options.readResources();
           if (storageKey in resources) {
             lruAccess.set(storageKey, Date.now());
@@ -580,7 +580,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
         },
 
         async delete(key: string | Record<string, string>): Promise<void> {
-          const storageKey = resolveNamespaceKey(nsConfig.pattern, key);
+          const storageKey = resolveCollectionKey(nsConfig.pattern, key);
           const resources = options.readResources();
           if (!(storageKey in resources)) {
             // Idempotent — no-op if instance doesn't exist
@@ -691,12 +691,12 @@ function countInstances(
 }
 
 async function evictInstance(
-  nsConfig: ResourceNamespaceConfig,
+  nsConfig: ResourceCollectionConfig,
   resources: Record<string, JsonObject>,
   policy: "lru" | "oldest",
   lruAccess: Map<string, number>,
   persistResources: (next: Record<string, JsonObject>) => Promise<void>,
-  hookCtx: NamespaceHookContext
+  hookCtx: CollectionHookContext
 ): Promise<void> {
   const keys = Object.keys(resources).filter((k) =>
     matchesPattern(nsConfig.pattern, k)
@@ -1419,13 +1419,13 @@ export async function createExecutionContext<
   } = options;
   const transientStateChanges = !shouldPersistScopeChange(flow);
   const sessionResourceConfigs = flow.session?.resources as
-    | Record<string, ResourceConfig | ResourceNamespaceConfig>
+    | Record<string, ResourceConfig | ResourceCollectionConfig>
     | undefined;
   const userResourceConfigs = flow.user?.resources as
-    | Record<string, ResourceConfig | ResourceNamespaceConfig>
+    | Record<string, ResourceConfig | ResourceCollectionConfig>
     | undefined;
   const projectResourceConfigs = flow.project?.resources as
-    | Record<string, ResourceConfig | ResourceNamespaceConfig>
+    | Record<string, ResourceConfig | ResourceCollectionConfig>
     | undefined;
 
   if (!options.userId || options.userId.trim().length === 0) {

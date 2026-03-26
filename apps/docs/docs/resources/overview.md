@@ -91,14 +91,14 @@ defineResource({
 
 Resources are not automatically exposed to generators. Use `llmReadable` and `llmWritable` flags to control access, and wire `readResourceContentTool()` or `writeResourceContentTool()` to a generator's tools array when you want the model to interact with resource content directly.
 
-## Resource namespaces
+## Resource collections
 
-Static resources have a fixed name. Resource namespaces create typed collections where instances are added dynamically at runtime — useful when the number of instances isn't known ahead of time (file collections, per-topic knowledge, dynamic workspaces).
+Static resources have a fixed name. Resource collections let you create typed sets of resources dynamically at runtime — useful when the number of instances isn't known ahead of time (file collections, per-topic knowledge, dynamic workspaces).
 
 ```ts
-import { defineResourceNamespace } from "@flow-state-dev/core";
+import { defineResourceCollection } from "@flow-state-dev/core";
 
-const filesNamespace = defineResourceNamespace({
+const filesCollection = defineResourceCollection({
   pattern: "files/**",
   stateSchema: z.object({ language: z.string().default("text") }),
   maxInstances: 200,
@@ -106,7 +106,7 @@ const filesNamespace = defineResourceNamespace({
 });
 ```
 
-See [Resource Namespaces](/docs/resources/namespaces) for the full reference: patterns, runtime API, eviction, lifecycle hooks, and storage model.
+See [Resource Collections](/docs/resources/collections) for the full reference: patterns, runtime API, eviction, lifecycle hooks, and storage model.
 
 ## Block-level resource declarations
 
@@ -142,5 +142,5 @@ Choose the scope that matches the data's lifetime. Session for conversation-loca
 ## Where to go next
 
 - **[State vs Resources](/docs/resources/storage)** — When to use resources vs scope state, scoping decisions, shared vs block-private
-- **[Resource Namespaces](/docs/resources/namespaces)** — Dynamic collections with patterns, eviction, and lifecycle hooks
+- **[Resource Collections](/docs/resources/collections)** — Dynamic collections with patterns, eviction, and lifecycle hooks
 - **[State & Scopes](/docs/fundamentals/state-and-scopes)** — Broader state model, clientData, targets

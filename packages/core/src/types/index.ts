@@ -82,23 +82,33 @@ export type {
 } from "./resource";
 
 export type {
-  DefinedResourceNamespace,
+  CollectionHookContext,
+  DefinedResourceCollection,
   EvictionPolicy,
+  ResourceCollectionConfig,
+  ResourceCollectionRef,
+  ResourceCollectionHandle,
+  // Deprecated aliases
   NamespaceHookContext,
+  DefinedResourceNamespace,
   ResourceNamespaceConfig,
   ResourceNamespaceHandle,
   ResourceNamespaceRef,
-} from "./resource-namespace";
+} from "./resource-collection";
 
 export {
-  defineResourceNamespace,
-  isDefinedResourceNamespace,
-  resolveNamespaceKey,
+  defineResourceCollection,
+  isDefinedResourceCollection,
+  resolveCollectionKey,
   normalizeResourcePath,
   matchesPattern,
   getPatternPrefix,
   extractPatternParams,
-} from "./resource-namespace";
+  // Deprecated aliases
+  defineResourceNamespace,
+  isDefinedResourceNamespace,
+  resolveNamespaceKey,
+} from "./resource-collection";
 
 export type {
   JournalEntry,

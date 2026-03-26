@@ -1,18 +1,18 @@
 import { z } from "zod";
 import type { BlockContext } from "../types/block";
 import type { ResourceRef } from "../types/resource";
-import type { ResourceNamespaceRef } from "../types/resource-namespace";
-import { isDefinedResourceNamespace } from "../types/resource-namespace";
+import type { ResourceCollectionRef } from "../types/resource-collection";
+import { isDefinedResourceCollection } from "../types/resource-collection";
 import { handler } from "../blocks/handler";
 
-type NamespaceEntry = {
+type CollectionEntry = {
   name: string;
   scope: string;
-  ref: ResourceNamespaceRef<any>;
+  ref: ResourceCollectionRef<any>;
 };
 
-function collectNamespaces(ctx: BlockContext): NamespaceEntry[] {
-  const entries: NamespaceEntry[] = [];
+function collectCollections(ctx: BlockContext): CollectionEntry[] {
+  const entries: CollectionEntry[] = [];
   const registries = [
     { scope: "session", registry: ctx.session?.resources },
     { scope: "user", registry: ctx.user?.resources },
@@ -23,9 +23,9 @@ function collectNamespaces(ctx: BlockContext): NamespaceEntry[] {
     if (registry === undefined) continue;
     const list = registry.list();
     for (const entry of list) {
-      // ResourceNamespaceRef has a `pattern` property that ResourceRef does not
+      // ResourceCollectionRef has a `pattern` property that ResourceRef does not
       if ("pattern" in entry && "create" in entry) {
-        const nsRef = entry as unknown as ResourceNamespaceRef<any>;
+        const nsRef = entry as unknown as ResourceCollectionRef<any>;
         entries.push({
           name: nsRef.pattern,
           scope,
@@ -46,15 +46,15 @@ function collectStaticResources(ctx: BlockContext): ResourceRef<any>[] {
   });
 }
 
-function buildNamespaceDescription(namespaces: NamespaceEntry[]): string {
-  if (namespaces.length === 0) return "";
-  const lines = namespaces.map((ns) => `  - ${ns.ref.pattern} (${ns.scope})`);
-  return `\nAvailable namespaces:\n${lines.join("\n")}`;
+function buildCollectionDescription(collections: CollectionEntry[]): string {
+  if (collections.length === 0) return "";
+  const lines = collections.map((ns) => `  - ${ns.ref.pattern} (${ns.scope})`);
+  return `\nAvailable collections:\n${lines.join("\n")}`;
 }
 
 /**
  * Generic resource CRUD tool blocks for LLM tool surface.
- * Returns handler blocks that work across all registered namespaces.
+ * Returns handler blocks that work across all registered collections.
  *
  * Provides 5 tools:
  * - `createResource({ path, state? })` — Create a new resource instance
@@ -66,7 +66,7 @@ function buildNamespaceDescription(namespaces: NamespaceEntry[]): string {
 export function resourceTools() {
   const createResource = handler({
     name: "createResource",
-    description: "Create a new resource instance in a namespace.",
+    description: "Create a new resource instance in a collection.",
     inputSchema: z.object({
       path: z.string().describe("Full path for the resource, e.g. 'files/readme.md'"),
       state: z.record(z.unknown()).optional().describe("Initial state for the resource"),
@@ -76,7 +76,7 @@ export function resourceTools() {
       ok: z.literal(true),
     }),
     execute: async (input, ctx) => {
-      const { nsRef, key } = resolvePathToNamespace(input.path, ctx);
+      const { nsRef, key } = resolvePathToCollection(input.path, ctx);
       await nsRef.create(key, input.state as any);
       return { path: input.path, ok: true as const };
     },
@@ -93,7 +93,7 @@ export function resourceTools() {
       state: z.record(z.unknown()),
     }),
     execute: async (input, ctx) => {
-      const { nsRef, key } = resolvePathToNamespace(input.path, ctx);
+      const { nsRef, key } = resolvePathToCollection(input.path, ctx);
       const handle = nsRef.get(key);
       return { path: input.path, state: handle.state as Record<string, unknown> };
     },
@@ -111,7 +111,7 @@ export function resourceTools() {
       ok: z.literal(true),
     }),
     execute: async (input, ctx) => {
-      const { nsRef, key } = resolvePathToNamespace(input.path, ctx);
+      const { nsRef, key } = resolvePathToCollection(input.path, ctx);
       const handle = nsRef.get(key);
       await handle.patchState(input.state as any);
       return { path: input.path, ok: true as const };
@@ -129,7 +129,7 @@ export function resourceTools() {
       ok: z.literal(true),
     }),
     execute: async (input, ctx) => {
-      const { nsRef, key } = resolvePathToNamespace(input.path, ctx);
+      const { nsRef, key } = resolvePathToCollection(input.path, ctx);
       await nsRef.delete(key);
       return { path: input.path, ok: true as const };
     },
@@ -148,10 +148,10 @@ export function resourceTools() {
       })),
     }),
     execute: async (input, ctx) => {
-      const namespaces = collectNamespaces(ctx);
+      const collections = collectCollections(ctx);
       const resources: Array<{ path: string; state: Record<string, unknown> }> = [];
 
-      for (const ns of namespaces) {
+      for (const ns of collections) {
         const instances = ns.ref.list(input.prefix);
         for (const instance of instances) {
           resources.push({
@@ -174,26 +174,26 @@ export function resourceTools() {
   };
 }
 
-function resolvePathToNamespace(
+function resolvePathToCollection(
   path: string,
   ctx: BlockContext
-): { nsRef: ResourceNamespaceRef<any>; key: string } {
-  const namespaces = collectNamespaces(ctx);
+): { nsRef: ResourceCollectionRef<any>; key: string } {
+  const collections = collectCollections(ctx);
 
-  for (const ns of namespaces) {
+  for (const ns of collections) {
     const { nsRef, key } = tryMatchPath(ns, path);
     if (key !== undefined) {
       return { nsRef, key };
     }
   }
 
-  throw new Error(`No namespace found matching path: ${path}`);
+  throw new Error(`No resource collection found matching path: ${path}`);
 }
 
 function tryMatchPath(
-  ns: NamespaceEntry,
+  ns: CollectionEntry,
   path: string
-): { nsRef: ResourceNamespaceRef<any>; key: string | undefined } {
+): { nsRef: ResourceCollectionRef<any>; key: string | undefined } {
   const { ref } = ns;
   const pattern = ref.pattern;
 

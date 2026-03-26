@@ -43,7 +43,7 @@ session: {
 
 Good for: artifacts, documents, knowledge entries, configuration bundles. Data that has its own identity, structure, and lifecycle. If you'd naturally think of it as a named object rather than a field, it's a resource.
 
-For dynamic collections where the instance count isn't known ahead of time, see [Resource Namespaces](/docs/resources/namespaces).
+For dynamic collections where the instance count isn't known ahead of time, see [Resource Collections](/docs/resources/collections).
 
 ## Decision table
 
@@ -54,7 +54,7 @@ For dynamic collections where the instance count isn't known ahead of time, see 
 | Has content + metadata | | Yes |
 | Needs its own identity/name | | Yes |
 | Complex nested structure | | Yes |
-| Dynamic collection (unknown count) | | [Namespace](/docs/resources/namespaces) |
+| Dynamic collection (unknown count) | | [Collection](/docs/resources/collections) |
 
 ## Shared vs block-private
 

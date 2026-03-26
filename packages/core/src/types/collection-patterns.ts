@@ -1,21 +1,21 @@
 // ---------------------------------------------------------------------------
-// Pattern utilities for resource namespaces.
+// Pattern utilities for resource collections.
 // Pure functions — no side effects, no dependencies beyond string ops.
 // ---------------------------------------------------------------------------
 
 const VALID_PATTERN = /^(?:[a-zA-Z0-9_\-.*[\]]+)(?:\/[a-zA-Z0-9_\-.*[\]]+)*$/;
 
 /**
- * Validate a namespace pattern at definition time.
+ * Validate a collection pattern at definition time.
  * Must contain `*`, `**`, or `[param]`. `**` only at end.
  */
 export function validatePattern(pattern: string): void {
   if (typeof pattern !== "string" || pattern.length === 0) {
-    throw new Error("Resource namespace pattern must be a non-empty string");
+    throw new Error("Resource collection pattern must be a non-empty string");
   }
 
   if (!VALID_PATTERN.test(pattern)) {
-    throw new Error(`Invalid resource namespace pattern: "${pattern}"`);
+    throw new Error(`Invalid resource collection pattern: "${pattern}"`);
   }
 
   // Must contain at least one wildcard or parameterized segment
@@ -23,7 +23,7 @@ export function validatePattern(pattern: string): void {
   const hasParam = /\[[a-zA-Z0-9_]+\]/.test(pattern);
   if (!hasWildcard && !hasParam) {
     throw new Error(
-      `Resource namespace pattern must contain *, **, or [param]: "${pattern}"`
+      `Resource collection pattern must contain *, **, or [param]: "${pattern}"`
     );
   }
 
@@ -89,7 +89,7 @@ export function getPatternPrefix(pattern: string): string {
 }
 
 /**
- * Check if a storage key matches a namespace pattern.
+ * Check if a storage key matches a collection pattern.
  */
 export function matchesPattern(pattern: string, storageKey: string): boolean {
   if (isParameterizedPattern(pattern)) {
@@ -136,7 +136,7 @@ function escapeRegex(s: string): string {
  * - For wildcard patterns (`files/*`, `files/**`): key is a string appended to the prefix.
  * - For parameterized patterns (`[topic]/observations`): key is an object like `{ topic: 'react' }`.
  */
-export function resolveNamespaceKey(
+export function resolveCollectionKey(
   pattern: string,
   key: string | Record<string, string>
 ): string {
@@ -170,6 +170,9 @@ export function resolveNamespaceKey(
 
   return resolved;
 }
+
+/** @deprecated Use resolveCollectionKey instead. */
+export const resolveNamespaceKey = resolveCollectionKey;
 
 // ---------------------------------------------------------------------------
 // Key validation & normalization

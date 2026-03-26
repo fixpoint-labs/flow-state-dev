@@ -42,7 +42,7 @@ const sidebars: SidebarsConfig = {
       items: [
         "resources/overview",
         "resources/storage",
-        "resources/namespaces",
+        "resources/collections",
       ],
     },
     {

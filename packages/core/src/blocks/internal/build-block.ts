@@ -8,7 +8,7 @@ import type {
   DeclaredResources
 } from "../../types/block";
 import type { DefinedResource } from "../../types/resource";
-import type { DefinedResourceNamespace } from "../../types/resource-namespace";
+import type { DefinedResourceCollection } from "../../types/resource-collection";
 import { toError } from "./utils";
 
 /**
@@ -16,9 +16,9 @@ import { toError } from "./utils";
  * metadata object. Returns `undefined` when no resources are declared.
  */
 export function extractDeclaredResources(config: {
-  sessionResources?: Record<string, DefinedResource | DefinedResourceNamespace>;
-  userResources?: Record<string, DefinedResource | DefinedResourceNamespace>;
-  projectResources?: Record<string, DefinedResource | DefinedResourceNamespace>;
+  sessionResources?: Record<string, DefinedResource | DefinedResourceCollection>;
+  userResources?: Record<string, DefinedResource | DefinedResourceCollection>;
+  projectResources?: Record<string, DefinedResource | DefinedResourceCollection>;
 }): DeclaredResources | undefined {
   const result: DeclaredResources = {};
   if (config.sessionResources) result.session = config.sessionResources;
@@ -28,7 +28,7 @@ export function extractDeclaredResources(config: {
 }
 
 type ResourceScope = "session" | "user" | "project";
-type ResourceEntry = DefinedResource | DefinedResourceNamespace;
+type ResourceEntry = DefinedResource | DefinedResourceCollection;
 
 /**
  * Merge a scope-level resource map from `source` into `target`.

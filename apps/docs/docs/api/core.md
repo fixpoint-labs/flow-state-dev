@@ -174,14 +174,14 @@ const agent = generator({
 });
 ```
 
-### `defineResourceNamespace(config)`
+### `defineResourceCollection(config)`
 
-Create a dynamic resource namespace — a typed collection of resources created at runtime:
+Create a resource collection — a typed set of resources created and destroyed at runtime:
 
 ```ts
-import { defineResourceNamespace } from "@flow-state-dev/core";
+import { defineResourceCollection } from "@flow-state-dev/core";
 
-const filesNamespace = defineResourceNamespace({
+const filesCollection = defineResourceCollection({
   pattern: "files/**",
   stateSchema: z.object({ language: z.string().default("text") }),
   maxInstances: 200,
@@ -199,7 +199,7 @@ Config options:
 - `onInstanceUpdated?: (key, state, prevState, ctx) => void` — lifecycle hook
 - `onInstanceDeleted?: (key, ctx) => void` — lifecycle hook
 
-Runtime `ResourceNamespaceRef` methods:
+Runtime `ResourceCollectionRef` methods:
 
 - `create(key, initial?)` — create a new instance (throws if exists or at cap with no eviction)
 - `get(key)` — get existing instance (throws if not found)

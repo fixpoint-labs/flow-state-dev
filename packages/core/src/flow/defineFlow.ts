@@ -15,7 +15,7 @@ import type {
   WorkConfig
 } from "../types/flow";
 import type { ResourceConfig } from "../types/resource";
-import type { ResourceNamespaceConfig } from "../types/resource-namespace";
+import type { ResourceCollectionConfig } from "../types/resource-collection";
 import type { ScopeResourceConfig } from "../types/flow";
 
 type AnyActions = Record<string, ActionConfig>;
