@@ -70,7 +70,7 @@ export function KitchenSinkToolCall({ item }: { item: ToolItem }) {
         title={toolName}
         type="dynamic-tool"
         state={state}
-        toolName={toolName}
+        toolName={toolName}        
       />
       <ToolContent>
         <ToolInput input={parsedArgs} />
