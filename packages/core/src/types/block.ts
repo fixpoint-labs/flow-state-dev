@@ -5,7 +5,7 @@ import type {
   SessionScopeHandle,
   UserScopeHandle
 } from "./scope";
-import type { DefinedResource, ResourceRef } from "./resource";
+import type { AnyResourceRef, DefinedResource, ResourceRef } from "./resource";
 import type { DefinedResourceCollection, ResourceCollectionRef } from "./resource-collection";
 import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
@@ -81,9 +81,9 @@ export interface BlockContext<
   TSessionState extends object = Record<string, unknown>,
   TUserState extends object = Record<string, unknown>,
   TProjectState extends object = Record<string, unknown>,
-  TSessionResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>,
-  TUserResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>,
-  TProjectResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>,
+  TSessionResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>,
+  TUserResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>,
+  TProjectResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>,
   TSequencerState extends object = Record<string, unknown>,
   TTargets extends Record<string, ZodTypeAny> | undefined = undefined,
 > {
@@ -281,7 +281,7 @@ export type InferResourcesFromDefinitions<T> =
  * when available, otherwise falls back to schema-based inference.
  */
 export type InferBlockResources<TSchemas, TDefs> =
-  TDefs extends Record<string, DefinedResource>
+  TDefs extends Record<string, DeclaredResourceEntry>
     ? InferResourcesFromDefinitions<TDefs>
     : InferResourcesFromSchemas<TSchemas>;
 

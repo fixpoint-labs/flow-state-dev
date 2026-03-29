@@ -7,6 +7,7 @@ import type {
   UserScopeHandle
 } from "./scope";
 import type { JsonObject, JsonValue } from "../schema/common";
+import type { ResourceCollectionRef } from "./resource-collection";
 
 export type ResourceConfig = {
   stateSchema: ZodTypeAny;
@@ -60,8 +61,12 @@ export interface ResourceRef<TState extends JsonObject = JsonObject> {
 
 /** @deprecated Use ResourceRef instead. */
 export type ResourceHandle<TState extends JsonObject = JsonObject> = ResourceRef<TState>;
+
+/** Union of handle types that can appear in a resource registry. */
+export type AnyResourceRef = ResourceRef<any> | ResourceCollectionRef<any>;
+
 export type ResourceRegistry<
-  TResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>
+  TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>
 > = TResources & {
   get<TKey extends keyof TResources>(name: TKey): TResources[TKey];
   list(): Array<TResources[keyof TResources]>;

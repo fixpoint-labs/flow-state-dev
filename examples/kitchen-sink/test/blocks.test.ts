@@ -1,64 +1,134 @@
 import { describe, expect, it } from "vitest";
-import { testBlock } from "@flow-state-dev/testing";
+import { z } from "zod";
+import { defineFlow, handler } from "@flow-state-dev/core";
+import { createExecutionContext, createInMemoryStores, executeBlock } from "@flow-state-dev/server";
 import {
   readArtifact,
   updateArtifact
 } from "../src/flows/kitchen-sink/blocks";
+import { artifactsCollection } from "../src/flows/kitchen-sink/schemas";
+import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+
+// Build a minimal flow with the artifacts collection so the execution context
+// creates proper ResourceCollectionRef instances.
+function makeTestFlow() {
+  const block = handler({
+    name: "noop",
+    sessionResources: { artifacts: artifactsCollection },
+    execute: () => "ok",
+  });
+
+  return defineFlow({
+    kind: "blocks-test",
+    actions: { run: { inputSchema: z.string(), block } },
+  })();
+}
+
+async function createCtx() {
+  const stores = createInMemoryStores();
+  const flow = makeTestFlow();
+  const ctx = await createExecutionContext({
+    flow,
+    actionName: "run",
+    requestId: "req_1",
+    sessionId: "sess_1",
+    userId: "user_1",
+    stores,
+  });
+  return { ctx, stores };
+}
 
 describe("kitchen-sink blocks", () => {
   it("readArtifact returns not-found for missing artifact", async () => {
-    const result = await testBlock(readArtifact, {
+    const { ctx } = await createCtx();
+
+    const result = await executeBlock({
+      block: readArtifact,
       input: { artifactId: "missing-id" },
-      session: {
-        resources: {
-          artifacts: { byId: {}, order: [] }
-        }
-      }
+      ctx,
     });
 
-    expect(result.output.title).toBe("Not Found");
-    expect(result.output.content).toBe("");
+    const output = result.output as { id: string; title: string; content: string };
+    expect(output.title).toBe("Not Found");
+    expect(output.content).toBe("");
   });
 
-  it("readArtifact returns artifact from seeded resource", async () => {
-    const result = await testBlock(readArtifact, {
+  it("readArtifact returns artifact from seeded collection", async () => {
+    const { ctx } = await createCtx();
+
+    // Seed an artifact via the collection API
+    const artifacts = ctx.session.resources.artifacts as unknown as ResourceCollectionRef<{
+      title: string;
+      content: string;
+      updatedAt: number;
+    }>;
+    await artifacts.create("doc-1", {
+      title: "Seeded Doc",
+      content: "Seeded content",
+      updatedAt: 1000,
+    });
+
+    const result = await executeBlock({
+      block: readArtifact,
       input: { artifactId: "doc-1" },
-      session: {
-        resources: {
-          artifacts: {
-            byId: {
-              "doc-1": {
-                id: "doc-1",
-                title: "Seeded Doc",
-                content: "Seeded content",
-                updatedAt: 1000
-              }
-            },
-            order: ["doc-1"]
-          }
-        }
-      }
+      ctx,
     });
 
-    expect(result.output.title).toBe("Seeded Doc");
-    expect(result.output.content).toBe("Seeded content");
+    const output = result.output as { id: string; title: string; content: string };
+    expect(output.title).toBe("Seeded Doc");
+    expect(output.content).toBe("Seeded content");
   });
 
-  it("updateArtifact writes to artifacts resource", async () => {
-    const result = await testBlock(updateArtifact, {
+  it("updateArtifact creates a new artifact in the collection", async () => {
+    const { ctx } = await createCtx();
+
+    const result = await executeBlock({
+      block: updateArtifact,
       input: {
         id: "new-doc",
         title: "New Document",
-        content: "Fresh content"
+        content: "Fresh content",
       },
-      session: {
-        resources: {
-          artifacts: { byId: {}, order: [] }
-        }
-      }
+      ctx,
     });
 
-    expect(result.output.success).toBe(true);
-    expect(result.output.id).toBe("new-doc");
+    const output = result.output as { success: boolean; id: string };
+    expect(output.success).toBe(true);
+    expect(output.id).toBe("new-doc");
+
+    // Verify the artifact was actually created in the collection
+    const artifacts = ctx.session.resources.artifacts as unknown as ResourceCollectionRef<{
+      title: string;
+      content: string;
+      updatedAt: number;
+    }>;
+    const ref = artifacts.get("new-doc");
+    expect(ref.state.title).toBe("New Document");
+    expect(ref.state.content).toBe("Fresh content");
+  });
+
+  it("updateArtifact updates an existing artifact in the collection", async () => {
+    const { ctx } = await createCtx();
+
+    await executeBlock({
+      block: updateArtifact,
+      input: { id: "doc-1", title: "Original", content: "v1" },
+      ctx,
+    });
+
+    await executeBlock({
+      block: updateArtifact,
+      input: { id: "doc-1", title: "Revised", content: "v2" },
+      ctx,
+    });
+
+    const artifacts = ctx.session.resources.artifacts as unknown as ResourceCollectionRef<{
+      title: string;
+      content: string;
+      updatedAt: number;
+    }>;
+    const ref = artifacts.get("doc-1");
+    expect(ref.state.title).toBe("Revised");
+    expect(ref.state.content).toBe("v2");
   });
 });

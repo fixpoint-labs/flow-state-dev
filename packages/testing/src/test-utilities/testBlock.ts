@@ -70,6 +70,7 @@ export async function testBlock<TBlock extends BlockDefinition<any, any>>(
 ): Promise<TestBlockResult<BlockOutput<TBlock>>> {
   const startedAt = Date.now();
   const runtime = await createTestContext({
+    flow: options.flow,
     request: options.request,
     session: options.session,
     user: options.user,

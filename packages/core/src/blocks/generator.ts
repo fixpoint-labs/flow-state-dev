@@ -8,7 +8,8 @@ import type {
   InferStateFromSchema,
   RetryPolicy
 } from "../types/block";
-import type { DefinedResource, ResourceRef } from "../types/resource";
+import type { AnyResourceRef } from "../types/resource";
+import type { DeclaredResourceEntry } from "../types/block";
 import type {
   GeneratorModel,
   GeneratorModelResult,
@@ -155,13 +156,13 @@ export interface GeneratorConfig<
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
   TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
   // Resource definitions — optional, provide typing AND auto-installation
-  TSessionResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
-  TUserResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
-  TProjectResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
+  TSessionResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TUserResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TProjectResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   // Derive-once: map resource schemas/definitions to typed ResourceRef records
-  TSessionResources extends Record<string, ResourceRef<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
-  TUserResources extends Record<string, ResourceRef<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
-  TProjectResources extends Record<string, ResourceRef<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TSessionResources extends Record<string, AnyResourceRef> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
+  TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
+  TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
@@ -602,7 +603,7 @@ async function attemptDefaultRepair(candidate: unknown): Promise<unknown> {
 }
 
 async function applyRepairPolicy<TInput, TOutput>(
-  config: { repair?: GeneratorRepairConfig; repairOutput?: GeneratorConfig<any, any>["repairOutput"] },
+  config: { repair?: GeneratorRepairConfig; repairOutput?: (candidate: unknown, error: Error, state: GeneratorLoopState<TInput>, ctx: BlockContext) => MaybePromise<unknown> },
   outputSchema: ZodTypeAny,
   candidate: unknown,
   state: GeneratorLoopState<TInput>,
@@ -1002,12 +1003,12 @@ export function generator<
   TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
   TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
-  TSessionResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
-  TUserResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
-  TProjectResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
-  TSessionResources extends Record<string, ResourceRef<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
-  TUserResources extends Record<string, ResourceRef<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
-  TProjectResources extends Record<string, ResourceRef<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TSessionResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TUserResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TProjectResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TSessionResources extends Record<string, AnyResourceRef> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
+  TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
+  TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,

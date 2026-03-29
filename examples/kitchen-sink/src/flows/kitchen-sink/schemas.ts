@@ -1,4 +1,4 @@
-import { defineResource } from "@flow-state-dev/core";
+import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
 
 // Shared domain schemas for the kitchen-sink flow.
@@ -6,29 +6,23 @@ import { z } from "zod";
 
 export const modeSchema = z.enum(["chat", "plan", "review"]);
 
-export const artifactSchema = z.object({
-  id: z.string(),
+// Per-instance state for an artifact resource. Each artifact is its own resource
+// instance in the collection — the artifact ID is the collection key, metadata
+// lives in state, and the actual content body is stored as resource content.
+export const artifactStateSchema = z.object({
   title: z.string(),
   content: z.string(),
   updatedAt: z.number()
 });
 
-// Resource state schema for the "artifacts" session resource.
-// Resources are named state containers scoped to a session — think of them as
-// typed key-value stores that blocks can read and write during execution.
-export const artifactResourceStateSchema = z.object({
-  byId: z.record(z.string(), artifactSchema).default({}),
-  order: z.array(z.string()).default([])
-});
-
-// Defined resource for artifacts. Blocks reference this directly via
-// sessionResources instead of repeating the schema with sessionResourceSchemas.
-export const artifactResource = defineResource({
-  stateSchema: artifactResourceStateSchema,
-  default: { byId: {}, order: [] },
-  writable: true,
+// Resource collection for artifacts. Each artifact is a separate resource
+// instance keyed by its ID (e.g., "artifacts/my-doc"). All artifact data
+// (title, content, updatedAt) lives in per-instance state.
+export const artifactsCollection = defineResourceCollection({
+  pattern: "artifacts/*",
+  stateSchema: artifactStateSchema,
 });
 
 export const artifactResources = {
-  artifacts: artifactResource,
-}
+  artifacts: artifactsCollection,
+};

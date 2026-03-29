@@ -77,6 +77,7 @@ export type {
   MessageLike,
   ResourceConfig,
   ResourceContext,
+  AnyResourceRef,
   ResourceRef,
   ResourceHandle,
   ResourceRefOptions,
