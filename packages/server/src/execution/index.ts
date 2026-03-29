@@ -10,6 +10,15 @@ export {
 } from "./retry";
 export { runAction } from "./runAction";
 export {
+  detectInterruptedRequests,
+  retryRequest
+} from "./request-recovery";
+export type {
+  InterruptedRequestInfo,
+  RetryRequestOptions,
+  RetryRequestResult
+} from "./request-recovery";
+export {
   DEFAULT_RUNTIME_LOGGER,
   createExecutionLogContext,
   logRuntimeEvent,

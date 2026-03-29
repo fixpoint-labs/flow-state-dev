@@ -1,3 +1,4 @@
+import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   RequestListOptions,
   RequestRecord,
@@ -19,6 +20,14 @@ export class InMemoryRequestStore implements RequestStore {
 
   async delete(id: string): Promise<void> {
     this.records.delete(id);
+  }
+
+  persistItems(_requestId: string, _items: OutputItem[]): void {
+    // No-op: items already in memory via ResponseEmitter
+  }
+
+  async flushItems(_requestId: string): Promise<void> {
+    // No-op: nothing to flush in memory
   }
 
   async list(options?: RequestListOptions): Promise<RequestRecord[]> {
