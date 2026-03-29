@@ -4,7 +4,7 @@ import type {
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { OutputItem } from "@flow-state-dev/core/items";
 
-export type RequestStatus = "in_progress" | "completed" | "incomplete" | "failed";
+export type RequestStatus = "in_progress" | "completed" | "incomplete" | "failed" | "interrupted";
 
 export type ScopeRecordBase<TState extends JsonObject = JsonObject> = {
   id: string;
@@ -38,6 +38,7 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   metadata?: Record<string, unknown>;
   input?: unknown;
   items?: OutputItem[];
+  interruptedAt?: number;
 };
 
 export type UserRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
@@ -92,6 +93,19 @@ export interface RequestStore {
   set(id: string, value: RequestRecord): Promise<void>;
   delete(id: string): Promise<void>;
   list(options?: RequestListOptions): Promise<RequestRecord[]>;
+
+  /**
+   * Persist the current items for an in-progress request.
+   * Non-blocking from the caller's perspective — the backend handles async flushing.
+   * Callers should call flushItems() before writing terminal status.
+   */
+  persistItems(requestId: string, items: OutputItem[]): void;
+
+  /**
+   * Wait for all pending item persistence writes to complete.
+   * Called before the terminal patchRequestRecord.
+   */
+  flushItems(requestId: string): Promise<void>;
 }
 
 export interface UserStore {
@@ -108,9 +122,43 @@ export interface ProjectStore {
   list(options?: ProjectListOptions): Promise<ProjectRecord[]>;
 }
 
+export type ActiveRequestEntry = {
+  requestId: string;
+  flowKind: string;
+  actionName: string;
+  sessionId?: string;
+  userId: string;
+  projectId?: string;
+  input?: unknown;
+  metadata?: Record<string, unknown>;
+  startedAt: number;
+  lastHeartbeatAt: number;
+};
+
+export interface ActiveRequestRegistry {
+  /** Register a new in-flight request. Called at the start of runAction. */
+  register(entry: ActiveRequestEntry): Promise<void>;
+
+  /** Update the heartbeat timestamp. Called on a periodic interval. */
+  heartbeat(requestId: string): Promise<void>;
+
+  /** Remove a request from the registry. Called on terminal (success/failure). */
+  deregister(requestId: string): Promise<void>;
+
+  /** Return all entries whose lastHeartbeatAt is older than Date.now() - thresholdMs. */
+  listStale(thresholdMs: number): Promise<ActiveRequestEntry[]>;
+
+  /** Return all currently registered entries. */
+  listAll(): Promise<ActiveRequestEntry[]>;
+
+  /** Return a single entry by requestId, or undefined. */
+  get(requestId: string): Promise<ActiveRequestEntry | undefined>;
+}
+
 export type StoreRegistry = {
   session: SessionStore;
   request: RequestStore;
   user: UserStore;
   project: ProjectStore;
+  activeRequests: ActiveRequestRegistry;
 };

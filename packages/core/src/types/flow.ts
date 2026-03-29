@@ -125,6 +125,11 @@ export type RequestConfig = {
   onErrored?: BlockDefinition<any, any>;
   onFinished?: BlockDefinition<any, any>;
   onStepErrored?: BlockDefinition<any, any>;
+  /**
+   * Heartbeat interval in milliseconds for the active request registry.
+   * Default: 10000 (10 seconds). Set to 0 to disable.
+   */
+  heartbeatIntervalMs?: number;
 };
 
 export type UserConfig<

@@ -14,6 +14,8 @@ export type ParsedFlowRoute =
   | { kind: "delete_session"; sessionId: string }
   | { kind: "user_stream"; userId: string }
   | { kind: "transcribe" }
+  | { kind: "retry_request"; flowKind: string; sessionId: string; requestId: string }
+  | { kind: "active_requests" }
   | { kind: "not_found" };
 
 function cleanSegments(path: string[] | undefined): string[] {
@@ -169,6 +171,31 @@ export function parseFlowRoute(
     segments[0] === "transcribe"
   ) {
     return { kind: "transcribe" };
+  }
+
+  // POST /api/flows/:flowKind/sessions/:sessionId/requests/:requestId/retry
+  if (
+    normalizedMethod === "POST" &&
+    segments.length === 6 &&
+    segments[1] === "sessions" &&
+    segments[3] === "requests" &&
+    segments[5] === "retry"
+  ) {
+    return {
+      kind: "retry_request",
+      flowKind: segments[0],
+      sessionId: segments[2],
+      requestId: segments[4]
+    };
+  }
+
+  // GET /api/flows/active-requests
+  if (
+    normalizedMethod === "GET" &&
+    segments.length === 1 &&
+    segments[0] === "active-requests"
+  ) {
+    return { kind: "active_requests" };
   }
 
   return { kind: "not_found" };

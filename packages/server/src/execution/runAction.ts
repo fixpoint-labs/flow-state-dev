@@ -347,6 +347,40 @@ export async function runActionInternal<
     response.addEventObserver((event) => ttsHook!.onEvent(event));
   }
 
+  // --- Active request registry: register + heartbeat ---
+  const registry = options.stores.activeRequests;
+  await registry.register({
+    requestId,
+    flowKind: options.flow.kind,
+    actionName: options.actionName as string,
+    sessionId: options.sessionId,
+    userId: options.userId,
+    projectId: options.projectId,
+    input: options.input,
+    metadata: options.metadata,
+    startedAt: Date.now(),
+    lastHeartbeatAt: Date.now()
+  });
+
+  const heartbeatIntervalMs = options.flow.request?.heartbeatIntervalMs ?? 10_000;
+  const heartbeatTimer = heartbeatIntervalMs > 0
+    ? setInterval(() => {
+        registry.heartbeat(requestId).catch((err) => {
+          logRuntimeEvent(logger, "warn", "[flow-state] heartbeat write failed", {
+            requestId, error: String(err)
+          });
+        });
+      }, heartbeatIntervalMs)
+    : undefined;
+
+  // --- Incremental item persistence ---
+  response.setItemHooks({
+    onItemDone: (item) => {
+      if (item.transient === true) return;
+      options.stores.request.persistItems(requestId, response.getItems());
+    }
+  });
+
   // Emit initial status events early — before the potentially expensive
   // createExecutionContext call. This ensures the SSE stream starts delivering
   // events as fast as possible.
@@ -495,6 +529,12 @@ export async function runActionInternal<
     }
     }
 
+    // Clear heartbeat
+    if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+
+    // Flush pending item writes before terminal status
+    await options.stores.request.flushItems(requestId);
+
     const completedAt = Date.now();
     const items = response.getItems();
     await patchRequestRecord(options.stores, requestId, {
@@ -525,12 +565,22 @@ export async function runActionInternal<
     }, ctx, { internalSeams });
     await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
+    // Deregister from active registry
+    await registry.deregister(requestId).catch((err) => {
+      logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
+        requestId, error: String(err)
+      });
+    });
+
     return {
       output: result.output,
       items: response.getItems(),
       durationMs: Date.now() - startedAt
     };
   } catch (error) {
+    // Clear heartbeat
+    if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+
     const normalized = applyNormalizedErrorSeam(
       internalSeams,
       normalizeError(error, {
@@ -542,6 +592,9 @@ export async function runActionInternal<
 
     await emitTerminalError(ctx, normalized);
     await response.emitRequestStatus("failed");
+
+    // Flush pending item writes before terminal status
+    await options.stores.request.flushItems(requestId);
 
     const failedAt = Date.now();
     await patchRequestRecord(options.stores, requestId, {
@@ -578,6 +631,13 @@ export async function runActionInternal<
       ...createExecutionLogContext(metadata),
       durationMs: Date.now() - startedAt,
       error: summarizeForLog(normalized)
+    });
+
+    // Deregister from active registry
+    await registry.deregister(requestId).catch((err) => {
+      logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
+        requestId, error: String(err)
+      });
     });
 
     return {

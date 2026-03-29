@@ -56,6 +56,10 @@ const DEFAULT_PROVENANCE: ItemProvenance = {
   phase: "main"
 };
 
+export type ResponseEmitterItemHooks = {
+  onItemDone?: (item: OutputItem) => void;
+};
+
 const DEFAULT_MAX_BUFFER_SIZE = 10_000;
 
 function isRequestStreamDraft(value: unknown): value is {
@@ -97,6 +101,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   private onLogEvent?: (eventType: string, detail: Record<string, unknown>) => void;
   private droppedBufferedEvents = 0;
   private readonly eventObservers: Array<(event: RequestStreamEventWithId) => void> = [];
+  private itemHooks?: ResponseEmitterItemHooks;
 
   /**
    * Creates a request-scoped emitter instance.
@@ -124,6 +129,14 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    */
   setLogCallback(fn: (eventType: string, detail: Record<string, unknown>) => void): void {
     this.onLogEvent = fn;
+  }
+
+  /**
+   * Registers hooks that fire when items reach terminal status.
+   * Used by the execution layer for incremental item persistence.
+   */
+  setItemHooks(hooks: ResponseEmitterItemHooks): void {
+    this.itemHooks = hooks;
   }
 
   /**
@@ -211,10 +224,12 @@ export class ResponseEmitter implements ResponseEmitterHandle {
       "item.done"
     );
     this.itemsById.set(interceptedItem.id, interceptedItem);
-    return this.appendEvent<ItemDoneEvent>({
+    const event = await this.appendEvent<ItemDoneEvent>({
       type: "item.done",
       item: interceptedItem
     });
+    this.itemHooks?.onItemDone?.(interceptedItem);
+    return event;
   }
 
   /**

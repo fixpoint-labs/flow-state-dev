@@ -2,6 +2,10 @@ import path from "node:path";
 import type { CASOptions } from "@flow-state-dev/core/types";
 import { ConcurrentModificationError, runWithCAS } from "./cas";
 import {
+  createFilesystemActiveRequestRegistry,
+  FilesystemActiveRequestRegistry
+} from "./filesystem/active-request-registry";
+import {
   createFilesystemProjectStore,
   FilesystemProjectStore
 } from "./filesystem/project-store";
@@ -17,6 +21,10 @@ import {
   createFilesystemUserStore,
   FilesystemUserStore
 } from "./filesystem/user-store";
+import {
+  createInMemoryActiveRequestRegistry,
+  InMemoryActiveRequestRegistry
+} from "./memory/active-request-registry";
 import {
   createInMemoryProjectStore,
   InMemoryProjectStore
@@ -41,6 +49,8 @@ import {
 import type { StoreRegistry } from "./types";
 
 export type {
+  ActiveRequestEntry,
+  ActiveRequestRegistry,
   ProjectListOptions,
   ProjectRecord,
   ProjectStore,
@@ -62,18 +72,22 @@ export {
   ConcurrentModificationError,
   createScopeStateOps,
   createStateContainer,
+  createFilesystemActiveRequestRegistry,
   createFilesystemProjectStore,
   createFilesystemRequestStore,
   createFilesystemSessionStore,
   createFilesystemUserStore,
+  createInMemoryActiveRequestRegistry,
   createInMemoryProjectStore,
   createInMemoryRequestStore,
   createInMemorySessionStore,
   createInMemoryUserStore,
+  FilesystemActiveRequestRegistry,
   FilesystemProjectStore,
   FilesystemRequestStore,
   FilesystemSessionStore,
   FilesystemUserStore,
+  InMemoryActiveRequestRegistry,
   InMemoryProjectStore,
   InMemoryRequestStore,
   InMemorySessionStore,
@@ -95,7 +109,8 @@ export function createInMemoryStores(): StoreRegistry {
     session: createInMemorySessionStore(),
     request: createInMemoryRequestStore(),
     user: createInMemoryUserStore(),
-    project: createInMemoryProjectStore()
+    project: createInMemoryProjectStore(),
+    activeRequests: createInMemoryActiveRequestRegistry()
   };
 }
 
@@ -114,6 +129,9 @@ export function createFilesystemStores(
     }),
     project: createFilesystemProjectStore({
       rootDir: path.join(options.rootDir, "projects")
+    }),
+    activeRequests: createFilesystemActiveRequestRegistry({
+      directory: options.rootDir
     })
   };
 }

@@ -15,6 +15,7 @@ import { serializeActionSchema } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import { createInMemoryStores } from "../stores";
 import type { StoreRegistry } from "../stores/types";
+import { detectInterruptedRequests } from "../execution/request-recovery";
 import { configureActiveStreamRegistry } from "../streaming/active-streams";
 import { normalizeRouteError } from "../utils/normalize-route-error";
 import {
@@ -26,6 +27,7 @@ import {
   jsonResponse
 } from "./route-utils";
 import { handleExecuteAction } from "./action-routes";
+import { handleListActiveRequests, handleRetryRequest } from "./recovery-routes";
 import {
   handleCreateSession,
   handleDeleteSession,
@@ -106,6 +108,16 @@ export type CreateFlowRouteHandlersOptions = {
   middleware?: Middleware[];
   onError?: (error: Error, context: { method: string; path: string }) => void;
   internalSeams?: InternalRouteSeams;
+  /**
+   * Stale threshold for interrupted request detection on startup.
+   * Default: 30000 (30 seconds).
+   */
+  staleThresholdMs?: number;
+  /**
+   * Whether to auto-detect interrupted requests on server startup.
+   * Default: true.
+   */
+  detectInterruptedOnStartup?: boolean;
 };
 
 /**
@@ -121,7 +133,8 @@ function resolveStores(partial: Partial<StoreRegistry> | undefined): StoreRegist
     session: partial?.session ?? fallback.session,
     request: partial?.request ?? fallback.request,
     user: partial?.user ?? fallback.user,
-    project: partial?.project ?? fallback.project
+    project: partial?.project ?? fallback.project,
+    activeRequests: partial?.activeRequests ?? fallback.activeRequests
   };
 }
 
@@ -140,6 +153,23 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     }
   });
   const seams = options.internalSeams ?? NOOP_INTERNAL_ROUTE_SEAMS;
+
+  // Detect interrupted requests from previous runs on startup
+  if (options.detectInterruptedOnStartup !== false) {
+    void detectInterruptedRequests({
+      stores,
+      staleThresholdMs: options.staleThresholdMs
+    }).then((interrupted) => {
+      if (interrupted.length > 0) {
+        console.warn(
+          `[flow-state] detected ${interrupted.length} interrupted request(s) from previous run`,
+          interrupted.map((i) => i.entry.requestId)
+        );
+      }
+    }).catch((err) => {
+      console.error("[flow-state] failed to detect interrupted requests on startup", err);
+    });
+  }
 
   const handle = async (
     request: Request,
@@ -259,6 +289,23 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           registry: options.registry,
           stores,
           transcriptionResolver: options.transcriptionResolver
+        });
+      }
+
+      if (route.kind === "retry_request") {
+        return await handleRetryRequest(request, route, {
+          registry: options.registry,
+          stores,
+          modelResolver: options.modelResolver,
+          speechResolver: options.speechResolver,
+          middleware: options.middleware
+        });
+      }
+
+      if (route.kind === "active_requests") {
+        return await handleListActiveRequests(request, {
+          registry: options.registry,
+          stores
         });
       }
 

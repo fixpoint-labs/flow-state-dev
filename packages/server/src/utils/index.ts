@@ -1,7 +1,11 @@
+export { atomicWriteFile } from "./atomic-write";
+export type { AtomicWriteFileOptions } from "./atomic-write";
 export { cloneValue } from "./clone";
 export { deepMerge } from "./deep-merge";
 export { generateId } from "./generate-id";
 export { isJsonObject, asJsonObject } from "./json-helpers";
 export { normalizeRouteError } from "./normalize-route-error";
 export { renderTemplate } from "./renderTemplate";
+export { createSerializedWriteQueue } from "./serialized-write-queue";
+export type { SerializedWriteQueue, SerializedWriteQueueOptions } from "./serialized-write-queue";
 export { sortByUpdatedAtDesc, sortItemsChronologically } from "./sort";

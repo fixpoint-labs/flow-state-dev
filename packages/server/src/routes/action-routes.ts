@@ -133,6 +133,8 @@ export async function handleExecuteAction(
   }).finally(() => {
     liveStream.close();
     removeStream(resolvedActionInput.requestId);
+    // Safety net: deregister if runAction didn't (e.g., truly catastrophic failure)
+    ctx.stores.activeRequests.deregister(resolvedActionInput.requestId).catch(() => {});
   });
 
   return jsonResponse(202, {
