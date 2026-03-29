@@ -25,13 +25,13 @@
  *   - Unified memory — working + episodic + semantic memory via @thought-fabric/core's memory.system()
  */
 import {
-  contextFn,
   defineFlow,
   generator,
   handler,
   router,
   sequencer
 } from "@flow-state-dev/core";
+import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import {
   system as memorySystem
 } from "@thought-fabric/core/memory";
@@ -152,12 +152,12 @@ Be concise and helpful. Never show the artifact id unless specifically asked to 
     // the LLM sees artifacts created by earlier tool calls in the same turn.
     (_input, ctx) => {
       const artifacts = ctx.session.resources.artifacts;
-      const state = artifacts?.state;
-      if (!state?.order?.length) {
+      const instances = artifacts.list();
+      if (instances.length === 0) {
         return "No artifacts exist yet in this session.";
       }
-      const list = state.order
-        .map((id: string) => `- ${id}: ${state.byId[id]?.title ?? "Untitled"}`)
+      const list = instances
+        .map((ref) => `- ${ref.name.replace("artifacts/", "")}: ${ref.state.title ?? "Untitled"}`)
         .join("\n");
       return `Current artifacts:\n${list}`;
     },
@@ -344,25 +344,14 @@ const kitchenSinkFlow = defineFlow({
     // resources, delivered to clients on every state snapshot request.
     // Each entry is a simple function: (ctx) => value.
     clientData: {
-      artifactsList: (ctx) => {
-        const artifacts = (ctx.resources as Record<string, { state: unknown }>).artifacts?.state as
-          | { order: string[]; byId: Record<string, { id: string; title: string; content: string }> }
-          | undefined;
-        if (!artifacts?.order?.length) return [];
-        return artifacts.order.map((id) => ({
-          id,
-          title: artifacts.byId[id]?.title ?? "Untitled",
-          content: artifacts.byId[id]?.content ?? ""
+      artifacts: (ctx) => {
+        const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<{ title: string; content: string; updatedAt: number }>;
+        return artifacts.list().map((ref) => ({
+          id: ref.name.replace("artifacts/", ""),
+          title: ref.state.title ?? "Untitled",
+          content: ref.state.content ?? "",
+          updatedAt: ref.state.updatedAt
         }));
-      },
-      artifactsDetail: (ctx) => {
-        const artifacts = (ctx.resources as Record<string, { state: unknown }>).artifacts?.state as
-          | { order: string[]; byId: Record<string, { id: string; title: string; content: string; updatedAt: number }> }
-          | undefined;
-        if (!artifacts?.order?.length) return [];
-        return artifacts.order
-          .map((id) => artifacts.byId[id])
-          .filter((a): a is NonNullable<typeof a> => a !== undefined);
       },
       modeStatus: (ctx) => ({
         currentMode: modeSchema.parse(ctx.state.mode ?? "chat"),

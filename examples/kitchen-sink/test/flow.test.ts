@@ -2,6 +2,8 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { defineFlow } from "@flow-state-dev/core";
+import { z } from "zod";
 import {
   mockGenerator,
   testBlock,
@@ -9,6 +11,7 @@ import {
 } from "@flow-state-dev/testing";
 import { modeRouter } from "../src/flows/kitchen-sink/flow";
 import { analyzeInput } from "../src/flows/kitchen-sink/blocks";
+import { artifactsCollection } from "../src/flows/kitchen-sink/schemas";
 
 function collectSourceFiles(dir: string): string[] {
   const entries = readdirSync(dir);
@@ -31,7 +34,6 @@ function collectSourceFiles(dir: string): string[] {
   return files;
 }
 
-const emptyArtifacts = { byId: {}, order: [] as string[] };
 const emptyWorkingMemory = { entries: [], currentTurn: 0 };
 const emptyMemorySystem = {
   lastProcessedIndex: -1,
@@ -39,6 +41,34 @@ const emptyMemorySystem = {
   evictedPersistentSinceLastConsolidation: 0,
   lastConsolidationTurn: 0,
 };
+
+// Minimal flow instance with the artifacts collection so testBlock creates
+// proper ResourceCollectionRef instances via createExecutionContext.
+const testFlow = defineFlow({
+  kind: "kitchen-sink-test",
+  actions: {
+    run: {
+      inputSchema: z.object({ message: z.string(), mode: z.enum(["chat", "plan", "review"]).default("chat") }),
+      block: modeRouter,
+    },
+  },
+  session: {
+    stateSchema: z.object({
+      mode: z.enum(["chat", "plan", "review"]).default("chat"),
+      requestCount: z.number().default(0),
+      lastAction: z.string().optional(),
+    }),
+    resources: {
+      artifacts: artifactsCollection,
+    },
+  },
+  user: {
+    stateSchema: z.object({
+      displayName: z.string().default("Developer"),
+      preferredModel: z.string().default("openai/gpt-5.4-mini"),
+    }),
+  },
+})({ id: "test" });
 
 const agentFixture = mockGenerator({
   name: "agent-generator",
@@ -58,7 +88,8 @@ describe("kitchen-sink flow", () => {
   it("completes a chat action via modeRouter", async () => {
     const result = await testBlock(modeRouter, {
       input: { message: "Hello kitchen sink", mode: "chat" },
-      session: { resources: { artifacts: emptyArtifacts, workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
+      flow: testFlow,
+      session: { resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
       generators: { "agent-generator": agentFixture, "tf.memory/observe": observeFixture }
     });
 
@@ -71,7 +102,8 @@ describe("kitchen-sink flow", () => {
     observeFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Create a deployment plan", mode: "plan" },
-      session: { resources: { artifacts: emptyArtifacts, workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
+      flow: testFlow,
+      session: { resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
       generators: { "agent-generator": agentFixture, "tf.memory/observe": observeFixture }
     });
 
@@ -81,6 +113,7 @@ describe("kitchen-sink flow", () => {
   it("routes based on session state mode", async () => {
     const routed = await testRouter(modeRouter, {
       input: { message: "Continue working", mode: "chat" },
+      flow: testFlow,
       session: {
         state: { mode: "plan", requestCount: 3 }
       }
@@ -95,7 +128,8 @@ describe("kitchen-sink flow", () => {
     observeFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Test with custom model", mode: "chat" },
-      session: { resources: { artifacts: emptyArtifacts, workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
+      flow: testFlow,
+      session: { resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
       user: {
         state: {
           displayName: "TestUser",
@@ -113,7 +147,8 @@ describe("kitchen-sink flow", () => {
     observeFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Check items", mode: "chat" },
-      session: { resources: { artifacts: emptyArtifacts, workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
+      flow: testFlow,
+      session: { resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
       generators: { "agent-generator": agentFixture, "tf.memory/observe": observeFixture }
     });
 
@@ -126,19 +161,15 @@ describe("kitchen-sink flow", () => {
     observeFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Read artifact doc-1", mode: "chat" },
+      flow: testFlow,
       session: {
         state: { mode: "chat", requestCount: 0 },
         resources: {
-          artifacts: {
-            byId: {
-              "doc-1": {
-                id: "doc-1",
-                title: "Test Document",
-                content: "This is test content.",
-                updatedAt: 1000
-              }
-            },
-            order: ["doc-1"]
+          // Collection instances are seeded with path-based keys
+          "artifacts/doc-1": {
+            title: "Test Document",
+            content: "This is test content.",
+            updatedAt: 1000
           },
           workingMemory: emptyWorkingMemory,
           memorySystem: emptyMemorySystem

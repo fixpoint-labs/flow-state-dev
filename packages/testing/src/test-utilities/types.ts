@@ -31,6 +31,9 @@ export type TestSequencerSeed = TestTargetSeed & {
 
 export type TestBlockOptions<TInput> = {
   input: TInput;
+  /** Optional flow instance. When provided, its resource configs (including
+   *  resource collections) are used instead of the auto-generated ones. */
+  flow?: FlowInstance;
   request?: TestRequestSeed;
   session?: TestScopeSeed;
   user?: TestScopeSeed;

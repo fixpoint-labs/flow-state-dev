@@ -3,8 +3,10 @@
  */
 import type {
   JsonObject,
-  ResourceConfig
+  ResourceConfig,
+  ResourceCollectionConfig
 } from "@flow-state-dev/core/types";
+import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
 import type { RequestRecord } from "../stores/types";
@@ -173,6 +175,15 @@ export function normalizeResourceState(config: ResourceConfig, value: unknown): 
   return normalizeResourceDefault(config);
 }
 
+function isCollectionConfig(value: unknown): value is ResourceCollectionConfig {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "pattern" in value &&
+    typeof (value as ResourceCollectionConfig).pattern === "string"
+  );
+}
+
 export function createScopeResources(options: {
   configs: Record<string, unknown> | undefined;
   persisted: Record<string, unknown> | undefined;
@@ -180,6 +191,48 @@ export function createScopeResources(options: {
   const handles: Record<string, Record<string, unknown>> = {};
 
   for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
+    if (isCollectionConfig(maybeConfig)) {
+      // Build a lightweight read-only collection ref for clientData computation.
+      // Instances are stored as path-keyed entries in the persisted resources map.
+      const pattern = maybeConfig.pattern;
+      const persisted = options.persisted ?? {};
+
+      handles[resourceName] = {
+        pattern,
+        config: maybeConfig,
+        list() {
+          return Object.entries(persisted)
+            .filter(([key]) => matchesPattern(pattern, key))
+            .map(([key, value]) => ({
+              name: key,
+              get state() { return isJsonObject(value) ? value : {}; }
+            }));
+        },
+        count() {
+          return Object.keys(persisted).filter((key) => matchesPattern(pattern, key)).length;
+        },
+        get(key: string | Record<string, string>) {
+          const storageKey = typeof key === "string"
+            ? resolveCollectionKey(pattern, key)
+            : resolveCollectionKey(pattern, key);
+          const value = persisted[storageKey];
+          if (value === undefined) {
+            throw new Error(`Resource instance "${storageKey}" not found in collection "${pattern}"`);
+          }
+          return { name: storageKey, get state() { return isJsonObject(value) ? value : {}; } };
+        },
+        getOptional(key: string | Record<string, string>) {
+          const storageKey = typeof key === "string"
+            ? resolveCollectionKey(pattern, key)
+            : resolveCollectionKey(pattern, key);
+          const value = persisted[storageKey];
+          if (value === undefined) return undefined;
+          return { name: storageKey, get state() { return isJsonObject(value) ? value : {}; } };
+        }
+      };
+      continue;
+    }
+
     if (!isResourceConfig(maybeConfig)) {
       continue;
     }

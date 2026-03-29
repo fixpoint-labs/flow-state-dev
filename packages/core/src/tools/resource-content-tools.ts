@@ -15,7 +15,10 @@ function listResources(ctx: BlockContext): ResourceRef<any>[] {
       return [];
     }
 
-    return registry.list();
+    // Filter out collection refs — only static ResourceRefs have content
+    return registry.list().filter((entry): entry is ResourceRef<any> =>
+      !("pattern" in entry && "create" in entry)
+    );
   });
 }
 

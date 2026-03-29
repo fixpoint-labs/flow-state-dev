@@ -56,7 +56,7 @@ const ITEM_TYPES = ["message", "reasoning", "block_tool_output", "status", "sour
 type MobilePanel = "chat" | "artifacts";
 
 const CLIENT_DATA_OPTIONS = {
-  session: ["artifactsList", "artifactsDetail", "modeStatus", "workingMemory"] as string[],
+  session: ["artifacts", "modeStatus", "workingMemory"] as string[],
   user: ["preferences"] as string[],
 };
 
@@ -91,12 +91,11 @@ function KitchenSinkApp() {
 
   const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number } | undefined;
   const userPrefs = clientData.user?.preferences as { displayName: string; preferredModel: string } | undefined;
-  const artifacts = (clientData.session?.artifactsList ?? []) as Array<{ id: string; title: string; content: string }>;
-  const artifactsDetail = (clientData.session?.artifactsDetail ?? []) as Array<{ id: string; title: string; content: string; updatedAt: number }>;
+  const artifacts = (clientData.session?.artifacts ?? []) as Array<{ id: string; title: string; content: string; updatedAt: number }>;
 
   const selectedArtifact = useMemo(
-    () => artifactsDetail.find((a) => a.id === selectedArtifactId) ?? null,
-    [artifactsDetail, selectedArtifactId]
+    () => artifacts.find((a) => a.id === selectedArtifactId) ?? null,
+    [artifacts, selectedArtifactId]
   );
 
   const handleSubmit = useCallback(

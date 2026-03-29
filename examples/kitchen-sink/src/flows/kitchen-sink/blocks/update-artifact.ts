@@ -14,44 +14,25 @@ export const updateArtifactOutputSchema = z.object({
 });
 
 // Tool block: LLM-callable artifact writer.
-// Demonstrates resource mutation via updateState() — an atomic read-modify-write
-// that receives the current state and returns the next state.
+// Creates or updates an artifact in the collection. Each artifact is its own
+// resource instance with title, content, and updatedAt in state.
 export const updateArtifact = handler({
   name: "update-artifact",
-  description: "Create or update an artifact in the session artifacts resource.",
+  description: "Create or update an artifact in the session artifacts collection.",
   inputSchema: updateArtifactInputSchema,
   outputSchema: updateArtifactOutputSchema,
   sessionResources: artifactResources,
 
   execute: async (input, ctx) => {
     const artifacts = ctx.session.resources.artifacts;
-    if (artifacts === undefined) {
-      return {
-        success: false,
-        id: input.id
-      };
+    const state = { title: input.title, content: input.content, updatedAt: Date.now() };
+
+    const existing = artifacts.getOptional(input.id);
+    if (existing !== undefined) {
+      await existing.patchState(state);
+    } else {
+      await artifacts.create(input.id, state);
     }
-
-    // updateState() is an atomic read-modify-write. The callback receives the
-    // current typed state and must return the complete next state.
-    await artifacts.updateState(async (state) => {
-      const order = state.order.includes(input.id)
-        ? state.order
-        : [...state.order, input.id];
-
-      return {
-        byId: {
-          ...state.byId,
-          [input.id]: {
-            id: input.id,
-            title: input.title,
-            content: input.content,
-            updatedAt: Date.now()
-          }
-        },
-        order
-      };
-    });
 
     return {
       success: true,

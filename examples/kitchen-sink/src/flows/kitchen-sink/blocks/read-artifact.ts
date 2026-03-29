@@ -13,25 +13,20 @@ export const readArtifactOutputSchema = z.object({
 });
 
 // Tool block: used by the generator as an LLM-callable tool.
-// When the generator declares `tools: [readArtifact, ...]`, the framework
-// exposes this block's name, description, and inputSchema to the LLM as a
-// callable function. The LLM invokes it by name, the framework runs execute(),
-// and the result feeds back into the LLM's tool-call loop.
+// Reads a single artifact from the artifacts resource collection by key.
+// Each artifact is its own resource instance — metadata in state, body in content.
 export const readArtifact = handler({
   name: "read-artifact",
-  description: "Read an artifact by ID from the session artifacts resource.",
+  description: "Read an artifact by ID from the session artifacts collection.",
   inputSchema: readArtifactInputSchema,
   outputSchema: readArtifactOutputSchema,
-
-  // Typed resource declaration: this block expects a session resource named
-  // "artifacts". ctx.session.resources.artifacts gives typed access.
   sessionResources: artifactResources,
 
   execute: async (input, ctx) => {
-    const artifactsHandle = ctx.session.resources.get("artifacts");
-    const artifact = artifactsHandle?.state.byId[input.artifactId];
+    const artifacts = ctx.session.resources.artifacts;
+    const ref = artifacts.getOptional(input.artifactId);
 
-    if (artifact === undefined) {
+    if (ref === undefined) {
       return {
         id: input.artifactId,
         title: "Not Found",
@@ -40,9 +35,9 @@ export const readArtifact = handler({
     }
 
     return {
-      id: artifact.id,
-      title: artifact.title,
-      content: artifact.content
+      id: input.artifactId,
+      title: ref.state.title,
+      content: ref.state.content
     };
   }
 });

@@ -7,7 +7,8 @@ import type {
   InferBlockResources,
   InferStateFromSchema
 } from "../types/block";
-import type { DefinedResource, ResourceRef } from "../types/resource";
+import type { AnyResourceRef } from "../types/resource";
+import type { DeclaredResourceEntry } from "../types/block";
 import { buildBlock, extractDeclaredResources } from "./internal/build-block";
 
 export interface HandlerConfig<
@@ -32,13 +33,13 @@ export interface HandlerConfig<
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
   TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
   // Resource definitions — optional, provide typing AND auto-installation
-  TSessionResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
-  TUserResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
-  TProjectResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
+  TSessionResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TUserResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TProjectResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   // Derive-once: map resource schemas/definitions to typed ResourceRef records
-  TSessionResources extends Record<string, ResourceRef<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
-  TUserResources extends Record<string, ResourceRef<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
-  TProjectResources extends Record<string, ResourceRef<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TSessionResources extends Record<string, AnyResourceRef> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
+  TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
+  TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
@@ -81,12 +82,12 @@ export function handler<
   TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
   TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
-  TSessionResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
-  TUserResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
-  TProjectResourceDefs extends Record<string, DefinedResource> | undefined = undefined,
-  TSessionResources extends Record<string, ResourceRef<any>> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
-  TUserResources extends Record<string, ResourceRef<any>> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
-  TProjectResources extends Record<string, ResourceRef<any>> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TSessionResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TUserResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TProjectResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TSessionResources extends Record<string, AnyResourceRef> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
+  TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
+  TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
 >(
   config: HandlerConfig<

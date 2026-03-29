@@ -42,7 +42,7 @@ function collectStaticResources(ctx: BlockContext): ResourceRef<any>[] {
   const registries = [ctx.session?.resources, ctx.user?.resources, ctx.project?.resources];
   return registries.flatMap((registry) => {
     if (registry === undefined) return [];
-    return registry.list().filter((entry) => !("pattern" in entry && "create" in entry));
+    return registry.list().filter((entry): entry is ResourceRef<any> => !("pattern" in entry && "create" in entry));
   });
 }
 
