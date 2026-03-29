@@ -45,9 +45,9 @@ function toJsonObjectRecord(
 }
 
 function normalizeStatus(
-  value: "in_progress" | "completed" | "failed" | "incomplete" | undefined
-): "completed" | "failed" | "incomplete" {
-  if (value === "completed" || value === "failed" || value === "incomplete") {
+  value: "in_progress" | "completed" | "failed" | "incomplete" | "interrupted" | undefined
+): "completed" | "failed" | "incomplete" | "interrupted" {
+  if (value === "completed" || value === "failed" || value === "incomplete" || value === "interrupted") {
     return value;
   }
 
