@@ -4,7 +4,6 @@ import type { BlockOutputItem } from "@flow-state-dev/core/items";
 import { KitchenSinkToolCall } from "./kitchen-sink-tool-call";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 
 type AgentOutput = {
   reply: string;
