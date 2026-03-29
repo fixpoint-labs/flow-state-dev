@@ -196,6 +196,54 @@ const agent = generator({
 });
 ```
 
+### `defineResourceCollection(config)`
+
+Create a resource collection — a typed set of resources created and destroyed at runtime:
+
+```ts
+import { defineResourceCollection } from "@flow-state-dev/core";
+
+const filesCollection = defineResourceCollection({
+  pattern: "files/**",
+  stateSchema: z.object({ language: z.string().default("text") }),
+  maxInstances: 200,
+  eviction: "lru",
+});
+```
+
+Config options:
+
+- `pattern: string` — glob pattern: `files/*` (single-level), `files/**` (deep), `[topic]/observations` (parameterized)
+- `stateSchema: ZodTypeAny` — schema for each instance's state
+- `maxInstances?: number` — cap on simultaneous instances (must be >= 1)
+- `eviction?: "none" | "lru" | "oldest"` — what to do when cap is reached (default: `"none"` = throw)
+- `onInstanceCreated?: (key, state, ctx) => void` — lifecycle hook
+- `onInstanceUpdated?: (key, state, prevState, ctx) => void` — lifecycle hook
+- `onInstanceDeleted?: (key, ctx) => void` — lifecycle hook
+
+Runtime `ResourceCollectionRef` methods:
+
+- `create(key, initial?)` — create a new instance (throws if exists or at cap with no eviction)
+- `get(key)` — get existing instance (throws if not found)
+- `getOptional(key)` — get existing instance or `undefined`
+- `getOrCreate(key, initial?)` — returns existing if present, creates if not
+- `list(prefix?)` — list all instances, optionally filtered by prefix
+- `delete(key)` — delete an instance (no-op if not found)
+- `count()` — current instance count
+
+Use in blocks the same way as `defineResource`:
+
+```ts
+const fileManager = handler({
+  name: "file-manager",
+  sessionResources: { files: filesNamespace },
+  execute: async (input, ctx) => {
+    const ref = await ctx.session.resources.files.create("readme.md");
+    return ref.state;
+  },
+});
+```
+
 ## Context Functions
 
 ### `contextFn(schemas, fn)`

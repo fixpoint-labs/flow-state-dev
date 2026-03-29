@@ -49,7 +49,7 @@ Config options:
 | **Identity** | Field names (shared namespace) | Resource name (isolated namespace) |
 | **Collision risk** | Fields can conflict across blocks | Each resource is self-contained |
 
-Use **scope state** for simple fields: mode flags, counters, config values. Use **resources** when you're working with content that has structure — documents, plans, artifacts, knowledge bases. See [Storage](/docs/resources/storage) for the full decision guide.
+Use **scope state** for simple fields: mode flags, counters, config values. Use **resources** when you're working with content that has structure — documents, plans, artifacts, knowledge bases. See [State vs Resources](/docs/resources/storage) for more guidance on when to use which.
 
 ## Working with content
 
@@ -91,6 +91,23 @@ defineResource({
 
 Resources are not automatically exposed to generators. Use `llmReadable` and `llmWritable` flags to control access, and wire `readResourceContentTool()` or `writeResourceContentTool()` to a generator's tools array when you want the model to interact with resource content directly.
 
+## Resource collections
+
+Static resources have a fixed name. Resource collections let you create typed sets of resources dynamically at runtime — useful when the number of instances isn't known ahead of time (file collections, per-topic knowledge, dynamic workspaces).
+
+```ts
+import { defineResourceCollection } from "@flow-state-dev/core";
+
+const filesCollection = defineResourceCollection({
+  pattern: "files/**",
+  stateSchema: z.object({ language: z.string().default("text") }),
+  maxInstances: 200,
+  eviction: "lru",
+});
+```
+
+See [Resource Collections](/docs/resources/collections) for the full reference: patterns, runtime API, eviction, lifecycle hooks, and storage model.
+
 ## Block-level resource declarations
 
 Blocks declare resource dependencies with `sessionResources`, `userResources`, and `projectResources`:
@@ -124,5 +141,6 @@ Choose the scope that matches the data's lifetime. Session for conversation-loca
 
 ## Where to go next
 
-- **[Storage](/docs/resources/storage)** — When to use resources vs scope state, scoping decisions, block-private vs shared
+- **[State vs Resources](/docs/resources/storage)** — When to use resources vs scope state, scoping decisions, shared vs block-private
+- **[Resource Collections](/docs/resources/collections)** — Dynamic collections with patterns, eviction, and lifecycle hooks
 - **[State & Scopes](/docs/fundamentals/state-and-scopes)** — Broader state model, clientData, targets

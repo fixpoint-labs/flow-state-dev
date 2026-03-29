@@ -113,6 +113,12 @@ async function addStep(ctx: PlanContext, step: string) {
 }
 ```
 
+### Resource Collections
+
+Static resources are declared by name at definition time. Resource collections let you create typed sets of resources dynamically at runtime — useful when the number of instances isn't known ahead of time (file collections, per-topic knowledge stores, dynamic workspaces).
+
+See [Resource Collections](./resource-collections.md) for the full reference: patterns, runtime API, eviction, lifecycle hooks, and storage model.
+
 ### Block-Level Resource Declarations
 
 Blocks can declare their resource dependencies directly using `sessionResources`, `userResources`, and `projectResources` properties. These accept `defineResource()` values:

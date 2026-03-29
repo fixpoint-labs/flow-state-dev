@@ -85,6 +85,35 @@ export type {
 } from "./resource";
 
 export type {
+  CollectionHookContext,
+  DefinedResourceCollection,
+  EvictionPolicy,
+  ResourceCollectionConfig,
+  ResourceCollectionRef,
+  ResourceCollectionHandle,
+  // Deprecated aliases
+  NamespaceHookContext,
+  DefinedResourceNamespace,
+  ResourceNamespaceConfig,
+  ResourceNamespaceHandle,
+  ResourceNamespaceRef,
+} from "./resource-collection";
+
+export {
+  defineResourceCollection,
+  isDefinedResourceCollection,
+  resolveCollectionKey,
+  normalizeResourcePath,
+  matchesPattern,
+  getPatternPrefix,
+  extractPatternParams,
+  // Deprecated aliases
+  defineResourceNamespace,
+  isDefinedResourceNamespace,
+  resolveNamespaceKey,
+} from "./resource-collection";
+
+export type {
   JournalEntry,
   JournalEntryInput,
   ItemQuery,

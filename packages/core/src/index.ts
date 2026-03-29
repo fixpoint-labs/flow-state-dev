@@ -1,6 +1,20 @@
 export type { BlockInput, BlockOutput, DeclaredResources } from "./types/block";
 export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
 export type {
+  CollectionHookContext,
+  DefinedResourceCollection,
+  EvictionPolicy,
+  ResourceCollectionConfig,
+  ResourceCollectionRef,
+  ResourceCollectionHandle,
+  // Deprecated aliases
+  NamespaceHookContext,
+  DefinedResourceNamespace,
+  ResourceNamespaceConfig,
+  ResourceNamespaceHandle,
+  ResourceNamespaceRef,
+} from "./types/resource-collection";
+export type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
@@ -10,6 +24,7 @@ export type {
 } from "./schema/common";
 
 export { defineResource, resource } from "./types/resource";
+export { defineResourceCollection, isDefinedResourceCollection, defineResourceNamespace, isDefinedResourceNamespace } from "./types/resource-collection";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
 export {
@@ -21,6 +36,7 @@ export {
 } from "./blocks";
 export { defineFlow } from "./flow";
 export { readResourceContentTool, writeResourceContentTool } from "./tools/resource-content-tools";
+export { resourceTools } from "./tools/resource-tools";
 export {
   DEFAULT_MODEL_LOOKUP,
   findModelEntry,

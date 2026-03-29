@@ -116,6 +116,9 @@ export default defineFlow({
 **Resources:**
 - `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `projectResources`)
   - Supports optional `content`/`contentFile` (mutually exclusive), `render`, `llmReadable`, and `llmWritable` for resource content workflows
+- `defineResourceNamespace(config)` — Dynamic resource collection with pattern-based keys (`files/*`, `files/**`, `[topic]/observations`), optional `maxInstances`/`eviction`, and lifecycle hooks
+  - Runtime `ResourceNamespaceRef` provides `create()`, `get()`, `getOrCreate()`, `list()`, `delete()`, `count()`
+- `isDefinedResourceNamespace(value)` — Type guard for namespace definitions
 
 **Context & client data:**
 - `contextFn(schemas, fn)` — Typed context function for generators (scope-aware, portable)

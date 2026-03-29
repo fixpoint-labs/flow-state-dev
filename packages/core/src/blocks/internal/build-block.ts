@@ -8,6 +8,7 @@ import type {
   DeclaredResources
 } from "../../types/block";
 import type { DefinedResource } from "../../types/resource";
+import type { DefinedResourceCollection } from "../../types/resource-collection";
 import { toError } from "./utils";
 
 /**
@@ -15,9 +16,9 @@ import { toError } from "./utils";
  * metadata object. Returns `undefined` when no resources are declared.
  */
 export function extractDeclaredResources(config: {
-  sessionResources?: Record<string, DefinedResource>;
-  userResources?: Record<string, DefinedResource>;
-  projectResources?: Record<string, DefinedResource>;
+  sessionResources?: Record<string, DefinedResource | DefinedResourceCollection>;
+  userResources?: Record<string, DefinedResource | DefinedResourceCollection>;
+  projectResources?: Record<string, DefinedResource | DefinedResourceCollection>;
 }): DeclaredResources | undefined {
   const result: DeclaredResources = {};
   if (config.sessionResources) result.session = config.sessionResources;
@@ -27,15 +28,16 @@ export function extractDeclaredResources(config: {
 }
 
 type ResourceScope = "session" | "user" | "project";
+type ResourceEntry = DefinedResource | DefinedResourceCollection;
 
 /**
  * Merge a scope-level resource map from `source` into `target`.
- * Same `DefinedResource` reference → no conflict.
+ * Same reference → no conflict.
  * Different references → build-time error.
  */
 function mergeScopeResources(
-  target: Record<string, DefinedResource>,
-  source: Record<string, DefinedResource>,
+  target: Record<string, ResourceEntry>,
+  source: Record<string, ResourceEntry>,
   scope: ResourceScope
 ): void {
   for (const [name, resource] of Object.entries(source)) {

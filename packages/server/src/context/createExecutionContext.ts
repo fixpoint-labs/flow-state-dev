@@ -8,11 +8,14 @@ import type {
   JsonValue,
   LLMMessage,
   MessageLimit,
+  CollectionHookContext,
   ProjectScopeHandle,
   RequestScopeHandle,
   ResourceConfig,
   ResourceRef,
   ResourceRegistry,
+  ResourceCollectionConfig,
+  ResourceCollectionRef,
   ScopeType,
   SessionItem,
   SessionItemViews,
@@ -20,6 +23,13 @@ import type {
   UserScopeHandle,
   FlowInstance,
   TokenCounter
+} from "@flow-state-dev/core/types";
+import {
+  isDefinedResourceCollection,
+  resolveCollectionKey,
+  normalizeResourcePath,
+  matchesPattern,
+  getPatternPrefix,
 } from "@flow-state-dev/core/types";
 import type {
   BlockOutputItem,
@@ -127,29 +137,54 @@ function normalizeResourceState(
   return normalizeResourceDefault(config);
 }
 
+function isCollectionConfig(config: unknown): config is ResourceCollectionConfig {
+  return (
+    typeof config === "object" &&
+    config !== null &&
+    "pattern" in config &&
+    typeof (config as ResourceCollectionConfig).pattern === "string"
+  );
+}
+
 function normalizeScopeResources(
-  configs: Record<string, ResourceConfig> | undefined,
+  configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined,
   seed: Record<string, unknown> | undefined
 ): Record<string, JsonObject> {
   const normalized: Record<string, JsonObject> = {};
 
   for (const [resourceName, config] of Object.entries(configs ?? {})) {
+    // Skip collection configs — their instances are stored with path-based keys
+    if (isCollectionConfig(config)) continue;
+
     normalized[resourceName] = normalizeResourceState(
       config,
       seed?.[resourceName]
     );
   }
 
+  // Preserve any collection instance data from seed
+  if (seed !== undefined) {
+    for (const [key, value] of Object.entries(seed)) {
+      if (key in normalized) continue; // already handled as static
+      if (isJsonObject(value)) {
+        normalized[key] = asJsonObject(value);
+      }
+    }
+  }
+
   return normalized;
 }
 
 function normalizeScopeResourceContent(
-  configs: Record<string, ResourceConfig> | undefined,
+  configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined,
   seed: Record<string, unknown> | undefined
 ): Record<string, string> {
   const normalized: Record<string, string> = {};
 
   for (const [resourceName, config] of Object.entries(configs ?? {})) {
+    // Skip collection configs — collection instances don't have definition-time content
+    if (isCollectionConfig(config)) continue;
+
     const existing = seed?.[resourceName];
     if (typeof existing === "string") {
       normalized[resourceName] = existing;
@@ -170,6 +205,16 @@ function normalizeScopeResourceContent(
         throw new Error(
           `Failed to load contentFile for resource "${resourceName}" (path: ${config.contentFile}): ${message}`
         );
+      }
+    }
+  }
+
+  // Preserve any collection instance content from seed
+  if (seed !== undefined) {
+    for (const [key, value] of Object.entries(seed)) {
+      if (key in normalized) continue;
+      if (typeof value === "string") {
+        normalized[key] = value;
       }
     }
   }
@@ -226,14 +271,14 @@ function updateObjectState(
 function createScopeResourceRegistry<TResources extends Record<string, ResourceRef<any>>>(
   options: {
     scope: ScopeType;
-    configs: Record<string, ResourceConfig> | undefined;
+    configs: Record<string, ResourceConfig | ResourceCollectionConfig> | undefined;
     readResources: () => Record<string, JsonObject>;
     persistResources: (next: Record<string, JsonObject>) => Promise<void>;
     readResourceContent: () => Record<string, string>;
     persistResourceContent: (next: Record<string, string>) => Promise<void>;
   }
 ): ResourceRegistry<TResources> {
-  const handles = {} as Record<string, ResourceRef<JsonObject>>;
+  const handles = {} as Record<string, ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>>;
   const configs = options.configs ?? {};
 
   const persistResourceState = async (
@@ -265,7 +310,280 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
     await options.persistResourceContent(nextContent);
   };
 
+  // --- Namespace instance persistence helpers ---
+  const persistNamespaceInstanceState = async (
+    storageKey: string,
+    nsConfig: ResourceCollectionConfig,
+    next: unknown
+  ): Promise<void> => {
+    const parsed = nsConfig.stateSchema.safeParse(next);
+    const value = parsed.success && isJsonObject(parsed.data) ? asJsonObject(parsed.data) : {};
+
+    const nextResources = {
+      ...options.readResources(),
+      [storageKey]: value
+    };
+
+    await options.persistResources(nextResources);
+  };
+
+  const deleteNamespaceInstance = async (
+    storageKey: string
+  ): Promise<void> => {
+    const current = options.readResources();
+    const next = { ...current };
+    delete next[storageKey];
+
+    await options.persistResources(next);
+
+    // Also remove content if present
+    const currentContent = options.readResourceContent();
+    if (storageKey in currentContent) {
+      const nextContent = { ...currentContent };
+      delete nextContent[storageKey];
+      await options.persistResourceContent(nextContent);
+    }
+  };
+
+  /**
+   * Create a ResourceRef for a collection instance at a given storage key.
+   */
+  function createNamespaceInstanceRef(
+    storageKey: string,
+    nsConfig: ResourceCollectionConfig,
+    nsHookCtx?: CollectionHookContext
+  ): ResourceRef<JsonObject> {
+    const readState = (): JsonObject => {
+      const raw = options.readResources()[storageKey];
+      if (raw !== undefined) return cloneValue(raw);
+      // Parse defaults from schema
+      const parsed = nsConfig.stateSchema.safeParse({});
+      return parsed.success && isJsonObject(parsed.data) ? asJsonObject(parsed.data) : {};
+    };
+
+    return {
+      name: storageKey,
+      scope: options.scope,
+      config: nsConfig as unknown as ResourceConfig,
+      get state() {
+        return readState();
+      },
+      async patchState(updates: Partial<JsonObject>): Promise<void> {
+        const prev = readState();
+        await persistNamespaceInstanceState(
+          storageKey,
+          nsConfig,
+          updateObjectState(prev, updates)
+        );
+        if (nsConfig.onInstanceUpdated && nsHookCtx) {
+          await nsConfig.onInstanceUpdated(
+            storageKey,
+            readState(),
+            prev,
+            nsHookCtx
+          );
+        }
+      },
+      async setState(nextState: JsonObject): Promise<void> {
+        const prev = readState();
+        await persistNamespaceInstanceState(storageKey, nsConfig, nextState);
+        if (nsConfig.onInstanceUpdated && nsHookCtx) {
+          await nsConfig.onInstanceUpdated(
+            storageKey,
+            readState(),
+            prev,
+            nsHookCtx
+          );
+        }
+      },
+      async updateState(
+        updater: (state: JsonObject) => JsonObject | Promise<JsonObject>
+      ): Promise<void> {
+        const prev = readState();
+        const next = await updater(prev);
+        await persistNamespaceInstanceState(storageKey, nsConfig, next);
+        if (nsConfig.onInstanceUpdated && nsHookCtx) {
+          await nsConfig.onInstanceUpdated(
+            storageKey,
+            readState(),
+            prev,
+            nsHookCtx
+          );
+        }
+      },
+      async readContentRaw(): Promise<string | null> {
+        const content = options.readResourceContent()[storageKey];
+        return typeof content === "string" ? content : null;
+      },
+      async readContent(): Promise<string | null> {
+        const raw = options.readResourceContent()[storageKey];
+        return typeof raw === "string" ? raw : null;
+      },
+      async writeContent(content: string): Promise<void> {
+        const nextContent = {
+          ...options.readResourceContent(),
+          [storageKey]: content
+        };
+        await options.persistResourceContent(nextContent);
+      }
+    };
+  }
+
   for (const [resourceName, config] of Object.entries(configs)) {
+    if (isCollectionConfig(config)) {
+      // --- Create collection ref ---
+      const nsConfig = config;
+      // LRU tracking: storageKey → last access timestamp
+      const lruAccess = new Map<string, number>();
+
+      /** Populated hook context for lifecycle callbacks. */
+      const hookCtx: CollectionHookContext = {
+        log: (_message: string) => {
+          // Hook log messages are available for debugging; runtime logger
+          // integration is handled at a higher level when available.
+        },
+        scopeType: options.scope,
+      };
+
+      const nsHandle: ResourceCollectionRef<JsonObject> = {
+        pattern: nsConfig.pattern,
+        scope: options.scope,
+        config: nsConfig,
+
+        get(key: string | Record<string, string>): ResourceRef<JsonObject> {
+          const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+          const resources = options.readResources();
+          if (!(storageKey in resources)) {
+            throw new Error(`Resource instance "${storageKey}" not found in collection "${nsConfig.pattern}"`);
+          }
+          lruAccess.set(storageKey, Date.now());
+          return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+        },
+
+        getOptional(key: string | Record<string, string>): ResourceRef<JsonObject> | undefined {
+          const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+          const resources = options.readResources();
+          if (!(storageKey in resources)) {
+            return undefined;
+          }
+          lruAccess.set(storageKey, Date.now());
+          return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+        },
+
+        async create(
+          key: string | Record<string, string>,
+          initial?: Partial<JsonObject>
+        ): Promise<ResourceRef<JsonObject>> {
+          const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+
+          // Validate that key matches pattern
+          if (!matchesPattern(nsConfig.pattern, storageKey)) {
+            throw new Error(
+              `Key "${storageKey}" does not match collection pattern "${nsConfig.pattern}"`
+            );
+          }
+
+          const resources = options.readResources();
+          if (storageKey in resources) {
+            throw new Error(`Resource instance "${storageKey}" already exists`);
+          }
+
+          // Check instance limits
+          const currentCount = countInstances(nsConfig.pattern, resources);
+          if (nsConfig.maxInstances !== undefined && currentCount >= nsConfig.maxInstances) {
+            const eviction = nsConfig.eviction ?? "none";
+            if (eviction === "none") {
+              throw new Error(
+                `Namespace "${nsConfig.pattern}" has reached maxInstances (${nsConfig.maxInstances})`
+              );
+            }
+            // Evict one instance — persists the deletion
+            await evictInstance(nsConfig, resources, eviction, lruAccess, options.persistResources, hookCtx);
+          }
+
+          // Validate state via schema — throw on invalid input, never silent fallback
+          const parseResult = nsConfig.stateSchema.safeParse(initial ?? {});
+          if (!parseResult.success) {
+            const issue = parseResult.error.issues[0];
+            const issuePath = issue === undefined ? "" : issue.path.join(".");
+            const issueMessage = issue === undefined ? "schema validation failed" : issue.message;
+            const pathSuffix = issuePath.length > 0 ? ` at "${issuePath}"` : "";
+            throw new Error(
+              `Namespace "${nsConfig.pattern}" create("${storageKey}") state validation failed${pathSuffix}: ${issueMessage}`
+            );
+          }
+
+          const state = isJsonObject(parseResult.data) ? asJsonObject(parseResult.data) : {};
+
+          const nextResources = { ...resources, [storageKey]: state };
+          await options.persistResources(nextResources);
+
+          lruAccess.set(storageKey, Date.now());
+
+          if (nsConfig.onInstanceCreated) {
+            await nsConfig.onInstanceCreated(storageKey, state, hookCtx);
+          }
+
+          return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+        },
+
+        async getOrCreate(
+          key: string | Record<string, string>,
+          initial?: Partial<JsonObject>
+        ): Promise<ResourceRef<JsonObject>> {
+          const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+          const resources = options.readResources();
+          if (storageKey in resources) {
+            lruAccess.set(storageKey, Date.now());
+            return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
+          }
+          return nsHandle.create(key, initial);
+        },
+
+        list(prefix?: string): ResourceRef<JsonObject>[] {
+          const resources = options.readResources();
+          const instances: ResourceRef<JsonObject>[] = [];
+
+          for (const storageKey of Object.keys(resources)) {
+            if (!matchesPattern(nsConfig.pattern, storageKey)) continue;
+            if (prefix !== undefined) {
+              const nsPrefix = getPatternPrefix(nsConfig.pattern);
+              const fullPrefix = nsPrefix.length > 0 ? `${nsPrefix}/${prefix}` : prefix;
+              if (!storageKey.startsWith(fullPrefix)) continue;
+            }
+            instances.push(createNamespaceInstanceRef(storageKey, nsConfig, hookCtx));
+          }
+
+          return instances;
+        },
+
+        async delete(key: string | Record<string, string>): Promise<void> {
+          const storageKey = resolveCollectionKey(nsConfig.pattern, key);
+          const resources = options.readResources();
+          if (!(storageKey in resources)) {
+            // Idempotent — no-op if instance doesn't exist
+            return;
+          }
+
+          await deleteNamespaceInstance(storageKey);
+          lruAccess.delete(storageKey);
+
+          if (nsConfig.onInstanceDeleted) {
+            await nsConfig.onInstanceDeleted(storageKey, hookCtx);
+          }
+        },
+
+        count(): number {
+          const resources = options.readResources();
+          return countInstances(nsConfig.pattern, resources);
+        }
+      };
+
+      handles[resourceName] = nsHandle as unknown as ResourceRef<JsonObject>;
+      continue;
+    }
+
+    // --- Static resource (unchanged) ---
     const readState = (): JsonObject =>
       cloneValue(
         options.readResources()[resourceName] ??
@@ -337,6 +655,54 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
       return Object.values(handles) as Array<TResources[keyof TResources]>;
     }
   } as ResourceRegistry<TResources>;
+}
+
+function countInstances(
+  pattern: string,
+  resources: Record<string, JsonObject>
+): number {
+  let count = 0;
+  for (const key of Object.keys(resources)) {
+    if (matchesPattern(pattern, key)) count++;
+  }
+  return count;
+}
+
+async function evictInstance(
+  nsConfig: ResourceCollectionConfig,
+  resources: Record<string, JsonObject>,
+  policy: "lru" | "oldest",
+  lruAccess: Map<string, number>,
+  persistResources: (next: Record<string, JsonObject>) => Promise<void>,
+  hookCtx: CollectionHookContext
+): Promise<void> {
+  const keys = Object.keys(resources).filter((k) =>
+    matchesPattern(nsConfig.pattern, k)
+  );
+
+  if (keys.length === 0) return;
+
+  let evictKey: string;
+  if (policy === "lru") {
+    // Evict least-recently-used (lowest timestamp in lruAccess)
+    evictKey = keys.reduce((oldest, key) => {
+      const oldestTime = lruAccess.get(oldest) ?? 0;
+      const keyTime = lruAccess.get(key) ?? 0;
+      return keyTime < oldestTime ? key : oldest;
+    }, keys[0]!);
+  } else {
+    // "oldest" — evict first key (insertion order)
+    evictKey = keys[0]!;
+  }
+
+  // Remove from in-memory map and persist the deletion
+  delete resources[evictKey];
+  await persistResources({ ...resources });
+  lruAccess.delete(evictKey);
+
+  if (nsConfig.onInstanceDeleted) {
+    await nsConfig.onInstanceDeleted(evictKey, hookCtx);
+  }
 }
 
 function ensureJournalDefaults(record: SessionRecord): void {
@@ -1111,13 +1477,13 @@ export async function createExecutionContext<
   } = options;
   const transientStateChanges = !shouldPersistScopeChange(flow);
   const sessionResourceConfigs = flow.session?.resources as
-    | Record<string, ResourceConfig>
+    | Record<string, ResourceConfig | ResourceCollectionConfig>
     | undefined;
   const userResourceConfigs = flow.user?.resources as
-    | Record<string, ResourceConfig>
+    | Record<string, ResourceConfig | ResourceCollectionConfig>
     | undefined;
   const projectResourceConfigs = flow.project?.resources as
-    | Record<string, ResourceConfig>
+    | Record<string, ResourceConfig | ResourceCollectionConfig>
     | undefined;
 
   if (!options.userId || options.userId.trim().length === 0) {
