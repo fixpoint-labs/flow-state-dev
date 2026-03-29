@@ -30,6 +30,7 @@ import { KitchenSinkMessage } from "@/components/kitchen-sink-message";
 import { KitchenSinkReasoning } from "@/components/kitchen-sink-reasoning";
 import { KitchenSinkStatus } from "@/components/kitchen-sink-status";
 import { KitchenSinkError } from "@/components/kitchen-sink-error";
+import { KitchenSinkToolCall } from "@/components/kitchen-sink-tool-call";
 import { SourcesGroup } from "@/components/kitchen-sink-source";
 
 import { SessionSidebar } from "@/components/session-sidebar";
@@ -43,13 +44,14 @@ import { VoiceToggle } from "@/components/voice-toggle";
 const renderers: RendererRegistry = {
   message: KitchenSinkMessage,
   reasoning: KitchenSinkReasoning,
+  block_tool_output: KitchenSinkToolCall,
   status: KitchenSinkStatus,
   source: false, // Sources are grouped separately via SourcesGroup
   error: KitchenSinkError,
   step_error: KitchenSinkError,
 };
 
-const ITEM_TYPES = ["message", "reasoning", "status", "source", "error", "step_error"];
+const ITEM_TYPES = ["message", "reasoning", "block_tool_output", "status", "source", "error", "step_error"];
 
 type MobilePanel = "chat" | "artifacts";
 

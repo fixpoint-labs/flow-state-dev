@@ -13,6 +13,7 @@
  */
 import { createElement, type ReactNode } from "react";
 import type {
+  BlockToolOutputItem,
   ComponentItem,
   ContainerItem,
   ErrorItem,
@@ -104,13 +105,48 @@ function renderReasoningFallback(item: ReasoningItem): ReactNode {
   );
 }
 
+function renderBlockToolOutputFallback(item: BlockToolOutputItem): ReactNode {
+  const statusLabel = item.status === "in_progress" ? "Running" : item.status === "failed" ? "Error" : "Completed";
+
+  let parsedArgs: string;
+  try {
+    parsedArgs = JSON.stringify(JSON.parse(item.toolCall.arguments), null, 2);
+  } catch {
+    parsedArgs = item.toolCall.arguments;
+  }
+
+  return createElement(
+    "details",
+    { "data-tool-output": "true", style: { margin: "4px 0", border: "1px solid #ddd", borderRadius: 4, padding: 8 } },
+    createElement(
+      "summary",
+      { style: { cursor: "pointer", fontSize: 13, fontWeight: 500 } },
+      `Tool: ${item.toolCall.name} — ${statusLabel}`
+    ),
+    createElement("pre", { style: { fontSize: 11, whiteSpace: "pre-wrap", margin: "4px 0" } }, `Input:\n${parsedArgs}`),
+    item.status !== "in_progress" && createElement(
+      "pre",
+      {
+        style: {
+          fontSize: 11,
+          whiteSpace: "pre-wrap",
+          margin: "4px 0",
+          color: item.status === "failed" ? "red" : undefined
+        }
+      },
+      `Output:\n${item.error ? item.error.message : typeof item.output === "string" ? item.output : JSON.stringify(item.output, null, 2)}`
+    )
+  );
+}
+
 /** Map of item types to built-in fallback renderers. */
 const BUILT_IN_FALLBACKS: Record<string, ((item: OutputItem) => ReactNode) | undefined> = {
   message: (item) => renderMessageFallback(item as MessageItem),
   reasoning: (item) => renderReasoningFallback(item as ReasoningItem),
   status: (item) => renderStatusFallback(item as StatusItem),
   error: (item) => renderErrorFallback(item as ErrorItem),
-  step_error: (item) => renderStepErrorFallback(item as StepErrorItem)
+  step_error: (item) => renderStepErrorFallback(item as StepErrorItem),
+  block_tool_output: (item) => renderBlockToolOutputFallback(item as BlockToolOutputItem)
 };
 
 // ---------------------------------------------------------------------------
