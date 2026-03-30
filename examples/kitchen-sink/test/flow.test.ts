@@ -165,10 +165,12 @@ describe("kitchen-sink flow", () => {
       session: {
         state: { mode: "chat", requestCount: 0 },
         resources: {
-          // Collection instances are seeded with path-based keys
+          // Collection instances are seeded with path-based keys.
+          // Content lives in state for seeding (content body is separate
+          // at runtime via writeContent/readContent).
           "artifacts/doc-1": {
             title: "Test Document",
-            content: "This is test content.",
+            summary: "Test content summary",
             updatedAt: 1000
           },
           workingMemory: emptyWorkingMemory,

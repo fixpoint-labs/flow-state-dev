@@ -6,18 +6,18 @@ import { z } from "zod";
 
 export const modeSchema = z.enum(["chat", "plan", "review"]);
 
-// Per-instance state for an artifact resource. Each artifact is its own resource
-// instance in the collection — the artifact ID is the collection key, metadata
-// lives in state, and the actual content body is stored as resource content.
+// Per-instance state for an artifact resource. State tracks metadata only —
+// the document body is stored as resource content via writeContent/readContent.
+// The summary field is populated by a background .work() block after each update.
 export const artifactStateSchema = z.object({
   title: z.string(),
-  content: z.string(),
+  summary: z.string().default(""),
   updatedAt: z.number()
 });
 
 // Resource collection for artifacts. Each artifact is a separate resource
-// instance keyed by its ID (e.g., "artifacts/my-doc"). All artifact data
-// (title, content, updatedAt) lives in per-instance state.
+// instance keyed by its ID (e.g., "artifacts/my-doc"). Metadata lives in
+// state, the document body lives in resource content.
 export const artifactsCollection = defineResourceCollection({
   pattern: "artifacts/*",
   stateSchema: artifactStateSchema,

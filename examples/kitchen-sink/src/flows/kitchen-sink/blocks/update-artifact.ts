@@ -14,8 +14,8 @@ export const updateArtifactOutputSchema = z.object({
 });
 
 // Tool block: LLM-callable artifact writer.
-// Creates or updates an artifact in the collection. Each artifact is its own
-// resource instance with title, content, and updatedAt in state.
+// Creates or updates an artifact in the collection. Metadata (title, updatedAt)
+// lives in state; the document body is stored as resource content.
 export const updateArtifact = handler({
   name: "update-artifact",
   description: "Create or update an artifact in the session artifacts collection.",
@@ -25,13 +25,18 @@ export const updateArtifact = handler({
 
   execute: async (input, ctx) => {
     const artifacts = ctx.session.resources.artifacts;
-    const state = { title: input.title, content: input.content, updatedAt: Date.now() };
 
     const existing = artifacts.getOptional(input.id);
     if (existing !== undefined) {
-      await existing.patchState(state);
+      await existing.patchState({ title: input.title, updatedAt: Date.now() });
+      await existing.writeContent(input.content);
     } else {
-      await artifacts.create(input.id, state);
+      const ref = await artifacts.create(input.id, {
+        title: input.title,
+        summary: "",
+        updatedAt: Date.now()
+      });
+      await ref.writeContent(input.content);
     }
 
     return {
