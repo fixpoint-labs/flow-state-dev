@@ -1,0 +1,34 @@
+{
+  "name": "@flow-state-dev/store-sqlite",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@flow-state-dev/server": "workspace:*",
+    "better-sqlite3": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^22.0.0"
+  },
+  "scripts": {
+    "build": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && tsc -p tsconfig.json",
+    "typecheck": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && node ../../scripts/typecheck.mjs",
+    "test": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && vitest run --root .",
+    "test:watch": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && vitest --root ."
+  }
+}
