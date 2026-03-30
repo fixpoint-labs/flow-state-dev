@@ -92,15 +92,18 @@ export async function handleGetSessionState(
   }
   const sessionResources = createScopeResources({
     configs: flow.session?.resources as Record<string, unknown> | undefined,
-    persisted: session.resources as Record<string, unknown> | undefined
+    persisted: session.resources as Record<string, unknown> | undefined,
+    persistedContent: session.resourceContent as Record<string, string> | undefined
   });
   const userResources = createScopeResources({
     configs: flow.user?.resources as Record<string, unknown> | undefined,
-    persisted: user?.resources as Record<string, unknown> | undefined
+    persisted: user?.resources as Record<string, unknown> | undefined,
+    persistedContent: user?.resourceContent as Record<string, string> | undefined
   });
   const projectResources = createScopeResources({
     configs: flow.project?.resources as Record<string, unknown> | undefined,
-    persisted: project?.resources as Record<string, unknown> | undefined
+    persisted: project?.resources as Record<string, unknown> | undefined,
+    persistedContent: project?.resourceContent as Record<string, string> | undefined
   });
 
   const sessionClientData = await computeClientData({

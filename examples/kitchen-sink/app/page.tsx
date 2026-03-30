@@ -91,7 +91,7 @@ function KitchenSinkApp() {
 
   const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number } | undefined;
   const userPrefs = clientData.user?.preferences as { displayName: string; preferredModel: string } | undefined;
-  const artifacts = (clientData.session?.artifacts ?? []) as Array<{ id: string; title: string; content: string; updatedAt: number }>;
+  const artifacts = (clientData.session?.artifacts ?? []) as Array<{ id: string; title: string; summary: string; content: string; updatedAt: number }>;
 
   const selectedArtifact = useMemo(
     () => artifacts.find((a) => a.id === selectedArtifactId) ?? null,

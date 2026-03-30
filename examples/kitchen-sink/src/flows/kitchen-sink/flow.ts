@@ -41,6 +41,7 @@ import {
   analysisOutputSchema,
   formatReport,
   readArtifact,
+  summarizeArtifacts,
   updateArtifact,
   updateArtifactInputSchema
 } from "./blocks";
@@ -150,6 +151,8 @@ Be concise and helpful. Never show the artifact id unless specifically asked to 
     mem.contextFormatter,
     // Dynamic: current artifact list, re-evaluated each tool loop step so
     // the LLM sees artifacts created by earlier tool calls in the same turn.
+    // Shows title + summary (populated by the background summarize-artifacts
+    // work block) so the LLM has context without reading full content.
     (_input, ctx) => {
       const artifacts = ctx.session.resources.artifacts;
       const instances = artifacts.list();
@@ -157,7 +160,12 @@ Be concise and helpful. Never show the artifact id unless specifically asked to 
         return "No artifacts exist yet in this session.";
       }
       const list = instances
-        .map((ref) => `- ${ref.name.replace("artifacts/", "")}: ${ref.state.title ?? "Untitled"}`)
+        .map((ref) => {
+          const id = ref.name.replace("artifacts/", "");
+          const title = ref.state.title ?? "Untitled";
+          const summary = ref.state.summary ? ` — ${ref.state.summary}` : "";
+          return `- ${id}: ${title}${summary}`;
+        })
         .join("\n");
       return `Current artifacts:\n${list}`;
     },
@@ -245,10 +253,12 @@ const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .then(analyzeInput)
   .thenIf((result) => result.needsContext, formatReport)
   .then(agentGenerator)
-  // Memory capture runs in the background (.work) after the generator so it
-  // sees both the user message and the agent's response. captureFromItems
-  // reads from session items automatically — no connector needed.
+  // Background work: runs after the generator completes, non-blocking.
+  // Memory capture reads session items to build working/episodic memory.
+  // Artifact summarization generates summaries for any newly created/updated
+  // artifacts so clientData and LLM context have useful previews.
   .work(mem.captureFromItems)
+  .work(summarizeArtifacts)
   .then(incrementRequestCount)
   .tap(async (output) => {
     console.log(`Chat completed: ${output.slice(0, 50)}...`);
@@ -263,6 +273,7 @@ const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
   }))
   .then(agentGenerator)
   .work(mem.captureFromItems)
+  .work(summarizeArtifacts)
   .then(incrementRequestCount)
   .rescue([
     {
@@ -344,13 +355,18 @@ const kitchenSinkFlow = defineFlow({
     // resources, delivered to clients on every state snapshot request.
     // Each entry is a simple function: (ctx) => value.
     clientData: {
-      artifacts: (ctx) => {
-        const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<{ title: string; content: string; updatedAt: number }>;
-        return artifacts.list().map((ref) => ({
-          id: ref.name.replace("artifacts/", ""),
-          title: ref.state.title ?? "Untitled",
-          content: ref.state.content ?? "",
-          updatedAt: ref.state.updatedAt
+      artifacts: async (ctx) => {
+        const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<{ title: string; summary: string; updatedAt: number }>;
+        const instances = artifacts.list();
+        return Promise.all(instances.map(async (ref) => {
+          const content = await ref.readContent() ?? "";
+          return {
+            id: ref.name.replace("artifacts/", ""),
+            title: ref.state.title ?? "Untitled",
+            summary: ref.state.summary ?? "",
+            content,
+            updatedAt: ref.state.updatedAt
+          };
         }));
       },
       modeStatus: (ctx) => ({

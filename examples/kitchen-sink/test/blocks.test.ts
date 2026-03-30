@@ -9,6 +9,8 @@ import {
 import { artifactsCollection } from "../src/flows/kitchen-sink/schemas";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 
+type ArtifactState = { title: string; summary: string; updatedAt: number };
+
 // Build a minimal flow with the artifacts collection so the execution context
 // creates proper ResourceCollectionRef instances.
 function makeTestFlow() {
@@ -53,20 +55,17 @@ describe("kitchen-sink blocks", () => {
     expect(output.content).toBe("");
   });
 
-  it("readArtifact returns artifact from seeded collection", async () => {
+  it("readArtifact returns artifact with content from resource content", async () => {
     const { ctx } = await createCtx();
 
-    // Seed an artifact via the collection API
-    const artifacts = ctx.session.resources.artifacts as unknown as ResourceCollectionRef<{
-      title: string;
-      content: string;
-      updatedAt: number;
-    }>;
-    await artifacts.create("doc-1", {
+    // Seed an artifact: metadata in state, body in content
+    const artifacts = ctx.session.resources.artifacts as unknown as ResourceCollectionRef<ArtifactState>;
+    const ref = await artifacts.create("doc-1", {
       title: "Seeded Doc",
-      content: "Seeded content",
+      summary: "",
       updatedAt: 1000,
     });
+    await ref.writeContent("Seeded content");
 
     const result = await executeBlock({
       block: readArtifact,
@@ -79,7 +78,7 @@ describe("kitchen-sink blocks", () => {
     expect(output.content).toBe("Seeded content");
   });
 
-  it("updateArtifact creates a new artifact in the collection", async () => {
+  it("updateArtifact creates a new artifact with content", async () => {
     const { ctx } = await createCtx();
 
     const result = await executeBlock({
@@ -96,18 +95,15 @@ describe("kitchen-sink blocks", () => {
     expect(output.success).toBe(true);
     expect(output.id).toBe("new-doc");
 
-    // Verify the artifact was actually created in the collection
-    const artifacts = ctx.session.resources.artifacts as unknown as ResourceCollectionRef<{
-      title: string;
-      content: string;
-      updatedAt: number;
-    }>;
+    // Verify: metadata in state, body in content
+    const artifacts = ctx.session.resources.artifacts as unknown as ResourceCollectionRef<ArtifactState>;
     const ref = artifacts.get("new-doc");
     expect(ref.state.title).toBe("New Document");
-    expect(ref.state.content).toBe("Fresh content");
+    const content = await ref.readContent();
+    expect(content).toBe("Fresh content");
   });
 
-  it("updateArtifact updates an existing artifact in the collection", async () => {
+  it("updateArtifact updates an existing artifact", async () => {
     const { ctx } = await createCtx();
 
     await executeBlock({
@@ -122,13 +118,10 @@ describe("kitchen-sink blocks", () => {
       ctx,
     });
 
-    const artifacts = ctx.session.resources.artifacts as unknown as ResourceCollectionRef<{
-      title: string;
-      content: string;
-      updatedAt: number;
-    }>;
+    const artifacts = ctx.session.resources.artifacts as unknown as ResourceCollectionRef<ArtifactState>;
     const ref = artifacts.get("doc-1");
     expect(ref.state.title).toBe("Revised");
-    expect(ref.state.content).toBe("v2");
+    const content = await ref.readContent();
+    expect(content).toBe("v2");
   });
 });

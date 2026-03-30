@@ -13,8 +13,8 @@ export const readArtifactOutputSchema = z.object({
 });
 
 // Tool block: used by the generator as an LLM-callable tool.
-// Reads a single artifact from the artifacts resource collection by key.
-// Each artifact is its own resource instance — metadata in state, body in content.
+// Reads a single artifact from the collection. Metadata comes from state,
+// document body comes from resource content via readContent().
 export const readArtifact = handler({
   name: "read-artifact",
   description: "Read an artifact by ID from the session artifacts collection.",
@@ -34,10 +34,12 @@ export const readArtifact = handler({
       };
     }
 
+    const content = await ref.readContent() ?? "";
+
     return {
       id: input.artifactId,
       title: ref.state.title,
-      content: ref.state.content
+      content
     };
   }
 });

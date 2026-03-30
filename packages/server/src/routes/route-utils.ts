@@ -187,8 +187,10 @@ function isCollectionConfig(value: unknown): value is ResourceCollectionConfig {
 export function createScopeResources(options: {
   configs: Record<string, unknown> | undefined;
   persisted: Record<string, unknown> | undefined;
+  persistedContent?: Record<string, string> | undefined;
 }): Record<string, Record<string, unknown>> {
   const handles: Record<string, Record<string, unknown>> = {};
+  const contentMap = options.persistedContent ?? {};
 
   for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
     if (isCollectionConfig(maybeConfig)) {
@@ -197,37 +199,39 @@ export function createScopeResources(options: {
       const pattern = maybeConfig.pattern;
       const persisted = options.persisted ?? {};
 
+      function makeInstanceRef(key: string, value: unknown) {
+        return {
+          name: key,
+          get state() { return isJsonObject(value) ? value : {}; },
+          async readContent() { return contentMap[key] ?? null; },
+          async readContentRaw() { return contentMap[key] ?? null; }
+        };
+      }
+
       handles[resourceName] = {
         pattern,
         config: maybeConfig,
         list() {
           return Object.entries(persisted)
             .filter(([key]) => matchesPattern(pattern, key))
-            .map(([key, value]) => ({
-              name: key,
-              get state() { return isJsonObject(value) ? value : {}; }
-            }));
+            .map(([key, value]) => makeInstanceRef(key, value));
         },
         count() {
           return Object.keys(persisted).filter((key) => matchesPattern(pattern, key)).length;
         },
         get(key: string | Record<string, string>) {
-          const storageKey = typeof key === "string"
-            ? resolveCollectionKey(pattern, key)
-            : resolveCollectionKey(pattern, key);
+          const storageKey = resolveCollectionKey(pattern, key);
           const value = persisted[storageKey];
           if (value === undefined) {
             throw new Error(`Resource instance "${storageKey}" not found in collection "${pattern}"`);
           }
-          return { name: storageKey, get state() { return isJsonObject(value) ? value : {}; } };
+          return makeInstanceRef(storageKey, value);
         },
         getOptional(key: string | Record<string, string>) {
-          const storageKey = typeof key === "string"
-            ? resolveCollectionKey(pattern, key)
-            : resolveCollectionKey(pattern, key);
+          const storageKey = resolveCollectionKey(pattern, key);
           const value = persisted[storageKey];
           if (value === undefined) return undefined;
-          return { name: storageKey, get state() { return isJsonObject(value) ? value : {}; } };
+          return makeInstanceRef(storageKey, value);
         }
       };
       continue;
