@@ -197,9 +197,6 @@ function getToolArgs(item: ToolItem): unknown {
 }
 
 function getToolOutput(item: ToolItem): unknown {
-  if (item.type === "block_tool_output" && item.status === "failed" && item.error) {
-    return item.error.message;
-  }
   return item.output;
 }
 
