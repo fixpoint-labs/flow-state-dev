@@ -1,0 +1,217 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "flow-state-ui",
+  "homepage": "https://flow-state.dev/ui",
+  "items": [
+    {
+      "name": "conversation",
+      "title": "Conversation",
+      "type": "registry:component",
+      "description": "Container for message threads with auto-scroll and session binding.",
+      "dependencies": ["use-stick-to-bottom", "lucide-react"],
+      "registryDependencies": ["button"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/ai-elements/conversation.tsx",
+        "target": "components/ai-elements/conversation.tsx"
+      }],
+      "categories": ["ai", "chat"]
+    },
+    {
+      "name": "message",
+      "title": "Message",
+      "type": "registry:component",
+      "description": "Individual message display with streaming markdown support.",
+      "dependencies": ["streamdown", "@streamdown/cjk", "@streamdown/code", "@streamdown/math", "@streamdown/mermaid", "lucide-react"],
+      "registryDependencies": ["button", "button-group", "tooltip"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/ai-elements/message.tsx",
+        "target": "components/ai-elements/message.tsx"
+      }],
+      "categories": ["ai", "chat"]
+    },
+    {
+      "name": "reasoning",
+      "title": "Reasoning",
+      "type": "registry:component",
+      "description": "Expandable reasoning/thinking display with streaming awareness.",
+      "dependencies": ["@radix-ui/react-use-controllable-state", "lucide-react", "streamdown", "@streamdown/cjk", "@streamdown/code", "@streamdown/math", "@streamdown/mermaid"],
+      "registryDependencies": ["collapsible", "shimmer"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/ai-elements/reasoning.tsx",
+        "target": "components/ai-elements/reasoning.tsx"
+      }],
+      "categories": ["ai"]
+    },
+    {
+      "name": "tool",
+      "title": "Tool",
+      "type": "registry:component",
+      "description": "Rich tool invocation display with args, result, timing, and status.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": ["collapsible", "badge", "code-block"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/ai-elements/tool.tsx",
+        "target": "components/ai-elements/tool.tsx"
+      }],
+      "categories": ["ai", "tools"]
+    },
+    {
+      "name": "code-block",
+      "title": "Code Block",
+      "type": "registry:component",
+      "description": "Syntax-highlighted code with copy action and dual-theme support.",
+      "dependencies": ["shiki", "lucide-react"],
+      "registryDependencies": ["button", "select"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/ai-elements/code-block.tsx",
+        "target": "components/ai-elements/code-block.tsx"
+      }],
+      "categories": ["ai", "code"]
+    },
+    {
+      "name": "prompt-input",
+      "title": "Prompt Input",
+      "type": "registry:component",
+      "description": "Smart input with auto-resize, file upload, and submit handling.",
+      "dependencies": ["lucide-react", "nanoid"],
+      "registryDependencies": ["button", "command", "dropdown-menu", "hover-card", "input-group", "select", "spinner", "tooltip"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/ai-elements/prompt-input.tsx",
+        "target": "components/ai-elements/prompt-input.tsx"
+      }],
+      "categories": ["ai", "chat"]
+    },
+    {
+      "name": "sources",
+      "title": "Sources",
+      "type": "registry:component",
+      "description": "Citation and source display with collapsible list and favicons.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": ["collapsible"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/ai-elements/sources.tsx",
+        "target": "components/ai-elements/sources.tsx"
+      }],
+      "categories": ["ai"]
+    },
+    {
+      "name": "suggestion",
+      "title": "Suggestion",
+      "type": "registry:component",
+      "description": "Horizontal scrollable suggestion pills.",
+      "dependencies": [],
+      "registryDependencies": ["scroll-area"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/ai-elements/suggestion.tsx",
+        "target": "components/ai-elements/suggestion.tsx"
+      }],
+      "categories": ["ai", "chat"]
+    },
+    {
+      "name": "shimmer",
+      "title": "Shimmer",
+      "type": "registry:component",
+      "description": "Animated text shimmer for streaming/loading states.",
+      "dependencies": ["motion"],
+      "registryDependencies": [],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/ai-elements/shimmer.tsx",
+        "target": "components/ai-elements/shimmer.tsx"
+      }],
+      "categories": ["ai"]
+    },
+    {
+      "name": "message-adapter",
+      "title": "Message Adapter",
+      "type": "registry:component",
+      "description": "Adapter connecting MessageItem from @flow-state-dev/core to the Message component.",
+      "dependencies": ["@flow-state-dev/core"],
+      "registryDependencies": ["message"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/adapters/message-adapter.tsx",
+        "target": "components/ai-elements/adapters/message-adapter.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
+      "name": "reasoning-adapter",
+      "title": "Reasoning Adapter",
+      "type": "registry:component",
+      "description": "Adapter connecting ReasoningItem from @flow-state-dev/core to the Reasoning component.",
+      "dependencies": ["@flow-state-dev/core"],
+      "registryDependencies": ["reasoning"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/adapters/reasoning-adapter.tsx",
+        "target": "components/ai-elements/adapters/reasoning-adapter.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
+      "name": "tool-adapter",
+      "title": "Tool Adapter",
+      "type": "registry:component",
+      "description": "Adapter connecting BlockToolOutputItem from @flow-state-dev/core to the Tool component.",
+      "dependencies": ["@flow-state-dev/core"],
+      "registryDependencies": ["tool"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/adapters/tool-adapter.tsx",
+        "target": "components/ai-elements/adapters/tool-adapter.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
+      "name": "error-adapter",
+      "title": "Error Adapter",
+      "type": "registry:component",
+      "description": "Adapter displaying ErrorItem and StepErrorItem from @flow-state-dev/core.",
+      "dependencies": ["@flow-state-dev/core", "lucide-react"],
+      "registryDependencies": [],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/adapters/error-adapter.tsx",
+        "target": "components/ai-elements/adapters/error-adapter.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
+      "name": "status-adapter",
+      "title": "Status Adapter",
+      "type": "registry:component",
+      "description": "Adapter displaying StatusItem from @flow-state-dev/core with shimmer animation.",
+      "dependencies": ["@flow-state-dev/core"],
+      "registryDependencies": ["shimmer"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/adapters/status-adapter.tsx",
+        "target": "components/ai-elements/adapters/status-adapter.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
+      "name": "source-adapter",
+      "title": "Source Adapter",
+      "type": "registry:component",
+      "description": "Adapter displaying SourceItem from @flow-state-dev/core using the Sources component.",
+      "dependencies": ["@flow-state-dev/core"],
+      "registryDependencies": ["sources"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/adapters/source-adapter.tsx",
+        "target": "components/ai-elements/adapters/source-adapter.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    }
+  ]
+}
