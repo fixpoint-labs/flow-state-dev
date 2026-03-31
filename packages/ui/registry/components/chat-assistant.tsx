@@ -1,5 +1,3 @@
-"use client";
-
 import type { RendererRegistry } from "@flow-state-dev/react";
 import { Message } from "./message";
 import { Reasoning } from "./reasoning";
@@ -17,6 +15,7 @@ import { ErrorDisplay } from "./error";
 export const chatAssistantRenderers: RendererRegistry = {
   message: Message,
   reasoning: Reasoning,
+  block_output: false,
   block_tool_output: Tool,
   status: Status,
   error: ErrorDisplay,

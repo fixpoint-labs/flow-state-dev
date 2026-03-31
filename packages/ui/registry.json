@@ -162,7 +162,7 @@
       "title": "Chat Assistant Renderers",
       "type": "registry:component",
       "description": "Pre-wired RendererRegistry mapping all Flow State item types to their default components.",
-      "dependencies": ["@flow-state-dev/react", "@flow-state-dev/core"],
+      "dependencies": ["@flow-state-dev/react"],
       "registryDependencies": ["message", "reasoning", "tool", "status", "error"],
       "files": [{
         "type": "registry:component",
