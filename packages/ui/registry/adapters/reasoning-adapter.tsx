@@ -5,7 +5,7 @@ import {
   Reasoning,
   ReasoningTrigger,
   ReasoningContent,
-} from "@/components/ai-elements/reasoning";
+} from "@/components/flow-state/reasoning";
 
 function extractReasoningText(item: ReasoningItem): string {
   return (item.summary ?? [])
