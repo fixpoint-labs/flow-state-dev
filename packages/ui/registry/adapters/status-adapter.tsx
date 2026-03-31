@@ -1,7 +1,7 @@
 "use client";
 
 import type { StatusItem } from "@flow-state-dev/core/items";
-import { Shimmer } from "@/components/ai-elements/shimmer";
+import { Shimmer } from "@/components/flow-state/shimmer";
 
 export function StatusAdapter({ item }: { item: StatusItem }) {
   return (

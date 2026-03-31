@@ -12,8 +12,8 @@
       "registryDependencies": ["button"],
       "files": [{
         "type": "registry:component",
-        "path": "registry/ai-elements/conversation.tsx",
-        "target": "components/ai-elements/conversation.tsx"
+        "path": "registry/components/conversation.tsx",
+        "target": "components/flow-state/conversation.tsx"
       }],
       "categories": ["ai", "chat"]
     },
@@ -26,8 +26,8 @@
       "registryDependencies": ["button", "button-group", "tooltip"],
       "files": [{
         "type": "registry:component",
-        "path": "registry/ai-elements/message.tsx",
-        "target": "components/ai-elements/message.tsx"
+        "path": "registry/components/message.tsx",
+        "target": "components/flow-state/message.tsx"
       }],
       "categories": ["ai", "chat"]
     },
@@ -40,8 +40,8 @@
       "registryDependencies": ["collapsible", "shimmer"],
       "files": [{
         "type": "registry:component",
-        "path": "registry/ai-elements/reasoning.tsx",
-        "target": "components/ai-elements/reasoning.tsx"
+        "path": "registry/components/reasoning.tsx",
+        "target": "components/flow-state/reasoning.tsx"
       }],
       "categories": ["ai"]
     },
@@ -54,8 +54,8 @@
       "registryDependencies": ["collapsible", "badge", "code-block"],
       "files": [{
         "type": "registry:component",
-        "path": "registry/ai-elements/tool.tsx",
-        "target": "components/ai-elements/tool.tsx"
+        "path": "registry/components/tool.tsx",
+        "target": "components/flow-state/tool.tsx"
       }],
       "categories": ["ai", "tools"]
     },
@@ -68,8 +68,8 @@
       "registryDependencies": ["button", "select"],
       "files": [{
         "type": "registry:component",
-        "path": "registry/ai-elements/code-block.tsx",
-        "target": "components/ai-elements/code-block.tsx"
+        "path": "registry/components/code-block.tsx",
+        "target": "components/flow-state/code-block.tsx"
       }],
       "categories": ["ai", "code"]
     },
@@ -82,8 +82,8 @@
       "registryDependencies": ["button", "command", "dropdown-menu", "hover-card", "input-group", "select", "spinner", "tooltip"],
       "files": [{
         "type": "registry:component",
-        "path": "registry/ai-elements/prompt-input.tsx",
-        "target": "components/ai-elements/prompt-input.tsx"
+        "path": "registry/components/prompt-input.tsx",
+        "target": "components/flow-state/prompt-input.tsx"
       }],
       "categories": ["ai", "chat"]
     },
@@ -96,8 +96,8 @@
       "registryDependencies": ["collapsible"],
       "files": [{
         "type": "registry:component",
-        "path": "registry/ai-elements/sources.tsx",
-        "target": "components/ai-elements/sources.tsx"
+        "path": "registry/components/sources.tsx",
+        "target": "components/flow-state/sources.tsx"
       }],
       "categories": ["ai"]
     },
@@ -110,8 +110,8 @@
       "registryDependencies": ["scroll-area"],
       "files": [{
         "type": "registry:component",
-        "path": "registry/ai-elements/suggestion.tsx",
-        "target": "components/ai-elements/suggestion.tsx"
+        "path": "registry/components/suggestion.tsx",
+        "target": "components/flow-state/suggestion.tsx"
       }],
       "categories": ["ai", "chat"]
     },
@@ -124,8 +124,8 @@
       "registryDependencies": [],
       "files": [{
         "type": "registry:component",
-        "path": "registry/ai-elements/shimmer.tsx",
-        "target": "components/ai-elements/shimmer.tsx"
+        "path": "registry/components/shimmer.tsx",
+        "target": "components/flow-state/shimmer.tsx"
       }],
       "categories": ["ai"]
     },
@@ -139,7 +139,7 @@
       "files": [{
         "type": "registry:component",
         "path": "registry/adapters/message-adapter.tsx",
-        "target": "components/ai-elements/adapters/message-adapter.tsx"
+        "target": "components/flow-state/adapters/message-adapter.tsx"
       }],
       "categories": ["ai", "framework"]
     },
@@ -153,7 +153,7 @@
       "files": [{
         "type": "registry:component",
         "path": "registry/adapters/reasoning-adapter.tsx",
-        "target": "components/ai-elements/adapters/reasoning-adapter.tsx"
+        "target": "components/flow-state/adapters/reasoning-adapter.tsx"
       }],
       "categories": ["ai", "framework"]
     },
@@ -167,7 +167,7 @@
       "files": [{
         "type": "registry:component",
         "path": "registry/adapters/tool-adapter.tsx",
-        "target": "components/ai-elements/adapters/tool-adapter.tsx"
+        "target": "components/flow-state/adapters/tool-adapter.tsx"
       }],
       "categories": ["ai", "framework"]
     },
@@ -181,7 +181,7 @@
       "files": [{
         "type": "registry:component",
         "path": "registry/adapters/error-adapter.tsx",
-        "target": "components/ai-elements/adapters/error-adapter.tsx"
+        "target": "components/flow-state/adapters/error-adapter.tsx"
       }],
       "categories": ["ai", "framework"]
     },
@@ -195,7 +195,7 @@
       "files": [{
         "type": "registry:component",
         "path": "registry/adapters/status-adapter.tsx",
-        "target": "components/ai-elements/adapters/status-adapter.tsx"
+        "target": "components/flow-state/adapters/status-adapter.tsx"
       }],
       "categories": ["ai", "framework"]
     },
@@ -209,7 +209,7 @@
       "files": [{
         "type": "registry:component",
         "path": "registry/adapters/source-adapter.tsx",
-        "target": "components/ai-elements/adapters/source-adapter.tsx"
+        "target": "components/flow-state/adapters/source-adapter.tsx"
       }],
       "categories": ["ai", "framework"]
     }

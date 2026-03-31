@@ -53,9 +53,9 @@ Thin adapters that connect `@flow-state-dev/core` item types to the AI Element c
 
 ```tsx
 import { FlowProvider } from "@flow-state-dev/react";
-import { MessageAdapter } from "@/components/ai-elements/adapters/message-adapter";
-import { ReasoningAdapter } from "@/components/ai-elements/adapters/reasoning-adapter";
-import { ToolAdapter } from "@/components/ai-elements/adapters/tool-adapter";
+import { MessageAdapter } from "@/components/flow-state/adapters/message-adapter";
+import { ReasoningAdapter } from "@/components/flow-state/adapters/reasoning-adapter";
+import { ToolAdapter } from "@/components/flow-state/adapters/tool-adapter";
 
 <FlowProvider
   renderers={{
@@ -95,7 +95,7 @@ pnpm --filter @flow-state-dev/ui typecheck
 
 ## Adding New Components
 
-1. Create the component in `registry/ai-elements/` (or `registry/adapters/`)
+1. Create the component in `registry/components/` (or `registry/adapters/`)
 2. Add an entry to `registry.json` with dependencies and file mapping
 3. Run `pnpm build` to generate the registry JSON
 4. Test with `npx shadcn@latest add <local-path>/public/r/<name>.json`

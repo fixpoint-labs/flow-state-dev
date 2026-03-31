@@ -1,14 +1,14 @@
 "use client";
 
 import type { BlockOutputItem, BlockToolOutputItem } from "@flow-state-dev/core/items";
-import type { ToolState } from "@/components/ai-elements/tool";
+import type { ToolState } from "@/components/flow-state/tool";
 import {
   Tool,
   ToolHeader,
   ToolContent,
   ToolInput,
   ToolOutput,
-} from "@/components/ai-elements/tool";
+} from "@/components/flow-state/tool";
 
 type ToolItem = BlockOutputItem | BlockToolOutputItem;
 

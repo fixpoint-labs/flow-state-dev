@@ -7,7 +7,7 @@ import {
   SourcesTrigger,
   SourcesContent,
   Source,
-} from "@/components/ai-elements/sources";
+} from "@/components/flow-state/sources";
 
 export function SourcesGroupAdapter({ items }: { items: OutputItem[] }) {
   const sources = useMemo(
