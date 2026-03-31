@@ -43,7 +43,9 @@ import {
   readArtifact,
   summarizeArtifacts,
   updateArtifact,
-  updateArtifactInputSchema
+  updateArtifactInputSchema,
+  eventQueueDemo,
+  eventQueueDemoInputSchema
 } from "./blocks";
 import {
   modeSchema,
@@ -337,6 +339,10 @@ const kitchenSinkFlow = defineFlow({
     saveArtifact: {
       inputSchema: updateArtifactInputSchema,
       block: updateArtifact
+    },
+    "event-queue": {
+      inputSchema: eventQueueDemoInputSchema,
+      block: eventQueueDemo
     }
   },
 
