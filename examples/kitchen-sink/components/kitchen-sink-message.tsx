@@ -5,7 +5,7 @@ import {
   Message,
   MessageContent,
   MessageResponse,
-} from "@/src/components/ai-elements/message";
+} from "@/src/components/flow-state/message";
 
 function extractText(item: MessageItem): string {
   return (item.content ?? [])

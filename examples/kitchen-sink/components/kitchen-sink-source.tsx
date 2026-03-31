@@ -2,12 +2,7 @@
 
 import { useMemo } from "react";
 import type { OutputItem, SourceItem } from "@flow-state-dev/core/items";
-import {
-  Sources,
-  SourcesTrigger,
-  SourcesContent,
-  Source,
-} from "@/src/components/ai-elements/sources";
+import { Sources } from "@/src/components/flow-state/sources";
 
 export function SourcesGroup({ items }: { items: OutputItem[] }) {
   const sources = useMemo(
@@ -19,16 +14,13 @@ export function SourcesGroup({ items }: { items: OutputItem[] }) {
 
   return (
     <div>
-      <Sources>
-        <SourcesTrigger count={sources.length} />
-        <SourcesContent>
-          {sources.map((source) => (
-            <Source key={source.id} href={source.url}>
-              {source.title}
-            </Source>
-          ))}
-        </SourcesContent>
-      </Sources>
+      <Sources
+        items={sources.map((source) => ({
+          href: source.url,
+          id: source.id,
+          title: source.title,
+        }))}
+      />
     </div>
   );
 }

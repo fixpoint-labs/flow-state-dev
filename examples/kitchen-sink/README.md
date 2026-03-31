@@ -1,6 +1,6 @@
 # Example: Kitchen Sink
 
-The canonical reference application for `@flow-state-dev`. A full Next.js app demonstrating every framework building block with a polished UI built on [Vercel AI Elements](https://sdk.vercel.ai/docs/ai-sdk-ui/ai-elements) and [shadcn/ui](https://ui.shadcn.com).
+The canonical reference application for `@flow-state-dev`. A full Next.js app demonstrating every framework building block with a polished UI built on [Vercel AI Elements](https://sdk.vercel.ai/docs/ai-sdk-ui/ai-elements), [shadcn/ui](https://ui.shadcn.com), and Flow State registry-derived UI components under `src/components/flow-state/`.
 
 ## Features
 
