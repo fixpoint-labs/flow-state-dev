@@ -1,6 +1,7 @@
 "use client";
 
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
+import type { MessageItem } from "@flow-state-dev/core/items";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -37,7 +38,7 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: MessageRole;
 };
 
-export const Message = ({ className, from, ...props }: MessageProps) => (
+export const MessageShell = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
       "group flex w-full max-w-[95%] flex-col gap-2",
@@ -359,3 +360,27 @@ export const MessageToolbar = ({
     {children}
   </div>
 );
+
+function extractMessageText(item: MessageItem): string {
+  return (item.content ?? [])
+    .filter((c) => c.type === "output_text")
+    .map((c) => c.text)
+    .join("\n\n");
+}
+
+export function Message({ item }: { item: MessageItem }) {
+  if (item.role !== "user" && item.role !== "assistant") return null;
+  const text = extractMessageText(item);
+  if (!text) return null;
+  return (
+    <MessageShell from={item.role as "user" | "assistant"}>
+      <MessageContent>
+        {item.role === "user" ? (
+          <p className="whitespace-pre-wrap text-sm">{text}</p>
+        ) : (
+          <MessageResponse>{text}</MessageResponse>
+        )}
+      </MessageContent>
+    </MessageShell>
+  );
+}
