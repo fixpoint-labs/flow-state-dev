@@ -1,6 +1,7 @@
 "use client";
 
 import type { ComponentProps, ReactNode } from "react";
+import type { BlockOutputItem, BlockToolOutputItem } from "@flow-state-dev/core/items";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -36,7 +37,7 @@ export type ToolState =
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
 
-export const Tool = ({ className, ...props }: ToolProps) => (
+export const ToolShell = ({ className, ...props }: ToolProps) => (
   <Collapsible
     className={cn("group not-prose mb-2 w-full rounded-md border", className)}
     {...props}
@@ -171,3 +172,57 @@ export const ToolOutput = ({
     </div>
   );
 };
+
+type ToolItem = BlockOutputItem | BlockToolOutputItem;
+
+function mapToolStatus(status: string): ToolState {
+  switch (status) {
+    case "in_progress": return "running";
+    case "completed": return "completed";
+    case "failed": return "error";
+    case "incomplete": return "pending";
+    default: return "pending";
+  }
+}
+
+function getToolName(item: ToolItem): string {
+  if (item.type === "block_tool_output") return item.toolCall.name;
+  return item.blockName;
+}
+
+function getToolArgs(item: ToolItem): unknown {
+  const raw = item.toolCall?.arguments;
+  if (!raw) return undefined;
+  try { return JSON.parse(raw); } catch { return raw; }
+}
+
+function getToolOutput(item: ToolItem): unknown {
+  if (item.type === "block_tool_output" && item.status === "failed" && item.error) {
+    return item.error.message;
+  }
+  return item.output;
+}
+
+function getToolErrorText(item: ToolItem): string | undefined {
+  if (item.status !== "failed") return undefined;
+  if (item.type === "block_tool_output" && item.error) return item.error.message;
+  return String(item.output);
+}
+
+export function Tool({ item }: { item: BlockOutputItem | BlockToolOutputItem }) {
+  if (!item.toolCall) return null;
+  const state = mapToolStatus(item.status);
+  const name = getToolName(item);
+  const args = getToolArgs(item);
+  return (
+    <ToolShell>
+      <ToolHeader name={name} state={state} />
+      <ToolContent>
+        <ToolInput input={args} />
+        {item.status !== "in_progress" && (
+          <ToolOutput output={getToolOutput(item)} errorText={getToolErrorText(item)} />
+        )}
+      </ToolContent>
+    </ToolShell>
+  );
+}
