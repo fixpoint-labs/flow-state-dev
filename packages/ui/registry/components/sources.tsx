@@ -148,11 +148,13 @@ export function SourcesGroup({ items }: { items: OutputItem[] }) {
     <Sources>
       <SourcesTrigger count={sources.length} />
       <SourcesContent>
-        {sources.map((source: SourceItem) => (
-          <Source key={source.id} href={source.url}>
-            {source.title}
-          </Source>
-        ))}
+        {sources.map((source: SourceItem) =>
+          source.title ? (
+            <Source key={source.id} href={source.url}>{source.title}</Source>
+          ) : (
+            <Source key={source.id} href={source.url} />
+          )
+        )}
       </SourcesContent>
     </Sources>
   );
