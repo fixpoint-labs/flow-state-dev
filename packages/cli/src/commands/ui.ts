@@ -6,7 +6,7 @@
  */
 import type { Command } from "commander";
 import { readFileSync, existsSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { EXIT_SUCCESS, EXIT_EXECUTION_ERROR, EXIT_CONFIG_ERROR } from "../exit-codes";
 
@@ -66,13 +66,13 @@ export function registerUiCommand(program: Command) {
 
         console.log(`Installing ${component}...`);
 
-        try {
-          execSync(`npx shadcn@latest add ${itemUrl}`, {
-            stdio: "inherit",
-            cwd: options.cwd,
-          });
-        } catch (error) {
-          console.error(`Failed to install ${component}:`, (error as Error).message);
+        const result = spawnSync("npx", ["shadcn@latest", "add", itemUrl], {
+          stdio: "inherit",
+          cwd: options.cwd,
+          shell: true,
+        });
+        if ((result.status ?? 1) !== 0) {
+          console.error(`Failed to install ${component}.`);
           process.exitCode = EXIT_EXECUTION_ERROR;
           return;
         }
