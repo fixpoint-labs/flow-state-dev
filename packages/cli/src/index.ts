@@ -19,3 +19,5 @@ export {
 } from "./exit-codes";
 export type { BlockExecResult } from "./commands/block";
 export type { FlowRunResult, FlowEvent } from "./commands/run";
+
+export { runUIAdd, toRegistryItemUrl, registerUIAddCommand } from "./commands/ui/add";

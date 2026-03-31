@@ -23,6 +23,7 @@
 | `@flow-state-dev/server` | Execution runtime, stores, SSE streaming, HTTP routes |
 | `@flow-state-dev/client` | Isomorphic API client (actions, sessions, streams) |
 | `@flow-state-dev/react` | React hooks and renderers (wraps client) |
+| `@flow-state-dev/ui` | shadcn-compatible UI component registry payloads |
 | `@flow-state-dev/testing` | Test harnesses and mocks |
 | `@flow-state-dev/cli` | Terminal interface (`fsdev`) |
 | `@thought-fabric/core` | Cognitive architecture primitives (attention, memory, identity) |

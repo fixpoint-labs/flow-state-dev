@@ -1,0 +1,6 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "message-response",
+  "type": "registry:registry:item",
+  "registry": "https://ui.flow-state.dev/registry/registry.json"
+}

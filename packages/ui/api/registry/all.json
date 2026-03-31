@@ -1,0 +1,12 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "all",
+  "type": "registry:style",
+  "registryDependencies": [
+    "https://ui.flow-state.dev/api/registry/conversation.json",
+    "https://ui.flow-state.dev/api/registry/message.json",
+    "https://ui.flow-state.dev/api/registry/message-response.json",
+    "https://ui.flow-state.dev/api/registry/code-block.json",
+    "https://ui.flow-state.dev/api/registry/sources.json"
+  ]
+}

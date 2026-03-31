@@ -1,0 +1,102 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "@flow-state-dev/ui",
+  "homepage": "https://ui.flow-state.dev",
+  "items": [
+    {
+      "name": "conversation",
+      "type": "registry:component",
+      "title": "Conversation",
+      "description": "Scrollable container for message threads.",
+      "files": [
+        {
+          "path": "registry/components/conversation.tsx",
+          "type": "registry:component",
+          "target": "components/flow-state/conversation.tsx"
+        },
+        {
+          "path": "registry/lib/utils.ts",
+          "type": "registry:lib",
+          "target": "lib/flow-state/utils.ts"
+        }
+      ]
+    },
+    {
+      "name": "message",
+      "type": "registry:component",
+      "title": "Message",
+      "description": "Role-aware chat message and content wrappers.",
+      "files": [
+        {
+          "path": "registry/components/message.tsx",
+          "type": "registry:component",
+          "target": "components/flow-state/message.tsx"
+        },
+        {
+          "path": "registry/lib/types.ts",
+          "type": "registry:lib",
+          "target": "lib/flow-state/types.ts"
+        },
+        {
+          "path": "registry/lib/utils.ts",
+          "type": "registry:lib",
+          "target": "lib/flow-state/utils.ts"
+        }
+      ]
+    },
+    {
+      "name": "message-response",
+      "type": "registry:component",
+      "title": "MessageResponse",
+      "description": "Streaming-first response slot with markdown-friendly styles.",
+      "files": [
+        {
+          "path": "registry/components/message-response.tsx",
+          "type": "registry:component",
+          "target": "components/flow-state/message-response.tsx"
+        },
+        {
+          "path": "registry/lib/utils.ts",
+          "type": "registry:lib",
+          "target": "lib/flow-state/utils.ts"
+        }
+      ]
+    },
+    {
+      "name": "code-block",
+      "type": "registry:component",
+      "title": "CodeBlock",
+      "description": "Code display block with optional language label.",
+      "files": [
+        {
+          "path": "registry/components/code-block.tsx",
+          "type": "registry:component",
+          "target": "components/flow-state/code-block.tsx"
+        },
+        {
+          "path": "registry/lib/utils.ts",
+          "type": "registry:lib",
+          "target": "lib/flow-state/utils.ts"
+        }
+      ]
+    },
+    {
+      "name": "sources",
+      "type": "registry:component",
+      "title": "Sources",
+      "description": "Citation/source list renderer.",
+      "files": [
+        {
+          "path": "registry/components/sources.tsx",
+          "type": "registry:component",
+          "target": "components/flow-state/sources.tsx"
+        },
+        {
+          "path": "registry/lib/utils.ts",
+          "type": "registry:lib",
+          "target": "lib/flow-state/utils.ts"
+        }
+      ]
+    }
+  ]
+}

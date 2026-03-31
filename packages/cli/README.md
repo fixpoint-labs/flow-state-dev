@@ -131,6 +131,28 @@ Output is a JSON object with execution results, schema validation status, and ti
 }
 ```
 
+### `fsdev ui add` — Install Flow State UI components
+
+Installs shadcn-compatible registry items from `ui.flow-state.dev`.
+
+```bash
+# Install one component
+fsdev ui add message
+
+# Install all published components
+fsdev ui add all
+
+# Print the underlying shadcn command without running it
+fsdev ui add message --dry-run
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--registry-base <url>` | Override registry API base URL |
+| `--dry-run` | Print `npx shadcn@latest add ...` and exit |
+
 ## Flow discovery
 
 Flows are discovered from conventional directories relative to the working directory:
@@ -172,6 +194,8 @@ import {
   isBlockDefinition,
   parseInputArg,
   formatOutput,
+  runUIAdd,
+  toRegistryItemUrl,
 } from "@flow-state-dev/cli";
 
 import type { FlowRunResult, FlowEvent, BlockExecResult } from "@flow-state-dev/cli";
