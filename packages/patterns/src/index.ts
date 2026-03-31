@@ -6,6 +6,7 @@ export {
   supervisorInputSchema,
   supervisorStateSchema,
   reviewOutputSchema,
+  plannerOutputSchema,
   captureGoal,
   updatePlanState,
   applyReview,
@@ -14,4 +15,5 @@ export type {
   SupervisorConfig,
   SupervisorState,
   ReviewOutput,
+  PlannerOutput,
 } from "./supervisor";

@@ -11,27 +11,30 @@
  */
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import { utility } from "@flow-state-dev/core";
-import type { BlockDefinition, BlockContext } from "@flow-state-dev/core/types";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
 import {
   supervisorInputSchema,
   supervisorStateSchema,
   reviewOutputSchema,
+  plannerOutputSchema,
+  executableTasksSchema,
+  applyReviewOutputSchema,
   type SubTaskErrorStrategy,
-  type SupervisorState,
-  type ReviewOutput,
 } from "./schemas";
 
 export {
   supervisorInputSchema,
   supervisorStateSchema,
   reviewOutputSchema,
+  plannerOutputSchema,
 } from "./schemas";
 
 export type {
   SupervisorInput,
   SupervisorState,
   ReviewOutput,
+  PlannerOutput,
   SubTaskErrorStrategy,
 } from "./schemas";
 
@@ -83,6 +86,7 @@ export const captureGoal = handler({
   name: "capture-goal",
   inputSchema: supervisorInputSchema,
   outputSchema: supervisorInputSchema,
+  sequencerStateSchema: supervisorStateSchema,
   execute: async (input, ctx) => {
     await ctx.sequencer!.patchState({ goal: input.goal });
     return input;
@@ -95,13 +99,11 @@ export const captureGoal = handler({
  */
 export const updatePlanState = handler({
   name: "update-plan-state",
-  inputSchema: z.any(),
-  outputSchema: z.any(),
-  execute: async (
-    input: { tasks: Array<{ id: string; goal: string }> },
-    ctx
-  ) => {
-    const state = ctx.sequencer!.state as SupervisorState;
+  inputSchema: plannerOutputSchema,
+  outputSchema: executableTasksSchema,
+  sequencerStateSchema: supervisorStateSchema,
+  execute: async (input, ctx) => {
+    const state = ctx.sequencer!.state;
     const isFirstIteration = state.iteration === 0;
     const newPlan = input.tasks.map((t) => ({
       id: t.id,
@@ -140,10 +142,11 @@ export const updatePlanState = handler({
  */
 export const applyReview = handler({
   name: "apply-review",
-  inputSchema: z.any(),
-  outputSchema: z.any(),
-  execute: async (input: ReviewOutput, ctx) => {
-    const state = ctx.sequencer!.state as SupervisorState;
+  inputSchema: reviewOutputSchema,
+  outputSchema: applyReviewOutputSchema,
+  sequencerStateSchema: supervisorStateSchema,
+  execute: async (input, ctx) => {
+    const state = ctx.sequencer!.state;
     const newAccepted = [...state.acceptedResults];
     const updatedPlan = state.plan.map((task) => {
       const assessment = input.assessments.find(
@@ -153,12 +156,15 @@ export const applyReview = handler({
       if (assessment.verdict === "accepted" && task.result !== undefined) {
         newAccepted.push(task.result);
       }
+      const mappedStatus =
+        assessment.verdict === "accepted"
+          ? ("completed" as const)
+          : assessment.verdict === "escalate"
+            ? ("escalated" as const)
+            : ("needs-revision" as const);
       return {
         ...task,
-        status:
-          assessment.verdict === "accepted"
-            ? ("completed" as const)
-            : (assessment.verdict as "needs-revision" | "escalate"),
+        status: mappedStatus,
         feedback: assessment.feedback,
       };
     });
@@ -174,18 +180,10 @@ function buildDefaultPlanner(name: string) {
   return generator({
     name: `${name}-planner`,
     model: "gpt-5-mini",
-    outputSchema: z.object({
-      tasks: z.array(
-        z.object({
-          id: z.string(),
-          goal: z.string(),
-          deps: z.array(z.string()).optional(),
-          priority: z.enum(["high", "medium", "low"]).optional(),
-        })
-      ),
-    }),
-    prompt: (input: unknown, ctx: BlockContext) => {
-      const state = ctx.sequencer?.state as SupervisorState | undefined;
+    outputSchema: plannerOutputSchema,
+    sequencerStateSchema: supervisorStateSchema,
+    prompt: (_input, ctx) => {
+      const state = ctx.sequencer?.state;
       if (!state || state.iteration === 0) {
         return [
           "You are a task decomposition assistant.",
@@ -210,7 +208,7 @@ function buildDefaultPlanner(name: string) {
         "Return output that exactly matches the required schema.",
       ].join("\n");
     },
-    user: (input: unknown) =>
+    user: (input) =>
       typeof input === "string" ? input : JSON.stringify(input),
   });
 }
@@ -239,7 +237,7 @@ function buildDefaultReviewer(
     ]
       .filter(Boolean)
       .join("\n"),
-    user: (input: unknown) =>
+    user: (input) =>
       typeof input === "string" ? input : JSON.stringify(input),
   });
 }
@@ -292,8 +290,9 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     name: `${config.name}-store-results`,
     inputSchema: z.any(),
     outputSchema: z.any(),
+    sequencerStateSchema: supervisorStateSchema,
     execute: async (results: unknown[], ctx) => {
-      const state = ctx.sequencer!.state as SupervisorState;
+      const state = ctx.sequencer!.state;
       const pendingTasks = state.plan.filter((t) => t.status === "pending");
       const updatedPlan = state.plan.map((task) => {
         const taskIndex = pendingTasks.findIndex((t) => t.id === task.id);
@@ -342,14 +341,11 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     .then(reviewer)
     .then(applyReview)
     .loopBack(planner.name, {
-      when: (value: unknown) =>
+      when: (value) =>
         (value as { needsReplanning: boolean }).needsReplanning,
       maxIterations,
     })
     // Extract acceptedResults from state for the synthesizer
-    .map((_value: unknown, ctx: BlockContext) => {
-      const state = ctx.sequencer!.state as SupervisorState;
-      return state.acceptedResults;
-    })
+    .map((_value, ctx) => ctx.sequencer!.state.acceptedResults)
     .then(finalSynthesizer);
 }
