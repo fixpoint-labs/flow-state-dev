@@ -36,49 +36,30 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `suggestion` | Horizontal scrollable suggestion pills |
 | `shimmer` | Animated text shimmer for streaming/loading states |
 
-### Framework Adapters
+## Framework Integration
 
-Thin adapters that connect `@flow-state-dev/core` item types to the AI Element components. Install these if you're using the framework.
+Components that render AI output types (`Message`, `Reasoning`, `Tool`, `Sources`, `Status`, `ErrorDisplay`) accept `@flow-state-dev/core` item types directly — no adapter layer needed.
 
-| Adapter | Maps From | Maps To |
-|---------|-----------|---------|
-| `message-adapter` | `MessageItem` | `Message` |
-| `reasoning-adapter` | `ReasoningItem` | `Reasoning` |
-| `tool-adapter` | `BlockToolOutputItem` | `Tool` |
-| `error-adapter` | `ErrorItem` / `StepErrorItem` | Error display |
-| `status-adapter` | `StatusItem` | `Shimmer` |
-| `source-adapter` | `SourceItem[]` | `Sources` |
+### Chat Assistant Renderers
 
-### Usage with RendererRegistry
+The `chat-assistant` component exports a pre-wired `RendererRegistry` that maps all standard Flow State item types to their default UI components:
 
 ```tsx
-import { FlowProvider } from "@flow-state-dev/react";
-import { MessageAdapter } from "@/components/flow-state/adapters/message-adapter";
-import { ReasoningAdapter } from "@/components/flow-state/adapters/reasoning-adapter";
-import { ToolAdapter } from "@/components/flow-state/adapters/tool-adapter";
+import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 
-<FlowProvider
-  renderers={{
-    message: MessageAdapter,
-    reasoning: ReasoningAdapter,
-    block_tool_output: ToolAdapter,
-  }}
->
-  {children}
+<FlowProvider flowKind="my-flow" userId={userId} renderers={chatAssistantRenderers}>
+  <Conversation>
+    <ItemsRenderer items={session.items} />
+    <SourcesGroup items={session.items} />
+  </Conversation>
 </FlowProvider>
 ```
 
+Sources are excluded from the renderer map (`source: false`) — render them grouped separately via `<SourcesGroup>` to display as a collapsed list after the message thread.
+
 ## Architecture
 
-Two-layer component model:
-
-1. **AI Elements** — Generic components accepting primitive props (`role`, `content`, `isStreaming`). No framework dependency.
-2. **Adapters** — Thin components accepting typed `item` props from `@flow-state-dev/core/items` and mapping to AI Element props.
-
-This separation means:
-- Users without the framework install AI Elements only
-- Users with the framework add adapters for automatic `RendererRegistry` integration
-- All components are fully customizable (you own the source code)
+Components accepting primitive props (`role`, `content`, `isStreaming`) are framework-agnostic and have no dependency on `@flow-state-dev/*`. Components that render AI output types (`Message`, `Reasoning`, `Tool`, `Status`, `ErrorDisplay`) accept typed `item` props from `@flow-state-dev/core` directly — no adapter layer needed. All components are fully customizable (you own the source code).
 
 ## Development
 
@@ -95,7 +76,7 @@ pnpm --filter @flow-state-dev/ui typecheck
 
 ## Adding New Components
 
-1. Create the component in `registry/components/` (or `registry/adapters/`)
+1. Create the component in `registry/components/`
 2. Add an entry to `registry.json` with dependencies and file mapping
 3. Run `pnpm build` to generate the registry JSON
 4. Test with `npx shadcn@latest add <local-path>/public/r/<name>.json`
