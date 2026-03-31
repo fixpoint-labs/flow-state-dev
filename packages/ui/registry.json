@@ -22,7 +22,7 @@
       "title": "Message",
       "type": "registry:component",
       "description": "Individual message display with streaming markdown support.",
-      "dependencies": ["streamdown", "@streamdown/cjk", "@streamdown/code", "@streamdown/math", "@streamdown/mermaid", "lucide-react"],
+      "dependencies": ["@flow-state-dev/core", "streamdown", "@streamdown/cjk", "@streamdown/code", "@streamdown/math", "@streamdown/mermaid", "lucide-react"],
       "registryDependencies": ["button", "button-group", "tooltip"],
       "files": [{
         "type": "registry:component",
@@ -36,7 +36,7 @@
       "title": "Reasoning",
       "type": "registry:component",
       "description": "Expandable reasoning/thinking display with streaming awareness.",
-      "dependencies": ["@radix-ui/react-use-controllable-state", "lucide-react", "streamdown", "@streamdown/cjk", "@streamdown/code", "@streamdown/math", "@streamdown/mermaid"],
+      "dependencies": ["@flow-state-dev/core", "@radix-ui/react-use-controllable-state", "lucide-react", "streamdown", "@streamdown/cjk", "@streamdown/code", "@streamdown/math", "@streamdown/mermaid"],
       "registryDependencies": ["collapsible", "shimmer"],
       "files": [{
         "type": "registry:component",
@@ -50,7 +50,7 @@
       "title": "Tool",
       "type": "registry:component",
       "description": "Rich tool invocation display with args, result, timing, and status.",
-      "dependencies": ["lucide-react"],
+      "dependencies": ["@flow-state-dev/core", "lucide-react"],
       "registryDependencies": ["collapsible", "badge", "code-block"],
       "files": [{
         "type": "registry:component",
@@ -92,7 +92,7 @@
       "title": "Sources",
       "type": "registry:component",
       "description": "Citation and source display with collapsible list and favicons.",
-      "dependencies": ["lucide-react"],
+      "dependencies": ["@flow-state-dev/core", "lucide-react"],
       "registryDependencies": ["collapsible"],
       "files": [{
         "type": "registry:component",
@@ -130,86 +130,44 @@
       "categories": ["ai"]
     },
     {
-      "name": "message-adapter",
-      "title": "Message Adapter",
+      "name": "status",
+      "title": "Status",
       "type": "registry:component",
-      "description": "Adapter connecting MessageItem from @flow-state-dev/core to the Message component.",
-      "dependencies": ["@flow-state-dev/core"],
-      "registryDependencies": ["message"],
-      "files": [{
-        "type": "registry:component",
-        "path": "registry/adapters/message-adapter.tsx",
-        "target": "components/flow-state/adapters/message-adapter.tsx"
-      }],
-      "categories": ["ai", "framework"]
-    },
-    {
-      "name": "reasoning-adapter",
-      "title": "Reasoning Adapter",
-      "type": "registry:component",
-      "description": "Adapter connecting ReasoningItem from @flow-state-dev/core to the Reasoning component.",
-      "dependencies": ["@flow-state-dev/core"],
-      "registryDependencies": ["reasoning"],
-      "files": [{
-        "type": "registry:component",
-        "path": "registry/adapters/reasoning-adapter.tsx",
-        "target": "components/flow-state/adapters/reasoning-adapter.tsx"
-      }],
-      "categories": ["ai", "framework"]
-    },
-    {
-      "name": "tool-adapter",
-      "title": "Tool Adapter",
-      "type": "registry:component",
-      "description": "Adapter connecting BlockToolOutputItem from @flow-state-dev/core to the Tool component.",
-      "dependencies": ["@flow-state-dev/core"],
-      "registryDependencies": ["tool"],
-      "files": [{
-        "type": "registry:component",
-        "path": "registry/adapters/tool-adapter.tsx",
-        "target": "components/flow-state/adapters/tool-adapter.tsx"
-      }],
-      "categories": ["ai", "framework"]
-    },
-    {
-      "name": "error-adapter",
-      "title": "Error Adapter",
-      "type": "registry:component",
-      "description": "Adapter displaying ErrorItem and StepErrorItem from @flow-state-dev/core.",
-      "dependencies": ["@flow-state-dev/core", "lucide-react"],
-      "registryDependencies": [],
-      "files": [{
-        "type": "registry:component",
-        "path": "registry/adapters/error-adapter.tsx",
-        "target": "components/flow-state/adapters/error-adapter.tsx"
-      }],
-      "categories": ["ai", "framework"]
-    },
-    {
-      "name": "status-adapter",
-      "title": "Status Adapter",
-      "type": "registry:component",
-      "description": "Adapter displaying StatusItem from @flow-state-dev/core with shimmer animation.",
+      "description": "Status message display with shimmer animation for in-progress states.",
       "dependencies": ["@flow-state-dev/core"],
       "registryDependencies": ["shimmer"],
       "files": [{
         "type": "registry:component",
-        "path": "registry/adapters/status-adapter.tsx",
-        "target": "components/flow-state/adapters/status-adapter.tsx"
+        "path": "registry/components/status.tsx",
+        "target": "components/flow-state/status.tsx"
       }],
       "categories": ["ai", "framework"]
     },
     {
-      "name": "source-adapter",
-      "title": "Source Adapter",
+      "name": "error",
+      "title": "Error",
       "type": "registry:component",
-      "description": "Adapter displaying SourceItem from @flow-state-dev/core using the Sources component.",
-      "dependencies": ["@flow-state-dev/core"],
-      "registryDependencies": ["sources"],
+      "description": "Error and step-error display with recoverable/fatal distinction.",
+      "dependencies": ["@flow-state-dev/core", "lucide-react"],
+      "registryDependencies": [],
       "files": [{
         "type": "registry:component",
-        "path": "registry/adapters/source-adapter.tsx",
-        "target": "components/flow-state/adapters/source-adapter.tsx"
+        "path": "registry/components/error.tsx",
+        "target": "components/flow-state/error.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
+      "name": "chat-assistant",
+      "title": "Chat Assistant Renderers",
+      "type": "registry:component",
+      "description": "Pre-wired RendererRegistry mapping all Flow State item types to their default components.",
+      "dependencies": ["@flow-state-dev/react", "@flow-state-dev/core"],
+      "registryDependencies": ["message", "reasoning", "tool", "status", "error"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/chat-assistant.tsx",
+        "target": "components/flow-state/chat-assistant.tsx"
       }],
       "categories": ["ai", "framework"]
     }
