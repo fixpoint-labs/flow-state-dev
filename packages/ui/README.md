@@ -20,7 +20,7 @@ fsdev ui list
 
 ## Components
 
-### AI Elements (Tier 1)
+### Components
 
 Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 
