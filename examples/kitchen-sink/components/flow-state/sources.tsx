@@ -1,6 +1,7 @@
 "use client";
 
 import type { ComponentProps } from "react";
+import type { OutputItem, SourceItem } from "@flow-state-dev/core/items";
 
 import {
   Collapsible,
@@ -9,7 +10,7 @@ import {
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { ChevronDownIcon, GlobeIcon } from "lucide-react";
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 
 // ---------------------------------------------------------------------------
 // Sources (root)
@@ -135,4 +136,26 @@ function safeHostname(url: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+export function SourcesGroup({ items }: { items: OutputItem[] }) {
+  const sources = useMemo(
+    () => items.filter((item): item is SourceItem => item.type === "source"),
+    [items]
+  );
+  if (sources.length === 0) return null;
+  return (
+    <Sources>
+      <SourcesTrigger count={sources.length} />
+      <SourcesContent>
+        {sources.map((source: SourceItem) =>
+          source.title ? (
+            <Source key={source.id} href={source.url}>{source.title}</Source>
+          ) : (
+            <Source key={source.id} href={source.url} />
+          )
+        )}
+      </SourcesContent>
+    </Sources>
+  );
 }

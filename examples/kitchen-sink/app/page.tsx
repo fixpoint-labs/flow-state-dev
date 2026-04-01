@@ -8,7 +8,6 @@ import {
   useSession,
   useClientData,
   useVoice,
-  type RendererRegistry,
 } from "@flow-state-dev/react";
 import { Button } from "@/components/ui/button";
 import { Menu, MessageSquareText, Package } from "lucide-react";
@@ -18,20 +17,15 @@ import {
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
-} from "@/src/components/ai-elements/conversation";
+} from "@/components/flow-state/conversation";
 import {
   PromptInput,
   PromptInputTextarea,
   PromptInputSubmit,
   type PromptInputMessage,
-} from "@/src/components/ai-elements/prompt-input";
-
-import { KitchenSinkMessage } from "@/components/kitchen-sink-message";
-import { KitchenSinkReasoning } from "@/components/kitchen-sink-reasoning";
-import { KitchenSinkStatus } from "@/components/kitchen-sink-status";
-import { KitchenSinkError } from "@/components/kitchen-sink-error";
-import { KitchenSinkToolCall } from "@/components/kitchen-sink-tool-call";
-import { SourcesGroup } from "@/components/kitchen-sink-source";
+} from "@/components/flow-state/prompt-input";
+import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
+import { SourcesGroup } from "@/components/flow-state/sources";
 
 import { SessionSidebar } from "@/components/session-sidebar";
 import { ModeSelector, type Mode } from "@/components/mode-selector";
@@ -40,16 +34,6 @@ import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactViewer } from "@/components/artifact-viewer";
 import { SuggestionRow } from "@/components/suggestion-row";
 import { VoiceToggle } from "@/components/voice-toggle";
-
-const renderers: RendererRegistry = {
-  message: KitchenSinkMessage,
-  reasoning: KitchenSinkReasoning,
-  block_tool_output: KitchenSinkToolCall,
-  status: KitchenSinkStatus,
-  source: false, // Sources are grouped separately via SourcesGroup
-  error: KitchenSinkError,
-  step_error: KitchenSinkError,
-};
 
 const ITEM_TYPES = ["message", "reasoning", "block_tool_output", "status", "source", "error", "step_error"];
 
@@ -62,7 +46,7 @@ const CLIENT_DATA_OPTIONS = {
 
 export default function Page() {
   return (
-    <FlowProvider flowKind="kitchen-sink" userId="devuser" baseUrl="" renderers={renderers}>
+    <FlowProvider flowKind="kitchen-sink" userId="devuser" baseUrl="" renderers={chatAssistantRenderers}>
       <KitchenSinkApp />
     </FlowProvider>
   );

@@ -6,9 +6,8 @@ import { AlertCircle, AlertTriangle } from "lucide-react";
 
 type ErrorLikeItem = ErrorItem | StepErrorItem;
 
-export function KitchenSinkError({ item }: { item: ErrorLikeItem }) {
+export function ErrorDisplay({ item }: { item: ErrorLikeItem }) {
   const isRecoverable = item.type === "step_error" && item.recovered;
-
   return (
     <div
       className={cn(

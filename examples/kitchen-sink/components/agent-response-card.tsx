@@ -1,7 +1,7 @@
 "use client";
 
 import type { BlockOutputItem } from "@flow-state-dev/core/items";
-import { KitchenSinkToolCall } from "./kitchen-sink-tool-call";
+import { Tool } from "@/components/flow-state/tool";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
@@ -12,9 +12,9 @@ type AgentOutput = {
 };
 
 export function AgentResponseCard({ item }: { item: BlockOutputItem }) {
-  // Tool calls get rendered via the AI Elements Tool component
+  // Tool calls get rendered via the flow-state Tool component
   if (item.toolCall) {
-    return <KitchenSinkToolCall item={item} />;
+    return <Tool item={item} />;
   }
 
   // Show skeleton placeholder while block is still executing
