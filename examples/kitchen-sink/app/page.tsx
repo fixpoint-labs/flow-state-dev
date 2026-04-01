@@ -28,12 +28,20 @@ import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 import { SourcesGroup } from "@/components/flow-state/sources";
 
 import { SessionSidebar } from "@/components/session-sidebar";
+import { AgentResponseCard } from "@/components/agent-response-card";
 import { ModeSelector, type Mode } from "@/components/mode-selector";
 import { ClientDataBar } from "@/components/client-data-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactViewer } from "@/components/artifact-viewer";
 import { SuggestionRow } from "@/components/suggestion-row";
 import { VoiceToggle } from "@/components/voice-toggle";
+
+import type { RendererRegistry } from "@flow-state-dev/react";
+
+const kitchenSinkRenderers: RendererRegistry = {
+  ...chatAssistantRenderers,
+  block_output: AgentResponseCard,
+};
 
 const ITEM_TYPES = ["message", "reasoning", "block_tool_output", "status", "source", "error", "step_error"];
 
@@ -46,7 +54,7 @@ const CLIENT_DATA_OPTIONS = {
 
 export default function Page() {
   return (
-    <FlowProvider flowKind="kitchen-sink" userId="devuser" baseUrl="" renderers={chatAssistantRenderers}>
+    <FlowProvider flowKind="kitchen-sink" userId="devuser" baseUrl="" renderers={kitchenSinkRenderers}>
       <KitchenSinkApp />
     </FlowProvider>
   );
