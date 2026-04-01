@@ -6,7 +6,11 @@ import { Shimmer } from "./shimmer";
 export function Status({ item }: { item: StatusItem }) {
   return (
     <div className="px-1 py-2">
-      <Shimmer duration={1.5}>{item.message}</Shimmer>
+      {item.status === "in_progress" ? (
+        <Shimmer duration={1.5}>{item.message}</Shimmer>
+      ) : (
+        <span className="text-sm text-muted-foreground">{item.message}</span>
+      )}
     </div>
   );
 }

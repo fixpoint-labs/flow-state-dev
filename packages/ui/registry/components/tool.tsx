@@ -197,6 +197,7 @@ function getToolArgs(item: ToolItem): unknown {
 }
 
 function getToolOutput(item: ToolItem): unknown {
+  if (item.status === "failed") return undefined;
   return item.output;
 }
 
