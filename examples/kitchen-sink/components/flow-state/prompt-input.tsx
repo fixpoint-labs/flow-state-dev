@@ -1,6 +1,5 @@
 "use client";
 
-import type { ChatStatus, FileUIPart, SourceDocumentUIPart } from "ai";
 import type {
   ChangeEvent,
   ChangeEventHandler,
@@ -75,6 +74,30 @@ import {
 } from "react";
 
 // ============================================================================
+// Neutral types — replace AI SDK imports
+// ============================================================================
+
+/** Framework-agnostic prompt status. Replaces ChatStatus from "ai". */
+export type PromptStatus = "ready" | "submitting" | "streaming" | "error";
+
+/** Framework-agnostic file attachment. Replaces FileUIPart from "ai". */
+export interface FileAttachment {
+  type: "file";
+  mediaType: string;
+  url: string;
+  filename?: string;
+}
+
+/** Framework-agnostic source attachment. Replaces SourceDocumentUIPart from "ai". */
+export interface SourceAttachment {
+  type: "source";
+  sourceId: string;
+  title?: string;
+  url?: string;
+  description?: string;
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
 
@@ -82,13 +105,9 @@ const convertBlobUrlToDataUrl = async (url: string): Promise<string | null> => {
   try {
     const response = await fetch(url);
     const blob = await response.blob();
-    // FileReader uses callback-based API, wrapping in Promise is necessary
-    // oxlint-disable-next-line eslint-plugin-promise(avoid-new)
     return new Promise((resolve) => {
       const reader = new FileReader();
-      // oxlint-disable-next-line eslint-plugin-unicorn(prefer-add-event-listener)
       reader.onloadend = () => resolve(reader.result as string);
-      // oxlint-disable-next-line eslint-plugin-unicorn(prefer-add-event-listener)
       reader.onerror = () => resolve(null);
       reader.readAsDataURL(blob);
     });
@@ -102,7 +121,7 @@ const convertBlobUrlToDataUrl = async (url: string): Promise<string | null> => {
 // ============================================================================
 
 export interface AttachmentsContext {
-  files: (FileUIPart & { id: string })[];
+  files: (FileAttachment & { id: string })[];
   add: (files: File[] | FileList) => void;
   remove: (id: string) => void;
   clear: () => void;
@@ -178,10 +197,9 @@ export const PromptInputProvider = ({
 
   // ----- attachments state (global when wrapped)
   const [attachmentFiles, setAttachmentFiles] = useState<
-    (FileUIPart & { id: string })[]
+    (FileAttachment & { id: string })[]
   >([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  // oxlint-disable-next-line eslint(no-empty-function)
   const openRef = useRef<() => void>(() => {});
 
   const add = useCallback((files: File[] | FileList) => {
@@ -312,8 +330,8 @@ export const usePromptInputAttachments = () => {
 // ============================================================================
 
 export interface ReferencedSourcesContext {
-  sources: (SourceDocumentUIPart & { id: string })[];
-  add: (sources: SourceDocumentUIPart[] | SourceDocumentUIPart) => void;
+  sources: (SourceAttachment & { id: string })[];
+  add: (sources: SourceAttachment[] | SourceAttachment) => void;
   remove: (id: string) => void;
   clear: () => void;
 }
@@ -360,23 +378,18 @@ export const PromptInputActionAddAttachments = ({
 
 export interface PromptInputMessage {
   text: string;
-  files: FileUIPart[];
+  files: FileAttachment[];
 }
 
 export type PromptInputProps = Omit<
   HTMLAttributes<HTMLFormElement>,
   "onSubmit" | "onError"
 > & {
-  // e.g., "image/*" or leave undefined for any
   accept?: string;
   multiple?: boolean;
-  // When true, accepts drops anywhere on document. Default false (opt-in).
   globalDrop?: boolean;
-  // Render a hidden input with given name and keep it in sync for native form posts. Default false.
   syncHiddenInput?: boolean;
-  // Minimal constraints
   maxFiles?: number;
-  // bytes
   maxFileSize?: number;
   onError?: (err: {
     code: "max_files" | "max_file_size" | "accept";
@@ -410,12 +423,12 @@ export const PromptInput = ({
   const formRef = useRef<HTMLFormElement | null>(null);
 
   // ----- Local attachments (only used when no provider)
-  const [items, setItems] = useState<(FileUIPart & { id: string })[]>([]);
+  const [items, setItems] = useState<(FileAttachment & { id: string })[]>([]);
   const files = usingProvider ? controller.attachments.files : items;
 
   // ----- Local referenced sources (always local to PromptInput)
   const [referencedSources, setReferencedSources] = useState<
-    (SourceDocumentUIPart & { id: string })[]
+    (SourceAttachment & { id: string })[]
   >([]);
 
   // Keep a ref to files for cleanup on unmount (avoids stale closure)
@@ -442,7 +455,6 @@ export const PromptInput = ({
 
       return patterns.some((pattern) => {
         if (pattern.endsWith("/*")) {
-          // e.g: image/* -> image/
           const prefix = pattern.slice(0, -1);
           return f.type.startsWith(prefix);
         }
@@ -487,7 +499,7 @@ export const PromptInput = ({
             message: "Too many files. Some were not added.",
           });
         }
-        const next: (FileUIPart & { id: string })[] = [];
+        const next: (FileAttachment & { id: string })[] = [];
         for (const file of capped) {
           next.push({
             filename: file.name,
@@ -598,8 +610,6 @@ export const PromptInput = ({
     controller.__registerFileInput(inputRef, () => inputRef.current?.click());
   }, [usingProvider, controller]);
 
-  // Note: File input cannot be programmatically set for security reasons
-  // The syncHiddenInput prop is no longer functional
   useEffect(() => {
     if (syncHiddenInput && inputRef.current && files.length === 0) {
       inputRef.current.value = "";
@@ -613,7 +623,6 @@ export const PromptInput = ({
       return;
     }
     if (globalDrop) {
-      // when global drop is on, let the document-level handler own drops
       return;
     }
 
@@ -674,7 +683,6 @@ export const PromptInput = ({
         }
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- cleanup only on unmount; filesRef always current
     [usingProvider]
   );
 
@@ -683,7 +691,6 @@ export const PromptInput = ({
       if (event.currentTarget.files) {
         add(event.currentTarget.files);
       }
-      // Reset input value to allow selecting files that were previously removed
       event.currentTarget.value = "";
     },
     [add]
@@ -703,7 +710,7 @@ export const PromptInput = ({
 
   const refsCtx = useMemo<ReferencedSourcesContext>(
     () => ({
-      add: (incoming: SourceDocumentUIPart[] | SourceDocumentUIPart) => {
+      add: (incoming: SourceAttachment[] | SourceAttachment) => {
         const array = Array.isArray(incoming) ? incoming : [incoming];
         setReferencedSources((prev) => [
           ...prev,
@@ -731,19 +738,15 @@ export const PromptInput = ({
             return (formData.get("message") as string) || "";
           })();
 
-      // Reset form immediately after capturing text to avoid race condition
-      // where user input during async blob conversion would be lost
       if (!usingProvider) {
         form.reset();
       }
 
       try {
-        // Convert blob URLs to data URLs asynchronously
-        const convertedFiles: FileUIPart[] = await Promise.all(
+        const convertedFiles: FileAttachment[] = await Promise.all(
           files.map(async ({ id: _id, ...item }) => {
             if (item.url?.startsWith("blob:")) {
               const dataUrl = await convertBlobUrlToDataUrl(item.url);
-              // If conversion failed, keep the original blob URL
               return {
                 ...item,
                 url: dataUrl ?? item.url,
@@ -755,7 +758,6 @@ export const PromptInput = ({
 
         const result = onSubmit({ files: convertedFiles, text }, event);
 
-        // Handle both sync and async onSubmit
         if (result instanceof Promise) {
           try {
             await result;
@@ -767,7 +769,6 @@ export const PromptInput = ({
             // Don't clear on error - user may want to retry
           }
         } else {
-          // Sync function completed without throwing, clear inputs
           clear();
           if (usingProvider) {
             controller.textInput.clear();
@@ -780,7 +781,6 @@ export const PromptInput = ({
     [usingProvider, controller, files, onSubmit, clear]
   );
 
-  // Render with or without local provider
   const inner = (
     <>
       <input
@@ -810,7 +810,6 @@ export const PromptInput = ({
     </LocalReferencedSourcesContext.Provider>
   );
 
-  // Always provide LocalAttachmentsContext so children get validated add function
   return (
     <LocalAttachmentsContext.Provider value={attachmentsCtx}>
       {withReferencedSources}
@@ -844,10 +843,8 @@ export const PromptInputTextarea = ({
 
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = useCallback(
     (e) => {
-      // Call the external onKeyDown handler first
       onKeyDown?.(e);
 
-      // If the external handler prevented default, don't run internal logic
       if (e.defaultPrevented) {
         return;
       }
@@ -861,7 +858,6 @@ export const PromptInputTextarea = ({
         }
         e.preventDefault();
 
-        // Check if the submit button is disabled before submitting
         const { form } = e.currentTarget;
         const submitButton = form?.querySelector(
           'button[type="submit"]'
@@ -873,7 +869,6 @@ export const PromptInputTextarea = ({
         form?.requestSubmit();
       }
 
-      // Remove last attachment when Backspace is pressed and textarea is empty
       if (
         e.key === "Backspace" &&
         e.currentTarget.value === "" &&
@@ -1083,11 +1078,8 @@ export const PromptInputActionMenuItem = ({
   <DropdownMenuItem className={cn(className)} {...props} />
 );
 
-// Note: Actions that perform side-effects (like opening a file dialog)
-// are provided in opt-in modules (e.g., prompt-input-attachments).
-
 export type PromptInputSubmitProps = ComponentProps<typeof InputGroupButton> & {
-  status?: ChatStatus;
+  status?: PromptStatus;
   onStop?: () => void;
 };
 
@@ -1101,11 +1093,11 @@ export const PromptInputSubmit = ({
   children,
   ...props
 }: PromptInputSubmitProps) => {
-  const isGenerating = status === "submitted" || status === "streaming";
+  const isGenerating = status === "submitting" || status === "streaming";
 
   let Icon = <CornerDownLeftIcon className="size-4" />;
 
-  if (status === "submitted") {
+  if (status === "submitting") {
     Icon = <Spinner />;
   } else if (status === "streaming") {
     Icon = <SquareIcon className="size-4" />;
@@ -1242,8 +1234,6 @@ export const PromptInputTabLabel = ({
   className,
   ...props
 }: PromptInputTabLabelProps) => (
-  // Content provided via children in props
-  // oxlint-disable-next-line eslint-plugin-jsx-a11y(heading-has-content)
   <h3
     className={cn(
       "mb-2 px-3 font-medium text-muted-foreground text-xs",

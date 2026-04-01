@@ -3,7 +3,7 @@
 import {
   Suggestions,
   Suggestion,
-} from "@/src/components/ai-elements/suggestion";
+} from "@/components/flow-state/suggestion";
 
 const SUGGESTIONS = [
   "Summarize the current project context",
