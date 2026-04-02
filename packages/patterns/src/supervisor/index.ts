@@ -21,6 +21,8 @@ import {
   executableTasksSchema,
   applyReviewOutputSchema,
   type SubTaskErrorStrategy,
+  type PlannerOutput,
+  type ReviewOutput,
 } from "./schemas";
 
 export {
@@ -56,11 +58,11 @@ export interface SupervisorConfig<
   /** Maximum number of sub-tasks to run concurrently. Defaults to 3. */
   maxConcurrency?: number;
 
-  /** Override the planning step. Defaults to a supervisor-aware decomposer. */
-  planner?: BlockDefinition<any, any>;
+  /** Override the planning step. Must output `{ tasks: [{ id, goal, ... }] }`. Defaults to a supervisor-aware decomposer. */
+  planner?: BlockDefinition<any, any, any, PlannerOutput>;
 
-  /** Override the review step. Defaults to a review generator. */
-  reviewer?: BlockDefinition<any, any>;
+  /** Override the review step. Must output `reviewOutputSchema`. Defaults to a review generator. */
+  reviewer?: BlockDefinition<any, any, any, ReviewOutput>;
 
   /** Override the final synthesis step. Defaults to `utility.synthesizer()`. */
   synthesizer?: BlockDefinition<any, any>;
