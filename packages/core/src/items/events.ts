@@ -83,6 +83,15 @@ export type ScopeStateChangedEvent = UserEventBase & {
   changeType: "updated" | "deleted";
 };
 
+export type SessionMetadataChangedEvent = RequestEventBase & {
+  type: "session.metadata.changed";
+  sessionId: string;
+  title?: string;
+  description?: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+};
+
 export type RequestDebugEvent = RequestEventBase & {
   type: "debug";
   name: string;
@@ -116,6 +125,7 @@ export type RequestStreamEvent =
   | ContentPartDeltaEvent
   | ContentPartDoneEvent
   | RequestResourceChangedEvent
+  | SessionMetadataChangedEvent
   | RequestDebugEvent
   | RequestPingEvent;
 

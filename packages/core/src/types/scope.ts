@@ -78,6 +78,13 @@ export type RequestScopeHandle<TState extends object = Record<string, unknown>> 
   costEstimate: CostEstimate;
 } & ScopeStateOps<TState>;
 
+export type SessionMetadataInput = {
+  title?: string;
+  description?: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
+};
+
 export type SessionScopeHandle<
   TState extends object = Record<string, unknown>,
   TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>
@@ -88,6 +95,7 @@ export type SessionScopeHandle<
   items: SessionItemViews;
   appendJournal(entry: JournalEntryInput): Promise<void>;
   getJournal(options?: { limit?: number; offset?: number }): Promise<JournalEntry[]>;
+  setMetadata(input: SessionMetadataInput): Promise<void>;
 } & ScopeStateOps<TState>;
 
 export type UserScopeHandle<
