@@ -1,4 +1,4 @@
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type {
   RequestListOptions,
   RequestRecord,
@@ -8,6 +8,7 @@ import { applyOffsetLimit, cloneValue } from "./shared";
 
 export class InMemoryRequestStore implements RequestStore {
   private readonly records = new Map<string, RequestRecord>();
+  private readonly eventsByRequestId = new Map<string, RequestStreamEvent[]>();
 
   async get(id: string): Promise<RequestRecord | undefined> {
     const record = this.records.get(id);
@@ -28,6 +29,18 @@ export class InMemoryRequestStore implements RequestStore {
 
   async flushItems(_requestId: string): Promise<void> {
     // No-op: nothing to flush in memory
+  }
+
+  persistEvents(requestId: string, events: RequestStreamEvent[]): void {
+    this.eventsByRequestId.set(requestId, [...events]);
+  }
+
+  async flushEvents(_requestId: string): Promise<void> {
+    // No-op: events already in memory
+  }
+
+  async getEvents(requestId: string): Promise<RequestStreamEvent[]> {
+    return [...(this.eventsByRequestId.get(requestId) ?? [])];
   }
 
   async list(options?: RequestListOptions): Promise<RequestRecord[]> {

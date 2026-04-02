@@ -381,6 +381,13 @@ export async function runActionInternal<
     }
   });
 
+  // --- Incremental event persistence ---
+  response.setEventHooks({
+    onEvent: (events) => {
+      options.stores.request.persistEvents(requestId, events);
+    }
+  });
+
   // Emit initial status events early — before the potentially expensive
   // createExecutionContext call. This ensures the SSE stream starts delivering
   // events as fast as possible.
@@ -532,8 +539,9 @@ export async function runActionInternal<
     // Clear heartbeat
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
 
-    // Flush pending item writes before terminal status
+    // Flush pending item and event writes before terminal status
     await options.stores.request.flushItems(requestId);
+    await options.stores.request.flushEvents(requestId);
 
     const completedAt = Date.now();
     const items = response.getItems();
@@ -547,6 +555,10 @@ export async function runActionInternal<
     ctx.requestRuntime.completedAtMs = completedAt;
 
     await response.emitRequestStatus(terminalStatus);
+
+    // Persist the final event list (includes terminal status event)
+    await options.stores.request.flushEvents(requestId);
+
     if (terminalStatus === "completed") {
       await emitActionLifecycleSeam(internalSeams, "completed", metadata);
     }
@@ -593,8 +605,9 @@ export async function runActionInternal<
     await emitTerminalError(ctx, normalized);
     await response.emitRequestStatus("failed");
 
-    // Flush pending item writes before terminal status
+    // Flush pending item and event writes before terminal status
     await options.stores.request.flushItems(requestId);
+    await options.stores.request.flushEvents(requestId);
 
     const failedAt = Date.now();
     await patchRequestRecord(options.stores, requestId, {

@@ -2,7 +2,7 @@ import type {
   JournalEntry
 } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 
 export type RequestStatus = "in_progress" | "completed" | "incomplete" | "failed" | "interrupted";
 
@@ -106,6 +106,26 @@ export interface RequestStore {
    * Called before the terminal patchRequestRecord.
    */
   flushItems(requestId: string): Promise<void>;
+
+  /**
+   * Persist a stream event for a request.
+   * Non-blocking — the backend handles async flushing.
+   * Events are stored in sequence order for cursor-based replay.
+   */
+  persistEvents(requestId: string, events: RequestStreamEvent[]): void;
+
+  /**
+   * Wait for all pending event persistence writes to complete.
+   * Called before the terminal patchRequestRecord.
+   */
+  flushEvents(requestId: string): Promise<void>;
+
+  /**
+   * Retrieve persisted stream events for a request.
+   * Returns events sorted by sequence_number.
+   * Used for completed-request replay instead of item-based reconstruction.
+   */
+  getEvents(requestId: string): Promise<RequestStreamEvent[]>;
 }
 
 export interface UserStore {

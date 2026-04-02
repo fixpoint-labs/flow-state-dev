@@ -9,7 +9,10 @@ import {
   getActiveStream
 } from "../streaming/active-streams";
 import { encodeStreamEvent } from "../streaming/encode-event";
-import { replayRequestEvents } from "../streaming/resume";
+import {
+  resolveRequestReplayCursor,
+  replayRequestEvents
+} from "../streaming/resume";
 import {
   buildReplayEvents,
   getString,
@@ -25,6 +28,8 @@ type StreamRouteContext = {
   transcriptionResolver?: TranscriptionResolver;
 };
 
+const textEncoder = new TextEncoder();
+
 export async function handleRequestStream(
   request: Request,
   route: Extract<ParsedFlowRoute, { kind: "request_stream" }>,
@@ -38,9 +43,73 @@ export async function handleRequestStream(
     });
   }
 
+  const url = new URL(request.url);
+
   const activeStream = getActiveStream(route.requestId);
   if (activeStream !== undefined) {
-    return new Response(activeStream.readable, {
+    // Resolve cursor from request headers/params.
+    const cursor = resolveRequestReplayCursor({
+      requestId: route.requestId,
+      lastEventId: request.headers.get("last-event-id"),
+      startingAfter: url.searchParams.get("starting_after")
+    });
+
+    // No cursor: return the raw live stream directly (original behavior).
+    if (cursor.source === "none") {
+      return new Response(activeStream.readable, {
+        status: 200,
+        headers: SSE_HEADERS
+      });
+    }
+
+    // Cursor present: replay buffered events after cursor, then tail live.
+    const minSeq = cursor.sequenceNumber ?? -1;
+    const emitter = activeStream.emitter;
+
+    const readable = new ReadableStream<Uint8Array>({
+      start(controller) {
+        // 1. Replay buffered events after the cursor.
+        const buffered = emitter.getEvents();
+        for (const event of buffered) {
+          if (event.sequence_number <= minSeq) continue;
+          if (event.type === "ping" || event.type === "debug") continue;
+          const frame = encodeStreamEvent(event);
+          controller.enqueue(textEncoder.encode(frame));
+        }
+
+        // 2. Subscribe to new events going forward.
+        emitter.addEventObserver((event) => {
+          if (event.sequence_number <= minSeq) return;
+          if (event.type === "ping" || event.type === "debug") return;
+          try {
+            const frame = encodeStreamEvent(event);
+            controller.enqueue(textEncoder.encode(frame));
+          } catch {
+            // Controller may be closed if client disconnected.
+          }
+
+          // Close when terminal status is reached.
+          const status = (event as { status?: string }).status;
+          if (
+            event.type === "request.completed" ||
+            event.type === "request.failed" ||
+            event.type === "request.incomplete" ||
+            (event.type === "request.interrupted" && status === "interrupted")
+          ) {
+            try {
+              controller.close();
+            } catch {
+              // Already closed.
+            }
+          }
+        });
+      },
+      cancel() {
+        // Client disconnected — nothing to clean up for observers.
+      }
+    });
+
+    return new Response(readable, {
       status: 200,
       headers: SSE_HEADERS
     });
@@ -56,10 +125,16 @@ export async function handleRequestStream(
     });
   }
 
-  const url = new URL(request.url);
+  // Prefer persisted canonical event history for cursor-accurate replay.
+  // Fall back to item-based reconstruction if no events have been persisted.
+  let replaySource = await ctx.stores.request.getEvents(route.requestId);
+  if (replaySource.length === 0) {
+    replaySource = buildReplayEvents(requestRecord);
+  }
+
   const replay = replayRequestEvents({
     requestId: route.requestId,
-    events: buildReplayEvents(requestRecord),
+    events: replaySource,
     lastEventId: request.headers.get("last-event-id"),
     startingAfter: url.searchParams.get("starting_after")
   });
