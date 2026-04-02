@@ -19,6 +19,7 @@ import type {
   ScopeType,
   SessionItem,
   SessionItemViews,
+  SessionMetadataInput,
   SessionScopeHandle,
   UserScopeHandle,
   FlowInstance,
@@ -2021,6 +2022,29 @@ export async function createExecutionContext<
         }
 
         return list.slice(0, Math.max(0, query.limit));
+      },
+      setMetadata: async (input: SessionMetadataInput): Promise<void> => {
+        const now = Date.now();
+        sessionRef.current = {
+          ...sessionRef.current,
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.description !== undefined ? { description: input.description } : {}),
+          ...(input.tags !== undefined ? { tags: input.tags } : {}),
+          ...(input.metadata !== undefined
+            ? { metadata: { ...sessionRef.current.metadata, ...input.metadata } }
+            : {}),
+          updatedAt: now
+        };
+        await stores.session.set(sessionRef.current.id, sessionRef.current);
+
+        await response.emit({
+          type: "session.metadata.changed",
+          sessionId: sessionRef.current.id,
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.description !== undefined ? { description: input.description } : {}),
+          ...(input.tags !== undefined ? { tags: input.tags } : {}),
+          ...(input.metadata !== undefined ? { metadata: input.metadata } : {})
+        });
       },
       ...sessionOps
     },

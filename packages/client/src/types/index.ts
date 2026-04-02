@@ -14,6 +14,7 @@ import type {
   RequestStatusEvent,
   RequestStreamEvent,
   ScopeStateChangedEvent,
+  SessionMetadataChangedEvent,
   UserDebugEvent,
   UserResourceChangedEvent,
   UserStreamEvent
@@ -118,6 +119,9 @@ export type SessionSummary = {
   id: string;
   flowKind: string;
   userId: string;
+  title?: string;
+  description?: string;
+  tags?: string[];
   createdAt: number;
   updatedAt: number;
 };
@@ -284,6 +288,7 @@ export type RequestSSECallbacks = {
   onContentDelta?: (event: ContentPartDeltaEvent) => void;
   onContentDone?: (event: ContentPartDoneEvent) => void;
   onResourceChanged?: (event: RequestResourceChangedEvent) => void;
+  onSessionMetadataChanged?: (event: SessionMetadataChangedEvent) => void;
   onDebug?: (event: RequestDebugEvent) => void;
   onEvent?: (event: RequestStreamEvent) => void;
   onError?: (error: Error) => void;

@@ -68,6 +68,14 @@ export function getPositiveInteger(value: string | null): number | undefined {
   return parsed;
 }
 
+export function asStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value.filter((item): item is string => typeof item === "string");
+}
+
 export function getBooleanFlag(value: string | null): boolean {
   if (value === null) {
     return false;
