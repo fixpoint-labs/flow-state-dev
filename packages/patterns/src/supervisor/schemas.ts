@@ -60,6 +60,8 @@ export const executableTaskSchema = z.object({
   feedback: z.string().optional(),
 });
 
+export type ExecutableTask = z.infer<typeof executableTaskSchema>;
+
 export const executableTasksSchema = z.array(executableTaskSchema);
 
 /** Schema for the applyReview output — drives the loopBack condition. */

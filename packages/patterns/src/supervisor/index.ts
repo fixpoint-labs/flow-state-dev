@@ -23,6 +23,7 @@ import {
   type SubTaskErrorStrategy,
   type PlannerOutput,
   type ReviewOutput,
+  type ExecutableTask,
 } from "./schemas";
 
 export {
@@ -37,6 +38,7 @@ export type {
   SupervisorState,
   ReviewOutput,
   PlannerOutput,
+  ExecutableTask,
   SubTaskErrorStrategy,
 } from "./schemas";
 
@@ -46,8 +48,8 @@ export interface SupervisorConfig<
   /** Name for this supervisor instance. */
   name: string;
 
-  /** The worker block that processes each sub-task. */
-  worker: BlockDefinition<any, any>;
+  /** The worker block that processes each sub-task. Receives `{ id, goal, feedback? }`. */
+  worker: BlockDefinition<any, any, ExecutableTask, any>;
 
   /** Criteria the reviewer uses to evaluate sub-task quality. */
   reviewCriteria?: string[];
@@ -64,8 +66,8 @@ export interface SupervisorConfig<
   /** Override the review step. Must output `reviewOutputSchema`. Defaults to a review generator. */
   reviewer?: BlockDefinition<any, any, any, ReviewOutput>;
 
-  /** Override the final synthesis step. Defaults to `utility.synthesizer()`. */
-  synthesizer?: BlockDefinition<any, any>;
+  /** Override the final synthesis step. Receives `unknown[]` (accepted results). Defaults to `utility.synthesizer()`. */
+  synthesizer?: BlockDefinition<any, any, unknown[], any>;
 
   /**
    * How to handle individual sub-task failures.
