@@ -498,7 +498,7 @@ export function useSession(
       const handle = createSSEClient({
         url: `/api/flows/${encodeURIComponent(resolvedFlowKind)}/requests/${encodeURIComponent(requestId)}/stream`,
         baseUrl,
-        startingAfter,
+        startingAfter: startingAfter !== undefined ? Number(startingAfter) : undefined,
         onItemAdded: (event) => {
           if (event.item.type === "status" && (event.item as OutputItem & { message?: string }).message === "finishing") {
             setIsFinishing(true);
