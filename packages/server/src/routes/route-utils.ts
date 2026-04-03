@@ -9,7 +9,7 @@ import type {
 import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
 import { ValidationError, FlowError } from "../errors/flow-error";
-import type { RequestRecord } from "../stores/types";
+import type { RequestRecord, SessionRecord } from "../stores/types";
 import { cloneValue } from "../utils/clone";
 import { isJsonObject } from "../utils/json-helpers";
 import { sortItemsChronologically } from "../utils/sort";
@@ -66,6 +66,14 @@ export function getPositiveInteger(value: string | null): number | undefined {
   }
 
   return parsed;
+}
+
+export function asStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return value.filter((item): item is string => typeof item === "string");
 }
 
 export function getBooleanFlag(value: string | null): boolean {
@@ -314,7 +322,7 @@ export function requestStatusEventType(status: RequestRecord["status"]): Request
   return "request.in_progress";
 }
 
-export function buildReplayEvents(record: RequestRecord): RequestStreamEvent[] {
+export function buildReplayEvents(record: RequestRecord, session?: SessionRecord): RequestStreamEvent[] {
   const createdAt = record.startedAtMs ?? record.createdAt;
   const statusTs =
     record.completedAtMs ??
@@ -353,6 +361,24 @@ export function buildReplayEvents(record: RequestRecord): RequestStreamEvent[] {
         item
       });
     }
+  }
+
+  if (
+    session !== undefined &&
+    record.sessionId !== undefined &&
+    (session.title !== undefined || session.description !== undefined || session.tags !== undefined)
+  ) {
+    events.push({
+      stream: "request",
+      type: "session.metadata.changed",
+      requestId: record.id,
+      sessionId: record.sessionId,
+      sequence_number: seq++,
+      ts: statusTs,
+      ...(session.title !== undefined ? { title: session.title } : {}),
+      ...(session.description !== undefined ? { description: session.description } : {}),
+      ...(session.tags !== undefined ? { tags: session.tags } : {})
+    });
   }
 
   events.push({

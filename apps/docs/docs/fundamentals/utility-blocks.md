@@ -30,6 +30,7 @@ const block = utility.summarizer({ name: "my-summarizer", granularity: "brief" }
 | [`analyzer`](#analyzer) | generator | Evaluate artifacts against structured criteria |
 | [`intentClassifier`](#intentclassifier) | generator | Classify input into a bounded category set for routing |
 | [`intentRouter`](#intentrouter) | sequencer | Pre-wired classifier + router for classification-driven branching |
+| [`sessionTitleGenerator`](#sessiontitlegenerator) | sequencer | Auto-generate a session title from conversation messages |
 
 Every generator-based utility defaults to `"gpt-5-mini"` and accepts a `model` override. All utilities accept an optional `outputSchema` to replace the default output shape with full type inference.
 
@@ -1112,6 +1113,75 @@ export const memoryPipeline = sequencer({
 ```
 
 **Data flow:** `transcript` &rarr; `parallel(memoryExtractor, contextReducer)` &rarr; `persist to session` &rarr; done
+
+---
+
+## Session
+
+### sessionTitleGenerator — auto-name conversations {#sessiontitlegenerator}
+
+Chat sessions start nameless. `sessionTitleGenerator` reads recent conversation messages, asks the LLM for a concise title, and sets it on the session — without touching the main response flow.
+
+**Common use cases:**
+- Giving sessions meaningful names that show up in session lists and history UIs
+- Replacing auto-generated IDs with human-readable conversation summaries
+- Keeping titles current as conversations evolve across multiple requests
+
+```ts
+import { utility, sequencer } from "@flow-state-dev/core";
+
+const autoTitle = utility.sessionTitleGenerator({
+  name: "auto-title",
+  model: "openai/gpt-5.4-mini",
+  messageLimit: 4,       // recent messages to read (default: 4)
+});
+
+const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
+  .then(mainGenerator)
+  .work(autoTitle);      // runs in background after main generator
+```
+
+The block is designed for `.work()`. It fires after the main generator completes, runs concurrently with any other background work, and does not block the response or add latency visible to the user.
+
+**What it does internally:**
+
+It's a sequencer with two steps:
+
+1. A **generator** reads `ctx.session.items.llm({ limit: messageLimit })` — which includes the current request's output — builds a prompt with the current title for reference, and produces a title candidate.
+2. A **handler** compares the candidate against `ctx.session.metadata.title`. If the title changed, it calls `ctx.session.setMetadata({ title })`, which persists the change and emits a `session.metadata.changed` SSE event. If the title is identical, nothing happens.
+
+The whole block is `transient: true`, so it produces no visible items in the stream.
+
+**The title prompt instructs the model to:**
+- Output 3–8 words in sentence case
+- Capture the main topic or intent
+- Leave an existing descriptive title unchanged
+
+**Configuration:**
+
+```ts
+utility.sessionTitleGenerator({
+  name: string,           // required — used as block name and for sub-block names
+  model?: string,         // model ID (default: "gpt-5-mini")
+  messageLimit?: number,  // recent LLM messages to include (default: 4)
+});
+```
+
+**Reading the title on the client:**
+
+When `setMetadata` fires, the server emits `session.metadata.changed` on the active request stream. In the React package, `useSession` picks this up and refreshes the session detail — so title displays update live without a manual refetch.
+
+```ts
+// Server — set from a block
+await ctx.session.setMetadata({ title: "Sprint planning" });
+
+// Client — read from session detail
+const { data: session } = useSession(sessionId);
+console.log(session?.title);  // "Sprint planning"
+
+// Or set externally via the session client
+await sessionClient.updateSessionMetadata(sessionId, { title: "Sprint planning" });
+```
 
 ---
 

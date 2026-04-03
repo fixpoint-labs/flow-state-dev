@@ -1,6 +1,7 @@
 "use client";
 
 import type { ComponentProps, ReactNode } from "react";
+import type { ReasoningItem } from "@flow-state-dev/core/items";
 
 import { useControllableState } from "@radix-ui/react-use-controllable-state";
 import {
@@ -56,7 +57,7 @@ export type ReasoningProps = ComponentProps<typeof Collapsible> & {
 const AUTO_CLOSE_DELAY = 1000;
 const MS_IN_S = 1000;
 
-export const Reasoning = memo(
+export const ReasoningShell = memo(
   ({
     className,
     isStreaming = false,
@@ -224,6 +225,24 @@ export const ReasoningContent = memo(
   )
 );
 
-Reasoning.displayName = "Reasoning";
+ReasoningShell.displayName = "ReasoningShell";
 ReasoningTrigger.displayName = "ReasoningTrigger";
 ReasoningContent.displayName = "ReasoningContent";
+
+function extractReasoningText(item: ReasoningItem): string {
+  return (item.summary ?? [])
+    .filter((c) => c.type === "reasoning_text" || c.type === "output_text")
+    .map((c) => c.text)
+    .join("\n");
+}
+
+export function Reasoning({ item }: { item: ReasoningItem }) {
+  const text = extractReasoningText(item);
+  if (!text) return null;
+  return (
+    <ReasoningShell isStreaming={item.status === "in_progress"}>
+      <ReasoningTrigger />
+      <ReasoningContent>{text}</ReasoningContent>
+    </ReasoningShell>
+  );
+}

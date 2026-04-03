@@ -129,6 +129,8 @@ export type {
   ScopeType,
   SessionItem,
   SessionItemViews,
+  SessionMetadata,
+  SessionMetadataInput,
   SessionScopeHandle,
   UserScopeHandle
 } from "./scope";

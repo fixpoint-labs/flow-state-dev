@@ -15,7 +15,8 @@ import type {
   Content,
   MessageItem,
   OutputItem,
-  ReasoningItem
+  ReasoningItem,
+  SessionMetadataChangedEvent
 } from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
 
@@ -686,6 +687,23 @@ export function useSession(
               }
 
               scheduleContentFlush();
+            },
+            onSessionMetadataChanged: (event: SessionMetadataChangedEvent) => {
+              setDetail((prev) => {
+                if (prev === null) {
+                  return prev;
+                }
+
+                return {
+                  ...prev,
+                  ...(event.title !== undefined ? { title: event.title } : {}),
+                  ...(event.description !== undefined ? { description: event.description } : {}),
+                  ...(event.tags !== undefined ? { tags: event.tags } : {}),
+                  ...(event.metadata !== undefined
+                    ? { metadata: { ...prev.metadata, ...event.metadata } }
+                    : {})
+                };
+              });
             },
             onRequestStatus: (event) => {
               if (

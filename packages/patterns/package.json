@@ -20,6 +20,10 @@
     "./supervisor": {
       "types": "./dist/supervisor/index.d.ts",
       "default": "./dist/supervisor/index.js"
+    },
+    "./event-queue": {
+      "types": "./dist/event-queue/index.d.ts",
+      "default": "./dist/event-queue/index.js"
     }
   },
   "license": "MIT",

@@ -17,3 +17,5 @@ export type {
   ReviewOutput,
   PlannerOutput,
 } from "./supervisor";
+export { eventQueue, createEventQueueStateSchema } from "./event-queue";
+export type { EventQueueConfig, EventQueueState } from "./event-queue";
