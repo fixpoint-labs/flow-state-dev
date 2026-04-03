@@ -28,10 +28,6 @@
     "./event-queue": {
       "types": "./dist/event-queue/index.d.ts",
       "default": "./dist/event-queue/index.js"
-    },
-    "./response-auditor": {
-      "types": "./dist/response-auditor/index.d.ts",
-      "default": "./dist/response-auditor/index.js"
     }
   },
   "license": "MIT",
