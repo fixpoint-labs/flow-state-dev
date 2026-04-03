@@ -29,7 +29,8 @@ import {
   generator,
   handler,
   router,
-  sequencer
+  sequencer,
+  utility
 } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import {
@@ -43,7 +44,9 @@ import {
   readArtifact,
   summarizeArtifacts,
   updateArtifact,
-  updateArtifactInputSchema
+  updateArtifactInputSchema,
+  eventQueueDemo,
+  eventQueueDemoInputSchema
 } from "./blocks";
 import {
   modeSchema,
@@ -237,6 +240,13 @@ const planFallback = handler({
     "Plan generation failed. Please try again with a simpler goal."
 });
 
+// Auto-generate a session title from recent conversation messages.
+// Runs as background work — doesn't block the client response.
+const autoTitle = utility.sessionTitleGenerator({
+  name: "auto-title",
+  model: MODEL_ID
+});
+
 // ---------------------------------------------------------------------------
 // Pipelines (sequencers)
 // ---------------------------------------------------------------------------
@@ -253,12 +263,14 @@ const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .then(analyzeInput)
   .thenIf((result) => result.needsContext, formatReport)
   .then(agentGenerator)
+  .work(autoTitle)
   // Background work: runs after the generator completes, non-blocking.
   // Memory capture reads session items to build working/episodic memory.
   // Artifact summarization generates summaries for any newly created/updated
   // artifacts so clientData and LLM context have useful previews.
+  // Auto-title generates a session title from recent messages.
   .work(mem.captureFromItems)
-  .work(summarizeArtifacts)
+  .work(summarizeArtifacts)  
   .then(incrementRequestCount)
   .tap(async (output) => {
     console.log(`Chat completed: ${output.slice(0, 50)}...`);
@@ -274,6 +286,7 @@ const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
   .then(agentGenerator)
   .work(mem.captureFromItems)
   .work(summarizeArtifacts)
+  .work(autoTitle)
   .then(incrementRequestCount)
   .rescue([
     {
@@ -337,6 +350,10 @@ const kitchenSinkFlow = defineFlow({
     saveArtifact: {
       inputSchema: updateArtifactInputSchema,
       block: updateArtifact
+    },
+    "event-queue": {
+      inputSchema: eventQueueDemoInputSchema,
+      block: eventQueueDemo
     }
   },
 

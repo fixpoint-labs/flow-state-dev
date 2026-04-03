@@ -19,3 +19,4 @@ export {
 } from "./exit-codes";
 export type { BlockExecResult } from "./commands/block";
 export type { FlowRunResult, FlowEvent } from "./commands/run";
+export { registerUiCommand } from "./commands/ui";

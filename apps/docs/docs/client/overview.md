@@ -64,6 +64,10 @@ const stream = createSSEClient({
       // Refetch state snapshot for authoritative final state
     }
   },
+  onSessionMetadataChanged: (event) => {
+    // Title, description, or tags updated (e.g. by sessionTitleGenerator)
+    console.log(event.title);
+  },
 });
 ```
 
@@ -75,7 +79,36 @@ The client handles reconnection, resume from cursor, and event assembly. Pass `L
 import { createSessionClient } from "@flow-state-dev/client";
 
 const sessions = createSessionClient({ baseUrl: "/api" });
+```
 
+**Creating sessions with metadata:**
+
+```ts
+const session = await sessions.createSession({
+  flowKind: "my-app",
+  userId: "user_1",
+  title: "Sprint planning",          // optional
+  description: "Q2 kickoff session", // optional
+  tags: ["planning", "sprint-12"],   // optional
+});
+```
+
+Sessions expose `title`, `description`, and `tags` as first-class fields — separate from workflow state. They show up in session lists and are useful for building conversation history UIs.
+
+**Updating metadata after the fact:**
+
+```ts
+await sessions.updateSessionMetadata("sess_1", {
+  title: "Revised title",
+  tags: ["updated"],
+});
+```
+
+Fields are merged — only the fields you include are changed. Omitting `title` leaves the existing title untouched.
+
+**Fetching session state:**
+
+```ts
 const snapshot = await sessions.getSessionState("sess_1", {
   includeItems: true,
   clientData: ["session.artifactsList", "user.preferences"],
@@ -83,6 +116,13 @@ const snapshot = await sessions.getSessionState("sess_1", {
 ```
 
 `getSessionState` returns state snapshots with clientData. Use `includeItems` to get the session item log. Specify which clientData keys you need.
+
+**Listing sessions:**
+
+```ts
+const list = await sessions.listSessions({ flowKind: "my-app" });
+// Each entry includes id, title, description, tags, createdAt, updatedAt
+```
 
 The typed client includes a session client when created with a flow. Use it for creating sessions, listing requests, and fetching state.
 

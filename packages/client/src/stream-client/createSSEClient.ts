@@ -436,6 +436,11 @@ function dispatchRequestEvent(
     return;
   }
 
+  if (event.type === "session.metadata.changed") {
+    callbacks.onSessionMetadataChanged?.(event);
+    return;
+  }
+
   if (event.type === "debug") {
     callbacks.onDebug?.(event);
   }
