@@ -440,6 +440,59 @@ const clientItems = ctx.session.items.client();
 const llmMessages = await ctx.session.items.llm({ limit: { tokens: 20_000 } });
 ```
 
+**Metadata** — first-class `title`, `description`, and `tags` fields that live outside workflow state:
+
+```ts
+// Read — zero-cost, backed by the in-memory session record
+const { title, description, tags } = ctx.session.metadata;
+
+// Write — persists and emits a session.metadata.changed SSE event
+await ctx.session.setMetadata({
+  title: "Sprint planning",
+  description: "Q2 kickoff",
+  tags: ["planning"],
+  metadata: { customKey: "value" },  // free-form bag, merged with existing
+});
+```
+
+`ctx.session.metadata` reflects any `setMetadata` calls made earlier in the same request. The free-form `metadata` bag is write-only on the read property — use it via `setMetadata` for ad-hoc key-value storage.
+
+Metadata can also be set at session creation time:
+
+```ts
+const session = await sessionClient.createSession({
+  flowKind: "my-flow",
+  userId: "user_1",
+  title: "Planning session",
+  tags: ["planning", "sprint-12"],
+});
+```
+
+Or patched externally via the REST API:
+
+```
+PATCH /api/flows/sessions/:sessionId/metadata
+{ "title": "New title", "tags": ["tag-a"] }
+```
+
+**Auto-generating titles** — `sessionTitleGenerator` is a built-in utility block that generates a session title from recent conversation messages. It is designed for use as a `.work()` background block so it runs after the main generator without blocking the response:
+
+```ts
+import { utility } from "@flow-state-dev/core";
+
+const autoTitle = utility.sessionTitleGenerator({
+  name: "auto-title",
+  model: "openai/gpt-5.4-mini",
+  messageLimit: 4,   // how many recent messages to read (default: 4)
+});
+
+const pipeline = sequencer({ name: "chat", inputSchema })
+  .then(mainGenerator)
+  .work(autoTitle);
+```
+
+Internally it's a sequencer: a generator produces the title candidate, then a handler calls `setMetadata` only if the title changed. The whole block is `transient: true`, so it produces no visible items in the stream.
+
 **Journal** — an append-only log for session-level notes and events:
 
 ```ts
@@ -865,6 +918,7 @@ Not all scopes are equal in what they offer:
 | Resources | — | Yes | Yes | Optional | — |
 | Items (conversation history) | — | Yes | — | — | — |
 | Journal (append-only log) | — | Yes | — | — | — |
+| Metadata (title, description, tags) | — | Yes | — | — | — |
 | Identity | Yes | Yes | Yes | Yes | — |
 | Persisted | Yes | Yes | Yes | Yes | No |
 

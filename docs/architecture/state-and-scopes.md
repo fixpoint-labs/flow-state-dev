@@ -87,10 +87,12 @@ ctx.request.patchState()   // + all ScopeStateOps
 
 // Session scope (always available in Phase 1)
 ctx.session.state          // Readonly<TSessionState>
+ctx.session.metadata       // Readonly<SessionMetadata> (title, description, tags)
 ctx.session.resources      // ResourceRegistry
 ctx.session.items          // SessionItemViews (client/llm views)
 ctx.session.appendJournal()
 ctx.session.getJournal()
+ctx.session.setMetadata()
 
 // User scope (always available in Phase 1)
 ctx.user.state             // Readonly<TUserState>
@@ -167,6 +169,16 @@ const session = await sessionClient.createSession({
 });
 ```
 
+### Reading metadata from a block
+
+```ts
+const { title, description, tags } = ctx.session.metadata;
+```
+
+`ctx.session.metadata` is a live getter backed by the in-memory session record — no database round-trip. It reflects any `setMetadata` calls made earlier in the same request.
+
+`SessionMetadata` exposes the three first-class fields (`title`, `description`, `tags`). The free-form `metadata` bag is write-only via `setMetadata` and is not exposed on the read property to avoid `ctx.session.metadata.metadata` confusion.
+
 ### Updating metadata from a block
 
 ```ts
@@ -174,7 +186,7 @@ await ctx.session.setMetadata({
   title: "Updated title",
   description: "New description",
   tags: ["updated"],
-  metadata: { custom: "value" }   // merges with existing metadata
+  metadata: { custom: "value" }   // merges with existing metadata bag
 });
 ```
 
@@ -208,7 +220,9 @@ const pipeline = sequencer({ name: "chat", inputSchema })
   .work(autoTitle);     // runs in background, sets session title
 ```
 
-The block is a passthrough handler — it returns its input unchanged and can be placed at any point in a pipeline without affecting downstream steps.
+Internally it is a sequencer with two steps: a generator that produces the title, and a handler that calls `setMetadata` only if the title has changed. The whole block is marked `transient: true` so it produces no visible items in the stream.
+
+`ctx.session.items.llm()` includes items from the current in-flight request, so the title generator sees the just-completed generator output even on the first message of a session.
 
 ## Persistence Adapters
 
