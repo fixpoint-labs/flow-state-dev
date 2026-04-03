@@ -12,6 +12,7 @@ export type ParsedFlowRoute =
   | { kind: "get_session_state"; sessionId: string }
   | { kind: "create_session"; flowKind: string }
   | { kind: "delete_session"; sessionId: string }
+  | { kind: "patch_session_metadata"; sessionId: string }
   | { kind: "user_stream"; userId: string }
   | { kind: "transcribe" }
   | { kind: "retry_request"; flowKind: string; sessionId: string; requestId: string }
@@ -76,6 +77,19 @@ export function parseFlowRoute(
   ) {
     return {
       kind: "delete_session",
+      sessionId: segments[1]
+    };
+  }
+
+  // PATCH /api/flows/sessions/:sessionId/metadata
+  if (
+    normalizedMethod === "PATCH" &&
+    segments.length === 3 &&
+    segments[0] === "sessions" &&
+    segments[2] === "metadata"
+  ) {
+    return {
+      kind: "patch_session_metadata",
       sessionId: segments[1]
     };
   }

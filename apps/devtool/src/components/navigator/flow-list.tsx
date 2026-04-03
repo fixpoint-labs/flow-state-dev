@@ -4,7 +4,7 @@ import { FlowItem } from "./flow-item";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorAlert } from "@/components/shared/error-alert";
 
-export function FlowList() {
+export function FlowList({ sessionRefreshKey }: { sessionRefreshKey?: number }) {
   const { flows, flowsLoading: isLoading, flowsError: error, refreshFlows: refresh, activeFlowKind, setActiveFlow } = useDevTool();
 
   if (error) {
@@ -38,6 +38,7 @@ export function FlowList() {
           flow={flow}
           isActive={activeFlowKind === flow.kind}
           onSelect={() => setActiveFlow(activeFlowKind === flow.kind ? null : flow.kind)}
+          sessionRefreshKey={sessionRefreshKey}
         />
       ))}
     </div>

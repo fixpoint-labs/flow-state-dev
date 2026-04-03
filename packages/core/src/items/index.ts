@@ -49,6 +49,7 @@ export type {
   RequestStatus,
   RequestStatusEvent,
   ScopeStateChangedEvent,
+  SessionMetadataChangedEvent,
   ResourceChangedEvent,
   StreamEvent,
   UserDebugEvent,

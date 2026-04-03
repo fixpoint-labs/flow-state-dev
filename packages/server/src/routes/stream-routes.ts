@@ -56,10 +56,15 @@ export async function handleRequestStream(
     });
   }
 
+  const session =
+    requestRecord.sessionId !== undefined
+      ? await ctx.stores.session.get(requestRecord.sessionId)
+      : undefined;
+
   const url = new URL(request.url);
   const replay = replayRequestEvents({
     requestId: route.requestId,
-    events: buildReplayEvents(requestRecord),
+    events: buildReplayEvents(requestRecord, session),
     lastEventId: request.headers.get("last-event-id"),
     startingAfter: url.searchParams.get("starting_after")
   });

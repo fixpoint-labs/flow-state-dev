@@ -87,10 +87,12 @@ ctx.request.patchState()   // + all ScopeStateOps
 
 // Session scope (always available in Phase 1)
 ctx.session.state          // Readonly<TSessionState>
+ctx.session.metadata       // Readonly<SessionMetadata> (title, description, tags)
 ctx.session.resources      // ResourceRegistry
 ctx.session.items          // SessionItemViews (client/llm views)
 ctx.session.appendJournal()
 ctx.session.getJournal()
+ctx.session.setMetadata()
 
 // User scope (always available in Phase 1)
 ctx.user.state             // Readonly<TUserState>
@@ -149,6 +151,78 @@ await ctx.session.appendJournal({
 
 const entries = await ctx.session.getJournal({ limit: 10 });
 ```
+
+## Session Metadata
+
+Sessions carry first-class `title`, `description`, and `tags` fields alongside the free-form `metadata` bag. These fields are mutable after creation, enabling richer session management UIs without polluting workflow state.
+
+### Creating sessions with metadata
+
+```ts
+// Via the client
+const session = await sessionClient.createSession({
+  flowKind: "my-flow",
+  userId: "user_1",
+  title: "Planning session",
+  description: "Sprint 12 work breakdown",
+  tags: ["planning", "sprint-12"]
+});
+```
+
+### Reading metadata from a block
+
+```ts
+const { title, description, tags } = ctx.session.metadata;
+```
+
+`ctx.session.metadata` is a live getter backed by the in-memory session record — no database round-trip. It reflects any `setMetadata` calls made earlier in the same request.
+
+`SessionMetadata` exposes the three first-class fields (`title`, `description`, `tags`). The free-form `metadata` bag is write-only via `setMetadata` and is not exposed on the read property to avoid `ctx.session.metadata.metadata` confusion.
+
+### Updating metadata from a block
+
+```ts
+await ctx.session.setMetadata({
+  title: "Updated title",
+  description: "New description",
+  tags: ["updated"],
+  metadata: { custom: "value" }   // merges with existing metadata bag
+});
+```
+
+`setMetadata` persists the changes to the session store and emits a `session.metadata.changed` event on the request SSE stream. Connected clients see updates in real-time.
+
+### Updating metadata externally
+
+```
+PATCH /api/flows/sessions/:sessionId/metadata
+Content-Type: application/json
+
+{ "title": "New title", "tags": ["tag-a", "tag-b"] }
+```
+
+Fields are merged (last-write-wins). Only the fields you include in the body are updated.
+
+### Auto-generating session titles
+
+The `sessionTitleGenerator` utility block reads recent conversation messages and asks the LLM for a short title. It is designed for use as a `.work()` background block:
+
+```ts
+import { utility, sequencer } from "@flow-state-dev/core";
+
+const autoTitle = utility.sessionTitleGenerator({
+  name: "auto-title",
+  model: "openai/gpt-5.4-mini"
+});
+
+const pipeline = sequencer({ name: "chat", inputSchema })
+  .then(mainGenerator)
+  .work(autoTitle);     // runs in background, sets session title
+```
+
+Internally it is a sequencer with two steps: a generator that produces the title, and a handler that calls `setMetadata` only if the title has changed. The whole block is marked `transient: true` so it produces no visible items in the stream.
+
+`ctx.session.items.llm()` includes items from the current in-flight request, so the title generator sees the just-completed generator output even on the first message of a session.
 
 ## Persistence Adapters
 
