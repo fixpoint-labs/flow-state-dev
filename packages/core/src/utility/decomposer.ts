@@ -1,5 +1,5 @@
 import { z, type ZodTypeAny } from "zod";
-import type { GeneratorConfig } from "../blocks";
+import type { GeneratorConfig, GeneratorSlot } from "../blocks";
 import { generator } from "../blocks";
 
 export const decomposerTaskSchema = z.object({
@@ -19,6 +19,8 @@ export interface DecomposerConfig<
   name: string;
   model?: GeneratorConfig["model"];
   outputSchema?: TOutputSchema;
+  /** Additional context injected into the system prompt before decomposition. */
+  context?: GeneratorSlot;
 }
 
 function toUserContent(input: unknown): string {
@@ -39,8 +41,9 @@ export function decomposer<
 
   return generator({
     name: config.name,
-    model: config.model ?? "gpt-5-mini",
+    model: config.model ?? "openai/gpt-5.4-mini",
     outputSchema,
+    context: config.context,
     prompt: [
       "You are a task decomposition assistant.",
       "Break broad requests into executable tasks.",

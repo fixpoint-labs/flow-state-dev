@@ -1,15 +1,20 @@
 /**
  * Plan Demo — kitchen-sink plan mode
  *
- * Pipeline: planner → [step executor × N] → synthesizer
+ * Pipeline: planner sequencer → [step executor × N] → synthesizer
  *
- * Each step runs silently and stores its finding as task.result.summary.
- * The <Plan /> card shows per-task summaries as steps complete.
- * After all steps, the built-in synthesizer integrates findings into a final answer.
+ * The planner is its own sequencer so memory context flows into decomposition
+ * and memory capture runs after planning — not after each worker step.
+ * Workers execute in isolation; only the planning stage is memory-aware.
+ *
+ * Each step stores its finding as task.result.summary. The <Plan /> card
+ * shows per-task summaries as steps complete. After all steps, the built-in
+ * synthesizer integrates findings into a final answer.
  */
-import { generator, utility } from "@flow-state-dev/core";
+import { generator, sequencer, utility } from "@flow-state-dev/core";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
+import { planAndExecute, planAndExecuteInputSchema } from "@flow-state-dev/patterns/plan-and-execute";
 
 export const planDemoInputSchema = z.object({
   goal: z.string().min(1).describe("The goal to plan and execute"),
@@ -20,8 +25,9 @@ const MODEL = "openai/gpt-5.4-mini";
 // ---------------------------------------------------------------------------
 // Step executor
 // ---------------------------------------------------------------------------
-// Returns { summary, success, reason? } — the evaluator reads the success
-// signal to determine if the task produced meaningful output.
+// Returns { summary, success, reason?, sources? } — the evaluator reads the
+// success signal to determine if the task produced meaningful output.
+// Sources from web search are preserved in task.result for the synthesizer.
 
 const stepExecutor = generator({
   name: "plan-demo-step-executor",
@@ -70,13 +76,36 @@ const stepExecutor = generator({
 });
 
 // ---------------------------------------------------------------------------
-// Plan block
+// Factory
 // ---------------------------------------------------------------------------
+// Takes the flow's memory system so the planner sequencer can inject memory
+// context into decomposition and capture the planning conversation afterward.
+// Worker steps are intentionally excluded from memory tracking.
 
-export const planDemo = planAndExecute({
-  name: "plan-demo",
-  enableReplanning: false,
-  planner: utility.decomposer({ name: "plan-demo-planner", model: MODEL }),
-  stepExecutor,
-  maxIterations: 3
-});
+export interface PlanDemoMemory {
+  contextFormatter: BlockDefinition<any, any> | ((input: unknown, ctx: any) => string | undefined | Promise<string | undefined>);
+  captureFromItems: BlockDefinition<any, any>;
+}
+
+export function createPlanDemo(mem: PlanDemoMemory) {
+  // Planner is its own sequencer: decompose with memory context, then
+  // capture the planning exchange as a memory. Workers run outside this
+  // sequencer so they are not analyzed.
+  const planner = sequencer({
+    name: "plan-demo-planner",
+    inputSchema: planAndExecuteInputSchema,
+  })
+    .then(utility.decomposer({
+      name: "plan-demo-decomposer",
+      model: MODEL,
+      context: [mem.contextFormatter as any],
+    }))
+    .work(mem.captureFromItems);
+
+  return planAndExecute({
+    name: "plan-demo",
+    enableReplanning: true,
+    planner,
+    stepExecutor
+  });
+}

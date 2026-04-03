@@ -47,7 +47,7 @@ import {
   updateArtifactInputSchema,
   eventQueueDemo,
   eventQueueDemoInputSchema,
-  planDemo,
+  createPlanDemo,
 } from "./blocks";
 import {
   modeSchema,
@@ -67,6 +67,7 @@ const mem = memorySystem({
   semantic: true,
 });
 
+const planDemo = createPlanDemo(mem);
 
 // ---------------------------------------------------------------------------
 // Flow-level schemas
