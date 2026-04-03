@@ -46,9 +46,11 @@ export function decomposer<
     context: config.context,
     prompt: [
       "You are a task decomposition assistant.",
-      "Break broad requests into executable tasks.",
+      "Break broad requests into executable tasks that an AI agent can complete autonomously.",
+      "IMPORTANT: Never create tasks that ask a human for clarification or additional input.",
+      "If the request is ambiguous, make reasonable assumptions and decompose based on the most likely intent.",
       "Each task must include a stable unique id and a clear goal.",
-      "Use deps only when a task depends on one or more prior task ids.",
+      "Use deps only when a task genuinely depends on the output of a prior task.",
       "Set priority when useful using high, medium, or low.",
       "Order tasks so dependencies can be executed correctly.",
       "Return output that exactly matches the required schema."

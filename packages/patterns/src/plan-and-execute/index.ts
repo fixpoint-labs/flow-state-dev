@@ -224,11 +224,25 @@ function createDefaultSynthesizer(config: {
       "Write a clear, direct final answer to the original goal.",
       "Integrate the findings into a coherent narrative — do not just summarize each step.",
       "Be specific and draw on the concrete facts gathered.",
+      "If no findings are available, briefly explain that the research could not be completed and why, without asking the user for more information.",
     ].join("\n"),
     user: (input: {
       goal: string;
-      tasks: Array<{ goal: string; status: string; result: unknown }>;
+      completedSteps: number;
+      tasks: Array<{ goal: string; status: string; result: unknown; error?: string }>;
     }) => {
+      if (input.completedSteps === 0) {
+        const failed = input.tasks.filter((t) => t.status === "failed");
+        const firstError = failed[0]?.error ?? "unknown error";
+        return [
+          `Goal: ${input.goal}`,
+          ``,
+          `No research tasks completed. The plan encountered an error on the first task: ${firstError}`,
+          `Downstream tasks were skipped as a result.`,
+          `Acknowledge that you were unable to gather findings for this goal and briefly explain why based on the error above.`,
+        ].join("\n");
+      }
+
       const allSources: Array<{ title?: string; url: string }> = [];
 
       const findings = input.tasks
