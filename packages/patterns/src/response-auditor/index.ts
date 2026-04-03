@@ -5,7 +5,7 @@
  * any generator via `.work()`, runs pluggable analyzers against the completed
  * response + original input, and produces structured annotations.
  *
- * Pipeline: [captureContext] → [runAnalyzers (forEach)] → [aggregateResults] → [applyThreshold]
+ * Pipeline: [captureContext] → [map to tasks] → [forEach analyzer] → [aggregateResults] → [applyThreshold]
  *
  * Because it runs via `.work()`, the primary response streams unblocked. Audit
  * results appear after the response completes as a "second pass" annotation.
@@ -17,7 +17,6 @@ import {
   AnalyzerResultSchema,
   auditorInputSchema,
   responseAuditorStateSchema,
-  type AnalyzerResult,
   type ResponseAuditorConfig,
 } from "./schemas";
 
@@ -45,12 +44,10 @@ export type {
  * Extracts userInput and response from the `.work()` input.
  *
  * When the auditor is composed via `.work()`, it receives the preceding step's
- * output. For typical chat pipelines that's the generator output. The auditor
- * expects `{ userInput, response }` — the connector on `.work()` should map
- * the pipeline value to this shape, or the block upstream should produce it.
+ * output. The auditor expects `{ userInput, response }` — the connector on
+ * `.work()` should map the pipeline value to this shape.
  *
- * This block stores the captured context in sequencer state for downstream
- * blocks and passes it through.
+ * Stores the captured context in sequencer state for downstream blocks.
  */
 export const captureContext = handler({
   name: "capture-context",
@@ -65,74 +62,6 @@ export const captureContext = handler({
     return input;
   },
 });
-
-/**
- * Fan-out block that runs all configured analyzers in parallel.
- *
- * This is created dynamically by the factory because it needs to reference the
- * analyzer blocks from config. Each analyzer receives `{ userInput, response }`
- * and should return an `AnalyzerResult`.
- */
-function createRunAnalyzers(
-  analyzers: BlockDefinition<any, any>[],
-  maxConcurrency?: number,
-) {
-  // Wrap each analyzer in an error-safe runner so one failure doesn't abort the fan-out
-  const safeAnalyzer = handler({
-    name: "analyzer-runner",
-    inputSchema: z.object({
-      analyzerIndex: z.number(),
-      userInput: z.string(),
-      response: z.string(),
-    }),
-    outputSchema: AnalyzerResultSchema.nullable(),
-    execute: async (input, ctx) => {
-      const analyzer = analyzers[input.analyzerIndex];
-      if (!analyzer) return null;
-      try {
-        const result = await analyzer.run(
-          { userInput: input.userInput, response: input.response },
-          ctx,
-        );
-        return AnalyzerResultSchema.parse(result);
-      } catch {
-        return null;
-      }
-    },
-  });
-
-  return handler({
-    name: "run-analyzers",
-    inputSchema: auditorInputSchema,
-    outputSchema: z.array(AnalyzerResultSchema),
-    sequencerStateSchema: responseAuditorStateSchema,
-    execute: async (input, ctx) => {
-      // Build tasks for parallel execution
-      const tasks = analyzers.map((_, i) => ({
-        analyzerIndex: i,
-        userInput: input.userInput,
-        response: input.response,
-      }));
-
-      // Run in parallel with optional concurrency limit
-      const concurrency = maxConcurrency ?? tasks.length;
-      const results: AnalyzerResult[] = [];
-
-      for (let i = 0; i < tasks.length; i += concurrency) {
-        const batch = tasks.slice(i, i + concurrency);
-        const batchResults = await Promise.all(
-          batch.map((task) => safeAnalyzer.run(task, ctx)),
-        );
-        for (const r of batchResults) {
-          if (r != null) results.push(r);
-        }
-      }
-
-      await ctx.sequencer!.patchState({ results });
-      return results;
-    },
-  });
-}
 
 /**
  * Collects analyzer results and computes an overall score (average of all
@@ -152,7 +81,7 @@ export const aggregateResults = handler({
         ? results.reduce((sum, r) => sum + r.score, 0) / results.length
         : 0;
 
-    await ctx.sequencer!.patchState({ overallScore });
+    await ctx.sequencer!.patchState({ results, overallScore });
 
     return { results, overallScore };
   },
@@ -192,12 +121,24 @@ function createApplyThreshold(threshold: number) {
 }
 
 // ---------------------------------------------------------------------------
-// Re-export standalone block references for remixability.
-// `runAnalyzers` and `applyThreshold` are created dynamically by the factory,
-// so we export the static blocks and the factory helpers.
+// Rescue fallback for analyzer errors
 // ---------------------------------------------------------------------------
 
-export { createRunAnalyzers as runAnalyzers };
+/**
+ * Fallback block used by `.rescue()` — returns null when an analyzer fails,
+ * so the forEach result can be filtered downstream.
+ */
+const analyzerErrorFallback = handler({
+  name: "analyzer-error-fallback",
+  inputSchema: z.any(),
+  outputSchema: z.null(),
+  execute: () => null,
+});
+
+// ---------------------------------------------------------------------------
+// Exported factory helpers for remixability
+// ---------------------------------------------------------------------------
+
 export { createApplyThreshold as applyThreshold };
 
 // ---------------------------------------------------------------------------
@@ -224,8 +165,31 @@ export { createApplyThreshold as applyThreshold };
  */
 export function responseAuditor(config: ResponseAuditorConfig) {
   const threshold = config.threshold ?? 0.3;
-  const runBlock = createRunAnalyzers(config.analyzers, config.maxConcurrency);
+  const analyzers = config.analyzers;
   const thresholdBlock = createApplyThreshold(threshold);
+
+  // Each analyzer is wrapped in a mini-sequencer with .rescue() so that
+  // individual failures are caught at the framework level rather than
+  // via manual try/catch. Failed analyzers produce null, filtered out
+  // after the forEach.
+  function createSafeAnalyzer(analyzer: BlockDefinition<any, any>) {
+    return sequencer({
+      name: `safe-${analyzer.name}`,
+      inputSchema: auditorInputSchema,
+    })
+      .then(analyzer)
+      .rescue([{ block: analyzerErrorFallback }]);
+  }
+
+  // Build the pipeline using the sequencer DSL:
+  // 1. captureContext stores input in state
+  // 2. map creates an array of identical inputs (one per analyzer) for forEach
+  // 3. forEach fans out to analyzers using a factory function that selects
+  //    the correct safe-wrapped analyzer per index
+  // 4. map filters out nulls from failed analyzers
+  // 5. aggregateResults computes overall score
+  // 6. applyThreshold filters to surfaced results
+  const safeAnalyzers = analyzers.map(createSafeAnalyzer);
 
   return sequencer({
     name: "response-auditor",
@@ -233,7 +197,15 @@ export function responseAuditor(config: ResponseAuditorConfig) {
     stateSchema: responseAuditorStateSchema,
   })
     .then(captureContext)
-    .then(runBlock)
+    .map((input: { userInput: string; response: string }) =>
+      analyzers.map(() => ({ userInput: input.userInput, response: input.response })),
+    )
+    .forEach(
+      (_item: { userInput: string; response: string }, index: number) =>
+        safeAnalyzers[index],
+      { maxConcurrency: config.maxConcurrency },
+    )
+    .map((results: unknown[]) => results.filter(Boolean))
     .then(aggregateResults)
     .then(thresholdBlock);
 }
