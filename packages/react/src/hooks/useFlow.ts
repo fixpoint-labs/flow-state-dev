@@ -38,6 +38,8 @@ export type UseFlowResult = {
     metadata?: Record<string, unknown>
   ) => Promise<SessionDetail>;
   selectSession: (sessionId: string) => void;
+  /** Re-fetch the session list (e.g. after metadata changes). */
+  refreshSessions: () => Promise<void>;
 };
 
 /**
@@ -115,6 +117,12 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
   const selectSession = useCallback((sessionId: string) => {
     setActiveSessionId(sessionId);
   }, []);
+
+  const refreshSessions = useCallback(async () => {
+    if (!flowKind?.trim()) return;
+    const updated = await sessionClient.listSessions({ flowKind, userId });
+    setSessions(updated);
+  }, [flowKind, userId, sessionClient]);
 
   useEffect(() => {
     let cancelled = false;
@@ -204,6 +212,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
     isLoading,
     createSession,
     ensureSession,
-    selectSession
+    selectSession,
+    refreshSessions
   };
 }

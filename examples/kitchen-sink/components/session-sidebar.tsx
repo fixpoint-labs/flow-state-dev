@@ -51,8 +51,8 @@ export function SessionSidebar({
               )}
             >
               <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="truncate">
-                Session {session.id.slice(0, 8)}
+              <span className={cn("truncate", session.title ? "" : "font-mono text-muted-foreground")}>
+                {session.title ?? `Session ${session.id.slice(0, 8)}`}
               </span>
             </button>
           ))}

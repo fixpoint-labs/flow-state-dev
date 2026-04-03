@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   FlowProvider,
   ItemsRenderer,
@@ -86,6 +86,18 @@ function KitchenSinkApp() {
     buildInput: (text) => ({ message: text, mode }),
     autoPlayTTS: ttsEnabled,
   });
+
+  // Refresh session list when the active session's title changes (e.g. from auto-title).
+  const prevTitleRef = useRef(session.detail?.title);
+  useEffect(() => {
+    const currentTitle = session.detail?.title;
+    if (currentTitle !== prevTitleRef.current) {
+      prevTitleRef.current = currentTitle;
+      if (currentTitle !== undefined) {
+        void flow.refreshSessions();
+      }
+    }
+  }, [session.detail?.title, flow]);
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
 
