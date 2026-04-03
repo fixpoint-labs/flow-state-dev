@@ -9,6 +9,7 @@ type SessionRowProps = {
 
 export function SessionRow({ session, isActive, onSelect }: SessionRowProps) {
   const truncatedId = session.id.length > 12 ? session.id.slice(0, 12) + "..." : session.id;
+  const label = session.title ?? truncatedId;
   const created = new Date(session.createdAt).toLocaleTimeString();
 
   return (
@@ -18,8 +19,9 @@ export function SessionRow({ session, isActive, onSelect }: SessionRowProps) {
         isActive ? "bg-slate-800 text-slate-200" : "text-slate-400 hover:bg-slate-800/40",
       )}
       onClick={onSelect}
+      title={session.title ? `${session.title}\n${session.id}` : session.id}
     >
-      <span className="font-mono truncate flex-1">{truncatedId}</span>
+      <span className={cn("truncate flex-1", session.title ? "" : "font-mono")}>{label}</span>
       <span className="text-[10px] text-slate-600 shrink-0">{created}</span>
     </button>
   );

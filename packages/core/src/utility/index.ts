@@ -97,3 +97,11 @@ export type {
   IntentRouterCategory,
   IntentRouterConfig
 } from "./intent-router";
+
+export {
+  sessionTitleGenerator
+} from "./session-title-generator";
+
+export type {
+  SessionTitleGeneratorConfig
+} from "./session-title-generator";
