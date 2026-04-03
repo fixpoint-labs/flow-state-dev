@@ -4,6 +4,7 @@ import { Reasoning } from "./reasoning";
 import { Tool } from "./tool";
 import { Status } from "./status";
 import { ErrorDisplay } from "./error";
+import { Plan } from "./plan";
 
 /**
  * Pre-wired renderer registry for standard chat assistant UIs.
@@ -21,4 +22,5 @@ export const chatAssistantRenderers: RendererRegistry = {
   error: ErrorDisplay,
   step_error: ErrorDisplay,
   source: false,
+  component: { plan: Plan },
 };

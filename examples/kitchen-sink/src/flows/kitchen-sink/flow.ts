@@ -48,7 +48,6 @@ import {
   eventQueueDemo,
   eventQueueDemoInputSchema,
   planDemo,
-  planDemoInputSchema,
 } from "./blocks";
 import {
   modeSchema,
@@ -281,15 +280,11 @@ const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema })
 
 const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
   .then(applyRequestedMode)
-  .then(analyzeInput)
-  .map((result) => ({
-    ...result,
-    instructions: "Create a step-by-step plan."
-  }))
-  .then(agentGenerator)
+  .map((input) => ({ goal: input.message }))
+  .then(planDemo)
   .work(mem.captureFromItems)
-  .work(summarizeArtifacts)
   .work(autoTitle)
+  .map(() => "Plan complete.")
   .then(incrementRequestCount)
   .rescue([
     {
@@ -357,10 +352,6 @@ const kitchenSinkFlow = defineFlow({
     "event-queue": {
       inputSchema: eventQueueDemoInputSchema,
       block: eventQueueDemo
-    },
-    "plan-demo": {
-      inputSchema: planDemoInputSchema,
-      block: planDemo,
     },
   },
 

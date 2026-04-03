@@ -13,7 +13,7 @@
  * Register with planResources in the flow's session resources:
  *   session: { resources: { ...artifactResources, ...planResources } }
  */
-import { handler, generator } from "@flow-state-dev/core";
+import { generator, utility } from "@flow-state-dev/core";
 import { z } from "zod";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 
@@ -28,7 +28,7 @@ const MODEL = "openai/gpt-5.4-mini";
 // ---------------------------------------------------------------------------
 // Receives { planId, stepId, goal } and generates a brief result for the task.
 
-const stepExecutorGenerator = generator({
+const stepExecutor = generator({
   name: "plan-demo-step-executor",
   model: MODEL,
   inputSchema: z.object({
@@ -48,22 +48,6 @@ const stepExecutorGenerator = generator({
   emit: { messages: false },
 });
 
-// Wraps the generator so each completed step emits a brief message inline.
-const stepExecutor = handler({
-  name: "plan-demo-step",
-  inputSchema: z.object({
-    planId: z.string(),
-    stepId: z.string(),
-    goal: z.string(),
-  }),
-  outputSchema: z.object({ summary: z.string() }),
-  execute: async (input, ctx) => {
-    const result = await stepExecutorGenerator.run(input, ctx as any) as { summary: string };
-    ctx.emitMessage(`**${input.goal}**\n\n${result.summary}`);
-    return result;
-  },
-});
-
 // ---------------------------------------------------------------------------
 // Plan demo block
 // ---------------------------------------------------------------------------
@@ -72,5 +56,6 @@ export const planDemo = planAndExecute({
   name: "plan-demo",
   planId: "demo",
   enableReplanning: false,
+  planner: utility.decomposer({ name: "plan-demo-planner", model: MODEL }),
   stepExecutor,
 });
