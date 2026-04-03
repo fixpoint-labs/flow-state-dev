@@ -5,7 +5,7 @@
  *
  * Each step runs silently and stores its finding as task.result.summary.
  * The <Plan /> card shows per-task summaries as steps complete.
- * After all steps, a synthesizer integrates the findings into a final answer.
+ * After all steps, the built-in synthesizer integrates findings into a final answer.
  */
 import { generator, utility } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -20,18 +20,25 @@ const MODEL = "openai/gpt-5.4-mini";
 // ---------------------------------------------------------------------------
 // Step executor
 // ---------------------------------------------------------------------------
-// Runs silently. Result (task.result.summary) is displayed inside the <Plan />
-// card as each task completes — no separate chat messages emitted.
+// Returns { summary, success, reason? } — the evaluator reads the success
+// signal to determine if the task produced meaningful output.
 
 const stepExecutor = generator({
   name: "plan-demo-step-executor",
   model: MODEL,
-  inputSchema: z.object({ planId: z.string(), stepId: z.string(), goal: z.string() }),
-  outputSchema: z.object({ summary: z.string() }),
+  inputSchema: z.object({ stepId: z.string(), goal: z.string() }),
+  outputSchema: z.object({
+    summary: z.string(),
+    success: z.boolean(),
+    reason: z.string().optional(),
+  }),
   prompt: [
     "You are a focused research executor.",
     "Given a specific task, produce a substantive finding in 2-4 sentences with specific facts or insights.",
-    "Return a JSON object with a 'summary' field.",
+    "Return a JSON object with:",
+    "- summary: your substantive finding",
+    "- success: true if you found meaningful information, false if the information was unavailable or missing",
+    "- reason: (only if success is false) a brief explanation of why the task could not be completed",
   ].join("\n"),
   user: (input) => `Task: ${input.goal}`,
   emit: { messages: false },
@@ -43,9 +50,8 @@ const stepExecutor = generator({
 
 export const planDemo = planAndExecute({
   name: "plan-demo",
-  planId: "demo",
   enableReplanning: false,
   planner: utility.decomposer({ name: "plan-demo-planner", model: MODEL }),
   stepExecutor,
+  maxIterations: 3
 });
-

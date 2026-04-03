@@ -53,7 +53,6 @@ import {
   modeSchema,
   artifactResources,
 } from "./schemas";
-import { planResources } from "@flow-state-dev/patterns/plan-and-execute";
 
 const MODEL_ID = "openai/gpt-5.4-mini";
 
@@ -363,7 +362,6 @@ const kitchenSinkFlow = defineFlow({
     // be independently writable.
     resources: {
       ...artifactResources,
-      ...planResources,
     },
 
     // clientData entries are derived values computed from scope state and

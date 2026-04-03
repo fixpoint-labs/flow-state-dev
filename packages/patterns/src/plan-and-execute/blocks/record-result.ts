@@ -1,62 +1,48 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { planResources, type PlanTask } from "../schemas";
+import { planAndExecuteStateSchema, type PlanTask } from "../schemas";
 import { emitPlanSnapshot } from "../../shared/plan";
 
 const inputSchema = z.object({
-  planId: z.string(),
   stepId: z.string(),
   stepResult: z.any().optional(),
   stepError: z.string().optional(),
 });
 
 const outputSchema = z.object({
-  planId: z.string(),
   stepResult: z.any().optional(),
 });
 
 /**
- * Writes the task execution result back to the plan resource.
- * Marks the task as completed or failed.
+ * Writes the task execution result back to sequencer state.
+ * Marks the task as completed or failed, then emits a plan snapshot.
  */
 export function createRecordResult(config: { name: string }) {
   return handler({
     name: `${config.name}-record-result`,
     inputSchema,
     outputSchema,
-    sessionResources: planResources,
+    sequencerStateSchema: planAndExecuteStateSchema,
 
     execute: async (input, ctx) => {
-      const planRef = ctx.session.resources.plans.get({ planId: input.planId });
-      const plan = planRef.state;
-
+      const state = ctx.sequencer!.state;
       const newStatus: PlanTask["status"] = input.stepError ? "failed" : "completed";
 
-      await planRef.patchState({
-        tasks: plan.tasks.map((s: PlanTask) =>
-          s.id === input.stepId
-            ? {
-                ...s,
-                status: newStatus,
-                result: input.stepResult,
-                error: input.stepError,
-              }
-            : s
-        ),
-      });
+      const updatedTasks = state.tasks.map((s: PlanTask) =>
+        s.id === input.stepId
+          ? { ...s, status: newStatus, result: input.stepResult, error: input.stepError }
+          : s
+      );
 
-      const updatedPlan = ctx.session.resources.plans.get({ planId: input.planId }).state;
-      emitPlanSnapshot(ctx, {
-        goal: updatedPlan.goal,
-        tasks: updatedPlan.tasks,
-        status: updatedPlan.status,
-        iteration: updatedPlan.iteration,
-      });
+      await ctx.sequencer!.patchState({ tasks: updatedTasks });
 
-      return {
-        planId: input.planId,
-        stepResult: input.stepResult,
-      };
+      emitPlanSnapshot(
+        ctx,
+        { goal: state.goal, tasks: updatedTasks, status: state.status, iteration: state.iteration },
+        { key: config.name }
+      );
+
+      return { stepResult: input.stepResult };
     },
   });
 }
