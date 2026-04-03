@@ -90,7 +90,6 @@ ctx.session.state          // Readonly<TSessionState>
 ctx.session.metadata       // Readonly<SessionMetadata> (title, description, tags)
 ctx.session.resources      // ResourceRegistry
 ctx.session.items          // SessionItemViews (client/llm views)
-ctx.session.appendJournal()
 ctx.session.getJournal()
 ctx.session.setMetadata()
 

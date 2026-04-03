@@ -17,6 +17,10 @@
       "types": "./dist/coordinator/index.d.ts",
       "default": "./dist/coordinator/index.js"
     },
+    "./plan-and-execute": {
+      "types": "./dist/plan-and-execute/index.d.ts",
+      "default": "./dist/plan-and-execute/index.js"
+    },
     "./supervisor": {
       "types": "./dist/supervisor/index.d.ts",
       "default": "./dist/supervisor/index.js"
