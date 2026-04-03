@@ -31,7 +31,7 @@ export function createInitPlan(config: {
         { planId: resolvedPlanId },
         {
           goal: input.goal,
-          steps: [],
+          tasks: [],
           status: "planning",
           currentStepIndex: 0,
           iteration: 0,

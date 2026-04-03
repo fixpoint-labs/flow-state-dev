@@ -21,10 +21,11 @@ import {
   planAndExecuteInputSchema,
   planResources,
   iterationOutputSchema,
-  type PlanStep,
+  type PlanTask,
 } from "./schemas";
 import { createInitPlan } from "./blocks/init-plan";
 import { createEvaluateProgress } from "./blocks/evaluate-progress";
+import { emitPlanSnapshot } from "../shared/plan";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -32,7 +33,8 @@ import { createEvaluateProgress } from "./blocks/evaluate-progress";
 
 export {
   PlanSchema,
-  PlanStepSchema,
+  PlanStepSchema,  // backward compat
+  PlanTaskSchema,  // new
   planCollection,
   planResources,
   planAndExecuteInputSchema,
@@ -41,7 +43,8 @@ export {
 
 export type {
   Plan,
-  PlanStep,
+  PlanStep,   // backward compat
+  PlanTask,   // new
   PlanAndExecuteInput,
   IterationOutput,
 } from "./schemas";
@@ -119,26 +122,26 @@ function createDefaultReplanner(config: {
     sessionResources: planResources,
     prompt: [
       "You are a plan replanner.",
-      "Given the current plan state with completed, failed, and pending steps,",
+      "Given the current plan state with completed, failed, and pending tasks,",
       "generate an updated list of remaining tasks to achieve the original goal.",
-      "Keep completed steps as-is. Replace or adjust pending/failed steps as needed.",
+      "Keep completed tasks as-is. Replace or adjust pending/failed tasks as needed.",
       "Each task must have a unique id and clear goal.",
-      "Only output the NEW tasks that should replace the current pending steps.",
+      "Only output the NEW tasks that should replace the current pending tasks.",
     ].join("\n"),
     user: (input: { planId: string }, ctx) => {
       const planRef = (ctx.session.resources as any).plans.get({ planId: input.planId });
       const plan = planRef.state;
       return JSON.stringify({
         goal: plan.goal,
-        completedSteps: plan.steps
-          .filter((s: PlanStep) => s.status === "completed")
-          .map((s: PlanStep) => ({ id: s.id, goal: s.goal, result: s.result })),
-        failedSteps: plan.steps
-          .filter((s: PlanStep) => s.status === "failed")
-          .map((s: PlanStep) => ({ id: s.id, goal: s.goal, error: s.error })),
-        pendingSteps: plan.steps
-          .filter((s: PlanStep) => s.status === "pending")
-          .map((s: PlanStep) => ({ id: s.id, goal: s.goal })),
+        completedTasks: plan.tasks
+          .filter((s: PlanTask) => s.status === "completed")
+          .map((s: PlanTask) => ({ id: s.id, goal: s.goal, result: s.result })),
+        failedTasks: plan.tasks
+          .filter((s: PlanTask) => s.status === "failed")
+          .map((s: PlanTask) => ({ id: s.id, goal: s.goal, error: s.error })),
+        pendingTasks: plan.tasks
+          .filter((s: PlanTask) => s.status === "pending")
+          .map((s: PlanTask) => ({ id: s.id, goal: s.goal })),
       }, null, 2);
     },
   });
@@ -146,7 +149,7 @@ function createDefaultReplanner(config: {
 
 /**
  * Handler that applies replanner output to the plan resource,
- * replacing pending steps with the new tasks.
+ * replacing pending tasks with the new tasks.
  */
 function createApplyReplan(config: { name: string }) {
   return handler({
@@ -167,12 +170,12 @@ function createApplyReplan(config: { name: string }) {
       const planRef = ctx.session.resources.plans.get({ planId });
       const plan = planRef.state;
 
-      // Keep completed/failed steps, replace pending with new tasks
-      const keptSteps = plan.steps.filter(
-        (s: PlanStep) => s.status === "completed" || s.status === "failed" || s.status === "skipped"
+      // Keep completed/failed tasks, replace pending with new tasks
+      const keptTasks = plan.tasks.filter(
+        (s: PlanTask) => s.status === "completed" || s.status === "failed" || s.status === "skipped"
       );
 
-      const newSteps = input.tasks.map((task) => ({
+      const newTasks = input.tasks.map((task) => ({
         id: task.id,
         goal: task.goal,
         status: "pending" as const,
@@ -180,7 +183,7 @@ function createApplyReplan(config: { name: string }) {
       }));
 
       await planRef.patchState({
-        steps: [...keptSteps, ...newSteps],
+        tasks: [...keptTasks, ...newTasks],
         status: "executing",
       });
 
@@ -202,7 +205,7 @@ function generatePlanId(): string {
 
 /**
  * Creates a plan-and-execute block — a sequencer that decomposes a goal into
- * steps, executes them iteratively, and optionally replans.
+ * tasks, executes them iteratively, and optionally replans.
  */
 export function planAndExecute<
   TOutputSchema extends ZodTypeAny = ZodTypeAny
@@ -231,7 +234,7 @@ export function planAndExecute<
   const replanner = config.replanner ?? createDefaultReplanner({ name });
   const applyReplan = createApplyReplan({ name });
 
-  // Handler that runs one iteration: select step, execute, record result.
+  // Handler that runs one iteration: select task, execute, record result.
   // Wrapping in a handler keeps planId and stepId in scope across the executor call.
   const executeOneStep = handler({
     name: `${name}-execute-step`,
@@ -249,30 +252,30 @@ export function planAndExecute<
       const plan = planRef.state;
 
       const completedIds = new Set(
-        plan.steps
-          .filter((s: PlanStep) => s.status === "completed" || s.status === "skipped")
-          .map((s: PlanStep) => s.id)
+        plan.tasks
+          .filter((s: PlanTask) => s.status === "completed" || s.status === "skipped")
+          .map((s: PlanTask) => s.id)
       );
 
-      // Find next pending step whose dependencies are all satisfied
-      const nextStep = plan.steps.find((s: PlanStep) => {
+      // Find next pending task whose dependencies are all satisfied
+      const nextStep = plan.tasks.find((s: PlanTask) => {
         if (s.status !== "pending") return false;
         return s.dependencies.every((dep: string) => completedIds.has(dep));
       });
 
       if (nextStep === undefined) {
-        // No eligible steps — skip execution
+        // No eligible tasks — skip execution
         return { planId: input.planId, stepResult: undefined };
       }
 
-      // Mark step as in_progress
+      // Mark task as in_progress
       await planRef.patchState({
-        steps: plan.steps.map((s: PlanStep) =>
+        tasks: plan.tasks.map((s: PlanTask) =>
           s.id === nextStep.id ? { ...s, status: "in_progress" as const } : s
         ),
       });
 
-      // Execute the step
+      // Execute the task
       let stepResult: unknown;
       let stepError: string | undefined;
       try {
@@ -285,15 +288,23 @@ export function planAndExecute<
       }
 
       // Record result
-      const newStatus: PlanStep["status"] = stepError ? "failed" : "completed";
+      const newStatus: PlanTask["status"] = stepError ? "failed" : "completed";
       // Re-read plan state to get latest (in case it was modified during execution)
       const currentPlan = ctx.session.resources.plans.get({ planId: input.planId }).state;
+      const updatedTasks = currentPlan.tasks.map((s: PlanTask) =>
+        s.id === nextStep.id
+          ? { ...s, status: newStatus, result: stepResult, error: stepError }
+          : s
+      );
       await ctx.session.resources.plans.get({ planId: input.planId }).patchState({
-        steps: currentPlan.steps.map((s: PlanStep) =>
-          s.id === nextStep.id
-            ? { ...s, status: newStatus, result: stepResult, error: stepError }
-            : s
-        ),
+        tasks: updatedTasks,
+      });
+
+      emitPlanSnapshot(ctx as any, {
+        goal: currentPlan.goal,
+        tasks: updatedTasks,
+        status: currentPlan.status,
+        iteration: currentPlan.iteration,
       });
 
       return { planId: input.planId, stepResult };
@@ -308,7 +319,7 @@ export function planAndExecute<
       decision: z.enum(["continue", "replan", "complete"]).optional(),
     }),
   })
-    // 1. Select and execute the next step, record result
+    // 1. Select and execute the next task, record result
     .then(executeOneStep)
     // 2. Evaluate progress
     .then(evaluator)
@@ -346,13 +357,21 @@ export function planAndExecute<
       // Save planner output to plan resource
       const planRef = ctx.session.resources.plans.get({ planId: input.planId });
       await planRef.patchState({
-        steps: plannerOutput.tasks.map((task) => ({
+        tasks: plannerOutput.tasks.map((task) => ({
           id: task.id,
           goal: task.goal,
           status: "pending" as const,
           dependencies: task.deps ?? [],
         })),
         status: "executing",
+      });
+
+      const savedPlan = ctx.session.resources.plans.get({ planId: input.planId }).state;
+      emitPlanSnapshot(ctx as any, {
+        goal: savedPlan.goal,
+        tasks: savedPlan.tasks,
+        status: "executing",
+        iteration: savedPlan.iteration,
       });
 
       return { planId: input.planId };
@@ -385,15 +404,15 @@ export function planAndExecute<
         planId: (result as any).planId,
         goal: plan.goal,
         status: plan.status,
-        steps: plan.steps.map((s: PlanStep) => ({
+        tasks: plan.tasks.map((s: PlanTask) => ({
           id: s.id,
           goal: s.goal,
           status: s.status,
           result: s.result,
           error: s.error,
         })),
-        completedSteps: plan.steps.filter((s: PlanStep) => s.status === "completed").length,
-        totalSteps: plan.steps.length,
+        completedSteps: plan.tasks.filter((s: PlanTask) => s.status === "completed").length,
+        totalSteps: plan.tasks.length,
       };
     });
 }

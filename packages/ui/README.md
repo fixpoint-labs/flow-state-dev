@@ -35,6 +35,7 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `sources` | Citation and source display with collapsible list |
 | `suggestion` | Horizontal scrollable suggestion pills |
 | `shimmer` | Animated text shimmer for streaming/loading states |
+| `plan` | Task list display for plan snapshots from planning patterns |
 
 ## Framework Integration
 
@@ -56,6 +57,29 @@ import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 ```
 
 Sources are excluded from the renderer map (`source: false`) — render them grouped separately via `<SourcesGroup>` to display as a collapsed list after the message thread.
+
+The `chatAssistantRenderers` includes `component: { plan: Plan }` by default, so plan snapshots emitted by `planAndExecute` and `supervisor` patterns render automatically. To disable or override:
+
+```tsx
+const renderers = {
+  ...chatAssistantRenderers,
+  component: { plan: false },   // suppress plan rendering
+};
+```
+
+### Plan Component
+
+The `plan` component renders `ComponentItem` snapshots emitted via `emitPlanSnapshot()`. It displays the plan goal, task list, and per-task status with icons:
+
+```tsx
+import { Plan } from "@/components/flow-state/plan";
+
+<FlowProvider renderers={{ component: { plan: Plan } }}>
+  {/* plan snapshots appear automatically in the item stream */}
+</FlowProvider>
+```
+
+Status icons: gray circle (pending), blue spinner (in\_progress), green check (completed), red X (failed), gray dash (skipped), orange triangle (needs-revision), purple arrow (escalated).
 
 ## Architecture
 

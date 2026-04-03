@@ -1,5 +1,5 @@
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
-import type { Plan, PlanStep } from "./schemas";
+import type { Plan, PlanTask } from "./schemas";
 
 type ClientDataContext = {
   state: Record<string, unknown>;
@@ -18,10 +18,10 @@ export function planListClientData(ctx: ClientDataContext) {
     planId: ref.name.replace("plans/", ""),
     goal: ref.state.goal,
     status: ref.state.status,
-    completedSteps: ref.state.steps.filter(
-      (s: PlanStep) => s.status === "completed"
+    completedSteps: ref.state.tasks.filter(
+      (s: PlanTask) => s.status === "completed"
     ).length,
-    totalSteps: ref.state.steps.length,
+    totalSteps: ref.state.tasks.length,
     iteration: ref.state.iteration,
   }));
 }
@@ -41,7 +41,7 @@ export function planDetailClientData(planId: string) {
     return {
       goal: planRef.state.goal,
       status: planRef.state.status,
-      steps: planRef.state.steps.map((s: PlanStep) => ({
+      tasks: planRef.state.tasks.map((s: PlanTask) => ({
         id: s.id,
         goal: s.goal,
         status: s.status,

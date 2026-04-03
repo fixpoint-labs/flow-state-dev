@@ -1,6 +1,7 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { planResources, type PlanStep } from "../schemas";
+import { planResources, type PlanTask } from "../schemas";
+import { emitPlanSnapshot } from "../../shared/plan";
 
 const inputSchema = z.object({
   planId: z.string(),
@@ -15,8 +16,8 @@ const outputSchema = z.object({
 });
 
 /**
- * Writes the step execution result back to the plan resource.
- * Marks the step as completed or failed.
+ * Writes the task execution result back to the plan resource.
+ * Marks the task as completed or failed.
  */
 export function createRecordResult(config: { name: string }) {
   return handler({
@@ -29,10 +30,10 @@ export function createRecordResult(config: { name: string }) {
       const planRef = ctx.session.resources.plans.get({ planId: input.planId });
       const plan = planRef.state;
 
-      const newStatus: PlanStep["status"] = input.stepError ? "failed" : "completed";
+      const newStatus: PlanTask["status"] = input.stepError ? "failed" : "completed";
 
       await planRef.patchState({
-        steps: plan.steps.map((s: PlanStep) =>
+        tasks: plan.tasks.map((s: PlanTask) =>
           s.id === input.stepId
             ? {
                 ...s,
@@ -42,6 +43,14 @@ export function createRecordResult(config: { name: string }) {
               }
             : s
         ),
+      });
+
+      const updatedPlan = ctx.session.resources.plans.get({ planId: input.planId }).state;
+      emitPlanSnapshot(ctx, {
+        goal: updatedPlan.goal,
+        tasks: updatedPlan.tasks,
+        status: updatedPlan.status,
+        iteration: updatedPlan.iteration,
       });
 
       return {

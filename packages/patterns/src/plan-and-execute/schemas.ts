@@ -2,10 +2,10 @@ import { z } from "zod";
 import { defineResourceCollection } from "@flow-state-dev/core";
 
 // ---------------------------------------------------------------------------
-// Plan Step
+// Plan Task
 // ---------------------------------------------------------------------------
 
-export const PlanStepSchema = z.object({
+export const PlanTaskSchema = z.object({
   id: z.string(),
   goal: z.string(),
   status: z.enum(["pending", "in_progress", "completed", "failed", "skipped"]),
@@ -14,7 +14,11 @@ export const PlanStepSchema = z.object({
   error: z.string().optional(),
 });
 
-export type PlanStep = z.infer<typeof PlanStepSchema>;
+export type PlanTask = z.infer<typeof PlanTaskSchema>;
+
+// Backward-compat aliases
+export const PlanStepSchema = PlanTaskSchema;
+export type PlanStep = PlanTask;
 
 // ---------------------------------------------------------------------------
 // Plan
@@ -22,7 +26,7 @@ export type PlanStep = z.infer<typeof PlanStepSchema>;
 
 export const PlanSchema = z.object({
   goal: z.string(),
-  steps: z.array(PlanStepSchema),
+  tasks: z.array(PlanTaskSchema),
   status: z.enum(["planning", "executing", "replanning", "completed", "failed"]),
   currentStepIndex: z.number().default(0),
   iteration: z.number().default(0),

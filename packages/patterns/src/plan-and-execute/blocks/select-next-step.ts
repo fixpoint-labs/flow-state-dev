@@ -1,6 +1,6 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { planResources, type PlanStep } from "../schemas";
+import { planResources, type PlanTask } from "../schemas";
 
 const inputSchema = z.object({
   planId: z.string(),
@@ -14,7 +14,7 @@ const outputSchema = z.object({
 });
 
 /**
- * Reads the plan resource, finds the next pending step (respecting dependencies),
+ * Reads the plan resource, finds the next pending task (respecting dependencies),
  * and marks it as in_progress.
  */
 export function createSelectNextStep(config: { name: string }) {
@@ -29,25 +29,25 @@ export function createSelectNextStep(config: { name: string }) {
       const plan = planRef.state;
 
       const completedIds = new Set(
-        plan.steps
-          .filter((s: PlanStep) => s.status === "completed" || s.status === "skipped")
-          .map((s: PlanStep) => s.id)
+        plan.tasks
+          .filter((s: PlanTask) => s.status === "completed" || s.status === "skipped")
+          .map((s: PlanTask) => s.id)
       );
 
-      // Find first pending step whose dependencies are all satisfied
-      const nextStep = plan.steps.find((s: PlanStep) => {
+      // Find first pending task whose dependencies are all satisfied
+      const nextStep = plan.tasks.find((s: PlanTask) => {
         if (s.status !== "pending") return false;
         return s.dependencies.every((dep: string) => completedIds.has(dep));
       });
 
       if (nextStep === undefined) {
-        // No eligible steps — return a sentinel that evaluate will handle
+        // No eligible tasks — return a sentinel that evaluate will handle
         return { planId: input.planId, stepId: "__none__", goal: "" };
       }
 
-      // Mark step as in_progress
+      // Mark task as in_progress
       await planRef.patchState({
-        steps: plan.steps.map((s: PlanStep) =>
+        tasks: plan.tasks.map((s: PlanTask) =>
           s.id === nextStep.id ? { ...s, status: "in_progress" as const } : s
         ),
       });

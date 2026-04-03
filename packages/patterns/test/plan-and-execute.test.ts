@@ -236,7 +236,7 @@ describe("plan-and-execute pattern", () => {
       expect(result.error).toBeNull();
       const output = result.output as any;
       expect(output.totalSteps).toBe(3);
-      const failedStep = output.steps.find((s: any) => s.id === "s2");
+      const failedStep = output.tasks.find((s: any) => s.id === "s2");
       expect(failedStep?.status).toBe("failed");
       expect(failedStep?.error).toBeDefined();
     });

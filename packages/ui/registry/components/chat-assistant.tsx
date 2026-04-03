@@ -4,6 +4,7 @@ import { Reasoning } from "./reasoning";
 import { Tool } from "./tool";
 import { Status } from "./status";
 import { ErrorDisplay } from "./error";
+import { Plan } from "./plan";
 
 /**
  * Pre-wired renderer registry for standard chat assistant UIs.
@@ -11,6 +12,9 @@ import { ErrorDisplay } from "./error";
  *
  * Sources are excluded (source: false) — render them grouped via
  * <SourcesGroup items={session.items} /> alongside <ItemsRenderer>.
+ *
+ * Component renderers (emitComponent items) are registered under `component`:
+ *   - plan: renders plan snapshots emitted via emitPlanSnapshot()
  */
 export const chatAssistantRenderers: RendererRegistry = {
   message: Message,
@@ -21,4 +25,7 @@ export const chatAssistantRenderers: RendererRegistry = {
   error: ErrorDisplay,
   step_error: ErrorDisplay,
   source: false,
+  component: {
+    plan: Plan,
+  },
 };

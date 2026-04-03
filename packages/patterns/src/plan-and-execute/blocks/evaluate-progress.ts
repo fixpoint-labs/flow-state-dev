@@ -4,7 +4,7 @@ import { z } from "zod";
 import {
   planResources,
   iterationOutputSchema,
-  type PlanStep,
+  type PlanTask,
 } from "../schemas";
 
 const inputSchema = z.object({
@@ -19,7 +19,7 @@ export const evaluatorOutputSchema = z.object({
 
 /**
  * Creates a simple evaluator (handler) — no LLM call.
- * Checks for pending steps and max iterations. Used when enableReplanning is false.
+ * Checks for pending tasks and max iterations. Used when enableReplanning is false.
  */
 export function createSimpleEvaluator(config: { name: string }) {
   return handler({
@@ -35,12 +35,12 @@ export function createSimpleEvaluator(config: { name: string }) {
       // Increment iteration count
       await planRef.patchState({ iteration: plan.iteration + 1 });
 
-      const hasPending = plan.steps.some(
-        (s: PlanStep) => s.status === "pending" || s.status === "in_progress"
+      const hasPending = plan.tasks.some(
+        (s: PlanTask) => s.status === "pending" || s.status === "in_progress"
       );
 
       if (!hasPending) {
-        const allFailed = plan.steps.length > 0 && plan.steps.every((s: PlanStep) => s.status === "failed");
+        const allFailed = plan.tasks.length > 0 && plan.tasks.every((s: PlanTask) => s.status === "failed");
         await planRef.patchState({
           status: allFailed ? "failed" : "completed",
         });
@@ -86,7 +86,7 @@ export function createLLMEvaluator(config: {
           goal: plan.goal,
           iteration: plan.iteration,
           maxIterations: plan.maxIterations,
-          steps: plan.steps.map((s: PlanStep) => ({
+          tasks: plan.tasks.map((s: PlanTask) => ({
             id: s.id,
             goal: s.goal,
             status: s.status,
@@ -135,19 +135,19 @@ export function createEvaluateProgress(config: {
 
       // Force complete if max iterations exceeded
       if (newIteration >= plan.maxIterations) {
-        const allFailed = plan.steps.length > 0 && plan.steps.every((s: PlanStep) => s.status === "failed");
+        const allFailed = plan.tasks.length > 0 && plan.tasks.every((s: PlanTask) => s.status === "failed");
         await planRef.patchState({
           status: allFailed ? "failed" : "completed",
         });
         return { planId: input.planId, decision: "complete" as const };
       }
 
-      // Check if there are any pending steps at all
-      const hasPending = plan.steps.some(
-        (s: PlanStep) => s.status === "pending" || s.status === "in_progress"
+      // Check if there are any pending tasks at all
+      const hasPending = plan.tasks.some(
+        (s: PlanTask) => s.status === "pending" || s.status === "in_progress"
       );
       if (!hasPending) {
-        const allFailed = plan.steps.length > 0 && plan.steps.every((s: PlanStep) => s.status === "failed");
+        const allFailed = plan.tasks.length > 0 && plan.tasks.every((s: PlanTask) => s.status === "failed");
         await planRef.patchState({
           status: allFailed ? "failed" : "completed",
         });
@@ -163,7 +163,7 @@ export function createEvaluateProgress(config: {
       if (llmResult.decision === "replan") {
         await planRef.patchState({ status: "replanning" });
       } else if (llmResult.decision === "complete") {
-        const allFailed = plan.steps.length > 0 && plan.steps.every((s: PlanStep) => s.status === "failed");
+        const allFailed = plan.tasks.length > 0 && plan.tasks.every((s: PlanTask) => s.status === "failed");
         await planRef.patchState({
           status: allFailed ? "failed" : "completed",
         });

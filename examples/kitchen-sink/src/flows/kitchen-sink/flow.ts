@@ -46,12 +46,15 @@ import {
   updateArtifact,
   updateArtifactInputSchema,
   eventQueueDemo,
-  eventQueueDemoInputSchema
+  eventQueueDemoInputSchema,
+  planDemo,
+  planDemoInputSchema,
 } from "./blocks";
 import {
   modeSchema,
   artifactResources,
 } from "./schemas";
+import { planResources } from "@flow-state-dev/patterns/plan-and-execute";
 
 const MODEL_ID = "openai/gpt-5.4-mini";
 
@@ -354,7 +357,11 @@ const kitchenSinkFlow = defineFlow({
     "event-queue": {
       inputSchema: eventQueueDemoInputSchema,
       block: eventQueueDemo
-    }
+    },
+    "plan-demo": {
+      inputSchema: planDemoInputSchema,
+      block: planDemo,
+    },
   },
 
   // Session scope: state, resources, and clientData scoped to a session.
@@ -365,7 +372,8 @@ const kitchenSinkFlow = defineFlow({
     // They live alongside session state but have their own schemas and can
     // be independently writable.
     resources: {
-      ...artifactResources
+      ...artifactResources,
+      ...planResources,
     },
 
     // clientData entries are derived values computed from scope state and

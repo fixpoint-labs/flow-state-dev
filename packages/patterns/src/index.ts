@@ -44,5 +44,11 @@ export type {
   ReviewOutput,
   PlannerOutput,
 } from "./supervisor";
+export {
+  BasePlanSchema,
+  BasePlanTaskSchema,
+  emitPlanSnapshot,
+} from "./shared/plan";
+export type { BasePlan, BasePlanTask } from "./shared/plan";
 export { eventQueue, createEventQueueStateSchema } from "./event-queue";
 export type { EventQueueConfig, EventQueueState } from "./event-queue";
