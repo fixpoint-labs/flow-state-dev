@@ -44,7 +44,6 @@ const kitchenSinkRenderers: RendererRegistry = {
   block_output: AgentResponseCard,
 };
 
-const ITEM_TYPES = ["message", "reasoning", "block_tool_output", "status", "source", "error", "step_error"];
 
 type MobilePanel = "chat" | "artifacts";
 
@@ -63,9 +62,7 @@ export default function Page() {
 
 function KitchenSinkApp() {
   const flow = useFlow({ autoCreateSession: true });
-  const session = useSession(flow.activeSessionId, {
-    items: { itemTypes: ITEM_TYPES },
-  });
+  const session = useSession(flow.activeSessionId, { items: true });
 
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("chat");

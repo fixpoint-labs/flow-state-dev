@@ -5,7 +5,7 @@
  * are responsible for sorting.
  */
 import { createElement, type ReactNode } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { ComponentItem, OutputItem } from "@flow-state-dev/core/items";
 import { ItemRenderer } from "./ItemRenderer";
 
 /**
@@ -13,7 +13,34 @@ import { ItemRenderer } from "./ItemRenderer";
  */
 export type ItemsRendererProps = {
   items: OutputItem[];
+  /**
+   * When true (default), component items that carry a stable `key` are
+   * deduplicated: only the latest snapshot per key is rendered, replacing
+   * earlier ones in-place. Set to false to render all snapshots.
+   */
+  deduplicateByKey?: boolean;
 };
+
+/**
+ * For component items with a stable `key`, keep only the latest snapshot per key.
+ * Items without a key are always included.
+ */
+function deduplicateComponentItems(items: OutputItem[]): OutputItem[] {
+  const latestIndex = new Map<string, number>();
+  items.forEach((item, i) => {
+    const k = (item as ComponentItem).key;
+    if (item.type === "component" && k !== undefined) {
+      latestIndex.set(k, i);
+    }
+  });
+  return items.filter((item, i) => {
+    const k = (item as ComponentItem).key;
+    if (item.type === "component" && k !== undefined) {
+      return latestIndex.get(k) === i;
+    }
+    return true;
+  });
+}
 
 /**
  * Renders output items in the order provided.
@@ -22,7 +49,9 @@ export type ItemsRendererProps = {
  * itemIndex as tiebreaker.
  */
 export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
-  return props.items.map((item) =>
+  const { deduplicateByKey = true } = props;
+  const items = deduplicateByKey ? deduplicateComponentItems(props.items) : props.items;
+  return items.map((item) =>
     createElement(ItemRenderer, { item, key: item.id })
   );
 }

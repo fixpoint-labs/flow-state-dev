@@ -66,11 +66,16 @@ export type BasePlan = z.infer<typeof BasePlanSchema>;
  * Renderers can register a "plan" component to display it; if none is registered
  * the item is silently ignored.
  *
+ * Pass `key` to enable client-side deduplication: clients should display only
+ * the latest snapshot with a given key, replacing earlier ones in-place.
+ * Use a stable value such as the plan ID or sequencer ID.
+ *
  * Call this at key lifecycle moments (plan created, task completed, review applied).
  */
 export function emitPlanSnapshot(
-  ctx: { emitComponent: (component: string, data: Record<string, unknown>) => { done(): void } },
-  plan: BasePlan
+  ctx: { emitComponent: (component: string, data: Record<string, unknown>, options?: { key?: string }) => { done(): void } },
+  plan: BasePlan,
+  options?: { key?: string }
 ): void {
-  ctx.emitComponent("plan", plan as unknown as Record<string, unknown>).done();
+  ctx.emitComponent("plan", plan as unknown as Record<string, unknown>, options).done();
 }

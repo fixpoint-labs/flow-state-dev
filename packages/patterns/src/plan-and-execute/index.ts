@@ -305,7 +305,7 @@ export function planAndExecute<
         tasks: updatedTasks,
         status: currentPlan.status,
         iteration: currentPlan.iteration,
-      });
+      }, { key: input.planId });
 
       return { planId: input.planId, stepResult };
     },
@@ -372,7 +372,7 @@ export function planAndExecute<
         tasks: savedPlan.tasks,
         status: "executing",
         iteration: savedPlan.iteration,
-      });
+      }, { key: input.planId });
 
       return { planId: input.planId };
     },
