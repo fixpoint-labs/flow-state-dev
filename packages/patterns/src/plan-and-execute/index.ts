@@ -121,6 +121,7 @@ function createDefaultReplanner(config: {
       })),
     }),
     sequencerStateSchema: planAndExecuteStateSchema,
+    search: true,
     prompt: [
       "You are a plan replanner.",
       "Given the current plan state with completed, failed, and pending tasks,",
@@ -393,17 +394,24 @@ export function planAndExecute<
   });
 
   // ---------------------------------------------------------------------------
-  // executeNextTask: finds next ready task, runs the stepExecutor, records result.
-  // This is the loopBack target — it runs on every iteration.
+  // findTask: selects the next eligible pending task, marks it in_progress,
+  // and returns the input for stepExecutor. Sets currentTaskId in state so
+  // recordResult and the error rescue handler know which task to update.
+  // This is the loopBack target — it runs at the start of every iteration.
   // ---------------------------------------------------------------------------
-  const executeNextTask = handler({
+  const findTask = handler({
     name: `${name}-execute-step`,
     inputSchema: z.object({
       decision: z.enum(["continue", "replan", "complete"]).optional(),
     }),
-    outputSchema: z.object({
-      stepResult: z.any().optional(),
-    }),
+    outputSchema: z.union([
+      z.object({
+        stepId: z.string(),
+        goal: z.string(),
+        dependencyResults: z.record(z.unknown()).optional(),
+      }),
+      z.object({ noTask: z.literal(true) }),
+    ]),
     sequencerStateSchema: planAndExecuteStateSchema,
 
     execute: async (_input, ctx) => {
@@ -421,19 +429,10 @@ export function planAndExecute<
       });
 
       if (nextStep === undefined) {
-        // No eligible tasks — evaluator will handle completion
-        return { stepResult: undefined };
+        return { noTask: true as const };
       }
 
-      // Mark task as in_progress
-      await ctx.sequencer!.patchState({
-        tasks: state.tasks.map((s: PlanTask) =>
-          s.id === nextStep.id ? { ...s, status: "in_progress" as const } : s
-        ),
-      });
-
-      // Collect results from completed dependency tasks so the executor can
-      // build on prior work (keyed by task id).
+      // Build dependency context for the executor
       const dependencyResults = Object.fromEntries(
         nextStep.dependencies
           .map((depId: string) => state.tasks.find((t: PlanTask) => t.id === depId))
@@ -441,67 +440,131 @@ export function planAndExecute<
           .map((t: PlanTask) => [t.id, t.result])
       );
 
-      // Execute the task
-      let stepResult: unknown;
-      let stepError: string | undefined;
-      try {
-        stepResult = await stepExecutor.run(
-          {
-            stepId: nextStep.id,
-            goal: nextStep.goal,
-            ...(Object.keys(dependencyResults).length > 0 && { dependencyResults }),
-          },
-          ctx as any
-        );
-      } catch (error) {
-        stepError = String(error);
+      await ctx.sequencer!.patchState({
+        currentTaskId: nextStep.id,
+        tasks: state.tasks.map((s: PlanTask) =>
+          s.id === nextStep.id ? { ...s, status: "in_progress" as const } : s
+        ),
+      });
+
+      return {
+        stepId: nextStep.id,
+        goal: nextStep.goal,
+        ...(Object.keys(dependencyResults).length > 0 && { dependencyResults }),
+      };
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // recordResult: writes the executor's output back to sequencer state,
+  // applies cascade-skip for failed tasks, and emits a plan snapshot.
+  // Receives either the executor output or { noTask: true } passthrough.
+  // ---------------------------------------------------------------------------
+  const recordResult = handler({
+    name: `${name}-record-result`,
+    inputSchema: z.any(),
+    outputSchema: z.object({ stepResult: z.any().optional() }),
+    sequencerStateSchema: planAndExecuteStateSchema,
+
+    execute: async (input, ctx) => {
+      const noTask = input && typeof input === "object" && "noTask" in input;
+      if (noTask) {
+        return { stepResult: undefined };
       }
 
-      // Check for explicit failure signal { success: false, reason? } from executor
+      const stepResult = input;
+      const state = ctx.sequencer!.state;
+      const taskId = state.currentTaskId;
+
+      if (!taskId) return { stepResult };
+
+      // Check for explicit failure signal { success: false, reason? }
       const resultObj = stepResult as Record<string, unknown> | null | undefined;
       const signaledFailure =
-        !stepError &&
         resultObj !== null &&
         resultObj !== undefined &&
         typeof resultObj === "object" &&
         resultObj.success === false;
 
-      // Record result — re-read state in case stepExecutor modified it
-      const currentState = ctx.sequencer!.state;
-      const newStatus: PlanTask["status"] =
-        stepError || signaledFailure ? "failed" : "completed";
-      const recordedError =
-        stepError ??
-        (signaledFailure
-          ? String(resultObj!.reason ?? "Task did not produce a result")
-          : undefined);
-      let updatedTasks = currentState.tasks.map((s: PlanTask) =>
-        s.id === nextStep.id
+      const newStatus: PlanTask["status"] = signaledFailure ? "failed" : "completed";
+      const recordedError = signaledFailure
+        ? String(resultObj!.reason ?? "Task did not produce a result")
+        : undefined;
+
+      let updatedTasks = state.tasks.map((s: PlanTask) =>
+        s.id === taskId
           ? { ...s, status: newStatus, result: stepResult, error: recordedError }
           : s
       );
 
-      // When a task fails, transitively skip any pending tasks blocked on it.
       if (newStatus === "failed") {
-        updatedTasks = cascadeSkipDependents(updatedTasks, nextStep.id);
+        updatedTasks = cascadeSkipDependents(updatedTasks, taskId);
       }
 
-      await ctx.sequencer!.patchState({ tasks: updatedTasks });
+      await ctx.sequencer!.patchState({ tasks: updatedTasks, currentTaskId: undefined });
 
       emitPlanSnapshot(
         ctx as any,
-        {
-          goal: currentState.goal,
-          tasks: updatedTasks,
-          status: currentState.status,
-          iteration: currentState.iteration,
-        },
+        { goal: state.goal, tasks: updatedTasks, status: state.status, iteration: state.iteration },
         { key: name }
       );
 
       return { stepResult };
     },
   });
+
+  // ---------------------------------------------------------------------------
+  // recordExecutorError: rescue handler for the executeNextTask sequencer.
+  // Fires when stepExecutor throws. Reads currentTaskId from outer state,
+  // marks the task failed, cascade-skips dependents, and returns a value
+  // the outer loop can continue from.
+  // ---------------------------------------------------------------------------
+  const recordExecutorError = handler({
+    name: `${name}-executor-error`,
+    inputSchema: z.unknown(),
+    outputSchema: z.object({ stepResult: z.any().optional() }),
+    sequencerStateSchema: planAndExecuteStateSchema,
+
+    execute: async (error, ctx) => {
+      const state = ctx.sequencer!.state;
+      const taskId = state.currentTaskId;
+
+      if (!taskId) return { stepResult: undefined };
+
+      let updatedTasks = state.tasks.map((s: PlanTask) =>
+        s.id === taskId
+          ? { ...s, status: "failed" as const, error: String(error) }
+          : s
+      );
+      updatedTasks = cascadeSkipDependents(updatedTasks, taskId);
+
+      await ctx.sequencer!.patchState({ tasks: updatedTasks, currentTaskId: undefined });
+
+      emitPlanSnapshot(
+        ctx as any,
+        { goal: state.goal, tasks: updatedTasks, status: state.status, iteration: state.iteration },
+        { key: name }
+      );
+
+      return { stepResult: undefined };
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // executeNextTask: inner sequencer — findTask → stepExecutor → recordResult.
+  // stepExecutor runs as a proper named step (visible in trace). Errors from
+  // the executor are caught by the rescue handler rather than crashing the plan.
+  // ---------------------------------------------------------------------------
+  const executeNextTask = sequencer({
+    name: `${name}-execute-step-seq`,
+    inputSchema: z.object({
+      decision: z.enum(["continue", "replan", "complete"]).optional(),
+    }),
+  })
+    .then(findTask)
+    .thenIf((r) => !(r as any).noTask, stepExecutor as BlockDefinition<any, any>)
+    .then(recordResult)
+    .rescue([{ when: [Error], block: recordExecutorError }]);
 
   // ---------------------------------------------------------------------------
   // Build pipeline

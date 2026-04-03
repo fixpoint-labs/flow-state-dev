@@ -46,6 +46,8 @@ export const planAndExecuteStateSchema = z.object({
   status: z.enum(["planning", "executing", "replanning", "completed", "failed"]).default("planning"),
   iteration: z.number().default(0),
   maxIterations: z.number().default(3),
+  /** Id of the task currently being executed. Set by findTask, cleared by recordResult. */
+  currentTaskId: z.string().optional(),
 });
 
 export type PlanAndExecuteState = z.infer<typeof planAndExecuteStateSchema>;
