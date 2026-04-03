@@ -80,15 +80,22 @@ function AppContent() {
   }, [effectiveSessionId]);
 
   const streamRequestId = replayState.requestId ?? activeRequestId;
+  const handleSessionMetadataChanged = useCallback(() => {
+    setSessionRefreshKey((k) => k + 1);
+    setStateRefreshKey((k) => k + 1);
+  }, []);
+
   const { streamState, streamStatus, items: streamItems } = useRequestStream({
     flowKind: activeFlowKind,
     requestId: streamRequestId,
     startingAfter: replayState.startingAfter,
     lastEventId: replayState.lastEventId,
     enabled: !!streamRequestId,
+    onSessionMetadataChanged: handleSessionMetadataChanged,
   });
 
   const [stateRefreshKey, setStateRefreshKey] = useState(0);
+  const [sessionRefreshKey, setSessionRefreshKey] = useState(0);
 
   useEffect(() => {
     if (streamStatus === "completed" || streamStatus === "failed") {
@@ -219,7 +226,7 @@ function AppContent() {
                 <span className="text-[10px] font-medium uppercase text-slate-500">Flows</span>
               </div>
               <div className="flex-1 overflow-auto px-1">
-                <FlowList />
+                <FlowList sessionRefreshKey={sessionRefreshKey} />
               </div>
               <Separator />
               <div className="p-2 space-y-1">
