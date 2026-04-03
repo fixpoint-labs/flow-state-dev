@@ -48,6 +48,7 @@ export type UseRequestStreamOptions = {
   startingAfter?: number;
   lastEventId?: string;
   enabled?: boolean;
+  onSessionMetadataChanged?: () => void;
 };
 
 export type UseRequestStreamResult = {
@@ -59,7 +60,7 @@ export type UseRequestStreamResult = {
 };
 
 export function useRequestStream(options: UseRequestStreamOptions): UseRequestStreamResult {
-  const { flowKind, requestId, startingAfter, lastEventId, enabled = true } = options;
+  const { flowKind, requestId, startingAfter, lastEventId, enabled = true, onSessionMetadataChanged } = options;
   const [streamState, setStreamState] = useState<StreamState | null>(null);
   const [streamStatus, setStreamStatus] = useState<StreamStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -228,6 +229,9 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         state.contentBuffers.delete(key);
         scheduleFlush();
       },
+      onSessionMetadataChanged: onSessionMetadataChanged
+        ? () => { onSessionMetadataChanged(); }
+        : undefined,
       onError: (err) => {
         setError(err.message);
         setStreamStatus("disconnected");
@@ -246,7 +250,7 @@ export function useRequestStream(options: UseRequestStreamOptions): UseRequestSt
         rafRef.current = null;
       }
     };
-  }, [flowKind, requestId, startingAfter, lastEventId, enabled, close, scheduleFlush, flushNow]);
+  }, [flowKind, requestId, startingAfter, lastEventId, enabled, close, scheduleFlush, flushNow, onSessionMetadataChanged]);
 
   const items = useMemo(
     () => streamState
