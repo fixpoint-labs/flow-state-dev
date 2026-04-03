@@ -18,6 +18,9 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   flowKind: string;
   userId: string;
   projectId?: string;
+  title?: string;
+  description?: string;
+  tags?: string[];
   resources?: Record<string, JsonObject>;
   resourceContent?: Record<string, string>;
   metadata?: Record<string, unknown>;

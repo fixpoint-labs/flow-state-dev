@@ -35,6 +35,7 @@ Conflict rule: `preperation/architecture/*` wins.
 
 - Hierarchy: `request → session → user → project` → [State and Scopes](../architecture/state-and-scopes.md)
 - State ops (atomic): `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`
+- Session metadata: `ctx.session.setMetadata({ title?, description?, tags?, metadata? })` — first-class fields, emits `session.metadata.changed` SSE event
 - CAS + bounded retries for concurrency safety
 - `getTarget(name)`: state-only escape hatch; resolves nearest-first across dispatched siblings at the current execution level, then falls back to the ancestor parent chain; may return `undefined` or throw `AmbiguousBlockNameError` when multiple ancestors share the same name
 - `targetStateSchemas`: typed declaration surface for `ctx.targets.<name>` state handles

@@ -125,11 +125,16 @@ export async function handleRequestStream(
     });
   }
 
+  const session =
+    requestRecord.sessionId !== undefined
+      ? await ctx.stores.session.get(requestRecord.sessionId)
+      : undefined;
+
   // Prefer persisted canonical event history for cursor-accurate replay.
   // Fall back to item-based reconstruction if no events have been persisted.
   let replaySource = await ctx.stores.request.getEvents(route.requestId);
   if (replaySource.length === 0) {
-    replaySource = buildReplayEvents(requestRecord);
+    replaySource = buildReplayEvents(requestRecord, session);
   }
 
   const replay = replayRequestEvents({
