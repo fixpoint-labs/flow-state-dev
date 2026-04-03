@@ -35,6 +35,10 @@ const stepExecutor = generator({
     summary: z.string(),
     success: z.boolean(),
     reason: z.string().optional(),
+    sources: z.array(z.object({
+      title: z.string().optional(),
+      url: z.string(),
+    })).optional(),
   }),
   search: true,
   prompt: [
@@ -45,6 +49,7 @@ const stepExecutor = generator({
     "- summary: your substantive finding",
     "- success: true if you found meaningful information, false if the information was unavailable or missing",
     "- reason: (only if success is false) a brief explanation of why the task could not be completed",
+    "- sources: list of { title?, url } for any web sources you consulted (omit if no search was performed)",
   ].join("\n"),
   user: (input) => {
     const parts = [`Task: ${input.goal}`];

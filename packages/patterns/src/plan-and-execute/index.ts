@@ -229,6 +229,8 @@ function createDefaultSynthesizer(config: {
       goal: string;
       tasks: Array<{ goal: string; status: string; result: unknown }>;
     }) => {
+      const allSources: Array<{ title?: string; url: string }> = [];
+
       const findings = input.tasks
         .filter((t) => t.status === "completed")
         .map((t, i) => {
@@ -237,10 +239,22 @@ function createDefaultSynthesizer(config: {
             r && typeof r === "object" && "summary" in r
               ? String(r.summary)
               : JSON.stringify(t.result);
+          if (r && typeof r === "object" && Array.isArray(r.sources)) {
+            allSources.push(...(r.sources as Array<{ title?: string; url: string }>));
+          }
           return `${i + 1}. ${t.goal}\n   ${summary}`;
         })
         .join("\n\n");
-      return `Goal: ${input.goal}\n\nFindings:\n\n${findings}`;
+
+      const uniqueSources = allSources.filter(
+        (s, i, arr) => arr.findIndex((x) => x.url === s.url) === i
+      );
+      const sourcesSection =
+        uniqueSources.length > 0
+          ? `\n\nSources:\n${uniqueSources.map((s) => `- ${s.title ? `${s.title}: ` : ""}${s.url}`).join("\n")}`
+          : "";
+
+      return `Goal: ${input.goal}\n\nFindings:\n\n${findings}${sourcesSection}`;
     },
     emit: { messages: true },
   });
