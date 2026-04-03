@@ -404,12 +404,25 @@ export function planAndExecute<
         ),
       });
 
+      // Collect results from completed dependency tasks so the executor can
+      // build on prior work (keyed by task id).
+      const dependencyResults = Object.fromEntries(
+        nextStep.dependencies
+          .map((depId: string) => state.tasks.find((t: PlanTask) => t.id === depId))
+          .filter((t): t is PlanTask => t !== undefined && t.result !== undefined)
+          .map((t: PlanTask) => [t.id, t.result])
+      );
+
       // Execute the task
       let stepResult: unknown;
       let stepError: string | undefined;
       try {
         stepResult = await stepExecutor.run(
-          { stepId: nextStep.id, goal: nextStep.goal },
+          {
+            stepId: nextStep.id,
+            goal: nextStep.goal,
+            ...(Object.keys(dependencyResults).length > 0 && { dependencyResults }),
+          },
           ctx as any
         );
       } catch (error) {
