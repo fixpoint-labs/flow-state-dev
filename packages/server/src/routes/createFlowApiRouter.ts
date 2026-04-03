@@ -47,6 +47,7 @@ type NextRouteContext = {
 export function createFlowApiRouter(options: CreateFlowApiRouterOptions): {
   GET: (req: Request, ctx: NextRouteContext) => Promise<Response>;
   POST: (req: Request, ctx: NextRouteContext) => Promise<Response>;
+  PATCH: (req: Request, ctx: NextRouteContext) => Promise<Response>;
   DELETE: (req: Request, ctx: NextRouteContext) => Promise<Response>;
 } {
   const internalOptions: CreateInternalFlowApiRouterOptions = {
@@ -59,6 +60,8 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): {
     GET: async (req, ctx) =>
       handlers.handle(req, { path: ctx.params.path }),
     POST: async (req, ctx) =>
+      handlers.handle(req, { path: ctx.params.path }),
+    PATCH: async (req, ctx) =>
       handlers.handle(req, { path: ctx.params.path }),
     DELETE: async (req, ctx) =>
       handlers.handle(req, { path: ctx.params.path })

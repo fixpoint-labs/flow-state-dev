@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { JsonViewer } from "@/components/shared/json-viewer";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorAlert } from "@/components/shared/error-alert";
+import type { SessionDetail } from "@flow-state-dev/client";
 import { useSessionState } from "@/hooks/use-session-state";
 import { useRelativeTime } from "@/hooks/use-relative-time";
 import { deepEqual } from "@/lib/utils";
@@ -19,7 +20,7 @@ type SessionContextPanelProps = {
 };
 
 export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPanelProps) {
-  const { snapshot, prevSnapshot, isLoading, error, lastFetchedAt, refresh } = useSessionState(sessionId);
+  const { snapshot, prevSnapshot, detail, isLoading, error, lastFetchedAt, refresh } = useSessionState(sessionId);
 
   // Refresh when parent signals a state change (e.g., after stream completes)
   useEffect(() => {
@@ -77,7 +78,11 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
         </div>
       </div>
 
-      {!hasState && !hasClientData && !hasResources && (
+      {detail && (
+        <SessionMetadataSection detail={detail} />
+      )}
+
+      {!hasState && !hasClientData && !hasResources && !detail && (
         <EmptyState message="Session state is empty. Execute an action to populate state." />
       )}
 
@@ -283,6 +288,60 @@ function ResourceItem({
         </div>
       )}
     </div>
+  );
+}
+
+function SessionMetadataSection({ detail }: { detail: SessionDetail }) {
+  const hasTitle = detail.title !== undefined && detail.title.length > 0;
+  const hasDescription = detail.description !== undefined && detail.description.length > 0;
+  const hasTags = detail.tags !== undefined && detail.tags.length > 0;
+  const hasMetadata = detail.metadata !== undefined && Object.keys(detail.metadata).length > 0;
+
+  if (!hasTitle && !hasDescription && !hasTags && !hasMetadata) {
+    return null;
+  }
+
+  const entries: Array<{ label: string; value: React.ReactNode }> = [];
+
+  if (hasTitle) {
+    entries.push({ label: "title", value: detail.title });
+  }
+  if (hasDescription) {
+    entries.push({ label: "description", value: detail.description });
+  }
+
+  return (
+    <CollapsibleSection title="Session Metadata" count={entries.length + (hasTags ? 1 : 0) + (hasMetadata ? 1 : 0)}>
+      <div className="space-y-1">
+        {entries.map(({ label, value }) => (
+          <div key={label} className="flex items-start justify-between gap-2">
+            <span className="text-slate-500 shrink-0 font-mono text-[11px]">{label}</span>
+            <span className="text-slate-300 text-right break-all text-[11px]">{String(value)}</span>
+          </div>
+        ))}
+        {hasTags && (
+          <div className="flex items-start justify-between gap-2">
+            <span className="text-slate-500 shrink-0 font-mono text-[11px]">tags</span>
+            <div className="flex flex-wrap gap-1 justify-end">
+              {detail.tags!.map((tag) => (
+                <span
+                  key={tag}
+                  className="text-[10px] font-mono text-sky-400 bg-sky-900/20 px-1.5 rounded-full"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {hasMetadata && (
+          <div>
+            <span className="text-slate-500 font-mono text-[11px]">metadata</span>
+            <JsonViewer data={detail.metadata!} className="mt-0.5" />
+          </div>
+        )}
+      </div>
+    </CollapsibleSection>
   );
 }
 

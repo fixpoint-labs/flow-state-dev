@@ -19,6 +19,9 @@
     "release:snapshot": "changeset version --snapshot && pnpm --filter \"./packages/*\" -r build && changeset publish --tag canary --no-git-tag --provenance",
     "fsdev": "tsx packages/cli/bin/fsdev.ts"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3"]
+  },
   "devDependencies": {
     "@vitest/coverage-v8": "^3.2.4",
     "tsx": "^4.19.4",

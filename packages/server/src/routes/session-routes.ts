@@ -7,6 +7,7 @@ import type { SessionRecord, StoreRegistry } from "../stores/types";
 import { generateId } from "../utils/generate-id";
 import {
   asObject,
+  asStringArray,
   emptyResponse,
   getBooleanFlag,
   getPositiveInteger,
@@ -90,6 +91,9 @@ export async function handleCreateSession(
     flowKind: flow.kind,
     userId,
     projectId: getString(body.projectId),
+    title: getString(body.title),
+    description: getString(body.description),
+    tags: asStringArray(body.tags),
     metadata: asObject(body.metadata),
     state: (asObject(body.state) ?? {}) as JsonObject,
     version: 0,
@@ -118,6 +122,39 @@ export async function handleDeleteSession(
 
   await ctx.stores.session.delete(route.sessionId);
   return emptyResponse(204);
+}
+
+export async function handlePatchSessionMetadata(
+  request: Request,
+  route: Extract<ParsedFlowRoute, { kind: "patch_session_metadata" }>,
+  ctx: SessionRouteContext
+): Promise<Response> {
+  const session = await ctx.stores.session.get(route.sessionId);
+  if (session === undefined) {
+    return jsonResponse(404, {
+      error: `Unknown session "${route.sessionId}"`
+    });
+  }
+
+  const body = await parseJsonBody(request);
+  const now = Date.now();
+
+  const updated: SessionRecord = {
+    ...session,
+    ...(body.title !== undefined ? { title: getString(body.title) } : {}),
+    ...(body.description !== undefined ? { description: getString(body.description) } : {}),
+    ...(body.tags !== undefined ? { tags: asStringArray(body.tags) } : {}),
+    ...(body.metadata !== undefined
+      ? { metadata: { ...session.metadata, ...asObject(body.metadata) } }
+      : {}),
+    updatedAt: now
+  };
+
+  await ctx.stores.session.set(updated.id, updated);
+
+  return jsonResponse(200, {
+    session: updated
+  });
 }
 
 export async function handleListSessionRequests(

@@ -57,8 +57,18 @@ export type CreateSessionOptions = {
   userId: string;
   sessionId?: string;
   projectId?: string;
+  title?: string;
+  description?: string;
+  tags?: string[];
   metadata?: Record<string, unknown>;
   state?: Record<string, unknown>;
+};
+
+export type UpdateSessionMetadataOptions = {
+  title?: string;
+  description?: string;
+  tags?: string[];
+  metadata?: Record<string, unknown>;
 };
 
 /**
@@ -76,6 +86,10 @@ export type SessionClient = {
     options?: GetSessionStateOptions
   ) => Promise<SessionStateSnapshotResponse>;
   createSession: (options: CreateSessionOptions) => Promise<SessionDetail>;
+  updateSessionMetadata: (
+    sessionId: string,
+    options: UpdateSessionMetadataOptions
+  ) => Promise<SessionDetail>;
   deleteSession: (sessionId: string) => Promise<void>;
 };
 
@@ -176,9 +190,34 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
           userId,
           sessionId: createOptions.sessionId,
           projectId: createOptions.projectId,
+          title: createOptions.title,
+          description: createOptions.description,
+          tags: createOptions.tags,
           metadata: createOptions.metadata,
           state: createOptions.state
         })
+      }
+    });
+
+    return payload.session;
+  };
+
+  const updateSessionMetadata = async (
+    sessionId: string,
+    updateOptions: UpdateSessionMetadataOptions
+  ): Promise<SessionDetail> => {
+    const payload = await requestJson<{ session: SessionDetail }>({
+      fetcher,
+      url: buildFlowApiUrl({
+        baseUrl: options.baseUrl,
+        path: `/api/flows/sessions/${encodeURIComponent(requireId(sessionId, "sessionId"))}/metadata`
+      }),
+      init: {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(updateOptions)
       }
     });
 
@@ -204,6 +243,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
     listSessionRequests,
     getSessionState,
     createSession,
+    updateSessionMetadata,
     deleteSession
   };
 }

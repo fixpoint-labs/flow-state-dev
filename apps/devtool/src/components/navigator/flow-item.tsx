@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { ChevronDown, ChevronRight, Plus, RefreshCw } from "lucide-react";
 import type { FlowListEntry } from "@flow-state-dev/client";
 import { Button } from "@/components/ui/button";
@@ -11,12 +12,20 @@ type FlowItemProps = {
   flow: FlowListEntry;
   isActive: boolean;
   onSelect: () => void;
+  sessionRefreshKey?: number;
 };
 
-export function FlowItem({ flow, isActive, onSelect }: FlowItemProps) {
+export function FlowItem({ flow, isActive, onSelect, sessionRefreshKey }: FlowItemProps) {
   const { setActiveSession } = useDevTool();
   const { sessions, isLoading, refresh, createSession } = useSessions(isActive ? flow.kind : null);
   const { activeSessionId, setActiveSessionId } = useActiveSession(isActive ? flow.kind : null);
+
+  // Refresh session list when parent signals metadata changed (e.g. title update via SSE)
+  useEffect(() => {
+    if (isActive && sessionRefreshKey && sessionRefreshKey > 0) {
+      void refresh();
+    }
+  }, [sessionRefreshKey, isActive, refresh]);
 
   const handleCreateSession = async () => {
     const newId = await createSession();

@@ -84,4 +84,9 @@ export {
   type VoiceState
 } from "./voice";
 
+export {
+  EventQueueProgress,
+  type EventQueueProgressProps
+} from "./components/EventQueueProgress";
+
 export const reactPackageMarker = "@flow-state-dev/react";

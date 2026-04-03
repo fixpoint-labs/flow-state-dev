@@ -16,7 +16,8 @@ export {
   type GetSessionStateOptions,
   type ListSessionRequestsOptions,
   type ListSessionsOptions,
-  type SessionClient
+  type SessionClient,
+  type UpdateSessionMetadataOptions
 } from "./session-client/sessions";
 
 export {
