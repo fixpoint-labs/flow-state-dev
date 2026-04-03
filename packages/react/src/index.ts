@@ -89,4 +89,15 @@ export {
   type EventQueueProgressProps
 } from "./components/EventQueueProgress";
 
+export {
+  AuditAnnotation,
+  type AuditAnnotationProps,
+  type AuditAnnotationData
+} from "./components/AuditAnnotation";
+
+export {
+  AuditAnnotationProgress,
+  type AuditAnnotationProgressProps
+} from "./components/AuditAnnotationProgress";
+
 export const reactPackageMarker = "@flow-state-dev/react";
