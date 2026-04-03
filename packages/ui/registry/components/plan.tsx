@@ -6,6 +6,7 @@ import {
   AlertTriangleIcon,
   ArrowUpCircleIcon,
   CheckCircle2Icon,
+  ChevronRightIcon,
   CircleIcon,
   Loader2Icon,
   MinusCircleIcon,
@@ -94,6 +95,16 @@ const STATUS_CONFIG: Record<PlanTaskStatus, StatusConfig> = {
   },
 };
 
+/** Extracts a human-readable summary from a task result if one is present. */
+function getResultSummary(result: unknown): string | undefined {
+  if (result === null || result === undefined) return undefined;
+  if (typeof result === "object" && "summary" in (result as object)) {
+    const s = (result as { summary: unknown }).summary;
+    return typeof s === "string" ? s : undefined;
+  }
+  return undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
@@ -136,24 +147,45 @@ export function Plan({ item }: { item: ComponentItem }) {
 function PlanTaskRow({ task }: { task: PlanTask }) {
   const config = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.pending;
   const Icon = config.icon;
+  const summary = getResultSummary(task.result);
+
+  if (!summary) {
+    return (
+      <li className="flex items-start gap-2">
+        <Icon
+          className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", config.iconClassName)}
+          aria-hidden="true"
+        />
+        <span className={cn("text-xs leading-snug", config.goalClassName)}>
+          {task.goal}
+          {task.error && (
+            <span className="ml-1 opacity-60">— {task.error}</span>
+          )}
+        </span>
+      </li>
+    );
+  }
 
   return (
-    <li className="flex items-start gap-2">
-      <Icon
-        className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", config.iconClassName)}
-        aria-hidden="true"
-      />
-      <span
-        className={cn(
-          "text-xs leading-snug",
-          config.goalClassName
-        )}
-      >
-        {task.goal}
-        {task.error && (
-          <span className="ml-1 opacity-60">— {task.error}</span>
-        )}
-      </span>
+    <li>
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-start gap-2">
+          <Icon
+            className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", config.iconClassName)}
+            aria-hidden="true"
+          />
+          <span className={cn("flex-1 text-xs leading-snug", config.goalClassName)}>
+            {task.goal}
+          </span>
+          <ChevronRightIcon
+            className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground/50 transition-transform group-open:rotate-90"
+            aria-hidden="true"
+          />
+        </summary>
+        <p className="mt-1 pl-5 text-xs leading-snug text-muted-foreground">
+          {summary}
+        </p>
+      </details>
     </li>
   );
 }

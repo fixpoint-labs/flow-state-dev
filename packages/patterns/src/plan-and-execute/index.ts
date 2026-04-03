@@ -96,8 +96,17 @@ export interface PlanAndExecuteConfig<
   /** Plan ID — auto-generated UUID if omitted. Pass string for named plans, or function for dynamic IDs. */
   planId?: string | ((input: unknown) => string);
 
-  /** Output schema for the final result. */
+  /** Final synthesis step — receives completed plan output, produces the final result.
+   *  When provided, the block's output is whatever the synthesizer produces instead
+   *  of the raw plan object. Default: a generator that integrates step findings into
+   *  a coherent answer. Pass `false` to disable synthesis and return the plan object. */
+  synthesizer?: BlockDefinition<any, any> | false;
+
+  /** Output schema for the final synthesized result. Used by the default synthesizer. */
   outputSchema?: TOutputSchema;
+
+  /** Model ID to use for default planner, replanner, and synthesizer. Default: "openai/gpt-5.4-mini". */
+  model?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,7 +119,7 @@ function createDefaultReplanner(config: {
 }) {
   return generator({
     name: `${config.name}-replanner`,
-    model: config.model ?? "gpt-5-mini",
+    model: config.model ?? "openai/gpt-5.4-mini",
     outputSchema: z.object({
       tasks: z.array(z.object({
         id: z.string(),
@@ -144,6 +153,59 @@ function createDefaultReplanner(config: {
           .map((s: PlanTask) => ({ id: s.id, goal: s.goal })),
       }, null, 2);
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Default synthesizer
+// ---------------------------------------------------------------------------
+
+function createDefaultSynthesizer(config: {
+  name: string;
+  model?: string;
+}) {
+  return generator({
+    name: `${config.name}-synthesizer`,
+    model: config.model ?? "openai/gpt-5.4-mini",
+    inputSchema: z.object({
+      planId: z.string(),
+      goal: z.string(),
+      status: z.string().optional(),
+      tasks: z.array(z.object({
+        id: z.string(),
+        goal: z.string(),
+        status: z.string(),
+        result: z.unknown().optional(),
+        error: z.string().optional(),
+      })),
+      completedSteps: z.number(),
+      totalSteps: z.number(),
+    }),
+    outputSchema: z.string(),
+    prompt: [
+      "You are synthesizing findings from a structured multi-step research process.",
+      "Write a clear, direct final answer to the original goal.",
+      "Integrate the findings into a coherent narrative — do not just summarize each step.",
+      "Be specific and draw on the concrete facts gathered.",
+    ].join("\n"),
+    user: (input: {
+      goal: string;
+      tasks: Array<{ goal: string; status: string; result: unknown }>;
+    }) => {
+      const findings = input.tasks
+        .filter((t) => t.status === "completed")
+        .map((t, i) => {
+          const r = t.result as Record<string, unknown> | null | undefined;
+          const summary =
+            r && typeof r === "object" && "summary" in r
+              ? String(r.summary)
+              : JSON.stringify(t.result);
+          return `${i + 1}. ${t.goal}\n   ${summary}`;
+        })
+        .join("\n\n");
+      return `Goal: ${input.goal}\n\nFindings:\n\n${findings}`;
+    },
+    emit: { messages: true },
   });
 }
 
@@ -231,8 +293,13 @@ export function planAndExecute<
     enableReplanning,
   });
 
-  const replanner = config.replanner ?? createDefaultReplanner({ name });
+  const replanner = config.replanner ?? createDefaultReplanner({ name, model: config.model });
   const applyReplan = createApplyReplan({ name });
+
+  const synthesizer =
+    config.synthesizer !== false
+      ? (config.synthesizer ?? createDefaultSynthesizer({ name, model: config.model }))
+      : null;
 
   // Handler that runs one iteration: select task, execute, record result.
   // Wrapping in a handler keeps planId and stepId in scope across the executor call.
@@ -379,7 +446,7 @@ export function planAndExecute<
   });
 
   // Build the outer pipeline
-  return sequencer({
+  const base = sequencer({
     name,
     inputSchema: planAndExecuteInputSchema,
   })
@@ -396,7 +463,7 @@ export function planAndExecute<
       (result) => (result as any).decision === "complete",
       iterationBody
     )
-    // 5. Return final result
+    // 4. Extract plan output
     .map((result, ctx) => {
       const planRef = (ctx.session.resources as any).plans.get({ planId: (result as any).planId });
       const plan = planRef.state;
@@ -415,4 +482,10 @@ export function planAndExecute<
         totalSteps: plan.tasks.length,
       };
     });
+
+  // 5. Optionally synthesize findings into a final answer
+  if (synthesizer) {
+    return base.then(synthesizer as BlockDefinition<any, any>);
+  }
+  return base;
 }

@@ -1,17 +1,11 @@
 /**
- * Plan Demo — kitchen-sink action
+ * Plan Demo — kitchen-sink plan mode
  *
- * Demonstrates the plan-and-execute pattern with emitPlanSnapshot:
- *   1. A planner LLM decomposes the goal into tasks
- *   2. Each task is executed sequentially (dependencies respected)
- *   3. emitPlanSnapshot emits plan state into the chat stream after the plan
- *      is saved and after each task completes — rendered inline by <Plan />
+ * Pipeline: planner → [step executor × N] → synthesizer
  *
- * Shows: resource-backed plan state, inline plan progress snapshots, and
- * the step executor pattern.
- *
- * Register with planResources in the flow's session resources:
- *   session: { resources: { ...artifactResources, ...planResources } }
+ * Each step runs silently and stores its finding as task.result.summary.
+ * The <Plan /> card shows per-task summaries as steps complete.
+ * After all steps, a synthesizer integrates the findings into a final answer.
  */
 import { generator, utility } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -26,30 +20,25 @@ const MODEL = "openai/gpt-5.4-mini";
 // ---------------------------------------------------------------------------
 // Step executor
 // ---------------------------------------------------------------------------
-// Receives { planId, stepId, goal } and generates a brief result for the task.
+// Runs silently. Result (task.result.summary) is displayed inside the <Plan />
+// card as each task completes — no separate chat messages emitted.
 
 const stepExecutor = generator({
   name: "plan-demo-step-executor",
   model: MODEL,
-  inputSchema: z.object({
-    planId: z.string(),
-    stepId: z.string(),
-    goal: z.string(),
-  }),
-  outputSchema: z.object({
-    summary: z.string(),
-  }),
+  inputSchema: z.object({ planId: z.string(), stepId: z.string(), goal: z.string() }),
+  outputSchema: z.object({ summary: z.string() }),
   prompt: [
-    "You are a task executor. You receive a single task goal and produce a concise result.",
-    "Keep your response to 1-2 sentences. Focus on what was accomplished.",
-    "Return your result as a JSON object with a 'summary' field.",
+    "You are a focused research executor.",
+    "Given a specific task, produce a substantive finding in 2-4 sentences with specific facts or insights.",
+    "Return a JSON object with a 'summary' field.",
   ].join("\n"),
   user: (input) => `Task: ${input.goal}`,
   emit: { messages: false },
 });
 
 // ---------------------------------------------------------------------------
-// Plan demo block
+// Plan block
 // ---------------------------------------------------------------------------
 
 export const planDemo = planAndExecute({
@@ -59,3 +48,4 @@ export const planDemo = planAndExecute({
   planner: utility.decomposer({ name: "plan-demo-planner", model: MODEL }),
   stepExecutor,
 });
+

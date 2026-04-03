@@ -30,13 +30,15 @@ function deduplicateComponentItems(items: OutputItem[]): OutputItem[] {
   items.forEach((item, i) => {
     const k = (item as ComponentItem).key;
     if (item.type === "component" && k !== undefined) {
-      latestIndex.set(k, i);
+      // Scope deduplication to the request: same key in different requests
+      // are independent items (each request's plan is preserved).
+      latestIndex.set(`${item.requestId}:${k}`, i);
     }
   });
   return items.filter((item, i) => {
     const k = (item as ComponentItem).key;
     if (item.type === "component" && k !== undefined) {
-      return latestIndex.get(k) === i;
+      return latestIndex.get(`${item.requestId}:${k}`) === i;
     }
     return true;
   });
