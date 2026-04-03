@@ -909,12 +909,17 @@ function trimOrphanedToolMessages(messages: LLMMessage[]): LLMMessage[] {
 /**
  * Loads conversation history from prior completed requests in this session,
  * converts to LLM-ready messages, and applies filtering/limiting.
+ *
+ * Optionally includes items from the current in-flight request via
+ * `readLiveItems` so that blocks like `sessionTitleGenerator` running as
+ * background work can see the current request's output.
  */
 async function loadLLMHistory(
   priorRequests: RequestRecord[],
   tokenCounter: TokenCounter,
   resolveModelId: () => string,
-  query?: ItemQuery
+  query?: ItemQuery,
+  readLiveItems?: () => OutputItem[]
 ): Promise<LLMMessage[]> {
 
   const allowedTypes = query?.itemTypes
@@ -924,12 +929,8 @@ async function loadLLMHistory(
 
   const messages: LLMMessage[] = [];
 
-  for (const request of priorRequests) {
-    if (request.items === undefined) {
-      continue;
-    }
-
-    const sorted = [...request.items].sort((a, b) => {
+  function processItems(items: OutputItem[]): void {
+    const sorted = [...items].sort((a, b) => {
       const tsDiff = a.ts - b.ts;
       return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
     });
@@ -939,7 +940,6 @@ async function loadLLMHistory(
         continue;
       }
 
-      // Type-based audience routing: only LLM-audience types proceed.
       if (!allowedTypes.has(item.type)) {
         continue;
       }
@@ -953,6 +953,18 @@ async function loadLLMHistory(
         messages.push(llmMessage);
       }
     }
+  }
+
+  for (const request of priorRequests) {
+    if (request.items !== undefined) {
+      processItems(request.items);
+    }
+  }
+
+  // Include current request's live items so background work blocks (e.g.
+  // sessionTitleGenerator) can see the just-completed output.
+  if (readLiveItems !== undefined) {
+    processItems(readLiveItems());
   }
 
   // Apply limit
@@ -1077,7 +1089,8 @@ function createSessionItemViews(
         priorRequests,
         options.tokenCounter,
         options.resolveModelId,
-        query
+        query,
+        options.readLiveItems
       )
   };
 }
@@ -1975,6 +1988,14 @@ export async function createExecutionContext<
         id: sessionRef.current.id,
         userId: sessionRef.current.userId,
         projectId: sessionRef.current.projectId
+      },
+      get metadata() {
+        const s = sessionRef.current;
+        return {
+          ...(s.title !== undefined ? { title: s.title } : {}),
+          ...(s.description !== undefined ? { description: s.description } : {}),
+          ...(s.tags !== undefined ? { tags: s.tags } : {})
+        };
       },
       resources: sessionResources,
       items: createSessionItemViews(priorItems, completedPriorRequests, {

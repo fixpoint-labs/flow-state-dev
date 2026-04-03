@@ -78,10 +78,18 @@ export type RequestScopeHandle<TState extends object = Record<string, unknown>> 
   costEstimate: CostEstimate;
 } & ScopeStateOps<TState>;
 
-export type SessionMetadataInput = {
+/** The readable first-class metadata fields on a session. */
+export type SessionMetadata = {
   title?: string;
   description?: string;
   tags?: string[];
+};
+
+/**
+ * Write input for setMetadata — includes first-class fields plus an arbitrary
+ * metadata bag for ad-hoc key-value storage.
+ */
+export type SessionMetadataInput = SessionMetadata & {
   metadata?: Record<string, unknown>;
 };
 
@@ -91,6 +99,7 @@ export type SessionScopeHandle<
 > = {
   identity: ScopeIdentity;
   state: Readonly<TState>;
+  metadata: Readonly<SessionMetadata>;
   resources: ResourceRegistry<TResources>;
   items: SessionItemViews;
   appendJournal(entry: JournalEntryInput): Promise<void>;
