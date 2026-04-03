@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { handler } from "../blocks";
+import { generator, handler, sequencer } from "../blocks";
 
 const titleSchema = z.object({
   title: z.string()
@@ -16,14 +16,14 @@ export interface SessionTitleGeneratorConfig {
 }
 
 /**
- * Factory that returns a handler block for auto-generating a session title
+ * Factory that returns a sequencer block for auto-generating a session title
  * from recent conversation messages.
  *
- * Designed for use as a `.work()` background block in a sequencer. It reads
- * recent session messages, asks the LLM for a concise title, and persists it
- * via `ctx.session.setMetadata({ title })`. The metadata update emits a
- * `session.metadata.changed` SSE event so connected clients see the title
- * in real-time.
+ * Designed for use as a `.work()` background block in a sequencer. It runs a
+ * generator to produce a title from recent session messages, then a handler
+ * that persists the title via `ctx.session.setMetadata({ title })` if it
+ * changed. The metadata update emits a `session.metadata.changed` SSE event
+ * so connected clients see the title in real-time.
  *
  * The block is a passthrough — it returns its input unchanged so it can be
  * inserted anywhere in a pipeline without affecting downstream steps.
@@ -40,48 +40,46 @@ export interface SessionTitleGeneratorConfig {
  * ```
  */
 export function sessionTitleGenerator(config: SessionTitleGeneratorConfig) {
-  const modelId = config.model ?? "gpt-5-mini";
+  const modelId = config.model ?? "openai/gpt-5-nano";
   const messageLimit = config.messageLimit ?? 4;
 
-  return handler({
-    name: config.name,
+  const titleGenerator = generator({
+    name: `${config.name}:generate`,
     inputSchema: z.unknown(),
-    outputSchema: z.unknown(),
-    transient: true,
-    execute: async (input, ctx) => {
-      const messages = await ctx.session.items.llm({ limit: messageLimit });
-      if (messages.length === 0) {
-        return input;
-      }
+    outputSchema: titleSchema,
+    model: modelId,
+    prompt: "You generate short, descriptive titles for chat sessions.",
+    history: async (_input, ctx) => ctx.session.items.llm({ limit: messageLimit }),
+    user: (_input, ctx) => {
+      const currentTitle = ctx.session.metadata.title;
+      return `Generate a title for this conversation based on the conversation messages.
 
-      const model = ctx.resolveModel(modelId, config.name);
-      const result = await model.generate({
-        messages: [
-          {
-            role: "system",
-            content: `You generate short, descriptive titles for chat sessions. Rules:
+Rules:
 - Output a single concise title (3-8 words)
 - Capture the main topic or intent of the conversation
 - Use sentence case (capitalize first word only, unless proper nouns)
 - Do not use quotes, periods, or other punctuation
-- Do not prefix with "Session:" or similar labels`
-          },
-          ...messages,
-          {
-            role: "user",
-            content: "Generate a title for this conversation based on the messages above."
-          }
-        ],
-        outputSchema: titleSchema,
-        signal: ctx.signal
-      });
+- Do not prefix with "Session:" or similar labels
+- Do not change the current title if it is already descriptive and appropriate
 
-      const parsed = titleSchema.safeParse(result.structuredOutput);
-      if (parsed.success && parsed.data.title.trim().length > 0) {
-        await ctx.session.setMetadata({ title: parsed.data.title.trim() });
+Current title: ${currentTitle ?? "(none)"}`;
+    }
+  });
+
+  const persistTitle = handler({
+    name: `${config.name}:persist`,
+    inputSchema: titleSchema,
+    outputSchema: z.unknown(),
+    execute: async (input, ctx) => {
+      const newTitle = input.title.trim();
+      if (newTitle.length > 0 && newTitle !== ctx.session.metadata.title) {
+        await ctx.session.setMetadata({ title: newTitle });
       }
-
       return input;
     }
   });
+
+  return sequencer({ name: config.name, inputSchema: z.unknown() })
+    .then(titleGenerator)
+    .then(persistTitle);
 }
