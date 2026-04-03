@@ -35,6 +35,7 @@ import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactViewer } from "@/components/artifact-viewer";
 import { SuggestionRow } from "@/components/suggestion-row";
 import { VoiceToggle } from "@/components/voice-toggle";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
 
@@ -198,6 +199,9 @@ function KitchenSinkApp() {
             <Package className="h-4 w-4" />
             Artifacts ({artifacts.length})
           </Button>
+          <div className="ml-auto">
+            <ThemeToggle />
+          </div>
         </div>
 
         <ClientDataBar

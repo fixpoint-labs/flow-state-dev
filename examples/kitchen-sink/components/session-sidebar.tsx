@@ -5,6 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { Plus, MessageSquare } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 import type { SessionSummary } from "@flow-state-dev/client";
 
 interface SessionSidebarProps {
@@ -63,6 +64,10 @@ export function SessionSidebar({
           )}
         </div>
       </ScrollArea>
+      <Separator />
+      <div className="p-3">
+        <ThemeToggle />
+      </div>
     </aside>
   );
 }

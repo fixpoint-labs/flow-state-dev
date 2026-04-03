@@ -65,10 +65,10 @@ const statusIcons: Record<ToolState, ReactNode> = {
   pending: <CircleIcon className="size-4" />,
   streaming: <ClockIcon className="size-4 animate-pulse" />,
   running: <ClockIcon className="size-4 animate-pulse" />,
-  awaiting: <ClockIcon className="size-4 text-yellow-600" />,
-  completed: <CheckCircleIcon className="size-4 text-green-600" />,
-  error: <XCircleIcon className="size-4 text-red-600" />,
-  denied: <XCircleIcon className="size-4 text-orange-600" />,
+  awaiting: <ClockIcon className="size-4 text-yellow-600 dark:text-yellow-400" />,
+  completed: <CheckCircleIcon className="size-4 text-green-600 dark:text-green-400" />,
+  error: <XCircleIcon className="size-4 text-red-600 dark:text-red-400" />,
+  denied: <XCircleIcon className="size-4 text-orange-600 dark:text-orange-400" />,
 };
 
 export const getStatusBadge = (state: ToolState) => (
