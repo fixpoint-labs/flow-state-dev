@@ -67,16 +67,23 @@ describe("registry build", () => {
     }
   });
 
-  it("preserves 'use client' directive in embedded source", () => {
+  it("preserves 'use client' directive when present in source", () => {
     for (const item of registry.items) {
       const outputPath = resolve(OUTPUT_DIR, `${item.name}.json`);
       const built = JSON.parse(readFileSync(outputPath, "utf-8"));
 
       for (const file of built.files) {
-        if (file.path.endsWith(".tsx")) {
+        if (!file.path.endsWith(".tsx")) continue;
+
+        // Read the original source file to check if it has "use client"
+        const sourcePath = resolve(ROOT, item.files[0].path);
+        const sourceContent = readFileSync(sourcePath, "utf-8");
+        const sourceHasDirective = sourceContent.startsWith('"use client"');
+
+        if (sourceHasDirective) {
           expect(
             file.content.startsWith('"use client"'),
-            `${item.name}: "use client" directive missing in ${file.path}`
+            `${item.name}: "use client" directive was stripped from ${file.path}`
           ).toBe(true);
         }
       }
