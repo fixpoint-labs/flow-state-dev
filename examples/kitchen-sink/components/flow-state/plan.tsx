@@ -1,7 +1,8 @@
 "use client";
 
-import type { ComponentItem, BlockToolOutputItem } from "@flow-state-dev/core/items";
+import type { ComponentItem, BlockToolOutputItem, BlockOutputItem } from "@flow-state-dev/core/items";
 import { cn } from "@/lib/utils";
+import { Tool } from "./tool";
 import {
   AlertTriangleIcon,
   ArrowUpCircleIcon,
@@ -70,75 +71,88 @@ function getResultSummary(result: unknown): string | undefined {
 /**
  * Build a map from task ID → tool calls that ran during that task's execution.
  *
- * Strategy: plan snapshots and tool calls share the same parentBlockInstanceId
- * (the executeNextTask sequencer instance). By diffing consecutive plan snapshots,
- * we identify which task was executed in each instance, then group tool calls
- * from block_tool_output items by that same parentBlockInstanceId.
+ * Strategy: correlate by itemIndex within a request.
+ *
+ * Plan snapshots are emitted twice per task cycle:
+ *   1. captureAndPlan — initial baseline (all tasks pending)
+ *   2. recordResult   — after each task completes/fails
+ *
+ * findTask never emits a snapshot, so no snapshot ever shows a task as
+ * in_progress. Tool calls for task N fall between snapshot[N-1] and snapshot[N]
+ * in itemIndex order, within the same request. We use this window to assign
+ * tool calls to tasks without needing parentBlockInstanceId traversal.
  */
+type TaskToolResult = {
+  taskToolMap: Map<string, BlockToolOutputItem[]>;
+};
+
 function buildTaskToolMap(
   allItems: ReturnType<typeof useSessionItems>
-): Map<string, BlockToolOutputItem[]> {
-  // All plan snapshot ComponentItems, sorted by emission order.
-  const snapshots = allItems
-    .filter((item) => item.type === "component" && (item as ComponentItem).component === "plan")
-    .sort((a, b) => a.itemIndex - b.itemIndex) as ComponentItem[];
+): TaskToolResult {
+  // All plan snapshot ComponentItems, grouped by request then sorted by itemIndex.
+  const allSnapshots = allItems.filter(
+    (item) => item.type === "component" && (item as ComponentItem).component === "plan"
+  ) as ComponentItem[];
 
-  // Map parentBlockInstanceId → task ID via snapshot diffing.
-  const executionToTaskId = new Map<string, string>();
+  const snapshotsByRequest = new Map<string, ComponentItem[]>();
+  for (const snap of allSnapshots) {
+    const req = snap.requestId;
+    if (!snapshotsByRequest.has(req)) snapshotsByRequest.set(req, []);
+    snapshotsByRequest.get(req)!.push(snap);
+  }
+  for (const snaps of snapshotsByRequest.values()) {
+    snaps.sort((a, b) => a.itemIndex - b.itemIndex);
+  }
 
-  for (let i = 0; i < snapshots.length; i++) {
-    const snapshot = snapshots[i];
-    const parentId = snapshot.provenance.parentBlockInstanceId;
-    if (!parentId) continue;
+  // Group tool outputs by requestId for range lookups.
+  const toolsByRequest = new Map<string, BlockToolOutputItem[]>();
+  for (const item of allItems) {
+    if (item.type !== "block_tool_output") continue;
+    const req = item.requestId;
+    if (!toolsByRequest.has(req)) toolsByRequest.set(req, []);
+    toolsByRequest.get(req)!.push(item as BlockToolOutputItem);
+  }
 
-    const plan = snapshot.data as Plan;
-    const prevPlan = i > 0 ? (snapshots[i - 1].data as Plan) : null;
+  const taskToolMap = new Map<string, BlockToolOutputItem[]>();
 
-    let executedTaskId: string | undefined;
+  for (const [requestId, snaps] of snapshotsByRequest) {
+    const reqTools = toolsByRequest.get(requestId) ?? [];
 
-    if (prevPlan) {
-      // Find the task that transitioned from in_progress → completed/failed.
-      // Cascade-skipped tasks go pending → skipped, not in_progress → skipped.
+    for (let i = 1; i < snaps.length; i++) {
+      const prevSnap = snaps[i - 1];
+      const currSnap = snaps[i];
+      const plan = currSnap.data as Plan;
+      const prevPlan = prevSnap.data as Plan;
+
+      // Find the task that transitioned from pending/in_progress → completed/failed.
+      // findTask never emits a snapshot, so "in_progress" never appears in snapshots.
       const prevById = new Map(prevPlan.tasks.map((t) => [t.id, t]));
+      let executedTaskId: string | undefined;
       for (const task of plan.tasks) {
         const prev = prevById.get(task.id);
-        if (prev?.status === "in_progress" && task.status !== "in_progress") {
+        if (
+          (prev?.status === "pending" || prev?.status === "in_progress") &&
+          (task.status === "completed" || task.status === "failed")
+        ) {
           executedTaskId = task.id;
           break;
         }
       }
-    } else {
-      // First snapshot: the task that just became completed or failed.
-      executedTaskId = plan.tasks.find(
-        (t) => t.status === "completed" || t.status === "failed"
-      )?.id;
+
+      if (!executedTaskId) continue;
+
+      // Tool calls for this task fall between the two snapshots in itemIndex order.
+      const taskTools = reqTools.filter(
+        (t) => t.itemIndex > prevSnap.itemIndex && t.itemIndex < currSnap.itemIndex
+      );
+      if (taskTools.length > 0) {
+        taskToolMap.set(executedTaskId, taskTools);
+      }
     }
 
-    if (executedTaskId) {
-      executionToTaskId.set(parentId, executedTaskId);
-    }
   }
 
-  // All block_tool_output items, grouped by parentBlockInstanceId.
-  const toolsByExecution = new Map<string, BlockToolOutputItem[]>();
-  for (const item of allItems) {
-    if (item.type !== "block_tool_output") continue;
-    const parentId = item.provenance.parentBlockInstanceId;
-    if (!parentId) continue;
-    if (!toolsByExecution.has(parentId)) toolsByExecution.set(parentId, []);
-    toolsByExecution.get(parentId)!.push(item as BlockToolOutputItem);
-  }
-
-  // Invert: task ID → tool calls.
-  const taskToolMap = new Map<string, BlockToolOutputItem[]>();
-  for (const [parentId, taskId] of executionToTaskId) {
-    const tools = toolsByExecution.get(parentId);
-    if (tools && tools.length > 0) {
-      taskToolMap.set(taskId, tools);
-    }
-  }
-
-  return taskToolMap;
+  return { taskToolMap };
 }
 
 export function Plan({ item }: { item: ComponentItem }) {
@@ -146,12 +160,12 @@ export function Plan({ item }: { item: ComponentItem }) {
   const plan = item.data as Plan;
   const completedCount = plan.tasks.filter((t) => t.status === "completed").length;
 
-  const taskToolMap = useMemo(() => buildTaskToolMap(allItems), [allItems]);
+  const { taskToolMap } = useMemo(() => buildTaskToolMap(allItems), [allItems]);
 
   return (
     <div className="not-prose my-2 rounded-md border bg-card p-3 text-card-foreground">
       <div className="mb-2 flex items-start justify-between gap-2">
-        <p className="text-sm font-medium leading-snug">{plan.goal}</p>
+        <p className="text-sm font-medium leading-snug">Tasks</p>
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
           {completedCount}/{plan.tasks.length}
           {plan.iteration !== undefined && plan.iteration > 0 && ` · pass ${plan.iteration + 1}`}
@@ -237,4 +251,34 @@ function ToolCallLine({ item }: { item: BlockToolOutputItem }) {
       )}
     </li>
   );
+}
+
+/**
+ * Returns true if this tool call belongs to a plan execution (same request).
+ * When a request contains plan snapshots, the plan component is the primary UI
+ * for that request — all tool calls (step executors + synthesizer) are shown
+ * contextually inside the plan and should not render as standalone cards.
+ */
+function isPlanOwnedToolCall(
+  item: BlockToolOutputItem,
+  allItems: ReturnType<typeof useSessionItems>
+): boolean {
+  return allItems.some(
+    (i) =>
+      i.type === "component" &&
+      (i as ComponentItem).component === "plan" &&
+      i.requestId === item.requestId
+  );
+}
+
+/**
+ * Renders a block_tool_output item as a Tool card, but suppresses it when
+ * the tool call belongs to a plan task (shown inline there instead).
+ */
+export function PlanAwareTool({ item }: { item: BlockOutputItem | BlockToolOutputItem }) {
+  const allItems = useSessionItems();
+  if (item.type === "block_tool_output" && isPlanOwnedToolCall(item as BlockToolOutputItem, allItems)) {
+    return null;
+  }
+  return <Tool item={item} />;
 }

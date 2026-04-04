@@ -37,12 +37,15 @@ import { SuggestionRow } from "@/components/suggestion-row";
 import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
+import { PlanAwareTool } from "@/components/flow-state/plan";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
 
 const kitchenSinkRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
   block_output: AgentResponseCard,
+  // Plan-owned tool calls are shown inline inside task rows; others render normally.
+  block_tool_output: PlanAwareTool,
 };
 
 
