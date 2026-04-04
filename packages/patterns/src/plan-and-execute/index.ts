@@ -200,6 +200,65 @@ function createApplyReplan(config: { name: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Synthesizer prompt builder
+// ---------------------------------------------------------------------------
+
+export interface SynthesizerPromptInput {
+  goal: string;
+  completedSteps: number;
+  tasks: Array<{ goal: string; status: string; result?: unknown; error?: string }>;
+}
+
+/**
+ * Builds the user prompt for a plan synthesizer from completed task results.
+ * Exported so custom synthesizers can reuse the same formatting without
+ * duplicating source-dedup and findings-assembly logic.
+ */
+export function buildSynthesizerUserPrompt(input: SynthesizerPromptInput): string {
+  if (input.completedSteps === 0) {
+    const failed = input.tasks.filter((t) => t.status === "failed");
+    const firstError = failed[0]?.error ?? "unknown error";
+    return [
+      `Goal: ${input.goal}`,
+      ``,
+      `No research tasks completed. The plan encountered an error on the first task: ${firstError}`,
+      `Downstream tasks were skipped as a result.`,
+      `Acknowledge that you were unable to gather findings for this goal and briefly explain why based on the error above.`,
+    ].join("\n");
+  }
+
+  const allSources: Array<{ title?: string; url: string }> = [];
+
+  const findings = input.tasks
+    .filter((t) => t.status === "completed")
+    .map((t, i) => {
+      const r = t.result as Record<string, unknown> | null | undefined;
+      const summary =
+        r && typeof r === "object" && "summary" in r
+          ? String(r.summary)
+          : JSON.stringify(t.result);
+      if (r && typeof r === "object" && Array.isArray(r.sources)) {
+        allSources.push(...(r.sources as Array<{ title?: string; url: string }>));
+      }
+      return `${i + 1}. ${t.goal}\n   ${summary}`;
+    })
+    .join("\n\n");
+
+  const seen = new Set<string>();
+  const uniqueSources = allSources.filter((s) => {
+    if (seen.has(s.url)) return false;
+    seen.add(s.url);
+    return true;
+  });
+  const sourcesSection =
+    uniqueSources.length > 0
+      ? `\n\nSources:\n${uniqueSources.map((s) => `- ${s.title ? `${s.title}: ` : ""}${s.url}`).join("\n")}`
+      : "";
+
+  return `Goal: ${input.goal}\n\nFindings:\n\n${findings}${sourcesSection}`;
+}
+
+// ---------------------------------------------------------------------------
 // Default synthesizer
 // ---------------------------------------------------------------------------
 
@@ -231,50 +290,7 @@ function createDefaultSynthesizer(config: {
       "Be specific and draw on the concrete facts gathered.",
       "If no findings are available, briefly explain that the research could not be completed and why, without asking the user for more information.",
     ].join("\n"),
-    user: (input: {
-      goal: string;
-      completedSteps: number;
-      tasks: Array<{ goal: string; status: string; result: unknown; error?: string }>;
-    }) => {
-      if (input.completedSteps === 0) {
-        const failed = input.tasks.filter((t) => t.status === "failed");
-        const firstError = failed[0]?.error ?? "unknown error";
-        return [
-          `Goal: ${input.goal}`,
-          ``,
-          `No research tasks completed. The plan encountered an error on the first task: ${firstError}`,
-          `Downstream tasks were skipped as a result.`,
-          `Acknowledge that you were unable to gather findings for this goal and briefly explain why based on the error above.`,
-        ].join("\n");
-      }
-
-      const allSources: Array<{ title?: string; url: string }> = [];
-
-      const findings = input.tasks
-        .filter((t) => t.status === "completed")
-        .map((t, i) => {
-          const r = t.result as Record<string, unknown> | null | undefined;
-          const summary =
-            r && typeof r === "object" && "summary" in r
-              ? String(r.summary)
-              : JSON.stringify(t.result);
-          if (r && typeof r === "object" && Array.isArray(r.sources)) {
-            allSources.push(...(r.sources as Array<{ title?: string; url: string }>));
-          }
-          return `${i + 1}. ${t.goal}\n   ${summary}`;
-        })
-        .join("\n\n");
-
-      const uniqueSources = allSources.filter(
-        (s, i, arr) => arr.findIndex((x) => x.url === s.url) === i
-      );
-      const sourcesSection =
-        uniqueSources.length > 0
-          ? `\n\nSources:\n${uniqueSources.map((s) => `- ${s.title ? `${s.title}: ` : ""}${s.url}`).join("\n")}`
-          : "";
-
-      return `Goal: ${input.goal}\n\nFindings:\n\n${findings}${sourcesSection}`;
-    },
+    user: buildSynthesizerUserPrompt,
     emit: { messages: true },
   });
 }

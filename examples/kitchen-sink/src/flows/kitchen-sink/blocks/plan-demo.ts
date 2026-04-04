@@ -13,13 +13,12 @@
  * artifact when the result is substantive.
  */
 import { generator, sequencer, utility } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import { planAndExecute, planAndExecuteInputSchema } from "@flow-state-dev/patterns/plan-and-execute";
+import { planAndExecute, planAndExecuteInputSchema, buildSynthesizerUserPrompt } from "@flow-state-dev/patterns/plan-and-execute";
 import { readArtifact } from "./read-artifact";
 import { updateArtifact } from "./update-artifact";
 import { artifactResources } from "../schemas";
-import { artifactListContext } from "./agent-context";
+import { artifactListContext, type GeneratorMemory } from "./agent-context";
 
 export const planDemoInputSchema = z.object({
   goal: z.string().min(1).describe("The goal to plan and execute"),
@@ -34,67 +33,7 @@ const MODEL = "openai/gpt-5.4-mini";
 // access memory context. Workers receive context for recall but are not
 // captured into memory — only the planning stage is captured.
 
-export interface PlanDemoMemory {
-  contextFormatter: BlockDefinition<any, any> | ((input: unknown, ctx: any) => string | undefined | Promise<string | undefined>);
-  captureFromItems: BlockDefinition<any, any>;
-}
-
-// ---------------------------------------------------------------------------
-// Synthesizer prompt builder
-// ---------------------------------------------------------------------------
-// Extracted so it can be shared between the default synthesizer (in the
-// patterns package) and this custom one without duplication.
-
-function buildSynthesizerUserPrompt(input: {
-  goal: string;
-  completedSteps: number;
-  tasks: Array<{ goal: string; status: string; result?: unknown; error?: string }>;
-}): string {
-  if (input.completedSteps === 0) {
-    const failed = input.tasks.filter((t) => t.status === "failed");
-    const firstError = failed[0]?.error ?? "unknown error";
-    return [
-      `Goal: ${input.goal}`,
-      ``,
-      `No research tasks completed. The plan encountered an error on the first task: ${firstError}`,
-      `Downstream tasks were skipped as a result.`,
-      `Acknowledge that you were unable to gather findings for this goal and briefly explain why based on the error above.`,
-    ].join("\n");
-  }
-
-  const allSources: Array<{ title?: string; url: string }> = [];
-
-  const findings = input.tasks
-    .filter((t) => t.status === "completed")
-    .map((t, i) => {
-      const r = t.result as Record<string, unknown> | null | undefined;
-      const summary =
-        r && typeof r === "object" && "summary" in r
-          ? String(r.summary)
-          : JSON.stringify(r);
-      if (r && typeof r === "object" && Array.isArray(r.sources)) {
-        allSources.push(...(r.sources as Array<{ title?: string; url: string }>));
-      }
-      return `${i + 1}. ${t.goal}\n   ${summary}`;
-    })
-    .join("\n\n");
-
-  const seen = new Set<string>();
-  const uniqueSources = allSources.filter((s) => {
-    if (seen.has(s.url)) return false;
-    seen.add(s.url);
-    return true;
-  });
-
-  const sourcesSection =
-    uniqueSources.length > 0
-      ? `\n\nSources:\n${uniqueSources.map((s) => `- ${s.title ? `${s.title}: ` : ""}${s.url}`).join("\n")}`
-      : "";
-
-  return `Goal: ${input.goal}\n\nFindings:\n\n${findings}${sourcesSection}`;
-}
-
-export function createPlanDemo(mem: PlanDemoMemory) {
+export function createPlanDemo(mem: GeneratorMemory) {
   // Step executor: receives memory context for recall so it can draw on prior
   // knowledge. Has read-only access to artifacts so steps can reference
   // existing work (e.g. "update the spec with these findings").
@@ -116,7 +55,7 @@ export function createPlanDemo(mem: PlanDemoMemory) {
         url: z.string(),
       })).optional(),
     }),
-    sessionResources: { ...artifactResources },
+    sessionResources: artifactResources,
     context: [mem.contextFormatter as any, artifactListContext],
     tools: [readArtifact],
     search: true,
@@ -157,7 +96,7 @@ export function createPlanDemo(mem: PlanDemoMemory) {
   const synthesizer = generator({
     name: "plan-demo-synthesizer",
     model: MODEL,
-    sessionResources: { ...artifactResources },
+    sessionResources: artifactResources,
     context: [mem.contextFormatter as any, artifactListContext],
     inputSchema: z.object({
       goal: z.string(),
@@ -208,6 +147,6 @@ export function createPlanDemo(mem: PlanDemoMemory) {
     planner,
     stepExecutor,
     synthesizer,
-    sessionResources: { ...artifactResources },
+    sessionResources: artifactResources,
   });
 }

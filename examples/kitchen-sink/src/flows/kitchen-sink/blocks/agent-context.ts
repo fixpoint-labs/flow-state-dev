@@ -6,6 +6,8 @@
  */
 import type { BlockContext } from "@flow-state-dev/core/types";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+export { voiceContext } from "@flow-state-dev/server";
+
 
 // ---------------------------------------------------------------------------
 // Shared memory interface
@@ -40,27 +42,4 @@ export const artifactListContext = (_input: unknown, ctx: BlockContext) => {
     })
     .join("\n");
   return `Current artifacts:\n${list}`;
-};
-
-// ---------------------------------------------------------------------------
-// Voice context
-// ---------------------------------------------------------------------------
-// When TTS is active or the user spoke, tell the LLM so it can adapt its
-// output style (shorter sentences, no markdown tables, conversational tone).
-
-export const voiceContext = (_input: unknown, ctx: BlockContext) => {
-  const voice = (ctx as any).requestRuntime?.metadata?.voice as
-    | { ttsEnabled?: boolean; inputModality?: string }
-    | undefined;
-  if (!voice) return undefined;
-  const parts: string[] = [];
-  if (voice.ttsEnabled) {
-    parts.push(
-      "Your response will be read aloud via text-to-speech. Keep sentences short and conversational. Avoid markdown formatting, tables, code blocks, and bullet lists — they sound bad when spoken."
-    );
-  }
-  if (voice.inputModality === "speech") {
-    parts.push("The user spoke this message (voice input). Respond conversationally.");
-  }
-  return parts.length > 0 ? parts.join(" ") : undefined;
 };

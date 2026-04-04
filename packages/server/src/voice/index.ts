@@ -13,3 +13,5 @@ export {
   createTTSEmitterHook,
   type TTSEmitterHook
 } from "./tts-emitter-hook";
+
+export { voiceContext } from "./context";

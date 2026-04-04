@@ -7,13 +7,11 @@
  *
  * What this flow does:
  *   A user sends a message with an optional mode ("chat", "create", or "plan").
- *   A router inspects session state to pick the right pipeline. The chat pipeline
- *   analyzes input, optionally enriches it with artifact context, calls an LLM
- *   generator with tool access to read/write artifacts, and tracks request counts.
- *   The create pipeline is identical in wiring but uses a prompt focused on
- *   proactively building artifacts. The plan pipeline decomposes the goal into
- *   steps, executes them with web search, and synthesizes findings — optionally
- *   saving the result as an artifact.
+ *   A router inspects the input mode to pick the right pipeline. The assistant
+ *   pipeline calls an LLM generator with tool access to read/write artifacts,
+ *   where the prompt adapts to the current mode. The plan pipeline decomposes
+ *   the goal into steps, executes them with web search, and synthesizes findings
+ *   — optionally saving the result as an artifact.
  *
  * Concepts demonstrated:
  *   - handler()   — synchronous blocks for data transforms and state mutations
@@ -28,6 +26,7 @@
  */
 import {
   defineFlow,
+  generator,
   handler,
   router,
   sequencer,
@@ -39,16 +38,15 @@ import {
 } from "@thought-fabric/core/memory";
 import { z } from "zod";
 import {
-  analyzeInput,
-  formatReport,
   summarizeArtifacts,
   updateArtifact,
   updateArtifactInputSchema,
   eventQueueDemo,
   eventQueueDemoInputSchema,
   createPlanDemo,
-  createChatGenerator,
-  createCreateGenerator,
+  readArtifact,
+  artifactListContext,
+  voiceContext,
 } from "./blocks";
 import {
   modeSchema,
@@ -68,18 +66,11 @@ const mem = memorySystem({
   semantic: true,
 });
 
-// Generator blocks — each is a factory so the same `mem` object wires memory
-// context and capture without importing a module-level singleton.
-const chatGenerator = createChatGenerator(mem);
-const createGenerator = createCreateGenerator(mem);
 const planDemo = createPlanDemo(mem);
 
 // ---------------------------------------------------------------------------
 // Flow-level schemas
 // ---------------------------------------------------------------------------
-// These define the "full picture" of state, resources, and clientData that
-// the flow exposes to the runtime and to clients. Individual blocks only see
-// the slices they declare.
 
 const inputSchema = z.object({
   message: z.string().min(1),
@@ -101,9 +92,30 @@ const userStateSchema = z.object({
   preferredModel: z.string().default(MODEL_ID)
 });
 
-// Generator outputs plain text — reasoning comes from the provider's native
-// reasoning tokens, and artifact modifications are tracked deterministically
-// via resource state (the update-artifact tool writes to session resources).
+// ---------------------------------------------------------------------------
+// Prompts
+// ---------------------------------------------------------------------------
+
+const CHAT_PROMPT = `You are a helpful development assistant. You help users with tasks, answer questions, and search for information.
+
+You have access to artifacts and can read or create them:
+- Use read-artifact when users ask about existing artifacts or you need their content.
+- Use update-artifact when users explicitly ask you to create or save something.
+
+When users ask questions that require up-to-date information, use search.
+
+Be concise and focused on being useful. Create artifacts when asked — not speculatively.
+Never show artifact ids unless specifically asked.`;
+
+const CREATE_PROMPT = `You are a creative development assistant. Your primary role is building artifacts.
+
+When the user asks for anything that could be expressed as an artifact — code, documentation, a spec, a plan, a report, a list — create it immediately using update-artifact. Choose a descriptive id (kebab-case) and a clear title.
+
+Prefer building over explaining. If you can produce a concrete artifact, do so rather than describing what you would build.
+
+When users ask questions, answer them — but look for opportunities to produce something tangible. If an existing artifact is relevant, read it first with read-artifact before updating or building on it.
+
+Never show artifact ids unless specifically asked.`;
 
 // ---------------------------------------------------------------------------
 // Blocks (inline)
@@ -124,8 +136,6 @@ const applyRequestedMode = handler({
 });
 
 // Bookkeeping handler: increments a request counter in session state.
-// This block declares only { requestCount, lastAction } — it doesn't know
-// about the "mode" field, and it doesn't need to.
 // Silent by default — no client or LLM emissions.
 const incrementRequestCount = handler({
   name: "increment-request-count",
@@ -146,8 +156,6 @@ const incrementRequestCount = handler({
 });
 
 // Rescue fallback: runs when the plan pipeline throws.
-// rescue() catches errors matching `when` predicates and routes to a fallback
-// block, preventing the entire action from failing.
 const planFallback = handler({
   name: "plan-fallback",
   inputSchema: z.unknown(),
@@ -163,30 +171,45 @@ const autoTitle = utility.sessionTitleGenerator({
   model: MODEL_ID
 });
 
+// Assistant generator — single block for both chat and create modes.
+// The prompt is a function so it re-evaluates on each tool loop step,
+// picking the right behavioral contract from session state.
+const assistantGenerator = generator({
+  name: "assistant-generator",
+  model: (_input, ctx) => (ctx.user?.state.preferredModel as string | undefined) ?? MODEL_ID,
+  userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
+  sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
+  sessionResources: artifactResources,
+
+  context: [
+    mem.contextFormatter,
+    artifactListContext,
+    voiceContext,
+  ] as any[],
+
+  inputSchema,
+  history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
+  user: (input: z.infer<typeof inputSchema>) => input.message,
+
+  tools: [readArtifact, updateArtifact],
+  search: true,
+  maxIterations: 10,
+  outputSchema: z.string(),
+
+  prompt: (_input, ctx) =>
+    ctx.session.state.mode === "create" ? CREATE_PROMPT : CHAT_PROMPT,
+
+  emit: { messages: true, reasoning: true },
+  providerOptions: { openai: { reasoningSummary: "detailed" } },
+});
+
 // ---------------------------------------------------------------------------
 // Pipelines (sequencers)
 // ---------------------------------------------------------------------------
-// Sequencers compose blocks into linear pipelines. Each step's output feeds
-// into the next step's input. The DSL methods:
-//   .then(block)          — run a block
-//   .thenIf(pred, block)  — run conditionally
-//   .map(fn)              — transform the value without a block
-//   .tap(fn)              — side-effect without changing the value
-//   .rescue([...])        — catch errors and route to fallback blocks
 
-const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema })
-  .then(analyzeInput)
-  .thenIf((result) => result.needsContext, formatReport)
-  .then(chatGenerator)
-  // Memory capture: reads session items to build working/episodic memory.
-  .work(mem.captureFromItems);
-
-// Create pipeline: identical structure to chat but uses createGenerator,
-// whose prompt aggressively builds artifacts rather than explaining.
-const createPipeline = sequencer({ name: "create-pipeline", inputSchema })
-  .then(analyzeInput)
-  .thenIf((result) => result.needsContext, formatReport)
-  .then(createGenerator)
+// Single pipeline for chat and create — the generator's prompt adapts to mode.
+const assistantPipeline = sequencer({ name: "assistant-pipeline", inputSchema })
+  .then(assistantGenerator)
   .work(mem.captureFromItems);
 
 const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
@@ -202,27 +225,16 @@ const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
-// Routers dispatch input to one of several pipelines at runtime. The execute
-// callback inspects state (or input) and returns the chosen route. The routes
-// array declares all valid targets — this enables static analysis and
-// validation that the router can only reach known pipelines.
 
 export const modeRouter = router({
   name: "mode-router",
   inputSchema: inputSchema,
   outputSchema: z.string(),
-  sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
-  routes: [chatPipeline, createPipeline, planPipeline],
-  execute: (input, _ctx) => {
-    if (input.mode === "plan") return planPipeline;
-    if (input.mode === "create") return createPipeline;
-    return chatPipeline;
-  }
+  routes: [assistantPipeline, planPipeline],
+  execute: (input) => input.mode === "plan" ? planPipeline : assistantPipeline,
 });
 
 // Top-level run sequencer: handles steps common to all modes.
-// applyRequestedMode and post-processing run here once rather than being
-// duplicated across pipelines.
 const runSequencer = sequencer({ name: "run", inputSchema })
   .then(applyRequestedMode)
   .then(modeRouter)
@@ -233,20 +245,11 @@ const runSequencer = sequencer({ name: "run", inputSchema })
 // ---------------------------------------------------------------------------
 // Flow definition
 // ---------------------------------------------------------------------------
-// defineFlow() ties everything together: actions, state schemas, resources,
-// and clientData. This is the entry point the server registers and clients
-// connect to.
-//
-// The flow-level schemas are the "full picture" — they're the union of all
-// partial schemas declared by individual blocks. The runtime uses them for
-// validation and initialization.
 
 const kitchenSinkFlow = defineFlow({
   kind: "kitchen-sink",
   requireUser: true,
 
-  // Voice: enable TTS so assistant responses are synthesized to audio.
-  // Uses OpenAI's tts-1 model — fast and widely available.
   voice: {
     tts: {
       model: "tts-1",
@@ -254,8 +257,6 @@ const kitchenSinkFlow = defineFlow({
     },
   },
 
-  // Actions are the flow's public API — each maps a name to an input schema
-  // and an entry-point block. Clients call actions by name.
   actions: {
     run: {
       inputSchema,
@@ -272,20 +273,9 @@ const kitchenSinkFlow = defineFlow({
     },
   },
 
-  // Session scope: state, resources, and clientData scoped to a session.
   session: {
     stateSchema: sessionStateSchema,
-
-    // Resources are named, typed state containers that blocks can read/write.
-    // They live alongside session state but have their own schemas and can
-    // be independently writable.
-    resources: {
-      ...artifactResources,
-    },
-
-    // clientData entries are derived values computed from scope state and
-    // resources, delivered to clients on every state snapshot request.
-    // Each entry is a simple function: (ctx) => value.
+    resources: artifactResources,
     clientData: {
       artifacts: async (ctx) => {
         const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<{ title: string; summary: string; updatedAt: number }>;
@@ -308,7 +298,6 @@ const kitchenSinkFlow = defineFlow({
     }
   },
 
-  // User scope: state and clientData that persist across sessions for a user.
   user: {
     stateSchema: userStateSchema,
     clientData: {
