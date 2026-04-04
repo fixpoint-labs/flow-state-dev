@@ -6,12 +6,14 @@
  * resources, clientData, and tool-use.
  *
  * What this flow does:
- *   A user sends a message with an optional mode ("chat" or "plan"). A router
- *   inspects session state to pick the right pipeline. The chat pipeline
+ *   A user sends a message with an optional mode ("chat", "create", or "plan").
+ *   A router inspects session state to pick the right pipeline. The chat pipeline
  *   analyzes input, optionally enriches it with artifact context, calls an LLM
- *   generator with tool access to read/write artifacts, and tracks request
- *   counts. The plan pipeline adds planning instructions and includes a rescue
- *   fallback for errors.
+ *   generator with tool access to read/write artifacts, and tracks request counts.
+ *   The create pipeline is identical in wiring but uses a prompt focused on
+ *   proactively building artifacts. The plan pipeline decomposes the goal into
+ *   steps, executes them with web search, and synthesizes findings — optionally
+ *   saving the result as an artifact.
  *
  * Concepts demonstrated:
  *   - handler()   — synchronous blocks for data transforms and state mutations
@@ -26,7 +28,6 @@
  */
 import {
   defineFlow,
-  generator,
   handler,
   router,
   sequencer,
@@ -39,15 +40,15 @@ import {
 import { z } from "zod";
 import {
   analyzeInput,
-  analysisOutputSchema,
   formatReport,
-  readArtifact,
   summarizeArtifacts,
   updateArtifact,
   updateArtifactInputSchema,
   eventQueueDemo,
   eventQueueDemoInputSchema,
   createPlanDemo,
+  createChatGenerator,
+  createCreateGenerator,
 } from "./blocks";
 import {
   modeSchema,
@@ -67,6 +68,10 @@ const mem = memorySystem({
   semantic: true,
 });
 
+// Generator blocks — each is a factory so the same `mem` object wires memory
+// context and capture without importing a module-level singleton.
+const chatGenerator = createChatGenerator(mem);
+const createGenerator = createCreateGenerator(mem);
 const planDemo = createPlanDemo(mem);
 
 // ---------------------------------------------------------------------------
@@ -78,14 +83,14 @@ const planDemo = createPlanDemo(mem);
 
 const inputSchema = z.object({
   message: z.string().min(1),
-  mode: modeSchema.default("chat")
+  mode: modeSchema
 });
 
 // Session state lives for the duration of a session. Every block that reads
 // or writes session state declares a partial schema of just the fields it
 // uses; the flow-level schema is the union of all those slices.
 const sessionStateSchema = z.object({
-  mode: modeSchema.default("chat"),
+  mode: modeSchema,
   requestCount: z.number().default(0),
   lastAction: z.string().optional()
 });
@@ -115,97 +120,6 @@ const applyRequestedMode = handler({
   execute: async (input, ctx) => {
     await ctx.session.patchState({ mode: input.mode });
     return input;
-  }
-});
-
-// Generator block: calls an LLM with structured output, tool access, and
-// auto-repair. This is the main "AI" block in the flow.
-//
-// Key features demonstrated:
-//   - userStateSchema: declares a partial user state slice ({ preferredModel })
-//     so the model callback gets typed access without knowing the full schema
-//   - tools: handler blocks exposed as LLM-callable functions
-//   - describeTools: (default true) auto-injects tool descriptions into context
-//   - Dynamic context: function-typed context entries are re-resolved before
-//     each step of the tool loop via the AI SDK's prepareStep callback, so the
-//     LLM always sees fresh state (e.g., an up-to-date artifact list)
-//   - emit.reasoning: reasoning comes from the provider's native tokens, not
-//     from asking the LLM to generate a reasoning field
-//   - providerOptions: enables detailed reasoning summaries from OpenAI models
-const agentGenerator = generator({
-  name: "agent-generator",
-  userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
-  sessionResources: {
-    ...artifactResources
-  },
-  model: (_input, ctx) => ctx.user?.state.preferredModel ?? MODEL_ID,
-
-  prompt: `You are a helpful development assistant. You help users create, read, and manage project artifacts.
-
-When users ask you to create or write something, save it as an artifact using the update-artifact tool. Choose a short, descriptive id (kebab-case) and a clear title.
-
-When users ask about existing artifacts, use the read-artifact tool to fetch the full content before responding.
-
-When users ask questions that require up-to-date information, search the web to find relevant results.
-
-Be concise and helpful. Never show the artifact id unless specifically asked to do so.`,
-
-  context: [
-    // Memory system: injects active memories (working + episodic) into the
-    // LLM context, categorized as facts, current focus, and preferences.
-    mem.contextFormatter,
-    // Dynamic: current artifact list, re-evaluated each tool loop step so
-    // the LLM sees artifacts created by earlier tool calls in the same turn.
-    // Shows title + summary (populated by the background summarize-artifacts
-    // work block) so the LLM has context without reading full content.
-    (_input, ctx) => {
-      const artifacts = ctx.session.resources.artifacts;
-      const instances = artifacts.list();
-      if (instances.length === 0) {
-        return "No artifacts exist yet in this session.";
-      }
-      const list = instances
-        .map((ref) => {
-          const id = ref.name.replace("artifacts/", "");
-          const title = ref.state.title ?? "Untitled";
-          const summary = ref.state.summary ? ` — ${ref.state.summary}` : "";
-          return `- ${id}: ${title}${summary}`;
-        })
-        .join("\n");
-      return `Current artifacts:\n${list}`;
-    },
-    // Voice context: when TTS is active or the user spoke, tell the LLM
-    // so it can adapt its output style (shorter sentences, no markdown
-    // tables, no code blocks, conversational tone).
-    (_input, ctx) => {
-      const voice = ctx.requestRuntime?.metadata?.voice as
-        | { ttsEnabled?: boolean; inputModality?: string }
-        | undefined;
-      if (!voice) return undefined;
-      const parts: string[] = [];
-      if (voice.ttsEnabled) {
-        parts.push("Your response will be read aloud via text-to-speech. Keep sentences short and conversational. Avoid markdown formatting, tables, code blocks, and bullet lists — they sound bad when spoken.");
-      }
-      if (voice.inputModality === "speech") {
-        parts.push("The user spoke this message (voice input). Respond conversationally.");
-      }
-      return parts.length > 0 ? parts.join(" ") : undefined;
-    }
-  ],
-
-  inputSchema: analysisOutputSchema,
-  history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
-  user: (input) => input.message,
-  tools: [readArtifact, updateArtifact],
-  search: true,
-  maxIterations: 5,
-  outputSchema: z.string(),
-  emit: {
-    messages: true,
-    reasoning: true
-  },
-  providerOptions: {
-    openai: { reasoningSummary: "detailed" }
   }
 });
 
@@ -261,29 +175,23 @@ const autoTitle = utility.sessionTitleGenerator({
 //   .rescue([...])        — catch errors and route to fallback blocks
 
 const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema })
-  .then(applyRequestedMode)
   .then(analyzeInput)
   .thenIf((result) => result.needsContext, formatReport)
-  .then(agentGenerator)
-  .work(autoTitle)
-  // Background work: runs after the generator completes, non-blocking.
-  // Memory capture reads session items to build working/episodic memory.
-  // Artifact summarization generates summaries for any newly created/updated
-  // artifacts so clientData and LLM context have useful previews.
-  // Auto-title generates a session title from recent messages.
-  .work(mem.captureFromItems)
-  .work(summarizeArtifacts)  
-  .then(incrementRequestCount)
-  .tap(async (output) => {
-    console.log(`Chat completed: ${output.slice(0, 50)}...`);
-  });
+  .then(chatGenerator)
+  // Memory capture: reads session items to build working/episodic memory.
+  .work(mem.captureFromItems);
+
+// Create pipeline: identical structure to chat but uses createGenerator,
+// whose prompt aggressively builds artifacts rather than explaining.
+const createPipeline = sequencer({ name: "create-pipeline", inputSchema })
+  .then(analyzeInput)
+  .thenIf((result) => result.needsContext, formatReport)
+  .then(createGenerator)
+  .work(mem.captureFromItems);
 
 const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
-  .then(applyRequestedMode)
   .map((input) => ({ goal: input.message }))
   .then(planDemo)
-  .work(autoTitle)
-  .then(incrementRequestCount)
   .rescue([
     {
       when: [Error],
@@ -304,12 +212,23 @@ export const modeRouter = router({
   inputSchema: inputSchema,
   outputSchema: z.string(),
   sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
-  routes: [chatPipeline, planPipeline],
-  execute: (input, ctx) => {
-    const mode = ctx.session.state.mode ?? input.mode;
-    return mode === "plan" ? planPipeline : chatPipeline;
+  routes: [chatPipeline, createPipeline, planPipeline],
+  execute: (input, _ctx) => {
+    if (input.mode === "plan") return planPipeline;
+    if (input.mode === "create") return createPipeline;
+    return chatPipeline;
   }
 });
+
+// Top-level run sequencer: handles steps common to all modes.
+// applyRequestedMode and post-processing run here once rather than being
+// duplicated across pipelines.
+const runSequencer = sequencer({ name: "run", inputSchema })
+  .then(applyRequestedMode)
+  .then(modeRouter)
+  .work(autoTitle)
+  .work(summarizeArtifacts)
+  .then(incrementRequestCount);
 
 // ---------------------------------------------------------------------------
 // Flow definition
@@ -340,7 +259,7 @@ const kitchenSinkFlow = defineFlow({
   actions: {
     run: {
       inputSchema,
-      block: modeRouter,      
+      block: runSequencer,
       userMessage: (input: z.infer<typeof inputSchema>) => input.message
     },
     saveArtifact: {

@@ -99,6 +99,10 @@ export interface PlanAndExecuteConfig<
 
   /** Model ID to use for default planner, replanner, and synthesizer. Default: "openai/gpt-5.4-mini". */
   model?: string;
+
+  /** Session resources to declare on the outer sequencer. Required when the step executor
+   *  or synthesizer use tools that access session resources (e.g. artifact collections). */
+  sessionResources?: Record<string, any>;
 }
 
 // ---------------------------------------------------------------------------
@@ -574,6 +578,7 @@ export function planAndExecute<
     name,
     inputSchema: planAndExecuteInputSchema,
     stateSchema: planAndExecuteStateSchema,
+    ...(config.sessionResources ? { sessionResources: config.sessionResources } : {}),
   })
     // 1. Capture goal, run planner, store tasks
     .then(captureAndPlan)
