@@ -44,6 +44,7 @@ export function decomposer<
     model: config.model ?? "openai/gpt-5.4-mini",
     outputSchema,
     context: config.context,
+    search: true,
     prompt: [
       "You are a task decomposition assistant.",
       "Break broad requests into executable tasks that an AI agent can complete autonomously.",

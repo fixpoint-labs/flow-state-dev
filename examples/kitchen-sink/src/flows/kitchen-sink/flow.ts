@@ -282,7 +282,6 @@ const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
   .then(applyRequestedMode)
   .map((input) => ({ goal: input.message }))
   .then(planDemo)
-  .work(mem.captureFromItems)
   .work(autoTitle)
   .then(incrementRequestCount)
   .rescue([
