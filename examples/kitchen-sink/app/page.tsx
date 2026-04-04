@@ -36,6 +36,7 @@ import { ArtifactViewer } from "@/components/artifact-viewer";
 import { SuggestionRow } from "@/components/suggestion-row";
 import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
 
@@ -319,6 +320,7 @@ function ChatPanel({
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <Conversation className="min-h-0 flex-1">
+        <SessionItemsProvider value={session.items}>
         <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
           {session.items.length === 0 && !session.isLoading && (
             <ConversationEmptyState
@@ -334,6 +336,7 @@ function ChatPanel({
             </div>
           )}
         </ConversationContent>
+        </SessionItemsProvider>
         <ConversationScrollButton />
       </Conversation>
 
