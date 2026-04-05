@@ -19,6 +19,7 @@
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import { utility } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { GeneratorSlot, GeneratorTool, GeneratorSearchConfig } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   planAndExecuteInputSchema,
@@ -73,8 +74,9 @@ export interface PlanAndExecuteConfig<
   /** The planning generator — produces the initial plan. Default: utility.decomposer(). */
   planner?: BlockDefinition<any, any>;
 
-  /** How to execute each step — receives { stepId, goal }. Required. */
-  stepExecutor: BlockDefinition<any, any>;
+  /** How to execute each step — receives { stepId, goal, dependencyResults? }.
+   *  Default: a research generator that produces { summary, success, reason?, sources? }. */
+  stepExecutor?: BlockDefinition<any, any>;
 
   /** Evaluator — decides continue/replan/complete after each step. Default: createTaskEvaluator. */
   evaluator?: BlockDefinition<any, any>;
@@ -97,12 +99,42 @@ export interface PlanAndExecuteConfig<
   /** Output schema for the final synthesized result. Used by the default synthesizer. */
   outputSchema?: TOutputSchema;
 
-  /** Model ID to use for default planner, replanner, and synthesizer. Default: "openai/gpt-5.4-mini". */
+  /** Model ID to use for default planner, executor, replanner, and synthesizer. Default: "openai/gpt-5.4-mini". */
   model?: string;
 
-  /** Session resources to declare on the outer sequencer. Required when the step executor
-   *  or synthesizer use tools that access session resources (e.g. artifact collections). */
+  // ---------------------------------------------------------------------------
+  // Shared defaults — apply only to default blocks (planner, executor, replanner, synthesizer).
+  // Ignored when a custom block is provided for that role.
+  // ---------------------------------------------------------------------------
+
+  /** Context slot applied to all default blocks. Accepts a single entry or an array. */
+  context?: GeneratorSlot<any, any>;
+
+  /** Tools assigned to all default blocks (executor, replanner, synthesizer). */
+  tools?: GeneratorTool[] | ((ctx: any) => GeneratorTool[]);
+
+  /** Web search — applied to default executor (planner already enables search internally). */
+  search?: boolean | GeneratorSearchConfig;
+
+  /** Instructions appended to the default step executor's system prompt. */
+  executionInstructions?: string;
+
+  /** Instructions appended to the default synthesizer's system prompt. */
+  synthesizeInstructions?: string;
+
+  // ---------------------------------------------------------------------------
+  // Resource declarations — registered on the outer sequencer.
+  // ---------------------------------------------------------------------------
+
+  /** Session resources to declare on the outer sequencer. */
   sessionResources?: Record<string, any>;
+
+  /** User resources to declare on the outer sequencer. */
+  userResources?: Record<string, any>;
+
+  /** Project resources to declare on the outer sequencer. */
+  projectResources?: Record<string, any>;
+
 }
 
 // ---------------------------------------------------------------------------
@@ -112,10 +144,14 @@ export interface PlanAndExecuteConfig<
 function createDefaultReplanner(config: {
   name: string;
   model?: string;
+  context?: GeneratorSlot<any, any>;
+  tools?: GeneratorTool[] | ((ctx: any) => GeneratorTool[]);
 }) {
   return generator({
     name: `${config.name}-replanner`,
     model: config.model ?? "openai/gpt-5.4-mini",
+    ...(config.context !== undefined ? { context: config.context } : {}),
+    ...(config.tools !== undefined ? { tools: config.tools as any } : {}),
     outputSchema: z.object({
       tasks: z.array(z.object({
         id: z.string(),
@@ -265,10 +301,22 @@ export function buildSynthesizerUserPrompt(input: SynthesizerPromptInput): strin
 function createDefaultSynthesizer(config: {
   name: string;
   model?: string;
+  context?: GeneratorSlot<any, any>;
+  tools?: GeneratorTool[] | ((ctx: any) => GeneratorTool[]);
+  synthesizeInstructions?: string;
 }) {
+  const basePrompt = [
+    "You are synthesizing findings from a structured multi-step research process.",
+    "Write a clear, direct final answer to the original goal.",
+    "Integrate the findings into a coherent narrative — do not just summarize each step.",
+    "Be specific and draw on the concrete facts gathered.",
+    "If no findings are available, briefly explain that the research could not be completed and why, without asking the user for more information.",
+  ];
   return generator({
     name: `${config.name}-synthesizer`,
     model: config.model ?? "openai/gpt-5.4-mini",
+    ...(config.context !== undefined ? { context: config.context } : {}),
+    ...(config.tools !== undefined ? { tools: config.tools as any } : {}),
     inputSchema: z.object({
       goal: z.string(),
       status: z.string().optional(),
@@ -283,13 +331,9 @@ function createDefaultSynthesizer(config: {
       totalSteps: z.number(),
     }),
     outputSchema: z.string(),
-    prompt: [
-      "You are synthesizing findings from a structured multi-step research process.",
-      "Write a clear, direct final answer to the original goal.",
-      "Integrate the findings into a coherent narrative — do not just summarize each step.",
-      "Be specific and draw on the concrete facts gathered.",
-      "If no findings are available, briefly explain that the research could not be completed and why, without asking the user for more information.",
-    ].join("\n"),
+    prompt: config.synthesizeInstructions
+      ? [...basePrompt, config.synthesizeInstructions].join("\n")
+      : basePrompt.join("\n"),
     user: buildSynthesizerUserPrompt,
     emit: { messages: true },
   });
@@ -335,6 +379,73 @@ function cascadeSkipDependents(tasks: PlanTask[], failedId: string): PlanTask[] 
 }
 
 // ---------------------------------------------------------------------------
+// Default executor
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates the default step executor — a task generator that receives a task
+ * goal (and optional dependency context from prior tasks) and returns a structured
+ * finding: { summary, success, reason?, sources? }.
+ */
+function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
+  const basePrompt = [
+    "You are a focused task executor.",
+    "Given a specific task, produce a substantive finding in 2-4 sentences with specific facts or insights.",
+    "Use the web to find information if needed, you have search capabilities available to you.",
+    "If prior task results are provided, build directly on that context rather than starting from scratch.",
+    "Return a JSON object with:",
+    "- summary: your substantive finding",
+    "- success: true if you found meaningful information, false if the information was unavailable or missing",
+    "- reason: (only if success is false) a brief explanation of why the task could not be completed",
+    "- sources: list of { title?, url } for any web sources you consulted (omit if no search was performed)",
+  ];
+
+  return generator({
+    name: `${config.name}-executor`,
+    model: config.model ?? "openai/gpt-5.4-mini",
+    inputSchema: z.object({
+      stepId: z.string(),
+      goal: z.string(),
+      dependencyResults: z.record(z.unknown()).optional(),
+    }),
+    outputSchema: z.object({
+      summary: z.string(),
+      success: z.boolean(),
+      reason: z.string().optional(),
+      sources: z.array(z.object({
+        title: z.string().optional(),
+        url: z.string(),
+      })).optional(),
+    }),
+    ...(config.context !== undefined ? { context: config.context } : {}),
+    ...(config.tools !== undefined ? { tools: config.tools as any } : {}),
+    ...(config.search !== undefined ? { search: config.search } : {}),
+    ...(config.sessionResources !== undefined ? { sessionResources: config.sessionResources } : {}),
+    ...(config.userResources !== undefined ? { userResources: config.userResources } : {}),
+    ...(config.projectResources !== undefined ? { projectResources: config.projectResources } : {}),
+    prompt: config.executionInstructions
+      ? [...basePrompt, config.executionInstructions].join("\n")
+      : basePrompt.join("\n"),
+    user: (input: { goal: string; dependencyResults?: Record<string, unknown> }) => {
+      const parts = [`Task: ${input.goal}`];
+      if (input.dependencyResults && Object.keys(input.dependencyResults).length > 0) {
+        const context = Object.values(input.dependencyResults)
+          .map((r) => {
+            const obj = r as Record<string, unknown> | null | undefined;
+            return obj && typeof obj === "object" && "summary" in obj
+              ? String(obj.summary)
+              : JSON.stringify(r);
+          })
+          .join("\n");
+        parts.push(`\nContext from prior tasks:\n${context}`);
+      }
+      return parts.join("\n");
+    },
+    emit: { messages: false },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -349,14 +460,16 @@ export function planAndExecute<
 >(config: PlanAndExecuteConfig<TOutputSchema>) {
   const {
     name,
-    stepExecutor,
     maxIterations = 3,
     enableReplanning = false,
   } = config;
 
+  const stepExecutor = config.stepExecutor ?? createDefaultExecutor(config);
+
   const planner = config.planner ?? utility.decomposer({
     name: `${name}-planner`,
     model: config.model,
+    context: config.context as any,
   });
 
   const evaluator = config.evaluator ?? createEvaluateProgress({
@@ -365,12 +478,23 @@ export function planAndExecute<
     model: config.model,
   });
 
-  const replanner = config.replanner ?? createDefaultReplanner({ name, model: config.model });
+  const replanner = config.replanner ?? createDefaultReplanner({
+    name,
+    model: config.model,
+    context: config.context,
+    tools: config.tools,
+  });
   const applyReplan = createApplyReplan({ name });
 
   const synthesizer =
     config.synthesizer !== false
-      ? (config.synthesizer ?? createDefaultSynthesizer({ name, model: config.model }))
+      ? (config.synthesizer ?? createDefaultSynthesizer({
+          name,
+          model: config.model,
+          context: config.context,
+          tools: config.tools,
+          synthesizeInstructions: config.synthesizeInstructions,
+        }))
       : null;
 
   // ---------------------------------------------------------------------------
@@ -595,6 +719,8 @@ export function planAndExecute<
     inputSchema: planAndExecuteInputSchema,
     stateSchema: planAndExecuteStateSchema,
     ...(config.sessionResources ? { sessionResources: config.sessionResources } : {}),
+    ...(config.userResources ? { userResources: config.userResources } : {}),
+    ...(config.projectResources ? { projectResources: config.projectResources } : {}),
   })
     // 1. Capture goal, run planner, store tasks
     .then(captureAndPlan)
@@ -642,8 +768,7 @@ export function planAndExecute<
     });
 
   // 7. Optionally synthesize findings into a final answer
-  if (synthesizer) {
-    return base.then(synthesizer as BlockDefinition<any, any>);
-  }
-  return base;
+  return synthesizer
+    ? base.then(synthesizer as BlockDefinition<any, any>)
+    : base;
 }

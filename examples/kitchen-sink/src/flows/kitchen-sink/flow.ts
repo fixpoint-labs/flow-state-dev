@@ -36,6 +36,7 @@ import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import {
   system as memorySystem
 } from "@thought-fabric/core/memory";
+import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { z } from "zod";
 import {
   summarizeArtifacts,
@@ -43,7 +44,6 @@ import {
   updateArtifactInputSchema,
   eventQueueDemo,
   eventQueueDemoInputSchema,
-  createPlanDemo,
   readArtifact,
   artifactListContext,
   voiceContext,
@@ -65,8 +65,6 @@ const mem = memorySystem({
   episodic: true,
   semantic: true,
 });
-
-const planDemo = createPlanDemo(mem);
 
 // ---------------------------------------------------------------------------
 // Flow-level schemas
@@ -155,15 +153,6 @@ const incrementRequestCount = handler({
   }
 });
 
-// Rescue fallback: runs when the plan pipeline throws.
-const planFallback = handler({
-  name: "plan-fallback",
-  inputSchema: z.unknown(),
-  outputSchema: z.string(),
-  execute: async () =>
-    "Plan generation failed. Please try again with a simpler goal."
-});
-
 // Auto-generate a session title from recent conversation messages.
 // Runs as background work — doesn't block the client response.
 const autoTitle = utility.sessionTitleGenerator({
@@ -189,7 +178,7 @@ const assistantGenerator = generator({
 
   inputSchema,
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
-  user: (input: z.infer<typeof inputSchema>) => input.message,
+  user: (input) => input.message,
 
   tools: [readArtifact, updateArtifact],
   search: true,
@@ -212,15 +201,19 @@ const assistantPipeline = sequencer({ name: "assistant-pipeline", inputSchema })
   .then(assistantGenerator)
   .work(mem.captureFromItems);
 
+const planMode = planAndExecute({
+  name: "plan-mode",
+  model: MODEL_ID,
+  context: [mem.contextFormatter, artifactListContext] as any,
+  search: true,
+  tools: [readArtifact, updateArtifact],
+  sessionResources: artifactResources,
+  enableReplanning: true,
+}).work(mem.captureFromItems);
+
 const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
   .map((input) => ({ goal: input.message }))
-  .then(planDemo)
-  .rescue([
-    {
-      when: [Error],
-      block: planFallback
-    }
-  ]);
+  .then(planMode);
 
 // ---------------------------------------------------------------------------
 // Router
@@ -261,7 +254,7 @@ const kitchenSinkFlow = defineFlow({
     run: {
       inputSchema,
       block: runSequencer,
-      userMessage: (input: z.infer<typeof inputSchema>) => input.message
+      userMessage: (input) => input.message
     },
     saveArtifact: {
       inputSchema: updateArtifactInputSchema,
