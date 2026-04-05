@@ -128,7 +128,7 @@ export function Plan({ item }: { item: ComponentItem }) {
   return (
     <div className="not-prose my-2 rounded-md border bg-card p-3 text-card-foreground">
       <div className="mb-2 flex items-start justify-between gap-2">
-        <p className="text-sm font-medium leading-snug">{plan.goal}</p>
+        <p className="text-sm font-medium leading-snug">Steps</p>
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
           {completedCount}/{plan.tasks.length}
           {plan.iteration !== undefined && plan.iteration > 0 &&
