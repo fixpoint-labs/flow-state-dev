@@ -83,6 +83,27 @@ const observeFixture = mockGenerator({
   ]
 });
 
+const plannerFixture = mockGenerator({
+  name: "plan-mode-planner",
+  script: [
+    { structuredOutput: { tasks: [{ id: "t1", goal: "Research the topic", deps: [] }] } }
+  ]
+});
+
+const planExecutorFixture = mockGenerator({
+  name: "plan-mode-executor",
+  script: [
+    { structuredOutput: { summary: "Found relevant information.", success: true } }
+  ]
+});
+
+const planSynthesizerFixture = mockGenerator({
+  name: "plan-mode-synthesizer",
+  script: [
+    { text: "Here is a synthesis of the findings." }
+  ]
+});
+
 describe("kitchen-sink flow", () => {
   it("completes a chat action via modeRouter", async () => {
     const result = await testBlock(modeRouter, {
@@ -99,20 +120,37 @@ describe("kitchen-sink flow", () => {
   it("routes to plan pipeline when mode is plan", async () => {
     assistantFixture.reset();
     observeFixture.reset();
+    plannerFixture.reset();
+    planExecutorFixture.reset();
+    planSynthesizerFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Create a deployment plan", mode: "plan" },
       flow: testFlow,
       session: { resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
-      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
+      generators: {
+        "assistant-generator": assistantFixture,
+        "tf.memory/observe": observeFixture,
+        "plan-mode-planner": plannerFixture,
+        "plan-mode-executor": planExecutorFixture,
+        "plan-mode-synthesizer": planSynthesizerFixture,
+      }
     });
 
     expect(result.error).toBeNull();
   });
 
   it("routes to plan pipeline based on input mode", async () => {
+    plannerFixture.reset();
+    planExecutorFixture.reset();
+    planSynthesizerFixture.reset();
     const routed = await testRouter(modeRouter, {
       input: { message: "Continue working", mode: "plan" },
       flow: testFlow,
+      generators: {
+        "plan-mode-planner": plannerFixture,
+        "plan-mode-executor": planExecutorFixture,
+        "plan-mode-synthesizer": planSynthesizerFixture,
+      }
     });
 
     expect(routed.error).toBeNull();
