@@ -10,7 +10,6 @@ import {
   testRouter
 } from "@flow-state-dev/testing";
 import { modeRouter } from "../src/flows/kitchen-sink/flow";
-import { analyzeInput } from "../src/flows/kitchen-sink/blocks";
 import { artifactsCollection } from "../src/flows/kitchen-sink/schemas";
 
 function collectSourceFiles(dir: string): string[] {
@@ -48,13 +47,13 @@ const testFlow = defineFlow({
   kind: "kitchen-sink-test",
   actions: {
     run: {
-      inputSchema: z.object({ message: z.string(), mode: z.enum(["chat", "plan", "review"]).default("chat") }),
+      inputSchema: z.object({ message: z.string(), mode: z.enum(["chat", "create", "plan"]).default("chat") }),
       block: modeRouter,
     },
   },
   session: {
     stateSchema: z.object({
-      mode: z.enum(["chat", "plan", "review"]).default("chat"),
+      mode: z.enum(["chat", "create", "plan"]).default("chat"),
       requestCount: z.number().default(0),
       lastAction: z.string().optional(),
     }),
@@ -70,8 +69,8 @@ const testFlow = defineFlow({
   },
 })({ id: "test" });
 
-const agentFixture = mockGenerator({
-  name: "agent-generator",
+const assistantFixture = mockGenerator({
+  name: "assistant-generator",
   script: [
     { text: "Here is what I found." }
   ]
@@ -84,13 +83,34 @@ const observeFixture = mockGenerator({
   ]
 });
 
+const plannerFixture = mockGenerator({
+  name: "plan-mode-planner",
+  script: [
+    { structuredOutput: { tasks: [{ id: "t1", goal: "Research the topic", deps: [] }] } }
+  ]
+});
+
+const planExecutorFixture = mockGenerator({
+  name: "plan-mode-executor",
+  script: [
+    { structuredOutput: { summary: "Found relevant information.", success: true } }
+  ]
+});
+
+const planSynthesizerFixture = mockGenerator({
+  name: "plan-mode-synthesizer",
+  script: [
+    { text: "Here is a synthesis of the findings." }
+  ]
+});
+
 describe("kitchen-sink flow", () => {
   it("completes a chat action via modeRouter", async () => {
     const result = await testBlock(modeRouter, {
       input: { message: "Hello kitchen sink", mode: "chat" },
       flow: testFlow,
       session: { resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
-      generators: { "agent-generator": agentFixture, "tf.memory/observe": observeFixture }
+      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
     });
 
     expect(result.error).toBeNull();
@@ -98,24 +118,38 @@ describe("kitchen-sink flow", () => {
   });
 
   it("routes to plan pipeline when mode is plan", async () => {
-    agentFixture.reset();
+    assistantFixture.reset();
     observeFixture.reset();
+    plannerFixture.reset();
+    planExecutorFixture.reset();
+    planSynthesizerFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Create a deployment plan", mode: "plan" },
       flow: testFlow,
       session: { resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
-      generators: { "agent-generator": agentFixture, "tf.memory/observe": observeFixture }
+      generators: {
+        "assistant-generator": assistantFixture,
+        "tf.memory/observe": observeFixture,
+        "plan-mode-planner": plannerFixture,
+        "plan-mode-executor": planExecutorFixture,
+        "plan-mode-synthesizer": planSynthesizerFixture,
+      }
     });
 
     expect(result.error).toBeNull();
   });
 
-  it("routes based on session state mode", async () => {
+  it("routes to plan pipeline based on input mode", async () => {
+    plannerFixture.reset();
+    planExecutorFixture.reset();
+    planSynthesizerFixture.reset();
     const routed = await testRouter(modeRouter, {
-      input: { message: "Continue working", mode: "chat" },
+      input: { message: "Continue working", mode: "plan" },
       flow: testFlow,
-      session: {
-        state: { mode: "plan", requestCount: 3 }
+      generators: {
+        "plan-mode-planner": plannerFixture,
+        "plan-mode-executor": planExecutorFixture,
+        "plan-mode-synthesizer": planSynthesizerFixture,
       }
     });
 
@@ -123,8 +157,22 @@ describe("kitchen-sink flow", () => {
     expect(routed.selectedRoute).toBe("plan-pipeline");
   });
 
+  it("routes to assistant pipeline for chat and create modes", async () => {
+    const chatRouted = await testRouter(modeRouter, {
+      input: { message: "Help me", mode: "chat" },
+      flow: testFlow,
+    });
+    expect(chatRouted.selectedRoute).toBe("assistant-pipeline");
+
+    const createRouted = await testRouter(modeRouter, {
+      input: { message: "Build something", mode: "create" },
+      flow: testFlow,
+    });
+    expect(createRouted.selectedRoute).toBe("assistant-pipeline");
+  });
+
   it("reads preferredModel from user state", async () => {
-    agentFixture.reset();
+    assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Test with custom model", mode: "chat" },
@@ -136,20 +184,20 @@ describe("kitchen-sink flow", () => {
           preferredModel: "gpt-4o"
         }
       },
-      generators: { "agent-generator": agentFixture, "tf.memory/observe": observeFixture }
+      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
     });
 
     expect(result.error).toBeNull();
   });
 
   it("emits block_output items", async () => {
-    agentFixture.reset();
+    assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Check items", mode: "chat" },
       flow: testFlow,
       session: { resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
-      generators: { "agent-generator": agentFixture, "tf.memory/observe": observeFixture }
+      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
     });
 
     const blockOutputs = result.items.filter((item) => item.type === "block_output");
@@ -157,7 +205,7 @@ describe("kitchen-sink flow", () => {
   });
 
   it("seeds session resources for artifact access", async () => {
-    agentFixture.reset();
+    assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(modeRouter, {
       input: { message: "Read artifact doc-1", mode: "chat" },
@@ -165,9 +213,6 @@ describe("kitchen-sink flow", () => {
       session: {
         state: { mode: "chat", requestCount: 0 },
         resources: {
-          // Collection instances are seeded with path-based keys.
-          // Content lives in state for seeding (content body is separate
-          // at runtime via writeContent/readContent).
           "artifacts/doc-1": {
             title: "Test Document",
             summary: "Test content summary",
@@ -177,27 +222,15 @@ describe("kitchen-sink flow", () => {
           memorySystem: emptyMemorySystem
         }
       },
-      generators: { "agent-generator": agentFixture, "tf.memory/observe": observeFixture }
+      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
     });
 
     expect(result.error).toBeNull();
   });
 
-  it("analyzeInput classifies short messages", async () => {
-    const result = await testBlock(analyzeInput, {
-      input: { message: "short", mode: "chat" },
-      session: {
-        state: { mode: "chat" }
-      }
-    });
-
-    expect(result.output.needsContext).toBe(false);
-    expect(result.output.mode).toBe("chat");
-  });
-
   it("supports scripted mockGenerator fixtures", () => {
     const scripted = mockGenerator({
-      name: "agent-generator",
+      name: "assistant-generator",
       script: [
         { text: "Scripted reply" }
       ]

@@ -12,3 +12,4 @@ apps/docs/build
 .zenflow/
 /todos/*
 **/.fsdev/**
+docs/superpowers/*

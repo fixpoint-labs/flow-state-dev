@@ -92,6 +92,9 @@ export type ComponentItem = OutputItemBase & {
   type: "component";
   component: string;
   data: Record<string, unknown>;
+  /** Caller-provided stable identity for deduplication. When present, clients
+   *  should show only the latest item with a given key (replacing prior ones). */
+  key?: string;
 };
 
 export type ContainerItem = OutputItemBase & {

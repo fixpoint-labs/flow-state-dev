@@ -4,28 +4,26 @@ export type { CoordinatorConfig, SubTaskErrorStrategy } from "./coordinator";
 
 export {
   planAndExecute,
-  planCollection,
-  planResources,
+  planAndExecuteStateSchema,
   PlanSchema,
   PlanStepSchema,
+  PlanTaskSchema,
   planAndExecuteInputSchema,
   iterationOutputSchema,
-  planListClientData,
-  planDetailClientData,
-  initPlan,
-  savePlan,
   selectNextStep,
   recordStepResult,
   evaluatePlanProgress,
-  createSimpleEvaluator,
+  createTaskEvaluator,
   createLLMEvaluator,
 } from "./plan-and-execute";
 
 export type {
   PlanAndExecuteConfig,
   PlanAndExecuteInput,
+  PlanAndExecuteState,
   Plan,
   PlanStep,
+  PlanTask,
   IterationOutput,
 } from "./plan-and-execute";
 export {
@@ -44,5 +42,11 @@ export type {
   ReviewOutput,
   PlannerOutput,
 } from "./supervisor";
+export {
+  BasePlanSchema,
+  BasePlanTaskSchema,
+  emitPlanSnapshot,
+} from "./shared/plan";
+export type { BasePlan, BasePlanTask } from "./shared/plan";
 export { eventQueue, createEventQueueStateSchema } from "./event-queue";
 export type { EventQueueConfig, EventQueueState } from "./event-queue";

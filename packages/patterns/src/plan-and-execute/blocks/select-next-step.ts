@@ -1,62 +1,53 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { planResources, type PlanStep } from "../schemas";
+import { planAndExecuteStateSchema, type PlanTask } from "../schemas";
 
 const inputSchema = z.object({
-  planId: z.string(),
   decision: z.enum(["continue", "replan", "complete"]).optional(),
 });
 
 const outputSchema = z.object({
-  planId: z.string(),
   stepId: z.string(),
   goal: z.string(),
 });
 
 /**
- * Reads the plan resource, finds the next pending step (respecting dependencies),
- * and marks it as in_progress.
+ * Reads the plan from sequencer state, finds the next pending task (respecting
+ * dependencies), and marks it as in_progress.
  */
 export function createSelectNextStep(config: { name: string }) {
   return handler({
     name: `${config.name}-select-step`,
     inputSchema,
     outputSchema,
-    sessionResources: planResources,
+    sequencerStateSchema: planAndExecuteStateSchema,
 
-    execute: async (input, ctx) => {
-      const planRef = ctx.session.resources.plans.get({ planId: input.planId });
-      const plan = planRef.state;
+    execute: async (_input, ctx) => {
+      const state = ctx.sequencer!.state;
 
       const completedIds = new Set(
-        plan.steps
-          .filter((s: PlanStep) => s.status === "completed" || s.status === "skipped")
-          .map((s: PlanStep) => s.id)
+        state.tasks
+          .filter((s: PlanTask) => s.status === "completed" || s.status === "skipped")
+          .map((s: PlanTask) => s.id)
       );
 
-      // Find first pending step whose dependencies are all satisfied
-      const nextStep = plan.steps.find((s: PlanStep) => {
+      // Find first pending task whose dependencies are all satisfied
+      const nextStep = state.tasks.find((s: PlanTask) => {
         if (s.status !== "pending") return false;
         return s.dependencies.every((dep: string) => completedIds.has(dep));
       });
 
       if (nextStep === undefined) {
-        // No eligible steps — return a sentinel that evaluate will handle
-        return { planId: input.planId, stepId: "__none__", goal: "" };
+        return { stepId: "__none__", goal: "" };
       }
 
-      // Mark step as in_progress
-      await planRef.patchState({
-        steps: plan.steps.map((s: PlanStep) =>
+      await ctx.sequencer!.patchState({
+        tasks: state.tasks.map((s: PlanTask) =>
           s.id === nextStep.id ? { ...s, status: "in_progress" as const } : s
         ),
       });
 
-      return {
-        planId: input.planId,
-        stepId: nextStep.id,
-        goal: nextStep.goal,
-      };
+      return { stepId: nextStep.id, goal: nextStep.goal };
     },
   });
 }

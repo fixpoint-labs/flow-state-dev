@@ -1182,10 +1182,11 @@ function createEmitMessage(
 
 function createEmitComponent(
   emCtx: EmissionContext
-): (component: string, data: Record<string, unknown>) => ComponentHandle {
+): (component: string, data: Record<string, unknown>, options?: { key?: string }) => ComponentHandle {
   return function emitComponent(
     component: string,
-    data: Record<string, unknown>
+    data: Record<string, unknown>,
+    options?: { key?: string }
   ): ComponentHandle {
     const itemIndex = emCtx.nextItemIndex();
     const item: ComponentItem = {
@@ -1198,7 +1199,8 @@ function createEmitComponent(
       provenance: emCtx.provenance(),
       ts: Date.now(),
       component,
-      data
+      data,
+      ...(options?.key !== undefined ? { key: options.key } : {}),
     };
 
     void emCtx.response.emitItemAdded(item);

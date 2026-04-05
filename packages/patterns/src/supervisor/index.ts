@@ -11,6 +11,7 @@
  */
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import { utility } from "@flow-state-dev/core";
+import { emitPlanSnapshot } from "../shared/plan";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
 import {
@@ -32,6 +33,7 @@ export {
   reviewOutputSchema,
   plannerOutputSchema,
 } from "./schemas";
+
 
 export type {
   SupervisorInput,
@@ -112,7 +114,7 @@ export const updatePlanState = handler({
     const newPlan = input.tasks.map((t) => ({
       id: t.id,
       goal: t.goal,
-      status: "pending" as const,
+      status: "in_progress" as const,
     }));
 
     await ctx.sequencer!.patchState({
@@ -126,6 +128,13 @@ export const updatePlanState = handler({
             ...newPlan,
           ],
       iteration: state.iteration + 1,
+    });
+
+    const updatedState = ctx.sequencer!.state;
+    emitPlanSnapshot(ctx, {
+      goal: updatedState.goal,
+      tasks: updatedState.plan,
+      iteration: updatedState.iteration,
     });
 
     // On re-plan, include feedback from prior iterations so workers know what was wrong
@@ -175,6 +184,12 @@ export const applyReview = handler({
     await ctx.sequencer!.patchState({
       acceptedResults: newAccepted,
       plan: updatedPlan,
+    });
+    const finalState = ctx.sequencer!.state;
+    emitPlanSnapshot(ctx, {
+      goal: finalState.goal,
+      tasks: finalState.plan,
+      iteration: finalState.iteration,
     });
     return { needsReplanning: input.needsReplanning };
   },
@@ -297,7 +312,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     sequencerStateSchema: supervisorStateSchema,
     execute: async (results: unknown[], ctx) => {
       const state = ctx.sequencer!.state;
-      const pendingTasks = state.plan.filter((t) => t.status === "pending");
+      const pendingTasks = state.plan.filter((t) => t.status === "in_progress");
       const updatedPlan = state.plan.map((task) => {
         const taskIndex = pendingTasks.findIndex((t) => t.id === task.id);
         if (taskIndex < 0 || taskIndex >= results.length) return task;

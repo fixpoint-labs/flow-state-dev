@@ -26,9 +26,11 @@ import { useFlowContext } from "../context/FlowContext";
 const CLIENT_ITEM_TYPES = new Set([
   "message",
   "reasoning",
+  "block_tool_output",
   "component",
   "container",
   "status",
+  "source",
   "state_change",
   "resource_change",
   "error",

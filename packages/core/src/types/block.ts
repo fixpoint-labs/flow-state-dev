@@ -113,7 +113,7 @@ export interface BlockContext<
 
   emitMessage(text: string): MessageHandle;
   emitMessage(content: Content[]): MessageHandle;
-  emitComponent(component: string, data: Record<string, unknown>): ComponentHandle;
+  emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string }): ComponentHandle;
   emitLLMContext(text: string): void;
   emitStatus(message: string): void;
 

@@ -1,33 +1,11 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { mockGenerator, testBlock } from "@flow-state-dev/testing";
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
   planAndExecute,
-  planResources,
   planAndExecuteInputSchema,
 } from "../src/plan-and-execute";
-
-// ---------------------------------------------------------------------------
-// Test flow factory — needed so testBlock creates proper ResourceCollectionRef
-// instances for the plan collection via createExecutionContext.
-// ---------------------------------------------------------------------------
-
-function createTestFlow(block: ReturnType<typeof planAndExecute>) {
-  return defineFlow({
-    kind: "plan-execute-test",
-    actions: {
-      run: {
-        inputSchema: planAndExecuteInputSchema,
-        block,
-      },
-    },
-    session: {
-      stateSchema: z.object({}),
-      resources: { ...planResources },
-    },
-  })({ id: "test" });
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -96,17 +74,15 @@ describe("plan-and-execute pattern", () => {
         planner,
         stepExecutor: echoExecutor,
         enableReplanning: false,
-        planId: "test-plan",
+        synthesizer: false,
       });
 
       const result = await testBlock(block, {
         input: { goal: "Build MVP" },
-        flow: createTestFlow(block),
       });
 
       expect(result.error).toBeNull();
       const output = result.output as any;
-      expect(output.planId).toBe("test-plan");
       expect(output.status).toBe("completed");
       expect(output.completedSteps).toBe(2);
       expect(output.totalSteps).toBe(2);
@@ -122,12 +98,11 @@ describe("plan-and-execute pattern", () => {
         planner,
         stepExecutor: echoExecutor,
         enableReplanning: false,
-        planId: "single",
+        synthesizer: false,
       });
 
       const result = await testBlock(block, {
         input: { goal: "Simple goal" },
-        flow: createTestFlow(block),
       });
 
       expect(result.error).toBeNull();
@@ -145,12 +120,11 @@ describe("plan-and-execute pattern", () => {
         planner,
         stepExecutor: echoExecutor,
         enableReplanning: false,
-        planId: "empty",
+        synthesizer: false,
       });
 
       const result = await testBlock(block, {
         input: { goal: "Nothing to do" },
-        flow: createTestFlow(block),
       });
 
       expect(result.error).toBeNull();
@@ -186,12 +160,11 @@ describe("plan-and-execute pattern", () => {
         planner,
         stepExecutor: trackingExecutor,
         enableReplanning: false,
-        planId: "deps",
+        synthesizer: false,
       });
 
       const result = await testBlock(block, {
         input: { goal: "Ordered execution" },
-        flow: createTestFlow(block),
       });
 
       expect(result.error).toBeNull();
@@ -225,20 +198,97 @@ describe("plan-and-execute pattern", () => {
         planner,
         stepExecutor: failExecutor,
         enableReplanning: false,
-        planId: "fail-plan",
+        synthesizer: false,
       });
 
       const result = await testBlock(block, {
         input: { goal: "Test failure" },
-        flow: createTestFlow(block),
       });
 
       expect(result.error).toBeNull();
       const output = result.output as any;
       expect(output.totalSteps).toBe(3);
-      const failedStep = output.steps.find((s: any) => s.id === "s2");
+      const failedStep = output.tasks.find((s: any) => s.id === "s2");
       expect(failedStep?.status).toBe("failed");
       expect(failedStep?.error).toBeDefined();
+    });
+
+    it("completes when downstream tasks are blocked by a failed dependency", async () => {
+      // s2 and s3 depend on s1 — when s1 fails, they can never run.
+      // The evaluator must detect no executable tasks remain and complete.
+      const planner = createDeterministicPlanner([
+        { id: "s1", goal: "Will fail" },
+        { id: "s2", goal: "Depends on s1", deps: ["s1"] },
+        { id: "s3", goal: "Also depends on s1", deps: ["s1"] },
+      ]);
+
+      const block = planAndExecute({
+        name: "blocked-dep-test",
+        planner,
+        stepExecutor: handler({
+          name: "always-fail-executor",
+          inputSchema: z.any(),
+          outputSchema: z.any(),
+          execute: () => { throw new Error("Failed"); },
+        }),
+        enableReplanning: false,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "Test blocked dependencies" },
+      });
+
+      expect(result.error).toBeNull();
+      const output = result.output as any;
+      expect(output.tasks.find((t: any) => t.id === "s1")?.status).toBe("failed");
+      // s2 and s3 are cascade-skipped (their dep s1 failed)
+      expect(output.tasks.find((t: any) => t.id === "s2")?.status).toBe("skipped");
+      expect(output.tasks.find((t: any) => t.id === "s3")?.status).toBe("skipped");
+    });
+
+    it("marks task failed when executor returns success: false", async () => {
+      const planner = createDeterministicPlanner([
+        { id: "s1", goal: "Will signal failure" },
+        { id: "s2", goal: "Will succeed" },
+      ]);
+
+      const signalingExecutor = handler({
+        name: "signaling-executor",
+        inputSchema: z.any(),
+        outputSchema: z.object({
+          summary: z.string().optional(),
+          success: z.boolean(),
+          reason: z.string().optional(),
+        }),
+        execute: (input) => {
+          const stepId = (input as any)?.stepId;
+          if (stepId === "s1") {
+            return { success: false, reason: "Information not available" };
+          }
+          return { summary: "Found something", success: true };
+        },
+      });
+
+      const block = planAndExecute({
+        name: "signal-fail-test",
+        planner,
+        stepExecutor: signalingExecutor,
+        enableReplanning: false,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "Test failure signaling" },
+      });
+
+      expect(result.error).toBeNull();
+      const output = result.output as any;
+      const failedStep = output.tasks.find((s: any) => s.id === "s1");
+      expect(failedStep?.status).toBe("failed");
+      expect(failedStep?.error).toBe("Information not available");
+      const succeededStep = output.tasks.find((s: any) => s.id === "s2");
+      expect(succeededStep?.status).toBe("completed");
     });
   });
 
@@ -262,13 +312,12 @@ describe("plan-and-execute pattern", () => {
         planner,
         stepExecutor: echoExecutor,
         enableReplanning: true,
-        planId: "replan",
         maxIterations: 5,
+        synthesizer: false,
       });
 
       const result = await testBlock(block, {
         input: { goal: "Test replanning" },
-        flow: createTestFlow(block),
         generators: {
           "replan-test-evaluate-llm": evaluatorMock,
         },
@@ -276,23 +325,31 @@ describe("plan-and-execute pattern", () => {
 
       expect(result.error).toBeNull();
       const output = result.output as any;
-      expect(output.planId).toBe("replan");
+      expect(output.status).toBe("completed");
     });
 
-    it("forces completion when maxIterations is reached", async () => {
+    it("forces completion when maxIterations replan rounds is reached", async () => {
+      // Scenario: 2 tasks, evaluator triggers one replan (iteration → 1),
+      // then the maxIterations:1 guard fires before calling the LLM again.
       const planner = createDeterministicPlanner([
         { id: "s1", goal: "Task 1" },
         { id: "s2", goal: "Task 2" },
-        { id: "s3", goal: "Task 3" },
-        { id: "s4", goal: "Task 4" },
-        { id: "s5", goal: "Task 5" },
       ]);
 
+      // After s1 completes (s2 still pending), evaluator requests replan.
+      // After replan: iteration=1 >= maxIterations=1 → guard fires, no second LLM call.
       const evaluatorMock = mockGenerator({
         name: "max-iter-test-evaluate-llm",
         script: [
-          { structuredOutput: { decision: "continue", reasoning: "Keep going" } },
-          { structuredOutput: { decision: "continue", reasoning: "Keep going" } },
+          { structuredOutput: { decision: "replan", reasoning: "Need adjustment" } },
+        ],
+      });
+
+      // Replanner produces one replacement task.
+      const replannerMock = mockGenerator({
+        name: "max-iter-test-replanner",
+        script: [
+          { structuredOutput: { tasks: [{ id: "s3", goal: "Replanned task" }] } },
         ],
       });
 
@@ -301,21 +358,20 @@ describe("plan-and-execute pattern", () => {
         planner,
         stepExecutor: echoExecutor,
         enableReplanning: true,
-        planId: "max-iter",
-        maxIterations: 2,
+        maxIterations: 1,
+        synthesizer: false,
       });
 
       const result = await testBlock(block, {
         input: { goal: "Test max iterations" },
-        flow: createTestFlow(block),
         generators: {
           "max-iter-test-evaluate-llm": evaluatorMock,
+          "max-iter-test-replanner": replannerMock,
         },
       });
 
       expect(result.error).toBeNull();
       const output = result.output as any;
-      expect(output.planId).toBe("max-iter");
       expect(output.status).toBe("completed");
     });
   });
@@ -325,34 +381,10 @@ describe("plan-and-execute pattern", () => {
       const block = planAndExecute({
         name: "composable-test",
         stepExecutor: echoExecutor,
-        planId: "compose",
       });
 
       expect(block.kind).toBe("sequencer");
       expect(block.name).toBe("composable-test");
-    });
-
-    it("supports dynamic planId from function", async () => {
-      const planner = createDeterministicPlanner([
-        { id: "s1", goal: "Research" },
-      ]);
-
-      const block = planAndExecute({
-        name: "dynamic-id",
-        planner,
-        stepExecutor: echoExecutor,
-        enableReplanning: false,
-        planId: (input: any) => `plan-${input.goal.toLowerCase().replace(/\s+/g, "-")}`,
-      });
-
-      const result = await testBlock(block, {
-        input: { goal: "Test Dynamic" },
-        flow: createTestFlow(block),
-      });
-
-      expect(result.error).toBeNull();
-      const output = result.output as any;
-      expect(output.planId).toBe("plan-test-dynamic");
     });
 
     it("uses mock generator planner when no custom planner provided", async () => {
@@ -360,12 +392,11 @@ describe("plan-and-execute pattern", () => {
         name: "mock-planner-test",
         stepExecutor: echoExecutor,
         enableReplanning: false,
-        planId: "mock",
+        synthesizer: false,
       });
 
       const result = await testBlock(block, {
         input: { goal: "Test with mock planner" },
-        flow: createTestFlow(block),
         generators: {
           "mock-planner-test-planner": plannerMock,
         },
@@ -383,19 +414,17 @@ describe("plan-and-execute pattern", () => {
       const exports = await import("../src/plan-and-execute");
 
       expect(exports.planAndExecute).toBeDefined();
+      expect(exports.planAndExecuteStateSchema).toBeDefined();
       expect(exports.PlanSchema).toBeDefined();
       expect(exports.PlanStepSchema).toBeDefined();
-      expect(exports.planCollection).toBeDefined();
-      expect(exports.planResources).toBeDefined();
+      expect(exports.PlanTaskSchema).toBeDefined();
       expect(exports.planAndExecuteInputSchema).toBeDefined();
       expect(exports.iterationOutputSchema).toBeDefined();
-      expect(exports.initPlan).toBeDefined();
-      expect(exports.savePlan).toBeDefined();
       expect(exports.selectNextStep).toBeDefined();
       expect(exports.recordStepResult).toBeDefined();
       expect(exports.evaluatePlanProgress).toBeDefined();
-      expect(exports.planListClientData).toBeDefined();
-      expect(exports.planDetailClientData).toBeDefined();
+      expect(exports.createTaskEvaluator).toBeDefined();
+      expect(exports.createLLMEvaluator).toBeDefined();
     });
   });
 
@@ -410,12 +439,11 @@ describe("plan-and-execute pattern", () => {
         planner,
         stepExecutor: echoExecutor,
         enableReplanning: false,
-        planId: "emit",
+        synthesizer: false,
       });
 
       const result = await testBlock(block, {
         input: { goal: "Test emission" },
-        flow: createTestFlow(block),
       });
 
       expect(result.error).toBeNull();
