@@ -36,15 +36,18 @@ import { ArtifactViewer } from "@/components/artifact-viewer";
 import { SuggestionRow } from "@/components/suggestion-row";
 import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
+import { PlanAwareTool } from "@/components/flow-state/plan";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
 
 const kitchenSinkRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
   block_output: AgentResponseCard,
+  // Plan-owned tool calls are shown inline inside task rows; others render normally.
+  block_tool_output: PlanAwareTool,
 };
 
-const ITEM_TYPES = ["message", "reasoning", "block_tool_output", "status", "source", "error", "step_error"];
 
 type MobilePanel = "chat" | "artifacts";
 
@@ -63,9 +66,7 @@ export default function Page() {
 
 function KitchenSinkApp() {
   const flow = useFlow({ autoCreateSession: true });
-  const session = useSession(flow.activeSessionId, {
-    items: { itemTypes: ITEM_TYPES },
-  });
+  const session = useSession(flow.activeSessionId, { items: true });
 
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("chat");
@@ -322,6 +323,7 @@ function ChatPanel({
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <Conversation className="min-h-0 flex-1">
+        <SessionItemsProvider value={session.items}>
         <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
           {session.items.length === 0 && !session.isLoading && (
             <ConversationEmptyState
@@ -337,6 +339,7 @@ function ChatPanel({
             </div>
           )}
         </ConversationContent>
+        </SessionItemsProvider>
         <ConversationScrollButton />
       </Conversation>
 

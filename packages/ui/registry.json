@@ -158,12 +158,26 @@
       "categories": ["ai", "framework"]
     },
     {
+      "name": "plan",
+      "title": "Plan",
+      "type": "registry:component",
+      "description": "Task list display for plan snapshots emitted by plan-and-execute and supervisor patterns.",
+      "dependencies": ["@flow-state-dev/core", "lucide-react"],
+      "registryDependencies": [],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/plan.tsx",
+        "target": "components/flow-state/plan.tsx"
+      }],
+      "categories": ["ai", "patterns"]
+    },
+    {
       "name": "chat-assistant",
       "title": "Chat Assistant Renderers",
       "type": "registry:component",
       "description": "Pre-wired RendererRegistry mapping all Flow State item types to their default components.",
       "dependencies": ["@flow-state-dev/react"],
-      "registryDependencies": ["message", "reasoning", "tool", "status", "error"],
+      "registryDependencies": ["message", "reasoning", "tool", "status", "error", "plan"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/chat-assistant.tsx",
