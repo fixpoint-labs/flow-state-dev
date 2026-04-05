@@ -87,6 +87,15 @@ const sidebars: SidebarsConfig = {
         "devtool/overview",
       ],
     },
+    {
+      type: "category",
+      label: "Tools",
+      items: [
+        "tools/overview",
+        "tools/fetch",
+        "tools/crawl",
+      ],
+    },
     "roadmap",
     {
       type: "category",
