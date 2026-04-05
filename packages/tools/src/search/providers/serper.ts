@@ -8,7 +8,7 @@ export const serperAdapter: SearchProviderAdapter = {
         ? "https://google.serper.dev/news"
         : "https://google.serper.dev/search";
 
-    const response = await fetch(endpoint, {
+    const response = await globalThis.fetch(endpoint, {
       method: "POST",
       headers: {
         "X-API-KEY": options.apiKey,

@@ -29,7 +29,7 @@ export function resolveProvider(config: FetchConfig): {
     return { adapter: getAdapter(config.provider), apiKey };
   }
 
-  // Auto-select: Firecrawl → Jina (with key) → Jina (no key) → Built-in
+  // Auto-select: Firecrawl → Jina (with key) → Built-in
   const firecrawlKey = resolveKey("firecrawl", config);
   if (firecrawlKey) {
     return { adapter: getAdapter("firecrawl"), apiKey: firecrawlKey };
@@ -40,8 +40,7 @@ export function resolveProvider(config: FetchConfig): {
     return { adapter: getAdapter("jina"), apiKey: jinaKey };
   }
 
-  // Jina works without a key at 20 RPM — use it as fallback before built-in
-  // Skip if explicitly no Jina desired (user can force builtin via config.provider)
+  // Built-in (fetch + Readability + Turndown) always available
   return { adapter: getAdapter("builtin") };
 }
 

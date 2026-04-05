@@ -32,7 +32,7 @@ export const firecrawlFetchAdapter: FetchProviderAdapter = {
       metadata: {
         statusCode: result.metadata?.statusCode ?? 200,
         contentType: result.metadata?.contentType ?? "text/html",
-        description: result.metadata?.description ?? undefined,
+        description: result.metadata?.description,
         wordCount: (result.markdown ?? "").split(/\s+/).filter(Boolean).length,
       },
       source: "firecrawl" as const,

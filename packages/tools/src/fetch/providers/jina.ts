@@ -37,7 +37,7 @@ export const jinaFetchAdapter: FetchProviderAdapter = {
       metadata: {
         statusCode: response.status,
         contentType: "text/html",
-        description: data.data?.description ?? undefined,
+        description: data.data?.description,
         wordCount: markdown.split(/\s+/).filter(Boolean).length,
       },
       source: "jina" as const,

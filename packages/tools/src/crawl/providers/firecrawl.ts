@@ -40,7 +40,7 @@ export const firecrawlCrawlAdapter: CrawlProviderAdapter = {
       metadata: {
         statusCode: page.metadata?.statusCode ?? 200,
         contentType: "text/html",
-        description: page.metadata?.description ?? undefined,
+        description: page.metadata?.description,
         wordCount: (page.markdown ?? "").split(/\s+/).filter(Boolean).length,
       },
       source: "firecrawl" as const,
