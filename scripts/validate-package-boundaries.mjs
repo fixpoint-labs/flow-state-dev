@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const rootDir = process.cwd();
-const packages = ["core", "server", "client", "react", "testing", "cli"];
+const packages = ["core", "server", "client", "react", "testing", "cli", "store-sqlite"];
 
 const packageRules = {
   core: {
@@ -32,6 +32,11 @@ const packageRules = {
   cli: {
     allow: new Set(["core", "server", "testing"]),
     typeOnly: new Set([])
+  },
+  "store-sqlite": {
+    allow: new Set(["core", "server"]),
+    typeOnly: new Set(["server"]),
+    deny: new Set(["client", "react"])
   }
 };
 

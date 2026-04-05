@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   FlowProvider,
   ItemsRenderer,
@@ -8,7 +8,6 @@ import {
   useSession,
   useClientData,
   useVoice,
-  type RendererRegistry,
 } from "@flow-state-dev/react";
 import { Button } from "@/components/ui/button";
 import { Menu, MessageSquareText, Package } from "lucide-react";
@@ -18,40 +17,37 @@ import {
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
-} from "@/src/components/ai-elements/conversation";
+} from "@/components/flow-state/conversation";
 import {
   PromptInput,
   PromptInputTextarea,
   PromptInputSubmit,
   type PromptInputMessage,
-} from "@/src/components/ai-elements/prompt-input";
-
-import { KitchenSinkMessage } from "@/components/kitchen-sink-message";
-import { KitchenSinkReasoning } from "@/components/kitchen-sink-reasoning";
-import { KitchenSinkStatus } from "@/components/kitchen-sink-status";
-import { KitchenSinkError } from "@/components/kitchen-sink-error";
-import { KitchenSinkToolCall } from "@/components/kitchen-sink-tool-call";
-import { SourcesGroup } from "@/components/kitchen-sink-source";
+} from "@/components/flow-state/prompt-input";
+import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
+import { SourcesGroup } from "@/components/flow-state/sources";
 
 import { SessionSidebar } from "@/components/session-sidebar";
+import { AgentResponseCard } from "@/components/agent-response-card";
 import { ModeSelector, type Mode } from "@/components/mode-selector";
 import { ClientDataBar } from "@/components/client-data-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactViewer } from "@/components/artifact-viewer";
 import { SuggestionRow } from "@/components/suggestion-row";
 import { VoiceToggle } from "@/components/voice-toggle";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
+import { PlanAwareTool } from "@/components/flow-state/plan";
 
-const renderers: RendererRegistry = {
-  message: KitchenSinkMessage,
-  reasoning: KitchenSinkReasoning,
-  block_tool_output: KitchenSinkToolCall,
-  status: KitchenSinkStatus,
-  source: false, // Sources are grouped separately via SourcesGroup
-  error: KitchenSinkError,
-  step_error: KitchenSinkError,
+import type { RendererRegistry } from "@flow-state-dev/react";
+
+const kitchenSinkRenderers: RendererRegistry = {
+  ...chatAssistantRenderers,
+  block_output: AgentResponseCard,
+  // Plan-owned tool calls are shown inline inside task rows; others render normally.
+  block_tool_output: PlanAwareTool,
 };
 
-const ITEM_TYPES = ["message", "reasoning", "block_tool_output", "status", "source", "error", "step_error"];
 
 type MobilePanel = "chat" | "artifacts";
 
@@ -62,7 +58,7 @@ const CLIENT_DATA_OPTIONS = {
 
 export default function Page() {
   return (
-    <FlowProvider flowKind="kitchen-sink" userId="devuser" baseUrl="" renderers={renderers}>
+    <FlowProvider flowKind="kitchen-sink" userId="devuser" baseUrl="" renderers={kitchenSinkRenderers}>
       <KitchenSinkApp />
     </FlowProvider>
   );
@@ -70,9 +66,7 @@ export default function Page() {
 
 function KitchenSinkApp() {
   const flow = useFlow({ autoCreateSession: true });
-  const session = useSession(flow.activeSessionId, {
-    items: { itemTypes: ITEM_TYPES },
-  });
+  const session = useSession(flow.activeSessionId, { items: true });
 
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("chat");
@@ -86,6 +80,18 @@ function KitchenSinkApp() {
     buildInput: (text) => ({ message: text, mode }),
     autoPlayTTS: ttsEnabled,
   });
+
+  // Refresh session list when the active session's title changes (e.g. from auto-title).
+  const prevTitleRef = useRef(session.detail?.title);
+  useEffect(() => {
+    const currentTitle = session.detail?.title;
+    if (currentTitle !== prevTitleRef.current) {
+      prevTitleRef.current = currentTitle;
+      if (currentTitle !== undefined) {
+        void flow.refreshSessions();
+      }
+    }
+  }, [session.detail?.title, flow]);
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
 
@@ -194,6 +200,9 @@ function KitchenSinkApp() {
             <Package className="h-4 w-4" />
             Artifacts ({artifacts.length})
           </Button>
+          <div className="ml-auto">
+            <ThemeToggle />
+          </div>
         </div>
 
         <ClientDataBar
@@ -314,6 +323,7 @@ function ChatPanel({
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <Conversation className="min-h-0 flex-1">
+        <SessionItemsProvider value={session.items}>
         <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
           {session.items.length === 0 && !session.isLoading && (
             <ConversationEmptyState
@@ -329,6 +339,7 @@ function ChatPanel({
             </div>
           )}
         </ConversationContent>
+        </SessionItemsProvider>
         <ConversationScrollButton />
       </Conversation>
 

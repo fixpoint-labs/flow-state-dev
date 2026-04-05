@@ -121,6 +121,16 @@ Update policy:
   - `useMemo` is synchronous and deterministic — no extra render cycle, no stale intermediate state, no cleanup concerns. `useEffect` for derived state introduces unnecessary complexity and subtle timing bugs.
   - Mandatory `useEffect` comments prevent "mystery effects" that accumulate as components grow. Effects are the most error-prone part of React components; explaining their purpose makes bugs easier to spot during review.
 
+### BP-011: Handlers must not call generators internally
+
+- Status: Active
+- Date: 2026-04-03
+- Rule:
+  - A handler block must not instantiate or call a generator internally.
+  - When a block needs to produce LLM output and then act on it, model it as a sequencer with a generator step followed by a handler step.
+- Why:
+  - Generators are a first-class block kind with their own execution semantics: streaming, retry, tool loops, and observability hooks. Wrapping a generator call inside a handler bypasses all of these and makes the generator invisible to the runtime. It also makes the generated output hard to observe, replay, or trace in devtools. The sequencer `.then(generator).then(handler)` pattern is the correct composition primitive.
+
 ---
 
 ## Template For New Entries

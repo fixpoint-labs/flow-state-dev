@@ -21,14 +21,20 @@ export {
   runWithCAS
 } from "./stores";
 export type {
+  ActiveRequestEntry,
+  ActiveRequestRegistry,
+  ProjectListOptions,
   ProjectRecord,
   ProjectStore,
+  RequestListOptions,
   RequestRecord,
   RequestStatus,
   RequestStore,
+  SessionListOptions,
   SessionRecord,
   SessionStore,
   StoreRegistry,
+  UserListOptions,
   UserRecord,
   UserStore
 } from "./stores";
@@ -88,6 +94,7 @@ export {
   createSentenceBuffer,
   createTTSPipeline,
   createTTSEmitterHook,
+  voiceContext,
   type SentenceBuffer,
   type TTSPipeline,
   type TTSPipelineOptions,

@@ -33,7 +33,8 @@ import {
   handleDeleteSession,
   handleGetSession,
   handleListSessionRequests,
-  handleListSessions
+  handleListSessions,
+  handlePatchSessionMetadata
 } from "./session-routes";
 import { handleGetSessionState } from "./state-routes";
 import { handleRequestStream, handleTranscribe } from "./stream-routes";
@@ -273,6 +274,13 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       if (route.kind === "delete_session") {
         return await handleDeleteSession(request, route, {
+          registry: options.registry,
+          stores
+        });
+      }
+
+      if (route.kind === "patch_session_metadata") {
+        return await handlePatchSessionMetadata(request, route, {
           registry: options.registry,
           stores
         });

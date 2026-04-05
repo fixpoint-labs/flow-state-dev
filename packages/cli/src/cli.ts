@@ -4,6 +4,7 @@
 import { Command } from "commander";
 import { registerBlockCommand } from "./commands/block";
 import { registerRunCommand } from "./commands/run";
+import { registerUiCommand } from "./commands/ui";
 
 export const program = new Command();
 
@@ -14,3 +15,4 @@ program
 
 registerBlockCommand(program);
 registerRunCommand(program);
+registerUiCommand(program);

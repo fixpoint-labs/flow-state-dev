@@ -108,6 +108,7 @@ The request stream carries these event types:
 | `content.delta` | Text chunk appended |
 | `content.done` | Content part finalized |
 | `resource.changed` | Resource mutation (request scope) |
+| `session.metadata.changed` | Session title/description/tags/metadata updated |
 | `request.completed` / `.incomplete` / `.failed` | Terminal status |
 
 ### Event Envelope

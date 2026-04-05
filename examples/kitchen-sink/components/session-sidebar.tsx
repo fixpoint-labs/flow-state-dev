@@ -5,6 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { Plus, MessageSquare } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 import type { SessionSummary } from "@flow-state-dev/client";
 
 interface SessionSidebarProps {
@@ -51,8 +52,8 @@ export function SessionSidebar({
               )}
             >
               <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="truncate">
-                Session {session.id.slice(0, 8)}
+              <span className={cn("truncate", session.title ? "" : "font-mono text-muted-foreground")}>
+                {session.title ?? `Session ${session.id.slice(0, 8)}`}
               </span>
             </button>
           ))}
@@ -63,6 +64,10 @@ export function SessionSidebar({
           )}
         </div>
       </ScrollArea>
+      <Separator />
+      <div className="p-3">
+        <ThemeToggle />
+      </div>
     </aside>
   );
 }

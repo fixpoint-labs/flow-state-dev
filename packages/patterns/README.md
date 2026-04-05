@@ -39,6 +39,42 @@ const myFlow = defineFlow({
 
 See `examples/kitchen-sink` for a full integration example.
 
+## Shared Plan Schema
+
+All plan-oriented patterns (`planAndExecute`, `supervisor`) share a common base schema for interoperability with the `<Plan />` UI component.
+
+```typescript
+import {
+  BasePlanSchema,
+  BasePlanTaskSchema,
+  emitPlanSnapshot,
+  type BasePlan,
+  type BasePlanTask,
+} from "@flow-state-dev/patterns";
+```
+
+**`BasePlanTask` status vocabulary:**
+
+| Status | Pattern | Meaning |
+|---|---|---|
+| `pending` | P&E | Queued, not yet started |
+| `in_progress` | both | Actively executing |
+| `completed` | both | Done successfully |
+| `failed` | P&E | Hard failure |
+| `skipped` | P&E | Bypassed (dependency not met) |
+| `needs-revision` | Supervisor | Quality gate failed |
+| `escalated` | Supervisor | Out of scope |
+
+**`emitPlanSnapshot(ctx, plan)`** emits a `ComponentItem` with `component: "plan"` into the chat stream. Both `planAndExecute` and `supervisor` call this automatically. Custom patterns can call it directly:
+
+```typescript
+import { emitPlanSnapshot, type BasePlan } from "@flow-state-dev/patterns";
+
+emitPlanSnapshot(ctx, { goal, tasks, status, iteration });
+```
+
+Pair with the `<Plan />` component from `@flow-state-dev/ui` — or use `chatAssistantRenderers` which includes it by default.
+
 ## Running tests
 
 ```bash

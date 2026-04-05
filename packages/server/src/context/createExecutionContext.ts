@@ -19,6 +19,7 @@ import type {
   ScopeType,
   SessionItem,
   SessionItemViews,
+  SessionMetadataInput,
   SessionScopeHandle,
   UserScopeHandle,
   FlowInstance,
@@ -908,12 +909,17 @@ function trimOrphanedToolMessages(messages: LLMMessage[]): LLMMessage[] {
 /**
  * Loads conversation history from prior completed requests in this session,
  * converts to LLM-ready messages, and applies filtering/limiting.
+ *
+ * Optionally includes items from the current in-flight request via
+ * `readLiveItems` so that blocks like `sessionTitleGenerator` running as
+ * background work can see the current request's output.
  */
 async function loadLLMHistory(
   priorRequests: RequestRecord[],
   tokenCounter: TokenCounter,
   resolveModelId: () => string,
-  query?: ItemQuery
+  query?: ItemQuery,
+  readLiveItems?: () => OutputItem[]
 ): Promise<LLMMessage[]> {
 
   const allowedTypes = query?.itemTypes
@@ -923,12 +929,8 @@ async function loadLLMHistory(
 
   const messages: LLMMessage[] = [];
 
-  for (const request of priorRequests) {
-    if (request.items === undefined) {
-      continue;
-    }
-
-    const sorted = [...request.items].sort((a, b) => {
+  function processItems(items: OutputItem[]): void {
+    const sorted = [...items].sort((a, b) => {
       const tsDiff = a.ts - b.ts;
       return tsDiff !== 0 ? tsDiff : a.itemIndex - b.itemIndex;
     });
@@ -938,7 +940,6 @@ async function loadLLMHistory(
         continue;
       }
 
-      // Type-based audience routing: only LLM-audience types proceed.
       if (!allowedTypes.has(item.type)) {
         continue;
       }
@@ -952,6 +953,18 @@ async function loadLLMHistory(
         messages.push(llmMessage);
       }
     }
+  }
+
+  for (const request of priorRequests) {
+    if (request.items !== undefined) {
+      processItems(request.items);
+    }
+  }
+
+  // Include current request's live items so background work blocks (e.g.
+  // sessionTitleGenerator) can see the just-completed output.
+  if (readLiveItems !== undefined) {
+    processItems(readLiveItems());
   }
 
   // Apply limit
@@ -1076,7 +1089,8 @@ function createSessionItemViews(
         priorRequests,
         options.tokenCounter,
         options.resolveModelId,
-        query
+        query,
+        options.readLiveItems
       )
   };
 }
@@ -1168,10 +1182,11 @@ function createEmitMessage(
 
 function createEmitComponent(
   emCtx: EmissionContext
-): (component: string, data: Record<string, unknown>) => ComponentHandle {
+): (component: string, data: Record<string, unknown>, options?: { key?: string }) => ComponentHandle {
   return function emitComponent(
     component: string,
-    data: Record<string, unknown>
+    data: Record<string, unknown>,
+    options?: { key?: string }
   ): ComponentHandle {
     const itemIndex = emCtx.nextItemIndex();
     const item: ComponentItem = {
@@ -1184,7 +1199,8 @@ function createEmitComponent(
       provenance: emCtx.provenance(),
       ts: Date.now(),
       component,
-      data
+      data,
+      ...(options?.key !== undefined ? { key: options.key } : {}),
     };
 
     void emCtx.response.emitItemAdded(item);
@@ -1975,6 +1991,14 @@ export async function createExecutionContext<
         userId: sessionRef.current.userId,
         projectId: sessionRef.current.projectId
       },
+      get metadata() {
+        const s = sessionRef.current;
+        return {
+          ...(s.title !== undefined ? { title: s.title } : {}),
+          ...(s.description !== undefined ? { description: s.description } : {}),
+          ...(s.tags !== undefined ? { tags: s.tags } : {})
+        };
+      },
       resources: sessionResources,
       items: createSessionItemViews(priorItems, completedPriorRequests, {
         tokenCounter,
@@ -2021,6 +2045,29 @@ export async function createExecutionContext<
         }
 
         return list.slice(0, Math.max(0, query.limit));
+      },
+      setMetadata: async (input: SessionMetadataInput): Promise<void> => {
+        const now = Date.now();
+        sessionRef.current = {
+          ...sessionRef.current,
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.description !== undefined ? { description: input.description } : {}),
+          ...(input.tags !== undefined ? { tags: input.tags } : {}),
+          ...(input.metadata !== undefined
+            ? { metadata: { ...sessionRef.current.metadata, ...input.metadata } }
+            : {}),
+          updatedAt: now
+        };
+        await stores.session.set(sessionRef.current.id, sessionRef.current);
+
+        await response.emit({
+          type: "session.metadata.changed",
+          sessionId: sessionRef.current.id,
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.description !== undefined ? { description: input.description } : {}),
+          ...(input.tags !== undefined ? { tags: input.tags } : {}),
+          ...(input.metadata !== undefined ? { metadata: input.metadata } : {})
+        });
       },
       ...sessionOps
     },
