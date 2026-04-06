@@ -28,6 +28,25 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
+      label: "Block Sequencing",
+      items: [
+        "sequencers/overview",
+        "sequencers/control-flow",
+        "sequencers/side-chains",
+        "sequencers/connectors",
+      ],
+    },
+    {
+      type: "category",
+      label: "Resources",
+      items: [
+        "resources/overview",
+        "resources/storage",
+        "resources/collections",
+      ],
+    },
+    {
+      type: "category",
       label: "Patterns",
       items: [
         "patterns/overview",
@@ -48,25 +67,6 @@ const sidebars: SidebarsConfig = {
             "patterns/plan-and-execute",
           ],
         },
-      ],
-    },
-    {
-      type: "category",
-      label: "Sequencers",
-      items: [
-        "sequencers/overview",
-        "sequencers/patterns",
-        "sequencers/side-chains",
-        "sequencers/connectors",
-      ],
-    },
-    {
-      type: "category",
-      label: "Resources",
-      items: [
-        "resources/overview",
-        "resources/storage",
-        "resources/collections",
       ],
     },
     {
