@@ -7,17 +7,17 @@ import {
 } from "@flow-state-dev/testing";
 import {
   keywordHandler,
-  thinkingRouter,
+  thinkingStyleDetector,
   thinkingStyleSchema,
 } from "../src/flows/kitchen-sink/blocks";
 
-// Minimal flow instance scoped to the thinking router tests.
+// Minimal flow instance for thinking router tests.
 const testFlow = defineFlow({
   kind: "thinking-router-test",
   actions: {
     run: {
       inputSchema: z.object({ message: z.string() }),
-      block: thinkingRouter,
+      block: thinkingStyleDetector,
     },
   },
   session: {
@@ -27,17 +27,19 @@ const testFlow = defineFlow({
   },
 })({ id: "test" });
 
-// Wrap the keyword handler in a sequencer with state so we can test
-// sequencer state mutations via testSequencer.
+// Wrap the keyword handler in a sequencer with state for isolated testing.
 const keywordTestSeq = sequencer({
   name: "keyword-test",
   inputSchema: z.object({ message: z.string() }),
   stateSchema: z.object({
-    selectedStyle: z.enum(["plan-and-execute", "supervisor", "chain-of-thought"]).nullable().default(null),
+    selectedStyle: z
+      .enum(["plan-and-execute", "supervisor", "chain-of-thought"])
+      .nullable()
+      .default(null),
   }),
 }).then(keywordHandler);
 
-// Mock the intent classifier generator used inside Tier 2.
+// Mock for the intent classifier generator inside Tier 2.
 const classifierFixture = mockGenerator({
   name: "thinking-style-classifier-intent-classifier",
   script: [
@@ -51,7 +53,7 @@ const classifierFixture = mockGenerator({
   ],
 });
 
-describe("thinking router — Tier 1 (keyword handler)", () => {
+describe("thinking style detector — Tier 1 (keyword handler)", () => {
   it("selects supervisor for delegation keywords", async () => {
     const result = await testSequencer(keywordTestSeq, {
       input: { message: "Please coordinate the team effort" },
@@ -59,10 +61,12 @@ describe("thinking router — Tier 1 (keyword handler)", () => {
     });
 
     expect(result.error).toBeNull();
-    expect(result.output).toEqual({ message: "Please coordinate the team effort" });
-    // Keyword handler writes to sequencer state, not session state directly.
-    // Verify sequencer state was mutated via state changes.
-    const seqChanges = result.stateChanges.filter((c) => c.scope === "block_instance");
+    expect(result.output).toEqual({
+      message: "Please coordinate the team effort",
+    });
+    const seqChanges = result.stateChanges.filter(
+      (c) => c.scope === "block_instance",
+    );
     expect(seqChanges.length).toBeGreaterThan(0);
   });
 
@@ -73,7 +77,9 @@ describe("thinking router — Tier 1 (keyword handler)", () => {
     });
 
     expect(result.error).toBeNull();
-    const seqChanges = result.stateChanges.filter((c) => c.scope === "block_instance");
+    const seqChanges = result.stateChanges.filter(
+      (c) => c.scope === "block_instance",
+    );
     expect(seqChanges.length).toBeGreaterThan(0);
   });
 
@@ -84,7 +90,9 @@ describe("thinking router — Tier 1 (keyword handler)", () => {
     });
 
     expect(result.error).toBeNull();
-    const seqChanges = result.stateChanges.filter((c) => c.scope === "block_instance");
+    const seqChanges = result.stateChanges.filter(
+      (c) => c.scope === "block_instance",
+    );
     expect(seqChanges.length).toBeGreaterThan(0);
   });
 
@@ -95,7 +103,9 @@ describe("thinking router — Tier 1 (keyword handler)", () => {
     });
 
     expect(result.error).toBeNull();
-    const seqChanges = result.stateChanges.filter((c) => c.scope === "block_instance");
+    const seqChanges = result.stateChanges.filter(
+      (c) => c.scope === "block_instance",
+    );
     expect(seqChanges.length).toBeGreaterThan(0);
   });
 
@@ -107,8 +117,9 @@ describe("thinking router — Tier 1 (keyword handler)", () => {
 
     expect(result.error).toBeNull();
     expect(result.output).toEqual({ message: "Hello, how are you?" });
-    // No keyword match — no sequencer state mutation
-    const seqChanges = result.stateChanges.filter((c) => c.scope === "block_instance");
+    const seqChanges = result.stateChanges.filter(
+      (c) => c.scope === "block_instance",
+    );
     expect(seqChanges).toHaveLength(0);
   });
 
@@ -119,15 +130,16 @@ describe("thinking router — Tier 1 (keyword handler)", () => {
     });
 
     expect(result.error).toBeNull();
-    // Supervisor check comes first in the handler
-    const seqChanges = result.stateChanges.filter((c) => c.scope === "block_instance");
+    const seqChanges = result.stateChanges.filter(
+      (c) => c.scope === "block_instance",
+    );
     expect(seqChanges.length).toBeGreaterThan(0);
   });
 });
 
-describe("thinking router — full sequencer (Tier 1 + Tier 2)", () => {
-  it("resolves via keywords without an LLM call", async () => {
-    const result = await testSequencer(thinkingRouter, {
+describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
+  it("resolves via keywords and writes to session state", async () => {
+    const result = await testSequencer(thinkingStyleDetector, {
       input: { message: "Outline a roadmap for this project" },
       flow: testFlow,
       generators: {
@@ -143,7 +155,7 @@ describe("thinking router — full sequencer (Tier 1 + Tier 2)", () => {
 
   it("falls back to LLM classifier when no keywords match", async () => {
     classifierFixture.reset();
-    const result = await testSequencer(thinkingRouter, {
+    const result = await testSequencer(thinkingStyleDetector, {
       input: { message: "Hello, how are you?" },
       flow: testFlow,
       generators: {
@@ -157,7 +169,7 @@ describe("thinking router — full sequencer (Tier 1 + Tier 2)", () => {
     });
   });
 
-  it("uses LLM classifier for plan-and-execute classification", async () => {
+  it("LLM classifier can select plan-and-execute", async () => {
     const paeClassifier = mockGenerator({
       name: "thinking-style-classifier-intent-classifier",
       script: [
@@ -171,7 +183,7 @@ describe("thinking router — full sequencer (Tier 1 + Tier 2)", () => {
       ],
     });
 
-    const result = await testSequencer(thinkingRouter, {
+    const result = await testSequencer(thinkingStyleDetector, {
       input: { message: "Write a comprehensive report on market trends" },
       flow: testFlow,
       generators: {
@@ -199,7 +211,7 @@ describe("thinking router — full sequencer (Tier 1 + Tier 2)", () => {
       ],
     });
 
-    const result = await testSequencer(thinkingRouter, {
+    const result = await testSequencer(thinkingStyleDetector, {
       input: { message: "Do something interesting" },
       flow: testFlow,
       generators: {

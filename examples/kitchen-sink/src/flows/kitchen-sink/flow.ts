@@ -5,13 +5,19 @@
  * @flow-state-dev: handlers, generators, routers, sequencers, typed state,
  * resources, clientData, and tool-use.
  *
- * What this flow does:
- *   A user sends a message with an optional mode ("chat", "create", or "plan").
- *   A router inspects the input mode to pick the right pipeline. The assistant
- *   pipeline calls an LLM generator with tool access to read/write artifacts,
- *   where the prompt adapts to the current mode. The plan pipeline decomposes
- *   the goal into steps, executes them with web search, and synthesizes findings
- *   — optionally saving the result as an artifact.
+ * Architecture:
+ *   Mode (chat | create) controls the assistant's behavioral prompt.
+ *   Thinking style (chain-of-thought | plan-and-execute | supervisor)
+ *   controls *how* the assistant executes — orthogonal to mode.
+ *
+ *   When thinking style is "auto", a two-tier detector (keyword heuristics
+ *   then LLM classifier) resolves it before execution.
+ *
+ * Pipeline:
+ *   applyRequestedMode → resolveThinkingStyle → thinkingStyleRouter
+ *     ├─ chain-of-thought  → assistantPipeline (direct generation)
+ *     ├─ plan-and-execute   → planAndExecute wrapping the assistant
+ *     └─ supervisor         → supervisor wrapping the assistant
  *
  * Concepts demonstrated:
  *   - handler()   — synchronous blocks for data transforms and state mutations
@@ -30,13 +36,14 @@ import {
   handler,
   router,
   sequencer,
-  utility
+  utility,
 } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import {
-  system as memorySystem
+  system as memorySystem,
 } from "@thought-fabric/core/memory";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
+import { supervisor } from "@flow-state-dev/patterns/supervisor";
 import { z } from "zod";
 import {
   summarizeArtifacts,
@@ -47,7 +54,7 @@ import {
   readArtifact,
   artifactListContext,
   voiceContext,
-  thinkingRouter,
+  thinkingStyleDetector,
   thinkingStyleSchema,
   thinkingStyleSessionStateSchema,
 } from "./blocks";
@@ -59,9 +66,6 @@ import {
 const MODEL_ID = "openai/gpt-5.4-mini";
 
 // Unified memory system: working memory + user-scoped episodic + semantic memory.
-// Provides a single capture pipeline, cross-store recall, and context formatter.
-// Semantic memory distills repeated episodic experiences into stable knowledge
-// (facts, preferences, patterns) via LLM-based consolidation.
 const mem = memorySystem({
   model: MODEL_ID,
   working: { capacity: 7 },
@@ -83,20 +87,18 @@ const inputSchema = z.object({
   thinkingStyle: thinkingStyleInputSchema,
 });
 
-// Session state lives for the duration of a session. Every block that reads
-// or writes session state declares a partial schema of just the fields it
-// uses; the flow-level schema is the union of all those slices.
+// Session state: union of all partial schemas across blocks.
 const sessionStateSchema = z.object({
   mode: modeSchema,
   thinkingStyle: thinkingStyleSchema.optional(),
   requestCount: z.number().default(0),
-  lastAction: z.string().optional()
+  lastAction: z.string().optional(),
 });
 
 // User state persists across sessions for a given user.
 const userStateSchema = z.object({
   displayName: z.string().default("Developer"),
-  preferredModel: z.string().default(MODEL_ID)
+  preferredModel: z.string().default(MODEL_ID),
 });
 
 // ---------------------------------------------------------------------------
@@ -128,78 +130,76 @@ Never show artifact ids unless specifically asked.`;
 // Blocks (inline)
 // ---------------------------------------------------------------------------
 
-// Writes the requested mode into session state before the pipeline continues.
-// This is a passthrough handler — it returns its input unchanged, but has a
-// side-effect (state mutation). Silent by default (no client/LLM emissions).
+// Writes the requested mode into session state.
 const applyRequestedMode = handler({
   name: "apply-requested-mode",
-  inputSchema: inputSchema,
+  inputSchema,
   outputSchema: inputSchema,
   sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
   execute: async (input, ctx) => {
     await ctx.session.patchState({ mode: input.mode });
     return input;
-  }
+  },
 });
 
-// When the user manually selects a thinking style (not "auto"), write it
-// directly into session state. When "auto" is selected, the thinkingRouter
-// block will resolve the style instead.
-const applyThinkingStyle = handler({
-  name: "apply-thinking-style",
+// Resolves the thinking style. Manual selections are written directly.
+// "auto" triggers the two-tier detector (keyword + LLM classifier).
+const resolveThinkingStyle = handler({
+  name: "resolve-thinking-style",
   inputSchema,
   outputSchema: inputSchema,
   sessionStateSchema: thinkingStyleSessionStateSchema,
   execute: async (input, ctx) => {
     if (input.thinkingStyle !== "auto") {
       await ctx.session.patchState({ thinkingStyle: input.thinkingStyle });
+    } else {
+      await thinkingStyleDetector.run({ message: input.message }, ctx);
     }
     return input;
-  }
+  },
 });
 
 // Bookkeeping handler: increments a request counter in session state.
-// Silent by default — no client or LLM emissions.
 const incrementRequestCount = handler({
   name: "increment-request-count",
   inputSchema: z.string(),
   outputSchema: z.string(),
   sessionStateSchema: z.object({
     requestCount: z.number().default(0),
-    lastAction: z.string().optional()
+    lastAction: z.string().optional(),
   }),
   execute: async (input, ctx) => {
     const count = ctx.session.state.requestCount ?? 0;
     await ctx.session.patchState({
       requestCount: count + 1,
-      lastAction: "run"
+      lastAction: "run",
     });
     return input;
-  }
+  },
 });
 
 // Auto-generate a session title from recent conversation messages.
-// Runs as background work — doesn't block the client response.
 const autoTitle = utility.sessionTitleGenerator({
   name: "auto-title",
-  model: MODEL_ID
+  model: MODEL_ID,
 });
 
-// Assistant generator — single block for both chat and create modes.
-// The prompt is a function so it re-evaluates on each tool loop step,
-// picking the right behavioral contract from session state.
+// ---------------------------------------------------------------------------
+// Assistant generator — shared across all thinking styles
+//
+// The prompt adapts to mode (chat/create). Thinking style changes which
+// *pipeline* this generator is embedded in, not the generator itself.
+// ---------------------------------------------------------------------------
+
 const assistantGenerator = generator({
   name: "assistant-generator",
-  model: (_input, ctx) => (ctx.user?.state.preferredModel as string | undefined) ?? MODEL_ID,
+  model: (_input, ctx) =>
+    (ctx.user?.state.preferredModel as string | undefined) ?? MODEL_ID,
   userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
   sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
   sessionResources: artifactResources,
 
-  context: [
-    mem.contextFormatter,
-    artifactListContext,
-    voiceContext,
-  ] as any[],
+  context: [mem.contextFormatter, artifactListContext, voiceContext] as any[],
 
   inputSchema,
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
@@ -218,60 +218,97 @@ const assistantGenerator = generator({
 });
 
 // ---------------------------------------------------------------------------
-// Pipelines (sequencers)
+// Thinking Style Pipelines
 // ---------------------------------------------------------------------------
 
-// Single pipeline for chat and create — the generator's prompt adapts to mode.
-const assistantPipeline = sequencer({ name: "assistant-pipeline", inputSchema })
+// Chain of Thought — direct generation. The simplest path.
+const cotPipeline = sequencer({ name: "cot-pipeline", inputSchema })
   .then(assistantGenerator)
   .work(mem.captureFromItems);
 
-const planMode = planAndExecute({
-  name: "plan-mode",
-  model: MODEL_ID,
-  context: [mem.contextFormatter, artifactListContext] as any,
-  search: true,
-  tools: [readArtifact, updateArtifact],
-  sessionResources: artifactResources,
-  enableReplanning: true,
-}).work(mem.captureFromItems);
-
-const planPipeline = sequencer({ name: "plan-pipeline", inputSchema })
+// Plan and Execute — decomposes the message into steps, executes them,
+// then synthesizes findings. Uses the same tools/context as the assistant.
+const paePipeline = sequencer({ name: "pae-pipeline", inputSchema })
   .map((input) => ({ goal: input.message }))
-  .then(planMode);
+  .then(
+    planAndExecute({
+      name: "pae-thinking",
+      model: MODEL_ID,
+      context: [mem.contextFormatter, artifactListContext] as any,
+      search: true,
+      tools: [readArtifact, updateArtifact],
+      sessionResources: artifactResources,
+      enableReplanning: true,
+    })
+  )
+  .work(mem.captureFromItems);
 
-// ---------------------------------------------------------------------------
-// Router
-// ---------------------------------------------------------------------------
-
-export const modeRouter = router({
-  name: "mode-router",
-  inputSchema: inputSchema,
+// Supervisor — plan → dispatch workers → review → replan loop.
+// The worker is the assistant generator wrapped to accept { id, goal } input.
+const supervisorWorker = handler({
+  name: "supervisor-worker",
+  inputSchema: z.object({
+    id: z.string(),
+    goal: z.string(),
+    feedback: z.string().optional(),
+  }),
   outputSchema: z.string(),
-  routes: [assistantPipeline, planPipeline],
-  execute: (input) => input.mode === "plan" ? planPipeline : assistantPipeline,
-});
-
-// Conditionally runs the thinking router when "auto" is selected.
-// Wraps the router so the pipeline value (full input) passes through unchanged.
-const autoThinkingStyleRouter = handler({
-  name: "auto-thinking-style-router",
-  inputSchema,
-  outputSchema: inputSchema,
+  sessionResources: artifactResources,
   execute: async (input, ctx) => {
-    if (input.thinkingStyle === "auto") {
-      await thinkingRouter.run({ message: input.message }, ctx);
-    }
-    return input;
-  }
+    const result = await assistantGenerator.run(
+      { message: input.goal, mode: "chat", thinkingStyle: "chain-of-thought" },
+      ctx,
+    );
+    return result as string;
+  },
 });
 
-// Top-level run sequencer: handles steps common to all modes.
+const supervisorPipeline = sequencer({
+  name: "supervisor-pipeline",
+  inputSchema,
+})
+  .map((input) => ({ goal: input.message }))
+  .then(
+    supervisor({
+      name: "supervisor-thinking",
+      worker: supervisorWorker,
+      maxIterations: 3,
+      maxConcurrency: 3,
+      onSubTaskError: "skip",
+    })
+  )
+  .work(mem.captureFromItems);
+
+// ---------------------------------------------------------------------------
+// Thinking Style Router — proper router() block
+// ---------------------------------------------------------------------------
+
+export const thinkingStyleRouter = router({
+  name: "thinking-style-router",
+  inputSchema,
+  outputSchema: z.string(),
+  routes: [cotPipeline, paePipeline, supervisorPipeline],
+  execute: (_input, ctx) => {
+    const style = ctx.session.state.thinkingStyle as string | undefined;
+    switch (style) {
+      case "plan-and-execute":
+        return paePipeline;
+      case "supervisor":
+        return supervisorPipeline;
+      default:
+        return cotPipeline;
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Top-level run sequencer
+// ---------------------------------------------------------------------------
+
 const runSequencer = sequencer({ name: "run", inputSchema })
   .then(applyRequestedMode)
-  .then(applyThinkingStyle)
-  .then(autoThinkingStyleRouter)
-  .then(modeRouter)
+  .then(resolveThinkingStyle)
+  .then(thinkingStyleRouter)
   .work(autoTitle)
   .work(summarizeArtifacts)
   .then(incrementRequestCount);
@@ -295,15 +332,15 @@ const kitchenSinkFlow = defineFlow({
     run: {
       inputSchema,
       block: runSequencer,
-      userMessage: (input) => input.message
+      userMessage: (input) => input.message,
     },
     saveArtifact: {
       inputSchema: updateArtifactInputSchema,
-      block: updateArtifact
+      block: updateArtifact,
     },
     "event-queue": {
       inputSchema: eventQueueDemoInputSchema,
-      block: eventQueueDemo
+      block: eventQueueDemo,
     },
   },
 
@@ -312,25 +349,32 @@ const kitchenSinkFlow = defineFlow({
     resources: artifactResources,
     clientData: {
       artifacts: async (ctx) => {
-        const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<{ title: string; summary: string; updatedAt: number }>;
+        const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<{
+          title: string;
+          summary: string;
+          updatedAt: number;
+        }>;
         const instances = artifacts.list();
-        return Promise.all(instances.map(async (ref) => {
-          const content = await ref.readContent() ?? "";
-          return {
-            id: ref.name.replace("artifacts/", ""),
-            title: ref.state.title ?? "Untitled",
-            summary: ref.state.summary ?? "",
-            content,
-            updatedAt: ref.state.updatedAt
-          };
-        }));
+        return Promise.all(
+          instances.map(async (ref) => {
+            const content = (await ref.readContent()) ?? "";
+            return {
+              id: ref.name.replace("artifacts/", ""),
+              title: ref.state.title ?? "Untitled",
+              summary: ref.state.summary ?? "",
+              content,
+              updatedAt: ref.state.updatedAt,
+            };
+          }),
+        );
       },
       modeStatus: (ctx) => ({
         currentMode: modeSchema.parse(ctx.state.mode ?? "chat"),
-        thinkingStyle: (ctx.state.thinkingStyle as string | undefined) ?? null,
-        requestCount: Number(ctx.state.requestCount ?? 0)
-      })
-    }
+        thinkingStyle:
+          (ctx.state.thinkingStyle as string | undefined) ?? null,
+        requestCount: Number(ctx.state.requestCount ?? 0),
+      }),
+    },
   },
 
   user: {
@@ -338,10 +382,10 @@ const kitchenSinkFlow = defineFlow({
     clientData: {
       preferences: (ctx) => ({
         displayName: String(ctx.state.displayName ?? "Developer"),
-        preferredModel: String(ctx.state.preferredModel ?? MODEL_ID)
-      })
-    }
-  }
+        preferredModel: String(ctx.state.preferredModel ?? MODEL_ID),
+      }),
+    },
+  },
 });
 
 const flow = kitchenSinkFlow({ id: "default" });

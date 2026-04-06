@@ -1,11 +1,12 @@
 /**
- * Thinking Style Auto-Router (FIX-311)
+ * Thinking Style Auto-Detector (FIX-311)
  *
- * Two-tier router that selects the best thinking style for a message:
+ * Two-tier detection that resolves "auto" thinking style to a concrete style:
  *   1. Keyword handler — fast heuristic scan, no LLM call
  *   2. LLM classifier — intentRouter fallback when keywords are ambiguous
  *
- * Both tiers and the composed router are exported for remixability.
+ * After detection, writes the resolved style to session.state.thinkingStyle.
+ * Both tiers are exported individually for remixability.
  */
 import {
   handler,
@@ -26,19 +27,19 @@ export const thinkingStyleSchema = z.enum([
 
 export type ThinkingStyle = z.infer<typeof thinkingStyleSchema>;
 
-const routerStateSchema = z.object({
-  selectedStyle: thinkingStyleSchema.nullable().default(null),
-});
-
 export const thinkingStyleSessionStateSchema = z.object({
   thinkingStyle: thinkingStyleSchema.optional(),
+});
+
+const detectorStateSchema = z.object({
+  selectedStyle: thinkingStyleSchema.nullable().default(null),
 });
 
 // -------------------------------------------------------------------------
 // Keyword lists — named constants for extensibility
 // -------------------------------------------------------------------------
 
-const SUPERVISOR_KEYWORDS = [
+export const SUPERVISOR_KEYWORDS = [
   "coordinate",
   "delegate",
   "assign",
@@ -48,7 +49,7 @@ const SUPERVISOR_KEYWORDS = [
   "team of",
 ];
 
-const PLAN_KEYWORDS = [
+export const PLAN_KEYWORDS = [
   "plan",
   "steps",
   "step by step",
@@ -60,7 +61,7 @@ const PLAN_KEYWORDS = [
   "phase",
 ];
 
-const COT_KEYWORDS = [
+export const COT_KEYWORDS = [
   "think through",
   "reason",
   "why",
@@ -81,7 +82,7 @@ export const keywordHandler = handler({
   name: "keyword-style-handler",
   inputSchema: messageSchema,
   outputSchema: messageSchema,
-  sequencerStateSchema: routerStateSchema,
+  sequencerStateSchema: detectorStateSchema,
   execute: async (input, ctx) => {
     const message = input.message.toLowerCase();
 
@@ -106,8 +107,7 @@ export const keywordHandler = handler({
 // -------------------------------------------------------------------------
 // Tier 2 — LLM Classifier (intentRouter)
 //
-// Built as a standalone block so it can be imported independently.
-// The thinkingRouter uses thenIf to skip it when Tier 1 already matched.
+// Exported as a standalone block for remixability.
 // -------------------------------------------------------------------------
 
 export const classifierBlock = utility.intentRouter({
@@ -171,26 +171,21 @@ export const classifierBlock = utility.intentRouter({
 });
 
 // -------------------------------------------------------------------------
-// Resolve style — runs Tier 2 if needed, then writes to session state
-//
-// When Tier 1 matched, selectedStyle is non-null and gets written to
-// session state directly. When Tier 1 didn't match (selectedStyle is null),
-// the LLM classifier runs and writes session state via its own handlers.
+// Resolve — runs Tier 1, then Tier 2 if needed, writes to session state.
 // -------------------------------------------------------------------------
 
 const resolveStyle = handler({
   name: "resolve-thinking-style",
   inputSchema: messageSchema,
   outputSchema: messageSchema,
-  sequencerStateSchema: routerStateSchema,
+  sequencerStateSchema: detectorStateSchema,
   sessionStateSchema: thinkingStyleSessionStateSchema,
   execute: async (input, ctx) => {
     const selected = ctx.sequencer!.state.selectedStyle;
     if (selected !== null) {
-      // Tier 1 matched — write the keyword result to session state.
       await ctx.session.patchState({ thinkingStyle: selected });
     } else {
-      // Tier 2 — run LLM classifier (writes session state internally).
+      // Tier 2 — LLM classifier writes session state via its own handlers.
       await classifierBlock.run(input.message, ctx);
     }
     return input;
@@ -198,13 +193,20 @@ const resolveStyle = handler({
 });
 
 // -------------------------------------------------------------------------
-// Top-level thinking router
+// Composed auto-detector sequencer
 // -------------------------------------------------------------------------
 
-export const thinkingRouter = sequencer({
-  name: "thinking-router",
+/**
+ * Runs Tier 1 (keyword) then Tier 2 (LLM) if needed.
+ * After this block completes, session.state.thinkingStyle is set.
+ *
+ * Input: `{ message: string }`
+ * Output: `{ message: string }` (passthrough)
+ */
+export const thinkingStyleDetector = sequencer({
+  name: "thinking-style-detector",
   inputSchema: messageSchema,
-  stateSchema: routerStateSchema,
+  stateSchema: detectorStateSchema,
 })
   .then(keywordHandler)
   .then(resolveStyle);
