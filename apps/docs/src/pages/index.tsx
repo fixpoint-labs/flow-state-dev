@@ -106,32 +106,72 @@ const pillars: Pillar[] = [
   },
 ];
 
-type PatternCategory = { name: string; items: string[] };
+type PatternItem = { label: string; href?: string };
+type PatternCategory = { name: string; items: PatternItem[] };
 
 const patternCategories: PatternCategory[] = [
   {
     name: "Multi-agent coordination patterns",
-    items: ["Supervisor", "Coordinator", "Chain of Agents", "Blackboard", "Debate", "Round Robin"],
+    items: [
+      { label: "Supervisor", href: "/docs/patterns/supervisor" },
+      { label: "Coordinator", href: "/docs/patterns/coordinator" },
+      { label: "Chain of Agents" },
+      { label: "Blackboard" },
+      { label: "Debate" },
+      { label: "Round Robin" },
+    ],
   },
   {
     name: "Reasoning & planning patterns",
-    items: ["Plan and Execute", "Self-Ask", "Self-Consistency", "Skeleton of Thought", "Least-to-Most", "Step-Back Prompting"],
+    items: [
+      { label: "Plan and Execute", href: "/docs/patterns/plan-and-execute" },
+      { label: "Self-Ask" },
+      { label: "Self-Consistency" },
+      { label: "Skeleton of Thought" },
+      { label: "Least-to-Most" },
+      { label: "Step-Back Prompting" },
+    ],
   },
   {
     name: "Memory & retrieval patterns",
-    items: ["RAPTOR", "Mind-Map Memory", "Context Folding", "RLM", "Self-querying", "Episodic Replay"],
+    items: [
+      { label: "RAPTOR" },
+      { label: "Mind-Map Memory" },
+      { label: "Context Folding" },
+      { label: "RLM" },
+      { label: "Self-querying" },
+      { label: "Episodic Replay" },
+    ],
   },
   {
     name: "Inference-time scaling patterns",
-    items: ["RSA", "Tree of Thoughts", "Mixture of Agents", "Best-of-N", "Sequential Revision"],
+    items: [
+      { label: "RSA" },
+      { label: "Tree of Thoughts" },
+      { label: "Mixture of Agents" },
+      { label: "Best-of-N" },
+      { label: "Sequential Revision" },
+    ],
   },
   {
     name: "Reactive patterns",
-    items: ["Observer", "Reflector", "Self-Healing Loop", "Response Auditor", "Citation Verifier"],
+    items: [
+      { label: "Observer" },
+      { label: "Reflector" },
+      { label: "Self-Healing Loop" },
+      { label: "Response Auditor" },
+      { label: "Citation Verifier" },
+    ],
   },
   {
     name: "Human-in-the-loop patterns",
-    items: ["Approval Gates", "Tool Call Approval", "Human Feedback", "Collaborative Editing", "Preference Elicitation"],
+    items: [
+      { label: "Approval Gates" },
+      { label: "Tool Call Approval" },
+      { label: "Human Feedback" },
+      { label: "Collaborative Editing" },
+      { label: "Preference Elicitation" },
+    ],
   },
 ];
 
@@ -296,7 +336,18 @@ function StrategiesAndEcosystem() {
             <div key={cat.name} className={styles.strategyCategory}>
               <h3 className={styles.categoryName}>{cat.name}</h3>
               <div className={styles.categoryItems}>
-                <span className={styles.categoryList}>{cat.items.join(" · ")}</span>
+                <span className={styles.categoryList}>
+                  {cat.items.map((item, i) => (
+                    <span key={item.label}>
+                      {i > 0 && " · "}
+                      {item.href ? (
+                        <Link to={item.href} className={styles.patternLink}>{item.label}</Link>
+                      ) : (
+                        item.label
+                      )}
+                    </span>
+                  ))}
+                </span>
               </div>
             </div>
           ))}
@@ -323,7 +374,7 @@ function StrategiesAndEcosystem() {
         </p>
 
         <div className={styles.strategyCta}>
-          <Link className={styles.secondaryBtn} to="/docs/intro">
+          <Link className={styles.secondaryBtn} to="/docs/patterns/overview">
             Browse the pattern library →
           </Link>
         </div>
