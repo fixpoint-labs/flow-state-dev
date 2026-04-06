@@ -130,7 +130,7 @@ Not a feature of the framework. Proof of concept.
 
 Memory and attention are shipped. Identity, perception, and metacognition are on the roadmap.
 
-[Learn about Thought Fabric →](/thought-fabric)
+[Learn about Thought Fabric →](/thought-fabric/introduction)
 
 ## Get started
 
