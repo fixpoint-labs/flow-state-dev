@@ -47,6 +47,9 @@ import {
   readArtifact,
   artifactListContext,
   voiceContext,
+  thinkingRouter,
+  thinkingStyleSchema,
+  thinkingStyleSessionStateSchema,
 } from "./blocks";
 import {
   modeSchema,
@@ -70,9 +73,14 @@ const mem = memorySystem({
 // Flow-level schemas
 // ---------------------------------------------------------------------------
 
+const thinkingStyleInputSchema = z
+  .enum(["auto", "plan-and-execute", "supervisor", "chain-of-thought"])
+  .default("auto");
+
 const inputSchema = z.object({
   message: z.string().min(1),
-  mode: modeSchema
+  mode: modeSchema,
+  thinkingStyle: thinkingStyleInputSchema,
 });
 
 // Session state lives for the duration of a session. Every block that reads
@@ -80,6 +88,7 @@ const inputSchema = z.object({
 // uses; the flow-level schema is the union of all those slices.
 const sessionStateSchema = z.object({
   mode: modeSchema,
+  thinkingStyle: thinkingStyleSchema.optional(),
   requestCount: z.number().default(0),
   lastAction: z.string().optional()
 });
@@ -129,6 +138,22 @@ const applyRequestedMode = handler({
   sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
   execute: async (input, ctx) => {
     await ctx.session.patchState({ mode: input.mode });
+    return input;
+  }
+});
+
+// When the user manually selects a thinking style (not "auto"), write it
+// directly into session state. When "auto" is selected, the thinkingRouter
+// block will resolve the style instead.
+const applyThinkingStyle = handler({
+  name: "apply-thinking-style",
+  inputSchema,
+  outputSchema: inputSchema,
+  sessionStateSchema: thinkingStyleSessionStateSchema,
+  execute: async (input, ctx) => {
+    if (input.thinkingStyle !== "auto") {
+      await ctx.session.patchState({ thinkingStyle: input.thinkingStyle });
+    }
     return input;
   }
 });
@@ -227,9 +252,25 @@ export const modeRouter = router({
   execute: (input) => input.mode === "plan" ? planPipeline : assistantPipeline,
 });
 
+// Conditionally runs the thinking router when "auto" is selected.
+// Wraps the router so the pipeline value (full input) passes through unchanged.
+const autoThinkingStyleRouter = handler({
+  name: "auto-thinking-style-router",
+  inputSchema,
+  outputSchema: inputSchema,
+  execute: async (input, ctx) => {
+    if (input.thinkingStyle === "auto") {
+      await thinkingRouter.run({ message: input.message }, ctx);
+    }
+    return input;
+  }
+});
+
 // Top-level run sequencer: handles steps common to all modes.
 const runSequencer = sequencer({ name: "run", inputSchema })
   .then(applyRequestedMode)
+  .then(applyThinkingStyle)
+  .then(autoThinkingStyleRouter)
   .then(modeRouter)
   .work(autoTitle)
   .work(summarizeArtifacts)
@@ -286,6 +327,7 @@ const kitchenSinkFlow = defineFlow({
       },
       modeStatus: (ctx) => ({
         currentMode: modeSchema.parse(ctx.state.mode ?? "chat"),
+        thinkingStyle: (ctx.state.thinkingStyle as string | undefined) ?? undefined,
         requestCount: Number(ctx.state.requestCount ?? 0)
       })
     }

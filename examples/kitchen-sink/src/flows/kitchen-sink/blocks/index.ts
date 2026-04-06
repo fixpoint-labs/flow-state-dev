@@ -3,3 +3,11 @@ export { summarizeArtifacts } from "./summarize-artifacts";
 export { updateArtifact, updateArtifactInputSchema, updateArtifactOutputSchema } from "./update-artifact";
 export { eventQueueDemo, eventQueueDemoInputSchema } from "./event-queue-demo";
 export { artifactListContext, voiceContext, type GeneratorMemory } from "./agent-context";
+export {
+  thinkingRouter,
+  keywordHandler,
+  classifierBlock,
+  thinkingStyleSchema,
+  thinkingStyleSessionStateSchema,
+  type ThinkingStyle,
+} from "./thinking-router";

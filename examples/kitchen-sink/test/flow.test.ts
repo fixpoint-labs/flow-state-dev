@@ -47,13 +47,18 @@ const testFlow = defineFlow({
   kind: "kitchen-sink-test",
   actions: {
     run: {
-      inputSchema: z.object({ message: z.string(), mode: z.enum(["chat", "create", "plan"]).default("chat") }),
+      inputSchema: z.object({
+        message: z.string(),
+        mode: z.enum(["chat", "create", "plan"]).default("chat"),
+        thinkingStyle: z.enum(["auto", "plan-and-execute", "supervisor", "chain-of-thought"]).default("auto"),
+      }),
       block: modeRouter,
     },
   },
   session: {
     stateSchema: z.object({
       mode: z.enum(["chat", "create", "plan"]).default("chat"),
+      thinkingStyle: z.enum(["plan-and-execute", "supervisor", "chain-of-thought"]).optional(),
       requestCount: z.number().default(0),
       lastAction: z.string().optional(),
     }),
