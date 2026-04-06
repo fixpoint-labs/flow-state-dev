@@ -25,7 +25,18 @@ const researchBlockExample = `const researchBlock = sequencer({ name: "research-
       await ctx.session.state.patch({ lastResearched: input.query })
     },
   })
-  .work(updateMemory)        // runs async, never blocks, can continue on after main thread completes`;
+  .work(updateMemory)        // runs async, never blocks, can continue on after main thread completes
+
+export default defineFlow({
+  kind: "research",
+  actions: {
+    research: {
+      inputSchema: z.object({ query: z.string() }),
+      block: researchBlock,
+      userMessage: (i) => i.query,
+    },
+  }
+})`;
 
 /* ── Data ── */
 
@@ -301,7 +312,7 @@ function StrategiesAndEcosystem() {
             flow-state.dev blocks. Acts as an optional additional layer that can be added to any flow. Proof of what the primitives make
             possible.
           </p>
-          <Link className={styles.inlineLink} to="/thought-fabric">
+          <Link className={styles.inlineLink} to="/thought-fabric/introduction">
             Learn about Thought Fabric →
           </Link>
         </div>
