@@ -108,6 +108,7 @@ export const keywordHandler = handler({
 // Tier 2 — LLM Classifier (intentRouter)
 //
 // Exported as a standalone block for remixability.
+// Each category handler writes session.state.thinkingStyle directly.
 // -------------------------------------------------------------------------
 
 export const classifierBlock = utility.intentRouter({
@@ -171,11 +172,15 @@ export const classifierBlock = utility.intentRouter({
 });
 
 // -------------------------------------------------------------------------
-// Resolve — runs Tier 1, then Tier 2 if needed, writes to session state.
+// Apply keyword result to session state
+//
+// Runs after the keyword handler. When a keyword matched (selectedStyle is
+// non-null), writes the result to session.state.thinkingStyle. When no
+// keyword matched, does nothing — the thenIf classifier step handles it.
 // -------------------------------------------------------------------------
 
-const resolveStyle = handler({
-  name: "resolve-thinking-style",
+const applyKeywordToSession = handler({
+  name: "apply-keyword-to-session",
   inputSchema: messageSchema,
   outputSchema: messageSchema,
   sequencerStateSchema: detectorStateSchema,
@@ -184,9 +189,6 @@ const resolveStyle = handler({
     const selected = ctx.sequencer!.state.selectedStyle;
     if (selected !== null) {
       await ctx.session.patchState({ thinkingStyle: selected });
-    } else {
-      // Tier 2 — LLM classifier writes session state via its own handlers.
-      await classifierBlock.run(input.message, ctx);
     }
     return input;
   },
@@ -194,6 +196,15 @@ const resolveStyle = handler({
 
 // -------------------------------------------------------------------------
 // Composed auto-detector sequencer
+//
+// Pipeline:
+//   keywordHandler → applyKeywordToSession → thenIf(no match, classifierBlock)
+//
+// When keywords match: keywordHandler sets sequencer state, applyKeywordToSession
+// writes it to session state, thenIf is skipped.
+//
+// When no keywords match: applyKeywordToSession is a no-op, thenIf runs the
+// LLM classifier whose category handlers write session state directly.
 // -------------------------------------------------------------------------
 
 /**
@@ -201,7 +212,7 @@ const resolveStyle = handler({
  * After this block completes, session.state.thinkingStyle is set.
  *
  * Input: `{ message: string }`
- * Output: `{ message: string }` (passthrough)
+ * Output: `{ message: string }` (passthrough — may be union with classifier output)
  */
 export const thinkingStyleDetector = sequencer({
   name: "thinking-style-detector",
@@ -209,4 +220,10 @@ export const thinkingStyleDetector = sequencer({
   stateSchema: detectorStateSchema,
 })
   .then(keywordHandler)
-  .then(resolveStyle);
+  .then(applyKeywordToSession)
+  .thenIf(
+    (_input, ctx) => ctx.sequencer?.state.selectedStyle === null,
+    classifierBlock.connectInput(
+      (input: { message: string }) => input.message,
+    ),
+  );

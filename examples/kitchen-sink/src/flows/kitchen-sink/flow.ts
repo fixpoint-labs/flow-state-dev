@@ -142,21 +142,40 @@ const applyRequestedMode = handler({
   },
 });
 
-// Resolves the thinking style. Manual selections are written directly.
-// "auto" triggers the two-tier detector (keyword + LLM classifier).
-const resolveThinkingStyle = handler({
-  name: "resolve-thinking-style",
+// Resolves the thinking style via a router:
+// - Manual selection → handler writes the chosen style to session state
+// - Auto → two-tier detector (keyword + LLM classifier) resolves it
+
+const applyManualThinkingStyle = handler({
+  name: "apply-manual-thinking-style",
   inputSchema,
   outputSchema: inputSchema,
   sessionStateSchema: thinkingStyleSessionStateSchema,
   execute: async (input, ctx) => {
-    if (input.thinkingStyle !== "auto") {
-      await ctx.session.patchState({ thinkingStyle: input.thinkingStyle });
-    } else {
-      await thinkingStyleDetector.run({ message: input.message }, ctx);
-    }
+    await ctx.session.patchState({ thinkingStyle: input.thinkingStyle });
     return input;
   },
+});
+
+const autoDetectPipeline = sequencer({
+  name: "auto-detect-pipeline",
+  inputSchema,
+})
+  .tap(
+    thinkingStyleDetector.connectInput(
+      (input: { message: string }) => ({ message: input.message }),
+    ),
+  );
+
+const resolveThinkingStyle = router({
+  name: "resolve-thinking-style",
+  inputSchema,
+  outputSchema: inputSchema,
+  routes: [applyManualThinkingStyle, autoDetectPipeline],
+  execute: (input) =>
+    input.thinkingStyle === "auto"
+      ? autoDetectPipeline
+      : applyManualThinkingStyle,
 });
 
 // Bookkeeping handler: increments a request counter in session state.
@@ -244,24 +263,16 @@ const paePipeline = sequencer({ name: "pae-pipeline", inputSchema })
   .work(mem.captureFromItems);
 
 // Supervisor — plan → dispatch workers → review → replan loop.
-// The worker is the assistant generator wrapped to accept { id, goal } input.
-const supervisorWorker = handler({
-  name: "supervisor-worker",
-  inputSchema: z.object({
-    id: z.string(),
-    goal: z.string(),
-    feedback: z.string().optional(),
+// The worker adapts the supervisor's { id, goal } input to the assistant generator.
+const supervisorWorker = assistantGenerator.connectInput(
+  (input: { id: string; goal: string; feedback?: string }) => ({
+    message: input.feedback
+      ? `${input.goal}\n\nPrevious feedback: ${input.feedback}`
+      : input.goal,
+    mode: "chat" as const,
+    thinkingStyle: "chain-of-thought" as const,
   }),
-  outputSchema: z.string(),
-  sessionResources: artifactResources,
-  execute: async (input, ctx) => {
-    const result = await assistantGenerator.run(
-      { message: input.goal, mode: "chat", thinkingStyle: "chain-of-thought" },
-      ctx,
-    );
-    return result as string;
-  },
-});
+);
 
 const supervisorPipeline = sequencer({
   name: "supervisor-pipeline",
