@@ -28,6 +28,30 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
+      label: "Patterns",
+      items: [
+        "patterns/overview",
+        {
+          type: "category",
+          label: "Utility Blocks",
+          items: [
+            "patterns/utility-blocks/core",
+            "patterns/utility-blocks/extensions",
+          ],
+        },
+        {
+          type: "category",
+          label: "Composable Patterns",
+          items: [
+            "patterns/coordinator",
+            "patterns/supervisor",
+            "patterns/plan-and-execute",
+          ],
+        },
+      ],
+    },
+    {
+      type: "category",
       label: "Sequencers",
       items: [
         "sequencers/overview",
