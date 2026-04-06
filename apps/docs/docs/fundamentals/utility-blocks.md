@@ -1215,6 +1215,6 @@ const customAnalyzer = utility.analyzer({
 
 ## Next steps
 
-- See the [Sequencer Patterns](/docs/sequencers/patterns) guide for more composition techniques
+- See the [Control Flow](/docs/sequencers/control-flow) guide for more composition techniques
 - Read about [Blocks](/docs/fundamentals/blocks) to understand how utilities fit into the four-primitive model
 - Check [Testing Flows](/docs/testing/testing-flows) for how to test utility-based pipelines with mocked generators
