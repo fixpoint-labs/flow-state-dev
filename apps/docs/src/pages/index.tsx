@@ -332,7 +332,65 @@ function StrategiesAndEcosystem() {
   );
 }
 
-/* Section 5 — Final CTA */
+/* Section 5 — Production Stack */
+type ProductionCard = { title: string; desc: string };
+
+const productionCards: ProductionCard[] = [
+  {
+    title: "DevTools",
+    desc: "Full visibility into every block execution, stream item, and state change across the entire flow chain. Debug what's actually happening — not what you think is happening.",
+  },
+  {
+    title: "Testing & Evals",
+    desc: "A unit test harness for individual blocks and full flows, plus an eval framework for scoring outputs against datasets. Test deterministically. Evaluate non-deterministically.",
+  },
+  {
+    title: "CLI & Scaffolding",
+    desc: "fsdev for scaffolding new blocks and flows, running the dev server, executing evals, and inspecting outputs — all from the terminal.",
+  },
+  {
+    title: "Client SDK & React",
+    desc: "Typed client SDK and React hooks connecting your frontend to your flows — streaming, session state, and client-side data projections included.",
+  },
+  {
+    title: "Model Flexibility",
+    desc: "Provider-agnostic. Swap models per block, define semantic model groups, automatic retry and fallback — without changing your flow logic.",
+  },
+  {
+    title: "React Component Library",
+    desc: "Pre-built React components for streaming output, tool call display, chat UI, plan display, and more — wired directly to the client SDK and ready to drop in.",
+  },
+];
+
+function ProductionStack() {
+  return (
+    <section className={styles.section}>
+      <div className="container">
+        <span className={styles.sectionLabel}>// production stack</span>
+        <Heading as="h2" className={styles.sectionTitle}>
+          A complete production stack. Every layer composable.
+        </Heading>
+        <p className={styles.sectionBody}>
+          Building production agentic systems requires more than a good architecture. It requires
+          the tooling to run it, observe it, test it, and ship it. flow-state.dev includes all of
+          it — and because the framework is composable at its core, none of the tooling is a black
+          box either.
+        </p>
+
+        <div className={styles.productionGrid}>
+          {productionCards.map((card) => (
+            <div key={card.title} className={styles.productionCard}>
+              <h3 className={styles.productionCardTitle}>{card.title}</h3>
+              <p className={styles.productionCardDesc}>{card.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* Section 6 — Final CTA */
 function FinalCTA() {
   return (
     <section className={styles.ctaSection}>
@@ -341,7 +399,7 @@ function FinalCTA() {
           Build something nobody&apos;s built yet.
         </Heading>
         <p className={styles.ctaSubtext}>
-          The primitives are ready. The strategies are yours to discover.
+          Everything you need to build a production-ready agentic system. 
         </p>
         <div className={styles.buttons}>
           <Link className={styles.primaryBtn} to="/docs/getting-started/quick-start">
@@ -370,6 +428,7 @@ export default function Home(): React.ReactElement {
         <ThreePillars />
         <ProofOfLife />
         <StrategiesAndEcosystem />
+        <ProductionStack />
         <FinalCTA />
       </main>
     </Layout>
