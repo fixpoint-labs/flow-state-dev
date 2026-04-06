@@ -603,6 +603,54 @@
   margin-top: 2rem;
 }
 
+/* ── Production Stack ── */
+
+.productionGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  max-width: 1100px;
+  margin: 2.5rem auto 0;
+  background: var(--fsd-surface-border);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--fsd-surface-border);
+  text-align: left;
+}
+
+.productionCard {
+  padding: 2rem;
+  background: var(--ifm-background-color);
+  transition: background 0.2s ease;
+}
+
+.productionCard:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+[data-theme="light"] .productionCard:hover {
+  background: rgba(0, 0, 0, 0.01);
+}
+
+.productionCardTitle {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.01em;
+}
+
+.productionCardDesc {
+  font-size: 0.85rem;
+  color: var(--fsd-text-muted);
+  line-height: 1.7;
+  margin: 0;
+  font-weight: 300;
+}
+
+[data-theme="light"] .productionCardDesc {
+  color: var(--ifm-color-emphasis-600);
+}
+
 /* ── Strategy Grid ── */
 
 .strategyGrid {
@@ -852,6 +900,10 @@
   .breakdownBlocksGrid {
     grid-template-columns: repeat(2, 1fr);
   }
+
+  .productionGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 768px) {
@@ -898,6 +950,10 @@
   }
 
   .breakdownConceptsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .productionGrid {
     grid-template-columns: 1fr;
   }
 
