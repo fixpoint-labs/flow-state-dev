@@ -8,7 +8,7 @@ import styles from "./index.module.css";
 
 /* ── Code example ── */
 
-const researchBlockExample = `const researchBlock = sequencer({ name: "research-flow" })
+const researchBlockExample = `const researchBlock = sequencer({ name: "research" })
   .then(parseQuery)
   .parallel({
     web:  searchWeb,
