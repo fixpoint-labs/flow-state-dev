@@ -327,7 +327,7 @@ const kitchenSinkFlow = defineFlow({
       },
       modeStatus: (ctx) => ({
         currentMode: modeSchema.parse(ctx.state.mode ?? "chat"),
-        thinkingStyle: (ctx.state.thinkingStyle as string | undefined) ?? undefined,
+        thinkingStyle: (ctx.state.thinkingStyle as string | undefined) ?? null,
         requestCount: Number(ctx.state.requestCount ?? 0)
       })
     }
