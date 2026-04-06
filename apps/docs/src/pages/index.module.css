@@ -444,6 +444,147 @@
   text-align: center;
 }
 
+/* ── Primitives Breakdown ── */
+
+.breakdown {
+  max-width: 1100px;
+  margin: 3rem auto 0;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--fsd-surface-border);
+}
+
+.breakdownBlocksGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--fsd-surface-border);
+}
+
+.breakdownBlock {
+  padding: 1.75rem 1.5rem;
+  background: var(--ifm-background-color);
+  text-align: left;
+  position: relative;
+  transition: background 0.2s ease;
+  cursor: default;
+}
+
+.breakdownBlock::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--block-color);
+  transition: height 0.15s ease, opacity 0.15s ease;
+  opacity: 0.7;
+}
+
+.breakdownBlock:hover {
+  background: color-mix(in srgb, var(--block-color) 5%, var(--ifm-background-color));
+}
+
+.breakdownBlock:hover::before {
+  height: 3px;
+  opacity: 1;
+}
+
+.breakdownBlockKind {
+  display: block;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--fsd-text-muted);
+  opacity: 0.6;
+  margin-bottom: 0.5rem;
+}
+
+.breakdownBlockName {
+  display: block;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--block-color);
+  margin-bottom: 0.85rem;
+  letter-spacing: -0.01em;
+  transition: text-shadow 0.2s ease;
+  padding-left: 6px;
+}
+
+.breakdownBlock:hover .breakdownBlockName {
+  text-shadow: 0 0 20px color-mix(in srgb, var(--block-color) 40%, transparent);
+}
+
+.breakdownBlockProp {
+  font-size: 0.8rem;
+  color: var(--fsd-text-muted);
+  line-height: 1.7;
+  margin: 0;
+  font-weight: 300;
+}
+
+[data-theme="light"] .breakdownBlockProp {
+  color: var(--ifm-color-emphasis-600);
+}
+
+.breakdownConceptsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--fsd-surface-border);
+  border-top: 1px solid var(--fsd-surface-border);
+}
+
+.breakdownConcept {
+  padding: 1.5rem;
+  background: rgba(255, 255, 255, 0.012);
+  text-align: left;
+  transition: background 0.2s ease;
+  position: relative;
+}
+
+.breakdownConcept:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+[data-theme="light"] .breakdownConcept {
+  background: rgba(0, 0, 0, 0.012);
+}
+
+[data-theme="light"] .breakdownConcept:hover {
+  background: rgba(0, 0, 0, 0.025);
+}
+
+.breakdownConceptLabel {
+  display: inline-block;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--fsd-accent);
+  letter-spacing: 0.02em;
+  margin-bottom: 0.6rem;
+}
+
+[data-theme="light"] .breakdownConceptLabel {
+  color: #0284c7;
+}
+
+.breakdownConceptProp {
+  font-size: 0.8rem;
+  color: var(--fsd-text-muted);
+  line-height: 1.7;
+  margin: 0;
+  font-weight: 300;
+}
+
+[data-theme="light"] .breakdownConceptProp {
+  color: var(--ifm-color-emphasis-600);
+}
+
 /* ── Proof of Life ── */
 
 .proofCode {
@@ -684,6 +825,10 @@
   .strategyGrid {
     grid-template-columns: 1fr;
   }
+
+  .breakdownBlocksGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 768px) {
@@ -725,6 +870,14 @@
     padding: 1.5rem;
   }
 
+  .breakdownBlocksGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .breakdownConceptsGrid {
+    grid-template-columns: 1fr;
+  }
+
   .ctaSection {
     padding: 4rem 1.5rem;
   }
@@ -755,5 +908,9 @@
   .installSnippet {
     font-size: 0.75rem;
     padding: 0.55rem 1rem;
+  }
+
+  .breakdownBlocksGrid {
+    grid-template-columns: 1fr;
   }
 }

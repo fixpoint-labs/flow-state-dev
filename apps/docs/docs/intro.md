@@ -37,7 +37,7 @@ The sequencer is the orchestration primitive at the center of every flow. It cha
 Sequencers compose inside sequencers to any depth. Every nested flow is a reusable block.
 
 ```typescript
-const researchFlow = sequencer({ name: "research-flow" })
+const researchPipeline = sequencer({ name: "research-pipeline" })
   .then(parseQuery)
   .parallel({
     web:  searchWeb,

@@ -8,7 +8,7 @@ import styles from "./index.module.css";
 
 /* ── Code example ── */
 
-const researchFlowExample = `const researchFlow = sequencer({ name: "research-flow" })
+const researchBlockExample = `const researchBlock = sequencer({ name: "research-flow" })
   .then(parseQuery)
   .parallel({
     web:  searchWeb,
@@ -28,6 +28,52 @@ const researchFlowExample = `const researchFlow = sequencer({ name: "research-fl
   .work(updateMemory)        // runs async, never blocks, can continue on after main thread completes`;
 
 /* ── Data ── */
+
+type BlockPrimitive = { name: string; kind: string; color: string; prop: string };
+
+const blockPrimitives: BlockPrimitive[] = [
+  {
+    name: "Generator",
+    kind: "LLM Calls",
+    color: "#8B5CF6",
+    prop: "Streams tokens, runs tool loops, and injects whatever context you provide. The AI in your pipeline — composable like everything else.",
+  },
+  {
+    name: "Handler",
+    kind: "Deterministic Functions",
+    color: "#10B981",
+    prop: "Pure logic with typed contracts. Validate, transform, update state. The clean boundary between AI and code — explicit by design.",
+  },
+  {
+    name: "Sequencer",
+    kind: "Orchestration",
+    color: "#3B82F6",
+    prop: "Chains any block after any other. Sequential, parallel, looping, background workers. Compose the architecture you actually need.",
+  },
+  {
+    name: "Router",
+    kind: "Block Selection",
+    color: "#F59E0B",
+    prop: "Evaluates conditions at runtime and dispatches to the right pipeline. Intent routing, mode switching, conditional flows.",
+  },
+];
+
+type SystemConcept = { label: string; prop: string };
+
+const systemConcepts: SystemConcept[] = [
+  {
+    label: "Flows",
+    prop: "Wrap your blocks in a flow definition and get a complete API — action endpoints, SSE streaming, session management, state snapshots. No route wiring.",
+  },
+  {
+    label: "State & Scopes",
+    prop: "Request, session, user, project. Four isolation levels with atomic operations. Each block declares only the fields it touches. State that accumulates and evolves as shared memory space.",
+  },
+  {
+    label: "Resources",
+    prop: "Content body + structured metadata, in one atomic container — scoped like state. A draft, a plan, a code file. Cloud-native storage, ready for AI.",
+  },
+];
 
 type Pillar = { num: string; label: string; body: string };
 
@@ -156,6 +202,34 @@ function ThreePillars() {
 }
 
 /* Section 3 — Proof of Life */
+function PrimitivesBreakdown() {
+  return (
+    <div className={styles.breakdown}>
+      <div className={styles.breakdownBlocksGrid}>
+        {blockPrimitives.map((b) => (
+          <div
+            key={b.name}
+            className={styles.breakdownBlock}
+            style={{ "--block-color": b.color } as React.CSSProperties}
+          >
+            <span className={styles.breakdownBlockKind}>{b.kind}</span>
+            <code className={styles.breakdownBlockName}>{b.name}</code>
+            <p className={styles.breakdownBlockProp}>{b.prop}</p>
+          </div>
+        ))}
+      </div>
+      <div className={styles.breakdownConceptsGrid}>
+        {systemConcepts.map((c) => (
+          <div key={c.label} className={styles.breakdownConcept}>
+            <span className={styles.breakdownConceptLabel}>{c.label}</span>
+            <p className={styles.breakdownConceptProp}>{c.prop}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ProofOfLife() {
   return (
     <section className={styles.section}>
@@ -171,13 +245,15 @@ function ProofOfLife() {
         </p>
 
         <div className={styles.proofCode}>
-          <CodeBlock language="typescript">{researchFlowExample}</CodeBlock>
+          <CodeBlock language="typescript">{researchBlockExample}</CodeBlock>
         </div>
 
         <blockquote className={styles.pullQuote}>
           Blocks define what your flow does. State defines what it knows and remembers. Together,
           they&apos;re the substrate every strategy is built from.
         </blockquote>
+
+        <PrimitivesBreakdown />
 
         <div className={styles.proofCta}>
           <Link className={styles.secondaryBtn} to="/docs/getting-started/quick-start">
