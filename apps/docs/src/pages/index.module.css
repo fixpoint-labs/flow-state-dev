@@ -658,6 +658,29 @@
   color: var(--ifm-color-emphasis-500);
 }
 
+/* Linked pattern items within the category list */
+.patternLink {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.25);
+  text-underline-offset: 2px;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+
+.patternLink:hover {
+  color: var(--ifm-color-primary-light);
+  text-decoration-color: var(--ifm-color-primary-light);
+}
+
+[data-theme="light"] .patternLink {
+  text-decoration-color: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="light"] .patternLink:hover {
+  color: var(--ifm-color-primary);
+  text-decoration-color: var(--ifm-color-primary);
+}
+
 /* ── Thought Fabric Block ── */
 
 .thoughtFabricBlock {
