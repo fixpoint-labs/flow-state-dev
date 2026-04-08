@@ -42,7 +42,7 @@ import { z } from "zod";
 
 const agent = generator({
   name: "agent",
-  model: "gpt-5-mini",
+  model: "preset/fast",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   history: (_input, ctx) => ctx.session.items.llm(),
@@ -362,7 +362,7 @@ execute: async (input, ctx) => {
   await ctx.emitComponent("progress-bar", { percent: 50 });
 
   // Resolve AI models
-  const model = ctx.resolveModel("gpt-5-mini");
+  const model = ctx.resolveModel("preset/fast");
 
   // Access typed targets — named ancestor blocks declared in config
   const research = ctx.targets.research;  // StateRef<{ progress: number }> | undefined

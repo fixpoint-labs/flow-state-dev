@@ -28,7 +28,7 @@ import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core"
 
 const chat = generator({
   name: "chat",
-  model: "gpt-5-mini",
+  model: "preset/fast",
   prompt: "You are a helpful assistant.",
   history: (_input, ctx) => ctx.session.items.llm(),
   user: (input) => input.message,

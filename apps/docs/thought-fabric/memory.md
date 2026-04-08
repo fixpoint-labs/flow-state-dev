@@ -329,7 +329,7 @@ const pipeline = sequencer({ name: 'chat', inputSchema })
   .work(
     (input) => input.message,
     sequencer({ name: 'memory', inputSchema: z.string() })
-      .then(workingMemoryObserve({ model: 'gpt-5-mini' }))
+      .then(workingMemoryObserve({ model: 'preset/fast' }))
       .then(workingMemoryRemember())
       .tap(workingMemoryTick())
   )

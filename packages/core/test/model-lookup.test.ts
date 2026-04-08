@@ -18,7 +18,7 @@ describe("model lookup", () => {
     const nano = findModelEntry("openai/gpt-5-nano", DEFAULT_MODEL_LOOKUP);
     const base = findModelEntry("openai/gpt-5", DEFAULT_MODEL_LOOKUP);
 
-    expect(mini?.keyword).toBe("gpt-5-mini");
+    expect(mini?.keyword).toBe("preset/fast");
     expect(nano?.keyword).toBe("gpt-5-nano");
     expect(base?.keyword).toBe("gpt-5");
   });

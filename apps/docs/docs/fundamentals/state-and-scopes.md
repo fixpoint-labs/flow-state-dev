@@ -67,7 +67,7 @@ const myFlow = defineFlow({
     stateSchema: z.object({
       preferences: z.object({
         theme: z.enum(["light", "dark"]).default("dark"),
-        preferredModel: z.string().default("gpt-5-mini"),
+        preferredModel: z.string().default("preset/fast"),
       }).default({}),
     }),
   },
@@ -583,7 +583,7 @@ const myFlow = defineFlow({
     stateSchema: z.object({
       preferences: z.object({
         responseStyle: z.enum(["concise", "detailed", "technical"]).default("detailed"),
-        preferredModel: z.string().default("gpt-5-mini"),
+        preferredModel: z.string().default("preset/fast"),
         codeStyle: z.object({
           language: z.string().default("typescript"),
           framework: z.string().optional(),
@@ -700,7 +700,7 @@ const myFlow = defineFlow({
   project: {
     stateSchema: z.object({
       config: z.object({
-        allowedModels: z.array(z.string()).default(["gpt-5-mini"]),
+        allowedModels: z.array(z.string()).default(["preset/fast"]),
         maxTokenBudget: z.number().default(100_000),
         customInstructions: z.string().default(""),
         features: z.object({
@@ -766,7 +766,7 @@ execute: async (input, ctx) => {
   // Project config takes precedence over user preferences
   const model = ctx.project?.state.config.allowedModels?.[0]
     ?? ctx.user.state.preferences.preferredModel
-    ?? "gpt-5-mini";
+    ?? "preset/fast";
 }
 ```
 
@@ -936,7 +936,7 @@ execute: async (input, ctx) => {
     ctx.session.state.currentModel ??
     ctx.user.state.preferences.preferredModel ??
     ctx.project?.state.config.defaultModel ??
-    "gpt-5-mini";
+    "preset/fast";
 }
 ```
 

@@ -42,6 +42,27 @@ pipeline.thenIf(
 );
 ```
 
+## Branching
+
+Execute the first branch whose condition matches:
+
+```ts
+pipeline.branch({
+  urgent: [
+    (input) => input,
+    (input) => input.priority === "high",
+    urgentBlock,
+  ],
+  normal: [
+    (input) => input,
+    (input) => input.priority !== "high",
+    normalBlock,
+  ],
+});
+```
+
+Each branch is a tuple: `[connector, condition, block]`.
+
 ## Parallel Execution
 
 Run multiple blocks concurrently:
@@ -168,26 +189,6 @@ pipeline
 
 Rescue handlers match by error type (checked in order). Success converts back to the normal chain.
 
-## Branching
-
-Execute the first branch whose condition matches:
-
-```ts
-pipeline.branch({
-  urgent: [
-    (input) => input,
-    (input) => input.priority === "high",
-    urgentBlock,
-  ],
-  normal: [
-    (input) => input,
-    (input) => input.priority !== "high",
-    normalBlock,
-  ],
-});
-```
-
-Each branch is a tuple: `[connector, condition, block]`.
 
 ## Resource Propagation
 

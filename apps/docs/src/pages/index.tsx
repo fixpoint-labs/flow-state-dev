@@ -45,7 +45,7 @@ const analyze = sequencer({ name: "analyze" })
 
 const agent = generator({
   name: "agent",
-  model: "gpt-5-mini",
+  model: "preset/fast",
   prompt: "You are a research assistant.",
   // Blocks can declare only the state they need
   sessionStateSchema: z.object({ researchCount: z.number().default(0) }),
