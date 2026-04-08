@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { defineFlow, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import {
@@ -32,10 +32,7 @@ const keywordTestSeq = sequencer({
   name: "keyword-test",
   inputSchema: z.object({ message: z.string() }),
   stateSchema: z.object({
-    selectedStyle: z
-      .enum(["plan-and-execute", "supervisor", "chain-of-thought"])
-      .nullable()
-      .default(null),
+    keywordMatched: z.boolean().default(false),
   }),
 }).then(keywordHandler);
 
@@ -64,10 +61,7 @@ describe("thinking style detector — Tier 1 (keyword handler)", () => {
     expect(result.output).toEqual({
       message: "Please coordinate the team effort",
     });
-    const seqChanges = result.stateChanges.filter(
-      (c) => c.scope === "block_instance",
-    );
-    expect(seqChanges.length).toBeGreaterThan(0);
+    expect(result.state.session).toMatchObject({ thinkingStyle: "supervisor" });
   });
 
   it("selects plan-and-execute for planning keywords", async () => {
@@ -77,10 +71,7 @@ describe("thinking style detector — Tier 1 (keyword handler)", () => {
     });
 
     expect(result.error).toBeNull();
-    const seqChanges = result.stateChanges.filter(
-      (c) => c.scope === "block_instance",
-    );
-    expect(seqChanges.length).toBeGreaterThan(0);
+    expect(result.state.session).toMatchObject({ thinkingStyle: "plan-and-execute" });
   });
 
   it("selects chain-of-thought for reasoning keywords", async () => {
@@ -90,10 +81,7 @@ describe("thinking style detector — Tier 1 (keyword handler)", () => {
     });
 
     expect(result.error).toBeNull();
-    const seqChanges = result.stateChanges.filter(
-      (c) => c.scope === "block_instance",
-    );
-    expect(seqChanges.length).toBeGreaterThan(0);
+    expect(result.state.session).toMatchObject({ thinkingStyle: "chain-of-thought" });
   });
 
   it("is case-insensitive", async () => {
@@ -103,10 +91,7 @@ describe("thinking style detector — Tier 1 (keyword handler)", () => {
     });
 
     expect(result.error).toBeNull();
-    const seqChanges = result.stateChanges.filter(
-      (c) => c.scope === "block_instance",
-    );
-    expect(seqChanges.length).toBeGreaterThan(0);
+    expect(result.state.session).toMatchObject({ thinkingStyle: "supervisor" });
   });
 
   it("makes no sequencer state mutations when no keywords match", async () => {
@@ -136,6 +121,10 @@ describe("thinking style detector — Tier 1 (keyword handler)", () => {
 });
 
 describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
+  beforeEach(() => {
+    classifierFixture.reset();
+  });
+
   it("resolves via keywords and writes to session state", async () => {
     const result = await testSequencer(autoClassifyStyle, {
       input: { message: "Outline a roadmap for this project" },
@@ -152,7 +141,6 @@ describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
   });
 
   it("falls back to LLM classifier when no keywords match", async () => {
-    classifierFixture.reset();
     const result = await testSequencer(autoClassifyStyle, {
       input: { message: "Hello, how are you?" },
       flow: testFlow,
