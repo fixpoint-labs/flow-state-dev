@@ -501,7 +501,7 @@ const decompose = utility.decomposer({ name: "plan" });
 
 Each utility returns a standard block — composable in sequencers, routers, and flows like any block you build yourself. Nine utilities produce generator blocks (LLM-powered), and one (`combiner`) produces a handler block (deterministic, no LLM).
 
-See the [Utility Blocks guide](/docs/fundamentals/utility-blocks) for the full catalog with examples and output schemas.
+See the [Core Utilities guide](/docs/patterns/utility-blocks/core) for the full catalog with examples and output schemas, or [Extension Utilities](/docs/patterns/utility-blocks/extensions) for adapter-driven utilities.
 
 ## Key rules
 
