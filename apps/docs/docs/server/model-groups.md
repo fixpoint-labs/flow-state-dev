@@ -208,8 +208,8 @@ const adaptive = generator({
   name: "adaptive",
   model: (input, ctx) => {
     return input.needsReasoning
-      ? "preset/thinking"
-      : "preset/fast";
+      ? "preset/thinking-small"
+      : "preset/small";
   },
 });
 ```

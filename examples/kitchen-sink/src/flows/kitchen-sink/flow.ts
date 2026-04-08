@@ -64,7 +64,7 @@ import {
 } from "./schemas";
 
 const MODEL_ID = "preset/fast";
-const THINKING_MODEL_ID = "preset/balanced";
+const THINKING_MODEL_ID = "preset/thinking-small";
 
 // Unified memory system: working memory + user-scoped episodic + semantic memory.
 const mem = memorySystem({
@@ -193,13 +193,7 @@ const autoTitle = utility.sessionTitleGenerator({
 // ---------------------------------------------------------------------------
 
 const assistantGenerator = generator({
-  name: "assistant-generator",
-  model: (_input, ctx) => {
-    const userModel = ctx.user?.state.preferredModel as string | undefined;
-    if (userModel && userModel !== MODEL_ID) return userModel;
-    const style = (ctx.session.state as Record<string, unknown>).thinkingStyle as string | undefined;
-    return style === "chain-of-thought" ? THINKING_MODEL_ID : MODEL_ID;
-  },
+  name: "assistant-generator",  
   userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
   sessionStateSchema: z.object({ mode: modeSchema.default("chat"), thinkingStyle: z.string().optional() }),
   sessionResources: artifactResources,
@@ -219,13 +213,11 @@ const assistantGenerator = generator({
     ctx.session.state.mode === "create" ? CREATE_PROMPT : CHAT_PROMPT,
 
   emit: { messages: true, reasoning: true },
-  providerOptions: (_, ctx) => {
-    const style = ctx.session.state.thinkingStyle as string | undefined;
-    if (style !== "chain-of-thought") return {};
-    return {
-      openai: { reasoningSummary: "detailed" },
-      anthropic: { thinking: { budgetTokens: 10000 } },
-    };
+  model: (_input, ctx) => {
+    const userModel = ctx.user?.state.preferredModel as string | undefined;
+    if (userModel && userModel !== MODEL_ID) return userModel;
+    const style = (ctx.session.state as Record<string, unknown>).thinkingStyle as string | undefined;
+    return style === "chain-of-thought" ? THINKING_MODEL_ID : MODEL_ID;
   },
 });
 
