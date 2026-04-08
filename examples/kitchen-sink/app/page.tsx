@@ -95,7 +95,7 @@ function KitchenSinkApp() {
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
 
-  const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number } | undefined;
+  const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined } | undefined;
   const userPrefs = clientData.user?.preferences as { displayName: string; preferredModel: string } | undefined;
   const artifacts = (clientData.session?.artifacts ?? []) as Array<{ id: string; title: string; summary: string; content: string; updatedAt: number }>;
 
@@ -210,6 +210,7 @@ function KitchenSinkApp() {
           requestCount={modeStatus?.requestCount}
           displayName={userPrefs?.displayName}
           preferredModel={userPrefs?.preferredModel}
+          thinkingStyle={modeStatus?.thinkingStyle}
         />
 
         <div className="flex min-h-0 flex-1 sm:hidden">

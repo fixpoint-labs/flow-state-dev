@@ -100,8 +100,25 @@ const agent = generator({
 });
 ```
 
+## Container wrapping
+
+A sequencer can emit a `container` item that groups its child items for UI display. Register a component for the container on the client to control how it renders.
+
+```ts
+sequencer({
+  name: "chat-pipeline",
+  inputSchema: chatInputSchema,
+  container: {
+    component: "chat-container",
+    label: "Processing chat message",
+  },
+});
+```
+
+This is a rendering hint — it has no effect on execution order or block behavior.
+
 ## Where to go next
 
-- **[Patterns](/docs/sequencers/patterns)** — Common composition patterns with code examples
+- **[Control Flow](/docs/sequencers/control-flow)** — Common composition patterns with code examples
 - **[Side Chains](/docs/sequencers/side-chains)** — Fire-and-forget work with `.work()` and `.waitForWork()`
 - **[Connectors](/docs/sequencers/connectors)** — Shaping data between steps, typed refs, and portability

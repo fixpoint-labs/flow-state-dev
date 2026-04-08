@@ -28,10 +28,10 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
-      label: "Sequencers",
+      label: "Block Sequencing",
       items: [
         "sequencers/overview",
-        "sequencers/patterns",
+        "sequencers/control-flow",
         "sequencers/side-chains",
         "sequencers/connectors",
       ],
@@ -43,6 +43,30 @@ const sidebars: SidebarsConfig = {
         "resources/overview",
         "resources/storage",
         "resources/collections",
+      ],
+    },
+    {
+      type: "category",
+      label: "Patterns",
+      items: [
+        "patterns/overview",
+        {
+          type: "category",
+          label: "Utility Blocks",
+          items: [
+            "patterns/utility-blocks/core",
+            "patterns/utility-blocks/extensions",
+          ],
+        },
+        {
+          type: "category",
+          label: "Composable Patterns",
+          items: [
+            "patterns/coordinator",
+            "patterns/supervisor",
+            "patterns/plan-and-execute",
+          ],
+        },
       ],
     },
     {

@@ -9,7 +9,7 @@ import {
   testBlock,
   testRouter
 } from "@flow-state-dev/testing";
-import { modeRouter } from "../src/flows/kitchen-sink/flow";
+import { thinkingStyleRouter } from "../src/flows/kitchen-sink/flow";
 import { artifactsCollection } from "../src/flows/kitchen-sink/schemas";
 
 function collectSourceFiles(dir: string): string[] {
@@ -41,19 +41,23 @@ const emptyMemorySystem = {
   lastConsolidationTurn: 0,
 };
 
-// Minimal flow instance with the artifacts collection so testBlock creates
-// proper ResourceCollectionRef instances via createExecutionContext.
+// Minimal flow instance with artifacts collection for testBlock.
 const testFlow = defineFlow({
   kind: "kitchen-sink-test",
   actions: {
     run: {
-      inputSchema: z.object({ message: z.string(), mode: z.enum(["chat", "create", "plan"]).default("chat") }),
-      block: modeRouter,
+      inputSchema: z.object({
+        message: z.string(),
+        mode: z.enum(["chat", "create"]).default("chat"),
+        thinkingStyle: z.enum(["auto", "plan-and-execute", "supervisor", "chain-of-thought"]).default("auto"),
+      }),
+      block: thinkingStyleRouter,
     },
   },
   session: {
     stateSchema: z.object({
-      mode: z.enum(["chat", "create", "plan"]).default("chat"),
+      mode: z.enum(["chat", "create"]).default("chat"),
+      thinkingStyle: z.enum(["plan-and-execute", "supervisor", "chain-of-thought"]).optional(),
       requestCount: z.number().default(0),
       lastAction: z.string().optional(),
     }),
@@ -83,33 +87,75 @@ const observeFixture = mockGenerator({
   ]
 });
 
-const plannerFixture = mockGenerator({
-  name: "plan-mode-planner",
-  script: [
-    { structuredOutput: { tasks: [{ id: "t1", goal: "Research the topic", deps: [] }] } }
-  ]
-});
-
-const planExecutorFixture = mockGenerator({
-  name: "plan-mode-executor",
-  script: [
-    { structuredOutput: { summary: "Found relevant information.", success: true } }
-  ]
-});
-
-const planSynthesizerFixture = mockGenerator({
-  name: "plan-mode-synthesizer",
-  script: [
-    { text: "Here is a synthesis of the findings." }
-  ]
-});
-
 describe("kitchen-sink flow", () => {
-  it("completes a chat action via modeRouter", async () => {
-    const result = await testBlock(modeRouter, {
-      input: { message: "Hello kitchen sink", mode: "chat" },
+  it("routes to cot-pipeline for chain-of-thought style", async () => {
+    assistantFixture.reset();
+    observeFixture.reset();
+    const routed = await testRouter(thinkingStyleRouter, {
+      input: { message: "Help me", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
-      session: { resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
+      session: {
+        state: { thinkingStyle: "chain-of-thought" },
+        resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
+      },
+      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
+    });
+    expect(routed.error).toBeNull();
+    expect(routed.selectedRoute).toBe("assistant-generator");
+  });
+
+  it("routes to pae-pipeline for plan-and-execute style", async () => {
+    const routed = await testRouter(thinkingStyleRouter, {
+      input: { message: "Build a report", mode: "chat", thinkingStyle: "auto" },
+      flow: testFlow,
+      session: {
+        state: { thinkingStyle: "plan-and-execute" },
+        resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
+      },
+      unmockedGeneratorPolicy: "warn",
+    });
+    // PaE pipeline requires planner/executor mocks — we only verify route selection.
+    expect(routed.selectedRoute).toBe("pae-pipeline");
+  });
+
+  it("routes to supervisor-pipeline for supervisor style", async () => {
+    const routed = await testRouter(thinkingStyleRouter, {
+      input: { message: "Coordinate reviews", mode: "chat", thinkingStyle: "auto" },
+      flow: testFlow,
+      session: {
+        state: { thinkingStyle: "supervisor" },
+        resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
+      },
+      unmockedGeneratorPolicy: "warn",
+    });
+    expect(routed.selectedRoute).toBe("supervisor-pipeline");
+  });
+
+  it("defaults to cot-pipeline when thinkingStyle is not set", async () => {
+    assistantFixture.reset();
+    observeFixture.reset();
+    const routed = await testRouter(thinkingStyleRouter, {
+      input: { message: "Hello", mode: "chat", thinkingStyle: "auto" },
+      flow: testFlow,
+      session: {
+        resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
+      },
+      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
+    });
+    expect(routed.error).toBeNull();
+    expect(routed.selectedRoute).toBe("assistant-generator");
+  });
+
+  it("completes a chat action via cot-pipeline", async () => {
+    assistantFixture.reset();
+    observeFixture.reset();
+    const result = await testBlock(thinkingStyleRouter, {
+      input: { message: "Hello kitchen sink", mode: "chat", thinkingStyle: "auto" },
+      flow: testFlow,
+      session: {
+        state: { thinkingStyle: "chain-of-thought" },
+        resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
+      },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
     });
 
@@ -117,67 +163,16 @@ describe("kitchen-sink flow", () => {
     expect(result.output).toBeDefined();
   });
 
-  it("routes to plan pipeline when mode is plan", async () => {
-    assistantFixture.reset();
-    observeFixture.reset();
-    plannerFixture.reset();
-    planExecutorFixture.reset();
-    planSynthesizerFixture.reset();
-    const result = await testBlock(modeRouter, {
-      input: { message: "Create a deployment plan", mode: "plan" },
-      flow: testFlow,
-      session: { resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
-      generators: {
-        "assistant-generator": assistantFixture,
-        "tf.memory/observe": observeFixture,
-        "plan-mode-planner": plannerFixture,
-        "plan-mode-executor": planExecutorFixture,
-        "plan-mode-synthesizer": planSynthesizerFixture,
-      }
-    });
-
-    expect(result.error).toBeNull();
-  });
-
-  it("routes to plan pipeline based on input mode", async () => {
-    plannerFixture.reset();
-    planExecutorFixture.reset();
-    planSynthesizerFixture.reset();
-    const routed = await testRouter(modeRouter, {
-      input: { message: "Continue working", mode: "plan" },
-      flow: testFlow,
-      generators: {
-        "plan-mode-planner": plannerFixture,
-        "plan-mode-executor": planExecutorFixture,
-        "plan-mode-synthesizer": planSynthesizerFixture,
-      }
-    });
-
-    expect(routed.error).toBeNull();
-    expect(routed.selectedRoute).toBe("plan-pipeline");
-  });
-
-  it("routes to assistant pipeline for chat and create modes", async () => {
-    const chatRouted = await testRouter(modeRouter, {
-      input: { message: "Help me", mode: "chat" },
-      flow: testFlow,
-    });
-    expect(chatRouted.selectedRoute).toBe("assistant-pipeline");
-
-    const createRouted = await testRouter(modeRouter, {
-      input: { message: "Build something", mode: "create" },
-      flow: testFlow,
-    });
-    expect(createRouted.selectedRoute).toBe("assistant-pipeline");
-  });
-
   it("reads preferredModel from user state", async () => {
     assistantFixture.reset();
     observeFixture.reset();
-    const result = await testBlock(modeRouter, {
-      input: { message: "Test with custom model", mode: "chat" },
+    const result = await testBlock(thinkingStyleRouter, {
+      input: { message: "Test with custom model", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
-      session: { resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
+      session: {
+        state: { thinkingStyle: "chain-of-thought" },
+        resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
+      },
       user: {
         state: {
           displayName: "TestUser",
@@ -193,10 +188,13 @@ describe("kitchen-sink flow", () => {
   it("emits block_output items", async () => {
     assistantFixture.reset();
     observeFixture.reset();
-    const result = await testBlock(modeRouter, {
-      input: { message: "Check items", mode: "chat" },
+    const result = await testBlock(thinkingStyleRouter, {
+      input: { message: "Check items", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
-      session: { resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem } },
+      session: {
+        state: { thinkingStyle: "chain-of-thought" },
+        resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
+      },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
     });
 
@@ -207,11 +205,11 @@ describe("kitchen-sink flow", () => {
   it("seeds session resources for artifact access", async () => {
     assistantFixture.reset();
     observeFixture.reset();
-    const result = await testBlock(modeRouter, {
-      input: { message: "Read artifact doc-1", mode: "chat" },
+    const result = await testBlock(thinkingStyleRouter, {
+      input: { message: "Read artifact doc-1", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { mode: "chat", requestCount: 0 },
+        state: { mode: "chat", thinkingStyle: "chain-of-thought", requestCount: 0 },
         resources: {
           "artifacts/doc-1": {
             title: "Test Document",
@@ -219,7 +217,7 @@ describe("kitchen-sink flow", () => {
             updatedAt: 1000
           },
           workingMemory: emptyWorkingMemory,
-          memorySystem: emptyMemorySystem
+          memorySystem: emptyMemorySystem,
         }
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }

@@ -6,323 +6,176 @@ import CodeBlock from "@theme/CodeBlock";
 
 import styles from "./index.module.css";
 
-/* ── Code examples ── */
+/* ── Code example ── */
 
-const defineExample = `import { defineFlow, generator, sequencer } from "@flow-state-dev/core";
-// Reusable blocks — yours, your team's, or from the ecosystem
-import { searchWeb, searchInternalDocs, searchMemory } from "@research/blocks";
-import { mergeAndRank, refineResults } from "@research/ranking";
-import { gatherEvidence, scoreFindings } from "@research/analysis";
-import { logAnalytics, fallbackSearch } from "@infra/blocks";
-
-// A tool that's a full pipeline — parallel search, iterative refinement, recovery
-const deepResearch = sequencer({ name: "deep-research" })
+const researchBlockExample = `const researchBlock = sequencer({ name: "research" })
   .then(parseQuery)
-  .parallel({ // fan out to three sources at once
-    web: searchWeb,
-    docs: searchInternalDocs,
-    memory: searchMemory,
-  }, { maxConcurrency: 3 })
-  .then(mergeAndRank)
-  .doUntil( // loop until quality threshold met
-    (result) => result.confidence > 0.9,
-    refineResults
-  )
-  .work(logAnalytics) // async — doesn't block the pipeline
-  .rescue([{ when: [SearchError], block: fallbackSearch }]);
-
-// Sequencer that analyzes and emits a component item to the UI
-const analyze = sequencer({ name: "analyze" })
-  .then(gatherEvidence)
-  .then(scoreFindings)
-  .tap((report, ctx) => { // emit without changing the payload
-    ctx.emitComponent("report-card", {
-      title: report.title,
-      findings: report.findings,
-      confidence: report.score,
-    }).done();
-  });
-
-const agent = generator({
-  name: "agent",
-  model: "gpt-5-mini",
-  prompt: "You are a research assistant.",
-  // Blocks can declare only the state they need
-  sessionStateSchema: z.object({ researchCount: z.number().default(0) }),
-  history: (_input, ctx) => ctx.session.items.llm(),
-  user: (input) => input.message,
-  tools: [deepResearch, analyze, readDoc, writeDoc],
-});
+  .parallel({
+    web:  searchWeb,
+    docs: searchDocs,
+    past: recall,            // reads ctx.user.resources.pastFindings and locates relevant items
+  })
+  .then(synthesize)          // generator — reads ctx.session.state.query and parallel output
+  .work(handler, {
+    name: "save-draft",
+    sessionResources: { draft: draftResource },
+    sessionStateSchema: z.object({ lastResearched: z.string() }),
+    execute: async (input, ctx) => {
+      await ctx.session.resources.draft.setContent(input.response)
+      await ctx.session.state.patch({ lastResearched: input.query })
+    },
+  })
+  .work(updateMemory)        // runs async, never blocks, can continue on after main thread completes
 
 export default defineFlow({
-  kind: "research-assistant",
+  kind: "research",
   actions: {
-    chat: {
-      inputSchema: z.object({ message: z.string() }),
-      block: agent,
-      userMessage: (i) => i.message,
+    research: {
+      inputSchema: z.object({ query: z.string() }),
+      block: researchBlock,
+      userMessage: (i) => i.query,
     },
-  },
-  session: {
-    stateSchema,
-    resources: { docs: docResource },
-    clientData: {
-      docList: (ctx) => /* derived view from ctx.state + ctx.resources */,
-    },
-  },
-})({ id: "default" });`;
-
-const serveExample = `import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
-import researchFlow from "./flows/research-assistant";
-import chatFlow from "./flows/chat";
-
-const registry = createFlowRegistry();
-registry.register(researchFlow);
-registry.register(chatFlow);
-
-export const { GET, POST, DELETE } = createFlowApiRouter({ registry });
-// POST /api/flows/research-assistant/actions/chat
-// GET  /api/flows/research-assistant/requests/:id/stream
-// GET  /api/flows/sessions/:id/state`;
-
-const renderExample = `// Register component renderers — the UI counterpart to ctx.emitComponent()
-function ReportCard({ item }: { item: ComponentItem }) {
-  const { title, findings, confidence } = item.data;
-  return (
-    <div className="report-card">
-      <h3>{title}</h3>
-      <ul>{findings.map(f => <li key={f}>{f}</li>)}</ul>
-      <meter value={confidence} />
-    </div>
-  );
-}
-
-function App() {
-  return (
-    <FlowProvider
-      flowKind="research-assistant"
-      userId="user_1"
-      baseUrl="/api"
-      renderers={{ component: { "report-card": ReportCard } }}
-    >
-      <ResearchApp />
-    </FlowProvider>
-  );
-}
-
-function ResearchApp() {
-  const flow = useFlow({ autoCreateSession: true });
-  const session = useSession(flow.activeSessionId);
-
-  return (
-    <>
-      {/* ItemRenderer resolves component items to registered renderers */}
-      {session.items.map(item => <ItemRenderer key={item.id} item={item} />)}
-
-      <button
-        onClick={() => session.sendAction("chat", { message: "Hello" })}
-        disabled={session.isStreaming}
-      >
-        {session.isStreaming ? "Researching..." : "Send"}
-      </button>
-    </>
-  );
-}`;
-
-const testExample = `const result = await testFlow({
-  flow: researchFlow,
-  action: "chat",
-  input: { message: "Summarize the design doc" },
-  userId: "testuser",
-  seed: {
-    session: {
-      resources: {
-        docs: { byId: { "design-doc": { title: "Design", content: "..." } } },
-      },
-    },
-  },
-  generators: {
-    agent: mockGenerator({ script: [{ text: "The design doc covers..." }] }),
-  },
-});
-
-const items = testItems(result.items);
-expect(items.messages()).not.toHaveLength(0);
-expect(items.components("report-card")).not.toHaveLength(0);`;
+  }
+})`;
 
 /* ── Data ── */
 
-type CodeTab = {
-  label: string;
-  caption: string;
-  code: string;
-  language: string;
-};
+type BlockPrimitive = { name: string; kind: string; color: string; prop: string };
 
-const codeTabs: CodeTab[] = [
+const blockPrimitives: BlockPrimitive[] = [
   {
-    label: "Define",
-    caption: "Compose blocks into flows with typed state, resources, and client data.",
-    code: defineExample,
-    language: "ts",
+    name: "Generator",
+    kind: "LLM Calls",
+    color: "#8B5CF6",
+    prop: "Streams tokens, runs tool loops, and injects whatever context you provide. The AI in your pipeline — composable like everything else.",
   },
   {
-    label: "Serve",
-    caption: "Register flows and get a full REST + SSE API. No route wiring.",
-    code: serveExample,
-    language: "ts",
+    name: "Handler",
+    kind: "Deterministic Functions",
+    color: "#10B981",
+    prop: "Pure logic with typed contracts. Validate, transform, update state. The clean boundary between AI and code — explicit by design.",
   },
   {
-    label: "Render",
-    caption: "Register component renderers. ItemRenderer resolves them from the stream.",
-    code: renderExample,
-    language: "tsx",
+    name: "Sequencer",
+    kind: "Orchestration",
+    color: "#3B82F6",
+    prop: "Chains any block after any other. Sequential, parallel, looping, background workers. Compose the architecture you actually need.",
   },
   {
-    label: "Test",
-    caption: "Deterministic tests with mock generators. No LLM calls needed.",
-    code: testExample,
-    language: "ts",
+    name: "Router",
+    kind: "Block Selection",
+    color: "#F59E0B",
+    prop: "Evaluates conditions at runtime and dispatches to the right pipeline. Intent routing, mode switching, conditional flows.",
   },
 ];
 
-type FeatureItem = {
-  title: string;
-  description: string;
-  icon: string;
-};
+type SystemConcept = { label: string; prop: string };
 
-const features: FeatureItem[] = [
+const systemConcepts: SystemConcept[] = [
   {
-    title: "Four primitives. Compose freely.",
-    description:
-      "Handler, generator, sequencer, router. The sequencer DSL alone gives you parallel steps, forEach, doUntil/doWhile loops, background work, branching, error recovery, and more.",
-    icon: "\u25E3",
+    label: "Flows",
+    prop: "Wrap your blocks in a flow definition and get a complete API — action endpoints, SSE streaming, session management, state snapshots. No route wiring.",
   },
   {
-    title: "Flows are full APIs.",
-    description:
-      "Define a flow and you have REST endpoints, SSE streaming, session management, and state snapshots. No route wiring.",
-    icon: "\u21C4",
+    label: "State & Scopes",
+    prop: "Request, session, user, project. Four isolation levels with atomic operations. Each block declares only the fields it touches. State that accumulates and evolves as shared memory space.",
   },
   {
-    title: "Hybrid memory + filesystem.",
-    description:
-      "Resources combine rich text with structured state \u2014 like files that carry metadata. Scoped to sessions, users, or projects.",
-    icon: "\u2B22",
+    label: "Resources",
+    prop: "Content body + structured metadata, in one atomic container — scoped like state. A draft, a plan, a code file. Cloud-native storage, ready for AI.",
+  },
+];
+
+type Pillar = { num: string; label: string; body: string };
+
+const pillars: Pillar[] = [
+  {
+    num: "01",
+    label: "Composable primitives",
+    body: "Four block types — generator, sequencer, handler, router — compose into any agentic architecture, paired with a typed state and resource system that gives your flows programmatic data persistence and continuity. No hidden layers. No opinions baked into the internals. Just building blocks, all the way down.",
   },
   {
-    title: "Built for an ecosystem.",
-    description:
-      "Blocks are portable. Share a tool, a handler, or an entire flow. Community blocks compose with yours out of the box.",
-    icon: "\u2B2C",
+    num: "02",
+    label: "Proven strategies",
+    body: "A growing library of production-ready implementations, each built from the same blocks and state system you work with directly. Remixable, decomposable, and never opaque. Use them as-is or as a starting point for something new.",
   },
   {
-    title: "Streaming that just works.",
-    description:
-      "Messages, components, status updates \u2014 all stream over SSE as blocks execute. Disconnect mid-response? Reconnect with a sequence cursor.",
-    icon: "\u2192",
+    num: "03",
+    label: "Production-ready",
+    body: "DevTools, testing and evals, a typed client SDK, React hooks and components, CLI scaffolding, and provider-agnostic model flexibility. A complete stack — composable at every layer.",
+  },
+];
+
+type PatternItem = { label: string; href?: string };
+type PatternCategory = { name: string; items: PatternItem[] };
+
+const patternCategories: PatternCategory[] = [
+  {
+    name: "Multi-agent coordination patterns",
+    items: [
+      { label: "Supervisor", href: "/docs/patterns/supervisor" },
+      { label: "Coordinator", href: "/docs/patterns/coordinator" },
+      { label: "Chain of Agents" },
+      { label: "Blackboard" },
+      { label: "Debate" },
+      { label: "Round Robin" },
+    ],
   },
   {
-    title: "Type-safe, end to end.",
-    description:
-      "One Zod schema flows from server blocks through client SDK to React hooks. No glue code. No type drift.",
-    icon: "\u2B25",
+    name: "Reasoning & planning patterns",
+    items: [
+      { label: "Plan and Execute", href: "/docs/patterns/plan-and-execute" },
+      { label: "Self-Ask" },
+      { label: "Self-Consistency" },
+      { label: "Skeleton of Thought" },
+      { label: "Least-to-Most" },
+      { label: "Step-Back Prompting" },
+    ],
+  },
+  {
+    name: "Memory & retrieval patterns",
+    items: [
+      { label: "RAPTOR" },
+      { label: "Mind-Map Memory" },
+      { label: "Context Folding" },
+      { label: "RLM" },
+      { label: "Self-querying" },
+      { label: "Episodic Replay" },
+    ],
+  },
+  {
+    name: "Inference-time scaling patterns",
+    items: [
+      { label: "RSA" },
+      { label: "Tree of Thoughts" },
+      { label: "Mixture of Agents" },
+      { label: "Best-of-N" },
+      { label: "Sequential Revision" },
+    ],
+  },
+  {
+    name: "Reactive patterns",
+    items: [
+      { label: "Observer" },
+      { label: "Reflector" },
+      { label: "Self-Healing Loop" },
+      { label: "Response Auditor" },
+      { label: "Citation Verifier" },
+    ],
+  },
+  {
+    name: "Human-in-the-loop patterns",
+    items: [
+      { label: "Approval Gates" },
+      { label: "Tool Call Approval" },
+      { label: "Human Feedback" },
+      { label: "Collaborative Editing" },
+      { label: "Preference Elicitation" },
+    ],
   },
 ];
 
 /* ── Components ── */
-
-function Hero() {
-  return (
-    <header className={styles.heroBanner}>
-      <div className={styles.heroGrid} />
-      <div className={`container ${styles.heroContent}`}>
-        <Heading as="h1" className={styles.heroTitle}>
-          Full-stack Agentic Superpowers
-        </Heading>
-        <p className={styles.heroSubtitle}>
-          <span className={styles.brandName}>flow-state.dev</span> gives you
-          composable primitives for AI orchestration, streaming, state, and
-          error handling &mdash; so you can explore new patterns instead of
-          reinventing infrastructure.
-        </p>
-        <div className={styles.buttons}>
-          <Link className={styles.primaryBtn} to="/docs/getting-started/quick-start">
-            Get Started
-          </Link>
-          <Link className={styles.secondaryBtn} to="/docs/intro">
-            Why flow-state.dev?
-          </Link>
-        </div>
-      </div>
-    </header>
-  );
-}
-
-function Features() {
-  return (
-    <section className={styles.features}>
-      <div className={styles.featuresSectionHeader}>
-        <div>
-          <span className={styles.featuresSectionLabel}>Primitives</span>
-        </div>
-        <Heading as="h2" className={styles.featuresSectionTitle}>
-          Everything you need, nothing you don't
-        </Heading>
-        <p className={styles.featuresSectionSubtext}>
-          Four block kinds, composable flows, and scoped state. Each piece works alone or together.
-        </p>
-      </div>
-      <div className={styles.featureGrid}>
-        {features.map((f, i) => (
-          <div key={i} className={styles.featureCard}>
-            <div className={styles.featureNumber}>0{i + 1}</div>
-            <div className={styles.featureTitle}>{f.title}</div>
-            <p className={styles.featureDesc}>{f.description}</p>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function CodeShowcase() {
-  const [active, setActive] = useState(0);
-  const tab = codeTabs[active];
-
-  return (
-    <section className={styles.codeShowcase}>
-      <div style={{ textAlign: "center" }}>
-        <span className={styles.sectionLabel}>Workflow</span>
-      </div>
-      <Heading as="h2" className={styles.sectionTitle}>
-        From definition to UI in four steps
-      </Heading>
-      <p className={styles.sectionSubtext}>
-        Define blocks. Register flows. Wire up React. Write deterministic tests.
-        Each layer is independent and composable.
-      </p>
-
-      <div className={styles.tabBar}>
-        {codeTabs.map((t, i) => (
-          <button
-            key={i}
-            className={`${styles.tab} ${i === active ? styles.tabActive : ""}`}
-            onClick={() => setActive(i)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      <div className={styles.codeWrapper}>
-        <CodeBlock language={tab.language}>{tab.code}</CodeBlock>
-      </div>
-      <p className={styles.codeCaption}>{tab.caption}</p>
-    </section>
-  );
-}
 
 function InstallSnippet() {
   const [copied, setCopied] = useState(false);
@@ -342,26 +195,272 @@ function InstallSnippet() {
   );
 }
 
-function CTA() {
+/* Section 1 — Hero */
+function Hero() {
+  return (
+    <header className={styles.heroBanner}>
+      <div className={styles.heroGrid} />
+      <div className={`container ${styles.heroContent}`}>
+        <span className={styles.eyebrowBadge}>TypeScript · Composable · Remixable</span>
+        <Heading as="h1" className={styles.heroTitle}>
+          Unlock your agentic flow.
+        </Heading>
+        <p className={styles.heroSubtitle}>
+          The TypeScript agent framework where every layer is composable, nothing is a black box, and
+          every implementation is yours to remix.
+        </p>
+        <div className={styles.buttons}>
+          <Link className={styles.primaryBtn} to="/docs/getting-started/quick-start">
+            Start composing →
+          </Link>
+          <Link className={styles.secondaryBtn} to="/docs/intro">
+            Why flow-state.dev?
+          </Link>
+        </div>
+        <InstallSnippet />
+      </div>
+    </header>
+  );
+}
+
+/* Section 2 — Three Pillars */
+function ThreePillars() {
+  return (
+    <section className={styles.sectionAlt}>
+      <div className="container">
+        <Heading as="h2" className={styles.sectionTitle}>
+          Everything you need. Nothing you can&apos;t see inside.
+        </Heading>
+
+        <div className={styles.pillarsGrid}>
+          {pillars.map((p) => (
+            <div key={p.num} className={styles.pillarCard}>
+              <span className={styles.pillarNum}>{p.num}</span>
+              <span className={styles.pillarLabel}>{p.label}</span>
+              <p className={styles.pillarBody}>{p.body}</p>
+            </div>
+          ))}
+        </div>
+
+        <p className={styles.pillarsCta}>
+          <Link className={styles.inlineLink} to="/docs/intro">
+            Why does this matter? →
+          </Link>
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/* Section 3 — Proof of Life */
+function PrimitivesBreakdown() {
+  return (
+    <div className={styles.breakdown}>
+      <div className={styles.breakdownBlocksGrid}>
+        {blockPrimitives.map((b) => (
+          <div
+            key={b.name}
+            className={styles.breakdownBlock}
+            style={{ "--block-color": b.color } as React.CSSProperties}
+          >
+            <span className={styles.breakdownBlockKind}>{b.kind}</span>
+            <code className={styles.breakdownBlockName}>{b.name}</code>
+            <p className={styles.breakdownBlockProp}>{b.prop}</p>
+          </div>
+        ))}
+      </div>
+      <div className={styles.breakdownConceptsGrid}>
+        {systemConcepts.map((c) => (
+          <div key={c.label} className={styles.breakdownConcept}>
+            <span className={styles.breakdownConceptLabel}>{c.label}</span>
+            <p className={styles.breakdownConceptProp}>{c.prop}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProofOfLife() {
+  return (
+    <section className={styles.section}>
+      <div className="container">
+        <span className={styles.sectionLabel}>// built from blocks and state</span>
+        <Heading as="h2" className={styles.sectionTitle}>
+          Built from blocks and state — all the way down.
+        </Heading>
+        <p className={styles.sectionBody}>
+          A research pipeline: three parallel searches, a synthesis generator that reads from session
+          state, and a background worker that writes the result to a resource — without ever blocking
+          the stream.
+        </p>
+
+        <div className={styles.proofCode}>
+          <CodeBlock language="typescript">{researchBlockExample}</CodeBlock>
+        </div>
+
+        <blockquote className={styles.pullQuote}>
+          Blocks define what your flow does. State defines what it knows and remembers. Together,
+          they&apos;re the substrate every strategy is built from.
+        </blockquote>
+
+        <PrimitivesBreakdown />
+
+        <div className={styles.proofCta}>
+          <Link className={styles.secondaryBtn} to="/docs/getting-started/quick-start">
+            Read the docs →
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* Section 4 — Strategies & Ecosystem */
+function StrategiesAndEcosystem() {
+  return (
+    <section className={styles.sectionAlt}>
+      <div className="container">
+        <span className={styles.sectionLabel}>// patterns</span>
+        <Heading as="h2" className={styles.sectionTitle}>
+          Patterns for every kind of agentic system.
+        </Heading>
+        <p className={styles.sectionBody}>
+          Every pattern in the library is built from the same blocks and state system you just saw
+          — which means every pattern is also something you can take apart, understand, and rebuild
+          your way. This is how agentic techniques get discovered.
+        </p>
+
+        <div className={styles.strategyGrid}>
+          {patternCategories.map((cat) => (
+            <div key={cat.name} className={styles.strategyCategory}>
+              <h3 className={styles.categoryName}>{cat.name}</h3>
+              <div className={styles.categoryItems}>
+                <span className={styles.categoryList}>
+                  {cat.items.map((item, i) => (
+                    <span key={item.label}>
+                      {i > 0 && " · "}
+                      {item.href ? (
+                        <Link to={item.href} className={styles.patternLink}>{item.label}</Link>
+                      ) : (
+                        item.label
+                      )}
+                    </span>
+                  ))}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className={styles.thoughtFabricBlock}>
+          <div className={styles.tfHeader}>
+            <span className={styles.tfName}>Thought Fabric</span>
+            <span className={styles.tfAlpha}>Alpha</span>
+          </div>
+          <p className={styles.tfBody}>
+            A full cognitive architecture — memory, attention, reasoning, identity, metacognition, and learning — built entirely from
+            flow-state.dev blocks. Acts as an optional additional layer that can be added to any flow. Proof of what the primitives make
+            possible.
+          </p>
+          <Link className={styles.inlineLink} to="/thought-fabric/introduction">
+            Learn about Thought Fabric →
+          </Link>
+        </div>
+
+        <p className={styles.ecosystemNote}>
+          More patterns are added regularly — by us and by the community. The primitives are
+          everything you need to build and share your own.
+        </p>
+
+        <div className={styles.strategyCta}>
+          <Link className={styles.secondaryBtn} to="/docs/patterns/overview">
+            Browse the pattern library →
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* Section 5 — Production Stack */
+type ProductionCard = { title: string; desc: string };
+
+const productionCards: ProductionCard[] = [
+  {
+    title: "DevTools",
+    desc: "Full visibility into every block execution, stream item, and state change across the entire flow chain. Debug what's actually happening — not what you think is happening.",
+  },
+  {
+    title: "Testing & Evals",
+    desc: "A unit test harness for individual blocks and full flows, plus an eval framework for scoring outputs against datasets. Test deterministically. Evaluate non-deterministically.",
+  },
+  {
+    title: "CLI & Scaffolding",
+    desc: "fsdev for scaffolding new blocks and flows, running the dev server, executing evals, and inspecting outputs — all from the terminal.",
+  },
+  {
+    title: "Client SDK & React",
+    desc: "Typed client SDK and React hooks connecting your frontend to your flows — streaming, session state, and client-side data projections included.",
+  },
+  {
+    title: "Model Flexibility",
+    desc: "Provider-agnostic. Swap models per block, define semantic model groups, automatic retry and fallback — without changing your flow logic.",
+  },
+  {
+    title: "React Component Library",
+    desc: "Pre-built React components for streaming output, tool call display, chat UI, plan display, and more — wired directly to the client SDK and ready to drop in.",
+  },
+];
+
+function ProductionStack() {
+  return (
+    <section className={styles.section}>
+      <div className="container">
+        <span className={styles.sectionLabel}>// production stack</span>
+        <Heading as="h2" className={styles.sectionTitle}>
+          A complete production stack. Every layer composable.
+        </Heading>
+        <p className={styles.sectionBody}>
+          Building production agentic systems requires more than a good architecture. It requires
+          the tooling to run it, observe it, test it, and ship it. flow-state.dev includes all of
+          it — and because the framework is composable at its core, none of the tooling is a black
+          box either.
+        </p>
+
+        <div className={styles.productionGrid}>
+          {productionCards.map((card) => (
+            <div key={card.title} className={styles.productionCard}>
+              <h3 className={styles.productionCardTitle}>{card.title}</h3>
+              <p className={styles.productionCardDesc}>{card.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* Section 6 — Final CTA */
+function FinalCTA() {
   return (
     <section className={styles.ctaSection}>
       <div className={styles.ctaContent}>
         <Heading as="h2" className={styles.ctaTitle}>
-          Ready to explore?
+          Build something nobody&apos;s built yet.
         </Heading>
         <p className={styles.ctaSubtext}>
-          Get a streaming AI app running in minutes. Then push it somewhere no
-          framework has gone before.
+          Everything you need to build a production-ready agentic system. 
         </p>
         <div className={styles.buttons}>
           <Link className={styles.primaryBtn} to="/docs/getting-started/quick-start">
-            Quick Start
-          </Link>
-          <Link className={styles.secondaryBtn} to="/blog/welcome">
-            Read the Manifesto
+            Unlock your flow state →
           </Link>
         </div>
         <InstallSnippet />
+        <p className={styles.ctaSupportingLine}>
+          TypeScript · Vercel AI SDK · Works with any model provider
+        </p>
       </div>
     </section>
   );
@@ -372,17 +471,16 @@ function CTA() {
 export default function Home(): React.ReactElement {
   return (
     <Layout
-      title="AI workflows, composed"
-      description="flow-state.dev \u2014 a TypeScript framework for building AI workflows with composable blocks, resumable streaming, scoped state, and full-stack type safety."
+      title="Unlock your agentic flow"
+      description="flow-state.dev — composable primitives and proven strategies for building agentic systems in TypeScript. Remixable, extensible, replaceable."
     >
       <Hero />
       <main>
-        <div className={styles.sectionDivider} />
-        <Features />
-        <div className={styles.sectionDivider} />
-        <CodeShowcase />
-        <div className={styles.sectionDivider} />
-        <CTA />
+        <ThreePillars />
+        <ProofOfLife />
+        <StrategiesAndEcosystem />
+        <ProductionStack />
+        <FinalCTA />
       </main>
     </Layout>
   );

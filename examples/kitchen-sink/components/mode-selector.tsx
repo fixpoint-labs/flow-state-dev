@@ -2,7 +2,7 @@
 
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-export type Mode = "chat" | "create" | "plan";
+export type Mode = "chat" | "create";
 
 interface ModeSelectorProps {
   mode: Mode;
@@ -19,9 +19,6 @@ export function ModeSelector({ mode, onModeChange, disabled }: ModeSelectorProps
         </TabsTrigger>
         <TabsTrigger value="create" disabled={disabled} className="text-xs">
           Create
-        </TabsTrigger>
-        <TabsTrigger value="plan" disabled={disabled} className="text-xs">
-          Plan
         </TabsTrigger>
       </TabsList>
     </Tabs>
