@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   FlowProvider,
-  ItemsRenderer,
   useFlow,
   useSession,
   useClientData,
@@ -17,6 +16,7 @@ import {
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
+  ScrollOnNewRequest,
 } from "@/components/flow-state/conversation";
 import {
   PromptInput,
@@ -25,7 +25,7 @@ import {
   type PromptInputMessage,
 } from "@/components/flow-state/prompt-input";
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
-import { SourcesGroup } from "@/components/flow-state/sources";
+import { RequestGroupRenderer } from "@/components/flow-state/request-group";
 
 import { SessionSidebar } from "@/components/session-sidebar";
 import { AgentResponseCard } from "@/components/agent-response-card";
@@ -324,6 +324,7 @@ function ChatPanel({
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <Conversation className="min-h-0 flex-1">
+        <ScrollOnNewRequest items={session.items} />
         <SessionItemsProvider value={session.items}>
         <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
           {session.items.length === 0 && !session.isLoading && (
@@ -332,8 +333,7 @@ function ChatPanel({
               description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use."
             />
           )}
-          <ItemsRenderer items={session.items} />
-          <SourcesGroup items={session.items} />
+          <RequestGroupRenderer items={session.items} isStreaming={session.isStreaming} />
           {session.error && (
             <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
               <span>{session.error.message}</span>
