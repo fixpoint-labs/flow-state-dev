@@ -238,11 +238,15 @@ function extractReasoningText(item: ReasoningItem): string {
 
 export function Reasoning({ item }: { item: ReasoningItem }) {
   const text = extractReasoningText(item);
-  if (!text) return null;
+  const isStreaming = item.status === "in_progress";
+
+  // Show the thinking indicator even before any reasoning text arrives
+  if (!text && !isStreaming) return null;
+
   return (
-    <ReasoningShell isStreaming={item.status === "in_progress"}>
+    <ReasoningShell isStreaming={isStreaming}>
       <ReasoningTrigger />
-      <ReasoningContent>{text}</ReasoningContent>
+      {text && <ReasoningContent>{text}</ReasoningContent>}
     </ReasoningShell>
   );
 }
