@@ -54,7 +54,7 @@ import {
   readArtifact,
   artifactListContext,
   voiceContext,
-  thinkingStyleDetector,
+  autoClassifyStyle,
   thinkingStyleSchema,
   thinkingStyleSessionStateSchema,
 } from "./blocks";
@@ -142,41 +142,37 @@ const applyRequestedMode = handler({
   },
 });
 
-// Resolves the thinking style via a router:
-// - Manual selection → handler writes the chosen style to session state
-// - Auto → two-tier detector (keyword + LLM classifier) resolves it
-
-const applyManualThinkingStyle = handler({
-  name: "apply-manual-thinking-style",
-  inputSchema,
-  outputSchema: inputSchema,
-  sessionStateSchema: thinkingStyleSessionStateSchema,
-  execute: async (input, ctx) => {
-    await ctx.session.patchState({ thinkingStyle: input.thinkingStyle });
-    return input;
-  },
-});
-
-const autoDetectPipeline = sequencer({
-  name: "auto-detect-pipeline",
-  inputSchema,
-})
-  .tap(
-    thinkingStyleDetector.connectInput(
-      (input: { message: string }) => ({ message: input.message }),
-    ),
-  );
-
-const resolveThinkingStyle = router({
+// Resolves thinking style: applies manual selection (with diff check) or
+// runs keyword + LLM auto-classification as a side effect when style is "auto".
+const resolveThinkingStyle = sequencer({
   name: "resolve-thinking-style",
   inputSchema,
   outputSchema: inputSchema,
-  routes: [applyManualThinkingStyle, autoDetectPipeline],
-  execute: (input) =>
-    input.thinkingStyle === "auto"
-      ? autoDetectPipeline
-      : applyManualThinkingStyle,
-});
+})
+  .then(
+    handler({
+      name: "apply-manual-style",
+      inputSchema,
+      outputSchema: inputSchema,
+      sessionStateSchema: thinkingStyleSessionStateSchema,
+      execute: async (input, ctx) => {
+        if (
+          input.thinkingStyle !== "auto" &&
+          input.thinkingStyle !== ctx.session.state.thinkingStyle
+        ) {
+          await ctx.session.patchState({ thinkingStyle: input.thinkingStyle });
+        }
+        return input;
+      },
+    }),
+  )
+  .thenIf(
+    (input) => input.thinkingStyle === "auto",
+    sequencer({ name: "do-auto-classify", inputSchema })
+      .tap(
+        autoClassifyStyle.connectInput((input: { message: string }) => ({ message: input.message })),
+      ),
+  );
 
 // Bookkeeping handler: increments a request counter in session state.
 const incrementRequestCount = handler({

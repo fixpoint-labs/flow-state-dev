@@ -41,7 +41,7 @@ const keywordTestSeq = sequencer({
 
 // Mock for the intent classifier generator inside Tier 2.
 const classifierFixture = mockGenerator({
-  name: "thinking-style-classifier-intent-classifier",
+  name: "thinking-style-classifier",
   script: [
     {
       structuredOutput: {
@@ -143,7 +143,7 @@ describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
       input: { message: "Outline a roadmap for this project" },
       flow: testFlow,
       generators: {
-        "thinking-style-classifier-intent-classifier": classifierFixture,
+        "thinking-style-classifier": classifierFixture,
       },
     });
 
@@ -159,7 +159,7 @@ describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
       input: { message: "Hello, how are you?" },
       flow: testFlow,
       generators: {
-        "thinking-style-classifier-intent-classifier": classifierFixture,
+        "thinking-style-classifier": classifierFixture,
       },
     });
 
@@ -171,7 +171,7 @@ describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
 
   it("LLM classifier can select plan-and-execute", async () => {
     const paeClassifier = mockGenerator({
-      name: "thinking-style-classifier-intent-classifier",
+      name: "thinking-style-classifier",
       script: [
         {
           structuredOutput: {
@@ -187,7 +187,7 @@ describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
       input: { message: "Write a comprehensive report on market trends" },
       flow: testFlow,
       generators: {
-        "thinking-style-classifier-intent-classifier": paeClassifier,
+        "thinking-style-classifier": paeClassifier,
       },
     });
 
@@ -199,7 +199,7 @@ describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
 
   it("falls back to chain-of-thought when LLM confidence is below threshold", async () => {
     const lowConfidence = mockGenerator({
-      name: "thinking-style-classifier-intent-classifier",
+      name: "thinking-style-classifier",
       script: [
         {
           structuredOutput: {
@@ -215,7 +215,7 @@ describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
       input: { message: "Do something interesting" },
       flow: testFlow,
       generators: {
-        "thinking-style-classifier-intent-classifier": lowConfidence,
+        "thinking-style-classifier": lowConfidence,
       },
     });
 

@@ -1,18 +1,14 @@
 /**
- * Thinking Style Auto-Detector (FIX-311)
+ * Thinking Style Resolution (FIX-311)
  *
- * Two-tier detection that resolves "auto" thinking style to a concrete style:
- *   1. Keyword handler — fast heuristic scan, no LLM call
- *   2. LLM classifier — intentRouter fallback when keywords are ambiguous
+ * Resolves "auto" thinking style to a concrete style via:
+ *   1. Keyword handler — fast heuristic scan, patches session state directly if match
+ *   2. LLM classifier — intentClassifier fallback when no keyword matched
  *
- * After detection, writes the resolved style to session.state.thinkingStyle.
- * Both tiers are exported individually for remixability.
+ * autoClassifyStyle is the exported sequencer. Used by resolveThinkingStyle
+ * in flow.ts when input.thinkingStyle === "auto".
  */
-import {
-  handler,
-  sequencer,
-  utility,
-} from "@flow-state-dev/core";
+import { handler, sequencer, utility } from "@flow-state-dev/core";
 import { z } from "zod";
 
 // -------------------------------------------------------------------------
@@ -31,8 +27,14 @@ export const thinkingStyleSessionStateSchema = z.object({
   thinkingStyle: thinkingStyleSchema.optional(),
 });
 
-const detectorStateSchema = z.object({
-  selectedStyle: thinkingStyleSchema.nullable().default(null),
+const autoClassifyStateSchema = z.object({
+  keywordMatched: z.boolean().default(false),
+});
+
+const classifierOutputSchema = z.object({
+  category: z.string(),
+  confidence: z.number(),
+  reasoning: z.string().optional(),
 });
 
 // -------------------------------------------------------------------------
@@ -74,6 +76,10 @@ export const COT_KEYWORDS = [
 
 // -------------------------------------------------------------------------
 // Tier 1 — Keyword Handler
+//
+// When a keyword matches, patches session.state.thinkingStyle directly
+// (if different) and sets sequencer.state.keywordMatched = true.
+// When no match, leaves session state unchanged.
 // -------------------------------------------------------------------------
 
 const messageSchema = z.object({ message: z.string() });
@@ -82,148 +88,108 @@ export const keywordHandler = handler({
   name: "keyword-style-handler",
   inputSchema: messageSchema,
   outputSchema: messageSchema,
-  sequencerStateSchema: detectorStateSchema,
+  sequencerStateSchema: autoClassifyStateSchema,
+  sessionStateSchema: thinkingStyleSessionStateSchema,
   execute: async (input, ctx) => {
     const message = input.message.toLowerCase();
 
+    let matched: ThinkingStyle | null = null;
     if (SUPERVISOR_KEYWORDS.some((kw) => message.includes(kw))) {
-      await ctx.sequencer!.patchState({ selectedStyle: "supervisor" });
-      return input;
-    }
-    if (PLAN_KEYWORDS.some((kw) => message.includes(kw))) {
-      await ctx.sequencer!.patchState({ selectedStyle: "plan-and-execute" });
-      return input;
-    }
-    if (COT_KEYWORDS.some((kw) => message.includes(kw))) {
-      await ctx.sequencer!.patchState({ selectedStyle: "chain-of-thought" });
-      return input;
+      matched = "supervisor";
+    } else if (PLAN_KEYWORDS.some((kw) => message.includes(kw))) {
+      matched = "plan-and-execute";
+    } else if (COT_KEYWORDS.some((kw) => message.includes(kw))) {
+      matched = "chain-of-thought";
     }
 
-    // No match — leave selectedStyle null for Tier 2.
+    if (matched !== null) {
+      await ctx.sequencer!.patchState({ keywordMatched: true });
+      if (matched !== ctx.session.state.thinkingStyle) {
+        await ctx.session.patchState({ thinkingStyle: matched });
+      }
+    }
+
     return input;
   },
 });
 
 // -------------------------------------------------------------------------
-// Tier 2 — LLM Classifier (intentRouter)
+// Tier 2 — LLM Classifier
 //
-// Exported as a standalone block for remixability.
-// Each category handler writes session.state.thinkingStyle directly.
+// classifierBlock: intentClassifier generator — returns { category, confidence }
+// applyClassifiedStyle: reads the classifier output, applies threshold, patches state
 // -------------------------------------------------------------------------
 
-export const classifierBlock = utility.intentRouter({
+const CONFIDENCE_THRESHOLD = 0.65;
+
+export const classifierBlock = utility.intentClassifier({
   name: "thinking-style-classifier",
   categories: {
-    "plan-and-execute": {
-      description: `
-        The message asks the AI to complete a structured, multi-step task where
-        decomposing the work into discrete subtasks before executing would produce
-        a better result. Examples: writing a report, implementing a feature,
-        generating a comprehensive document, producing complex structured output.
-      `,
-      handler: handler({
-        name: "select-pae",
-        sessionStateSchema: thinkingStyleSessionStateSchema,
-        execute: async (_input, ctx) => {
-          await ctx.session.patchState({ thinkingStyle: "plan-and-execute" });
-        },
-      }),
-    },
-    supervisor: {
-      description: `
-        The message describes a task that naturally requires coordinating multiple
-        specialized concerns in parallel or sequentially, where different aspects
-        of the work benefit from independent sub-agent treatment. Examples:
-        research + synthesis pipelines, code review across multiple dimensions,
-        cross-domain analysis tasks.
-      `,
-      handler: handler({
-        name: "select-supervisor",
-        sessionStateSchema: thinkingStyleSessionStateSchema,
-        execute: async (_input, ctx) => {
-          await ctx.session.patchState({ thinkingStyle: "supervisor" });
-        },
-      }),
-    },
-    "chain-of-thought": {
-      description: `
-        The message is a direct question, a reasoning task, an explanation request,
-        or anything where a single high-quality response with visible reasoning
-        is more appropriate than task decomposition. Examples: answering questions,
-        comparing options, explaining concepts, debugging, short creative tasks.
-      `,
-      handler: handler({
-        name: "select-cot",
-        sessionStateSchema: thinkingStyleSessionStateSchema,
-        execute: async (_input, ctx) => {
-          await ctx.session.patchState({ thinkingStyle: "chain-of-thought" });
-        },
-      }),
-    },
+    "plan-and-execute": `
+      The message asks the AI to complete a structured, multi-step task where
+      decomposing the work into discrete subtasks before executing would produce
+      a better result. Examples: writing a report, implementing a feature,
+      generating a comprehensive document, producing complex structured output.
+    `,
+    supervisor: `
+      The message describes a task that naturally requires coordinating multiple
+      specialized concerns in parallel or sequentially, where different aspects
+      of the work benefit from independent sub-agent treatment. Examples:
+      research + synthesis pipelines, code review across multiple dimensions,
+      cross-domain analysis tasks.
+    `,
+    "chain-of-thought": `
+      The message is a direct question, a reasoning task, an explanation request,
+      or anything where a single high-quality response with visible reasoning
+      is more appropriate than task decomposition. Examples: answering questions,
+      comparing options, explaining concepts, debugging, short creative tasks.
+    `,
   },
-  fallback: handler({
-    name: "select-cot-fallback",
-    sessionStateSchema: thinkingStyleSessionStateSchema,
-    execute: async (_input, ctx) => {
-      await ctx.session.patchState({ thinkingStyle: "chain-of-thought" });
-    },
-  }),
-  confidenceThreshold: 0.65,
 });
 
-// -------------------------------------------------------------------------
-// Apply keyword result to session state
-//
-// Runs after the keyword handler. When a keyword matched (selectedStyle is
-// non-null), writes the result to session.state.thinkingStyle. When no
-// keyword matched, does nothing — the thenIf classifier step handles it.
-// -------------------------------------------------------------------------
-
-const applyKeywordToSession = handler({
-  name: "apply-keyword-to-session",
-  inputSchema: messageSchema,
-  outputSchema: messageSchema,
-  sequencerStateSchema: detectorStateSchema,
+const applyClassifiedStyle = handler({
+  name: "apply-classified-style",
+  inputSchema: classifierOutputSchema,
   sessionStateSchema: thinkingStyleSessionStateSchema,
   execute: async (input, ctx) => {
-    const selected = ctx.sequencer!.state.selectedStyle;
-    if (selected !== null) {
-      await ctx.session.patchState({ thinkingStyle: selected });
+    const parsed = thinkingStyleSchema.safeParse(input.category);
+    const style: ThinkingStyle =
+      input.confidence >= CONFIDENCE_THRESHOLD && parsed.success
+        ? parsed.data
+        : "chain-of-thought";
+    if (style !== ctx.session.state.thinkingStyle) {
+      await ctx.session.patchState({ thinkingStyle: style });
     }
-    return input;
   },
 });
 
+const llmClassifySequencer = sequencer({
+  name: "llm-classify-style",
+  inputSchema: messageSchema,
+})
+  .then(
+    classifierBlock.connectInput((input: { message: string }) => input.message),
+  )
+  .then(applyClassifiedStyle);
+
 // -------------------------------------------------------------------------
-// Composed auto-detector sequencer
+// Auto-classify sequencer
 //
-// Pipeline:
-//   keywordHandler → applyKeywordToSession → thenIf(no match, classifierBlock)
-//
-// When keywords match: keywordHandler sets sequencer state, applyKeywordToSession
-// writes it to session state, thenIf is skipped.
-//
-// When no keywords match: applyKeywordToSession is a no-op, thenIf runs the
-// LLM classifier whose category handlers write session state directly.
+// Runs Tier 1 (keyword), then Tier 2 (LLM) only if no keyword matched.
+// After this block, session.state.thinkingStyle is set.
+// Input: { message: string }
 // -------------------------------------------------------------------------
 
-/**
- * Runs Tier 1 (keyword) then Tier 2 (LLM) if needed.
- * After this block completes, session.state.thinkingStyle is set.
- *
- * Input: `{ message: string }`
- * Output: `{ message: string }` (passthrough — may be union with classifier output)
- */
-export const thinkingStyleDetector = sequencer({
-  name: "thinking-style-detector",
+export const autoClassifyStyle = sequencer({
+  name: "auto-classify-style",
   inputSchema: messageSchema,
-  stateSchema: detectorStateSchema,
+  stateSchema: autoClassifyStateSchema,
 })
   .then(keywordHandler)
-  .then(applyKeywordToSession)
   .thenIf(
-    (_input, ctx) => ctx.sequencer?.state.selectedStyle === null,
-    classifierBlock.connectInput(
-      (input: { message: string }) => input.message,
-    ),
+    (_input, ctx) => !ctx.sequencer?.state.keywordMatched,
+    llmClassifySequencer,
   );
+
+// Alias — public-facing name used in tests and external references.
+export const thinkingStyleDetector = autoClassifyStyle;
