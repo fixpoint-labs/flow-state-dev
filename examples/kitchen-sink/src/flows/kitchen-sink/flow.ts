@@ -335,7 +335,7 @@ const kitchenSinkFlow = defineFlow({
 
   session: {
     stateSchema: sessionStateSchema,
-    resources: artifactResources,
+    resources: { ...artifactResources, ...mem.sessionResources },
     clientData: {
       artifacts: async (ctx) => {
         const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<{
@@ -368,6 +368,7 @@ const kitchenSinkFlow = defineFlow({
 
   user: {
     stateSchema: userStateSchema,
+    resources: mem.userResources,
     clientData: {
       preferences: (ctx) => ({
         displayName: String(ctx.state.displayName ?? "Developer"),
