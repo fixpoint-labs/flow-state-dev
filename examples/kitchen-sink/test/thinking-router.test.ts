@@ -34,7 +34,7 @@ const keywordTestSeq = sequencer({
   stateSchema: z.object({
     keywordMatched: z.boolean().default(false),
   }),
-}).then(keywordHandler);
+}).tap(keywordHandler);
 
 // Mock for the intent classifier generator inside Tier 2.
 const classifierFixture = mockGenerator({

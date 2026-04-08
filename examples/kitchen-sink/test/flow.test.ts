@@ -101,7 +101,7 @@ describe("kitchen-sink flow", () => {
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
     });
     expect(routed.error).toBeNull();
-    expect(routed.selectedRoute).toBe("cot-pipeline");
+    expect(routed.selectedRoute).toBe("assistant-generator");
   });
 
   it("routes to pae-pipeline for plan-and-execute style", async () => {
@@ -143,7 +143,7 @@ describe("kitchen-sink flow", () => {
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
     });
     expect(routed.error).toBeNull();
-    expect(routed.selectedRoute).toBe("cot-pipeline");
+    expect(routed.selectedRoute).toBe("assistant-generator");
   });
 
   it("completes a chat action via cot-pipeline", async () => {
