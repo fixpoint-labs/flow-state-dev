@@ -7,7 +7,7 @@ import {
 } from "@flow-state-dev/testing";
 import {
   keywordHandler,
-  thinkingStyleDetector,
+  autoClassifyStyle,
   thinkingStyleSchema,
 } from "../src/flows/kitchen-sink/blocks";
 
@@ -17,7 +17,7 @@ const testFlow = defineFlow({
   actions: {
     run: {
       inputSchema: z.object({ message: z.string() }),
-      block: thinkingStyleDetector,
+      block: autoClassifyStyle,
     },
   },
   session: {
@@ -121,6 +121,7 @@ describe("thinking style detector — Tier 1 (keyword handler)", () => {
       (c) => c.scope === "block_instance",
     );
     expect(seqChanges).toHaveLength(0);
+    expect(result.state.session.thinkingStyle).toBeUndefined();
   });
 
   it("prioritizes supervisor over plan keywords when both present", async () => {
@@ -130,16 +131,13 @@ describe("thinking style detector — Tier 1 (keyword handler)", () => {
     });
 
     expect(result.error).toBeNull();
-    const seqChanges = result.stateChanges.filter(
-      (c) => c.scope === "block_instance",
-    );
-    expect(seqChanges.length).toBeGreaterThan(0);
+    expect(result.state.session).toMatchObject({ thinkingStyle: "supervisor" });
   });
 });
 
 describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
   it("resolves via keywords and writes to session state", async () => {
-    const result = await testSequencer(thinkingStyleDetector, {
+    const result = await testSequencer(autoClassifyStyle, {
       input: { message: "Outline a roadmap for this project" },
       flow: testFlow,
       generators: {
@@ -155,7 +153,7 @@ describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
 
   it("falls back to LLM classifier when no keywords match", async () => {
     classifierFixture.reset();
-    const result = await testSequencer(thinkingStyleDetector, {
+    const result = await testSequencer(autoClassifyStyle, {
       input: { message: "Hello, how are you?" },
       flow: testFlow,
       generators: {
@@ -183,7 +181,7 @@ describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
       ],
     });
 
-    const result = await testSequencer(thinkingStyleDetector, {
+    const result = await testSequencer(autoClassifyStyle, {
       input: { message: "Write a comprehensive report on market trends" },
       flow: testFlow,
       generators: {
@@ -211,7 +209,7 @@ describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
       ],
     });
 
-    const result = await testSequencer(thinkingStyleDetector, {
+    const result = await testSequencer(autoClassifyStyle, {
       input: { message: "Do something interesting" },
       flow: testFlow,
       generators: {

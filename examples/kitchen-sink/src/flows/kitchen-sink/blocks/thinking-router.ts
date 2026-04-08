@@ -191,5 +191,3 @@ export const autoClassifyStyle = sequencer({
     llmClassifySequencer,
   );
 
-// Alias — public-facing name used in tests and external references.
-export const thinkingStyleDetector = autoClassifyStyle;
