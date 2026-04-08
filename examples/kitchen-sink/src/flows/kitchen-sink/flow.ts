@@ -134,11 +134,9 @@ Never show artifact ids unless specifically asked.`;
 const applyRequestedMode = handler({
   name: "apply-requested-mode",
   inputSchema,
-  outputSchema: inputSchema,
   sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
   execute: async (input, ctx) => {
     await ctx.session.patchState({ mode: input.mode });
-    return input;
   },
 });
 
@@ -147,38 +145,26 @@ const applyRequestedMode = handler({
 const resolveThinkingStyle = sequencer({
   name: "resolve-thinking-style",
   inputSchema,
-  outputSchema: inputSchema,
+  outputSchema: z.never(),
 })
-  .then(
+  .tapIf((input, ctx) => (input.thinkingStyle !== "auto" && input.thinkingStyle !== ctx.session.state.thinkingStyle),
     handler({
       name: "apply-manual-style",
       inputSchema,
-      outputSchema: inputSchema,
       sessionStateSchema: thinkingStyleSessionStateSchema,
       execute: async (input, ctx) => {
-        if (
-          input.thinkingStyle !== "auto" &&
-          input.thinkingStyle !== ctx.session.state.thinkingStyle
-        ) {
-          await ctx.session.patchState({ thinkingStyle: input.thinkingStyle });
-        }
-        return input;
+        await ctx.session.patchState({ thinkingStyle: input.thinkingStyle });
       },
     }),
   )
-  .thenIf(
+  .tapIf(
     (input) => input.thinkingStyle === "auto",
-    sequencer({ name: "do-auto-classify", inputSchema })
-      .tap(
-        autoClassifyStyle.connectInput((input: { message: string }) => ({ message: input.message })),
-      ),
+    autoClassifyStyle,
   );
 
 // Bookkeeping handler: increments a request counter in session state.
 const incrementRequestCount = handler({
   name: "increment-request-count",
-  inputSchema: z.string(),
-  outputSchema: z.string(),
   sessionStateSchema: z.object({
     requestCount: z.number().default(0),
     lastAction: z.string().optional(),
@@ -189,7 +175,6 @@ const incrementRequestCount = handler({
       requestCount: count + 1,
       lastAction: "run",
     });
-    return input;
   },
 });
 
@@ -237,9 +222,7 @@ const assistantGenerator = generator({
 // ---------------------------------------------------------------------------
 
 // Chain of Thought — direct generation. The simplest path.
-const cotPipeline = sequencer({ name: "cot-pipeline", inputSchema })
-  .then(assistantGenerator)
-  .work(mem.captureFromItems);
+const cotPipeline = assistantGenerator;
 
 // Plan and Execute — decomposes the message into steps, executes them,
 // then synthesizes findings. Uses the same tools/context as the assistant.
@@ -256,7 +239,6 @@ const paePipeline = sequencer({ name: "pae-pipeline", inputSchema })
       enableReplanning: true,
     })
   )
-  .work(mem.captureFromItems);
 
 // Supervisor — plan → dispatch workers → review → replan loop.
 // The worker adapts the supervisor's { id, goal } input to the assistant generator.
@@ -284,7 +266,6 @@ const supervisorPipeline = sequencer({
       onSubTaskError: "skip",
     })
   )
-  .work(mem.captureFromItems);
 
 // ---------------------------------------------------------------------------
 // Thinking Style Router — proper router() block
@@ -313,9 +294,10 @@ export const thinkingStyleRouter = router({
 // ---------------------------------------------------------------------------
 
 const runSequencer = sequencer({ name: "run", inputSchema })
-  .then(applyRequestedMode)
-  .then(resolveThinkingStyle)
+  .tap(applyRequestedMode)
+  .tap(resolveThinkingStyle)
   .then(thinkingStyleRouter)
+  .work(mem.captureFromItems)
   .work(autoTitle)
   .work(summarizeArtifacts)
   .then(incrementRequestCount);

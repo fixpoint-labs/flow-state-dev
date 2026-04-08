@@ -87,7 +87,6 @@ const messageSchema = z.object({ message: z.string() });
 export const keywordHandler = handler({
   name: "keyword-style-handler",
   inputSchema: messageSchema,
-  outputSchema: messageSchema,
   sequencerStateSchema: autoClassifyStateSchema,
   sessionStateSchema: thinkingStyleSessionStateSchema,
   execute: async (input, ctx) => {
@@ -108,8 +107,6 @@ export const keywordHandler = handler({
         await ctx.session.patchState({ thinkingStyle: matched });
       }
     }
-
-    return input;
   },
 });
 
@@ -167,10 +164,8 @@ const llmClassifySequencer = sequencer({
   name: "llm-classify-style",
   inputSchema: messageSchema,
 })
-  .then(
-    classifierBlock.connectInput((input: { message: string }) => input.message),
-  )
-  .then(applyClassifiedStyle);
+  .tap((input) => input.message,classifierBlock)
+  .tap(applyClassifiedStyle);
 
 // -------------------------------------------------------------------------
 // Auto-classify sequencer
@@ -185,8 +180,8 @@ export const autoClassifyStyle = sequencer({
   inputSchema: messageSchema,
   stateSchema: autoClassifyStateSchema,
 })
-  .then(keywordHandler)
-  .thenIf(
+  .tap(keywordHandler)
+  .tapIf(
     (_input, ctx) => !ctx.sequencer?.state.keywordMatched,
     llmClassifySequencer,
   );

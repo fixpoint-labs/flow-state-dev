@@ -131,7 +131,28 @@ Update policy:
 - Why:
   - Generators are a first-class block kind with their own execution semantics: streaming, retry, tool loops, and observability hooks. Wrapping a generator call inside a handler bypasses all of these and makes the generator invisible to the runtime. It also makes the generated output hard to observe, replay, or trace in devtools. The sequencer `.then(generator).then(handler)` pattern is the correct composition primitive.
 
----
+### BP-012: Use `.tap()` for state-mutation-only blocks — never return input as passthrough
+
+- Status: Active
+- Date: 2026-04-08
+- Rule:
+  - When a block only mutates state (session, user, sequencer) and its output carries no meaningful information forward, chain it with `.tap()` instead of `.then()`.
+  - Such handlers must not declare `outputSchema` and must not `return input` at the end of `execute`.
+- Why:
+  - Every block chained with `.then()` appends its output to the items log. Returning `input` as a passthrough pollutes the items log with redundant copies of data that carry no new information. Items should contain meaningful output — LLM responses, structured results — not echoes of prior state. State mutations are already observable through the state change log.
+  - `.tap()` communicates intent clearly: this block runs for its side effects, the upstream data flows through unchanged.
+
+### BP-013: Use `.tap(mapper, block)` instead of `.connectInput()` — never use `.connectInput()` on a sequencer directly
+
+- Status: Active
+- Date: 2026-04-08
+- Rule:
+  - When a block needs its input remapped before calling, use the two-argument `.tap(mapper, block)` signature rather than `.then(block.connectInput(mapper))`.
+  - Never call `.connectInput()` on a sequencer. Sequencers already accept the full input via the method signal (inputSchema passthrough). Use `.tap(sequencer)` or `.tapIf(cond, sequencer)` — the input flows through automatically with no manual type annotation required.
+- Why:
+  - `.connectInput()` on a sequencer is redundant: the method signal already passes the input. More importantly, it forces an explicit type annotation on the mapper that TypeScript could infer automatically, and it creates an unnecessary wrapper that obscures what the sequencer actually does.
+  - `.tap(mapper, block)` is cleaner for remapping: the mapper is co-located with the call, types flow naturally, and no wrapper block is introduced.
+
 
 ## Template For New Entries
 
