@@ -2,13 +2,14 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Activity, User, Cpu } from "lucide-react";
+import { Activity, User, Cpu, Brain } from "lucide-react";
 
 interface ClientDataBarProps {
   currentMode?: string;
   requestCount?: number;
   displayName?: string;
   preferredModel?: string;
+  thinkingStyle?: string;
 }
 
 export function ClientDataBar({
@@ -16,6 +17,7 @@ export function ClientDataBar({
   requestCount,
   displayName,
   preferredModel,
+  thinkingStyle,
 }: ClientDataBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 text-xs">
@@ -41,8 +43,17 @@ export function ClientDataBar({
       <Separator orientation="vertical" className="hidden h-4 md:block" />
       <div className="hidden items-center gap-1.5 text-muted-foreground md:flex">
         <Cpu className="h-3.5 w-3.5" />
-        <span>{preferredModel ?? "gpt-5-mini"}</span>
+        <span>{preferredModel ?? "preset/fast"}</span>
       </div>
+      {thinkingStyle && (
+        <>
+          <Separator orientation="vertical" className="hidden h-4 md:block" />
+          <div className="hidden items-center gap-1.5 text-muted-foreground md:flex">
+            <Brain className="h-3.5 w-3.5" />
+            <span>{thinkingStyle}</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
