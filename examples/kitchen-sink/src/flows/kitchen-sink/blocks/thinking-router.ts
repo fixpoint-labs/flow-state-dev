@@ -164,7 +164,7 @@ const llmClassifySequencer = sequencer({
   name: "llm-classify-style",
   inputSchema: messageSchema,
 })
-  .tap((input) => input.message,classifierBlock)
+  .then((input) => input.message, classifierBlock)
   .tap(applyClassifiedStyle);
 
 // -------------------------------------------------------------------------
