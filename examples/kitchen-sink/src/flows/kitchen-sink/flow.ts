@@ -38,6 +38,7 @@ import {
   sequencer,
   utility,
 } from "@flow-state-dev/core";
+import { tools } from "@flow-state-dev/tools";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import {
   system as memorySystem,
@@ -112,6 +113,8 @@ You have access to artifacts and can read or create them:
 - Use update-artifact when users explicitly ask you to create or save something.
 
 When users ask questions that require up-to-date information, use search.
+When a user shares a URL or you find one via search, use fetch to read the full page content.
+Use crawl when you need to ingest multiple pages from a site (e.g. documentation, knowledge bases).
 
 Be concise and focused on being useful. Create artifacts when asked — not speculatively.
 Never show artifact ids unless specifically asked.`;
@@ -123,6 +126,8 @@ When the user asks for anything that could be expressed as an artifact — code,
 Prefer building over explaining. If you can produce a concrete artifact, do so rather than describing what you would build.
 
 When users ask questions, answer them — but look for opportunities to produce something tangible. If an existing artifact is relevant, read it first with read-artifact before updating or building on it.
+
+Use fetch to read the full content of any URL. Use crawl to ingest entire documentation sites or knowledge bases as artifacts.
 
 Never show artifact ids unless specifically asked.`;
 
@@ -205,7 +210,7 @@ const assistantGenerator = generator({
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
   user: (input) => input.message,
 
-  tools: [readArtifact, updateArtifact],
+  tools: [readArtifact, updateArtifact, tools.fetch(), tools.crawl({ maxPages: 20, maxDepth: 2 })],
   search: true,
   maxIterations: 10,
   outputSchema: z.string(),

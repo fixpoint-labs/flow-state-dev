@@ -12,6 +12,14 @@
     "./search": {
       "types": "./dist/search/index.d.ts",
       "default": "./dist/search/index.js"
+    },
+    "./fetch": {
+      "types": "./dist/fetch/index.d.ts",
+      "default": "./dist/fetch/index.js"
+    },
+    "./crawl": {
+      "types": "./dist/crawl/index.d.ts",
+      "default": "./dist/crawl/index.js"
     }
   },
   "license": "MIT",
@@ -23,9 +31,13 @@
   },
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
+    "@mozilla/readability": "^0.6.0",
+    "linkedom": "^0.18.12",
+    "turndown": "^7.2.4",
     "zod": "^3.24.1"
   },
   "peerDependencies": {
+    "@mendable/firecrawl-js": "^1.15.0",
     "@tavily/core": "^0.7.0",
     "exa-js": "^1.5.0"
   },
@@ -35,13 +47,17 @@
     },
     "exa-js": {
       "optional": true
+    },
+    "@mendable/firecrawl-js": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
-    "vitest": "^3.2.4",
-    "typescript": "^5.9.3"
+    "@types/turndown": "^5.0.6",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
