@@ -14,13 +14,13 @@ describe("model lookup", () => {
 
 
   it("matches GPT-5 variants before the family fallback", () => {
-    const mini = findModelEntry("openai/gpt-5-mini-2026-01-15", DEFAULT_MODEL_LOOKUP);
-    const nano = findModelEntry("openai/gpt-5-nano", DEFAULT_MODEL_LOOKUP);
-    const base = findModelEntry("openai/gpt-5", DEFAULT_MODEL_LOOKUP);
+    const mini = findModelEntry("openai/gpt-5.4-mini-2026-01-15", DEFAULT_MODEL_LOOKUP);
+    const nano = findModelEntry("openai/gpt-5.4-nano", DEFAULT_MODEL_LOOKUP);
+    const base = findModelEntry("openai/gpt-5.4", DEFAULT_MODEL_LOOKUP);
 
-    expect(mini?.keyword).toBe("preset/fast");
-    expect(nano?.keyword).toBe("gpt-5-nano");
-    expect(base?.keyword).toBe("gpt-5");
+    expect(mini?.keyword).toBe("gpt-5.4-mini");
+    expect(nano?.keyword).toBe("gpt-5.4-nano");
+    expect(base?.keyword).toBe("gpt-5.4");
   });
 
 
