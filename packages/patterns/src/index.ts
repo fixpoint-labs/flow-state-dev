@@ -50,3 +50,16 @@ export {
 export type { BasePlan, BasePlanTask } from "./shared/plan";
 export { eventQueue, createEventQueueStateSchema } from "./event-queue";
 export type { EventQueueConfig, EventQueueState } from "./event-queue";
+export {
+  blackboard,
+  createBlackboard,
+  blackboardControlSchema,
+  controllerOutputSchema,
+  createDispatchSpecialist,
+  createCheckBlackboard,
+} from "./blackboard";
+export type {
+  BlackboardConfig,
+  BlackboardControlState,
+  ControllerOutput,
+} from "./blackboard";
