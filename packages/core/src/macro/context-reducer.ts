@@ -81,7 +81,7 @@ export function contextReducer<
 
   return generator({
     name: config.name,
-    model: config.model ?? "gpt-5-mini",
+    model: config.model ?? "preset/fast",
     outputSchema,
     prompt: [
       ...CONTEXT_REDUCER_INSTRUCTIONS[mode],

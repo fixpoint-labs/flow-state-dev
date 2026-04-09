@@ -68,7 +68,7 @@ const testFlow = defineFlow({
   user: {
     stateSchema: z.object({
       displayName: z.string().default("Developer"),
-      preferredModel: z.string().default("openai/gpt-5.4-mini"),
+      preferredModel: z.string().default("preset/fast"),
     }),
   },
 })({ id: "test" });

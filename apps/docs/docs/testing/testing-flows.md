@@ -160,7 +160,7 @@ generators: {
 
 ```ts
 models: {
-  "gpt-5-mini": { output: "Default response" },
+  "preset/fast": { output: "Default response" },
 }
 ```
 

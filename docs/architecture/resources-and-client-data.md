@@ -236,7 +236,7 @@ defineFlow({
     clientData: {
       preferences: (ctx) => ({
         displayName: ctx.state.displayName ?? "User",
-        preferredModel: ctx.state.preferredModel ?? "gpt-5-mini",
+        preferredModel: ctx.state.preferredModel ?? "preset/fast",
       }),
     },
   },
@@ -266,7 +266,7 @@ const myContext = contextFn({
 
 const chatGenerator = generator({
   name: "chat",
-  model: "gpt-5-mini",
+  model: "preset/fast",
   prompt: "You are a helpful assistant.",
   context: [myContext],
   history: (_input, ctx) => ctx.session.items.llm(),
@@ -321,7 +321,7 @@ Returns client data grouped by scope:
 {
   "clientData": {
     "session": { "activePlan": [...], "messageCount": 5 },
-    "user": { "preferences": { "displayName": "User", "preferredModel": "gpt-5-mini" } },
+    "user": { "preferences": { "displayName": "User", "preferredModel": "preset/fast" } },
     "project": {}
   }
 }

@@ -15,6 +15,40 @@ flow-state.dev is built from the opposite direction. Four composable block primi
 
 Every piece of logic in a flow-state.dev application is one of exactly four block kinds:
 
+## What it looks like
+
+```ts
+import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+
+const chat = generator({
+  name: "chat",
+  model: "preset/fast",
+  prompt: "You are a helpful assistant.",
+  history: (_input, ctx) => ctx.session.items.llm(),
+  user: (input) => input.message,
+  tools: [searchDocs, createArtifact],
+});
+
+const pipeline = sequencer({ name: "pipeline" })
+  .then(chat)
+  .then(trackUsage)
+  .rescue([{ when: [ModelError], block: fallback }]);
+
+export default defineFlow({
+  kind: "my-app",
+  actions: { chat: { block: pipeline, userMessage: (i) => i.message } },
+  session: { stateSchema, resources, clientData },
+})({ id: "default" });
+```
+
+That gives you: streaming over SSE with resume, conversation history, tool loops, atomic state operations, typed clientData to the client, error recovery, and lifecycle hooks. From that one definition.
+
+## What you get
+
+### Four block primitives
+
+Every piece of logic — calling an LLM, validating input, choosing a path, composing a pipeline — is one of exactly four block kinds:
+
 | Block | What it does | When to use it |
 |-------|-------------|----------------|
 | **Generator** | LLM interaction with managed tool loops and streaming output | Chat, extraction, any AI generation |

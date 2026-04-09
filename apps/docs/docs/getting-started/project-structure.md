@@ -68,7 +68,7 @@ import { z } from "zod";
 
 export const chatGen = generator({
   name: "chat",
-  model: "gpt-5-mini",
+  model: "preset/fast",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   user: (input) => input.message,

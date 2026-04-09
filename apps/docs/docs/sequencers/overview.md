@@ -28,7 +28,7 @@ const validate = handler({
 
 const agent = generator({
   name: "agent",
-  model: "gpt-5-mini",
+  model: "preset/fast",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   user: (input) => input.message,

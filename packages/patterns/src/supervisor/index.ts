@@ -198,7 +198,7 @@ export const applyReview = handler({
 function buildDefaultPlanner(name: string) {
   return generator({
     name: `${name}-planner`,
-    model: "gpt-5-mini",
+    model: "preset/fast",
     outputSchema: plannerOutputSchema,
     sequencerStateSchema: supervisorStateSchema,
     prompt: (_input, ctx) => {
@@ -242,7 +242,7 @@ function buildDefaultReviewer(
 
   return generator({
     name: `${name}-reviewer`,
-    model: "gpt-5-mini",
+    model: "preset/fast",
     outputSchema: reviewOutputSchema,
     prompt: [
       "You are a quality review assistant.",

@@ -38,7 +38,6 @@ import {
   sequencer,
   utility,
 } from "@flow-state-dev/core";
-import { tools } from "@flow-state-dev/tools";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import {
   system as memorySystem,
@@ -64,7 +63,8 @@ import {
   artifactResources,
 } from "./schemas";
 
-const MODEL_ID = "openai/gpt-5.4-mini";
+const MODEL_ID = "preset/fast";
+const THINKING_MODEL_ID = "preset/thinking-small";
 
 // Unified memory system: working memory + user-scoped episodic + semantic memory.
 const mem = memorySystem({
@@ -113,8 +113,6 @@ You have access to artifacts and can read or create them:
 - Use update-artifact when users explicitly ask you to create or save something.
 
 When users ask questions that require up-to-date information, use search.
-When a user shares a URL or you find one via search, use fetch to read the full page content.
-Use crawl when you need to ingest multiple pages from a site (e.g. documentation, knowledge bases).
 
 Be concise and focused on being useful. Create artifacts when asked — not speculatively.
 Never show artifact ids unless specifically asked.`;
@@ -126,8 +124,6 @@ When the user asks for anything that could be expressed as an artifact — code,
 Prefer building over explaining. If you can produce a concrete artifact, do so rather than describing what you would build.
 
 When users ask questions, answer them — but look for opportunities to produce something tangible. If an existing artifact is relevant, read it first with read-artifact before updating or building on it.
-
-Use fetch to read the full content of any URL. Use crawl to ingest entire documentation sites or knowledge bases as artifacts.
 
 Never show artifact ids unless specifically asked.`;
 
@@ -197,11 +193,9 @@ const autoTitle = utility.sessionTitleGenerator({
 // ---------------------------------------------------------------------------
 
 const assistantGenerator = generator({
-  name: "assistant-generator",
-  model: (_input, ctx) =>
-    (ctx.user?.state.preferredModel as string | undefined) ?? MODEL_ID,
+  name: "assistant-generator",  
   userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
-  sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
+  sessionStateSchema: z.object({ mode: modeSchema.default("chat"), thinkingStyle: z.string().optional() }),
   sessionResources: artifactResources,
 
   context: [mem.contextFormatter, artifactListContext, voiceContext] as any[],
@@ -210,7 +204,7 @@ const assistantGenerator = generator({
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
   user: (input) => input.message,
 
-  tools: [readArtifact, updateArtifact, tools.fetch(), tools.crawl({ maxPages: 20, maxDepth: 2 })],
+  tools: [readArtifact, updateArtifact],
   search: true,
   maxIterations: 10,
   outputSchema: z.string(),
@@ -219,7 +213,12 @@ const assistantGenerator = generator({
     ctx.session.state.mode === "create" ? CREATE_PROMPT : CHAT_PROMPT,
 
   emit: { messages: true, reasoning: true },
-  providerOptions: { openai: { reasoningSummary: "detailed" } },
+  model: (_input, ctx) => {
+    const userModel = ctx.user?.state.preferredModel as string | undefined;
+    if (userModel && userModel !== MODEL_ID) return userModel;
+    const style = (ctx.session.state as Record<string, unknown>).thinkingStyle as string | undefined;
+    return style === "chain-of-thought" ? THINKING_MODEL_ID : MODEL_ID;
+  },
 });
 
 // ---------------------------------------------------------------------------
@@ -340,7 +339,7 @@ const kitchenSinkFlow = defineFlow({
 
   session: {
     stateSchema: sessionStateSchema,
-    resources: artifactResources,
+    resources: { ...artifactResources, ...mem.sessionResources },
     clientData: {
       artifacts: async (ctx) => {
         const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<{
@@ -373,6 +372,7 @@ const kitchenSinkFlow = defineFlow({
 
   user: {
     stateSchema: userStateSchema,
+    resources: mem.userResources,
     clientData: {
       preferences: (ctx) => ({
         displayName: String(ctx.state.displayName ?? "Developer"),

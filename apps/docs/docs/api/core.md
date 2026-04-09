@@ -41,7 +41,7 @@ import { generator } from "@flow-state-dev/core";
 
 const myGenerator = generator({
   name: "my-gen",
-  model: "gpt-5-mini",
+  model: "preset/fast",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   outputSchema: z.object({ response: z.string() }),
@@ -190,7 +190,7 @@ import {
 
 const agent = generator({
   name: "agent",
-  model: "gpt-5-mini",
+  model: "preset/fast",
   prompt: "You can inspect and edit approved resource files.",
   tools: [readResourceContentTool(), writeResourceContentTool()],
 });

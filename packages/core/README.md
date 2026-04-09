@@ -16,7 +16,7 @@ import { z } from "zod";
 ```ts
 const agent = generator({
   name: "agent",
-  model: "gpt-5-mini",
+  model: "preset/fast",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   history: (_input, ctx) => ctx.session.items.llm(),

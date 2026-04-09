@@ -35,6 +35,9 @@ type ResolvableModel<TInput, TCtx = BlockContext> =
   | string[]
   | GeneratorModel
   | ((input: TInput, ctx: TCtx) => MaybePromise<string | string[] | GeneratorModel>);
+type ResolvableProviderOptions<TInput, TCtx = BlockContext> =
+  | Record<string, unknown>
+  | ((input: TInput, ctx: TCtx) => MaybePromise<Record<string, unknown> | undefined>);
 
 export type GeneratorSlotReference<TInput = unknown, TCtx = BlockContext> = (
   input: TInput,
@@ -215,7 +218,7 @@ export interface GeneratorConfig<
     messages?: boolean;
     toolCalls?: boolean;
   };
-  providerOptions?: Record<string, unknown>;
+  providerOptions?: ResolvableProviderOptions<TInput, TCtx>;
   /** When true (default), auto-inject tool name+description pairs into the system context. */
   describeTools?: boolean;
 }
@@ -227,6 +230,15 @@ async function resolveString<TInput, TCtx extends BlockContext>(
   input: TInput,
   ctx: TCtx
 ): Promise<string> {
+  return typeof value === "function" ? value(input, ctx) : value;
+}
+
+async function resolveProviderOptions<TInput, TCtx extends BlockContext>(
+  value: ResolvableProviderOptions<TInput, TCtx> | undefined,
+  input: TInput,
+  ctx: TCtx
+): Promise<Record<string, unknown> | undefined> {
+  if (value === undefined) return undefined;
   return typeof value === "function" ? value(input, ctx) : value;
 }
 
@@ -723,7 +735,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
   blockName: string,
   maxSteps: number,
   ctx: BlockContext,
-  prepareStep?: PrepareStepFn
+  prepareStep?: PrepareStepFn,
+  resolvedProviderOpts?: Record<string, unknown>
 ): Promise<TOutput> {
   const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const contentPartIndex = 0;
@@ -754,7 +767,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     maxTokens: config.maxTokens,
     signal: ctx.signal,
     maxSteps,
-    providerOptions: config.providerOptions,
+    providerOptions: resolvedProviderOpts,
     prepareStep
   })) {
     if (chunk.type === "reasoning_delta" && chunk.reasoningDelta !== undefined) {
@@ -1043,6 +1056,12 @@ export function generator<
         blockName
       );
 
+      const resolvedProviderOpts = await resolveProviderOptions(
+        normalizedConfig.providerOptions,
+        input,
+        ctx
+      );
+
       // Resolve provider-native tools (search + explicit providerTools).
       const resolvedProviderTools: ProviderTool[] = [
         ...(normalizedConfig.providerTools ?? [])
@@ -1164,7 +1183,8 @@ export function generator<
           blockName,
           maxSteps,
           ctx,
-          prepareStepFn
+          prepareStepFn,
+          resolvedProviderOpts
         );
       }
 
@@ -1177,7 +1197,7 @@ export function generator<
         maxTokens: normalizedConfig.maxTokens,
         signal: ctx.signal,
         maxSteps,
-        providerOptions: normalizedConfig.providerOptions,
+        providerOptions: resolvedProviderOpts,
         prepareStep: prepareStepFn
       });
 
