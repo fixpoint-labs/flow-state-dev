@@ -115,7 +115,7 @@ describe("kitchen-sink flow", () => {
       unmockedGeneratorPolicy: "warn",
     });
     // PaE pipeline requires planner/executor mocks — we only verify route selection.
-    expect(routed.selectedRoute).toBe("pae-pipeline");
+    expect(routed.selectedRoute).toBe("pae-thinking");
   });
 
   it("routes to supervisor-pipeline for supervisor style", async () => {
@@ -128,7 +128,7 @@ describe("kitchen-sink flow", () => {
       },
       unmockedGeneratorPolicy: "warn",
     });
-    expect(routed.selectedRoute).toBe("supervisor-pipeline");
+    expect(routed.selectedRoute).toBe("supervisor-thinking");
   });
 
   it("defaults to cot-pipeline when thinkingStyle is not set", async () => {
