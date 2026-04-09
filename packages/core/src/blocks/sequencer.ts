@@ -1026,9 +1026,7 @@ function createSequencer<TInput, TOutput>(
         }
       };
 
-      // The operations list includes the connectOp so that DSL chaining after
-      // connectInput works correctly (extend() picks up all operations).
-      const connected = createSequencer<TFrom, TOutput>(
+      return createSequencer<TFrom, TOutput>(
         { ...config, inputSchema: undefined },
         [connectOp, ...operations],
         rescueHandlers,
@@ -1036,18 +1034,6 @@ function createSequencer<TInput, TOutput>(
         undefined,
         accumulatedResources
       );
-
-      // Delegate .run through the original block so monkey-patches
-      // (e.g. testRouter route interception, server scope setup) flow through
-      // transparently. Access .run via property lookup at call time — not a
-      // captured reference — so server-applied wrappers are picked up.
-      const source = definition;
-      (connected as any).run = async (rawInput: TFrom, ctx: BlockContext) => {
-        const mapped = await mapper(rawInput as TFrom, ctx);
-        return source.run(mapped as any, ctx);
-      };
-
-      return connected;
     }
   });
 

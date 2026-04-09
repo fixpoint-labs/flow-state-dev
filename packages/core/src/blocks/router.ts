@@ -196,6 +196,7 @@ export function router<
           name: selected.name,
           kind: selected.kind,
           instanceId: `${selected.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          stateSchema: selected.kind === "sequencer" ? selected.config.stateSchema : undefined,
           container:
             containerConfig === undefined
               ? undefined

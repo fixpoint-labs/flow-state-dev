@@ -202,24 +202,12 @@ export function buildBlock<
         connectInput: mapper as unknown as ConnectorFn<unknown, unknown>
       };
 
-      const connected = buildBlock<ZodTypeAny, TOutputSchema, unknown, TOutput>({
+      return buildBlock<ZodTypeAny, TOutputSchema, unknown, TOutput>({
         kind,
         config: nextConfig,
         execute: internalExecute as unknown as ExecuteFn<ZodTypeAny, TOutputSchema, unknown, TOutput>,
         declaredResources: definition.declaredResources,
       });
-
-      // Delegate .run through the original block so monkey-patches
-      // (e.g. testRouter route interception, server scope setup) flow through
-      // transparently. Access .run via property lookup at call time — not a
-      // captured reference — so server-applied wrappers are picked up.
-      const source = definition;
-      connected.run = async (rawInput: unknown, ctx: BlockContext) => {
-        const mapped = await mapper(rawInput as TFrom, ctx);
-        return source.run(mapped as any, ctx) as any;
-      };
-
-      return connected;
     },
     connectOutput<TTo>(
       mapper: (output: TOutput, ctx: BlockContext) => TTo | Promise<TTo>
