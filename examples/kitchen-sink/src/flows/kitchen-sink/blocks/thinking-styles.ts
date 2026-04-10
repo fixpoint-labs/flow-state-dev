@@ -11,7 +11,7 @@
 import { generator, handler, router, sequencer, utility } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
-import { supervisor } from "@flow-state-dev/patterns/supervisor";
+import { supervisor, executableTaskSchema } from "@flow-state-dev/patterns/supervisor";
 import { z } from "zod";
 
 // -------------------------------------------------------------------------
@@ -212,36 +212,76 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   });
 
   // Supervisor — plan → dispatch workers → review → replan loop.
-  // Dedicated worker generator: task-focused prompt, silent emit to avoid
+  // Two specialized workers: researcher (read-only, search-enabled) and
+  // writer (can create/update artifacts). Silent emit on both to avoid
   // polluting the conversation stream with per-task messages.
-  const supervisorWorker = generator({
-    name: "supervisor-worker",
+
+  type TaskInput = z.infer<typeof executableTaskSchema>;
+
+  const workerUserMessage = (input: TaskInput) =>
+    input.feedback
+      ? `Task: ${input.goal}\n\nPrevious feedback: ${input.feedback}`
+      : `Task: ${input.goal}`;
+
+  // Researcher — search + read artifacts, no write access.
+  const researcherWorker = generator({
+    name: "supervisor-researcher",
+    description: "Search the web, read artifacts, gather and analyze information. Cannot create or modify artifacts.",
     model: modelId,
-    inputSchema: z.object({
-      id: z.string(),
-      goal: z.string(),
-      feedback: z.string().optional(),
-    }),
+    inputSchema: executableTaskSchema,
     outputSchema: z.string(),
     context,
-    tools,
+    tools: tools.filter((t) => t.name !== "write-artifact" && t.name !== "update-artifact"),
     sessionResources,
     search: true,
     emit: { messages: false },
     prompt: [
-      "You are a focused task executor within a supervisor workflow.",
-      "Complete the assigned task concisely and accurately.",
+      "You are a research specialist within a supervisor workflow.",
+      "Gather information, analyze content, and provide thorough findings.",
+      "You can read artifacts and search the web, but cannot create or modify artifacts.",
       "If feedback from a prior attempt is provided, address it directly.",
     ].join("\n"),
-    user: (input) =>
-      input.feedback
-        ? `Task: ${input.goal}\n\nPrevious feedback: ${input.feedback}`
-        : `Task: ${input.goal}`,
+    user: workerUserMessage,
+  });
+
+  // Writer — read + write artifacts, no search.
+  const writerWorker = generator({
+    name: "supervisor-writer",
+    description: "Create and update artifacts with well-structured content. Only one writer task should run at a time — use deps to sequence write tasks that touch the same artifact.",
+    model: modelId,
+    inputSchema: executableTaskSchema,
+    outputSchema: z.string(),
+    context,
+    tools,
+    sessionResources,
+    search: false,
+    emit: { messages: false },
+    prompt: [
+      "You are a writing specialist within a supervisor workflow.",
+      "Create and update artifacts based on research findings or user requests.",
+      "Focus on producing clear, well-structured content.",
+      "If feedback from a prior attempt is provided, address it directly.",
+    ].join("\n"),
+    user: workerUserMessage,
   });
 
   const supervisorPipeline = supervisor({
     name: "supervisor-thinking",
-    worker: supervisorWorker,
+    workers: {
+      researcher: researcherWorker,
+      writer: writerWorker,
+    },
+    plannerInstructions: [
+      "Research tasks should run first. Writer tasks should depend on the research tasks that produce the content they need.",
+      "Never schedule two writer tasks that write to the same artifact concurrently — use deps to sequence them.",
+      "When the goal requires producing a deliverable (report, document, code), always include at least one writer task to create the artifact.",
+      "Ensure to include a final task to focus on how the results from previous tasks can be distilled in a concise and high signal way.",
+    ].join("\n"),
+    reviewerInstructions: [
+      "Tasks with assignee 'writer' create or update artifacts. Judge writer tasks by whether they report successfully creating/updating an artifact — the artifact content itself is managed separately.",
+      "Tasks with assignee 'researcher' gather information. Judge them by the relevance and depth of their findings.",
+      "A task that completed its stated goal should be accepted even if the output is a brief confirmation. Not every task produces a long result.",
+    ].join("\n"),
     maxIterations: 3,
     maxConcurrency: 3,
     onSubTaskError: "skip",

@@ -68,6 +68,8 @@ export type PlannerOutput = z.infer<typeof plannerOutputSchema>;
 export const executableTaskSchema = z.object({
   id: z.string(),
   goal: z.string(),
+  assignee: z.string().optional(),
+  deps: z.array(z.string()).default([]),
   feedback: z.string().optional(),
 });
 

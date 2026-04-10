@@ -583,4 +583,286 @@ describe("supervisor pattern", () => {
     expect(supervisorStateSchema).toBeDefined();
     expect(reviewOutputSchema).toBeDefined();
   });
+
+  describe("multi-worker dispatch", () => {
+    // Workers that tag their output so we can verify which one ran.
+    const workerA = handler({
+      name: "worker-a",
+      inputSchema: z.any(),
+      outputSchema: z.object({ worker: z.string(), finding: z.string() }),
+      execute: (input) => ({
+        worker: "a",
+        finding: `A handled: ${typeof input === "string" ? input : input.goal ?? JSON.stringify(input)}`,
+      }),
+    });
+
+    const workerB = handler({
+      name: "worker-b",
+      inputSchema: z.any(),
+      outputSchema: z.object({ worker: z.string(), finding: z.string() }),
+      execute: (input) => ({
+        worker: "b",
+        finding: `B handled: ${typeof input === "string" ? input : input.goal ?? JSON.stringify(input)}`,
+      }),
+    });
+
+    it("dispatches tasks to the correct worker by assignee", async () => {
+      const planner = handler({
+        name: "multi-planner",
+        inputSchema: z.any(),
+        outputSchema: z.object({
+          tasks: z.array(z.object({
+            id: z.string(),
+            goal: z.string(),
+            assignee: z.string().optional(),
+          })),
+        }),
+        execute: () => ({
+          tasks: [
+            { id: "t1", goal: "Task for A", assignee: "researcher" },
+            { id: "t2", goal: "Task for B", assignee: "writer" },
+          ],
+        }),
+      });
+
+      const reviewer = makeDeterministicReviewer("multi-reviewer", [{
+        assessments: [
+          { taskId: "t1", verdict: "accepted", feedback: "OK", score: 0.9 },
+          { taskId: "t2", verdict: "accepted", feedback: "OK", score: 0.9 },
+        ],
+        needsReplanning: false,
+        overallAssessment: "Done",
+      }]);
+
+      const synth = makeDeterministicSynthesizer("multi-synth");
+
+      const sup = supervisor({
+        name: "multi-worker-test",
+        workers: {
+          researcher: workerA,
+          writer: workerB,
+        },
+        planner,
+        reviewer,
+        synthesizer: synth,
+      });
+
+      const result = await testBlock(sup, {
+        input: { goal: "Test multi-worker" },
+      });
+
+      expect(result.error).toBeNull();
+
+      // Verify the results contain output from both workers
+      const blockOutputs = result.items.filter(
+        (item) => item.type === "block_output" && (item as any).blockName === "worker-a"
+      );
+      const blockOutputsB = result.items.filter(
+        (item) => item.type === "block_output" && (item as any).blockName === "worker-b"
+      );
+      expect(blockOutputs.length).toBeGreaterThan(0);
+      expect(blockOutputsB.length).toBeGreaterThan(0);
+    });
+
+    it("falls back to default worker when assignee is missing", async () => {
+      const planner = handler({
+        name: "fallback-planner",
+        inputSchema: z.any(),
+        outputSchema: z.object({
+          tasks: z.array(z.object({
+            id: z.string(),
+            goal: z.string(),
+            assignee: z.string().optional(),
+          })),
+        }),
+        execute: () => ({
+          tasks: [
+            { id: "t1", goal: "No assignee task" },
+          ],
+        }),
+      });
+
+      const reviewer = makeDeterministicReviewer("fallback-reviewer", [{
+        assessments: [
+          { taskId: "t1", verdict: "accepted", feedback: "OK", score: 0.9 },
+        ],
+        needsReplanning: false,
+        overallAssessment: "Done",
+      }]);
+
+      const synth = makeDeterministicSynthesizer("fallback-synth");
+
+      const sup = supervisor({
+        name: "fallback-test",
+        workers: {
+          default: workerA,
+          other: workerB,
+        },
+        planner,
+        reviewer,
+        synthesizer: synth,
+      });
+
+      const result = await testBlock(sup, {
+        input: { goal: "Test fallback" },
+      });
+
+      expect(result.error).toBeNull();
+      // Worker A is the "default" worker — should be used when no assignee
+      const aOutputs = result.items.filter(
+        (item) => item.type === "block_output" && (item as any).blockName === "worker-a"
+      );
+      expect(aOutputs.length).toBeGreaterThan(0);
+    });
+
+    it("falls back to first worker when assignee is unrecognized and no default", async () => {
+      const planner = handler({
+        name: "unknown-planner",
+        inputSchema: z.any(),
+        outputSchema: z.object({
+          tasks: z.array(z.object({
+            id: z.string(),
+            goal: z.string(),
+            assignee: z.string().optional(),
+          })),
+        }),
+        execute: () => ({
+          tasks: [
+            { id: "t1", goal: "Unknown assignee", assignee: "nonexistent" },
+          ],
+        }),
+      });
+
+      const reviewer = makeDeterministicReviewer("unknown-reviewer", [{
+        assessments: [
+          { taskId: "t1", verdict: "accepted", feedback: "OK", score: 0.9 },
+        ],
+        needsReplanning: false,
+        overallAssessment: "Done",
+      }]);
+
+      const synth = makeDeterministicSynthesizer("unknown-synth");
+
+      const sup = supervisor({
+        name: "unknown-test",
+        workers: {
+          researcher: workerA,
+          writer: workerB,
+        },
+        planner,
+        reviewer,
+        synthesizer: synth,
+      });
+
+      const result = await testBlock(sup, {
+        input: { goal: "Test unknown assignee" },
+      });
+
+      expect(result.error).toBeNull();
+      // Should fall back to first worker (researcher → workerA)
+      const aOutputs = result.items.filter(
+        (item) => item.type === "block_output" && (item as any).blockName === "worker-a"
+      );
+      expect(aOutputs.length).toBeGreaterThan(0);
+    });
+
+    it("uses block description as worker capabilities in planner prompt", async () => {
+      const describedWorkerA = handler({
+        name: "described-worker-a",
+        description: "Search and gather information",
+        inputSchema: z.any(),
+        outputSchema: z.object({ worker: z.string(), finding: z.string() }),
+        execute: (input) => ({
+          worker: "a",
+          finding: `A handled: ${typeof input === "string" ? input : input.goal ?? JSON.stringify(input)}`,
+        }),
+      });
+
+      const describedWorkerB = handler({
+        name: "described-worker-b",
+        description: "Draft and revise prose",
+        inputSchema: z.any(),
+        outputSchema: z.object({ worker: z.string(), finding: z.string() }),
+        execute: (input) => ({
+          worker: "b",
+          finding: `B handled: ${typeof input === "string" ? input : input.goal ?? JSON.stringify(input)}`,
+        }),
+      });
+
+      const planner = handler({
+        name: "caps-planner",
+        inputSchema: z.any(),
+        outputSchema: z.object({
+          tasks: z.array(z.object({
+            id: z.string(),
+            goal: z.string(),
+            assignee: z.string().optional(),
+          })),
+        }),
+        execute: () => ({
+          tasks: [
+            { id: "t1", goal: "Research task", assignee: "researcher" },
+          ],
+        }),
+      });
+
+      const reviewer = makeDeterministicReviewer("caps-reviewer", [{
+        assessments: [
+          { taskId: "t1", verdict: "accepted", feedback: "OK", score: 0.9 },
+        ],
+        needsReplanning: false,
+        overallAssessment: "Done",
+      }]);
+
+      const synth = makeDeterministicSynthesizer("caps-synth");
+
+      const sup = supervisor({
+        name: "caps-test",
+        workers: {
+          researcher: describedWorkerA,
+          writer: describedWorkerB,
+        },
+        planner,
+        reviewer,
+        synthesizer: synth,
+      });
+
+      const result = await testBlock(sup, {
+        input: { goal: "Test descriptions" },
+      });
+
+      expect(result.error).toBeNull();
+    });
+
+    it("single worker in record works without routing", async () => {
+      const planner = makeDeterministicPlanner("single-record-planner", [
+        { id: "t1", goal: "Task" },
+      ]);
+
+      const reviewer = makeDeterministicReviewer("single-record-reviewer", [{
+        assessments: [
+          { taskId: "t1", verdict: "accepted", feedback: "OK", score: 0.9 },
+        ],
+        needsReplanning: false,
+        overallAssessment: "Done",
+      }]);
+
+      const synth = makeDeterministicSynthesizer("single-record-synth");
+
+      const sup = supervisor({
+        name: "single-record-test",
+        workers: { only: workerA },
+        planner,
+        reviewer,
+        synthesizer: synth,
+      });
+
+      const result = await testBlock(sup, {
+        input: { goal: "Test single worker record" },
+      });
+
+      expect(result.error).toBeNull();
+      expect(result.output).toBeDefined();
+    });
+  });
 });

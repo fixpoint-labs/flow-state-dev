@@ -32,6 +32,7 @@ export {
   supervisorStateSchema,
   reviewOutputSchema,
   plannerOutputSchema,
+  executableTaskSchema,
   captureGoal,
   updatePlanState,
   applyReview,
@@ -41,6 +42,8 @@ export type {
   SupervisorState,
   ReviewOutput,
   PlannerOutput,
+  ExecutableTask,
+  WorkersConfig,
 } from "./supervisor";
 export {
   BasePlanSchema,

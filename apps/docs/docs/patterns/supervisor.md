@@ -55,7 +55,7 @@ const researchWorker = generator({
 
 const researchSupervisor = supervisor({
   name: "research",
-  worker: researchWorker,
+  workers: researchWorker,
   reviewCriteria: [
     "Sources are specific and relevant",
     "Summary is substantive (not vague)",
@@ -82,6 +82,42 @@ const flow = defineFlow({
   session: { stateSchema: z.object({}) },
 });
 ```
+
+## Multi-worker teams
+
+When a single worker isn't enough, pass a named map. The planner sees the worker names and capabilities, assigns each task to a specific worker, and the supervisor routes dispatch accordingly:
+
+```ts
+import { supervisor } from "@flow-state-dev/patterns";
+import { generator } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const searchWorker = generator({
+  name: "searcher",
+  description: "Search the web and gather raw information",
+  // ...
+});
+
+const analysisWorker = generator({
+  name: "analyst",
+  description: "Analyze data and draw conclusions",
+  // ...
+});
+
+const researchTeam = supervisor({
+  name: "research-team",
+  workers: {
+    searcher: searchWorker,
+    analyst: analysisWorker,
+    writer: writerWorker,
+  },
+  reviewCriteria: ["Thorough", "Well-sourced"],
+  maxIterations: 3,
+  maxConcurrency: 4,
+});
+```
+
+The default planner's system prompt automatically includes the available worker names and their `description` fields, so it knows what to assign. If a task's `assignee` doesn't match any worker name, the supervisor falls back to a worker named `"default"` (if present), otherwise the first worker in the map.
 
 ## Worker input shape
 
@@ -126,7 +162,7 @@ The planner can optionally set an `assignee` on each task — a free-form string
 }
 ```
 
-The `assignee` field has no effect on routing — all tasks go to the same worker block. It's purely a labeling mechanism for observability.
+When using a single worker, `assignee` is a labeling mechanism for observability. When using a `workers` map, `assignee` is load-bearing — it determines which named worker handles the task. If the assignee doesn't match any worker name, the supervisor falls back to a worker named `"default"`, then to the first worker in the map.
 
 ## Task statuses
 
@@ -152,8 +188,14 @@ The `needs-revision` status feeds directly into the replan loop: tasks with this
 supervisor({
   name: string;
 
-  // Worker block — receives ExecutableTask, returns any result.
-  worker: BlockDefinition;
+  // Named worker blocks. Single block or a map of named workers.
+  // When a map is provided, the planner assigns tasks via `assignee`
+  // and the supervisor dispatches to the matching worker.
+  // Each worker's `description` field is included in the planner prompt.
+  workers: BlockDefinition | Record<string, BlockDefinition>;
+
+  // @deprecated — use `workers` instead. Still accepted for backward compat.
+  worker?: BlockDefinition;
 
   // Strings the reviewer uses as evaluation criteria.
   // Included verbatim in the reviewer's system prompt.
@@ -215,6 +257,7 @@ import type {
   PlannerOutput,
   ExecutableTask,
   SubTaskErrorStrategy,
+  WorkersConfig,
 } from "@flow-state-dev/patterns";
 ```
 

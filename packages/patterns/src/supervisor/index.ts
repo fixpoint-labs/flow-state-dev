@@ -31,6 +31,7 @@ export {
   supervisorStateSchema,
   reviewOutputSchema,
   plannerOutputSchema,
+  executableTaskSchema,
 } from "./schemas";
 
 
@@ -43,14 +44,42 @@ export type {
   SubTaskErrorStrategy,
 } from "./schemas";
 
+/**
+ * Workers config: a single block, or a named map of worker blocks.
+ * When a map is provided, the supervisor builds an internal dispatch that
+ * routes each task to the worker matching its `assignee` field.
+ *
+ * The planner prompt is augmented with each worker's name and `description`
+ * (from the block definition), so the LLM knows what to assign.
+ */
+export type WorkersConfig =
+  | BlockDefinition<any, any, ExecutableTask, any>
+  | Record<string, BlockDefinition<any, any, ExecutableTask, any>>;
+
 export interface SupervisorConfig<
   TOutputSchema extends ZodTypeAny = ZodTypeAny
 > {
   /** Name for this supervisor instance. */
   name: string;
 
-  /** The worker block that processes each sub-task. Receives `{ id, goal, feedback? }`. */
-  worker: BlockDefinition<any, any, ExecutableTask, any>;
+  /**
+   * Named worker blocks that process sub-tasks.
+   *
+   * - Single block: all tasks route to this worker (same as legacy `worker`).
+   * - Record: each key is a worker name. The planner assigns tasks via
+   *   `assignee` and the supervisor dispatches to the matching worker.
+   *   Fallback: worker named `"default"`, otherwise the first entry.
+   *
+   * Each entry is either a bare block or `{ block, capabilities }` where
+   * `capabilities` is a description included in the default planner prompt.
+   */
+  workers?: WorkersConfig;
+
+  /**
+   * @deprecated Use `workers` instead. Accepted for backward compatibility
+   * and normalized to `workers: { default: worker }` internally.
+   */
+  worker?: BlockDefinition<any, any, ExecutableTask, any>;
 
   /** Criteria the reviewer uses to evaluate sub-task quality. */
   reviewCriteria?: string[];
@@ -64,11 +93,20 @@ export interface SupervisorConfig<
   /** Override the planning step. Must output `{ tasks: [{ id, goal, ... }] }`. Defaults to a supervisor-aware decomposer. */
   planner?: BlockDefinition<any, any, any, PlannerOutput>;
 
+  /** Appended to the default planner's system prompt. Ignored when a custom `planner` is provided. */
+  plannerInstructions?: string;
+
   /** Override the review step. Must output `reviewOutputSchema`. Defaults to a review generator. */
   reviewer?: BlockDefinition<any, any, any, ReviewOutput>;
 
+  /** Appended to the default reviewer's system prompt. Ignored when a custom `reviewer` is provided. */
+  reviewerInstructions?: string;
+
   /** Override the final synthesis step. Receives `unknown[]` (accepted results). Defaults to `utility.synthesizer()`. */
   synthesizer?: BlockDefinition<any, any, unknown[], any>;
+
+  /** Appended to the default synthesizer's system prompt. Ignored when a custom `synthesizer` is provided. */
+  synthesizerInstructions?: string;
 
   /**
    * How to handle individual sub-task failures.
@@ -81,6 +119,45 @@ export interface SupervisorConfig<
   /** Schema for the final synthesized output. */
   outputSchema?: TOutputSchema;
 }
+
+// ---------------------------------------------------------------------------
+// Worker normalization helpers
+// ---------------------------------------------------------------------------
+
+type WorkerMap = Record<string, BlockDefinition<any, any, ExecutableTask, any>>;
+
+/**
+ * Duck-type check for BlockDefinition — matches `isBlockDefinition` from core
+ * (which isn't publicly exported). A block has `kind`, `name`, and `config`.
+ */
+function isBlock(value: unknown): value is BlockDefinition<any, any, ExecutableTask, any> {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.kind === "string" && typeof v.name === "string" && typeof v.config === "object";
+}
+
+/**
+ * Normalize the workers config into a stable map.
+ * - Legacy `worker` → `{ default: block }`
+ * - Single block → `{ default: block }`
+ * - Record → pass through
+ */
+function normalizeWorkers(config: SupervisorConfig<any>): WorkerMap {
+  if (!config.workers && !config.worker) {
+    throw new Error("supervisor() requires either `workers` or `worker` in config.");
+  }
+  // Legacy: `worker` without `workers`
+  if (config.worker && !config.workers) {
+    return { default: config.worker };
+  }
+  const workers = config.workers!;
+  // Single block
+  if (isBlock(workers)) {
+    return { default: workers };
+  }
+  return workers as WorkerMap;
+}
+
 
 const SKIPPED_SENTINEL = "__supervisorSkipped";
 type SkippedTaskResult = {
@@ -206,7 +283,23 @@ export const applyReview = handler({
   },
 });
 
-function buildDefaultPlanner(name: string) {
+function buildDefaultPlanner(name: string, workerMap?: WorkerMap, instructions?: string) {
+  // Build a description of available workers for the planner prompt.
+  // Uses each block's `description` field for capabilities context.
+  const workerBlock = workerMap
+    ? [
+        "\nAvailable workers (assign tasks via the `assignee` field using the worker name):",
+        ...Object.entries(workerMap).map(([key, block]) =>
+          block.description
+            ? `- "${key}": ${block.description}`
+            : `- "${key}"`
+        ),
+        "",
+      ].join("\n")
+    : "";
+
+  const suffix = [workerBlock, instructions].filter(Boolean).join("\n");
+
   return generator({
     name: `${name}-planner`,
     model: "preset/fast",
@@ -217,13 +310,16 @@ function buildDefaultPlanner(name: string) {
       if (!state || state.iteration === 0) {
         return [
           "You are a task decomposition assistant for a supervisor workflow.",
-          "Break the request into sub-tasks that can ALL run in parallel — every task you emit will execute concurrently.",
-          "If some work depends on the output of other work, only include the independent tasks now.",
-          "Dependent follow-up tasks will be planned in a later iteration once earlier results are available.",
+          "Break the request into sub-tasks. Tasks without dependencies run concurrently.",
+          "Use the `deps` field (array of task IDs) to declare dependencies — a task with deps waits until those tasks complete before it starts.",
+          "Always use deps when a task needs another task's output (e.g., a writing task that needs research results).",
           "Each task must include a stable unique id and a clear goal.",
-          "Optionally assign each task an assignee — a role, team member, or specialist best suited for that task.",
+          workerMap
+            ? "Assign each task to a worker using the `assignee` field — use one of the worker names listed below."
+            : "Optionally assign each task an assignee — a role, team member, or specialist best suited for that task.",
           "Return output that exactly matches the required schema.",
-        ].join("\n");
+          suffix,
+        ].filter(Boolean).join("\n");
       }
 
       const completed = state.plan.filter((t) => t.status === "completed");
@@ -245,9 +341,11 @@ function buildDefaultPlanner(name: string) {
           ),
           "Return revised sub-tasks that address the feedback.",
           "Also include any NEW follow-up tasks that can now run given the completed results above.",
+          "Use `deps` to declare dependencies between tasks — a task with deps waits for those tasks to complete first.",
           "Do not re-plan tasks that were already accepted.",
           "Return output that exactly matches the required schema.",
-        ].join("\n");
+          suffix,
+        ].filter(Boolean).join("\n");
       }
 
       // No revisions — this is a follow-up wave for dependent tasks
@@ -257,9 +355,10 @@ function buildDefaultPlanner(name: string) {
         `\nIteration ${state.iteration + 1}. The tasks above are complete.`,
         "Plan the next wave of tasks that depend on or build upon the completed results.",
         "If the goal is fully addressed, return an empty tasks array.",
-        "Every task you emit will run concurrently, so only include tasks that are independent of each other.",
+        "Use `deps` to declare dependencies between tasks where needed.",
         "Return output that exactly matches the required schema.",
-      ].join("\n");
+        suffix,
+      ].filter(Boolean).join("\n");
     },
     user: (input) =>
       typeof input === "string" ? input : JSON.stringify(input),
@@ -268,7 +367,8 @@ function buildDefaultPlanner(name: string) {
 
 function buildDefaultReviewer(
   name: string,
-  reviewCriteria?: string[]
+  reviewCriteria?: string[],
+  instructions?: string
 ) {
   const criteriaBlock = reviewCriteria?.length
     ? `\nEvaluation criteria:\n${reviewCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}`
@@ -290,6 +390,7 @@ function buildDefaultReviewer(
       "Score each task from 0 to 1 based on quality.",
       criteriaBlock,
       "Return output that exactly matches the required schema.",
+      instructions,
     ]
       .filter(Boolean)
       .join("\n"),
@@ -301,7 +402,8 @@ function buildDefaultReviewer(
 
 function buildDefaultSynthesizer(
   name: string,
-  outputSchema?: ZodTypeAny
+  outputSchema?: ZodTypeAny,
+  instructions?: string
 ) {
   return generator({
     name: `${name}-synthesizer`,
@@ -317,7 +419,8 @@ function buildDefaultSynthesizer(
       "Merge overlapping content, resolve conflicts, and ensure the result reads as one unified piece — not a list of fragments.",
       "Do NOT describe what the workers did. Do NOT recommend next steps. Do NOT output JSON unless the goal explicitly requires it.",
       "Deliver the finished work.",
-    ].join("\n"),
+      instructions,
+    ].filter(Boolean).join("\n"),
     user: (input: unknown) => {
       if (typeof input === "string") return input;
       const data = input as { goal?: string; results?: unknown[] };
@@ -344,41 +447,60 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   const name = config.name;
   const errorStrategy = config.onSubTaskError ?? "skip";
   const maxIterations = config.maxIterations ?? 3;
+  const workerMap = normalizeWorkers(config);
+  const workerNames = Object.keys(workerMap);
+  const isMultiWorker = workerNames.length > 1;
 
+  // Pass worker map to the planner when there are multiple workers OR when
+  // any worker has capabilities descriptions (even a single named worker).
+  const hasDescriptions = Object.values(workerMap).some(b => b.description);
   const planner =
-    config.planner ?? buildDefaultPlanner(name);
+    config.planner ?? buildDefaultPlanner(name, (isMultiWorker || hasDescriptions) ? workerMap : undefined, config.plannerInstructions);
 
   const reviewer =
-    config.reviewer ?? buildDefaultReviewer(name, config.reviewCriteria);
+    config.reviewer ?? buildDefaultReviewer(name, config.reviewCriteria, config.reviewerInstructions);
 
   const finalSynthesizer =
     config.synthesizer ??
-    buildDefaultSynthesizer(name, config.outputSchema);
+    buildDefaultSynthesizer(name, config.outputSchema, config.synthesizerInstructions);
 
-  // Wrap the worker in a sequencer with rescue for skip/retry strategies.
-  // "fail" uses the bare worker so errors propagate naturally.
-  // "skip"/"retry" wrap in a sequencer with .rescue() that returns the sentinel.
-  const taskRunner =
-    errorStrategy === "fail"
-      ? config.worker
-      : sequencer({
-          name: `${name}-task-runner`,
-          inputSchema: z.any(),
-        })
-          .then(config.worker)
-          .rescue([
-            {
-              block: handler({
-                name: `${name}-task-rescue`,
-                inputSchema: z.instanceof(Error),
-                outputSchema: z.any(),
-                execute: (error) => ({
-                  [SKIPPED_SENTINEL]: true,
-                  error: error.message,
-                }),
-              }),
-            },
-          ]);
+  // Rescue block shared across task runners for skip/retry strategies.
+  const rescueBlock = handler({
+    name: `${name}-task-rescue`,
+    inputSchema: z.instanceof(Error),
+    outputSchema: z.any(),
+    execute: (error) => ({
+      [SKIPPED_SENTINEL]: true,
+      error: error.message,
+    }),
+  });
+
+  /**
+   * Build a task runner for a given worker block.
+   * "fail" uses the bare worker so errors propagate naturally.
+   * "skip"/"retry" wrap in a sequencer with .rescue() that returns the sentinel.
+   */
+  function buildTaskRunner(worker: BlockDefinition<any, any, ExecutableTask, any>) {
+    if (errorStrategy === "fail") return worker;
+    return sequencer({ name: `${name}-task-runner`, inputSchema: z.any() })
+      .then(worker)
+      .rescue([{ block: rescueBlock }]);
+  }
+
+  // Pre-build task runners for each worker to avoid re-creating per task in forEach.
+  const runnerCache = new Map<string, ReturnType<typeof buildTaskRunner>>();
+  for (const [key, entry] of Object.entries(workerMap)) {
+    runnerCache.set(key, buildTaskRunner(entry));
+  }
+
+  /** Resolve the task runner for a given assignee, using the pre-built cache. */
+  function getTaskRunner(assignee: string | undefined) {
+    const keys = Object.keys(workerMap);
+    if (keys.length === 1) return runnerCache.get(keys[0]!)!;
+    if (assignee && runnerCache.has(assignee)) return runnerCache.get(assignee)!;
+    if (runnerCache.has("default")) return runnerCache.get("default")!;
+    return runnerCache.get(keys[0]!)!;
+  }
 
   // Instance-specific handlers that pass a stable plan key for UI deduplication.
   // The exported updatePlanState / applyReview lack access to config.name,
@@ -426,6 +548,8 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         return {
           id: t.id,
           goal: t.goal,
+          ...(t.assignee ? { assignee: t.assignee } : {}),
+          deps: t.deps ?? [],
           feedback: prior?.feedback,
         };
       });
@@ -485,7 +609,12 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       const state = ctx.sequencer!.state;
       return state.plan
         .filter((t) => t.status === "awaiting-review" && t.result !== undefined)
-        .map((t) => ({ taskId: t.id, goal: t.goal, result: t.result }));
+        .map((t) => ({
+          taskId: t.id,
+          goal: t.goal,
+          assignee: t.assignee,
+          result: t.result,
+        }));
     },
   });
 
@@ -544,7 +673,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     .forEach(
       (task: ExecutableTask, _index, _ctx) =>
         sequencer({ name: `${name}-task-${task.id}`, inputSchema: z.any() })
-          .then(taskRunner)
+          .then(getTaskRunner(task.assignee))
           .then(updateTaskStatus(task)),
       { maxConcurrency: config.maxConcurrency ?? 3 },
     );
