@@ -144,6 +144,21 @@ Update policy:
 
 
 
+### BP-013: Use `connectInput` and `connectOutput` inside the router, not on blocks directly
+
+- Status: Active
+- Date: 2026-04-09
+- Rule:
+  - When a router selects a block that requires input transformation, perform the transformation inside the router's `execute` function using `connectInput`, not by pre-connecting the block at definition time.
+  - Return `block.connectInput(() => transformedInput)` (using closure over the router's `input`) rather than declaring a permanently-adapted variant of the block.
+  - `connectInput` works natively on all block kinds including sequencers — no wrapper block is created; the full interface (`.then()`, `.tap()`, etc.) is preserved.
+  - If a router's selected block produces output in a shape the router's output schema doesn't expect, use `connectOutput` on the selected block inside `execute` to adapt it.
+  - Pre-connecting blocks at definition time (outside a router) is appropriate only when the block is purpose-built as a reusable adapter for a specific caller and the input contract belongs to the block itself, not to a runtime routing decision.
+- Why:
+  - Performing input adaptation inside the router keeps each block's schema generic and reusable. Pre-connecting forces an arbitrary caller's schema into the block definition, coupling it to one usage site.
+  - Using closure over `input` inside `execute` avoids repeating the input type annotation — the router already knows it.
+  - Returning a connected block from `execute` works cleanly with the router's route validation (matching is by name) and with `testRouter` (which uses `onRouteSelected` hooks, not object identity).
+
 ## Template For New Entries
 
 ```md
