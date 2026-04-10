@@ -130,15 +130,18 @@ function buildTaskToolMap(
       const plan = currSnap.data as Plan;
       const prevPlan = prevSnap.data as Plan;
 
-      // Find the task that transitioned from pending/in_progress → completed/failed.
-      // findTask never emits a snapshot, so "in-progress" never appears in snapshots.
+      // Find the task that transitioned from a running state to a terminal/review state.
+      // Plan-and-execute: pending/in-progress → completed/failed
+      // Supervisor: in-progress → awaiting-review/completed/failed/skipped
+      const terminalStatuses = new Set(["completed", "failed", "skipped", "awaiting-review"]);
+      const runningStatuses = new Set(["pending", "in-progress"]);
       const prevById = new Map(prevPlan.tasks.map((t) => [t.id, t]));
       let executedTaskId: string | undefined;
       for (const task of plan.tasks) {
         const prev = prevById.get(task.id);
         if (
-          (prev?.status === "pending" || prev?.status === "in-progress") &&
-          (task.status === "completed" || task.status === "failed")
+          prev && runningStatuses.has(prev.status) &&
+          terminalStatuses.has(task.status)
         ) {
           executedTaskId = task.id;
           break;
