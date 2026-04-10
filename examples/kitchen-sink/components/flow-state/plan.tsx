@@ -9,17 +9,20 @@ import {
   CheckCircle2Icon,
   ChevronRightIcon,
   CircleIcon,
+  EyeIcon,
   Loader2Icon,
   MinusCircleIcon,
   WrenchIcon,
   XCircleIcon,
 } from "lucide-react";
 import { useMemo } from "react";
+import Markdown from "react-markdown";
 import { useSessionItems } from "./session-items-context";
 
 type PlanTaskStatus =
   | "pending"
-  | "in_progress"
+  | "in-progress"
+  | "awaiting-review"
   | "completed"
   | "failed"
   | "skipped"
@@ -29,6 +32,7 @@ type PlanTaskStatus =
 type PlanTask = {
   id: string;
   goal: string;
+  assignee?: string;
   status: PlanTaskStatus;
   result?: unknown;
   error?: string;
@@ -51,7 +55,8 @@ type StatusConfig = {
 
 const STATUS_CONFIG: Record<PlanTaskStatus, StatusConfig> = {
   pending: { icon: CircleIcon, iconClassName: "text-muted-foreground", label: "Pending" },
-  in_progress: { icon: Loader2Icon, iconClassName: "text-blue-500 animate-spin", label: "In progress" },
+  "in-progress": { icon: Loader2Icon, iconClassName: "text-blue-500 animate-spin", label: "In progress" },
+  "awaiting-review": { icon: EyeIcon, iconClassName: "text-cyan-500", label: "Awaiting review" },
   completed: { icon: CheckCircle2Icon, iconClassName: "text-green-500", goalClassName: "text-muted-foreground line-through", label: "Completed" },
   failed: { icon: XCircleIcon, iconClassName: "text-destructive", goalClassName: "text-destructive", label: "Failed" },
   skipped: { icon: MinusCircleIcon, iconClassName: "text-muted-foreground", goalClassName: "text-muted-foreground line-through", label: "Skipped" },
@@ -61,6 +66,7 @@ const STATUS_CONFIG: Record<PlanTaskStatus, StatusConfig> = {
 
 function getResultSummary(result: unknown): string | undefined {
   if (result === null || result === undefined) return undefined;
+  if (typeof result === "string") return result;
   if (typeof result === "object" && "summary" in (result as object)) {
     const s = (result as { summary: unknown }).summary;
     return typeof s === "string" ? s : undefined;
@@ -125,13 +131,13 @@ function buildTaskToolMap(
       const prevPlan = prevSnap.data as Plan;
 
       // Find the task that transitioned from pending/in_progress → completed/failed.
-      // findTask never emits a snapshot, so "in_progress" never appears in snapshots.
+      // findTask never emits a snapshot, so "in-progress" never appears in snapshots.
       const prevById = new Map(prevPlan.tasks.map((t) => [t.id, t]));
       let executedTaskId: string | undefined;
       for (const task of plan.tasks) {
         const prev = prevById.get(task.id);
         if (
-          (prev?.status === "pending" || prev?.status === "in_progress") &&
+          (prev?.status === "pending" || prev?.status === "in-progress") &&
           (task.status === "completed" || task.status === "failed")
         ) {
           executedTaskId = task.id;
@@ -165,10 +171,10 @@ export function Plan({ item }: { item: ComponentItem }) {
   return (
     <div className="not-prose my-2 rounded-md border bg-card p-3 text-card-foreground">
       <div className="mb-2 flex items-start justify-between gap-2">
-        <p className="text-sm font-medium leading-snug">Steps</p>
+        <p className="text-sm font-medium leading-snug">Tasks</p>
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
           {completedCount}/{plan.tasks.length}
-          {plan.iteration !== undefined && plan.iteration > 0 && ` · pass ${plan.iteration + 1}`}
+          {plan.iteration !== undefined && plan.iteration > 0 && ` · pass ${plan.iteration}`}
         </span>
       </div>
       <ul className="space-y-1.5">
@@ -176,6 +182,27 @@ export function Plan({ item }: { item: ComponentItem }) {
           <PlanTaskRow key={task.id} task={task} toolCalls={taskToolMap.get(task.id)} />
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** Renders markdown at text-xs scale with headings normalized to the same size. */
+const headingComponent = ({ children }: { children?: React.ReactNode }) => (
+  <p className="font-semibold">{children}</p>
+);
+const markdownComponents = {
+  h1: headingComponent,
+  h2: headingComponent,
+  h3: headingComponent,
+  h4: headingComponent,
+  h5: headingComponent,
+  h6: headingComponent,
+};
+
+function TaskMarkdown({ text }: { text: string }) {
+  return (
+    <div className="prose-none text-xs leading-snug text-muted-foreground [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_li]:my-0.5 [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[10px] [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-muted [&_pre]:p-2 [&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-2 [&_blockquote]:italic">
+      <Markdown components={markdownComponents}>{text}</Markdown>
     </div>
   );
 }
@@ -192,12 +219,18 @@ function PlanTaskRow({
   const summary = getResultSummary(task.result);
   const hasDetails = summary || (toolCalls && toolCalls.length > 0);
 
+  const assigneeLabel = task.assignee ? (
+    <span className="ml-1 shrink-0 text-[10px] font-medium text-muted-foreground/60">
+      [{task.assignee}]
+    </span>
+  ) : null;
+
   if (!hasDetails) {
     return (
       <li className="flex items-start gap-2">
         <Icon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", config.iconClassName)} aria-hidden="true" />
         <span className={cn("text-xs leading-snug", config.goalClassName)}>
-          {task.goal}
+          {task.goal}{assigneeLabel}
           {task.error && <span className="ml-1 opacity-60">— {task.error}</span>}
         </span>
       </li>
@@ -210,7 +243,7 @@ function PlanTaskRow({
         <summary className="flex cursor-pointer list-none items-start gap-2">
           <Icon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", config.iconClassName)} aria-hidden="true" />
           <span className={cn("flex-1 text-xs leading-snug", config.goalClassName)}>
-            {task.goal}
+            {task.goal}{assigneeLabel}
           </span>
           <ChevronRightIcon
             className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground/50 transition-transform group-open:rotate-90"
@@ -226,7 +259,7 @@ function PlanTaskRow({
             </ul>
           )}
           {summary && (
-            <p className="text-xs leading-snug text-muted-foreground">{summary}</p>
+            <TaskMarkdown text={summary} />
           )}
         </div>
       </details>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   FlowProvider,
   useFlow,
@@ -319,6 +319,41 @@ interface ChatPanelProps {
   onSuggestionClick: (text: string) => void;
 }
 
+/** Memoized conversation body — only re-renders when items/streaming/error change, not on typing. */
+const ConversationBody = memo(function ConversationBody({
+  items,
+  isStreaming,
+  isLoading,
+  error,
+}: {
+  items: import("@flow-state-dev/core/items").OutputItem[];
+  isStreaming: boolean;
+  isLoading: boolean;
+  error: { message: string } | null;
+}) {
+  return (
+    <>
+      <ScrollOnNewRequest items={items} />
+      <SessionItemsProvider value={items}>
+        <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
+          {items.length === 0 && !isLoading && (
+            <ConversationEmptyState
+              title="Kitchen Sink"
+              description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use."
+            />
+          )}
+          <RequestGroupRenderer items={items} isStreaming={isStreaming} />
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <span>{error.message}</span>
+            </div>
+          )}
+        </ConversationContent>
+      </SessionItemsProvider>
+    </>
+  );
+});
+
 function ChatPanel({
   message,
   mode,
@@ -337,23 +372,12 @@ function ChatPanel({
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <Conversation className="min-h-0 flex-1">
-        <ScrollOnNewRequest items={session.items} />
-        <SessionItemsProvider value={session.items}>
-        <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
-          {session.items.length === 0 && !session.isLoading && (
-            <ConversationEmptyState
-              title="Kitchen Sink"
-              description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use."
-            />
-          )}
-          <RequestGroupRenderer items={session.items} isStreaming={session.isStreaming} />
-          {session.error && (
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              <span>{session.error.message}</span>
-            </div>
-          )}
-        </ConversationContent>
-        </SessionItemsProvider>
+        <ConversationBody
+          items={session.items}
+          isStreaming={session.isStreaming}
+          isLoading={session.isLoading}
+          error={session.error}
+        />
         <ConversationScrollButton />
       </Conversation>
 

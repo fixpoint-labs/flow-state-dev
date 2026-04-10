@@ -159,6 +159,17 @@ Update policy:
   - Using closure over `input` inside `execute` avoids repeating the input type annotation — the router already knows it.
   - Returning a connected block from `execute` works cleanly with the router's route validation (matching is by name) and with `testRouter` (which uses `onRouteSelected` hooks, not object identity).
 
+### BP-014: Handlers must never return input as output
+
+- Status: Active
+- Date: 2026-04-10
+- Rule:
+  - A handler's `execute` must never `return input` verbatim.
+  - If the block produces no meaningful output, use `.tap()` (per BP-012).
+  - If the block transforms input, return the transformation — not the original `input`.
+- Why:
+  - Returning `input` pollutes the items log with redundant echoes of data already present in prior items. Items should contain meaningful outputs (LLM responses, structured results), not passthrough copies. This is a generalization of BP-012: even when a handler is not state-mutation-only, echoing input as output is never correct behavior.
+
 ## Template For New Entries
 
 ```md

@@ -60,6 +60,10 @@ const myGenerator = generator({
 });
 ```
 
+**Emit config:**
+
+- `emit?: false | { reasoning?: boolean; messages?: boolean | 'reasoning'; toolCalls?: boolean }` — Control which items the generator emits to the client stream. `false` suppresses everything. Individual flags default to `true`. Set `messages: 'reasoning'` to remap assistant text as reasoning items. When `messages` is `false` but tools are present, streaming is still used for tool call status events.
+
 **Search config:**
 
 - `search?: boolean | GeneratorSearchConfig` — Enable provider-native web search. `true` uses defaults; pass a config object for fine-grained control (`maxUses`, `allowedDomains`, `blockedDomains`, `userLocation`, `searchDepth`).

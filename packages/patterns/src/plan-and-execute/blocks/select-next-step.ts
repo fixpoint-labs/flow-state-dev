@@ -43,7 +43,7 @@ export function createSelectNextStep(config: { name: string }) {
 
       await ctx.sequencer!.patchState({
         tasks: state.tasks.map((s: PlanTask) =>
-          s.id === nextStep.id ? { ...s, status: "in_progress" as const } : s
+          s.id === nextStep.id ? { ...s, status: "in-progress" as const } : s
         ),
       });
 

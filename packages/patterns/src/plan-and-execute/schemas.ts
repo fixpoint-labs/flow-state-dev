@@ -7,7 +7,7 @@ import { z } from "zod";
 export const PlanTaskSchema = z.object({
   id: z.string(),
   goal: z.string(),
-  status: z.enum(["pending", "in_progress", "completed", "failed", "skipped"]),
+  status: z.enum(["pending", "in-progress", "completed", "failed", "skipped"]),
   dependencies: z.array(z.string()).default([]),
   result: z.any().optional(),
   error: z.string().optional(),

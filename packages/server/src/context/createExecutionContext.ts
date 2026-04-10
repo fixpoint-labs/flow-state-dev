@@ -2343,6 +2343,7 @@ export async function createExecutionContext<
             {
               name: matched.parent.name,
               instanceId: matched.parent.instanceId,
+              input: matched.parent.input,
               ...ops
             },
             () => (container?.read() ?? {}) as TState
@@ -2437,6 +2438,8 @@ export async function createExecutionContext<
       emitComponent: createEmitComponent(activeEmCtx),
       emitLLMContext: createEmitLLMContext(activeEmCtx),
       emitStatus: createEmitStatus(activeEmCtx),
+      // Defined below via Object.defineProperty to close over parentChain.
+      parent: undefined,
       _runtimeHooks,
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>) => {
         const resolvedParent: ExecutionParent = {
@@ -2589,6 +2592,18 @@ export async function createExecutionContext<
         }
 
         return undefined;
+      }
+    });
+
+    Object.defineProperty(context, "parent", {
+      enumerable: true,
+      get() {
+        if (parentChain?.previous === undefined) {
+          return undefined;
+        }
+
+        const p = parentChain.previous.parent;
+        return { name: p.name, kind: p.kind, input: p.input };
       }
     });
 

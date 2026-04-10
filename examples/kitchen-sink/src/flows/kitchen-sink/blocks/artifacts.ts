@@ -1,11 +1,13 @@
 /**
- * Artifact blocks — read, update, and summarize artifacts.
+ * Artifact blocks — read and write artifacts.
  *
  * Artifacts are session-scoped resources with metadata in state and document
- * body stored as resource content. These blocks are used as LLM-callable tools
- * (read/update) and as a background work block (summarize).
+ * body stored as resource content. These blocks are used as LLM-callable tools.
+ *
+ * writeArtifact: upserts the resource then immediately summarizes the new content,
+ * so the summary is always current without a separate background sweep.
  */
-import { handler, utility } from "@flow-state-dev/core";
+import { handler, sequencer, utility } from "@flow-state-dev/core";
 import { z } from "zod";
 import { artifactResources } from "../schemas";
 
@@ -31,29 +33,22 @@ export const readArtifact = handler({
   sessionResources: artifactResources,
 
   execute: async (input, ctx) => {
-    const artifacts = ctx.session.resources.artifacts;
-    const ref = artifacts.getOptional(input.artifactId);
+    const ref = ctx.session.resources.artifacts.getOptional(input.artifactId);
 
     if (ref === undefined) {
-      return {
-        id: input.artifactId,
-        title: "Not Found",
-        content: ""
-      };
+      return { id: input.artifactId, title: "Not Found", content: "" };
     }
-
-    const content = await ref.readContent() ?? "";
 
     return {
       id: input.artifactId,
       title: ref.state.title,
-      content
+      content: await ref.readContent() ?? ""
     };
   }
 });
 
 // ---------------------------------------------------------------------------
-// Update artifact
+// Write artifact (sequencer — the LLM-callable tool)
 // ---------------------------------------------------------------------------
 
 export const updateArtifactInputSchema = z.object({
@@ -67,65 +62,51 @@ export const updateArtifactOutputSchema = z.object({
   id: z.string()
 });
 
-export const updateArtifact = handler({
-  name: "update-artifact",
-  description: "Create or update an artifact in the session artifacts collection.",
-  inputSchema: updateArtifactInputSchema,
-  outputSchema: updateArtifactOutputSchema,
-  sessionResources: artifactResources,
-
-  execute: async (input, ctx) => {
-    const artifacts = ctx.session.resources.artifacts;
-
-    const existing = artifacts.getOptional(input.id);
-    if (existing !== undefined) {
-      await existing.patchState({ title: input.title, updatedAt: Date.now() });
-      await existing.writeContent(input.content);
-    } else {
-      const ref = await artifacts.create(input.id, {
-        title: input.title,
-        summary: "",
-        updatedAt: Date.now()
-      });
-      await ref.writeContent(input.content);
-    }
-
-    return {
-      success: true,
-      id: input.id
-    };
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Summarize artifacts (background work block)
-// ---------------------------------------------------------------------------
-
 const artifactSummarizer = utility.summarizer({
   name: "artifact-summarizer",
   model: "preset/fast",
   granularity: "brief",
 });
 
-export const summarizeArtifacts = handler({
-  name: "summarize-artifacts",
-  inputSchema: z.string(),
-  outputSchema: z.string(),
+const upsertArtifact = utility.upsertResource({
+  name: "upsert-artifact",
+  inputSchema: updateArtifactInputSchema,
   sessionResources: artifactResources,
+  collectionKey: "artifacts",
+  key: (input) => input.id,
+  state: (input) => ({ title: input.title, updatedAt: Date.now() }),
+  content: (input) => input.content,
+});
 
+const saveSummary = handler({
+  name: "save-artifact-summary",
+  inputSchema: utility.summarizerOutputSchema,
+  outputSchema: updateArtifactOutputSchema,
+  // TODO: we will refactor the need for this out of the framework. Ideally blocks should mainly rely on their input and use connectors to send necessary data into them
+  parentInputSchema: updateArtifactInputSchema,
+  sessionResources: artifactResources,
   execute: async (input, ctx) => {
-    const artifacts = ctx.session.resources.artifacts;
-
-    for (const ref of artifacts.list()) {
-      if (ref.state.summary) continue;
-
-      const content = await ref.readContent();
-      if (!content) continue;
-
-      const result = await artifactSummarizer.run(content, ctx as any);
-      await ref.patchState({ summary: result.summary });
-    }
-
-    return input;
+    const { id } = ctx.parent!.input;
+    const ref = ctx.session.resources.artifacts.getOptional(id);
+    if (ref) await ref.patchState({ summary: input.summary });
+    return { success: true, id };
   }
 });
+
+const summarizeArtifact = sequencer({
+  name: "summarize-artifact",
+  inputSchema: updateArtifactInputSchema,
+})
+  .then((input) => input.content, artifactSummarizer)
+  .then(saveSummary);
+
+export const writeArtifact = sequencer({
+  name: "write-artifact",
+  description: "Create or update an artifact in the session artifacts collection.",
+  inputSchema: updateArtifactInputSchema,
+})
+  .tap(upsertArtifact)
+  .work(summarizeArtifact);
+
+// Keep updateArtifact as an alias so flow.ts and saveArtifact action don't break.
+export const updateArtifact = writeArtifact;

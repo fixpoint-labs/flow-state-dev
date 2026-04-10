@@ -58,6 +58,31 @@ What the framework handles for you:
 - **Streaming** — content deltas flow to the client as they're generated
 - **Structured output repair** — if the LLM returns invalid JSON, the framework can auto-retry or route to a rescue block
 
+#### Controlling what gets emitted
+
+The `emit` config controls which items a generator sends to the client stream. By default everything is emitted. You can selectively suppress or remap:
+
+```ts
+// Suppress all streaming output — the generator runs silently
+const silent = generator({ emit: false, /* ... */ });
+
+// Suppress message items but keep tool call status events
+const workerGen = generator({ emit: { messages: false }, /* ... */ });
+
+// Remap messages to reasoning items (visible as "thinking", not conversation text)
+const thinker = generator({ emit: { messages: 'reasoning' }, /* ... */ });
+```
+
+| Flag | Values | Default | Effect |
+|------|--------|---------|--------|
+| `reasoning` | `true` / `false` | `true` | Emit reasoning/thinking items from models that support it |
+| `messages` | `true` / `false` / `'reasoning'` | `true` | `true` emits normal assistant messages. `false` suppresses them entirely. `'reasoning'` emits message text as reasoning items instead |
+| `toolCalls` | `true` / `false` | `true` | Emit tool call status items during the tool execution loop |
+
+Setting `emit: false` is shorthand for suppressing all three. When `messages` is `false` but the generator has tools, the streaming path is still used so tool call status events reach the client — only the text output items are suppressed.
+
+This is particularly useful for worker generators inside orchestration patterns (supervisor, coordinator) where you want tool progress visible but don't want each sub-task's text polluting the main conversation stream.
+
 #### Any block can be a tool
 
 Any block or sequence of blocks can be used as a tool. A generator's `tools` array accepts handlers, sequencers, routers — anything with the block contract. That means a single tool call can trigger an entire multi-step pipeline:
@@ -370,10 +395,45 @@ execute: async (input, ctx) => {
 
   // Or use getTarget for dynamic/untyped access
   const dynamic = ctx.getTarget("some-block");
+
+  // Access the parent block's identity and input
+  if (ctx.parent) {
+    console.log(ctx.parent.name);  // parent block name
+    console.log(ctx.parent.kind);  // "sequencer" | "router" | "generator" | "handler"
+    console.log(ctx.parent.input); // the input that was passed to the parent block
+  }
 }
 ```
 
 Targets give a block typed access to the state of named ancestor blocks in the execution tree. They are declared via `targetStateSchemas` in the block config — see [Target state](/docs/fundamentals/state-and-scopes#target-state) for details.
+
+### `ctx.parent`
+
+When a block runs inside another block (a step in a sequencer, a tool inside a generator, a route inside a router), `ctx.parent` provides the immediate parent's identity and the input it was called with:
+
+```ts
+ctx.parent?.name   // "my-sequencer"
+ctx.parent?.kind   // "sequencer"
+ctx.parent?.input  // the input value passed to the parent block
+```
+
+This is useful when a nested block needs context from its parent that isn't part of its own input — for example, reading the original request ID from a sequencer's input inside a downstream handler step.
+
+For type-safe parent input access, declare `parentInputSchema` on the block:
+
+```ts
+const saveResult = handler({
+  name: "save-result",
+  inputSchema: z.object({ summary: z.string() }),
+  parentInputSchema: z.object({ id: z.string(), title: z.string() }),
+  execute: async (input, ctx) => {
+    const { id } = ctx.parent!.input; // typed as { id: string, title: string }
+    await ctx.session.resources.results.get(id).patchState({ summary: input.summary });
+  },
+});
+```
+
+`ctx.parent` is `undefined` at the root level (the flow's top-level action block).
 
 ## Blocks are composable
 

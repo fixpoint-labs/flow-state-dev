@@ -8,7 +8,7 @@
  * Defines the three thinking-style pipelines (chain-of-thought, plan-and-execute,
  * supervisor) and the router that dispatches between them.
  */
-import { handler, router, sequencer, utility } from "@flow-state-dev/core";
+import { generator, handler, router, sequencer, utility } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { supervisor } from "@flow-state-dev/patterns/supervisor";
@@ -212,16 +212,32 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   });
 
   // Supervisor — plan → dispatch workers → review → replan loop.
-  // The worker adapts the supervisor's { id, goal } task shape to the assistant generator.
-  const supervisorWorker = assistantGenerator.connectInput(
-    (input: { id: string; goal: string; feedback?: string }) => ({
-      message: input.feedback
-        ? `${input.goal}\n\nPrevious feedback: ${input.feedback}`
-        : input.goal,
-      mode: "chat" as const,
-      thinkingStyle: "chain-of-thought" as const,
+  // Dedicated worker generator: task-focused prompt, silent emit to avoid
+  // polluting the conversation stream with per-task messages.
+  const supervisorWorker = generator({
+    name: "supervisor-worker",
+    model: modelId,
+    inputSchema: z.object({
+      id: z.string(),
+      goal: z.string(),
+      feedback: z.string().optional(),
     }),
-  );
+    outputSchema: z.string(),
+    context,
+    tools,
+    sessionResources,
+    search: true,
+    emit: { messages: false },
+    prompt: [
+      "You are a focused task executor within a supervisor workflow.",
+      "Complete the assigned task concisely and accurately.",
+      "If feedback from a prior attempt is provided, address it directly.",
+    ].join("\n"),
+    user: (input) =>
+      input.feedback
+        ? `Task: ${input.goal}\n\nPrevious feedback: ${input.feedback}`
+        : `Task: ${input.goal}`,
+  });
 
   const supervisorPipeline = supervisor({
     name: "supervisor-thinking",
@@ -229,6 +245,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     maxIterations: 3,
     maxConcurrency: 3,
     onSubTaskError: "skip",
+    outputSchema: z.string(),
   });
 
   // Router — adapts flow input to each pipeline's expected shape via connectInput.

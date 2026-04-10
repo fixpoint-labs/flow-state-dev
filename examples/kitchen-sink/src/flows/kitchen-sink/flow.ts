@@ -22,7 +22,6 @@ import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { system as memorySystem } from "@thought-fabric/core/memory";
 import { z } from "zod";
 import {
-  summarizeArtifacts,
   updateArtifact,
   updateArtifactInputSchema,
   eventQueueDemo,
@@ -193,7 +192,7 @@ const runSequencer = sequencer({ name: "run", inputSchema })
   .then(thinkingStyleRouter)
   .work(mem.captureFromItems)
   .work(autoTitle)
-  .work(summarizeArtifacts)
+
   .tap(incrementRequestCount);
 
 // ---------------------------------------------------------------------------
