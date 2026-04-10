@@ -65,6 +65,13 @@ export interface BlackboardConfig<
   maxIterations?: number;
 
   /**
+   * Maximum number of history entries to retain. When exceeded, oldest entries
+   * are dropped (FIFO). Prevents unbounded growth in long-running sessions.
+   * Default: no limit (undefined).
+   */
+  maxHistory?: number;
+
+  /**
    * Initial state to seed the blackboard with.
    * Can be a static object or a function receiving the pipeline input.
    */
@@ -182,7 +189,7 @@ function buildDefaultSynthesizer(config: {
 export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   config: BlackboardConfig<TOutputSchema>
 ) {
-  const { name, maxIterations = 10 } = config;
+  const { name, maxIterations = 10, maxHistory } = config;
   const blackboardResource = config.blackboard;
 
   if (Object.keys(config.specialists).length === 0) {
@@ -230,18 +237,23 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     sequencerStateSchema: blackboardControlSchema,
     execute: async (input, ctx) => {
       const state = ctx.sequencer!.state;
+      let history = [
+        ...state.history,
+        {
+          iteration: state.iteration + 1,
+          specialist: input.specialist ?? "(none)",
+          reasoning: input.reasoning,
+        },
+      ];
+      // FIFO truncation: drop oldest entries when maxHistory is exceeded
+      if (maxHistory !== undefined && history.length > maxHistory) {
+        history = history.slice(history.length - maxHistory);
+      }
       await ctx.sequencer!.patchState({
         iteration: state.iteration + 1,
         currentSpecialist: input.specialist ?? undefined,
         done: input.done,
-        history: [
-          ...state.history,
-          {
-            iteration: state.iteration + 1,
-            specialist: input.specialist ?? "(none)",
-            reasoning: input.reasoning,
-          },
-        ],
+        history,
       });
       return input;
     },

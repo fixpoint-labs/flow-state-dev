@@ -479,6 +479,140 @@ describe("blackboard", () => {
     });
   });
 
+  describe("maxHistory (FIFO truncation)", () => {
+    it("truncates history to maxHistory entries, keeping newest", async () => {
+      const ctrl = makeDeterministicController("ctrl-max-hist", [
+        { specialist: "analyst", done: false, reasoning: "step 1" },
+        { specialist: "analyst", done: false, reasoning: "step 2" },
+        { specialist: "analyst", done: false, reasoning: "step 3" },
+        { specialist: "analyst", done: false, reasoning: "step 4" },
+        { specialist: "analyst", done: false, reasoning: "step 5" },
+        { specialist: null, done: true, reasoning: "done" },
+      ]);
+
+      const block = blackboard({
+        name: "max-hist-test",
+        blackboard: board,
+        specialists: { analyst },
+        controller: ctrl.block,
+        maxHistory: 3,
+        synthesizer: false,
+      });
+
+      ctrl.reset();
+      const result = await testBlock(block, {
+        input: {},
+        session: { resources: { blackboard: emptyBoardState } },
+      });
+
+      expect(result.error).toBeNull();
+      const output = result.output as {
+        iterations: number;
+        history: Array<{ iteration: number; specialist: string; reasoning: string }>;
+      };
+      // 6 total iterations, but only 3 most recent kept
+      expect(output.iterations).toBe(6);
+      expect(output.history).toHaveLength(3);
+      // Oldest entries dropped, newest retained
+      expect(output.history[0].reasoning).toBe("step 4");
+      expect(output.history[1].reasoning).toBe("step 5");
+      expect(output.history[2].reasoning).toBe("done");
+    });
+
+    it("does not truncate when history is within maxHistory limit", async () => {
+      const ctrl = makeDeterministicController("ctrl-within-limit", [
+        { specialist: "analyst", done: false, reasoning: "only step" },
+        { specialist: null, done: true, reasoning: "done" },
+      ]);
+
+      const block = blackboard({
+        name: "within-limit-test",
+        blackboard: board,
+        specialists: { analyst },
+        controller: ctrl.block,
+        maxHistory: 10,
+        synthesizer: false,
+      });
+
+      ctrl.reset();
+      const result = await testBlock(block, {
+        input: {},
+        session: { resources: { blackboard: emptyBoardState } },
+      });
+
+      expect(result.error).toBeNull();
+      const output = result.output as {
+        history: Array<{ iteration: number; specialist: string; reasoning: string }>;
+      };
+      expect(output.history).toHaveLength(2);
+    });
+
+    it("retains unbounded history when maxHistory is not set", async () => {
+      const ctrl = makeDeterministicController("ctrl-no-limit", [
+        { specialist: "analyst", done: false, reasoning: "a" },
+        { specialist: "analyst", done: false, reasoning: "b" },
+        { specialist: "analyst", done: false, reasoning: "c" },
+        { specialist: "analyst", done: false, reasoning: "d" },
+        { specialist: "analyst", done: false, reasoning: "e" },
+        { specialist: null, done: true, reasoning: "f" },
+      ]);
+
+      const block = blackboard({
+        name: "no-limit-test",
+        blackboard: board,
+        specialists: { analyst },
+        controller: ctrl.block,
+        // no maxHistory set
+        synthesizer: false,
+      });
+
+      ctrl.reset();
+      const result = await testBlock(block, {
+        input: {},
+        session: { resources: { blackboard: emptyBoardState } },
+      });
+
+      expect(result.error).toBeNull();
+      const output = result.output as {
+        history: Array<{ iteration: number; specialist: string; reasoning: string }>;
+      };
+      // All 6 entries retained
+      expect(output.history).toHaveLength(6);
+    });
+
+    it("works correctly with maxHistory=1 (only latest entry)", async () => {
+      const ctrl = makeDeterministicController("ctrl-hist-1", [
+        { specialist: "analyst", done: false, reasoning: "first" },
+        { specialist: "analyst", done: false, reasoning: "second" },
+        { specialist: null, done: true, reasoning: "final" },
+      ]);
+
+      const block = blackboard({
+        name: "hist-1-test",
+        blackboard: board,
+        specialists: { analyst },
+        controller: ctrl.block,
+        maxHistory: 1,
+        synthesizer: false,
+      });
+
+      ctrl.reset();
+      const result = await testBlock(block, {
+        input: {},
+        session: { resources: { blackboard: emptyBoardState } },
+      });
+
+      expect(result.error).toBeNull();
+      const output = result.output as {
+        iterations: number;
+        history: Array<{ iteration: number; specialist: string; reasoning: string }>;
+      };
+      expect(output.iterations).toBe(3);
+      expect(output.history).toHaveLength(1);
+      expect(output.history[0].reasoning).toBe("final");
+    });
+  });
+
   describe("block structure", () => {
     it("returns a sequencer block", () => {
       const ctrl = makeDeterministicController("ctrl-struct", [
