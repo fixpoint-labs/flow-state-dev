@@ -236,6 +236,7 @@ async function executeBlock(
       instanceId: `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
       transient: block.transient || undefined,
       stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined,
+      input,
       container:
         containerConfig === undefined
           ? undefined

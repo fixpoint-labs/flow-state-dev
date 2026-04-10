@@ -1,6 +1,5 @@
 export { readArtifact, readArtifactInputSchema, readArtifactOutputSchema } from "./artifacts";
-export { summarizeArtifacts } from "./artifacts";
-export { updateArtifact, updateArtifactInputSchema, updateArtifactOutputSchema } from "./artifacts";
+export { writeArtifact, updateArtifact, updateArtifactInputSchema, updateArtifactOutputSchema } from "./artifacts";
 export { eventQueueDemo, eventQueueDemoInputSchema } from "./event-queue-demo";
 export { artifactListContext, voiceContext, type GeneratorMemory } from "./context";
 export {

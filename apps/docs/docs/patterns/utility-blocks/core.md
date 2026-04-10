@@ -28,6 +28,7 @@ const block = utility.summarizer({ name: "my-summarizer", granularity: "brief" }
 | [`combiner`](#combiner) | handler | Deterministically merge artifacts (no LLM call) |
 | [`synthesizer`](#synthesizer) | generator | Reconcile overlapping or conflicting inputs into one artifact |
 | [`analyzer`](#analyzer) | generator | Evaluate artifacts against structured criteria |
+| [`upsertResource`](#upsertresource) | handler | Get-or-create + patch a resource collection instance (no LLM call) |
 | [`intentClassifier`](#intentclassifier) | generator | Classify input into a bounded category set for routing |
 | [`intentRouter`](#intentrouter) | sequencer | Pre-wired classifier + router for classification-driven branching |
 | [`sessionTitleGenerator`](#sessiontitlegenerator) | sequencer | Auto-generate a session title from conversation messages |
@@ -574,6 +575,108 @@ export const searchAndMerge = sequencer({
   .map((results) => [results.web, results.docs])
   .then(merge);
 ```
+
+---
+
+### upsertResource — write to a resource collection {#upsertresource}
+
+`upsertResource` is a handler factory — no LLM call, fully deterministic. It handles the common chore of writing into a resource collection: get-or-create the instance, patch its state, and optionally write content.
+
+**Common use cases:**
+- Saving AI-generated content into a collection (artifacts, files, notes) as part of a pipeline
+- Keeping resource state in sync after any write step inside a sequencer
+- Standardizing upsert logic across multiple blocks that write to the same collection
+
+```ts
+import { utility } from "@flow-state-dev/core";
+
+const saveNote = utility.upsertResource({
+  name: "save-note",
+  inputSchema: z.object({ id: z.string(), title: z.string(), body: z.string() }),
+  sessionResources: { notes: notesCollection },
+  collectionKey: "notes",          // property name as declared in sessionResources
+  key: (input) => input.id,
+  state: (input) => ({ title: input.title, updatedAt: Date.now() }),
+  content: (input) => input.body,  // optional: write text/binary content
+});
+```
+
+**Config reference:**
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `name` | Yes | Block name |
+| `inputSchema` | Yes | Zod schema for the input |
+| `collectionKey` | Yes | Property name of the collection as declared in `sessionResources` / `userResources` / `projectResources` |
+| `scope` | No | Which scope to look up the collection in. Defaults to `"session"`. |
+| `sessionResources` | No | Session-scoped resource collections |
+| `userResources` | No | User-scoped resource collections |
+| `projectResources` | No | Project-scoped resource collections |
+| `sequencerStateSchema` | No | Outer sequencer state schema, if the block needs to read/write sequencer state |
+| `key` | Yes | Derive the resource key string from input |
+| `state` | Yes | Derive the state patch from input |
+| `content` | No | Derive text/binary content to write after the state upsert |
+
+`getOrCreate` is called first (passing initial state for new instances), then `patchState` is always called — so state updates apply on both create and update.
+
+**Composing with .tap():** Use `.tap(upsertBlock)` in a sequencer when you want to write to a collection without changing the chain value. Use `.then(upsertBlock)` when you want the chain to continue on a transformed value returned by a downstream step.
+
+**Passing id through a transformer:** When you need a resource key after a downstream step has transformed the chain value (for example, after a summarizer), declare a `sequencerStateSchema` on the outer sequencer and stash the id in a `.tap()` before the transformer runs.
+
+#### Realistic example: write artifact then summarize it
+
+A common pattern: save an artifact, run the summarizer on its content, then store the summary back. The sequencer's `stateSchema` carries the artifact id through the summarizer step.
+
+```ts title="src/flows/blocks/write-artifact.ts"
+import { handler, sequencer, utility } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const writeStateSchema = z.object({ artifactId: z.string().default("") });
+
+const upsertArtifact = utility.upsertResource({
+  name: "upsert-artifact",
+  inputSchema: z.object({ id: z.string(), title: z.string(), content: z.string() }),
+  sessionResources: { artifacts: artifactsCollection },
+  sequencerStateSchema: writeStateSchema,
+  collectionKey: "artifacts",
+  key: (input) => input.id,
+  state: (input) => ({ title: input.title, updatedAt: Date.now() }),
+  content: (input) => input.content,
+});
+
+const summarizer = utility.summarizer({ name: "artifact-summarizer", granularity: "brief" });
+
+const saveSummary = handler({
+  name: "save-artifact-summary",
+  inputSchema: utility.summarizerOutputSchema,
+  outputSchema: z.object({ success: z.boolean(), id: z.string() }),
+  sessionResources: { artifacts: artifactsCollection },
+  sequencerStateSchema: writeStateSchema,
+  execute: async (input, ctx) => {
+    const id = ctx.sequencer!.state.artifactId;
+    const ref = ctx.session.resources.artifacts.getOptional(id);
+    if (ref) await ref.patchState({ summary: input.summary });
+    return { success: true, id };
+  },
+});
+
+export const writeArtifact = sequencer({
+  name: "write-artifact",
+  inputSchema: z.object({ id: z.string(), title: z.string(), content: z.string() }),
+  stateSchema: writeStateSchema,
+})
+  .tap(async (input, ctx) => {
+    await ctx.sequencer!.patchState({ artifactId: input.id });
+  })
+  .tap(upsertArtifact)
+  .then((input) => input.content, summarizer)
+  .then(saveSummary);
+```
+
+Note: `upsertArtifact` is used with `.tap()` here so the original input (including `id` and `content`) remains the chain value for the connector on the next step.
+
+
+The summarizer receives raw content (via the connector), then `saveSummary` reads the id back from sequencer state rather than from the current chain value.
 
 ---
 

@@ -170,7 +170,7 @@ export interface GeneratorConfig<
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,
-    TSessionResources, TUserResources, TProjectResources, TSequencerState, TTargetSchemas
+    TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas
   >,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
@@ -488,7 +488,8 @@ function compileToolsWithExecute(
         {
           name: tool.name,
           kind: tool.kind,
-          instanceId: `${tool.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`
+          instanceId: `${tool.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          input: args
         },
         runTool
       );
@@ -1025,7 +1026,7 @@ export function generator<
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,
-    TSessionResources, TUserResources, TProjectResources, TSequencerState, TTargetSchemas
+    TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas
   >,
 >(
   config: GeneratorConfig<

@@ -306,6 +306,7 @@ function createTargetRef(
   return {
     name: targetState.name,
     instanceId: targetState.instanceId,
+    input: undefined,
     get state() {
       return cloneRecord(targetState.value);
     },

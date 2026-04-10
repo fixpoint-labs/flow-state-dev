@@ -103,11 +103,9 @@ function isSkippedTaskResult(value: unknown): value is SkippedTaskResult {
 export const captureGoal = handler({
   name: "capture-goal",
   inputSchema: supervisorInputSchema,
-  outputSchema: supervisorInputSchema,
   sequencerStateSchema: supervisorStateSchema,
   execute: async (input, ctx) => {
     await ctx.sequencer!.patchState({ goal: input.goal });
-    return input;
   },
 });
 
@@ -268,6 +266,7 @@ function buildDefaultReviewer(
     ]
       .filter(Boolean)
       .join("\n"),
+    emit: { messages: false, reasoning: false },
     user: (input) =>
       typeof input === "string" ? input : JSON.stringify(input),
   });
@@ -280,45 +279,143 @@ function buildDefaultReviewer(
 export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   config: SupervisorConfig<TOutputSchema>
 ) {
+  const name = config.name;
   const errorStrategy = config.onSubTaskError ?? "skip";
   const maxIterations = config.maxIterations ?? 3;
 
   const planner =
-    config.planner ?? buildDefaultPlanner(config.name);
+    config.planner ?? buildDefaultPlanner(name);
 
   const reviewer =
-    config.reviewer ?? buildDefaultReviewer(config.name, config.reviewCriteria);
+    config.reviewer ?? buildDefaultReviewer(name, config.reviewCriteria);
 
   const finalSynthesizer =
     config.synthesizer ??
     utility.synthesizer({
-      name: `${config.name}-synthesizer`,
+      name: `${name}-synthesizer`,
       ...(config.outputSchema ? { outputSchema: config.outputSchema } : {}),
     });
 
-  // When using "skip" or "retry" strategy, wrap the worker to catch errors
+  // Wrap the worker in a sequencer with rescue for skip/retry strategies.
+  // "fail" uses the bare worker so errors propagate naturally.
+  // "skip"/"retry" wrap in a sequencer with .rescue() that returns the sentinel.
   const taskRunner =
     errorStrategy === "fail"
       ? config.worker
-      : handler({
-          name: `${config.name}-task-runner`,
+      : sequencer({
+          name: `${name}-task-runner`,
           inputSchema: z.any(),
-          outputSchema: z.any(),
-          execute: async (input, ctx) => {
-            try {
-              return await config.worker.run(input, ctx);
-            } catch (error) {
-              if (errorStrategy === "retry" && config.worker.config.retry) {
-                throw error;
-              }
-              return { [SKIPPED_SENTINEL]: true, error: String(error) };
-            }
-          },
-        });
+        })
+          .then(config.worker)
+          .rescue([
+            {
+              block: handler({
+                name: `${name}-task-rescue`,
+                inputSchema: z.instanceof(Error),
+                outputSchema: z.any(),
+                execute: (error) => ({
+                  [SKIPPED_SENTINEL]: true,
+                  error: error.message,
+                }),
+              }),
+            },
+          ]);
+
+  // Instance-specific handlers that pass a stable plan key for UI deduplication.
+  // The exported updatePlanState / applyReview lack access to config.name,
+  // so supervisor() creates named closures to ensure all snapshots share the
+  // same key and only the latest snapshot is rendered (via ItemsRenderer dedup).
+
+  const updatePlanStateBlock = handler({
+    name: "update-plan-state",
+    inputSchema: plannerOutputSchema,
+    outputSchema: executableTasksSchema,
+    sequencerStateSchema: supervisorStateSchema,
+    execute: async (input, ctx) => {
+      const state = ctx.sequencer!.state;
+      const isFirstIteration = state.iteration === 0;
+      const newPlan = input.tasks.map((t) => ({
+        id: t.id,
+        goal: t.goal,
+        status: "in_progress" as const,
+      }));
+
+      await ctx.sequencer!.patchState({
+        plan: isFirstIteration
+          ? newPlan
+          : [
+              ...state.plan.filter(
+                (t) =>
+                  t.status === "completed" || t.status === "escalated"
+              ),
+              ...newPlan,
+            ],
+        iteration: state.iteration + 1,
+      });
+
+      const updatedState = ctx.sequencer!.state;
+      emitPlanSnapshot(ctx, {
+        goal: updatedState.goal,
+        tasks: updatedState.plan,
+        iteration: updatedState.iteration,
+      }, { key: name });
+
+      return newPlan.map((t) => {
+        const prior = state.plan.find((p) => p.id === t.id);
+        return {
+          id: t.id,
+          goal: t.goal,
+          feedback: prior?.feedback,
+        };
+      });
+    },
+  });
+
+  const applyReviewBlock = handler({
+    name: "apply-review",
+    inputSchema: reviewOutputSchema,
+    outputSchema: applyReviewOutputSchema,
+    sequencerStateSchema: supervisorStateSchema,
+    execute: async (input, ctx) => {
+      const state = ctx.sequencer!.state;
+      const newAccepted = [...state.acceptedResults];
+      const updatedPlan = state.plan.map((task) => {
+        const assessment = input.assessments.find(
+          (a) => a.taskId === task.id
+        );
+        if (!assessment) return task;
+        if (assessment.verdict === "accepted" && task.result !== undefined) {
+          newAccepted.push(task.result);
+        }
+        const mappedStatus =
+          assessment.verdict === "accepted"
+            ? ("completed" as const)
+            : assessment.verdict === "escalate"
+              ? ("escalated" as const)
+              : ("needs-revision" as const);
+        return {
+          ...task,
+          status: mappedStatus,
+          feedback: assessment.feedback,
+        };
+      });
+      await ctx.sequencer!.patchState({
+        acceptedResults: newAccepted,
+        plan: updatedPlan,
+      });
+      const finalState = ctx.sequencer!.state;
+      emitPlanSnapshot(ctx, {
+        goal: finalState.goal,
+        tasks: finalState.plan,
+        iteration: finalState.iteration,
+      }, { key: name });
+      return { needsReplanning: input.needsReplanning };
+    },
+  });
 
   // Store worker results back into plan state so applyReview can access them
   const storeResults = handler({
-    name: `${config.name}-store-results`,
+    name: `${name}-store-results`,
     inputSchema: z.any(),
     outputSchema: z.any(),
     sequencerStateSchema: supervisorStateSchema,
@@ -334,7 +431,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
           const errorMessage =
             result.error || "Worker failed and task was skipped";
           ctx.emitStatus(
-            `[supervisor:${config.name}] skipped task "${task.id}": ${errorMessage}`
+            `[supervisor:${name}] skipped task "${task.id}": ${errorMessage}`
           );
           return {
             ...task,
@@ -352,19 +449,19 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         goal: finalState.goal,
         tasks: finalState.plan,
         iteration: finalState.iteration,
-      });
+      }, { key: name });
       return reviewableResults;
     },
   });
 
   let pipeline = sequencer({
-    name: config.name,
+    name,
     inputSchema: supervisorInputSchema,
     stateSchema: supervisorStateSchema,
   })
     .tap(captureGoal)
     .then(planner)
-    .then(updatePlanState)
+    .then(updatePlanStateBlock)
     .forEach(taskRunner, {
       maxConcurrency: config.maxConcurrency ?? 3,
     });
@@ -372,7 +469,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   return pipeline
     .then(storeResults)
     .then(reviewer)
-    .then(applyReview)
+    .then(applyReviewBlock)
     .loopBack(planner.name, {
       when: (value) =>
         (value as { needsReplanning: boolean }).needsReplanning,
