@@ -124,7 +124,7 @@ export const updatePlanState = handler({
     const newPlan = input.tasks.map((t) => ({
       id: t.id,
       goal: t.goal,
-      status: "in_progress" as const,
+      status: "in-progress" as const,
     }));
 
     await ctx.sequencer!.patchState({
@@ -337,7 +337,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       const newPlan = input.tasks.map((t) => ({
         id: t.id,
         goal: t.goal,
-        status: "in_progress" as const,
+        status: "in-progress" as const,
       }));
 
       await ctx.sequencer!.patchState({
@@ -422,7 +422,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     sequencerStateSchema: supervisorStateSchema,
     execute: async (results: unknown[], ctx) => {
       const state = ctx.sequencer!.state;
-      const pendingTasks = state.plan.filter((t) => t.status === "in_progress");
+      const pendingTasks = state.plan.filter((t) => t.status === "in-progress");
       const reviewableResults: { taskId: string; goal: string; result: unknown }[] = [];
       const updatedPlan = state.plan.map((task) => {
         const taskIndex = pendingTasks.findIndex((t) => t.id === task.id);
@@ -476,7 +476,11 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         (value as { needsReplanning: boolean }).needsReplanning,
       maxIterations,
     })
-    // Extract acceptedResults from state for the synthesizer
-    .map((_value, ctx) => ctx.sequencer!.state.acceptedResults)
+    // Pass the goal and accepted results to the synthesizer so it has
+    // context for producing a coherent final output.
+    .map((_value, ctx) => {
+      const state = ctx.sequencer!.state;
+      return { goal: state.goal, results: state.acceptedResults };
+    })
     .then(finalSynthesizer);
 }

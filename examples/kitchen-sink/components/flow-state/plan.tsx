@@ -16,11 +16,12 @@ import {
   XCircleIcon,
 } from "lucide-react";
 import { useMemo } from "react";
+import Markdown from "react-markdown";
 import { useSessionItems } from "./session-items-context";
 
 type PlanTaskStatus =
   | "pending"
-  | "in_progress"
+  | "in-progress"
   | "awaiting-review"
   | "completed"
   | "failed"
@@ -53,7 +54,7 @@ type StatusConfig = {
 
 const STATUS_CONFIG: Record<PlanTaskStatus, StatusConfig> = {
   pending: { icon: CircleIcon, iconClassName: "text-muted-foreground", label: "Pending" },
-  in_progress: { icon: Loader2Icon, iconClassName: "text-blue-500 animate-spin", label: "In progress" },
+  "in-progress": { icon: Loader2Icon, iconClassName: "text-blue-500 animate-spin", label: "In progress" },
   "awaiting-review": { icon: EyeIcon, iconClassName: "text-cyan-500", label: "Awaiting review" },
   completed: { icon: CheckCircle2Icon, iconClassName: "text-green-500", goalClassName: "text-muted-foreground line-through", label: "Completed" },
   failed: { icon: XCircleIcon, iconClassName: "text-destructive", goalClassName: "text-destructive", label: "Failed" },
@@ -129,13 +130,13 @@ function buildTaskToolMap(
       const prevPlan = prevSnap.data as Plan;
 
       // Find the task that transitioned from pending/in_progress → completed/failed.
-      // findTask never emits a snapshot, so "in_progress" never appears in snapshots.
+      // findTask never emits a snapshot, so "in-progress" never appears in snapshots.
       const prevById = new Map(prevPlan.tasks.map((t) => [t.id, t]));
       let executedTaskId: string | undefined;
       for (const task of plan.tasks) {
         const prev = prevById.get(task.id);
         if (
-          (prev?.status === "pending" || prev?.status === "in_progress") &&
+          (prev?.status === "pending" || prev?.status === "in-progress") &&
           (task.status === "completed" || task.status === "failed")
         ) {
           executedTaskId = task.id;
@@ -169,7 +170,7 @@ export function Plan({ item }: { item: ComponentItem }) {
   return (
     <div className="not-prose my-2 rounded-md border bg-card p-3 text-card-foreground">
       <div className="mb-2 flex items-start justify-between gap-2">
-        <p className="text-sm font-medium leading-snug">Steps</p>
+        <p className="text-sm font-medium leading-snug">Tasks</p>
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
           {completedCount}/{plan.tasks.length}
           {plan.iteration !== undefined && plan.iteration > 0 && ` · pass ${plan.iteration + 1}`}
@@ -180,6 +181,27 @@ export function Plan({ item }: { item: ComponentItem }) {
           <PlanTaskRow key={task.id} task={task} toolCalls={taskToolMap.get(task.id)} />
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** Renders markdown at text-xs scale with headings normalized to the same size. */
+const headingComponent = ({ children }: { children?: React.ReactNode }) => (
+  <p className="font-semibold">{children}</p>
+);
+const markdownComponents = {
+  h1: headingComponent,
+  h2: headingComponent,
+  h3: headingComponent,
+  h4: headingComponent,
+  h5: headingComponent,
+  h6: headingComponent,
+};
+
+function TaskMarkdown({ text }: { text: string }) {
+  return (
+    <div className="prose-none text-xs leading-snug text-muted-foreground [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_li]:my-0.5 [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[10px] [&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-muted [&_pre]:p-2 [&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-2 [&_blockquote]:italic">
+      <Markdown components={markdownComponents}>{text}</Markdown>
     </div>
   );
 }
@@ -230,7 +252,7 @@ function PlanTaskRow({
             </ul>
           )}
           {summary && (
-            <p className="text-xs leading-snug text-muted-foreground">{summary}</p>
+            <TaskMarkdown text={summary} />
           )}
         </div>
       </details>

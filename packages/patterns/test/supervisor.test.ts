@@ -105,10 +105,15 @@ function makeDeterministicSynthesizer(name: string) {
       synthesis: z.string(),
       rationale: z.array(z.string()),
     }),
-    execute: (input: unknown) => ({
-      synthesis: `Synthesized ${Array.isArray(input) ? input.length : 0} results`,
-      rationale: ["test synthesis"],
-    }),
+    execute: (input: unknown) => {
+      const results = input && typeof input === "object" && "results" in input
+        ? (input as { results: unknown[] }).results
+        : Array.isArray(input) ? input : [];
+      return {
+        synthesis: `Synthesized ${results.length} results`,
+        rationale: ["test synthesis"],
+      };
+    },
   });
 }
 

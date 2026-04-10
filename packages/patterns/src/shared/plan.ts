@@ -9,7 +9,7 @@ import { z } from "zod";
  *
  * Status vocabulary:
  *   - pending         P&E only — queued, waiting its turn
- *   - in_progress     both — actively executing
+ *   - in-progress      both — actively executing
  *   - awaiting-review Supervisor only — worker done, pending reviewer verdict
  *   - completed       both — done successfully
  *   - failed          P&E only — hard failure
@@ -22,7 +22,7 @@ export const BasePlanTaskSchema = z.object({
   goal: z.string(),
   status: z.enum([
     "pending",
-    "in_progress",
+    "in-progress",
     "awaiting-review",
     "completed",
     "failed",

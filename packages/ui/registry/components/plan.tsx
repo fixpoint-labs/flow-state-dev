@@ -21,7 +21,7 @@ import {
 
 type PlanTaskStatus =
   | "pending"
-  | "in_progress"
+  | "in-progress"
   | "awaiting-review"
   | "completed"
   | "failed"
@@ -62,7 +62,7 @@ const STATUS_CONFIG: Record<PlanTaskStatus, StatusConfig> = {
     iconClassName: "text-muted-foreground",
     label: "Pending",
   },
-  in_progress: {
+  "in-progress": {
     icon: Loader2Icon,
     iconClassName: "text-blue-500 animate-spin",
     label: "In progress",
@@ -190,7 +190,7 @@ function PlanTaskRow({ task }: { task: PlanTask }) {
             aria-hidden="true"
           />
         </summary>
-        <p className="mt-1 pl-5 text-xs leading-snug text-muted-foreground">
+        <p className="mt-1 whitespace-pre-wrap pl-5 text-xs leading-snug text-muted-foreground">
           {summary}
         </p>
       </details>
