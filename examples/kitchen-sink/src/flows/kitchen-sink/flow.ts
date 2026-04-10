@@ -17,6 +17,7 @@ import {
   handler,
   sequencer,
   utility,
+  selectModel,
 } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { system as memorySystem } from "@thought-fabric/core/memory";
@@ -91,7 +92,7 @@ const assistantGenerator = generator({
   sessionStateSchema: z.object({ mode: modeSchema.default("chat"), thinkingStyle: z.string().optional() }),
   sessionResources: artifactResources,
 
-  context: [mem.contextFormatter, artifactListContext, voiceContext] as any[],
+  context: [mem.contextFormatter, artifactListContext, voiceContext],
 
   inputSchema,
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
@@ -106,12 +107,10 @@ const assistantGenerator = generator({
     ctx.session.state.mode === "create" ? CREATE_PROMPT : CHAT_PROMPT,
 
   emit: { messages: true, reasoning: true },
-  model: (_input, ctx) => {
-    const userModel = ctx.user?.state.preferredModel as string | undefined;
-    if (userModel && userModel !== MODEL_ID) return userModel;
-    const style = (ctx.session.state as Record<string, unknown>).thinkingStyle as string | undefined;
-    return style === "chain-of-thought" ? THINKING_MODEL_ID : MODEL_ID;
-  },
+  model: selectModel(MODEL_ID, [
+    { prefer: (_input, ctx) => ctx.user?.state.preferredModel },
+    { when: (_input, ctx) => ctx.session.state.thinkingStyle === "chain-of-thought", use: THINKING_MODEL_ID },
+  ]),
 });
 
 // ---------------------------------------------------------------------------
@@ -121,7 +120,7 @@ const assistantGenerator = generator({
 const { thinkingStyleRouter } = createThinkingStyleRouter({
   assistantGenerator,
   modelId: MODEL_ID,
-  context: [mem.contextFormatter, artifactListContext] as any,
+  context: [mem.contextFormatter, artifactListContext],
   tools: [readArtifact, updateArtifact],
   sessionResources: artifactResources,
 });
