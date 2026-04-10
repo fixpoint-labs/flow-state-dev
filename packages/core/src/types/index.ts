@@ -9,6 +9,7 @@ export type {
   ChunkValidation,
   ComponentHandle,
   ConnectorFn,
+  DeclaredResourceEntry,
   ExecutionParent,
   MessageHandle,
   RescueHandlerSpec,

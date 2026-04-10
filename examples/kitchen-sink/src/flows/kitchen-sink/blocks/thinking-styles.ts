@@ -10,7 +10,7 @@
  */
 import { generator, handler, router, sequencer, utility } from "@flow-state-dev/core";
 import type { GeneratorSlot } from "@flow-state-dev/core";
-import type { BlockDefinition, ScopeResourceConfig } from "@flow-state-dev/core/types";
+import type { BlockDefinition, DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { supervisor } from "@flow-state-dev/patterns/supervisor";
 import { z } from "zod";
@@ -192,7 +192,7 @@ export interface ThinkingStyleRouterConfig {
   modelId: string;
   context: GeneratorSlot<any, any>;
   tools: BlockDefinition<any, any>[];
-  sessionResources: Record<string, ScopeResourceConfig>;
+  sessionResources: Record<string, DeclaredResourceEntry>;
 }
 
 export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
