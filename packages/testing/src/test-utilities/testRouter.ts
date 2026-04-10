@@ -9,27 +9,30 @@ import type {
 
 /**
  * Executes a router block and returns the selected route name when detected.
+ *
+ * Wraps the router's `.run` to inject an `onRouteSelected` hook that captures
+ * the selected route name. This works transparently with connectInput (which
+ * creates a new block but preserves the original name).
  */
 export async function testRouter<TBlock extends BlockDefinition<any, any>>(
   router: TBlock,
   options: TestBlockOptions<BlockInput<TBlock>>
 ): Promise<TestRouterResult<BlockOutput<TBlock>>> {
-  const routes = Array.isArray((router.config as unknown as { routes?: unknown }).routes)
-    ? ((router.config as unknown as { routes: BlockDefinition<any, any>[] }).routes ?? [])
-    : [];
-
-  const originals = new Map<string, BlockDefinition<any, any>["run"]>();
   let selectedRoute: string | undefined;
 
-  for (const route of routes) {
-    originals.set(route.name, route.run);
-
-    const original = route.run;
-    route.run = async (input: unknown, ctx: unknown) => {
-      selectedRoute = route.name;
-      return original(input, ctx as any);
+  const originalRun = router.run;
+  router.run = async (input: unknown, ctx: unknown) => {
+    const blockCtx = ctx as { _runtimeHooks?: Record<string, Function> };
+    const existingOnRouteSelected = blockCtx._runtimeHooks?.onRouteSelected;
+    blockCtx._runtimeHooks = {
+      ...blockCtx._runtimeHooks,
+      onRouteSelected: (routerName: string, routeName: string, instanceId?: string) => {
+        selectedRoute = routeName;
+        existingOnRouteSelected?.(routerName, routeName, instanceId);
+      }
     };
-  }
+    return originalRun(input, ctx as any);
+  };
 
   try {
     const base = await testBlock(router, options);
@@ -39,11 +42,6 @@ export async function testRouter<TBlock extends BlockDefinition<any, any>>(
       selectedRoute: selectedRoute ?? "unknown"
     };
   } finally {
-    for (const route of routes) {
-      const original = originals.get(route.name);
-      if (original !== undefined) {
-        route.run = original;
-      }
-    }
+    router.run = originalRun;
   }
 }

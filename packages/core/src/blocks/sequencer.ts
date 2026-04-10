@@ -1015,6 +1015,25 @@ function createSequencer<TInput, TOutput>(
       }
 
       return definition;
+    },
+
+    connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): SequencerDefinition<TFrom, TOutput> {
+      const connectOp: SequencerOperation = {
+        name: `${config.name}/connect-input`,
+        run: async (value, ctx) => {
+          const mapped = await mapper(value as TFrom, ctx);
+          return { value: mapped };
+        }
+      };
+
+      return createSequencer<TFrom, TOutput>(
+        { ...config, inputSchema: undefined },
+        [connectOp, ...operations],
+        rescueHandlers,
+        lastOutputSchema,
+        undefined,
+        accumulatedResources
+      );
     }
   });
 

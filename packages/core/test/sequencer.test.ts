@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler, sequencer } from "../src";
+import { defineResource } from "../src/types/resource";
 import { createMockContext } from "./helpers";
 
 function addHandler(name: string, delta = 1) {
@@ -511,6 +512,84 @@ describe("sequencer builder", () => {
       }).then(toObj);
 
       expect(() => seq.validate()).toThrow(/shape mismatch/);
+    });
+  });
+
+  describe("connectInput", () => {
+    it("returns a SequencerDefinition with DSL methods", () => {
+      const addOne = addHandler("add-one", 1);
+      const seq = sequencer({ name: "ci-dsl", inputSchema: z.number() })
+        .then(addOne);
+
+      const connected = seq.connectInput((s: string) => Number(s));
+
+      // Should have sequencer DSL methods — not a bare BlockDefinition
+      expect(typeof connected.then).toBe("function");
+      expect(typeof connected.tap).toBe("function");
+      expect(typeof connected.map).toBe("function");
+      expect(typeof connected.work).toBe("function");
+      expect(connected.kind).toBe("sequencer");
+    });
+
+    it("mapper runs before sequencer operations", async () => {
+      const addOne = addHandler("add-one", 1);
+      const seq = sequencer({ name: "ci-mapper", inputSchema: z.number() })
+        .then(addOne);
+
+      const connected = seq.connectInput((s: string) => Number(s));
+      const ctx = createMockContext();
+      // "5" → 5 → 5 + 1 = 6
+      await expect(connected.run("5", ctx)).resolves.toBe(6);
+    });
+
+    it("preserves declared resources from child blocks", () => {
+      const resource = defineResource({
+        stateSchema: z.object({ items: z.array(z.string()) })
+      });
+
+      const step = handler({
+        name: "step-with-resource",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        sessionResources: { myResource: resource },
+        execute: (v) => v
+      });
+
+      const seq = sequencer({ name: "ci-resources", inputSchema: z.number() })
+        .then(step);
+
+      const connected = seq.connectInput((s: string) => Number(s));
+
+      expect(connected.declaredResources).toEqual({
+        session: { myResource: resource }
+      });
+    });
+
+    it("supports chaining DSL methods after connectInput", async () => {
+      const addOne = addHandler("add-one", 1);
+      const double = handler({
+        name: "double",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: (v) => v * 2
+      });
+
+      const connected = sequencer({ name: "ci-chain", inputSchema: z.number() })
+        .then(addOne)
+        .connectInput((s: string) => Number(s))
+        .then(double);
+
+      const ctx = createMockContext();
+      // "3" → 3 → 3 + 1 = 4 → 4 * 2 = 8
+      await expect(connected.run("3", ctx)).resolves.toBe(8);
+    });
+
+    it("preserves name from original sequencer config", () => {
+      const seq = sequencer({ name: "my-seq", inputSchema: z.number() })
+        .then(addHandler("step", 1));
+
+      const connected = seq.connectInput((s: string) => Number(s));
+      expect(connected.name).toBe("my-seq");
     });
   });
 });

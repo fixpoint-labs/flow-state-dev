@@ -1,14 +1,17 @@
 /**
- * Thinking Style Resolution (FIX-311)
+ * Thinking Style Resolution + Pipelines
  *
  * Resolves "auto" thinking style to a concrete style via:
  *   1. Keyword handler — fast heuristic scan, patches session state directly if match
  *   2. LLM classifier — intentClassifier fallback when no keyword matched
  *
- * autoClassifyStyle is the exported sequencer. Used by resolveThinkingStyle
- * in flow.ts when input.thinkingStyle === "auto".
+ * Defines the three thinking-style pipelines (chain-of-thought, plan-and-execute,
+ * supervisor) and the router that dispatches between them.
  */
-import { handler, sequencer, utility } from "@flow-state-dev/core";
+import { handler, router, sequencer, utility } from "@flow-state-dev/core";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
+import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
+import { supervisor } from "@flow-state-dev/patterns/supervisor";
 import { z } from "zod";
 
 // -------------------------------------------------------------------------
@@ -76,10 +79,6 @@ export const COT_KEYWORDS = [
 
 // -------------------------------------------------------------------------
 // Tier 1 — Keyword Handler
-//
-// When a keyword matches, patches session.state.thinkingStyle directly
-// (if different) and sets sequencer.state.keywordMatched = true.
-// When no match, leaves session state unchanged.
 // -------------------------------------------------------------------------
 
 const messageSchema = z.object({ message: z.string() });
@@ -112,9 +111,6 @@ export const keywordHandler = handler({
 
 // -------------------------------------------------------------------------
 // Tier 2 — LLM Classifier
-//
-// classifierBlock: intentClassifier generator — returns { category, confidence }
-// applyClassifiedStyle: reads the classifier output, applies threshold, patches state
 // -------------------------------------------------------------------------
 
 const CONFIDENCE_THRESHOLD = 0.65;
@@ -168,11 +164,7 @@ const llmClassifySequencer = sequencer({
   .tap(applyClassifiedStyle);
 
 // -------------------------------------------------------------------------
-// Auto-classify sequencer
-//
-// Runs Tier 1 (keyword), then Tier 2 (LLM) only if no keyword matched.
-// After this block, session.state.thinkingStyle is set.
-// Input: { message: string }
+// Auto-classify sequencer (exported for use in flow.ts)
 // -------------------------------------------------------------------------
 
 export const autoClassifyStyle = sequencer({
@@ -186,3 +178,77 @@ export const autoClassifyStyle = sequencer({
     llmClassifySequencer,
   );
 
+// -------------------------------------------------------------------------
+// Thinking Style Router Factory
+//
+// Accepts the assistant generator and produces the router + pipelines.
+// This factory pattern avoids circular dependencies between thinking-styles
+// and flow.ts (where the assistant generator is defined).
+// -------------------------------------------------------------------------
+
+export interface ThinkingStyleRouterConfig {
+  assistantGenerator: BlockDefinition<any, any>;
+  modelId: string;
+  context: any[];
+  tools: BlockDefinition<any, any>[];
+  sessionResources: Record<string, any>;
+}
+
+export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
+  const { assistantGenerator, modelId, context, tools, sessionResources } = config;
+
+  // Chain of Thought — direct generation.
+  const cotPipeline = assistantGenerator;
+
+  // Plan and Execute — decomposes into steps, executes, synthesizes.
+  const paePipeline = planAndExecute({
+    name: "pae-thinking",
+    model: modelId,
+    context,
+    search: true,
+    tools,
+    sessionResources,
+    enableReplanning: true,
+  });
+
+  // Supervisor — plan → dispatch workers → review → replan loop.
+  // The worker adapts the supervisor's { id, goal } task shape to the assistant generator.
+  const supervisorWorker = assistantGenerator.connectInput(
+    (input: { id: string; goal: string; feedback?: string }) => ({
+      message: input.feedback
+        ? `${input.goal}\n\nPrevious feedback: ${input.feedback}`
+        : input.goal,
+      mode: "chat" as const,
+      thinkingStyle: "chain-of-thought" as const,
+    }),
+  );
+
+  const supervisorPipeline = supervisor({
+    name: "supervisor-thinking",
+    worker: supervisorWorker,
+    maxIterations: 3,
+    maxConcurrency: 3,
+    onSubTaskError: "skip",
+  });
+
+  // Router — adapts flow input to each pipeline's expected shape via connectInput.
+  // connectInput delegates through the original block's .run, so route
+  // interception (e.g. testRouter) works transparently.
+  const thinkingStyleRouter = router({
+    name: "thinking-style-router",
+    routes: [cotPipeline, paePipeline, supervisorPipeline],
+    execute: (input, ctx) => {
+      const style = ctx.session.state.thinkingStyle as string | undefined;
+      switch (style) {
+        case "plan-and-execute":
+          return paePipeline.connectInput(() => ({ goal: input.message }));
+        case "supervisor":
+          return supervisorPipeline.connectInput(() => ({ goal: input.message }));
+        default:
+          return cotPipeline;
+      }
+    },
+  });
+
+  return { thinkingStyleRouter, cotPipeline, paePipeline, supervisorPipeline };
+}
