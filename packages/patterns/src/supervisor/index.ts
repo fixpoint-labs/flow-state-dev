@@ -123,6 +123,7 @@ export const updatePlanState = handler({
     const newPlan = input.tasks.map((t) => ({
       id: t.id,
       goal: t.goal,
+      deps: t.deps ?? [],
       status: "in-progress" as const,
     }));
 
@@ -152,6 +153,7 @@ export const updatePlanState = handler({
       return {
         id: t.id,
         goal: t.goal,
+        deps: t.deps ?? [],
         feedback: prior?.feedback,
       };
     });
@@ -215,25 +217,47 @@ function buildDefaultPlanner(name: string) {
       if (!state || state.iteration === 0) {
         return [
           "You are a task decomposition assistant for a supervisor workflow.",
-          "Break broad requests into independent, actionable sub-tasks.",
+          "Break the request into sub-tasks that can ALL run in parallel — every task you emit will execute concurrently.",
+          "If some work depends on the output of other work, only include the independent tasks now.",
+          "Dependent follow-up tasks will be planned in a later iteration once earlier results are available.",
           "Each task must include a stable unique id and a clear goal.",
           "Optionally assign each task an assignee — a role, team member, or specialist best suited for that task.",
-          "Use deps only when a task depends on one or more prior task ids.",
-          "Set priority when useful using high, medium, or low.",
-          "Order tasks so dependencies can be executed correctly.",
           "Return output that exactly matches the required schema.",
         ].join("\n");
       }
-      const needsRevision = state.plan.filter(
-        (t) => t.status === "needs-revision"
-      );
+
+      const completed = state.plan.filter((t) => t.status === "completed");
+      const needsRevision = state.plan.filter((t) => t.status === "needs-revision");
+
+      const completedSummary = completed.length > 0
+        ? `\nCompleted tasks from prior iterations:\n${completed.map(
+            (t) => `- "${t.id}" (${t.goal}): ${typeof t.result === "string" ? t.result.slice(0, 200) : "done"}`
+          ).join("\n")}`
+        : "";
+
+      if (needsRevision.length > 0) {
+        return [
+          `Original goal: ${state.goal}`,
+          completedSummary,
+          `\nIteration ${state.iteration + 1}. The following tasks need revision:`,
+          ...needsRevision.map(
+            (t) => `- Task "${t.id}" (${t.goal}): ${t.feedback}`
+          ),
+          "Return revised sub-tasks that address the feedback.",
+          "Also include any NEW follow-up tasks that can now run given the completed results above.",
+          "Do not re-plan tasks that were already accepted.",
+          "Return output that exactly matches the required schema.",
+        ].join("\n");
+      }
+
+      // No revisions — this is a follow-up wave for dependent tasks
       return [
         `Original goal: ${state.goal}`,
-        `Iteration ${state.iteration + 1}. Re-plan only the following tasks based on review feedback:`,
-        ...needsRevision.map(
-          (t) => `- Task "${t.id}" (${t.goal}): ${t.feedback}`
-        ),
-        "Return revised sub-tasks that address the feedback. Do not re-plan tasks that were already accepted.",
+        completedSummary,
+        `\nIteration ${state.iteration + 1}. The tasks above are complete.`,
+        "Plan the next wave of tasks that depend on or build upon the completed results.",
+        "If the goal is fully addressed, return an empty tasks array.",
+        "Every task you emit will run concurrently, so only include tasks that are independent of each other.",
         "Return output that exactly matches the required schema.",
       ].join("\n");
     },
@@ -255,10 +279,13 @@ function buildDefaultReviewer(
     model: "preset/fast",
     outputSchema: reviewOutputSchema,
     prompt: [
-      "You are a quality review assistant.",
+      "You are a quality review assistant for a supervisor workflow.",
       "Evaluate each sub-task result against the original goal and review criteria.",
       "For each task, provide a verdict: accepted, needs-revision, or escalate.",
-      "Set needsReplanning to true if ANY task received a needs-revision verdict.",
+      "Set needsReplanning to true if:",
+      "  - ANY task received a needs-revision verdict, OR",
+      "  - The completed tasks are only a partial step toward the goal and more work is needed",
+      "    (e.g., foundational tasks are done but the main deliverable hasn't been produced yet).",
       "Provide specific, actionable feedback for tasks that need revision.",
       "Score each task from 0 to 1 based on quality.",
       criteriaBlock,
@@ -361,7 +388,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   const updatePlanStateBlock = handler({
     name: "update-plan-state",
     inputSchema: plannerOutputSchema,
-    outputSchema: executableTasksSchema,
+    outputSchema: z.any(),
     sequencerStateSchema: supervisorStateSchema,
     execute: async (input, ctx) => {
       const state = ctx.sequencer!.state;
@@ -370,6 +397,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         id: t.id,
         goal: t.goal,
         ...(t.assignee ? { assignee: t.assignee } : {}),
+        deps: t.deps ?? [],
         status: "in-progress" as const,
       }));
 
@@ -391,7 +419,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         goal: updatedState.goal,
         tasks: updatedState.plan,
         iteration: updatedState.iteration,
-      }, { key: `${name}:iter-${updatedState.iteration}` });
+      }, { key: name });
 
       return newPlan.map((t) => {
         const prior = state.plan.find((p) => p.id === t.id);
@@ -441,7 +469,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         goal: finalState.goal,
         tasks: finalState.plan,
         iteration: finalState.iteration,
-      }, { key: `${name}:iter-${finalState.iteration}` });
+      }, { key: name });
       return { needsReplanning: input.needsReplanning };
     },
   });
@@ -500,7 +528,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
           goal: updatedState.goal,
           tasks: updatedState.plan,
           iteration: updatedState.iteration,
-        }, { key: `${name}:iter-${updatedState.iteration}` });
+        }, { key: name });
         return result;
       },
     });
