@@ -825,7 +825,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
     } else if (chunk.type === "text_delta" && chunk.textDelta !== undefined) {
       // On first text delta, finalize reasoning and start the message (or
       // a reasoning item when messages are remapped via emit.messages: 'reasoning').
-      const remapToReasoning = emitConfig.messages === 'reasoning';
+      // When messages are fully suppressed, just accumulate text silently.
+      const emitMessages = emitConfig.messages;
       if (!messageEmitted) {
         // Close reasoning item if it was started
         if (reasoningStarted) {
@@ -849,7 +850,9 @@ async function executeStreamingGeneration<TInput, TOutput>(
           await ctx.response.emit({ type: "item.done", item: completedReasoning });
         }
 
-        if (remapToReasoning) {
+        if (emitMessages === false) {
+          // Messages suppressed — no item emitted, just accumulate text
+        } else if (emitMessages === 'reasoning') {
           // Emit text as a reasoning item instead of a message
           messageItem = {
             id: itemId,
@@ -862,6 +865,13 @@ async function executeStreamingGeneration<TInput, TOutput>(
             ts: Date.now(),
             summary: [{ type: "reasoning_text" as const, text: "" }]
           };
+          await ctx.response.emit({ type: "item.added", item: messageItem });
+          await ctx.response.emit({
+            type: "content.added",
+            itemId,
+            contentIndex: contentPartIndex,
+            content: { type: "reasoning_text", text: "" }
+          });
         } else {
           // Normal assistant message
           messageItem = {
@@ -876,24 +886,25 @@ async function executeStreamingGeneration<TInput, TOutput>(
             ts: Date.now(),
             content: [{ type: "output_text" as const, text: "" }]
           };
+          await ctx.response.emit({ type: "item.added", item: messageItem });
+          await ctx.response.emit({
+            type: "content.added",
+            itemId,
+            contentIndex: contentPartIndex,
+            content: { type: "output_text", text: "" }
+          });
         }
-        const contentType = remapToReasoning ? "reasoning_text" : "output_text";
-        await ctx.response.emit({ type: "item.added", item: messageItem });
-        await ctx.response.emit({
-          type: "content.added",
-          itemId,
-          contentIndex: contentPartIndex,
-          content: { type: contentType, text: "" }
-        });
         messageEmitted = true;
       }
       accumulated += chunk.textDelta;
-      await ctx.response.emit({
-        type: "content.delta",
-        itemId,
-        contentIndex: contentPartIndex,
-        delta: chunk.textDelta
-      });
+      if (emitMessages !== false) {
+        await ctx.response.emit({
+          type: "content.delta",
+          itemId,
+          contentIndex: contentPartIndex,
+          delta: chunk.textDelta
+        });
+      }
     } else if (chunk.type === "tool_input_start" && chunk.toolInput !== undefined) {
       // Emit a status item so clients see progress during provider tool execution
       const toolName = chunk.toolInput.toolName;
@@ -959,7 +970,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
   }
 
   // If no text deltas arrived, still finalize reasoning and emit message
-  const remapToReasoning = emitConfig.messages === 'reasoning';
+  const emitMessages = emitConfig.messages;
   if (!messageEmitted) {
     if (reasoningStarted) {
       await ctx.response.emit({
@@ -981,7 +992,9 @@ async function executeStreamingGeneration<TInput, TOutput>(
       };
       await ctx.response.emit({ type: "item.done", item: completedReasoning });
     }
-    if (remapToReasoning) {
+    if (emitMessages === false) {
+      // Messages suppressed — no item emitted
+    } else if (emitMessages === 'reasoning') {
       messageItem = {
         id: itemId,
         type: "reasoning" as const,
@@ -993,6 +1006,13 @@ async function executeStreamingGeneration<TInput, TOutput>(
         ts: Date.now(),
         summary: [{ type: "reasoning_text" as const, text: "" }]
       };
+      await ctx.response.emit({ type: "item.added", item: messageItem });
+      await ctx.response.emit({
+        type: "content.added",
+        itemId,
+        contentIndex: contentPartIndex,
+        content: { type: "reasoning_text", text: "" }
+      });
     } else {
       messageItem = {
         id: itemId,
@@ -1006,26 +1026,16 @@ async function executeStreamingGeneration<TInput, TOutput>(
         ts: Date.now(),
         content: [{ type: "output_text" as const, text: "" }]
       };
+      await ctx.response.emit({ type: "item.added", item: messageItem });
+      await ctx.response.emit({
+        type: "content.added",
+        itemId,
+        contentIndex: contentPartIndex,
+        content: { type: "output_text", text: "" }
+      });
     }
-    const contentType = remapToReasoning ? "reasoning_text" : "output_text";
-    await ctx.response.emit({ type: "item.added", item: messageItem });
-    await ctx.response.emit({
-      type: "content.added",
-      itemId,
-      contentIndex: contentPartIndex,
-      content: { type: contentType, text: "" }
-    });
     messageEmitted = true;
   }
-
-  // Emit content.done
-  const doneContentType = remapToReasoning ? "reasoning_text" : "output_text";
-  await ctx.response.emit({
-    type: "content.done",
-    itemId,
-    contentIndex: contentPartIndex,
-    content: { type: doneContentType, text: accumulated }
-  });
 
   // Validate output through the schema
   const parsed = outputSchema.safeParse(accumulated);
@@ -1035,11 +1045,21 @@ async function executeStreamingGeneration<TInput, TOutput>(
     );
   }
 
-  // Emit completed item
-  const completedItem = remapToReasoning
-    ? { ...messageItem!, status: "completed" as const, summary: [{ type: "reasoning_text" as const, text: accumulated }] }
-    : { ...messageItem!, status: "completed" as const, content: [{ type: "output_text" as const, text: accumulated }] };
-  await ctx.response.emit({ type: "item.done", item: completedItem });
+  // Emit content.done and completed item (skip when messages are suppressed)
+  if (emitMessages !== false && messageItem) {
+    const isReasoning = emitMessages === 'reasoning';
+    const contentType = isReasoning ? "reasoning_text" : "output_text";
+    await ctx.response.emit({
+      type: "content.done",
+      itemId,
+      contentIndex: contentPartIndex,
+      content: { type: contentType, text: accumulated }
+    });
+    const completedItem = isReasoning
+      ? { ...messageItem, status: "completed" as const, summary: [{ type: "reasoning_text" as const, text: accumulated }] }
+      : { ...messageItem, status: "completed" as const, content: [{ type: "output_text" as const, text: accumulated }] };
+    await ctx.response.emit({ type: "item.done", item: completedItem });
+  }
 
   ctx._runtimeHooks?.onGeneratorModelResult?.({
     model: model.modelId,
@@ -1219,11 +1239,13 @@ export function generator<
             : compileToolsForModel(toolBlocks))
         : [];
 
-      // Streaming path: text output + model supports streaming + messages not suppressed.
-      // Now works with tools + multi-step — the AI SDK drives the loop.
+      // Streaming path: text output + model supports streaming.
+      // Use streaming when messages are enabled OR when tools are present (so tool
+      // status events flow to the client even when message text is suppressed).
       const emitConfig = normalizeEmit(normalizedConfig.emit);
       const messagesEnabled = emitConfig.messages !== false;
-      const canStream = messagesEnabled && isTextOutputSchema(outputSchema) && model.stream !== undefined;
+      const hasTools = compiledTools.length > 0 || resolvedProviderTools.length > 0;
+      const canStream = (messagesEnabled || hasTools) && isTextOutputSchema(outputSchema) && model.stream !== undefined;
 
       if (canStream) {
         return await executeStreamingGeneration(

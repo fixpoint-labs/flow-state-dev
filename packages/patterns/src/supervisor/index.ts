@@ -358,7 +358,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         goal: updatedState.goal,
         tasks: updatedState.plan,
         iteration: updatedState.iteration,
-      }, { key: name });
+      }, { key: `${name}:iter-${updatedState.iteration}` });
 
       return newPlan.map((t) => {
         const prior = state.plan.find((p) => p.id === t.id);
@@ -408,12 +408,13 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         goal: finalState.goal,
         tasks: finalState.plan,
         iteration: finalState.iteration,
-      }, { key: name });
+      }, { key: `${name}:iter-${finalState.iteration}` });
       return { needsReplanning: input.needsReplanning };
     },
   });
 
-  // Store worker results back into plan state so applyReview can access them
+  // Store worker results back into plan state so applyReview can access them.
+  // Returns results paired with task IDs/goals so the reviewer can reference them.
   const storeResults = handler({
     name: `${name}-store-results`,
     inputSchema: z.any(),
@@ -422,7 +423,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     execute: async (results: unknown[], ctx) => {
       const state = ctx.sequencer!.state;
       const pendingTasks = state.plan.filter((t) => t.status === "in_progress");
-      const reviewableResults: unknown[] = [];
+      const reviewableResults: { taskId: string; goal: string; result: unknown }[] = [];
       const updatedPlan = state.plan.map((task) => {
         const taskIndex = pendingTasks.findIndex((t) => t.id === task.id);
         if (taskIndex < 0 || taskIndex >= results.length) return task;
@@ -440,8 +441,8 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
             feedback: errorMessage,
           };
         }
-        reviewableResults.push(result);
-        return { ...task, result };
+        reviewableResults.push({ taskId: task.id, goal: task.goal, result });
+        return { ...task, result, status: "awaiting-review" as const };
       });
       await ctx.sequencer!.patchState({ plan: updatedPlan });
       const finalState = ctx.sequencer!.state;
@@ -449,7 +450,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         goal: finalState.goal,
         tasks: finalState.plan,
         iteration: finalState.iteration,
-      }, { key: name });
+      }, { key: `${name}:iter-${finalState.iteration}` });
       return reviewableResults;
     },
   });

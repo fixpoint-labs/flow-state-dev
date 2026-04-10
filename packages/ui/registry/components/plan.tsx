@@ -8,6 +8,7 @@ import {
   CheckCircle2Icon,
   ChevronRightIcon,
   CircleIcon,
+  EyeIcon,
   Loader2Icon,
   MinusCircleIcon,
   XCircleIcon,
@@ -21,6 +22,7 @@ import {
 type PlanTaskStatus =
   | "pending"
   | "in_progress"
+  | "awaiting-review"
   | "completed"
   | "failed"
   | "skipped"
@@ -65,6 +67,11 @@ const STATUS_CONFIG: Record<PlanTaskStatus, StatusConfig> = {
     iconClassName: "text-blue-500 animate-spin",
     label: "In progress",
   },
+  "awaiting-review": {
+    icon: EyeIcon,
+    iconClassName: "text-cyan-500",
+    label: "Awaiting review",
+  },
   completed: {
     icon: CheckCircle2Icon,
     iconClassName: "text-green-500",
@@ -98,6 +105,7 @@ const STATUS_CONFIG: Record<PlanTaskStatus, StatusConfig> = {
 /** Extracts a human-readable summary from a task result if one is present. */
 function getResultSummary(result: unknown): string | undefined {
   if (result === null || result === undefined) return undefined;
+  if (typeof result === "string") return result;
   if (typeof result === "object" && "summary" in (result as object)) {
     const s = (result as { summary: unknown }).summary;
     return typeof s === "string" ? s : undefined;

@@ -7,14 +7,19 @@ import { useSessionItems } from "@/components/flow-state/session-items-context";
 import { getStyleOption, type ThinkingStyle } from "@/components/thinking-style-selector";
 import { cn } from "@/lib/utils";
 
-type ComponentItem = OutputItem & { type: "component"; component: string };
+type ComponentItem = OutputItem & { type: "component"; component: string; key?: string };
 type BlockOutputItem = OutputItem & { type: "block_output"; blockName: string };
 
 function inferThinkingStyle(items: OutputItem[]): ThinkingStyle | null {
-  const hasPlan = items.some(
+  const planItems = items.filter(
     (i) => i.type === "component" && (i as ComponentItem).component === "plan",
-  );
-  if (hasPlan) return "plan-and-execute";
+  ) as ComponentItem[];
+
+  if (planItems.length > 0) {
+    // Supervisor plan snapshots use keys like "supervisor-thinking:iter-1"
+    const isSupervisor = planItems.some((i) => i.key?.includes("supervisor"));
+    return isSupervisor ? "supervisor" : "plan-and-execute";
+  }
 
   const hasSupervisor = items.some(
     (i) =>

@@ -9,6 +9,7 @@ import {
   CheckCircle2Icon,
   ChevronRightIcon,
   CircleIcon,
+  EyeIcon,
   Loader2Icon,
   MinusCircleIcon,
   WrenchIcon,
@@ -20,6 +21,7 @@ import { useSessionItems } from "./session-items-context";
 type PlanTaskStatus =
   | "pending"
   | "in_progress"
+  | "awaiting-review"
   | "completed"
   | "failed"
   | "skipped"
@@ -52,6 +54,7 @@ type StatusConfig = {
 const STATUS_CONFIG: Record<PlanTaskStatus, StatusConfig> = {
   pending: { icon: CircleIcon, iconClassName: "text-muted-foreground", label: "Pending" },
   in_progress: { icon: Loader2Icon, iconClassName: "text-blue-500 animate-spin", label: "In progress" },
+  "awaiting-review": { icon: EyeIcon, iconClassName: "text-cyan-500", label: "Awaiting review" },
   completed: { icon: CheckCircle2Icon, iconClassName: "text-green-500", goalClassName: "text-muted-foreground line-through", label: "Completed" },
   failed: { icon: XCircleIcon, iconClassName: "text-destructive", goalClassName: "text-destructive", label: "Failed" },
   skipped: { icon: MinusCircleIcon, iconClassName: "text-muted-foreground", goalClassName: "text-muted-foreground line-through", label: "Skipped" },
@@ -61,6 +64,7 @@ const STATUS_CONFIG: Record<PlanTaskStatus, StatusConfig> = {
 
 function getResultSummary(result: unknown): string | undefined {
   if (result === null || result === undefined) return undefined;
+  if (typeof result === "string") return result;
   if (typeof result === "object" && "summary" in (result as object)) {
     const s = (result as { summary: unknown }).summary;
     return typeof s === "string" ? s : undefined;

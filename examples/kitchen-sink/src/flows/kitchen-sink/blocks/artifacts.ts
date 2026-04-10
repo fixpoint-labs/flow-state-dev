@@ -82,6 +82,7 @@ const saveSummary = handler({
   name: "save-artifact-summary",
   inputSchema: utility.summarizerOutputSchema,
   outputSchema: updateArtifactOutputSchema,
+  // TODO: we will refactor the need for this out of the framework. Ideally blocks should mainly rely on their input and use connectors to send necessary data into them
   parentInputSchema: updateArtifactInputSchema,
   sessionResources: artifactResources,
   execute: async (input, ctx) => {

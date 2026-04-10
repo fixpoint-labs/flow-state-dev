@@ -8,13 +8,14 @@ import { z } from "zod";
  * Base schema for a plan task. All plan-oriented patterns extend this.
  *
  * Status vocabulary:
- *   - pending        P&E only — queued, waiting its turn
- *   - in_progress    both — actively executing
- *   - completed      both — done successfully
- *   - failed         P&E only — hard failure
- *   - skipped        P&E only — bypassed (dependency not met or explicitly skipped)
- *   - needs-revision Supervisor only — quality gate failed, needs rework
- *   - escalated      Supervisor only — out of scope, escalated
+ *   - pending         P&E only — queued, waiting its turn
+ *   - in_progress     both — actively executing
+ *   - awaiting-review Supervisor only — worker done, pending reviewer verdict
+ *   - completed       both — done successfully
+ *   - failed          P&E only — hard failure
+ *   - skipped         P&E only — bypassed (dependency not met or explicitly skipped)
+ *   - needs-revision  Supervisor only — quality gate failed, needs rework
+ *   - escalated       Supervisor only — out of scope, escalated
  */
 export const BasePlanTaskSchema = z.object({
   id: z.string(),
@@ -22,6 +23,7 @@ export const BasePlanTaskSchema = z.object({
   status: z.enum([
     "pending",
     "in_progress",
+    "awaiting-review",
     "completed",
     "failed",
     "skipped",
