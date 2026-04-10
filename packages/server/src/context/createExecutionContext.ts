@@ -57,6 +57,7 @@ import type {
 import { createModelResolver } from "@flow-state-dev/core/models";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
+import { normalizeError } from "../errors/normalize-error";
 import { cloneValue } from "../utils/clone";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
@@ -2103,7 +2104,8 @@ export async function createExecutionContext<
     emitter: EmissionContext["response"],
     reqRef: { current: { id: string } },
     nextIndex: () => number,
-    blockOutput?: unknown
+    blockOutput?: unknown,
+    blockError?: { message: string; code?: string }
   ): void {
     const completedAt = Date.now();
     const itemIndex = nextIndex();
@@ -2125,6 +2127,7 @@ export async function createExecutionContext<
       blockName: parent.name,
       blockKind: parent.kind,
       output: blockOutput,
+      error: blockError,
       startedAt,
       completedAt,
       duration: completedAt - startedAt
@@ -2548,11 +2551,20 @@ export async function createExecutionContext<
           siblingEntry.result.status = "failed";
           siblingEntry.result.error = error instanceof Error ? error : new Error(String(error));
           siblingEntry.result.output = undefined;
+          const normalized = normalizeError(error, {
+            blockName: resolvedParent.name,
+            scope: "block"
+          });
 
           if (parentChain !== undefined) {
             emitNestedBlockTrace(
               resolvedParent, traceStartedAt, "failed",
-              emissionResponse, requestRef, () => emittedItemCount++
+              emissionResponse, requestRef, () => emittedItemCount++,
+              undefined,
+              {
+                message: normalized.message,
+                code: normalized.code
+              }
             );
           }
 

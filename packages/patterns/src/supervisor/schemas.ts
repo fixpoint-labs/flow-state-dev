@@ -10,9 +10,17 @@ export const supervisorPlanTaskSchema = z.object({
   id: z.string(),
   goal: z.string(),
   // Quality-gate statuses — tasks initialize directly as in_progress (dispatched immediately via forEach)
-  status: z.enum(["in_progress", "completed", "needs-revision", "escalated"]),
+  status: z.enum([
+    "in_progress",
+    "completed",
+    "failed",
+    "skipped",
+    "needs-revision",
+    "escalated",
+  ]),
   result: z.unknown().optional(),
   feedback: z.string().optional(),
+  error: z.string().optional(),
 });
 
 export const supervisorStateSchema = z.object({

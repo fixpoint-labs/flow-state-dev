@@ -196,6 +196,10 @@ function TraceNodeView({
 
   if (node.type === "block") {
     const isBlockSelected = node.traceItem ? selectedItemId === node.traceItem.id : false;
+    const traceError =
+      node.traceItem?.type === "block_output" && node.traceItem.status === "failed"
+        ? node.traceItem.error?.message
+        : undefined;
 
     const handleBlockClick = () => {
       toggleNode(node.id, isExpanded);
@@ -219,6 +223,14 @@ function TraceNodeView({
           {!hasChildren && <span className="w-3" />}
           {node.blockKind && <KindIndicator kind={node.blockKind} />}
           <span className="text-xs text-slate-300">{node.blockName}</span>
+          {traceError && (
+            <span
+              className="text-[11px] text-red-400/80 truncate max-w-[20rem]"
+              title={traceError}
+            >
+              {traceError}
+            </span>
+          )}
           {node.blockStatus && <StatusBadge status={node.blockStatus} />}
           <span className="flex-1" />
           {isDebugMode && node.blockInstanceId && (

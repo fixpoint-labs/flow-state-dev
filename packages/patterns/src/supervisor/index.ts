@@ -84,6 +84,18 @@ export interface SupervisorConfig<
 }
 
 const SKIPPED_SENTINEL = "__supervisorSkipped";
+type SkippedTaskResult = {
+  [SKIPPED_SENTINEL]: true;
+  error: string;
+};
+
+function isSkippedTaskResult(value: unknown): value is SkippedTaskResult {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    SKIPPED_SENTINEL in value
+  );
+}
 
 /**
  * Stores the original goal in sequencer state so it's available on re-plan iterations.
@@ -313,19 +325,35 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     execute: async (results: unknown[], ctx) => {
       const state = ctx.sequencer!.state;
       const pendingTasks = state.plan.filter((t) => t.status === "in_progress");
+      const reviewableResults: unknown[] = [];
       const updatedPlan = state.plan.map((task) => {
         const taskIndex = pendingTasks.findIndex((t) => t.id === task.id);
         if (taskIndex < 0 || taskIndex >= results.length) return task;
         const result = results[taskIndex];
-        const isSkipped =
-          result &&
-          typeof result === "object" &&
-          SKIPPED_SENTINEL in (result as Record<string, unknown>);
-        if (isSkipped) return task;
+        if (isSkippedTaskResult(result)) {
+          const errorMessage =
+            result.error || "Worker failed and task was skipped";
+          ctx.emitStatus(
+            `[supervisor:${config.name}] skipped task "${task.id}": ${errorMessage}`
+          );
+          return {
+            ...task,
+            status: "skipped" as const,
+            error: errorMessage,
+            feedback: errorMessage,
+          };
+        }
+        reviewableResults.push(result);
         return { ...task, result };
       });
       await ctx.sequencer!.patchState({ plan: updatedPlan });
-      return results;
+      const finalState = ctx.sequencer!.state;
+      emitPlanSnapshot(ctx, {
+        goal: finalState.goal,
+        tasks: finalState.plan,
+        iteration: finalState.iteration,
+      });
+      return reviewableResults;
     },
   });
 
@@ -340,20 +368,6 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     .forEach(taskRunner, {
       maxConcurrency: config.maxConcurrency ?? 3,
     });
-
-  // Filter skipped results when using skip/retry strategy
-  if (errorStrategy !== "fail") {
-    pipeline = pipeline.map((results: unknown[]) =>
-      results.filter(
-        (r) =>
-          !(
-            r &&
-            typeof r === "object" &&
-            SKIPPED_SENTINEL in (r as Record<string, unknown>)
-          )
-      )
-    );
-  }
 
   return pipeline
     .then(storeResults)

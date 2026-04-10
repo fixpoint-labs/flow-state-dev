@@ -31,6 +31,11 @@ export type BlockOutputItem = OutputItemBase & {
   blockName: string;
   blockKind?: string;
   output: unknown;
+  /** Present when block execution failed (status will be "failed"). */
+  error?: {
+    message: string;
+    code?: string;
+  };
   /** Epoch ms when block execution started. */
   startedAt?: number;
   /** Epoch ms when block execution completed or failed. */

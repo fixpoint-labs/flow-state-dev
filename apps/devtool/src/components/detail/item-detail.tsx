@@ -136,6 +136,15 @@ function BlockOutputDetail({ item }: { item: OutputItem & { type: "block_output"
   return (
     <div className="space-y-2">
       <MetadataRow label="Block" value={item.blockName} mono />
+      {item.status === "failed" && item.error && (
+        <div className="rounded bg-red-950/30 border border-red-800/50 px-3 py-2">
+          <span className="text-[10px] uppercase text-red-400 font-medium">Error</span>
+          <p className="text-xs text-red-300 mt-0.5 font-mono">{item.error.message}</p>
+          {item.error.code && (
+            <p className="text-[10px] text-red-400/60 mt-0.5 font-mono">{item.error.code}</p>
+          )}
+        </div>
+      )}
       {item.toolCall && (
         <CollapsibleSection title="Tool Call" defaultOpen>
           <MetadataRow label="Call ID" value={item.toolCall.callId} mono />

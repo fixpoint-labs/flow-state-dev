@@ -461,6 +461,16 @@ describe("supervisor pattern", () => {
 
       expect(result.error).toBeNull();
       expect(result.output).toBeDefined();
+      const output = result.output as { synthesis: string };
+      expect(output.synthesis).toContain("Synthesized 2 results");
+      const skippedWarnings = result.items.filter(
+        (item) =>
+          item.type === "status" &&
+          (item as { message?: string }).message?.includes(
+            'skipped task "t2"'
+          )
+      );
+      expect(skippedWarnings).toHaveLength(1);
     });
 
     it("aborts on any failure with onSubTaskError='fail'", async () => {
