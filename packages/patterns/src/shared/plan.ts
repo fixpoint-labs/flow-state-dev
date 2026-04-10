@@ -20,6 +20,7 @@ import { z } from "zod";
 export const BasePlanTaskSchema = z.object({
   id: z.string(),
   goal: z.string(),
+  assignee: z.string().optional(),
   status: z.enum([
     "pending",
     "in-progress",

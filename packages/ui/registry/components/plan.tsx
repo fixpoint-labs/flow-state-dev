@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import type { ComponentItem } from "@flow-state-dev/core/items";
 import { cn } from "@/lib/utils";
 import {
@@ -32,6 +33,7 @@ type PlanTaskStatus =
 type PlanTask = {
   id: string;
   goal: string;
+  assignee?: string;
   status: PlanTaskStatus;
   result?: unknown;
   error?: string;
@@ -156,6 +158,11 @@ function PlanTaskRow({ task }: { task: PlanTask }) {
   const config = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.pending;
   const Icon = config.icon;
   const summary = getResultSummary(task.result);
+  const assigneeLabel = task.assignee ? (
+    <span className="ml-1 shrink-0 text-[10px] font-medium text-muted-foreground/60">
+      [{task.assignee}]
+    </span>
+  ) : null;
 
   if (!summary) {
     return (
@@ -165,7 +172,7 @@ function PlanTaskRow({ task }: { task: PlanTask }) {
           aria-hidden="true"
         />
         <span className={cn("text-xs leading-snug", config.goalClassName)}>
-          {task.goal}
+          {task.goal}{assigneeLabel}
           {task.error && (
             <span className="ml-1 opacity-60">— {task.error}</span>
           )}
@@ -183,7 +190,7 @@ function PlanTaskRow({ task }: { task: PlanTask }) {
             aria-hidden="true"
           />
           <span className={cn("flex-1 text-xs leading-snug", config.goalClassName)}>
-            {task.goal}
+            {task.goal}{assigneeLabel}
           </span>
           <ChevronRightIcon
             className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground/50 transition-transform group-open:rotate-90"

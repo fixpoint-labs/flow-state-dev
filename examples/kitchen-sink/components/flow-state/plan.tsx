@@ -32,6 +32,7 @@ type PlanTaskStatus =
 type PlanTask = {
   id: string;
   goal: string;
+  assignee?: string;
   status: PlanTaskStatus;
   result?: unknown;
   error?: string;
@@ -173,7 +174,7 @@ export function Plan({ item }: { item: ComponentItem }) {
         <p className="text-sm font-medium leading-snug">Tasks</p>
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
           {completedCount}/{plan.tasks.length}
-          {plan.iteration !== undefined && plan.iteration > 0 && ` · pass ${plan.iteration + 1}`}
+          {plan.iteration !== undefined && plan.iteration > 0 && ` · pass ${plan.iteration}`}
         </span>
       </div>
       <ul className="space-y-1.5">
@@ -218,12 +219,18 @@ function PlanTaskRow({
   const summary = getResultSummary(task.result);
   const hasDetails = summary || (toolCalls && toolCalls.length > 0);
 
+  const assigneeLabel = task.assignee ? (
+    <span className="ml-1 shrink-0 text-[10px] font-medium text-muted-foreground/60">
+      [{task.assignee}]
+    </span>
+  ) : null;
+
   if (!hasDetails) {
     return (
       <li className="flex items-start gap-2">
         <Icon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", config.iconClassName)} aria-hidden="true" />
         <span className={cn("text-xs leading-snug", config.goalClassName)}>
-          {task.goal}
+          {task.goal}{assigneeLabel}
           {task.error && <span className="ml-1 opacity-60">— {task.error}</span>}
         </span>
       </li>
@@ -236,7 +243,7 @@ function PlanTaskRow({
         <summary className="flex cursor-pointer list-none items-start gap-2">
           <Icon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", config.iconClassName)} aria-hidden="true" />
           <span className={cn("flex-1 text-xs leading-snug", config.goalClassName)}>
-            {task.goal}
+            {task.goal}{assigneeLabel}
           </span>
           <ChevronRightIcon
             className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground/50 transition-transform group-open:rotate-90"

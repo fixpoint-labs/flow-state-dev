@@ -9,7 +9,8 @@ export type SupervisorInput = z.infer<typeof supervisorInputSchema>;
 export const supervisorPlanTaskSchema = z.object({
   id: z.string(),
   goal: z.string(),
-  // Quality-gate statuses — tasks initialize directly as in_progress (dispatched immediately via forEach)
+  assignee: z.string().optional(),
+  // Quality-gate statuses — tasks initialize directly as in-progress (dispatched immediately via forEach)
   status: z.enum([
     "in-progress",
     "awaiting-review",
@@ -54,6 +55,7 @@ export const plannerOutputSchema = z.object({
     z.object({
       id: z.string(),
       goal: z.string(),
+      assignee: z.string().optional(),
       deps: z.array(z.string()).optional(),
       priority: z.enum(["high", "medium", "low"]).optional(),
     })

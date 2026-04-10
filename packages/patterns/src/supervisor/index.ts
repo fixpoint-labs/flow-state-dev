@@ -10,7 +10,6 @@
  * feedback loop powered by `.loopBack()` and sequencer `stateSchema`.
  */
 import { sequencer, handler, generator } from "@flow-state-dev/core";
-import { utility } from "@flow-state-dev/core";
 import { emitPlanSnapshot } from "../shared/plan";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
@@ -215,9 +214,10 @@ function buildDefaultPlanner(name: string) {
       const state = ctx.sequencer?.state;
       if (!state || state.iteration === 0) {
         return [
-          "You are a task decomposition assistant.",
+          "You are a task decomposition assistant for a supervisor workflow.",
           "Break broad requests into independent, actionable sub-tasks.",
           "Each task must include a stable unique id and a clear goal.",
+          "Optionally assign each task an assignee — a role, team member, or specialist best suited for that task.",
           "Use deps only when a task depends on one or more prior task ids.",
           "Set priority when useful using high, medium, or low.",
           "Order tasks so dependencies can be executed correctly.",
@@ -272,6 +272,41 @@ function buildDefaultReviewer(
   });
 }
 
+function buildDefaultSynthesizer(
+  name: string,
+  outputSchema?: ZodTypeAny
+) {
+  return generator({
+    name: `${name}-synthesizer`,
+    model: "preset/fast",
+    outputSchema: outputSchema ?? z.string(),
+    emit: { messages: true, reasoning: false },
+    prompt: [
+      "You are a final synthesis step in a supervisor workflow.",
+      "A team of workers has already completed the tasks. You will receive the original goal and their outputs.",
+      "Your job is to combine the workers' outputs into the FINAL DELIVERABLE that the user requested.",
+      "Your output IS the end product — not a summary, not a recommendation, not commentary about the process.",
+      "If the workers wrote a story, output the story. If they produced a report, output the report. If they built a plan, output the plan.",
+      "Merge overlapping content, resolve conflicts, and ensure the result reads as one unified piece — not a list of fragments.",
+      "Do NOT describe what the workers did. Do NOT recommend next steps. Do NOT output JSON unless the goal explicitly requires it.",
+      "Deliver the finished work.",
+    ].join("\n"),
+    user: (input: unknown) => {
+      if (typeof input === "string") return input;
+      const data = input as { goal?: string; results?: unknown[] };
+      const parts: string[] = [];
+      if (data.goal) parts.push(`Goal: ${data.goal}`);
+      if (data.results && Array.isArray(data.results)) {
+        data.results.forEach((r, i) => {
+          const text = typeof r === "string" ? r : JSON.stringify(r, null, 2);
+          parts.push(`--- Task ${i + 1} Result ---\n${text}`);
+        });
+      }
+      return parts.join("\n\n");
+    },
+  });
+}
+
 /**
  * Creates a supervisor block — a sequencer that decomposes a goal into
  * sub-tasks, dispatches workers, reviews results, and re-plans when needed.
@@ -291,10 +326,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
 
   const finalSynthesizer =
     config.synthesizer ??
-    utility.synthesizer({
-      name: `${name}-synthesizer`,
-      ...(config.outputSchema ? { outputSchema: config.outputSchema } : {}),
-    });
+    buildDefaultSynthesizer(name, config.outputSchema);
 
   // Wrap the worker in a sequencer with rescue for skip/retry strategies.
   // "fail" uses the bare worker so errors propagate naturally.
@@ -337,6 +369,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       const newPlan = input.tasks.map((t) => ({
         id: t.id,
         goal: t.goal,
+        ...(t.assignee ? { assignee: t.assignee } : {}),
         status: "in-progress" as const,
       }));
 
