@@ -413,47 +413,64 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     },
   });
 
-  // Store worker results back into plan state so applyReview can access them.
-  // Returns results paired with task IDs/goals so the reviewer can reference them.
-  const storeResults = handler({
-    name: `${name}-store-results`,
+  // Collect reviewable results from the forEach output (task statuses already
+  // updated incrementally inside the forEach factory).
+  const collectResults = handler({
+    name: `${name}-collect-results`,
     inputSchema: z.any(),
     outputSchema: z.any(),
     sequencerStateSchema: supervisorStateSchema,
     execute: async (results: unknown[], ctx) => {
       const state = ctx.sequencer!.state;
-      const pendingTasks = state.plan.filter((t) => t.status === "in-progress");
-      const reviewableResults: { taskId: string; goal: string; result: unknown }[] = [];
-      const updatedPlan = state.plan.map((task) => {
-        const taskIndex = pendingTasks.findIndex((t) => t.id === task.id);
-        if (taskIndex < 0 || taskIndex >= results.length) return task;
-        const result = results[taskIndex];
+      return state.plan
+        .filter((t) => t.status === "awaiting-review" && t.result !== undefined)
+        .map((t) => ({ taskId: t.id, goal: t.goal, result: t.result }));
+    },
+  });
+
+  // Per-task status updater: runs inside forEach after each worker completes.
+  // Updates that task's status in sequencer state and emits a fresh snapshot
+  // so the UI reflects each completion incrementally.
+  const updateTaskStatus = (task: { id: string; goal: string }) =>
+    handler({
+      name: `${name}-update-task-${task.id}`,
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      sequencerStateSchema: supervisorStateSchema,
+      execute: async (result: unknown, ctx) => {
         if (isSkippedTaskResult(result)) {
           const errorMessage =
             result.error || "Worker failed and task was skipped";
           ctx.emitStatus(
             `[supervisor:${name}] skipped task "${task.id}": ${errorMessage}`
           );
-          return {
-            ...task,
-            status: "skipped" as const,
-            error: errorMessage,
-            feedback: errorMessage,
-          };
+          // Functional updater reads the latest state to avoid race conditions
+          // when multiple tasks complete concurrently.
+          await ctx.sequencer!.patchState("plan" as any, (currentPlan: any[]) =>
+            currentPlan.map((t: any) =>
+              t.id === task.id
+                ? { ...t, status: "skipped" as const, error: errorMessage, feedback: errorMessage }
+                : t
+            )
+          );
+        } else {
+          await ctx.sequencer!.patchState("plan" as any, (currentPlan: any[]) =>
+            currentPlan.map((t: any) =>
+              t.id === task.id
+                ? { ...t, result, status: "awaiting-review" as const }
+                : t
+            )
+          );
         }
-        reviewableResults.push({ taskId: task.id, goal: task.goal, result });
-        return { ...task, result, status: "awaiting-review" as const };
-      });
-      await ctx.sequencer!.patchState({ plan: updatedPlan });
-      const finalState = ctx.sequencer!.state;
-      emitPlanSnapshot(ctx, {
-        goal: finalState.goal,
-        tasks: finalState.plan,
-        iteration: finalState.iteration,
-      }, { key: `${name}:iter-${finalState.iteration}` });
-      return reviewableResults;
-    },
-  });
+        const updatedState = ctx.sequencer!.state;
+        emitPlanSnapshot(ctx, {
+          goal: updatedState.goal,
+          tasks: updatedState.plan,
+          iteration: updatedState.iteration,
+        }, { key: `${name}:iter-${updatedState.iteration}` });
+        return result;
+      },
+    });
 
   let pipeline = sequencer({
     name,
@@ -463,12 +480,16 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     .tap(captureGoal)
     .then(planner)
     .then(updatePlanStateBlock)
-    .forEach(taskRunner, {
-      maxConcurrency: config.maxConcurrency ?? 3,
-    });
+    .forEach(
+      (task: ExecutableTask, _index, _ctx) =>
+        sequencer({ name: `${name}-task-${task.id}`, inputSchema: z.any() })
+          .then(taskRunner)
+          .then(updateTaskStatus(task)),
+      { maxConcurrency: config.maxConcurrency ?? 3 },
+    );
 
   return pipeline
-    .then(storeResults)
+    .then(collectResults)
     .then(reviewer)
     .then(applyReviewBlock)
     .loopBack(planner.name, {
