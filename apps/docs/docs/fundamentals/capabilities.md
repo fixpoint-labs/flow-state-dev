@@ -1,0 +1,242 @@
+---
+sidebar_position: 1
+---
+
+# Capabilities
+
+Blocks declare their dependencies individually. Resources, state schemas, context formatters, tools — all configured at the block level so blocks stay portable and self-contained. Everything they require bubbles up through sequencers to the flow.
+
+It works, but it doesn't scale cleanly. Take memory as an example. Every generator that needs shared memory has to independently wire up the same resource, the same state slice, the same context formatter, the same tools. Drift is silent — two generators can declare slightly different shapes for what's supposed to be the same thing, or one forgets to include the context formatter that the others have.
+
+`defineCapability()` solves this. A capability bundles all the pieces that belong together — resources, state schemas, helper functions, and block configuration like context and tools — under one name. Blocks install it with `uses: [capabilityName]`, and the framework handles the rest.
+
+## Defining a capability
+
+A capability can bundle any combination of resources, state schemas, helper functions, and block-level configuration presets.
+
+Here's one that manages notes — a resource, a state schema slice, and helper functions:
+
+```ts
+import { defineCapability, defineResource } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const notesResource = defineResource({
+  stateSchema: z.object({
+    entries: z.array(z.object({ text: z.string(), createdAt: z.number() })),
+  }),
+});
+
+const notesCapability = defineCapability({
+  name: "notes",
+  sessionResources: { notes: notesResource },
+  sessionStateSchema: z.object({ noteCount: z.number().default(0) }),
+
+  fns: (ctx) => ({
+    add: async (text: string) => {
+      const entries = ctx.session.resources.notes.state.entries;
+      await ctx.session.resources.notes.patchState({
+        entries: [...entries, { text, createdAt: Date.now() }],
+      });
+      await ctx.session.incState({ noteCount: 1 });
+    },
+    list: () => ctx.session.resources.notes.state.entries,
+  }),
+});
+```
+
+And here's one that bundles resources with generator-specific configuration — context formatters and tools — as presets:
+
+```ts
+const memoryCapability = defineCapability({
+  name: "memory",
+  sessionResources: { memories: memoryResource },
+
+  fns: (ctx) => ({
+    remember: async (fact: string) => { /* ... */ },
+    recall: (query: string) => { /* ... */ },
+  }),
+
+  presets: {
+    context: {
+      context: [memoryContextFormatter],
+    },
+    tools: {
+      tools: [recallTool, saveTool],
+    },
+    default: ["context", "tools"],
+  },
+});
+```
+
+The presets here handle something that would otherwise be repetitive and error-prone: every generator that needs memory would need to independently wire up the same context formatter and the same tools. With the capability, `uses: [memoryCapability]` installs the resource *and* injects the context formatter and tools into the generator's config automatically.
+
+Any block that needs notes or memory just declares it:
+
+```ts
+const myHandler = handler({
+  name: "note-taker",
+  uses: [notesCapability],
+  inputSchema: z.object({ text: z.string() }),
+  outputSchema: z.object({ count: z.number() }),
+  execute: async (input, ctx) => {
+    await ctx.cap.notes.add(input.text);
+    return { count: ctx.cap.notes.list().length };
+  },
+});
+
+const assistant = generator({
+  name: "assistant",
+  uses: [memoryCapability],
+  // context and tools are injected by the capability —
+  // no need to manually wire memoryContextFormatter or recallTool here
+  model: selectModel("gpt-4o"),
+  prompt: (input) => input.message,
+});
+```
+
+`ctx.cap.notes` and `ctx.cap.memory` give you the helper functions. Resources, state schemas, context, and tools are installed automatically. No manual spreading, no import coordination.
+
+## What gets installed
+
+When a block lists a capability in `uses`, the framework merges the capability's declarations into the block's config at factory time:
+
+| Surface | Where it goes |
+|---------|--------------|
+| `sessionResources`, `userResources`, `projectResources` | Block's declared resources (bubble through sequencers to the flow) |
+| `sessionStateSchema`, `requestStateSchema`, etc. | Merged into block-level state schemas via Zod `.extend()` |
+| `targetStateSchemas` | Merged into block's target declarations |
+| `fns` | Available at `ctx.cap.{name}` during execution |
+| Preset `context` entries | Concatenated into generator's context array |
+| Preset `tools` | Merged into generator's tools |
+| Preset `sequencerStateSchema` | Merged into sequencer's state schema |
+
+The merge happens before the block is built. This is the key thing: capabilities aren't just a way to share resources. They're a way to share any block configuration. A generator that `uses` a capability with context and tools presets gets those injected into its config as if they were declared inline. The existing propagation — sequencer resource collection, `defineFlow` resource merging — works unchanged.
+
+## Presets
+
+Presets are how capabilities contribute block-level configuration — context formatters, tools, state schemas, and resources — as named bundles that consumers can toggle. They're the mechanism that makes capabilities more than just shared resources.
+
+A preset can declare any field a block config supports. The most common use is packaging context and tools for generators:
+
+```ts
+const memoryCapability = defineCapability({
+  name: "memory",
+  sessionResources: { memories: memoryResource },
+  fns: (ctx) => ({ remember, recall }),
+
+  presets: {
+    recentContext: {
+      context: [(input, ctx) => formatRecentMemories(ctx)],
+    },
+    fullContext: {
+      context: [(input, ctx) => formatAllMemories(ctx)],
+    },
+    tools: {
+      tools: [recallTool, saveTool],
+    },
+    default: ["recentContext", "tools"],
+  },
+});
+```
+
+By default, all listed presets are active. If you omit the `default` array, every preset is on.
+
+### Configuring presets
+
+```ts
+// Default — recentContext and tools are both active
+uses: [memoryCapability]
+
+// Turn off the tools preset (read-only generator)
+uses: [memoryCapability.presets({ tools: false })]
+
+// Swap to full context instead of recent
+uses: [memoryCapability.presets({ recentContext: false, fullContext: true })]
+```
+
+The type system enforces block-kind compatibility: a preset with `context` or `tools` only works on generators. A preset with `sequencerStateSchema` only works on sequencers. Resource-only presets work on all block kinds.
+
+If a preset contributes a field incompatible with the consuming block kind, you get a clear error at factory time naming the capability, preset, and offending field.
+
+## Capability composition
+
+Capabilities can depend on other capabilities. This works the same way as block-level `uses`:
+
+```ts
+const searchCapability = defineCapability({
+  name: "search",
+  uses: [memoryCapability],
+  fns: (ctx) => ({
+    searchAndRemember: async (query: string) => {
+      const results = await doSearch(query);
+      await ctx.cap.memory.remember(results.summary);
+      return results;
+    },
+  }),
+});
+```
+
+A block that uses `searchCapability` gets memory's resources installed too. Dependencies are resolved transitively and deduplicated. If two capabilities both depend on the same base capability, it's installed once (diamond deduplication).
+
+## Parameterized capabilities
+
+When a capability needs configuration, wrap `defineCapability()` in a function:
+
+```ts
+const storageCapability = (scope: "session" | "user") =>
+  defineCapability({
+    name: `storage:${scope}`,
+    ...(scope === "session"
+      ? { sessionResources: { store: storeResource } }
+      : { userResources: { store: storeResource } }),
+    fns: (ctx) => ({ save, load }),
+  });
+
+// Usage
+uses: [storageCapability("session")]
+```
+
+One trade-off: parameterization propagates. If a capability depends on a parameterized capability, it either hardcodes the choice or becomes parameterized itself. This is the right behavior — the parameter represents a real decision that someone has to make — but it can surprise people the first time they hit a three-level chain.
+
+## ctx.cap
+
+Helper functions live at `ctx.cap.{capabilityName}`. Each capability's `fns(ctx)` factory is called once per block execution and the result is cached.
+
+```ts
+execute: async (input, ctx) => {
+  // Typed — autocomplete shows available helpers
+  await ctx.cap.memory.remember("user prefers dark mode");
+  const facts = ctx.cap.memory.recall("preferences");
+}
+```
+
+`ctx.cap` is a plain object with properties, not a Proxy. Destructuring works: `const { memory } = ctx.cap`.
+
+If a capability doesn't declare `fns`, it still installs resources and state schemas — it just doesn't contribute to `ctx.cap`.
+
+## Merging rules
+
+When multiple capabilities (or a capability and a block) declare the same surface:
+
+| Surface | Same reference | Different references |
+|---------|---------------|---------------------|
+| Resource | Deduplicated silently | Error: resource conflict |
+| Target | Deduplicated silently | Error: target conflict |
+| State schema | Merged via Zod `.extend()` | Last-wins for matching keys |
+| Context entries | Concatenated | N/A |
+| Tools | Both included | N/A |
+
+Resource deduplication uses reference equality. If two capabilities pass the same `defineResource()` reference, there's no conflict. If they create different resource objects for the same name, the framework throws at factory time.
+
+## When to extract a capability
+
+Not everything needs to be a capability. A single resource used by one block doesn't benefit from the abstraction. Extract a capability when:
+
+- Multiple blocks need the same combination of resources + state + helpers
+- Several generators share the same context formatters, tools, or both — and you want them to stay in sync when the set changes
+- A domain concept (memory, artifacts, search) has a clear boundary with both data and behavior
+- You want `ctx.cap.{name}` helpers instead of loose function imports
+
+The second point is worth emphasizing. Without a capability, adding a new tool to your memory system means finding every generator that uses memory and updating its `tools` array. With a capability, you add the tool once to the preset and every consumer picks it up automatically.
+
+Start concrete. If you find yourself spreading the same config into three blocks, that's when a capability earns its keep.

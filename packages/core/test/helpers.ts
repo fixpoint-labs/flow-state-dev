@@ -43,7 +43,8 @@ export function createMockContext(overrides?: Partial<BlockContext>): BlockConte
     signal: new AbortController().signal,
     resolveModel,
     getTarget: () => undefined,
-    targetStateSchemas: {}
+    targetStateSchemas: {},
+    cap: {} as any,
   };
 
   return {

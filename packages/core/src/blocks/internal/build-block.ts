@@ -9,6 +9,7 @@ import type {
 } from "../../types/block";
 import type { DefinedResource } from "../../types/resource";
 import type { DefinedResourceCollection } from "../../types/resource-collection";
+import type { CapabilityRef } from "../../capability/types";
 import { toError } from "./utils";
 
 /**
@@ -103,6 +104,8 @@ export type BuildBlockOptions<
   config: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
   execute?: ExecuteFn<TInputSchema, TOutputSchema, TInput, TOutput>;
   declaredResources?: DeclaredResources;
+  /** Resolved capabilities from `uses`, stored for ctx.cap construction at runtime. */
+  resolvedCapabilities?: CapabilityRef[];
 };
 
 function validateSchema<TValue>(
@@ -152,6 +155,11 @@ export function buildBlock<
     inputSchema: resolvedInputSchema,
     outputSchema: resolvedOutputSchema
   };
+
+  // Store resolved capabilities for ctx.cap construction at runtime.
+  if (options.resolvedCapabilities && options.resolvedCapabilities.length > 0) {
+    (runtimeConfig as any).__resolvedCapabilities = options.resolvedCapabilities;
+  }
 
   const transient = config.transient === true;
 

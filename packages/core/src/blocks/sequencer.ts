@@ -12,6 +12,7 @@ import type {
   WorkResult
 } from "./sequencer-methods";
 import { buildBlock, mergeDeclaredResources } from "./internal/build-block";
+import { resolveCapabilities } from "./internal/resolve-capabilities";
 import type { DeclaredResources } from "../types/block";
 import { isBlockDefinition, toError, withTimeout } from "./internal/utils";
 
@@ -370,7 +371,8 @@ function createSequencer<TInput, TOutput>(
   rescueHandlers: RescueHandlerSpec[],
   lastOutputSchema?: ZodTypeAny,
   resolvedInputSchema?: ZodTypeAny,
-  accumulatedResources?: DeclaredResources
+  accumulatedResources?: DeclaredResources,
+  capabilityRefs?: import("../capability/types").CapabilityRef[]
 ): SequencerDefinition<TInput, TOutput> {
   // The tracked output schema reflects the chain's last step (informational for devtools/composition).
   // We pass undefined to buildBlock's outputSchema so the sequencer itself doesn't validate output —
@@ -392,7 +394,8 @@ function createSequencer<TInput, TOutput>(
       input: unknown,
       ctx: BlockContext
     ) => Promise<unknown>,
-    declaredResources: accumulatedResources
+    declaredResources: accumulatedResources,
+    resolvedCapabilities: capabilityRefs,
   });
 
   // Override the informational schema on the block definition so devtools and consumers
@@ -419,7 +422,7 @@ function createSequencer<TInput, TOutput>(
     newInputSchema?: ZodTypeAny,
     newResources?: DeclaredResources
   ): SequencerDefinition<TInput, TNext> =>
-    createSequencer<TInput, TNext>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources);
+    createSequencer<TInput, TNext>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs);
 
   /**
    * On the first step (no operations yet) when neither config nor resolved input
@@ -1045,7 +1048,7 @@ function createSequencer<TInput, TOutput>(
         (acc, h) => mergeDeclaredResources(acc, h.block.declaredResources),
         accumulatedResources
       );
-      return createSequencer<TInput, TOutput>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources);
+      return createSequencer<TInput, TOutput>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs);
     },
 
     branch<TBranches extends Record<string, BranchStep<TOutput>>>(
@@ -1147,11 +1150,15 @@ export function sequencer<
 >(
   config: SequencerConfig<TInputSchema, TInput>
 ): SequencerDefinition<TInput, TInput> {
+  const { declaredResources, resolvedCapabilities } = resolveCapabilities(config, "sequencer");
+
   return createSequencer<TInput, TInput>(
     config as SequencerConfig<any>,
     [],
     [],
     config.inputSchema,
-    config.inputSchema
+    config.inputSchema,
+    declaredResources,
+    resolvedCapabilities
   );
 }

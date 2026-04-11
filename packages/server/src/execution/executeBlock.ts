@@ -2,7 +2,9 @@
  * Central block execution entrypoint: dispatch, seam interception, retry, and error normalization.
  */
 import type { BlockOutputItem, ItemProvenance } from "@flow-state-dev/core/items";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { CapabilityRef } from "@flow-state-dev/core";
+import { getBaseCapability } from "@flow-state-dev/core";
 import { composeMiddleware, mergeMiddlewareStacks } from "../middleware/compose";
 import type { BlockMiddlewareContext } from "../middleware/types";
 import { normalizeError } from "../errors/normalize-error";
@@ -187,6 +189,29 @@ export type ExecuteBlockInternalOptions =
   };
 
 /**
+ * Build the ctx.cap object from a block's resolved capabilities.
+ * Each capability with a fns factory gets its helpers evaluated eagerly.
+ */
+function buildCapObject(
+  blockConfig: { __resolvedCapabilities?: CapabilityRef[] },
+  ctx: BlockContext
+): Record<string, Record<string, unknown>> {
+  const caps = blockConfig.__resolvedCapabilities;
+  if (!caps || caps.length === 0) return {};
+
+  const capObj: Record<string, Record<string, unknown>> = {};
+
+  for (const cap of caps) {
+    const base = getBaseCapability(cap);
+    if (base.fns) {
+      capObj[base.name] = base.fns(ctx);
+    }
+  }
+
+  return capObj;
+}
+
+/**
  * Executes a block and always returns a structured execution result.
  */
 export async function executeBlock(
@@ -256,6 +281,15 @@ export async function executeBlock(
         metadata: attemptMetadata,
         blockContext: options.ctx
       };
+
+      // Populate ctx.cap from the block's resolved capabilities.
+      const blockCaps = (options.block.config as any).__resolvedCapabilities;
+      if (blockCaps && blockCaps.length > 0) {
+        (options.ctx as any).cap = buildCapObject(
+          options.block.config as any,
+          options.ctx as BlockContext
+        );
+      }
 
       const executeCore = async (): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta }> => {
         if (options.ctx._withExecutionScope === undefined) {

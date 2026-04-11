@@ -5,6 +5,7 @@ import type {
   ConnectorFn,
   RescueHandlerSpec
 } from "../types/block";
+import type { CapabilityRef } from "../capability/types";
 
 export type ParallelStep<TCurrent> =
   | BlockDefinition<any, any>
@@ -253,6 +254,9 @@ export type SequencerConfig<
   inputSchema?: TInputSchema;
   outputSchema?: ZodTypeAny;
   stateSchema?: ZodTypeAny;
+  /** Capabilities to install. Merges resources, state schemas, targets,
+   *  and any active preset surfaces into this sequencer's config. */
+  uses?: readonly CapabilityRef[];
   container?: {
     component?: string;
     label?: string | ((input: TInput) => string);

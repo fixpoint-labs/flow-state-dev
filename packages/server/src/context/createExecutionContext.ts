@@ -2446,6 +2446,8 @@ export async function createExecutionContext<
       emitComponent: createEmitComponent(activeEmCtx),
       emitLLMContext: createEmitLLMContext(activeEmCtx),
       emitStatus: createEmitStatus(activeEmCtx),
+      // ctx.cap is populated per-block in executeBlock (see buildCapObject below).
+      cap: {} as any,
       // Defined below via Object.defineProperty to close over parentChain.
       parent: undefined,
       _runtimeHooks,

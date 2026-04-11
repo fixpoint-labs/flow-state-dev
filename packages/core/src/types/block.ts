@@ -91,6 +91,8 @@ export interface BlockContext<
   TSequencerState extends object = Record<string, unknown>,
   TParentInput = unknown,
   TTargets extends Record<string, ZodTypeAny> | undefined = undefined,
+  // Derive-once: capability helper namespaces from the `uses` array
+  TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = {},
 > {
   request: RequestScopeHandle<TRequestState>;
   session: SessionScopeHandle<TSessionState, TSessionResources>;
@@ -128,6 +130,10 @@ export interface BlockContext<
   ): BlockResult<BlockOutput<TBlock>>;
 
   targets: InferTargetStatesFromSchemas<TTargets>;
+
+  /** Capability helper functions, keyed by capability name.
+   *  Each capability's fns(ctx) result is memoized on first access. */
+  cap: TCapabilities;
 
   emitMessage(text: string): MessageHandle;
   emitMessage(content: Content[]): MessageHandle;
