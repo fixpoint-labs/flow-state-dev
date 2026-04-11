@@ -24,12 +24,11 @@ export { createBashTool } from "./create-bash-tool";
 export { FileSync } from "./file-sync";
 export { hashContent } from "./hash";
 
-// Adapters — only re-export adapters with no mandatory peer deps.
-// Vercel and Upstash adapters are loaded dynamically when their provider
-// is selected, so they don't appear here (avoids bundler tracing into
-// unresolvable peer dependencies like @vercel/sandbox).
+// Adapters — only re-export adapters with zero external dependencies.
+// Vercel, Upstash, and just-bash adapters are loaded dynamically when
+// their provider is selected, so they don't appear here (avoids bundler
+// tracing into unresolvable peer dependencies).
 export { createLocalFsSandbox } from "./adapters/local-fs";
-export { createJustBashSandbox } from "./adapters/just-bash";
 
 // Types — all types are safe to re-export (no runtime import chain)
 export type {
