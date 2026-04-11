@@ -42,6 +42,7 @@ Items are the canonical persisted artifacts. Their type determines audience rout
 | `block_output` | No | Conditional | Execution record (every block) |
 | `block_tool_output` | No | Yes | Tool result from generator tool invocation |
 | `router_decision` | No | No | Route selection record (trace only) |
+| `sequencer_state_snapshot` | No | No | Full sequencer state at step boundary (trace only) |
 | `error` | Yes | No | Terminal errors |
 | `step_error` | Yes | No | Recoverable step errors |
 
@@ -49,7 +50,7 @@ For `block_output`: When the item has `toolCall` metadata (legacy tool invocatio
 
 ### Trace Flag
 
-Items may carry `trace: true` on `OutputItemBase` to mark them as structural lifecycle metadata. Trace items are always excluded from LLM context (filtered by `itemToLLMMessage`) but remain visible in the devtool trace tree for debugging and performance analysis. Currently, `block_output` items from lifecycle tracing and `router_decision` items are marked as trace. Tool result items (`block_tool_output`) are never trace-flagged because they must enter LLM context for multi-turn tool calling.
+Items may carry `trace: true` on `OutputItemBase` to mark them as structural lifecycle metadata. Trace items are always excluded from LLM context (filtered by `itemToLLMMessage`) but remain visible in the devtool trace tree for debugging and performance analysis. Currently, `block_output` items from lifecycle tracing, `router_decision` items, and `sequencer_state_snapshot` items are marked as trace. Tool result items (`block_tool_output`) are never trace-flagged because they must enter LLM context for multi-turn tool calling.
 
 ### Container Ownership (`ownedBy`)
 

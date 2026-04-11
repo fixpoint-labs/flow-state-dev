@@ -125,6 +125,45 @@ function getSequencerEmitterItemCount(response: unknown): number {
   return 0;
 }
 
+/**
+ * Emits a sequencer_state_snapshot item at step boundaries so the devtool
+ * can display the full state of a sequencer at each point in its execution.
+ */
+async function emitSequencerStateSnapshot(
+  ctx: BlockContext,
+  stepName: string,
+  stepIndex: number
+): Promise<void> {
+  const seqRef = ctx.sequencer;
+  if (seqRef === undefined) return;
+
+  const item = {
+    id: `item_seq_state_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: "sequencer_state_snapshot" as const,
+    status: "completed" as const,
+    trace: true,
+    transient: true,
+    requestId: ctx.request.identity.id,
+    itemIndex: getSequencerEmitterItemCount(ctx.response),
+    provenance: {
+      blockName: seqRef.name,
+      blockInstanceId: seqRef.instanceId,
+      phase: "main" as const,
+      stepIndex,
+    },
+    ts: Date.now(),
+    sequencerName: seqRef.name,
+    sequencerInstanceId: seqRef.instanceId,
+    stepName,
+    stepIndex,
+    state: structuredClone(seqRef.state),
+    version: 0,
+  };
+
+  await ctx.response.emit({ type: "item.added", item });
+  await ctx.response.emit({ type: "item.done", item });
+}
+
 /** Emit a block_output item with optional modelUsage for generator blocks run inside a sequencer. */
 async function emitGeneratorBlockOutput(
   block: BlockDefinition<any, any>,
@@ -318,12 +357,18 @@ function runSequencerOperations(
     const runtime = createRuntimeState();
     let currentValue: unknown = input;
 
+    // Emit initial state snapshot before any steps execute.
+    await emitSequencerStateSnapshot(ctx, "__initial__", -1);
+
     try {
       for (let index = 0; index < operations.length; index += 1) {
         const operation = operations[index];
         runtime.stepHistory.push(operation.name);
         const result = await operation.run(currentValue, ctx, runtime, index);
         currentValue = result.value;
+
+        // Emit state snapshot after each step completes.
+        await emitSequencerStateSnapshot(ctx, operation.name, index);
 
         if (result.jumpTo !== undefined) {
           const jumpIndex = operations.findIndex((candidate) => candidate.name === result.jumpTo);
