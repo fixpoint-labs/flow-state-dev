@@ -32,6 +32,7 @@ import { AgentResponseCard } from "@/components/agent-response-card";
 import { ModeSelector, type Mode } from "@/components/mode-selector";
 import { ThinkingStyleSelector, type ThinkingStyle } from "@/components/thinking-style-selector";
 import { ModelPresetSelector, type ModelPreset } from "@/components/model-preset-selector";
+import { FeatureSelector, type Features, DEFAULT_FEATURES } from "@/components/feature-selector";
 import { ClientDataBar } from "@/components/client-data-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactViewer } from "@/components/artifact-viewer";
@@ -77,6 +78,7 @@ function KitchenSinkApp() {
   const [mode, setMode] = useState<Mode>("chat");
   const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("auto");
   const [modelPreset, setModelPreset] = useState<ModelPreset>("preset/small");
+  const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("chat");
@@ -84,7 +86,7 @@ function KitchenSinkApp() {
 
   const voice = useVoice(session, {
     action: "run",
-    buildInput: (text) => ({ message: text, mode, thinkingStyle }),
+    buildInput: (text) => ({ message: text, mode, thinkingStyle, features }),
     autoPlayTTS: ttsEnabled,
   });
 
@@ -130,9 +132,10 @@ function KitchenSinkApp() {
         message: text,
         mode,
         thinkingStyle,
+        features,
       }, { userMessage: text });
     },
-    [flow.activeSessionId, mode, thinkingStyle, session]
+    [flow.activeSessionId, mode, thinkingStyle, features, session]
   );
 
   const handleNewSession = useCallback(async () => {
@@ -248,6 +251,7 @@ function KitchenSinkApp() {
               mode={mode}
               thinkingStyle={thinkingStyle}
               modelPreset={modelPreset}
+              features={features}
               isDisabled={isDisabled}
               session={session}
               voice={voice}
@@ -257,6 +261,7 @@ function KitchenSinkApp() {
               onSetMode={setMode}
               onSetThinkingStyle={setThinkingStyle}
               onModelPresetChange={handleModelPresetChange}
+              onSetFeatures={setFeatures}
               onSubmit={handleSubmit}
               onSuggestionClick={handleSuggestionClick}
             />
@@ -294,6 +299,7 @@ function KitchenSinkApp() {
             mode={mode}
             thinkingStyle={thinkingStyle}
             modelPreset={modelPreset}
+            features={features}
             isDisabled={isDisabled}
             session={session}
             voice={voice}
@@ -303,6 +309,7 @@ function KitchenSinkApp() {
             onSetMode={setMode}
             onSetThinkingStyle={setThinkingStyle}
             onModelPresetChange={handleModelPresetChange}
+            onSetFeatures={setFeatures}
             onSubmit={handleSubmit}
             onSuggestionClick={handleSuggestionClick}
           />
@@ -335,6 +342,7 @@ interface ChatPanelProps {
   mode: Mode;
   thinkingStyle: ThinkingStyle;
   modelPreset: string;
+  features: Features;
   isDisabled: boolean;
   session: ReturnType<typeof useSession>;
   voice: ReturnType<typeof useVoice>;
@@ -344,6 +352,7 @@ interface ChatPanelProps {
   onSetMode: (value: Mode) => void;
   onSetThinkingStyle: (value: ThinkingStyle) => void;
   onModelPresetChange: (value: ModelPreset) => void;
+  onSetFeatures: (value: Features) => void;
   onSubmit: (msg: PromptInputMessage) => Promise<void>;
   onSuggestionClick: (text: string) => void;
 }
@@ -392,6 +401,7 @@ function ChatPanel({
   mode,
   thinkingStyle,
   modelPreset,
+  features,
   isDisabled,
   session,
   voice,
@@ -401,6 +411,7 @@ function ChatPanel({
   onSetMode,
   onSetThinkingStyle,
   onModelPresetChange,
+  onSetFeatures,
   onSubmit,
   onSuggestionClick,
 }: ChatPanelProps) {
@@ -424,6 +435,7 @@ function ChatPanel({
             <ModeSelector mode={mode} onModeChange={onSetMode} disabled={isDisabled} />
             <ThinkingStyleSelector value={thinkingStyle} onValueChange={onSetThinkingStyle} disabled={isDisabled} />
             <ModelPresetSelector value={modelPreset} onValueChange={onModelPresetChange} disabled={isDisabled} />
+            <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={isDisabled} />
             <VoiceToggle voice={voice} disabled={isDisabled} ttsEnabled={ttsEnabled} onToggleTTS={onToggleTTS} />
           </div>
           <PromptInput onSubmit={onSubmit}>

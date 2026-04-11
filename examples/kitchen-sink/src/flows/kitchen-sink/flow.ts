@@ -21,6 +21,7 @@ import {
 } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { system as memorySystem } from "@thought-fabric/core/memory";
+import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 import { z } from "zod";
 import {
   updateArtifact,
@@ -63,10 +64,15 @@ const thinkingStyleInputSchema = z
   .enum(["auto", "default", "plan-and-execute", "supervisor", "blackboard"])
   .default("auto");
 
+const featuresSchema = z.object({
+  biasCheck: z.boolean().default(false),
+});
+
 const inputSchema = z.object({
   message: z.string().min(1),
   mode: modeSchema,
   thinkingStyle: thinkingStyleInputSchema,
+  features: featuresSchema.default({}),
 });
 
 const sessionStateSchema = z.object({
@@ -74,6 +80,7 @@ const sessionStateSchema = z.object({
   thinkingStyle: thinkingStyleSchema.optional(),
   requestCount: z.number().default(0),
   lastAction: z.string().optional(),
+  features: featuresSchema.default({}),
 });
 
 const userStateSchema = z.object({
@@ -182,6 +189,34 @@ const autoTitle = utility.sessionTitleGenerator({
   model: MODEL_ID,
 });
 
+const applyFeatures = handler({
+  name: "apply-features",
+  inputSchema,
+  sessionStateSchema: z.object({ features: featuresSchema.default({}) }),
+  execute: async (input, ctx) => {
+    await ctx.session.patchState({ features: input.features });
+  },
+});
+
+// Bias check pipeline — runs in background after the router produces output.
+// Skips the LLM calls entirely when the feature is disabled.
+const biasCheck = sequencer({ name: "bias-check", inputSchema: z.string() })
+  .map((aiResponse, ctx) => ({
+    userInput: String((ctx.parent?.input as Record<string, unknown>)?.message ?? ""),
+    aiResponse,
+  }))
+  .thenIf(
+    (_input, ctx) =>
+      Boolean(
+        (ctx.session?.state as Record<string, unknown>)?.features &&
+          (
+            (ctx.session?.state as Record<string, unknown>)
+              ?.features as Record<string, unknown>
+          )?.biasCheck,
+      ),
+    biasAnalyzer({ model: MODEL_ID }),
+  );
+
 const setPreferredModelInputSchema = z.object({
   preferredModel: z.string().min(1),
 });
@@ -201,8 +236,10 @@ const setPreferredModelHandler = handler({
 
 const runSequencer = sequencer({ name: "run", inputSchema })
   .tap(applyRequestedMode)
+  .tap(applyFeatures)
   .tap(resolveThinkingStyle)
   .then(thinkingStyleRouter)
+  .work(biasCheck)
   .work(mem.captureFromItems)
   .work(autoTitle)
 
@@ -272,6 +309,7 @@ const kitchenSinkFlow = defineFlow({
         thinkingStyle:
           (ctx.state.thinkingStyle as string | undefined) ?? null,
         requestCount: Number(ctx.state.requestCount ?? 0),
+        features: ctx.state.features ?? { biasCheck: false },
       }),
     },
   },
