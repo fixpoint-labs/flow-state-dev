@@ -76,6 +76,7 @@ function KitchenSinkApp() {
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("chat");
   const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("default");
+  const [modelPreset, setModelPreset] = useState<ModelPreset>("preset/small");
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("chat");
@@ -104,6 +105,16 @@ function KitchenSinkApp() {
   const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined } | undefined;
   const userPrefs = clientData.user?.preferences as { displayName: string; preferredModel: string } | undefined;
   const artifacts = (clientData.session?.artifacts ?? []) as Array<{ id: string; title: string; summary: string; content: string; updatedAt: number }>;
+
+  // Sync local model preset from server state on initial load / session switch.
+  const serverPreferredModel = userPrefs?.preferredModel;
+  const prevServerModel = useRef(serverPreferredModel);
+  useEffect(() => {
+    if (serverPreferredModel && serverPreferredModel !== prevServerModel.current) {
+      prevServerModel.current = serverPreferredModel;
+      setModelPreset(serverPreferredModel as ModelPreset);
+    }
+  }, [serverPreferredModel]);
 
   const selectedArtifact = useMemo(
     () => artifacts.find((a) => a.id === selectedArtifactId) ?? null,
@@ -140,9 +151,11 @@ function KitchenSinkApp() {
   );
 
   const handleModelPresetChange = useCallback(
-    async (preset: ModelPreset) => {
-      if (!flow.activeSessionId) return;
-      await session.sendAction("setPreferredModel", { preferredModel: preset });
+    (preset: ModelPreset) => {
+      setModelPreset(preset);
+      if (flow.activeSessionId) {
+        void session.sendAction("setPreferredModel", { preferredModel: preset });
+      }
     },
     [flow.activeSessionId, session],
   );
@@ -234,7 +247,7 @@ function KitchenSinkApp() {
               message={message}
               mode={mode}
               thinkingStyle={thinkingStyle}
-              modelPreset={userPrefs?.preferredModel ?? "preset/small"}
+              modelPreset={modelPreset}
               isDisabled={isDisabled}
               session={session}
               voice={voice}
@@ -280,7 +293,7 @@ function KitchenSinkApp() {
             message={message}
             mode={mode}
             thinkingStyle={thinkingStyle}
-            modelPreset={userPrefs?.preferredModel ?? "preset/small"}
+            modelPreset={modelPreset}
             isDisabled={isDisabled}
             session={session}
             voice={voice}

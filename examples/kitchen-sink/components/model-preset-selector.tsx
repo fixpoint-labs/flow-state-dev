@@ -139,21 +139,19 @@ export function ModelPresetSelector({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-72">
-        <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
-          Standard
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
         <DropdownMenuRadioGroup value={value} onValueChange={handleValueChange}>
+          <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+            Standard
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
           {standardPresets.map((option) => (
             <PresetItem key={option.value} option={option} isActive={value === option.value} />
           ))}
-        </DropdownMenuRadioGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
-          Thinking
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuRadioGroup value={value} onValueChange={handleValueChange}>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">
+            Thinking
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
           {thinkingPresets.map((option) => (
             <PresetItem key={option.value} option={option} isActive={value === option.value} />
           ))}
