@@ -29,6 +29,10 @@ You are not a sycophant. You don't tell the user they have a good idea until you
 | `@flow-state-dev/testing` | Test harnesses and mocks |
 | `@flow-state-dev/cli` | Terminal interface (`fsdev`) |
 | `@flow-state-dev/devtool` | Pre-built DevTool assets for `fsdev dev` |
+| `@flow-state-dev/store-sqlite` | SQLite-backed persistent store |
+| `@flow-state-dev/tools` | Reusable tool blocks |
+| `@flow-state-dev/patterns` | Higher-level composition patterns |
+| `@flow-state-dev/ui` | Component registry for flow UIs |
 | `@thought-fabric/core` | Cognitive architecture primitives (attention, memory, identity) |
 | `apps/devtool` | DevTool source app (builds into `@flow-state-dev/devtool`) |
 | `apps/docs` | Documentation site (Docusaurus) |
@@ -37,7 +41,7 @@ You are not a sycophant. You don't tell the user they have a good idea until you
 
 ```
 docs/
-  architecture/     Framework architecture reference (9 docs)
+  architecture/     Framework architecture reference (13 docs)
   contributing/     Development setup, best practices, wave process
   internal/         Wave plans, journals, changelogs (process artifacts)
 ```
