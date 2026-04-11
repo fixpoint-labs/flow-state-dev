@@ -5,13 +5,15 @@
  *   1. Keyword handler — fast heuristic scan, patches session state directly if match
  *   2. LLM classifier — intentClassifier fallback when no keyword matched
  *
- * Defines the three thinking-style pipelines (chain-of-thought, plan-and-execute,
- * supervisor) and the router that dispatches between them.
+ * Defines the three concrete pipelines (default, plan-and-execute, supervisor)
+ * and the router that dispatches between them.
  */
 import { generator, handler, router, sequencer, utility } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { GeneratorSlot } from "@flow-state-dev/core";
+import type { BlockDefinition, DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { supervisor } from "@flow-state-dev/patterns/supervisor";
+import { blackboard, createBlackboard } from "@flow-state-dev/patterns/blackboard";
 import { z } from "zod";
 
 // -------------------------------------------------------------------------
@@ -21,7 +23,8 @@ import { z } from "zod";
 export const thinkingStyleSchema = z.enum([
   "plan-and-execute",
   "supervisor",
-  "chain-of-thought",
+  "blackboard",
+  "default",
 ]);
 
 export type ThinkingStyle = z.infer<typeof thinkingStyleSchema>;
@@ -54,6 +57,17 @@ export const SUPERVISOR_KEYWORDS = [
   "team of",
 ];
 
+export const BLACKBOARD_KEYWORDS = [
+  "blackboard",
+  "shared workspace",
+  "multiple perspectives",
+  "expert perspectives",
+  "multi-disciplinary",
+  "research synthesis",
+  "independent experts",
+  "contribute independently",
+];
+
 export const PLAN_KEYWORDS = [
   "plan",
   "steps",
@@ -66,16 +80,6 @@ export const PLAN_KEYWORDS = [
   "phase",
 ];
 
-export const COT_KEYWORDS = [
-  "think through",
-  "reason",
-  "why",
-  "explain",
-  "analyze",
-  "consider",
-  "evaluate",
-  "pros and cons",
-];
 
 // -------------------------------------------------------------------------
 // Tier 1 — Keyword Handler
@@ -94,10 +98,10 @@ export const keywordHandler = handler({
     let matched: ThinkingStyle | null = null;
     if (SUPERVISOR_KEYWORDS.some((kw) => message.includes(kw))) {
       matched = "supervisor";
+    } else if (BLACKBOARD_KEYWORDS.some((kw) => message.includes(kw))) {
+      matched = "blackboard";
     } else if (PLAN_KEYWORDS.some((kw) => message.includes(kw))) {
       matched = "plan-and-execute";
-    } else if (COT_KEYWORDS.some((kw) => message.includes(kw))) {
-      matched = "chain-of-thought";
     }
 
     if (matched !== null) {
@@ -131,11 +135,19 @@ export const classifierBlock = utility.intentClassifier({
       research + synthesis pipelines, code review across multiple dimensions,
       cross-domain analysis tasks.
     `,
-    "chain-of-thought": `
+    blackboard: `
+      The message asks for analysis or research where multiple independent expert
+      perspectives should each contribute to a shared workspace incrementally.
+      A controller decides which expert to consult next based on accumulated
+      knowledge. Examples: document analysis from legal/technical/business angles,
+      complex problem-solving requiring research + analysis + critique,
+      multi-disciplinary review where each discipline contributes independently.
+    `,
+    default: `
       The message is a direct question, a reasoning task, an explanation request,
-      or anything where a single high-quality response with visible reasoning
-      is more appropriate than task decomposition. Examples: answering questions,
-      comparing options, explaining concepts, debugging, short creative tasks.
+      or anything where a single high-quality response is more appropriate than
+      task decomposition. Examples: answering questions, comparing options,
+      explaining concepts, debugging, short creative tasks.
     `,
   },
 });
@@ -149,7 +161,7 @@ const applyClassifiedStyle = handler({
     const style: ThinkingStyle =
       input.confidence >= CONFIDENCE_THRESHOLD && parsed.success
         ? parsed.data
-        : "chain-of-thought";
+        : "default";
     if (style !== ctx.session.state.thinkingStyle) {
       await ctx.session.patchState({ thinkingStyle: style });
     }
@@ -189,22 +201,24 @@ export const autoClassifyStyle = sequencer({
 export interface ThinkingStyleRouterConfig {
   assistantGenerator: BlockDefinition<any, any>;
   modelId: string;
-  context: any[];
+  history?: GeneratorSlot<any, any>;
+  context: GeneratorSlot<any, any>;
   tools: BlockDefinition<any, any>[];
-  sessionResources: Record<string, any>;
+  sessionResources: Record<string, DeclaredResourceEntry>;
 }
 
 export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   const { assistantGenerator, modelId, context, tools, sessionResources } = config;
 
-  // Chain of Thought — direct generation.
-  const cotPipeline = assistantGenerator;
+  // Default — direct generation.
+  const defaultPipeline = assistantGenerator;
 
   // Plan and Execute — decomposes into steps, executes, synthesizes.
   const paePipeline = planAndExecute({
     name: "pae-thinking",
     model: modelId,
     context,
+    history: config.history,
     search: true,
     tools,
     sessionResources,
@@ -246,6 +260,109 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     maxConcurrency: 3,
     onSubTaskError: "skip",
     outputSchema: z.string(),
+    context,
+    history: config.history,
+  });
+
+  // Blackboard — multiple independent specialists contribute to a shared
+  // resource workspace. A controller reads the workspace state and decides
+  // which specialist to invoke next until the problem converges.
+  const bbBoard = createBlackboard(z.object({
+    goal: z.string().default(""),
+    research: z.string().optional(),
+    analysis: z.string().optional(),
+    critique: z.string().optional(),
+  }));
+
+  function bbSpecialist(specConfig: {
+    name: string;
+    field: string;
+    prompt: string;
+  }) {
+    const gen = generator({
+      name: `${specConfig.name}-gen`,
+      model: modelId,
+      outputSchema: z.string(),
+      sessionResources: { blackboard: bbBoard, ...sessionResources },
+      context,
+      tools,
+      search: true,
+      emit: { messages: false, toolCalls: false },
+      prompt: specConfig.prompt,
+      user: (_input: any, ctx: any) => {
+        const state = ctx.session.resources.blackboard.state;
+        return `Current blackboard state:\n${JSON.stringify(state, null, 2)}`;
+      },
+    });
+
+    const writeBack = handler({
+      name: `${specConfig.name}-write`,
+      inputSchema: z.string(),
+      outputSchema: z.any(),
+      sessionResources: { blackboard: bbBoard },
+      execute: async (output: string, ctx) => {
+        await ctx.session.resources.blackboard.patchState({
+          [specConfig.field]: output,
+        });
+        return { specialist: specConfig.name, contributed: true };
+      },
+    });
+
+    return sequencer({ name: specConfig.name, inputSchema: z.any() })
+      .then(gen)
+      .then(writeBack);
+  }
+
+  const bbResearcher = bbSpecialist({
+    name: "bb-researcher",
+    field: "research",
+    prompt: [
+      "You are a research specialist within a blackboard collaboration.",
+      "Your job is to gather information, find relevant data, evidence,",
+      "and source material related to the goal on the blackboard.",
+      "Review what other specialists have contributed and focus on",
+      "filling knowledge gaps. Be thorough and cite sources when possible.",
+    ].join("\n"),
+  });
+
+  const bbAnalyst = bbSpecialist({
+    name: "bb-analyst",
+    field: "analysis",
+    prompt: [
+      "You are an analytical specialist within a blackboard collaboration.",
+      "Your job is to synthesize the research on the blackboard into structured",
+      "analysis: identify patterns, draw conclusions, compare perspectives,",
+      "and produce actionable insights. Build on what the researcher found.",
+    ].join("\n"),
+  });
+
+  const bbCritic = bbSpecialist({
+    name: "bb-critic",
+    field: "critique",
+    prompt: [
+      "You are a critical review specialist within a blackboard collaboration.",
+      "Your job is to identify gaps, weaknesses, counterarguments, and blind spots",
+      "in the research and analysis on the blackboard. Be constructive but honest.",
+      "Suggest what needs more investigation or where reasoning is weak.",
+    ].join("\n"),
+  });
+
+  const blackboardPipeline = blackboard({
+    name: "blackboard-thinking",
+    blackboard: bbBoard,
+    specialists: {
+      "bb-researcher": bbResearcher,
+      "bb-analyst": bbAnalyst,
+      "bb-critic": bbCritic,
+    },
+    model: modelId,
+    context,
+    maxIterations: 8,
+    maxHistory: 20,
+    initialState: (input: unknown) => ({
+      goal: (input as { message?: string })?.message ?? "",
+    }),
+    outputSchema: z.string(),
   });
 
   // Router — adapts flow input to each pipeline's expected shape via connectInput.
@@ -253,7 +370,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   // interception (e.g. testRouter) works transparently.
   const thinkingStyleRouter = router({
     name: "thinking-style-router",
-    routes: [cotPipeline, paePipeline, supervisorPipeline],
+    routes: [defaultPipeline, paePipeline, supervisorPipeline, blackboardPipeline],
     execute: (input, ctx) => {
       const style = ctx.session.state.thinkingStyle as string | undefined;
       switch (style) {
@@ -261,11 +378,13 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
           return paePipeline.connectInput(() => ({ goal: input.message }));
         case "supervisor":
           return supervisorPipeline.connectInput(() => ({ goal: input.message }));
+        case "blackboard":
+          return blackboardPipeline.connectInput(() => input);
         default:
-          return cotPipeline;
+          return defaultPipeline;
       }
     },
   });
 
-  return { thinkingStyleRouter, cotPipeline, paePipeline, supervisorPipeline };
+  return { thinkingStyleRouter, defaultPipeline, paePipeline, supervisorPipeline, blackboardPipeline };
 }

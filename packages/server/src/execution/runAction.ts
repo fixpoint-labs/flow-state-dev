@@ -373,11 +373,30 @@ export async function runActionInternal<
       }, heartbeatIntervalMs)
     : undefined;
 
+  // --- Update session's latestRequestId for auto-resume discovery ---
+  if (options.sessionId !== undefined) {
+    const session = await options.stores.session.get(options.sessionId);
+    if (session !== undefined) {
+      await options.stores.session.set(options.sessionId, {
+        ...session,
+        latestRequestId: requestId,
+        updatedAt: Date.now()
+      });
+    }
+  }
+
   // --- Incremental item persistence ---
   response.setItemHooks({
     onItemDone: (item) => {
       if (item.transient === true) return;
       options.stores.request.persistItems(requestId, response.getItems());
+    }
+  });
+
+  // --- Incremental event persistence ---
+  response.setEventHooks({
+    onEvent: (events) => {
+      options.stores.request.persistEvents(requestId, events);
     }
   });
 
@@ -532,8 +551,9 @@ export async function runActionInternal<
     // Clear heartbeat
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
 
-    // Flush pending item writes before terminal status
+    // Flush pending item and event writes before terminal status
     await options.stores.request.flushItems(requestId);
+    await options.stores.request.flushEvents(requestId);
 
     const completedAt = Date.now();
     const items = response.getItems();
@@ -547,6 +567,10 @@ export async function runActionInternal<
     ctx.requestRuntime.completedAtMs = completedAt;
 
     await response.emitRequestStatus(terminalStatus);
+
+    // Persist the final event list (includes terminal status event)
+    await options.stores.request.flushEvents(requestId);
+
     if (terminalStatus === "completed") {
       await emitActionLifecycleSeam(internalSeams, "completed", metadata);
     }
@@ -593,8 +617,9 @@ export async function runActionInternal<
     await emitTerminalError(ctx, normalized);
     await response.emitRequestStatus("failed");
 
-    // Flush pending item writes before terminal status
+    // Flush pending item and event writes before terminal status
     await options.stores.request.flushItems(requestId);
+    await options.stores.request.flushEvents(requestId);
 
     const failedAt = Date.now();
     await patchRequestRecord(options.stores, requestId, {

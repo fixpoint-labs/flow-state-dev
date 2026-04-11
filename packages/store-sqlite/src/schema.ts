@@ -91,6 +91,16 @@ CREATE INDEX IF NOT EXISTS idx_active_requests_user_id    ON active_requests(use
 CREATE INDEX IF NOT EXISTS idx_active_requests_session_id ON active_requests(session_id);
 `;
 
+const REQUEST_EVENTS_TABLE = `
+CREATE TABLE IF NOT EXISTS request_events (
+  request_id      TEXT NOT NULL,
+  sequence_number INTEGER NOT NULL,
+  event_data      TEXT NOT NULL,
+  PRIMARY KEY (request_id, sequence_number)
+);
+CREATE INDEX IF NOT EXISTS idx_request_events_request_id ON request_events(request_id);
+`;
+
 export function initializeSchema(db: Database.Database): void {
   // Apply pragmas (each must be a separate statement)
   for (const line of PRAGMAS.trim().split("\n")) {
@@ -106,4 +116,5 @@ export function initializeSchema(db: Database.Database): void {
   db.exec(USERS_TABLE);
   db.exec(PROJECTS_TABLE);
   db.exec(ACTIVE_REQUESTS_TABLE);
+  db.exec(REQUEST_EVENTS_TABLE);
 }

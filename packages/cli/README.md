@@ -92,6 +92,32 @@ Flow "chat" not found. Available flows: echo, stateful, knowledge-base-agent
 Searched: src/flows/, flows/
 ```
 
+### `fsdev dev` — Start the DevTool dev server
+
+Starts an HTTP server serving both the flow API and the DevTool UI. Discovers flows, registers them, and opens your browser.
+
+```bash
+# Default: port 4200
+fsdev dev
+
+# Custom port, model override
+fsdev dev --port 3000 --model gpt-4o-mini
+
+# Specific flow directory, no browser
+fsdev dev --flow-dir ./my-flows --no-open
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `-p, --port <port>` | Port to listen on (default: `4200`) |
+| `--flow-dir <path>` | Override flow discovery root (repeatable) |
+| `-m, --model <model>` | Override model for all generator blocks |
+| `--no-open` | Don't open the browser automatically |
+
+Requires `@flow-state-dev/devtool` to be installed (provides the pre-built UI assets). The CLI lists it as an optional peer dependency.
+
 ### `fsdev block` — Execute a single block in isolation
 
 Runs a block outside of a flow using the testing harness. Useful for development and debugging.
@@ -183,6 +209,7 @@ import type { FlowRunResult, FlowEvent, BlockExecResult } from "@flow-state-dev/
 - `@flow-state-dev/server` — execution engine, stores, streaming
 - `@flow-state-dev/testing` — isolated block execution context
 - `commander` — CLI framework
+- `@flow-state-dev/devtool` (optional peer) — pre-built DevTool UI assets for `fsdev dev`
 
 ## Scripts
 

@@ -130,7 +130,8 @@ export {
   isRetryableError,
   detectAvailableProviders,
   parseModelString,
-  DEFAULT_PRESETS
+  DEFAULT_PRESETS,
+  selectModel
 } from "./models";
 export type {
   ResolveAiSdkLanguageModel,
@@ -147,5 +148,8 @@ export type {
   ProviderAvailability,
   ParsedModelString,
   PresetConfig,
-  FallbackModelEntry
+  FallbackModelEntry,
+  ModelRule,
+  PreferRule,
+  WhenRule
 } from "./models";

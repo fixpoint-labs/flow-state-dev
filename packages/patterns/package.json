@@ -29,6 +29,10 @@
       "types": "./dist/event-queue/index.d.ts",
       "default": "./dist/event-queue/index.js"
     },
+    "./blackboard": {
+      "types": "./dist/blackboard/index.d.ts",
+      "default": "./dist/blackboard/index.js"
+    },
     "./response-auditor": {
       "types": "./dist/response-auditor/index.d.ts",
       "default": "./dist/response-auditor/index.js"

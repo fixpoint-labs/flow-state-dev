@@ -63,6 +63,12 @@ export type UseSessionHookOptions = {
   userId?: string;
   baseUrl?: string;
   items?: SessionItemsOptions;
+  /**
+   * When true, on mount the hook checks if the session has an in-progress
+   * request and re-attaches to its stream using cursor-based continuation.
+   * Default: false.
+   */
+  autoResume?: boolean;
 };
 
 /**
@@ -237,6 +243,7 @@ export function useSession(
   const resolvedFlowKind = normalizeFlowKind(options?.flowKind ?? context.flowKind ?? "");
   const userId = options?.userId ?? context.userId ?? "devuser";
   const baseUrl = options?.baseUrl ?? context.baseUrl;
+  const autoResume = options?.autoResume === true;
 
   // Decompose the items option into stable primitives so that an inline object
   // literal doesn't cause a new reference on every render.
@@ -270,6 +277,7 @@ export function useSession(
   const sortedItemIdsRef = useRef<string[]>([]);
   const deltaQueueRef = useRef<Map<string, ContentDeltaAccumulator>>(new Map());
   const flushHandleRef = useRef<number | null>(null);
+  const optimisticIdRef = useRef<string | null>(null);
 
   const cancelScheduledFlush = useCallback(() => {
     if (flushHandleRef.current === null) {
@@ -471,6 +479,179 @@ export function useSession(
     }, 300);
   }, [refreshSnapshot]);
 
+  /**
+   * Attach to an existing request's stream, optionally resuming from a cursor.
+   * Used by both sendAction (new requests) and autoResume (in-progress requests).
+   */
+  const attachToStream = useCallback(
+    (requestId: string, startingAfter?: string) => {
+      if (streamHandleRef.current !== null) {
+        streamHandleRef.current.close();
+        streamHandleRef.current = null;
+      }
+
+      setIsStreaming(true);
+      setIsFinishing(false);
+
+      const filter = {
+        includeTransient: itemConfig.includeTransient,
+        itemTypes: itemConfig.itemTypes
+      };
+
+      const handle = createSSEClient({
+        url: `/api/flows/${encodeURIComponent(resolvedFlowKind)}/requests/${encodeURIComponent(requestId)}/stream`,
+        baseUrl,
+        startingAfter: startingAfter !== undefined ? Number(startingAfter) : undefined,
+        onItemAdded: (event) => {
+          if (event.item.type === "status" && (event.item as OutputItem & { message?: string }).message === "finishing") {
+            setIsFinishing(true);
+          }
+
+          if (!passesItemFilter(event.item, filter)) {
+            return;
+          }
+
+          // When the real server user message arrives, remove the optimistic
+          // placeholder so we don't show duplicates.
+          const serverItem = event.item as OutputItem & { role?: string };
+          if (
+            serverItem.type === "message" &&
+            serverItem.role === "user" &&
+            optimisticIdRef.current !== null
+          ) {
+            itemsByIdRef.current.delete(optimisticIdRef.current);
+            optimisticIdRef.current = null;
+          }
+
+          const existing = itemsByIdRef.current.get(event.item.id);
+          const isNewItem = existing === undefined;
+          const orderChanged =
+            existing !== undefined && !sameChronologicalOrder(existing, event.item);
+
+          itemsByIdRef.current.set(event.item.id, event.item);
+
+          if (isNewItem || orderChanged) {
+            const ordered = sortItemsChronologically([
+              ...itemsByIdRef.current.values()
+            ]);
+            sortedItemIdsRef.current = ordered.map((item) => item.id);
+            setItems(ordered);
+          } else {
+            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+          }
+
+          if (event.item.type === "resource_change") {
+            scheduleRefreshSnapshot();
+          }
+        },
+        onItemDone: (event) => {
+          if (!passesItemFilter(event.item, filter)) {
+            return;
+          }
+
+          const existing = itemsByIdRef.current.get(event.item.id);
+          const isNewItem = existing === undefined;
+          const orderChanged =
+            existing !== undefined && !sameChronologicalOrder(existing, event.item);
+
+          itemsByIdRef.current.set(event.item.id, event.item);
+
+          if (isNewItem || orderChanged) {
+            const ordered = sortItemsChronologically([
+              ...itemsByIdRef.current.values()
+            ]);
+            sortedItemIdsRef.current = ordered.map((item) => item.id);
+            setItems(ordered);
+          } else {
+            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+          }
+        },
+        onContentAdded: (event) => {
+          const existing = itemsByIdRef.current.get(event.itemId);
+          if (existing === undefined) {
+            return;
+          }
+          const updated = updateItemWithContentAdded(
+            existing,
+            event.contentIndex,
+            event.content
+          );
+          if (updated !== existing) {
+            itemsByIdRef.current.set(event.itemId, updated);
+            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+          }
+        },
+        onContentDelta: (event) => {
+          const key = `${event.itemId}:${event.contentIndex}`;
+          const existing = deltaQueueRef.current.get(key);
+          if (existing === undefined) {
+            deltaQueueRef.current.set(key, {
+              itemId: event.itemId,
+              contentIndex: event.contentIndex,
+              delta: event.delta
+            });
+          } else {
+            existing.delta += event.delta;
+          }
+
+          scheduleContentFlush();
+        },
+        onSessionMetadataChanged: (event: SessionMetadataChangedEvent) => {
+          setDetail((prev) => {
+            if (prev === null) {
+              return prev;
+            }
+
+            return {
+              ...prev,
+              ...(event.title !== undefined ? { title: event.title } : {}),
+              ...(event.description !== undefined ? { description: event.description } : {}),
+              ...(event.tags !== undefined ? { tags: event.tags } : {}),
+              ...(event.metadata !== undefined
+                ? { metadata: { ...prev.metadata, ...event.metadata } }
+                : {})
+            };
+          });
+        },
+        onRequestStatus: (event) => {
+          if (
+            event.status === "completed" ||
+            event.status === "failed" ||
+            event.status === "incomplete"
+          ) {
+            flushContentDeltas();
+            setIsStreaming(false);
+            setIsFinishing(false);
+            streamHandleRef.current?.close();
+            streamHandleRef.current = null;
+
+            if (event.status === "completed") {
+              void refreshSnapshot();
+            }
+          }
+        },
+        onError: () => {
+          flushContentDeltas();
+          setIsStreaming(false);
+          streamHandleRef.current?.close();
+          streamHandleRef.current = null;
+        }
+      });
+
+      streamHandleRef.current = handle;
+    },
+    [
+      itemConfig.includeTransient,
+      itemConfig.itemTypes,
+      resolvedFlowKind,
+      baseUrl,
+      refreshSnapshot,
+      scheduleRefreshSnapshot,
+      scheduleContentFlush,
+      flushContentDeltas
+    ]
+  );
+
   useEffect(() => {
     if (sessionId === undefined) {
       if (refreshTimerRef.current !== null) {
@@ -507,6 +688,29 @@ export function useSession(
         if (nextSnapshot !== null) {
           applySnapshot(nextSnapshot);
         }
+
+        // Auto-resume: if enabled, check if latest request is in-progress and attach.
+        if (
+          autoResume &&
+          itemConfig.enabled &&
+          nextDetail?.latestRequestId !== undefined &&
+          streamHandleRef.current === null
+        ) {
+          const requests = await sessionClient.listSessionRequests(sessionId, {
+            status: "in_progress",
+            limit: 1
+          });
+
+          if (cancelled) return;
+
+          const activeRequest = requests.find(
+            (r) => r.id === nextDetail.latestRequestId
+          );
+
+          if (activeRequest !== undefined) {
+            attachToStream(activeRequest.id);
+          }
+        }
       } catch (cause) {
         if (!cancelled) {
           setError(cause instanceof Error ? cause : new Error(String(cause)));
@@ -521,7 +725,7 @@ export function useSession(
     return () => {
       cancelled = true;
     };
-  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot]);
+  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, autoResume, itemConfig.enabled, attachToStream]);
 
   useEffect(() => {
     return () => {
@@ -588,151 +792,15 @@ export function useSession(
         });
 
         if (itemConfig.enabled) {
-          setIsStreaming(true);
-          const filter = {
-            includeTransient: itemConfig.includeTransient,
-            itemTypes: itemConfig.itemTypes
-          };
+          // Store the optimistic ID so the stream handler can clean it up.
+          const optimisticId = actionOptions?.userMessage !== undefined
+            ? `item_msg_optimistic_${requestId}`
+            : undefined;
 
-          const handle = createSSEClient({
-            url: `/api/flows/${encodeURIComponent(resolvedFlowKind)}/requests/${encodeURIComponent(requestId)}/stream`,
-            baseUrl,
-            onItemAdded: (event) => {
-              // Detect the "finishing" signal from sequencer auto-await.
-              if (event.item.type === "status" && (event.item as OutputItem & { message?: string }).message === "finishing") {
-                setIsFinishing(true);
-              }
-
-              if (!passesItemFilter(event.item, filter)) {
-                return;
-              }
-
-              // When the real server user message arrives, remove the optimistic
-              // placeholder so we don't show duplicates.
-              const serverItem = event.item as OutputItem & { role?: string };
-              if (serverItem.type === "message" && serverItem.role === "user") {
-                const optimisticId = `item_msg_optimistic_${requestId}`;
-                if (itemsByIdRef.current.has(optimisticId)) {
-                  itemsByIdRef.current.delete(optimisticId);
-                }
-              }
-
-              const existing = itemsByIdRef.current.get(event.item.id);
-              const isNewItem = existing === undefined;
-              const orderChanged =
-                existing !== undefined && !sameChronologicalOrder(existing, event.item);
-
-              itemsByIdRef.current.set(event.item.id, event.item);
-
-              if (isNewItem || orderChanged) {
-                const ordered = sortItemsChronologically([
-                  ...itemsByIdRef.current.values()
-                ]);
-                sortedItemIdsRef.current = ordered.map((item) => item.id);
-                setItems(ordered);
-              } else {
-                setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
-              }
-
-              if (event.item.type === "resource_change") {
-                scheduleRefreshSnapshot();
-              }
-            },
-            onItemDone: (event) => {
-              if (!passesItemFilter(event.item, filter)) {
-                return;
-              }
-
-              const existing = itemsByIdRef.current.get(event.item.id);
-              const isNewItem = existing === undefined;
-              const orderChanged =
-                existing !== undefined && !sameChronologicalOrder(existing, event.item);
-
-              itemsByIdRef.current.set(event.item.id, event.item);
-
-              if (isNewItem || orderChanged) {
-                const ordered = sortItemsChronologically([
-                  ...itemsByIdRef.current.values()
-                ]);
-                sortedItemIdsRef.current = ordered.map((item) => item.id);
-                setItems(ordered);
-              } else {
-                setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
-              }
-            },
-            onContentAdded: (event) => {
-              const existing = itemsByIdRef.current.get(event.itemId);
-              if (existing === undefined) {
-                return;
-              }
-              const updated = updateItemWithContentAdded(
-                existing,
-                event.contentIndex,
-                event.content
-              );
-              if (updated !== existing) {
-                itemsByIdRef.current.set(event.itemId, updated);
-                setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
-              }
-            },
-            onContentDelta: (event) => {
-              const key = `${event.itemId}:${event.contentIndex}`;
-              const existing = deltaQueueRef.current.get(key);
-              if (existing === undefined) {
-                deltaQueueRef.current.set(key, {
-                  itemId: event.itemId,
-                  contentIndex: event.contentIndex,
-                  delta: event.delta
-                });
-              } else {
-                existing.delta += event.delta;
-              }
-
-              scheduleContentFlush();
-            },
-            onSessionMetadataChanged: (event: SessionMetadataChangedEvent) => {
-              setDetail((prev) => {
-                if (prev === null) {
-                  return prev;
-                }
-
-                return {
-                  ...prev,
-                  ...(event.title !== undefined ? { title: event.title } : {}),
-                  ...(event.description !== undefined ? { description: event.description } : {}),
-                  ...(event.tags !== undefined ? { tags: event.tags } : {}),
-                  ...(event.metadata !== undefined
-                    ? { metadata: { ...prev.metadata, ...event.metadata } }
-                    : {})
-                };
-              });
-            },
-            onRequestStatus: (event) => {
-              if (
-                event.status === "completed" ||
-                event.status === "failed" ||
-                event.status === "incomplete"
-              ) {
-                flushContentDeltas();
-                setIsStreaming(false);
-                setIsFinishing(false);
-                streamHandleRef.current?.close();
-                streamHandleRef.current = null;
-
-                if (event.status === "completed") {
-                  void refreshSnapshot();
-                }
-              }
-            },
-            onError: () => {
-              flushContentDeltas();
-              setIsStreaming(false);
-              streamHandleRef.current?.close();
-              streamHandleRef.current = null;
-            }
-          });
-
-          streamHandleRef.current = handle;
+          // Stash the optimistic ID for the onItemAdded handler in attachToStream.
+          // We use a ref so the closure in attachToStream can read it.
+          optimisticIdRef.current = optimisticId ?? null;
+          attachToStream(requestId);
         }
 
         const response = await postPromise;
@@ -753,14 +821,8 @@ export function useSession(
       sessionId,
       client,
       itemConfig.enabled,
-      itemConfig.includeTransient,
-      itemConfig.itemTypes,
-      resolvedFlowKind,
-      baseUrl,
-      refreshSnapshot,
-      scheduleRefreshSnapshot,
-      scheduleContentFlush,
-      flushContentDeltas
+      attachToStream,
+      refreshSnapshot
     ]
   );
 

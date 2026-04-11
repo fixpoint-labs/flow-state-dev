@@ -21,6 +21,8 @@ export interface DecomposerConfig<
   outputSchema?: TOutputSchema;
   /** Additional context injected into the system prompt before decomposition. */
   context?: GeneratorSlot;
+  /** History slot — provides conversation history so the decomposer can resolve references. */
+  history?: GeneratorSlot;
 }
 
 function toUserContent(input: unknown): string {
@@ -44,6 +46,7 @@ export function decomposer<
     model: config.model ?? "openai/gpt-5.4-mini",
     outputSchema,
     context: config.context,
+    history: config.history,
     search: true,
     prompt: [
       "You are a task decomposition assistant.",

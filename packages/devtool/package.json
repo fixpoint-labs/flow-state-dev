@@ -1,0 +1,31 @@
+{
+  "name": "@flow-state-dev/devtool",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "license": "MIT",
+  "files": [
+    "dist",
+    "dist-client"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:assets": "node scripts/build-assets.mjs",
+    "typecheck": "node ../../scripts/typecheck.mjs",
+    "lint": "echo 'lint not configured yet'",
+    "test": "echo 'no tests yet'"
+  }
+}

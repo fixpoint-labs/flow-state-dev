@@ -64,7 +64,7 @@ export const updateArtifactOutputSchema = z.object({
 
 const artifactSummarizer = utility.summarizer({
   name: "artifact-summarizer",
-  model: "preset/fast",
+  model: "preset/small",
   granularity: "brief",
 });
 

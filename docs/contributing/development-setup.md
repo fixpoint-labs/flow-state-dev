@@ -94,8 +94,11 @@ Packages have a dependency hierarchy. When building from scratch:
    client         (no internal deps — can build in parallel with server)
 3. react          (depends on core + client)
    testing        (depends on core + server)
-4. cli            (depends on core + server + testing)
+   devtool        (no internal deps — can build in parallel with react/testing)
+4. cli            (depends on core + server + testing; optional peer: devtool)
 ```
+
+To build the DevTool static assets (for `fsdev dev`), run `pnpm --filter @flow-state-dev/devtool build:assets` after building `apps/devtool`'s dependencies (core, client, react).
 
 Some packages have dependency-aware build scripts that build their upstream deps first.
 
