@@ -17,6 +17,7 @@ import { useFlowContext } from "../context/FlowContext";
 export type UseFlowOptions = {
   flowKind?: string;
   userId?: string;
+  projectId?: string;
   baseUrl?: string;
   autoCreateSession?: boolean;
 };
@@ -27,6 +28,7 @@ export type UseFlowOptions = {
 export type UseFlowResult = {
   readonly flowKind?: string;
   readonly userId: string;
+  readonly projectId?: string;
   readonly flows: FlowListEntry[];
   readonly sessions: SessionSummary[];
   readonly activeSessionId?: string;
@@ -49,6 +51,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
   const context = useFlowContext();
   const flowKind = options.flowKind ?? context.flowKind;
   const userId = options.userId ?? context.userId ?? "devuser";
+  const projectId = options.projectId ?? context.projectId;
   const baseUrl = options.baseUrl ?? context.baseUrl;
 
   const [flows, setFlows] = useState<FlowListEntry[]>([]);
@@ -84,6 +87,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
       const created = await sessionClient.createSession({
         flowKind,
         userId,
+        projectId,
         metadata
       });
 
@@ -96,7 +100,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
 
       return created;
     },
-    [flowKind, userId, sessionClient]
+    [flowKind, userId, projectId, sessionClient]
   );
 
   const ensureSession = useCallback(
@@ -179,7 +183,8 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
         } else {
           const created = await sessionClient.createSession({
             flowKind,
-            userId
+            userId,
+            projectId
           });
           if (cancelled) return;
 
@@ -201,11 +206,12 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
     return () => {
       cancelled = true;
     };
-  }, [options.autoCreateSession, flowKind, userId, sessionClient]);
+  }, [options.autoCreateSession, flowKind, userId, projectId, sessionClient]);
 
   return {
     flowKind,
     userId,
+    projectId,
     flows,
     sessions,
     activeSessionId,

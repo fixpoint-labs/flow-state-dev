@@ -21,6 +21,7 @@ export type FlowContextValue = {
   flowKind?: string;
   sessionId?: string;
   userId?: string;
+  projectId?: string;
   baseUrl?: string;
   renderers?: RendererRegistry;
 };
@@ -32,6 +33,7 @@ export type FlowProviderProps = {
   flowKind?: string;
   sessionId?: string;
   userId?: string;
+  projectId?: string;
   baseUrl?: string;
   renderers?: RendererRegistry;
   children: ReactNode;
@@ -82,6 +84,7 @@ export function FlowProvider(props: FlowProviderProps): ReactNode {
       flowKind: props.flowKind ?? parent.flowKind,
       sessionId: props.sessionId ?? parent.sessionId,
       userId: props.userId ?? parent.userId,
+      projectId: props.projectId ?? parent.projectId,
       baseUrl: props.baseUrl ?? parent.baseUrl,
       renderers: mergeRenderers(parent.renderers, props.renderers)
     };
@@ -91,11 +94,13 @@ export function FlowProvider(props: FlowProviderProps): ReactNode {
     parent.flowKind,
     parent.sessionId,
     parent.userId,
+    parent.projectId,
     props.baseUrl,
     props.renderers,
     props.flowKind,
     props.sessionId,
-    props.userId
+    props.userId,
+    props.projectId
   ]);
 
   return createElement(FlowCtx.Provider, { value: contextValue }, props.children);

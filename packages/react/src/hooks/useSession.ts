@@ -61,6 +61,7 @@ export type SessionItemsOptions =
 export type UseSessionHookOptions = {
   flowKind?: string;
   userId?: string;
+  projectId?: string;
   baseUrl?: string;
   items?: SessionItemsOptions;
   /**
@@ -244,6 +245,7 @@ export function useSession(
   const context = useFlowContext();
   const resolvedFlowKind = normalizeFlowKind(options?.flowKind ?? context.flowKind ?? "");
   const userId = options?.userId ?? context.userId ?? "devuser";
+  const projectId = options?.projectId ?? context.projectId;
   const baseUrl = options?.baseUrl ?? context.baseUrl;
   const autoResume = options?.autoResume === true;
 
@@ -820,6 +822,7 @@ export function useSession(
         const postPromise = client.sendAction(action, input, {
           sessionId,
           requestId,
+          projectId,
           metadata: actionOptions?.metadata
         });
 
@@ -852,6 +855,7 @@ export function useSession(
     [
       sessionId,
       client,
+      projectId,
       itemConfig.enabled,
       attachToStream,
       refreshSnapshot
