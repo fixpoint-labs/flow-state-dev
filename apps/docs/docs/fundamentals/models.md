@@ -113,19 +113,48 @@ const adaptive = generator({
 });
 ```
 
-This is how the kitchen sink example implements its model preset selector. A user picks a preset from the UI. The selection is stored in user state. The generator reads it at execution time:
+The function can return any valid model value: a string, a preset reference, an array, or a resolved model instance.
+
+### `selectModel`
+
+Inline model functions work, but they tend to accumulate type casts and get hard to scan. `selectModel` is a declarative alternative. You give it a default and a list of rules:
 
 ```ts
+import { generator, selectModel } from "@flow-state-dev/core";
+
 const assistant = generator({
   name: "assistant",
-  model: (_input, ctx) => {
-    return ctx.user?.state.preferredModel || "preset/small";
-  },
-  // ...
+  model: selectModel("preset/small", [
+    { prefer: (_input, ctx) => ctx.user?.state.preferredModel },
+  ]),
+  prompt: "You are a helpful assistant.",
 });
 ```
 
-The function can return any valid model value: a string, a preset reference, an array, or a resolved model instance.
+Rules are evaluated in two phases. **Prefer rules** run first. Each returns a candidate model string. The first non-null value that differs from the default wins. **When rules** run second. Each has a boolean condition and a fixed model to use when it's true.
+
+```ts
+model: selectModel("preset/small", [
+  // Phase 1: prefer — check user override
+  { prefer: (_input, ctx) => ctx.user?.state.preferredModel },
+
+  // Phase 2: when — condition-based overrides
+  { when: (input) => input.message.length > 5000, use: "preset/large" },
+  { when: (_input, ctx) => ctx.session.state.mode === "create", use: "preset/medium" },
+])
+```
+
+If no rule matches, the default is returned. Prefer rules that return `null`, `undefined`, an empty string, or the default value itself are skipped, so a user state field that hasn't been set yet falls through cleanly.
+
+This is what the kitchen sink example uses. The user picks a preset from the UI, the selection lands in user state, and a `prefer` rule picks it up at generation time:
+
+```ts
+model: selectModel("preset/small", {
+  prefer: (_input, ctx) => ctx.user?.state.preferredModel,
+})
+```
+
+Both `prefer` and `when` callbacks can be async.
 
 ## User-Facing Model Selection
 
