@@ -143,7 +143,10 @@ export function router<
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { declaredResources: capResources, resolvedCapabilities } = resolveCapabilities(config, "router");
-  // Merge capability resources with the router's own + route resources
+  // Merge capability resources with the router's own + route resources.
+  // capResources already includes the router's own declared resources (via resolveCapabilities).
+  // mergeRouterResources also includes the router's own resources plus route resources.
+  // The overlap is safe because mergeDeclaredResources deduplicates by reference equality.
   const routerResources = mergeRouterResources(config);
   const declaredResources = capResources
     ? mergeDeclaredResources(

@@ -4,6 +4,17 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-04-11
 
+### defineCapability() — Reusable Capability Bundles (FIX-351)
+
+- Added `defineCapability()` to `@flow-state-dev/core` — packages resources, state schemas, targets, helper functions, and presets under a single name.
+- All four block kinds (`handler`, `generator`, `sequencer`, `router`) accept `uses: [capability]` to install capabilities.
+- Capabilities compose transitively (`uses` on capabilities) with cycle detection and diamond deduplication.
+- Presets: named opt-in/opt-out bundles of any block config surface (resources, state schemas, targets, generator context, generator tools).
+- `.presets()` builder with boolean toggles and function-form overrides.
+- Block-kind compatibility enforced at factory time with clear error messages.
+- `ctx.cap.{name}.{fn}` provides memoized helper functions at runtime.
+- 89 new tests (unit + integration + type inference).
+
 ### DevTool: `fsdev dev` command + `@flow-state-dev/devtool` package (FIX-261)
 
 - Added `fsdev dev` command to `@flow-state-dev/cli` — starts an HTTP dev server that serves both the flow API routes and the DevTool UI from a single port.

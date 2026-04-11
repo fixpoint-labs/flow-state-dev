@@ -113,7 +113,7 @@ export interface DefinedCapability<
   TPresetNames extends string = string,
   TPresets extends Record<string, PresetDef | string[]> = Record<string, PresetDef>,
 > {
-  /** Brand — never set at runtime. */
+  /** Brand — set by defineCapability() to identify capability objects. */
   readonly __brand: "Capability";
 
   readonly name: TName;

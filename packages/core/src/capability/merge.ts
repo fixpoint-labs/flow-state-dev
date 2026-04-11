@@ -8,8 +8,6 @@
  */
 import type { ZodObject, ZodRawShape, ZodTypeAny } from "zod";
 import type { BlockKind, DeclaredResourceEntry, DeclaredResources } from "../types/block";
-import type { DefinedResource } from "../types/resource";
-import type { DefinedResourceCollection } from "../types/resource-collection";
 import type { GeneratorTool } from "../blocks/generator";
 import type { BlockContext } from "../types/block";
 import type {
@@ -194,19 +192,17 @@ export function createEmptyMergedSurface(): MergedCapabilitySurface {
 // Surface merging
 // ---------------------------------------------------------------------------
 
-type ResourceEntry = DefinedResource | DefinedResourceCollection;
-
 /**
  * Merge resource declarations from a surface into the accumulator.
  * Same reference → dedupe. Different reference, same name → error.
  */
 function mergeResourcesInto(
-  target: Record<string, ResourceEntry> | undefined,
-  source: Record<string, ResourceEntry>,
+  target: Record<string, DeclaredResourceEntry> | undefined,
+  source: Record<string, DeclaredResourceEntry>,
   scope: string,
   capName: string,
   presetName: string
-): Record<string, ResourceEntry> {
+): Record<string, DeclaredResourceEntry> {
   const merged = target ? { ...target } : {};
   for (const [name, resource] of Object.entries(source)) {
     const existing = merged[name];
