@@ -137,6 +137,22 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<an
     options?: { maxConcurrency?: number }
   ): SequencerDefinition<TInput, z.infer<TOutSchema>[]>;
 
+  // forEachBackground(block) — fire-and-forget fan-out, dispatches each iteration as background work
+  forEachBackground(
+    blockOrFactory:
+      | BlockDefinition<any, any>
+      | ((item: TOutput extends readonly (infer TItem)[] ? TItem : unknown, index: number, ctx: BlockContext) => BlockDefinition<any, any>),
+    options?: { concurrency?: number }
+  ): SequencerDefinition<TInput, TOutput>;
+  // forEachBackground(connector, block) — connector provides items, each dispatched as background work
+  forEachBackground<TStepIn>(
+    connector: ConnectorFn<TOutput, TStepIn[]>,
+    blockOrFactory:
+      | BlockDefinition<any, any>
+      | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>),
+    options?: { concurrency?: number }
+  ): SequencerDefinition<TInput, TOutput>;
+
   // doUntil — loop block output inferred from schema
   doUntil<TOutSchema extends ZodTypeAny>(
     condition: (value: z.infer<TOutSchema> | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
@@ -169,6 +185,14 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<an
 
   work(block: BlockDefinition<any, any>, options?: { name?: string }): SequencerDefinition<TInput, TOutput>;
   work<TStepIn>(
+    connector: ConnectorFn<TOutput, TStepIn>,
+    block: BlockDefinition<any, any>,
+    options?: { name?: string }
+  ): SequencerDefinition<TInput, TOutput>;
+
+  /** Alias for `.work()` — reads more naturally in fan-out contexts. */
+  background(block: BlockDefinition<any, any>, options?: { name?: string }): SequencerDefinition<TInput, TOutput>;
+  background<TStepIn>(
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, any>,
     options?: { name?: string }
