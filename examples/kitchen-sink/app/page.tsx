@@ -41,7 +41,7 @@ import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { ModelPresetProvider } from "@/components/model-preset-context";
-import { PlanAwareTool } from "@/components/flow-state/plan";
+import { PlanContainer } from "@/components/flow-state/plan";
 import { KitchenSinkMessage } from "@/components/kitchen-sink-message";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
@@ -50,8 +50,8 @@ const kitchenSinkRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
   message: KitchenSinkMessage,
   block_output: AgentResponseCard,
-  // Plan-owned tool calls are shown inline inside task rows; others render normally.
-  block_tool_output: PlanAwareTool,
+  // Container renderers — owned items are automatically suppressed by ItemRenderer.
+  container: { plan: PlanContainer },
 };
 
 

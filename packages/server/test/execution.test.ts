@@ -1401,6 +1401,122 @@ describe("execution runtime", () => {
 
   });
 
+  it("propagates ownedBy on items emitted inside a container scope", async () => {
+    const { ctx } = await createRuntimeContext("req_owned_by");
+
+    const leaf = handler({
+      name: "owned-step",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value, stepCtx) => {
+        stepCtx.emitMessage(`value:${value}`);
+        stepCtx.emitStatus("working");
+        return value + 1;
+      }
+    });
+
+    const containerSeq = sequencer({
+      name: "container-seq",
+      inputSchema: z.number(),
+      container: { component: "test-container" }
+    }).then(leaf);
+
+    await executeBlock({ block: containerSeq, input: 5, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+
+    // ContainerItem itself should not have ownedBy (no parent container).
+    const containerItem = items.find((item: any) => item.type === "container");
+    expect(containerItem).toBeDefined();
+    expect(containerItem.ownedBy).toBeUndefined();
+
+    // Message and status items emitted inside the container scope carry ownedBy.
+    const messageItem = items.find((item: any) => item.type === "message");
+    expect(messageItem).toBeDefined();
+    expect(messageItem.ownedBy).toBe(containerItem.provenance.blockInstanceId);
+
+    const statusItem = items.find((item: any) => item.type === "status");
+    expect(statusItem).toBeDefined();
+    expect(statusItem.ownedBy).toBe(containerItem.provenance.blockInstanceId);
+  });
+
+  it("sets ownedBy to inner container for nested container scopes", async () => {
+    const { ctx } = await createRuntimeContext("req_nested_owned");
+
+    const leaf = handler({
+      name: "inner-leaf",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value, stepCtx) => {
+        stepCtx.emitMessage(`inner:${value}`);
+        return value + 1;
+      }
+    });
+
+    const innerSeq = sequencer({
+      name: "inner-container",
+      inputSchema: z.number(),
+      container: { component: "inner" }
+    }).then(leaf);
+
+    const outerSeq = sequencer({
+      name: "outer-container",
+      inputSchema: z.number(),
+      container: { component: "outer" }
+    }).then(innerSeq);
+
+    await executeBlock({ block: outerSeq, input: 1, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+
+    const outerContainer = items.find(
+      (item: any) => item.type === "container" && item.component === "outer"
+    );
+    const innerContainer = items.find(
+      (item: any) => item.type === "container" && item.component === "inner"
+    );
+
+    expect(outerContainer).toBeDefined();
+    expect(innerContainer).toBeDefined();
+
+    // Outer container has no ownedBy (top level).
+    expect(outerContainer.ownedBy).toBeUndefined();
+
+    // Inner container is owned by the outer container.
+    expect(innerContainer.ownedBy).toBe(outerContainer.provenance.blockInstanceId);
+
+    // Message inside inner container is owned by inner container.
+    const messageItem = items.find((item: any) => item.type === "message");
+    expect(messageItem).toBeDefined();
+    expect(messageItem.ownedBy).toBe(innerContainer.provenance.blockInstanceId);
+  });
+
+  it("does not set ownedBy for items outside any container scope", async () => {
+    const { ctx } = await createRuntimeContext("req_no_container");
+
+    const leaf = handler({
+      name: "plain-step",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value, stepCtx) => {
+        stepCtx.emitMessage(`plain:${value}`);
+        return value + 1;
+      }
+    });
+
+    const plainSeq = sequencer({
+      name: "plain-seq",
+      inputSchema: z.number()
+    }).then(leaf);
+
+    await executeBlock({ block: plainSeq, input: 3, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const messageItem = items.find((item: any) => item.type === "message");
+    expect(messageItem).toBeDefined();
+    expect(messageItem.ownedBy).toBeUndefined();
+  });
+
   it("runs request lifecycle observers in canonical order for success and failure", async () => {
     const stores = createInMemoryStores();
     const events: string[] = [];

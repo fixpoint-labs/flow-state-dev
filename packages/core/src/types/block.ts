@@ -163,6 +163,7 @@ export interface BlockContext<
     blockName: string;
     blockInstanceId: string;
     parentBlockInstanceId?: string;
+    ownedBy?: string;
   };
 
   /** @internal Runtime hook that executes nested blocks with parent-chain metadata. */

@@ -425,6 +425,7 @@ function compileToolsWithExecute(
                 phase: "main" as const
               },
               ts: Date.now(),
+              ownedBy: identity?.ownedBy,
               blockName: tool.name,
               output,
               toolCall: {
@@ -459,6 +460,7 @@ function compileToolsWithExecute(
                 phase: "main" as const
               },
               ts: Date.now(),
+              ownedBy: identity?.ownedBy,
               blockName: tool.name,
               output: undefined,
               toolCall: {
@@ -691,6 +693,7 @@ function buildSourceItem(
     itemIndex: getEmitterItemCount(ctx.response),
     provenance,
     ts: Date.now(),
+    ownedBy: ctx._blockIdentity?.ownedBy,
     sourceType: "url" as const,
     sourceId: source.id,
     url: source.url,
@@ -764,6 +767,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     blockInstanceId: blockName,
     phase: "main" as const
   };
+  const ownedBy = ctx._blockIdentity?.ownedBy;
   const emitReasoning = emitConfig.reasoning;
   let reasoningAccumulated = "";
 
@@ -803,6 +807,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
             ts: Date.now(),
+            ownedBy,
             summary: [{ type: "reasoning_text" as const, text: "" }]
           };
           await ctx.response.emit({ type: "item.added", item: reasoningItem });
@@ -845,6 +850,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
             ts: Date.now(),
+            ownedBy,
             summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
           };
           await ctx.response.emit({ type: "item.done", item: completedReasoning });
@@ -863,6 +869,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
             ts: Date.now(),
+            ownedBy,
             summary: [{ type: "reasoning_text" as const, text: "" }]
           };
           await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -884,6 +891,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
             ts: Date.now(),
+            ownedBy,
             content: [{ type: "output_text" as const, text: "" }]
           };
           await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -941,6 +949,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
           ts: Date.now(),
+          ownedBy,
           toolCallId: delta.toolCallId,
           toolName: delta.toolName,
           argsDelta: delta.argsDelta
@@ -962,6 +971,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
           ts: Date.now(),
+          ownedBy,
           toolCallId: tr.toolCallId,
           toolName: tr.toolName,
           result: tr.result
@@ -997,6 +1007,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         itemIndex: getEmitterItemCount(ctx.response),
         provenance,
         ts: Date.now(),
+        ownedBy,
         summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
       };
       await ctx.response.emit({ type: "item.done", item: completedReasoning });
@@ -1013,6 +1024,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         itemIndex: getEmitterItemCount(ctx.response),
         provenance,
         ts: Date.now(),
+        ownedBy,
         summary: [{ type: "reasoning_text" as const, text: "" }]
       };
       await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -1033,6 +1045,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         itemIndex: getEmitterItemCount(ctx.response),
         provenance,
         ts: Date.now(),
+        ownedBy,
         content: [{ type: "output_text" as const, text: "" }]
       };
       await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -1327,6 +1340,7 @@ export function generator<
       if (emitConfig.messages !== false && isTextOutputSchema(outputSchema) && typeof output === "string") {
         const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         const provenance = { blockName, blockInstanceId: blockName, phase: "main" as const };
+        const nsOwnedBy = ctx._blockIdentity?.ownedBy;
         if (emitConfig.messages === 'reasoning') {
           const reasoningItem = {
             id: itemId,
@@ -1337,6 +1351,7 @@ export function generator<
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
             ts: Date.now(),
+            ownedBy: nsOwnedBy,
             summary: [{ type: "reasoning_text" as const, text: output }]
           };
           await ctx.response.emit({ type: "item.added", item: reasoningItem });
@@ -1352,6 +1367,7 @@ export function generator<
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
             ts: Date.now(),
+            ownedBy: nsOwnedBy,
             content: [{ type: "output_text" as const, text: output }]
           };
           await ctx.response.emit({ type: "item.added", item: messageItem });

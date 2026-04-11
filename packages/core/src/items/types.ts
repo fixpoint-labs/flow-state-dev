@@ -24,6 +24,9 @@ export type OutputItemBase = {
   itemIndex: number;
   provenance: ItemProvenance;
   ts: number;
+  /** When set, this item was emitted inside a container scope. The value is the
+   *  `blockInstanceId` of the sequencer/router that declared the container. */
+  ownedBy?: string;
 };
 
 export type BlockOutputItem = OutputItemBase & {

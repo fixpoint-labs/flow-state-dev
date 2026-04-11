@@ -4,7 +4,7 @@ import { Reasoning } from "./reasoning";
 import { Tool } from "./tool";
 import { Status } from "./status";
 import { ErrorDisplay } from "./error";
-import { Plan } from "./plan";
+import { Plan, PlanContainer } from "./plan";
 import { Blackboard } from "./blackboard";
 import { AuditAnnotation } from "./audit-annotation";
 
@@ -25,4 +25,5 @@ export const chatAssistantRenderers: RendererRegistry = {
   step_error: ErrorDisplay,
   source: false,
   component: { plan: Plan, blackboard: Blackboard, "audit-annotation": AuditAnnotation },
+  container: { plan: PlanContainer },
 };
