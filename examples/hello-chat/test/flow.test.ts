@@ -14,7 +14,7 @@ import helloChatFlow from "../src/flows/hello-chat/flow";
 // testFlow exercises the runtime path, while testBlock exposes state mutations.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const chatPipeline = (helloChatFlow.actions.chat as any).block;
-const MODEL_ID = "gpt-5-mini";
+const MODEL_ID = "preset/fast";
 
 function collectSourceFiles(dir: string): string[] {
   const entries = readdirSync(dir);

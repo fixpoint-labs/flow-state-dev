@@ -105,3 +105,11 @@ export {
 export type {
   SessionTitleGeneratorConfig
 } from "./session-title-generator";
+
+export {
+  upsertResource
+} from "./upsert-resource";
+
+export type {
+  UpsertResourceConfig
+} from "./upsert-resource";

@@ -80,7 +80,7 @@ Each task moves through this status sequence:
 | Status | Meaning |
 |--------|---------|
 | `pending` | Queued, waiting for dependencies to complete |
-| `in_progress` | Currently executing |
+| `in-progress` | Currently executing |
 | `completed` | Finished successfully |
 | `failed` | Threw an error or returned `{ success: false }` |
 | `skipped` | Bypassed because a dependency failed |

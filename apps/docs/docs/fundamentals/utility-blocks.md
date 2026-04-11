@@ -31,12 +31,13 @@ const block = utility.summarizer({ name: "my-summarizer", granularity: "brief" }
 | [`summarizer`](#summarizer) | generator | Summarize at brief, detailed, or executive granularity |
 | [`combiner`](#combiner) | handler | Deterministically merge artifacts (no LLM call) |
 | [`synthesizer`](#synthesizer) | generator | Reconcile overlapping or conflicting inputs into one artifact |
+| [`upsertResource`](#upsertresource) | handler | Get-or-create + patch a resource collection instance (no LLM call) |
 | [`analyzer`](#analyzer) | generator | Evaluate artifacts against structured criteria |
 | [`intentClassifier`](#intentclassifier) | generator | Classify input into a bounded category set for routing |
 | [`intentRouter`](#intentrouter) | sequencer | Pre-wired classifier + router for classification-driven branching |
 | [`sessionTitleGenerator`](#sessiontitlegenerator) | sequencer | Auto-generate a session title from conversation messages |
 
-Every generator-based utility defaults to `"gpt-5-mini"` and accepts a `model` override. All utilities accept an optional `outputSchema` to replace the default output shape with full type inference.
+Every generator-based utility defaults to `"preset/fast"` and accepts a `model` override. All utilities accept an optional `outputSchema` to replace the default output shape with full type inference.
 
 ---
 
@@ -1166,7 +1167,7 @@ The whole block is `transient: true`, so it produces no visible items in the str
 ```ts
 utility.sessionTitleGenerator({
   name: string,           // required — used as block name and for sub-block names
-  model?: string,         // model ID (default: "gpt-5-mini")
+  model?: string,         // model ID (default: "preset/fast")
   messageLimit?: number,  // recent LLM messages to include (default: 4)
 });
 ```

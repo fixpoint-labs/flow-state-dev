@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   FlowProvider,
-  ItemsRenderer,
   useFlow,
   useSession,
   useClientData,
@@ -17,6 +16,7 @@ import {
   ConversationContent,
   ConversationEmptyState,
   ConversationScrollButton,
+  ScrollOnNewRequest,
 } from "@/components/flow-state/conversation";
 import {
   PromptInput,
@@ -25,11 +25,12 @@ import {
   type PromptInputMessage,
 } from "@/components/flow-state/prompt-input";
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
-import { SourcesGroup } from "@/components/flow-state/sources";
+import { RequestGroupRenderer } from "@/components/flow-state/request-group";
 
 import { SessionSidebar } from "@/components/session-sidebar";
 import { AgentResponseCard } from "@/components/agent-response-card";
 import { ModeSelector, type Mode } from "@/components/mode-selector";
+import { ThinkingStyleSelector, type ThinkingStyle } from "@/components/thinking-style-selector";
 import { ClientDataBar } from "@/components/client-data-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactViewer } from "@/components/artifact-viewer";
@@ -38,11 +39,13 @@ import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { PlanAwareTool } from "@/components/flow-state/plan";
+import { KitchenSinkMessage } from "@/components/kitchen-sink-message";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
 
 const kitchenSinkRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
+  message: KitchenSinkMessage,
   block_output: AgentResponseCard,
   // Plan-owned tool calls are shown inline inside task rows; others render normally.
   block_tool_output: PlanAwareTool,
@@ -70,6 +73,7 @@ function KitchenSinkApp() {
 
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("chat");
+  const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("auto");
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("chat");
@@ -77,7 +81,7 @@ function KitchenSinkApp() {
 
   const voice = useVoice(session, {
     action: "run",
-    buildInput: (text) => ({ message: text, mode }),
+    buildInput: (text) => ({ message: text, mode, thinkingStyle }),
     autoPlayTTS: ttsEnabled,
   });
 
@@ -112,9 +116,10 @@ function KitchenSinkApp() {
       await session.sendAction("run", {
         message: text,
         mode,
+        thinkingStyle,
       }, { userMessage: text });
     },
-    [flow.activeSessionId, mode, session]
+    [flow.activeSessionId, mode, thinkingStyle, session]
   );
 
   const handleNewSession = useCallback(async () => {
@@ -218,6 +223,7 @@ function KitchenSinkApp() {
             <ChatPanel
               message={message}
               mode={mode}
+              thinkingStyle={thinkingStyle}
               isDisabled={isDisabled}
               session={session}
               voice={voice}
@@ -225,6 +231,7 @@ function KitchenSinkApp() {
               onToggleTTS={() => setTtsEnabled((v) => !v)}
               onSetMessage={setMessage}
               onSetMode={setMode}
+              onSetThinkingStyle={setThinkingStyle}
               onSubmit={handleSubmit}
               onSuggestionClick={handleSuggestionClick}
             />
@@ -260,6 +267,7 @@ function KitchenSinkApp() {
           <ChatPanel
             message={message}
             mode={mode}
+            thinkingStyle={thinkingStyle}
             isDisabled={isDisabled}
             session={session}
             voice={voice}
@@ -267,6 +275,7 @@ function KitchenSinkApp() {
             onToggleTTS={() => setTtsEnabled((v) => !v)}
             onSetMessage={setMessage}
             onSetMode={setMode}
+            onSetThinkingStyle={setThinkingStyle}
             onSubmit={handleSubmit}
             onSuggestionClick={handleSuggestionClick}
           />
@@ -297,6 +306,7 @@ function KitchenSinkApp() {
 interface ChatPanelProps {
   message: string;
   mode: Mode;
+  thinkingStyle: ThinkingStyle;
   isDisabled: boolean;
   session: ReturnType<typeof useSession>;
   voice: ReturnType<typeof useVoice>;
@@ -304,13 +314,50 @@ interface ChatPanelProps {
   onToggleTTS: () => void;
   onSetMessage: (value: string) => void;
   onSetMode: (value: Mode) => void;
+  onSetThinkingStyle: (value: ThinkingStyle) => void;
   onSubmit: (msg: PromptInputMessage) => Promise<void>;
   onSuggestionClick: (text: string) => void;
 }
 
+/** Memoized conversation body — only re-renders when items/streaming/error change, not on typing. */
+const ConversationBody = memo(function ConversationBody({
+  items,
+  isStreaming,
+  isLoading,
+  error,
+}: {
+  items: import("@flow-state-dev/core/items").OutputItem[];
+  isStreaming: boolean;
+  isLoading: boolean;
+  error: { message: string } | null;
+}) {
+  return (
+    <>
+      <ScrollOnNewRequest items={items} />
+      <SessionItemsProvider value={items}>
+        <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
+          {items.length === 0 && !isLoading && (
+            <ConversationEmptyState
+              title="Kitchen Sink"
+              description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use."
+            />
+          )}
+          <RequestGroupRenderer items={items} isStreaming={isStreaming} />
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <span>{error.message}</span>
+            </div>
+          )}
+        </ConversationContent>
+      </SessionItemsProvider>
+    </>
+  );
+});
+
 function ChatPanel({
   message,
   mode,
+  thinkingStyle,
   isDisabled,
   session,
   voice,
@@ -318,29 +365,19 @@ function ChatPanel({
   onToggleTTS,
   onSetMessage,
   onSetMode,
+  onSetThinkingStyle,
   onSubmit,
   onSuggestionClick,
 }: ChatPanelProps) {
   return (
     <section className="flex min-w-0 flex-1 flex-col overflow-hidden">
       <Conversation className="min-h-0 flex-1">
-        <SessionItemsProvider value={session.items}>
-        <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
-          {session.items.length === 0 && !session.isLoading && (
-            <ConversationEmptyState
-              title="Kitchen Sink"
-              description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use."
-            />
-          )}
-          <ItemsRenderer items={session.items} />
-          <SourcesGroup items={session.items} />
-          {session.error && (
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              <span>{session.error.message}</span>
-            </div>
-          )}
-        </ConversationContent>
-        </SessionItemsProvider>
+        <ConversationBody
+          items={session.items}
+          isStreaming={session.isStreaming}
+          isLoading={session.isLoading}
+          error={session.error}
+        />
         <ConversationScrollButton />
       </Conversation>
 
@@ -349,6 +386,7 @@ function ChatPanel({
         <div className="mx-auto max-w-3xl px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:px-4 sm:pb-4">
           <div className="mb-2 flex items-center gap-3">
             <ModeSelector mode={mode} onModeChange={onSetMode} disabled={isDisabled} />
+            <ThinkingStyleSelector value={thinkingStyle} onValueChange={onSetThinkingStyle} disabled={isDisabled} />
             <VoiceToggle voice={voice} disabled={isDisabled} ttsEnabled={ttsEnabled} onToggleTTS={onToggleTTS} />
           </div>
           <PromptInput onSubmit={onSubmit}>

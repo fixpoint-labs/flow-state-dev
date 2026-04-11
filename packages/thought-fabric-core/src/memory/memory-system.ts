@@ -230,6 +230,31 @@ export interface MemorySystem {
       query: typeof query
     }
   }
+  /**
+   * Session-scoped resources for this memory system.
+   * Spread into `defineFlow`'s `session.resources`:
+   * ```ts
+   * session: { resources: { ...mem.sessionResources, ...otherResources } }
+   * ```
+   * Always includes `workingMemory` and `memorySystem`.
+   */
+  sessionResources: {
+    workingMemory: typeof workingMemoryResource
+    memorySystem: typeof memorySystemResource
+  }
+  /**
+   * User-scoped resources for this memory system.
+   * Spread into `defineFlow`'s `user.resources`:
+   * ```ts
+   * user: { resources: { ...mem.userResources } }
+   * ```
+   * Populated based on which memory tiers are configured:
+   * `episodicMemory` (if episodic enabled), `semanticMemory` (if semantic enabled).
+   */
+  userResources: {
+    episodicMemory?: ReturnType<typeof createEpisodicMemoryResource>
+    semanticMemory?: ReturnType<typeof createSemanticMemoryResource>
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -640,6 +665,14 @@ export function system(config: MemorySystemConfig): MemorySystem {
         computeDecay,
         computeSalience,
       },
+    },
+    sessionResources: {
+      workingMemory: workingMemoryResource,
+      memorySystem: memorySystemResource,
+    },
+    userResources: {
+      ...(episodicResource ? { episodicMemory: episodicResource } : {}),
+      ...(semanticResource ? { semanticMemory: semanticResource } : {}),
     },
   }
 

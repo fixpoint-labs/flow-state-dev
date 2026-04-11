@@ -22,11 +22,12 @@ Conflict rule: `preperation/architecture/*` wins.
 - Generator provider boundary: Vercel AI SDK in Phase 1
 - `@flow-state-dev/client` required; `@flow-state-dev/react` wraps client (no transport logic)
 
-## Sequencer Surface (14 methods)
+## Sequencer Surface (16 methods)
 
-`then`, `thenIf`, `map`, `parallel`, `forEach`, `doUntil`, `doWhile`, `loopBack`, `work`, `waitForWork`, `tap`, `tapIf`, `rescue`, `branch`
+`then`, `thenIf`, `map`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `loopBack`, `work`, `background`, `waitForWork`, `tap`, `tapIf`, `rescue`, `branch`
 
-- `.work(...)`: non-aborting by default
+- `.work(...)` / `.background(...)`: non-aborting by default (`.background()` is an alias for `.work()`)
+- `.forEachBackground(...)`: fire-and-forget fan-out; dispatches each iteration as background work with configurable concurrency (default 16)
 - `.waitForWork({ failOnError: true })`: promote background failures to terminal request error
 
 → [Sequencer DSL](../architecture/sequencer-dsl.md)
@@ -108,7 +109,7 @@ Ten pre-built utility factories wrapping generator/handler blocks:
 | `intentRouter` | sequencer | Pre-wired classifier + router for classification-driven branching |
 
 - Access via `utility.<name>(config)` — returns a standard `BlockDefinition`
-- All generators default to `"gpt-5-mini"` model
+- All generators default to `"preset/fast"` model
 - All utilities accept optional `outputSchema` override
 - Combiner is handler-based (deterministic, no model)
 

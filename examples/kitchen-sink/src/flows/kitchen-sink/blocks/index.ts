@@ -1,9 +1,9 @@
-export { readArtifact, readArtifactInputSchema, readArtifactOutputSchema } from "./read-artifact";
-export { summarizeArtifacts } from "./summarize-artifacts";
-export { updateArtifact, updateArtifactInputSchema, updateArtifactOutputSchema } from "./update-artifact";
+export { readArtifact, readArtifactInputSchema, readArtifactOutputSchema } from "./artifacts";
+export { writeArtifact, updateArtifact, updateArtifactInputSchema, updateArtifactOutputSchema } from "./artifacts";
 export { eventQueueDemo, eventQueueDemoInputSchema } from "./event-queue-demo";
-export { artifactListContext, voiceContext, type GeneratorMemory } from "./agent-context";
+export { artifactListContext, voiceContext, type GeneratorMemory } from "./context";
 export {
+  createThinkingStyleRouter,
   autoClassifyStyle,
   keywordHandler,
   classifierBlock,
@@ -13,4 +13,4 @@ export {
   PLAN_KEYWORDS,
   COT_KEYWORDS,
   type ThinkingStyle,
-} from "./thinking-router";
+} from "./thinking-styles";

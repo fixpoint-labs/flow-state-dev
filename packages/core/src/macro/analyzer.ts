@@ -45,7 +45,7 @@ export function analyzer<
 
   return generator({
     name: config.name,
-    model: config.model ?? "gpt-5-mini",
+    model: config.model ?? "preset/fast",
     outputSchema,
     prompt: [
       "You are an analysis assistant.",

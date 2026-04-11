@@ -97,7 +97,7 @@ function isConcurrencyOptions(value: unknown): value is { maxConcurrency?: numbe
   }
 
   const record = value as Record<string, unknown>;
-  return "maxConcurrency" in record || Object.keys(record).length === 0;
+  return "maxConcurrency" in record || "concurrency" in record || Object.keys(record).length === 0;
 }
 
 type GeneratorModelUsageMeta = {
@@ -236,6 +236,7 @@ async function executeBlock(
       instanceId: `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
       transient: block.transient || undefined,
       stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined,
+      input,
       container:
         containerConfig === undefined
           ? undefined
@@ -653,6 +654,98 @@ function createSequencer<TInput, TOutput>(
       );
     },
 
+    forEachBackground<TItem, TStepIn>(
+      arg1:
+        | BlockDefinition<any, any>
+        | ((item: TItem, index: number, ctx: BlockContext) => BlockDefinition<any, any>)
+        | ConnectorFn<TOutput, TStepIn[]>,
+      arg2?:
+        | BlockDefinition<any, any>
+        | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>)
+        | { concurrency?: number },
+      arg3?: { concurrency?: number }
+    ): SequencerDefinition<TInput, TOutput> {
+      const hasConnector =
+        arg3 !== undefined || (arg2 !== undefined && !isConcurrencyOptions(arg2));
+      const connector = hasConnector ? (arg1 as ConnectorFn<TOutput, TStepIn[]>) : undefined;
+      const blockOrFactory = (hasConnector ? arg2 : arg1) as
+        | BlockDefinition<any, any>
+        | ((item: TStepIn, index: number, ctx: BlockContext) => BlockDefinition<any, any>);
+      const options = (hasConnector ? arg3 : arg2) as { concurrency?: number } | undefined;
+
+      const elementBlock = isBlockDefinition(blockOrFactory)
+        ? (blockOrFactory as BlockDefinition<any, any>)
+        : undefined;
+
+      const DEFAULT_BACKGROUND_CONCURRENCY = 16;
+
+      return extend<TOutput>(
+        {
+          name: "forEachBackground",
+          run: async (value, ctx, runtime) => {
+            const items = (
+              connector === undefined ? (value as unknown as TStepIn[]) : await connector(value as TOutput, ctx)
+            ) ?? [];
+
+            if (!Array.isArray(items)) {
+              throw new Error("forEachBackground expected an array input");
+            }
+
+            const concurrency = Math.max(1, options?.concurrency ?? DEFAULT_BACKGROUND_CONCURRENCY);
+
+            // Dispatch all iterations as background work with concurrency limiting.
+            // Each iteration's failure is isolated — one failing doesn't stop others
+            // or propagate to the parent sequencer.
+            let nextIndex = 0;
+            const iterationResults: WorkResult[] = [];
+            const worker = async (): Promise<void> => {
+              while (nextIndex < items.length) {
+                if (ctx.signal?.aborted) break;
+                const currentIndex = nextIndex;
+                nextIndex += 1;
+                const item = items[currentIndex];
+
+                const block =
+                  typeof blockOrFactory === "function" && !isBlockDefinition(blockOrFactory)
+                    ? blockOrFactory(item, currentIndex, ctx)
+                    : (blockOrFactory as BlockDefinition<any, any>);
+
+                const iterName = `${block.name}[${currentIndex}]`;
+                try {
+                  const result = await executeBlock(block, item, ctx);
+                  iterationResults.push({ name: iterName, status: "fulfilled", value: result });
+                } catch (error) {
+                  iterationResults.push({ name: iterName, status: "rejected", reason: toError(error) });
+                }
+              }
+            };
+
+            const workerCount = Math.min(concurrency, items.length);
+            const workers: Promise<void>[] = [];
+            for (let i = 0; i < workerCount; i += 1) {
+              workers.push(worker());
+            }
+
+            // Wrap the whole batch as a single work task so auto-await handles cleanup.
+            const batchName = `forEachBackground[${items.length}]`;
+            const promise = Promise.all(workers).then((): WorkResult => {
+              const failed = iterationResults.filter((r) => r.status === "rejected");
+              if (failed.length > 0) {
+                return { name: batchName, status: "rejected", reason: failed[0].reason };
+              }
+              return { name: batchName, status: "fulfilled" };
+            });
+
+            runtime.workTasks.push({ name: batchName, promise });
+            return { value };
+          }
+        },
+        lastOutputSchema,
+        undefined,
+        mergeFrom(elementBlock)
+      );
+    },
+
     doUntil<TStepIn, TNext>(
       condition: (value: TNext | TOutput, ctx: BlockContext) => boolean | Promise<boolean>,
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
@@ -797,6 +890,14 @@ function createSequencer<TInput, TOutput>(
         undefined,
         mergeFrom(block)
       );
+    },
+
+    background<TStepIn>(
+      arg1: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
+      arg2?: BlockDefinition<any, any> | WorkOptions,
+      arg3?: WorkOptions
+    ): SequencerDefinition<TInput, TOutput> {
+      return definition.work(arg1 as any, arg2 as any, arg3 as any);
     },
 
     waitForWork(options?: WaitForWorkOptions): SequencerDefinition<TInput, TOutput> {
@@ -1015,6 +1116,25 @@ function createSequencer<TInput, TOutput>(
       }
 
       return definition;
+    },
+
+    connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): SequencerDefinition<TFrom, TOutput> {
+      const connectOp: SequencerOperation = {
+        name: `${config.name}/connect-input`,
+        run: async (value, ctx) => {
+          const mapped = await mapper(value as TFrom, ctx);
+          return { value: mapped };
+        }
+      };
+
+      return createSequencer<TFrom, TOutput>(
+        { ...config, inputSchema: undefined },
+        [connectOp, ...operations],
+        rescueHandlers,
+        lastOutputSchema,
+        undefined,
+        accumulatedResources
+      );
     }
   });
 

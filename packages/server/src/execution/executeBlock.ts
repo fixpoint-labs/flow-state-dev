@@ -82,6 +82,8 @@ async function emitBlockOutputItem(
     metadata: ExecutionMetadata;
     startedAt: number;
     modelUsage?: GeneratorModelUsageMeta;
+    status?: "completed" | "failed";
+    error?: { message: string; code?: string };
   }
 ): Promise<void> {
   if (!hasItemEmitter(options.ctx.response)) {
@@ -96,7 +98,7 @@ async function emitBlockOutputItem(
   const item: BlockOutputItem = {
     id: `item_block_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "block_output",
-    status: "completed",
+    status: options.status ?? "completed",
     trace: true,
     transient: options.block.transient || undefined,
     requestId: options.metadata.requestId,
@@ -106,6 +108,7 @@ async function emitBlockOutputItem(
     blockName: options.block.name,
     blockKind: options.block.kind,
     output: options.output,
+    error: options.error,
     startedAt: options.startedAt,
     completedAt,
     duration: completedAt - options.startedAt,
@@ -402,6 +405,22 @@ export async function executeBlock(
         error: summarizeForLog(normalized)
       }
     );
+
+    await emitBlockOutputItem({
+      block: options.block,
+      output: undefined,
+      ctx: options.ctx,
+      metadata: {
+        ...metadata,
+        attempt: attempt > 0 ? attempt : metadata.attempt
+      },
+      startedAt,
+      status: "failed",
+      error: {
+        message: normalized.message,
+        code: normalized.code
+      }
+    });
 
     return {
       output: undefined,

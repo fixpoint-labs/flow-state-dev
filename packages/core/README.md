@@ -16,7 +16,7 @@ import { z } from "zod";
 ```ts
 const agent = generator({
   name: "agent",
-  model: "gpt-5-mini",
+  model: "preset/fast",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   history: (_input, ctx) => ctx.session.items.llm(),
@@ -95,7 +95,7 @@ export default defineFlow({
 **Block builders:**
 - `handler(config)` — Synchronous/async logic block
 - `generator(config)` — LLM call with framework-managed tool loop, streaming, and structured output repair
-- `sequencer(config)` — Fluent composition DSL (14 methods: `then`, `thenIf`, `parallel`, `forEach`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `waitForWork`, `loopBack`)
+- `sequencer(config)` — Fluent composition DSL (16 methods: `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `background`, `waitForWork`, `loopBack`)
 - `router(config)` — Runtime block selection from declared routes
 
 **Flow:**

@@ -57,6 +57,7 @@ import type {
 import { createModelResolver } from "@flow-state-dev/core/models";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
+import { normalizeError } from "../errors/normalize-error";
 import { cloneValue } from "../utils/clone";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
@@ -2103,7 +2104,8 @@ export async function createExecutionContext<
     emitter: EmissionContext["response"],
     reqRef: { current: { id: string } },
     nextIndex: () => number,
-    blockOutput?: unknown
+    blockOutput?: unknown,
+    blockError?: { message: string; code?: string }
   ): void {
     const completedAt = Date.now();
     const itemIndex = nextIndex();
@@ -2125,6 +2127,7 @@ export async function createExecutionContext<
       blockName: parent.name,
       blockKind: parent.kind,
       output: blockOutput,
+      error: blockError,
       startedAt,
       completedAt,
       duration: completedAt - startedAt
@@ -2340,6 +2343,7 @@ export async function createExecutionContext<
             {
               name: matched.parent.name,
               instanceId: matched.parent.instanceId,
+              input: matched.parent.input,
               ...ops
             },
             () => (container?.read() ?? {}) as TState
@@ -2434,6 +2438,8 @@ export async function createExecutionContext<
       emitComponent: createEmitComponent(activeEmCtx),
       emitLLMContext: createEmitLLMContext(activeEmCtx),
       emitStatus: createEmitStatus(activeEmCtx),
+      // Defined below via Object.defineProperty to close over parentChain.
+      parent: undefined,
       _runtimeHooks,
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>) => {
         const resolvedParent: ExecutionParent = {
@@ -2548,11 +2554,20 @@ export async function createExecutionContext<
           siblingEntry.result.status = "failed";
           siblingEntry.result.error = error instanceof Error ? error : new Error(String(error));
           siblingEntry.result.output = undefined;
+          const normalized = normalizeError(error, {
+            blockName: resolvedParent.name,
+            scope: "block"
+          });
 
           if (parentChain !== undefined) {
             emitNestedBlockTrace(
               resolvedParent, traceStartedAt, "failed",
-              emissionResponse, requestRef, () => emittedItemCount++
+              emissionResponse, requestRef, () => emittedItemCount++,
+              undefined,
+              {
+                message: normalized.message,
+                code: normalized.code
+              }
             );
           }
 
@@ -2577,6 +2592,18 @@ export async function createExecutionContext<
         }
 
         return undefined;
+      }
+    });
+
+    Object.defineProperty(context, "parent", {
+      enumerable: true,
+      get() {
+        if (parentChain?.previous === undefined) {
+          return undefined;
+        }
+
+        const p = parentChain.previous.parent;
+        return { name: p.name, kind: p.kind, input: p.input };
       }
     });
 

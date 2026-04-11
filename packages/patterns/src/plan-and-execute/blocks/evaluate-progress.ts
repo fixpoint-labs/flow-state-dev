@@ -155,7 +155,7 @@ export function createEvaluateProgress(config: {
       );
       const hasExecutable = state.tasks.some(
         (s: PlanTask) =>
-          (s.status === "pending" || s.status === "in_progress") &&
+          (s.status === "pending" || s.status === "in-progress") &&
           s.dependencies.every((dep: string) => satisfiedIds.has(dep))
       );
       if (!hasExecutable) {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler, sequencer } from "../src";
+import { defineResource } from "../src/types/resource";
 import { createMockContext } from "./helpers";
 
 function addHandler(name: string, delta = 1) {
@@ -125,6 +126,185 @@ describe("sequencer builder", () => {
 
     const ctx = createMockContext();
     await expect(seq.run(1, ctx)).rejects.toThrow("background failure");
+  });
+
+  describe("forEachBackground", () => {
+    it("dispatches iterations as background work and returns immediately", async () => {
+      const executed: number[] = [];
+      const processItem = handler({
+        name: "process-item",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (value) => {
+          executed.push(value);
+          return value * 2;
+        }
+      });
+
+      const seq = sequencer({ name: "bg-foreach", inputSchema: z.array(z.number()) })
+        .forEachBackground(processItem)
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      // The sequencer's output should be the original input (pass-through), not the mapped results
+      const result = await seq.run([1, 2, 3], ctx);
+      expect(result).toEqual([1, 2, 3]);
+      // All items should have been processed in the background
+      expect(executed.sort()).toEqual([1, 2, 3]);
+    });
+
+    it("supports connector overload", async () => {
+      const executed: string[] = [];
+      const processItem = handler({
+        name: "process-str",
+        inputSchema: z.string(),
+        outputSchema: z.string(),
+        execute: async (value) => {
+          executed.push(value);
+          return value.toUpperCase();
+        }
+      });
+
+      const seq = sequencer({ name: "bg-foreach-conn", inputSchema: z.number() })
+        .forEachBackground(
+          (value) => [String(value), String(value + 1)],
+          processItem
+        )
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      const result = await seq.run(5, ctx);
+      expect(result).toBe(5);
+      expect(executed.sort()).toEqual(["5", "6"]);
+    });
+
+    it("isolates iteration failures from the parent", async () => {
+      const executed: number[] = [];
+      const sometimesFails = handler({
+        name: "maybe-fail",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (value) => {
+          if (value === 2) throw new Error("item 2 failed");
+          executed.push(value);
+          return value;
+        }
+      });
+
+      // Without failOnError, the parent should succeed even though one iteration fails
+      const seq = sequencer({ name: "bg-foreach-isolated", inputSchema: z.array(z.number()) })
+        .forEachBackground(sometimesFails)
+        .waitForWork({ failOnError: false });
+
+      const ctx = createMockContext();
+      const result = await seq.run([1, 2, 3], ctx);
+      expect(result).toEqual([1, 2, 3]);
+      // Items 1 and 3 should have run; item 2 threw but didn't stop the others
+      expect(executed.sort()).toEqual([1, 3]);
+    });
+
+    it("propagates failures when waitForWork has failOnError", async () => {
+      const failingBlock = handler({
+        name: "always-fail",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: () => { throw new Error("iteration failure"); }
+      });
+
+      const seq = sequencer({ name: "bg-foreach-fail", inputSchema: z.array(z.number()) })
+        .forEachBackground(failingBlock)
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      await expect(seq.run([1], ctx)).rejects.toThrow("iteration failure");
+    });
+
+    it("respects concurrency limit", async () => {
+      let maxConcurrent = 0;
+      let currentConcurrent = 0;
+      const trackConcurrency = handler({
+        name: "track",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (value) => {
+          currentConcurrent += 1;
+          if (currentConcurrent > maxConcurrent) maxConcurrent = currentConcurrent;
+          // Yield to event loop to allow other tasks to run
+          await new Promise((r) => setTimeout(r, 5));
+          currentConcurrent -= 1;
+          return value;
+        }
+      });
+
+      const seq = sequencer({ name: "bg-foreach-conc", inputSchema: z.array(z.number()) })
+        .forEachBackground(trackConcurrency, { concurrency: 2 })
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      await seq.run([1, 2, 3, 4, 5], ctx);
+      expect(maxConcurrent).toBeLessThanOrEqual(2);
+    });
+
+    it("supports dynamic block factory", async () => {
+      const executed: string[] = [];
+      const doubler = handler({
+        name: "doubler",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (value) => { executed.push(`double:${value}`); return value * 2; }
+      });
+      const tripler = handler({
+        name: "tripler",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (value) => { executed.push(`triple:${value}`); return value * 3; }
+      });
+
+      const seq = sequencer({ name: "bg-foreach-factory", inputSchema: z.array(z.number()) })
+        .forEachBackground((item: number, index) => index % 2 === 0 ? doubler : tripler)
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      await seq.run([10, 20, 30], ctx);
+      expect(executed.sort()).toEqual(["double:10", "double:30", "triple:20"]);
+    });
+  });
+
+  describe("background alias", () => {
+    it("is an alias for work", async () => {
+      const workBlock = handler({
+        name: "bg-alias-work",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (value) => value + 10
+      });
+
+      const seq = sequencer({ name: "bg-alias", inputSchema: z.number() })
+        .background(workBlock)
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      await expect(seq.run(1, ctx)).resolves.toBe(1);
+    });
+
+    it("supports connector overload", async () => {
+      const workBlock = handler({
+        name: "bg-alias-conn",
+        inputSchema: z.string(),
+        outputSchema: z.string(),
+        execute: async (value) => value.toUpperCase()
+      });
+
+      const seq = sequencer({ name: "bg-alias-conn", inputSchema: z.number() })
+        .background(
+          (value) => String(value),
+          workBlock
+        )
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      await expect(seq.run(42, ctx)).resolves.toBe(42);
+    });
   });
 
   it("supports tap and tapIf", async () => {
@@ -511,6 +691,84 @@ describe("sequencer builder", () => {
       }).then(toObj);
 
       expect(() => seq.validate()).toThrow(/shape mismatch/);
+    });
+  });
+
+  describe("connectInput", () => {
+    it("returns a SequencerDefinition with DSL methods", () => {
+      const addOne = addHandler("add-one", 1);
+      const seq = sequencer({ name: "ci-dsl", inputSchema: z.number() })
+        .then(addOne);
+
+      const connected = seq.connectInput((s: string) => Number(s));
+
+      // Should have sequencer DSL methods — not a bare BlockDefinition
+      expect(typeof connected.then).toBe("function");
+      expect(typeof connected.tap).toBe("function");
+      expect(typeof connected.map).toBe("function");
+      expect(typeof connected.work).toBe("function");
+      expect(connected.kind).toBe("sequencer");
+    });
+
+    it("mapper runs before sequencer operations", async () => {
+      const addOne = addHandler("add-one", 1);
+      const seq = sequencer({ name: "ci-mapper", inputSchema: z.number() })
+        .then(addOne);
+
+      const connected = seq.connectInput((s: string) => Number(s));
+      const ctx = createMockContext();
+      // "5" → 5 → 5 + 1 = 6
+      await expect(connected.run("5", ctx)).resolves.toBe(6);
+    });
+
+    it("preserves declared resources from child blocks", () => {
+      const resource = defineResource({
+        stateSchema: z.object({ items: z.array(z.string()) })
+      });
+
+      const step = handler({
+        name: "step-with-resource",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        sessionResources: { myResource: resource },
+        execute: (v) => v
+      });
+
+      const seq = sequencer({ name: "ci-resources", inputSchema: z.number() })
+        .then(step);
+
+      const connected = seq.connectInput((s: string) => Number(s));
+
+      expect(connected.declaredResources).toEqual({
+        session: { myResource: resource }
+      });
+    });
+
+    it("supports chaining DSL methods after connectInput", async () => {
+      const addOne = addHandler("add-one", 1);
+      const double = handler({
+        name: "double",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: (v) => v * 2
+      });
+
+      const connected = sequencer({ name: "ci-chain", inputSchema: z.number() })
+        .then(addOne)
+        .connectInput((s: string) => Number(s))
+        .then(double);
+
+      const ctx = createMockContext();
+      // "3" → 3 → 3 + 1 = 4 → 4 * 2 = 8
+      await expect(connected.run("3", ctx)).resolves.toBe(8);
+    });
+
+    it("preserves name from original sequencer config", () => {
+      const seq = sequencer({ name: "my-seq", inputSchema: z.number() })
+        .then(addHandler("step", 1));
+
+      const connected = seq.connectInput((s: string) => Number(s));
+      expect(connected.name).toBe("my-seq");
     });
   });
 });

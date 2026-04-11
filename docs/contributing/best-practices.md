@@ -142,17 +142,33 @@ Update policy:
   - Every block chained with `.then()` appends its output to the items log. Returning `input` as a passthrough pollutes the items log with redundant copies of data that carry no new information. Items should contain meaningful output — LLM responses, structured results — not echoes of prior state. State mutations are already observable through the state change log.
   - `.tap()` communicates intent clearly: this block runs for its side effects, the upstream data flows through unchanged.
 
-### BP-013: Use `.tap(mapper, block)` instead of `.connectInput()` — never use `.connectInput()` on a sequencer directly
+
+
+### BP-013: Use `connectInput` and `connectOutput` inside the router, not on blocks directly
 
 - Status: Active
-- Date: 2026-04-08
+- Date: 2026-04-09
 - Rule:
-  - When a block needs its input remapped before calling, use the two-argument `.tap(mapper, block)` signature rather than `.then(block.connectInput(mapper))`.
-  - Never call `.connectInput()` on a sequencer. Sequencers already accept the full input via the method signal (inputSchema passthrough). Use `.tap(sequencer)` or `.tapIf(cond, sequencer)` — the input flows through automatically with no manual type annotation required.
+  - When a router selects a block that requires input transformation, perform the transformation inside the router's `execute` function using `connectInput`, not by pre-connecting the block at definition time.
+  - Return `block.connectInput(() => transformedInput)` (using closure over the router's `input`) rather than declaring a permanently-adapted variant of the block.
+  - `connectInput` works natively on all block kinds including sequencers — no wrapper block is created; the full interface (`.then()`, `.tap()`, etc.) is preserved.
+  - If a router's selected block produces output in a shape the router's output schema doesn't expect, use `connectOutput` on the selected block inside `execute` to adapt it.
+  - Pre-connecting blocks at definition time (outside a router) is appropriate only when the block is purpose-built as a reusable adapter for a specific caller and the input contract belongs to the block itself, not to a runtime routing decision.
 - Why:
-  - `.connectInput()` on a sequencer is redundant: the method signal already passes the input. More importantly, it forces an explicit type annotation on the mapper that TypeScript could infer automatically, and it creates an unnecessary wrapper that obscures what the sequencer actually does.
-  - `.tap(mapper, block)` is cleaner for remapping: the mapper is co-located with the call, types flow naturally, and no wrapper block is introduced.
+  - Performing input adaptation inside the router keeps each block's schema generic and reusable. Pre-connecting forces an arbitrary caller's schema into the block definition, coupling it to one usage site.
+  - Using closure over `input` inside `execute` avoids repeating the input type annotation — the router already knows it.
+  - Returning a connected block from `execute` works cleanly with the router's route validation (matching is by name) and with `testRouter` (which uses `onRouteSelected` hooks, not object identity).
 
+### BP-014: Handlers must never return input as output
+
+- Status: Active
+- Date: 2026-04-10
+- Rule:
+  - A handler's `execute` must never `return input` verbatim.
+  - If the block produces no meaningful output, use `.tap()` (per BP-012).
+  - If the block transforms input, return the transformation — not the original `input`.
+- Why:
+  - Returning `input` pollutes the items log with redundant echoes of data already present in prior items. Items should contain meaningful outputs (LLM responses, structured results), not passthrough copies. This is a generalization of BP-012: even when a handler is not state-mutation-only, echoing input as output is never correct behavior.
 
 ## Template For New Entries
 

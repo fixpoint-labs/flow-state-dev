@@ -32,6 +32,10 @@
     "./blackboard": {
       "types": "./dist/blackboard/index.d.ts",
       "default": "./dist/blackboard/index.js"
+    },
+    "./response-auditor": {
+      "types": "./dist/response-auditor/index.d.ts",
+      "default": "./dist/response-auditor/index.js"
     }
   },
   "license": "MIT",

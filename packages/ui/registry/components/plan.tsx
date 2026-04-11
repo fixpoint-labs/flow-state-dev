@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import type { ComponentItem } from "@flow-state-dev/core/items";
 import { cn } from "@/lib/utils";
 import {
@@ -8,6 +9,7 @@ import {
   CheckCircle2Icon,
   ChevronRightIcon,
   CircleIcon,
+  EyeIcon,
   Loader2Icon,
   MinusCircleIcon,
   XCircleIcon,
@@ -20,7 +22,8 @@ import {
 
 type PlanTaskStatus =
   | "pending"
-  | "in_progress"
+  | "in-progress"
+  | "awaiting-review"
   | "completed"
   | "failed"
   | "skipped"
@@ -30,6 +33,7 @@ type PlanTaskStatus =
 type PlanTask = {
   id: string;
   goal: string;
+  assignee?: string;
   status: PlanTaskStatus;
   result?: unknown;
   error?: string;
@@ -60,10 +64,15 @@ const STATUS_CONFIG: Record<PlanTaskStatus, StatusConfig> = {
     iconClassName: "text-muted-foreground",
     label: "Pending",
   },
-  in_progress: {
+  "in-progress": {
     icon: Loader2Icon,
     iconClassName: "text-blue-500 animate-spin",
     label: "In progress",
+  },
+  "awaiting-review": {
+    icon: EyeIcon,
+    iconClassName: "text-cyan-500",
+    label: "Awaiting review",
   },
   completed: {
     icon: CheckCircle2Icon,
@@ -98,6 +107,7 @@ const STATUS_CONFIG: Record<PlanTaskStatus, StatusConfig> = {
 /** Extracts a human-readable summary from a task result if one is present. */
 function getResultSummary(result: unknown): string | undefined {
   if (result === null || result === undefined) return undefined;
+  if (typeof result === "string") return result;
   if (typeof result === "object" && "summary" in (result as object)) {
     const s = (result as { summary: unknown }).summary;
     return typeof s === "string" ? s : undefined;
@@ -148,6 +158,11 @@ function PlanTaskRow({ task }: { task: PlanTask }) {
   const config = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.pending;
   const Icon = config.icon;
   const summary = getResultSummary(task.result);
+  const assigneeLabel = task.assignee ? (
+    <span className="ml-1 shrink-0 text-[10px] font-medium text-muted-foreground/60">
+      [{task.assignee}]
+    </span>
+  ) : null;
 
   if (!summary) {
     return (
@@ -157,7 +172,7 @@ function PlanTaskRow({ task }: { task: PlanTask }) {
           aria-hidden="true"
         />
         <span className={cn("text-xs leading-snug", config.goalClassName)}>
-          {task.goal}
+          {task.goal}{assigneeLabel}
           {task.error && (
             <span className="ml-1 opacity-60">— {task.error}</span>
           )}
@@ -175,14 +190,14 @@ function PlanTaskRow({ task }: { task: PlanTask }) {
             aria-hidden="true"
           />
           <span className={cn("flex-1 text-xs leading-snug", config.goalClassName)}>
-            {task.goal}
+            {task.goal}{assigneeLabel}
           </span>
           <ChevronRightIcon
             className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground/50 transition-transform group-open:rotate-90"
             aria-hidden="true"
           />
         </summary>
-        <p className="mt-1 pl-5 text-xs leading-snug text-muted-foreground">
+        <p className="mt-1 whitespace-pre-wrap pl-5 text-xs leading-snug text-muted-foreground">
           {summary}
         </p>
       </details>

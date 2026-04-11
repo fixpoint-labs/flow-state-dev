@@ -63,3 +63,21 @@ export type {
   BlackboardControlState,
   ControllerOutput,
 } from "./blackboard";
+export {
+  responseAuditor,
+  AnalyzerResultSchema,
+  AuditAnnotationSchema,
+  auditorInputSchema,
+  responseAuditorStateSchema,
+  captureContext,
+  aggregateResults,
+  applyThreshold,
+} from "./response-auditor";
+export type {
+  AnalyzerResult,
+  AuditAnnotation,
+  AuditorInput,
+  ResponseAuditorState,
+  ResponseAuditorConfig,
+  DisplayMode,
+} from "./response-auditor";

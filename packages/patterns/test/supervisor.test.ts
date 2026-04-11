@@ -105,10 +105,15 @@ function makeDeterministicSynthesizer(name: string) {
       synthesis: z.string(),
       rationale: z.array(z.string()),
     }),
-    execute: (input: unknown) => ({
-      synthesis: `Synthesized ${Array.isArray(input) ? input.length : 0} results`,
-      rationale: ["test synthesis"],
-    }),
+    execute: (input: unknown) => {
+      const results = input && typeof input === "object" && "results" in input
+        ? (input as { results: unknown[] }).results
+        : Array.isArray(input) ? input : [];
+      return {
+        synthesis: `Synthesized ${results.length} results`,
+        rationale: ["test synthesis"],
+      };
+    },
   });
 }
 
@@ -461,6 +466,16 @@ describe("supervisor pattern", () => {
 
       expect(result.error).toBeNull();
       expect(result.output).toBeDefined();
+      const output = result.output as { synthesis: string };
+      expect(output.synthesis).toContain("Synthesized 2 results");
+      const skippedWarnings = result.items.filter(
+        (item) =>
+          item.type === "status" &&
+          (item as { message?: string }).message?.includes(
+            'skipped task "t2"'
+          )
+      );
+      expect(skippedWarnings).toHaveLength(1);
     });
 
     it("aborts on any failure with onSubTaskError='fail'", async () => {

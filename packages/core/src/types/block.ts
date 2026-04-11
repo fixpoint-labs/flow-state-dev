@@ -23,6 +23,8 @@ export type ExecutionParent = {
   parentInstanceId?: string;
   transient?: boolean;
   stateSchema?: ZodTypeAny;
+  /** The input value passed to this block when it was executed. Populated for sequencers. */
+  input?: unknown;
   container?: {
     component?: string;
     label?: string;
@@ -38,6 +40,8 @@ export type StateRef<TState extends object = Record<string, unknown>> = {
   name: string;
   instanceId: string;
   state: Readonly<TState>;
+  /** The input value that was passed to this sequencer when it was executed. */
+  input: unknown;
 } & Pick<
   ScopeStateOps<TState>,
   | "patchState"
@@ -85,6 +89,7 @@ export interface BlockContext<
   TUserResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>,
   TProjectResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>,
   TSequencerState extends object = Record<string, unknown>,
+  TParentInput = unknown,
   TTargets extends Record<string, ZodTypeAny> | undefined = undefined,
 > {
   request: RequestScopeHandle<TRequestState>;
@@ -92,6 +97,19 @@ export interface BlockContext<
   user: UserScopeHandle<TUserState, TUserResources>;
   project?: ProjectScopeHandle<TProjectState, TProjectResources>;
   sequencer?: StateRef<TSequencerState>;
+
+  /**
+   * The immediate parent block in the execution chain, if any.
+   * Provides the parent's name, kind, and the input it was called with.
+   * Useful when a nested block (e.g. a step inside a sequencer, a tool block
+   * inside a generator, or a route inside a router) needs the original input
+   * that triggered its parent.
+   */
+  parent?: {
+    name: string;
+    kind: BlockKind;
+    input: TParentInput;
+  };
 
   response: ResponseEmitterHandle;
   signal: AbortSignal;

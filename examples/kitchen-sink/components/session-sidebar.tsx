@@ -39,7 +39,7 @@ export function SessionSidebar({
         </Button>
       </div>
       <Separator />
-      <ScrollArea className="flex-1 p-2">
+      <ScrollArea className="min-h-0 flex-1 p-2">
         <div className="flex flex-col gap-1">
           {sessions.map((session) => (
             <button

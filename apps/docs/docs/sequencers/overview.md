@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Overview
 
-Most frameworks force a choice: Agent (the LLM decides what to do next) or Workflow (your code decides). flow-state.dev rejects that split. Sequencers are the composition model. You chain blocks with `.then()`, `.thenIf()`, `.tap()`, and fifteen other DSL methods. Each step's output feeds into the next step's input. Type inference flows through the whole chain.
+Most frameworks force a choice: Agent (the LLM decides what to do next) or Workflow (your code decides). flow-state.dev rejects that split. Sequencers are the composition model. You chain blocks with `.then()`, `.thenIf()`, `.tap()`, and other DSL methods. Each step's output feeds into the next step's input. Type inference flows through the whole chain.
 
 You can interleave deterministic and non-deterministic steps. Validate input with a handler, generate a response with a generator, extract structured data with a handler, refine with another generator. All in one pipeline. No artificial boundary between "AI steps" and "logic steps."
 
@@ -28,7 +28,7 @@ const validate = handler({
 
 const agent = generator({
   name: "agent",
-  model: "gpt-5-mini",
+  model: "preset/fast",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   user: (input) => input.message,
@@ -56,7 +56,7 @@ const pipeline = sequencer({
 
 Here, a handler validates, a generator produces text, a `.map()` extracts the text, and a handler parses JSON. The chain's output type is inferred from the last step.
 
-## The 15 DSL methods
+## DSL methods
 
 | Method | Purpose |
 |--------|---------|
@@ -64,11 +64,12 @@ Here, a handler validates, a generator produces text, a `.map()` extracts the te
 | `thenIf` | Run a block only when a condition holds |
 | `map` | Inline transform (no block) |
 | `parallel` | Run multiple blocks concurrently, merge outputs |
-| `forEach` | Process array items with a block |
+| `forEach` | Process array items with a block (blocking) |
+| `forEachBackground` | Fire-and-forget fan-out over array items (non-blocking) |
 | `doUntil` | Loop until a condition is true |
 | `doWhile` | Loop while a condition is true |
 | `loopBack` | Jump back to a named step |
-| `work` | Fire-and-forget side work (doesn't block) |
+| `work` / `background` | Fire-and-forget side work (doesn't block) |
 | `waitForWork` | Wait for `.work()` tasks, optional `failOnError` |
 | `tap` | Run a block or function without changing the payload |
 | `tapIf` | Conditional tap |

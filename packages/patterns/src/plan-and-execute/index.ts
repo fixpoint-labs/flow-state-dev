@@ -587,7 +587,7 @@ export function planAndExecute<
       await ctx.sequencer!.patchState({
         currentTaskId: nextStep.id,
         tasks: state.tasks.map((s: PlanTask) =>
-          s.id === nextStep.id ? { ...s, status: "in_progress" as const } : s
+          s.id === nextStep.id ? { ...s, status: "in-progress" as const } : s
         ),
       });
 

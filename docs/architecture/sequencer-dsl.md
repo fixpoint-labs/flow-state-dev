@@ -128,6 +128,53 @@ pipeline.forEach((item, index, ctx) => {
 });
 ```
 
+### `forEachBackground(block)` — Fire-and-Forget Fan-Out
+
+Dispatch each element to a block as background work. The parent sequencer continues immediately without waiting for iterations to complete. Each iteration runs as a sidechain with `.work()` lifetime semantics.
+
+```ts
+pipeline
+  .map((input) => input.subscribers)
+  .forEachBackground(notifyBlock, { concurrency: 8 });
+
+// Output: Subscriber[] (original array — NOT the block results)
+```
+
+With a connector:
+
+```ts
+pipeline.forEachBackground(
+  (input) => input.channels,
+  broadcastBlock,
+  { concurrency: 4 }
+);
+```
+
+Dynamic block per item:
+
+```ts
+pipeline.forEachBackground((item, index, ctx) => {
+  return item.urgent ? urgentNotify : normalNotify;
+});
+```
+
+**Key differences from `forEach`:**
+
+| | `forEach` | `forEachBackground` |
+|---|---|---|
+| **Timing** | Blocks until all iterations complete | Dispatches and continues immediately |
+| **Return type** | `T[]` (array of block outputs) | Pass-through (original input unchanged) |
+| **Failure handling** | Any iteration failure aborts the parent | Failures are isolated — one failing iteration doesn't stop others or the parent |
+| **Use case** | Transform a collection | Broadcast/fan-out (notifications, cache warming, analytics) |
+
+**Options:**
+
+| Option | Default | Effect |
+|--------|---------|--------|
+| `concurrency` | 16 | Maximum number of iterations running simultaneously |
+
+**Lifecycle:** Background iterations are auto-awaited when the sequencer finishes (same as `.work()` tasks). Parent flow cancellation cancels in-flight iterations via the abort signal.
+
 ### `doUntil(condition, block)` — Loop Until True
 
 Execute block repeatedly until condition returns true.
@@ -184,6 +231,16 @@ pipeline.work(
   analyticsBlock,
   { name: "log-analytics" }
 );
+```
+
+**Alias: `.background()`** — identical to `.work()`, reads more naturally in fan-out contexts:
+
+```ts
+pipeline
+  .then(mainProcessing)
+  .background(analyticsBlock)
+  .background(notificationBlock)
+  .then(nextStep);
 ```
 
 **Key:** Work failures do NOT abort the main chain. They emit `step_error` items.
@@ -274,7 +331,7 @@ Each branch is a tuple: `[connector, condition, block]`.
 
 ## Resource Collection
 
-Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain. Every method that accepts a block — `then`, `thenIf`, `parallel`, `forEach`, `doUntil`, `doWhile`, `work`, `tap`, `tapIf`, `rescue`, `branch` — merges that block's declared resources into the sequencer's accumulated set.
+Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain. Every method that accepts a block — `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `work`, `background`, `tap`, `tapIf`, `rescue`, `branch` — merges that block's declared resources into the sequencer's accumulated set.
 
 ```ts
 const pipeline = sequencer({ name: "pipeline" })

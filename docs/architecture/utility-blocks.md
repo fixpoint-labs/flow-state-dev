@@ -27,7 +27,7 @@ const pipeline = sequencer({
   .then(analyze);
 ```
 
-Every utility factory accepts a `name` (required) and returns a block that can be chained via `.then()`, composed in `.parallel()`, or used as a router route. Generator-based utilities accept an optional `model` (defaults to `"gpt-5-mini"`) and an optional `outputSchema` to override the default output shape.
+Every utility factory accepts a `name` (required) and returns a block that can be chained via `.then()`, composed in `.parallel()`, or used as a router route. Generator-based utilities accept an optional `model` (defaults to `"preset/fast"`) and an optional `outputSchema` to override the default output shape.
 
 ## Utility catalog
 
@@ -65,7 +65,7 @@ const reduce = utility.contextReducer({
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
 | `mode` | `"distill" \| "denoise" \| "compress"` | `"distill"` | Reduction strategy |
-| `model` | `string` | `"gpt-5-mini"` | Model identifier |
+| `model` | `string` | `"preset/fast"` | Model identifier |
 | `outputSchema` | `ZodTypeAny` | mode-specific | Override the default output schema |
 
 **Modes and default output schemas:**
@@ -135,7 +135,7 @@ const extract = utility.memoryExtractor({
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
-| `model` | `string` | `"gpt-5-mini"` | Model identifier |
+| `model` | `string` | `"preset/fast"` | Model identifier |
 | `outputSchema` | `ZodTypeAny` | `memoryExtractorOutputSchema` | Override the default output schema |
 
 **Default output schema:**
@@ -194,7 +194,7 @@ const decompose = utility.decomposer({
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
-| `model` | `string` | `"gpt-5-mini"` | Model identifier |
+| `model` | `string` | `"preset/fast"` | Model identifier |
 | `outputSchema` | `ZodTypeAny` | `decomposerOutputSchema` | Override the default output schema |
 
 **Default output schema:**
@@ -261,7 +261,7 @@ const compose = utility.composer({
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
-| `model` | `string` | `"gpt-5-mini"` | Model identifier |
+| `model` | `string` | `"preset/fast"` | Model identifier |
 | `objectives` | `string \| string[]` | — | Focus areas for composition |
 | `outputSchema` | `ZodTypeAny` | `composerOutputSchema` | Override the default output schema |
 
@@ -309,7 +309,7 @@ const summarize = utility.summarizer({
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
-| `model` | `string` | `"gpt-5-mini"` | Model identifier |
+| `model` | `string` | `"preset/fast"` | Model identifier |
 | `granularity` | `"brief" \| "detailed" \| "executive"` | `"brief"` | Summary depth |
 | `objectives` | `string \| string[]` | — | Focus areas for the summary |
 | `outputSchema` | `ZodTypeAny` | `summarizerOutputSchema` | Override the default output schema |
@@ -427,7 +427,7 @@ const synthesize = utility.synthesizer({
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
-| `model` | `string` | `"gpt-5-mini"` | Model identifier |
+| `model` | `string` | `"preset/fast"` | Model identifier |
 | `objectives` | `string \| string[]` | — | Priorities for synthesis decisions |
 | `outputSchema` | `ZodTypeAny` | `synthesizerOutputSchema` | Override the default output schema |
 
@@ -474,7 +474,7 @@ const analyze = utility.analyzer({
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
-| `model` | `string` | `"gpt-5-mini"` | Model identifier |
+| `model` | `string` | `"preset/fast"` | Model identifier |
 | `criteria` | `string[]` | `["quality", "risk", "coverage", "confidence"]` | Evaluation criteria |
 | `outputSchema` | `ZodTypeAny` | `analyzerOutputSchema` | Override the default output schema |
 
@@ -547,7 +547,7 @@ const classify = utility.intentClassifier({
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
 | `categories` | `Record<string, string>` | — | Category name → description map (minimum 2 categories, required) |
-| `model` | `string` | `"gpt-5-mini"` | Model identifier |
+| `model` | `string` | `"preset/fast"` | Model identifier |
 | `outputSchema` | `ZodTypeAny` | auto-generated | Override the default output schema |
 
 **Default output schema:**
@@ -642,7 +642,7 @@ const triage = utility.intentRouter({
 |-----------|------|---------|-------------|
 | `name` | `string` | — | Block name (required) |
 | `categories` | `Record<string, { description: string; handler: BlockDefinition }>` | — | Category name → description + handler map (minimum 2, required) |
-| `model` | `string` | `"gpt-5-mini"` | Model identifier for the internal classifier |
+| `model` | `string` | `"preset/fast"` | Model identifier for the internal classifier |
 | `fallback` | `BlockDefinition` | — | Block to execute for low-confidence or unmatched results |
 | `confidenceThreshold` | `number` (0–1) | — | Below this confidence, route to fallback |
 
@@ -875,7 +875,7 @@ Represents the classification result produced by the intentClassifier.
 
 ## Key properties
 
-- All generator-based utilities default to `"gpt-5-mini"` and accept a `model` override.
+- All generator-based utilities default to `"preset/fast"` and accept a `model` override.
 - All utilities export their default output schema as a named Zod object (e.g., `summarizerOutputSchema`) for reference or reuse.
 - The `outputSchema` parameter on every utility accepts a generic type, providing full type inference on the block's output.
 - Combiner is handler-based — it runs deterministic logic with no LLM call.
