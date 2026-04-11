@@ -88,6 +88,8 @@ export type SessionView = {
   readonly detail: SessionDetail | null;
   readonly snapshot: SessionStateSnapshotResponse | null;
   readonly items: OutputItem[];
+  /** Returns items owned by a container scope (items where `ownedBy === blockInstanceId`). */
+  getOwnedItems: (ownedBy: string) => OutputItem[];
   sendAction: (
     action: string,
     input: unknown,
@@ -278,6 +280,20 @@ export function useSession(
   const deltaQueueRef = useRef<Map<string, ContentDeltaAccumulator>>(new Map());
   const flushHandleRef = useRef<number | null>(null);
   const optimisticIdRef = useRef<string | null>(null);
+  /** Maps container ownedBy values to sets of item IDs for O(1) container lookups. */
+  const ownershipIndexRef = useRef<Map<string, Set<string>>>(new Map());
+
+  /** Track an item's ownedBy in the ownership index. */
+  const trackOwnership = useCallback((item: OutputItem) => {
+    const ownedBy = (item as OutputItem & { ownedBy?: string }).ownedBy;
+    if (ownedBy === undefined) return;
+    let set = ownershipIndexRef.current.get(ownedBy);
+    if (set === undefined) {
+      set = new Set();
+      ownershipIndexRef.current.set(ownedBy, set);
+    }
+    set.add(item.id);
+  }, []);
 
   const cancelScheduledFlush = useCallback(() => {
     if (flushHandleRef.current === null) {
@@ -364,6 +380,7 @@ export function useSession(
         itemsByIdRef.current = new Map();
         sortedItemIdsRef.current = [];
         deltaQueueRef.current.clear();
+        ownershipIndexRef.current = new Map();
         setItems([]);
         return;
       }
@@ -378,13 +395,24 @@ export function useSession(
       );
 
       const nextMap = new Map<string, OutputItem>();
+      const nextOwnership = new Map<string, Set<string>>();
       for (const item of filtered) {
         nextMap.set(item.id, item);
+        const ownedBy = (item as OutputItem & { ownedBy?: string }).ownedBy;
+        if (ownedBy !== undefined) {
+          let set = nextOwnership.get(ownedBy);
+          if (set === undefined) {
+            set = new Set();
+            nextOwnership.set(ownedBy, set);
+          }
+          set.add(item.id);
+        }
       }
 
       itemsByIdRef.current = nextMap;
       sortedItemIdsRef.current = filtered.map((item) => item.id);
       deltaQueueRef.current.clear();
+      ownershipIndexRef.current = nextOwnership;
       setItems(filtered);
     },
     [itemConfig.enabled, itemConfig.includeTransient, itemConfig.itemTypes]
@@ -529,6 +557,7 @@ export function useSession(
             existing !== undefined && !sameChronologicalOrder(existing, event.item);
 
           itemsByIdRef.current.set(event.item.id, event.item);
+          trackOwnership(event.item);
 
           if (isNewItem || orderChanged) {
             const ordered = sortItemsChronologically([
@@ -555,6 +584,7 @@ export function useSession(
             existing !== undefined && !sameChronologicalOrder(existing, event.item);
 
           itemsByIdRef.current.set(event.item.id, event.item);
+          trackOwnership(event.item);
 
           if (isNewItem || orderChanged) {
             const ordered = sortItemsChronologically([
@@ -648,7 +678,8 @@ export function useSession(
       refreshSnapshot,
       scheduleRefreshSnapshot,
       scheduleContentFlush,
-      flushContentDeltas
+      flushContentDeltas,
+      trackOwnership
     ]
   );
 
@@ -661,6 +692,7 @@ export function useSession(
       itemsByIdRef.current = new Map();
       sortedItemIdsRef.current = [];
       deltaQueueRef.current.clear();
+      ownershipIndexRef.current = new Map();
       cancelScheduledFlush();
       setDetail(null);
       setSnapshot(null);
@@ -826,6 +858,17 @@ export function useSession(
     ]
   );
 
+  const getOwnedItems = useCallback((ownedBy: string): OutputItem[] => {
+    const ids = ownershipIndexRef.current.get(ownedBy);
+    if (ids === undefined || ids.size === 0) return [];
+    const result: OutputItem[] = [];
+    for (const id of ids) {
+      const item = itemsByIdRef.current.get(id);
+      if (item !== undefined) result.push(item);
+    }
+    return sortItemsChronologically(result);
+  }, []);
+
   const refresh = useCallback(async () => {
     await refreshSnapshot();
   }, [refreshSnapshot]);
@@ -842,6 +885,7 @@ export function useSession(
     detail,
     snapshot,
     items,
+    getOwnedItems,
     sendAction,
     refresh
   };

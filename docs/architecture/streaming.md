@@ -51,6 +51,18 @@ For `block_output`: When the item has `toolCall` metadata (legacy tool invocatio
 
 Items may carry `trace: true` on `OutputItemBase` to mark them as structural lifecycle metadata. Trace items are always excluded from LLM context (filtered by `itemToLLMMessage`) but remain visible in the devtool trace tree for debugging and performance analysis. Currently, `block_output` items from lifecycle tracing and `router_decision` items are marked as trace. Tool result items (`block_tool_output`) are never trace-flagged because they must enter LLM context for multi-turn tool calling.
 
+### Container Ownership (`ownedBy`)
+
+When a sequencer or router declares a `container` config, items emitted during its execution carry `ownedBy: string` — the `blockInstanceId` of the declaring sequencer/router. This creates a flat ownership tag on the wire format (no nested structures), preserving SSE resume semantics.
+
+**Propagation rules:**
+- New container boundary: `ownedBy = container sequencer's instanceId`
+- Inherited: non-container blocks inside a container scope inherit the parent's `ownedBy`
+- Nested containers: inner container's items have `ownedBy = inner.instanceId`; the inner ContainerItem itself has `ownedBy = outer.instanceId`
+- Outside any container: `ownedBy` is `undefined`
+
+**Client-side:** `useSession` maintains an ownership index (`Map<ownedBy, Set<itemId>>`) for O(1) lookups. The `useContainerItems` hook resolves owned items and extracts component state for a given ContainerItem. `ItemRenderer` suppresses owned items when the owning container has a registered renderer.
+
 ## Content Model
 
 Content streams within items. Four content types:

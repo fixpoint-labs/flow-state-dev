@@ -9,7 +9,9 @@ import type {
 } from "../types/block";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
+import type { CapabilityRef, InferCapabilities } from "../capability/types";
 import { buildBlock, extractDeclaredResources, mergeDeclaredResources } from "./internal/build-block";
+import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { isBlockDefinition } from "./internal/utils";
 
 /**
@@ -64,6 +66,9 @@ export interface RouterConfig<
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
+  // Capability type inference
+  TUses extends readonly CapabilityRef[] = readonly [],
+  TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
@@ -78,12 +83,16 @@ export interface RouterConfig<
   projectResources?: TProjectResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
   targetStateSchemas?: TTargetSchemas;
+  /** Capabilities to install. Merges resources, state schemas, targets,
+   *  and any active preset surfaces into this block's config. */
+  uses?: TUses;
   routes: BlockDefinition<TInputSchema, TOutputSchema>[];
   execute: (
     input: TInput,
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TProjectState,
-      TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas
+      TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas,
+      TCapabilities
     >
   ) => Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>;
   validateRoute?: (
@@ -92,7 +101,8 @@ export interface RouterConfig<
     input: TInput,
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TProjectState,
-      TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas
+      TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas,
+      TCapabilities
     >
   ) => Promise<boolean> | boolean;
   container?: {
@@ -127,6 +137,8 @@ export function router<
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
+  TUses extends readonly CapabilityRef[] = readonly [],
+  TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
 >(
   config: RouterConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
@@ -134,13 +146,28 @@ export function router<
     TRequestState, TSessionState, TUserState, TProjectState, TSequencerState,
     TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
     TSessionResourceDefs, TUserResourceDefs, TProjectResourceDefs,
-    TSessionResources, TUserResources, TProjectResources, TTargetSchemas
+    TSessionResources, TUserResources, TProjectResources, TTargetSchemas,
+    TUses, TCapabilities
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+  const { declaredResources: capResources, resolvedCapabilities } = resolveCapabilities(config, "router");
+  // Merge capability resources with the router's own + route resources.
+  // capResources already includes the router's own declared resources (via resolveCapabilities).
+  // mergeRouterResources also includes the router's own resources plus route resources.
+  // The overlap is safe because mergeDeclaredResources deduplicates by reference equality.
+  const routerResources = mergeRouterResources(config);
+  const declaredResources = capResources
+    ? mergeDeclaredResources(
+        { ...capResources },
+        routerResources
+      )
+    : routerResources;
+
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "router",
     config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
-    declaredResources: mergeRouterResources(config),
+    declaredResources,
+    resolvedCapabilities,
     execute: async (input, ctx) => {
       const candidate = (config.execute as (input: TInput, ctx: BlockContext) =>
         Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>

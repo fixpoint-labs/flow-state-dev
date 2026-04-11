@@ -728,6 +728,7 @@ export function planAndExecute<
     name,
     inputSchema: planAndExecuteInputSchema,
     stateSchema: planAndExecuteStateSchema,
+    container: { component: "plan" },
     ...(config.sessionResources ? { sessionResources: config.sessionResources } : {}),
     ...(config.userResources ? { userResources: config.userResources } : {}),
     ...(config.projectResources ? { projectResources: config.projectResources } : {}),

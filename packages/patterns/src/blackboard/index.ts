@@ -315,6 +315,7 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   const base = sequencer({
     name,
     stateSchema: blackboardControlSchema,
+    container: { component: "blackboard" },
   })
     .then(initBlackboard)
     .then(controller)

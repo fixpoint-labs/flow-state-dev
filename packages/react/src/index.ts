@@ -35,6 +35,11 @@ export {
 } from "./hooks/useAction";
 
 export {
+  useContainerItems,
+  type ContainerItemsResult
+} from "./hooks/useContainerItems";
+
+export {
   useRequestStream,
   type RequestStreamFilter,
   type UseRequestStreamOptions,

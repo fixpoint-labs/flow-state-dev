@@ -20,7 +20,9 @@ import type {
   ProviderTool
 } from "../types/model";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
-import { buildBlock, extractDeclaredResources } from "./internal/build-block";
+import type { CapabilityRef, InferCapabilities } from "../capability/types";
+import { buildBlock } from "./internal/build-block";
+import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { toError, withTimeout } from "./internal/utils";
 
 const DEFAULT_MAX_ITERATIONS = 8;
@@ -167,10 +169,14 @@ export interface GeneratorConfig<
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
+  // Capability type inference
+  TUses extends readonly CapabilityRef[] = readonly [],
+  TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,
-    TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas
+    TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas,
+    TCapabilities
   >,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
@@ -186,6 +192,9 @@ export interface GeneratorConfig<
   projectResources?: TProjectResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
   targetStateSchemas?: TTargetSchemas;
+  /** Capabilities to install. Merges resources, state schemas, targets,
+   *  and any active preset surfaces into this block's config. */
+  uses?: TUses;
   model: ResolvableModel<NoInfer<TInput>, TCtx>;
   prompt: ResolvableString<TInput, TCtx>;
   context?: GeneratorSlot<NoInfer<TInput>, TCtx>;
@@ -425,6 +434,7 @@ function compileToolsWithExecute(
                 phase: "main" as const
               },
               ts: Date.now(),
+              ownedBy: identity?.ownedBy,
               blockName: tool.name,
               output,
               toolCall: {
@@ -459,6 +469,7 @@ function compileToolsWithExecute(
                 phase: "main" as const
               },
               ts: Date.now(),
+              ownedBy: identity?.ownedBy,
               blockName: tool.name,
               output: undefined,
               toolCall: {
@@ -691,6 +702,7 @@ function buildSourceItem(
     itemIndex: getEmitterItemCount(ctx.response),
     provenance,
     ts: Date.now(),
+    ownedBy: ctx._blockIdentity?.ownedBy,
     sourceType: "url" as const,
     sourceId: source.id,
     url: source.url,
@@ -764,6 +776,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     blockInstanceId: blockName,
     phase: "main" as const
   };
+  const ownedBy = ctx._blockIdentity?.ownedBy;
   const emitReasoning = emitConfig.reasoning;
   let reasoningAccumulated = "";
 
@@ -803,6 +816,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
             ts: Date.now(),
+            ownedBy,
             summary: [{ type: "reasoning_text" as const, text: "" }]
           };
           await ctx.response.emit({ type: "item.added", item: reasoningItem });
@@ -845,6 +859,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
             ts: Date.now(),
+            ownedBy,
             summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
           };
           await ctx.response.emit({ type: "item.done", item: completedReasoning });
@@ -863,6 +878,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
             ts: Date.now(),
+            ownedBy,
             summary: [{ type: "reasoning_text" as const, text: "" }]
           };
           await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -884,6 +900,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
             ts: Date.now(),
+            ownedBy,
             content: [{ type: "output_text" as const, text: "" }]
           };
           await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -941,6 +958,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
           ts: Date.now(),
+          ownedBy,
           toolCallId: delta.toolCallId,
           toolName: delta.toolName,
           argsDelta: delta.argsDelta
@@ -962,6 +980,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
           ts: Date.now(),
+          ownedBy,
           toolCallId: tr.toolCallId,
           toolName: tr.toolName,
           result: tr.result
@@ -997,6 +1016,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         itemIndex: getEmitterItemCount(ctx.response),
         provenance,
         ts: Date.now(),
+        ownedBy,
         summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
       };
       await ctx.response.emit({ type: "item.done", item: completedReasoning });
@@ -1013,6 +1033,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         itemIndex: getEmitterItemCount(ctx.response),
         provenance,
         ts: Date.now(),
+        ownedBy,
         summary: [{ type: "reasoning_text" as const, text: "" }]
       };
       await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -1033,6 +1054,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         itemIndex: getEmitterItemCount(ctx.response),
         provenance,
         ts: Date.now(),
+        ownedBy,
         content: [{ type: "output_text" as const, text: "" }]
       };
       await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -1104,9 +1126,12 @@ export function generator<
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
+  TUses extends readonly CapabilityRef[] = readonly [],
+  TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,
-    TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas
+    TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas,
+    TCapabilities
   >,
 >(
   config: GeneratorConfig<
@@ -1115,19 +1140,55 @@ export function generator<
     TRequestState, TSessionState, TUserState, TProjectState, TSequencerState,
     TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
     TSessionResourceDefs, TUserResourceDefs, TProjectResourceDefs,
-    TSessionResources, TUserResources, TProjectResources, TTargetSchemas, TCtx
+    TSessionResources, TUserResources, TProjectResources, TTargetSchemas,
+    TUses, TCapabilities, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+  const { declaredResources, resolvedCapabilities, mergedSurface } = resolveCapabilities(config, "generator");
+
   const outputSchema = (config.outputSchema ?? z.string()) as ZodTypeAny;
   const normalizedConfig: GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput> = {
     ...config,
     outputSchema: outputSchema as TOutputSchema
   } as GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
 
+  // Merge capability context entries into the generator's context slot
+  if (mergedSurface && mergedSurface.contextEntries.length > 0) {
+    const existingContext = normalizedConfig.context;
+    if (existingContext === undefined) {
+      (normalizedConfig as any).context = mergedSurface.contextEntries;
+    } else {
+      const existingArr = Array.isArray(existingContext) ? existingContext : [existingContext];
+      (normalizedConfig as any).context = [...existingArr, ...mergedSurface.contextEntries];
+    }
+  }
+
+  // Merge capability tools into the generator's tools
+  if (mergedSurface && mergedSurface.toolEntries.length > 0) {
+    const existingTools = normalizedConfig.tools;
+    const capToolEntries = mergedSurface.toolEntries;
+    (normalizedConfig as any).tools = async (ctx: BlockContext) => {
+      const userTools = existingTools
+        ? Array.isArray(existingTools)
+          ? existingTools
+          : await existingTools(ctx as any)
+        : [];
+      const presetTools = (
+        await Promise.all(
+          capToolEntries.map((factory) =>
+            Array.isArray(factory) ? factory : factory(ctx)
+          )
+        )
+      ).flat();
+      return [...userTools, ...presetTools];
+    };
+  }
+
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "generator",
     config: normalizedConfig as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
-    declaredResources: extractDeclaredResources(config),
+    declaredResources,
+    resolvedCapabilities,
     execute: async (input: TInput, ctx) => {
       const blockName = String(normalizedConfig.name);
       const { modelId, model } = await resolveModel(
@@ -1327,6 +1388,7 @@ export function generator<
       if (emitConfig.messages !== false && isTextOutputSchema(outputSchema) && typeof output === "string") {
         const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         const provenance = { blockName, blockInstanceId: blockName, phase: "main" as const };
+        const nsOwnedBy = ctx._blockIdentity?.ownedBy;
         if (emitConfig.messages === 'reasoning') {
           const reasoningItem = {
             id: itemId,
@@ -1337,6 +1399,7 @@ export function generator<
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
             ts: Date.now(),
+            ownedBy: nsOwnedBy,
             summary: [{ type: "reasoning_text" as const, text: output }]
           };
           await ctx.response.emit({ type: "item.added", item: reasoningItem });
@@ -1352,6 +1415,7 @@ export function generator<
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
             ts: Date.now(),
+            ownedBy: nsOwnedBy,
             content: [{ type: "output_text" as const, text: output }]
           };
           await ctx.response.emit({ type: "item.added", item: messageItem });

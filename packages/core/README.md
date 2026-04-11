@@ -120,6 +120,13 @@ export default defineFlow({
   - Runtime `ResourceNamespaceRef` provides `create()`, `get()`, `getOrCreate()`, `list()`, `delete()`, `count()`
 - `isDefinedResourceNamespace(value)` — Type guard for namespace definitions
 
+**Capabilities:**
+- `defineCapability(config)` — Bundle resources, state schemas, targets, and helper functions under a single name. Blocks declare capabilities via `uses: [cap]` and the framework merges everything transitively.
+  - `fns: (ctx) => ({ ... })` — Helper functions exposed at `ctx.cap.{name}.{fn}`, memoized on first access
+  - `presets` — Named opt-in/opt-out bundles of any block config surface. Use `.presets({ name: true/false })` to configure
+  - `uses` — Capabilities can depend on other capabilities (transitive composition with diamond dedup)
+  - Factory pattern: wrap `defineCapability()` in a function for parameterized capabilities
+
 **Context & client data:**
 - `contextFn(schemas, fn)` — Typed context function for generators (scope-aware, portable)
 - `clientData` on scope configs — Derived values exposed to clients (compute functions receive `{ state, resources }`)

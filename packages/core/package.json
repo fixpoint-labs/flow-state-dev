@@ -24,6 +24,10 @@
     "./models": {
       "types": "./dist/models/index.d.ts",
       "default": "./dist/models/index.js"
+    },
+    "./capability": {
+      "types": "./dist/capability/index.d.ts",
+      "default": "./dist/capability/index.js"
     }
   },
   "license": "MIT",
