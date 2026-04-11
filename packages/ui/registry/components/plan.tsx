@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useMemo } from "react";
-import type { ComponentItem, ContainerItem, OutputItem } from "@flow-state-dev/core/items";
+import React from "react";
+import type { ComponentItem } from "@flow-state-dev/core/items";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangleIcon,
@@ -147,66 +147,6 @@ export function Plan({ item }: { item: ComponentItem }) {
       </div>
       <ul className="space-y-1.5">
         {plan.tasks.map((task) => (
-          <PlanTaskRow key={task.id} task={task} />
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/**
- * Container renderer for plan-and-execute sequencers.
- *
- * Receives a ContainerItem and resolves the plan state from owned items.
- * Register via:
- *   <FlowProvider renderers={{ container: { plan: PlanContainer } }}>
- *
- * @param item - The ContainerItem from the plan sequencer.
- * @param allItems - All session items (for filtering owned items by ownedBy).
- */
-export function PlanContainer({
-  item,
-  allItems,
-}: {
-  item: ContainerItem;
-  allItems: OutputItem[];
-}) {
-  const ownedBy = item.provenance.blockInstanceId;
-  const state = useMemo(() => {
-    // Find the latest ComponentItem matching the container's component key.
-    if (item.component === undefined) return undefined;
-    const key = item.component;
-    for (let i = allItems.length - 1; i >= 0; i--) {
-      const candidate = allItems[i];
-      if (
-        candidate.type === "component" &&
-        (candidate as ComponentItem).component === key &&
-        (candidate as OutputItem & { ownedBy?: string }).ownedBy === ownedBy
-      ) {
-        return (candidate as ComponentItem).data as Plan;
-      }
-    }
-    return undefined;
-  }, [item.component, allItems, ownedBy]);
-
-  if (!state) return null;
-
-  const completedCount = state.tasks.filter(
-    (t) => t.status === "completed"
-  ).length;
-
-  return (
-    <div className="not-prose my-2 rounded-md border bg-card p-3 text-card-foreground">
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <p className="text-sm font-medium leading-snug">Steps</p>
-        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-          {completedCount}/{state.tasks.length}
-          {state.iteration !== undefined && state.iteration > 0 &&
-            ` · pass ${state.iteration + 1}`}
-        </span>
-      </div>
-      <ul className="space-y-1.5">
-        {state.tasks.map((task) => (
           <PlanTaskRow key={task.id} task={task} />
         ))}
       </ul>
