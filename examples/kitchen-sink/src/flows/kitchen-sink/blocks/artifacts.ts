@@ -8,6 +8,7 @@
  * so the summary is always current without a separate background sweep.
  */
 import { handler, sequencer, utility } from "@flow-state-dev/core";
+import path from "node:path";
 import { z } from "zod";
 import { artifactResources } from "../schemas";
 
@@ -74,7 +75,14 @@ const upsertArtifact = utility.upsertResource({
   sessionResources: artifactResources,
   collectionKey: "artifacts",
   key: (input) => input.id,
-  state: (input) => ({ title: input.title, updatedAt: Date.now() }),
+  state: (input) => {
+    const ext = path.extname(input.id).slice(1);
+    return {
+      title: input.title,
+      ...(ext ? { extension: ext } : {}),
+      updatedAt: Date.now(),
+    };
+  },
   content: (input) => input.content,
 });
 

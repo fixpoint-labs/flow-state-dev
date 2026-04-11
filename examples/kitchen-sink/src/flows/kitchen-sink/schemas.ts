@@ -12,6 +12,7 @@ export const modeSchema = z.enum(["chat", "create"]).default("chat");
 export const artifactStateSchema = z.object({
   title: z.string(),
   summary: z.string().default(""),
+  extension: z.string().optional(),
   updatedAt: z.number()
 });
 

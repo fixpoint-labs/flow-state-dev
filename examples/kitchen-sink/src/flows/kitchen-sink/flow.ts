@@ -353,6 +353,7 @@ const kitchenSinkFlow = defineFlow({
         const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<{
           title: string;
           summary: string;
+          extension?: string;
           updatedAt: number;
         }>;
         const instances = artifacts.list();
@@ -363,6 +364,7 @@ const kitchenSinkFlow = defineFlow({
               id: ref.name.replace("artifacts/", ""),
               title: ref.state.title ?? "Untitled",
               summary: ref.state.summary ?? "",
+              extension: ref.state.extension ?? null,
               content,
               updatedAt: ref.state.updatedAt,
             };

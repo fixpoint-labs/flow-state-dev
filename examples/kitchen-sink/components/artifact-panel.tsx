@@ -4,9 +4,16 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { FileText, Package } from "lucide-react";
+import { File, FileCode2, FileText, Package } from "lucide-react";
 
-type ArtifactSummary = { id: string; title: string };
+import {
+  FileTree,
+  FileTreeFile,
+  FileTreeIcon,
+  FileTreeName,
+} from "@/components/flow-state/file-tree";
+
+type ArtifactSummary = { id: string; title: string; extension?: string | null };
 
 interface ArtifactPanelProps {
   artifacts: ArtifactSummary[];
@@ -15,6 +22,29 @@ interface ArtifactPanelProps {
   className?: string;
   style?: React.CSSProperties;
 }
+
+// ---------------------------------------------------------------------------
+// Extension-based icon selection
+// ---------------------------------------------------------------------------
+
+const MD_EXTS = new Set(["md", "mdx"]);
+const CODE_EXTS = new Set([
+  "jsx", "tsx", "ts", "js", "py", "sh", "json", "css", "html",
+  "yaml", "yml", "go", "rs", "java", "c", "cpp", "rb", "php",
+  "swift", "kt", "sql", "xml", "toml", "scss",
+]);
+
+function getFileIcon(extension: string | null | undefined) {
+  if (!extension) return FileText;
+  const ext = extension.toLowerCase();
+  if (MD_EXTS.has(ext)) return FileText;
+  if (CODE_EXTS.has(ext)) return FileCode2;
+  return File;
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export function ArtifactPanel({ artifacts, selectedId, onSelect, className, style }: ArtifactPanelProps) {
   return (
@@ -30,31 +60,28 @@ export function ArtifactPanel({ artifacts, selectedId, onSelect, className, styl
       </div>
       <Separator />
       <ScrollArea className="min-h-0 flex-1 p-2">
-        <div className="flex flex-col gap-1">
-          {artifacts.map((artifact) => (
-            <button
-              key={artifact.id}
-              type="button"
-              onClick={() => onSelect?.(artifact.id)}
-              className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                selectedId === artifact.id
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              }`}
-            >
-              <FileText className="h-4 w-4 shrink-0" />
-              <div className="flex min-w-0 flex-col">
-                <span className="truncate font-medium text-foreground">{artifact.title}</span>
-                <span className="truncate text-xs">{artifact.id}</span>
-              </div>
-            </button>
-          ))}
-          {artifacts.length === 0 && (
-            <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-              No artifacts created yet. Ask the assistant to create or modify project artifacts.
-            </p>
-          )}
-        </div>
+        {artifacts.length > 0 ? (
+          <FileTree
+            selectedPath={selectedId ?? null}
+            onSelect={(path) => onSelect?.(path)}
+          >
+            {artifacts.map((artifact) => {
+              const Icon = getFileIcon(artifact.extension);
+              return (
+                <FileTreeFile
+                  key={artifact.id}
+                  path={artifact.id}
+                  name={artifact.title}
+                  icon={<Icon className="h-4 w-4 text-muted-foreground" />}
+                />
+              );
+            })}
+          </FileTree>
+        ) : (
+          <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+            No artifacts created yet. Ask the assistant to create or modify project artifacts.
+          </p>
+        )}
       </ScrollArea>
     </aside>
   );
