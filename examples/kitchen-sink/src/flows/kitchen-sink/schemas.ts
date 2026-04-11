@@ -20,19 +20,19 @@ export const artifactStateSchema = z.object({
 // state, the document body lives in resource content.
 //
 // client.content declares that content is readable and updatable by clients.
-// clientData exposes title, language, and type metadata in the snapshot
+// client.data exposes title, summary, and updatedAt metadata in the snapshot
 // without eagerly loading document bodies.
 export const artifactsCollection = defineResourceCollection({
   pattern: "artifacts/*",
   stateSchema: artifactStateSchema,
   client: {
     content: { read: true, update: true },
+    data: (state) => ({
+      title: state.title ?? "Untitled",
+      summary: state.summary ?? "",
+      updatedAt: state.updatedAt,
+    }),
   },
-  clientData: (state) => ({
-    title: state.title ?? "Untitled",
-    summary: state.summary ?? "",
-    updatedAt: state.updatedAt,
-  }),
 });
 
 export const artifactResources = {

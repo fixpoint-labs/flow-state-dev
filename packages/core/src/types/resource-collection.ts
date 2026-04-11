@@ -1,5 +1,5 @@
 import type { ZodTypeAny } from "zod";
-import type { JsonObject, JsonValue } from "../schema/common";
+import type { JsonObject } from "../schema/common";
 import type { ScopeType } from "./scope";
 import type { ResourceRef, CollectionClientConfig } from "./resource";
 
@@ -31,13 +31,6 @@ export type CollectionHookContext = {
   scopeType: ScopeType;
 };
 
-/**
- * A compute function that derives client-visible data from a collection instance's state.
- * Analogous to scope-level clientData, but scoped to the resource.
- */
-export type CollectionClientDataFn<TState extends JsonObject = JsonObject> =
-  (state: Readonly<TState>) => JsonValue | Promise<JsonValue>;
-
 export type ResourceCollectionConfig = {
   /** Glob-style pattern: `files/*`, `files/**`, or `[topic]/observations`. */
   pattern: string;
@@ -47,8 +40,6 @@ export type ResourceCollectionConfig = {
 
   /** Client visibility configuration. Omit to keep the collection invisible to clients. */
   client?: CollectionClientConfig;
-  /** Derives client-visible metadata from each instance's state. Appears under `resources[ref].items[topic].clientData` in the snapshot. */
-  clientData?: CollectionClientDataFn;
 
   /** Fires when a specific instance is created (e.g., files/utils.ts). */
   onInstanceCreated?: (key: string, state: JsonObject, ctx: CollectionHookContext) => void | Promise<void>;

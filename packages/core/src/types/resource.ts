@@ -34,12 +34,21 @@ export type CollectionClientContentConfig = ResourceClientContentConfig & {
 };
 
 /**
+ * A compute function that derives client-visible data from a resource's state.
+ * Analogous to scope-level clientData, but scoped to the resource.
+ */
+export type ResourceClientDataFn<TState extends JsonObject = JsonObject> =
+  (state: Readonly<TState>) => JsonValue | Promise<JsonValue>;
+
+/**
  * Client visibility configuration for a single resource.
  * Controls what data is exposed to the client and how.
  */
 export type ResourceClientConfig = {
   /** Content access permissions — governs access to the rendered content body. */
   content?: ResourceClientContentConfig;
+  /** Derives client-visible metadata from the resource's state. Appears under `resources[ref].clientData` in the snapshot. */
+  data?: ResourceClientDataFn;
 };
 
 /**
@@ -49,14 +58,9 @@ export type ResourceClientConfig = {
 export type CollectionClientConfig = {
   /** Content access permissions — governs access to rendered content bodies and CRUD operations. */
   content?: CollectionClientContentConfig;
+  /** Derives client-visible metadata from each instance's state. Appears under `resources[ref].items[topic].clientData` in the snapshot. */
+  data?: ResourceClientDataFn;
 };
-
-/**
- * A compute function that derives client-visible data from a single resource's state.
- * Analogous to scope-level clientData, but scoped to the resource.
- */
-export type ResourceClientDataFn<TState extends JsonObject = JsonObject> =
-  (state: Readonly<TState>) => JsonValue | Promise<JsonValue>;
 
 export type ResourceConfig = {
   stateSchema: ZodTypeAny;
@@ -74,8 +78,6 @@ export type ResourceConfig = {
   metadata?: Record<string, unknown>;
   /** Client visibility configuration. Omit to keep the resource invisible to clients. */
   client?: ResourceClientConfig;
-  /** Derives client-visible metadata from the resource's state. Appears under `resources[ref].clientData` in the snapshot. */
-  clientData?: ResourceClientDataFn;
 };
 
 export type ResourceContext<TState extends JsonObject = JsonObject> = {

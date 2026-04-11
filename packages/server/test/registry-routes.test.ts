@@ -564,8 +564,10 @@ describe("createFlowApiRouter", () => {
     const stores = createInMemoryStores();
     const counterResource = defineResource({
       stateSchema: z.object({ count: z.number().default(0) }),
-      client: { content: { read: true } },
-      clientData: (state) => ({ count: state.count }),
+      client: {
+        content: { read: true },
+        data: (state) => ({ count: state.count }),
+      },
     });
 
     const flow = defineFlow({

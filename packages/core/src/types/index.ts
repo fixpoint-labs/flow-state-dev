@@ -93,7 +93,6 @@ export type {
 } from "./resource";
 
 export type {
-  CollectionClientDataFn,
   CollectionHookContext,
   DefinedResourceCollection,
   EvictionPolicy,

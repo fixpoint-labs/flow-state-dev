@@ -319,8 +319,8 @@ export async function buildResourceSnapshot(options: {
 
       const pattern = maybeConfig.pattern;
       const persisted = options.persisted ?? {};
-      const clientDataFn = typeof maybeConfig.clientData === "function"
-        ? maybeConfig.clientData as (state: unknown) => unknown
+      const clientDataFn = typeof maybeConfig.client?.data === "function"
+        ? maybeConfig.client.data as (state: unknown) => unknown
         : undefined;
       const prefetch = maybeConfig.client?.content?.prefetch === true;
 
@@ -352,8 +352,8 @@ export async function buildResourceSnapshot(options: {
       maybeConfig,
       options.persisted?.[resourceName]
     );
-    const clientDataFn = typeof (maybeConfig as ResourceConfig).clientData === "function"
-      ? (maybeConfig as ResourceConfig).clientData as (state: unknown) => unknown
+    const clientDataFn = typeof (maybeConfig as ResourceConfig).client?.data === "function"
+      ? (maybeConfig as ResourceConfig).client!.data as (state: unknown) => unknown
       : undefined;
     const prefetch = (maybeConfig as ResourceConfig).client?.content?.prefetch === true;
 

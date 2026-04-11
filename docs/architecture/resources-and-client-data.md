@@ -310,7 +310,7 @@ type PlanCtx = ContextOf<typeof planResource, "resource">;
 Client-facing data is exposed through two complementary mechanisms:
 
 1. **Scope-level `clientData`** — derived views computed from scope state and resources. Best for cross-resource projections and non-resource data.
-2. **Resource-level `client` + `clientData`** — per-resource visibility and content access. Best for exposing resource data directly to clients without manual projection.
+2. **Resource-level `client`** — per-resource visibility, data projection, and content access. `client.content` controls content endpoints. `client.data` derives metadata for the snapshot. Best for exposing resource data directly to clients without manual projection.
 
 ### Scope-Level Client Data
 
@@ -333,10 +333,10 @@ Returns scope-level client data grouped by scope:
 
 ### Resource-Level Client Exposure
 
-Resources can declare a `client` config to control what's visible to clients, and a `clientData` function to expose derived metadata in the snapshot.
+Resources declare a `client` config to control what's visible to clients. `client.content` controls content endpoint access. `client.data` derives metadata for the snapshot.
 
 ```ts
-// Single resource — content readable, clientData exposes derived state
+// Single resource — content readable, data exposes derived state
 defineResource({
   ref: 'soul',
   stateSchema: z.object({ values: z.array(z.string()), tone: z.string() }),
@@ -344,8 +344,8 @@ defineResource({
   client: {
     content: { read: true },              // lazy by default
     // content: { read: true, prefetch: true },  // opt-in eager load
+    data: (state) => ({ displayTone: state.tone }),
   },
-  clientData: (state) => ({ displayTone: state.tone }),
 })
 
 // Collection — content readable and mutable
@@ -354,14 +354,14 @@ defineResourceCollection({
   stateSchema: z.object({ mimeType: z.string(), size: z.number() }),
   client: {
     content: { read: true, create: true, update: true, delete: false },
+    data: (state) => ({ size: state.size, mimeType: state.mimeType }),
   },
-  clientData: (state) => ({ size: state.size, mimeType: state.mimeType }),
 })
 ```
 
 **Key rules:**
 - `client.content` governs access to the rendered content body
-- `clientData` on the resource derives metadata visible in the snapshot
+- `client.data` derives metadata visible in the snapshot
 - `create`, `update`, `delete` are collection-only — declaring them on a single resource is a type error
 - Omitting `client` entirely means the resource is invisible to clients (no change from current behavior)
 
