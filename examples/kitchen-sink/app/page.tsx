@@ -41,7 +41,6 @@ import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { ModelPresetProvider } from "@/components/model-preset-context";
-import { PlanContainer } from "@/components/flow-state/plan";
 import { KitchenSinkMessage } from "@/components/kitchen-sink-message";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
@@ -50,8 +49,6 @@ const kitchenSinkRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
   message: KitchenSinkMessage,
   block_output: AgentResponseCard,
-  // Container renderers — owned items are automatically suppressed by ItemRenderer.
-  container: { plan: PlanContainer },
 };
 
 
