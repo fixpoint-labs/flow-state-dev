@@ -234,7 +234,7 @@ function KitchenSinkApp() {
               message={message}
               mode={mode}
               thinkingStyle={thinkingStyle}
-              modelPreset={userPrefs?.preferredModel ?? "preset/fast"}
+              modelPreset={userPrefs?.preferredModel ?? "preset/small"}
               isDisabled={isDisabled}
               session={session}
               voice={voice}
@@ -280,7 +280,7 @@ function KitchenSinkApp() {
             message={message}
             mode={mode}
             thinkingStyle={thinkingStyle}
-            modelPreset={userPrefs?.preferredModel ?? "preset/fast"}
+            modelPreset={userPrefs?.preferredModel ?? "preset/small"}
             isDisabled={isDisabled}
             session={session}
             voice={voice}

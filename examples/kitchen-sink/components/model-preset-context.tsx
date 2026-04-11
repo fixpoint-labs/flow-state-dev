@@ -2,7 +2,7 @@
 
 import { createContext, useContext } from "react";
 
-const ModelPresetContext = createContext<string>("preset/fast");
+const ModelPresetContext = createContext<string>("preset/small");
 
 export const ModelPresetProvider = ModelPresetContext.Provider;
 

@@ -68,7 +68,7 @@ const testFlow = defineFlow({
   user: {
     stateSchema: z.object({
       displayName: z.string().default("Developer"),
-      preferredModel: z.string().default("preset/fast"),
+      preferredModel: z.string().default("preset/small"),
     }),
   },
 })({ id: "test" });

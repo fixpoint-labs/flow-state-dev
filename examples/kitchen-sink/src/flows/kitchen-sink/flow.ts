@@ -40,7 +40,7 @@ import { CHAT_PROMPT, CREATE_PROMPT } from "./prompts";
 // Constants
 // ---------------------------------------------------------------------------
 
-const MODEL_ID = "preset/fast";
+const MODEL_ID = "preset/small";
 
 // ---------------------------------------------------------------------------
 // Memory

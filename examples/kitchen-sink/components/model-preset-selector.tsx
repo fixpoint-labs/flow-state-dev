@@ -13,17 +13,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  Zap,
   Minimize2,
   Gauge,
   Crown,
   Brain,
   ChevronDownIcon,
-  Cpu,
 } from "lucide-react";
 
 export type ModelPreset =
-  | "preset/fast"
   | "preset/small"
   | "preset/medium"
   | "preset/large"
@@ -43,19 +40,10 @@ interface PresetOption {
 
 const PRESET_OPTIONS: PresetOption[] = [
   {
-    value: "preset/fast",
-    label: "Fast",
-    shortLabel: "Fast",
-    description: "Quick responses, lower cost",
-    icon: Zap,
-    color: "text-green-500 dark:text-green-400",
-    group: "standard",
-  },
-  {
     value: "preset/small",
     label: "Small",
     shortLabel: "Small",
-    description: "Compact output, token-limited",
+    description: "Quick responses, lower cost",
     icon: Minimize2,
     color: "text-sky-500 dark:text-sky-400",
     group: "standard",
@@ -145,7 +133,7 @@ export function ModelPresetSelector({
             "hover:border-foreground/20",
           )}
         >
-          <Cpu className={cn("size-3.5", active.color)} />
+          <ActiveIcon className={cn("size-3.5", active.color)} />
           <span className="hidden sm:inline">{active.shortLabel}</span>
           <ChevronDownIcon className="size-3 opacity-50" />
         </Button>

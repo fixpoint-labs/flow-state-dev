@@ -21,7 +21,7 @@ export function ClientDataBar({
   preferredModel,
   thinkingStyle,
 }: ClientDataBarProps) {
-  const presetOption = getPresetOption(preferredModel ?? "preset/fast");
+  const presetOption = getPresetOption(preferredModel ?? "preset/small");
   const PresetIcon = presetOption.icon;
 
   return (
