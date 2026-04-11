@@ -270,47 +270,6 @@ function updateObjectState(
   return next;
 }
 
-/**
- * Microtask-based write coalescing for scope record persistence.
- *
- * Multiple calls to `schedule()` within the same microtask are coalesced into
- * a single store write. Every caller receives the same promise, which resolves
- * when the single batched write completes. This eliminates CAS contention and
- * redundant serialization when concurrent blocks (e.g. supervisor workers)
- * write resource content in parallel.
- */
-function createBatchedScopeWriter(
-  writeFn: () => Promise<void>
-): {
-  /** Schedule a batched write. Returns a promise that resolves after the coalesced write. */
-  schedule: () => Promise<void>;
-  /** Wait for any pending batched write to complete. */
-  flush: () => Promise<void>;
-} {
-  let pending: Promise<void> | null = null;
-
-  return {
-    schedule(): Promise<void> {
-      if (pending !== null) {
-        return pending;
-      }
-
-      pending = new Promise<void>((resolve, reject) => {
-        queueMicrotask(() => {
-          pending = null;
-          writeFn().then(resolve, reject);
-        });
-      });
-
-      return pending;
-    },
-
-    flush(): Promise<void> {
-      return pending ?? Promise.resolve();
-    }
-  };
-}
-
 function createScopeResourceRegistry<TResources extends Record<string, ResourceRef<any>>>(
   options: {
     scope: ScopeType;
@@ -1731,10 +1690,6 @@ export async function createExecutionContext<
     await stores.session.set(sessionRef.current.id, sessionRef.current);
   };
 
-  const sessionContentBatcher = createBatchedScopeWriter(
-    () => stores.session.set(sessionRef.current.id, sessionRef.current)
-  );
-
   const persistSessionResourceContent = async (
     next: Record<string, string>
   ): Promise<void> => {
@@ -1743,7 +1698,7 @@ export async function createExecutionContext<
       resourceContent: normalizeScopeResourceContent(sessionResourceConfigs, next),
       updatedAt: Date.now()
     };
-    return sessionContentBatcher.schedule();
+    await stores.session.set(sessionRef.current.id, sessionRef.current);
   };
 
   const persistUserResources = async (
@@ -1757,10 +1712,6 @@ export async function createExecutionContext<
     await stores.user.set(userRef.current.id, userRef.current);
   };
 
-  const userContentBatcher = createBatchedScopeWriter(
-    () => stores.user.set(userRef.current.id, userRef.current)
-  );
-
   const persistUserResourceContent = async (
     next: Record<string, string>
   ): Promise<void> => {
@@ -1769,7 +1720,7 @@ export async function createExecutionContext<
       resourceContent: normalizeScopeResourceContent(userResourceConfigs, next),
       updatedAt: Date.now()
     };
-    return userContentBatcher.schedule();
+    await stores.user.set(userRef.current.id, userRef.current);
   };
 
   const persistProjectResources = async (
@@ -1788,12 +1739,6 @@ export async function createExecutionContext<
     await stores.project.set(projectRef.current.id, projectRef.current);
   };
 
-  const projectContentBatcher = projectRef.current !== undefined
-    ? createBatchedScopeWriter(
-        () => stores.project.set(projectRef.current!.id, projectRef.current!)
-      )
-    : undefined;
-
   const persistProjectResourceContent = async (
     next: Record<string, string>
   ): Promise<void> => {
@@ -1807,16 +1752,7 @@ export async function createExecutionContext<
       resourceContent: normalizeScopeResourceContent(projectResourceConfigs, next),
       updatedAt: Date.now()
     };
-    return projectContentBatcher!.schedule();
-  };
-
-  /** Drain all pending batched resource content writes across all scopes. */
-  const flushResourceContent = async (): Promise<void> => {
-    await Promise.all([
-      sessionContentBatcher.flush(),
-      userContentBatcher.flush(),
-      projectContentBatcher?.flush()
-    ]);
+    await stores.project.set(projectRef.current.id, projectRef.current);
   };
 
   const requestContainer = createStateContainer<TRequestState>(
@@ -2345,7 +2281,6 @@ export async function createExecutionContext<
         metadata: requestRef.current.metadata
       },
       stores,
-      flushResourceContent,
       request: requestHandle,
       session: sessionHandle,
       user: userHandle,

@@ -532,11 +532,8 @@ export async function runActionInternal<
     // Clear heartbeat
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
 
-    // Flush pending writes before terminal status
-    await Promise.all([
-      options.stores.request.flushItems(requestId),
-      ctx.flushResourceContent()
-    ]);
+    // Flush pending item writes before terminal status
+    await options.stores.request.flushItems(requestId);
 
     const completedAt = Date.now();
     const items = response.getItems();
@@ -596,11 +593,8 @@ export async function runActionInternal<
     await emitTerminalError(ctx, normalized);
     await response.emitRequestStatus("failed");
 
-    // Flush pending writes before terminal status
-    await Promise.all([
-      options.stores.request.flushItems(requestId),
-      ctx.flushResourceContent()
-    ]);
+    // Flush pending item writes before terminal status
+    await options.stores.request.flushItems(requestId);
 
     const failedAt = Date.now();
     await patchRequestRecord(options.stores, requestId, {
