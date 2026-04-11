@@ -40,6 +40,7 @@ export type {
   InferScopeStateFromConfig,
   ProjectConfig,
   RequestConfig,
+  RetentionPolicy,
   ScopeResourceConfig,
   SessionConfig,
   ToolLifecycleEvent,
