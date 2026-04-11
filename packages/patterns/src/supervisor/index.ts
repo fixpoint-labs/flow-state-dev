@@ -561,6 +561,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     name,
     inputSchema: supervisorInputSchema,
     stateSchema: supervisorStateSchema,
+    container: { component: "plan" },
   })
     .tap(captureGoal)
     .then(planner)

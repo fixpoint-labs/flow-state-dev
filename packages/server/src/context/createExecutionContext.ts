@@ -1116,6 +1116,8 @@ type EmissionContext = {
   };
   provenance: () => ItemProvenance;
   nextItemIndex: () => number;
+  /** Container ownership tag — set when emitting inside a container scope. */
+  ownedBy?: string;
 };
 
 function createEmitMessage(
@@ -1140,6 +1142,7 @@ function createEmitMessage(
       itemIndex,
       provenance: emCtx.provenance(),
       ts: Date.now(),
+      ownedBy: emCtx.ownedBy,
       role: "assistant",
       content
     };
@@ -1199,6 +1202,7 @@ function createEmitComponent(
       itemIndex,
       provenance: emCtx.provenance(),
       ts: Date.now(),
+      ownedBy: emCtx.ownedBy,
       component,
       data,
       ...(options?.key !== undefined ? { key: options.key } : {}),
@@ -1232,6 +1236,7 @@ function createEmitLLMContext(
       itemIndex,
       provenance: emCtx.provenance(),
       ts: Date.now(),
+      ownedBy: emCtx.ownedBy,
       text
     };
 
@@ -1466,6 +1471,7 @@ function createEmitStatus(
       itemIndex,
       provenance: emCtx.provenance(),
       ts: Date.now(),
+      ownedBy: emCtx.ownedBy,
       message
     };
 
@@ -2105,7 +2111,8 @@ export async function createExecutionContext<
     reqRef: { current: { id: string } },
     nextIndex: () => number,
     blockOutput?: unknown,
-    blockError?: { message: string; code?: string }
+    blockError?: { message: string; code?: string },
+    ownedBy?: string
   ): void {
     const completedAt = Date.now();
     const itemIndex = nextIndex();
@@ -2124,6 +2131,7 @@ export async function createExecutionContext<
         phase: "main"
       },
       ts: completedAt,
+      ownedBy,
       blockName: parent.name,
       blockKind: parent.kind,
       output: blockOutput,
@@ -2478,6 +2486,7 @@ export async function createExecutionContext<
                 phase: "main"
               },
               ts: Date.now(),
+              ownedBy: activeEmCtx.ownedBy,
               blockName: resolvedParent.name,
               component: resolvedParent.container.component,
               label: resolvedParent.container.label,
@@ -2511,7 +2520,10 @@ export async function createExecutionContext<
             parentBlockInstanceId: resolvedParent.parentInstanceId,
             phase: "main" as const
           }),
-          nextItemIndex: () => emittedItemCount++
+          nextItemIndex: () => emittedItemCount++,
+          ownedBy: resolvedParent.container !== undefined
+            ? resolvedParent.instanceId
+            : activeEmCtx.ownedBy
         };
         const childContext = createContext(
           childChain,
@@ -2526,7 +2538,8 @@ export async function createExecutionContext<
         (childContext as { _blockIdentity?: unknown })._blockIdentity = {
           blockName: resolvedParent.name,
           blockInstanceId: resolvedParent.instanceId,
-          parentBlockInstanceId: resolvedParent.parentInstanceId
+          parentBlockInstanceId: resolvedParent.parentInstanceId,
+          ownedBy: childEmCtx.ownedBy
         };
 
         // Capture start time before execution — this is the only trace cost paid
@@ -2545,7 +2558,9 @@ export async function createExecutionContext<
             emitNestedBlockTrace(
               resolvedParent, traceStartedAt, "completed",
               emissionResponse, requestRef, () => emittedItemCount++,
-              output
+              output,
+              undefined,
+              childEmCtx.ownedBy
             );
           }
 
@@ -2567,7 +2582,8 @@ export async function createExecutionContext<
               {
                 message: normalized.message,
                 code: normalized.code
-              }
+              },
+              childEmCtx.ownedBy
             );
           }
 

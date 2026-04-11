@@ -106,6 +106,7 @@ Returns:
 - `items`, `messages`, `blockOutputs`, `functionCalls` — Filtered item views
 - `isLoading`, `isStreaming`, `error` — Status flags
 - `sendAction(action, input)` — Trigger an action
+- `getOwnedItems(ownedBy)` — Items owned by a container scope (O(1) indexed lookup)
 - `refresh()` — Manually refetch
 
 ### `useClientData(session, options)`
@@ -124,6 +125,22 @@ const data = useClientData(session, {
   session: { artifactsList: artifactsListSchema },
 });
 ```
+
+### `useContainerItems(containerItem, source)`
+
+Resolves owned items and component state for a container scope. Works with sequencers/routers that declare `container` config.
+
+```ts
+import { useContainerItems } from "@flow-state-dev/react";
+
+function PlanRenderer({ item }: { item: ContainerItem }) {
+  const { state, items } = useContainerItems<PlanState>(item, session);
+  // state = latest plan snapshot from ComponentItem
+  // items = all items emitted within this container's scope
+}
+```
+
+`source` accepts either a `SessionView` (indexed O(1) lookups) or an `OutputItem[]` array.
 
 ### `useAction(options)`
 

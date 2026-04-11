@@ -24,5 +24,6 @@ export const chatAssistantRenderers: RendererRegistry = {
   error: ErrorDisplay,
   step_error: ErrorDisplay,
   source: false,
-  component: { plan: Plan, blackboard: Blackboard, "audit-annotation": AuditAnnotation },
+  component: { blackboard: Blackboard, "audit-annotation": AuditAnnotation },
+  container: { plan: Plan },
 };

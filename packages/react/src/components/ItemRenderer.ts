@@ -198,6 +198,18 @@ function renderItem(item: OutputItem): ReactNode {
     return createElement(resolved, { item });
   }
 
+  // Component items whose key matches a registered container renderer are
+  // subsumed by the container — suppress them to avoid a raw JSON fallback.
+  // This handles both old items (no ownedBy) and new container-scoped items.
+  if (
+    item.type === "component" &&
+    componentKey !== undefined &&
+    renderers?.container?.[componentKey] !== undefined &&
+    renderers.container[componentKey] !== false
+  ) {
+    return null;
+  }
+
   // 2. Built-in fallback (message, status, error, step_error).
   const fallback = BUILT_IN_FALLBACKS[item.type];
   if (fallback !== undefined) {
