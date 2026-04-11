@@ -2,6 +2,22 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-04-11
+
+### DevTool: `fsdev dev` command + `@flow-state-dev/devtool` package (FIX-261)
+
+- Added `fsdev dev` command to `@flow-state-dev/cli` — starts an HTTP dev server that serves both the flow API routes and the DevTool UI from a single port.
+- Auto-discovers flows from conventional directories, registers them in an in-memory `FlowRegistry`, and creates filesystem stores at `.fsdev/data/`.
+- Bridges Node.js `http` to the Web API `Request`/`Response` interface used by `createFlowApiRouter`, with SSE streaming support for live execution traces.
+- Options: `--port` (default 4200), `--flow-dir` (repeatable), `--model` (override all generators), `--no-open`.
+- Static file server with SPA fallback handles the DevTool single-page app routing.
+- Created `@flow-state-dev/devtool` package (`packages/devtool/`) that exports `getAssetPath()` to locate pre-built static assets.
+- Includes `build:assets` script that builds the DevTool Vite app (`apps/devtool`) and copies the output.
+- CLI lists `@flow-state-dev/devtool` as an optional peer dependency.
+- Renamed `apps/devtool` package from `@flow-state-dev/devtool` to `@flow-state-dev/devtool-app` (remains private).
+- Updated docs site: DevTool overview rewritten, setup guide added, CLI API reference and quick-start updated, sidebar entry added.
+- Updated `CLAUDE.md`, `README.md`, `development-setup.md`, and CLI `README.md`.
+
 ## 2026-03-20
 
 ### Resource Namespaces — Dynamic + Parameterized Resources (FIX-98)

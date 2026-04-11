@@ -154,17 +154,27 @@ Open your browser and start chatting. The framework is handling:
 - Conversation history assembly for the LLM
 - Item rendering in the UI
 
-## Alternative: run from the terminal
+## Alternative: inspect with the DevTool
 
-You don't need a server or React frontend to try your flows. The CLI discovers flows from `src/flows/` (and monorepo directories like `packages/*/src/flows/`) and runs them directly:
+The DevTool gives you a visual inspector for your flows. Install the devtool package and run `fsdev dev`:
 
 ```bash
-pnpm add -D @flow-state-dev/cli
+pnpm add -D @flow-state-dev/cli @flow-state-dev/devtool
 
+fsdev dev
+```
+
+This starts a local server, discovers your flows, and opens the DevTool in your browser. You can dispatch actions, watch items stream in real-time, and inspect session state. See the [DevTool guide](/docs/devtool/setup) for configuration options.
+
+## Alternative: run from the terminal
+
+You don't need a server or UI to try your flows. The CLI runs them directly and streams NDJSON to stdout:
+
+```bash
 fsdev run hello-chat chat -i '{"message": "Hello!"}'
 ```
 
-This streams NDJSON events to stdout as blocks execute. See the [CLI reference](/docs/api/cli) for session reuse, model overrides, and more.
+See the [CLI reference](/docs/api/cli) for session reuse, model overrides, and more.
 
 ## Next steps
 
