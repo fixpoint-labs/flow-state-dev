@@ -9,10 +9,20 @@ export type SupervisorInput = z.infer<typeof supervisorInputSchema>;
 export const supervisorPlanTaskSchema = z.object({
   id: z.string(),
   goal: z.string(),
-  // Quality-gate statuses — intentionally different from Plan & Execute's execution-state statuses
-  status: z.enum(["pending", "completed", "needs-revision", "escalated"]),
+  assignee: z.string().optional(),
+  deps: z.array(z.string()).default([]),
+  status: z.enum([
+    "in-progress",
+    "awaiting-review",
+    "completed",
+    "failed",
+    "skipped",
+    "needs-revision",
+    "escalated",
+  ]),
   result: z.unknown().optional(),
   feedback: z.string().optional(),
+  error: z.string().optional(),
 });
 
 export const supervisorStateSchema = z.object({
@@ -45,6 +55,7 @@ export const plannerOutputSchema = z.object({
     z.object({
       id: z.string(),
       goal: z.string(),
+      assignee: z.string().optional(),
       deps: z.array(z.string()).optional(),
       priority: z.enum(["high", "medium", "low"]).optional(),
     })

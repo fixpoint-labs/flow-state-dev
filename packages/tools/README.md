@@ -26,7 +26,7 @@ Provider is selected automatically based on available API keys (checked in order
 | Tavily | `TAVILY_API_KEY` | `@tavily/core` (optional peer dep) |
 | Exa | `EXA_API_KEY` | `exa-js` (optional peer dep) |
 | Serper | `SERPER_API_KEY` | _(fetch-based, no extra dep)_ |
-| Brave | `BRAVE_API_KEY` | _(fetch-based, no extra dep)_ |
+| Brave | `BRAVE_SEARCH_API_KEY` | _(fetch-based, no extra dep)_ |
 
 ### Configuration
 
@@ -44,6 +44,67 @@ search({
 
 ```typescript
 import { tavilySearch, exaSearch, serperSearch, braveSearch } from "@flow-state-dev/tools/search";
+```
+
+## Fetch
+
+Fetch a single web page and return its content as clean, LLM-ready markdown.
+
+```typescript
+import { fetch } from "@flow-state-dev/tools/fetch";
+
+const pageFetch = fetch(); // auto-detects from env vars
+
+generator({
+  tools: [pageFetch],
+  // ...
+});
+```
+
+### Providers
+
+| Provider | Env var | Package |
+|----------|---------|---------|
+| Firecrawl | `FIRECRAWL_API_KEY` | `@mendable/firecrawl-js` (optional peer dep) |
+| Jina Reader | `JINA_API_KEY` (optional) | _(fetch-based, no extra dep)_ |
+| Built-in | _(none needed)_ | _(uses Readability + Turndown)_ |
+
+Always works — falls back to built-in when no API keys are set.
+
+### Direct provider constructors
+
+```typescript
+import { firecrawlFetch, jinaFetch, builtinFetch } from "@flow-state-dev/tools/fetch";
+```
+
+## Crawl
+
+Crawl a website starting from a root URL, following links breadth-first.
+
+```typescript
+import { crawl } from "@flow-state-dev/tools/crawl";
+
+const siteCrawl = crawl({ maxPages: 30, maxDepth: 2 });
+
+generator({
+  tools: [siteCrawl],
+  // ...
+});
+```
+
+### Providers
+
+| Provider | Env var | Package |
+|----------|---------|---------|
+| Firecrawl | `FIRECRAWL_API_KEY` | `@mendable/firecrawl-js` (optional peer dep) |
+| Built-in | _(none needed)_ | _(BFS crawler with Readability + Turndown)_ |
+
+Always works — falls back to built-in BFS crawler when no API keys are set.
+
+### Direct provider constructors
+
+```typescript
+import { firecrawlCrawl, builtinCrawl } from "@flow-state-dev/tools/crawl";
 ```
 
 ## Provider-native search

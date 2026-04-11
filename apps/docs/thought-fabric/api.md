@@ -37,7 +37,7 @@ const block = scoreSalience({
   name: "salience",
   dimensions: { ... },
   weights: { ... },
-  model: "gpt-5-mini",
+  model: "preset/fast",
 });
 ```
 
@@ -159,7 +159,7 @@ Wave 2 placeholders. Not yet implemented.
 import { system as memorySystem } from "@thought-fabric/core/memory";
 import { filterRelevance, scoreSalience } from "@thought-fabric/core/attention";
 
-const mem = memorySystem({ model: "gpt-5-mini", working: true, episodic: true, semantic: true });
+const mem = memorySystem({ model: "preset/fast", working: true, episodic: true, semantic: true });
 
 const pipeline = sequencer({ name: "pipeline", inputSchema: chatInput })
   .then(chat)

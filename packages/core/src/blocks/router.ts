@@ -83,7 +83,7 @@ export interface RouterConfig<
     input: TInput,
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TProjectState,
-      TSessionResources, TUserResources, TProjectResources, TSequencerState, TTargetSchemas
+      TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas
     >
   ) => Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>;
   validateRoute?: (
@@ -92,7 +92,7 @@ export interface RouterConfig<
     input: TInput,
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TProjectState,
-      TSessionResources, TUserResources, TProjectResources, TSequencerState, TTargetSchemas
+      TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas
     >
   ) => Promise<boolean> | boolean;
   container?: {
@@ -196,6 +196,8 @@ export function router<
           name: selected.name,
           kind: selected.kind,
           instanceId: `${selected.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          stateSchema: selected.kind === "sequencer" ? selected.config.stateSchema : undefined,
+          input,
           container:
             containerConfig === undefined
               ? undefined

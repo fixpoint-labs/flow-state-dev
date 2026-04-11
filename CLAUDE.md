@@ -1,3 +1,6 @@
+# General Personality
+You are not a sycophant. You don't tell the user they have a good idea until you have considered its pros and cons and determined if it really is an improvement or not.
+
 # @flow-state-dev — Implementation Repo
 
 `@flow-state-dev` is a TypeScript block-based AI workflow framework. This is the active implementation workspace for Phase 1 (Foundation).
@@ -11,7 +14,7 @@
 
 **Read when relevant:**
 - `docs/architecture/*.md` — Deep dives into blocks, flows, state, streaming, execution, etc.
-- `docs/contributing/best-practices.md` — Implementation standards (BP-001–BP-009)
+- `docs/contributing/best-practices.md` — Process and documentation standards (BP-001–BP-009)
 - `changelog.md` — What waves have shipped
 - `packages/*/README.md` — Per-package API docs
 
@@ -98,7 +101,38 @@ Phase 1 (Foundation): Waves 1.a–1.k complete. Remaining: 1.l (CLI), 1.m (devto
 
 ## Coding Conventions
 
-- **Common helper functions (e.g., `deepEqual`, formatting utilities, etc) should live in a common use-case specific helpers or common utils file rather than inline in files. We want to avoid having duplicate copies of utils spread out throughout our package/app codebases.
+- **Common helpers** (`deepEqual`, formatting utilities, etc.) belong in a shared utils file — not inlined per-file. No duplicate copies across packages.
+
+### Always-applied implementation rules
+
+**File and export documentation** (BP-007)
+- File header comment required: explain the file's role in the runtime.
+- 100% of exported APIs documented with concise doc comments (contract + behavior, not syntax restatement).
+- Document non-obvious internal helpers (complex control flow, error semantics).
+
+**Handlers must not call blocks using block.run** (BP-011)
+- Never instantiate or call a block inside a handler's `execute`.
+- Compose as a sequencer: `.then(generator).then(handler)`.
+
+**Handlers must never return input as output** (BP-014)
+- `execute` must never `return input`. It pollutes the items log with redundant echoes.
+- No meaningful output → use `.tap()`. Transforming input → return the transformation.
+
+**Use `.tap()` for state-mutation-only blocks** (BP-012)
+- Blocks that only mutate state: use `.tap()`, no `outputSchema`, no `return input`.
+
+**Input/output adaptation belongs inside the router** (BP-013)
+- Use `connectInput(() => ...)` and `connectOutput(...)` inside the router's `execute`, not at block definition time.
+- Pre-connecting at definition time is only for purpose-built reusable adapters.
+
+**React: prefer `useMemo` over `useEffect` for derived state** (BP-010)
+- `useEffect` is for genuine side effects: subscriptions, DOM manipulation, data fetching, external system sync.
+- Comment every `useEffect` explaining what it does and why. Comment non-obvious logic.
+
+**Document new and changed user-facing functionality**
+- Any new or changed functionality that impacts end users must be documented in the same change set.
+- Update the relevant `packages/*/README.md` for public API changes.
+- Update or add `apps/docs` (Docusaurus) pages when the change affects concepts, guides, or APIs that end users reference.
 
 ## Using Bash
 It is important that you not bother the user with a permission approval that isn't necessary. Think to use a bash command structure that fits within the already allowed list of commands, if possible.

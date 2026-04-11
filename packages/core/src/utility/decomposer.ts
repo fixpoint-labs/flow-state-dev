@@ -1,5 +1,5 @@
 import { z, type ZodTypeAny } from "zod";
-import type { GeneratorConfig } from "../blocks";
+import type { GeneratorConfig, GeneratorSlot } from "../blocks";
 import { generator } from "../blocks";
 
 export const decomposerTaskSchema = z.object({
@@ -19,6 +19,8 @@ export interface DecomposerConfig<
   name: string;
   model?: GeneratorConfig["model"];
   outputSchema?: TOutputSchema;
+  /** Additional context injected into the system prompt before decomposition. */
+  context?: GeneratorSlot;
 }
 
 function toUserContent(input: unknown): string {
@@ -39,13 +41,17 @@ export function decomposer<
 
   return generator({
     name: config.name,
-    model: config.model ?? "gpt-5-mini",
+    model: config.model ?? "openai/gpt-5.4-mini",
     outputSchema,
+    context: config.context,
+    search: true,
     prompt: [
       "You are a task decomposition assistant.",
-      "Break broad requests into executable tasks.",
+      "Break broad requests into executable tasks that an AI agent can complete autonomously.",
+      "IMPORTANT: Never create tasks that ask a human for clarification or additional input.",
+      "If the request is ambiguous, make reasonable assumptions and decompose based on the most likely intent.",
       "Each task must include a stable unique id and a clear goal.",
-      "Use deps only when a task depends on one or more prior task ids.",
+      "Use deps only when a task genuinely depends on the output of a prior task.",
       "Set priority when useful using high, medium, or low.",
       "Order tasks so dependencies can be executed correctly.",
       "Return output that exactly matches the required schema."

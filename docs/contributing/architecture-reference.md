@@ -108,7 +108,7 @@ Ten pre-built utility factories wrapping generator/handler blocks:
 | `intentRouter` | sequencer | Pre-wired classifier + router for classification-driven branching |
 
 - Access via `utility.<name>(config)` — returns a standard `BlockDefinition`
-- All generators default to `"gpt-5-mini"` model
+- All generators default to `"preset/fast"` model
 - All utilities accept optional `outputSchema` override
 - Combiner is handler-based (deterministic, no model)
 

@@ -30,7 +30,7 @@ const inputSchema = z.object({ message: z.string() });
 // Generator: calls the LLM with conversation history
 const chatGen = generator({
   name: "chat",
-  model: "gpt-5-mini",
+  model: "preset/fast",
   prompt: "You are a helpful assistant.",
   inputSchema,
   history: (_input, ctx) => ctx.session.items.llm(),

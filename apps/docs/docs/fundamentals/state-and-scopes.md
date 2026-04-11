@@ -67,7 +67,7 @@ const myFlow = defineFlow({
     stateSchema: z.object({
       preferences: z.object({
         theme: z.enum(["light", "dark"]).default("dark"),
-        preferredModel: z.string().default("gpt-5-mini"),
+        preferredModel: z.string().default("preset/fast"),
       }).default({}),
     }),
   },
@@ -583,7 +583,7 @@ const myFlow = defineFlow({
     stateSchema: z.object({
       preferences: z.object({
         responseStyle: z.enum(["concise", "detailed", "technical"]).default("detailed"),
-        preferredModel: z.string().default("gpt-5-mini"),
+        preferredModel: z.string().default("preset/fast"),
         codeStyle: z.object({
           language: z.string().default("typescript"),
           framework: z.string().optional(),
@@ -700,7 +700,7 @@ const myFlow = defineFlow({
   project: {
     stateSchema: z.object({
       config: z.object({
-        allowedModels: z.array(z.string()).default(["gpt-5-mini"]),
+        allowedModels: z.array(z.string()).default(["preset/fast"]),
         maxTokenBudget: z.number().default(100_000),
         customInstructions: z.string().default(""),
         features: z.object({
@@ -766,7 +766,7 @@ execute: async (input, ctx) => {
   // Project config takes precedence over user preferences
   const model = ctx.project?.state.config.allowedModels?.[0]
     ?? ctx.user.state.preferences.preferredModel
-    ?? "gpt-5-mini";
+    ?? "preset/fast";
 }
 ```
 
@@ -936,7 +936,7 @@ execute: async (input, ctx) => {
     ctx.session.state.currentModel ??
     ctx.user.state.preferences.preferredModel ??
     ctx.project?.state.config.defaultModel ??
-    "gpt-5-mini";
+    "preset/fast";
 }
 ```
 
@@ -990,3 +990,85 @@ Each scope carries exactly the data appropriate for its lifetime:
 - **Session**: `mode`, `messageCount` — conversational state that persists across turns
 - **User**: `preferences`, `recentTopics` — personal data that follows the user to new sessions
 - **Project**: `config` — team settings shared by everyone
+
+## Resource propagation
+
+Sequencers automatically collect `declaredResources` from all child blocks. When a block declares `sessionResources`, `userResources`, or `projectResources`, those declarations bubble up through the sequencer chain to the flow — you don't need to re-declare resources at every level.
+
+```ts
+const planResource = defineResource({
+  stateSchema: z.object({ steps: z.array(z.string()).default([]) }),
+  writable: true,
+});
+
+const planManager = handler({
+  name: "plan-manager",
+  sessionResources: { plan: planResource },
+  execute: async (input, ctx) => { /* ... */ },
+});
+
+const pipeline = sequencer({ name: "pipeline" })
+  .then(planManager)    // resource declaration collected
+  .then(otherBlock);
+
+// pipeline.declaredResources includes { session: { plan: planResource } }
+// defineFlow will merge this into the flow's session.resources automatically
+```
+
+This means you can declare resources at the block level and the flow picks them up without any wiring. The same applies to nested sequencers — declarations bubble all the way up.
+
+## Typed target access
+
+When a block runs inside a nested sequencer and needs to read or write the state of an outer sequencer, use `targetStateSchemas` instead of manual `getTarget<Type>("name")` casts. The framework infers types from the declared schemas, so access is fully typed with no assertions.
+
+```ts
+import { handler, sequencer } from "@flow-state-dev/core";
+import { z } from "zod";
+
+// --- Outer sequencer carries progress state ---
+const researchPipeline = sequencer({
+  name: "research-pipeline",
+  inputSchema: z.object({ query: z.string() }),
+  sessionStateSchema: z.object({ progress: z.number().default(0) }),
+});
+
+// --- Inner block declares which ancestor it needs ---
+const processChunk = handler({
+  name: "process-chunk",
+  inputSchema: z.object({ chunk: z.string(), total: z.number(), index: z.number() }),
+  outputSchema: z.string(),
+  targetStateSchemas: {
+    // Declare the ancestor by its block name and the state fields we'll touch
+    "research-pipeline": z.object({ progress: z.number() }),
+  },
+  execute: async (input, ctx) => {
+    const pct = Math.round(((input.index + 1) / input.total) * 100);
+    // Fully typed: StateRef<{ progress: number }> | undefined
+    await ctx.targets["research-pipeline"]?.patchState({ progress: pct });
+    return `processed:${input.chunk}`;
+  },
+});
+
+// --- Nested sequencer uses the reporting block ---
+const chunkProcessor = sequencer({ name: "chunk-processor" })
+  .then(splitIntoChunks)
+  .forEach(processChunk, { maxConcurrency: 3 });
+
+// --- Wire into the outer pipeline ---
+researchPipeline
+  .then(fetchSources)
+  .then(chunkProcessor)   // processChunk inside here reaches up to researchPipeline
+  .then(synthesize);
+```
+
+**Why `targetStateSchemas` instead of `getTarget`:**
+
+```ts
+// With getTarget — manual cast, no compile-time safety
+const outer = ctx.getTarget<{ progress: number }>("research-pipeline");
+
+// With targetStateSchemas — inferred, self-documenting
+await ctx.targets["research-pipeline"]?.patchState({ progress: pct });
+```
+
+`getTarget` is a valid escape hatch for dynamic or unknown ancestor names. For static, well-known relationships, `targetStateSchemas` is preferred: the block documents its topology requirements and the type flows through without any cast.

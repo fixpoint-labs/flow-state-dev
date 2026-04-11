@@ -94,6 +94,7 @@ export {
   createSentenceBuffer,
   createTTSPipeline,
   createTTSEmitterHook,
+  voiceContext,
   type SentenceBuffer,
   type TTSPipeline,
   type TTSPipelineOptions,

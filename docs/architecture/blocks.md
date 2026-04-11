@@ -183,7 +183,7 @@ import { z } from "zod";
 
 const chatGenerator = generator({
   name: "chat-generator",
-  model: "gpt-5-mini",
+  model: "preset/fast",
   prompt: "You are a helpful, concise assistant.",
   inputSchema: z.object({ message: z.string().min(1) }),
   // Default outputSchema is z.string() — enables text streaming

@@ -8,7 +8,7 @@ export const braveAdapter: SearchProviderAdapter = {
       count: String(options.maxResults),
     });
 
-    const response = await fetch(
+    const response = await globalThis.fetch(
       `https://api.search.brave.com/res/v1/web/search?${params}`,
       {
         headers: {

@@ -31,6 +31,11 @@ export type BlockOutputItem = OutputItemBase & {
   blockName: string;
   blockKind?: string;
   output: unknown;
+  /** Present when block execution failed (status will be "failed"). */
+  error?: {
+    message: string;
+    code?: string;
+  };
   /** Epoch ms when block execution started. */
   startedAt?: number;
   /** Epoch ms when block execution completed or failed. */
@@ -92,6 +97,9 @@ export type ComponentItem = OutputItemBase & {
   type: "component";
   component: string;
   data: Record<string, unknown>;
+  /** Caller-provided stable identity for deduplication. When present, clients
+   *  should show only the latest item with a given key (replacing prior ones). */
+  key?: string;
 };
 
 export type ContainerItem = OutputItemBase & {

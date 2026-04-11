@@ -65,6 +65,7 @@ export function BlockOutputItemView({ item }: { item: BlockOutputItem }) {
   }
 
   const statusLabel = item.status === "completed" ? "completed" : item.status === "in_progress" ? "running" : item.status;
+  const failedMessage = item.status === "failed" ? item.error?.message : undefined;
 
   return (
     <div>
@@ -80,11 +81,25 @@ export function BlockOutputItemView({ item }: { item: BlockOutputItem }) {
         <span className="font-mono text-slate-300">{item.blockName}</span>
         <span className="text-slate-600">→</span>
         <span className="text-slate-500">{statusLabel}</span>
+        {failedMessage && (
+          <span className="text-red-400/80 truncate max-w-[20rem]" title={failedMessage}>
+            {failedMessage}
+          </span>
+        )}
         {isInProgress && <Loader2 className="h-3 w-3 animate-spin text-amber-400 shrink-0" />}
       </button>
 
       {expanded && (
         <div className="ml-7 mt-1.5 space-y-2">
+          {item.status === "failed" && item.error && (
+            <div>
+              <span className="text-[10px] uppercase text-red-500 font-medium">Error</span>
+              <p className="text-xs text-red-300 font-mono mt-0.5">{item.error.message}</p>
+              {item.error.code && (
+                <p className="text-[10px] text-red-400/60 font-mono mt-0.5">{item.error.code}</p>
+              )}
+            </div>
+          )}
           {item.output !== undefined && (
             <div>
               <span className="text-[10px] uppercase text-slate-500 font-medium">Output</span>

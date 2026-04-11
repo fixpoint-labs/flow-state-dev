@@ -131,7 +131,44 @@ Update policy:
 - Why:
   - Generators are a first-class block kind with their own execution semantics: streaming, retry, tool loops, and observability hooks. Wrapping a generator call inside a handler bypasses all of these and makes the generator invisible to the runtime. It also makes the generated output hard to observe, replay, or trace in devtools. The sequencer `.then(generator).then(handler)` pattern is the correct composition primitive.
 
----
+### BP-012: Use `.tap()` for state-mutation-only blocks — never return input as passthrough
+
+- Status: Active
+- Date: 2026-04-08
+- Rule:
+  - When a block only mutates state (session, user, sequencer) and its output carries no meaningful information forward, chain it with `.tap()` instead of `.then()`.
+  - Such handlers must not declare `outputSchema` and must not `return input` at the end of `execute`.
+- Why:
+  - Every block chained with `.then()` appends its output to the items log. Returning `input` as a passthrough pollutes the items log with redundant copies of data that carry no new information. Items should contain meaningful output — LLM responses, structured results — not echoes of prior state. State mutations are already observable through the state change log.
+  - `.tap()` communicates intent clearly: this block runs for its side effects, the upstream data flows through unchanged.
+
+
+
+### BP-013: Use `connectInput` and `connectOutput` inside the router, not on blocks directly
+
+- Status: Active
+- Date: 2026-04-09
+- Rule:
+  - When a router selects a block that requires input transformation, perform the transformation inside the router's `execute` function using `connectInput`, not by pre-connecting the block at definition time.
+  - Return `block.connectInput(() => transformedInput)` (using closure over the router's `input`) rather than declaring a permanently-adapted variant of the block.
+  - `connectInput` works natively on all block kinds including sequencers — no wrapper block is created; the full interface (`.then()`, `.tap()`, etc.) is preserved.
+  - If a router's selected block produces output in a shape the router's output schema doesn't expect, use `connectOutput` on the selected block inside `execute` to adapt it.
+  - Pre-connecting blocks at definition time (outside a router) is appropriate only when the block is purpose-built as a reusable adapter for a specific caller and the input contract belongs to the block itself, not to a runtime routing decision.
+- Why:
+  - Performing input adaptation inside the router keeps each block's schema generic and reusable. Pre-connecting forces an arbitrary caller's schema into the block definition, coupling it to one usage site.
+  - Using closure over `input` inside `execute` avoids repeating the input type annotation — the router already knows it.
+  - Returning a connected block from `execute` works cleanly with the router's route validation (matching is by name) and with `testRouter` (which uses `onRouteSelected` hooks, not object identity).
+
+### BP-014: Handlers must never return input as output
+
+- Status: Active
+- Date: 2026-04-10
+- Rule:
+  - A handler's `execute` must never `return input` verbatim.
+  - If the block produces no meaningful output, use `.tap()` (per BP-012).
+  - If the block transforms input, return the transformation — not the original `input`.
+- Why:
+  - Returning `input` pollutes the items log with redundant echoes of data already present in prior items. Items should contain meaningful outputs (LLM responses, structured results), not passthrough copies. This is a generalization of BP-012: even when a handler is not state-mutation-only, echoing input as output is never correct behavior.
 
 ## Template For New Entries
 

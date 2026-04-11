@@ -7,7 +7,7 @@ export type IntentCategories = Record<string, string>;
 export interface IntentClassifierOutput {
   category: string;
   confidence: number;
-  reasoning?: string;
+  reasoning: string;
 }
 
 export interface IntentClassifierConfig<
@@ -31,7 +31,7 @@ function createDefaultOutputSchema(categories: readonly string[]) {
   return z.object({
     category: z.string(),
     confidence: z.number().min(0).max(1),
-    reasoning: z.string().optional()
+    reasoning: z.string().default("")
   }).superRefine((value, ctx) => {
     if (!categories.includes(value.category)) {
       ctx.addIssue({
@@ -87,7 +87,7 @@ export function intentClassifier<
 
   return generator({
     name: config.name,
-    model: config.model ?? "gpt-5-mini",
+    model: config.model ?? "preset/fast",
     outputSchema,
     prompt: [
       "You are an intent classification assistant.",

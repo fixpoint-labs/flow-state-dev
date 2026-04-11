@@ -41,7 +41,7 @@ import { generator } from "@flow-state-dev/core";
 
 const myGenerator = generator({
   name: "my-gen",
-  model: "gpt-5-mini",
+  model: "preset/fast",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
   outputSchema: z.object({ response: z.string() }),
@@ -59,6 +59,10 @@ const myGenerator = generator({
   repair: { mode: "auto", maxAttempts: 3 },
 });
 ```
+
+**Emit config:**
+
+- `emit?: false | { reasoning?: boolean; messages?: boolean | 'reasoning'; toolCalls?: boolean }` — Control which items the generator emits to the client stream. `false` suppresses everything. Individual flags default to `true`. Set `messages: 'reasoning'` to remap assistant text as reasoning items. When `messages` is `false` but tools are present, streaming is still used for tool call status events.
 
 **Search config:**
 
@@ -190,7 +194,7 @@ import {
 
 const agent = generator({
   name: "agent",
-  model: "gpt-5-mini",
+  model: "preset/fast",
   prompt: "You can inspect and edit approved resource files.",
   tools: [readResourceContentTool(), writeResourceContentTool()],
 });

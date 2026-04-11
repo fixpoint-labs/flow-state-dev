@@ -35,6 +35,9 @@ type ResolvableModel<TInput, TCtx = BlockContext> =
   | string[]
   | GeneratorModel
   | ((input: TInput, ctx: TCtx) => MaybePromise<string | string[] | GeneratorModel>);
+type ResolvableProviderOptions<TInput, TCtx = BlockContext> =
+  | Record<string, unknown>
+  | ((input: TInput, ctx: TCtx) => MaybePromise<Record<string, unknown> | undefined>);
 
 export type GeneratorSlotReference<TInput = unknown, TCtx = BlockContext> = (
   input: TInput,
@@ -167,7 +170,7 @@ export interface GeneratorConfig<
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,
-    TSessionResources, TUserResources, TProjectResources, TSequencerState, TTargetSchemas
+    TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas
   >,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
@@ -210,12 +213,12 @@ export interface GeneratorConfig<
   ) => MaybePromise<unknown>;
   flowTools?: ToolsConfig;
   retry?: RetryPolicy;
-  emit?: {
+  emit?: false | {
     reasoning?: boolean;
-    messages?: boolean;
+    messages?: boolean | 'reasoning';
     toolCalls?: boolean;
   };
-  providerOptions?: Record<string, unknown>;
+  providerOptions?: ResolvableProviderOptions<TInput, TCtx>;
   /** When true (default), auto-inject tool name+description pairs into the system context. */
   describeTools?: boolean;
 }
@@ -227,6 +230,15 @@ async function resolveString<TInput, TCtx extends BlockContext>(
   input: TInput,
   ctx: TCtx
 ): Promise<string> {
+  return typeof value === "function" ? value(input, ctx) : value;
+}
+
+async function resolveProviderOptions<TInput, TCtx extends BlockContext>(
+  value: ResolvableProviderOptions<TInput, TCtx> | undefined,
+  input: TInput,
+  ctx: TCtx
+): Promise<Record<string, unknown> | undefined> {
+  if (value === undefined) return undefined;
   return typeof value === "function" ? value(input, ctx) : value;
 }
 
@@ -476,7 +488,8 @@ function compileToolsWithExecute(
         {
           name: tool.name,
           kind: tool.kind,
-          instanceId: `${tool.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`
+          instanceId: `${tool.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          input: args
         },
         runTool
       );
@@ -705,6 +718,23 @@ function getEmitterItemCount(response: unknown): number {
   return 0;
 }
 
+/** Resolved emit configuration with all flags normalized to concrete values. */
+type NormalizedEmit = {
+  reasoning: boolean;
+  messages: boolean | 'reasoning';
+  toolCalls: boolean;
+};
+
+/** Normalizes the user-facing emit config into concrete flags. */
+function normalizeEmit(emit: GeneratorConfig<any, any, any, any>['emit']): NormalizedEmit {
+  if (emit === false) return { reasoning: false, messages: false, toolCalls: false };
+  return {
+    reasoning: emit?.reasoning !== false,
+    messages: emit?.messages ?? true,
+    toolCalls: emit?.toolCalls !== false,
+  };
+}
+
 /**
  * Executes a streaming text generation: emits item.added, content.added,
  * content.delta per chunk, content.done, and item.done events.
@@ -723,7 +753,9 @@ async function executeStreamingGeneration<TInput, TOutput>(
   blockName: string,
   maxSteps: number,
   ctx: BlockContext,
-  prepareStep?: PrepareStepFn
+  emitConfig: NormalizedEmit,
+  prepareStep?: PrepareStepFn,
+  resolvedProviderOpts?: Record<string, unknown>
 ): Promise<TOutput> {
   const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const contentPartIndex = 0;
@@ -732,7 +764,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     blockInstanceId: blockName,
     phase: "main" as const
   };
-  const emitReasoning = config.emit?.reasoning !== false;
+  const emitReasoning = emitConfig.reasoning;
   let reasoningAccumulated = "";
 
   // Reasoning and message items are emitted lazily so their order in the
@@ -754,7 +786,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     maxTokens: config.maxTokens,
     signal: ctx.signal,
     maxSteps,
-    providerOptions: config.providerOptions,
+    providerOptions: resolvedProviderOpts,
     prepareStep
   })) {
     if (chunk.type === "reasoning_delta" && chunk.reasoningDelta !== undefined) {
@@ -791,7 +823,10 @@ async function executeStreamingGeneration<TInput, TOutput>(
         });
       }
     } else if (chunk.type === "text_delta" && chunk.textDelta !== undefined) {
-      // On first text delta, finalize reasoning and start the message
+      // On first text delta, finalize reasoning and start the message (or
+      // a reasoning item when messages are remapped via emit.messages: 'reasoning').
+      // When messages are fully suppressed, just accumulate text silently.
+      const emitMessages = emitConfig.messages;
       if (!messageEmitted) {
         // Close reasoning item if it was started
         if (reasoningStarted) {
@@ -815,35 +850,61 @@ async function executeStreamingGeneration<TInput, TOutput>(
           await ctx.response.emit({ type: "item.done", item: completedReasoning });
         }
 
-        // Now emit the in-progress assistant message
-        messageItem = {
-          id: itemId,
-          type: "message" as const,
-          role: "assistant" as const,
-          status: "in_progress" as const,
-          transient: false,
-          requestId: ctx.request.identity.id,
-          itemIndex: getEmitterItemCount(ctx.response),
-          provenance,
-          ts: Date.now(),
-          content: [{ type: "output_text" as const, text: "" }]
-        };
-        await ctx.response.emit({ type: "item.added", item: messageItem });
-        await ctx.response.emit({
-          type: "content.added",
-          itemId,
-          contentIndex: contentPartIndex,
-          content: { type: "output_text", text: "" }
-        });
+        if (emitMessages === false) {
+          // Messages suppressed — no item emitted, just accumulate text
+        } else if (emitMessages === 'reasoning') {
+          // Emit text as a reasoning item instead of a message
+          messageItem = {
+            id: itemId,
+            type: "reasoning" as const,
+            status: "in_progress" as const,
+            transient: false,
+            requestId: ctx.request.identity.id,
+            itemIndex: getEmitterItemCount(ctx.response),
+            provenance,
+            ts: Date.now(),
+            summary: [{ type: "reasoning_text" as const, text: "" }]
+          };
+          await ctx.response.emit({ type: "item.added", item: messageItem });
+          await ctx.response.emit({
+            type: "content.added",
+            itemId,
+            contentIndex: contentPartIndex,
+            content: { type: "reasoning_text", text: "" }
+          });
+        } else {
+          // Normal assistant message
+          messageItem = {
+            id: itemId,
+            type: "message" as const,
+            role: "assistant" as const,
+            status: "in_progress" as const,
+            transient: false,
+            requestId: ctx.request.identity.id,
+            itemIndex: getEmitterItemCount(ctx.response),
+            provenance,
+            ts: Date.now(),
+            content: [{ type: "output_text" as const, text: "" }]
+          };
+          await ctx.response.emit({ type: "item.added", item: messageItem });
+          await ctx.response.emit({
+            type: "content.added",
+            itemId,
+            contentIndex: contentPartIndex,
+            content: { type: "output_text", text: "" }
+          });
+        }
         messageEmitted = true;
       }
       accumulated += chunk.textDelta;
-      await ctx.response.emit({
-        type: "content.delta",
-        itemId,
-        contentIndex: contentPartIndex,
-        delta: chunk.textDelta
-      });
+      if (emitMessages !== false) {
+        await ctx.response.emit({
+          type: "content.delta",
+          itemId,
+          contentIndex: contentPartIndex,
+          delta: chunk.textDelta
+        });
+      }
     } else if (chunk.type === "tool_input_start" && chunk.toolInput !== undefined) {
       // Emit a status item so clients see progress during provider tool execution
       const toolName = chunk.toolInput.toolName;
@@ -909,6 +970,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
   }
 
   // If no text deltas arrived, still finalize reasoning and emit message
+  const emitMessages = emitConfig.messages;
   if (!messageEmitted) {
     if (reasoningStarted) {
       await ctx.response.emit({
@@ -930,35 +992,50 @@ async function executeStreamingGeneration<TInput, TOutput>(
       };
       await ctx.response.emit({ type: "item.done", item: completedReasoning });
     }
-    messageItem = {
-      id: itemId,
-      type: "message" as const,
-      role: "assistant" as const,
-      status: "in_progress" as const,
-      transient: false,
-      requestId: ctx.request.identity.id,
-      itemIndex: getEmitterItemCount(ctx.response),
-      provenance,
-      ts: Date.now(),
-      content: [{ type: "output_text" as const, text: "" }]
-    };
-    await ctx.response.emit({ type: "item.added", item: messageItem });
-    await ctx.response.emit({
-      type: "content.added",
-      itemId,
-      contentIndex: contentPartIndex,
-      content: { type: "output_text", text: "" }
-    });
+    if (emitMessages === false) {
+      // Messages suppressed — no item emitted
+    } else if (emitMessages === 'reasoning') {
+      messageItem = {
+        id: itemId,
+        type: "reasoning" as const,
+        status: "in_progress" as const,
+        transient: false,
+        requestId: ctx.request.identity.id,
+        itemIndex: getEmitterItemCount(ctx.response),
+        provenance,
+        ts: Date.now(),
+        summary: [{ type: "reasoning_text" as const, text: "" }]
+      };
+      await ctx.response.emit({ type: "item.added", item: messageItem });
+      await ctx.response.emit({
+        type: "content.added",
+        itemId,
+        contentIndex: contentPartIndex,
+        content: { type: "reasoning_text", text: "" }
+      });
+    } else {
+      messageItem = {
+        id: itemId,
+        type: "message" as const,
+        role: "assistant" as const,
+        status: "in_progress" as const,
+        transient: false,
+        requestId: ctx.request.identity.id,
+        itemIndex: getEmitterItemCount(ctx.response),
+        provenance,
+        ts: Date.now(),
+        content: [{ type: "output_text" as const, text: "" }]
+      };
+      await ctx.response.emit({ type: "item.added", item: messageItem });
+      await ctx.response.emit({
+        type: "content.added",
+        itemId,
+        contentIndex: contentPartIndex,
+        content: { type: "output_text", text: "" }
+      });
+    }
     messageEmitted = true;
   }
-
-  // Emit content.done
-  await ctx.response.emit({
-    type: "content.done",
-    itemId,
-    contentIndex: contentPartIndex,
-    content: { type: "output_text", text: accumulated }
-  });
 
   // Validate output through the schema
   const parsed = outputSchema.safeParse(accumulated);
@@ -968,13 +1045,21 @@ async function executeStreamingGeneration<TInput, TOutput>(
     );
   }
 
-  // Emit completed item
-  const completedItem = {
-    ...messageItem!,
-    status: "completed" as const,
-    content: [{ type: "output_text" as const, text: accumulated }]
-  };
-  await ctx.response.emit({ type: "item.done", item: completedItem });
+  // Emit content.done and completed item (skip when messages are suppressed)
+  if (emitMessages !== false && messageItem) {
+    const isReasoning = emitMessages === 'reasoning';
+    const contentType = isReasoning ? "reasoning_text" : "output_text";
+    await ctx.response.emit({
+      type: "content.done",
+      itemId,
+      contentIndex: contentPartIndex,
+      content: { type: contentType, text: accumulated }
+    });
+    const completedItem = isReasoning
+      ? { ...messageItem, status: "completed" as const, summary: [{ type: "reasoning_text" as const, text: accumulated }] }
+      : { ...messageItem, status: "completed" as const, content: [{ type: "output_text" as const, text: accumulated }] };
+    await ctx.response.emit({ type: "item.done", item: completedItem });
+  }
 
   ctx._runtimeHooks?.onGeneratorModelResult?.({
     model: model.modelId,
@@ -1012,7 +1097,7 @@ export function generator<
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,
-    TSessionResources, TUserResources, TProjectResources, TSequencerState, TTargetSchemas
+    TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas
   >,
 >(
   config: GeneratorConfig<
@@ -1041,6 +1126,12 @@ export function generator<
         input,
         ctx,
         blockName
+      );
+
+      const resolvedProviderOpts = await resolveProviderOptions(
+        normalizedConfig.providerOptions,
+        input,
+        ctx
       );
 
       // Resolve provider-native tools (search + explicit providerTools).
@@ -1148,10 +1239,13 @@ export function generator<
             : compileToolsForModel(toolBlocks))
         : [];
 
-      // Streaming path: text output + model supports streaming + messages not suppressed.
-      // Now works with tools + multi-step — the AI SDK drives the loop.
-      const messagesEnabled = normalizedConfig.emit?.messages !== false;
-      const canStream = messagesEnabled && isTextOutputSchema(outputSchema) && model.stream !== undefined;
+      // Streaming path: text output + model supports streaming.
+      // Use streaming when messages are enabled OR when tools are present (so tool
+      // status events flow to the client even when message text is suppressed).
+      const emitConfig = normalizeEmit(normalizedConfig.emit);
+      const messagesEnabled = emitConfig.messages !== false;
+      const hasTools = compiledTools.length > 0 || resolvedProviderTools.length > 0;
+      const canStream = (messagesEnabled || hasTools) && isTextOutputSchema(outputSchema) && model.stream !== undefined;
 
       if (canStream) {
         return await executeStreamingGeneration(
@@ -1164,7 +1258,9 @@ export function generator<
           blockName,
           maxSteps,
           ctx,
-          prepareStepFn
+          emitConfig,
+          prepareStepFn,
+          resolvedProviderOpts
         );
       }
 
@@ -1177,7 +1273,7 @@ export function generator<
         maxTokens: normalizedConfig.maxTokens,
         signal: ctx.signal,
         maxSteps,
-        providerOptions: normalizedConfig.providerOptions,
+        providerOptions: resolvedProviderOpts,
         prepareStep: prepareStepFn
       });
 
@@ -1216,30 +1312,42 @@ export function generator<
         normalizedConfig, outputSchema, candidate, state, ctx
       );
 
-      // For text-output generators, emit an assistant MessageItem
-      // so the output appears in the conversation item stream.
-      // Suppress when emit.messages is explicitly false.
-      const shouldEmitMessage = normalizedConfig.emit?.messages !== false;
-      if (shouldEmitMessage && isTextOutputSchema(outputSchema) && typeof output === "string") {
+      // For text-output generators, emit an assistant MessageItem (or reasoning
+      // item when messages are remapped) so the output appears in the stream.
+      // Suppress entirely when emit.messages is false.
+      if (emitConfig.messages !== false && isTextOutputSchema(outputSchema) && typeof output === "string") {
         const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        const messageItem = {
-          id: itemId,
-          type: "message" as const,
-          role: "assistant" as const,
-          status: "completed" as const,
-          transient: false,
-          requestId: ctx.request.identity.id,
-          itemIndex: getEmitterItemCount(ctx.response),
-          provenance: {
-            blockName,
-            blockInstanceId: blockName,
-            phase: "main" as const
-          },
-          ts: Date.now(),
-          content: [{ type: "output_text" as const, text: output }]
-        };
-        await ctx.response.emit({ type: "item.added", item: messageItem });
-        await ctx.response.emit({ type: "item.done", item: messageItem });
+        const provenance = { blockName, blockInstanceId: blockName, phase: "main" as const };
+        if (emitConfig.messages === 'reasoning') {
+          const reasoningItem = {
+            id: itemId,
+            type: "reasoning" as const,
+            status: "completed" as const,
+            transient: false,
+            requestId: ctx.request.identity.id,
+            itemIndex: getEmitterItemCount(ctx.response),
+            provenance,
+            ts: Date.now(),
+            summary: [{ type: "reasoning_text" as const, text: output }]
+          };
+          await ctx.response.emit({ type: "item.added", item: reasoningItem });
+          await ctx.response.emit({ type: "item.done", item: reasoningItem });
+        } else {
+          const messageItem = {
+            id: itemId,
+            type: "message" as const,
+            role: "assistant" as const,
+            status: "completed" as const,
+            transient: false,
+            requestId: ctx.request.identity.id,
+            itemIndex: getEmitterItemCount(ctx.response),
+            provenance,
+            ts: Date.now(),
+            content: [{ type: "output_text" as const, text: output }]
+          };
+          await ctx.response.emit({ type: "item.added", item: messageItem });
+          await ctx.response.emit({ type: "item.done", item: messageItem });
+        }
       }
 
       return output;

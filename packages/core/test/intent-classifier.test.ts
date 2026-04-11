@@ -48,7 +48,8 @@ describe("utility.intentClassifier", () => {
 
     await expect(block.run("I was charged twice", ctx)).resolves.toEqual({
       category: "billing",
-      confidence: 0.92
+      confidence: 0.92,
+      reasoning: ""
     });
 
     const serialized = JSON.stringify(seenMessages);
@@ -147,7 +148,8 @@ describe("utility.intentClassifier", () => {
 
     await expect(chain.run({ message: "Invoice question" }, ctx)).resolves.toEqual({
       category: "billing",
-      confidence: 0.9
+      confidence: 0.9,
+      reasoning: ""
     });
   });
 

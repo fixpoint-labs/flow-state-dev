@@ -2,13 +2,12 @@ import { handler, generator } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
-  planResources,
+  planAndExecuteStateSchema,
   iterationOutputSchema,
-  type PlanStep,
+  type PlanTask,
 } from "../schemas";
 
 const inputSchema = z.object({
-  planId: z.string(),
   stepResult: z.any().optional(),
 });
 
@@ -18,45 +17,60 @@ export const evaluatorOutputSchema = z.object({
 });
 
 /**
- * Creates a simple evaluator (handler) — no LLM call.
- * Checks for pending steps and max iterations. Used when enableReplanning is false.
+ * Creates the default task evaluator (handler) — no extra LLM call.
+ * Reads a `success?: boolean` signal from the step executor's output.
+ * If `success === false`, marks the last in-progress task as failed with the
+ * executor's `reason`. Then checks for remaining pending tasks to decide
+ * continue/complete.
+ *
+ * Convention: step executors may return `{ success?: boolean, reason?: string, ...rest }`.
+ * Absent `success` is treated as true (backward compatible).
  */
-export function createSimpleEvaluator(config: { name: string }) {
+export function createTaskEvaluator(config: { name: string }) {
   return handler({
     name: `${config.name}-evaluate`,
     inputSchema,
     outputSchema: iterationOutputSchema,
-    sessionResources: planResources,
+    sequencerStateSchema: planAndExecuteStateSchema,
 
-    execute: async (input, ctx) => {
-      const planRef = ctx.session.resources.plans.get({ planId: input.planId });
-      const plan = planRef.state;
+    execute: async (_input, ctx) => {
+      const state = ctx.sequencer!.state;
 
-      // Increment iteration count
-      await planRef.patchState({ iteration: plan.iteration + 1 });
-
-      const hasPending = plan.steps.some(
-        (s: PlanStep) => s.status === "pending" || s.status === "in_progress"
+      // The success/failure signal from the executor is already applied to task
+      // status in executeNextTask. Check for tasks that are actually executable
+      // (pending AND all deps satisfied) — blocked tasks stay pending forever
+      // when their dependencies failed, so checking hasPending alone can deadlock.
+      const satisfiedIds = new Set(
+        state.tasks
+          .filter((t: PlanTask) => t.status === "completed" || t.status === "skipped")
+          .map((t: PlanTask) => t.id)
+      );
+      const hasExecutable = state.tasks.some(
+        (t: PlanTask) =>
+          t.status === "pending" &&
+          t.dependencies.every((dep: string) => satisfiedIds.has(dep))
       );
 
-      if (!hasPending) {
-        const allFailed = plan.steps.length > 0 && plan.steps.every((s: PlanStep) => s.status === "failed");
-        await planRef.patchState({
+      if (!hasExecutable) {
+        const allFailed =
+          state.tasks.length > 0 &&
+          state.tasks.every(
+            (t: PlanTask) =>
+              t.status === "failed" || t.status === "skipped" || t.status === "pending"
+          );
+        await ctx.sequencer!.patchState({
           status: allFailed ? "failed" : "completed",
         });
       }
 
-      return {
-        planId: input.planId,
-        decision: hasPending ? ("continue" as const) : ("complete" as const),
-      };
+      return { decision: hasExecutable ? ("continue" as const) : ("complete" as const) };
     },
   });
 }
 
 /**
- * Creates an LLM-backed evaluator (generator) — assesses progress and decides
- * whether to continue, replan, or complete.
+ * Creates an LLM-backed evaluator (generator) — assesses overall progress and
+ * decides whether to continue, replan, or complete the whole plan.
  */
 export function createLLMEvaluator(config: {
   name: string;
@@ -64,9 +78,9 @@ export function createLLMEvaluator(config: {
 }) {
   return generator({
     name: `${config.name}-evaluate-llm`,
-    model: config.model ?? "gpt-5-mini",
+    model: config.model ?? "openai/gpt-5.4-mini",
     outputSchema: evaluatorOutputSchema,
-    sessionResources: planResources,
+    sequencerStateSchema: planAndExecuteStateSchema,
     prompt: [
       "You are a plan progress evaluator.",
       "Given the current state of a multi-step plan, determine the next action:",
@@ -76,17 +90,14 @@ export function createLLMEvaluator(config: {
       "If the iteration count has reached maxIterations, always return 'complete'.",
       "Be concise in your reasoning.",
     ].join("\n"),
-    user: (input: { planId: string; stepResult?: unknown }, ctx) => {
-      const planRef = (ctx.session.resources as any).plans.get({
-        planId: input.planId,
-      });
-      const plan = planRef.state;
+    user: (_input: unknown, ctx) => {
+      const state = ctx.sequencer!.state;
       return JSON.stringify(
         {
-          goal: plan.goal,
-          iteration: plan.iteration,
-          maxIterations: plan.maxIterations,
-          steps: plan.steps.map((s: PlanStep) => ({
+          goal: state.goal,
+          iteration: state.iteration,
+          maxIterations: state.maxIterations,
+          tasks: state.tasks.map((s: PlanTask) => ({
             id: s.id,
             goal: s.goal,
             status: s.status,
@@ -103,9 +114,9 @@ export function createLLMEvaluator(config: {
 
 /**
  * Creates the evaluate-progress block based on configuration.
- * When enableReplanning is false, returns a simple handler.
- * When enableReplanning is true, returns a handler that enforces maxIterations
- * before delegating to the LLM evaluator.
+ * When enableReplanning is false, returns createTaskEvaluator (no LLM call,
+ * reads success signal from executor output).
+ * When enableReplanning is true, wraps LLM evaluator with maxIterations guard.
  */
 export function createEvaluateProgress(config: {
   name: string;
@@ -113,66 +124,70 @@ export function createEvaluateProgress(config: {
   model?: string;
 }): BlockDefinition<any, any> {
   if (!config.enableReplanning) {
-    return createSimpleEvaluator(config);
+    return createTaskEvaluator(config);
   }
 
-  // For replanning mode, wrap LLM evaluator with maxIterations guard
   const llmEvaluatorBlock = createLLMEvaluator(config);
 
   return handler({
     name: `${config.name}-evaluate`,
     inputSchema,
     outputSchema: iterationOutputSchema,
-    sessionResources: planResources,
+    sequencerStateSchema: planAndExecuteStateSchema,
 
     execute: async (input, ctx) => {
-      const planRef = ctx.session.resources.plans.get({ planId: input.planId });
-      const plan = planRef.state;
+      const state = ctx.sequencer!.state;
 
-      // Increment iteration
-      const newIteration = plan.iteration + 1;
-      await planRef.patchState({ iteration: newIteration });
-
-      // Force complete if max iterations exceeded
-      if (newIteration >= plan.maxIterations) {
-        const allFailed = plan.steps.length > 0 && plan.steps.every((s: PlanStep) => s.status === "failed");
-        await planRef.patchState({
+      if (state.iteration >= state.maxIterations) {
+        const allFailed =
+          state.tasks.length > 0 &&
+          state.tasks.every((s: PlanTask) => s.status === "failed");
+        await ctx.sequencer!.patchState({
           status: allFailed ? "failed" : "completed",
         });
-        return { planId: input.planId, decision: "complete" as const };
+        return { decision: "complete" as const };
       }
 
-      // Check if there are any pending steps at all
-      const hasPending = plan.steps.some(
-        (s: PlanStep) => s.status === "pending" || s.status === "in_progress"
+      const satisfiedIds = new Set(
+        state.tasks
+          .filter((s: PlanTask) => s.status === "completed" || s.status === "skipped")
+          .map((s: PlanTask) => s.id)
       );
-      if (!hasPending) {
-        const allFailed = plan.steps.length > 0 && plan.steps.every((s: PlanStep) => s.status === "failed");
-        await planRef.patchState({
+      const hasExecutable = state.tasks.some(
+        (s: PlanTask) =>
+          (s.status === "pending" || s.status === "in-progress") &&
+          s.dependencies.every((dep: string) => satisfiedIds.has(dep))
+      );
+      if (!hasExecutable) {
+        const allFailed =
+          state.tasks.length > 0 &&
+          state.tasks.every(
+            (s: PlanTask) =>
+              s.status === "failed" || s.status === "skipped" || s.status === "pending"
+          );
+        await ctx.sequencer!.patchState({
           status: allFailed ? "failed" : "completed",
         });
-        return { planId: input.planId, decision: "complete" as const };
+        return { decision: "complete" as const };
       }
 
-      // Delegate to LLM evaluator
-      const llmResult = await llmEvaluatorBlock.run(input, ctx as any) as {
+      const llmResult = (await llmEvaluatorBlock.run(input, ctx as any)) as {
         decision: "continue" | "replan" | "complete";
         reasoning: string;
       };
 
       if (llmResult.decision === "replan") {
-        await planRef.patchState({ status: "replanning" });
+        await ctx.sequencer!.patchState({ status: "replanning" });
       } else if (llmResult.decision === "complete") {
-        const allFailed = plan.steps.length > 0 && plan.steps.every((s: PlanStep) => s.status === "failed");
-        await planRef.patchState({
+        const allFailed =
+          state.tasks.length > 0 &&
+          state.tasks.every((s: PlanTask) => s.status === "failed");
+        await ctx.sequencer!.patchState({
           status: allFailed ? "failed" : "completed",
         });
       }
 
-      return {
-        planId: input.planId,
-        decision: llmResult.decision,
-      };
+      return { decision: llmResult.decision };
     },
   });
 }

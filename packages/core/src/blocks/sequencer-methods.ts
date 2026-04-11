@@ -212,6 +212,11 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<an
   ): SequencerDefinition<TInput, BranchStepOutput<TBranches[keyof TBranches]>>;
 
   validate(): SequencerDefinition<TInput, TOutput>;
+
+  // connectInput — native override returns SequencerDefinition (not a wrapper block)
+  connectInput<TFrom>(
+    mapper: ConnectorFn<TFrom, TInput>
+  ): SequencerDefinition<TFrom, TOutput>;
 }
 
 export type SequencerConfig<

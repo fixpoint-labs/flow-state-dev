@@ -236,6 +236,7 @@ async function executeBlock(
       instanceId: `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
       transient: block.transient || undefined,
       stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined,
+      input,
       container:
         containerConfig === undefined
           ? undefined
@@ -1015,6 +1016,25 @@ function createSequencer<TInput, TOutput>(
       }
 
       return definition;
+    },
+
+    connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): SequencerDefinition<TFrom, TOutput> {
+      const connectOp: SequencerOperation = {
+        name: `${config.name}/connect-input`,
+        run: async (value, ctx) => {
+          const mapped = await mapper(value as TFrom, ctx);
+          return { value: mapped };
+        }
+      };
+
+      return createSequencer<TFrom, TOutput>(
+        { ...config, inputSchema: undefined },
+        [connectOp, ...operations],
+        rescueHandlers,
+        lastOutputSchema,
+        undefined,
+        accumulatedResources
+      );
     }
   });
 
