@@ -54,15 +54,10 @@ export async function handleRequestStream(
       startingAfter: url.searchParams.get("starting_after")
     });
 
-    // No cursor: return the raw live stream directly (original behavior).
-    if (cursor.source === "none") {
-      return new Response(activeStream.readable, {
-        status: 200,
-        headers: SSE_HEADERS
-      });
-    }
-
-    // Cursor present: replay buffered events after cursor, then tail live.
+    // Replay buffered events after cursor (or all if no cursor), then tail live.
+    // Always creates a fresh subscriber ReadableStream — the original
+    // activeStream.readable is single-use and becomes unusable after the
+    // first client disconnects.
     const minSeq = cursor.sequenceNumber ?? -1;
     const emitter = activeStream.emitter;
 

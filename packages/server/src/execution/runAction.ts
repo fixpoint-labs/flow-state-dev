@@ -373,6 +373,18 @@ export async function runActionInternal<
       }, heartbeatIntervalMs)
     : undefined;
 
+  // --- Update session's latestRequestId for auto-resume discovery ---
+  if (options.sessionId !== undefined) {
+    const session = await options.stores.session.get(options.sessionId);
+    if (session !== undefined) {
+      await options.stores.session.set(options.sessionId, {
+        ...session,
+        latestRequestId: requestId,
+        updatedAt: Date.now()
+      });
+    }
+  }
+
   // --- Incremental item persistence ---
   response.setItemHooks({
     onItemDone: (item) => {
