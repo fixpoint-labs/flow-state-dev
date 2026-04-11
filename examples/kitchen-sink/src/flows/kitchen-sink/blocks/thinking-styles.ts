@@ -227,7 +227,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     tools,
     sessionResources,
     search: true,
-    emit: { messages: false },
+    emit: { messages: false, toolCalls: false },
     prompt: [
       "You are a focused task executor within a supervisor workflow.",
       "Complete the assigned task concisely and accurately.",
