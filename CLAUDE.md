@@ -28,8 +28,9 @@ You are not a sycophant. You don't tell the user they have a good idea until you
 | `@flow-state-dev/react` | React hooks and renderers (wraps client) |
 | `@flow-state-dev/testing` | Test harnesses and mocks |
 | `@flow-state-dev/cli` | Terminal interface (`fsdev`) |
+| `@flow-state-dev/devtool` | Pre-built DevTool assets for `fsdev dev` |
 | `@thought-fabric/core` | Cognitive architecture primitives (attention, memory, identity) |
-| `apps/devtool` | First-party inspector app |
+| `apps/devtool` | DevTool source app (builds into `@flow-state-dev/devtool`) |
 | `apps/docs` | Documentation site (Docusaurus) |
 
 ## Documentation Structure
@@ -89,7 +90,7 @@ The philosophy blog post (`apps/docs/blog/2026-03-06-philosophy.md`) is the refe
 
 ## Current Phase
 
-Phase 1 (Foundation): Waves 1.a–1.k complete. Remaining: 1.l (CLI), 1.m (devtool), 1.n (cross-package validation).
+Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@flow-state-dev/devtool` package) shipped. Remaining: 1.n (cross-package validation).
 
 ## @thought-fabric/core Conventions
 
