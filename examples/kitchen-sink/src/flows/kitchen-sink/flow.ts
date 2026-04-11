@@ -60,7 +60,7 @@ const mem = memorySystem({
 // ---------------------------------------------------------------------------
 
 const thinkingStyleInputSchema = z
-  .enum(["auto", "default", "plan-and-execute", "supervisor"])
+  .enum(["auto", "default", "plan-and-execute", "supervisor", "blackboard"])
   .default("auto");
 
 const inputSchema = z.object({

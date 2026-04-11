@@ -49,7 +49,7 @@ const testFlow = defineFlow({
       inputSchema: z.object({
         message: z.string(),
         mode: z.enum(["chat", "create"]).default("chat"),
-        thinkingStyle: z.enum(["auto", "default", "plan-and-execute", "supervisor"]).default("auto"),
+        thinkingStyle: z.enum(["auto", "default", "plan-and-execute", "supervisor", "blackboard"]).default("auto"),
       }),
       block: thinkingStyleRouter,
     },
@@ -57,7 +57,7 @@ const testFlow = defineFlow({
   session: {
     stateSchema: z.object({
       mode: z.enum(["chat", "create"]).default("chat"),
-      thinkingStyle: z.enum(["plan-and-execute", "supervisor", "default"]).optional(),
+      thinkingStyle: z.enum(["plan-and-execute", "supervisor", "blackboard", "default"]).optional(),
       requestCount: z.number().default(0),
       lastAction: z.string().optional(),
     }),
@@ -129,6 +129,19 @@ describe("kitchen-sink flow", () => {
       unmockedGeneratorPolicy: "warn",
     });
     expect(routed.selectedRoute).toBe("supervisor-thinking");
+  });
+
+  it("routes to blackboard-pipeline for blackboard style", async () => {
+    const routed = await testRouter(thinkingStyleRouter, {
+      input: { message: "Analyze this from multiple perspectives", mode: "chat", thinkingStyle: "auto" },
+      flow: testFlow,
+      session: {
+        state: { thinkingStyle: "blackboard" },
+        resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
+      },
+      unmockedGeneratorPolicy: "warn",
+    });
+    expect(routed.selectedRoute).toBe("blackboard-thinking");
   });
 
   it("defaults to default-pipeline when thinkingStyle is not set", async () => {

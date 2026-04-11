@@ -17,10 +17,11 @@ import {
   MessageSquare,
   ListChecks,
   Users,
+  ClipboardList,
   ChevronDownIcon,
 } from "lucide-react";
 
-export type ThinkingStyle = "auto" | "default" | "plan-and-execute" | "supervisor";
+export type ThinkingStyle = "auto" | "default" | "plan-and-execute" | "supervisor" | "blackboard";
 
 interface StyleOption {
   value: ThinkingStyle;
@@ -63,6 +64,14 @@ const STYLE_OPTIONS: StyleOption[] = [
     description: "Orchestrates sub-agents with review",
     icon: Users,
     color: "text-amber-500 dark:text-amber-400",
+  },
+  {
+    value: "blackboard",
+    label: "Blackboard",
+    shortLabel: "Board",
+    description: "Independent experts contribute to a shared workspace",
+    icon: ClipboardList,
+    color: "text-emerald-500 dark:text-emerald-400",
   },
 ];
 
