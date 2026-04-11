@@ -1,13 +1,13 @@
 /**
  * Artifact capability — bundles artifact resources, context formatter, and
- * tool blocks under a single `uses: [artifacts]` declaration.
+ * tool blocks under a single `uses: [artifactsCapability]` declaration.
  *
  * Replaces the manual pattern of spreading `artifactResources` into every
  * block config, wiring `artifactListContext` into generator context arrays,
  * and listing `readArtifact`/`updateArtifact` in tools arrays.
  *
  * Usage:
- *   generator({ uses: [artifacts], model: "preset/fast", prompt: "..." })
+ *   generator({ uses: [artifactsCapability], model: "preset/fast", prompt: "..." })
  *   // → resources auto-installed, context formatter and tools available as presets
  */
 import { defineCapability } from "@flow-state-dev/core";
@@ -50,7 +50,7 @@ const artifactListContext = (_input: unknown, ctx: any) => {
  *   - `inventory` (default: on) — context formatter showing artifact list
  *   - `tools` (default: on) — readArtifact + writeArtifact as generator tools
  */
-export const artifacts = defineCapability({
+export const artifactsCapability = defineCapability({
   name: "artifacts",
   sessionResources: artifactResources,
 

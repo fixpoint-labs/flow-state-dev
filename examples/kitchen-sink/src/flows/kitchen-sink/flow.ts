@@ -36,7 +36,7 @@ import {
   autoClassifyStyle,
   thinkingStyleSchema,
   thinkingStyleSessionStateSchema,
-  artifacts,
+  artifactsCapability,
 } from "./blocks";
 import { modeSchema, artifactResources } from "./schemas";
 import { CHAT_PROMPT, CREATE_PROMPT } from "./prompts";
@@ -100,7 +100,7 @@ const assistantGenerator = generator({
   sessionStateSchema: z.object({ mode: modeSchema.default("chat"), thinkingStyle: z.string().optional() }),
 
   // Artifact capability: installs resources, context formatter, and tools
-  uses: [artifacts],
+  uses: [artifactsCapability],
 
   context: [mem.contextFormatter, voiceContext],
 
