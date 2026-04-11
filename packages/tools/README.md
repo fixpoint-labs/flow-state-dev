@@ -21,12 +21,16 @@ generator({
 
 Provider is selected automatically based on available API keys (checked in order):
 
-| Provider | Env var | Package |
-|----------|---------|---------|
-| Tavily | `TAVILY_API_KEY` | `@tavily/core` (optional peer dep) |
-| Exa | `EXA_API_KEY` | `exa-js` (optional peer dep) |
-| Serper | `SERPER_API_KEY` | _(fetch-based, no extra dep)_ |
-| Brave | `BRAVE_SEARCH_API_KEY` | _(fetch-based, no extra dep)_ |
+| Provider | Env var | Package | Result type |
+|----------|---------|---------|-------------|
+| Tavily | `TAVILY_API_KEY` | `@tavily/core` (optional peer dep) | Raw results |
+| Exa | `EXA_API_KEY` | `exa-js` (optional peer dep) | Raw results |
+| Perplexity | `PERPLEXITY_API_KEY` | _(fetch-based, no extra dep)_ | Raw results |
+| Serper | `SERPER_API_KEY` | _(fetch-based, no extra dep)_ | Raw results |
+| Brave | `BRAVE_SEARCH_API_KEY` | _(fetch-based, no extra dep)_ | Raw results |
+| Perplexity Sonar | `PERPLEXITY_API_KEY` | _(fetch-based, no extra dep)_ | Grounded answer + citations |
+
+Perplexity Search API returns raw ranked web results (hybrid lexical + semantic retrieval). Perplexity Sonar returns AI-synthesized answers with source citations, similar to Gemini grounding. When `PERPLEXITY_API_KEY` is set, auto-detection prefers the Search API. Use `perplexitySonarSearch()` to explicitly select the Sonar grounding provider.
 
 ### Configuration
 
@@ -43,7 +47,14 @@ search({
 ### Direct provider constructors
 
 ```typescript
-import { tavilySearch, exaSearch, serperSearch, braveSearch } from "@flow-state-dev/tools/search";
+import {
+  tavilySearch,
+  exaSearch,
+  perplexitySearch,
+  serperSearch,
+  braveSearch,
+  perplexitySonarSearch,
+} from "@flow-state-dev/tools/search";
 ```
 
 ## Fetch
