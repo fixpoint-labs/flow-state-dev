@@ -14,13 +14,13 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   Sparkles,
+  MessageSquare,
   ListChecks,
   Users,
-  Brain,
   ChevronDownIcon,
 } from "lucide-react";
 
-export type ThinkingStyle = "auto" | "plan-and-execute" | "supervisor" | "chain-of-thought";
+export type ThinkingStyle = "auto" | "default" | "plan-and-execute" | "supervisor";
 
 interface StyleOption {
   value: ThinkingStyle;
@@ -41,6 +41,14 @@ const STYLE_OPTIONS: StyleOption[] = [
     color: "text-violet-500 dark:text-violet-400",
   },
   {
+    value: "default",
+    label: "Default",
+    shortLabel: "Default",
+    description: "Direct generation with the selected model",
+    icon: MessageSquare,
+    color: "text-zinc-500 dark:text-zinc-400",
+  },
+  {
     value: "plan-and-execute",
     label: "Plan & Execute",
     shortLabel: "Plan",
@@ -55,14 +63,6 @@ const STYLE_OPTIONS: StyleOption[] = [
     description: "Orchestrates sub-agents with review",
     icon: Users,
     color: "text-amber-500 dark:text-amber-400",
-  },
-  {
-    value: "chain-of-thought",
-    label: "Chain of Thought",
-    shortLabel: "CoT",
-    description: "Extended reasoning with visible thinking",
-    icon: Brain,
-    color: "text-emerald-500 dark:text-emerald-400",
   },
 ];
 

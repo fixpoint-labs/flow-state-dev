@@ -12,6 +12,7 @@
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import { emitPlanSnapshot } from "../shared/plan";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { GeneratorSlot } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   supervisorInputSchema,
@@ -21,6 +22,7 @@ import {
   executableTasksSchema,
   applyReviewOutputSchema,
   type SubTaskErrorStrategy,
+  type SupervisorState,
   type PlannerOutput,
   type ReviewOutput,
   type ExecutableTask,
@@ -77,6 +79,12 @@ export interface SupervisorConfig<
    * - `retry`: retry per worker's retry policy before failing
    */
   onSubTaskError?: SubTaskErrorStrategy;
+
+  /** Context slot applied to default planner and synthesizer. */
+  context?: GeneratorSlot<any, any>;
+
+  /** History slot applied to default planner and synthesizer. */
+  history?: GeneratorSlot<any, any>;
 
   /** Schema for the final synthesized output. */
   outputSchema?: TOutputSchema;
@@ -206,14 +214,19 @@ export const applyReview = handler({
   },
 });
 
-function buildDefaultPlanner(name: string) {
+function buildDefaultPlanner(name: string, opts?: {
+  context?: GeneratorSlot<any, any>;
+  history?: GeneratorSlot<any, any>;
+}) {
   return generator({
     name: `${name}-planner`,
     model: "preset/fast",
     outputSchema: plannerOutputSchema,
     sequencerStateSchema: supervisorStateSchema,
+    context: opts?.context,
+    history: opts?.history,
     prompt: (_input, ctx) => {
-      const state = ctx.sequencer?.state;
+      const state = ctx.sequencer?.state as SupervisorState | undefined;
       if (!state || state.iteration === 0) {
         return [
           "You are a task decomposition assistant for a supervisor workflow.",
@@ -301,12 +314,18 @@ function buildDefaultReviewer(
 
 function buildDefaultSynthesizer(
   name: string,
-  outputSchema?: ZodTypeAny
+  outputSchema?: ZodTypeAny,
+  opts?: {
+    context?: GeneratorSlot<any, any>;
+    history?: GeneratorSlot<any, any>;
+  }
 ) {
   return generator({
     name: `${name}-synthesizer`,
     model: "preset/fast",
     outputSchema: outputSchema ?? z.string(),
+    context: opts?.context,
+    history: opts?.history,
     emit: { messages: true, reasoning: false },
     prompt: [
       "You are a final synthesis step in a supervisor workflow.",
@@ -345,15 +364,20 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   const errorStrategy = config.onSubTaskError ?? "skip";
   const maxIterations = config.maxIterations ?? 3;
 
+  const slotOpts = {
+    context: config.context,
+    history: config.history,
+  };
+
   const planner =
-    config.planner ?? buildDefaultPlanner(name);
+    config.planner ?? buildDefaultPlanner(name, slotOpts);
 
   const reviewer =
     config.reviewer ?? buildDefaultReviewer(name, config.reviewCriteria);
 
   const finalSynthesizer =
     config.synthesizer ??
-    buildDefaultSynthesizer(name, config.outputSchema);
+    buildDefaultSynthesizer(name, config.outputSchema, slotOpts);
 
   // Wrap the worker in a sequencer with rescue for skip/retry strategies.
   // "fail" uses the bare worker so errors propagate naturally.
