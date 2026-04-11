@@ -121,6 +121,7 @@ const sidebars: SidebarsConfig = {
         "tools/overview",
         "tools/fetch",
         "tools/crawl",
+        "tools/bash",
       ],
     },
     "roadmap",

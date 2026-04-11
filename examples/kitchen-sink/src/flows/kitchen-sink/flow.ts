@@ -36,6 +36,9 @@ import {
   autoClassifyStyle,
   thinkingStyleSchema,
   thinkingStyleSessionStateSchema,
+  bashCommand,
+  bashReadFile,
+  bashWriteFile,
 } from "./blocks";
 import { modeSchema, artifactResources } from "./schemas";
 import { CHAT_PROMPT, CREATE_PROMPT } from "./prompts";
@@ -67,6 +70,7 @@ const thinkingStyleInputSchema = z
 
 const featuresSchema = z.object({
   biasCheck: z.boolean().default(false),
+  bashTool: z.boolean().default(true),
 });
 
 const inputSchema = z.object({
@@ -105,7 +109,14 @@ const assistantGenerator = generator({
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
   user: (input) => input.message,
 
-  tools: [readArtifact, updateArtifact],
+  tools: (ctx) => {
+    const base = [readArtifact, updateArtifact];
+    const features = (ctx.session?.state as Record<string, unknown>)?.features as Record<string, boolean> | undefined;
+    if (features?.bashTool !== false) {
+      return [...base, bashCommand, bashReadFile, bashWriteFile];
+    }
+    return base;
+  },
   search: true,
   maxIterations: 10,
   outputSchema: z.string(),
@@ -128,7 +139,7 @@ const { thinkingStyleRouter } = createThinkingStyleRouter({
   modelId: MODEL_ID,
   history: (_input: any, ctx: any) => ctx.session.items.llm({ limit: 8 }),
   context: [mem.contextFormatter, artifactListContext],
-  tools: [readArtifact, updateArtifact],
+  tools: [readArtifact, updateArtifact, bashCommand, bashReadFile, bashWriteFile],
   sessionResources: artifactResources,
 });
 
@@ -372,7 +383,7 @@ const kitchenSinkFlow = defineFlow({
         thinkingStyle:
           (ctx.state.thinkingStyle as string | undefined) ?? null,
         requestCount: Number(ctx.state.requestCount ?? 0),
-        features: ctx.state.features ?? { biasCheck: false },
+        features: ctx.state.features ?? { biasCheck: false, bashTool: true },
       }),
     },
   },
