@@ -4,6 +4,7 @@
 import type { BlockOutputItem, ItemProvenance } from "@flow-state-dev/core/items";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
+import { getBaseCapability } from "@flow-state-dev/core";
 import { composeMiddleware, mergeMiddlewareStacks } from "../middleware/compose";
 import type { BlockMiddlewareContext } from "../middleware/types";
 import { normalizeError } from "../errors/normalize-error";
@@ -30,7 +31,6 @@ import type {
   ExecutionMetadata
 } from "./types";
 import { createExecutionMetadata } from "./types";
-import { getBaseCapability } from "@flow-state-dev/core/capability";
 
 type ExecuteDispatcherOptions = {
   internalSeams: InternalExecutionSeams;
