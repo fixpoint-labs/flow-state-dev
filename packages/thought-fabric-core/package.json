@@ -20,6 +20,10 @@
     "./identity": {
       "types": "./dist/identity/index.d.ts",
       "default": "./dist/identity/index.js"
+    },
+    "./metacognition": {
+      "types": "./dist/metacognition/index.d.ts",
+      "default": "./dist/metacognition/index.js"
     }
   },
   "license": "MIT",

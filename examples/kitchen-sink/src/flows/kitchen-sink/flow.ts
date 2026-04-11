@@ -21,6 +21,8 @@ import {
 } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { system as memorySystem } from "@thought-fabric/core/memory";
+import { biasAnalyzer } from "@thought-fabric/core/metacognition";
+import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
 import { z } from "zod";
 import {
   updateArtifact,
@@ -63,10 +65,15 @@ const thinkingStyleInputSchema = z
   .enum(["auto", "default", "plan-and-execute", "supervisor", "blackboard"])
   .default("auto");
 
+const featuresSchema = z.object({
+  biasCheck: z.boolean().default(false),
+});
+
 const inputSchema = z.object({
   message: z.string().min(1),
   mode: modeSchema,
   thinkingStyle: thinkingStyleInputSchema,
+  features: featuresSchema.default({}),
 });
 
 const sessionStateSchema = z.object({
@@ -74,6 +81,7 @@ const sessionStateSchema = z.object({
   thinkingStyle: thinkingStyleSchema.optional(),
   requestCount: z.number().default(0),
   lastAction: z.string().optional(),
+  features: featuresSchema.default({}),
 });
 
 const userStateSchema = z.object({
@@ -182,6 +190,96 @@ const autoTitle = utility.sessionTitleGenerator({
   model: MODEL_ID,
 });
 
+const applyFeatures = handler({
+  name: "apply-features",
+  inputSchema,
+  sessionStateSchema: z.object({ features: featuresSchema.default({}) }),
+  execute: async (input, ctx) => {
+    await ctx.session.patchState({ features: input.features });
+  },
+});
+
+// Bias check pipeline — runs in background after the router produces output.
+// Wraps biasAnalyzer in responseAuditor for threshold filtering + UI display.
+// Skips the LLM calls entirely when the feature is disabled.
+
+// Adapter: bridges biasAnalyzer (userInput/aiResponse → BiasAnalyzerOutput)
+// to the responseAuditor contract (userInput/response → AnalyzerResult).
+const biasAnalyzerAdapter = sequencer({
+  name: "bias-adapter",
+  inputSchema: z.object({ userInput: z.string(), response: z.string() }),
+})
+  .map((input: { userInput: string; response: string }) => ({
+    userInput: input.userInput,
+    aiResponse: input.response,
+  }))
+  .then(biasAnalyzer({ model: MODEL_ID }))
+  .map((output: Record<string, unknown>) => {
+    const annotations = (output.annotations as Array<Record<string, unknown>>) ?? [];
+    const severity = output.severity as string;
+    return {
+      analyzerId: output.analyzerId as string,
+      category: output.category as string,
+      score: output.score as number,
+      shouldSurface: (output.score as number) >= 0.3,
+      annotations: annotations.map((a) => ({
+        type: a.biasType as string,
+        label: (a.biasType as string).replace(/_/g, " "),
+        severity: severity as "info" | "warning" | "critical",
+        description: a.description as string,
+        evidence: a.evidence as string | undefined,
+      })),
+      supplementary: {
+        summary: output.summary,
+        label: output.label,
+        sycophancyScore: output.sycophancyScore,
+        counterArguments: output.counterArguments,
+      },
+    };
+  });
+
+const auditor = responseAuditor({
+  analyzers: [biasAnalyzerAdapter],
+  threshold: 0.3,
+});
+
+const biasCheck = sequencer({ name: "bias-check", inputSchema: z.string() })
+  .map((aiResponse: string, ctx) => ({
+    userInput: String(
+      (ctx.parent?.input as Record<string, unknown>)?.message ?? "",
+    ),
+    response: aiResponse,
+  }))
+  .thenIf(
+    (_input, ctx) =>
+      Boolean(
+        (ctx.session?.state as Record<string, unknown>)?.features &&
+          (
+            (ctx.session?.state as Record<string, unknown>)
+              ?.features as Record<string, unknown>
+          )?.biasCheck,
+      ),
+    auditor,
+  )
+  .tap((result: unknown, ctx) => {
+    // Emit component item when auditor produced surfaced results.
+    if (result && typeof result === "object" && "surfacedResults" in result) {
+      const data = result as {
+        surfacedResults: unknown[];
+        results: unknown[];
+        overallScore: number;
+      };
+      if (data.surfacedResults.length > 0) {
+        ctx
+          .emitComponent(
+            "audit-annotation",
+            data as unknown as Record<string, unknown>,
+          )
+          .done();
+      }
+    }
+  });
+
 const setPreferredModelInputSchema = z.object({
   preferredModel: z.string().min(1),
 });
@@ -201,8 +299,10 @@ const setPreferredModelHandler = handler({
 
 const runSequencer = sequencer({ name: "run", inputSchema })
   .tap(applyRequestedMode)
+  .tap(applyFeatures)
   .tap(resolveThinkingStyle)
   .then(thinkingStyleRouter)
+  .work(biasCheck)
   .work(mem.captureFromItems)
   .work(autoTitle)
 
@@ -272,6 +372,7 @@ const kitchenSinkFlow = defineFlow({
         thinkingStyle:
           (ctx.state.thinkingStyle as string | undefined) ?? null,
         requestCount: Number(ctx.state.requestCount ?? 0),
+        features: ctx.state.features ?? { biasCheck: false },
       }),
     },
   },

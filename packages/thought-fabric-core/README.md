@@ -15,7 +15,7 @@ This package is in Wave 1 foundation mode.
 | Identity | `identity` | Scaffold |
 | Perception | — | Wave 2+ |
 | Reasoning | — | Wave 2+ |
-| Metacognition | — | Wave 3+ |
+| Metacognition | `metacognition` | Bias & sycophancy detection |
 | Learning | — | Wave 4+ |
 
 ## Usage
@@ -152,6 +152,66 @@ All exports from `@thought-fabric/core/memory` related to working memory:
 
 - `constitution(config)` — Placeholder (not implemented)
 - `perspective(config)` — Placeholder (not implemented)
+
+## Metacognition Exports
+
+All exports from `@thought-fabric/core/metacognition`:
+
+### Bias & Sycophancy Detection
+
+Analyzes AI responses for agreement bias, sycophantic patterns, and cognitive biases. Produces structured audit results with counter-arguments when bias exceeds threshold.
+
+```ts
+import { biasAnalyzer } from '@thought-fabric/core/metacognition'
+
+// Full pipeline: detect → classify → score → counterpoint → format
+const audit = biasAnalyzer({ model: 'preset/fast' })
+
+// Standalone usage
+const result = await audit.run({
+  userInput: 'I think we should use microservices',
+  aiResponse: 'Great idea! Microservices are definitely the best approach...',
+}, ctx)
+
+// result.score: 0.72
+// result.label: 'sycophantic'
+// result.counterArguments: [{ claim: '...', counterpoint: '...', strength: 0.8 }]
+```
+
+| Export | Kind | Description |
+|--------|------|-------------|
+| **Block factories** | | |
+| `biasAnalyzer(config?)` | sequencer | Bundled pipeline: detect → classify → score → counterpoint → format. |
+| `biasDetectAgreement(config?)` | generator | Detects agreement patterns across four dimensions. |
+| `biasClassify(config?)` | generator | Classifies six cognitive bias types with per-type confidence. |
+| `biasScore(config?)` | handler | Computes composite sycophancy score from dimensions + biases. |
+| `biasCounterpoint(config?)` | generator | Generates substantive counter-arguments for biased responses. |
+| `biasFormat()` | handler | Maps accumulated data to AnalyzerResult output schema. |
+| **Schemas** | | |
+| `biasAnalyzerInputSchema` | Zod schema | `{ userInput: string, aiResponse: string }` |
+| `biasAnalyzerOutputSchema` | Zod schema | Full output conforming to AnalyzerResult contract. |
+| `biasTypeSchema` | Zod enum | Six bias types: sycophancy, confirmation, anchoring, authority, recency, false consensus. |
+| `biasAnnotationSchema` | Zod schema | Per-bias annotation with type, confidence, description, evidence. |
+| `counterArgumentSchema` | Zod schema | Counter-argument with claim, counterpoint, strength, sources. |
+| `sycophancyScoreSchema` | Zod schema | Composite score with label and four-dimension breakdown. |
+| `analyzerResultSchema` | Zod schema | Generic AnalyzerResult contract (FIX-307 forward declaration). |
+| **Helpers** | | |
+| `labelForSycophancyScore(score)` | pure function | Maps score [0,1] to label: balanced / mild_bias / moderate_bias / sycophantic. |
+| `severityForSycophancyScore(score)` | pure function | Maps score to severity: info / warning / critical. |
+| `computeCompositeSycophancyScore(breakdown, biases, config?)` | pure function | Weighted composite from dimensions + bias confidence. |
+| `shouldGenerateCounterpoints(score, threshold?)` | pure function | Whether score warrants counter-argument generation. |
+| `summarizeBiasFindings(score, label, biases)` | pure function | Human-readable summary string. |
+| **Config** | | |
+| `DEFAULT_BIAS_ANALYZER_CONFIG` | const | Default threshold (0.4), dimension weights, bias confidence weight. |
+
+### Score Thresholds
+
+| Score Range | Label | Severity | Counter-arguments |
+|---|---|---|---|
+| 0.0 - 0.2 | `balanced` | info | No |
+| 0.2 - 0.4 | `mild_bias` | info | No |
+| 0.4 - 0.7 | `moderate_bias` | warning | Yes |
+| 0.7 - 1.0 | `sycophantic` | critical | Yes |
 
 ## Dependencies
 

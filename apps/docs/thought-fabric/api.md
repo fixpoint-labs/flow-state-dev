@@ -4,9 +4,9 @@ sidebar_position: 6
 
 # API Reference
 
-Cognitive architecture primitives built on flow-state-dev. Provides attention, memory, and identity domains for agentic workflows.
+Cognitive architecture primitives built on flow-state-dev. Provides attention, memory, identity, and metacognition domains for agentic workflows.
 
-**Import:** Use subpath exports. `@thought-fabric/core/attention`, `@thought-fabric/core/memory`, `@thought-fabric/core/identity`.
+**Import:** Use subpath exports. `@thought-fabric/core/attention`, `@thought-fabric/core/memory`, `@thought-fabric/core/identity`, `@thought-fabric/core/metacognition`.
 
 ---
 
@@ -144,6 +144,55 @@ Three-tier memory: working (session), episodic (cross-session), and semantic (st
 
 ---
 
+## metacognition
+
+Bias detection, sycophancy scoring, and counter-argument generation.
+
+**Import:** `@thought-fabric/core/metacognition`
+
+### Blocks
+
+| Function | Kind | Purpose |
+|----------|------|---------|
+| `biasAnalyzer(config?)` | sequencer | Bundled pipeline: detect → classify → score → counterpoint → format |
+| `biasDetectAgreement(config?)` | generator | Detects agreement patterns across four dimensions |
+| `biasClassify(config?)` | generator | Classifies six bias types with per-type confidence |
+| `biasScore(config?)` | handler | Computes composite sycophancy score (deterministic) |
+| `biasCounterpoint(config?)` | generator | Generates counter-arguments when score exceeds threshold |
+| `biasFormat()` | handler | Maps accumulated data to AnalyzerResult output |
+
+### Schemas
+
+| Schema | Purpose |
+|--------|---------|
+| `biasAnalyzerInputSchema` | Input: `{ userInput: string, aiResponse: string }` |
+| `biasAnalyzerOutputSchema` | Full output with bias annotations, score, counter-arguments |
+| `biasTypeSchema` | Enum of six bias types |
+| `biasAnnotationSchema` | Per-bias annotation (type, confidence, description, evidence) |
+| `counterArgumentSchema` | Counter-argument (claim, counterpoint, strength, sources) |
+| `sycophancyScoreSchema` | Composite score with label and four-dimension breakdown |
+| `sycophancyBreakdownSchema` | Four dimension scores |
+| `sycophancyLabelSchema` | Enum: balanced, mild_bias, moderate_bias, sycophantic |
+| `analyzerResultSchema` | Generic AnalyzerResult contract (FIX-307 forward declaration) |
+
+### Helpers
+
+| Function | Purpose |
+|----------|---------|
+| `labelForSycophancyScore(score)` | Score → label mapping |
+| `severityForSycophancyScore(score)` | Score → severity (info/warning/critical) |
+| `computeCompositeSycophancyScore(breakdown, biases, config?)` | Weighted composite from dimensions + bias confidence |
+| `shouldGenerateCounterpoints(score, threshold?)` | Whether score warrants counter-argument generation |
+| `summarizeBiasFindings(score, label, biases)` | Human-readable summary string |
+
+### Config
+
+| Constant | Contents |
+|----------|----------|
+| `DEFAULT_BIAS_ANALYZER_CONFIG` | `counterpointThreshold` (0.4), `breakdownWeights`, `biasConfidenceWeight` (0.3) |
+
+---
+
 ## identity (placeholders)
 
 Wave 2 placeholders. Not yet implemented.
@@ -158,6 +207,7 @@ Wave 2 placeholders. Not yet implemented.
 ```ts
 import { system as memorySystem } from "@thought-fabric/core/memory";
 import { filterRelevance, scoreSalience } from "@thought-fabric/core/attention";
+import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 
 const mem = memorySystem({ model: "preset/fast", working: true, episodic: true, semantic: true });
 
@@ -167,6 +217,7 @@ const pipeline = sequencer({ name: "pipeline", inputSchema: chatInput })
 
 const filter = filterRelevance({ name: "filter" });
 const salience = scoreSalience({ name: "rank" });
+const audit = biasAnalyzer({ model: "preset/fast" });
 ```
 
 See [Memory](/thought-fabric/memory) for a full guide.

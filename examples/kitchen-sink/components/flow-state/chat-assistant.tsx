@@ -6,6 +6,7 @@ import { Status } from "./status";
 import { ErrorDisplay } from "./error";
 import { Plan } from "./plan";
 import { Blackboard } from "./blackboard";
+import { AuditAnnotation } from "./audit-annotation";
 
 /**
  * Pre-wired renderer registry for standard chat assistant UIs.
@@ -23,5 +24,5 @@ export const chatAssistantRenderers: RendererRegistry = {
   error: ErrorDisplay,
   step_error: ErrorDisplay,
   source: false,
-  component: { plan: Plan, blackboard: Blackboard },
+  component: { plan: Plan, blackboard: Blackboard, "audit-annotation": AuditAnnotation },
 };

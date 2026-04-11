@@ -6,6 +6,7 @@ import { Status } from "./status";
 import { ErrorDisplay } from "./error";
 import { Plan } from "./plan";
 import { Blackboard } from "./blackboard";
+import { AuditAnnotation } from "./audit-annotation";
 
 /**
  * Pre-wired renderer registry for standard chat assistant UIs.
@@ -17,6 +18,7 @@ import { Blackboard } from "./blackboard";
  * Component renderers (emitComponent items) are registered under `component`:
  *   - plan: renders plan snapshots emitted via emitPlanSnapshot()
  *   - blackboard: renders blackboard workspace state snapshots
+ *   - audit-annotation: renders response auditor findings
  */
 export const chatAssistantRenderers: RendererRegistry = {
   message: Message,
@@ -30,5 +32,6 @@ export const chatAssistantRenderers: RendererRegistry = {
   component: {
     plan: Plan,
     blackboard: Blackboard,
+    "audit-annotation": AuditAnnotation,
   },
 };

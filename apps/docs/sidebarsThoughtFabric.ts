@@ -6,6 +6,7 @@ const sidebars: SidebarsConfig = {
     "attention",
     "memory",
     "identity",
+    "metacognition",
     "roadmap",
     "api",
   ],

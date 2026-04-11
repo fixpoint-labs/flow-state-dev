@@ -19,6 +19,15 @@ This is a living document. Thought Fabric builds on top of flow-state-dev, so it
 - Helpers: add, evict, pin, unpin, refresh, advance, items, formatForContext
 - `workingMemoryContextFormatter` — ready-made context slot for generators
 
+### Metacognition (partial)
+- `biasAnalyzer` — bundled sequencer: detect → classify → score → counterpoint → format
+- Sycophancy detection with 4-dimension scoring (agreement, validating language, omitted counterpoints, framing adoption)
+- 6 cognitive bias types: sycophancy, confirmation bias, anchoring, authority deference, recency bias, false consensus
+- Counter-argument generation when score exceeds threshold
+- Individual blocks exported for remixability: `biasDetectAgreement`, `biasClassify`, `biasScore`, `biasCounterpoint`, `biasFormat`
+- Helper functions: `labelForSycophancyScore`, `computeCompositeSycophancyScore`, `shouldGenerateCounterpoints`, `summarizeBiasFindings`
+- Conforms to `AnalyzerResult` contract for Response Auditor pattern integration
+
 ## Coming Soon
 
 ### Identity
@@ -38,7 +47,7 @@ This is a living document. Thought Fabric builds on top of flow-state-dev, so it
 
 ## Planned
 
-### Metacognition
+### Metacognition (remaining)
 - Confidence calibration
 - Strategy selection and self-correction
 - Performance self-monitoring

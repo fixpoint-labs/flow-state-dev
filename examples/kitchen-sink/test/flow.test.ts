@@ -60,6 +60,7 @@ const testFlow = defineFlow({
       thinkingStyle: z.enum(["plan-and-execute", "supervisor", "blackboard", "default"]).optional(),
       requestCount: z.number().default(0),
       lastAction: z.string().optional(),
+      features: z.object({ biasCheck: z.boolean().default(false) }).default({}),
     }),
     resources: {
       artifacts: artifactsCollection,
