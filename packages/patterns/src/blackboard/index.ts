@@ -6,7 +6,7 @@
  * reads the blackboard state and decides which specialist to invoke next.
  *
  * Pipeline: [init] → [controller] → [recordDecision] → thenIf(!done, [dispatch])
- *           → [checkBlackboard] → loopBack(controller) → [synthesizer?]
+ *           → tap([snapshot]) → [checkBlackboard] → loopBack(controller) → [synthesizer?]
  *
  * The blackboard is a session resource (not sequencer state) — enabling
  * cross-request inspection and demonstrating the resource system for patterns.
@@ -113,6 +113,7 @@ function buildDefaultController(config: {
     outputSchema: controllerOutputSchema,
     sessionResources: { blackboard: config.blackboardResource },
     sequencerStateSchema: blackboardControlSchema,
+    emit: { messages: false, reasoning: false },
     ...(config.context !== undefined ? { context: config.context } : {}),
     prompt: (_input, ctx) => {
       const state = ctx.sequencer?.state as BlackboardControlState | undefined;
@@ -159,6 +160,7 @@ function buildDefaultSynthesizer(config: {
     name: `${config.name}-synthesizer`,
     model: config.model ?? "openai/gpt-5.4-mini",
     sessionResources: { blackboard: config.blackboardResource },
+    emit: { messages: true, reasoning: false },
     ...(config.outputSchema ? { outputSchema: config.outputSchema } : {}),
     ...(config.context !== undefined ? { context: config.context } : {}),
     prompt: [
@@ -229,7 +231,8 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       context: config.context,
     });
 
-  // 3. Record decision: stores controller output in sequencer state
+  // 3. Record decision: stores controller output in sequencer state and
+  //    emits a status message so the user knows which specialist is running.
   const recordDecision = handler({
     name: `${name}-record`,
     inputSchema: controllerOutputSchema,
@@ -255,6 +258,14 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         done: input.done,
         history,
       });
+
+      // Emit status so the user sees what's happening without noise
+      if (input.done) {
+        ctx.emitStatus(`[blackboard:${name}] converged after ${state.iteration + 1} iterations`);
+      } else if (input.specialist) {
+        ctx.emitStatus(`[blackboard:${name}] invoking specialist: ${input.specialist}`);
+      }
+
       return input;
     },
   });
@@ -262,10 +273,32 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   // 4. Dispatch: routes to the correct specialist
   const dispatch = createDispatchSpecialist(name, config.specialists);
 
-  // 5. Check: materializes loop condition
+  // 5. Snapshot: emits the current blackboard state as a structured component
+  //    after each specialist runs. Uses a stable key so clients replace
+  //    prior snapshots in-place (same pattern as supervisor plan snapshots).
+  const emitSnapshot = handler({
+    name: `${name}-snapshot`,
+    inputSchema: z.any(),
+    outputSchema: z.any(),
+    sessionResources: { blackboard: blackboardResource },
+    sequencerStateSchema: blackboardControlSchema,
+    execute: async (input, ctx) => {
+      const boardState = ctx.session.resources.blackboard.state;
+      const controlState = ctx.sequencer!.state;
+      ctx.emitComponent("blackboard", {
+        state: boardState,
+        iteration: controlState.iteration,
+        specialist: controlState.currentSpecialist ?? null,
+        done: controlState.done,
+      } as unknown as Record<string, unknown>, { key: name }).done();
+      return input;
+    },
+  });
+
+  // 6. Check: materializes loop condition
   const checkBlackboard = createCheckBlackboard(name);
 
-  // 6. Synthesizer (optional)
+  // 7. Synthesizer (optional)
   const finalSynthesizer =
     config.synthesizer === false
       ? null
@@ -278,7 +311,7 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
           outputSchema: config.outputSchema,
         });
 
-  // 7. Assemble pipeline
+  // 8. Assemble pipeline
   const base = sequencer({
     name,
     stateSchema: blackboardControlSchema,
@@ -290,6 +323,7 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       (r: ControllerOutput) => !r.done,
       dispatch
     )
+    .tap(emitSnapshot)
     .then(checkBlackboard)
     .loopBack(controller.name, {
       when: (v: { continue: boolean }) => v.continue,

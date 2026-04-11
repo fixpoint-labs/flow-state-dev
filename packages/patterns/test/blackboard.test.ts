@@ -382,6 +382,71 @@ describe("blackboard", () => {
     });
   });
 
+  describe("UX emissions", () => {
+    it("emits status messages for specialist invocations and convergence", async () => {
+      const ctrl = makeDeterministicController("ctrl-ux-status", [
+        { specialist: "analyst", done: false, reasoning: "Need analysis" },
+        { specialist: null, done: true, reasoning: "Done" },
+      ]);
+
+      const block = blackboard({
+        name: "ux-status",
+        blackboard: board,
+        specialists: { analyst },
+        controller: ctrl.block,
+        synthesizer: false,
+      });
+
+      ctrl.reset();
+      const result = await testBlock(block, {
+        input: {},
+        session: { resources: { blackboard: emptyBoardState } },
+      });
+
+      expect(result.error).toBeNull();
+      const statusItems = result.items.filter((item) => item.type === "status");
+      // One "invoking specialist" + one "converged" status
+      expect(statusItems.length).toBe(2);
+      expect(statusItems.some((s) =>
+        (s as any).message?.includes("invoking specialist: analyst")
+      )).toBe(true);
+      expect(statusItems.some((s) =>
+        (s as any).message?.includes("converged after")
+      )).toBe(true);
+    });
+
+    it("emits blackboard component snapshots with stable key for dedup", async () => {
+      const ctrl = makeDeterministicController("ctrl-ux-snap", [
+        { specialist: "analyst", done: false, reasoning: "Go" },
+        { specialist: "researcher", done: false, reasoning: "Go" },
+        { specialist: null, done: true, reasoning: "Done" },
+      ]);
+
+      const block = blackboard({
+        name: "ux-snap",
+        blackboard: board,
+        specialists: { analyst, researcher },
+        controller: ctrl.block,
+        synthesizer: false,
+      });
+
+      ctrl.reset();
+      const result = await testBlock(block, {
+        input: {},
+        session: { resources: { blackboard: emptyBoardState } },
+      });
+
+      expect(result.error).toBeNull();
+      const componentItems = result.items.filter(
+        (item) => item.type === "component" && (item as any).component === "blackboard"
+      );
+      // One snapshot per iteration (3 total: after analyst, after researcher, after done)
+      expect(componentItems.length).toBe(3);
+      // All use the same key for dedup
+      expect(componentItems.every((c) => (c as any).key === "ux-snap")).toBe(true);
+    });
+  });
+
   describe("single specialist", () => {
     it("works with a single specialist", async () => {
       const ctrl = makeDeterministicController("ctrl-single", [
