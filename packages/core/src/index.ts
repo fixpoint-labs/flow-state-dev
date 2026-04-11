@@ -25,6 +25,15 @@ export type {
 
 export { defineResource, resource } from "./types/resource";
 export { defineResourceCollection, isDefinedResourceCollection, defineResourceNamespace, isDefinedResourceNamespace } from "./types/resource-collection";
+export { defineCapability } from "./capability";
+export type {
+  CapabilityRef,
+  ConfiguredCapability,
+  DefinedCapability,
+  InferCapabilities,
+  PresetDef,
+  PresetOverrides,
+} from "./capability";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
 export {

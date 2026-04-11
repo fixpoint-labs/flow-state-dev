@@ -9,7 +9,9 @@ import type {
 } from "../types/block";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
+import type { CapabilityRef } from "../capability/types";
 import { buildBlock, extractDeclaredResources } from "./internal/build-block";
+import { resolveCapabilities } from "./internal/resolve-capabilities";
 
 export interface HandlerConfig<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
@@ -58,6 +60,9 @@ export interface HandlerConfig<
   projectResources?: TProjectResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
   targetStateSchemas?: TTargetSchemas;
+  /** Capabilities to install. Merges resources, state schemas, targets,
+   *  and any active preset surfaces into this block's config. */
+  uses?: readonly CapabilityRef[];
   execute: (
     input: TInput,
     ctx: BlockContext<
@@ -104,10 +109,13 @@ export function handler<
     TSessionResources, TUserResources, TProjectResources, TTargetSchemas
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+  const { declaredResources, resolvedCapabilities } = resolveCapabilities(config, "handler");
+
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "handler",
     config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     execute: config.execute as unknown as (input: TInput, ctx: BlockContext) => Promise<TOutput> | TOutput,
-    declaredResources: extractDeclaredResources(config)
+    declaredResources,
+    resolvedCapabilities,
   });
 }

@@ -20,7 +20,9 @@ import type {
   ProviderTool
 } from "../types/model";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
-import { buildBlock, extractDeclaredResources } from "./internal/build-block";
+import type { CapabilityRef } from "../capability/types";
+import { buildBlock } from "./internal/build-block";
+import { resolveCapabilitiesForGenerator } from "./internal/resolve-capabilities";
 import { toError, withTimeout } from "./internal/utils";
 
 const DEFAULT_MAX_ITERATIONS = 8;
@@ -186,6 +188,9 @@ export interface GeneratorConfig<
   projectResources?: TProjectResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
   targetStateSchemas?: TTargetSchemas;
+  /** Capabilities to install. Merges resources, state schemas, targets,
+   *  and any active preset surfaces into this block's config. */
+  uses?: readonly CapabilityRef[];
   model: ResolvableModel<NoInfer<TInput>, TCtx>;
   prompt: ResolvableString<TInput, TCtx>;
   context?: GeneratorSlot<NoInfer<TInput>, TCtx>;
@@ -1118,16 +1123,51 @@ export function generator<
     TSessionResources, TUserResources, TProjectResources, TTargetSchemas, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+  const { declaredResources, resolvedCapabilities, mergedSurface } = resolveCapabilitiesForGenerator(config);
+
   const outputSchema = (config.outputSchema ?? z.string()) as ZodTypeAny;
   const normalizedConfig: GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput> = {
     ...config,
     outputSchema: outputSchema as TOutputSchema
   } as GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
 
+  // Merge capability context entries into the generator's context slot
+  if (mergedSurface && mergedSurface.contextEntries.length > 0) {
+    const existingContext = normalizedConfig.context;
+    if (existingContext === undefined) {
+      (normalizedConfig as any).context = mergedSurface.contextEntries;
+    } else {
+      const existingArr = Array.isArray(existingContext) ? existingContext : [existingContext];
+      (normalizedConfig as any).context = [...existingArr, ...mergedSurface.contextEntries];
+    }
+  }
+
+  // Merge capability tools into the generator's tools
+  if (mergedSurface && mergedSurface.toolEntries.length > 0) {
+    const existingTools = normalizedConfig.tools;
+    const capToolEntries = mergedSurface.toolEntries;
+    (normalizedConfig as any).tools = async (ctx: BlockContext) => {
+      const userTools = existingTools
+        ? Array.isArray(existingTools)
+          ? existingTools
+          : await existingTools(ctx as any)
+        : [];
+      const presetTools = (
+        await Promise.all(
+          capToolEntries.map((factory) =>
+            Array.isArray(factory) ? factory : factory(ctx)
+          )
+        )
+      ).flat();
+      return [...userTools, ...presetTools];
+    };
+  }
+
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "generator",
     config: normalizedConfig as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
-    declaredResources: extractDeclaredResources(config),
+    declaredResources,
+    resolvedCapabilities,
     execute: async (input: TInput, ctx) => {
       const blockName = String(normalizedConfig.name);
       const { modelId, model } = await resolveModel(

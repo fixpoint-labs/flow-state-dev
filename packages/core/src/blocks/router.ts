@@ -9,7 +9,9 @@ import type {
 } from "../types/block";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
+import type { CapabilityRef } from "../capability/types";
 import { buildBlock, extractDeclaredResources, mergeDeclaredResources } from "./internal/build-block";
+import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { isBlockDefinition } from "./internal/utils";
 
 /**
@@ -78,6 +80,9 @@ export interface RouterConfig<
   projectResources?: TProjectResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
   targetStateSchemas?: TTargetSchemas;
+  /** Capabilities to install. Merges resources, state schemas, targets,
+   *  and any active preset surfaces into this block's config. */
+  uses?: readonly CapabilityRef[];
   routes: BlockDefinition<TInputSchema, TOutputSchema>[];
   execute: (
     input: TInput,
@@ -137,10 +142,21 @@ export function router<
     TSessionResources, TUserResources, TProjectResources, TTargetSchemas
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+  const { declaredResources: capResources, resolvedCapabilities } = resolveCapabilities(config, "router");
+  // Merge capability resources with the router's own + route resources
+  const routerResources = mergeRouterResources(config);
+  const declaredResources = capResources
+    ? mergeDeclaredResources(
+        { ...capResources },
+        routerResources
+      )
+    : routerResources;
+
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "router",
     config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
-    declaredResources: mergeRouterResources(config),
+    declaredResources,
+    resolvedCapabilities,
     execute: async (input, ctx) => {
       const candidate = (config.execute as (input: TInput, ctx: BlockContext) =>
         Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>
