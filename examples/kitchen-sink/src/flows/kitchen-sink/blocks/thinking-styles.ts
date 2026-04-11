@@ -195,6 +195,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     name: "pae-thinking",
     model: modelId,
     context,
+    history: config.history,
     search: true,
     tools,
     sessionResources,

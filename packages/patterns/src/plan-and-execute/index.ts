@@ -110,6 +110,9 @@ export interface PlanAndExecuteConfig<
   /** Context slot applied to all default blocks. Accepts a single entry or an array. */
   context?: GeneratorSlot<any, any>;
 
+  /** History slot applied to default planner and synthesizer. */
+  history?: GeneratorSlot<any, any>;
+
   /** Tools assigned to all default blocks (executor, replanner, synthesizer). */
   tools?: GeneratorTool[] | ((ctx: any) => GeneratorTool[]);
 
@@ -145,12 +148,14 @@ function createDefaultReplanner(config: {
   name: string;
   model?: string;
   context?: GeneratorSlot<any, any>;
+  history?: GeneratorSlot<any, any>;
   tools?: GeneratorTool[] | ((ctx: any) => GeneratorTool[]);
 }) {
   return generator({
     name: `${config.name}-replanner`,
     model: config.model ?? "openai/gpt-5.4-mini",
     ...(config.context !== undefined ? { context: config.context } : {}),
+    ...(config.history !== undefined ? { history: config.history } : {}),
     ...(config.tools !== undefined ? { tools: config.tools as any } : {}),
     outputSchema: z.object({
       tasks: z.array(z.object({
@@ -302,6 +307,7 @@ function createDefaultSynthesizer(config: {
   name: string;
   model?: string;
   context?: GeneratorSlot<any, any>;
+  history?: GeneratorSlot<any, any>;
   tools?: GeneratorTool[] | ((ctx: any) => GeneratorTool[]);
   synthesizeInstructions?: string;
 }) {
@@ -316,6 +322,7 @@ function createDefaultSynthesizer(config: {
     name: `${config.name}-synthesizer`,
     model: config.model ?? "openai/gpt-5.4-mini",
     ...(config.context !== undefined ? { context: config.context } : {}),
+    ...(config.history !== undefined ? { history: config.history } : {}),
     ...(config.tools !== undefined ? { tools: config.tools as any } : {}),
     inputSchema: z.object({
       goal: z.string(),
@@ -470,6 +477,7 @@ export function planAndExecute<
     name: `${name}-planner`,
     model: config.model,
     context: config.context as any,
+    history: config.history as any,
   });
 
   const evaluator = config.evaluator ?? createEvaluateProgress({
@@ -482,6 +490,7 @@ export function planAndExecute<
     name,
     model: config.model,
     context: config.context,
+    history: config.history,
     tools: config.tools,
   });
   const applyReplan = createApplyReplan({ name });
@@ -492,6 +501,7 @@ export function planAndExecute<
           name,
           model: config.model,
           context: config.context,
+          history: config.history,
           tools: config.tools,
           synthesizeInstructions: config.synthesizeInstructions,
         }))
