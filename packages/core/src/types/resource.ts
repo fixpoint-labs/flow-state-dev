@@ -9,6 +9,55 @@ import type {
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { ResourceCollectionRef } from "./resource-collection";
 
+/**
+ * Client-side content access permissions for a single resource.
+ * Only `read` and `prefetch` are valid on single resources.
+ */
+export type ResourceClientContentConfig = {
+  /** Allow clients to fetch the rendered content body via the content endpoint. */
+  read?: boolean;
+  /** When true, content is included inline in the snapshot response (for small, always-needed resources). */
+  prefetch?: boolean;
+};
+
+/**
+ * Client-side content access permissions for a collection resource.
+ * Extends single-resource permissions with CRUD mutation flags.
+ */
+export type CollectionClientContentConfig = ResourceClientContentConfig & {
+  /** Allow clients to create new collection items via POST. */
+  create?: boolean;
+  /** Allow clients to update existing collection item content via PATCH. */
+  update?: boolean;
+  /** Allow clients to delete collection items via DELETE. */
+  delete?: boolean;
+};
+
+/**
+ * Client visibility configuration for a single resource.
+ * Controls what data is exposed to the client and how.
+ */
+export type ResourceClientConfig = {
+  /** Content access permissions — governs access to the rendered content body. */
+  content?: ResourceClientContentConfig;
+};
+
+/**
+ * Client visibility configuration for a collection resource.
+ * Controls what data is exposed to the client and how.
+ */
+export type CollectionClientConfig = {
+  /** Content access permissions — governs access to rendered content bodies and CRUD operations. */
+  content?: CollectionClientContentConfig;
+};
+
+/**
+ * A compute function that derives client-visible data from a single resource's state.
+ * Analogous to scope-level clientData, but scoped to the resource.
+ */
+export type ResourceClientDataFn<TState extends JsonObject = JsonObject> =
+  (state: Readonly<TState>) => JsonValue | Promise<JsonValue>;
+
 export type ResourceConfig = {
   stateSchema: ZodTypeAny;
   default?: JsonValue;
@@ -23,6 +72,10 @@ export type ResourceConfig = {
   writable?: boolean;
   allowedExtensions?: string[];
   metadata?: Record<string, unknown>;
+  /** Client visibility configuration. Omit to keep the resource invisible to clients. */
+  client?: ResourceClientConfig;
+  /** Derives client-visible metadata from the resource's state. Appears under `resources[ref].clientData` in the snapshot. */
+  clientData?: ResourceClientDataFn;
 };
 
 export type ResourceContext<TState extends JsonObject = JsonObject> = {

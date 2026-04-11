@@ -19,7 +19,7 @@ import {
   utility,
   selectModel,
 } from "@flow-state-dev/core";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+// ResourceCollectionRef no longer needed — artifacts are now exposed via resource-level clientData
 import { system as memorySystem } from "@thought-fabric/core/memory";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
@@ -349,26 +349,8 @@ const kitchenSinkFlow = defineFlow({
     stateSchema: sessionStateSchema,
     resources: { ...artifactResources, ...mem.sessionResources },
     clientData: {
-      artifacts: async (ctx) => {
-        const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<{
-          title: string;
-          summary: string;
-          updatedAt: number;
-        }>;
-        const instances = artifacts.list();
-        return Promise.all(
-          instances.map(async (ref) => {
-            const content = (await ref.readContent()) ?? "";
-            return {
-              id: ref.name.replace("artifacts/", ""),
-              title: ref.state.title ?? "Untitled",
-              summary: ref.state.summary ?? "",
-              content,
-              updatedAt: ref.state.updatedAt,
-            };
-          }),
-        );
-      },
+      // Artifact metadata is now exposed via resource-level clientData on the collection.
+      // Scope-level clientData only handles non-resource projections.
       modeStatus: (ctx) => ({
         currentMode: modeSchema.parse(ctx.state.mode ?? "chat"),
         thinkingStyle:

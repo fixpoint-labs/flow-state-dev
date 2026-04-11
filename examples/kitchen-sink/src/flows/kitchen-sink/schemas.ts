@@ -18,9 +18,21 @@ export const artifactStateSchema = z.object({
 // Resource collection for artifacts. Each artifact is a separate resource
 // instance keyed by its ID (e.g., "artifacts/my-doc"). Metadata lives in
 // state, the document body lives in resource content.
+//
+// client.content declares that content is readable and updatable by clients.
+// clientData exposes title, language, and type metadata in the snapshot
+// without eagerly loading document bodies.
 export const artifactsCollection = defineResourceCollection({
   pattern: "artifacts/*",
   stateSchema: artifactStateSchema,
+  client: {
+    content: { read: true, update: true },
+  },
+  clientData: (state) => ({
+    title: state.title ?? "Untitled",
+    summary: state.summary ?? "",
+    updatedAt: state.updatedAt,
+  }),
 });
 
 export const artifactResources = {

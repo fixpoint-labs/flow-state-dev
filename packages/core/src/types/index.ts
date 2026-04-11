@@ -74,9 +74,14 @@ export type {
 } from "./model";
 
 export type {
+  CollectionClientConfig,
+  CollectionClientContentConfig,
   ContextOf,
   DefinedResource,
   MessageLike,
+  ResourceClientConfig,
+  ResourceClientContentConfig,
+  ResourceClientDataFn,
   ResourceConfig,
   ResourceContext,
   AnyResourceRef,
@@ -88,6 +93,7 @@ export type {
 } from "./resource";
 
 export type {
+  CollectionClientDataFn,
   CollectionHookContext,
   DefinedResourceCollection,
   EvictionPolicy,

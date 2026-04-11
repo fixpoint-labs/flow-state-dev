@@ -4,7 +4,7 @@
 import type {
   JsonObject,
   ResourceConfig,
-  ResourceCollectionConfig
+  ResourceCollectionConfig,
 } from "@flow-state-dev/core/types";
 import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
@@ -296,6 +296,79 @@ export async function computeClientData(options: {
   }
 
   return out;
+}
+
+/**
+ * Builds the client-visible `resources` snapshot for one scope.
+ * For each resource with a `client` config, returns resource-level `clientData` and
+ * optionally prefetched content. Resources without `client` config are excluded.
+ */
+export async function buildResourceSnapshot(options: {
+  configs: Record<string, unknown> | undefined;
+  persisted: Record<string, unknown> | undefined;
+  persistedContent?: Record<string, string> | undefined;
+}): Promise<Record<string, unknown> | undefined> {
+  const out: Record<string, unknown> = {};
+  const contentMap = options.persistedContent ?? {};
+  let hasAny = false;
+
+  for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
+    if (isCollectionConfig(maybeConfig)) {
+      // Collection: only include if client config is present
+      if (maybeConfig.client === undefined) continue;
+
+      const pattern = maybeConfig.pattern;
+      const persisted = options.persisted ?? {};
+      const clientDataFn = typeof maybeConfig.clientData === "function"
+        ? maybeConfig.clientData as (state: unknown) => unknown
+        : undefined;
+      const prefetch = maybeConfig.client?.content?.prefetch === true;
+
+      const items: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(persisted)) {
+        if (!matchesPattern(pattern, key)) continue;
+
+        const state = isJsonObject(value) ? value : {};
+        const entry: Record<string, unknown> = {};
+        if (clientDataFn) {
+          entry.clientData = await clientDataFn(state);
+        }
+        if (prefetch && contentMap[key] !== undefined) {
+          entry.content = contentMap[key];
+        }
+        items[key] = entry;
+      }
+
+      out[resourceName] = { items };
+      hasAny = true;
+      continue;
+    }
+
+    if (!isResourceConfig(maybeConfig)) continue;
+    // Single resource: only include if client config is present
+    if ((maybeConfig as ResourceConfig).client === undefined) continue;
+
+    const state = normalizeResourceState(
+      maybeConfig,
+      options.persisted?.[resourceName]
+    );
+    const clientDataFn = typeof (maybeConfig as ResourceConfig).clientData === "function"
+      ? (maybeConfig as ResourceConfig).clientData as (state: unknown) => unknown
+      : undefined;
+    const prefetch = (maybeConfig as ResourceConfig).client?.content?.prefetch === true;
+
+    const entry: Record<string, unknown> = {};
+    if (clientDataFn) {
+      entry.clientData = await clientDataFn(state);
+    }
+    if (prefetch && contentMap[resourceName] !== undefined) {
+      entry.content = contentMap[resourceName];
+    }
+    out[resourceName] = entry;
+    hasAny = true;
+  }
+
+  return hasAny ? out : undefined;
 }
 
 export function sortItems(items: OutputItem[] | undefined): OutputItem[] {

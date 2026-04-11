@@ -559,11 +559,13 @@ describe("createFlowApiRouter", () => {
     });
   });
 
-  it("returns raw resources in session state response", async () => {
+  it("returns resource clientData in session state response", async () => {
     const registry = createFlowRegistry();
     const stores = createInMemoryStores();
     const counterResource = defineResource({
-      stateSchema: z.object({ count: z.number().default(0) })
+      stateSchema: z.object({ count: z.number().default(0) }),
+      client: { content: { read: true } },
+      clientData: (state) => ({ count: state.count }),
     });
 
     const flow = defineFlow({
@@ -608,14 +610,14 @@ describe("createFlowApiRouter", () => {
     expect(stateResponse.status).toBe(200);
     const body = (await stateResponse.json()) as {
       resources?: {
-        session?: Record<string, Record<string, unknown>>;
-        user?: Record<string, Record<string, unknown>>;
-        project?: Record<string, Record<string, unknown>>;
+        session?: Record<string, unknown>;
+        user?: Record<string, unknown>;
+        project?: Record<string, unknown>;
       };
     };
     expect(body.resources).toBeDefined();
     expect(body.resources!.session).toBeDefined();
-    expect(body.resources!.session!.counter).toEqual({ count: 0 });
+    expect(body.resources!.session!.counter).toEqual({ clientData: { count: 0 } });
   });
 
   it("returns 503 when active stream capacity is reached", async () => {
