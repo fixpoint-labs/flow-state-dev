@@ -9,7 +9,7 @@ import type {
 } from "../types/block";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
-import type { CapabilityRef } from "../capability/types";
+import type { CapabilityRef, InferCapabilities } from "../capability/types";
 import { buildBlock, extractDeclaredResources, mergeDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { isBlockDefinition } from "./internal/utils";
@@ -66,6 +66,9 @@ export interface RouterConfig<
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
+  // Capability type inference
+  TUses extends readonly CapabilityRef[] = readonly [],
+  TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
@@ -82,13 +85,14 @@ export interface RouterConfig<
   targetStateSchemas?: TTargetSchemas;
   /** Capabilities to install. Merges resources, state schemas, targets,
    *  and any active preset surfaces into this block's config. */
-  uses?: readonly CapabilityRef[];
+  uses?: TUses;
   routes: BlockDefinition<TInputSchema, TOutputSchema>[];
   execute: (
     input: TInput,
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TProjectState,
-      TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas
+      TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas,
+      TCapabilities
     >
   ) => Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>;
   validateRoute?: (
@@ -97,7 +101,8 @@ export interface RouterConfig<
     input: TInput,
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TProjectState,
-      TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas
+      TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas,
+      TCapabilities
     >
   ) => Promise<boolean> | boolean;
   container?: {
@@ -132,6 +137,8 @@ export function router<
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
+  TUses extends readonly CapabilityRef[] = readonly [],
+  TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
 >(
   config: RouterConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
@@ -139,7 +146,8 @@ export function router<
     TRequestState, TSessionState, TUserState, TProjectState, TSequencerState,
     TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
     TSessionResourceDefs, TUserResourceDefs, TProjectResourceDefs,
-    TSessionResources, TUserResources, TProjectResources, TTargetSchemas
+    TSessionResources, TUserResources, TProjectResources, TTargetSchemas,
+    TUses, TCapabilities
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { declaredResources: capResources, resolvedCapabilities } = resolveCapabilities(config, "router");

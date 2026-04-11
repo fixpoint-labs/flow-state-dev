@@ -92,7 +92,7 @@ export interface BlockContext<
   TParentInput = unknown,
   TTargets extends Record<string, ZodTypeAny> | undefined = undefined,
   // Derive-once: capability helper namespaces from the `uses` array
-  TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = Record<string, never>,
+  TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = {},
 > {
   request: RequestScopeHandle<TRequestState>;
   session: SessionScopeHandle<TSessionState, TSessionResources>;

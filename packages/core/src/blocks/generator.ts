@@ -20,7 +20,7 @@ import type {
   ProviderTool
 } from "../types/model";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
-import type { CapabilityRef } from "../capability/types";
+import type { CapabilityRef, InferCapabilities } from "../capability/types";
 import { buildBlock } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { toError, withTimeout } from "./internal/utils";
@@ -169,10 +169,14 @@ export interface GeneratorConfig<
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
+  // Capability type inference
+  TUses extends readonly CapabilityRef[] = readonly [],
+  TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,
-    TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas
+    TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas,
+    TCapabilities
   >,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
@@ -190,7 +194,7 @@ export interface GeneratorConfig<
   targetStateSchemas?: TTargetSchemas;
   /** Capabilities to install. Merges resources, state schemas, targets,
    *  and any active preset surfaces into this block's config. */
-  uses?: readonly CapabilityRef[];
+  uses?: TUses;
   model: ResolvableModel<NoInfer<TInput>, TCtx>;
   prompt: ResolvableString<TInput, TCtx>;
   context?: GeneratorSlot<NoInfer<TInput>, TCtx>;
@@ -1109,9 +1113,12 @@ export function generator<
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
+  TUses extends readonly CapabilityRef[] = readonly [],
+  TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,
-    TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas
+    TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas,
+    TCapabilities
   >,
 >(
   config: GeneratorConfig<
@@ -1120,7 +1127,8 @@ export function generator<
     TRequestState, TSessionState, TUserState, TProjectState, TSequencerState,
     TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
     TSessionResourceDefs, TUserResourceDefs, TProjectResourceDefs,
-    TSessionResources, TUserResources, TProjectResources, TTargetSchemas, TCtx
+    TSessionResources, TUserResources, TProjectResources, TTargetSchemas,
+    TUses, TCapabilities, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { declaredResources, resolvedCapabilities, mergedSurface } = resolveCapabilities(config, "generator");

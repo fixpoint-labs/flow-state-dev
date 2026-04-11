@@ -100,6 +100,49 @@ type NoFnsCap = InferCapabilities<readonly [typeof capNoFns]>;
 const _noFnsAccess: NoFnsCap["noFns"] = {} as Record<string, never>;
 void _noFnsAccess;
 
+// ── Block factory ctx.cap type inference ─────────────────────────────
+
+import { handler } from "../../blocks/handler";
+
+// Handler with uses — ctx.cap should have the memory namespace
+handler({
+  name: "cap-typed-handler",
+  uses: [memoryCapability] as const,
+  inputSchema: z.any(),
+  outputSchema: z.any(),
+  execute: async (_input, ctx) => {
+    // ctx.cap.memory should be typed with remember and recall
+    ctx.cap.memory.remember("test");
+    const results: string[] = ctx.cap.memory.recall("query");
+    void results;
+    return {};
+  },
+});
+
+// Handler with two capabilities
+handler({
+  name: "cap-two",
+  uses: [memoryCapability, analyticsCapability] as const,
+  inputSchema: z.any(),
+  outputSchema: z.any(),
+  execute: async (_input, ctx) => {
+    ctx.cap.memory.remember("fact");
+    ctx.cap.analytics.track("event", { key: "value" });
+    return {};
+  },
+});
+
+// Handler without uses — ctx.cap should be empty
+handler({
+  name: "no-cap-handler",
+  inputSchema: z.any(),
+  outputSchema: z.any(),
+  execute: async (_input, _ctx) => {
+    // _ctx.cap should be {} — no properties
+    return {};
+  },
+});
+
 // Suppress unused variable warnings
 void _singleAccess;
 void _singleRecall;
