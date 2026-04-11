@@ -9,7 +9,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { exec } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
-import { resolve, extname, join } from "node:path";
+import { resolve, extname, join, sep } from "node:path";
 import type { Command } from "commander";
 import type { FlowInstance, ModelResolver } from "@flow-state-dev/core/types";
 import {
@@ -166,7 +166,10 @@ async function executeDevCommand(options: DevCommandOptions): Promise<void> {
   });
 
   // Keep process alive and handle graceful shutdown
+  let shuttingDown = false;
   const shutdown = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     process.stderr.write("\nShutting down...\n");
     server.close();
     process.exit(EXIT_SUCCESS);
@@ -231,9 +234,9 @@ async function handleApiRequest(
   // Build full URL for the Web API Request
   const fullUrl = `http://localhost${url}`;
 
-  // Read request body for POST/PATCH/PUT
+  // Read request body for POST/PATCH (the router supports GET, POST, PATCH, DELETE)
   let body: string | undefined;
-  if (method === "POST" || method === "PATCH" || method === "PUT") {
+  if (method === "POST" || method === "PATCH") {
     body = await readRequestBody(req);
   }
 
@@ -284,8 +287,14 @@ async function handleApiRequest(
           const chunk = decoder.decode(value, { stream: true });
           res.write(chunk);
         }
-      } catch {
-        // Client disconnected or stream errored
+        // Flush any buffered bytes from incomplete multibyte sequences
+        const finalChunk = decoder.decode();
+        if (finalChunk) res.write(finalChunk);
+      } catch (streamErr) {
+        // Client disconnect is expected; log other errors for debugging
+        if (streamErr instanceof Error && streamErr.name !== "AbortError") {
+          process.stderr.write(`[SSE stream error] ${streamErr.message}\n`);
+        }
       } finally {
         res.end();
       }
@@ -331,9 +340,9 @@ async function serveStaticFile(
   if (cleanUrl === "/" || cleanUrl === "") {
     filePath = join(assetDir, "index.html");
   } else {
-    // Prevent directory traversal
+    // Prevent directory traversal — ensure resolved path is strictly inside assetDir
     const normalized = resolve(assetDir, "." + cleanUrl);
-    if (!normalized.startsWith(assetDir)) {
+    if (normalized !== assetDir && !normalized.startsWith(assetDir + sep)) {
       res.writeHead(403);
       res.end("Forbidden");
       return;

@@ -18,5 +18,6 @@ export {
   EXIT_INTERNAL_ERROR,
 } from "./exit-codes";
 export type { BlockExecResult } from "./commands/block";
+export { registerDevCommand } from "./commands/dev";
 export type { FlowRunResult, FlowEvent } from "./commands/run";
 export { registerUiCommand } from "./commands/ui";
