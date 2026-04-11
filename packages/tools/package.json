@@ -20,6 +20,10 @@
     "./crawl": {
       "types": "./dist/crawl/index.d.ts",
       "default": "./dist/crawl/index.js"
+    },
+    "./bash": {
+      "types": "./dist/bash/index.d.ts",
+      "default": "./dist/bash/index.js"
     }
   },
   "license": "MIT",
@@ -31,6 +35,7 @@
   },
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
+    "ai": "^6.0.93",
     "@mozilla/readability": "^0.6.0",
     "linkedom": "^0.18.12",
     "turndown": "^7.2.4",
