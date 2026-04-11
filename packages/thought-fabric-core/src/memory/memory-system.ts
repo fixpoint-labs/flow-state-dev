@@ -643,13 +643,37 @@ export function system(config: MemorySystemConfig): MemorySystem {
       }
     : undefined
 
-  // Create resources if configured (shared instances across blocks)
-  const episodicResource = episodicConfig
-    ? createEpisodicMemoryResource(episodicConfig.scope)
+  // Create tier capabilities FIRST — these own the resource references.
+  // Blocks and the system both derive resources from capabilities to avoid
+  // resource conflicts (same defineResource() reference everywhere).
+  const wmCapability = createWorkingMemoryCapability(resolvedWorking)
+
+  const epCapability = episodicConfig
+    ? createEpisodicMemoryCapability({
+        scope: episodicConfig.scope,
+        maxEpisodes: episodicConfig.maxEpisodes,
+      })
     : undefined
 
-  const semanticResource = semanticConfig
-    ? createSemanticMemoryResource(semanticConfig.scope)
+  const semCapability = semanticConfig
+    ? createSemanticMemoryCapability({
+        scope: semanticConfig.scope,
+      })
+    : undefined
+
+  // Extract resource references from capabilities for shared use by blocks.
+  // Cast required: capability types store resources as DeclaredResourceEntry
+  // (broad), but the MemorySystem interface uses specific resource types.
+  const episodicResource = epCapability
+    ? (episodicConfig!.scope === 'user'
+        ? epCapability.userResources!.episodicMemory
+        : epCapability.projectResources!.episodicMemory) as ReturnType<typeof createEpisodicMemoryResource>
+    : undefined
+
+  const semanticResource = semCapability
+    ? (semanticConfig!.scope === 'user'
+        ? semCapability.userResources!.semanticMemory
+        : semCapability.projectResources!.semanticMemory) as ReturnType<typeof createSemanticMemoryResource>
     : undefined
 
   // Build blocks config — pass shared resources to avoid resource conflicts
@@ -686,22 +710,6 @@ export function system(config: MemorySystemConfig): MemorySystem {
   // Create captureFromItems — self-serving variant that reads from session items
   const maxAssistantChars = config.maxAssistantChars ?? DEFAULT_OBSERVER_CONFIG.maxAssistantChars
   const captureFromItems = capture.connectInput(buildItemsConnector(maxAssistantChars))
-
-  // Create tier capabilities with matching config
-  const wmCapability = createWorkingMemoryCapability(resolvedWorking)
-
-  const epCapability = episodicConfig
-    ? createEpisodicMemoryCapability({
-        scope: episodicConfig.scope,
-        maxEpisodes: episodicConfig.maxEpisodes,
-      })
-    : undefined
-
-  const semCapability = semanticConfig
-    ? createSemanticMemoryCapability({
-        scope: semanticConfig.scope,
-      })
-    : undefined
 
   // Compose the unified memory capability
   const capUses: CapabilityRef[] = [wmCapability]
