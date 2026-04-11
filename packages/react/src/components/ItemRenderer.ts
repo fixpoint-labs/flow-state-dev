@@ -179,20 +179,6 @@ export function ItemRenderer(props: ItemRendererProps): ReactNode {
 function renderItem(item: OutputItem): ReactNode {
   const { renderers } = useFlowContext();
 
-  // Suppress items owned by a container that has a registered renderer.
-  // The container renderer is responsible for displaying its owned items.
-  const ownedBy = (item as OutputItem & { ownedBy?: string }).ownedBy;
-  if (ownedBy !== undefined && renderers?.container !== undefined) {
-    // Walk the container registry — if ANY container renderer is registered,
-    // owned items are suppressed. The container's own renderer displays them.
-    const hasAnyContainerRenderer = Object.values(renderers.container).some(
-      (v) => v !== undefined && v !== false
-    );
-    if (hasAnyContainerRenderer) {
-      return null;
-    }
-  }
-
   const componentKey =
     item.type === "component"
       ? (item as ComponentItem).component
@@ -210,6 +196,18 @@ function renderItem(item: OutputItem): ReactNode {
   // 1. Custom renderer from registry.
   if (resolved !== undefined) {
     return createElement(resolved, { item });
+  }
+
+  // Component items whose key matches a registered container renderer are
+  // subsumed by the container — suppress them to avoid a raw JSON fallback.
+  // This handles both old items (no ownedBy) and new container-scoped items.
+  if (
+    item.type === "component" &&
+    componentKey !== undefined &&
+    renderers?.container?.[componentKey] !== undefined &&
+    renderers.container[componentKey] !== false
+  ) {
+    return null;
   }
 
   // 2. Built-in fallback (message, status, error, step_error).
