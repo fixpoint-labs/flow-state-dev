@@ -23,6 +23,7 @@ const sidebars: SidebarsConfig = {
         "fundamentals/state-and-scopes",
         "fundamentals/type-system",
         "fundamentals/utility-blocks",
+        "fundamentals/models",
         "fundamentals/voice",
       ],
     },
@@ -109,6 +110,7 @@ const sidebars: SidebarsConfig = {
       items: [
         "cli/overview",
         "devtool/overview",
+        "devtool/setup",
       ],
     },
     {

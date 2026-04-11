@@ -138,8 +138,9 @@ expect(result.output).toBeDefined();
 | [`@flow-state-dev/client`](packages/client) | Isomorphic API client — actions, sessions, streams |
 | [`@flow-state-dev/react`](packages/react) | React hooks and renderers |
 | [`@flow-state-dev/testing`](packages/testing) | Test harnesses and generator mocks |
-| [`@flow-state-dev/cli`](packages/cli) | Terminal interface (`fsdev`) |
-| [`apps/devtool`](apps/devtool) | First-party flow inspector |
+| [`@flow-state-dev/cli`](packages/cli) | Terminal interface (`fsdev run`, `fsdev dev`) |
+| [`@flow-state-dev/devtool`](packages/devtool) | Pre-built DevTool assets for `fsdev dev` |
+| [`apps/devtool`](apps/devtool) | DevTool source app |
 
 ## Quick start
 

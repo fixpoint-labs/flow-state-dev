@@ -186,10 +186,10 @@ export interface GeneratorConfig<
   projectResources?: TProjectResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
   targetStateSchemas?: TTargetSchemas;
-  model: ResolvableModel<TInput, TCtx>;
+  model: ResolvableModel<NoInfer<TInput>, TCtx>;
   prompt: ResolvableString<TInput, TCtx>;
-  context?: GeneratorSlot<TInput, TCtx>;
-  history?: GeneratorSlot<TInput, TCtx>;
+  context?: GeneratorSlot<NoInfer<TInput>, TCtx>;
+  history?: GeneratorSlot<NoInfer<TInput>, TCtx>;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
   user?: TypedUserSlotFn<TInput, TCtx> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
   tools?: GeneratorTool[] | ((ctx: TCtx) => MaybePromise<GeneratorTool[]>);

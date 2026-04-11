@@ -3,6 +3,7 @@
  */
 import { Command } from "commander";
 import { registerBlockCommand } from "./commands/block";
+import { registerDevCommand } from "./commands/dev";
 import { registerRunCommand } from "./commands/run";
 import { registerUiCommand } from "./commands/ui";
 
@@ -14,5 +15,6 @@ program
   .version("0.0.0");
 
 registerBlockCommand(program);
+registerDevCommand(program);
 registerRunCommand(program);
 registerUiCommand(program);

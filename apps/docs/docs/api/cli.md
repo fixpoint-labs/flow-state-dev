@@ -60,6 +60,27 @@ fsdev run stateful increment -i '{"increment": 1}' --session my-session
 # → {"count": 2}
 ```
 
+### `fsdev dev`
+
+Start an HTTP dev server that serves the flow API and DevTool UI together.
+
+```bash
+fsdev dev
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-p, --port <port>` | Port to listen on (default: `4200`) |
+| `--flow-dir <path>` | Override flow discovery root (repeatable) |
+| `-m, --model <model>` | Override model for all generator blocks |
+| `--no-open` | Don't open the browser automatically |
+
+**Requires:** `@flow-state-dev/devtool` installed (provides the pre-built UI assets).
+
+The server discovers flows, registers them in an in-memory flow registry, creates filesystem stores at `.fsdev/data/`, and starts listening. API routes are served at `/api/flows/*`. The DevTool UI is served for all other paths. See [DevTool Setup](/docs/devtool/setup) for full details.
+
 ### `fsdev block <specifier>`
 
 Execute a single block in isolation using the testing harness.
@@ -201,4 +222,7 @@ import type {
 |------|---------|
 | 0 | Success |
 | 1 | Execution error (flow or block failed at runtime) |
-| 2 | Invalid arguments (unknown flow, bad input, etc.) |
+| 2 | Invalid arguments (bad JSON input, missing required flags) |
+| 3 | Configuration error (invalid port, missing devtool assets) |
+| 4 | Discovery error (flow or block not found, import failed) |
+| 10 | Internal error (unhandled exception) |

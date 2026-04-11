@@ -42,7 +42,7 @@ const classifierFixture = mockGenerator({
   script: [
     {
       structuredOutput: {
-        category: "chain-of-thought",
+        category: "default",
         confidence: 0.9,
         reasoning: "Direct question",
       },
@@ -74,14 +74,14 @@ describe("thinking style detector — Tier 1 (keyword handler)", () => {
     expect(result.state.session).toMatchObject({ thinkingStyle: "plan-and-execute" });
   });
 
-  it("selects chain-of-thought for reasoning keywords", async () => {
+  it("does not match reasoning keywords (no CoT style)", async () => {
     const result = await testSequencer(keywordTestSeq, {
       input: { message: "Explain why this approach works" },
       flow: testFlow,
     });
 
     expect(result.error).toBeNull();
-    expect(result.state.session).toMatchObject({ thinkingStyle: "chain-of-thought" });
+    expect(result.state.session.thinkingStyle).toBeUndefined();
   });
 
   it("is case-insensitive", async () => {
@@ -151,7 +151,7 @@ describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
 
     expect(result.error).toBeNull();
     expect(result.state.session).toMatchObject({
-      thinkingStyle: "chain-of-thought",
+      thinkingStyle: "default",
     });
   });
 
@@ -183,7 +183,7 @@ describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
     });
   });
 
-  it("falls back to chain-of-thought when LLM confidence is below threshold", async () => {
+  it("falls back to default when LLM confidence is below threshold", async () => {
     const lowConfidence = mockGenerator({
       name: "thinking-style-classifier",
       script: [
@@ -207,7 +207,7 @@ describe("thinking style detector — full (Tier 1 + Tier 2)", () => {
 
     expect(result.error).toBeNull();
     expect(result.state.session).toMatchObject({
-      thinkingStyle: "chain-of-thought",
+      thinkingStyle: "default",
     });
   });
 });
