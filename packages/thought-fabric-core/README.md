@@ -12,7 +12,7 @@ This package is in Wave 1 foundation mode.
 |--------|-----------|--------|
 | Attention | `attention` | Salience scoring + relevance filtering implemented |
 | Memory | `memory` | Working memory implemented |
-| Identity | `identity` | Scaffold |
+| Identity | `identity` | Constitution implemented, perspective scaffold |
 | Perception | — | Wave 2+ |
 | Reasoning | — | Wave 2+ |
 | Metacognition | `metacognition` | Bias & sycophancy detection |
@@ -148,10 +148,81 @@ All exports from `@thought-fabric/core/memory` related to working memory:
   - `soft` mode returns all items annotated with relevance scores
   - Uses pre-scored signals when available, with keyword-overlap fallback for raw strings
 
-## Identity
+## Identity Exports
 
-- `constitution(config)` — Placeholder (not implemented)
-- `perspective(config)` — Placeholder (not implemented)
+All exports from `@thought-fabric/core/identity`:
+
+### Constitution
+
+Ranked principle hierarchies with explicit conflict resolution. A constitution defines what the system stands for. When principles conflict, the constitution provides a structured resolution strategy — strict priority ordering, weighted balancing, or context-dependent overrides.
+
+```ts
+import { constitution, constitutionAuditor } from '@thought-fabric/core/identity'
+
+// Define a constitution
+const values = constitution({
+  name: 'advisor-values',
+  principles: [
+    { id: 'accuracy', statement: 'Provide accurate, well-sourced information', priority: 1, rationale: 'Trust is foundational' },
+    { id: 'clarity', statement: 'Communicate clearly', priority: 2 },
+    { id: 'brevity', statement: 'Be concise', priority: 3, rationale: 'Exhaustive does not mean effective' },
+  ],
+  conflictResolution: 'priority',
+})
+
+// Full pipeline: LLM review → deterministic enforcement
+const auditor = constitutionAuditor({
+  constitution: values,
+  model: 'preset/fast',
+})
+
+// Standalone usage
+const result = await auditor.run({ content: 'The response to evaluate...' }, ctx)
+// result.compliant: true
+// result.score: 0.88
+// result.violations: []
+// result.tradeoffs: [{ promoted: 'brevity', demoted: 'accuracy', reasoning: '...' }]
+
+// As .tap() sidechain in a pipeline
+const pipeline = sequencer({ name: 'chat-with-audit' })
+  .then(chat)
+  .tap(auditor)
+```
+
+Three conflict resolution modes:
+
+| Mode | Description |
+|------|-------------|
+| `priority` | Lower number = higher priority. Strict ordering. Default. |
+| `weighted` | Uses `weight` field on principles for composite scoring. All principles must have weights. |
+| `contextual` | Rules-based overrides re-rank principles per situation. Requires `contextualOverrides`. |
+
+| Export | Kind | Description |
+|--------|------|-------------|
+| **Config factory** | | |
+| `constitution(config)` | factory | Creates a frozen `ConstitutionDefinition` from validated config. |
+| **Block factories** | | |
+| `constitutionAuditor(config)` | sequencer | Bundled pipeline: review → enforce. Primary entry point. |
+| `constitutionReview(config)` | generator | LLM-evaluates content against constitution principles. |
+| `constitutionEnforce(config)` | handler | Deterministic compliance scoring from review output. |
+| **Schemas** | | |
+| `constitutionConfigSchema` | Zod schema | Full constitution configuration. |
+| `constitutionPrincipleSchema` | Zod schema | `{ id, statement, priority, rationale?, weight? }` |
+| `constitutionReviewInputSchema` | Zod schema | `{ content: string, context?: string }` |
+| `constitutionReviewOutputSchema` | Zod schema | Compliance verdict with per-principle results, violations, tradeoffs. |
+| `constitutionViolationSchema` | Zod schema | `{ principleId, severity, description, evidence }` |
+| `constitutionTradeoffSchema` | Zod schema | `{ promoted, demoted, reasoning }` |
+| **Helpers** | | |
+| `rankConstitutionPrinciples(constitution, context?)` | pure function | Sort principles by effective priority, applying contextual overrides. |
+| `computeConstitutionCompliance(results, constitution)` | pure function | Weighted compliance score from per-principle results. |
+| `formatConstitution(constitution)` | pure function | Human-readable string for LLM prompt injection. |
+| `summarizeConstitutionReview(review)` | pure function | Human-readable summary of review findings. |
+| **Config** | | |
+| `DEFAULT_CONSTITUTION_CONFIG` | const | Default compliance threshold (0.7). |
+
+### Perspective
+
+- `perspective(config)` — Placeholder (FIX-201, not implemented)
 
 ## Metacognition Exports
 
