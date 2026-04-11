@@ -5,6 +5,7 @@ import { Tool } from "./tool";
 import { Status } from "./status";
 import { ErrorDisplay } from "./error";
 import { Plan } from "./plan";
+import { Blackboard } from "./blackboard";
 
 /**
  * Pre-wired renderer registry for standard chat assistant UIs.
@@ -22,5 +23,5 @@ export const chatAssistantRenderers: RendererRegistry = {
   error: ErrorDisplay,
   step_error: ErrorDisplay,
   source: false,
-  component: { plan: Plan },
+  component: { plan: Plan, blackboard: Blackboard },
 };
