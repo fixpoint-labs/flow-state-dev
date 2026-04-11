@@ -1,27 +1,55 @@
 /**
- * In-memory bash adapter using `just-bash`.
+ * Virtual bash adapter using `just-bash`.
  *
- * No real filesystem, no real processes. Provides a lightweight bash emulation
- * suitable for analysis tasks, testing, and environments where real process
- * execution is unavailable or undesirable.
+ * Provides a sandboxed bash environment with 60+ built-in commands (including
+ * jq, sqlite3, awk, sed, rg), optional Python/JS runtimes, configurable
+ * network access, and multiple filesystem backends (in-memory, overlay,
+ * read-write).
+ *
+ * No real processes are spawned — all command execution happens through
+ * just-bash's TypeScript-based bash emulator, eliminating shell injection risk.
  *
  * `just-bash` is a peer dependency and only loaded when this adapter is selected.
  */
 
-import type { Sandbox, CommandResult } from "../types";
+import type { Sandbox, CommandResult, NetworkConfig, ExecutionLimits } from "../types";
+
+export interface JustBashOptions {
+  /** Working directory inside the sandbox. */
+  cwd?: string;
+  /** Initial files to populate. */
+  files?: Record<string, string>;
+  /** Environment variables. */
+  env?: Record<string, string>;
+  /** Network/URL allowlisting for curl. */
+  network?: NetworkConfig;
+  /** Enable python3/python commands (WASM). */
+  python?: boolean;
+  /** Enable JS/TS execution (QuickJS WASM). */
+  javascript?: boolean | { bootstrap?: string };
+  /** Limits for recursion, loops, and command counts. */
+  executionLimits?: ExecutionLimits;
+}
 
 /**
- * Creates an in-memory sandbox using `just-bash`.
+ * Creates a sandbox using `just-bash`.
  *
  * Falls back to a minimal in-memory filesystem if `just-bash` is not installed.
  */
-export async function createJustBashSandbox(options?: {
-  cwd?: string;
-  files?: Record<string, string>;
-}): Promise<Sandbox> {
+export async function createJustBashSandbox(
+  options?: JustBashOptions,
+): Promise<Sandbox> {
   try {
     const { Bash } = await import(/* webpackIgnore: true */ "just-bash");
-    const bash = new Bash({ cwd: options?.cwd, files: options?.files });
+    const bash = new Bash({
+      cwd: options?.cwd,
+      files: options?.files,
+      env: options?.env,
+      network: options?.network,
+      python: options?.python,
+      javascript: options?.javascript,
+      executionLimits: options?.executionLimits,
+    });
 
     return {
       async executeCommand(command: string): Promise<CommandResult> {

@@ -19,7 +19,7 @@ export const artifactStateSchema = z.object({
 // instance keyed by its ID (e.g., "artifacts/my-doc"). Metadata lives in
 // state, the document body lives in resource content.
 export const artifactsCollection = defineResourceCollection({
-  pattern: "artifacts/*",
+  pattern: "artifacts/**",
   stateSchema: artifactStateSchema,
 });
 

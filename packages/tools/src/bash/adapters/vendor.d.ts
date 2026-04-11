@@ -7,13 +7,57 @@
  */
 
 declare module "just-bash" {
+  /** Copy-on-write over a real directory. Reads from disk, writes stay in memory. */
+  export class OverlayFs {
+    constructor(options: { root: string; readOnly?: boolean });
+  }
+
+  /** Direct read-write access to the real filesystem. */
+  export class ReadWriteFs {
+    constructor(options: { root: string });
+  }
+
+  export interface BashOptions {
+    files?: Record<string, string | (() => string | Promise<string>)>;
+    fs?: OverlayFs | ReadWriteFs | unknown;
+    env?: Record<string, string>;
+    cwd?: string;
+    executionLimits?: {
+      maxCallDepth?: number;
+      maxCommandCount?: number;
+      maxLoopIterations?: number;
+      maxAwkIterations?: number;
+      maxSedIterations?: number;
+    };
+    python?: boolean;
+    javascript?: boolean | { bootstrap?: string };
+    network?: {
+      dangerouslyAllowFullInternetAccess?: boolean;
+      allowedUrls?: Array<{
+        url: string;
+        methods?: string[];
+        headers?: Record<string, string>;
+      }>;
+    };
+    customCommands?: unknown[];
+  }
+
+  export interface BashResult {
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+    metadata?: unknown;
+  }
+
   export class Bash {
-    constructor(options?: { cwd?: string; files?: Record<string, string> });
-    exec(command: string): Promise<{
-      stdout: string;
-      stderr: string;
-      exitCode: number;
-    }>;
+    constructor(options?: BashOptions);
+    // eslint-disable-next-line @typescript-eslint/method-signature-style
+    exec(command: string, options?: {
+      env?: Record<string, string>;
+      cwd?: string;
+      stdin?: string;
+      signal?: AbortSignal;
+    }): Promise<BashResult>;
   }
 }
 

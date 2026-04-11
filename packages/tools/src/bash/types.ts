@@ -61,12 +61,45 @@ export type FileEntryState = {
 // Sandbox provider
 // ---------------------------------------------------------------------------
 
+/** Network configuration for just-bash sandboxes. */
+export type NetworkConfig = {
+  /** Bypass all URL restrictions. Use only in trusted environments. */
+  dangerouslyAllowFullInternetAccess?: boolean;
+  /** Allowlisted URL prefixes with optional method and header constraints. */
+  allowedUrls?: Array<{
+    url: string;
+    methods?: string[];
+    headers?: Record<string, string>;
+  }>;
+};
+
+/** Execution limits for just-bash sandboxes. */
+export type ExecutionLimits = {
+  maxCallDepth?: number;
+  maxCommandCount?: number;
+  maxLoopIterations?: number;
+  maxAwkIterations?: number;
+  maxSedIterations?: number;
+};
+
 /** Discriminated union of sandbox provider configurations. */
 export type SandboxProvider =
   | { type: "local"; cwd?: string }
   | { type: "vercel"; sandboxId?: string }
   | { type: "upstash"; boxId?: string }
-  | { type: "just-bash" }
+  | {
+      type: "just-bash";
+      /** Environment variables available inside the sandbox. */
+      env?: Record<string, string>;
+      /** Network/URL allowlisting for curl. Off by default. */
+      network?: NetworkConfig;
+      /** Enable python3/python commands (WASM). */
+      python?: boolean;
+      /** Enable JS/TS execution (QuickJS WASM). */
+      javascript?: boolean | { bootstrap?: string };
+      /** Limits for recursion, loops, and command counts. */
+      executionLimits?: ExecutionLimits;
+    }
   | { type: "custom"; sandbox: Sandbox };
 
 // ---------------------------------------------------------------------------
