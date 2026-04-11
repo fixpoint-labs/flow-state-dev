@@ -222,4 +222,7 @@ import type {
 |------|---------|
 | 0 | Success |
 | 1 | Execution error (flow or block failed at runtime) |
-| 2 | Invalid arguments (unknown flow, bad input, etc.) |
+| 2 | Invalid arguments (bad JSON input, missing required flags) |
+| 3 | Configuration error (invalid port, missing devtool assets) |
+| 4 | Discovery error (flow or block not found, import failed) |
+| 10 | Internal error (unhandled exception) |
