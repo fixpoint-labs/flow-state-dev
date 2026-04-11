@@ -4,7 +4,12 @@ sidebar_position: 3
 
 # Side Chains
 
-`.work()` queues background tasks that run in parallel with the main pipeline. The main chain continues immediately. Work failures never abort the pipeline. They emit `step_error` items instead. Use `.work()` for fire-and-forget side effects: logging, analytics, cache warming, notifications.
+Side chains let you run work in the background without blocking the main pipeline. Two primitives cover the common patterns:
+
+- **`.work()` / `.background()`** — queue a single background task (`.background()` is an alias that reads better in fan-out contexts)
+- **`.forEachBackground()`** — dispatch each element of an array as a background task with concurrency control
+
+Work failures never abort the pipeline. They emit `step_error` items instead. Use side chains for fire-and-forget side effects: logging, analytics, cache warming, notifications.
 
 ## Fire-and-forget
 
@@ -149,3 +154,74 @@ const chatPipeline = sequencer({
 ```
 
 Analytics and cache warming run in parallel. `logToJournal` runs inline (tap) because we want it done before formatting. The pipeline only continues after the tap completes.
+
+## background — alias for work
+
+`.background()` is identical to `.work()`. It exists because "background" reads more naturally when you're thinking about fan-out patterns:
+
+```ts
+pipeline
+  .then(mainLogic)
+  .background(notifySlack)
+  .background(warmCache)
+  .then(nextStep);
+```
+
+Use whichever name makes the call site clearer.
+
+## forEachBackground — fan-out over arrays
+
+`.forEachBackground()` dispatches each element of an array to a block as background work. The parent continues immediately. Each iteration runs independently — one failing doesn't stop the others or abort the pipeline.
+
+```ts
+const notifySubscriber = handler({
+  name: "notify-subscriber",
+  inputSchema: z.object({ userId: z.string(), message: z.string() }),
+  outputSchema: z.undefined(),
+  execute: async (input) => {
+    await sendPush(input.userId, input.message);
+  },
+});
+
+const pipeline = sequencer({
+  name: "broadcast",
+  inputSchema: z.object({
+    subscribers: z.array(z.object({ userId: z.string(), message: z.string() })),
+  }),
+})
+  .map((input) => input.subscribers)
+  .forEachBackground(notifySubscriber, { concurrency: 8 });
+```
+
+The pipeline's output is the original array, not the block results. This is a fundamental difference from `.forEach()`, which blocks and returns an array of outputs.
+
+With a connector:
+
+```ts
+pipeline.forEachBackground(
+  (input) => input.channels.map((ch) => ({ channel: ch, payload: input.data })),
+  broadcastBlock,
+  { concurrency: 4 }
+);
+```
+
+### forEach vs forEachBackground
+
+| | `forEach` | `forEachBackground` |
+|--|-----------|---------------------|
+| **Timing** | Blocks until all iterations complete | Dispatches and continues immediately |
+| **Return type** | `T[]` (array of block outputs) | Pass-through (original input) |
+| **Failure** | Any iteration aborts the parent | Isolated per iteration |
+| **Use case** | Transform a collection | Broadcast, fan-out, cache warming |
+
+### Concurrency
+
+The `concurrency` option (default: 16) limits how many iterations run simultaneously. This prevents overwhelming downstream services when fanning out over large arrays:
+
+```ts
+.forEachBackground(notifyBlock, { concurrency: 4 })
+```
+
+### Cancellation
+
+Parent flow cancellation propagates to in-flight background iterations via the abort signal. The worker loop checks the signal before starting each new iteration.
