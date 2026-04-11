@@ -110,6 +110,7 @@ const sidebars: SidebarsConfig = {
       items: [
         "cli/overview",
         "devtool/overview",
+        "devtool/setup",
       ],
     },
     {

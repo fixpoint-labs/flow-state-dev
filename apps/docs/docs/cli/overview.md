@@ -13,7 +13,8 @@ The CLI executes flows and blocks in-process. No HTTP server, no SSE, no network
 
 ## When to use it
 
-- **Quick iteration** — Run a flow action, see results immediately. No need to start a server or open a browser.
+- **Visual debugging** — `fsdev dev` starts the DevTool alongside your flows. Inspect sessions, stream items in real-time, dispatch actions from the browser. See [DevTool](/docs/devtool/overview) for details.
+- **Quick iteration** — `fsdev run` executes a flow action and prints results. No need to start a server or open a browser.
 - **Testing blocks in isolation** — Use `fsdev block` to execute a single block with the test harness. Good for verifying handler logic or generator output without wiring up a full flow.
 - **Debugging multi-turn conversations** — Reuse sessions across invocations with `--session`. State persists between runs so you can simulate back-and-forth without a client.
 - **CI/CD scripts** — Invoke flows or blocks from pipelines. Deterministic output format, clear exit codes. Use the programmatic API (`discoverFlows`, `resolveBlock`) when you need flow discovery in Node scripts.
