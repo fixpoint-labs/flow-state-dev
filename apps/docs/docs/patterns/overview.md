@@ -46,13 +46,15 @@ See [Core Utilities](./utility-blocks/core) and [Extension Utilities](./utility-
 
 ## Composable patterns
 
-All three patterns use `utility.decomposer` internally to plan work. They differ in their dispatch model and feedback loop:
+The first three patterns use `utility.decomposer` internally to plan work. They differ in their dispatch model and feedback loop:
 
 **Coordinator** — single-pass fan-out/fan-in. Decomposes a goal, runs sub-tasks concurrently, merges results. No review, no loop. Use it when you trust the workers and just need parallel execution.
 
 **Supervisor** — fan-out with quality review and replan. Decomposes, dispatches, reviews each result, replans failed tasks, repeats until all tasks pass review or max iterations is hit. Use it when output quality matters and failures should be corrected, not just skipped.
 
 **Plan and Execute** — sequential step-by-step with adaptive replanning. Plans a dependency-ordered task graph, executes one task at a time, evaluates progress, and optionally replans remaining tasks after each step. Use it when tasks are ordered and depend on each other's results.
+
+**Response Auditor** — post-generation quality audit. Runs one or more analyzers in parallel against an AI response, each producing structured findings with scores, severity, and annotations. Use it when you need to detect bias, hallucination, policy violations, or other quality issues without modifying the response itself.
 
 ## Pattern selection
 
@@ -66,6 +68,9 @@ Do your tasks depend on each other's outputs?
 Do you need quality review on each result?
   Yes → Supervisor (review + replan loop)
   No  → Coordinator or Plan and Execute
+
+Do you need to audit a generated response for quality issues?
+  Yes → Response Auditor (parallel analyzers)
 ```
 
 More specifically:
@@ -73,6 +78,7 @@ More specifically:
 - **Single-pass fan-out with parallel workers** → [Coordinator](./coordinator)
 - **Parallel workers with quality review and a replan loop** → [Supervisor](./supervisor)
 - **Sequential steps with dependency ordering and adaptive replanning** → [Plan and Execute](./plan-and-execute)
+- **Post-generation quality audit with pluggable analyzers** → [Response Auditor](./response-auditor)
 - **Complex hierarchical work where steps need their own sub-planning** → Plan and Execute with a Supervisor as the `stepExecutor`
 
-All three accept a custom `planner` override, so you can swap out `utility.decomposer` for a domain-specific planner if you need tighter control.
+The first three accept a custom `planner` override, so you can swap out `utility.decomposer` for a domain-specific planner if you need tighter control.
