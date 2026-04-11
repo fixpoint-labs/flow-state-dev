@@ -4,7 +4,7 @@
  * These are re-evaluated before each step of the tool loop (via prepareStep),
  * so generators always see fresh state — e.g. artifacts created mid-turn.
  */
-import type { BlockContext } from "@flow-state-dev/core/types";
+import type { BlockContext, ResourceCollectionRef } from "@flow-state-dev/core/types";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 export { voiceContext } from "@flow-state-dev/server";
 
@@ -28,7 +28,11 @@ export interface GeneratorMemory {
 // without reading full content. Summary is populated by summarize-artifacts.
 
 export const artifactListContext = (_input: unknown, ctx: BlockContext) => {
-  const artifacts = (ctx.session as any).resources.artifacts;
+  const artifacts = ctx.session.resources.artifacts as ResourceCollectionRef<{
+    title: string;
+    summary: string;
+    updatedAt: number;
+  }>;
   const instances = artifacts.list();
   if (instances.length === 0) {
     return "No artifacts exist yet in this session.";
