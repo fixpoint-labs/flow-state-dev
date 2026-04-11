@@ -144,7 +144,7 @@ const resolveThinkingStyle = sequencer({
   outputSchema: z.never(),
 })
   .tapIf(
-    (input) => input.thinkingStyle !== "auto" && input.thinkingStyle !== "default",
+    (input) => input.thinkingStyle !== "auto",
     handler({
       name: "apply-manual-style",
       inputSchema,
