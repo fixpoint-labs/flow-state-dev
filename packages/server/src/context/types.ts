@@ -28,6 +28,8 @@ export type ExecutionContext<
   actionName: string;
   requestRuntime: RequestRuntime;
   stores: StoreRegistry;
+  /** Drain all pending batched resource content writes across all scopes. */
+  flushResourceContent: () => Promise<void>;
 };
 
 export type CreateExecutionContextOptions<
