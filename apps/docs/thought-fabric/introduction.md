@@ -21,7 +21,7 @@ Thought Fabric maps cognitive science concepts onto composable building blocks. 
 | **Identity** | How to behave. Perspective (role/expertise) and constitution (values/constraints). | Coming soon |
 | **Perception** | How to interpret input. Sensory processing, context framing, signal extraction. | Coming soon |
 | **Reasoning** | How to think. Structured deliberation, chain-of-thought, planning strategies. | Coming soon |
-| **Metacognition** | How to self-monitor. Confidence calibration, strategy selection, self-correction. | Planned |
+| **Metacognition** | How to self-monitor. Bias detection, sycophancy scoring, counter-argument generation. | Shipped (partial) |
 | **Learning** | How to improve. Pattern extraction, skill acquisition, feedback integration. | Planned |
 
 Each domain will export blocks, helpers, and resource definitions that compose with flow-state-dev primitives. A Thought Fabric block is a standard flow-state-dev block. You use it in sequencers, pass it as a tool, register it in flows. No special runtime, no separate execution model.
@@ -36,6 +36,8 @@ The goal isn't to simulate human cognition. It's to give agent builders a struct
 
 **Identity** has placeholder types. `perspective()` and `constitution()` define the interfaces but throw "Not implemented" until the next wave. The design is set; the implementation is queued. See [Identity](./identity.md).
 
+**Metacognition** ships bias and sycophancy detection. The `biasAnalyzer` sequencer takes a user input and AI response, detects agreement bias across four dimensions, classifies six cognitive bias types, computes a composite sycophancy score, and generates counter-arguments when the score warrants it. All five internal blocks are exported individually for custom pipelines. See [Metacognition](./metacognition.md).
+
 ## Import paths
 
 Use subpath exports for tree-shaking:
@@ -44,13 +46,14 @@ Use subpath exports for tree-shaking:
 import { filterRelevance, scoreSalience } from '@thought-fabric/core/attention'
 import { workingMemoryCapture, workingMemoryContextFormatter } from '@thought-fabric/core/memory'
 import { perspective, constitution } from '@thought-fabric/core/identity'
+import { biasAnalyzer } from '@thought-fabric/core/metacognition'
 ```
 
 Or import domain namespaces from the main package:
 
 ```ts
-import { attention, memory, identity } from '@thought-fabric/core'
-// attention.filterRelevance, memory.workingMemoryCapture, identity.perspective
+import { attention, memory, identity, metacognition } from '@thought-fabric/core'
+// attention.filterRelevance, memory.workingMemoryCapture, identity.perspective, metacognition.biasAnalyzer
 ```
 
 The package depends on `@flow-state-dev/core`. Build core first if you hit type resolution issues.
