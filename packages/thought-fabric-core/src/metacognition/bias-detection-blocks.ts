@@ -39,6 +39,43 @@ import {
 } from './bias-detection-helpers.js'
 
 // ---------------------------------------------------------------------------
+// Repair helper — merges input fields into partial LLM output
+// ---------------------------------------------------------------------------
+
+/**
+ * Repair callback for generator blocks that echo input fields in their output.
+ *
+ * When the structured output is truncated (e.g. due to maxTokens limits) or
+ * the model returns partial JSON, this function backfills any missing fields
+ * from the block's original input. This ensures downstream blocks receive the
+ * complete intermediate schema even when the LLM omits echoed fields.
+ */
+function repairWithInputFields(
+  candidate: unknown,
+  _error: Error,
+  state: { input: unknown },
+  _ctx: unknown,
+): unknown {
+  const input = state.input as Record<string, unknown>
+  let obj = candidate
+  if (typeof obj === 'string') {
+    try {
+      obj = JSON.parse(obj)
+    } catch {
+      return candidate
+    }
+  }
+  if (typeof obj === 'object' && obj !== null) {
+    const record = obj as Record<string, unknown>
+    for (const key of Object.keys(input)) {
+      if (!record[key]) record[key] = input[key]
+    }
+    return record
+  }
+  return candidate
+}
+
+// ---------------------------------------------------------------------------
 // Config types
 // ---------------------------------------------------------------------------
 
@@ -84,6 +121,9 @@ export function biasDetectAgreement(config?: BiasAnalyzerBlockConfig) {
     model: config?.model ?? 'preset/fast',
     inputSchema: biasAnalyzerInputSchema,
     outputSchema: agreementDetectionOutputSchema,
+    // Override preset maxTokens — structured output must echo input fields,
+    // which can exceed the preset/small default of 1024 tokens.
+    maxTokens: 4096,
     prompt: [
       'You are a cognitive bias detection system analyzing AI responses for agreement bias.',
       '',
@@ -107,6 +147,7 @@ export function biasDetectAgreement(config?: BiasAnalyzerBlockConfig) {
       input.aiResponse,
     ].join('\n'),
     emit: { messages: false, reasoning: false, toolCalls: false },
+    repairOutput: repairWithInputFields as any,
   })
 }
 
@@ -131,6 +172,7 @@ export function biasClassify(config?: BiasAnalyzerBlockConfig) {
     model: config?.model ?? 'preset/fast',
     inputSchema: agreementDetectionOutputSchema,
     outputSchema: biasClassificationOutputSchema,
+    maxTokens: 4096,
     prompt: [
       'You are a cognitive bias classifier. Given a user input, AI response, and preliminary agreement pattern scores,',
       'identify which specific cognitive biases are present in the AI response.',
@@ -162,6 +204,7 @@ export function biasClassify(config?: BiasAnalyzerBlockConfig) {
       `uncriticalFramingAdoption: ${input.agreementPattern.uncriticalFramingAdoption}`,
     ].join('\n'),
     emit: { messages: false, reasoning: false, toolCalls: false },
+    repairOutput: repairWithInputFields as any,
   })
 }
 
@@ -222,6 +265,7 @@ export function biasCounterpoint(config?: BiasAnalyzerBlockConfig) {
     model: config?.model ?? 'preset/fast',
     inputSchema: biasScoringOutputSchema,
     outputSchema: counterpointOutputSchema,
+    maxTokens: 4096,
     prompt: [
       'You are a critical thinking assistant. Given a biased AI response, generate substantive',
       'counter-arguments that provide alternative perspectives the original response missed.',
@@ -258,6 +302,7 @@ export function biasCounterpoint(config?: BiasAnalyzerBlockConfig) {
       ].join('\n')
     },
     emit: { messages: false, reasoning: false, toolCalls: false },
+    repairOutput: repairWithInputFields as any,
   })
 }
 
