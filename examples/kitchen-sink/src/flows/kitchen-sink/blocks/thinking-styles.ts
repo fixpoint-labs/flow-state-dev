@@ -1,9 +1,12 @@
 /**
- * Thinking Style Pipelines
+ * Thinking Style Resolution + Pipelines
  *
- * Defines the three thinking-style pipelines (default, plan-and-execute,
- * supervisor) and the router that dispatches between them. The user selects
- * the style directly — no auto-classification.
+ * Resolves "auto" thinking style to a concrete style via:
+ *   1. Keyword handler — fast heuristic scan, patches session state directly if match
+ *   2. LLM classifier — intentClassifier fallback when no keyword matched
+ *
+ * Defines the three concrete pipelines (default, plan-and-execute, supervisor)
+ * and the router that dispatches between them.
  */
 import { generator, handler, router, sequencer, utility } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";

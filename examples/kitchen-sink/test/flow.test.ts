@@ -49,7 +49,7 @@ const testFlow = defineFlow({
       inputSchema: z.object({
         message: z.string(),
         mode: z.enum(["chat", "create"]).default("chat"),
-        thinkingStyle: z.enum(["default", "plan-and-execute", "supervisor"]).default("default"),
+        thinkingStyle: z.enum(["auto", "default", "plan-and-execute", "supervisor"]).default("auto"),
       }),
       block: thinkingStyleRouter,
     },
@@ -92,7 +92,7 @@ describe("kitchen-sink flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const routed = await testRouter(thinkingStyleRouter, {
-      input: { message: "Help me", mode: "chat", thinkingStyle: "default" },
+      input: { message: "Help me", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
         state: { thinkingStyle: "default" },
@@ -106,7 +106,7 @@ describe("kitchen-sink flow", () => {
 
   it("routes to pae-pipeline for plan-and-execute style", async () => {
     const routed = await testRouter(thinkingStyleRouter, {
-      input: { message: "Build a report", mode: "chat", thinkingStyle: "default" },
+      input: { message: "Build a report", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
         state: { thinkingStyle: "plan-and-execute" },
@@ -120,7 +120,7 @@ describe("kitchen-sink flow", () => {
 
   it("routes to supervisor-pipeline for supervisor style", async () => {
     const routed = await testRouter(thinkingStyleRouter, {
-      input: { message: "Coordinate reviews", mode: "chat", thinkingStyle: "default" },
+      input: { message: "Coordinate reviews", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
         state: { thinkingStyle: "supervisor" },
@@ -135,7 +135,7 @@ describe("kitchen-sink flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const routed = await testRouter(thinkingStyleRouter, {
-      input: { message: "Hello", mode: "chat", thinkingStyle: "default" },
+      input: { message: "Hello", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
@@ -150,7 +150,7 @@ describe("kitchen-sink flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
-      input: { message: "Hello kitchen sink", mode: "chat", thinkingStyle: "default" },
+      input: { message: "Hello kitchen sink", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
         state: { thinkingStyle: "default" },
@@ -167,7 +167,7 @@ describe("kitchen-sink flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
-      input: { message: "Test with custom model", mode: "chat", thinkingStyle: "default" },
+      input: { message: "Test with custom model", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
         state: { thinkingStyle: "default" },
@@ -189,7 +189,7 @@ describe("kitchen-sink flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
-      input: { message: "Check items", mode: "chat", thinkingStyle: "default" },
+      input: { message: "Check items", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
         state: { thinkingStyle: "default" },
@@ -206,7 +206,7 @@ describe("kitchen-sink flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
-      input: { message: "Read artifact doc-1", mode: "chat", thinkingStyle: "default" },
+      input: { message: "Read artifact doc-1", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
         state: { mode: "chat", thinkingStyle: "default", requestCount: 0 },

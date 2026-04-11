@@ -7,7 +7,7 @@
  *
  * Pipeline:
  *   applyRequestedMode → resolveThinkingStyle → thinkingStyleRouter
- *     ├─ default            → assistantGenerator (direct generation)
+ *     ├─ default (or auto-classified default) → assistantGenerator (direct generation)
  *     ├─ plan-and-execute   → planAndExecute wrapping the assistant
  *     └─ supervisor         → supervisor wrapping the assistant
  */
@@ -30,6 +30,7 @@ import {
   artifactListContext,
   voiceContext,
   createThinkingStyleRouter,
+  autoClassifyStyle,
   thinkingStyleSchema,
   thinkingStyleSessionStateSchema,
 } from "./blocks";
@@ -58,8 +59,8 @@ const mem = memorySystem({
 // ---------------------------------------------------------------------------
 
 const thinkingStyleInputSchema = z
-  .enum(["default", "plan-and-execute", "supervisor"])
-  .default("default");
+  .enum(["auto", "default", "plan-and-execute", "supervisor"])
+  .default("auto");
 
 const inputSchema = z.object({
   message: z.string().min(1),
@@ -143,15 +144,21 @@ const resolveThinkingStyle = sequencer({
   outputSchema: z.never(),
 })
   .tapIf(
-    (input, ctx) => (input.thinkingStyle !== "default" && input.thinkingStyle !== ctx.session.state.thinkingStyle),
+    (input) => input.thinkingStyle !== "auto" && input.thinkingStyle !== "default",
     handler({
       name: "apply-manual-style",
       inputSchema,
       sessionStateSchema: thinkingStyleSessionStateSchema,
       execute: async (input, ctx) => {
-        await ctx.session.patchState({ thinkingStyle: input.thinkingStyle });
+        if (input.thinkingStyle !== ctx.session.state.thinkingStyle) {
+          await ctx.session.patchState({ thinkingStyle: input.thinkingStyle });
+        }
       },
     }),
+  )
+  .tapIf(
+    (input) => input.thinkingStyle === "auto",
+    autoClassifyStyle,
   );
 
 const incrementRequestCount = handler({

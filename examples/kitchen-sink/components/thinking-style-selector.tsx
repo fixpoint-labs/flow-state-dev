@@ -13,13 +13,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
+  Sparkles,
   MessageSquare,
   ListChecks,
   Users,
   ChevronDownIcon,
 } from "lucide-react";
 
-export type ThinkingStyle = "default" | "plan-and-execute" | "supervisor";
+export type ThinkingStyle = "auto" | "default" | "plan-and-execute" | "supervisor";
 
 interface StyleOption {
   value: ThinkingStyle;
@@ -31,6 +32,14 @@ interface StyleOption {
 }
 
 const STYLE_OPTIONS: StyleOption[] = [
+  {
+    value: "auto",
+    label: "Auto",
+    shortLabel: "Auto",
+    description: "Automatically selects the best approach",
+    icon: Sparkles,
+    color: "text-violet-500 dark:text-violet-400",
+  },
   {
     value: "default",
     label: "Default",
