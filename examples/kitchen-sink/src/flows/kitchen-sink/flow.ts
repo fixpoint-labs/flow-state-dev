@@ -106,10 +106,9 @@ const assistantGenerator = generator({
     ctx.session.state.mode === "create" ? CREATE_PROMPT : CHAT_PROMPT,
 
   emit: { messages: true, reasoning: true },
-  model: (_input, ctx) => {
-    const userModel = ctx.user?.state.preferredModel as string | undefined;
-    return userModel || MODEL_ID;
-  },
+  model: selectModel(MODEL_ID, {
+    prefer: (_input, ctx) => ctx.user?.state.preferredModel,
+  }),
 });
 
 // ---------------------------------------------------------------------------
