@@ -36,9 +36,12 @@ import type {
 } from "./types";
 import { FileSync } from "./file-sync";
 import { createLocalFsSandbox } from "./adapters/local-fs";
-import { resolveVercelSandbox } from "./adapters/vercel";
-import { resolveUpstashBox } from "./adapters/upstash";
 import { createJustBashSandbox } from "./adapters/just-bash";
+
+// Vercel and Upstash adapters are loaded dynamically in resolveSandbox()
+// to avoid pulling @vercel/sandbox and @upstash/box into the bundle when
+// those providers aren't selected. Bundlers like Turbopack trace static
+// imports and fail when the peer dep isn't installed.
 
 /**
  * Creates bash, readFile, and writeFile tools backed by a sandbox environment.
@@ -171,11 +174,13 @@ async function resolveSandbox(
 
     case "vercel": {
       const id = provider.sandboxId ?? existingId;
+      const { resolveVercelSandbox } = await import("./adapters/vercel");
       return resolveVercelSandbox(id);
     }
 
     case "upstash": {
       const id = provider.boxId ?? existingId;
+      const { resolveUpstashBox } = await import("./adapters/upstash");
       return resolveUpstashBox(id);
     }
 
