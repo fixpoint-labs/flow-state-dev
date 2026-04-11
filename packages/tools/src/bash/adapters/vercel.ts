@@ -60,7 +60,7 @@ export function createVercelAdapter(rawSandbox: unknown): Sandbox {
 export async function resolveVercelSandbox(
   sandboxId?: string,
 ): Promise<{ sandbox: Sandbox; sandboxId: string }> {
-  const { Sandbox: VercelSandboxClass } = await import("@vercel/sandbox");
+  const { Sandbox: VercelSandboxClass } = await import(/* webpackIgnore: true */ "@vercel/sandbox");
 
   if (sandboxId) {
     const raw = await VercelSandboxClass.get({ sandboxId });

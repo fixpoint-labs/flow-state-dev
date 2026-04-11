@@ -20,7 +20,7 @@ export async function createJustBashSandbox(options?: {
   files?: Record<string, string>;
 }): Promise<Sandbox> {
   try {
-    const { Bash } = await import("just-bash");
+    const { Bash } = await import(/* webpackIgnore: true */ "just-bash");
     const bash = new Bash({ cwd: options?.cwd, files: options?.files });
 
     return {
