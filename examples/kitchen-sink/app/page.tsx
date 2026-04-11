@@ -31,6 +31,7 @@ import { SessionSidebar } from "@/components/session-sidebar";
 import { AgentResponseCard } from "@/components/agent-response-card";
 import { ModeSelector, type Mode } from "@/components/mode-selector";
 import { ThinkingStyleSelector, type ThinkingStyle } from "@/components/thinking-style-selector";
+import { ModelPresetSelector, type ModelPreset } from "@/components/model-preset-selector";
 import { ClientDataBar } from "@/components/client-data-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactViewer } from "@/components/artifact-viewer";
@@ -38,6 +39,7 @@ import { SuggestionRow } from "@/components/suggestion-row";
 import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
+import { ModelPresetProvider } from "@/components/model-preset-context";
 import { PlanAwareTool } from "@/components/flow-state/plan";
 import { KitchenSinkMessage } from "@/components/kitchen-sink-message";
 
@@ -73,7 +75,7 @@ function KitchenSinkApp() {
 
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("chat");
-  const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("auto");
+  const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("default");
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("chat");
@@ -135,6 +137,14 @@ function KitchenSinkApp() {
       setMobilePanel("chat");
     },
     [flow]
+  );
+
+  const handleModelPresetChange = useCallback(
+    async (preset: ModelPreset) => {
+      if (!flow.activeSessionId) return;
+      await session.sendAction("setPreferredModel", { preferredModel: preset });
+    },
+    [flow.activeSessionId, session],
   );
 
   const handleSuggestionClick = useCallback((text: string) => {
@@ -224,6 +234,7 @@ function KitchenSinkApp() {
               message={message}
               mode={mode}
               thinkingStyle={thinkingStyle}
+              modelPreset={userPrefs?.preferredModel ?? "preset/fast"}
               isDisabled={isDisabled}
               session={session}
               voice={voice}
@@ -232,6 +243,7 @@ function KitchenSinkApp() {
               onSetMessage={setMessage}
               onSetMode={setMode}
               onSetThinkingStyle={setThinkingStyle}
+              onModelPresetChange={handleModelPresetChange}
               onSubmit={handleSubmit}
               onSuggestionClick={handleSuggestionClick}
             />
@@ -268,6 +280,7 @@ function KitchenSinkApp() {
             message={message}
             mode={mode}
             thinkingStyle={thinkingStyle}
+            modelPreset={userPrefs?.preferredModel ?? "preset/fast"}
             isDisabled={isDisabled}
             session={session}
             voice={voice}
@@ -276,6 +289,7 @@ function KitchenSinkApp() {
             onSetMessage={setMessage}
             onSetMode={setMode}
             onSetThinkingStyle={setThinkingStyle}
+            onModelPresetChange={handleModelPresetChange}
             onSubmit={handleSubmit}
             onSuggestionClick={handleSuggestionClick}
           />
@@ -307,6 +321,7 @@ interface ChatPanelProps {
   message: string;
   mode: Mode;
   thinkingStyle: ThinkingStyle;
+  modelPreset: string;
   isDisabled: boolean;
   session: ReturnType<typeof useSession>;
   voice: ReturnType<typeof useVoice>;
@@ -315,6 +330,7 @@ interface ChatPanelProps {
   onSetMessage: (value: string) => void;
   onSetMode: (value: Mode) => void;
   onSetThinkingStyle: (value: ThinkingStyle) => void;
+  onModelPresetChange: (value: ModelPreset) => void;
   onSubmit: (msg: PromptInputMessage) => Promise<void>;
   onSuggestionClick: (text: string) => void;
 }
@@ -325,31 +341,35 @@ const ConversationBody = memo(function ConversationBody({
   isStreaming,
   isLoading,
   error,
+  modelPreset,
 }: {
   items: import("@flow-state-dev/core/items").OutputItem[];
   isStreaming: boolean;
   isLoading: boolean;
   error: { message: string } | null;
+  modelPreset: string;
 }) {
   return (
     <>
       <ScrollOnNewRequest items={items} />
-      <SessionItemsProvider value={items}>
-        <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
-          {items.length === 0 && !isLoading && (
-            <ConversationEmptyState
-              title="Kitchen Sink"
-              description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use."
-            />
-          )}
-          <RequestGroupRenderer items={items} isStreaming={isStreaming} />
-          {error && (
-            <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              <span>{error.message}</span>
-            </div>
-          )}
-        </ConversationContent>
-      </SessionItemsProvider>
+      <ModelPresetProvider value={modelPreset}>
+        <SessionItemsProvider value={items}>
+          <ConversationContent className="mx-auto w-full max-w-3xl px-3 sm:px-4">
+            {items.length === 0 && !isLoading && (
+              <ConversationEmptyState
+                title="Kitchen Sink"
+                description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use."
+              />
+            )}
+            <RequestGroupRenderer items={items} isStreaming={isStreaming} />
+            {error && (
+              <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                <span>{error.message}</span>
+              </div>
+            )}
+          </ConversationContent>
+        </SessionItemsProvider>
+      </ModelPresetProvider>
     </>
   );
 });
@@ -358,6 +378,7 @@ function ChatPanel({
   message,
   mode,
   thinkingStyle,
+  modelPreset,
   isDisabled,
   session,
   voice,
@@ -366,6 +387,7 @@ function ChatPanel({
   onSetMessage,
   onSetMode,
   onSetThinkingStyle,
+  onModelPresetChange,
   onSubmit,
   onSuggestionClick,
 }: ChatPanelProps) {
@@ -377,6 +399,7 @@ function ChatPanel({
           isStreaming={session.isStreaming}
           isLoading={session.isLoading}
           error={session.error}
+          modelPreset={modelPreset}
         />
         <ConversationScrollButton />
       </Conversation>
@@ -387,6 +410,7 @@ function ChatPanel({
           <div className="mb-2 flex items-center gap-3">
             <ModeSelector mode={mode} onModeChange={onSetMode} disabled={isDisabled} />
             <ThinkingStyleSelector value={thinkingStyle} onValueChange={onSetThinkingStyle} disabled={isDisabled} />
+            <ModelPresetSelector value={modelPreset} onValueChange={onModelPresetChange} disabled={isDisabled} />
             <VoiceToggle voice={voice} disabled={isDisabled} ttsEnabled={ttsEnabled} onToggleTTS={onToggleTTS} />
           </div>
           <PromptInput onSubmit={onSubmit}>

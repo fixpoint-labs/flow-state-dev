@@ -7,7 +7,7 @@
  *
  * Pipeline:
  *   applyRequestedMode → resolveThinkingStyle → thinkingStyleRouter
- *     ├─ chain-of-thought  → assistantGenerator (direct generation)
+ *     ├─ default            → assistantGenerator (direct generation)
  *     ├─ plan-and-execute   → planAndExecute wrapping the assistant
  *     └─ supervisor         → supervisor wrapping the assistant
  */
@@ -30,7 +30,6 @@ import {
   artifactListContext,
   voiceContext,
   createThinkingStyleRouter,
-  autoClassifyStyle,
   thinkingStyleSchema,
   thinkingStyleSessionStateSchema,
 } from "./blocks";
@@ -42,7 +41,6 @@ import { CHAT_PROMPT, CREATE_PROMPT } from "./prompts";
 // ---------------------------------------------------------------------------
 
 const MODEL_ID = "preset/fast";
-const THINKING_MODEL_ID = "preset/thinking-small";
 
 // ---------------------------------------------------------------------------
 // Memory
@@ -60,8 +58,8 @@ const mem = memorySystem({
 // ---------------------------------------------------------------------------
 
 const thinkingStyleInputSchema = z
-  .enum(["auto", "plan-and-execute", "supervisor", "chain-of-thought"])
-  .default("auto");
+  .enum(["default", "plan-and-execute", "supervisor"])
+  .default("default");
 
 const inputSchema = z.object({
   message: z.string().min(1),
@@ -108,9 +106,7 @@ const assistantGenerator = generator({
   emit: { messages: true, reasoning: true },
   model: (_input, ctx) => {
     const userModel = ctx.user?.state.preferredModel as string | undefined;
-    if (userModel && userModel !== MODEL_ID) return userModel;
-    const style = (ctx.session.state as Record<string, unknown>).thinkingStyle as string | undefined;
-    return style === "chain-of-thought" ? THINKING_MODEL_ID : MODEL_ID;
+    return userModel || MODEL_ID;
   },
 });
 
@@ -147,7 +143,7 @@ const resolveThinkingStyle = sequencer({
   outputSchema: z.never(),
 })
   .tapIf(
-    (input, ctx) => (input.thinkingStyle !== "auto" && input.thinkingStyle !== ctx.session.state.thinkingStyle),
+    (input, ctx) => (input.thinkingStyle !== "default" && input.thinkingStyle !== ctx.session.state.thinkingStyle),
     handler({
       name: "apply-manual-style",
       inputSchema,
@@ -156,10 +152,6 @@ const resolveThinkingStyle = sequencer({
         await ctx.session.patchState({ thinkingStyle: input.thinkingStyle });
       },
     }),
-  )
-  .tapIf(
-    (input) => input.thinkingStyle === "auto",
-    autoClassifyStyle,
   );
 
 const incrementRequestCount = handler({
@@ -180,6 +172,19 @@ const incrementRequestCount = handler({
 const autoTitle = utility.sessionTitleGenerator({
   name: "auto-title",
   model: MODEL_ID,
+});
+
+const setPreferredModelInputSchema = z.object({
+  preferredModel: z.string().min(1),
+});
+
+const setPreferredModelHandler = handler({
+  name: "set-preferred-model",
+  inputSchema: setPreferredModelInputSchema,
+  userStateSchema,
+  execute: async (input, ctx) => {
+    await ctx.user!.patchState({ preferredModel: input.preferredModel });
+  },
 });
 
 // ---------------------------------------------------------------------------
@@ -219,6 +224,10 @@ const kitchenSinkFlow = defineFlow({
     saveArtifact: {
       inputSchema: updateArtifactInputSchema,
       block: updateArtifact,
+    },
+    setPreferredModel: {
+      inputSchema: setPreferredModelInputSchema,
+      block: setPreferredModelHandler,
     },
     "event-queue": {
       inputSchema: eventQueueDemoInputSchema,

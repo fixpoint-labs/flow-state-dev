@@ -49,7 +49,7 @@ const testFlow = defineFlow({
       inputSchema: z.object({
         message: z.string(),
         mode: z.enum(["chat", "create"]).default("chat"),
-        thinkingStyle: z.enum(["auto", "plan-and-execute", "supervisor", "chain-of-thought"]).default("auto"),
+        thinkingStyle: z.enum(["default", "plan-and-execute", "supervisor"]).default("default"),
       }),
       block: thinkingStyleRouter,
     },
@@ -57,7 +57,7 @@ const testFlow = defineFlow({
   session: {
     stateSchema: z.object({
       mode: z.enum(["chat", "create"]).default("chat"),
-      thinkingStyle: z.enum(["plan-and-execute", "supervisor", "chain-of-thought"]).optional(),
+      thinkingStyle: z.enum(["plan-and-execute", "supervisor", "default"]).optional(),
       requestCount: z.number().default(0),
       lastAction: z.string().optional(),
     }),
@@ -88,14 +88,14 @@ const observeFixture = mockGenerator({
 });
 
 describe("kitchen-sink flow", () => {
-  it("routes to cot-pipeline for chain-of-thought style", async () => {
+  it("routes to default-pipeline for default style", async () => {
     assistantFixture.reset();
     observeFixture.reset();
     const routed = await testRouter(thinkingStyleRouter, {
-      input: { message: "Help me", mode: "chat", thinkingStyle: "auto" },
+      input: { message: "Help me", mode: "chat", thinkingStyle: "default" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "chain-of-thought" },
+        state: { thinkingStyle: "default" },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
@@ -106,7 +106,7 @@ describe("kitchen-sink flow", () => {
 
   it("routes to pae-pipeline for plan-and-execute style", async () => {
     const routed = await testRouter(thinkingStyleRouter, {
-      input: { message: "Build a report", mode: "chat", thinkingStyle: "auto" },
+      input: { message: "Build a report", mode: "chat", thinkingStyle: "default" },
       flow: testFlow,
       session: {
         state: { thinkingStyle: "plan-and-execute" },
@@ -120,7 +120,7 @@ describe("kitchen-sink flow", () => {
 
   it("routes to supervisor-pipeline for supervisor style", async () => {
     const routed = await testRouter(thinkingStyleRouter, {
-      input: { message: "Coordinate reviews", mode: "chat", thinkingStyle: "auto" },
+      input: { message: "Coordinate reviews", mode: "chat", thinkingStyle: "default" },
       flow: testFlow,
       session: {
         state: { thinkingStyle: "supervisor" },
@@ -131,11 +131,11 @@ describe("kitchen-sink flow", () => {
     expect(routed.selectedRoute).toBe("supervisor-thinking");
   });
 
-  it("defaults to cot-pipeline when thinkingStyle is not set", async () => {
+  it("defaults to default-pipeline when thinkingStyle is not set", async () => {
     assistantFixture.reset();
     observeFixture.reset();
     const routed = await testRouter(thinkingStyleRouter, {
-      input: { message: "Hello", mode: "chat", thinkingStyle: "auto" },
+      input: { message: "Hello", mode: "chat", thinkingStyle: "default" },
       flow: testFlow,
       session: {
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
@@ -146,14 +146,14 @@ describe("kitchen-sink flow", () => {
     expect(routed.selectedRoute).toBe("assistant-generator");
   });
 
-  it("completes a chat action via cot-pipeline", async () => {
+  it("completes a chat action via default-pipeline", async () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
-      input: { message: "Hello kitchen sink", mode: "chat", thinkingStyle: "auto" },
+      input: { message: "Hello kitchen sink", mode: "chat", thinkingStyle: "default" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "chain-of-thought" },
+        state: { thinkingStyle: "default" },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
@@ -167,10 +167,10 @@ describe("kitchen-sink flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
-      input: { message: "Test with custom model", mode: "chat", thinkingStyle: "auto" },
+      input: { message: "Test with custom model", mode: "chat", thinkingStyle: "default" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "chain-of-thought" },
+        state: { thinkingStyle: "default" },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       user: {
@@ -189,10 +189,10 @@ describe("kitchen-sink flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
-      input: { message: "Check items", mode: "chat", thinkingStyle: "auto" },
+      input: { message: "Check items", mode: "chat", thinkingStyle: "default" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "chain-of-thought" },
+        state: { thinkingStyle: "default" },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
@@ -206,10 +206,10 @@ describe("kitchen-sink flow", () => {
     assistantFixture.reset();
     observeFixture.reset();
     const result = await testBlock(thinkingStyleRouter, {
-      input: { message: "Read artifact doc-1", mode: "chat", thinkingStyle: "auto" },
+      input: { message: "Read artifact doc-1", mode: "chat", thinkingStyle: "default" },
       flow: testFlow,
       session: {
-        state: { mode: "chat", thinkingStyle: "chain-of-thought", requestCount: 0 },
+        state: { mode: "chat", thinkingStyle: "default", requestCount: 0 },
         resources: {
           "artifacts/doc-1": {
             title: "Test Document",

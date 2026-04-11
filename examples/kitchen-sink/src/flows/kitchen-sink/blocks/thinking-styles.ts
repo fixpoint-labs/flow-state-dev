@@ -1,12 +1,9 @@
 /**
- * Thinking Style Resolution + Pipelines
+ * Thinking Style Pipelines
  *
- * Resolves "auto" thinking style to a concrete style via:
- *   1. Keyword handler — fast heuristic scan, patches session state directly if match
- *   2. LLM classifier — intentClassifier fallback when no keyword matched
- *
- * Defines the three thinking-style pipelines (chain-of-thought, plan-and-execute,
- * supervisor) and the router that dispatches between them.
+ * Defines the three thinking-style pipelines (default, plan-and-execute,
+ * supervisor) and the router that dispatches between them. The user selects
+ * the style directly — no auto-classification.
  */
 import { generator, handler, router, sequencer, utility } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
@@ -21,7 +18,7 @@ import { z } from "zod";
 export const thinkingStyleSchema = z.enum([
   "plan-and-execute",
   "supervisor",
-  "chain-of-thought",
+  "default",
 ]);
 
 export type ThinkingStyle = z.infer<typeof thinkingStyleSchema>;
@@ -66,16 +63,6 @@ export const PLAN_KEYWORDS = [
   "phase",
 ];
 
-export const COT_KEYWORDS = [
-  "think through",
-  "reason",
-  "why",
-  "explain",
-  "analyze",
-  "consider",
-  "evaluate",
-  "pros and cons",
-];
 
 // -------------------------------------------------------------------------
 // Tier 1 — Keyword Handler
@@ -96,8 +83,6 @@ export const keywordHandler = handler({
       matched = "supervisor";
     } else if (PLAN_KEYWORDS.some((kw) => message.includes(kw))) {
       matched = "plan-and-execute";
-    } else if (COT_KEYWORDS.some((kw) => message.includes(kw))) {
-      matched = "chain-of-thought";
     }
 
     if (matched !== null) {
@@ -131,11 +116,11 @@ export const classifierBlock = utility.intentClassifier({
       research + synthesis pipelines, code review across multiple dimensions,
       cross-domain analysis tasks.
     `,
-    "chain-of-thought": `
+    default: `
       The message is a direct question, a reasoning task, an explanation request,
-      or anything where a single high-quality response with visible reasoning
-      is more appropriate than task decomposition. Examples: answering questions,
-      comparing options, explaining concepts, debugging, short creative tasks.
+      or anything where a single high-quality response is more appropriate than
+      task decomposition. Examples: answering questions, comparing options,
+      explaining concepts, debugging, short creative tasks.
     `,
   },
 });
@@ -149,7 +134,7 @@ const applyClassifiedStyle = handler({
     const style: ThinkingStyle =
       input.confidence >= CONFIDENCE_THRESHOLD && parsed.success
         ? parsed.data
-        : "chain-of-thought";
+        : "default";
     if (style !== ctx.session.state.thinkingStyle) {
       await ctx.session.patchState({ thinkingStyle: style });
     }
@@ -197,8 +182,8 @@ export interface ThinkingStyleRouterConfig {
 export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   const { assistantGenerator, modelId, context, tools, sessionResources } = config;
 
-  // Chain of Thought — direct generation.
-  const cotPipeline = assistantGenerator;
+  // Default — direct generation.
+  const defaultPipeline = assistantGenerator;
 
   // Plan and Execute — decomposes into steps, executes, synthesizes.
   const paePipeline = planAndExecute({
@@ -253,7 +238,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   // interception (e.g. testRouter) works transparently.
   const thinkingStyleRouter = router({
     name: "thinking-style-router",
-    routes: [cotPipeline, paePipeline, supervisorPipeline],
+    routes: [defaultPipeline, paePipeline, supervisorPipeline],
     execute: (input, ctx) => {
       const style = ctx.session.state.thinkingStyle as string | undefined;
       switch (style) {
@@ -262,10 +247,10 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
         case "supervisor":
           return supervisorPipeline.connectInput(() => ({ goal: input.message }));
         default:
-          return cotPipeline;
+          return defaultPipeline;
       }
     },
   });
 
-  return { thinkingStyleRouter, cotPipeline, paePipeline, supervisorPipeline };
+  return { thinkingStyleRouter, defaultPipeline, paePipeline, supervisorPipeline };
 }
