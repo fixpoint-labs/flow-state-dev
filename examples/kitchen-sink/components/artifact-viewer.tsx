@@ -25,9 +25,10 @@ interface ArtifactViewerProps {
   onClose: () => void;
   onBack: () => void;
   className?: string;
+  style?: React.CSSProperties;
 }
 
-export function ArtifactViewer({ artifact, isSaving, onSaveArtifact, onClose, onBack, className }: ArtifactViewerProps) {
+export function ArtifactViewer({ artifact, isSaving, onSaveArtifact, onClose, onBack, className, style }: ArtifactViewerProps) {
   const [title, setTitle] = useState(artifact.title);
   const [content, setContent] = useState(artifact.content);
   const [isEditing, setIsEditing] = useState(false);
@@ -53,7 +54,7 @@ export function ArtifactViewer({ artifact, isSaving, onSaveArtifact, onClose, on
   };
 
   return (
-    <aside className={cn("flex h-full w-full min-w-0 shrink-0 flex-col border-l bg-background sm:w-[480px]", className)}>
+    <aside className={cn("flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l bg-background", className)} style={style}>
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2.5">
         <Button variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back to artifact list">
@@ -93,7 +94,7 @@ export function ArtifactViewer({ artifact, isSaving, onSaveArtifact, onClose, on
             />
           </>
         ) : (
-          <ScrollArea className="flex-1">
+          <ScrollArea className="min-h-0 flex-1">
             <Streamdown
               className="size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
               plugins={streamdownPlugins}

@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useState, useCallback, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import {
   FlowProvider,
   useFlow,
@@ -36,6 +36,7 @@ import { FeatureSelector, type Features, DEFAULT_FEATURES } from "@/components/f
 import { ClientDataBar } from "@/components/client-data-bar";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactViewer } from "@/components/artifact-viewer";
+import { ResizeHandle } from "@/components/resize-handle";
 import { SuggestionRow } from "@/components/suggestion-row";
 import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -53,6 +54,11 @@ const kitchenSinkRenderers: RendererRegistry = {
 
 
 type MobilePanel = "chat" | "artifacts";
+
+const SIDEBAR_DEFAULT_WIDTH = 480;
+const SIDEBAR_MIN_WIDTH = 280;
+const SIDEBAR_MAX_WIDTH = 700;
+const SIDEBAR_STORAGE_KEY = "ks-sidebar-width";
 
 const CLIENT_DATA_OPTIONS = {
   session: ["artifacts", "modeStatus", "workingMemory"] as string[],
@@ -80,6 +86,24 @@ function KitchenSinkApp() {
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("chat");
   const [isSessionDrawerOpen, setIsSessionDrawerOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window === "undefined") return SIDEBAR_DEFAULT_WIDTH;
+    const stored = sessionStorage.getItem(SIDEBAR_STORAGE_KEY);
+    return stored ? Number(stored) : SIDEBAR_DEFAULT_WIDTH;
+  });
+
+  const handleSidebarResize = useCallback((delta: number) => {
+    setSidebarWidth((w) => {
+      const next = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, w - delta));
+      sessionStorage.setItem(SIDEBAR_STORAGE_KEY, String(next));
+      return next;
+    });
+  }, []);
+
+  const sidebarStyle = useMemo<CSSProperties>(
+    () => ({ width: sidebarWidth, minWidth: SIDEBAR_MIN_WIDTH, maxWidth: SIDEBAR_MAX_WIDTH }),
+    [sidebarWidth],
+  );
 
   const voice = useVoice(session, {
     action: "run",
@@ -311,6 +335,8 @@ function KitchenSinkApp() {
             onSuggestionClick={handleSuggestionClick}
           />
 
+          <ResizeHandle onResize={handleSidebarResize} />
+
           {selectedArtifact ? (
             <ArtifactViewer
               artifact={selectedArtifact}
@@ -318,14 +344,14 @@ function KitchenSinkApp() {
               onSaveArtifact={handleSaveArtifact}
               onClose={() => setSelectedArtifactId(null)}
               onBack={() => setSelectedArtifactId(null)}
-              className="w-[20rem] md:w-[24rem] lg:w-[30rem]"
+              style={sidebarStyle}
             />
           ) : (
             <ArtifactPanel
               artifacts={artifacts}
               selectedId={selectedArtifactId}
               onSelect={setSelectedArtifactId}
-              className="w-[16rem] md:w-[18rem]"
+              style={sidebarStyle}
             />
           )}
         </div>
