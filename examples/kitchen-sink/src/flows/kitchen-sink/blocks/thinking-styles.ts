@@ -9,6 +9,7 @@
  * and the router that dispatches between them.
  */
 import { generator, handler, router, sequencer, utility } from "@flow-state-dev/core";
+import type { GeneratorSlot } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { supervisor } from "@flow-state-dev/patterns/supervisor";
@@ -178,6 +179,7 @@ export interface ThinkingStyleRouterConfig {
   assistantGenerator: BlockDefinition<any, any>;
   modelId: string;
   context: any[];
+  history?: GeneratorSlot<any, any>;
   tools: BlockDefinition<any, any>[];
   sessionResources: Record<string, any>;
 }
@@ -234,6 +236,8 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     maxConcurrency: 3,
     onSubTaskError: "skip",
     outputSchema: z.string(),
+    context,
+    history: config.history,
   });
 
   // Router — adapts flow input to each pipeline's expected shape via connectInput.

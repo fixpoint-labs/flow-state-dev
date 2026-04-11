@@ -119,6 +119,7 @@ const { thinkingStyleRouter } = createThinkingStyleRouter({
   assistantGenerator,
   modelId: MODEL_ID,
   context: [mem.contextFormatter, artifactListContext] as any,
+  history: (_input: any, ctx: any) => ctx.session.items.llm({ limit: 8 }),
   tools: [readArtifact, updateArtifact],
   sessionResources: artifactResources,
 });
