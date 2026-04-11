@@ -50,3 +50,21 @@ export {
 export type { BasePlan, BasePlanTask } from "./shared/plan";
 export { eventQueue, createEventQueueStateSchema } from "./event-queue";
 export type { EventQueueConfig, EventQueueState } from "./event-queue";
+export {
+  responseAuditor,
+  AnalyzerResultSchema,
+  AuditAnnotationSchema,
+  auditorInputSchema,
+  responseAuditorStateSchema,
+  captureContext,
+  aggregateResults,
+  applyThreshold,
+} from "./response-auditor";
+export type {
+  AnalyzerResult,
+  AuditAnnotation,
+  AuditorInput,
+  ResponseAuditorState,
+  ResponseAuditorConfig,
+  DisplayMode,
+} from "./response-auditor";
