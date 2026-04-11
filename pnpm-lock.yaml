@@ -358,6 +358,9 @@ importers:
         specifier: ^13.1.0
         version: 13.1.0
     devDependencies:
+      '@flow-state-dev/devtool':
+        specifier: workspace:*
+        version: link:../devtool
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.13
@@ -386,6 +389,12 @@ importers:
       zod:
         specifier: ^3.24.1
         version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.13
+
+  packages/devtool:
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

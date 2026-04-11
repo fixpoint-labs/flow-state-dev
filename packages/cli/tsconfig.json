@@ -8,6 +8,7 @@
   "include": ["src/**/*"],
   "references": [
     { "path": "../core" },
+    { "path": "../devtool" },
     { "path": "../server" },
     { "path": "../testing" }
   ]
