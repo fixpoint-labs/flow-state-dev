@@ -1,4 +1,4 @@
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type {
   RequestListOptions,
   RequestRecord,
@@ -8,6 +8,8 @@ import {
   createFilesystemRecordStore,
   type FilesystemRecordStore
 } from "./shared";
+import { ensureDirectory, toRecordPath } from "./shared";
+import { readFile, writeFile, rename } from "node:fs/promises";
 import {
   createSerializedWriteQueue,
   type SerializedWriteQueue
@@ -17,15 +19,23 @@ export type FilesystemRequestStoreOptions = {
   rootDir: string;
 };
 
+function toEventsPath(rootDir: string, requestId: string): string {
+  return toRecordPath(rootDir, requestId).replace(/\.json$/, ".events.json");
+}
+
 export class FilesystemRequestStore implements RequestStore {
   private readonly store: FilesystemRecordStore<
     RequestRecord,
     RequestListOptions
   >;
+  private readonly rootDir: string;
   private readonly itemWriteQueues = new Map<string, SerializedWriteQueue>();
   private readonly itemWriteQueued = new Set<string>();
+  private readonly eventWriteQueues = new Map<string, SerializedWriteQueue>();
+  private readonly eventWriteQueued = new Set<string>();
 
   constructor(options: FilesystemRequestStoreOptions) {
+    this.rootDir = options.rootDir;
     this.store = createFilesystemRecordStore<RequestRecord, RequestListOptions>({
       rootDir: options.rootDir,
       filter: (record, listOptions): boolean => {
@@ -107,6 +117,65 @@ export class FilesystemRequestStore implements RequestStore {
     if (queue !== undefined) {
       await queue.drain();
     }
+  }
+
+  persistEvents(requestId: string, events: RequestStreamEvent[]): void {
+    if (this.eventWriteQueued.has(requestId)) return;
+    this.eventWriteQueued.add(requestId);
+
+    const queue = this.getOrCreateEventWriteQueue(requestId);
+    const snapshot = [...events];
+    queue.enqueue(async () => {
+      this.eventWriteQueued.delete(requestId);
+      await ensureDirectory(this.rootDir);
+
+      const targetPath = toEventsPath(this.rootDir, requestId);
+      const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random()
+        .toString(16)
+        .slice(2)}`;
+
+      const serialized = JSON.stringify(snapshot);
+      await writeFile(tempPath, serialized, "utf8");
+      await rename(tempPath, targetPath);
+    });
+  }
+
+  async flushEvents(requestId: string): Promise<void> {
+    const queue = this.eventWriteQueues.get(requestId);
+    if (queue !== undefined) {
+      await queue.drain();
+    }
+  }
+
+  async getEvents(requestId: string): Promise<RequestStreamEvent[]> {
+    const filePath = toEventsPath(this.rootDir, requestId);
+    try {
+      const raw = await readFile(filePath, "utf8");
+      return JSON.parse(raw) as RequestStreamEvent[];
+    } catch (error) {
+      const maybeError = error as NodeJS.ErrnoException;
+      if (maybeError.code === "ENOENT") {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  private getOrCreateEventWriteQueue(requestId: string): SerializedWriteQueue {
+    let queue = this.eventWriteQueues.get(requestId);
+    if (queue === undefined) {
+      queue = createSerializedWriteQueue({
+        label: `request-events:${requestId}`,
+        onError: (err) => {
+          console.error(
+            `[flow-state] event persistence failed for ${requestId}`,
+            err
+          );
+        }
+      });
+      this.eventWriteQueues.set(requestId, queue);
+    }
+    return queue;
   }
 
   private getOrCreateWriteQueue(requestId: string): SerializedWriteQueue {

@@ -532,4 +532,81 @@ describe("SQLite store adapter", () => {
     await s.session.delete("sess_b");
     expect(await s.session.get("sess_b")).toBeUndefined();
   });
+
+  // --- Request Event Persistence ---
+
+  describe("request event persistence", () => {
+    it("persists and retrieves events in sequence order", async () => {
+      const s = freshStores();
+      const requestId = "req_events_1";
+      await s.request.set(requestId, makeRequestRecord(requestId, "flow-a", "ask", "user_1"));
+
+      const events = [
+        {
+          stream: "request" as const,
+          type: "request.created" as const,
+          requestId,
+          sequence_number: 1,
+          status: "in_progress" as const,
+          ts: 100
+        },
+        {
+          stream: "request" as const,
+          type: "item.added" as const,
+          requestId,
+          sequence_number: 2,
+          ts: 101,
+          item: { id: "item_0", type: "message" as const }
+        },
+        {
+          stream: "request" as const,
+          type: "request.completed" as const,
+          requestId,
+          sequence_number: 3,
+          status: "completed" as const,
+          ts: 102
+        }
+      ];
+
+      s.request.persistEvents(requestId, events as any);
+
+      // Allow microtask to flush
+      await new Promise((r) => setTimeout(r, 10));
+
+      const retrieved = await s.request.getEvents(requestId);
+      expect(retrieved).toHaveLength(3);
+      expect(retrieved.map((e: any) => e.sequence_number)).toEqual([1, 2, 3]);
+      expect(retrieved[0]!.type).toBe("request.created");
+      expect(retrieved[2]!.type).toBe("request.completed");
+    });
+
+    it("returns empty array for unknown request", async () => {
+      const s = freshStores();
+      const events = await s.request.getEvents("nonexistent");
+      expect(events).toEqual([]);
+    });
+
+    it("overwrites events on re-persist", async () => {
+      const s = freshStores();
+      const requestId = "req_overwrite";
+      await s.request.set(requestId, makeRequestRecord(requestId, "flow-a", "ask", "user_1"));
+
+      s.request.persistEvents(requestId, [
+        { stream: "request", type: "request.created", requestId, sequence_number: 1, status: "in_progress", ts: 100 }
+      ] as any);
+
+      // Wait for microtask
+      await s.request.flushEvents(requestId);
+
+      s.request.persistEvents(requestId, [
+        { stream: "request", type: "request.created", requestId, sequence_number: 1, status: "in_progress", ts: 100 },
+        { stream: "request", type: "request.completed", requestId, sequence_number: 2, status: "completed", ts: 200 }
+      ] as any);
+
+      await s.request.flushEvents(requestId);
+
+      const events = await s.request.getEvents(requestId);
+      expect(events).toHaveLength(2);
+    });
+  });
 });

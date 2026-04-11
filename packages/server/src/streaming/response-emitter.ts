@@ -60,6 +60,10 @@ export type ResponseEmitterItemHooks = {
   onItemDone?: (item: OutputItem) => void;
 };
 
+export type ResponseEmitterEventHooks = {
+  onEvent?: (events: RequestStreamEventWithId[]) => void;
+};
+
 const DEFAULT_MAX_BUFFER_SIZE = 10_000;
 
 function isRequestStreamDraft(value: unknown): value is {
@@ -102,6 +106,7 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   private droppedBufferedEvents = 0;
   private readonly eventObservers: Array<(event: RequestStreamEventWithId) => void> = [];
   private itemHooks?: ResponseEmitterItemHooks;
+  private eventHooks?: ResponseEmitterEventHooks;
 
   /**
    * Creates a request-scoped emitter instance.
@@ -137,6 +142,14 @@ export class ResponseEmitter implements ResponseEmitterHandle {
    */
   setItemHooks(hooks: ResponseEmitterItemHooks): void {
     this.itemHooks = hooks;
+  }
+
+  /**
+   * Registers hooks for event persistence.
+   * Called after each event is appended to the buffer, passing the full event list.
+   */
+  setEventHooks(hooks: ResponseEmitterEventHooks): void {
+    this.eventHooks = hooks;
   }
 
   /**
@@ -398,6 +411,15 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   }
 
   /**
+   * Returns all replayable events (excludes ping and debug).
+   */
+  getReplayableEvents(): RequestStreamEventWithId[] {
+    return this.events.filter(
+      (event) => event.type !== "ping" && event.type !== "debug"
+    );
+  }
+
+  /**
    * Returns the most recently emitted event id.
    */
   getLastEventId(): string | undefined {
@@ -447,6 +469,14 @@ export class ResponseEmitter implements ResponseEmitterHandle {
 
     for (const observer of this.eventObservers) {
       observer(withId);
+    }
+
+    // Fire event persistence hook with replayable events (exclude ping/debug).
+    if (this.eventHooks?.onEvent !== undefined) {
+      const eventType = withId.type;
+      if (eventType !== "ping" && eventType !== "debug") {
+        this.eventHooks.onEvent(this.getReplayableEvents());
+      }
     }
 
     return withId;

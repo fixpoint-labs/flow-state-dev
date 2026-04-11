@@ -71,7 +71,7 @@ export default function Page() {
 
 function KitchenSinkApp() {
   const flow = useFlow({ autoCreateSession: true });
-  const session = useSession(flow.activeSessionId, { items: true });
+  const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
 
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("chat");
