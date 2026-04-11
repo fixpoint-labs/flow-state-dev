@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import type { StoreRegistry } from "@flow-state-dev/server";
-import { createInMemoryContentStore } from "@flow-state-dev/server";
+import { InMemoryContentStore } from "./content-store";
 import { initializeSchema } from "./schema";
 import { createSQLiteSessionStore } from "./session-store";
 import { createSQLiteRequestStore } from "./request-store";
@@ -32,7 +32,7 @@ export function createSQLiteStores(options: SQLiteStoreOptions): SQLiteStoreRegi
     user: createSQLiteUserStore(db),
     project: createSQLiteProjectStore(db),
     activeRequests: createSQLiteActiveRequestRegistry(db),
-    content: createInMemoryContentStore(),
+    content: new InMemoryContentStore(),
     close() {
       db.close();
     }
