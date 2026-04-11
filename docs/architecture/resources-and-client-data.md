@@ -60,6 +60,22 @@ const soul = defineResource({
 });
 ```
 
+### Content Storage
+
+Resource content is persisted separately from scope record metadata via `ContentStore`. This separation lets adapters use different backends for content and metadata — SQL for scope records, blob storage for content, for example.
+
+**Two read paths:**
+1. **Execution context** — content is eagerly loaded from `ContentStore` into an in-memory cache at context creation. All reads during block execution are synchronous from this cache.
+2. **State routes** — `handleGetSessionState` loads content fresh from `ContentStore` before building the response.
+
+**Migration from inline content:** Existing scope records may have content stored inline in `resourceContent`. Both read paths merge inline record content with `ContentStore` content, with `ContentStore` values taking precedence. New content writes go exclusively to `ContentStore` — the inline `resourceContent` field on scope records is no longer updated.
+
+**Content writes do not bump scope record version.** Content is separate from state. The scope record's `version` and `updatedAt` reflect state/metadata changes only. Content writes persist per-key to `ContentStore` without touching the scope record.
+
+**Scope deletion cascades:** When a session (or other scope) is deleted, `ContentStore.deleteAll()` is called before the scope record is removed. This prevents orphaned content.
+
+See the [server README](../../packages/server/README.md) for `ContentStore` interface details and custom adapter instructions.
+
 ### Accessing Resources
 
 Resources are accessed through scope handles in `BlockContext`:

@@ -6,6 +6,10 @@ import {
   FilesystemActiveRequestRegistry
 } from "./filesystem/active-request-registry";
 import {
+  createFilesystemContentStore,
+  FilesystemContentStore
+} from "./filesystem/content-store";
+import {
   createFilesystemProjectStore,
   FilesystemProjectStore
 } from "./filesystem/project-store";
@@ -25,6 +29,10 @@ import {
   createInMemoryActiveRequestRegistry,
   InMemoryActiveRequestRegistry
 } from "./memory/active-request-registry";
+import {
+  createInMemoryContentStore,
+  InMemoryContentStore
+} from "./memory/content-store";
 import {
   createInMemoryProjectStore,
   InMemoryProjectStore
@@ -51,6 +59,8 @@ import type { StoreRegistry } from "./types";
 export type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
+  ContentScopeType,
+  ContentStore,
   ProjectListOptions,
   ProjectRecord,
   ProjectStore,
@@ -73,21 +83,25 @@ export {
   createScopeStateOps,
   createStateContainer,
   createFilesystemActiveRequestRegistry,
+  createFilesystemContentStore,
   createFilesystemProjectStore,
   createFilesystemRequestStore,
   createFilesystemSessionStore,
   createFilesystemUserStore,
   createInMemoryActiveRequestRegistry,
+  createInMemoryContentStore,
   createInMemoryProjectStore,
   createInMemoryRequestStore,
   createInMemorySessionStore,
   createInMemoryUserStore,
   FilesystemActiveRequestRegistry,
+  FilesystemContentStore,
   FilesystemProjectStore,
   FilesystemRequestStore,
   FilesystemSessionStore,
   FilesystemUserStore,
   InMemoryActiveRequestRegistry,
+  InMemoryContentStore,
   InMemoryProjectStore,
   InMemoryRequestStore,
   InMemorySessionStore,
@@ -110,7 +124,8 @@ export function createInMemoryStores(): StoreRegistry {
     request: createInMemoryRequestStore(),
     user: createInMemoryUserStore(),
     project: createInMemoryProjectStore(),
-    activeRequests: createInMemoryActiveRequestRegistry()
+    activeRequests: createInMemoryActiveRequestRegistry(),
+    content: createInMemoryContentStore()
   };
 }
 
@@ -132,6 +147,7 @@ export function createFilesystemStores(
     }),
     activeRequests: createFilesystemActiveRequestRegistry({
       directory: options.rootDir
-    })
+    }),
+    content: createFilesystemContentStore(options.rootDir)
   };
 }

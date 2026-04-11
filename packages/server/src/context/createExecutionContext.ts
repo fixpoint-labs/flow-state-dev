@@ -1560,7 +1560,6 @@ export async function createExecutionContext<
       userId,
       state: (options.userState ?? {}) as TUserState,
       resources: normalizeScopeResources(userResourceConfigs, undefined),
-      resourceContent: normalizeScopeResourceContent(userResourceConfigs, undefined),
       version: 0,
       createdAt: now,
       updatedAt: now
@@ -1577,7 +1576,6 @@ export async function createExecutionContext<
       projectId: options.projectId,
       state: (options.sessionState ?? {}) as TSessionState,
       resources: normalizeScopeResources(sessionResourceConfigs, undefined),
-      resourceContent: normalizeScopeResourceContent(sessionResourceConfigs, undefined),
       version: 0,
       createdAt: now,
       updatedAt: now,
@@ -1603,13 +1601,36 @@ export async function createExecutionContext<
       userId,
       state: (options.projectState ?? {}) as TProjectState,
       resources: normalizeScopeResources(projectResourceConfigs, undefined),
-      resourceContent: normalizeScopeResourceContent(projectResourceConfigs, undefined),
       version: 0,
       createdAt: now,
       updatedAt: now
     };
     await stores.project.set(projectRecord.id, projectRecord);
   }
+
+  // Load content from ContentStore, merging with any inline record content
+  // for backward compatibility with records created before ContentStore existed.
+  // ContentStore values take precedence over inline record values.
+  const [sessionContentFromStore, userContentFromStore, projectContentFromStore] = await Promise.all([
+    stores.content.getAll("session", sessionId),
+    stores.content.getAll("user", userId),
+    resolvedProjectId !== undefined ? stores.content.getAll("project", resolvedProjectId) : Promise.resolve({})
+  ]);
+
+  const initialSessionContent = normalizeScopeResourceContent(
+    sessionResourceConfigs,
+    { ...(sessionRecord.resourceContent ?? {}), ...sessionContentFromStore }
+  );
+  const initialUserContent = normalizeScopeResourceContent(
+    userResourceConfigs,
+    { ...(userRecord.resourceContent ?? {}), ...userContentFromStore }
+  );
+  const initialProjectContent = normalizeScopeResourceContent(
+    projectResourceConfigs,
+    resolvedProjectId !== undefined
+      ? { ...(projectRecord?.resourceContent ?? {}), ...projectContentFromStore }
+      : undefined
+  );
 
   let requestRecord = loadedRequest;
   if (requestRecord === undefined) {
@@ -1655,11 +1676,15 @@ export async function createExecutionContext<
       sessionRef.current.resources as Record<string, unknown> | undefined
     );
 
+  // Content refs: eagerly loaded from ContentStore at initialization.
+  // All reads during execution use the in-memory cache (synchronous).
+  // Writes update the cache and persist to ContentStore (async, per-key).
+  const sessionContentRef = { current: initialSessionContent };
+  const userContentRef = { current: initialUserContent };
+  const projectContentRef = { current: initialProjectContent };
+
   const readSessionResourceContent = (): Record<string, string> =>
-    normalizeScopeResourceContent(
-      sessionResourceConfigs,
-      sessionRef.current.resourceContent as Record<string, unknown> | undefined
-    );
+    sessionContentRef.current;
 
   const readUserResources = (): Record<string, JsonObject> =>
     normalizeScopeResources(
@@ -1668,10 +1693,7 @@ export async function createExecutionContext<
     );
 
   const readUserResourceContent = (): Record<string, string> =>
-    normalizeScopeResourceContent(
-      userResourceConfigs,
-      userRef.current.resourceContent as Record<string, unknown> | undefined
-    );
+    userContentRef.current;
 
   const readProjectResources = (): Record<string, JsonObject> =>
     normalizeScopeResources(
@@ -1680,10 +1702,7 @@ export async function createExecutionContext<
     );
 
   const readProjectResourceContent = (): Record<string, string> =>
-    normalizeScopeResourceContent(
-      projectResourceConfigs,
-      projectRef.current?.resourceContent as Record<string, unknown> | undefined
-    );
+    projectContentRef.current;
 
   const persistSessionResources = async (
     next: Record<string, JsonObject>
@@ -1699,12 +1718,21 @@ export async function createExecutionContext<
   const persistSessionResourceContent = async (
     next: Record<string, string>
   ): Promise<void> => {
-    sessionRef.current = {
-      ...sessionRef.current,
-      resourceContent: normalizeScopeResourceContent(sessionResourceConfigs, next),
-      updatedAt: Date.now()
-    };
-    await stores.session.set(sessionRef.current.id, sessionRef.current);
+    const normalized = normalizeScopeResourceContent(sessionResourceConfigs, next);
+    const previous = sessionContentRef.current;
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (previous[key] !== value) {
+        await stores.content.set("session", sessionId, key, value);
+      }
+    }
+    for (const key of Object.keys(previous)) {
+      if (!(key in normalized)) {
+        await stores.content.delete("session", sessionId, key);
+      }
+    }
+
+    sessionContentRef.current = normalized;
   };
 
   const persistUserResources = async (
@@ -1721,12 +1749,21 @@ export async function createExecutionContext<
   const persistUserResourceContent = async (
     next: Record<string, string>
   ): Promise<void> => {
-    userRef.current = {
-      ...userRef.current,
-      resourceContent: normalizeScopeResourceContent(userResourceConfigs, next),
-      updatedAt: Date.now()
-    };
-    await stores.user.set(userRef.current.id, userRef.current);
+    const normalized = normalizeScopeResourceContent(userResourceConfigs, next);
+    const previous = userContentRef.current;
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (previous[key] !== value) {
+        await stores.content.set("user", userId, key, value);
+      }
+    }
+    for (const key of Object.keys(previous)) {
+      if (!(key in normalized)) {
+        await stores.content.delete("user", userId, key);
+      }
+    }
+
+    userContentRef.current = normalized;
   };
 
   const persistProjectResources = async (
@@ -1748,17 +1785,25 @@ export async function createExecutionContext<
   const persistProjectResourceContent = async (
     next: Record<string, string>
   ): Promise<void> => {
-    const current = projectRef.current;
-    if (current === undefined) {
+    if (resolvedProjectId === undefined) {
       return;
     }
 
-    projectRef.current = {
-      ...current,
-      resourceContent: normalizeScopeResourceContent(projectResourceConfigs, next),
-      updatedAt: Date.now()
-    };
-    await stores.project.set(projectRef.current.id, projectRef.current);
+    const normalized = normalizeScopeResourceContent(projectResourceConfigs, next);
+    const previous = projectContentRef.current;
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (previous[key] !== value) {
+        await stores.content.set("project", resolvedProjectId, key, value);
+      }
+    }
+    for (const key of Object.keys(previous)) {
+      if (!(key in normalized)) {
+        await stores.content.delete("project", resolvedProjectId, key);
+      }
+    }
+
+    projectContentRef.current = normalized;
   };
 
   const requestContainer = createStateContainer<TRequestState>(
