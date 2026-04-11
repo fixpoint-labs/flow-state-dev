@@ -40,7 +40,7 @@ function StyleBadge({ style }: { style: ThinkingStyle }) {
   return (
     <div
       className={cn(
-        "mb-1 inline-flex items-center gap-1 rounded-full",
+        "mb-2 inline-flex items-center gap-1 rounded-full",
         "border border-border/50 bg-muted/50 px-2 py-0.5",
         "text-[10px] font-medium leading-none text-muted-foreground",
         "animate-in fade-in-0 slide-in-from-top-1 duration-200",
@@ -59,7 +59,7 @@ function ModelBadge({ preset }: { preset: string }) {
   return (
     <div
       className={cn(
-        "mb-1 inline-flex items-center gap-1 rounded-full",
+        "mb-2 inline-flex items-center gap-1 rounded-full",
         "border border-border/50 bg-muted/50 px-2 py-0.5",
         "text-[10px] font-medium leading-none text-muted-foreground",
         "animate-in fade-in-0 slide-in-from-top-1 duration-200",
