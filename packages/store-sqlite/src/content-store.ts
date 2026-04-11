@@ -1,9 +1,9 @@
 /**
  * In-memory content store for the SQLite adapter package.
  *
- * A local implementation so that store-sqlite does not need a runtime
- * import from @flow-state-dev/server (which is type-only by convention).
- * A SQLite-backed ContentStore can replace this in a future iteration.
+ * Defined locally so store-sqlite only uses type-only references to
+ * the server package. A SQLite-backed ContentStore can replace this
+ * in a future iteration.
  */
 import type { ContentStore, ContentScopeType } from "@flow-state-dev/server";
 
