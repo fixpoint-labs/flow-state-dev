@@ -190,8 +190,7 @@ export type ExecuteBlockInternalOptions =
 
 /**
  * Build the ctx.cap object from a block's resolved capabilities.
- * Each capability's fns(ctx) result is memoized on first property access
- * via Object.defineProperty getters.
+ * Each capability with a fns factory gets its helpers evaluated eagerly.
  */
 function buildCapObject(
   blockConfig: { __resolvedCapabilities?: CapabilityRef[] },
@@ -204,19 +203,9 @@ function buildCapObject(
 
   for (const cap of caps) {
     const base = getBaseCapability(cap);
-    if (!base.fns) continue;
-
-    let cached: Record<string, unknown> | undefined;
-    Object.defineProperty(capObj, base.name, {
-      get() {
-        if (!cached) {
-          cached = base.fns!(ctx);
-        }
-        return cached;
-      },
-      enumerable: true,
-      configurable: false,
-    });
+    if (base.fns) {
+      capObj[base.name] = base.fns(ctx);
+    }
   }
 
   return capObj;

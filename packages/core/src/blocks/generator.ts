@@ -22,7 +22,7 @@ import type {
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
 import type { CapabilityRef } from "../capability/types";
 import { buildBlock } from "./internal/build-block";
-import { resolveCapabilitiesForGenerator } from "./internal/resolve-capabilities";
+import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { toError, withTimeout } from "./internal/utils";
 
 const DEFAULT_MAX_ITERATIONS = 8;
@@ -1123,7 +1123,7 @@ export function generator<
     TSessionResources, TUserResources, TProjectResources, TTargetSchemas, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
-  const { declaredResources, resolvedCapabilities, mergedSurface } = resolveCapabilitiesForGenerator(config);
+  const { declaredResources, resolvedCapabilities, mergedSurface } = resolveCapabilities(config, "generator");
 
   const outputSchema = (config.outputSchema ?? z.string()) as ZodTypeAny;
   const normalizedConfig: GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput> = {
