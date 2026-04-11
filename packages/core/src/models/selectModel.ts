@@ -14,24 +14,31 @@ import type { MaybePromise } from "../schema/common";
 // ---------------------------------------------------------------------------
 
 /**
+ * Loose BlockContext where state access returns `any` instead of `unknown`.
+ * Used as the default TCtx for rule callbacks since selectModel is called
+ * outside the generator where specific state types aren't available.
+ */
+type LooseBlockContext = BlockContext<any, any, any, any>;
+
+/**
  * Returns a candidate model string.
  * If it resolves to null, undefined, empty string, or the same value as the
  * default, this rule is skipped and evaluation continues to the next rule.
  */
-export type PreferRule<TInput = unknown, TCtx = BlockContext> = {
+export type PreferRule<TInput = unknown, TCtx = LooseBlockContext> = {
   prefer: (input: TInput, ctx: TCtx) => MaybePromise<string | undefined | null>;
 };
 
 /**
  * Returns a boolean condition. When true, uses the `use` model.
  */
-export type WhenRule<TInput = unknown, TCtx = BlockContext> = {
+export type WhenRule<TInput = unknown, TCtx = LooseBlockContext> = {
   when: (input: TInput, ctx: TCtx) => MaybePromise<boolean>;
   use: string | string[];
 };
 
 /** Union of all rule kinds. */
-export type ModelRule<TInput = unknown, TCtx = BlockContext> =
+export type ModelRule<TInput = unknown, TCtx = LooseBlockContext> =
   | PreferRule<TInput, TCtx>
   | WhenRule<TInput, TCtx>;
 
@@ -56,10 +63,10 @@ export type ModelRule<TInput = unknown, TCtx = BlockContext> =
  * ])
  * ```
  */
-export function selectModel<TInput = unknown, TCtx extends BlockContext = BlockContext>(
+export function selectModel<TInput = unknown, TCtx extends BlockContext = LooseBlockContext>(
   defaultModel: string | string[],
   rules: ModelRule<TInput, TCtx> | ModelRule<TInput, TCtx>[]
-): (input: TInput, ctx: TCtx) => Promise<string | string[]> {
+): (input: any, ctx: any) => Promise<string | string[]> {
   const ruleList = Array.isArray(rules) ? rules : [rules];
   const defaultString = Array.isArray(defaultModel) ? null : defaultModel;
 
