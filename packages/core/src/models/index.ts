@@ -37,5 +37,9 @@ export type {
   ProviderName
 } from "./types";
 
+// Model selection utility
+export { selectModel } from "./selectModel";
+export type { ModelRule, PreferRule, WhenRule } from "./selectModel";
+
 // Internal utility (not re-exported from main index — used by model resolver)
 export { makeSchemaStrict } from "./makeSchemaStrict";

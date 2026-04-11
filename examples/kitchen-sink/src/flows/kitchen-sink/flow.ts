@@ -17,6 +17,7 @@ import {
   handler,
   sequencer,
   utility,
+  selectModel,
 } from "@flow-state-dev/core";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import { system as memorySystem } from "@thought-fabric/core/memory";
@@ -90,7 +91,7 @@ const assistantGenerator = generator({
   sessionStateSchema: z.object({ mode: modeSchema.default("chat"), thinkingStyle: z.string().optional() }),
   sessionResources: artifactResources,
 
-  context: [mem.contextFormatter, artifactListContext, voiceContext] as any[],
+  context: [mem.contextFormatter, artifactListContext, voiceContext],
 
   inputSchema,
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
@@ -118,8 +119,8 @@ const assistantGenerator = generator({
 const { thinkingStyleRouter } = createThinkingStyleRouter({
   assistantGenerator,
   modelId: MODEL_ID,
-  context: [mem.contextFormatter, artifactListContext] as any,
   history: (_input: any, ctx: any) => ctx.session.items.llm({ limit: 8 }),
+  context: [mem.contextFormatter, artifactListContext],
   tools: [readArtifact, updateArtifact],
   sessionResources: artifactResources,
 });

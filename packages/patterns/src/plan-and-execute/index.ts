@@ -18,7 +18,7 @@
  */
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import { utility } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockDefinition, BlockContext } from "@flow-state-dev/core/types";
 import type { GeneratorSlot, GeneratorTool, GeneratorSearchConfig } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
@@ -323,7 +323,7 @@ function createDefaultSynthesizer(config: {
     model: config.model ?? "openai/gpt-5.4-mini",
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.history !== undefined ? { history: config.history } : {}),
-    ...(config.tools !== undefined ? { tools: config.tools as any } : {}),
+    ...(config.tools !== undefined ? { tools: config.tools } : {}),
     inputSchema: z.object({
       goal: z.string(),
       status: z.string().optional(),
@@ -425,7 +425,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
       })).optional(),
     }),
     ...(config.context !== undefined ? { context: config.context } : {}),
-    ...(config.tools !== undefined ? { tools: config.tools as any } : {}),
+    ...(config.tools !== undefined ? { tools: config.tools } : {}),
     ...(config.search !== undefined ? { search: config.search } : {}),
     ...(config.sessionResources !== undefined ? { sessionResources: config.sessionResources } : {}),
     ...(config.userResources !== undefined ? { userResources: config.userResources } : {}),
@@ -476,8 +476,8 @@ export function planAndExecute<
   const planner = config.planner ?? utility.decomposer({
     name: `${name}-planner`,
     model: config.model,
-    context: config.context as any,
-    history: config.history as any,
+    context: config.context,
+    history: config.history,
   });
 
   const evaluator = config.evaluator ?? createEvaluateProgress({
@@ -524,7 +524,7 @@ export function planAndExecute<
         status: "planning",
       });
 
-      const plannerOutput = await planner.run(input, ctx as any) as {
+      const plannerOutput = await planner.run(input, ctx as BlockContext) as {
         tasks: Array<{ id: string; goal: string; deps?: string[] }>;
       };
 
@@ -538,7 +538,7 @@ export function planAndExecute<
       await ctx.sequencer!.patchState({ tasks, status: "executing" });
 
       emitPlanSnapshot(
-        ctx as any,
+        ctx as BlockContext,
         { goal: input.goal, tasks, status: "executing", iteration: 0 },
         { key: name }
       );
@@ -658,7 +658,7 @@ export function planAndExecute<
       await ctx.sequencer!.patchState({ tasks: updatedTasks, currentTaskId: undefined });
 
       emitPlanSnapshot(
-        ctx as any,
+        ctx as BlockContext,
         { goal: state.goal, tasks: updatedTasks, status: state.status, iteration: state.iteration },
         { key: name }
       );
@@ -695,7 +695,7 @@ export function planAndExecute<
       await ctx.sequencer!.patchState({ tasks: updatedTasks, currentTaskId: undefined });
 
       emitPlanSnapshot(
-        ctx as any,
+        ctx as BlockContext,
         { goal: state.goal, tasks: updatedTasks, status: state.status, iteration: state.iteration },
         { key: name }
       );

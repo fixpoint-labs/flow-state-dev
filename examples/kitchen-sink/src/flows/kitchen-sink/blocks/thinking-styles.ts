@@ -10,7 +10,7 @@
  */
 import { generator, handler, router, sequencer, utility } from "@flow-state-dev/core";
 import type { GeneratorSlot } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockDefinition, DeclaredResourceEntry } from "@flow-state-dev/core/types";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { supervisor } from "@flow-state-dev/patterns/supervisor";
 import { z } from "zod";
@@ -178,10 +178,10 @@ export const autoClassifyStyle = sequencer({
 export interface ThinkingStyleRouterConfig {
   assistantGenerator: BlockDefinition<any, any>;
   modelId: string;
-  context: any[];
   history?: GeneratorSlot<any, any>;
+  context: GeneratorSlot<any, any>;
   tools: BlockDefinition<any, any>[];
-  sessionResources: Record<string, any>;
+  sessionResources: Record<string, DeclaredResourceEntry>;
 }
 
 export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {

@@ -531,16 +531,16 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
           );
           // Functional updater reads the latest state to avoid race conditions
           // when multiple tasks complete concurrently.
-          await ctx.sequencer!.patchState("plan" as any, (currentPlan: any[]) =>
-            currentPlan.map((t: any) =>
+          await ctx.sequencer!.patchState("plan", (currentPlan) =>
+            currentPlan.map((t) =>
               t.id === task.id
                 ? { ...t, status: "skipped" as const, error: errorMessage, feedback: errorMessage }
                 : t
             )
           );
         } else {
-          await ctx.sequencer!.patchState("plan" as any, (currentPlan: any[]) =>
-            currentPlan.map((t: any) =>
+          await ctx.sequencer!.patchState("plan", (currentPlan) =>
+            currentPlan.map((t) =>
               t.id === task.id
                 ? { ...t, result, status: "awaiting-review" as const }
                 : t
