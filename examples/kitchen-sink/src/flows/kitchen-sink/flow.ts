@@ -36,6 +36,7 @@ import {
   autoClassifyStyle,
   thinkingStyleSchema,
   thinkingStyleSessionStateSchema,
+  artifacts,
 } from "./blocks";
 import { modeSchema, artifactResources } from "./schemas";
 import { CHAT_PROMPT, CREATE_PROMPT } from "./prompts";
@@ -97,15 +98,16 @@ const assistantGenerator = generator({
   name: "assistant-generator",
   userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
   sessionStateSchema: z.object({ mode: modeSchema.default("chat"), thinkingStyle: z.string().optional() }),
-  sessionResources: artifactResources,
 
-  context: [mem.contextFormatter, artifactListContext, voiceContext],
+  // Artifact capability: installs resources, context formatter, and tools
+  uses: [artifacts],
+
+  context: [mem.contextFormatter, voiceContext],
 
   inputSchema,
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
   user: (input) => input.message,
 
-  tools: [readArtifact, updateArtifact],
   search: true,
   maxIterations: 10,
   outputSchema: z.string(),
