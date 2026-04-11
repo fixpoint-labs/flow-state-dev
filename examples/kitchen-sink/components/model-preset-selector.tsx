@@ -80,7 +80,7 @@ const PRESET_OPTIONS: PresetOption[] = [
   },
   {
     value: "preset/thinking-small",
-    label: "Thinking (Small)",
+    label: "Small",
     shortLabel: "Think S",
     description: "Extended reasoning, standard models",
     icon: Brain,
@@ -89,7 +89,7 @@ const PRESET_OPTIONS: PresetOption[] = [
   },
   {
     value: "preset/thinking-medium",
-    label: "Thinking (Medium)",
+    label: "Medium",
     shortLabel: "Think M",
     description: "Extended reasoning, balanced",
     icon: Brain,
@@ -98,7 +98,7 @@ const PRESET_OPTIONS: PresetOption[] = [
   },
   {
     value: "preset/thinking-large",
-    label: "Thinking (Large)",
+    label: "Large",
     shortLabel: "Think L",
     description: "Extended reasoning, most capable",
     icon: Brain,
