@@ -32,11 +32,10 @@ import type {
   JsonObject,
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import type { Sandbox, SandboxProvider } from "./types";
+import type { Sandbox, SandboxProvider, WorkspaceScope } from "./types";
 import { createLocalFsSandbox } from "./adapters/local-fs";
 import { hashContent } from "./hash";
 import path from "node:path";
-import os from "node:os";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -105,7 +104,7 @@ const bashWriteFileOutputSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Per-session sandbox registry
+// Per-scope sandbox registry
 // ---------------------------------------------------------------------------
 
 interface SandboxEntry {
@@ -115,34 +114,66 @@ interface SandboxEntry {
   contentHashes: Map<string, string>;
 }
 
-// Module-level registry keyed by session ID. Entries are lightweight and
+// Module-level registry keyed by scope+scopeId. Entries are lightweight and
 // cleaned up implicitly when the process ends. Long-lived deployments
 // should use the `persist` option on `createBashTool` instead.
 const registry = new Map<string, SandboxEntry>();
+
+/** Identity fields available on the block execution context. */
+interface ScopeIdentity {
+  sessionId: string;
+  userId: string;
+  projectId?: string;
+}
+
+/**
+ * Resolve the workspace scope ID and registry key from context identity.
+ *
+ * For the `local` provider, also resolves the `cwd` when not explicitly set:
+ * `.fsdev/workspaces/{scope}/{scopeId}/`
+ */
+function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key: string; scopeId: string } {
+  switch (scope) {
+    case "user":
+      return { key: `user:${identity.userId}`, scopeId: identity.userId };
+    case "project": {
+      const id = identity.projectId ?? identity.sessionId;
+      return { key: `project:${id}`, scopeId: id };
+    }
+    case "session":
+    default:
+      return { key: `session:${identity.sessionId}`, scopeId: identity.sessionId };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Sandbox lifecycle helpers
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a sandbox instance for the given provider. Each adapter receives
- * the `destination` path so it can map virtual workspace paths to real ones.
+ * Creates a sandbox instance for the given provider.
+ *
+ * For `local`: resolves cwd from scope when not explicitly set.
+ * For `just-bash`: passes through configuration options.
  */
 async function createSandboxForProvider(
   provider: SandboxProvider,
-  sessionId: string,
+  identity: ScopeIdentity,
   destination: string,
-): Promise<Sandbox> {
+): Promise<{ sandbox: Sandbox; registryKey: string }> {
   switch (provider.type) {
     case "local": {
-      const cwd =
-        provider.cwd ?? path.join(os.tmpdir(), "flow-state-bash", sessionId);
-      return createLocalFsSandbox({ cwd, destination });
+      const scope = provider.scope ?? "session";
+      const { key, scopeId } = resolveScopeKey(scope, identity);
+      const cwd = provider.cwd ?? path.join(
+        process.cwd(), ".fsdev", "workspaces", scope, scopeId,
+      );
+      return { sandbox: createLocalFsSandbox({ cwd, destination }), registryKey: key };
     }
 
     case "just-bash": {
       const { createJustBashSandbox } = await import("./adapters/just-bash");
-      return await createJustBashSandbox({
+      const sandbox = await createJustBashSandbox({
         cwd: destination,
         env: provider.env,
         network: provider.network,
@@ -150,22 +181,24 @@ async function createSandboxForProvider(
         javascript: provider.javascript,
         executionLimits: provider.executionLimits,
       });
+      // just-bash is always in-memory, scope to session for registry isolation
+      return { sandbox, registryKey: `session:${identity.sessionId}` };
     }
 
     case "vercel": {
       const { resolveVercelSandbox } = await import("./adapters/vercel");
       const result = await resolveVercelSandbox(provider.sandboxId);
-      return result.sandbox;
+      return { sandbox: result.sandbox, registryKey: `vercel:${result.sandboxId}` };
     }
 
     case "upstash": {
       const { resolveUpstashBox } = await import("./adapters/upstash");
       const result = await resolveUpstashBox(provider.boxId);
-      return result.sandbox;
+      return { sandbox: result.sandbox, registryKey: `upstash:${result.sandboxId}` };
     }
 
     case "custom":
-      return provider.sandbox;
+      return { sandbox: provider.sandbox, registryKey: `session:${identity.sessionId}` };
   }
 }
 
@@ -301,23 +334,36 @@ export function createBashBlocks(options: CreateBashBlocksOptions) {
     createState = () => ({}) as Partial<JsonObject>,
   } = options;
 
+  /** Extract scope identity from the block execution context. */
+  function getIdentity(ctx: any): ScopeIdentity {
+    return {
+      sessionId: ctx.session.identity.id,
+      userId: ctx.session.identity.userId,
+      projectId: ctx.session.identity.projectId,
+    };
+  }
+
   /**
-   * Lazily creates (or retrieves) the sandbox for a session, hydrating
-   * resource files on first access.
+   * Lazily creates (or retrieves) the sandbox, hydrating resource files
+   * on first access. The registry key is scope-dependent (session/user/project).
    */
   async function getOrCreate(
-    sessionId: string,
+    identity: ScopeIdentity,
     collection: ResourceCollectionRef<JsonObject>,
   ): Promise<SandboxEntry> {
-    let entry = registry.get(sessionId);
+    // Resolve the registry key first to avoid creating a sandbox we already have
+    const scope = provider.type === "local" ? (provider.scope ?? "session") : "session";
+    const { key: registryKey } = resolveScopeKey(scope, identity);
+
+    let entry = registry.get(registryKey);
     if (!entry) {
-      const sandbox = await createSandboxForProvider(
+      const { sandbox } = await createSandboxForProvider(
         provider,
-        sessionId,
+        identity,
         destination,
       );
       entry = { sandbox, hydrated: false, contentHashes: new Map() };
-      registry.set(sessionId, entry);
+      registry.set(registryKey, entry);
     }
 
     if (!entry.hydrated) {
@@ -347,7 +393,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions) {
 
     execute: async (input: z.infer<typeof bashCommandInputSchema>, ctx: any) => {
       const collection = getCollection(ctx);
-      const entry = await getOrCreate(ctx.session.identity.id, collection);
+      const entry = await getOrCreate(getIdentity(ctx), collection);
       const result = await entry.sandbox.executeCommand(input.command);
       await flush(entry, collection, destination, createState);
       return result;
@@ -364,7 +410,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions) {
 
     execute: async (input: z.infer<typeof bashReadFileInputSchema>, ctx: any) => {
       const collection = getCollection(ctx);
-      const entry = await getOrCreate(ctx.session.identity.id, collection);
+      const entry = await getOrCreate(getIdentity(ctx), collection);
       const fullPath = path.join(destination, input.path);
       const content = await entry.sandbox.readFile(fullPath);
       return { content };
@@ -381,7 +427,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions) {
 
     execute: async (input: z.infer<typeof bashWriteFileInputSchema>, ctx: any) => {
       const collection = getCollection(ctx);
-      const entry = await getOrCreate(ctx.session.identity.id, collection);
+      const entry = await getOrCreate(getIdentity(ctx), collection);
       const fullPath = path.join(destination, input.path);
       await entry.sandbox.writeFile(fullPath, input.content);
       await flush(entry, collection, destination, createState);

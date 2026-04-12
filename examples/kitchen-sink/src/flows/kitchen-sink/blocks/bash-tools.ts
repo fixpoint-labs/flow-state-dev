@@ -13,8 +13,7 @@ export const { bashCommand, bashReadFile, bashWriteFile } = createBashBlocks({
   sessionResources: artifactResources,
   collectionKey: "artifacts",
   provider: {
-    type: "just-bash",
-    network: { dangerouslyAllowFullInternetAccess: true },
+    type: "local",
   },
   createState: (relativePath) => ({
     title: path.basename(relativePath),

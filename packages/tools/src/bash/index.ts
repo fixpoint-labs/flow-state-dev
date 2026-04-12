@@ -37,6 +37,7 @@ export type {
   CommandResult,
   FileEntryState,
   SandboxProvider,
+  WorkspaceScope,
   NetworkConfig,
   ExecutionLimits,
   BashSessionState,

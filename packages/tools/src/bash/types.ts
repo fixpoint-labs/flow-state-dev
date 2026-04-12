@@ -82,9 +82,27 @@ export type ExecutionLimits = {
   maxSedIterations?: number;
 };
 
+/** Workspace scope for the local provider. Determines the workspace directory. */
+export type WorkspaceScope = "session" | "user" | "project";
+
 /** Discriminated union of sandbox provider configurations. */
 export type SandboxProvider =
-  | { type: "local"; cwd?: string }
+  | {
+      type: "local";
+      /**
+       * Explicit workspace directory. When set, `scope` is ignored.
+       * When omitted, the workspace is auto-created at
+       * `.fsdev/workspaces/{scope}/{scopeId}/`.
+       */
+      cwd?: string;
+      /**
+       * Scope for the auto-created workspace directory. Default: `"session"`.
+       * - `"session"` — one workspace per session (isolated, ephemeral)
+       * - `"user"` — shared across all sessions for a user
+       * - `"project"` — shared across all sessions in a project
+       */
+      scope?: WorkspaceScope;
+    }
   | { type: "vercel"; sandboxId?: string }
   | { type: "upstash"; boxId?: string }
   | {
