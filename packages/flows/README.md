@@ -12,7 +12,7 @@ pnpm add @flow-state-dev/flows
 
 ### `chatFlow` — Multi-turn Conversation
 
-The most common pattern. Maintains conversation history across requests, streams text token-by-token, tracks message count in session state.
+Full-featured chat agent with conversation history, model selection via user preference, capability support (memory, artifacts, etc.), tools, search, and voice. Includes a built-in `setPreferredModel` action so users can switch models at runtime.
 
 ```typescript
 import { chatFlow } from "@flow-state-dev/flows";
@@ -20,99 +20,107 @@ import { chatFlow } from "@flow-state-dev/flows";
 // Works with zero config
 const flow = chatFlow()({ id: "my-chat" });
 
-// Or configure it
+// With model selection, tools, and memory
+import { memory } from "@thought-fabric/core";
+
+const mem = memory.system({ model: "openai/gpt-4o-mini", working: true });
+
 const flow = chatFlow({
-  model: "anthropic/claude-sonnet-4-20250514",
-  prompt: "You are a coding assistant. Help users write better TypeScript.",
+  model: "openai/gpt-4o",
+  prompt: "You are a coding assistant.",
   tools: [searchTool, readFileTool],
-  search: true,
-  maxIterations: 15,
+  uses: [mem.capability],
+  context: [mem.contextFormatter],
+  historyLimit: 50,
 })({ id: "code-assistant" });
 ```
 
-**Action:** `chat` with input `{ message: string }`
+**Actions:**
 
-**Session state:** `{ messageCount: number }` — incremented after each exchange.
+- `chat` — input `{ message: string }`. Send a message, get a streamed response.
+- `setPreferredModel` — input `{ preferredModel: string }`. Switch the active model (persisted in user state).
+
+**State:**
+
+- Session: `{ messageCount: number }` — incremented after each exchange.
+- User: `{ preferredModel?: string }` — the user's preferred model, honored via `selectModel`.
 
 **Config options:**
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `model` | `string` | `"openai/gpt-4o-mini"` | LLM model identifier |
+| `model` | `string` | `"openai/gpt-4o-mini"` | Default LLM model identifier |
 | `prompt` | `string` | Generic assistant prompt | System prompt |
 | `tools` | `GeneratorTool[]` | `undefined` | Tool blocks for the LLM |
 | `search` | `boolean \| GeneratorSearchConfig` | `undefined` | Web search grounding |
 | `maxIterations` | `number` | `10` | Max tool-loop iterations |
 | `voice` | `VoiceConfig` | `undefined` | Voice / TTS config |
+| `uses` | `CapabilityRef[]` | `undefined` | Capabilities (memory, artifacts, etc.) |
+| `context` | `GeneratorSlotEntry[]` | `undefined` | Context formatters for the system prompt |
+| `historyLimit` | `number` | No limit | Max prior LLM messages in history |
 
-### `agentFlow` — Tool-Using Task Agent
+### `componentFlow` — AI-Enabled UI Component
 
-For agentic workflows where the LLM drives tool use to accomplish a goal. Higher default iteration limit, task-oriented defaults.
+For UI components that have AI-powered actions: a text editor with "Improve Writing", "Make Shorter", "Fix Grammar" buttons, a content area with "Summarize", "Translate" actions, etc.
+
+Each action is a named content transformation. The user provides content and optionally extra instructions; the LLM applies the action's prompt and returns the transformed text. No conversation history. Each action is single-shot.
 
 ```typescript
-import { agentFlow } from "@flow-state-dev/flows";
+import { componentFlow } from "@flow-state-dev/flows";
 
-const flow = agentFlow({
+const flow = componentFlow({
+  actions: {
+    improve: "Improve the writing quality while preserving meaning.",
+    shorten: "Make this more concise without losing key information.",
+    fixGrammar: "Fix grammar, spelling, and punctuation errors.",
+    expand: "Expand with more detail and supporting examples.",
+  },
+})({ id: "text-editor" });
+
+// With a base prompt and custom model
+const flow = componentFlow({
   model: "anthropic/claude-sonnet-4-20250514",
-  prompt: "You are a research agent. Find and synthesize information.",
-  tools: [searchTool, readUrlTool, extractTool],
-})({ id: "researcher" });
-```
+  prompt: "You are a professional editor for technical documentation.",
+  actions: {
+    simplify: "Rewrite for a non-technical audience.",
+    formalize: "Rewrite in a formal, professional tone.",
+  },
+})({ id: "doc-editor" });
 
-**Action:** `run` with input `{ goal: string }`
-
-**Session state:** `{ taskCount: number }` — incremented after each task.
-
-**Config options:**
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `model` | `string` | `"openai/gpt-4o-mini"` | LLM model identifier |
-| `prompt` | `string` | Task-oriented agent prompt | System prompt |
-| `tools` | `GeneratorTool[]` | **required** | Tool blocks (agents need tools) |
-| `search` | `boolean \| GeneratorSearchConfig` | `undefined` | Web search grounding |
-| `maxIterations` | `number` | `25` | Max tool-loop iterations |
-
-### `generateFlow` — Single-Shot Generation
-
-The simplest flow. One input, one LLM call, one output. No history, no tools, no session state. Use for summarization, extraction, transformation.
-
-```typescript
-import { generateFlow } from "@flow-state-dev/flows";
-
-// Text summarizer
-const flow = generateFlow({
-  prompt: "Summarize the following text concisely.",
-})({ id: "summarizer" });
-
-// Structured extraction
+// With structured output
 import { z } from "zod";
 
-const flow = generateFlow({
-  prompt: "Extract entities from the text.",
-  outputSchema: z.object({
-    people: z.array(z.string()),
-    places: z.array(z.string()),
-    dates: z.array(z.string()),
-  }),
-})({ id: "entity-extractor" });
+const flow = componentFlow({
+  actions: {
+    improve: "Improve the writing.",
+    extract: {
+      prompt: "Extract key entities from the text.",
+      outputSchema: z.object({ entities: z.array(z.string()) }),
+    },
+  },
+})({ id: "smart-editor" });
 ```
 
-**Action:** `generate` with input `{ input: string }`
-
-**Session state:** None.
+**Input:** `{ content: string, instruction?: string }` — same schema for every action. The optional `instruction` field lets users add ad-hoc guidance per request.
 
 **Config options:**
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `model` | `string` | `"openai/gpt-4o-mini"` | LLM model identifier |
-| `prompt` | `string` | Generic assistant prompt | System prompt |
-| `outputSchema` | `ZodTypeAny` | `undefined` (string) | Structured output schema |
+| `prompt` | `string` | `undefined` | Base system prompt shared across all actions |
+| `actions` | `Record<string, string \| ComponentActionConfig>` | **required** | Named actions (prompt string or config object) |
+
+**`ComponentActionConfig`:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `prompt` | `string` | Action-specific instruction appended to the base prompt |
+| `outputSchema` | `ZodTypeAny` | Structured output schema (defaults to plain text) |
 
 ## Customizing Beyond Config
 
-Every flow factory returns a `FlowType`, which is callable with `FlowInstanceOptions` for deeper overrides. You can add actions, merge session state, attach middleware, and more:
+Every flow factory returns a `FlowType`, which is callable with `FlowInstanceOptions` for deeper overrides:
 
 ```typescript
 const flow = chatFlow({ model: "openai/gpt-4o" });
@@ -120,20 +128,6 @@ const flow = chatFlow({ model: "openai/gpt-4o" });
 const instance = flow({
   id: "extended-chat",
   kind: "my-custom-chat",
-  // Add extra actions alongside the built-in chat action
-  actions: {
-    reset: {
-      inputSchema: z.object({}),
-      block: resetHandler,
-    },
-  },
-  // Merge additional session state
-  session: {
-    stateSchema: z.object({
-      messageCount: z.number().default(0),
-      topic: z.string().optional(),
-    }),
-  },
 });
 ```
 
@@ -143,12 +137,12 @@ Each flow's input and state schemas are exported for use in your own code:
 
 ```typescript
 import {
-  chatInputSchema,     // z.object({ message: z.string().min(1) })
-  goalInputSchema,     // z.object({ goal: z.string().min(1) })
-  textInputSchema,     // z.object({ input: z.string().min(1) })
-  messageCountStateSchema,  // z.object({ messageCount: z.number().default(0) })
-  taskCountStateSchema,     // z.object({ taskCount: z.number().default(0) })
-  DEFAULT_MODEL,       // "openai/gpt-4o-mini"
+  chatInputSchema,                // z.object({ message: z.string().min(1) })
+  componentInputSchema,           // z.object({ content: z.string().min(1), instruction: z.string().optional() })
+  setPreferredModelInputSchema,   // z.object({ preferredModel: z.string().min(1) })
+  messageCountStateSchema,        // z.object({ messageCount: z.number().default(0) })
+  preferredModelUserStateSchema,  // z.object({ preferredModel: z.string().optional() })
+  DEFAULT_MODEL,                  // "openai/gpt-4o-mini"
 } from "@flow-state-dev/flows";
 ```
 

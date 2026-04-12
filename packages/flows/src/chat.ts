@@ -1,9 +1,10 @@
 /**
  * chatFlow — Multi-turn conversational agent.
  *
- * The most common flow archetype. Maintains conversation history across requests,
- * streams text responses token-by-token, and tracks a simple message counter
- * in session state. Supports tools, search, and voice out of the box.
+ * A full-featured chat flow with conversation history, model selection via
+ * user preference, capability support (memory, artifacts, etc.), tools,
+ * search, and voice. Includes a built-in `setPreferredModel` action so
+ * users can switch models at runtime.
  *
  * @example
  * ```ts
@@ -12,22 +13,32 @@
  * // Minimal — works with zero config
  * const flow = chatFlow()({ id: "my-chat" });
  *
- * // Configured
+ * // With memory and model selection
+ * import { memory } from "@thought-fabric/core";
+ *
+ * const mem = memory.system({ model: "openai/gpt-4o-mini", working: true });
+ *
  * const flow = chatFlow({
- *   model: "anthropic/claude-sonnet-4-20250514",
+ *   model: "openai/gpt-4o",
  *   prompt: "You are a coding assistant.",
  *   tools: [searchTool],
+ *   uses: [mem.capability],
+ *   context: [mem.contextFormatter],
  * })({ id: "code-chat" });
  * ```
  */
 import {
   defineFlow,
   generator,
+  handler,
+  selectModel,
   sequencer,
 } from "@flow-state-dev/core";
 import type {
+  CapabilityRef,
   FlowType,
   GeneratorSearchConfig,
+  GeneratorSlotEntry,
   GeneratorTool,
   VoiceConfig,
 } from "@flow-state-dev/core";
@@ -36,6 +47,8 @@ import {
   DEFAULT_MODEL,
   chatInputSchema,
   messageCountStateSchema,
+  setPreferredModelInputSchema,
+  preferredModelUserStateSchema,
 } from "./shared";
 
 /** Configuration options for {@link chatFlow}. All fields are optional. */
@@ -52,14 +65,51 @@ export interface ChatFlowConfig {
   maxIterations?: number;
   /** Voice / TTS config. */
   voice?: VoiceConfig;
+  /**
+   * Capabilities to install on the generator. Installs resources, state
+   * schemas, and preset surfaces (context, tools) automatically.
+   *
+   * @example
+   * ```ts
+   * uses: [mem.capability, artifactsCapability]
+   * ```
+   */
+  uses?: CapabilityRef[];
+  /**
+   * Context formatters for the generator. Functions or strings injected
+   * into the system prompt alongside any capability-provided context.
+   *
+   * @example
+   * ```ts
+   * context: [mem.contextFormatter, voiceContext]
+   * ```
+   */
+  context?: GeneratorSlotEntry[];
+  /**
+   * Maximum number of prior LLM messages to include in history.
+   * Default: no limit (all session items).
+   */
+  historyLimit?: number;
 }
+
+const setPreferredModel = handler({
+  name: "set-preferred-model",
+  inputSchema: setPreferredModelInputSchema,
+  userStateSchema: preferredModelUserStateSchema,
+  execute: async (input, ctx) => {
+    await ctx.user!.patchState({ preferredModel: input.preferredModel });
+  },
+});
 
 /**
  * Creates a multi-turn conversational chat flow.
  *
- * Returns a `FlowType` that can be called with `FlowInstanceOptions` to
- * create instances. The flow has a single `chat` action accepting
- * `{ message: string }`.
+ * Returns a `FlowType` with two actions:
+ * - `chat` — send a message, get a streamed response
+ * - `setPreferredModel` — switch the active model (persisted in user state)
+ *
+ * The generator uses `selectModel` to honor the user's preferred model,
+ * falling back to the configured default.
  */
 export function chatFlow(config: ChatFlowConfig = {}): FlowType {
   const {
@@ -69,18 +119,30 @@ export function chatFlow(config: ChatFlowConfig = {}): FlowType {
     search,
     maxIterations = 10,
     voice,
+    uses,
+    context,
+    historyLimit,
   } = config;
+
+  const historySlot = historyLimit !== undefined
+    ? (_input: unknown, ctx: any) => ctx.session.items.llm({ limit: historyLimit })
+    : (_input: unknown, ctx: any) => ctx.session.items.llm();
 
   const chatGenerator = generator({
     name: "chat-generator",
-    model,
+    model: selectModel(model, {
+      prefer: (_input: unknown, ctx: any) => ctx.user?.state?.preferredModel,
+    }),
     prompt,
     inputSchema: chatInputSchema,
-    history: (_input: unknown, ctx: any) => ctx.session.items.llm(),
+    userStateSchema: preferredModelUserStateSchema,
+    history: historySlot,
     user: (input: { message: string }) => input.message,
     tools,
     search,
     maxIterations,
+    uses,
+    context,
     emit: { reasoning: true },
   });
 
@@ -100,9 +162,16 @@ export function chatFlow(config: ChatFlowConfig = {}): FlowType {
         block: chatPipeline,
         userMessage: (input: { message: string }) => input.message,
       },
+      setPreferredModel: {
+        inputSchema: setPreferredModelInputSchema,
+        block: setPreferredModel,
+      },
     },
     session: {
       stateSchema: messageCountStateSchema,
+    },
+    user: {
+      stateSchema: preferredModelUserStateSchema,
     },
     voice,
   });

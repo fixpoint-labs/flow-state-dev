@@ -1,5 +1,5 @@
 /**
- * Shared schemas, defaults, and types used across all default flow factories.
+ * Shared schemas, defaults, and types used across default flow factories.
  */
 import { z } from "zod";
 
@@ -11,22 +11,23 @@ export const chatInputSchema = z.object({
   message: z.string().min(1),
 });
 
-/** Standard goal-oriented input schema for agent flows. */
-export const goalInputSchema = z.object({
-  goal: z.string().min(1),
+/** Input for setPreferredModel action. */
+export const setPreferredModelInputSchema = z.object({
+  preferredModel: z.string().min(1),
 });
 
-/** Standard text input schema for single-shot generation flows. */
-export const textInputSchema = z.object({
-  input: z.string().min(1),
+/** Component flow input: content to transform with optional extra instruction. */
+export const componentInputSchema = z.object({
+  content: z.string().min(1),
+  instruction: z.string().optional(),
 });
 
-/** Session state for flows that track message/request counts. */
+/** Session state for flows that track message counts. */
 export const messageCountStateSchema = z.object({
   messageCount: z.number().default(0),
 });
 
-/** Session state for flows that track task counts. */
-export const taskCountStateSchema = z.object({
-  taskCount: z.number().default(0),
+/** User state for flows that support model preference. */
+export const preferredModelUserStateSchema = z.object({
+  preferredModel: z.string().optional(),
 });
