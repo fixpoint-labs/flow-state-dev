@@ -23,6 +23,7 @@
       "@flow-state-dev/react": ["packages/react/src/index.ts"],
       "@flow-state-dev/testing": ["packages/testing/src/index.ts"],
       "@flow-state-dev/cli": ["packages/cli/src/index.ts"],
+      "@flow-state-dev/flows": ["packages/flows/src/index.ts"],
       "@flow-state-dev/patterns": ["packages/patterns/src/index.ts"],
       "@flow-state-dev/patterns/rlm": ["packages/patterns/src/rlm/index.ts"],
       "@flow-state-dev/tools": ["packages/tools/src/index.ts"],
