@@ -73,6 +73,32 @@ const snapshot = await sessions.getSessionState("sess_1", {
 | Type safety | Runtime only | Compile-time + runtime |
 | Best for | Generic UIs, devtools | App code with known flow definitions |
 
+## Suspension resume
+
+When a block calls `ctx.suspend()`, a `SuspensionItem` appears in the stream. Use `resumeSuspension()` to settle it:
+
+```ts
+import { resumeSuspension } from "@flow-state-dev/client";
+
+await resumeSuspension({
+  flowKind: "my-app",
+  sessionId: "sess_1",
+  requestId: "req_1",
+  suspensionId: item.suspensionId,
+  action: "approve",
+  data: { note: "looks good" }
+});
+```
+
+Or use the scoped client:
+
+```ts
+import { createSuspensionClient } from "@flow-state-dev/client";
+
+const suspensions = createSuspensionClient({ baseUrl: "/api" });
+await suspensions.resume({ flowKind: "my-app", sessionId, requestId, suspensionId, action: "approve" });
+```
+
 ## Public API
 
 - `createClient(options)` — Dynamic action client
@@ -80,6 +106,8 @@ const snapshot = await sessions.getSessionState("sess_1", {
 - `createSessionClient(options)` — Session CRUD and state snapshots
 - `createSSEClient(options)` — Request stream consumer
 - `createUserSSEClient(options)` — User-level stream consumer
+- `resumeSuspension(options)` — Settle a pending suspension
+- `createSuspensionClient(options)` — Scoped suspension resume client
 - `ClientHttpError` — Typed HTTP error class
 
 ## Notes

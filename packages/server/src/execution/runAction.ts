@@ -39,6 +39,7 @@ import type {
 import { createExecutionMetadata } from "./types";
 import { createTTSEmitterHook, type TTSEmitterHook } from "../voice/tts-emitter-hook";
 import { generateId } from "../utils/generate-id";
+import { cleanupRequestSuspensions } from "../suspension/suspension-registry";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -608,7 +609,8 @@ export async function runActionInternal<
     }, ctx, { internalSeams });
     await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
-    // Deregister from active registry
+    // Clean up any lingering suspensions and deregister from active registry
+    cleanupRequestSuspensions(requestId);
     await registry.deregister(requestId).catch((err) => {
       logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
         requestId, error: String(err)
@@ -677,7 +679,8 @@ export async function runActionInternal<
       error: summarizeForLog(normalized)
     });
 
-    // Deregister from active registry
+    // Clean up any lingering suspensions and deregister from active registry
+    cleanupRequestSuspensions(requestId);
     await registry.deregister(requestId).catch((err) => {
       logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
         requestId, error: String(err)

@@ -16,6 +16,30 @@ import type { GeneratorModelResult, GeneratorModelUsage } from "./model";
 
 export type BlockKind = "handler" | "generator" | "sequencer" | "router";
 
+/**
+ * Options passed to `ctx.suspend()` to pause block execution for human input.
+ */
+export type SuspendOptions = {
+  /** Human-readable reason for the suspension. */
+  reason: string;
+  /** Structured data the client needs to render the approval UI. */
+  data?: Record<string, unknown>;
+  /** Optional component descriptor for custom client-side rendering. */
+  render?: { component: string; props?: Record<string, unknown> };
+  /** Auto-reject after this many milliseconds if no resume arrives. */
+  timeoutMs?: number;
+};
+
+/**
+ * Payload returned by `ctx.suspend()` when the client resumes execution.
+ */
+export type ResumePayload = {
+  /** The action taken by the client. */
+  action: "approve" | "reject";
+  /** Optional data provided by the client alongside the resume action. */
+  data?: unknown;
+};
+
 export type ExecutionParent = {
   name: string;
   kind: BlockKind;
@@ -140,6 +164,18 @@ export interface BlockContext<
   emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string }): ComponentHandle;
   emitLLMContext(text: string): void;
   emitStatus(message: string): void;
+
+  /**
+   * Pauses block execution and waits for external input via the resume endpoint.
+   * Emits a SuspensionItem to the item stream so clients can render an approval UI.
+   * Returns the resume payload when the client calls the resume endpoint.
+   *
+   * Throws `SuspensionRejectedError` if the client rejects, or
+   * `SuspensionTimeoutError` if `timeoutMs` elapses without a response.
+   *
+   * @throws Error if called outside server-side execution context.
+   */
+  suspend(options: SuspendOptions): Promise<ResumePayload>;
 
   /**
    * Runtime metadata for the current request. Available during server-side

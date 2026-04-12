@@ -44,9 +44,10 @@ import type {
   OutputItem,
   RouterDecisionItem,
   StateChangeItem,
-  StatusItem
+  StatusItem,
+  SuspensionItem
 } from "@flow-state-dev/core/items";
-import type { BlockContext, BlockResult, ComponentHandle, ExecutionParent, MessageHandle, StateRef } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockResult, ComponentHandle, ExecutionParent, MessageHandle, ResumePayload, StateRef, SuspendOptions } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import type {
   ProjectRecord,
@@ -56,8 +57,9 @@ import type {
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
-import { AmbiguousBlockNameError } from "../errors/flow-error";
+import { AmbiguousBlockNameError, SuspensionRejectedError, SuspensionTimeoutError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
+import { registerSuspension, removeSuspension } from "../suspension/suspension-registry";
 import { cloneValue } from "../utils/clone";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
@@ -1480,6 +1482,108 @@ function createEmitStatus(
   };
 }
 
+/**
+ * Creates a `ctx.suspend()` implementation bound to the active emission context.
+ * Each call creates a SuspensionItem, emits it, and returns a promise that
+ * resolves when the resume endpoint settles it.
+ */
+function createSuspend(
+  emCtx: EmissionContext,
+  requestId: string
+): (options: SuspendOptions) => Promise<ResumePayload> {
+  return function suspend(opts: SuspendOptions): Promise<ResumePayload> {
+    const itemIndex = emCtx.nextItemIndex();
+    const suspensionId = `sus_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+    const item: SuspensionItem = {
+      id: `item_suspension_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+      type: "suspension",
+      status: "in_progress",
+      transient: false,
+      requestId,
+      itemIndex,
+      provenance: emCtx.provenance(),
+      ts: Date.now(),
+      ownedBy: emCtx.ownedBy,
+      suspensionId,
+      suspensionStatus: "pending",
+      reason: opts.reason,
+      data: opts.data,
+      render: opts.render
+    };
+
+    // Emit the pending suspension item immediately.
+    void emCtx.response.emitItemAdded(item);
+
+    return new Promise<ResumePayload>((resolve, reject) => {
+      let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+
+      if (opts.timeoutMs !== undefined && opts.timeoutMs > 0) {
+        timeoutTimer = setTimeout(() => {
+          // Emit the timed-out item and reject the promise.
+          const doneItem: SuspensionItem = {
+            ...item,
+            status: "completed",
+            suspensionStatus: "timed_out"
+          };
+          void emCtx.response.emitItemDone(doneItem);
+          removeSuspension(suspensionId);
+          reject(
+            new SuspensionTimeoutError(
+              `Suspension "${suspensionId}" timed out after ${opts.timeoutMs}ms: ${opts.reason}`
+            )
+          );
+        }, opts.timeoutMs);
+      }
+
+      registerSuspension({
+        suspensionId,
+        requestId,
+        reason: opts.reason,
+        data: opts.data,
+        render: opts.render,
+        createdAt: Date.now(),
+        resolve: (payload: ResumePayload) => {
+          if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
+
+          const finalStatus = payload.action === "approve" ? "approved" as const : "rejected" as const;
+          const doneItem: SuspensionItem = {
+            ...item,
+            status: "completed",
+            suspensionStatus: finalStatus,
+            resumeData: payload.data
+          };
+          void emCtx.response.emitItemDone(doneItem);
+          removeSuspension(suspensionId);
+
+          if (payload.action === "reject") {
+            reject(
+              new SuspensionRejectedError(
+                `Suspension "${suspensionId}" was rejected: ${opts.reason}`
+              )
+            );
+          } else {
+            resolve(payload);
+          }
+        },
+        reject: (error: Error) => {
+          if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
+          const doneItem: SuspensionItem = {
+            ...item,
+            status: "completed",
+            suspensionStatus: "rejected"
+          };
+          void emCtx.response.emitItemDone(doneItem);
+          removeSuspension(suspensionId);
+          reject(error);
+        },
+        timeoutTimer,
+        status: "pending"
+      });
+    });
+  };
+}
+
 export async function createExecutionContext<
   TRequestState extends JsonObject = JsonObject,
   TSessionState extends JsonObject = JsonObject,
@@ -2446,6 +2550,7 @@ export async function createExecutionContext<
       emitComponent: createEmitComponent(activeEmCtx),
       emitLLMContext: createEmitLLMContext(activeEmCtx),
       emitStatus: createEmitStatus(activeEmCtx),
+      suspend: createSuspend(activeEmCtx, requestRef.current.id),
       // ctx.cap is populated per-block in executeBlock (see buildCapObject below).
       cap: {} as any,
       // Defined below via Object.defineProperty to close over parentChain.

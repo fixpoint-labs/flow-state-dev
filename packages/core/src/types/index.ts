@@ -14,9 +14,11 @@ export type {
   MessageHandle,
   RescueHandlerSpec,
   ResponseEmitterHandle,
+  ResumePayload,
   RetryPolicy,
   StateRef,
   StateHandle,
+  SuspendOptions,
   TargetRef,
   TargetHandle
 } from "./block";

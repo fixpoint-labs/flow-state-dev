@@ -128,6 +128,12 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 - `createFlowApiRouter` — Generate HTTP route handlers from a registry
 - `parseFlowRoute` — Parse incoming request paths
 
+**Suspension (HITL):**
+- `ctx.suspend(options)` — Pause block execution and wait for client resume
+- `SuspensionRejectedError` / `SuspensionTimeoutError` — Thrown on reject/timeout
+- Resume endpoint: `POST /api/flows/:kind/sessions/:sid/requests/:rid/resume`
+- `getSuspension` / `getRequestSuspensions` — Query pending suspensions
+
 **Errors:**
 - `FlowError` and canonical subclasses
 - `normalizeError` — Wrap any thrown value into a typed FlowError

@@ -166,3 +166,35 @@ export class AmbiguousBlockNameError extends FlowError {
     this.name = "AmbiguousBlockNameError";
   }
 }
+
+/**
+ * Thrown inside a block when a suspension is rejected by the client.
+ */
+export class SuspensionRejectedError extends FlowError {
+  constructor(message: string, options?: SubclassOptions) {
+    super(
+      message,
+      withDefaults(options, {
+        code: "suspension_rejected",
+        retryable: false
+      })
+    );
+    this.name = "SuspensionRejectedError";
+  }
+}
+
+/**
+ * Thrown inside a block when a suspension times out before the client responds.
+ */
+export class SuspensionTimeoutError extends FlowError {
+  constructor(message: string, options?: SubclassOptions) {
+    super(
+      message,
+      withDefaults(options, {
+        code: "suspension_timeout",
+        retryable: false
+      })
+    );
+    this.name = "SuspensionTimeoutError";
+  }
+}

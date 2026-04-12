@@ -61,4 +61,13 @@ export {
   type TranscribeResponse
 } from "./transcription/transcribe";
 
+export {
+  createSuspensionClient,
+  resumeSuspension,
+  type CreateSuspensionClientOptions,
+  type ResumeSuspensionOptions,
+  type ResumeSuspensionResponse,
+  type SuspensionClient
+} from "./suspension-client/resume";
+
 export const clientPackageMarker = "@flow-state-dev/client";

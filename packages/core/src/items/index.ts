@@ -28,7 +28,9 @@ export type {
   StateChangeItem,
   SourceItem,
   StatusItem,
-  StepErrorItem
+  StepErrorItem,
+  SuspensionItem,
+  SuspensionStatus
 } from "./types";
 
 export type {

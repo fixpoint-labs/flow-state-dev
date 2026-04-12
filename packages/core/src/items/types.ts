@@ -167,6 +167,29 @@ export type SourceItem = OutputItemBase & {
   providerMetadata?: Record<string, Record<string, unknown>>;
 };
 
+/** Suspension status indicating the current state of a HITL suspension point. */
+export type SuspensionStatus = "pending" | "approved" | "rejected" | "timed_out";
+
+/**
+ * Emitted when a block calls `ctx.suspend()` to pause execution for human input.
+ * The item starts with suspensionStatus "pending" and transitions to a terminal
+ * status when the resume endpoint is called or the timeout fires.
+ */
+export type SuspensionItem = OutputItemBase & {
+  type: "suspension";
+  suspensionId: string;
+  /** The suspension-specific status (distinct from the item lifecycle status). */
+  suspensionStatus: SuspensionStatus;
+  /** Human-readable reason for the suspension. */
+  reason: string;
+  /** Structured data the client needs to render the approval UI. */
+  data?: Record<string, unknown>;
+  /** Optional component descriptor for custom client-side rendering. */
+  render?: { component: string; props?: Record<string, unknown> };
+  /** Populated after resume with the data provided by the client. */
+  resumeData?: unknown;
+};
+
 export type OutputItem =
   | BlockOutputItem
   | BlockToolOutputItem
@@ -181,4 +204,5 @@ export type OutputItem =
   | ResourceChangeItem
   | ErrorItem
   | StepErrorItem
-  | SourceItem;
+  | SourceItem
+  | SuspensionItem;

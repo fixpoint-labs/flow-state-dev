@@ -28,6 +28,7 @@ import {
 } from "./route-utils";
 import { handleExecuteAction } from "./action-routes";
 import { handleListActiveRequests, handleRetryRequest } from "./recovery-routes";
+import { handleResumeRequest } from "./resume-routes";
 import {
   handleCreateSession,
   handleDeleteSession,
@@ -307,6 +308,12 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           modelResolver: options.modelResolver,
           speechResolver: options.speechResolver,
           middleware: options.middleware
+        });
+      }
+
+      if (route.kind === "resume_request") {
+        return await handleResumeRequest(request, route, {
+          stores
         });
       }
 

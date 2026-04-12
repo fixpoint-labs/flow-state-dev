@@ -83,11 +83,23 @@ export {
   ModelError,
   NetworkError,
   RateLimitError,
+  SuspensionRejectedError,
+  SuspensionTimeoutError,
   TimeoutError,
   ToolExecutionError,
   ValidationError,
   AmbiguousBlockNameError
 } from "./errors/flow-error";
+
+export {
+  cleanupRequestSuspensions,
+  getRequestSuspensions,
+  getSuspension,
+  registerSuspension,
+  removeSuspension,
+  resetSuspensionRegistry,
+  type PendingSuspension
+} from "./suspension";
 export { normalizeError } from "./errors/normalize-error";
 
 export {

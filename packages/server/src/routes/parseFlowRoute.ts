@@ -16,6 +16,7 @@ export type ParsedFlowRoute =
   | { kind: "user_stream"; userId: string }
   | { kind: "transcribe" }
   | { kind: "retry_request"; flowKind: string; sessionId: string; requestId: string }
+  | { kind: "resume_request"; flowKind: string; sessionId: string; requestId: string }
   | { kind: "active_requests" }
   | { kind: "not_found" };
 
@@ -197,6 +198,22 @@ export function parseFlowRoute(
   ) {
     return {
       kind: "retry_request",
+      flowKind: segments[0],
+      sessionId: segments[2],
+      requestId: segments[4]
+    };
+  }
+
+  // POST /api/flows/:flowKind/sessions/:sessionId/requests/:requestId/resume
+  if (
+    normalizedMethod === "POST" &&
+    segments.length === 6 &&
+    segments[1] === "sessions" &&
+    segments[3] === "requests" &&
+    segments[5] === "resume"
+  ) {
+    return {
+      kind: "resume_request",
       flowKind: segments[0],
       sessionId: segments[2],
       requestId: segments[4]
