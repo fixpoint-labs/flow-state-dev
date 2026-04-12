@@ -63,14 +63,13 @@ describe("stream resume — event persistence", () => {
     // Hook should have been called 3 times (request.created, request.in_progress, item.added)
     expect(hookCalls).toHaveLength(3);
 
-    // Last call should contain all 3 replayable events
-    const lastSnapshot = hookCalls[2]!;
-    expect(lastSnapshot).toHaveLength(3);
-    expect(lastSnapshot.map((e) => e.type)).toEqual([
-      "request.created",
-      "request.in_progress",
-      "item.added"
-    ]);
+    // Each call receives only the newly emitted event (incremental, not full history).
+    expect(hookCalls[0]!).toHaveLength(1);
+    expect(hookCalls[0]![0]!.type).toBe("request.created");
+    expect(hookCalls[1]!).toHaveLength(1);
+    expect(hookCalls[1]![0]!.type).toBe("request.in_progress");
+    expect(hookCalls[2]!).toHaveLength(1);
+    expect(hookCalls[2]![0]!.type).toBe("item.added");
   });
 
   it("getReplayableEvents excludes ping and debug", async () => {
@@ -127,9 +126,9 @@ describe("stream resume — memory store event persistence", () => {
     expect(events).toEqual([]);
   });
 
-  it("overwrites previous events on re-persist", async () => {
+  it("appends new events incrementally on re-persist", async () => {
     const store = new InMemoryRequestStore();
-    const requestId = "req_overwrite";
+    const requestId = "req_append";
 
     store.persistEvents(requestId, [
       {
@@ -143,14 +142,6 @@ describe("stream resume — memory store event persistence", () => {
     ]);
 
     store.persistEvents(requestId, [
-      {
-        stream: "request",
-        type: "request.created",
-        requestId,
-        sequence_number: 1,
-        status: "in_progress",
-        ts: 100
-      },
       {
         stream: "request",
         type: "request.completed",
@@ -163,6 +154,8 @@ describe("stream resume — memory store event persistence", () => {
 
     const events = await store.getEvents(requestId);
     expect(events).toHaveLength(2);
+    expect(events[0]!.sequence_number).toBe(1);
+    expect(events[1]!.sequence_number).toBe(2);
   });
 });
 

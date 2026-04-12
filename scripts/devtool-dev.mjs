@@ -48,7 +48,7 @@ tsc.stdout.on("data", (data) => {
 });
 
 // Vite dev server for the devtool app.
-const vite = spawn("pnpm", ["--filter", "devtool", "dev"], {
+const vite = spawn("pnpm", ["--filter", "@flow-state-dev/devtool-app", "dev"], {
   cwd: root,
   stdio: "inherit",
   env: { ...process.env },
