@@ -96,6 +96,9 @@ export interface GeneratorToolResult {
 
 export type GeneratorTool = BlockDefinition<any, any>;
 
+/** Tools slot accepted by generators and pattern factories — static array or context-aware function. */
+export type ToolsSlot = GeneratorTool[] | ((ctx: any) => MaybePromise<GeneratorTool[]>);
+
 /**
  * @deprecated Use GeneratorTool. Kept as an alias for compatibility.
  */

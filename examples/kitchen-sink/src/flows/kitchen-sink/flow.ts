@@ -94,6 +94,15 @@ const userStateSchema = z.object({
   preferredModel: z.string().default(MODEL_ID),
 });
 
+const tools = (ctx: any) => {
+  const base = [readArtifact, updateArtifact];
+  const features = ctx.session.state.features as Record<string, boolean> | undefined;
+  if (features?.bashTool !== false) {
+    return [...base, bashCommand, bashReadFile, bashWriteFile];
+  }
+  return base;
+};
+
 // ---------------------------------------------------------------------------
 // Assistant generator — shared across all thinking styles
 // ---------------------------------------------------------------------------
@@ -111,15 +120,7 @@ const assistantGenerator = generator({
   inputSchema,
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
   user: (input) => input.message,
-
-  tools: (ctx) => {
-    const base = [readArtifact, updateArtifact];
-    const features = (ctx.session?.state as Record<string, unknown>)?.features as Record<string, boolean> | undefined;
-    if (features?.bashTool !== false) {
-      return [...base, bashCommand, bashReadFile, bashWriteFile];
-    }
-    return base;
-  },
+  tools,
   search: true,
   maxIterations: 10,
   outputSchema: z.string(),
@@ -142,7 +143,7 @@ const { thinkingStyleRouter } = createThinkingStyleRouter({
   modelId: MODEL_ID,
   history: (_input: any, ctx: any) => ctx.session.items.llm({ limit: 8 }),
   context: [mem.contextFormatter, artifactListContext],
-  tools: [readArtifact, updateArtifact, bashCommand, bashReadFile, bashWriteFile],
+  tools,
   sessionResources: artifactResources,
 });
 

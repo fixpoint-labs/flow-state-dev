@@ -70,6 +70,7 @@ export type {
   GeneratorSlotReference,
   GeneratorTool,
   GeneratorToolResult,
+  ToolsSlot,
   HandlerConfig,
   InlineBlockFactory,
   InlineConfig,

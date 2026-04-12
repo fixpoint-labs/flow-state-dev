@@ -19,7 +19,7 @@
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import { utility } from "@flow-state-dev/core";
 import type { BlockDefinition, BlockContext } from "@flow-state-dev/core/types";
-import type { GeneratorSlot, GeneratorTool, GeneratorSearchConfig } from "@flow-state-dev/core";
+import type { GeneratorSlot, GeneratorSearchConfig, ToolsSlot } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   planAndExecuteInputSchema,
@@ -114,7 +114,7 @@ export interface PlanAndExecuteConfig<
   history?: GeneratorSlot<any, any>;
 
   /** Tools assigned to all default blocks (executor, replanner, synthesizer). */
-  tools?: GeneratorTool[] | ((ctx: any) => GeneratorTool[]);
+  tools?: ToolsSlot;
 
   /** Web search — applied to default executor (planner already enables search internally). */
   search?: boolean | GeneratorSearchConfig;
@@ -149,7 +149,7 @@ function createDefaultReplanner(config: {
   model?: string;
   context?: GeneratorSlot<any, any>;
   history?: GeneratorSlot<any, any>;
-  tools?: GeneratorTool[] | ((ctx: any) => GeneratorTool[]);
+  tools?: ToolsSlot;
 }) {
   return generator({
     name: `${config.name}-replanner`,
@@ -308,7 +308,7 @@ function createDefaultSynthesizer(config: {
   model?: string;
   context?: GeneratorSlot<any, any>;
   history?: GeneratorSlot<any, any>;
-  tools?: GeneratorTool[] | ((ctx: any) => GeneratorTool[]);
+  tools?: ToolsSlot;
   synthesizeInstructions?: string;
 }) {
   const basePrompt = [
