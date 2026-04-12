@@ -30,8 +30,7 @@ export const bashCap = createBashCapability({
   sessionResources: artifactResources,
   collectionKey: "artifacts",
   provider: {
-    type: "just-bash",
-    network: { dangerouslyAllowFullInternetAccess: true },
+    type: "local"
   },
   createState: (relativePath) => ({
     title: path.basename(relativePath),
