@@ -9,6 +9,9 @@ export const modeSchema = z.enum(["chat", "create"]).default("chat");
 export const featuresSchema = z.object({
   biasCheck: z.boolean().default(false),
   bashTool: z.boolean().default(true),
+  search: z.boolean().default(true),
+  fetch: z.boolean().default(true),
+  crawl: z.boolean().default(false),
 });
 
 // Per-instance state for an artifact resource. State tracks metadata only —
