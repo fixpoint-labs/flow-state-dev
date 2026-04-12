@@ -76,7 +76,7 @@ type SequencerOperation = {
     ctx: BlockContext,
     runtime: SequencerRuntimeState,
     stepIndex: number
-  ) => Promise<{ value: unknown; jumpTo?: string }>;
+  ) => Promise<{ value: unknown; jumpTo?: string; exit?: boolean }>;
 };
 
 type WorkOptions = {
@@ -324,6 +324,10 @@ function runSequencerOperations(
         runtime.stepHistory.push(operation.name);
         const result = await operation.run(currentValue, ctx, runtime, index);
         currentValue = result.value;
+
+        if (result.exit === true) {
+          break;
+        }
 
         if (result.jumpTo !== undefined) {
           const jumpIndex = operations.findIndex((candidate) => candidate.name === result.jumpTo);
@@ -1086,6 +1090,245 @@ function createSequencer<TInput, TOutput>(
         firstBranchSchema,
         undefined,
         mergeFrom(...branchBlocks)
+      );
+    },
+
+    thenAll<TSteps extends Array<ParallelStep<TOutput>>>(
+      steps: [...TSteps],
+      options?: { maxConcurrency?: number }
+    ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }> {
+      const stepBlocks: BlockDefinition<any, any>[] = steps.map((step) =>
+        isBlockDefinition(step) ? (step as BlockDefinition<any, any>) : (step as { block: BlockDefinition<any, any> }).block
+      );
+
+      return extend<{ [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>(
+        {
+          name: "thenAll",
+          run: async (value, ctx) => {
+            const outputs = await mapWithConcurrency(
+              steps,
+              options?.maxConcurrency,
+              async (step): Promise<unknown> => {
+                if (isBlockDefinition(step)) {
+                  return executeBlock(step as BlockDefinition<any, any>, value, ctx);
+                }
+
+                const connected = await step.connector(value as TOutput, ctx);
+                return executeBlock(step.block, connected, ctx);
+              }
+            );
+
+            return { value: outputs };
+          }
+        },
+        undefined,
+        undefined,
+        mergeFrom(...stepBlocks)
+      );
+    },
+
+    thenAny(
+      blocks: BlockDefinition<any, any>[],
+      options?: { maxConcurrency?: number }
+    ): SequencerDefinition<TInput, unknown> {
+      return extend<unknown>(
+        {
+          name: "thenAny",
+          run: async (value, ctx) => {
+            if (blocks.length === 0) {
+              throw new AggregateError([], "thenAny called with no blocks");
+            }
+
+            const errors: Error[] = [];
+            let resolved = false;
+            let resolvedValue: unknown;
+
+            // Create a derived abort controller for cancellation
+            const controller = new AbortController();
+            const onParentAbort = (): void => { controller.abort(); };
+            ctx.signal?.addEventListener("abort", onParentAbort);
+
+            const derivedCtx = { ...ctx, signal: controller.signal } as BlockContext;
+
+            try {
+              if (options?.maxConcurrency !== undefined) {
+                // With concurrency limits, use worker pool
+                const limit = Math.max(1, options.maxConcurrency);
+                let nextIndex = 0;
+
+                const worker = async (): Promise<void> => {
+                  while (nextIndex < blocks.length && !resolved) {
+                    const currentIndex = nextIndex;
+                    nextIndex += 1;
+                    try {
+                      const output = await executeBlock(blocks[currentIndex], value, derivedCtx);
+                      if (!resolved) {
+                        resolved = true;
+                        resolvedValue = output;
+                        controller.abort();
+                      }
+                    } catch (error) {
+                      errors.push(toError(error));
+                    }
+                  }
+                };
+
+                const workers: Promise<void>[] = [];
+                for (let i = 0; i < Math.min(limit, blocks.length); i += 1) {
+                  workers.push(worker());
+                }
+                await Promise.all(workers);
+              } else {
+                // No concurrency limit — run all in parallel via Promise.race-style
+                await new Promise<void>((resolve) => {
+                  let remaining = blocks.length;
+
+                  for (const block of blocks) {
+                    executeBlock(block, value, derivedCtx).then(
+                      (output) => {
+                        if (!resolved) {
+                          resolved = true;
+                          resolvedValue = output;
+                          controller.abort();
+                        }
+                        remaining -= 1;
+                        if (remaining === 0) resolve();
+                      },
+                      (error) => {
+                        errors.push(toError(error));
+                        remaining -= 1;
+                        if (remaining === 0) resolve();
+                      }
+                    );
+                  }
+                });
+              }
+            } finally {
+              ctx.signal?.removeEventListener("abort", onParentAbort);
+            }
+
+            if (!resolved) {
+              throw new AggregateError(errors, "All blocks in thenAny failed");
+            }
+
+            return { value: resolvedValue };
+          }
+        },
+        undefined,
+        undefined,
+        mergeFrom(...blocks)
+      );
+    },
+
+    race(
+      blocks: BlockDefinition<any, any>[],
+      options?: { maxConcurrency?: number }
+    ): SequencerDefinition<TInput, unknown> {
+      return extend<unknown>(
+        {
+          name: "race",
+          run: async (value, ctx, runtime) => {
+            if (blocks.length === 0) {
+              throw new Error("race called with no blocks");
+            }
+
+            if (blocks.length === 1) {
+              const output = await executeBlock(blocks[0], value, ctx);
+              return { value: output };
+            }
+
+            type RaceResult =
+              | { status: "fulfilled"; value: unknown }
+              | { status: "rejected"; reason: Error };
+
+            let settled = false;
+            let winnerResult: RaceResult | undefined;
+
+            if (options?.maxConcurrency !== undefined) {
+              // With concurrency limits, use mapWithConcurrency — first to complete wins
+              // but we must wait for all workers
+              const results = await mapWithConcurrency(
+                blocks,
+                options.maxConcurrency,
+                async (block): Promise<RaceResult> => {
+                  try {
+                    const output = await executeBlock(block, value, ctx);
+                    return { status: "fulfilled", value: output };
+                  } catch (error) {
+                    return { status: "rejected", reason: toError(error) };
+                  }
+                }
+              );
+
+              // First result in array order (with concurrency, this is roughly completion order
+              // for the first worker pool batch)
+              winnerResult = results[0];
+              // Push remaining as background work
+              for (let i = 1; i < results.length; i += 1) {
+                const r = results[i];
+                if (r.status === "rejected") {
+                  console.error(`[sequencer] race loser "${blocks[i].name}" failed:`, r.reason?.message ?? r.reason);
+                }
+              }
+            } else {
+              // No concurrency limit — true race
+              const promises = blocks.map(async (block): Promise<RaceResult> => {
+                try {
+                  const output = await executeBlock(block, value, ctx);
+                  return { status: "fulfilled", value: output };
+                } catch (error) {
+                  return { status: "rejected", reason: toError(error) };
+                }
+              });
+
+              // Winner is first to settle
+              winnerResult = await new Promise<RaceResult>((resolve) => {
+                for (const p of promises) {
+                  p.then((result) => {
+                    if (!settled) {
+                      settled = true;
+                      resolve(result);
+                    }
+                  });
+                }
+              });
+
+              // Push remaining promises as background work
+              const batchPromise = Promise.allSettled(promises).then((): WorkResult => ({
+                name: "race-remaining",
+                status: "fulfilled",
+              }));
+              runtime.workTasks.push({ name: "race-remaining", promise: batchPromise });
+            }
+
+            if (winnerResult!.status === "rejected") {
+              throw winnerResult!.reason;
+            }
+
+            return { value: winnerResult!.value };
+          }
+        },
+        undefined,
+        undefined,
+        mergeFrom(...blocks)
+      );
+    },
+
+    exitIf(
+      condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>
+    ): SequencerDefinition<TInput, TOutput> {
+      return extend<TOutput>(
+        {
+          name: "exitIf",
+          run: async (value, ctx) => {
+            const shouldExit = await condition(value as TOutput, ctx);
+            if (shouldExit) {
+              return { value, exit: true };
+            }
+            return { value };
+          }
+        },
+        lastOutputSchema
       );
     },
 

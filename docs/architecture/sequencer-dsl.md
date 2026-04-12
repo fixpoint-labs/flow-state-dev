@@ -308,6 +308,70 @@ pipeline
 - Failure propagates to the next handler or bubbles up
 - Only handles errors from steps **before** the rescue in the chain
 
+### `thenAll(blocks, options?)` — Parallel Array Execution
+
+Run an array of blocks concurrently with the same input. Returns results as an ordered array.
+
+```ts
+pipeline.thenAll([
+  analysisBlock,
+  summaryBlock,
+  { connector: (input) => input.text, block: tagBlock },
+], { maxConcurrency: 3 });
+
+// Output: [analysisResult, summaryResult, tagResult]
+```
+
+Like `Promise.all` — if any block throws, the entire step fails. Results are ordered by array index regardless of completion order.
+
+**Difference from `.parallel()`:** `.parallel()` returns a named object `{ key: result }`. `.thenAll()` returns an ordered array `[result, ...]`. Use `.parallel()` when you need named access to results. Use `.thenAll()` when you have a dynamic list of blocks or prefer array indexing.
+
+### `thenAny(blocks, options?)` — First Successful Result
+
+Run blocks concurrently, resolve with the first one that succeeds. Like `Promise.any`.
+
+```ts
+pipeline.thenAny([
+  primaryProvider,
+  fallbackProviderA,
+  fallbackProviderB,
+]);
+
+// Output: result from whichever block succeeds first
+```
+
+If all blocks fail, throws an `AggregateError` with all individual errors. Remaining blocks are signaled for cancellation via abort signal (best-effort — blocks that don't respect the signal will complete naturally).
+
+### `race(blocks, options?)` — First to Complete
+
+Run blocks concurrently, resolve with the first to complete (success OR failure). Like `Promise.race`.
+
+```ts
+pipeline.race([
+  expensiveDeepAnalysis,
+  quickHeuristicAnalysis,
+]);
+
+// Output: result from whichever block completes first
+```
+
+If the first completion is a failure, the error propagates (can be caught by downstream `.rescue()`). Remaining blocks continue as background work and are auto-awaited when the sequencer finishes.
+
+### `exitIf(condition)` — Conditional Early Exit
+
+Exit the sequencer chain early when a condition is met. The current value becomes the sequencer output.
+
+```ts
+pipeline
+  .then(generateBlock)
+  .then(validateBlock)
+  .exitIf((value, ctx) => value.confidence > 0.95)
+  .then(refineBlock)   // skipped if confidence is high enough
+  .then(finalizeBlock); // also skipped
+```
+
+The exit proceeds to auto-await of any outstanding `.work()` tasks before returning. Does not skip rescue handlers for errors that occurred before the exit.
+
 ### `branch(branches)` — Conditional Multi-Path
 
 Execute the first branch whose condition is true.

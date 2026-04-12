@@ -240,7 +240,7 @@ const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSc
   .then(incrementCounter);
 ```
 
-### DSL Methods (14 total)
+### DSL Methods (20 total)
 
 | Method | Purpose |
 |--------|---------|
@@ -250,15 +250,21 @@ const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSc
 | `map(fn)` | Transform current value without a block |
 | `parallel(steps)` | Execute named steps concurrently |
 | `forEach(block)` | Execute block for each array element |
+| `forEachBackground(block)` | Fire-and-forget fan-out per element |
 | `doUntil(condition, block)` | Loop until condition is true |
 | `doWhile(condition, block)` | Loop while condition is true |
 | `loopBack(stepName, opts)` | Jump back to a named step (bounded) |
 | `work(block)` | Queue non-aborting side-chain execution |
+| `background(block)` | Alias for `.work()` |
 | `waitForWork(opts)` | Wait for queued work to complete |
 | `tap(block)` | Side effect without changing payload |
 | `tapIf(condition, block)` | Conditional side effect |
 | `rescue(handlers)` | Error recovery by error type |
 | `branch(branches)` | Conditional multi-path execution |
+| `thenAll(blocks)` | Run array of blocks concurrently, collect all results |
+| `thenAny(blocks)` | First successful result (like `Promise.any`) |
+| `race(blocks)` | First to complete (like `Promise.race`) |
+| `exitIf(condition)` | Conditional early exit from chain |
 
 ### Work Semantics
 

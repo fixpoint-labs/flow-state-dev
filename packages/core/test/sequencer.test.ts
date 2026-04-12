@@ -771,4 +771,402 @@ describe("sequencer builder", () => {
       expect(connected.name).toBe("my-seq");
     });
   });
+
+  describe("thenAll", () => {
+    it("runs blocks concurrently and returns ordered array", async () => {
+      const addOne = addHandler("add-one", 1);
+      const addTwo = addHandler("add-two", 2);
+      const addThree = addHandler("add-three", 3);
+
+      const seq = sequencer({ name: "then-all", inputSchema: z.number() })
+        .thenAll([addOne, addTwo, addThree]);
+
+      const ctx = createMockContext();
+      await expect(seq.run(10, ctx)).resolves.toEqual([11, 12, 13]);
+    });
+
+    it("supports connector steps", async () => {
+      const addOne = addHandler("add-one", 1);
+      const addTwo = addHandler("add-two", 2);
+
+      const seq = sequencer({ name: "then-all-conn", inputSchema: z.number() })
+        .thenAll([
+          addOne,
+          { connector: (value: number) => value * 2, block: addTwo },
+        ]);
+
+      const ctx = createMockContext();
+      // addOne: 5 + 1 = 6; connector: 5 * 2 = 10, addTwo: 10 + 2 = 12
+      await expect(seq.run(5, ctx)).resolves.toEqual([6, 12]);
+    });
+
+    it("propagates first error on failure", async () => {
+      const addOne = addHandler("add-one", 1);
+      const failing = handler({
+        name: "fail",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: () => { throw new Error("boom"); },
+      });
+
+      const seq = sequencer({ name: "then-all-fail", inputSchema: z.number() })
+        .thenAll([addOne, failing]);
+
+      const ctx = createMockContext();
+      await expect(seq.run(1, ctx)).rejects.toThrow("boom");
+    });
+
+    it("respects maxConcurrency", async () => {
+      let concurrent = 0;
+      let maxConcurrent = 0;
+
+      const slowBlock = handler({
+        name: "slow",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (v) => {
+          concurrent += 1;
+          maxConcurrent = Math.max(maxConcurrent, concurrent);
+          await new Promise((r) => setTimeout(r, 10));
+          concurrent -= 1;
+          return v;
+        },
+      });
+
+      const seq = sequencer({ name: "then-all-conc", inputSchema: z.number() })
+        .thenAll([slowBlock, slowBlock, slowBlock, slowBlock], { maxConcurrency: 2 });
+
+      const ctx = createMockContext();
+      await seq.run(1, ctx);
+      expect(maxConcurrent).toBeLessThanOrEqual(2);
+    });
+
+    it("returns empty array for empty blocks", async () => {
+      const seq = sequencer({ name: "then-all-empty", inputSchema: z.number() })
+        .thenAll([]);
+
+      const ctx = createMockContext();
+      await expect(seq.run(1, ctx)).resolves.toEqual([]);
+    });
+
+    it("collects resources from child blocks", () => {
+      const resource = defineResource({
+        stateSchema: z.object({ items: z.array(z.string()) }),
+      });
+
+      const step = handler({
+        name: "res-step",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        sessionResources: { myResource: resource },
+        execute: (v) => v,
+      });
+
+      const seq = sequencer({ name: "then-all-res", inputSchema: z.number() })
+        .thenAll([step]);
+
+      expect(seq.declaredResources).toEqual({
+        session: { myResource: resource },
+      });
+    });
+  });
+
+  describe("thenAny", () => {
+    it("resolves with first successful result", async () => {
+      const slow = handler({
+        name: "slow",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (v) => {
+          await new Promise((r) => setTimeout(r, 50));
+          return v + 100;
+        },
+      });
+
+      const fast = handler({
+        name: "fast",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: (v) => v + 1,
+      });
+
+      const seq = sequencer({ name: "then-any", inputSchema: z.number() })
+        .thenAny([slow, fast]);
+
+      const ctx = createMockContext();
+      // fast should win since it's synchronous
+      await expect(seq.run(5, ctx)).resolves.toBe(6);
+    });
+
+    it("skips failed blocks and returns first success", async () => {
+      const failing = handler({
+        name: "fail",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: () => { throw new Error("boom"); },
+      });
+
+      const success = handler({
+        name: "success",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: (v) => v + 42,
+      });
+
+      const seq = sequencer({ name: "then-any-skip", inputSchema: z.number() })
+        .thenAny([failing, success]);
+
+      const ctx = createMockContext();
+      await expect(seq.run(1, ctx)).resolves.toBe(43);
+    });
+
+    it("throws AggregateError when all blocks fail", async () => {
+      const fail1 = handler({
+        name: "fail-1",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: () => { throw new Error("error-1"); },
+      });
+
+      const fail2 = handler({
+        name: "fail-2",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: () => { throw new Error("error-2"); },
+      });
+
+      const seq = sequencer({ name: "then-any-all-fail", inputSchema: z.number() })
+        .thenAny([fail1, fail2]);
+
+      const ctx = createMockContext();
+      await expect(seq.run(1, ctx)).rejects.toThrow("All blocks in thenAny failed");
+    });
+
+    it("throws AggregateError with empty blocks array", async () => {
+      const seq = sequencer({ name: "then-any-empty", inputSchema: z.number() })
+        .thenAny([]);
+
+      const ctx = createMockContext();
+      await expect(seq.run(1, ctx)).rejects.toThrow("thenAny called with no blocks");
+    });
+
+    it("works with a single block", async () => {
+      const addOne = addHandler("add-one", 1);
+
+      const seq = sequencer({ name: "then-any-single", inputSchema: z.number() })
+        .thenAny([addOne]);
+
+      const ctx = createMockContext();
+      await expect(seq.run(5, ctx)).resolves.toBe(6);
+    });
+
+    it("respects maxConcurrency", async () => {
+      let concurrent = 0;
+      let maxConcurrent = 0;
+
+      const slowBlock = handler({
+        name: "slow",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (v) => {
+          concurrent += 1;
+          maxConcurrent = Math.max(maxConcurrent, concurrent);
+          await new Promise((r) => setTimeout(r, 10));
+          concurrent -= 1;
+          return v;
+        },
+      });
+
+      const seq = sequencer({ name: "then-any-conc", inputSchema: z.number() })
+        .thenAny([slowBlock, slowBlock, slowBlock, slowBlock], { maxConcurrency: 2 });
+
+      const ctx = createMockContext();
+      await seq.run(1, ctx);
+      expect(maxConcurrent).toBeLessThanOrEqual(2);
+    });
+  });
+
+  describe("race", () => {
+    it("resolves with first completion on success", async () => {
+      const slow = handler({
+        name: "slow",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (v) => {
+          await new Promise((r) => setTimeout(r, 50));
+          return v + 100;
+        },
+      });
+
+      const fast = handler({
+        name: "fast",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: (v) => v + 1,
+      });
+
+      const seq = sequencer({ name: "race-success", inputSchema: z.number() })
+        .race([slow, fast]);
+
+      const ctx = createMockContext();
+      await expect(seq.run(5, ctx)).resolves.toBe(6);
+    });
+
+    it("propagates error when first completion is a failure", async () => {
+      const slow = handler({
+        name: "slow",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (v) => {
+          await new Promise((r) => setTimeout(r, 50));
+          return v;
+        },
+      });
+
+      const fastFail = handler({
+        name: "fast-fail",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: () => { throw new Error("fast failure"); },
+      });
+
+      const seq = sequencer({ name: "race-fail", inputSchema: z.number() })
+        .race([slow, fastFail]);
+
+      const ctx = createMockContext();
+      await expect(seq.run(1, ctx)).rejects.toThrow("fast failure");
+    });
+
+    it("throws on empty blocks array", async () => {
+      const seq = sequencer({ name: "race-empty", inputSchema: z.number() })
+        .race([]);
+
+      const ctx = createMockContext();
+      await expect(seq.run(1, ctx)).rejects.toThrow("race called with no blocks");
+    });
+
+    it("single block completes normally", async () => {
+      const addOne = addHandler("add-one", 1);
+      const seq = sequencer({ name: "race-single", inputSchema: z.number() })
+        .race([addOne]);
+
+      const ctx = createMockContext();
+      await expect(seq.run(10, ctx)).resolves.toBe(11);
+    });
+
+    it("collects resources from all race blocks", () => {
+      const resource = defineResource({
+        stateSchema: z.object({ count: z.number() }),
+      });
+
+      const step = handler({
+        name: "res-step",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        sessionResources: { myResource: resource },
+        execute: (v) => v,
+      });
+
+      const seq = sequencer({ name: "race-res", inputSchema: z.number() })
+        .race([step]);
+
+      expect(seq.declaredResources).toEqual({
+        session: { myResource: resource },
+      });
+    });
+  });
+
+  describe("exitIf", () => {
+    it("exits chain when condition is true", async () => {
+      const addTen = addHandler("add-ten", 10);
+      const addOne = addHandler("add-one", 1);
+
+      const seq = sequencer({ name: "exit-true", inputSchema: z.number() })
+        .then(addTen)
+        .exitIf((value) => value > 5)
+        .then(addOne);
+
+      const ctx = createMockContext();
+      // 0 + 10 = 10, exitIf(10 > 5) → exits, skips addOne
+      await expect(seq.run(0, ctx)).resolves.toBe(10);
+    });
+
+    it("continues chain when condition is false", async () => {
+      const addTen = addHandler("add-ten", 10);
+      const addOne = addHandler("add-one", 1);
+
+      const seq = sequencer({ name: "exit-false", inputSchema: z.number() })
+        .then(addTen)
+        .exitIf((value) => value > 100)
+        .then(addOne);
+
+      const ctx = createMockContext();
+      // 0 + 10 = 10, exitIf(10 > 100) → false, continues → 10 + 1 = 11
+      await expect(seq.run(0, ctx)).resolves.toBe(11);
+    });
+
+    it("supports async conditions", async () => {
+      const seq = sequencer({ name: "exit-async", inputSchema: z.number() })
+        .exitIf(async (value) => value === 42);
+
+      const ctx = createMockContext();
+      await expect(seq.run(42, ctx)).resolves.toBe(42);
+      await expect(seq.run(1, ctx)).resolves.toBe(1);
+    });
+
+    it("uses context in condition", async () => {
+      const seq = sequencer({ name: "exit-ctx", inputSchema: z.number() })
+        .exitIf((_value, ctx) => ctx.request.identity.id === "req_1");
+
+      const ctx = createMockContext();
+      // condition checks ctx.request.identity.id === "req_1" → true → exits
+      await expect(seq.run(5, ctx)).resolves.toBe(5);
+    });
+
+    it("works with background work (auto-await still happens)", async () => {
+      let workRan = false;
+      const sideEffect = handler({
+        name: "side-effect",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (v) => {
+          await new Promise((r) => setTimeout(r, 10));
+          workRan = true;
+          return v;
+        },
+      });
+
+      const addOne = addHandler("add-one", 1);
+
+      const seq = sequencer({ name: "exit-work", inputSchema: z.number() })
+        .work(sideEffect)
+        .exitIf((value) => value > 0)
+        .then(addOne);
+
+      const ctx = createMockContext();
+      const result = await seq.run(5, ctx);
+      // exitIf condition is true (5 > 0), so addOne is skipped
+      expect(result).toBe(5);
+      // But background work should have completed (auto-await)
+      expect(workRan).toBe(true);
+    });
+
+    it("multiple exitIf in chain — first match wins", async () => {
+      const addOne = addHandler("add-one", 1);
+      const addTen = addHandler("add-ten", 10);
+
+      const seq = sequencer({ name: "exit-multi", inputSchema: z.number() })
+        .then(addOne)
+        .exitIf((value) => value > 3)
+        .then(addTen)
+        .exitIf((value) => value > 50)
+        .then(addOne);
+
+      const ctx = createMockContext();
+      // 5 + 1 = 6, exitIf(6 > 3) → true → exits with 6
+      await expect(seq.run(5, ctx)).resolves.toBe(6);
+      // 1 + 1 = 2, exitIf(2 > 3) → false → 2 + 10 = 12, exitIf(12 > 50) → false → 12 + 1 = 13
+      await expect(seq.run(1, ctx)).resolves.toBe(13);
+    });
+  });
 });
