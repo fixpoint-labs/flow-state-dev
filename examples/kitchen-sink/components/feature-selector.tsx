@@ -11,14 +11,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Settings2, ShieldCheck, ChevronDownIcon } from "lucide-react";
+import { Settings2, ShieldCheck, Terminal, ChevronDownIcon } from "lucide-react";
 
 export interface Features {
   biasCheck: boolean;
+  bashTool: boolean;
 }
 
 export const DEFAULT_FEATURES: Features = {
   biasCheck: false,
+  bashTool: true,
 };
 
 interface FeatureOption {
@@ -30,6 +32,13 @@ interface FeatureOption {
 }
 
 const FEATURE_OPTIONS: FeatureOption[] = [
+  {
+    key: "bashTool",
+    label: "Bash Tool",
+    description: "Execute commands and manage files in a sandbox workspace",
+    icon: Terminal,
+    color: "text-emerald-500 dark:text-emerald-400",
+  },
   {
     key: "biasCheck",
     label: "Bias Check",

@@ -29,16 +29,15 @@ import {
   updateArtifactInputSchema,
   eventQueueDemo,
   eventQueueDemoInputSchema,
-  readArtifact,
   artifactListContext,
   voiceContext,
   createThinkingStyleRouter,
   autoClassifyStyle,
   thinkingStyleSchema,
   thinkingStyleSessionStateSchema,
-  artifactsCapability,
+  featuresCapability,
 } from "./blocks";
-import { modeSchema, artifactResources } from "./schemas";
+import { modeSchema, featuresSchema, artifactResources } from "./schemas";
 import { CHAT_PROMPT, CREATE_PROMPT } from "./prompts";
 
 // ---------------------------------------------------------------------------
@@ -65,10 +64,6 @@ const mem = memorySystem({
 const thinkingStyleInputSchema = z
   .enum(["auto", "default", "plan-and-execute", "supervisor", "blackboard"])
   .default("auto");
-
-const featuresSchema = z.object({
-  biasCheck: z.boolean().default(false),
-});
 
 const inputSchema = z.object({
   message: z.string().min(1),
@@ -99,15 +94,13 @@ const assistantGenerator = generator({
   userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
   sessionStateSchema: z.object({ mode: modeSchema.default("chat"), thinkingStyle: z.string().optional() }),
 
-  // Artifact capability: installs resources, context formatter, and tools
-  uses: [artifactsCapability],
+  uses: [featuresCapability],
 
   context: [mem.contextFormatter, voiceContext],
 
   inputSchema,
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
   user: (input) => input.message,
-
   search: true,
   maxIterations: 10,
   outputSchema: z.string(),
@@ -130,8 +123,7 @@ const { thinkingStyleRouter } = createThinkingStyleRouter({
   modelId: MODEL_ID,
   history: (_input: any, ctx: any) => ctx.session.items.llm({ limit: 8 }),
   context: [mem.contextFormatter, artifactListContext],
-  tools: [readArtifact, updateArtifact],
-  sessionResources: artifactResources,
+  uses: [featuresCapability],
 });
 
 export { thinkingStyleRouter };
@@ -374,7 +366,7 @@ const kitchenSinkFlow = defineFlow({
         thinkingStyle:
           (ctx.state.thinkingStyle as string | undefined) ?? null,
         requestCount: Number(ctx.state.requestCount ?? 0),
-        features: ctx.state.features ?? { biasCheck: false },
+        features: ctx.state.features ?? { biasCheck: false, bashTool: true },
       }),
     },
   },

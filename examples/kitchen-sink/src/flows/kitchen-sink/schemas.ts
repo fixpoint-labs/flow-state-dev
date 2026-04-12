@@ -6,6 +6,11 @@ import { z } from "zod";
 
 export const modeSchema = z.enum(["chat", "create"]).default("chat");
 
+export const featuresSchema = z.object({
+  biasCheck: z.boolean().default(false),
+  bashTool: z.boolean().default(true),
+});
+
 // Per-instance state for an artifact resource. State tracks metadata only —
 // the document body is stored as resource content via writeContent/readContent.
 // The summary field is populated by a background .work() block after each update.
@@ -19,7 +24,7 @@ export const artifactStateSchema = z.object({
 // instance keyed by its ID (e.g., "artifacts/my-doc"). Metadata lives in
 // state, the document body lives in resource content.
 export const artifactsCollection = defineResourceCollection({
-  pattern: "artifacts/*",
+  pattern: "artifacts/**",
   stateSchema: artifactStateSchema,
 });
 
