@@ -166,8 +166,8 @@ function createDefaultReplanner(config: {
       tasks: z.array(z.object({
         id: z.string(),
         goal: z.string(),
-        deps: z.array(z.string()).optional(),
-        priority: z.enum(["high", "medium", "low"]).optional(),
+        deps: z.array(z.string()).default([]),
+        priority: z.enum(["high", "medium", "low"]).default("medium"),
       })),
     }),
     sequencerStateSchema: planAndExecuteStateSchema,
@@ -213,8 +213,8 @@ function createApplyReplan(config: { name: string }) {
       tasks: z.array(z.object({
         id: z.string(),
         goal: z.string(),
-        deps: z.array(z.string()).optional(),
-        priority: z.enum(["high", "medium", "low"]).optional(),
+        deps: z.array(z.string()).default([]),
+        priority: z.enum(["high", "medium", "low"]).default("medium"),
       })),
     }),
     outputSchema: iterationOutputSchema,
@@ -416,7 +416,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
 
   return generator({
     name: `${config.name}-executor`,
-    model: config.model ?? "openai/gpt-5.4-mini",
+    model: config.model ?? "preset/small",
     inputSchema: z.object({
       stepId: z.string(),
       goal: z.string(),
@@ -425,11 +425,11 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
     outputSchema: z.object({
       summary: z.string(),
       success: z.boolean(),
-      reason: z.string().optional(),
+      reason: z.string().default(""),
       sources: z.array(z.object({
-        title: z.string().optional(),
+        title: z.string().default(""),
         url: z.string(),
-      })).optional(),
+      })).default([]),
     }),
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.tools !== undefined ? { tools: config.tools } : {}),
