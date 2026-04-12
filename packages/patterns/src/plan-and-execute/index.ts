@@ -28,7 +28,7 @@ import {
   type PlanTask,
 } from "./schemas";
 import { createEvaluateProgress } from "./blocks/evaluate-progress";
-import { emitPlanSnapshot } from "../shared/plan";
+import { emitPlanMeta, emitTaskUpdate } from "../shared/plan";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -234,11 +234,31 @@ function createApplyReplan(config: { name: string }) {
         dependencies: task.deps ?? [],
       }));
 
+      const allTasks = [...keptTasks, ...newTasks];
+
       await ctx.sequencer!.patchState({
-        tasks: [...keptTasks, ...newTasks],
+        tasks: allTasks,
         status: "executing",
         iteration: state.iteration + 1,
       });
+
+      // Emit updated plan-meta with new task ordering
+      emitPlanMeta(ctx as BlockContext, {
+        goal: state.goal,
+        taskOrder: allTasks.map((t) => t.id),
+        taskGoals: Object.fromEntries(allTasks.map((t) => [t.id, t.goal])),
+        status: "executing",
+        iteration: state.iteration + 1,
+      }, { key: config.name });
+
+      // Emit task updates for each new pending task
+      for (const task of newTasks) {
+        emitTaskUpdate(ctx as BlockContext, {
+          id: task.id,
+          goal: task.goal,
+          status: task.status,
+        }, { key: config.name });
+      }
 
       return { decision: "continue" as const };
     },
@@ -547,11 +567,20 @@ export function planAndExecute<
 
       await ctx.sequencer!.patchState({ tasks, status: "executing" });
 
-      emitPlanSnapshot(
-        ctx as BlockContext,
-        { goal: input.goal, tasks, status: "executing", iteration: 0 },
-        { key: name }
-      );
+      emitPlanMeta(ctx as BlockContext, {
+        goal: input.goal,
+        taskOrder: tasks.map((t) => t.id),
+        taskGoals: Object.fromEntries(tasks.map((t) => [t.id, t.goal])),
+        status: "executing",
+        iteration: 0,
+      }, { key: name });
+      for (const task of tasks) {
+        emitTaskUpdate(ctx as BlockContext, {
+          id: task.id,
+          goal: task.goal,
+          status: task.status,
+        }, { key: name });
+      }
 
       return {};
     },
@@ -611,6 +640,12 @@ export function planAndExecute<
         ),
       });
 
+      emitTaskUpdate(ctx as BlockContext, {
+        id: nextStep.id,
+        goal: nextStep.goal,
+        status: "in-progress",
+      }, { key: name });
+
       return {
         stepId: nextStep.id,
         goal: nextStep.goal,
@@ -667,11 +702,29 @@ export function planAndExecute<
 
       await ctx.sequencer!.patchState({ tasks: updatedTasks, currentTaskId: undefined });
 
-      emitPlanSnapshot(
-        ctx as BlockContext,
-        { goal: state.goal, tasks: updatedTasks, status: state.status, iteration: state.iteration },
-        { key: name }
-      );
+      // Emit granular update for the completed/failed task
+      const finishedTask = updatedTasks.find((t: PlanTask) => t.id === taskId)!;
+      emitTaskUpdate(ctx as BlockContext, {
+        id: finishedTask.id,
+        goal: finishedTask.goal,
+        status: finishedTask.status,
+        result: finishedTask.result,
+        error: finishedTask.error,
+      }, { key: name });
+
+      // Emit updates for any cascade-skipped tasks
+      if (newStatus === "failed") {
+        for (const t of updatedTasks) {
+          if (t.status === "skipped" && t.id !== taskId) {
+            emitTaskUpdate(ctx as BlockContext, {
+              id: t.id,
+              goal: t.goal,
+              status: t.status,
+              error: t.error,
+            }, { key: name });
+          }
+        }
+      }
 
       return { stepResult };
     },
@@ -704,11 +757,26 @@ export function planAndExecute<
 
       await ctx.sequencer!.patchState({ tasks: updatedTasks, currentTaskId: undefined });
 
-      emitPlanSnapshot(
-        ctx as BlockContext,
-        { goal: state.goal, tasks: updatedTasks, status: state.status, iteration: state.iteration },
-        { key: name }
-      );
+      // Emit granular update for the failed task
+      const failedTask = updatedTasks.find((t: PlanTask) => t.id === taskId)!;
+      emitTaskUpdate(ctx as BlockContext, {
+        id: failedTask.id,
+        goal: failedTask.goal,
+        status: failedTask.status,
+        error: failedTask.error,
+      }, { key: name });
+
+      // Emit updates for cascade-skipped tasks
+      for (const t of updatedTasks) {
+        if (t.status === "skipped" && t.id !== taskId) {
+          emitTaskUpdate(ctx as BlockContext, {
+            id: t.id,
+            goal: t.goal,
+            status: t.status,
+            error: t.error,
+          }, { key: name });
+        }
+      }
 
       return { stepResult: undefined };
     },

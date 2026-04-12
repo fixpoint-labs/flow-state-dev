@@ -16,10 +16,13 @@ export type ContainerItemsResult<TState = Record<string, unknown>> = {
   state: TState | undefined;
   /** All items owned by this container scope, sorted chronologically. */
   items: OutputItem[];
+  /** Latest component data for each unique key, scanning owned items in reverse. */
+  componentsByKey: Map<string, Record<string, unknown>>;
 };
 
 /**
- * Returns the component state and owned items for a given container item.
+ * Returns the component state, owned items, and per-key component map for a
+ * given container item.
  *
  * Accepts either a `SessionView` (uses indexed O(1) lookups) or a raw items
  * array (filters by `ownedBy` — works with any items source such as a context
@@ -64,5 +67,19 @@ export function useContainerItems<TState = Record<string, unknown>>(
     return latest?.data as TState | undefined;
   }, [containerItem.component, ownedItems]);
 
-  return { state, items: ownedItems };
+  const componentsByKey = useMemo(() => {
+    const map = new Map<string, Record<string, unknown>>();
+    // Scan in reverse so the first match per key is the latest emission.
+    for (let i = ownedItems.length - 1; i >= 0; i--) {
+      const item = ownedItems[i];
+      if (item.type !== "component") continue;
+      const comp = item as ComponentItem;
+      if (comp.key && !map.has(comp.key)) {
+        map.set(comp.key, comp.data);
+      }
+    }
+    return map;
+  }, [ownedItems]);
+
+  return { state, items: ownedItems, componentsByKey };
 }
