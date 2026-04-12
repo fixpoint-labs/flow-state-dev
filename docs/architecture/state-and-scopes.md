@@ -76,6 +76,8 @@ On retry exhaustion, a `ConcurrentModificationError` is thrown.
 - Prefer `incState`, `pushState`, `setStateRecord` for concurrent writes
 - Use `maxConcurrency` on `parallel`/`forEach` when shared state writes are unavoidable
 
+**Resource content writes do not bump scope record version.** Resource content is persisted via `ContentStore`, separate from the scope record. Content writes do not update the scope record's `version` or `updatedAt` fields. The scope record version reflects state and metadata changes only.
+
 ## Scope Handles
 
 Each scope is accessed through a typed handle on `BlockContext`:

@@ -90,20 +90,37 @@ export async function handleGetSessionState(
     totalItems = aggregatedItems.length;
     aggregatedItems = aggregatedItems.slice(offset, offset + limit);
   }
+  // Load content from ContentStore, merging with any inline record content
+  // for backward compatibility with records created before ContentStore existed.
+  const [sessionContentFromStore, userContentFromStore, projectContentFromStore] = await Promise.all([
+    ctx.stores.content.getAll("session", session.id),
+    user !== undefined ? ctx.stores.content.getAll("user", user.id) : Promise.resolve({}),
+    project !== undefined ? ctx.stores.content.getAll("project", project.id) : Promise.resolve({})
+  ]);
+
   const sessionResources = createScopeResources({
     configs: flow.session?.resources as Record<string, unknown> | undefined,
     persisted: session.resources as Record<string, unknown> | undefined,
-    persistedContent: session.resourceContent as Record<string, string> | undefined
+    persistedContent: {
+      ...(session.resourceContent as Record<string, string> | undefined),
+      ...sessionContentFromStore
+    }
   });
   const userResources = createScopeResources({
     configs: flow.user?.resources as Record<string, unknown> | undefined,
     persisted: user?.resources as Record<string, unknown> | undefined,
-    persistedContent: user?.resourceContent as Record<string, string> | undefined
+    persistedContent: {
+      ...(user?.resourceContent as Record<string, string> | undefined),
+      ...userContentFromStore
+    }
   });
   const projectResources = createScopeResources({
     configs: flow.project?.resources as Record<string, unknown> | undefined,
     persisted: project?.resources as Record<string, unknown> | undefined,
-    persistedContent: project?.resourceContent as Record<string, string> | undefined
+    persistedContent: {
+      ...(project?.resourceContent as Record<string, string> | undefined),
+      ...projectContentFromStore
+    }
   });
 
   const sessionClientData = await computeClientData({

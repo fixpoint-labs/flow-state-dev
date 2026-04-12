@@ -12,6 +12,7 @@ import { createPostgresRequestStore } from "./request-store";
 import { createPostgresUserStore } from "./user-store";
 import { createPostgresProjectStore } from "./project-store";
 import { createPostgresActiveRequestRegistry } from "./active-request-registry";
+import { createPostgresContentStore } from "./content-store";
 
 export type PostgresStoreRegistry = StoreRegistry & {
   /** Drain the connection pool and disconnect */
@@ -68,6 +69,7 @@ export async function createPostgresStores(
     user: createPostgresUserStore(executor),
     project: createPostgresProjectStore(executor),
     activeRequests: createPostgresActiveRequestRegistry(executor),
+    content: createPostgresContentStore(executor),
     async close() {
       await closePool();
     }
@@ -79,7 +81,8 @@ export {
   createPostgresRequestStore,
   createPostgresUserStore,
   createPostgresProjectStore,
-  createPostgresActiveRequestRegistry
+  createPostgresActiveRequestRegistry,
+  createPostgresContentStore
 };
 
 export { initializeSchema } from "./schema";
