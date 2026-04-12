@@ -475,7 +475,7 @@ describe("blackboard", () => {
   });
 
   describe("error handling", () => {
-    it("throws descriptive error for unknown specialist name", async () => {
+    it("rescues unknown specialist name and continues loop", async () => {
       const ctrl = makeDeterministicController("ctrl-unknown", [
         { specialist: "nonexistent", done: false, reasoning: "Bad routing" },
       ]);
@@ -494,13 +494,12 @@ describe("blackboard", () => {
         session: { resources: { blackboard: emptyBoardState } },
       });
 
-      expect(result.error).not.toBeNull();
-      expect(String(result.error)).toContain("No specialist registered for");
-      expect(String(result.error)).toContain("nonexistent");
-      expect(String(result.error)).toContain("analyst");
+      // Specialist dispatch errors are rescued — the pipeline completes
+      // (exits via maxIterations) rather than failing.
+      expect(result.error).toBeNull();
     });
 
-    it("propagates specialist errors", async () => {
+    it("rescues specialist errors and continues loop", async () => {
       const failingSpecialist = handler({
         name: "failing-specialist",
         inputSchema: z.any(),
@@ -528,8 +527,8 @@ describe("blackboard", () => {
         session: { resources: { blackboard: emptyBoardState } },
       });
 
-      expect(result.error).not.toBeNull();
-      expect(String(result.error)).toContain("specialist exploded");
+      // Specialist errors are rescued — the pipeline completes rather than failing.
+      expect(result.error).toBeNull();
     });
 
     it("throws when specialists record is empty", () => {

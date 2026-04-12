@@ -60,7 +60,7 @@ const testFlow = defineFlow({
       thinkingStyle: z.enum(["plan-and-execute", "supervisor", "blackboard", "default"]).optional(),
       requestCount: z.number().default(0),
       lastAction: z.string().optional(),
-      features: z.object({ biasCheck: z.boolean().default(false) }).default({}),
+      features: z.object({ biasCheck: z.boolean().default(false), bashTool: z.boolean().default(true) }).default({}),
     }),
     resources: {
       artifacts: artifactsCollection,
@@ -96,7 +96,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Help me", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "default" },
+        state: { thinkingStyle: "default", features: { biasCheck: false, bashTool: true } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
@@ -110,7 +110,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Build a report", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "plan-and-execute" },
+        state: { thinkingStyle: "plan-and-execute", features: { biasCheck: false, bashTool: true } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       unmockedGeneratorPolicy: "warn",
@@ -124,7 +124,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Coordinate reviews", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "supervisor" },
+        state: { thinkingStyle: "supervisor", features: { biasCheck: false, bashTool: true } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       unmockedGeneratorPolicy: "warn",
@@ -137,7 +137,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Analyze this from multiple perspectives", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "blackboard" },
+        state: { thinkingStyle: "blackboard", features: { biasCheck: false, bashTool: true } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       unmockedGeneratorPolicy: "warn",
@@ -152,6 +152,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Hello", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
+        state: { features: { biasCheck: false, bashTool: true } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
@@ -167,7 +168,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Hello kitchen sink", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "default" },
+        state: { thinkingStyle: "default", features: { biasCheck: false, bashTool: true } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
@@ -184,7 +185,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Test with custom model", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "default" },
+        state: { thinkingStyle: "default", features: { biasCheck: false, bashTool: true } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       user: {
@@ -206,7 +207,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Check items", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "default" },
+        state: { thinkingStyle: "default", features: { biasCheck: false, bashTool: true } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
@@ -223,7 +224,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Read artifact doc-1", mode: "chat", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { mode: "chat", thinkingStyle: "default", requestCount: 0 },
+        state: { mode: "chat", thinkingStyle: "default", requestCount: 0, features: { biasCheck: false, bashTool: true } },
         resources: {
           "artifacts/doc-1": {
             title: "Test Document",

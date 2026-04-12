@@ -19,7 +19,7 @@
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import { utility } from "@flow-state-dev/core";
 import type { BlockDefinition, BlockContext } from "@flow-state-dev/core/types";
-import type { GeneratorSlot, GeneratorTool, GeneratorSearchConfig } from "@flow-state-dev/core";
+import type { GeneratorSlot, GeneratorSearchConfig, ToolsSlot, UsesSlot } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   planAndExecuteInputSchema,
@@ -28,7 +28,7 @@ import {
   type PlanTask,
 } from "./schemas";
 import { createEvaluateProgress } from "./blocks/evaluate-progress";
-import { emitPlanSnapshot } from "../shared/plan";
+import { emitPlanMeta, emitTaskUpdate } from "../shared/plan";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -114,7 +114,7 @@ export interface PlanAndExecuteConfig<
   history?: GeneratorSlot<any, any>;
 
   /** Tools assigned to all default blocks (executor, replanner, synthesizer). */
-  tools?: GeneratorTool[] | ((ctx: any) => GeneratorTool[]);
+  tools?: ToolsSlot;
 
   /** Web search — applied to default executor (planner already enables search internally). */
   search?: boolean | GeneratorSearchConfig;
@@ -128,6 +128,9 @@ export interface PlanAndExecuteConfig<
   // ---------------------------------------------------------------------------
   // Resource declarations — registered on the outer sequencer.
   // ---------------------------------------------------------------------------
+
+  /** Capabilities to install on default blocks (executor, replanner, synthesizer). */
+  uses?: UsesSlot;
 
   /** Session resources to declare on the outer sequencer. */
   sessionResources?: Record<string, any>;
@@ -149,7 +152,8 @@ function createDefaultReplanner(config: {
   model?: string;
   context?: GeneratorSlot<any, any>;
   history?: GeneratorSlot<any, any>;
-  tools?: GeneratorTool[] | ((ctx: any) => GeneratorTool[]);
+  tools?: ToolsSlot;
+  uses?: UsesSlot;
 }) {
   return generator({
     name: `${config.name}-replanner`,
@@ -157,12 +161,13 @@ function createDefaultReplanner(config: {
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.history !== undefined ? { history: config.history } : {}),
     ...(config.tools !== undefined ? { tools: config.tools as any } : {}),
+    ...(config.uses ? { uses: config.uses as any } : {}),
     outputSchema: z.object({
       tasks: z.array(z.object({
         id: z.string(),
         goal: z.string(),
-        deps: z.array(z.string()).optional(),
-        priority: z.enum(["high", "medium", "low"]).optional(),
+        deps: z.array(z.string()).default([]),
+        priority: z.enum(["high", "medium", "low"]).default("medium"),
       })),
     }),
     sequencerStateSchema: planAndExecuteStateSchema,
@@ -208,8 +213,8 @@ function createApplyReplan(config: { name: string }) {
       tasks: z.array(z.object({
         id: z.string(),
         goal: z.string(),
-        deps: z.array(z.string()).optional(),
-        priority: z.enum(["high", "medium", "low"]).optional(),
+        deps: z.array(z.string()).default([]),
+        priority: z.enum(["high", "medium", "low"]).default("medium"),
       })),
     }),
     outputSchema: iterationOutputSchema,
@@ -229,11 +234,31 @@ function createApplyReplan(config: { name: string }) {
         dependencies: task.deps ?? [],
       }));
 
+      const allTasks = [...keptTasks, ...newTasks];
+
       await ctx.sequencer!.patchState({
-        tasks: [...keptTasks, ...newTasks],
+        tasks: allTasks,
         status: "executing",
         iteration: state.iteration + 1,
       });
+
+      // Emit updated plan-meta with new task ordering
+      emitPlanMeta(ctx as BlockContext, {
+        goal: state.goal,
+        taskOrder: allTasks.map((t) => t.id),
+        taskGoals: Object.fromEntries(allTasks.map((t) => [t.id, t.goal])),
+        status: "executing",
+        iteration: state.iteration + 1,
+      }, { key: config.name });
+
+      // Emit task updates for each new pending task
+      for (const task of newTasks) {
+        emitTaskUpdate(ctx as BlockContext, {
+          id: task.id,
+          goal: task.goal,
+          status: task.status,
+        }, { key: config.name });
+      }
 
       return { decision: "continue" as const };
     },
@@ -308,7 +333,8 @@ function createDefaultSynthesizer(config: {
   model?: string;
   context?: GeneratorSlot<any, any>;
   history?: GeneratorSlot<any, any>;
-  tools?: GeneratorTool[] | ((ctx: any) => GeneratorTool[]);
+  tools?: ToolsSlot;
+  uses?: UsesSlot;
   synthesizeInstructions?: string;
 }) {
   const basePrompt = [
@@ -324,6 +350,7 @@ function createDefaultSynthesizer(config: {
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.history !== undefined ? { history: config.history } : {}),
     ...(config.tools !== undefined ? { tools: config.tools } : {}),
+    ...(config.uses ? { uses: config.uses as any } : {}),
     inputSchema: z.object({
       goal: z.string(),
       status: z.string().optional(),
@@ -409,7 +436,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
 
   return generator({
     name: `${config.name}-executor`,
-    model: config.model ?? "openai/gpt-5.4-mini",
+    model: config.model ?? "preset/small",
     inputSchema: z.object({
       stepId: z.string(),
       goal: z.string(),
@@ -418,14 +445,15 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
     outputSchema: z.object({
       summary: z.string(),
       success: z.boolean(),
-      reason: z.string().optional(),
+      reason: z.string().default(""),
       sources: z.array(z.object({
-        title: z.string().optional(),
+        title: z.string().default(""),
         url: z.string(),
-      })).optional(),
+      })).default([]),
     }),
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.tools !== undefined ? { tools: config.tools } : {}),
+    ...(config.uses ? { uses: config.uses as any } : {}),
     ...(config.search !== undefined ? { search: config.search } : {}),
     ...(config.sessionResources !== undefined ? { sessionResources: config.sessionResources } : {}),
     ...(config.userResources !== undefined ? { userResources: config.userResources } : {}),
@@ -492,6 +520,7 @@ export function planAndExecute<
     context: config.context,
     history: config.history,
     tools: config.tools,
+    uses: config.uses,
   });
   const applyReplan = createApplyReplan({ name });
 
@@ -503,6 +532,7 @@ export function planAndExecute<
           context: config.context,
           history: config.history,
           tools: config.tools,
+          uses: config.uses,
           synthesizeInstructions: config.synthesizeInstructions,
         }))
       : null;
@@ -537,11 +567,20 @@ export function planAndExecute<
 
       await ctx.sequencer!.patchState({ tasks, status: "executing" });
 
-      emitPlanSnapshot(
-        ctx as BlockContext,
-        { goal: input.goal, tasks, status: "executing", iteration: 0 },
-        { key: name }
-      );
+      emitPlanMeta(ctx as BlockContext, {
+        goal: input.goal,
+        taskOrder: tasks.map((t) => t.id),
+        taskGoals: Object.fromEntries(tasks.map((t) => [t.id, t.goal])),
+        status: "executing",
+        iteration: 0,
+      }, { key: name });
+      for (const task of tasks) {
+        emitTaskUpdate(ctx as BlockContext, {
+          id: task.id,
+          goal: task.goal,
+          status: task.status,
+        }, { key: name });
+      }
 
       return {};
     },
@@ -601,6 +640,12 @@ export function planAndExecute<
         ),
       });
 
+      emitTaskUpdate(ctx as BlockContext, {
+        id: nextStep.id,
+        goal: nextStep.goal,
+        status: "in-progress",
+      }, { key: name });
+
       return {
         stepId: nextStep.id,
         goal: nextStep.goal,
@@ -657,11 +702,29 @@ export function planAndExecute<
 
       await ctx.sequencer!.patchState({ tasks: updatedTasks, currentTaskId: undefined });
 
-      emitPlanSnapshot(
-        ctx as BlockContext,
-        { goal: state.goal, tasks: updatedTasks, status: state.status, iteration: state.iteration },
-        { key: name }
-      );
+      // Emit granular update for the completed/failed task
+      const finishedTask = updatedTasks.find((t: PlanTask) => t.id === taskId)!;
+      emitTaskUpdate(ctx as BlockContext, {
+        id: finishedTask.id,
+        goal: finishedTask.goal,
+        status: finishedTask.status,
+        result: finishedTask.result,
+        error: finishedTask.error,
+      }, { key: name });
+
+      // Emit updates for any cascade-skipped tasks
+      if (newStatus === "failed") {
+        for (const t of updatedTasks) {
+          if (t.status === "skipped" && t.id !== taskId) {
+            emitTaskUpdate(ctx as BlockContext, {
+              id: t.id,
+              goal: t.goal,
+              status: t.status,
+              error: t.error,
+            }, { key: name });
+          }
+        }
+      }
 
       return { stepResult };
     },
@@ -694,11 +757,26 @@ export function planAndExecute<
 
       await ctx.sequencer!.patchState({ tasks: updatedTasks, currentTaskId: undefined });
 
-      emitPlanSnapshot(
-        ctx as BlockContext,
-        { goal: state.goal, tasks: updatedTasks, status: state.status, iteration: state.iteration },
-        { key: name }
-      );
+      // Emit granular update for the failed task
+      const failedTask = updatedTasks.find((t: PlanTask) => t.id === taskId)!;
+      emitTaskUpdate(ctx as BlockContext, {
+        id: failedTask.id,
+        goal: failedTask.goal,
+        status: failedTask.status,
+        error: failedTask.error,
+      }, { key: name });
+
+      // Emit updates for cascade-skipped tasks
+      for (const t of updatedTasks) {
+        if (t.status === "skipped" && t.id !== taskId) {
+          emitTaskUpdate(ctx as BlockContext, {
+            id: t.id,
+            goal: t.goal,
+            status: t.status,
+            error: t.error,
+          }, { key: name });
+        }
+      }
 
       return { stepResult: undefined };
     },

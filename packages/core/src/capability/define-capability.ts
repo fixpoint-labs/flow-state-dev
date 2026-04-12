@@ -9,6 +9,7 @@ import type {
   CapabilityConfig,
   ConfiguredCapability,
   DefinedCapability,
+  InferSessionState,
   PresetDef,
   PresetOverrides,
 } from "./types";
@@ -16,18 +17,13 @@ import type {
 export function defineCapability<
   const TName extends string,
   const TFns extends Record<string, (...args: any[]) => any> = Record<string, never>,
-  const TPresets extends Record<string, PresetDef | string[]> = Record<string, never>,
-  const TUses extends readonly DefinedCapability[] = readonly DefinedCapability[],
+  const TSessionStateSchema extends import("zod").ZodTypeAny | undefined = undefined,
+  const TPresetKeys extends string = never,
 >(
-  config: CapabilityConfig<TName, TFns, TPresets, TUses>
-): DefinedCapability<
-  TName,
-  TFns,
-  TPresets extends Record<string, any>
-    ? Exclude<keyof TPresets, "default"> & string
-    : never,
-  TPresets
-> {
+  config: CapabilityConfig<TName, TFns, TSessionStateSchema> & {
+    presets?: { [K in TPresetKeys]: PresetDef<InferSessionState<TSessionStateSchema>> | string[] } & { default?: string[] };
+  }
+): DefinedCapability<TName, TFns, TPresetKeys, Record<string, PresetDef>> {
   if (!config.name || config.name.trim() === "") {
     throw new Error("defineCapability() requires a non-empty name");
   }

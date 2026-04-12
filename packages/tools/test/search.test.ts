@@ -1,5 +1,13 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { search, tavilySearch, exaSearch, serperSearch, braveSearch } from "../src/search";
+import {
+  search,
+  tavilySearch,
+  exaSearch,
+  serperSearch,
+  braveSearch,
+  perplexitySearch,
+  perplexitySonarSearch,
+} from "../src/search";
 import { tools } from "../src";
 import type { SearchOutput } from "../src/search/types";
 
@@ -48,6 +56,23 @@ vi.mock("../src/search/providers", () => {
     })),
   };
 
+  const mockPerplexityAdapter = {
+    name: "perplexity" as const,
+    search: vi.fn(async () => ({
+      ...mockSearchOutput,
+      results: mockSearchOutput.results.map((r) => ({ ...r, source: "perplexity" as const })),
+    })),
+  };
+
+  const mockPerplexitySonarAdapter = {
+    name: "perplexity-sonar" as const,
+    search: vi.fn(async () => ({
+      ...mockSearchOutput,
+      results: mockSearchOutput.results.map((r) => ({ ...r, source: "perplexity-sonar" as const })),
+      answer: "Sonar grounded answer",
+    })),
+  };
+
   return {
     getAdapter: vi.fn((name: string) => {
       switch (name) {
@@ -55,6 +80,8 @@ vi.mock("../src/search/providers", () => {
         case "exa": return mockExaAdapter;
         case "serper": return mockSerperAdapter;
         case "brave": return mockBraveAdapter;
+        case "perplexity": return mockPerplexityAdapter;
+        case "perplexity-sonar": return mockPerplexitySonarAdapter;
         default: return mockAdapter;
       }
     }),
@@ -62,6 +89,8 @@ vi.mock("../src/search/providers", () => {
     exaAdapter: mockExaAdapter,
     serperAdapter: mockSerperAdapter,
     braveAdapter: mockBraveAdapter,
+    perplexityAdapter: mockPerplexityAdapter,
+    perplexitySonarAdapter: mockPerplexitySonarAdapter,
   };
 });
 
@@ -71,6 +100,7 @@ describe("search tool factory", () => {
   beforeEach(() => {
     delete process.env.TAVILY_API_KEY;
     delete process.env.EXA_API_KEY;
+    delete process.env.PERPLEXITY_API_KEY;
     delete process.env.SERPER_API_KEY;
     delete process.env.BRAVE_SEARCH_API_KEY;
   });
@@ -136,6 +166,7 @@ describe("direct provider search factories", () => {
   beforeEach(() => {
     delete process.env.TAVILY_API_KEY;
     delete process.env.EXA_API_KEY;
+    delete process.env.PERPLEXITY_API_KEY;
     delete process.env.SERPER_API_KEY;
     delete process.env.BRAVE_SEARCH_API_KEY;
   });
@@ -175,6 +206,24 @@ describe("direct provider search factories", () => {
       {} as any
     );
     expect(result.results[0].source).toBe("brave");
+  });
+
+  it("perplexitySearch creates a tool locked to perplexity", async () => {
+    const tool = perplexitySearch({ keys: { perplexity: "key" } });
+    const result = await tool.run(
+      { query: "test", maxResults: 5, topic: "general" },
+      {} as any
+    );
+    expect(result.results[0].source).toBe("perplexity");
+  });
+
+  it("perplexitySonarSearch creates a tool locked to perplexity-sonar", async () => {
+    const tool = perplexitySonarSearch({ keys: { "perplexity-sonar": "key" } });
+    const result = await tool.run(
+      { query: "test", maxResults: 5, topic: "general" },
+      {} as any
+    );
+    expect(result.results[0].source).toBe("perplexity-sonar");
   });
 
   it("throws when locked provider has no key", async () => {

@@ -54,6 +54,24 @@ describe("resolveProvider", () => {
 
       expect(result.apiKey).toBe("config-key");
     });
+
+    it("selects perplexity when explicitly requested", () => {
+      process.env.PERPLEXITY_API_KEY = "pplx-key";
+
+      const result = resolveProvider({ provider: "perplexity" });
+
+      expect(result.adapter.name).toBe("perplexity");
+      expect(result.apiKey).toBe("pplx-key");
+    });
+
+    it("selects perplexity-sonar when explicitly requested", () => {
+      process.env.PERPLEXITY_API_KEY = "pplx-key";
+
+      const result = resolveProvider({ provider: "perplexity-sonar" });
+
+      expect(result.adapter.name).toBe("perplexity-sonar");
+      expect(result.apiKey).toBe("pplx-key");
+    });
   });
 
   describe("auto-selection priority", () => {
@@ -76,7 +94,16 @@ describe("resolveProvider", () => {
       expect(result.apiKey).toBe("exa-key");
     });
 
-    it("selects serper when tavily and exa are not available", () => {
+    it("selects perplexity when tavily and exa are not available", () => {
+      process.env.PERPLEXITY_API_KEY = "perplexity-key";
+
+      const result = resolveProvider({});
+
+      expect(result.adapter.name).toBe("perplexity");
+      expect(result.apiKey).toBe("perplexity-key");
+    });
+
+    it("selects serper when tavily, exa, and perplexity are not available", () => {
       process.env.SERPER_API_KEY = "serper-key";
 
       const result = resolveProvider({});
@@ -85,7 +112,7 @@ describe("resolveProvider", () => {
       expect(result.apiKey).toBe("serper-key");
     });
 
-    it("selects brave as last priority", () => {
+    it("selects brave when only brave key is available", () => {
       process.env.BRAVE_SEARCH_API_KEY = "brave-key";
 
       const result = resolveProvider({});
@@ -111,6 +138,7 @@ describe("resolveProvider", () => {
       );
       expect(() => resolveProvider({})).toThrow("TAVILY_API_KEY");
       expect(() => resolveProvider({})).toThrow("EXA_API_KEY");
+      expect(() => resolveProvider({})).toThrow("PERPLEXITY_API_KEY");
       expect(() => resolveProvider({})).toThrow("SERPER_API_KEY");
       expect(() => resolveProvider({})).toThrow("BRAVE_SEARCH_API_KEY");
     });

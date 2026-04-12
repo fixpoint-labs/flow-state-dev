@@ -76,7 +76,7 @@ type SequencerOperation = {
     ctx: BlockContext,
     runtime: SequencerRuntimeState,
     stepIndex: number
-  ) => Promise<{ value: unknown; jumpTo?: string }>;
+  ) => Promise<{ value: unknown; jumpTo?: string; exit?: boolean }>;
 };
 
 type WorkOptions = {
@@ -369,6 +369,10 @@ function runSequencerOperations(
 
         // Emit state snapshot after each step completes.
         await emitSequencerStateSnapshot(ctx, operation.name, index);
+        
+        if (result.exit === true) {
+          break;
+        }
 
         if (result.jumpTo !== undefined) {
           const jumpIndex = operations.findIndex((candidate) => candidate.name === result.jumpTo);
@@ -1131,6 +1135,188 @@ function createSequencer<TInput, TOutput>(
         firstBranchSchema,
         undefined,
         mergeFrom(...branchBlocks)
+      );
+    },
+
+    thenAll<TSteps extends Array<ParallelStep<TOutput>>>(
+      steps: [...TSteps],
+      options?: { maxConcurrency?: number }
+    ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }> {
+      const stepBlocks: BlockDefinition<any, any>[] = steps.map((step) =>
+        isBlockDefinition(step) ? (step as BlockDefinition<any, any>) : (step as { block: BlockDefinition<any, any> }).block
+      );
+
+      return extend<{ [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>(
+        {
+          name: "thenAll",
+          run: async (value, ctx) => {
+            const outputs = await mapWithConcurrency(
+              steps,
+              options?.maxConcurrency,
+              async (step): Promise<unknown> => {
+                if (isBlockDefinition(step)) {
+                  return executeBlock(step as BlockDefinition<any, any>, value, ctx);
+                }
+
+                const connected = await step.connector(value as TOutput, ctx);
+                return executeBlock(step.block, connected, ctx);
+              }
+            );
+
+            return { value: outputs };
+          }
+        },
+        undefined,
+        undefined,
+        mergeFrom(...stepBlocks)
+      );
+    },
+
+    thenAny(
+      blocks: BlockDefinition<any, any>[]
+    ): SequencerDefinition<TInput, unknown> {
+      return extend<unknown>(
+        {
+          name: "thenAny",
+          run: async (value, ctx) => {
+            if (blocks.length === 0) {
+              throw new AggregateError([], "thenAny called with no blocks");
+            }
+
+            // Try each block sequentially; return the first that succeeds.
+            const errors: Error[] = [];
+
+            for (const block of blocks) {
+              try {
+                const output = await executeBlock(block, value, ctx);
+                return { value: output };
+              } catch (error) {
+                errors.push(toError(error));
+              }
+            }
+
+            throw new AggregateError(errors, "All blocks in thenAny failed");
+          }
+        },
+        undefined,
+        undefined,
+        mergeFrom(...blocks)
+      );
+    },
+
+    race(
+      blocks: BlockDefinition<any, any>[],
+      options?: { maxConcurrency?: number }
+    ): SequencerDefinition<TInput, unknown> {
+      return extend<unknown>(
+        {
+          name: "race",
+          run: async (value, ctx, runtime) => {
+            if (blocks.length === 0) {
+              throw new Error("race called with no blocks");
+            }
+
+            if (blocks.length === 1) {
+              const output = await executeBlock(blocks[0], value, ctx);
+              return { value: output };
+            }
+
+            // Create a derived abort controller to cancel losers once a winner is found.
+            const controller = new AbortController();
+            const onParentAbort = (): void => { controller.abort(); };
+            ctx.signal?.addEventListener("abort", onParentAbort);
+
+            const derivedCtx = { ...ctx, signal: controller.signal } as BlockContext;
+
+            const errors: Error[] = [];
+            let resolved = false;
+            let resolvedValue: unknown;
+
+            try {
+              if (options?.maxConcurrency !== undefined) {
+                // Worker-pool approach: concurrency-limited, first success wins.
+                const limit = Math.max(1, options.maxConcurrency);
+                let nextIndex = 0;
+
+                const worker = async (): Promise<void> => {
+                  while (nextIndex < blocks.length && !resolved) {
+                    const currentIndex = nextIndex;
+                    nextIndex += 1;
+                    try {
+                      const output = await executeBlock(blocks[currentIndex], value, derivedCtx);
+                      if (!resolved) {
+                        resolved = true;
+                        resolvedValue = output;
+                        controller.abort();
+                      }
+                    } catch (error) {
+                      errors.push(toError(error));
+                    }
+                  }
+                };
+
+                const workers: Promise<void>[] = [];
+                for (let i = 0; i < Math.min(limit, blocks.length); i += 1) {
+                  workers.push(worker());
+                }
+                await Promise.all(workers);
+              } else {
+                // Full parallelism — fire all, first success wins.
+                await new Promise<void>((resolve) => {
+                  let remaining = blocks.length;
+
+                  for (const block of blocks) {
+                    executeBlock(block, value, derivedCtx).then(
+                      (output) => {
+                        if (!resolved) {
+                          resolved = true;
+                          resolvedValue = output;
+                          controller.abort();
+                        }
+                        remaining -= 1;
+                        if (remaining === 0) resolve();
+                      },
+                      (error) => {
+                        errors.push(toError(error));
+                        remaining -= 1;
+                        if (remaining === 0) resolve();
+                      }
+                    );
+                  }
+                });
+              }
+            } finally {
+              ctx.signal?.removeEventListener("abort", onParentAbort);
+            }
+
+            if (!resolved) {
+              throw new AggregateError(errors, "All blocks in race failed");
+            }
+
+            return { value: resolvedValue };
+          }
+        },
+        undefined,
+        undefined,
+        mergeFrom(...blocks)
+      );
+    },
+
+    exitIf(
+      condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>
+    ): SequencerDefinition<TInput, TOutput> {
+      return extend<TOutput>(
+        {
+          name: "exitIf",
+          run: async (value, ctx) => {
+            const shouldExit = await condition(value as TOutput, ctx);
+            if (shouldExit) {
+              return { value, exit: true };
+            }
+            return { value };
+          }
+        },
+        lastOutputSchema
       );
     },
 

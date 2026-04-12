@@ -1,15 +1,18 @@
 import { search } from "./search";
 import { fetch } from "./fetch";
 import { crawl } from "./crawl";
+import { createBashTool } from "./bash";
 
-export const tools = { search, fetch, crawl } as const;
+export const tools = { search, fetch, crawl, createBashTool } as const;
 
 export { search } from "./search";
 export {
   tavilySearch,
   exaSearch,
+  perplexitySearch,
   serperSearch,
   braveSearch,
+  perplexitySonarSearch,
 } from "./search";
 
 export { fetch } from "./fetch";
@@ -24,6 +27,18 @@ export {
   firecrawlCrawl,
   builtinCrawl,
 } from "./crawl";
+
+export { createBashTool } from "./bash";
+export type {
+  Sandbox,
+  CommandResult,
+  FileEntryState,
+  SandboxProvider,
+  BashSessionState,
+  CreateBashToolOptions,
+  CreateBashToolResult,
+  BashToolkit,
+} from "./bash";
 
 export type {
   SearchConfig,

@@ -6,6 +6,7 @@ const sidebars: SidebarsConfig = {
     "building-a-chat-app",
     "nextjs-setup",
     "development-tips",
+    "building-agents",
   ],
 };
 
