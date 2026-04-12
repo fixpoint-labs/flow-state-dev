@@ -56,7 +56,11 @@ export function createPostgresRequestStore(executor: QueryExecutor): RequestStor
    * won't complete within the microtask that initiates them.
    */
   const pendingItemWrites = new Map<string, Promise<void>>();
+  /** Holds the most recent items so the queued write always uses the latest data. */
+  const latestItemSnapshots = new Map<string, OutputItem[]>();
   const pendingEventWrites = new Map<string, Promise<void>>();
+  /** Accumulates new events between coalesced writes for incremental persistence. */
+  const pendingNewEvents = new Map<string, RequestStreamEvent[]>();
 
   return {
     get: base.get,
@@ -65,12 +69,20 @@ export function createPostgresRequestStore(executor: QueryExecutor): RequestStor
     list: base.list,
 
     persistItems(requestId: string, items: OutputItem[]): void {
+      // Always capture the latest snapshot so the queued write uses the most
+      // recent items, even when subsequent calls are coalesced away.
+      latestItemSnapshots.set(requestId, [...items]);
+
       if (pendingItemWrites.has(requestId)) return;
 
       const writePromise = new Promise<void>((resolve) => {
         queueMicrotask(() => {
           const doWrite = async () => {
             try {
+              const snapshot = latestItemSnapshots.get(requestId);
+              latestItemSnapshots.delete(requestId);
+              if (snapshot === undefined) return;
+
               const result = await executor.query(
                 "SELECT data FROM requests WHERE id = $1",
                 [requestId]
@@ -79,7 +91,7 @@ export function createPostgresRequestStore(executor: QueryExecutor): RequestStor
                 const data = result.rows[0]!.data;
                 const current = (typeof data === "string" ? JSON.parse(data) : data) as RequestRecord;
                 const updatedAt = Date.now();
-                const updated = { ...current, items, updatedAt };
+                const updated = { ...current, items: snapshot, updatedAt };
                 await executor.query(
                   "UPDATE requests SET data = $1, updated_at = $2 WHERE id = $3",
                   [JSON.stringify(updated), updatedAt, requestId]
@@ -103,22 +115,27 @@ export function createPostgresRequestStore(executor: QueryExecutor): RequestStor
     },
 
     persistEvents(requestId: string, events: RequestStreamEvent[]): void {
+      // Accumulate new events — the emitter now sends only incremental events.
+      let pending = pendingNewEvents.get(requestId);
+      if (pending === undefined) {
+        pending = [];
+        pendingNewEvents.set(requestId, pending);
+      }
+      pending.push(...events);
+
       if (pendingEventWrites.has(requestId)) return;
 
-      const snapshot = [...events];
       const writePromise = new Promise<void>((resolve) => {
         queueMicrotask(() => {
           const doWrite = async () => {
             try {
-              // No explicit transaction: QueryExecutor may be backed by pg.Pool where
-              // each query() checks out a different connection, so BEGIN/COMMIT would
-              // span connections and break. The delete+insert sequence is safe without
-              // a transaction — worst case is a partial write that gets overwritten on
-              // the next persistEvents call (best-effort persistence).
-              await executor.query("DELETE FROM request_events WHERE request_id = $1", [requestId]);
-              for (const event of snapshot) {
+              const newEvents = pendingNewEvents.get(requestId) ?? [];
+              pendingNewEvents.delete(requestId);
+              // Insert only newly accumulated events. ON CONFLICT handles
+              // duplicate sequence numbers from retries.
+              for (const event of newEvents) {
                 await executor.query(
-                  "INSERT INTO request_events (request_id, sequence_number, event_data) VALUES ($1, $2, $3)",
+                  "INSERT INTO request_events (request_id, sequence_number, event_data) VALUES ($1, $2, $3) ON CONFLICT (request_id, sequence_number) DO UPDATE SET event_data = $3",
                   [requestId, event.sequence_number, JSON.stringify(event)]
                 );
               }
