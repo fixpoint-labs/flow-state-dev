@@ -59,8 +59,15 @@ export function createLiveRequestStream(
     // RequestStreamEventWithId is RequestStreamEvent & { id }, which is a valid
     // StreamEvent (the union includes RequestStreamEvent). The extra `id` field
     // is harmless — encodeStreamEvent only reads the StreamEvent fields.
-    const sseFrame = encodeStreamEvent(event);
-    controller.enqueue(encoder.encode(sseFrame));
+    try {
+      const sseFrame = encodeStreamEvent(event);
+      controller.enqueue(encoder.encode(sseFrame));
+    } catch (err) {
+      // Log encoding/enqueue failures so they're visible in diagnostics.
+      // The most common cause is a closed controller (client disconnected).
+      console.warn("[flow-state] LiveStream event delivery failed:", err);
+      closed = true;
+    }
   };
 
   const emitter = createInternalResponseEmitter({
