@@ -12,7 +12,7 @@ This package is in Wave 1 foundation mode.
 |--------|-----------|--------|
 | Attention | `attention` | Salience scoring + relevance filtering implemented |
 | Memory | `memory` | Working memory implemented |
-| Identity | `identity` | Scaffold |
+| Identity | `identity` | Perspective implemented; Constitution scaffold |
 | Perception | — | Wave 2+ |
 | Reasoning | — | Wave 2+ |
 | Metacognition | `metacognition` | Bias & sycophancy detection |
@@ -148,10 +148,79 @@ All exports from `@thought-fabric/core/memory` related to working memory:
   - `soft` mode returns all items annotated with relevance scores
   - Uses pre-scored signals when available, with keyword-overlap fallback for raw strings
 
-## Identity
+## Identity Exports
+
+All exports from `@thought-fabric/core/identity`:
+
+### Perspective
+
+Adoptable viewpoint models that give AI systems the ability to reason from genuinely different analytical positions. A perspective encodes what to amplify and suppress (salience), how to reason (priorities, risk model), domain expertise, and communication style.
+
+```ts
+import { perspective, perspectiveAnalyze } from '@thought-fabric/core/identity'
+
+const securityEngineer = perspective({
+  name: 'security-engineer',
+  description: 'Evaluates through the lens of system security and threat modeling',
+  salience: {
+    amplify: ['authentication concerns', 'data exposure risks'],
+    suppress: ['UI/UX considerations', 'marketing positioning'],
+  },
+  reasoning: {
+    priorities: ['threat surface minimization', 'defense in depth'],
+    riskModel: 'Assumes adversarial actors. Evaluates worst-case scenarios.',
+  },
+  expertise: ['OWASP Top 10', 'Zero-trust architecture'],
+})
+
+// Analyze content through the perspective's lens
+const analysis = perspectiveAnalyze({
+  perspective: securityEngineer,
+  model: 'gpt-5',
+})
+
+const result = await analysis.run(
+  { content: 'Feature proposal: add public file sharing...' },
+  ctx,
+)
+// result.analysis, result.salienceNotes, result.recommendations
+```
+
+| Export | Kind | Description |
+|--------|------|-------------|
+| **Factory** | | |
+| `perspective(config)` | factory | Creates a frozen, validated perspective instance. |
+| **Block factories** | | |
+| `perspectiveAuditor(config)` | sequencer | Bundled pipeline: apply → analyze. |
+| `perspectiveAnalyze(config)` | generator | LLM-based analysis through the perspective's lens. |
+| `perspectiveApply(config)` | handler | Wraps content with perspective framing for downstream generators. |
+| **Schemas** | | |
+| `perspectiveConfigSchema` | Zod schema | Full perspective configuration. |
+| `perspectiveSalienceSchema` | Zod schema | `{ amplify: string[], suppress: string[] }` |
+| `perspectiveReasoningSchema` | Zod schema | `{ priorities: string[], riskModel?: string, successCriteria?: string }` |
+| `perspectiveCommunicationSchema` | Zod schema | `{ tone?, emphasis?, evidencePreference? }` |
+| `perspectiveAnalysisSchema` | Zod schema | Output: perspectiveName, analysis, salienceNotes, recommendations, confidence. |
+| `perspectiveInputSchema` | Zod schema | `{ content: string, context?: string }` |
+| `perspectiveApplyOutputSchema` | Zod schema | `{ content, perspectiveFrame, perspectiveName }` |
+| **Helpers** | | |
+| `formatPerspective(instance)` | pure function | Full perspective formatted for LLM system prompt. |
+| `formatPerspectiveSalience(salience)` | pure function | Salience section only. |
+| `formatPerspectiveReasoning(reasoning)` | pure function | Reasoning section only. |
+| `summarizePerspective(instance)` | pure function | One-line summary for logging and trace labels. |
+| `perspectiveContextFormatter(instance)` | factory | Returns a `context:` slot formatter bound to a perspective. |
+| **Types** | | |
+| `PerspectiveConfig` | type | Input to the `perspective()` factory. |
+| `PerspectiveInstance` | type | Frozen, validated perspective (returned by factory). |
+| `PerspectiveSalience` | type | Salience model: amplify + suppress. |
+| `PerspectiveReasoning` | type | Reasoning config: priorities, risk model, success criteria. |
+| `PerspectiveCommunication` | type | Communication style preferences. |
+| `PerspectiveAnalysis` | type | Structured analysis output. |
+| `PerspectiveBlockConfig` | type | Config for handler-based blocks. |
+| `PerspectiveAnalyzeConfig` | type | Config for generator-based blocks (adds `model`). |
+
+### Constitution
 
 - `constitution(config)` — Placeholder (not implemented)
-- `perspective(config)` — Placeholder (not implemented)
 
 ## Metacognition Exports
 
