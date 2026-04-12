@@ -278,8 +278,25 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     },
   });
 
-  // 4. Dispatch: routes to the correct specialist
-  const dispatch = createDispatchSpecialist(name, config.specialists);
+  // 4. Dispatch: routes to the correct specialist, wrapped in rescue so a
+  //    failing specialist doesn't kill the entire blackboard loop.
+  const dispatchRouter = createDispatchSpecialist(name, config.specialists);
+  const dispatch = sequencer({
+    name: `${name}-dispatch-safe`,
+    inputSchema: z.any(),
+  })
+    .then(dispatchRouter)
+    .rescue([{
+      block: handler({
+        name: `${name}-dispatch-rescue`,
+        execute: (error, ctx) => {
+          ctx.emitStatus(
+            `[blackboard:${name}] specialist failed: ${(error as Error).message}`
+          );
+          return { __rescued: true };
+        },
+      }),
+    }]);
 
   // 5. Snapshot: emits the current blackboard state as a structured component
   //    after each specialist runs. Uses a stable key so clients replace
