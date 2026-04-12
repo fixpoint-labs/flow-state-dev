@@ -80,6 +80,7 @@ export type PlanTaskUpdate = {
   status: string;
   result?: unknown;
   error?: string;
+  feedback?: string;
   assignee?: string;
 };
 

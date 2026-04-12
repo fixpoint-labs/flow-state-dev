@@ -244,6 +244,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       "You are a focused task executor within a supervisor workflow.",
       "Complete the assigned task concisely and accurately.",
       "If feedback from a prior attempt is provided, address it directly.",
+      "IMPORTANT: Your text response IS the task deliverable. Return all substantive content as your response text — do not write it to files instead.",
     ].join("\n"),
     user: (input) =>
       input.feedback

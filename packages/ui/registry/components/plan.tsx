@@ -46,6 +46,7 @@ type PlanTaskData = {
   status: PlanTaskStatus;
   result?: unknown;
   error?: string;
+  feedback?: string;
   assignee?: string;
 };
 
@@ -177,11 +178,19 @@ export function Plan({ item }: { item: ContainerItem }) {
   return (
     <div className="not-prose my-2 rounded-md border bg-card p-3 text-card-foreground">
       <div className="mb-2 flex items-start justify-between gap-2">
-        <p className="text-sm font-medium leading-snug">Steps</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium leading-snug">Steps</p>
+          {meta.status === "reviewing" && (
+            <span className="text-[10px] font-medium text-cyan-500">Reviewing…</span>
+          )}
+          {meta.status === "replanning" && (
+            <span className="text-[10px] font-medium text-amber-500">Replanning…</span>
+          )}
+        </div>
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
           {completedCount}/{tasks.length}
           {meta.iteration !== undefined && meta.iteration > 0 &&
-            ` · pass ${meta.iteration + 1}`}
+            ` · pass ${meta.iteration}`}
         </span>
       </div>
       <ul className="space-y-1.5">
@@ -202,8 +211,9 @@ function PlanTaskRow({ task }: { task: PlanTaskData }) {
       [{task.assignee}]
     </span>
   ) : null;
+  const showFeedback = task.feedback && (task.status === "needs-revision" || task.status === "escalated");
 
-  if (!summary) {
+  if (!summary && !showFeedback) {
     return (
       <li className="flex items-start gap-2">
         <Icon
@@ -236,9 +246,16 @@ function PlanTaskRow({ task }: { task: PlanTaskData }) {
             aria-hidden="true"
           />
         </summary>
-        <p className="mt-1 whitespace-pre-wrap pl-5 text-xs leading-snug text-muted-foreground">
-          {summary}
-        </p>
+        {showFeedback && (
+          <p className="mt-1 whitespace-pre-wrap pl-5 text-xs leading-snug text-amber-500/80">
+            {task.feedback}
+          </p>
+        )}
+        {summary && (
+          <p className="mt-1 whitespace-pre-wrap pl-5 text-xs leading-snug text-muted-foreground">
+            {summary}
+          </p>
+        )}
       </details>
     </li>
   );

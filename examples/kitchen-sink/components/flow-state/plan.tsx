@@ -48,6 +48,7 @@ type PlanTaskData = {
   status: PlanTaskStatus;
   result?: unknown;
   error?: string;
+  feedback?: string;
   assignee?: string;
 };
 
@@ -190,7 +191,15 @@ export function Plan({ item }: { item: ContainerItem }) {
   return (
     <div className="not-prose my-2 rounded-md border bg-card p-3 text-card-foreground">
       <div className="mb-2 flex items-start justify-between gap-2">
-        <p className="text-sm font-medium leading-snug">Tasks</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium leading-snug">Tasks</p>
+          {meta.status === "reviewing" && (
+            <span className="text-[10px] font-medium text-cyan-500">Reviewing…</span>
+          )}
+          {meta.status === "replanning" && (
+            <span className="text-[10px] font-medium text-amber-500">Replanning…</span>
+          )}
+        </div>
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
           {completedCount}/{tasks.length}
           {meta.iteration !== undefined && meta.iteration > 0 && ` · pass ${meta.iteration}`}
@@ -236,7 +245,8 @@ function PlanTaskRow({
   const config = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.pending;
   const Icon = config.icon;
   const summary = getResultSummary(task.result);
-  const hasDetails = summary || (toolCalls && toolCalls.length > 0);
+  const showFeedback = task.feedback && (task.status === "needs-revision" || task.status === "escalated");
+  const hasDetails = summary || showFeedback || (toolCalls && toolCalls.length > 0);
 
   const assigneeLabel = task.assignee ? (
     <span className="ml-1 shrink-0 text-[10px] font-medium text-muted-foreground/60">
@@ -270,6 +280,11 @@ function PlanTaskRow({
           />
         </summary>
         <div className="mt-1.5 space-y-1.5 pl-5">
+          {showFeedback && (
+            <p className="whitespace-pre-wrap text-xs leading-snug text-amber-500/80">
+              {task.feedback}
+            </p>
+          )}
           {toolCalls && toolCalls.length > 0 && (
             <ul className="space-y-0.5">
               {toolCalls.map((tc) => (
