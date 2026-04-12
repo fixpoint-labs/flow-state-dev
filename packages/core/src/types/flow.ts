@@ -109,6 +109,17 @@ export type ActionConfig<
   };
 };
 
+/**
+ * Retention policy for bounding a session's persisted item log.
+ * When limits are exceeded, entire old request records are evicted (lazy, on write).
+ */
+export type RetentionPolicy = {
+  /** Maximum number of items across all completed requests. Oldest requests evicted first. */
+  maxItems?: number;
+  /** Maximum age of completed requests. Milliseconds (number) or duration string ('24h', '7d'). */
+  maxAge?: number | string;
+};
+
 export type SessionConfig<
   TResources extends Record<string, ScopeResourceConfig> = Record<string, ScopeResourceConfig>
 > = {
@@ -116,6 +127,8 @@ export type SessionConfig<
   stateSchema?: ZodTypeAny;
   resources?: TResources;
   clientData?: Record<string, ClientDataComputeFn<JsonObject, InferResourceRefs<TResources>>>;
+  /** Retention policy that bounds session item log size. */
+  retention?: RetentionPolicy;
 };
 
 export type RequestConfig = {

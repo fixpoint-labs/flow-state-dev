@@ -12,7 +12,7 @@
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import { emitPlanSnapshot } from "../shared/plan";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
-import type { GeneratorSlot } from "@flow-state-dev/core";
+import type { GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   supervisorInputSchema,
@@ -85,6 +85,9 @@ export interface SupervisorConfig<
 
   /** History slot applied to default planner and synthesizer. */
   history?: GeneratorSlot<any, any>;
+
+  /** Capabilities to install on default blocks (planner, reviewer, synthesizer). */
+  uses?: UsesSlot;
 
   /** Schema for the final synthesized output. */
   outputSchema?: TOutputSchema;
@@ -217,6 +220,7 @@ export const applyReview = handler({
 function buildDefaultPlanner(name: string, opts?: {
   context?: GeneratorSlot<any, any>;
   history?: GeneratorSlot<any, any>;
+  uses?: UsesSlot;
 }) {
   return generator({
     name: `${name}-planner`,
@@ -225,6 +229,7 @@ function buildDefaultPlanner(name: string, opts?: {
     sequencerStateSchema: supervisorStateSchema,
     context: opts?.context,
     history: opts?.history,
+    ...(opts?.uses ? { uses: opts.uses as any } : {}),
     prompt: (_input, ctx) => {
       const state = ctx.sequencer?.state as SupervisorState | undefined;
       if (!state || state.iteration === 0) {
@@ -318,6 +323,7 @@ function buildDefaultSynthesizer(
   opts?: {
     context?: GeneratorSlot<any, any>;
     history?: GeneratorSlot<any, any>;
+    uses?: UsesSlot;
   }
 ) {
   return generator({
@@ -326,6 +332,7 @@ function buildDefaultSynthesizer(
     outputSchema: outputSchema ?? z.string(),
     context: opts?.context,
     history: opts?.history,
+    ...(opts?.uses ? { uses: opts.uses as any } : {}),
     emit: { messages: true, reasoning: false },
     prompt: [
       "You are a final synthesis step in a supervisor workflow.",
@@ -367,6 +374,7 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   const slotOpts = {
     context: config.context,
     history: config.history,
+    uses: config.uses,
   };
 
   const planner =

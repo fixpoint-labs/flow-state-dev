@@ -47,6 +47,31 @@ const guardedRouter = createFlowApiRouter({
 });
 ```
 
+## Session retention policies
+
+Long-running sessions accumulate items over time. Retention policies provide a safety net that bounds storage growth by evicting old completed request records when limits are exceeded.
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+
+const flow = defineFlow({
+  kind: "my-flow",
+  session: {
+    retention: {
+      maxItems: 500,   // evict oldest requests when total items exceed 500
+      maxAge: "24h",   // evict requests older than 24 hours
+    },
+  },
+  actions: { /* ... */ },
+});
+```
+
+Both constraints are optional and independent. When both are set, either condition triggers eviction. Eviction runs lazily after each completed request (no background process). The current request is never evicted.
+
+Retention policies operate at **request granularity** — entire old request records are removed, not individual items. For items that should never be stored at all, use `transient: true` on block definitions.
+
+Supported duration formats: `'30s'`, `'5m'`, `'2h'`, `'7d'`, or a raw number in milliseconds.
+
 ## Custom model resolution
 
 ```ts

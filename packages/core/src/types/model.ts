@@ -117,6 +117,13 @@ export type GeneratorModelStreamChunk = {
  * keep defaults.
  */
 export type PrepareStepResult = {
+  /**
+   * Switch to a different model for this step. The model ID string is
+   * re-resolved through the model resolver at the AI SDK adapter layer.
+   * Only effective when the GeneratorModel was created via
+   * `createAiSdkModelResolver` (not `wrapAiSdkModel`).
+   */
+  modelId?: string;
   system?: unknown;
   messages?: unknown[];
   /** Tool names to enable for this step (filters the compiled tool set). */

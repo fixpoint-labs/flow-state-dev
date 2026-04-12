@@ -107,6 +107,73 @@ Always works — falls back to built-in BFS crawler when no API keys are set.
 import { firecrawlCrawl, builtinCrawl } from "@flow-state-dev/tools/crawl";
 ```
 
+## Bash
+
+Resource-backed bash execution with pluggable sandbox adapters. Files live as framework resources for persistence and portability. They're materialized into a real filesystem for execution, then synced back after mutations.
+
+```typescript
+import { createBashTool } from "@flow-state-dev/tools/bash";
+import { providerTool } from "@flow-state-dev/core";
+
+// Inside a handler's execute function:
+const { tools, sandbox } = await createBashTool({
+  collections: { files: ctx.session.resources.files },
+  provider: { type: "local", cwd: "./workspace" },
+});
+
+// Pass to a generator as provider tools:
+generator({
+  providerTools: [
+    providerTool("bash", tools.bash),
+    providerTool("readFile", tools.readFile),
+    providerTool("writeFile", tools.writeFile),
+  ],
+});
+```
+
+### Sandbox adapters
+
+| Adapter | Provider type | Description |
+|---------|--------------|-------------|
+| Local FS | `"local"` | Real filesystem + `child_process`. Best for development. |
+| Vercel | `"vercel"` | `@vercel/sandbox`. Supports persistent sandboxes. |
+| Upstash | `"upstash"` | Placeholder — blocked on API stabilization (FIX-314). |
+| just-bash | `"just-bash"` | In-memory bash emulation. No real processes. |
+| Custom | `"custom"` | Any object implementing the `Sandbox` interface. |
+
+### Configuration
+
+```typescript
+createBashTool({
+  collections: { files: ctx.session.resources.files },
+  provider: { type: "vercel" },
+  destination: "/workspace",     // workspace root (default: "/workspace")
+  persist: true,                 // persist sandbox across sessions
+  syncMode: "diff",              // "diff" (default) or "full"
+  fileFilter: (p) => !p.includes("node_modules"),
+  onBeforeCommand: (cmd) => {
+    if (cmd.includes("rm -rf /")) return "echo 'Nice try.'";
+  },
+});
+```
+
+### Sync lifecycle
+
+1. **Hydrate** — resource collection entries are written into the sandbox filesystem
+2. **Execute** — `bash`, `readFile`, `writeFile` tools are available to the LLM
+3. **Flush** — after every `bash` and `writeFile`, changed files sync back to resources
+4. Deleted files are removed from resource collections. `readFile` does not trigger a flush.
+
+### Direct adapter constructors
+
+```typescript
+import {
+  createLocalFsSandbox,
+  createVercelAdapter,
+  createJustBashSandbox,
+} from "@flow-state-dev/tools/bash";
+```
+
 ## Provider-native search
 
 For provider-level search tools (grounded responses, citations), use the `search` field on generator config instead:

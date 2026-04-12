@@ -114,6 +114,29 @@ const guardedRouter = createFlowApiRouter({
 });
 ```
 
+### Session Retention Policies
+
+Retention policies bound the size of a session's persisted item log. Configured on the flow's `session` block, they evict old completed request records when limits are exceeded.
+
+```ts
+defineFlow({
+  kind: "my-flow",
+  session: {
+    retention: {
+      maxItems: 500,  // total items across all completed requests
+      maxAge: "24h",  // duration string or milliseconds
+    },
+  },
+  actions: { /* ... */ },
+});
+```
+
+- Both `maxItems` and `maxAge` are optional. When both are set, either triggers eviction.
+- Eviction is lazy (runs after each completed request). No background process.
+- Operates at **request granularity** — entire old requests are removed, not individual items.
+- The current request is never evicted. Failed requests are not eviction candidates.
+- For items that should never be stored, use `transient: true` on block definitions instead.
+
 ## Client Setup
 
 ### Action Client

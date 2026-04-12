@@ -40,6 +40,7 @@ export type {
   InferScopeStateFromConfig,
   ProjectConfig,
   RequestConfig,
+  RetentionPolicy,
   ScopeResourceConfig,
   SessionConfig,
   ToolLifecycleEvent,
@@ -70,6 +71,7 @@ export type {
   GeneratorStepResult,
   ModelResolver,
   PrepareStepFn,
+  PrepareStepResult,
   ProviderTool
 } from "./model";
 

@@ -33,6 +33,8 @@ export type {
   InferCapabilities,
   PresetDef,
   PresetOverrides,
+  UsesEntry,
+  UsesSlot,
 } from "./capability";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
@@ -70,6 +72,7 @@ export type {
   GeneratorSlotReference,
   GeneratorTool,
   GeneratorToolResult,
+  ToolsSlot,
   HandlerConfig,
   InlineBlockFactory,
   InlineConfig,
@@ -108,6 +111,7 @@ export type {
   GeneratorSearchConfig,
   ModelResolver,
   PrepareStepFn,
+  PrepareStepResult,
   ProviderTool
 } from "./types/model";
 
