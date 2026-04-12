@@ -9,8 +9,8 @@
  * and the router that dispatches between them.
  */
 import { generator, handler, router, sequencer, utility } from "@flow-state-dev/core";
-import type { GeneratorSlot } from "@flow-state-dev/core";
-import type { BlockDefinition, DeclaredResourceEntry } from "@flow-state-dev/core/types";
+import type { GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { supervisor } from "@flow-state-dev/patterns/supervisor";
 import { blackboard, createBlackboard } from "@flow-state-dev/patterns/blackboard";
@@ -40,7 +40,7 @@ const autoClassifyStateSchema = z.object({
 const classifierOutputSchema = z.object({
   category: z.string(),
   confidence: z.number(),
-  reasoning: z.string().optional(),
+  reasoning: z.string().default(""),
 });
 
 // -------------------------------------------------------------------------
@@ -203,12 +203,12 @@ export interface ThinkingStyleRouterConfig {
   modelId: string;
   history?: GeneratorSlot<any, any>;
   context: GeneratorSlot<any, any>;
-  tools: BlockDefinition<any, any>[];
-  sessionResources: Record<string, DeclaredResourceEntry>;
+  /** Capabilities to install on all default pattern blocks. */
+  uses?: UsesSlot;
 }
 
 export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
-  const { assistantGenerator, modelId, context, tools, sessionResources } = config;
+  const { assistantGenerator, modelId, context, uses } = config;
 
   // Default — direct generation.
   const defaultPipeline = assistantGenerator;
@@ -220,8 +220,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     context,
     history: config.history,
     search: true,
-    tools,
-    sessionResources,
+    uses,
     enableReplanning: true,
   });
 
@@ -238,8 +237,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     }),
     outputSchema: z.string(),
     context,
-    tools,
-    sessionResources,
+    ...(uses ? { uses: uses as any } : {}),
     search: true,
     emit: { messages: false, toolCalls: false },
     prompt: [
@@ -262,6 +260,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     outputSchema: z.string(),
     context,
     history: config.history,
+    uses,
   });
 
   // Blackboard — multiple independent specialists contribute to a shared
@@ -283,9 +282,9 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       name: `${specConfig.name}-gen`,
       model: modelId,
       outputSchema: z.string(),
-      sessionResources: { blackboard: bbBoard, ...sessionResources },
+      sessionResources: { blackboard: bbBoard },
+      ...(uses ? { uses: uses as any } : {}),
       context,
-      tools,
       search: true,
       emit: { messages: false, toolCalls: false },
       prompt: specConfig.prompt,
@@ -357,6 +356,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     },
     model: modelId,
     context,
+    uses,
     maxIterations: 8,
     maxHistory: 20,
     initialState: (input: unknown) => ({

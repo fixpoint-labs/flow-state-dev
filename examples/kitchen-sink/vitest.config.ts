@@ -7,6 +7,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export default defineConfig({
   resolve: {
     alias: {
+      "@flow-state-dev/tools/bash": resolve(root, "packages/tools/src/bash/index.ts"),
       "@flow-state-dev/tools": resolve(root, "packages/tools/src/index.ts"),
       "@thought-fabric/core/memory": resolve(root, "packages/thought-fabric-core/src/memory/index.ts"),
     },

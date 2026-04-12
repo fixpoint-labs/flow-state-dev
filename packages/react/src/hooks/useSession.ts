@@ -535,6 +535,14 @@ export function useSession(
             setIsFinishing(true);
           }
 
+          // Resource changes must trigger snapshot refresh even when the item
+          // itself is transient (filtered out below). The refresh fetches
+          // updated clientData so the UI reflects resource mutations in
+          // real-time rather than waiting for request completion.
+          if (event.item.type === "resource_change") {
+            scheduleRefreshSnapshot();
+          }
+
           if (!passesItemFilter(event.item, filter)) {
             return;
           }
@@ -569,9 +577,6 @@ export function useSession(
             setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
           }
 
-          if (event.item.type === "resource_change") {
-            scheduleRefreshSnapshot();
-          }
         },
         onItemDone: (event) => {
           if (!passesItemFilter(event.item, filter)) {

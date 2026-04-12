@@ -13,7 +13,7 @@
  */
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import type { BlockDefinition, DefinedResource } from "@flow-state-dev/core/types";
-import type { GeneratorSlot } from "@flow-state-dev/core";
+import type { GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   blackboardControlSchema,
@@ -85,6 +85,9 @@ export interface BlackboardConfig<
   /** Context slot for the default controller and synthesizer generators. */
   context?: GeneratorSlot<any, any>;
 
+  /** Capabilities to install on default blocks (controller, synthesizer). */
+  uses?: UsesSlot;
+
   /**
    * Final synthesis step — receives `{ blackboard, iterations, history }`.
    * Default: generator that reads the blackboard and produces a coherent result.
@@ -106,6 +109,7 @@ function buildDefaultController(config: {
   specialists: string[];
   model?: string;
   context?: GeneratorSlot<any, any>;
+  uses?: UsesSlot;
 }) {
   return generator({
     name: `${config.name}-controller`,
@@ -115,6 +119,7 @@ function buildDefaultController(config: {
     sequencerStateSchema: blackboardControlSchema,
     emit: { messages: false, reasoning: false },
     ...(config.context !== undefined ? { context: config.context } : {}),
+    ...(config.uses ? { uses: config.uses as any } : {}),
     prompt: (_input, ctx) => {
       const state = ctx.sequencer?.state as BlackboardControlState | undefined;
       const iteration = state?.iteration ?? 0;
@@ -154,6 +159,7 @@ function buildDefaultSynthesizer(config: {
   blackboardResource: DefinedResource;
   model?: string;
   context?: GeneratorSlot<any, any>;
+  uses?: UsesSlot;
   outputSchema?: ZodTypeAny;
 }) {
   return generator({
@@ -163,6 +169,7 @@ function buildDefaultSynthesizer(config: {
     emit: { messages: true, reasoning: false },
     ...(config.outputSchema ? { outputSchema: config.outputSchema } : {}),
     ...(config.context !== undefined ? { context: config.context } : {}),
+    ...(config.uses ? { uses: config.uses as any } : {}),
     prompt: [
       "You are a synthesis assistant.",
       "The blackboard contains contributions from multiple specialist agents.",
@@ -229,6 +236,7 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       specialists: Object.keys(config.specialists),
       model: config.model,
       context: config.context,
+      uses: config.uses,
     });
 
   // 3. Record decision: stores controller output in sequencer state and
@@ -308,6 +316,7 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
           blackboardResource,
           model: config.model,
           context: config.context,
+          uses: config.uses,
           outputSchema: config.outputSchema,
         });
 

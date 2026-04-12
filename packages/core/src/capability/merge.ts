@@ -36,17 +36,41 @@ export function getBaseCapability(ref: CapabilityRef): DefinedCapability {
 // Flatten capabilities (transitive, deduplicated, dependency-ordered)
 // ---------------------------------------------------------------------------
 
+/** Dynamic uses entry — a function that resolves capabilities at runtime. */
+export type DynamicUsesResolver = (ctx: any) => readonly CapabilityRef[];
+
+/** Result of flattening capabilities — static refs + collected dynamic resolvers. */
+export interface FlattenResult {
+  /** Deduplicated, dependency-ordered static capability refs. */
+  staticRefs: CapabilityRef[];
+  /** Dynamic uses entries collected from all traversed capabilities. */
+  dynamicResolvers: DynamicUsesResolver[];
+}
+
 /**
  * Flatten a list of CapabilityRef entries into a deduplicated, transitively
  * resolved list. Detects cycles. Returns capabilities in dependency order
  * (dependencies before dependents).
+ *
+ * Dynamic entries (functions) encountered during traversal — either at the
+ * top level or nested inside a capability's `uses` — are collected separately.
+ * They contribute context and tools at runtime, not resources at build time.
  */
 export function flattenCapabilities(
   refs: readonly CapabilityRef[]
-): CapabilityRef[] {
+): CapabilityRef[];
+export function flattenCapabilities(
+  refs: readonly CapabilityRef[],
+  options: { collectDynamic: true }
+): FlattenResult;
+export function flattenCapabilities(
+  refs: readonly CapabilityRef[],
+  options?: { collectDynamic: boolean }
+): CapabilityRef[] | FlattenResult {
   const seen = new Map<string, CapabilityRef>();
   const visiting = new Set<string>();
   const result: CapabilityRef[] = [];
+  const dynamicResolvers: DynamicUsesResolver[] = [];
 
   function visit(ref: CapabilityRef): void {
     const base = getBaseCapability(ref);
@@ -71,10 +95,15 @@ export function flattenCapabilities(
 
     visiting.add(name);
 
-    // Visit transitive dependencies first (depth-first)
+    // Visit transitive dependencies first (depth-first).
+    // Dynamic uses (functions) are collected for runtime resolution.
     if (base.uses) {
       for (const dep of base.uses) {
-        visit(dep);
+        if (typeof dep === "function") {
+          dynamicResolvers.push(dep);
+        } else {
+          visit(dep);
+        }
       }
     }
 
@@ -87,6 +116,9 @@ export function flattenCapabilities(
     visit(ref);
   }
 
+  if (options?.collectDynamic) {
+    return { staticRefs: result, dynamicResolvers };
+  }
   return result;
 }
 
