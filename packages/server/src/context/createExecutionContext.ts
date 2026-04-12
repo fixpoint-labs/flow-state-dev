@@ -278,6 +278,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
     persistResources: (next: Record<string, JsonObject>) => Promise<void>;
     readResourceContent: () => Record<string, string>;
     persistResourceContent: (next: Record<string, string>) => Promise<void>;
+    /** Called after any resource mutation so the streaming layer can push change events to clients. */
+    onResourceChanged?: (resourcePath: string, changeType: "created" | "updated" | "deleted") => void;
   }
 ): ResourceRegistry<TResources> {
   const handles = {} as Record<string, ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>>;
@@ -385,6 +387,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             nsHookCtx
           );
         }
+        options.onResourceChanged?.(storageKey, "updated");
       },
       async setState(nextState: JsonObject): Promise<void> {
         const prev = readState();
@@ -397,6 +400,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             nsHookCtx
           );
         }
+        options.onResourceChanged?.(storageKey, "updated");
       },
       async updateState(
         updater: (state: JsonObject) => JsonObject | Promise<JsonObject>
@@ -412,6 +416,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             nsHookCtx
           );
         }
+        options.onResourceChanged?.(storageKey, "updated");
       },
       async readContentRaw(): Promise<string | null> {
         const content = options.readResourceContent()[storageKey];
@@ -427,6 +432,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           [storageKey]: content
         };
         await options.persistResourceContent(nextContent);
+        options.onResourceChanged?.(storageKey, "updated");
       }
     };
   }
@@ -526,6 +532,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             await nsConfig.onInstanceCreated(storageKey, state, hookCtx);
           }
 
+          options.onResourceChanged?.(storageKey, "created");
+
           return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
         },
 
@@ -573,6 +581,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           if (nsConfig.onInstanceDeleted) {
             await nsConfig.onInstanceDeleted(storageKey, hookCtx);
           }
+
+          options.onResourceChanged?.(storageKey, "deleted");
         },
 
         count(): number {
@@ -1899,13 +1909,28 @@ export async function createExecutionContext<
           }
         });
 
+  // Resource change emitter — pushes transient resource_change items via SSE
+  // so clients can refresh clientData without waiting for request completion.
+  const rawResponse = options.response as unknown as Record<string, unknown> | undefined;
+  const emitter = rawResponse && typeof rawResponse.emitResourceChange === "function"
+    ? (rawResponse as unknown as { emitResourceChange: (opts: { scope: string; resourcePath: string; changeType: string; transient?: boolean }) => Promise<unknown> })
+    : undefined;
+
+  function makeResourceChangeHandler(scope: "session" | "user" | "project") {
+    if (!emitter) return undefined;
+    return (resourcePath: string, changeType: "created" | "updated" | "deleted") => {
+      void emitter.emitResourceChange({ scope, resourcePath, changeType, transient: true });
+    };
+  }
+
   const userResources = createScopeResourceRegistry({
     scope: "user",
     configs: userResourceConfigs,
     readResources: readUserResources,
     persistResources: persistUserResources,
     readResourceContent: readUserResourceContent,
-    persistResourceContent: persistUserResourceContent
+    persistResourceContent: persistUserResourceContent,
+    onResourceChanged: makeResourceChangeHandler("user"),
   });
 
   const sessionResources = createScopeResourceRegistry({
@@ -1914,7 +1939,8 @@ export async function createExecutionContext<
     readResources: readSessionResources,
     persistResources: persistSessionResources,
     readResourceContent: readSessionResourceContent,
-    persistResourceContent: persistSessionResourceContent
+    persistResourceContent: persistSessionResourceContent,
+    onResourceChanged: makeResourceChangeHandler("session"),
   });
 
   const projectResources =
@@ -1926,7 +1952,8 @@ export async function createExecutionContext<
           readResources: readProjectResources,
           persistResources: persistProjectResources,
           readResourceContent: readProjectResourceContent,
-          persistResourceContent: persistProjectResourceContent
+          persistResourceContent: persistProjectResourceContent,
+          onResourceChanged: makeResourceChangeHandler("project"),
         });
 
 

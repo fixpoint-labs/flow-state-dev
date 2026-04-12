@@ -9,15 +9,19 @@ import { detectApiKey } from "../_internal/env";
 const providerPriority: SearchProviderName[] = [
   "tavily",
   "exa",
+  "perplexity",
   "serper",
   "brave",
+  "perplexity-sonar",
 ];
 
 export const ENV_VAR_MAP: Record<SearchProviderName, string> = {
   tavily: "TAVILY_API_KEY",
   exa: "EXA_API_KEY",
+  perplexity: "PERPLEXITY_API_KEY",
   serper: "SERPER_API_KEY",
   brave: "BRAVE_SEARCH_API_KEY",
+  "perplexity-sonar": "PERPLEXITY_API_KEY",
 };
 
 export function resolveProvider(config: SearchConfig): {

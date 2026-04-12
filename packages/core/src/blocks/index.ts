@@ -15,7 +15,8 @@ export type {
   GeneratorSlotRefOptions,
   GeneratorSlotReference,
   GeneratorTool,
-  GeneratorToolResult
+  GeneratorToolResult,
+  ToolsSlot,
 } from "./generator";
 export type {
   BranchStep,

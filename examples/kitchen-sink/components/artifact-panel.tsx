@@ -13,11 +13,12 @@ interface ArtifactPanelProps {
   selectedId?: string | null;
   onSelect?: (id: string) => void;
   className?: string;
+  style?: React.CSSProperties;
 }
 
-export function ArtifactPanel({ artifacts, selectedId, onSelect, className }: ArtifactPanelProps) {
+export function ArtifactPanel({ artifacts, selectedId, onSelect, className, style }: ArtifactPanelProps) {
   return (
-    <aside className={cn("flex h-full w-full min-w-0 shrink-0 flex-col border-l bg-muted/30 sm:min-w-[15rem] sm:max-w-xs", className)}>
+    <aside className={cn("flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l bg-muted/30", className)} style={style}>
       <div className="flex items-center gap-2 px-4 py-3">
         <Package className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-semibold">Artifacts</span>
@@ -28,7 +29,7 @@ export function ArtifactPanel({ artifacts, selectedId, onSelect, className }: Ar
         )}
       </div>
       <Separator />
-      <ScrollArea className="flex-1 p-2">
+      <ScrollArea className="min-h-0 flex-1 p-2">
         <div className="flex flex-col gap-1">
           {artifacts.map((artifact) => (
             <button

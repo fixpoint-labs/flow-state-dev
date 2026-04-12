@@ -145,8 +145,8 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   }
 
   /**
-   * Registers hooks for event persistence.
-   * Called after each event is appended to the buffer, passing the full event list.
+   * Registers hooks for incremental event persistence.
+   * Called after each replayable event with only the newly emitted event(s).
    */
   setEventHooks(hooks: ResponseEmitterEventHooks): void {
     this.eventHooks = hooks;
@@ -464,18 +464,27 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     this.events.push(withId);
     this.enforceBufferLimit();
     if (this.onEvent !== undefined) {
-      await this.onEvent(withId);
+      // Only await if the callback returns a Promise. Sync callbacks (e.g.
+      // LiveRequestStream's controller.enqueue) should not yield to the
+      // microtask queue — doing so serializes every content delta and
+      // creates a visible streaming bottleneck.
+      const result = this.onEvent(withId);
+      if (result instanceof Promise) {
+        await result;
+      }
     }
 
     for (const observer of this.eventObservers) {
       observer(withId);
     }
 
-    // Fire event persistence hook with replayable events (exclude ping/debug).
+    // Fire event persistence hook with only the new event (incremental).
+    // Previous implementation passed getReplayableEvents() — the full history —
+    // on every emission, causing O(n²) persistence work across N events.
     if (this.eventHooks?.onEvent !== undefined) {
       const eventType = withId.type;
       if (eventType !== "ping" && eventType !== "debug") {
-        this.eventHooks.onEvent(this.getReplayableEvents());
+        this.eventHooks.onEvent([withId]);
       }
     }
 

@@ -255,4 +255,95 @@ describe("createAiSdkModelResolver", () => {
       }
     });
   });
+
+  it("resolves modelId from prepareStep to switch models between generate steps", async () => {
+    const resolvedModelIds: string[] = [];
+
+    // Primary model: returns a tool call to trigger multi-step
+    const primaryModel = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [
+          { type: "tool-call", toolCallId: "call_1", toolName: "lookup", input: { q: "test" } }
+        ],
+        finishReason: { unified: "tool-calls", raw: undefined },
+        usage: {
+          inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 3, text: undefined, reasoning: undefined }
+        },
+        warnings: []
+      })
+    });
+
+    // Switched model: returns final text
+    const switchedModel = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "from switched model" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 8, noCache: 8, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 4, text: 4, reasoning: undefined }
+        },
+        warnings: []
+      })
+    });
+
+    const resolver = createAiSdkModelResolver((modelId) => {
+      resolvedModelIds.push(modelId);
+      return modelId === "fast-model" ? switchedModel : primaryModel;
+    });
+
+    const model = resolver("primary-model", "gen");
+    const result = await model.generate({
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{
+        name: "lookup",
+        description: "Lookup data",
+        parameters: z.object({ q: z.string() }),
+        execute: async () => ({ answer: "42" })
+      }],
+      maxSteps: 3,
+      prepareStep: async ({ stepNumber }) => {
+        if (stepNumber === 1) {
+          return { modelId: "fast-model" };
+        }
+        return undefined;
+      }
+    });
+
+    // Resolver called for initial model and for the switched model
+    expect(resolvedModelIds).toContain("primary-model");
+    expect(resolvedModelIds).toContain("fast-model");
+
+    // The switched model was actually invoked
+    expect(switchedModel.doGenerateCalls.length).toBeGreaterThanOrEqual(1);
+
+    // Final result reflects the switched model's output
+    expect(result.text).toBe("from switched model");
+  });
+
+  it("ignores modelId in prepareStep when using wrapAiSdkModel (no resolver)", async () => {
+    // wrapAiSdkModel does not have a resolver, so modelId should be silently ignored
+    const model = wrapAiSdkModel(new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "original model" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 3, text: 3, reasoning: undefined }
+        },
+        warnings: []
+      })
+    }));
+
+    // Should not throw even when prepareStep returns modelId
+    const result = await model.generate({
+      messages: [{ role: "user", content: "hi" }],
+      maxSteps: 2,
+      prepareStep: async () => {
+        return { modelId: "nonexistent-model" };
+      }
+    });
+
+    expect(result.text).toBe("original model");
+  });
 });
