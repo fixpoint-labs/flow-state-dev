@@ -149,3 +149,21 @@ export {
   prunePersist,
 } from './memory-system-blocks.js'
 export type { UnifiedObservations, ConsolidationOutput, PruneOutput } from './memory-system-blocks.js'
+
+// ---------------------------------------------------------------------------
+// Capabilities — defineCapability() surfaces for each memory tier
+// ---------------------------------------------------------------------------
+
+export {
+  createWorkingMemoryCapability,
+  workingMemoryCapability,
+  createEpisodicMemoryCapability,
+  episodicMemoryCapability,
+  createSemanticMemoryCapability,
+  semanticMemoryCapability,
+} from './capabilities.js'
+export type {
+  EpisodicMemoryCapabilityConfig,
+  SemanticMemoryCapabilityConfig,
+  AddSemanticFactInput,
+} from './capabilities.js'

@@ -94,9 +94,12 @@ const assistantGenerator = generator({
   userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
   sessionStateSchema: z.object({ mode: modeSchema.default("chat"), thinkingStyle: z.string().optional() }),
 
-  uses: [featuresCapability],
+  // Capabilities: auto-install resources, context formatters, and tools.
+  // mem.capability includes a context preset that injects unified memory recall.
+  // artifactsCapability provides artifact resources + context + tools.
+  uses: [mem.capability, featuresCapability],
 
-  context: [mem.contextFormatter, voiceContext],
+  context: [voiceContext],
 
   inputSchema,
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
