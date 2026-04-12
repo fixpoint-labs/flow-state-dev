@@ -57,6 +57,8 @@ packages/patterns/src/<pattern-name>/
 
 3. **Config interface**: Every internal block should be overridable via the config. Use `BlockDefinition<any, any>` for block slots.
 
+4. **Capabilities**: If the pattern bundles resources, context formatters, and helper functions that blocks should opt into, package them as a `defineCapability()`. This is the preferred approach when the pattern provides reusable infrastructure that other blocks (outside the pattern) may also need.
+
 ### Step 4: Write the Pattern
 
 #### Config Interface
@@ -143,6 +145,53 @@ export function create<BlockName>(
 }
 ```
 
+#### Packaging as a Capability
+
+When a pattern provides resources + helpers that external blocks should also access, export a capability alongside the pattern factory:
+
+```typescript
+import { defineCapability, defineResource } from "@flow-state-dev/core";
+
+// The capability packages resources + runtime helpers
+export const <patternName>Capability = defineCapability({
+  name: "<pattern-name>",
+  sessionResources: {
+    <resourceName>: defineResource({ stateSchema: <schema>, writable: true }),
+  },
+  presets: {
+    context: { context: [<contextFormatter>] },   // For generators
+    tools: { tools: [<readTool>, <writeTool>] },  // Tools that interact with the resource
+    default: ["context", "tools"],
+  },
+  fns: (ctx) => ({
+    // Typed helpers available via ctx.cap.<patternName>
+    list: () => ctx.session.resources.<resourceName>.state.items,
+    add: async (item) => { /* ... */ },
+  }),
+});
+
+// Pattern factory uses the capability internally
+export function <patternName>(config: <PatternName>Config) {
+  return sequencer({
+    name: config.name,
+    uses: [<patternName>Capability],
+    stateSchema,
+  })
+    .then(/* ... */)
+}
+```
+
+This lets other blocks in the same flow opt into the pattern's resources:
+
+```typescript
+const myAgent = generator({
+  name: "agent",
+  uses: [<patternName>Capability],  // Gets context + tools + ctx.cap helpers
+  model: "openai/gpt-4",
+  prompt: "...",
+});
+```
+
 #### Critical Rules
 
 - **Prefix all internal block names** with `${config.name}-` to avoid collisions when multiple pattern instances exist.
@@ -153,6 +202,10 @@ export function create<BlockName>(
   ```typescript
   export { create<BlockName> } from "./blocks/<name>";
   export { create<PatternName>StateSchema } from "./schemas";
+  ```
+- **Export the capability** if the pattern provides shared infrastructure:
+  ```typescript
+  export { <patternName>Capability } from "./capability";
   ```
 
 ### Step 5: Add Exports

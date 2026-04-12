@@ -125,6 +125,83 @@ export const <name>Block = handler({
 });
 ```
 
+#### Capabilities (`uses: [...]`)
+
+When a block needs resources, state schemas, context formatters, or tools from a reusable capability, declare it via `uses`:
+
+```typescript
+import { defineCapability, defineResource, handler } from "@flow-state-dev/core";
+
+// Define a capability (usually in its own file)
+const counterCapability = defineCapability({
+  name: "counter",
+  sessionResources: { counter: defineResource({
+    stateSchema: z.object({ count: z.number().default(0) }),
+    writable: true
+  })},
+  fns: (ctx) => ({
+    increment: async () => {
+      const current = ctx.session.resources.counter.state.count;
+      await ctx.session.resources.counter.patchState({ count: current + 1 });
+    },
+    getCount: () => ctx.session.resources.counter.state.count,
+  }),
+});
+
+// Use it in a block — resources and fns auto-installed
+const myHandler = handler({
+  name: "count-up",
+  uses: [counterCapability],
+  inputSchema: z.any(),
+  outputSchema: z.object({ newCount: z.number() }),
+  execute: async (input, ctx) => {
+    await ctx.cap.counter.increment();
+    return { newCount: ctx.cap.counter.getCount() };
+  },
+});
+```
+
+**Capabilities with presets** (common for generators):
+
+```typescript
+const memoryCapability = defineCapability({
+  name: "memory",
+  sessionResources: { memory: memoryResource },
+  presets: {
+    context: { context: [memoryContextFormatter] },  // Injects into generator prompt
+    tools: { tools: [recallTool, storeTool] },       // Adds tools to generator
+    default: ["context", "tools"],                    // Active by default
+  },
+  fns: (ctx) => ({
+    recall: (query) => { /* ... */ },
+    store: (fact) => { /* ... */ },
+  }),
+});
+
+// Generator with capability (presets auto-apply context + tools)
+const agent = generator({
+  name: "agent",
+  uses: [memoryCapability],
+  model: "openai/gpt-4",
+  prompt: "You are a helpful assistant.",
+});
+
+// Opt out of a preset
+const agentNoTools = generator({
+  name: "agent-no-tools",
+  uses: [memoryCapability.presets({ tools: false })],
+  model: "openai/gpt-4",
+  prompt: "...",
+});
+```
+
+**Key capability rules:**
+- `uses` works on all block kinds (handler, generator, sequencer, router)
+- Resources declared in capabilities are auto-merged into `declaredResources`
+- `ctx.cap.<name>` provides the capability's `fns` at runtime (memoized)
+- Presets with `default: [...]` are active unless explicitly disabled
+- Capabilities can compose other capabilities via their own `uses` field
+
 #### Critical Rules
 
 - **BP-011**: Handlers must NOT call `block.run()` inside `execute`. Compose with a sequencer instead: `.then(generator).then(handler)`.

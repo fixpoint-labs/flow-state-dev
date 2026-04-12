@@ -66,6 +66,7 @@ Development task skills live in `.claude/skills/`. Use these when performing com
 |-------|---------|
 | `create-block` | Create a new block (handler, generator, utility, router) with tests |
 | `create-pattern` | Create a multi-block composable pattern with tests and docs |
+| `add-flow` | Create a new flow definition with actions, scopes, resources, and capabilities |
 | `write-block-tests` | Write or update vitest tests for blocks and patterns |
 | `add-store-adapter` | Create a new persistence store adapter package |
 | `add-docs-page` | Add a page to the Docusaurus documentation site |
