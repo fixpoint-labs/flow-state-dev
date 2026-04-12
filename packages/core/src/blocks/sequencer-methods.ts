@@ -236,6 +236,28 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<an
     branches: TBranches
   ): SequencerDefinition<TInput, BranchStepOutput<TBranches[keyof TBranches]>>;
 
+  /** Run an array of blocks concurrently with the same input, collect all results as an ordered array. Like Promise.all. */
+  thenAll<TSteps extends Array<ParallelStep<TOutput>>>(
+    steps: [...TSteps],
+    options?: { maxConcurrency?: number }
+  ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>;
+
+  /** Try blocks sequentially in order. Return the first successful result; skip remaining blocks. Throws AggregateError if all fail. */
+  thenAny(
+    blocks: BlockDefinition<any, any>[]
+  ): SequencerDefinition<TInput, unknown>;
+
+  /** Run blocks concurrently, return the first successful result, abort the rest. Throws AggregateError if all fail. */
+  race(
+    blocks: BlockDefinition<any, any>[],
+    options?: { maxConcurrency?: number }
+  ): SequencerDefinition<TInput, unknown>;
+
+  /** Exit the sequencer chain early if condition returns true. Current value becomes the sequencer output. */
+  exitIf(
+    condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>
+  ): SequencerDefinition<TInput, TOutput>;
+
   validate(): SequencerDefinition<TInput, TOutput>;
 
   // connectInput — native override returns SequencerDefinition (not a wrapper block)
