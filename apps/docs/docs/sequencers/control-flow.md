@@ -188,3 +188,67 @@ pipeline.branch({
 ```
 
 Each branch is a tuple: `[connector, condition, block]`.
+
+## Concurrent Collection
+
+### thenAll — Collect All Results
+
+Run an array of blocks concurrently with the same input. Results come back as an ordered array, matching the input order. If any block throws, the entire step fails.
+
+```ts
+pipeline.thenAll([
+  analysisBlock,
+  summaryBlock,
+  { connector: (input) => input.text, block: tagBlock },
+], { maxConcurrency: 3 });
+
+// Output: [analysisResult, summaryResult, tagResult]
+```
+
+This is the array counterpart to `.parallel()`. Use `.parallel()` when you want named access to results (`{ analysis: ..., summary: ... }`). Use `.thenAll()` when you have a dynamic list or prefer array indexing.
+
+### thenAny — Sequential Fallback
+
+Try blocks one at a time in order. Return the first successful result. Remaining blocks are never executed.
+
+```ts
+pipeline.thenAny([
+  primaryProvider,
+  fallbackProviderA,
+  fallbackProviderB,
+]);
+```
+
+If `primaryProvider` succeeds, the other two never run. If it fails, `fallbackProviderA` runs next. If all blocks fail, throws an `AggregateError` containing every individual error.
+
+This is useful for provider fallback chains, tiered strategies, or any situation where you want to try options in priority order.
+
+### race — Concurrent Competition
+
+Run blocks concurrently. The first block to succeed wins. Remaining blocks are aborted.
+
+```ts
+pipeline.race([
+  expensiveDeepAnalysis,
+  quickHeuristicAnalysis,
+], { maxConcurrency: 4 });
+```
+
+Both blocks start at the same time. Whichever finishes successfully first becomes the step output. The loser receives an abort signal. If all blocks fail, throws an `AggregateError`.
+
+**Key difference from `thenAny`:** `race` starts everything concurrently and takes the fastest success. `thenAny` tries sequentially and takes the first success. Use `race` when speed matters. Use `thenAny` when order matters (e.g., prefer the primary provider, fall back to secondary only if it fails).
+
+## Early Exit
+
+Stop the sequencer chain before reaching the end:
+
+```ts
+pipeline
+  .then(generateBlock)
+  .then(validateBlock)
+  .exitIf((value, ctx) => value.confidence > 0.95)
+  .then(refineBlock)     // skipped if confidence is high enough
+  .then(finalizeBlock);  // also skipped
+```
+
+The current value becomes the sequencer's output. Any outstanding `.work()` tasks are still auto-awaited before the sequencer returns.

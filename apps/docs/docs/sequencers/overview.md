@@ -75,6 +75,10 @@ Here, a handler validates, a generator produces text, a `.map()` extracts the te
 | `tapIf` | Conditional tap |
 | `rescue` | Catch errors, route to recovery blocks |
 | `branch` | Route to first matching branch |
+| `thenAll` | Run array of blocks concurrently, collect results as ordered array |
+| `thenAny` | Try blocks sequentially, return first success |
+| `race` | Run blocks concurrently, return first success, abort the rest |
+| `exitIf` | Exit chain early when condition is true |
 | Inline block factories | `.then(handler, { outputSchema, execute })` etc. |
 
 Each method returns a sequencer. You chain them: `.then(a).thenIf(cond, b).tap(c).then(d)`.
