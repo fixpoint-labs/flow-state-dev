@@ -69,7 +69,7 @@ export interface CapabilityConfig<
   TName extends string = string,
   TFns extends Record<string, (...args: any[]) => any> = Record<string, (...args: any[]) => any>,
   TPresets extends Record<string, PresetDef | string[]> = Record<string, PresetDef>,
-  TUses extends readonly DefinedCapability[] = readonly DefinedCapability[],
+  TUses extends UsesSlot = UsesSlot,
 > {
   name: TName;
 
@@ -84,7 +84,7 @@ export interface CapabilityConfig<
   sequencerStateSchema?: ZodTypeAny;
   targetStateSchemas?: Record<string, ZodTypeAny>;
 
-  // Capability composition
+  // Capability composition — static refs and/or dynamic resolver functions
   uses?: TUses;
 
   // Helper function factory — produces ctx.cap.{name}
@@ -129,8 +129,8 @@ export interface DefinedCapability<
   sequencerStateSchema?: ZodTypeAny;
   targetStateSchemas?: Record<string, ZodTypeAny>;
 
-  // Capability composition
-  uses?: readonly DefinedCapability[];
+  // Capability composition — static refs and/or dynamic resolver functions
+  uses?: UsesSlot;
 
   // Helper function factory — produces ctx.cap.{name}
   fns?: (ctx: BlockContext) => TFns;
@@ -194,6 +194,22 @@ export interface ConfiguredCapability<
  * Accepted in block-level and capability-level `uses` arrays.
  */
 export type CapabilityRef = DefinedCapability<any, any, any, any>;
+
+/**
+ * A single entry in a `uses` array — either a static capability reference
+ * or a function that resolves capabilities at runtime based on context.
+ *
+ * Dynamic entries contribute context and tools only. Resources must be
+ * declared statically (on the capability's required surface or elsewhere)
+ * because they need to exist before block execution.
+ */
+export type UsesEntry = CapabilityRef | ((ctx: BlockContext) => readonly CapabilityRef[]);
+
+/**
+ * The `uses` slot on blocks and capabilities. Accepts a readonly array of
+ * static capability refs and/or dynamic resolver functions.
+ */
+export type UsesSlot = readonly UsesEntry[];
 
 // ---------------------------------------------------------------------------
 // Type inference utilities

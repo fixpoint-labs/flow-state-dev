@@ -29,19 +29,15 @@ import {
   updateArtifactInputSchema,
   eventQueueDemo,
   eventQueueDemoInputSchema,
-  readArtifact,
   artifactListContext,
   voiceContext,
   createThinkingStyleRouter,
   autoClassifyStyle,
   thinkingStyleSchema,
   thinkingStyleSessionStateSchema,
-  bashCommand,
-  bashReadFile,
-  bashWriteFile,
-  artifactsCapability,
+  featuresCapability,
 } from "./blocks";
-import { modeSchema, artifactResources } from "./schemas";
+import { modeSchema, featuresSchema, artifactResources } from "./schemas";
 import { CHAT_PROMPT, CREATE_PROMPT } from "./prompts";
 
 // ---------------------------------------------------------------------------
@@ -69,11 +65,6 @@ const thinkingStyleInputSchema = z
   .enum(["auto", "default", "plan-and-execute", "supervisor", "blackboard"])
   .default("auto");
 
-const featuresSchema = z.object({
-  biasCheck: z.boolean().default(false),
-  bashTool: z.boolean().default(true),
-});
-
 const inputSchema = z.object({
   message: z.string().min(1),
   mode: modeSchema,
@@ -94,15 +85,6 @@ const userStateSchema = z.object({
   preferredModel: z.string().default(MODEL_ID),
 });
 
-const tools = (ctx: any) => {
-  const base = [readArtifact, updateArtifact];
-  const features = ctx.session.state.features as Record<string, boolean> | undefined;
-  if (features?.bashTool !== false) {
-    return [...base, bashCommand, bashReadFile, bashWriteFile];
-  }
-  return base;
-};
-
 // ---------------------------------------------------------------------------
 // Assistant generator — shared across all thinking styles
 // ---------------------------------------------------------------------------
@@ -112,15 +94,13 @@ const assistantGenerator = generator({
   userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
   sessionStateSchema: z.object({ mode: modeSchema.default("chat"), thinkingStyle: z.string().optional() }),
 
-  // Artifact capability: installs resources, context formatter, and tools
-  uses: [artifactsCapability],
+  uses: [featuresCapability],
 
   context: [mem.contextFormatter, voiceContext],
 
   inputSchema,
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
   user: (input) => input.message,
-  tools,
   search: true,
   maxIterations: 10,
   outputSchema: z.string(),
@@ -143,8 +123,7 @@ const { thinkingStyleRouter } = createThinkingStyleRouter({
   modelId: MODEL_ID,
   history: (_input: any, ctx: any) => ctx.session.items.llm({ limit: 8 }),
   context: [mem.contextFormatter, artifactListContext],
-  tools,
-  sessionResources: artifactResources,
+  uses: [featuresCapability],
 });
 
 export { thinkingStyleRouter };

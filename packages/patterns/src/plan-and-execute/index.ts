@@ -19,7 +19,7 @@
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import { utility } from "@flow-state-dev/core";
 import type { BlockDefinition, BlockContext } from "@flow-state-dev/core/types";
-import type { GeneratorSlot, GeneratorSearchConfig, ToolsSlot } from "@flow-state-dev/core";
+import type { GeneratorSlot, GeneratorSearchConfig, ToolsSlot, UsesSlot } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   planAndExecuteInputSchema,
@@ -129,6 +129,9 @@ export interface PlanAndExecuteConfig<
   // Resource declarations — registered on the outer sequencer.
   // ---------------------------------------------------------------------------
 
+  /** Capabilities to install on default blocks (executor, replanner, synthesizer). */
+  uses?: UsesSlot;
+
   /** Session resources to declare on the outer sequencer. */
   sessionResources?: Record<string, any>;
 
@@ -150,6 +153,7 @@ function createDefaultReplanner(config: {
   context?: GeneratorSlot<any, any>;
   history?: GeneratorSlot<any, any>;
   tools?: ToolsSlot;
+  uses?: UsesSlot;
 }) {
   return generator({
     name: `${config.name}-replanner`,
@@ -157,6 +161,7 @@ function createDefaultReplanner(config: {
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.history !== undefined ? { history: config.history } : {}),
     ...(config.tools !== undefined ? { tools: config.tools as any } : {}),
+    ...(config.uses ? { uses: config.uses as any } : {}),
     outputSchema: z.object({
       tasks: z.array(z.object({
         id: z.string(),
@@ -309,6 +314,7 @@ function createDefaultSynthesizer(config: {
   context?: GeneratorSlot<any, any>;
   history?: GeneratorSlot<any, any>;
   tools?: ToolsSlot;
+  uses?: UsesSlot;
   synthesizeInstructions?: string;
 }) {
   const basePrompt = [
@@ -324,6 +330,7 @@ function createDefaultSynthesizer(config: {
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.history !== undefined ? { history: config.history } : {}),
     ...(config.tools !== undefined ? { tools: config.tools } : {}),
+    ...(config.uses ? { uses: config.uses as any } : {}),
     inputSchema: z.object({
       goal: z.string(),
       status: z.string().optional(),
@@ -426,6 +433,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
     }),
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.tools !== undefined ? { tools: config.tools } : {}),
+    ...(config.uses ? { uses: config.uses as any } : {}),
     ...(config.search !== undefined ? { search: config.search } : {}),
     ...(config.sessionResources !== undefined ? { sessionResources: config.sessionResources } : {}),
     ...(config.userResources !== undefined ? { userResources: config.userResources } : {}),
@@ -492,6 +500,7 @@ export function planAndExecute<
     context: config.context,
     history: config.history,
     tools: config.tools,
+    uses: config.uses,
   });
   const applyReplan = createApplyReplan({ name });
 
@@ -503,6 +512,7 @@ export function planAndExecute<
           context: config.context,
           history: config.history,
           tools: config.tools,
+          uses: config.uses,
           synthesizeInstructions: config.synthesizeInstructions,
         }))
       : null;

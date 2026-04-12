@@ -6,6 +6,11 @@ import { z } from "zod";
 
 export const modeSchema = z.enum(["chat", "create"]).default("chat");
 
+export const featuresSchema = z.object({
+  biasCheck: z.boolean().default(false),
+  bashTool: z.boolean().default(true),
+});
+
 // Per-instance state for an artifact resource. State tracks metadata only —
 // the document body is stored as resource content via writeContent/readContent.
 // The summary field is populated by a background .work() block after each update.

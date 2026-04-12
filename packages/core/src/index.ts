@@ -33,6 +33,8 @@ export type {
   InferCapabilities,
   PresetDef,
   PresetOverrides,
+  UsesEntry,
+  UsesSlot,
 } from "./capability";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";

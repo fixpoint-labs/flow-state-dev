@@ -22,6 +22,7 @@
 
 export { createBashTool } from "./create-bash-tool";
 export { createBashBlocks } from "./blocks";
+export { createBashCapability } from "./capability";
 export { FileSync } from "./file-sync";
 export { hashContent } from "./hash";
 
@@ -46,4 +47,5 @@ export type {
   BashToolkit,
 } from "./types";
 export type { CreateBashBlocksOptions } from "./blocks";
+export type { CreateBashCapabilityOptions } from "./capability";
 export type { UpstashBoxClient } from "./adapters/upstash";
