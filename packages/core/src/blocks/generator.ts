@@ -33,64 +33,49 @@ const DEFAULT_REPAIR_ATTEMPTS = 1;
 // Dynamic capability helpers — resolve context/tools from runtime-resolved caps
 // ---------------------------------------------------------------------------
 
-/**
- * Extract context entries from a capability's active presets.
- * Returns an array of context functions (or static entries).
- */
-function resolveDynamicCapContext(cap: CapabilityRef): Array<(input: any, ctx: any) => any> {
-  const entries: Array<(input: any, ctx: any) => any> = [];
-
-  // Walk nested static uses recursively
-  if (cap.uses) {
-    const flattened = flattenCapabilities(
-      cap.uses.filter((e): e is CapabilityRef => typeof e !== "function")
-    );
-    for (const nested of flattened) {
-      entries.push(...resolveDynamicCapContext(nested));
-    }
-  }
-
-  const presets = resolveActivePresets(cap);
-  for (const { preset } of presets) {
-    if (preset.context) {
-      const ctxEntries = Array.isArray(preset.context) ? preset.context : [preset.context];
-      entries.push(...ctxEntries);
-    }
-  }
-  return entries;
+interface DynamicCapSurface {
+  contextEntries: Array<(input: any, ctx: any) => any>;
+  tools: GeneratorTool[];
 }
 
 /**
- * Extract tool entries from a capability's active presets, resolving functions.
+ * Extract context and tool entries from a capability's active presets in a
+ * single traversal. Walks nested static uses recursively via flattenCapabilities.
  */
-async function resolveDynamicCapTools(
+async function resolveDynamicCapSurface(
   cap: CapabilityRef,
   ctx: BlockContext,
-): Promise<GeneratorTool[]> {
+): Promise<DynamicCapSurface> {
+  const contextEntries: Array<(input: any, ctx: any) => any> = [];
   const tools: GeneratorTool[] = [];
 
-  // Walk nested static uses recursively
+  // Walk nested static uses
   if (cap.uses) {
     const flattened = flattenCapabilities(
       cap.uses.filter((e): e is CapabilityRef => typeof e !== "function")
     );
     for (const nested of flattened) {
-      tools.push(...(await resolveDynamicCapTools(nested, ctx)));
+      const nestedSurface = await resolveDynamicCapSurface(nested, ctx);
+      contextEntries.push(...nestedSurface.contextEntries);
+      tools.push(...nestedSurface.tools);
     }
   }
 
-  const presets = resolveActivePresets(cap);
-  for (const { preset } of presets) {
+  for (const { preset } of resolveActivePresets(cap)) {
+    if (preset.context) {
+      const entries = Array.isArray(preset.context) ? preset.context : [preset.context];
+      contextEntries.push(...entries);
+    }
     if (preset.tools) {
       if (Array.isArray(preset.tools)) {
         tools.push(...preset.tools);
       } else {
-        const resolved = await preset.tools(ctx);
-        tools.push(...resolved);
+        tools.push(...(await preset.tools(ctx)));
       }
     }
   }
-  return tools;
+
+  return { contextEntries, tools };
 }
 
 type MaybePromise<TValue> = TValue | Promise<TValue>;
@@ -1243,13 +1228,15 @@ export function generator<
 
     const additions: unknown[] = [...staticContextEntries];
 
-    // Dynamic context: a single entry that resolves all dynamic capabilities
+    // Dynamic context: a single entry that resolves all dynamic capabilities.
+    // Uses resolveDynamicCapSurface for a single-pass traversal.
     if (hasDynamic) {
-      additions.push((input: unknown, ctx: BlockContext) => {
+      additions.push(async (input: unknown, ctx: BlockContext) => {
         const parts: string[] = [];
         for (const resolver of dynamicUses) {
           for (const cap of resolver(ctx)) {
-            for (const entry of resolveDynamicCapContext(cap)) {
+            const surface = await resolveDynamicCapSurface(cap, ctx);
+            for (const entry of surface.contextEntries) {
               const v = typeof entry === "function" ? entry(input, ctx) : entry;
               if (v != null && v !== "") parts.push(String(v));
             }
@@ -1279,12 +1266,13 @@ export function generator<
           )).flat()
         : [];
 
-      // 3. Dynamic capability tools
+      // 3. Dynamic capability tools (single-pass via resolveDynamicCapSurface)
       const dynTools: GeneratorTool[] = [];
       if (hasDynamic) {
         for (const resolver of dynamicUses) {
           for (const cap of resolver(ctx)) {
-            dynTools.push(...(await resolveDynamicCapTools(cap, ctx)));
+            const surface = await resolveDynamicCapSurface(cap, ctx);
+            dynTools.push(...surface.tools);
           }
         }
       }

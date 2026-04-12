@@ -33,7 +33,7 @@ import type {
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { Sandbox, SandboxProvider, WorkspaceScope } from "./types";
-import { createLocalFsSandbox } from "./adapters/local-fs";
+import { resolveSandbox } from "./resolve-sandbox";
 import { hashContent } from "./hash";
 import path from "node:path";
 
@@ -151,55 +151,24 @@ function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key:
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a sandbox instance for the given provider.
- *
- * For `local`: resolves cwd from scope when not explicitly set.
- * For `just-bash`: passes through configuration options.
+ * Create a sandbox for the given provider, resolving the workspace path
+ * from the scope identity when no explicit cwd is set.
  */
-async function createSandboxForProvider(
+async function createScopedSandbox(
   provider: SandboxProvider,
   identity: ScopeIdentity,
   destination: string,
-): Promise<{ sandbox: Sandbox; registryKey: string }> {
-  switch (provider.type) {
-    case "local": {
-      const scope = provider.scope ?? "session";
-      const { key, scopeId } = resolveScopeKey(scope, identity);
-      const cwd = provider.cwd ?? path.join(
-        process.cwd(), ".fsdev", "workspaces", scope, scopeId,
-      );
-      return { sandbox: createLocalFsSandbox({ cwd, destination }), registryKey: key };
-    }
-
-    case "just-bash": {
-      const { createJustBashSandbox } = await import("./adapters/just-bash");
-      const sandbox = await createJustBashSandbox({
-        cwd: destination,
-        env: provider.env,
-        network: provider.network,
-        python: provider.python,
-        javascript: provider.javascript,
-        executionLimits: provider.executionLimits,
-      });
-      // just-bash is always in-memory, scope to session for registry isolation
-      return { sandbox, registryKey: `session:${identity.sessionId}` };
-    }
-
-    case "vercel": {
-      const { resolveVercelSandbox } = await import("./adapters/vercel");
-      const result = await resolveVercelSandbox(provider.sandboxId);
-      return { sandbox: result.sandbox, registryKey: `vercel:${result.sandboxId}` };
-    }
-
-    case "upstash": {
-      const { resolveUpstashBox } = await import("./adapters/upstash");
-      const result = await resolveUpstashBox(provider.boxId);
-      return { sandbox: result.sandbox, registryKey: `upstash:${result.sandboxId}` };
-    }
-
-    case "custom":
-      return { sandbox: provider.sandbox, registryKey: `session:${identity.sessionId}` };
+): Promise<Sandbox> {
+  // For local provider, resolve scoped cwd if not explicitly set
+  let cwd: string | undefined;
+  if (provider.type === "local" && !provider.cwd) {
+    const scope = provider.scope ?? "session";
+    const { scopeId } = resolveScopeKey(scope, identity);
+    cwd = path.join(process.cwd(), ".fsdev", "workspaces", scope, scopeId);
   }
+
+  const { sandbox } = await resolveSandbox(provider, { destination, cwd });
+  return sandbox;
 }
 
 /**
@@ -260,9 +229,13 @@ async function flush(
     `find . -type f -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null`,
   );
 
+  // If find fails, skip entirely — do NOT proceed to the deletion loop
+  // with an empty currentPaths set, as that would delete all resources.
+  if (result.exitCode !== 0) return;
+
   const currentPaths = new Set<string>();
 
-  if (result.exitCode === 0 && result.stdout.trim()) {
+  if (result.stdout.trim()) {
     const filePaths = result.stdout.trim().split("\n").filter(Boolean);
 
     for (const foundPath of filePaths) {
@@ -357,11 +330,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions) {
 
     let entry = registry.get(registryKey);
     if (!entry) {
-      const { sandbox } = await createSandboxForProvider(
-        provider,
-        identity,
-        destination,
-      );
+      const sandbox = await createScopedSandbox(provider, identity, destination);
       entry = { sandbox, hydrated: false, contentHashes: new Map() };
       registry.set(registryKey, entry);
     }

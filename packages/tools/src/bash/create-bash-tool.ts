@@ -35,7 +35,7 @@ import type {
   CreateBashToolResult,
 } from "./types";
 import { FileSync } from "./file-sync";
-import { createLocalFsSandbox } from "./adapters/local-fs";
+import { resolveSandbox } from "./resolve-sandbox";
 
 // All other adapters (just-bash, Vercel, Upstash) are loaded dynamically
 // in resolveSandbox() to avoid bundlers like Turbopack tracing into
@@ -67,7 +67,7 @@ export async function createBashTool(
 
   // 1. Resolve or create sandbox
   const existingId = persist && bashSession ? bashSession.state.sandboxId || undefined : undefined;
-  const { sandbox, sandboxId } = await resolveSandbox(provider, existingId, destination);
+  const { sandbox, sandboxId } = await resolveSandbox(provider, { destination, existingId });
 
   // 2. Create sync bridge
   const sync = new FileSync(sandbox, collections, {
@@ -155,49 +155,3 @@ export async function createBashTool(
   return { tools, sandbox };
 }
 
-/**
- * Resolves a sandbox based on the provider configuration.
- *
- * If `existingId` is set (from a persisted session), adapters that support
- * persistent sandboxes will attempt to reconnect. Otherwise a new sandbox
- * is created.
- */
-async function resolveSandbox(
-  provider: SandboxProvider,
-  existingId?: string,
-  destination?: string,
-): Promise<{ sandbox: Sandbox; sandboxId?: string }> {
-  switch (provider.type) {
-    case "local":
-      return { sandbox: createLocalFsSandbox({ cwd: provider.cwd, destination }) };
-
-    case "vercel": {
-      const id = provider.sandboxId ?? existingId;
-      const { resolveVercelSandbox } = await import("./adapters/vercel");
-      return resolveVercelSandbox(id);
-    }
-
-    case "upstash": {
-      const id = provider.boxId ?? existingId;
-      const { resolveUpstashBox } = await import("./adapters/upstash");
-      return resolveUpstashBox(id);
-    }
-
-    case "just-bash": {
-      const { createJustBashSandbox } = await import("./adapters/just-bash");
-      return {
-        sandbox: await createJustBashSandbox({
-          cwd: destination,
-          env: provider.env,
-          network: provider.network,
-          python: provider.python,
-          javascript: provider.javascript,
-          executionLimits: provider.executionLimits,
-        }),
-      };
-    }
-
-    case "custom":
-      return { sandbox: provider.sandbox };
-  }
-}

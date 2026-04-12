@@ -68,12 +68,12 @@ export const featuresCapability = defineCapability({
     tools: {
       // When bash is disabled, provide artifact read/update tools + usage guidance
       tools: (ctx) => {
-        if (ctx.session?.state?.features?.bashTool !== false) return [];
+        if (ctx.session.state.features.bashTool) return [];
         return [readArtifact, updateArtifact];
       },
       context: [
         (_input, ctx) => {
-          if (ctx.session?.state?.features?.bashTool !== false) return null;
+          if (ctx.session.state.features.bashTool) return null;
           return [
             "You have access to artifacts and can read or create them:",
             "- Use read-artifact tool when users ask about existing artifacts or you need their content.",
