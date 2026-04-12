@@ -50,8 +50,13 @@ export function createPostgresRequestStore(executor: QueryExecutor): RequestStor
     }
   });
 
-  const pendingItemWrites = new Set<string>();
-  const pendingEventWrites = new Set<string>();
+  /**
+   * Track in-flight async write promises so flush can await them.
+   * Unlike SQLite (synchronous writes), Postgres writes are async and
+   * won't complete within the microtask that initiates them.
+   */
+  const pendingItemWrites = new Map<string, Promise<void>>();
+  const pendingEventWrites = new Map<string, Promise<void>>();
 
   return {
     get: base.get,
@@ -61,62 +66,76 @@ export function createPostgresRequestStore(executor: QueryExecutor): RequestStor
 
     persistItems(requestId: string, items: OutputItem[]): void {
       if (pendingItemWrites.has(requestId)) return;
-      pendingItemWrites.add(requestId);
 
-      queueMicrotask(() => {
-        pendingItemWrites.delete(requestId);
-        const doWrite = async () => {
-          const result = await executor.query(
-            "SELECT data FROM requests WHERE id = $1",
-            [requestId]
-          );
-          if (result.rows.length > 0) {
-            const data = result.rows[0]!.data;
-            const current = (typeof data === "string" ? JSON.parse(data) : data) as RequestRecord;
-            const updatedAt = Date.now();
-            const updated = { ...current, items, updatedAt };
-            await executor.query(
-              "UPDATE requests SET data = $1, updated_at = $2 WHERE id = $3",
-              [JSON.stringify(updated), updatedAt, requestId]
-            );
-          }
-        };
-        doWrite().catch(() => {
-          // Best-effort persistence; errors are non-fatal
+      const writePromise = new Promise<void>((resolve) => {
+        queueMicrotask(() => {
+          const doWrite = async () => {
+            try {
+              const result = await executor.query(
+                "SELECT data FROM requests WHERE id = $1",
+                [requestId]
+              );
+              if (result.rows.length > 0) {
+                const data = result.rows[0]!.data;
+                const current = (typeof data === "string" ? JSON.parse(data) : data) as RequestRecord;
+                const updatedAt = Date.now();
+                const updated = { ...current, items, updatedAt };
+                await executor.query(
+                  "UPDATE requests SET data = $1, updated_at = $2 WHERE id = $3",
+                  [JSON.stringify(updated), updatedAt, requestId]
+                );
+              }
+            } finally {
+              pendingItemWrites.delete(requestId);
+              resolve();
+            }
+          };
+          doWrite();
         });
       });
+
+      pendingItemWrites.set(requestId, writePromise);
     },
 
-    async flushItems(_requestId: string): Promise<void> {
-      // Allow microtask to drain
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    async flushItems(requestId: string): Promise<void> {
+      const pending = pendingItemWrites.get(requestId);
+      if (pending) await pending;
     },
 
     persistEvents(requestId: string, events: RequestStreamEvent[]): void {
       if (pendingEventWrites.has(requestId)) return;
-      pendingEventWrites.add(requestId);
 
       const snapshot = [...events];
-      queueMicrotask(() => {
-        pendingEventWrites.delete(requestId);
-        const doWrite = async () => {
-          await executor.query("DELETE FROM request_events WHERE request_id = $1", [requestId]);
-          for (const event of snapshot) {
-            await executor.query(
-              "INSERT INTO request_events (request_id, sequence_number, event_data) VALUES ($1, $2, $3)",
-              [requestId, event.sequence_number, JSON.stringify(event)]
-            );
-          }
-        };
-        doWrite().catch(() => {
-          // Best-effort persistence; errors are non-fatal
+      const writePromise = new Promise<void>((resolve) => {
+        queueMicrotask(() => {
+          const doWrite = async () => {
+            try {
+              await executor.query("BEGIN");
+              await executor.query("DELETE FROM request_events WHERE request_id = $1", [requestId]);
+              for (const event of snapshot) {
+                await executor.query(
+                  "INSERT INTO request_events (request_id, sequence_number, event_data) VALUES ($1, $2, $3)",
+                  [requestId, event.sequence_number, JSON.stringify(event)]
+                );
+              }
+              await executor.query("COMMIT");
+            } catch {
+              await executor.query("ROLLBACK").catch(() => {});
+            } finally {
+              pendingEventWrites.delete(requestId);
+              resolve();
+            }
+          };
+          doWrite();
         });
       });
+
+      pendingEventWrites.set(requestId, writePromise);
     },
 
-    async flushEvents(_requestId: string): Promise<void> {
-      // Allow microtask to drain
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    async flushEvents(requestId: string): Promise<void> {
+      const pending = pendingEventWrites.get(requestId);
+      if (pending) await pending;
     },
 
     async getEvents(requestId: string): Promise<RequestStreamEvent[]> {

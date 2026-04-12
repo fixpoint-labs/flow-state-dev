@@ -62,9 +62,15 @@ export function createPostgresActiveRequestRegistry(
            input, metadata, started_at, last_heartbeat_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT(request_id) DO UPDATE SET
-          flow_kind = $2, action_name = $3, session_id = $4, user_id = $5,
-          project_id = $6, input = $7, metadata = $8, started_at = $9,
-          last_heartbeat_at = $10`,
+          flow_kind = EXCLUDED.flow_kind,
+          action_name = EXCLUDED.action_name,
+          session_id = EXCLUDED.session_id,
+          user_id = EXCLUDED.user_id,
+          project_id = EXCLUDED.project_id,
+          input = EXCLUDED.input,
+          metadata = EXCLUDED.metadata,
+          started_at = EXCLUDED.started_at,
+          last_heartbeat_at = EXCLUDED.last_heartbeat_at`,
         values
       );
     },

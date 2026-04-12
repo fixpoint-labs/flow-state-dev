@@ -305,9 +305,6 @@ describe("PostgreSQL store adapter", () => {
       s.request.persistItems("req_1", items);
       await s.request.flushItems("req_1");
 
-      // Allow async write to complete
-      await new Promise<void>((resolve) => setTimeout(resolve, 50));
-
       const result = await s.request.get("req_1");
       expect(result!.items).toBeDefined();
       expect(result!.items).toHaveLength(1);
@@ -585,9 +582,7 @@ describe("PostgreSQL store adapter", () => {
       ];
 
       s.request.persistEvents(requestId, events as any);
-
-      // Allow async write to complete
-      await new Promise((r) => setTimeout(r, 50));
+      await s.request.flushEvents(requestId);
 
       const retrieved = await s.request.getEvents(requestId);
       expect(retrieved).toHaveLength(3);
@@ -610,17 +605,12 @@ describe("PostgreSQL store adapter", () => {
       s.request.persistEvents(requestId, [
         { stream: "request", type: "request.created", requestId, sequence_number: 1, status: "in_progress", ts: 100 }
       ] as any);
-
-      // Wait for async write
-      await new Promise((r) => setTimeout(r, 50));
       await s.request.flushEvents(requestId);
 
       s.request.persistEvents(requestId, [
         { stream: "request", type: "request.created", requestId, sequence_number: 1, status: "in_progress", ts: 100 },
         { stream: "request", type: "request.completed", requestId, sequence_number: 2, status: "completed", ts: 200 }
       ] as any);
-
-      await new Promise((r) => setTimeout(r, 50));
       await s.request.flushEvents(requestId);
 
       const events = await s.request.getEvents(requestId);
