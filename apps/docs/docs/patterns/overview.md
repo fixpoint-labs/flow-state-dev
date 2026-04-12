@@ -56,6 +56,10 @@ The first three patterns use `utility.decomposer` internally to plan work. They 
 
 **Response Auditor** — post-generation quality audit. Runs one or more analyzers in parallel against an AI response, each producing structured findings with scores, severity, and annotations. Use it when you need to detect bias, hallucination, policy violations, or other quality issues without modifying the response itself.
 
+**Blackboard** — controller-driven multi-agent coordination via a shared workspace. Specialist blocks read from and write to a shared resource. An LLM controller reads the blackboard state and decides which specialist to invoke next, in a loop. Use it for incremental synthesis and directed problem-solving where a "what's next" decision is needed.
+
+**Reactive Blackboard** — stigmergic multi-agent coordination via write-time fan-out. Actors subscribe to entry topics and react automatically when matching entries are written. No controller, no loop. Use it for event-driven systems, continuous monitoring, and broadcast scenarios where coordination is emergent.
+
 ## Pattern selection
 
 ```
@@ -79,6 +83,8 @@ More specifically:
 - **Parallel workers with quality review and a replan loop** → [Supervisor](./supervisor)
 - **Sequential steps with dependency ordering and adaptive replanning** → [Plan and Execute](./plan-and-execute)
 - **Post-generation quality audit with pluggable analyzers** → [Response Auditor](./response-auditor)
+- **Controller-driven multi-agent workspace (incremental synthesis)** → Blackboard
+- **Event-driven multi-agent coordination (broadcast/react)** → [Reactive Blackboard](./reactive-blackboard)
 - **Complex hierarchical work where steps need their own sub-planning** → Plan and Execute with a Supervisor as the `stepExecutor`
 
 The first three accept a custom `planner` override, so you can swap out `utility.decomposer` for a domain-specific planner if you need tighter control.

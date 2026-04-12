@@ -39,6 +39,40 @@ const myFlow = defineFlow({
 
 See `examples/kitchen-sink` for a full integration example.
 
+### Blackboard
+
+Controller-driven multi-agent coordination. Specialist blocks read from and write to a shared workspace resource. An LLM controller reads the blackboard state and decides which specialist to invoke next, in a `.loopBack()` loop.
+
+```typescript
+import { blackboard, createBlackboard } from "@flow-state-dev/patterns/blackboard";
+```
+
+### Reactive Blackboard
+
+Stigmergic multi-agent coordination via write-time fan-out. Actors subscribe to entry topics on a shared resource and react automatically when matching entries are written. No controller, no loop — dispatch happens via `forEachBackground`, and reactions run as background sidechains.
+
+```typescript
+import { reactiveBlackboard, actor, mesh } from "@flow-state-dev/patterns/reactive-blackboard";
+
+const rb = reactiveBlackboard({ name: "feedback", entries: entrySchema });
+
+const monitor = actor({
+  name: "slack-monitor",
+  watch: ["observation:slack.*"],
+  body: slackHandler,
+});
+
+const system = mesh({
+  name: "feedback",
+  blackboard: rb,
+  actors: [monitor],
+});
+
+// Use system.emit in a sequencer to write entries with fan-out
+```
+
+**Key exports:** `reactiveBlackboard`, `actor`, `mesh`, `matchTopic`, `compilePattern`, `createAppendEntry`, `createReactiveBlackboard`
+
 ## Shared Plan Schema
 
 All plan-oriented patterns (`planAndExecute`, `supervisor`) share a common base schema for interoperability with the `<Plan />` UI component.
