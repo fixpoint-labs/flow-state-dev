@@ -824,12 +824,14 @@ async function executeStreamingGeneration<TInput, TOutput>(
 ): Promise<TOutput> {
   const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const contentPartIndex = 0;
+  const identity = ctx._blockIdentity;
   const provenance = {
-    blockName,
-    blockInstanceId: blockName,
+    blockName: identity?.blockName ?? blockName,
+    blockInstanceId: identity?.blockInstanceId ?? blockName,
+    parentBlockInstanceId: identity?.parentBlockInstanceId,
     phase: "main" as const
   };
-  const ownedBy = ctx._blockIdentity?.ownedBy;
+  const ownedBy = identity?.ownedBy;
   const emitReasoning = emitConfig.reasoning;
   let reasoningAccumulated = "";
 
@@ -1453,7 +1455,13 @@ export function generator<
 
       // Emit source items from provider-native tools (e.g., web search).
       if (generation.sources !== undefined && generation.sources.length > 0) {
-        const sourceProv = { blockName, blockInstanceId: blockName, phase: "main" as const };
+        const sourceIdentity = ctx._blockIdentity;
+        const sourceProv = {
+          blockName: sourceIdentity?.blockName ?? blockName,
+          blockInstanceId: sourceIdentity?.blockInstanceId ?? blockName,
+          parentBlockInstanceId: sourceIdentity?.parentBlockInstanceId,
+          phase: "main" as const
+        };
         for (const source of generation.sources) {
           const sourceItem = buildSourceItem(source, ctx, sourceProv);
           await ctx.response.emit({ type: "item.added", item: sourceItem });
@@ -1484,8 +1492,14 @@ export function generator<
       // Suppress entirely when emit.messages is false.
       if (emitConfig.messages !== false && isTextOutputSchema(outputSchema) && typeof output === "string") {
         const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        const provenance = { blockName, blockInstanceId: blockName, phase: "main" as const };
-        const nsOwnedBy = ctx._blockIdentity?.ownedBy;
+        const outputIdentity = ctx._blockIdentity;
+        const provenance = {
+          blockName: outputIdentity?.blockName ?? blockName,
+          blockInstanceId: outputIdentity?.blockInstanceId ?? blockName,
+          parentBlockInstanceId: outputIdentity?.parentBlockInstanceId,
+          phase: "main" as const
+        };
+        const nsOwnedBy = outputIdentity?.ownedBy;
         if (emitConfig.messages === 'reasoning') {
           const reasoningItem = {
             id: itemId,

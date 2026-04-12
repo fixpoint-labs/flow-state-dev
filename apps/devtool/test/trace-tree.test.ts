@@ -132,6 +132,82 @@ describe("buildTraceTree", () => {
     expect(childBlock!.blockName).toBe("child");
   });
 
+  it("nests multiple child blocks inside a router parent", () => {
+    const items = [
+      // Router parent with a routing decision item
+      makeItem({
+        id: "i1",
+        type: "router_decision",
+        provenance: makeProvenance("thinking-style-router", "rtr-inst"),
+      }),
+      // First child: generator nested under router
+      makeItem({
+        id: "i2",
+        type: "message",
+        provenance: makeProvenance("assistant-generator", "gen-inst-1", "rtr-inst"),
+      }),
+      // Second child: another generator nested under router
+      makeItem({
+        id: "i3",
+        type: "message",
+        provenance: makeProvenance("pae-thinking-executor", "gen-inst-2", "rtr-inst"),
+      }),
+    ];
+
+    const tree = buildTraceTree([makeGroup({ items })]);
+    const requestNode = tree[0];
+
+    // Only the router should be at root level
+    const rootBlocks = requestNode.children.filter((n) => n.type === "block");
+    expect(rootBlocks).toHaveLength(1);
+    expect(rootBlocks[0].blockName).toBe("thinking-style-router");
+
+    // Both child blocks should be nested inside router
+    const childBlocks = rootBlocks[0].children.filter((n) => n.type === "block");
+    expect(childBlocks).toHaveLength(2);
+    const childNames = childBlocks.map((n) => n.blockName).sort();
+    expect(childNames).toEqual(["assistant-generator", "pae-thinking-executor"]);
+  });
+
+  it("nests child blocks even when trace item appears before regular items", () => {
+    // Simulates the scenario where a block_output trace item (from
+    // emitNestedBlockTrace) is the first item for a child block. The
+    // parentBlockInstanceId must still be resolved from subsequent items.
+    const items = [
+      // Parent router
+      makeItem({
+        id: "i1",
+        type: "router_decision",
+        provenance: makeProvenance("router", "rtr-inst"),
+      }),
+      // Child trace item appears first — has correct parentBlockInstanceId
+      makeItem({
+        id: "i2",
+        type: "block_output",
+        provenance: makeProvenance("child-gen", "gen-inst", "rtr-inst"),
+        trace: true,
+        blockKind: "generator",
+      } as Partial<OutputItem> & { id: string; type: string }),
+      // Child's regular item
+      makeItem({
+        id: "i3",
+        type: "message",
+        provenance: makeProvenance("child-gen", "gen-inst", "rtr-inst"),
+      }),
+    ];
+
+    const tree = buildTraceTree([makeGroup({ items })]);
+    const requestNode = tree[0];
+
+    const rootBlocks = requestNode.children.filter((n) => n.type === "block");
+    expect(rootBlocks).toHaveLength(1);
+    expect(rootBlocks[0].blockName).toBe("router");
+
+    const childBlocks = rootBlocks[0].children.filter((n) => n.type === "block");
+    expect(childBlocks).toHaveLength(1);
+    expect(childBlocks[0].blockName).toBe("child-gen");
+  });
+
   it("marks the last request group as expanded", () => {
     const groups = [
       makeGroup({ requestId: "r1" }),
