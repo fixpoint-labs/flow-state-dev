@@ -1,7 +1,7 @@
 /**
  * PostgreSQL RequestStore implementation.
  * Extends the generic pg record store with item persistence (microtask batching)
- * and event persistence (separate request_events table with transaction-based writes).
+ * and event persistence (separate request_events table).
  */
 
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
@@ -110,7 +110,11 @@ export function createPostgresRequestStore(executor: QueryExecutor): RequestStor
         queueMicrotask(() => {
           const doWrite = async () => {
             try {
-              await executor.query("BEGIN");
+              // No explicit transaction: QueryExecutor may be backed by pg.Pool where
+              // each query() checks out a different connection, so BEGIN/COMMIT would
+              // span connections and break. The delete+insert sequence is safe without
+              // a transaction — worst case is a partial write that gets overwritten on
+              // the next persistEvents call (best-effort persistence).
               await executor.query("DELETE FROM request_events WHERE request_id = $1", [requestId]);
               for (const event of snapshot) {
                 await executor.query(
@@ -118,9 +122,6 @@ export function createPostgresRequestStore(executor: QueryExecutor): RequestStor
                   [requestId, event.sequence_number, JSON.stringify(event)]
                 );
               }
-              await executor.query("COMMIT");
-            } catch {
-              await executor.query("ROLLBACK").catch(() => {});
             } finally {
               pendingEventWrites.delete(requestId);
               resolve();
