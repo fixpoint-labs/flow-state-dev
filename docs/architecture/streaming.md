@@ -139,6 +139,37 @@ Every event includes:
 }
 ```
 
+## Items vs Events: Storage Model
+
+The streaming system produces two distinct data sets, stored independently:
+
+### Items (the record)
+
+The **items array** on `RequestRecord` is the canonical output of a request — what it *produced*. The runtime reads items back for session context, action history, and API responses. Transient items (`transient: true`) are stripped before persistence; only durable items are stored.
+
+Items are load-bearing. Without them, sessions cannot reconstruct history.
+
+### Events (the execution log)
+
+The **events log** is the ordered sequence of every SSE event emitted during execution — `item.added`, `content.delta`, `item.done`, etc. It includes events for transient items (sequencer snapshots, status updates, debug data) that never appear in the items record.
+
+Events are observability data. The app never reads them back for business logic. Two consumers use them:
+
+1. **SSE resume** — replaying missed events after a client disconnect
+2. **DevTool replay** — reconstructing the full execution timeline post-hoc
+
+### Storage independence
+
+All `RequestStore` providers persist items and events through separate methods (`persistItems` / `persistEvents`). The filesystem store writes them as separate files (`req_xxx.json` vs `req_xxx.events.json`); SQLite uses separate tables (`requests` vs `request_events`).
+
+Because events are operationally independent from items, they can be:
+
+- Stored on a different backend (append-only log, time-series DB, observability pipeline)
+- Retained with a different policy (e.g., capped collection, age-based pruning)
+- Disabled entirely in production without affecting app behavior
+
+This separation means observability-only item types (like `sequencer_state_snapshot` or `block_debug`) should use `transient: true` — they flow through the event stream for live and replay consumption without bloating the persisted item record.
+
 ## Resume Semantics
 
 Resume after disconnect uses sequence-number cursors:
