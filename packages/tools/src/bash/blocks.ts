@@ -220,6 +220,7 @@ async function flush(
   destination: string,
   createState: (relativePath: string) => Partial<JsonObject>,
 ): Promise<void> {
+
   // Use `find .` so the command works regardless of whether `destination`
   // is a real path (just-bash, Vercel) or a virtual prefix (local-fs).
   const result = await entry.sandbox.executeCommand(
