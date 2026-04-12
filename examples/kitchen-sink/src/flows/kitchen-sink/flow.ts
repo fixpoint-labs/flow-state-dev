@@ -102,7 +102,7 @@ const assistantGenerator = generator({
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
   user: (input) => input.message,
   search: true,
-  maxIterations: 10,
+  maxIterations: 20,
   outputSchema: z.string(),
 
   prompt: (_input, ctx) =>
