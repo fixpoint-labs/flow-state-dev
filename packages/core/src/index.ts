@@ -108,6 +108,7 @@ export type {
   GeneratorSearchConfig,
   ModelResolver,
   PrepareStepFn,
+  PrepareStepResult,
   ProviderTool
 } from "./types/model";
 

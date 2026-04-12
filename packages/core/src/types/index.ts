@@ -71,6 +71,7 @@ export type {
   GeneratorStepResult,
   ModelResolver,
   PrepareStepFn,
+  PrepareStepResult,
   ProviderTool
 } from "./model";
 
