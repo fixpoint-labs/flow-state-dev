@@ -63,7 +63,7 @@ const mem = memorySystem({
 
 const thinkingStyleInputSchema = z
   .enum(["auto", "default", "plan-and-execute", "supervisor", "blackboard"])
-  .default("auto");
+  .default("default");
 
 const inputSchema = z.object({
   message: z.string().min(1),
@@ -105,7 +105,7 @@ const assistantGenerator = generator({
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
   user: (input) => input.message,
   search: true,
-  maxIterations: 10,
+  maxIterations: 20,
   outputSchema: z.string(),
 
   prompt: (_input, ctx) =>
@@ -369,7 +369,7 @@ const kitchenSinkFlow = defineFlow({
         thinkingStyle:
           (ctx.state.thinkingStyle as string | undefined) ?? null,
         requestCount: Number(ctx.state.requestCount ?? 0),
-        features: ctx.state.features ?? { biasCheck: false, bashTool: true },
+        features: ctx.state.features ?? { biasCheck: false, bashTool: true, search: true, fetch: true, crawl: true },
       }),
     },
   },
