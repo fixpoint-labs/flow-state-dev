@@ -46,6 +46,30 @@ docs/
   internal/         Wave plans, journals, changelogs (process artifacts)
 ```
 
+## Skills Library
+
+Development task skills live in `.claude/skills/`. Use these when performing common development tasks:
+
+### Workflow skills
+| Skill | Purpose |
+|-------|---------|
+| `create-spec` | Research and write implementation specs for Linear issues |
+| `implement-issue` | Implement a Linear issue from its spec document |
+| `quick-fix` | Log a bug to Linear and fix it immediately |
+| `create-issue-and-commit` | Create a Linear issue for work already done, commit and PR |
+| `debug-flow` | Debug flow execution via CLI traces and NDJSON logs |
+| `linear-triage` | Review and prioritize Linear issues |
+| `plan-day` | Identify unblocked tasks and generate a daily work plan |
+
+### Development skills
+| Skill | Purpose |
+|-------|---------|
+| `create-block` | Create a new block (handler, generator, utility, router) with tests |
+| `create-pattern` | Create a multi-block composable pattern with tests and docs |
+| `write-block-tests` | Write or update vitest tests for blocks and patterns |
+| `add-store-adapter` | Create a new persistence store adapter package |
+| `add-docs-page` | Add a page to the Docusaurus documentation site |
+
 ## Key Architectural Constraints
 
 - Block kinds: exactly `handler`, `generator`, `sequencer`, `router`
