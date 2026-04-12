@@ -57,7 +57,7 @@ export function SequencerStatePanel({ snapshots }: SequencerStatePanelProps) {
                   : "border-slate-700 text-slate-500 hover:border-slate-600 hover:text-slate-400",
               )}
               onClick={() => setSelectedIndex(i)}
-              title={isInitial ? "Initial state" : `After step: ${snap.stepName} (index ${snap.stepIndex})`}
+              title={isInitial ? "Initial state" : `State changed after: ${snap.stepName} (step ${snap.stepIndex})`}
             >
               {label}
             </button>
