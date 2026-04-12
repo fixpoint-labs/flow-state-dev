@@ -102,6 +102,20 @@ const ACTIVE_REQUESTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_active_requests_session_id ON active_requests(session_id)"
 ];
 
+const RESOURCE_CONTENT_TABLE = `
+CREATE TABLE IF NOT EXISTS resource_content (
+  scope_type    TEXT NOT NULL,
+  scope_id      TEXT NOT NULL,
+  resource_key  TEXT NOT NULL,
+  content       TEXT NOT NULL,
+  PRIMARY KEY (scope_type, scope_id, resource_key)
+);
+`;
+
+const RESOURCE_CONTENT_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_resource_content_scope ON resource_content(scope_type, scope_id)"
+];
+
 const REQUEST_EVENTS_TABLE = `
 CREATE TABLE IF NOT EXISTS request_events (
   request_id      TEXT NOT NULL,
@@ -122,6 +136,7 @@ export async function initializeSchema(executor: QueryExecutor): Promise<void> {
     USERS_TABLE,
     PROJECTS_TABLE,
     ACTIVE_REQUESTS_TABLE,
+    RESOURCE_CONTENT_TABLE,
     REQUEST_EVENTS_TABLE
   ];
 
@@ -131,6 +146,7 @@ export async function initializeSchema(executor: QueryExecutor): Promise<void> {
     ...USERS_INDEXES,
     ...PROJECTS_INDEXES,
     ...ACTIVE_REQUESTS_INDEXES,
+    ...RESOURCE_CONTENT_INDEXES,
     ...REQUEST_EVENTS_INDEXES
   ];
 
