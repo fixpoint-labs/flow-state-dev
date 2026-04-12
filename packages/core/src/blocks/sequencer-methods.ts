@@ -242,13 +242,12 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<an
     options?: { maxConcurrency?: number }
   ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>;
 
-  /** Run blocks concurrently, resolve with the first one that succeeds. Like Promise.any. */
+  /** Try blocks sequentially in order. Return the first successful result; skip remaining blocks. Throws AggregateError if all fail. */
   thenAny(
-    blocks: BlockDefinition<any, any>[],
-    options?: { maxConcurrency?: number }
+    blocks: BlockDefinition<any, any>[]
   ): SequencerDefinition<TInput, unknown>;
 
-  /** Run blocks concurrently, resolve with the first to complete (success or failure). Like Promise.race. */
+  /** Run blocks concurrently, return the first successful result, abort the rest. Throws AggregateError if all fail. */
   race(
     blocks: BlockDefinition<any, any>[],
     options?: { maxConcurrency?: number }

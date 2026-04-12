@@ -262,8 +262,8 @@ const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSc
 | `rescue(handlers)` | Error recovery by error type |
 | `branch(branches)` | Conditional multi-path execution |
 | `thenAll(blocks)` | Run array of blocks concurrently, collect all results |
-| `thenAny(blocks)` | First successful result (like `Promise.any`) |
-| `race(blocks)` | First to complete (like `Promise.race`) |
+| `thenAny(blocks)` | Try blocks sequentially, first success wins |
+| `race(blocks)` | Run blocks concurrently, first success wins |
 | `exitIf(condition)` | Conditional early exit from chain |
 
 ### Work Semantics

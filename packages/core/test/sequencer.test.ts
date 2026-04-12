@@ -872,29 +872,15 @@ describe("sequencer builder", () => {
   });
 
   describe("thenAny", () => {
-    it("resolves with first successful result", async () => {
-      const slow = handler({
-        name: "slow",
-        inputSchema: z.number(),
-        outputSchema: z.number(),
-        execute: async (v) => {
-          await new Promise((r) => setTimeout(r, 50));
-          return v + 100;
-        },
-      });
-
-      const fast = handler({
-        name: "fast",
-        inputSchema: z.number(),
-        outputSchema: z.number(),
-        execute: (v) => v + 1,
-      });
+    it("returns first successful result (sequential)", async () => {
+      const addOne = addHandler("add-one", 1);
+      const addTwo = addHandler("add-two", 2);
 
       const seq = sequencer({ name: "then-any", inputSchema: z.number() })
-        .thenAny([slow, fast]);
+        .thenAny([addOne, addTwo]);
 
       const ctx = createMockContext();
-      // fast should win since it's synchronous
+      // Sequential: addOne runs first and succeeds → returns its result, addTwo never runs
       await expect(seq.run(5, ctx)).resolves.toBe(6);
     });
 
@@ -918,6 +904,31 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       await expect(seq.run(1, ctx)).resolves.toBe(43);
+    });
+
+    it("does not execute blocks after first success", async () => {
+      let secondRan = false;
+
+      const first = handler({
+        name: "first",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: (v) => v + 1,
+      });
+
+      const second = handler({
+        name: "second",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: (v) => { secondRan = true; return v + 2; },
+      });
+
+      const seq = sequencer({ name: "then-any-skip-rest", inputSchema: z.number() })
+        .thenAny([first, second]);
+
+      const ctx = createMockContext();
+      await seq.run(5, ctx);
+      expect(secondRan).toBe(false);
     });
 
     it("throws AggregateError when all blocks fail", async () => {
@@ -959,35 +970,10 @@ describe("sequencer builder", () => {
       const ctx = createMockContext();
       await expect(seq.run(5, ctx)).resolves.toBe(6);
     });
-
-    it("respects maxConcurrency", async () => {
-      let concurrent = 0;
-      let maxConcurrent = 0;
-
-      const slowBlock = handler({
-        name: "slow",
-        inputSchema: z.number(),
-        outputSchema: z.number(),
-        execute: async (v) => {
-          concurrent += 1;
-          maxConcurrent = Math.max(maxConcurrent, concurrent);
-          await new Promise((r) => setTimeout(r, 10));
-          concurrent -= 1;
-          return v;
-        },
-      });
-
-      const seq = sequencer({ name: "then-any-conc", inputSchema: z.number() })
-        .thenAny([slowBlock, slowBlock, slowBlock, slowBlock], { maxConcurrency: 2 });
-
-      const ctx = createMockContext();
-      await seq.run(1, ctx);
-      expect(maxConcurrent).toBeLessThanOrEqual(2);
-    });
   });
 
   describe("race", () => {
-    it("resolves with first completion on success", async () => {
+    it("resolves with first successful result", async () => {
       const slow = handler({
         name: "slow",
         inputSchema: z.number(),
@@ -1009,17 +995,18 @@ describe("sequencer builder", () => {
         .race([slow, fast]);
 
       const ctx = createMockContext();
+      // fast succeeds first → returns 6
       await expect(seq.run(5, ctx)).resolves.toBe(6);
     });
 
-    it("propagates error when first completion is a failure", async () => {
+    it("skips failures and returns first success", async () => {
       const slow = handler({
         name: "slow",
         inputSchema: z.number(),
         outputSchema: z.number(),
         execute: async (v) => {
           await new Promise((r) => setTimeout(r, 50));
-          return v;
+          return v + 100;
         },
       });
 
@@ -1030,11 +1017,34 @@ describe("sequencer builder", () => {
         execute: () => { throw new Error("fast failure"); },
       });
 
-      const seq = sequencer({ name: "race-fail", inputSchema: z.number() })
+      const seq = sequencer({ name: "race-skip-fail", inputSchema: z.number() })
         .race([slow, fastFail]);
 
       const ctx = createMockContext();
-      await expect(seq.run(1, ctx)).rejects.toThrow("fast failure");
+      // fastFail completes first but fails → slow succeeds → returns 101
+      await expect(seq.run(1, ctx)).resolves.toBe(101);
+    });
+
+    it("throws AggregateError when all blocks fail", async () => {
+      const fail1 = handler({
+        name: "fail-1",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: () => { throw new Error("error-1"); },
+      });
+
+      const fail2 = handler({
+        name: "fail-2",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: () => { throw new Error("error-2"); },
+      });
+
+      const seq = sequencer({ name: "race-all-fail", inputSchema: z.number() })
+        .race([fail1, fail2]);
+
+      const ctx = createMockContext();
+      await expect(seq.run(1, ctx)).rejects.toThrow("All blocks in race failed");
     });
 
     it("throws on empty blocks array", async () => {
@@ -1052,6 +1062,31 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       await expect(seq.run(10, ctx)).resolves.toBe(11);
+    });
+
+    it("respects maxConcurrency", async () => {
+      let concurrent = 0;
+      let maxConcurrent = 0;
+
+      const slowBlock = handler({
+        name: "slow",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (v) => {
+          concurrent += 1;
+          maxConcurrent = Math.max(maxConcurrent, concurrent);
+          await new Promise((r) => setTimeout(r, 10));
+          concurrent -= 1;
+          return v;
+        },
+      });
+
+      const seq = sequencer({ name: "race-conc", inputSchema: z.number() })
+        .race([slowBlock, slowBlock, slowBlock, slowBlock], { maxConcurrency: 2 });
+
+      const ctx = createMockContext();
+      await seq.run(1, ctx);
+      expect(maxConcurrent).toBeLessThanOrEqual(2);
     });
 
     it("collects resources from all race blocks", () => {

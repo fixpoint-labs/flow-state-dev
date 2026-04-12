@@ -1128,8 +1128,7 @@ function createSequencer<TInput, TOutput>(
     },
 
     thenAny(
-      blocks: BlockDefinition<any, any>[],
-      options?: { maxConcurrency?: number }
+      blocks: BlockDefinition<any, any>[]
     ): SequencerDefinition<TInput, unknown> {
       return extend<unknown>(
         {
@@ -1139,20 +1138,58 @@ function createSequencer<TInput, TOutput>(
               throw new AggregateError([], "thenAny called with no blocks");
             }
 
+            // Try each block sequentially; return the first that succeeds.
             const errors: Error[] = [];
-            let resolved = false;
-            let resolvedValue: unknown;
 
-            // Create a derived abort controller for cancellation
+            for (const block of blocks) {
+              try {
+                const output = await executeBlock(block, value, ctx);
+                return { value: output };
+              } catch (error) {
+                errors.push(toError(error));
+              }
+            }
+
+            throw new AggregateError(errors, "All blocks in thenAny failed");
+          }
+        },
+        undefined,
+        undefined,
+        mergeFrom(...blocks)
+      );
+    },
+
+    race(
+      blocks: BlockDefinition<any, any>[],
+      options?: { maxConcurrency?: number }
+    ): SequencerDefinition<TInput, unknown> {
+      return extend<unknown>(
+        {
+          name: "race",
+          run: async (value, ctx, runtime) => {
+            if (blocks.length === 0) {
+              throw new Error("race called with no blocks");
+            }
+
+            if (blocks.length === 1) {
+              const output = await executeBlock(blocks[0], value, ctx);
+              return { value: output };
+            }
+
+            // Create a derived abort controller to cancel losers once a winner is found.
             const controller = new AbortController();
             const onParentAbort = (): void => { controller.abort(); };
             ctx.signal?.addEventListener("abort", onParentAbort);
 
             const derivedCtx = { ...ctx, signal: controller.signal } as BlockContext;
 
+            const errors: Error[] = [];
+            let resolved = false;
+            let resolvedValue: unknown;
+
             try {
               if (options?.maxConcurrency !== undefined) {
-                // With concurrency limits, use worker pool
+                // Worker-pool approach: concurrency-limited, first success wins.
                 const limit = Math.max(1, options.maxConcurrency);
                 let nextIndex = 0;
 
@@ -1179,7 +1216,7 @@ function createSequencer<TInput, TOutput>(
                 }
                 await Promise.all(workers);
               } else {
-                // No concurrency limit — run all in parallel via Promise.race-style
+                // Full parallelism — fire all, first success wins.
                 await new Promise<void>((resolve) => {
                   let remaining = blocks.length;
 
@@ -1208,104 +1245,10 @@ function createSequencer<TInput, TOutput>(
             }
 
             if (!resolved) {
-              throw new AggregateError(errors, "All blocks in thenAny failed");
+              throw new AggregateError(errors, "All blocks in race failed");
             }
 
             return { value: resolvedValue };
-          }
-        },
-        undefined,
-        undefined,
-        mergeFrom(...blocks)
-      );
-    },
-
-    race(
-      blocks: BlockDefinition<any, any>[],
-      options?: { maxConcurrency?: number }
-    ): SequencerDefinition<TInput, unknown> {
-      return extend<unknown>(
-        {
-          name: "race",
-          run: async (value, ctx, runtime) => {
-            if (blocks.length === 0) {
-              throw new Error("race called with no blocks");
-            }
-
-            if (blocks.length === 1) {
-              const output = await executeBlock(blocks[0], value, ctx);
-              return { value: output };
-            }
-
-            type RaceResult =
-              | { status: "fulfilled"; value: unknown }
-              | { status: "rejected"; reason: Error };
-
-            let settled = false;
-            let winnerResult: RaceResult | undefined;
-
-            if (options?.maxConcurrency !== undefined) {
-              // With concurrency limits, use mapWithConcurrency — first to complete wins
-              // but we must wait for all workers
-              const results = await mapWithConcurrency(
-                blocks,
-                options.maxConcurrency,
-                async (block): Promise<RaceResult> => {
-                  try {
-                    const output = await executeBlock(block, value, ctx);
-                    return { status: "fulfilled", value: output };
-                  } catch (error) {
-                    return { status: "rejected", reason: toError(error) };
-                  }
-                }
-              );
-
-              // First result in array order (with concurrency, this is roughly completion order
-              // for the first worker pool batch)
-              winnerResult = results[0];
-              // Push remaining as background work
-              for (let i = 1; i < results.length; i += 1) {
-                const r = results[i];
-                if (r.status === "rejected") {
-                  console.error(`[sequencer] race loser "${blocks[i].name}" failed:`, r.reason?.message ?? r.reason);
-                }
-              }
-            } else {
-              // No concurrency limit — true race
-              const promises = blocks.map(async (block): Promise<RaceResult> => {
-                try {
-                  const output = await executeBlock(block, value, ctx);
-                  return { status: "fulfilled", value: output };
-                } catch (error) {
-                  return { status: "rejected", reason: toError(error) };
-                }
-              });
-
-              // Winner is first to settle
-              winnerResult = await new Promise<RaceResult>((resolve) => {
-                for (const p of promises) {
-                  p.then((result) => {
-                    if (!settled) {
-                      settled = true;
-                      resolve(result);
-                    }
-                  });
-                }
-              });
-
-              // Push remaining promises as background work
-              const batchPromise = Promise.allSettled(promises).then((): WorkResult => ({
-                name: "race-remaining",
-                status: "fulfilled",
-              }));
-              runtime.workTasks.push({ name: "race-remaining", promise: batchPromise });
-            }
-
-            if (winnerResult!.status === "rejected") {
-              throw winnerResult!.reason;
-            }
-
-            return { value: winnerResult!.value };
           }
         },
         undefined,
