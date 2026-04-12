@@ -286,6 +286,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       sessionResources: { blackboard: bbBoard },
       ...(uses ? { uses: uses as any } : {}),
       context,
+      history: config.history,
       search: true,
       emit: { messages: false, toolCalls: false },
       prompt: specConfig.prompt,
