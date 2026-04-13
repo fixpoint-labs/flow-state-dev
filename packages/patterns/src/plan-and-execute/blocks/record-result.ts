@@ -1,7 +1,7 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { planAndExecuteStateSchema, type PlanTask } from "../schemas";
-import { emitPlanSnapshot } from "../../shared/plan";
+import { emitTaskUpdate } from "../../shared/plan";
 
 const inputSchema = z.object({
   stepId: z.string(),
@@ -15,7 +15,7 @@ const outputSchema = z.object({
 
 /**
  * Writes the task execution result back to sequencer state.
- * Marks the task as completed or failed, then emits a plan snapshot.
+ * Marks the task as completed or failed, then emits a per-task update.
  */
 export function createRecordResult(config: { name: string }) {
   return handler({
@@ -36,11 +36,14 @@ export function createRecordResult(config: { name: string }) {
 
       await ctx.sequencer!.patchState({ tasks: updatedTasks });
 
-      emitPlanSnapshot(
-        ctx,
-        { goal: state.goal, tasks: updatedTasks, status: state.status, iteration: state.iteration },
-        { key: config.name }
-      );
+      const finishedTask = updatedTasks.find((t: PlanTask) => t.id === input.stepId)!;
+      emitTaskUpdate(ctx, {
+        id: finishedTask.id,
+        goal: finishedTask.goal,
+        status: finishedTask.status,
+        result: finishedTask.result,
+        error: finishedTask.error,
+      }, { key: config.name });
 
       return { stepResult: input.stepResult };
     },

@@ -79,8 +79,10 @@ export async function handleRequestStream(
           try {
             const frame = encodeStreamEvent(event);
             controller.enqueue(textEncoder.encode(frame));
-          } catch {
-            // Controller may be closed if client disconnected.
+          } catch (err) {
+            // Log encoding/enqueue failures so they're visible in diagnostics.
+            // The most common cause is a closed controller (client disconnected).
+            console.warn("[flow-state] SSE event delivery failed:", err);
           }
 
           // Close when terminal status is reached.
