@@ -74,6 +74,7 @@ Here, a handler validates, a generator produces text, a `.map()` extracts the te
 | `doWhile` | Loop while a condition is true |
 | `loopBack` | Jump back to a named step |
 | `work` / `background` | Fire-and-forget side work (doesn't block) |
+| `workIf` | Conditional variant of `work` — dispatches only when condition is truthy |
 | `waitForWork` | Wait for `.work()` tasks, optional `failOnError` |
 | `tap` | Run a block or function without changing the payload |
 | `tapIf` | Conditional tap |
