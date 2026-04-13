@@ -18,11 +18,12 @@ import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
 import { crawl } from "@flow-state-dev/tools/crawl";
 import { z } from "zod";
-import { featuresSchema } from "../schemas";
+import { modeSchema, featuresSchema } from "../schemas";
 import { artifactResources, artifactsCapability } from "./artifacts";
 import path from "node:path";
 
 const featuresSessionStateSchema = z.object({
+  mode: modeSchema,
   features: featuresSchema.default({}),
 });
 
@@ -63,11 +64,15 @@ export const featuresCapability = defineCapability({
   sessionStateSchema: featuresSessionStateSchema,
 
   uses: [
-    // Conditionally include bash or artifact tools based on session feature flags
-    (ctx) =>
-      ctx.session.state.features.bashTool
+    // Conditionally include bash or artifact tools based on mode and feature flags.
+    // Ask mode always excludes bash — Build mode defers to the bashTool feature flag.
+    (ctx) => {
+      const bashEnabled =
+        ctx.session.state.mode !== "ask" && ctx.session.state.features.bashTool;
+      return bashEnabled
         ? [bashCap, artifactsCapability.presets({ inventory: true, tools: false })]
-        : [artifactsCapability],
+        : [artifactsCapability];
+    },
   ],
 
   presets: {
@@ -85,7 +90,10 @@ export const featuresCapability = defineCapability({
       },
       context: [
         (_input, ctx) => {
-          if (ctx.session.state.features.bashTool) return null;
+          // Bash is disabled in Ask mode regardless of the feature flag.
+          const bashActive =
+            ctx.session.state.mode !== "ask" && ctx.session.state.features.bashTool;
+          if (bashActive) return null;
           return [
             "You have access to artifacts and can read or create them:",
             "- Use read-artifact tool when users ask about existing artifacts or you need their content.",

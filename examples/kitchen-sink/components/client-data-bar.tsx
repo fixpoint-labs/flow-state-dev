@@ -30,7 +30,7 @@ export function ClientDataBar({
         <Activity className="h-3.5 w-3.5" />
         <span>Mode:</span>
         <Badge variant="secondary" className="text-xs">
-          {currentMode ?? "chat"}
+          {currentMode ?? "ask"}
         </Badge>
       </div>
       <Separator orientation="vertical" className="hidden h-4 sm:block" />
