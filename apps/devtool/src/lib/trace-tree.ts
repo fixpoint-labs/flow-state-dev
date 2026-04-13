@@ -37,6 +37,8 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
   return requestGroups.map((group, groupIndex) => {
     const isLast = groupIndex === requestGroups.length - 1;
     const blockMap = new Map<string, TraceNode>();
+    /** Tracks the parentBlockInstanceId for each block, collected during item iteration. */
+    const parentOf = new Map<string, string>();
     const rootBlocks: TraceNode[] = [];
     const orphanItems: TraceNode[] = [];
 
@@ -66,6 +68,12 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
           isExpanded: isLast,
         };
         blockMap.set(prov.blockInstanceId, blockNode);
+      }
+
+      // Track parent relationship from provenance so the nesting phase can
+      // use it directly instead of re-scanning the items array.
+      if (prov.parentBlockInstanceId && !parentOf.has(prov.blockInstanceId)) {
+        parentOf.set(prov.blockInstanceId, prov.parentBlockInstanceId);
       }
 
       // Collect sequencer state snapshots into the block node.
@@ -128,8 +136,7 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
     }
 
     for (const [instanceId, blockNode] of blockMap) {
-      const firstItem = group.items.find((i) => i.provenance?.blockInstanceId === instanceId);
-      const parentId = firstItem?.provenance?.parentBlockInstanceId;
+      const parentId = parentOf.get(instanceId);
 
       if (parentId && parentId !== instanceId && blockMap.has(parentId)) {
         const parent = blockMap.get(parentId)!;
