@@ -6,6 +6,7 @@ import { Status } from "./status";
 import { ErrorDisplay } from "./error";
 import { Plan } from "./plan";
 import { Blackboard } from "./blackboard";
+import { ReactiveBlackboard } from "./reactive-blackboard";
 import { AuditAnnotation } from "./audit-annotation";
 
 /**
@@ -32,6 +33,7 @@ export const chatAssistantRenderers: RendererRegistry = {
   source: false,
   container: {
     plan: Plan,
+    "reactive-blackboard": ReactiveBlackboard,
   },
   component: {
     blackboard: Blackboard,

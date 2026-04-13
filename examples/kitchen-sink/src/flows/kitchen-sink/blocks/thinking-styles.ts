@@ -5,8 +5,8 @@
  *   1. Keyword handler — fast heuristic scan, patches session state directly if match
  *   2. LLM classifier — intentClassifier fallback when no keyword matched
  *
- * Defines the three concrete pipelines (default, plan-and-execute, supervisor)
- * and the router that dispatches between them.
+ * Defines five concrete pipelines (default, plan-and-execute, supervisor,
+ * blackboard, reactive-blackboard) and the router that dispatches between them.
  */
 import { generator, handler, router, sequencer, utility } from "@flow-state-dev/core";
 import type { GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
@@ -14,6 +14,11 @@ import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { supervisor } from "@flow-state-dev/patterns/supervisor";
 import { blackboard, createBlackboard } from "@flow-state-dev/patterns/blackboard";
+import {
+  reactiveBlackboard,
+  actor,
+  mesh,
+} from "@flow-state-dev/patterns/reactive-blackboard";
 import { z } from "zod";
 
 // -------------------------------------------------------------------------
@@ -24,6 +29,7 @@ export const thinkingStyleSchema = z.enum([
   "plan-and-execute",
   "supervisor",
   "blackboard",
+  "reactive-blackboard",
   "default",
 ]);
 
@@ -68,6 +74,17 @@ export const BLACKBOARD_KEYWORDS = [
   "contribute independently",
 ];
 
+export const REACTIVE_BLACKBOARD_KEYWORDS = [
+  "reactive blackboard",
+  "reactive analysis",
+  "parallel analysis",
+  "multiple angles",
+  "different angles",
+  "simultaneous perspectives",
+  "concurrent analysis",
+  "parallel perspectives",
+];
+
 export const PLAN_KEYWORDS = [
   "plan",
   "steps",
@@ -98,6 +115,8 @@ export const keywordHandler = handler({
     let matched: ThinkingStyle | null = null;
     if (SUPERVISOR_KEYWORDS.some((kw) => message.includes(kw))) {
       matched = "supervisor";
+    } else if (REACTIVE_BLACKBOARD_KEYWORDS.some((kw) => message.includes(kw))) {
+      matched = "reactive-blackboard";
     } else if (BLACKBOARD_KEYWORDS.some((kw) => message.includes(kw))) {
       matched = "blackboard";
     } else if (PLAN_KEYWORDS.some((kw) => message.includes(kw))) {
@@ -142,6 +161,14 @@ export const classifierBlock = utility.intentClassifier({
       knowledge. Examples: document analysis from legal/technical/business angles,
       complex problem-solving requiring research + analysis + critique,
       multi-disciplinary review where each discipline contributes independently.
+    `,
+    "reactive-blackboard": `
+      The message asks for analysis where multiple independent perspectives should
+      examine the problem in parallel — reacting simultaneously rather than being
+      orchestrated by a controller. Each perspective fires independently and
+      results are synthesized at the end. Examples: "analyze this from multiple
+      angles", "give me parallel perspectives", "examine this simultaneously from
+      different viewpoints", "concurrent analysis from different angles".
     `,
     default: `
       The message is a direct question, a reasoning task, an explanation request,
@@ -367,12 +394,178 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     outputSchema: z.string(),
   });
 
+  // -----------------------------------------------------------------------
+  // Reactive Blackboard — parallel actor fan-out with no controller.
+  // Three actors react to the user's query simultaneously. Each brings
+  // a different perspective. A synthesizer merges their contributions.
+  // -----------------------------------------------------------------------
+
+  const rbEntrySchema = z.object({
+    type: z.string(),
+    topic: z.string(),
+    body: z.any(),
+  });
+
+  const rb = reactiveBlackboard({ name: "reactive", entries: rbEntrySchema });
+
+  function rbActor(actorConfig: {
+    name: string;
+    role: string;
+    prompt: string;
+  }) {
+    const gen = generator({
+      name: `${actorConfig.name}-gen`,
+      model: modelId,
+      outputSchema: z.string(),
+      sessionResources: { reactiveBoard: rb.blackboard },
+      ...(uses ? { uses: uses as any } : {}),
+      context,
+      history: config.history,
+      search: true,
+      emit: { messages: false, toolCalls: false },
+      prompt: actorConfig.prompt,
+      user: (input: any) =>
+        typeof input === "string" ? input : (input.body ?? JSON.stringify(input)),
+    });
+
+    const writeBack = handler({
+      name: `${actorConfig.name}-write`,
+      inputSchema: z.string(),
+      outputSchema: z.any(),
+      sessionResources: { reactiveBoard: rb.blackboard },
+      execute: async (output: string, ctx) => {
+        const state = ctx.session.resources.reactiveBoard.state as {
+          entries: Array<Record<string, unknown>>;
+        };
+        await ctx.session.resources.reactiveBoard.patchState({
+          entries: [
+            ...state.entries,
+            { type: "observation", topic: actorConfig.role, body: output },
+          ],
+        });
+        ctx
+          .emitComponent(
+            "rb-actor",
+            {
+              actor: actorConfig.name,
+              role: actorConfig.role,
+              contribution: output,
+            },
+            { key: actorConfig.name },
+          )
+          .done();
+        return { actor: actorConfig.name, contributed: true };
+      },
+    });
+
+    return actor({
+      name: actorConfig.name,
+      watch: ["request:**"],
+      body: sequencer({ name: actorConfig.name, inputSchema: z.any() })
+        .then(gen)
+        .then(writeBack),
+    });
+  }
+
+  const rbExplorer = rbActor({
+    name: "rb-explorer",
+    role: "explorer",
+    prompt: [
+      "You are an Explorer within a parallel analysis team.",
+      "Your job is to investigate the question broadly: gather relevant",
+      "information, identify key concepts, surface context the other",
+      "analysts might miss, and find supporting evidence or examples.",
+      "Be thorough but concise. Focus on breadth over depth.",
+    ].join("\n"),
+  });
+
+  const rbAnalyst = rbActor({
+    name: "rb-analyst",
+    role: "analyst",
+    prompt: [
+      "You are an Analyst within a parallel analysis team.",
+      "Your job is to reason deeply about the question: identify patterns,",
+      "draw inferences, evaluate trade-offs, and produce structured",
+      "insights. Build a logical argument. Where the explorer gathers,",
+      "you synthesize.",
+    ].join("\n"),
+  });
+
+  const rbChallenger = rbActor({
+    name: "rb-challenger",
+    role: "challenger",
+    prompt: [
+      "You are a Challenger within a parallel analysis team.",
+      "Your job is to stress-test the obvious answers: find gaps,",
+      "counter-arguments, edge cases, and hidden assumptions.",
+      "Be constructive but rigorous. If something seems too simple,",
+      "explain why. Identify what could go wrong.",
+    ].join("\n"),
+  });
+
+  const rbMesh = mesh({
+    name: "reactive-thinking",
+    blackboard: rb,
+    actors: [rbExplorer, rbAnalyst, rbChallenger],
+    concurrency: 3,
+  });
+
+  const rbSynthesizer = generator({
+    name: "rb-synthesizer",
+    model: modelId,
+    outputSchema: z.string(),
+    sessionResources: { reactiveBoard: rb.blackboard },
+    ...(uses ? { uses: uses as any } : {}),
+    context,
+    history: config.history,
+    search: true,
+    emit: { messages: true, reasoning: true },
+    prompt: [
+      "You are a synthesis agent. Three independent analysts examined",
+      "the user's question in parallel — an Explorer (breadth), an Analyst",
+      "(depth), and a Challenger (stress-testing). Their contributions",
+      "are shown below.",
+      "",
+      "Produce a coherent, well-rounded response that integrates their",
+      "perspectives. Highlight areas of agreement, acknowledge tensions",
+      "or gaps the Challenger raised, and give the user a comprehensive",
+      "answer. Do not mention the analysts or the internal process.",
+    ].join("\n"),
+    user: (_input: any, ctx: any) => {
+      const state = ctx.session.resources.reactiveBoard.state as {
+        entries: Array<{ type: string; topic: string; body: string }>;
+      };
+      const entries = state.entries ?? [];
+      const request = entries.find((e) => e.type === "request");
+      const observations = entries.filter((e) => e.type === "observation");
+
+      const parts: string[] = [];
+      if (request) parts.push(`Original question: ${request.body}`);
+      for (const obs of observations) {
+        parts.push(`## ${obs.topic}\n${obs.body}`);
+      }
+      return parts.join("\n\n---\n\n") || "No contributions were gathered.";
+    },
+  });
+
+  const reactiveBlackboardPipeline = sequencer({
+    name: "reactive-blackboard-thinking",
+    inputSchema: z.any(),
+  })
+    .map((input: any) => ({
+      type: "request",
+      topic: "query",
+      body: input.message ?? input,
+    }))
+    .then(rbMesh.emit)
+    .then(rbSynthesizer);
+
   // Router — adapts flow input to each pipeline's expected shape via connectInput.
   // connectInput delegates through the original block's .run, so route
   // interception (e.g. testRouter) works transparently.
   const thinkingStyleRouter = router({
     name: "thinking-style-router",
-    routes: [defaultPipeline, paePipeline, supervisorPipeline, blackboardPipeline],
+    routes: [defaultPipeline, paePipeline, supervisorPipeline, blackboardPipeline, reactiveBlackboardPipeline],
     execute: (input, ctx) => {
       const style = ctx.session.state.thinkingStyle as string | undefined;
       switch (style) {
@@ -382,11 +575,13 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
           return supervisorPipeline.connectInput(() => ({ goal: input.message }));
         case "blackboard":
           return blackboardPipeline.connectInput(() => input);
+        case "reactive-blackboard":
+          return reactiveBlackboardPipeline.connectInput(() => input);
         default:
           return defaultPipeline;
       }
     },
   });
 
-  return { thinkingStyleRouter, defaultPipeline, paePipeline, supervisorPipeline, blackboardPipeline };
+  return { thinkingStyleRouter, defaultPipeline, paePipeline, supervisorPipeline, blackboardPipeline, reactiveBlackboardPipeline };
 }
