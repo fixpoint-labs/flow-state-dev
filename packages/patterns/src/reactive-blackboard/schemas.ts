@@ -16,11 +16,18 @@ import { z } from "zod";
  * Creates the blackboard entry log resource. Entries are stored as an
  * append-only array. The actual entry shape is user-defined via config;
  * the resource stores them as `z.any()` to avoid generic complexity.
+ *
+ * The resource exposes its entries array via `client.data` so that
+ * UI components can read the reactive chain in real-time via the
+ * session snapshot.
  */
 export function createReactiveBlackboard() {
   return defineResource({
     stateSchema: reactiveBlackboardStateSchema,
     writable: true,
+    client: {
+      data: (state) => ({ entries: state.entries }),
+    },
   });
 }
 

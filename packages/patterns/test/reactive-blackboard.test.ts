@@ -12,6 +12,7 @@ import {
   reactiveBlackboardStateSchema,
   emitControlSchema,
   createAppendEntry,
+  normalizeToEntries,
 } from "../src/reactive-blackboard";
 import type {
   ActorConfig,
@@ -611,6 +612,483 @@ describe("mesh emit", () => {
       expect(result.error).toBeNull();
       // With concurrency=2, max concurrent should not exceed 2
       expect(maxConcurrent).toBeLessThanOrEqual(2);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeToEntries
+// ---------------------------------------------------------------------------
+
+describe("normalizeToEntries", () => {
+  it("returns empty array for null/undefined", () => {
+    expect(normalizeToEntries(null)).toEqual([]);
+    expect(normalizeToEntries(undefined)).toEqual([]);
+  });
+
+  it("returns empty array for strings", () => {
+    expect(normalizeToEntries("hello")).toEqual([]);
+  });
+
+  it("returns empty array for objects without required fields", () => {
+    expect(normalizeToEntries({ foo: "bar" })).toEqual([]);
+    expect(normalizeToEntries({ type: "x" })).toEqual([]); // missing topic, body
+    expect(normalizeToEntries({ type: "x", topic: "y" })).toEqual([]); // missing body
+  });
+
+  it("wraps a single valid entry in an array", () => {
+    const entry = { type: "obs", topic: "t1", body: "data" };
+    expect(normalizeToEntries(entry)).toEqual([entry]);
+  });
+
+  it("passes through a valid array", () => {
+    const entries = [
+      { type: "obs", topic: "t1", body: "a" },
+      { type: "finding", topic: "t2", body: "b" },
+    ];
+    expect(normalizeToEntries(entries)).toEqual(entries);
+  });
+
+  it("filters out invalid items from a mixed array", () => {
+    const valid = { type: "obs", topic: "t1", body: "ok" };
+    const result = normalizeToEntries([valid, "string", null, { type: "x" }, 42]);
+    expect(result).toEqual([valid]);
+  });
+
+  it("returns empty array for empty array input", () => {
+    expect(normalizeToEntries([])).toEqual([]);
+  });
+
+  it("unwraps { entries: [...] } wrapper", () => {
+    const entries = [
+      { type: "obs", topic: "t1", body: "a" },
+      { type: "finding", topic: "t2", body: "b" },
+    ];
+    expect(normalizeToEntries({ entries })).toEqual(entries);
+  });
+
+  it("returns empty for { entries: [] }", () => {
+    expect(normalizeToEntries({ entries: [] })).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// re-emission
+// ---------------------------------------------------------------------------
+
+describe("re-emission", () => {
+  it("chains actors via re-emitted entries", async () => {
+    const received: Record<string, unknown[]> = { a: [], b: [] };
+    const rb = reactiveBlackboard({ name: "chain", entries: entrySchema });
+
+    // Actor A watches requests, returns an observation entry
+    const actorA = actor({
+      name: "actor-a",
+      watch: ["request:**"],
+      body: handler({
+        name: "body-a",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: (input) => {
+          received.a.push(input);
+          return [{ type: "observation", topic: "found", body: "data from A" }];
+        },
+      }),
+    });
+
+    // Actor B watches observations — should fire on A's re-emitted entry
+    const actorB = actor({
+      name: "actor-b",
+      watch: ["observation:**"],
+      body: handler({
+        name: "body-b",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: (input) => {
+          received.b.push(input);
+          return { processed: true };
+        },
+      }),
+    });
+
+    const m = mesh({
+      name: "chain",
+      blackboard: rb,
+      actors: [actorA, actorB],
+      reEmit: true,
+      maxDepth: 3,
+    });
+
+    const result = await testBlock(m.emit, {
+      input: { type: "request", topic: "query", body: "test question" },
+      session: { resources: { reactiveBlackboard: emptyBoardState } },
+    });
+
+    expect(result.error).toBeNull();
+    // A fired on the request
+    expect(received.a).toHaveLength(1);
+    // B fired on A's re-emitted observation
+    expect(received.b).toHaveLength(1);
+    expect(received.b[0]).toEqual({
+      type: "observation",
+      topic: "found",
+      body: "data from A",
+    });
+  });
+
+  it("does not re-emit when reEmit is false (default)", async () => {
+    const receivedB: unknown[] = [];
+    const rb = reactiveBlackboard({ name: "no-reemit", entries: entrySchema });
+
+    const actorA = actor({
+      name: "actor-a",
+      watch: ["request:**"],
+      body: handler({
+        name: "body-a",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: () => [{ type: "observation", topic: "x", body: "data" }],
+      }),
+    });
+
+    const actorB = actor({
+      name: "actor-b",
+      watch: ["observation:**"],
+      body: handler({
+        name: "body-b",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: (input) => {
+          receivedB.push(input);
+          return { ok: true };
+        },
+      }),
+    });
+
+    const m = mesh({
+      name: "no-reemit",
+      blackboard: rb,
+      actors: [actorA, actorB],
+      // reEmit defaults to false
+    });
+
+    await testBlock(m.emit, {
+      input: { type: "request", topic: "query", body: "test" },
+      session: { resources: { reactiveBlackboard: emptyBoardState } },
+    });
+
+    // B should NOT fire — A's output is discarded without reEmit
+    expect(receivedB).toHaveLength(0);
+  });
+
+  it("respects maxDepth", async () => {
+    const depths: number[] = [];
+    let callCount = 0;
+    const rb = reactiveBlackboard({ name: "depth", entries: entrySchema });
+
+    // Actor that always re-emits the same type it watches — would loop
+    // infinitely without maxDepth
+    const looper = actor({
+      name: "looper",
+      watch: ["event:**"],
+      body: handler({
+        name: "looper-body",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: () => {
+          callCount += 1;
+          depths.push(callCount);
+          return [{ type: "event", topic: "loop", body: `iteration ${callCount}` }];
+        },
+      }),
+    });
+
+    const m = mesh({
+      name: "depth",
+      blackboard: rb,
+      actors: [looper],
+      reEmit: true,
+      maxDepth: 3, // depth 1, 2 re-emit; depth 3 stops
+    });
+
+    await testBlock(m.emit, {
+      input: { type: "event", topic: "start", body: "go" },
+      session: { resources: { reactiveBlackboard: emptyBoardState } },
+    });
+
+    // Depth 1: fires on initial entry, re-emits → depth 2: fires, re-emits → depth 3: fires, no re-emit
+    expect(callCount).toBe(3);
+  });
+
+  it("handles multiple entries from a single actor", async () => {
+    const receivedB: unknown[] = [];
+    const rb = reactiveBlackboard({ name: "multi-entry", entries: entrySchema });
+
+    const actorA = actor({
+      name: "actor-a",
+      watch: ["request:**"],
+      body: handler({
+        name: "body-a",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: () => [
+          { type: "observation", topic: "one", body: "first" },
+          { type: "observation", topic: "two", body: "second" },
+          { type: "observation", topic: "three", body: "third" },
+        ],
+      }),
+    });
+
+    const actorB = actor({
+      name: "actor-b",
+      watch: ["observation:**"],
+      body: handler({
+        name: "body-b",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: (input) => {
+          receivedB.push(input);
+          return { ok: true };
+        },
+      }),
+    });
+
+    const m = mesh({
+      name: "multi-entry",
+      blackboard: rb,
+      actors: [actorA, actorB],
+      reEmit: true,
+      maxDepth: 3,
+    });
+
+    await testBlock(m.emit, {
+      input: { type: "request", topic: "query", body: "test" },
+      session: { resources: { reactiveBlackboard: emptyBoardState } },
+    });
+
+    // B should fire 3 times — once per re-emitted observation
+    expect(receivedB).toHaveLength(3);
+    expect(receivedB.map((e: any) => e.topic)).toEqual(
+      expect.arrayContaining(["one", "two", "three"])
+    );
+  });
+
+  it("handles empty/non-entry actor output gracefully", async () => {
+    const rb = reactiveBlackboard({ name: "empty", entries: entrySchema });
+
+    const actorA = actor({
+      name: "actor-a",
+      watch: ["request:**"],
+      body: handler({
+        name: "body-a",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: () => "just a string", // not an entry
+      }),
+    });
+
+    const m = mesh({
+      name: "empty",
+      blackboard: rb,
+      actors: [actorA],
+      reEmit: true,
+    });
+
+    const result = await testBlock(m.emit, {
+      input: { type: "request", topic: "query", body: "test" },
+      session: { resources: { reactiveBlackboard: emptyBoardState } },
+    });
+
+    // Should complete without error — normalizeToEntries returns []
+    expect(result.error).toBeNull();
+  });
+
+  it("selectively dispatches re-emitted entries to matching actors only", async () => {
+    const receivedObs: unknown[] = [];
+    const receivedEvt: unknown[] = [];
+    const rb = reactiveBlackboard({ name: "selective", entries: entrySchema });
+
+    const producer = actor({
+      name: "producer",
+      watch: ["request:**"],
+      body: handler({
+        name: "producer-body",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: () => [
+          { type: "observation", topic: "x", body: "obs" },
+        ],
+      }),
+    });
+
+    const obsWatcher = actor({
+      name: "obs-watcher",
+      watch: ["observation:**"],
+      body: handler({
+        name: "obs-body",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: (input) => {
+          receivedObs.push(input);
+          return { ok: true };
+        },
+      }),
+    });
+
+    const evtWatcher = actor({
+      name: "evt-watcher",
+      watch: ["event:**"],
+      body: handler({
+        name: "evt-body",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: (input) => {
+          receivedEvt.push(input);
+          return { ok: true };
+        },
+      }),
+    });
+
+    const m = mesh({
+      name: "selective",
+      blackboard: rb,
+      actors: [producer, obsWatcher, evtWatcher],
+      reEmit: true,
+    });
+
+    await testBlock(m.emit, {
+      input: { type: "request", topic: "q", body: "test" },
+      session: { resources: { reactiveBlackboard: emptyBoardState } },
+    });
+
+    // obsWatcher fires on re-emitted observation
+    expect(receivedObs).toHaveLength(1);
+    // evtWatcher does NOT fire — no event entries were emitted
+    expect(receivedEvt).toHaveLength(0);
+  });
+
+  it("fan-out multiplication: 1 request → 2 observations → 4 findings", async () => {
+    let findingCount = 0;
+    const rb = reactiveBlackboard({ name: "fanout", entries: entrySchema });
+
+    const explorer = actor({
+      name: "explorer",
+      watch: ["request:**"],
+      body: handler({
+        name: "explorer-body",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: () => [
+          { type: "observation", topic: "a", body: "obs-a" },
+          { type: "observation", topic: "b", body: "obs-b" },
+        ],
+      }),
+    });
+
+    const analyst = actor({
+      name: "analyst",
+      watch: ["observation:**"],
+      body: handler({
+        name: "analyst-body",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: (input: any) => [
+          { type: "event", topic: `finding-from-${input.topic}`, body: "analysis" },
+          { type: "event", topic: `extra-from-${input.topic}`, body: "more" },
+        ],
+      }),
+    });
+
+    const counter = actor({
+      name: "counter",
+      watch: ["event:**"],
+      body: handler({
+        name: "counter-body",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: () => {
+          findingCount += 1;
+          return { counted: true };
+        },
+      }),
+    });
+
+    const m = mesh({
+      name: "fanout",
+      blackboard: rb,
+      actors: [explorer, analyst, counter],
+      reEmit: true,
+      maxDepth: 4,
+    });
+
+    const result = await testBlock(m.emit, {
+      input: { type: "request", topic: "query", body: "test" },
+      session: { resources: { reactiveBlackboard: emptyBoardState } },
+    });
+
+    expect(result.error).toBeNull();
+    // 1 request → 2 observations → 2×2 = 4 events → counter fires 4 times
+    expect(findingCount).toBe(4);
+  });
+
+  it("appends all re-emitted entries to the blackboard resource", async () => {
+    let finalEntries: unknown[] = [];
+    const rb = reactiveBlackboard({ name: "persist", entries: entrySchema });
+
+    const actorA = actor({
+      name: "actor-a",
+      watch: ["request:**"],
+      body: handler({
+        name: "body-a",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        execute: () => [
+          { type: "observation", topic: "x", body: "from-a" },
+        ],
+      }),
+    });
+
+    // Actor B reads the resource to capture final state
+    const actorB = actor({
+      name: "actor-b",
+      watch: ["observation:**"],
+      body: handler({
+        name: "body-b",
+        inputSchema: z.any(),
+        outputSchema: z.any(),
+        sessionResources: { reactiveBlackboard: rb.blackboard },
+        execute: (_input, ctx) => {
+          const state = (ctx.session.resources as any).reactiveBlackboard
+            .state as ReactiveBlackboardState;
+          finalEntries = [...state.entries];
+          return { ok: true };
+        },
+      }),
+    });
+
+    const m = mesh({
+      name: "persist",
+      blackboard: rb,
+      actors: [actorA, actorB],
+      reEmit: true,
+    });
+
+    await testBlock(m.emit, {
+      input: { type: "request", topic: "query", body: "test" },
+      session: { resources: { reactiveBlackboard: emptyBoardState } },
+    });
+
+    // Should have 2 entries: the original request + the re-emitted observation
+    expect(finalEntries).toHaveLength(2);
+    expect(finalEntries[0]).toEqual({
+      type: "request",
+      topic: "query",
+      body: "test",
+    });
+    expect(finalEntries[1]).toEqual({
+      type: "observation",
+      topic: "x",
+      body: "from-a",
     });
   });
 });

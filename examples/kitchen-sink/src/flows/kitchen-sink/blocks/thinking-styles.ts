@@ -83,6 +83,8 @@ export const REACTIVE_BLACKBOARD_KEYWORDS = [
   "simultaneous perspectives",
   "concurrent analysis",
   "parallel perspectives",
+  "explore",
+  "challenge ideas"
 ];
 
 export const PLAN_KEYWORDS = [
@@ -395,9 +397,13 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   });
 
   // -----------------------------------------------------------------------
-  // Reactive Blackboard — parallel actor fan-out with no controller.
-  // Three actors react to the user's query simultaneously. Each brings
-  // a different perspective. A synthesizer merges their contributions.
+  // Reactive Blackboard — stigmergic multi-agent coordination.
+  //
+  // Actors produce granular entries (observations, findings, challenges)
+  // that trigger other actors via topic-based watch patterns. The reactive
+  // chain creates data-dependent fan-out: 1 request → N observations →
+  // N×M findings → N×M×K challenges. The mesh's reEmit mechanism handles
+  // appending entries and dispatching matching actors automatically.
   // -----------------------------------------------------------------------
 
   const rbEntrySchema = z.object({
@@ -408,97 +414,133 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
 
   const rb = reactiveBlackboard({ name: "reactive", entries: rbEntrySchema });
 
-  function rbActor(actorConfig: {
-    name: string;
-    role: string;
-    prompt: string;
-  }) {
-    const gen = generator({
-      name: `${actorConfig.name}-gen`,
+  // Shared output schema for actors that produce re-emittable entries.
+  // Wrapped in an object because the AI SDK requires top-level "type: object".
+  // The pattern's normalizeToEntries() unwraps { entries: [...] } automatically.
+  const entryOutputSchema = z.object({
+    entries: z.array(z.object({
+      type: z.string(),
+      topic: z.string(),
+      body: z.string(),
+    })),
+  });
+
+  // Helper: build the user prompt from the triggering entry + blackboard context.
+  function rbUserPrompt(input: any, ctx: any): string {
+    const state = ctx.session.resources.reactiveBlackboard.state as {
+      entries: Array<{ type: string; topic: string; body: string }>;
+    };
+    const entries = state?.entries ?? [];
+    const body = typeof input === "string"
+      ? input
+      : (input.body ?? JSON.stringify(input));
+
+    const prior = entries
+      .filter((e: any) => e.type !== "request")
+      .map((e: any) => `[${e.type}:${e.topic}] ${e.body}`)
+      .join("\n\n");
+
+    return prior
+      ? `Entry: ${body}\n\nPrior entries on the blackboard:\n${prior}`
+      : `Entry: ${body}`;
+  }
+
+  // Explorer — watches requests, produces granular observations.
+  const rbExplorer = actor({
+    name: "rb-explorer",
+    watch: ["request:**"],
+    body: generator({
+      name: "rb-explorer-gen",
       model: modelId,
-      outputSchema: z.string(),
+      outputSchema: entryOutputSchema,
       sessionResources: { reactiveBlackboard: rb.blackboard },
       ...(uses ? { uses: uses as any } : {}),
       context,
       history: config.history,
       search: true,
-      emit: { messages: false, toolCalls: false },
-      prompt: actorConfig.prompt,
-      user: (input: any) =>
-        typeof input === "string" ? input : (input.body ?? JSON.stringify(input)),
-    });
-
-    const writeBack = handler({
-      name: `${actorConfig.name}-write`,
-      inputSchema: z.string(),
-      outputSchema: z.any(),
-      sessionResources: { reactiveBlackboard: rb.blackboard },
-      execute: async (output: string, ctx) => {
-        const state = ctx.session.resources.reactiveBlackboard.state as {
-          entries: Array<Record<string, unknown>>;
-        };
-        const newEntry = { type: "observation" as const, topic: actorConfig.role, body: output };
-        await ctx.session.resources.reactiveBlackboard.patchState({
-          entries: [...state.entries, newEntry] as any,
-        });
-        ctx
-          .emitComponent(
-            "rb-actor",
-            {
-              actor: actorConfig.name,
-              role: actorConfig.role,
-              contribution: output,
-            },
-            { key: actorConfig.name },
-          )
-          .done();
-        return { actor: actorConfig.name, contributed: true };
-      },
-    });
-
-    return actor({
-      name: actorConfig.name,
-      watch: ["request:**"],
-      body: sequencer({ name: actorConfig.name, inputSchema: z.any() })
-        .then(gen)
-        .then(writeBack),
-    });
-  }
-
-  const rbExplorer = rbActor({
-    name: "rb-explorer",
-    role: "explorer",
-    prompt: [
-      "You are an Explorer within a parallel analysis team.",
-      "Your job is to investigate the question broadly: gather relevant",
-      "information, identify key concepts, surface context the other",
-      "analysts might miss, and find supporting evidence or examples.",
-      "Be thorough but concise. Focus on breadth over depth.",
-    ].join("\n"),
+      prompt: [
+        "You are an Explorer in a reactive blackboard analysis.",
+        "Investigate the question broadly: identify key concepts, gather",
+        "evidence, surface context others might miss.",
+        "",
+        "Use your available tools to research the topic — search the web,",
+        "fetch relevant pages, and gather real data before forming observations.",
+        "Do not rely solely on your training data when current information",
+        "would strengthen your observations.",
+        "",
+        "Return 2-4 distinct observations as a JSON array.",
+        "Each entry must have: type \"observation\", a short descriptive",
+        "topic slug (e.g. \"key-concept\", \"historical-context\"), and a",
+        "body with your substantive observation. Focus on breadth — each",
+        "observation should cover a different angle.",
+      ].join("\n"),
+      user: rbUserPrompt,
+    }),
   });
 
-  const rbAnalyst = rbActor({
+  // Analyst — watches observations, produces findings (structured analysis).
+  // Fires once per observation, so N observations → N analyst invocations.
+  const rbAnalyst = actor({
     name: "rb-analyst",
-    role: "analyst",
-    prompt: [
-      "You are an Analyst within a parallel analysis team.",
-      "Your job is to reason deeply about the question: identify patterns,",
-      "draw inferences, evaluate trade-offs, and produce structured",
-      "insights. Build a logical argument. Where the explorer gathers,",
-      "you synthesize.",
-    ].join("\n"),
+    watch: ["observation:**"],
+    body: generator({
+      name: "rb-analyst-gen",
+      model: modelId,
+      outputSchema: entryOutputSchema,
+      sessionResources: { reactiveBlackboard: rb.blackboard },
+      ...(uses ? { uses: uses as any } : {}),
+      context,
+      history: config.history,
+      search: true,
+      prompt: [
+        "You are an Analyst in a reactive blackboard analysis.",
+        "You receive a specific observation from the Explorer.",
+        "Analyze it in the context of the full blackboard state:",
+        "identify patterns, draw inferences, evaluate trade-offs.",
+        "",
+        "Use your available tools to research specifics when the observation",
+        "references claims, data, or topics that would benefit from verification",
+        "or deeper investigation.",
+        "",
+        "Return 1-2 findings as a JSON array.",
+        "Each entry must have: type \"finding\", a short descriptive",
+        "topic slug (e.g. \"pattern-identified\", \"trade-off\"), and a",
+        "body with your structured analysis.",
+      ].join("\n"),
+      user: rbUserPrompt,
+    }),
   });
 
-  const rbChallenger = rbActor({
+  // Challenger — watches findings, produces challenges.
+  // Fires once per finding, stress-testing each conclusion.
+  const rbChallenger = actor({
     name: "rb-challenger",
-    role: "challenger",
-    prompt: [
-      "You are a Challenger within a parallel analysis team.",
-      "Your job is to stress-test the obvious answers: find gaps,",
-      "counter-arguments, edge cases, and hidden assumptions.",
-      "Be constructive but rigorous. If something seems too simple,",
-      "explain why. Identify what could go wrong.",
-    ].join("\n"),
+    watch: ["finding:**"],
+    body: generator({
+      name: "rb-challenger-gen",
+      model: modelId,
+      outputSchema: entryOutputSchema,
+      sessionResources: { reactiveBlackboard: rb.blackboard },
+      ...(uses ? { uses: uses as any } : {}),
+      context,
+      history: config.history,
+      search: true,
+      prompt: [
+        "You are a Challenger in a reactive blackboard analysis.",
+        "You receive a specific finding from the Analyst.",
+        "Stress-test it: find gaps, counter-arguments, edge cases,",
+        "hidden assumptions. Be constructive but rigorous.",
+        "",
+        "Use your available tools to find counter-evidence or alternative",
+        "viewpoints that challenge the finding.",
+        "",
+        "Return 1 challenge as a JSON array with a single entry.",
+        "The entry must have: type \"challenge\", a short descriptive",
+        "topic slug (e.g. \"assumption-gap\", \"counter-evidence\"), and",
+        "a body explaining the weakness or alternative perspective.",
+      ].join("\n"),
+      user: rbUserPrompt,
+    }),
   });
 
   const rbMesh = mesh({
@@ -506,6 +548,8 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     blackboard: rb,
     actors: [rbExplorer, rbAnalyst, rbChallenger],
     concurrency: 3,
+    reEmit: true,
+    maxDepth: 3,
   });
 
   const rbSynthesizer = generator({
@@ -517,30 +561,40 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     context,
     history: config.history,
     search: true,
-    emit: { messages: true, reasoning: true },
     prompt: [
-      "You are a synthesis agent. Three independent analysts examined",
-      "the user's question in parallel — an Explorer (breadth), an Analyst",
-      "(depth), and a Challenger (stress-testing). Their contributions",
-      "are shown below.",
+      "You are a synthesis agent. A reactive analysis just completed.",
+      "An Explorer produced observations, an Analyst turned each into",
+      "findings, and a Challenger stress-tested each finding. All entries",
+      "are shown below, grouped by tier.",
       "",
-      "Produce a coherent, well-rounded response that integrates their",
-      "perspectives. Highlight areas of agreement, acknowledge tensions",
-      "or gaps the Challenger raised, and give the user a comprehensive",
-      "answer. Do not mention the analysts or the internal process.",
+      "Produce a coherent, well-rounded response that integrates the",
+      "full chain of reasoning. Highlight areas of agreement, acknowledge",
+      "tensions or gaps the Challenger raised, and give the user a",
+      "comprehensive answer. Do not mention the analysts or the process.",
     ].join("\n"),
     user: (_input: any, ctx: any) => {
       const state = ctx.session.resources.reactiveBlackboard.state as {
         entries: Array<{ type: string; topic: string; body: string }>;
       };
-      const entries = state.entries ?? [];
+      const entries = state?.entries ?? [];
       const request = entries.find((e) => e.type === "request");
       const observations = entries.filter((e) => e.type === "observation");
+      const findings = entries.filter((e) => e.type === "finding");
+      const challenges = entries.filter((e) => e.type === "challenge");
 
       const parts: string[] = [];
-      if (request) parts.push(`Original question: ${request.body}`);
-      for (const obs of observations) {
-        parts.push(`## ${obs.topic}\n${obs.body}`);
+      if (request) parts.push(`## Original Question\n${request.body}`);
+      if (observations.length) {
+        parts.push(`## Observations (${observations.length})\n` +
+          observations.map((o) => `### ${o.topic}\n${o.body}`).join("\n\n"));
+      }
+      if (findings.length) {
+        parts.push(`## Findings (${findings.length})\n` +
+          findings.map((f) => `### ${f.topic}\n${f.body}`).join("\n\n"));
+      }
+      if (challenges.length) {
+        parts.push(`## Challenges (${challenges.length})\n` +
+          challenges.map((c) => `### ${c.topic}\n${c.body}`).join("\n\n"));
       }
       return parts.join("\n\n---\n\n") || "No contributions were gathered.";
     },

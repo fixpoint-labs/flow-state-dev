@@ -1,6 +1,6 @@
 "use client";
 
-import type { ContainerItem } from "@flow-state-dev/core/items";
+import type { ComponentItem, ContainerItem, OutputItem } from "@flow-state-dev/core/items";
 import { useContainerItems } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
 import {
@@ -8,62 +8,148 @@ import {
   ChevronRightIcon,
   Loader2Icon,
   RadioIcon,
+  SearchIcon,
+  LightbulbIcon,
+  ShieldAlertIcon,
 } from "lucide-react";
 import { useMemo } from "react";
 import Markdown from "react-markdown";
 import { useSessionItems } from "./session-items-context";
 
+/** An entry extracted from rb-entry component items emitted by appendEntry. */
+type BlackboardEntry = {
+  type: string;
+  topic: string;
+  body?: string;
+};
+
 /**
- * Actor contribution data emitted by reactive blackboard actor bodies.
- * Each actor emits a keyed component item after completing its analysis.
+ * Actor definition — maps entry types to the actor that produced them.
+ * The reactive chain is: request → observation (Explorer) → finding (Analyst) → challenge (Challenger).
  */
-type ActorContribution = {
-  actor: string;
-  role: string;
-  contribution: string;
+type ActorDef = {
+  label: string;
+  entryType: string;
+  color: string;
+  activeLabel: string;
+  icon: typeof SearchIcon;
 };
 
-const ACTOR_STYLES: Record<string, { label: string; color: string }> = {
-  explorer: { label: "Explorer", color: "text-blue-500" },
-  analyst: { label: "Analyst", color: "text-amber-500" },
-  challenger: { label: "Challenger", color: "text-rose-500" },
-};
-
-const EXPECTED_ROLES = ["explorer", "analyst", "challenger"];
+const ACTORS: ActorDef[] = [
+  {
+    label: "Explorer",
+    entryType: "observation",
+    color: "text-blue-500",
+    activeLabel: "Exploring...",
+    icon: SearchIcon,
+  },
+  {
+    label: "Analyst",
+    entryType: "finding",
+    color: "text-amber-500",
+    activeLabel: "Analyzing observations...",
+    icon: LightbulbIcon,
+  },
+  {
+    label: "Challenger",
+    entryType: "challenge",
+    color: "text-rose-500",
+    activeLabel: "Challenging findings...",
+    icon: ShieldAlertIcon,
+  },
+];
 
 /**
- * Container renderer for the reactive blackboard pattern. The mesh emit
- * sequencer creates a container with component "reactive-blackboard".
- * Each actor body emits a keyed "rb-actor" component item on completion.
- *
- * Differs from the controller-driven Blackboard:
- * - Shows parallel actors instead of sequential iterations
- * - No controller, no loop — actors fire independently
- * - Cyan color scheme vs. Blackboard's emerald
+ * Container renderer for the reactive blackboard pattern. Shows a
+ * chain-of-thought timeline grouped by actor — Explorer, Analyst,
+ * Challenger — with each actor's actual contributions visible.
  *
  * Register via:
  *   <FlowProvider renderers={{ container: { "reactive-blackboard": ReactiveBlackboard } }}>
  */
 export function ReactiveBlackboard({ item }: { item: ContainerItem }) {
   const allItems = useSessionItems();
-  const { componentsByKey } = useContainerItems(item, allItems);
+  const { items: ownedItems } = useContainerItems(item, allItems);
 
-  const contributions = useMemo(() => {
-    const result: Array<ActorContribution & { key: string }> = [];
-    for (const [key, data] of componentsByKey) {
-      if (data.role && data.contribution) {
-        result.push({ key, ...(data as unknown as ActorContribution) });
+  // Scope to this request — prevents stale entries from previous requests
+  // polluting the current view.
+  const requestId = (item as OutputItem & { requestId?: string }).requestId;
+
+  // Extract entries from rb-entry component items. Search owned items first,
+  // then fall back to scanning session items scoped to this request —
+  // ownedBy may not propagate through nested forEachBackground dispatches.
+  const entries = useMemo(() => {
+    const result: BlackboardEntry[] = [];
+    const hasOwnedEntries = ownedItems.some(
+      (i) => i.type === "component" && (i as ComponentItem).component === "rb-entry"
+    );
+    const source = hasOwnedEntries
+      ? ownedItems
+      : allItems.filter(
+          (i) => requestId && (i as OutputItem & { requestId?: string }).requestId === requestId
+        );
+
+    for (const i of source) {
+      if (i.type !== "component") continue;
+      const comp = i as ComponentItem;
+      if (comp.component !== "rb-entry") continue;
+      const { type, topic, body } = comp.data as Record<string, unknown>;
+      if (typeof type === "string" && typeof topic === "string") {
+        result.push({ type, topic, body: typeof body === "string" ? body : undefined });
       }
     }
     return result;
-  }, [componentsByKey]);
+  }, [ownedItems, allItems, requestId]);
+
+  // Collect tool call items for chain-of-thought display.
+  // Same fallback: owned items first, then request-scoped.
+  const toolCalls = useMemo(() => {
+    type ToolCallInfo = { name: string; query?: string };
+    const result: ToolCallInfo[] = [];
+    const hasOwnedTools = ownedItems.some((i) => i.type === "block_tool_output");
+    const source = hasOwnedTools
+      ? ownedItems
+      : allItems.filter(
+          (i) =>
+            requestId &&
+            (i as OutputItem & { requestId?: string }).requestId === requestId
+        );
+
+    for (const i of source) {
+      if (i.type !== "block_tool_output") continue;
+      const tool = i as import("@flow-state-dev/core/items").BlockToolOutputItem;
+      let query: string | undefined;
+      try {
+        const args = JSON.parse(tool.toolCall.arguments);
+        query = typeof args.query === "string" ? args.query : undefined;
+      } catch { /* ignore parse errors */ }
+      result.push({ name: tool.toolCall.name, query });
+    }
+    return result;
+  }, [ownedItems, allItems, requestId]);
 
   const isFinished = item.status === "completed";
-  const completedCount = contributions.length;
-  const expectedCount = EXPECTED_ROLES.length;
+
+  // Determine which actors have produced entries and which are active.
+  const actorStates = useMemo(() => {
+    return ACTORS.map((actor, i) => {
+      const actorEntries = entries.filter((e) => e.type === actor.entryType);
+      const hasEntries = actorEntries.length > 0;
+
+      // An actor is "active" if the container is running, this actor has no entries yet,
+      // and the previous actor has finished (has entries) — or it's the first actor.
+      const prevHasEntries = i === 0 || entries.some((e) => e.type === ACTORS[i - 1].entryType);
+      const isActive = !isFinished && !hasEntries && prevHasEntries;
+
+      return { ...actor, entries: actorEntries, hasEntries, isActive };
+    });
+  }, [entries, isFinished]);
+
+  const visibleActors = actorStates.filter((a) => a.hasEntries || a.isActive);
 
   return (
     <div className="not-prose my-2 rounded-md border bg-card p-3 text-card-foreground">
+      {/* Header */}
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <RadioIcon
@@ -71,7 +157,7 @@ export function ReactiveBlackboard({ item }: { item: ContainerItem }) {
             aria-hidden="true"
           />
           <p className="text-sm font-medium leading-snug">
-            Reactive Blackboard
+            Blackboard
           </p>
         </div>
         <span className="flex items-center gap-1 shrink-0 text-xs text-muted-foreground tabular-nums">
@@ -86,108 +172,135 @@ export function ReactiveBlackboard({ item }: { item: ContainerItem }) {
               aria-hidden="true"
             />
           )}
-          {completedCount}/{expectedCount} actors
+          {isFinished ? "complete" : "analyzing"}
         </span>
       </div>
 
-      <div className="space-y-1.5">
-        {EXPECTED_ROLES.map((role) => {
-          const entry = contributions.find((c) => c.role === role);
-          const style = ACTOR_STYLES[role] ?? {
-            label: role,
-            color: "text-muted-foreground",
-          };
-
-          if (!entry) {
-            return (
-              <div key={role} className="flex items-center gap-2">
-                <span
-                  className={cn(
-                    "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
-                    "bg-muted text-muted-foreground"
-                  )}
-                >
-                  {style.label}
+      {/* Chain of thought — per actor */}
+      <div className="space-y-2">
+        {/* Tool calls as chain-of-thought steps */}
+        {toolCalls.length > 0 && (
+          <div className="space-y-1">
+            {toolCalls.map((tc, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                { tc.name === 'search' ? 
+                  <SearchIcon className="h-3 w-3 shrink-0 text-muted-foreground/70" aria-hidden="true" /> : 
+                  <LightbulbIcon className="h-3 w-3 shrink-0 text-muted-foreground/70" aria-hidden="true" />
+                }
+                
+                <span className="text-xs text-muted-foreground">
+                  {tc.query ? `Search: "${tc.query}"` : tc.name}
                 </span>
-                {!isFinished && (
-                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground italic">
-                    <Loader2Icon
-                      className="h-2.5 w-2.5 animate-spin"
-                      aria-hidden="true"
-                    />
-                    analyzing...
-                  </span>
-                )}
               </div>
-            );
-          }
+            ))}
+          </div>
+        )}
 
-          return (
-            <ActorEntry
-              key={role}
-              label={style.label}
-              color={style.color}
-              text={entry.contribution}
-            />
-          );
-        })}
+        {visibleActors.length > 0
+          ? visibleActors.map((actor) => (
+              <ActorSection key={actor.entryType} actor={actor} />
+            ))
+          : !isFinished && (
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground italic">
+                <Loader2Icon
+                  className="h-3 w-3 animate-spin"
+                  aria-hidden="true"
+                />
+                Starting analysis...
+              </div>
+            )}
       </div>
     </div>
   );
 }
 
-function ActorEntry({
-  label,
-  color,
-  text,
+/**
+ * A single actor's section in the chain of thought. Shows the actor label,
+ * an active spinner while working, and collapsible contributions.
+ */
+function ActorSection({
+  actor,
 }: {
-  label: string;
-  color: string;
-  text: string;
+  actor: ActorDef & {
+    entries: BlackboardEntry[];
+    hasEntries: boolean;
+    isActive: boolean;
+  };
 }) {
-  const isLong = text.length > 120;
+  const Icon = actor.icon;
 
-  if (!isLong) {
+  if (actor.isActive && !actor.hasEntries) {
     return (
-      <div className="flex items-start gap-2">
-        <span
-          className={cn(
-            "mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
-            "bg-muted",
-            color
-          )}
-        >
-          {label}
-        </span>
-        <span className="text-xs leading-snug">
-          <EntryMarkdown text={text} />
+      <div className="flex items-center gap-1.5">
+        <Loader2Icon
+          className={cn("h-3 w-3 animate-spin", actor.color)}
+          aria-hidden="true"
+        />
+        <span className={cn("text-xs font-medium", actor.color)}>
+          {actor.activeLabel}
         </span>
       </div>
     );
   }
 
   return (
-    <details className="group">
-      <summary className="flex cursor-pointer list-none items-start gap-2">
-        <span
-          className={cn(
-            "mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium",
-            "bg-muted",
-            color
-          )}
-        >
-          {label}
+    <details className="group" open>
+      <summary className="flex cursor-pointer list-none items-center gap-1.5">
+        <Icon className={cn("h-3 w-3 shrink-0", actor.color)} aria-hidden="true" />
+        <span className={cn("text-xs font-medium", actor.color)}>
+          {actor.label}
         </span>
-        <span className="flex-1 truncate text-xs leading-snug text-muted-foreground">
-          {text.slice(0, 100)}...
+        <span className="text-[10px] text-muted-foreground">
+          {actor.entries.length} {actor.entries.length === 1 ? "entry" : "entries"}
         </span>
         <ChevronRightIcon
-          className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground/50 transition-transform group-open:rotate-90"
+          className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/50 transition-transform group-open:rotate-90"
           aria-hidden="true"
         />
       </summary>
-      <div className="mt-1.5 pl-5">
-        <EntryMarkdown text={text} />
+      <div className="mt-1 space-y-1 pl-[18px]">
+        {actor.entries.map((entry, i) => (
+          <EntryItem key={i} entry={entry} />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+/** A single entry contribution within an actor's section. */
+function EntryItem({ entry }: { entry: BlackboardEntry }) {
+  if (!entry.body) {
+    return (
+      <div className="text-xs text-muted-foreground">{entry.topic}</div>
+    );
+  }
+
+  const isShort = entry.body.length <= 150;
+
+  if (isShort) {
+    return (
+      <div className="text-xs leading-snug">
+        <span className="font-medium text-foreground/70">{entry.topic}</span>
+        <span className="text-muted-foreground"> — </span>
+        <span className="text-muted-foreground">{entry.body}</span>
+      </div>
+    );
+  }
+
+  return (
+    <details className="group/entry">
+      <summary className="flex cursor-pointer list-none items-start gap-1 text-xs leading-snug">
+        <span className="font-medium text-foreground/70">{entry.topic}</span>
+        <span className="flex-1 truncate text-muted-foreground">
+          — {entry.body.slice(0, 80)}...
+        </span>
+        <ChevronRightIcon
+          className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground/50 transition-transform group-open/entry:rotate-90"
+          aria-hidden="true"
+        />
+      </summary>
+      <div className="mt-1 pl-0">
+        <EntryMarkdown text={entry.body} />
       </div>
     </details>
   );
