@@ -1,5 +1,14 @@
-import type { BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockOutputItem, OutputItem, SequencerStateSnapshotItem } from "@flow-state-dev/core/items";
 import type { RequestGroup } from "@/components/workspace/stream-view";
+
+/** A single snapshot in a sequencer's state timeline. */
+export type StateSnapshot = {
+  stepName: string;
+  stepIndex: number;
+  state: unknown;
+  version: number;
+  ts: number;
+};
 
 export type TraceNode = {
   type: "request" | "block" | "item";
@@ -18,6 +27,8 @@ export type TraceNode = {
   item?: OutputItem;
   /** The lifecycle trace item for this block (used for detail panel on click). */
   traceItem?: OutputItem;
+  /** State snapshots for sequencer blocks, ordered by step execution. */
+  stateSnapshots?: StateSnapshot[];
   children: TraceNode[];
   isExpanded: boolean;
 };
@@ -55,6 +66,21 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
           isExpanded: isLast,
         };
         blockMap.set(prov.blockInstanceId, blockNode);
+      }
+
+      // Collect sequencer state snapshots into the block node.
+      if (item.type === "sequencer_state_snapshot") {
+        const snap = item as SequencerStateSnapshotItem;
+        if (!blockNode.stateSnapshots) blockNode.stateSnapshots = [];
+        blockNode.stateSnapshots.push({
+          stepName: snap.stepName,
+          stepIndex: snap.stepIndex,
+          state: snap.state,
+          version: snap.version,
+          ts: snap.ts,
+        });
+        // State snapshots are trace-only metadata — don't add as visible children.
+        continue;
       }
 
       // Extract metadata from block_output items into the block node header.

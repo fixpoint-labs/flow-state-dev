@@ -125,6 +125,60 @@ function getSequencerEmitterItemCount(response: unknown): number {
   return 0;
 }
 
+/**
+ * Emits a sequencer_state_snapshot item at step boundaries so the devtool
+ * can display the full state of a sequencer at each point in its execution.
+ *
+ * Only emits when state has actually changed since the last snapshot,
+ * avoiding redundant snapshots for steps that don't mutate state.
+ * When multiple steps run without changing state, the emitted snapshot
+ * records which step actually caused the change.
+ */
+async function emitSequencerStateSnapshot(
+  ctx: BlockContext,
+  stepName: string,
+  stepIndex: number,
+  lastStateJson: string | undefined
+): Promise<string | undefined> {
+  const seqRef = ctx.sequencer;
+  if (seqRef === undefined) return lastStateJson;
+
+  const currentStateJson = JSON.stringify(seqRef.state);
+
+  // Skip emission if state hasn't changed since the last snapshot.
+  if (lastStateJson !== undefined && currentStateJson === lastStateJson) {
+    return lastStateJson;
+  }
+
+  const item = {
+    id: `item_seq_state_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: "sequencer_state_snapshot" as const,
+    status: "completed" as const,
+    trace: true,
+    transient: true,
+    requestId: ctx.request.identity.id,
+    itemIndex: getSequencerEmitterItemCount(ctx.response),
+    provenance: {
+      blockName: seqRef.name,
+      blockInstanceId: seqRef.instanceId,
+      phase: "main" as const,
+      stepIndex,
+    },
+    ts: Date.now(),
+    sequencerName: seqRef.name,
+    sequencerInstanceId: seqRef.instanceId,
+    stepName,
+    stepIndex,
+    state: structuredClone(seqRef.state),
+    version: 0,
+  };
+
+  await ctx.response.emit({ type: "item.added", item });
+  await ctx.response.emit({ type: "item.done", item });
+
+  return currentStateJson;
+}
+
 /** Emit a block_output item with optional modelUsage for generator blocks run inside a sequencer. */
 async function emitGeneratorBlockOutput(
   block: BlockDefinition<any, any>,
@@ -318,6 +372,9 @@ function runSequencerOperations(
     const runtime = createRuntimeState();
     let currentValue: unknown = input;
 
+    // Emit initial state snapshot before any steps execute.
+    let lastStateJson = await emitSequencerStateSnapshot(ctx, "__initial__", -1, undefined);
+
     try {
       for (let index = 0; index < operations.length; index += 1) {
         const operation = operations[index];
@@ -325,6 +382,9 @@ function runSequencerOperations(
         const result = await operation.run(currentValue, ctx, runtime, index);
         currentValue = result.value;
 
+        // Emit state snapshot only if state changed since last snapshot.
+        lastStateJson = await emitSequencerStateSnapshot(ctx, operation.name, index, lastStateJson);
+        
         if (result.exit === true) {
           break;
         }

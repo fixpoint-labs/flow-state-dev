@@ -204,7 +204,7 @@ function TraceNodeView({
     const handleBlockClick = () => {
       toggleNode(node.id, isExpanded);
       if (node.traceItem) {
-        selectItem(node.traceItem.id, node.traceItem);
+        selectItem(node.traceItem.id, node.traceItem, node.stateSnapshots ?? undefined);
       }
     };
 
@@ -229,6 +229,14 @@ function TraceNodeView({
               title={traceError}
             >
               {traceError}
+            </span>
+          )}
+          {node.stateSnapshots && node.stateSnapshots.length > 0 && (
+            <span
+              className="text-[10px] font-mono text-amber-500/70 px-1 rounded border border-amber-800/40"
+              title={`${node.stateSnapshots.length} state snapshot${node.stateSnapshots.length === 1 ? "" : "s"}`}
+            >
+              S
             </span>
           )}
           {node.blockStatus && <StatusBadge status={node.blockStatus} />}
@@ -298,6 +306,7 @@ function getItemIcon(type: string): string {
     block_tool_output: "{}",
     router_decision: "🔀",
     source: "🔗",
+    sequencer_state_snapshot: "📊",
   };
   return icons[type] ?? "?";
 }
@@ -340,6 +349,8 @@ function getItemPreview(item: OutputItem): string {
       return `${item.routerName} → ${item.selectedRoute}`;
     case "source":
       return (item as any).title ?? (item as any).url ?? "source";
+    case "sequencer_state_snapshot":
+      return `${(item as any).sequencerName} → ${(item as any).stepName === "__initial__" ? "init" : (item as any).stepName}`;
     default:
       return "";
   }
