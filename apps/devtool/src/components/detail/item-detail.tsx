@@ -17,10 +17,11 @@ import { useSelection } from "@/context/selection-context";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { JsonViewer } from "@/components/shared/json-viewer";
 import { EmptyState } from "@/components/shared/empty-state";
+import { SequencerStateSection } from "@/components/detail/sequencer-state-panel";
 import { safeParseJson } from "@/lib/utils";
 
 export function ItemDetail() {
-  const { selectedItem } = useSelection();
+  const { selectedItem, selectedStateSnapshots } = useSelection();
 
   if (!selectedItem) {
     return (
@@ -28,13 +29,16 @@ export function ItemDetail() {
     );
   }
 
-  return <ItemDetailContent item={selectedItem} />;
+  return <ItemDetailContent item={selectedItem} stateSnapshots={selectedStateSnapshots} />;
 }
 
-function ItemDetailContent({ item }: { item: OutputItem }) {
+function ItemDetailContent({ item, stateSnapshots }: { item: OutputItem; stateSnapshots: import("@/lib/trace-tree").StateSnapshot[] | null }) {
   const handleCopy = () => {
     void navigator.clipboard.writeText(JSON.stringify(item, null, 2));
   };
+
+  const isSequencerBlock =
+    item.type === "block_output" && item.blockKind === "sequencer";
 
   return (
     <div className="space-y-3 text-xs">
@@ -51,6 +55,11 @@ function ItemDetailContent({ item }: { item: OutputItem }) {
 
       {/* Type-specific content */}
       <ItemTypeDetail item={item} />
+
+      {/* Sequencer state inspector — shown for sequencer blocks with state */}
+      {isSequencerBlock && stateSnapshots && stateSnapshots.length > 0 && (
+        <SequencerStateSection snapshots={stateSnapshots} />
+      )}
 
       {/* Provenance (collapsible) */}
       <CollapsibleSection title="Provenance" defaultOpen={false}>
@@ -107,6 +116,8 @@ function ItemTypeDetail({ item }: { item: OutputItem }) {
       return <RouterDecisionDetail item={item} />;
     case "source":
       return <SourceDetail item={item} />;
+    case "sequencer_state_snapshot":
+      return <SequencerStateSnapshotDetail item={item} />;
     default:
       return <JsonViewer data={item} />;
   }
@@ -334,6 +345,20 @@ function SourceDetail({ item }: { item: OutputItem & { type: "source" } }) {
   );
 }
 
+function SequencerStateSnapshotDetail({ item }: { item: OutputItem & { type: "sequencer_state_snapshot" } }) {
+  return (
+    <div className="space-y-2">
+      <MetadataRow label="Sequencer" value={item.sequencerName} mono />
+      <MetadataRow label="Step" value={item.stepName === "__initial__" ? "initial" : item.stepName} />
+      <MetadataRow label="Step Index" value={item.stepIndex === -1 ? "initial" : String(item.stepIndex)} />
+      <MetadataRow label="Version" value={String(item.version)} />
+      <CollapsibleSection title="State" defaultOpen>
+        <JsonViewer data={item.state} />
+      </CollapsibleSection>
+    </div>
+  );
+}
+
 /* --- Shared components --- */
 
 function TypePill({ type }: { type: string }) {
@@ -352,6 +377,7 @@ function TypePill({ type }: { type: string }) {
     block_tool_output: "text-purple-400 border-purple-800/50",
     router_decision: "text-orange-400 border-orange-800/50",
     source: "text-blue-400 border-blue-800/50",
+    sequencer_state_snapshot: "text-amber-500 border-amber-800/50",
   };
   return (
     <span className={`text-[10px] font-mono px-1.5 py-0 rounded border ${colors[type] ?? "text-slate-500 border-slate-700"}`}>

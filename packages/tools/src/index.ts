@@ -9,8 +9,10 @@ export { search } from "./search";
 export {
   tavilySearch,
   exaSearch,
+  perplexitySearch,
   serperSearch,
   braveSearch,
+  perplexitySonarSearch,
 } from "./search";
 
 export { fetch } from "./fetch";

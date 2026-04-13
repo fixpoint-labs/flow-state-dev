@@ -37,6 +37,13 @@ import {
   handlePatchSessionMetadata
 } from "./session-routes";
 import { handleGetSessionState } from "./state-routes";
+import {
+  handleGetResourceContent,
+  handleGetCollectionItemContent,
+  handleCreateCollectionItem,
+  handleUpdateResourceContent,
+  handleDeleteCollectionItem
+} from "./resource-routes";
 import { handleRequestStream, handleTranscribe } from "./stream-routes";
 
 export type RequestContext = {
@@ -135,7 +142,8 @@ function resolveStores(partial: Partial<StoreRegistry> | undefined): StoreRegist
     request: partial?.request ?? fallback.request,
     user: partial?.user ?? fallback.user,
     project: partial?.project ?? fallback.project,
-    activeRequests: partial?.activeRequests ?? fallback.activeRequests
+    activeRequests: partial?.activeRequests ?? fallback.activeRequests,
+    content: partial?.content ?? fallback.content
   };
 }
 
@@ -312,6 +320,41 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       if (route.kind === "active_requests") {
         return await handleListActiveRequests(request, {
+          registry: options.registry,
+          stores
+        });
+      }
+
+      if (route.kind === "get_resource_content") {
+        return await handleGetResourceContent(request, route, {
+          registry: options.registry,
+          stores
+        });
+      }
+
+      if (route.kind === "get_collection_item_content") {
+        return await handleGetCollectionItemContent(request, route, {
+          registry: options.registry,
+          stores
+        });
+      }
+
+      if (route.kind === "create_collection_item") {
+        return await handleCreateCollectionItem(request, route, {
+          registry: options.registry,
+          stores
+        });
+      }
+
+      if (route.kind === "update_resource_content") {
+        return await handleUpdateResourceContent(request, route, {
+          registry: options.registry,
+          stores
+        });
+      }
+
+      if (route.kind === "delete_collection_item") {
+        return await handleDeleteCollectionItem(request, route, {
           registry: options.registry,
           stores
         });

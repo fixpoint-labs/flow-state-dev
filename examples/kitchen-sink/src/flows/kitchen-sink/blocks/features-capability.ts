@@ -14,15 +14,22 @@
  */
 import { defineCapability } from "@flow-state-dev/core";
 import { createBashCapability } from "@flow-state-dev/tools/bash";
+import { search } from "@flow-state-dev/tools/search";
+import { fetch } from "@flow-state-dev/tools/fetch";
+import { crawl } from "@flow-state-dev/tools/crawl";
 import { z } from "zod";
-import { artifactResources, featuresSchema } from "../schemas";
-import { artifactsCapability } from "./artifact-capability";
-import { readArtifact, updateArtifact } from "./artifacts";
+import { featuresSchema } from "../schemas";
+import { artifactResources, artifactsCapability } from "./artifacts";
 import path from "node:path";
 
 const featuresSessionStateSchema = z.object({
   features: featuresSchema.default({}),
 });
+
+// Web tools — instantiated once, included conditionally by the features cap.
+const searchTool = search();
+const fetchTool = fetch();
+const crawlTool = crawl();
 
 // Bash capability — tools, guidance, and resource declarations for the
 // sandboxed bash workspace. Configured with full network access.
@@ -49,7 +56,7 @@ export const bashCap = createBashCapability({
  *   - bashCap — included only when the bash feature is enabled
  *
  * Presets:
- *   - tools: provides readArtifact/updateArtifact only when bash is disabled
+ *   - tools: artifact tools (when bash disabled) + web tools (search/fetch/crawl)
  */
 export const featuresCapability = defineCapability({
   name: "features",
@@ -59,16 +66,22 @@ export const featuresCapability = defineCapability({
     // Conditionally include bash or artifact tools based on session feature flags
     (ctx) =>
       ctx.session.state.features.bashTool
-        ? [bashCap, artifactsCapability.presets({ tools: false })]
+        ? [bashCap, artifactsCapability.presets({ inventory: true, tools: false })]
         : [artifactsCapability],
   ],
 
   presets: {
     tools: {
-      // When bash is disabled, provide artifact read/update tools + usage guidance
       tools: (ctx) => {
-        if (ctx.session.state.features.bashTool) return [];
-        return [readArtifact, updateArtifact];
+        const { features } = ctx.session.state;
+        const tools: any[] = [];
+
+        // Web tools — each gated by its feature flag
+        if (features.search) tools.push(searchTool);
+        if (features.fetch) tools.push(fetchTool);
+        if (features.crawl) tools.push(crawlTool);
+
+        return tools;
       },
       context: [
         (_input, ctx) => {

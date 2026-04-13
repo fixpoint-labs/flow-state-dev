@@ -45,6 +45,7 @@ const sidebars: SidebarsConfig = {
         "resources/overview",
         "resources/storage",
         "resources/collections",
+        "resources/client-access",
       ],
     },
     {

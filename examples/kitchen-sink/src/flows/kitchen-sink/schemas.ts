@@ -1,4 +1,3 @@
-import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
 
 // Shared domain schemas for the kitchen-sink flow.
@@ -9,25 +8,7 @@ export const modeSchema = z.enum(["chat", "create"]).default("chat");
 export const featuresSchema = z.object({
   biasCheck: z.boolean().default(false),
   bashTool: z.boolean().default(true),
+  search: z.boolean().default(true),
+  fetch: z.boolean().default(true),
+  crawl: z.boolean().default(false),
 });
-
-// Per-instance state for an artifact resource. State tracks metadata only —
-// the document body is stored as resource content via writeContent/readContent.
-// The summary field is populated by a background .work() block after each update.
-export const artifactStateSchema = z.object({
-  title: z.string(),
-  summary: z.string().default(""),
-  updatedAt: z.number()
-});
-
-// Resource collection for artifacts. Each artifact is a separate resource
-// instance keyed by its ID (e.g., "artifacts/my-doc"). Metadata lives in
-// state, the document body lives in resource content.
-export const artifactsCollection = defineResourceCollection({
-  pattern: "artifacts/**",
-  stateSchema: artifactStateSchema,
-});
-
-export const artifactResources = {
-  artifacts: artifactsCollection,
-};

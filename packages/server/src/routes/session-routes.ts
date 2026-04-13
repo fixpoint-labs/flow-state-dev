@@ -120,6 +120,9 @@ export async function handleDeleteSession(
     });
   }
 
+  // Delete content first — if this fails, the session record still exists
+  // and the operation can be retried. The reverse (orphaned content) is a leak.
+  await ctx.stores.content.deleteAll("session", route.sessionId);
   await ctx.stores.session.delete(route.sessionId);
   return emptyResponse(204);
 }

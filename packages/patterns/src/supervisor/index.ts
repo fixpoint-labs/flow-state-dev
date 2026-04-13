@@ -10,7 +10,7 @@
  * feedback loop powered by `.loopBack()` and sequencer `stateSchema`.
  */
 import { sequencer, handler, generator } from "@flow-state-dev/core";
-import { emitPlanSnapshot } from "../shared/plan";
+import { emitPlanMeta, emitTaskUpdate } from "../shared/plan";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import type { GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
@@ -152,11 +152,19 @@ export const updatePlanState = handler({
     });
 
     const updatedState = ctx.sequencer!.state;
-    emitPlanSnapshot(ctx, {
+    emitPlanMeta(ctx, {
       goal: updatedState.goal,
-      tasks: updatedState.plan,
+      taskOrder: updatedState.plan.map((t) => t.id),
+      taskGoals: Object.fromEntries(updatedState.plan.map((t) => [t.id, t.goal])),
       iteration: updatedState.iteration,
     });
+    for (const t of newPlan) {
+      emitTaskUpdate(ctx, {
+        id: t.id,
+        goal: t.goal,
+        status: t.status,
+      });
+    }
 
     // On re-plan, include feedback from prior iterations so workers know what was wrong
     return newPlan.map((t) => {
@@ -207,12 +215,20 @@ export const applyReview = handler({
       acceptedResults: newAccepted,
       plan: updatedPlan,
     });
-    const finalState = ctx.sequencer!.state;
-    emitPlanSnapshot(ctx, {
-      goal: finalState.goal,
-      tasks: finalState.plan,
-      iteration: finalState.iteration,
-    });
+    // Emit only the tasks whose status changed during review
+    for (const task of updatedPlan) {
+      const assessment = input.assessments.find((a) => a.taskId === task.id);
+      if (assessment) {
+        emitTaskUpdate(ctx, {
+          id: task.id,
+          goal: task.goal,
+          status: task.status,
+          result: task.result,
+          error: task.error,
+          assignee: task.assignee,
+        });
+      }
+    }
     return { needsReplanning: input.needsReplanning };
   },
 });
@@ -311,7 +327,7 @@ function buildDefaultReviewer(
     ]
       .filter(Boolean)
       .join("\n"),
-    emit: { messages: false, reasoning: false },
+    emit: { messages: true, reasoning: false },
     user: (input) =>
       typeof input === "string" ? input : JSON.stringify(input),
   });
@@ -447,11 +463,20 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       });
 
       const updatedState = ctx.sequencer!.state;
-      emitPlanSnapshot(ctx, {
+      emitPlanMeta(ctx, {
         goal: updatedState.goal,
-        tasks: updatedState.plan,
+        taskOrder: updatedState.plan.map((t) => t.id),
+        taskGoals: Object.fromEntries(updatedState.plan.map((t) => [t.id, t.goal])),
         iteration: updatedState.iteration,
       }, { key: name });
+      for (const t of newPlan) {
+        emitTaskUpdate(ctx, {
+          id: t.id,
+          goal: t.goal,
+          status: t.status,
+          ...(t.assignee ? { assignee: t.assignee } : {}),
+        }, { key: name });
+      }
 
       return newPlan.map((t) => {
         const prior = state.plan.find((p) => p.id === t.id);
@@ -496,12 +521,32 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         acceptedResults: newAccepted,
         plan: updatedPlan,
       });
-      const finalState = ctx.sequencer!.state;
-      emitPlanSnapshot(ctx, {
-        goal: finalState.goal,
-        tasks: finalState.plan,
-        iteration: finalState.iteration,
+      // Emit each reviewed task with its verdict and feedback
+      for (const task of updatedPlan) {
+        const assessment = input.assessments.find((a) => a.taskId === task.id);
+        if (assessment) {
+          emitTaskUpdate(ctx, {
+            id: task.id,
+            goal: task.goal,
+            status: task.status,
+            result: task.result,
+            error: task.error,
+            feedback: assessment.feedback,
+            assignee: task.assignee,
+          }, { key: name });
+        }
+      }
+
+      // Signal plan-level status so the client sees replanning vs completion
+      const updatedState = ctx.sequencer!.state;
+      emitPlanMeta(ctx, {
+        goal: updatedState.goal,
+        taskOrder: updatedState.plan.map((t) => t.id),
+        taskGoals: Object.fromEntries(updatedState.plan.map((t) => [t.id, t.goal])),
+        status: input.needsReplanning ? "replanning" : "completed",
+        iteration: updatedState.iteration,
       }, { key: name });
+
       return { needsReplanning: input.needsReplanning };
     },
   });
@@ -515,8 +560,18 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     sequencerStateSchema: supervisorStateSchema,
     execute: async (results: unknown[], ctx) => {
       const state = ctx.sequencer!.state;
+
+      // Signal "reviewing" so the client sees the transition
+      emitPlanMeta(ctx, {
+        goal: state.goal,
+        taskOrder: state.plan.map((t) => t.id),
+        taskGoals: Object.fromEntries(state.plan.map((t) => [t.id, t.goal])),
+        status: "reviewing",
+        iteration: state.iteration,
+      }, { key: name });
+
       return state.plan
-        .filter((t) => t.status === "awaiting-review" && t.result !== undefined)
+        .filter((t) => t.status === "awaiting-review" && t.result !== undefined && t.result !== "")
         .map((t) => ({ taskId: t.id, goal: t.goal, result: t.result }));
     },
   });
@@ -546,6 +601,21 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
                 : t
             )
           );
+        } else if (result === undefined || result === null || result === "") {
+          // Worker completed but produced no substantive output (e.g. it used
+          // tools to write to files instead of returning text). Mark as
+          // needs-revision so the planner re-dispatches with clearer instructions.
+          const emptyMsg = "Worker produced no output. Ensure the task result is returned as text, not written to external files.";
+          ctx.emitStatus(
+            `[supervisor:${name}] empty result for task "${task.id}"`
+          );
+          await ctx.sequencer!.patchState("plan", (currentPlan) =>
+            currentPlan.map((t) =>
+              t.id === task.id
+                ? { ...t, status: "needs-revision" as const, feedback: emptyMsg }
+                : t
+            )
+          );
         } else {
           await ctx.sequencer!.patchState("plan", (currentPlan) =>
             currentPlan.map((t) =>
@@ -556,11 +626,18 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
           );
         }
         const updatedState = ctx.sequencer!.state;
-        emitPlanSnapshot(ctx, {
-          goal: updatedState.goal,
-          tasks: updatedState.plan,
-          iteration: updatedState.iteration,
-        }, { key: name });
+        const updatedTask = updatedState.plan.find((t) => t.id === task.id);
+        if (updatedTask) {
+          emitTaskUpdate(ctx, {
+            id: updatedTask.id,
+            goal: updatedTask.goal,
+            status: updatedTask.status,
+            result: updatedTask.result,
+            error: updatedTask.error,
+            feedback: updatedTask.feedback,
+            assignee: updatedTask.assignee,
+          }, { key: name });
+        }
         return result;
       },
     });
@@ -594,7 +671,18 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     // Pass the goal and accepted results to the synthesizer so it has
     // context for producing a coherent final output.
     .map((_value, ctx) => {
-      const state = ctx.sequencer!.state;
+      const state = ctx.sequencer!.state as SupervisorState;
+
+      // Emit final "completed" plan-meta so the UI stops showing
+      // "Replanning..." when the loop exits (either naturally or at maxIterations).
+      emitPlanMeta(ctx, {
+        goal: state.goal,
+        taskOrder: state.plan.map((t) => t.id),
+        taskGoals: Object.fromEntries(state.plan.map((t) => [t.id, t.goal])),
+        status: "completed",
+        iteration: state.iteration,
+      }, { key: name });
+
       return { goal: state.goal, results: state.acceptedResults };
     })
     .then(finalSynthesizer);

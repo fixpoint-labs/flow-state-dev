@@ -22,9 +22,14 @@ Conflict rule: `preperation/architecture/*` wins.
 - Generator provider boundary: Vercel AI SDK in Phase 1
 - `@flow-state-dev/client` required; `@flow-state-dev/react` wraps client (no transport logic)
 
-## Sequencer Surface (16 methods)
+## Sequencer Surface (20 methods)
 
-`then`, `thenIf`, `map`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `loopBack`, `work`, `background`, `waitForWork`, `tap`, `tapIf`, `rescue`, `branch`
+`then`, `thenIf`, `map`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `loopBack`, `work`, `background`, `waitForWork`, `tap`, `tapIf`, `rescue`, `branch`, `thenAll`, `thenAny`, `race`, `exitIf`
+
+- `.thenAll([...blocks])`: run array of blocks concurrently, collect all results as ordered array (like `Promise.all`)
+- `.thenAny([...blocks])`: try blocks sequentially in order, return first successful result; throws `AggregateError` if all fail
+- `.race([...blocks])`: run blocks concurrently, return first successful result, abort the rest; throws `AggregateError` if all fail
+- `.exitIf(condition)`: break out of sequencer chain early when condition is true; auto-await of background work still runs
 
 - `.work(...)` / `.background(...)`: non-aborting by default (`.background()` is an alias for `.work()`)
 - `.forEachBackground(...)`: fire-and-forget fan-out; dispatches each iteration as background work with configurable concurrency (default 16)

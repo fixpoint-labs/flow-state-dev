@@ -279,4 +279,113 @@ describe("buildTraceTree", () => {
 
     expect(blockNode.blockDuration).toBe(2500);
   });
+
+  it("collects sequencer_state_snapshot items into stateSnapshots", () => {
+    const items = [
+      makeItem({
+        id: "snap-init",
+        type: "sequencer_state_snapshot",
+        trace: true,
+        transient: true,
+        provenance: makeProvenance("research", "seq-inst"),
+        sequencerName: "research",
+        sequencerInstanceId: "seq-inst",
+        stepName: "__initial__",
+        stepIndex: -1,
+        state: { progress: 0, phase: "planning" },
+        version: 0,
+      } as Partial<OutputItem> & { id: string; type: string }),
+      makeItem({
+        id: "msg-1",
+        type: "message",
+        provenance: makeProvenance("research", "seq-inst"),
+        role: "assistant",
+        content: [{ type: "output_text", text: "hello" }],
+      } as Partial<OutputItem> & { id: string; type: string }),
+      makeItem({
+        id: "snap-step0",
+        type: "sequencer_state_snapshot",
+        trace: true,
+        transient: true,
+        ts: 2000,
+        provenance: makeProvenance("research", "seq-inst"),
+        sequencerName: "research",
+        sequencerInstanceId: "seq-inst",
+        stepName: "analyze",
+        stepIndex: 0,
+        state: { progress: 50, phase: "analyzing" },
+        version: 1,
+      } as Partial<OutputItem> & { id: string; type: string }),
+      makeItem({
+        id: "snap-step1",
+        type: "sequencer_state_snapshot",
+        trace: true,
+        transient: true,
+        ts: 3000,
+        provenance: makeProvenance("research", "seq-inst"),
+        sequencerName: "research",
+        sequencerInstanceId: "seq-inst",
+        stepName: "summarize",
+        stepIndex: 1,
+        state: { progress: 100, phase: "done" },
+        version: 2,
+      } as Partial<OutputItem> & { id: string; type: string }),
+    ];
+
+    const tree = buildTraceTree([makeGroup({ items })]);
+    const blockNode = tree[0].children[0];
+
+    expect(blockNode.blockName).toBe("research");
+    expect(blockNode.stateSnapshots).toBeDefined();
+    expect(blockNode.stateSnapshots).toHaveLength(3);
+    expect(blockNode.stateSnapshots![0].stepName).toBe("__initial__");
+    expect(blockNode.stateSnapshots![0].state).toEqual({ progress: 0, phase: "planning" });
+    expect(blockNode.stateSnapshots![1].stepName).toBe("analyze");
+    expect(blockNode.stateSnapshots![1].state).toEqual({ progress: 50, phase: "analyzing" });
+    expect(blockNode.stateSnapshots![2].stepName).toBe("summarize");
+    expect(blockNode.stateSnapshots![2].state).toEqual({ progress: 100, phase: "done" });
+
+    // Snapshots should not appear as visible item children.
+    const itemChildren = blockNode.children.filter((c) => c.type === "item");
+    expect(itemChildren).toHaveLength(1);
+    expect(itemChildren[0].item!.type).toBe("message");
+  });
+
+  it("handles nested sequencer state snapshots independently", () => {
+    const items = [
+      makeItem({
+        id: "parent-snap",
+        type: "sequencer_state_snapshot",
+        trace: true,
+        provenance: makeProvenance("outer", "outer-inst"),
+        sequencerName: "outer",
+        sequencerInstanceId: "outer-inst",
+        stepName: "__initial__",
+        stepIndex: -1,
+        state: { count: 0 },
+        version: 0,
+      } as Partial<OutputItem> & { id: string; type: string }),
+      makeItem({
+        id: "child-snap",
+        type: "sequencer_state_snapshot",
+        trace: true,
+        provenance: makeProvenance("inner", "inner-inst", "outer-inst"),
+        sequencerName: "inner",
+        sequencerInstanceId: "inner-inst",
+        stepName: "__initial__",
+        stepIndex: -1,
+        state: { value: "hello" },
+        version: 0,
+      } as Partial<OutputItem> & { id: string; type: string }),
+    ];
+
+    const tree = buildTraceTree([makeGroup({ items })]);
+    const outerBlock = tree[0].children.find((n) => n.blockName === "outer");
+    const innerBlock = outerBlock?.children.find((n) => n.blockName === "inner");
+
+    expect(outerBlock?.stateSnapshots).toHaveLength(1);
+    expect(outerBlock?.stateSnapshots![0].state).toEqual({ count: 0 });
+    expect(innerBlock?.stateSnapshots).toHaveLength(1);
+    expect(innerBlock?.stateSnapshots![0].state).toEqual({ value: "hello" });
+  });
 });

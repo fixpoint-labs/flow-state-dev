@@ -6,7 +6,7 @@
  * and sync changes back after mutations, so workspace files persist as artifacts.
  */
 import { createBashBlocks } from "@flow-state-dev/tools/bash";
-import { artifactResources } from "../schemas";
+import { artifactResources } from "./artifacts";
 import path from "node:path";
 
 export const { bashCommand, bashReadFile, bashWriteFile } = createBashBlocks({

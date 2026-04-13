@@ -16,7 +16,7 @@ pnpm test:watch   # Watch mode
 
 This example uses `defineCapability()` to bundle related resources, context formatters, and tools into reusable units.
 
-- **`artifactsCapability`** (`blocks/artifact-capability.ts`) — artifact resources + inventory context + read/write tools.
+- **`artifactsCapability`** (`blocks/artifacts.ts`) — artifact resources + inventory context + read/write tools.
 - **`featuresCapability`** (`blocks/features-capability.ts`) — feature-flag-gated tool selection. Conditionally includes `bashCapability` (from `@flow-state-dev/tools/bash`) when the bash feature is enabled. When bash is available, it replaces `readArtifact`/`updateArtifact` as the single artifact creation path.
 - **`bashCapability`** (framework: `createBashCapability()` from `@flow-state-dev/tools/bash`) — bash tool blocks + environment-aware context guidance. Adapts prompt based on provider config (network access, python, just-bash vs local).
 

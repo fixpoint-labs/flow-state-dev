@@ -30,6 +30,7 @@ export function SessionSidebar({
       <div className="p-3">
         <Button
           variant="outline"
+          size="sm"
           className="w-full justify-start gap-2"
           onClick={onNewChat}
           disabled={isLoading}
@@ -46,7 +47,7 @@ export function SessionSidebar({
               key={session.id}
               onClick={() => onSelectSession(session.id)}
               className={cn(
-                "flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent",
+                "flex items-center gap-2 rounded-md px-3 py-2 text-left text-xs transition-colors hover:bg-accent",
                 session.id === activeSessionId &&
                   "bg-accent text-accent-foreground font-medium"
               )}

@@ -7,6 +7,16 @@ const sidebars: SidebarsConfig = {
     "nextjs-setup",
     "development-tips",
     "building-agents",
+    {
+      type: "category",
+      label: "Deployment",
+      items: [
+        "deployment",
+        "deploying-to-vercel",
+        "deploying-to-railway",
+        "deploying-with-docker",
+      ],
+    },
   ],
 };
 

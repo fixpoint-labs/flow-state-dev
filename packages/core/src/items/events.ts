@@ -76,6 +76,39 @@ export type UserResourceChangedEvent = UserEventBase & {
 
 export type ResourceChangedEvent = RequestResourceChangedEvent | UserResourceChangedEvent;
 
+/**
+ * Pushed to clients that have fetched a resource's content when its content is updated.
+ * Only sent to clients with active content subscriptions (inferred from prior GET calls).
+ */
+export type ResourceContentUpdatedEvent = UserEventBase & {
+  type: "resource.content.updated";
+  scope: "session" | "user" | "project";
+  ref: string;
+  topic?: string;
+  content: string;
+};
+
+/**
+ * Pushed to subscribed clients when a new collection item is created.
+ * Does not include content — the client fetches if interested.
+ */
+export type ResourceContentCreatedEvent = UserEventBase & {
+  type: "resource.content.created";
+  scope: "session" | "user" | "project";
+  ref: string;
+  topic: string;
+};
+
+/**
+ * Pushed to subscribed clients when a collection item is deleted.
+ */
+export type ResourceContentDeletedEvent = UserEventBase & {
+  type: "resource.content.deleted";
+  scope: "session" | "user" | "project";
+  ref: string;
+  topic: string;
+};
+
 export type ScopeStateChangedEvent = UserEventBase & {
   type: "scope.state.changed";
   scope: "session" | "user" | "project";
@@ -131,6 +164,9 @@ export type RequestStreamEvent =
 
 export type UserStreamEvent =
   | UserResourceChangedEvent
+  | ResourceContentUpdatedEvent
+  | ResourceContentCreatedEvent
+  | ResourceContentDeletedEvent
   | ScopeStateChangedEvent
   | UserDebugEvent
   | UserPingEvent;
