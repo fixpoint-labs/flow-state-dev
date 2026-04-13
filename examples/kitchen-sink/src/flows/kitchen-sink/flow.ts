@@ -19,7 +19,7 @@ import {
   utility,
   selectModel,
 } from "@flow-state-dev/core";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+
 import { system as memorySystem } from "@thought-fabric/core/memory";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
@@ -36,8 +36,9 @@ import {
   thinkingStyleSchema,
   thinkingStyleSessionStateSchema,
   featuresCapability,
+  artifactResources,
 } from "./blocks";
-import { modeSchema, featuresSchema, artifactResources } from "./schemas";
+import { modeSchema, featuresSchema } from "./schemas";
 import { CHAT_PROMPT, CREATE_PROMPT } from "./prompts";
 
 // ---------------------------------------------------------------------------
@@ -344,28 +345,6 @@ const kitchenSinkFlow = defineFlow({
     stateSchema: sessionStateSchema,
     resources: { ...artifactResources, ...mem.sessionResources },
     clientData: {
-      artifacts: async (ctx) => {
-        const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<{
-          title: string;
-          summary: string;
-          extension?: string;
-          updatedAt: number;
-        }>;
-        const instances = artifacts.list();
-        return Promise.all(
-          instances.map(async (ref) => {
-            const content = (await ref.readContent()) ?? "";
-            return {
-              id: ref.name.replace("artifacts/", ""),
-              title: ref.state.title ?? "Untitled",
-              summary: ref.state.summary ?? "",
-              extension: ref.state.extension ?? null,
-              content,
-              updatedAt: ref.state.updatedAt,
-            };
-          }),
-        );
-      },
       modeStatus: (ctx) => ({
         currentMode: modeSchema.parse(ctx.state.mode ?? "chat"),
         thinkingStyle:

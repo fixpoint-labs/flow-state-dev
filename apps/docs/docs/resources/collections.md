@@ -168,3 +168,7 @@ The deciding factors:
 - **Pattern-based organization** — instances naturally fit a path structure
 
 If the set is bounded and predictable (three artifact slots), a static resource with an array or record in its state is simpler. Collections add value when the set is dynamic and potentially large.
+
+## Exposing collections to clients
+
+Collections can declare a `client` config to make their items visible to the frontend. This gives you React hooks for listing items, lazy-loading content, and performing CRUD operations. See [Client Access](/docs/resources/client-access) for the full reference.

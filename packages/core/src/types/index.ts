@@ -76,9 +76,14 @@ export type {
 } from "./model";
 
 export type {
+  CollectionClientConfig,
+  CollectionClientContentConfig,
   ContextOf,
   DefinedResource,
   MessageLike,
+  ResourceClientConfig,
+  ResourceClientContentConfig,
+  ResourceClientDataFn,
   ResourceConfig,
   ResourceContext,
   AnyResourceRef,

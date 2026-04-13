@@ -17,6 +17,11 @@ export type ParsedFlowRoute =
   | { kind: "transcribe" }
   | { kind: "retry_request"; flowKind: string; sessionId: string; requestId: string }
   | { kind: "active_requests" }
+  | { kind: "get_resource_content"; sessionId: string; ref: string }
+  | { kind: "get_collection_item_content"; sessionId: string; ref: string; topic: string }
+  | { kind: "create_collection_item"; sessionId: string; ref: string }
+  | { kind: "update_resource_content"; sessionId: string; ref: string; topic: string }
+  | { kind: "delete_collection_item"; sessionId: string; ref: string; topic: string }
   | { kind: "not_found" };
 
 function cleanSegments(path: string[] | undefined): string[] {
@@ -210,6 +215,82 @@ export function parseFlowRoute(
     segments[0] === "active-requests"
   ) {
     return { kind: "active_requests" };
+  }
+
+  // GET /api/flows/sessions/:sessionId/resources/:ref/content
+  if (
+    normalizedMethod === "GET" &&
+    segments.length === 5 &&
+    segments[0] === "sessions" &&
+    segments[2] === "resources" &&
+    segments[4] === "content"
+  ) {
+    return {
+      kind: "get_resource_content",
+      sessionId: segments[1],
+      ref: segments[3]
+    };
+  }
+
+  // GET /api/flows/sessions/:sessionId/resources/:ref/:topic/content
+  if (
+    normalizedMethod === "GET" &&
+    segments.length === 6 &&
+    segments[0] === "sessions" &&
+    segments[2] === "resources" &&
+    segments[5] === "content"
+  ) {
+    return {
+      kind: "get_collection_item_content",
+      sessionId: segments[1],
+      ref: segments[3],
+      topic: segments[4]
+    };
+  }
+
+  // POST /api/flows/sessions/:sessionId/resources/:ref (create collection item)
+  if (
+    normalizedMethod === "POST" &&
+    segments.length === 4 &&
+    segments[0] === "sessions" &&
+    segments[2] === "resources"
+  ) {
+    return {
+      kind: "create_collection_item",
+      sessionId: segments[1],
+      ref: segments[3]
+    };
+  }
+
+  // PATCH /api/flows/sessions/:sessionId/resources/:ref/:topic/content
+  if (
+    normalizedMethod === "PATCH" &&
+    segments.length === 6 &&
+    segments[0] === "sessions" &&
+    segments[2] === "resources" &&
+    segments[5] === "content"
+  ) {
+    return {
+      kind: "update_resource_content",
+      sessionId: segments[1],
+      ref: segments[3],
+      topic: segments[4]
+    };
+  }
+
+  // DELETE /api/flows/sessions/:sessionId/resources/:ref/:topic
+  if (
+    normalizedMethod === "DELETE" &&
+    segments.length === 5 &&
+    segments[0] === "sessions" &&
+    segments[2] === "resources"
+  ) {
+    return {
+      kind: "delete_collection_item",
+      sessionId: segments[1],
+      ref: segments[3],
+      topic: segments[4]
+    };
   }
 
   return { kind: "not_found" };

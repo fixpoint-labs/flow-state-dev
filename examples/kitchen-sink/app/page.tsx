@@ -6,6 +6,7 @@ import {
   useFlow,
   useSession,
   useClientData,
+  useResourceCollection,
   useVoice,
 } from "@flow-state-dev/react";
 import { Button } from "@/components/ui/button";
@@ -61,7 +62,7 @@ const SIDEBAR_MAX_WIDTH = 700;
 const SIDEBAR_STORAGE_KEY = "ks-sidebar-width";
 
 const CLIENT_DATA_OPTIONS = {
-  session: ["artifacts", "modeStatus", "workingMemory"] as string[],
+  session: ["modeStatus", "workingMemory"] as string[],
   user: ["preferences"] as string[],
 };
 
@@ -124,10 +125,26 @@ function KitchenSinkApp() {
   }, [session.detail?.title, flow]);
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
+  const { items: artifactItems, actions: artifactActions } = useResourceCollection(session, "artifacts");
 
   const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined } | undefined;
   const userPrefs = clientData.user?.preferences as { displayName: string; preferredModel: string } | undefined;
-  const artifacts = (clientData.session?.artifacts ?? []) as Array<{ id: string; title: string; summary: string; content: string; extension: string | null; updatedAt: number }>;
+
+  // Derive artifact summaries from the resource collection snapshot.
+  // Content is loaded lazily when a specific artifact is opened.
+  const artifacts = useMemo(() => {
+    return Object.entries(artifactItems).map(([key, item]) => {
+      const data = item.clientData as { title: string; summary: string; updatedAt: number; extension: string | null; content: string } | undefined;
+      return {
+        id: key.replace("artifacts/", ""),
+        title: data?.title ?? "Untitled",
+        summary: data?.summary ?? "",
+        updatedAt: data?.updatedAt ?? 0,
+        extension: data?.extension ?? null,
+        content: data?.content ?? "",
+      };
+    });
+  }, [artifactItems]);
 
   // Sync local model preset from server state on initial load / session switch.
   const serverPreferredModel = userPrefs?.preferredModel;
@@ -139,10 +156,40 @@ function KitchenSinkApp() {
     }
   }, [serverPreferredModel]);
 
-  const selectedArtifact = useMemo(
+  // Artifact content is loaded lazily when an artifact is selected.
+  const [artifactContent, setArtifactContent] = useState<string | null>(null);
+
+  const selectedArtifactMeta = useMemo(
     () => artifacts.find((a) => a.id === selectedArtifactId) ?? null,
     [artifacts, selectedArtifactId]
   );
+
+  // Fetch content when a new artifact is selected
+  useEffect(() => {
+    if (!selectedArtifactId) {
+      setArtifactContent(null);
+      return;
+    }
+    const storageKey = `artifacts/${selectedArtifactId}`;
+    const item = artifactItems[storageKey];
+    if (!item) {
+      setArtifactContent(null);
+      return;
+    }
+    item.fetchContent().then((content) => {
+      setArtifactContent(content);
+    }).catch(() => {
+      setArtifactContent(null);
+    });
+  }, [selectedArtifactId, artifactItems]);
+
+  const selectedArtifact = useMemo(() => {
+    if (!selectedArtifactMeta) return null;
+    return {
+      ...selectedArtifactMeta,
+      content: artifactContent ?? "",
+    };
+  }, [selectedArtifactMeta, artifactContent]);
 
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
@@ -191,6 +238,8 @@ function KitchenSinkApp() {
   const handleSaveArtifact = useCallback(
     async (artifact: { id: string; title: string; content: string }) => {
       if (!flow.activeSessionId) return;
+      // Use the flow action for saves — this triggers server-side processing
+      // (state updates, summary generation) alongside the content update.
       await session.sendAction("saveArtifact", artifact);
     },
     [flow.activeSessionId, session]
