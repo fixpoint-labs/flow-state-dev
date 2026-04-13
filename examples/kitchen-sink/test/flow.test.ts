@@ -10,7 +10,7 @@ import {
   testRouter
 } from "@flow-state-dev/testing";
 import { thinkingStyleRouter } from "../src/flows/kitchen-sink/flow";
-import { artifactsCollection } from "../src/flows/kitchen-sink/schemas";
+import { artifactsCollection } from "../src/flows/kitchen-sink/blocks/artifacts";
 
 function collectSourceFiles(dir: string): string[] {
   const entries = readdirSync(dir);

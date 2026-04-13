@@ -67,12 +67,18 @@ async function getPersistedData(
   sessionId: string,
   scope: "session" | "user" | "project"
 ): Promise<{ resources: Record<string, JsonObject>; content: Record<string, string> } | undefined> {
+  // Content is stored in the ContentStore during execution, not on the record's
+  // resourceContent field. Merge both sources for backward compatibility.
   if (scope === "session") {
     const session = await ctx.stores.session.get(sessionId);
     if (!session) return undefined;
+    const contentFromStore = await ctx.stores.content.getAll("session", session.id);
     return {
       resources: (session.resources ?? {}) as Record<string, JsonObject>,
-      content: (session.resourceContent ?? {}) as Record<string, string>,
+      content: {
+        ...(session.resourceContent ?? {}) as Record<string, string>,
+        ...contentFromStore,
+      },
     };
   }
 
@@ -81,9 +87,13 @@ async function getPersistedData(
     if (!session) return undefined;
     const user = await ctx.stores.user.get(session.userId);
     if (!user) return undefined;
+    const contentFromStore = await ctx.stores.content.getAll("user", user.id);
     return {
       resources: (user.resources ?? {}) as Record<string, JsonObject>,
-      content: (user.resourceContent ?? {}) as Record<string, string>,
+      content: {
+        ...(user.resourceContent ?? {}) as Record<string, string>,
+        ...contentFromStore,
+      },
     };
   }
 
@@ -92,9 +102,13 @@ async function getPersistedData(
   if (!session || !session.projectId) return undefined;
   const project = await ctx.stores.project.get(session.projectId);
   if (!project) return undefined;
+  const contentFromStore = await ctx.stores.content.getAll("project", project.id);
   return {
     resources: (project.resources ?? {}) as Record<string, JsonObject>,
-    content: (project.resourceContent ?? {}) as Record<string, string>,
+    content: {
+      ...(project.resourceContent ?? {}) as Record<string, string>,
+      ...contentFromStore,
+    },
   };
 }
 
@@ -188,9 +202,15 @@ export async function handleGetCollectionItemContent(
   const data = await getPersistedData(ctx, route.sessionId, scope);
   if (!data) return jsonResponse(404, { error: "Scope data not found" });
 
-  const storageKey = resolveCollectionKey(config.pattern, route.topic);
+  // The topic arrives as either a bare key ("my-doc") or the full storage key
+  // ("artifacts/my-doc"). Try the topic directly first; if it doesn't match
+  // the collection pattern, resolve it as a bare key via the prefix.
+  let storageKey = route.topic;
   if (!matchesPattern(config.pattern, storageKey)) {
-    return jsonResponse(400, { error: `Topic "${route.topic}" does not match collection pattern` });
+    storageKey = resolveCollectionKey(config.pattern, route.topic);
+    if (!matchesPattern(config.pattern, storageKey)) {
+      return jsonResponse(400, { error: `Topic "${route.topic}" does not match collection pattern` });
+    }
   }
 
   const instanceState = data.resources[storageKey];
@@ -312,20 +332,18 @@ export async function handleUpdateResourceContent(
     return jsonResponse(400, { error: "Missing or invalid content" });
   }
 
-  const storageKey = resolveCollectionKey(config.pattern, route.topic);
+  // Resolve topic: try as full storage key first, then as bare key.
+  let storageKey = route.topic;
+  if (!matchesPattern(config.pattern, storageKey)) {
+    storageKey = resolveCollectionKey(config.pattern, route.topic);
+  }
   const existing = (session.resources as Record<string, unknown> | undefined)?.[storageKey];
   if (existing === undefined) {
     return jsonResponse(404, { error: `Item "${route.topic}" not found in "${route.ref}"` });
   }
 
-  const resourceContent = { ...(session.resourceContent ?? {}) } as Record<string, string>;
-  resourceContent[storageKey] = content;
-
-  await ctx.stores.session.set(route.sessionId, {
-    ...session,
-    resourceContent,
-    updatedAt: Date.now(),
-  });
+  // Write to ContentStore (the canonical content location during execution).
+  await ctx.stores.content.set("session", route.sessionId, storageKey, content);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }
@@ -361,19 +379,28 @@ export async function handleDeleteCollectionItem(
     return jsonResponse(501, { error: "Collection mutations only supported for session scope" });
   }
 
-  const storageKey = resolveCollectionKey(config.pattern, route.topic);
+  // Resolve topic: try as full storage key first, then as bare key.
+  let storageKey = route.topic;
+  if (!matchesPattern(config.pattern, storageKey)) {
+    storageKey = resolveCollectionKey(config.pattern, route.topic);
+  }
   const resources = { ...(session.resources ?? {}) } as Record<string, unknown>;
-  const resourceContent = { ...(session.resourceContent ?? {}) } as Record<string, string>;
 
   delete resources[storageKey];
+
+  // Remove from both the session record and the ContentStore.
+  const resourceContent = { ...(session.resourceContent ?? {}) } as Record<string, string>;
   delete resourceContent[storageKey];
 
-  await ctx.stores.session.set(route.sessionId, {
-    ...session,
-    resources: resources as Record<string, JsonObject>,
-    resourceContent,
-    updatedAt: Date.now(),
-  });
+  await Promise.all([
+    ctx.stores.session.set(route.sessionId, {
+      ...session,
+      resources: resources as Record<string, JsonObject>,
+      resourceContent,
+      updatedAt: Date.now(),
+    }),
+    ctx.stores.content.delete("session", route.sessionId, storageKey),
+  ]);
 
   return jsonResponse(200, { ref: route.ref, topic: route.topic });
 }

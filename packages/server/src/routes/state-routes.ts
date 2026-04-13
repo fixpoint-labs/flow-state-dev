@@ -147,21 +147,31 @@ export async function handleGetSessionState(
   });
 
   // Build resource snapshot: includes only client-visible resources with clientData and optional prefetched content.
+  // Use the merged content (record field + ContentStore) so prefetch works correctly.
   const [sessionResourceSnapshot, userResourceSnapshot, projectResourceSnapshot] = await Promise.all([
     buildResourceSnapshot({
       configs: flow.session?.resources as Record<string, unknown> | undefined,
       persisted: session.resources as Record<string, unknown> | undefined,
-      persistedContent: session.resourceContent as Record<string, string> | undefined
+      persistedContent: {
+        ...(session.resourceContent as Record<string, string> | undefined),
+        ...sessionContentFromStore,
+      },
     }),
     buildResourceSnapshot({
       configs: flow.user?.resources as Record<string, unknown> | undefined,
       persisted: user?.resources as Record<string, unknown> | undefined,
-      persistedContent: user?.resourceContent as Record<string, string> | undefined
+      persistedContent: {
+        ...(user?.resourceContent as Record<string, string> | undefined),
+        ...userContentFromStore,
+      },
     }),
     buildResourceSnapshot({
       configs: flow.project?.resources as Record<string, unknown> | undefined,
       persisted: project?.resources as Record<string, unknown> | undefined,
-      persistedContent: project?.resourceContent as Record<string, string> | undefined
+      persistedContent: {
+        ...(project?.resourceContent as Record<string, string> | undefined),
+        ...projectContentFromStore,
+      },
     }),
   ]);
 

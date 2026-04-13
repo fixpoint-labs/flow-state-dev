@@ -18,8 +18,8 @@ import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
 import { crawl } from "@flow-state-dev/tools/crawl";
 import { z } from "zod";
-import { artifactResources, featuresSchema } from "../schemas";
-import { artifactsCapability } from "./artifact-capability";
+import { featuresSchema } from "../schemas";
+import { artifactResources, artifactsCapability } from "./artifacts";
 import path from "node:path";
 
 const featuresSessionStateSchema = z.object({

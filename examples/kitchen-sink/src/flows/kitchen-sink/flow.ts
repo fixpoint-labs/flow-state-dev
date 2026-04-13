@@ -19,7 +19,7 @@ import {
   utility,
   selectModel,
 } from "@flow-state-dev/core";
-// ResourceCollectionRef no longer needed — artifacts are now exposed via resource-level clientData
+
 import { system as memorySystem } from "@thought-fabric/core/memory";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
@@ -36,8 +36,9 @@ import {
   thinkingStyleSchema,
   thinkingStyleSessionStateSchema,
   featuresCapability,
+  artifactResources,
 } from "./blocks";
-import { modeSchema, featuresSchema, artifactResources } from "./schemas";
+import { modeSchema, featuresSchema } from "./schemas";
 import { CHAT_PROMPT, CREATE_PROMPT } from "./prompts";
 
 // ---------------------------------------------------------------------------

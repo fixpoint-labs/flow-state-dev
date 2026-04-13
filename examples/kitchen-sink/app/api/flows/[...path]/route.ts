@@ -18,6 +18,11 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   return router.POST(req, { params });
 }
 
+export async function PATCH(req: NextRequest, ctx: RouteContext) {
+  const params = await ctx.params;
+  return router.PATCH(req, { params });
+}
+
 export async function DELETE(req: NextRequest, ctx: RouteContext) {
   const params = await ctx.params;
   return router.DELETE(req, { params });
