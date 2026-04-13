@@ -417,7 +417,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       name: `${actorConfig.name}-gen`,
       model: modelId,
       outputSchema: z.string(),
-      sessionResources: { reactiveBoard: rb.blackboard },
+      sessionResources: { reactiveBlackboard: rb.blackboard },
       ...(uses ? { uses: uses as any } : {}),
       context,
       history: config.history,
@@ -432,12 +432,12 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       name: `${actorConfig.name}-write`,
       inputSchema: z.string(),
       outputSchema: z.any(),
-      sessionResources: { reactiveBoard: rb.blackboard },
+      sessionResources: { reactiveBlackboard: rb.blackboard },
       execute: async (output: string, ctx) => {
-        const state = ctx.session.resources.reactiveBoard.state as {
+        const state = ctx.session.resources.reactiveBlackboard.state as {
           entries: Array<Record<string, unknown>>;
         };
-        await ctx.session.resources.reactiveBoard.patchState({
+        await ctx.session.resources.reactiveBlackboard.patchState({
           entries: [
             ...state.entries,
             { type: "observation", topic: actorConfig.role, body: output },
@@ -514,7 +514,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     name: "rb-synthesizer",
     model: modelId,
     outputSchema: z.string(),
-    sessionResources: { reactiveBoard: rb.blackboard },
+    sessionResources: { reactiveBlackboard: rb.blackboard },
     ...(uses ? { uses: uses as any } : {}),
     context,
     history: config.history,
@@ -532,7 +532,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       "answer. Do not mention the analysts or the internal process.",
     ].join("\n"),
     user: (_input: any, ctx: any) => {
-      const state = ctx.session.resources.reactiveBoard.state as {
+      const state = ctx.session.resources.reactiveBlackboard.state as {
         entries: Array<{ type: string; topic: string; body: string }>;
       };
       const entries = state.entries ?? [];

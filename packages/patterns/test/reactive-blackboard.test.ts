@@ -240,7 +240,7 @@ describe("mesh emit", () => {
 
       const result = await testBlock(m.emit, {
         input: entry,
-        session: { resources: { blackboard: emptyBoardState } },
+        session: { resources: { reactiveBlackboard: emptyBoardState } },
       });
 
       expect(result.error).toBeNull();
@@ -295,7 +295,7 @@ describe("mesh emit", () => {
 
       const result = await testBlock(m.emit, {
         input: entry,
-        session: { resources: { blackboard: emptyBoardState } },
+        session: { resources: { reactiveBlackboard: emptyBoardState } },
       });
 
       expect(result.error).toBeNull();
@@ -349,7 +349,7 @@ describe("mesh emit", () => {
           topic: "slack.message",
           body: { text: "hello" },
         },
-        session: { resources: { blackboard: emptyBoardState } },
+        session: { resources: { reactiveBlackboard: emptyBoardState } },
       });
 
       expect(result.error).toBeNull();
@@ -382,7 +382,7 @@ describe("mesh emit", () => {
       };
       const result = await testBlock(m.emit, {
         input: entry,
-        session: { resources: { blackboard: emptyBoardState } },
+        session: { resources: { reactiveBlackboard: emptyBoardState } },
       });
 
       expect(result.error).toBeNull();
@@ -403,10 +403,10 @@ describe("mesh emit", () => {
           name: "observer-body",
           inputSchema: z.any(),
           outputSchema: z.any(),
-          sessionResources: { blackboard: rb.blackboard },
+          sessionResources: { reactiveBlackboard: rb.blackboard },
           execute: (_input, ctx) => {
             // Read the resource to verify the entry was appended
-            const state = ctx.session.resources.blackboard
+            const state = (ctx.session.resources as any).reactiveBlackboard
               .state as ReactiveBlackboardState;
             observedEntries = [...state.entries];
             return { ok: true };
@@ -424,7 +424,7 @@ describe("mesh emit", () => {
 
       const result = await testBlock(m.emit, {
         input: entry,
-        session: { resources: { blackboard: emptyBoardState } },
+        session: { resources: { reactiveBlackboard: emptyBoardState } },
       });
 
       expect(result.error).toBeNull();
@@ -481,7 +481,7 @@ describe("mesh emit", () => {
       // The emit itself should succeed — failures are isolated
       const result = await testBlock(m.emit, {
         input: entry,
-        session: { resources: { blackboard: emptyBoardState } },
+        session: { resources: { reactiveBlackboard: emptyBoardState } },
       });
 
       expect(result.error).toBeNull();
@@ -511,7 +511,7 @@ describe("mesh emit", () => {
           topic: "slack",
           body: { text: "hi" },
         },
-        session: { resources: { blackboard: emptyBoardState } },
+        session: { resources: { reactiveBlackboard: emptyBoardState } },
       });
 
       expect(result.error).toBeNull();
@@ -553,7 +553,7 @@ describe("mesh emit", () => {
 
       const result = await testBlock(m.emit, {
         input: entry,
-        session: { resources: { blackboard: emptyBoardState } },
+        session: { resources: { reactiveBlackboard: emptyBoardState } },
       });
 
       expect(result.error).toBeNull();
@@ -605,7 +605,7 @@ describe("mesh emit", () => {
           topic: "test",
           body: {},
         },
-        session: { resources: { blackboard: emptyBoardState } },
+        session: { resources: { reactiveBlackboard: emptyBoardState } },
       });
 
       expect(result.error).toBeNull();

@@ -17,21 +17,26 @@ import {
 /**
  * Creates a handler that appends the input entry to the blackboard
  * resource and returns the entry unchanged for downstream fan-out.
+ *
+ * @param resourceKey - Session resource key. Defaults to `"reactiveBlackboard"`.
+ *   Override when co-existing with other blackboard patterns in the same
+ *   router to avoid resource key conflicts.
  */
 export function createAppendEntry(
   name: string,
-  blackboardResource: DefinedResource
+  blackboardResource: DefinedResource,
+  resourceKey = "reactiveBlackboard"
 ) {
   return handler({
     name: `${name}-append`,
     inputSchema: z.any(),
     outputSchema: z.any(),
-    sessionResources: { blackboard: blackboardResource },
+    sessionResources: { [resourceKey]: blackboardResource },
     sequencerStateSchema: emitControlSchema,
     execute: async (entry, ctx) => {
-      const state = ctx.session.resources.blackboard
+      const state = (ctx.session.resources as Record<string, any>)[resourceKey]
         .state as ReactiveBlackboardState;
-      await ctx.session.resources.blackboard.patchState({
+      await (ctx.session.resources as Record<string, any>)[resourceKey].patchState({
         entries: [...state.entries, entry],
       });
 
