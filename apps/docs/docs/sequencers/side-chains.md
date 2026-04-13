@@ -4,9 +4,10 @@ sidebar_position: 3
 
 # Side Chains
 
-Side chains let you run work in the background without blocking the main pipeline. Two primitives cover the common patterns:
+Side chains let you run work in the background without blocking the main pipeline. Three primitives cover the common patterns:
 
 - **`.work()` / `.background()`** — queue a single background task (`.background()` is an alias that reads better in fan-out contexts)
+- **`.workIf(condition, block)`** — conditional variant of `.work()`, dispatches only when condition is truthy
 - **`.forEachBackground()`** — dispatch each element of an array as a background task with concurrency control
 
 Work failures never abort the pipeline. They emit `step_error` items instead. Use side chains for fire-and-forget side effects: logging, analytics, cache warming, notifications.
@@ -168,6 +169,80 @@ pipeline
 ```
 
 Use whichever name makes the call site clearer.
+
+## workIf — conditional background work
+
+`.workIf()` is the conditional variant of `.work()`. It evaluates a condition at execution time and only dispatches the sidechain when the condition is truthy. When falsy, it's a complete no-op — no block execution, no items emitted, no cost incurred.
+
+The canonical use case is feature-flagged background work:
+
+```ts
+const pipeline = sequencer({
+  name: "chat",
+  inputSchema: z.object({ message: z.string() }),
+})
+  .then(agent)
+  .workIf(
+    (ctx) => ctx.session.state.features.memory,
+    memoryObserveBlock
+  )
+  .then(formatResponse);
+```
+
+When `features.memory` is disabled, the pipeline behaves as if the `.workIf()` call didn't exist. No block is dispatched, no promise is queued, no `step_error` can be emitted.
+
+### Static booleans
+
+The condition also accepts a plain `boolean`. This is useful for compile-time feature flags:
+
+```ts
+const ENABLE_ANALYTICS = process.env.ANALYTICS === "true";
+
+pipeline.workIf(ENABLE_ANALYTICS, analyticsBlock);
+```
+
+Static `true` is equivalent to `.work()`. Static `false` is a permanent no-op.
+
+### With a connector
+
+Like `.work()`, you can reshape the input for the background block:
+
+```ts
+pipeline.workIf(
+  (ctx) => ctx.session.state.observeEnabled,
+  (output) => ({ event: "processed", data: output }),
+  analyticsBlock,
+  { name: "conditional-analytics" }
+);
+```
+
+When the condition is falsy, the connector is never called.
+
+### Condition signature
+
+The condition function receives the `BlockContext` (not the pipeline value). This is deliberate: `workIf` is about checking session state, feature flags, or runtime configuration — not examining the pipeline data.
+
+```ts
+// ✅ workIf condition — receives ctx only
+.workIf((ctx) => ctx.session.state.featureEnabled, block)
+
+// ✅ thenIf condition — receives both input and ctx
+.thenIf((input, ctx) => input.score > 0.5, block)
+```
+
+### Async conditions
+
+The condition can be async. It's evaluated once before dispatching:
+
+```ts
+pipeline.workIf(
+  async (ctx) => {
+    const settings = await loadFeatureFlags(ctx.session.state.userId);
+    return settings.memoryEnabled;
+  },
+  memoryObserveBlock
+);
+```
 
 ## forEachBackground — fan-out over arrays
 

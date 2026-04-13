@@ -143,4 +143,5 @@ Choose the scope that matches the data's lifetime. Session for conversation-loca
 
 - **[State vs Resources](/docs/resources/storage)** — When to use resources vs scope state, scoping decisions, shared vs block-private
 - **[Resource Collections](/docs/resources/collections)** — Dynamic collections with patterns, eviction, and lifecycle hooks
+- **[Client Access](/docs/resources/client-access)** — Exposing resources to the frontend: visibility config, React hooks, content endpoints
 - **[State & Scopes](/docs/fundamentals/state-and-scopes)** — Broader state model, clientData, targets

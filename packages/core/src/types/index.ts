@@ -71,13 +71,19 @@ export type {
   GeneratorStepResult,
   ModelResolver,
   PrepareStepFn,
+  PrepareStepResult,
   ProviderTool
 } from "./model";
 
 export type {
+  CollectionClientConfig,
+  CollectionClientContentConfig,
   ContextOf,
   DefinedResource,
   MessageLike,
+  ResourceClientConfig,
+  ResourceClientContentConfig,
+  ResourceClientDataFn,
   ResourceConfig,
   ResourceContext,
   AnyResourceRef,

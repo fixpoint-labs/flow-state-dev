@@ -19,7 +19,7 @@ import {
   utility,
   selectModel,
 } from "@flow-state-dev/core";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+
 import { system as memorySystem } from "@thought-fabric/core/memory";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
@@ -29,17 +29,17 @@ import {
   updateArtifactInputSchema,
   eventQueueDemo,
   eventQueueDemoInputSchema,
-  readArtifact,
   artifactListContext,
   voiceContext,
   createThinkingStyleRouter,
   autoClassifyStyle,
   thinkingStyleSchema,
   thinkingStyleSessionStateSchema,
-  artifactsCapability,
+  featuresCapability,
+  artifactResources,
 } from "./blocks";
-import { modeSchema, artifactResources } from "./schemas";
-import { CHAT_PROMPT, CREATE_PROMPT } from "./prompts";
+import { modeSchema, featuresSchema } from "./schemas";
+import { ASK_PROMPT, BUILD_PROMPT } from "./prompts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -64,11 +64,7 @@ const mem = memorySystem({
 
 const thinkingStyleInputSchema = z
   .enum(["auto", "default", "plan-and-execute", "supervisor", "blackboard"])
-  .default("auto");
-
-const featuresSchema = z.object({
-  biasCheck: z.boolean().default(false),
-});
+  .default("default");
 
 const inputSchema = z.object({
   message: z.string().min(1),
@@ -97,23 +93,24 @@ const userStateSchema = z.object({
 const assistantGenerator = generator({
   name: "assistant-generator",
   userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
-  sessionStateSchema: z.object({ mode: modeSchema.default("chat"), thinkingStyle: z.string().optional() }),
+  sessionStateSchema: z.object({ mode: modeSchema.default("ask"), thinkingStyle: z.string().optional() }),
 
-  // Artifact capability: installs resources, context formatter, and tools
-  uses: [artifactsCapability],
+  // Capabilities: auto-install resources, context formatters, and tools.
+  // mem.capability includes a context preset that injects unified memory recall.
+  // artifactsCapability provides artifact resources + context + tools.
+  uses: [mem.capability, featuresCapability],
 
-  context: [mem.contextFormatter, voiceContext],
+  context: [voiceContext],
 
   inputSchema,
   history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
   user: (input) => input.message,
-
   search: true,
-  maxIterations: 10,
+  maxIterations: 20,
   outputSchema: z.string(),
 
   prompt: (_input, ctx) =>
-    ctx.session.state.mode === "create" ? CREATE_PROMPT : CHAT_PROMPT,
+    ctx.session.state.mode === "build" ? BUILD_PROMPT : ASK_PROMPT,
 
   emit: { messages: true, reasoning: true },
   model: selectModel(MODEL_ID, {
@@ -130,8 +127,7 @@ const { thinkingStyleRouter } = createThinkingStyleRouter({
   modelId: MODEL_ID,
   history: (_input: any, ctx: any) => ctx.session.items.llm({ limit: 8 }),
   context: [mem.contextFormatter, artifactListContext],
-  tools: [readArtifact, updateArtifact],
-  sessionResources: artifactResources,
+  uses: [featuresCapability],
 });
 
 export { thinkingStyleRouter };
@@ -143,7 +139,7 @@ export { thinkingStyleRouter };
 const applyRequestedMode = handler({
   name: "apply-requested-mode",
   inputSchema,
-  sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
+  sessionStateSchema: z.object({ mode: modeSchema.default("ask") }),
   execute: async (input, ctx) => {
     await ctx.session.patchState({ mode: input.mode });
   },
@@ -349,32 +345,12 @@ const kitchenSinkFlow = defineFlow({
     stateSchema: sessionStateSchema,
     resources: { ...artifactResources, ...mem.sessionResources },
     clientData: {
-      artifacts: async (ctx) => {
-        const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<{
-          title: string;
-          summary: string;
-          updatedAt: number;
-        }>;
-        const instances = artifacts.list();
-        return Promise.all(
-          instances.map(async (ref) => {
-            const content = (await ref.readContent()) ?? "";
-            return {
-              id: ref.name.replace("artifacts/", ""),
-              title: ref.state.title ?? "Untitled",
-              summary: ref.state.summary ?? "",
-              content,
-              updatedAt: ref.state.updatedAt,
-            };
-          }),
-        );
-      },
       modeStatus: (ctx) => ({
-        currentMode: modeSchema.parse(ctx.state.mode ?? "chat"),
+        currentMode: modeSchema.parse(ctx.state.mode ?? "ask"),
         thinkingStyle:
           (ctx.state.thinkingStyle as string | undefined) ?? null,
         requestCount: Number(ctx.state.requestCount ?? 0),
-        features: ctx.state.features ?? { biasCheck: false },
+        features: ctx.state.features ?? { biasCheck: false, bashTool: true, search: true, fetch: true, crawl: true },
       }),
     },
   },

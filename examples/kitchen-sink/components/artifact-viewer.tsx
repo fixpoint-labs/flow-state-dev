@@ -1,22 +1,103 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
-import { FileText, Pencil, X, ChevronLeft } from "lucide-react";
+import { CheckIcon, ChevronLeft, CopyIcon, Pencil } from "lucide-react";
+import type { BundledLanguage } from "shiki";
 import { Streamdown } from "streamdown";
 
+import {
+  ArtifactShell,
+  ArtifactHeader,
+  ArtifactTitle,
+  ArtifactDescription,
+  ArtifactActions,
+  ArtifactAction,
+  ArtifactContent,
+  ArtifactClose,
+} from "@/components/flow-state/artifact";
+import {
+  CodeBlock,
+  CodeBlockContent,
+  CodeBlockContainer,
+} from "@/components/flow-state/code-block";
 const streamdownPlugins = { cjk, code, math, mermaid };
 
-type ArtifactDetail = { id: string; title: string; content: string; updatedAt: number };
+// ---------------------------------------------------------------------------
+// Extension-to-renderer mapping
+// ---------------------------------------------------------------------------
+
+type RendererType = "markdown" | "code" | "image" | "text";
+
+const MARKDOWN_EXTS = new Set(["md", "mdx"]);
+const CODE_EXTS = new Set([
+  "jsx", "tsx", "ts", "js", "py", "sh", "bash", "json", "yaml", "yml",
+  "css", "scss", "html", "xml", "sql", "go", "rs", "java", "c", "cpp",
+  "h", "rb", "php", "swift", "kt", "toml", "ini", "env", "dockerfile",
+  "svg",
+]);
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"]);
+
+/** Infer extension from a filename/title when the stored extension is missing. */
+function inferExtension(title: string, storedExtension: string | null | undefined): string | null {
+  if (storedExtension) return storedExtension;
+  const dot = title.lastIndexOf(".");
+  if (dot === -1 || dot === title.length - 1) return null;
+  return title.slice(dot + 1).toLowerCase();
+}
+
+function getRendererType(extension: string | null): RendererType {
+  if (!extension) return "text";
+  const ext = extension.toLowerCase();
+  if (MARKDOWN_EXTS.has(ext)) return "markdown";
+  if (IMAGE_EXTS.has(ext)) return "image";
+  if (CODE_EXTS.has(ext)) return "code";
+  return "text";
+}
+
+/** Map extension to a shiki BundledLanguage identifier. */
+function extensionToLanguage(extension: string | null): BundledLanguage {
+  if (!extension) return "text" as BundledLanguage;
+  const map: Record<string, string> = {
+    ts: "typescript", js: "javascript", py: "python", sh: "bash",
+    yml: "yaml", scss: "scss", rs: "rust", kt: "kotlin",
+    rb: "ruby", cpp: "cpp", dockerfile: "dockerfile",
+  };
+  return (map[extension.toLowerCase()] ?? extension.toLowerCase()) as BundledLanguage;
+}
+
+/** Human-friendly content type label. */
+function getContentTypeLabel(extension: string | null): string {
+  if (!extension) return "Plain text";
+  const labels: Record<string, string> = {
+    md: "Markdown", mdx: "MDX", ts: "TypeScript", js: "JavaScript",
+    tsx: "TSX", jsx: "JSX", py: "Python", json: "JSON", css: "CSS",
+    html: "HTML", yaml: "YAML", yml: "YAML", sh: "Shell",
+    png: "PNG Image", jpg: "JPEG Image", jpeg: "JPEG Image",
+    gif: "GIF Image", webp: "WebP Image", svg: "SVG",
+    ico: "Icon", bmp: "Bitmap Image",
+  };
+  return labels[extension.toLowerCase()] ?? extension.toUpperCase();
+}
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type ArtifactDetail = {
+  id: string;
+  title: string;
+  content: string;
+  extension: string | null;
+  updatedAt: number;
+};
 
 interface ArtifactViewerProps {
   artifact: ArtifactDetail;
@@ -28,10 +109,24 @@ interface ArtifactViewerProps {
   style?: React.CSSProperties;
 }
 
-export function ArtifactViewer({ artifact, isSaving, onSaveArtifact, onClose, onBack, className, style }: ArtifactViewerProps) {
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export function ArtifactViewer({
+  artifact,
+  isSaving,
+  onSaveArtifact,
+  onClose,
+  onBack,
+  className,
+  style,
+}: ArtifactViewerProps) {
   const [title, setTitle] = useState(artifact.title);
   const [content, setContent] = useState(artifact.content);
   const [isEditing, setIsEditing] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+  const copyTimeoutRef = useRef<number>(0);
 
   // Reset local state and return to view mode when the selected artifact changes
   useEffect(() => {
@@ -39,6 +134,9 @@ export function ArtifactViewer({ artifact, isSaving, onSaveArtifact, onClose, on
     setContent(artifact.content);
     setIsEditing(false);
   }, [artifact.id, artifact.title, artifact.content]);
+
+  // Cleanup copy timeout
+  useEffect(() => () => { window.clearTimeout(copyTimeoutRef.current); }, []);
 
   const hasUnsavedChanges = title !== artifact.title || content !== artifact.content;
 
@@ -53,32 +151,65 @@ export function ArtifactViewer({ artifact, isSaving, onSaveArtifact, onClose, on
     setIsEditing(false);
   };
 
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(artifact.content);
+      setIsCopied(true);
+      copyTimeoutRef.current = window.setTimeout(() => setIsCopied(false), 2000);
+    } catch {
+      // Clipboard API unavailable — silently fail
+    }
+  }, [artifact.content]);
+
+  const resolvedExtension = useMemo(
+    () => inferExtension(artifact.title, artifact.extension),
+    [artifact.title, artifact.extension],
+  );
+
+  const rendererType = useMemo(
+    () => getRendererType(resolvedExtension),
+    [resolvedExtension],
+  );
+
   return (
-    <aside className={cn("flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l bg-background", className)} style={style}>
+    <ArtifactShell
+      className={cn("border-l rounded-none", className)}
+      style={style}
+    >
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2.5">
+      <ArtifactHeader>
         <Button variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back to artifact list">
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="flex-1 truncate text-sm font-semibold">
+        <ArtifactTitle>
           {isEditing ? title : artifact.title}
-        </span>
-        {!isEditing && (
-          <Button variant="ghost" size="icon-sm" onClick={() => setIsEditing(true)} aria-label="Edit artifact">
-            <Pencil className="h-4 w-4" />
-          </Button>
-        )}
-        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close artifact viewer">
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-      <Separator />
+        </ArtifactTitle>
+        <ArtifactDescription>
+          {getContentTypeLabel(resolvedExtension)}
+        </ArtifactDescription>
+        <ArtifactActions>
+          <ArtifactAction
+            icon={isCopied ? CheckIcon : CopyIcon}
+            label="Copy content"
+            tooltip="Copy"
+            onClick={() => void handleCopy()}
+          />
+          {!isEditing && (
+            <ArtifactAction
+              icon={Pencil}
+              label="Edit artifact"
+              tooltip="Edit"
+              onClick={() => setIsEditing(true)}
+            />
+          )}
+        </ArtifactActions>
+        <ArtifactClose onClick={onClose} />
+      </ArtifactHeader>
 
-      {/* Body */}
-      <div className="flex flex-1 flex-col gap-3 overflow-hidden p-4">
+      {/* Content */}
+      <ArtifactContent className="p-0">
         {isEditing ? (
-          <>
+          <div className="flex flex-1 flex-col gap-3 p-4">
             <Input
               aria-label="Artifact title"
               value={title}
@@ -92,38 +223,109 @@ export function ArtifactViewer({ artifact, isSaving, onSaveArtifact, onClose, on
               className="min-h-0 flex-1 resize-none"
               disabled={isSaving}
             />
-          </>
+          </div>
         ) : (
-          <ScrollArea className="min-h-0 flex-1">
-            <Streamdown
-              className="size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-              plugins={streamdownPlugins}
-            >
-              {artifact.content}
-            </Streamdown>
-          </ScrollArea>
+          <ContentRenderer
+            content={artifact.content}
+            rendererType={rendererType}
+            extension={resolvedExtension}
+          />
         )}
+      </ArtifactContent>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">
-            Updated {new Date(artifact.updatedAt).toLocaleTimeString()}
-          </span>
-          {isEditing && (
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
-                Cancel
-              </Button>
-              <Button
-                onClick={() => void handleSave()}
-                disabled={!hasUnsavedChanges || isSaving || title.trim().length === 0}
-              >
-                Save
-              </Button>
-            </div>
-          )}
-        </div>
+      {/* Footer */}
+      <div className="flex items-center justify-between border-t px-4 py-2">
+        <span className="text-xs text-muted-foreground">
+          Updated {new Date(artifact.updatedAt).toLocaleTimeString()}
+        </span>
+        {isEditing && (
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleCancel} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void handleSave()}
+              disabled={!hasUnsavedChanges || isSaving || title.trim().length === 0}
+            >
+              Save
+            </Button>
+          </div>
+        )}
       </div>
-    </aside>
+    </ArtifactShell>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Content renderer — dispatches based on extension
+// ---------------------------------------------------------------------------
+
+function ContentRenderer({
+  content,
+  rendererType,
+  extension,
+}: {
+  content: string;
+  rendererType: RendererType;
+  extension: string | null;
+}) {
+  if (!content.trim()) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-4 text-sm text-muted-foreground">
+        Empty artifact
+      </div>
+    );
+  }
+
+  switch (rendererType) {
+    case "markdown":
+      return (
+        <div className="flex-1 overflow-auto p-4">
+          <Streamdown
+            className="size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+            plugins={streamdownPlugins}
+          >
+            {content}
+          </Streamdown>
+        </div>
+      );
+
+    case "image":
+      return (
+        <div className="flex flex-1 items-center justify-center overflow-auto bg-[repeating-conic-gradient(var(--color-muted)_0%_25%,transparent_0%_50%)_0_0/16px_16px] p-4">
+          <img
+            src={content.startsWith("data:") ? content : `data:image/${extension};base64,${content}`}
+            alt="Artifact image"
+            className="max-h-full max-w-full object-contain"
+          />
+        </div>
+      );
+
+    case "code":
+      return (
+        <div className="flex-1 overflow-auto">
+          <CodeBlockContainer language={extension ?? "text"} className="border-0 rounded-none">
+            <CodeBlockContent
+              code={content}
+              language={extensionToLanguage(extension)}
+              showLineNumbers
+            />
+          </CodeBlockContainer>
+        </div>
+      );
+
+    case "text":
+    default:
+      return (
+        <div className="flex-1 overflow-auto">
+          <CodeBlockContainer language="text" className="border-0 rounded-none">
+            <CodeBlockContent
+              code={content}
+              language={"text" as BundledLanguage}
+            />
+          </CodeBlockContainer>
+        </div>
+      );
+  }
 }

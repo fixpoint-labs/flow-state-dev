@@ -4,6 +4,15 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-04-11
 
+### DevTool: View Sequencer State (FIX-348)
+
+- Added `SequencerStateSnapshotItem` to `@flow-state-dev/core` — a new trace-only item type that captures the full state of a sequencer at each step boundary.
+- Sequencers now emit state snapshots automatically: an initial snapshot before execution begins and one after each step completes. This includes loopBack iterations.
+- DevTool trace tree collects snapshots per sequencer block and displays a state indicator badge ("S") on blocks with state.
+- Clicking a sequencer block in the trace view shows a new **Sequencer State** inspector panel in the detail sidebar. The panel provides a step timeline for navigating state evolution, a diff mode for comparing adjacent steps, and full JSON rendering of each snapshot.
+- Nested sequencers each maintain their own snapshot timeline, navigable independently.
+- Works for both live-streaming runs and completed runs loaded from trace history.
+
 ### defineCapability() — Reusable Capability Bundles (FIX-351)
 
 - Added `defineCapability()` to `@flow-state-dev/core` — packages resources, state schemas, targets, helper functions, and presets under a single name.

@@ -32,7 +32,13 @@ export class InMemoryRequestStore implements RequestStore {
   }
 
   persistEvents(requestId: string, events: RequestStreamEvent[]): void {
-    this.eventsByRequestId.set(requestId, [...events]);
+    // Append incrementally — the emitter now sends only new events per call.
+    const existing = this.eventsByRequestId.get(requestId);
+    if (existing !== undefined) {
+      existing.push(...events);
+    } else {
+      this.eventsByRequestId.set(requestId, [...events]);
+    }
   }
 
   async flushEvents(_requestId: string): Promise<void> {

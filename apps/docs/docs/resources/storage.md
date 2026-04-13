@@ -104,17 +104,18 @@ Quick rules:
 | Shared across users? | | | Yes |
 | Temporary working data? | Yes | | |
 
-## clientData is the client boundary
+## Client visibility
 
-Neither scope state nor resources are directly visible to clients. `clientData` is the only way to expose data to the frontend:
+Scope state is never directly visible to clients. You expose it through scope-level `clientData` — computed projections that run server-side:
 
 ```ts
 session: {
   clientData: {
     currentMode: (ctx) => ctx.state.mode,
-    planSteps: (ctx) => ctx.resources.plan?.state.steps ?? [],
   },
 }
 ```
 
-Choose state vs resources based on the data's nature and lifecycle, not on client visibility. The `clientData` layer handles that regardless.
+Resources have a second option. Instead of (or in addition to) scope-level clientData, you can declare `client` config directly on the resource. This gives the frontend lazy-loaded access to resource content and metadata through dedicated hooks and endpoints. See [Client Access](/docs/resources/client-access) for the full API.
+
+Choose state vs resources based on the data's nature and lifecycle, not on client visibility.

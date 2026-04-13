@@ -1,6 +1,7 @@
 "use client";
 
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import type { ContainerItem } from "@flow-state-dev/core/items";
+import { useContainerItems } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
 import {
   CheckCircle2Icon,
@@ -9,7 +10,9 @@ import {
   Loader2Icon,
   UserIcon,
 } from "lucide-react";
+import { useMemo } from "react";
 import Markdown from "react-markdown";
+import { useSessionItems } from "./session-items-context";
 
 type BlackboardData = {
   state: Record<string, unknown>;
@@ -19,13 +22,32 @@ type BlackboardData = {
 };
 
 /**
- * Renders a blackboard pattern component item — showing the shared workspace
- * state that specialists have written to across iterations.
+ * Container renderer for the blackboard pattern. The blackboard sequencer
+ * emits a single keyed "blackboard" component item inside a "blackboard"
+ * container. This renderer reads that child component to display the
+ * shared workspace state.
+ *
+ * Register via:
+ *   <FlowProvider renderers={{ container: { blackboard: Blackboard } }}>
  */
-export function Blackboard({ item }: { item: ComponentItem }) {
-  const data = item.data as BlackboardData;
-  const { state, iteration, specialist } = data;
+export function Blackboard({ item }: { item: ContainerItem }) {
+  const allItems = useSessionItems();
+  const { componentsByKey } = useContainerItems(item, allItems);
 
+  const data = useMemo(() => {
+    for (const [, value] of componentsByKey) {
+      // The blackboard pattern emits a single component with the board state
+      const candidate = value as unknown as BlackboardData;
+      if (candidate && typeof candidate.state === "object") {
+        return candidate;
+      }
+    }
+    return undefined;
+  }, [componentsByKey]);
+
+  if (!data) return null;
+
+  const { state, iteration, specialist } = data;
   const isFinished = item.status === "completed";
 
   const entries = Object.entries(state).filter(

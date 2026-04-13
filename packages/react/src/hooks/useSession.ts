@@ -237,6 +237,58 @@ function buildItemsFromMap(
 function sameChronologicalOrder(left: OutputItem, right: OutputItem): boolean {
   return left.ts === right.ts && left.itemIndex === right.itemIndex;
 }
+
+/**
+ * Compares two items for chronological ordering (ts first, itemIndex tiebreaker).
+ * Returns negative if a < b, positive if a > b, zero if equal.
+ */
+function compareItemOrder(a: OutputItem, b: OutputItem): number {
+  const tsDiff = a.ts - b.ts;
+  if (tsDiff !== 0) return tsDiff;
+  return a.itemIndex - b.itemIndex;
+}
+
+/**
+ * Inserts an item ID into a sorted ID array using binary search.
+ * Items nearly always arrive in chronological order, so we check the tail first
+ * for an O(1) fast path before falling back to binary search + splice.
+ */
+function insertSortedItemId(
+  sortedIds: string[],
+  newItem: OutputItem,
+  itemsById: ReadonlyMap<string, OutputItem>
+): string[] {
+  const next = [...sortedIds];
+  const len = next.length;
+
+  // Fast path: item belongs at the end (most common during streaming).
+  if (len === 0) {
+    next.push(newItem.id);
+    return next;
+  }
+
+  const lastItem = itemsById.get(next[len - 1]!);
+  if (lastItem !== undefined && compareItemOrder(newItem, lastItem) >= 0) {
+    next.push(newItem.id);
+    return next;
+  }
+
+  // Binary search for insertion position.
+  let lo = 0;
+  let hi = len;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    const midItem = itemsById.get(next[mid]!);
+    if (midItem !== undefined && compareItemOrder(midItem, newItem) < 0) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+
+  next.splice(lo, 0, newItem.id);
+  return next;
+}
 export function useSession(
   sessionId: string | undefined,
   options?: UseSessionHookOptions
@@ -282,6 +334,8 @@ export function useSession(
   const optimisticIdRef = useRef<string | null>(null);
   /** Maps container ownedBy values to sets of item IDs for O(1) container lookups. */
   const ownershipIndexRef = useRef<Map<string, Set<string>>>(new Map());
+  /** Tracks whether resource changes occurred during streaming, so we can batch one refresh at completion. */
+  const resourceChangedDuringStreamRef = useRef(false);
 
   /** Track an item's ownedBy in the ownership index. */
   const trackOwnership = useCallback((item: OutputItem) => {
@@ -493,20 +547,6 @@ export function useSession(
     }
   }, [sessionId, sessionClient, itemConfig.enabled, itemConfig.itemTypes, applySnapshot]);
 
-  // Debounced snapshot refresh: batches multiple rapid resource_change events
-  // (e.g., working memory + artifact writes in the same request) into a single
-  // refresh call. Fires 300ms after the last trigger.
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scheduleRefreshSnapshot = useCallback(() => {
-    if (refreshTimerRef.current !== null) {
-      clearTimeout(refreshTimerRef.current);
-    }
-    refreshTimerRef.current = setTimeout(() => {
-      refreshTimerRef.current = null;
-      void refreshSnapshot();
-    }, 300);
-  }, [refreshSnapshot]);
-
   /**
    * Attach to an existing request's stream, optionally resuming from a cursor.
    * Used by both sendAction (new requests) and autoResume (in-progress requests).
@@ -535,6 +575,14 @@ export function useSession(
             setIsFinishing(true);
           }
 
+          // Track that resources changed during streaming. Rather than firing
+          // individual HTTP fetches per resource_change (which creates bursts
+          // during artifact-heavy flows), we batch into one refresh at request
+          // completion. The onRequestStatus handler checks this flag.
+          if (event.item.type === "resource_change") {
+            resourceChangedDuringStreamRef.current = true;
+          }
+
           if (!passesItemFilter(event.item, filter)) {
             return;
           }
@@ -559,19 +607,27 @@ export function useSession(
           itemsByIdRef.current.set(event.item.id, event.item);
           trackOwnership(event.item);
 
-          if (isNewItem || orderChanged) {
-            const ordered = sortItemsChronologically([
-              ...itemsByIdRef.current.values()
-            ]);
-            sortedItemIdsRef.current = ordered.map((item) => item.id);
-            setItems(ordered);
+          if (isNewItem) {
+            // Binary insertion: O(log n) search + O(1) amortized for in-order arrivals.
+            sortedItemIdsRef.current = insertSortedItemId(
+              sortedItemIdsRef.current,
+              event.item,
+              itemsByIdRef.current
+            );
+            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+          } else if (orderChanged) {
+            // Order changed — remove old position and re-insert.
+            const filtered = sortedItemIdsRef.current.filter((id) => id !== event.item.id);
+            sortedItemIdsRef.current = insertSortedItemId(
+              filtered,
+              event.item,
+              itemsByIdRef.current
+            );
+            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
           } else {
             setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
           }
 
-          if (event.item.type === "resource_change") {
-            scheduleRefreshSnapshot();
-          }
         },
         onItemDone: (event) => {
           if (!passesItemFilter(event.item, filter)) {
@@ -586,12 +642,21 @@ export function useSession(
           itemsByIdRef.current.set(event.item.id, event.item);
           trackOwnership(event.item);
 
-          if (isNewItem || orderChanged) {
-            const ordered = sortItemsChronologically([
-              ...itemsByIdRef.current.values()
-            ]);
-            sortedItemIdsRef.current = ordered.map((item) => item.id);
-            setItems(ordered);
+          if (isNewItem) {
+            sortedItemIdsRef.current = insertSortedItemId(
+              sortedItemIdsRef.current,
+              event.item,
+              itemsByIdRef.current
+            );
+            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+          } else if (orderChanged) {
+            const filtered = sortedItemIdsRef.current.filter((id) => id !== event.item.id);
+            sortedItemIdsRef.current = insertSortedItemId(
+              filtered,
+              event.item,
+              itemsByIdRef.current
+            );
+            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
           } else {
             setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
           }
@@ -655,7 +720,13 @@ export function useSession(
             streamHandleRef.current?.close();
             streamHandleRef.current = null;
 
-            if (event.status === "completed") {
+            // Refresh on completion, or on failure/incomplete if resources
+            // changed during streaming (batched instead of per-change).
+            if (
+              event.status === "completed" ||
+              resourceChangedDuringStreamRef.current
+            ) {
+              resourceChangedDuringStreamRef.current = false;
               void refreshSnapshot();
             }
           }
@@ -676,7 +747,6 @@ export function useSession(
       resolvedFlowKind,
       baseUrl,
       refreshSnapshot,
-      scheduleRefreshSnapshot,
       scheduleContentFlush,
       flushContentDeltas,
       trackOwnership
@@ -685,10 +755,7 @@ export function useSession(
 
   useEffect(() => {
     if (sessionId === undefined) {
-      if (refreshTimerRef.current !== null) {
-        clearTimeout(refreshTimerRef.current);
-        refreshTimerRef.current = null;
-      }
+      resourceChangedDuringStreamRef.current = false;
       itemsByIdRef.current = new Map();
       sortedItemIdsRef.current = [];
       deltaQueueRef.current.clear();

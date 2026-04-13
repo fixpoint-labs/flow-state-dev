@@ -1,7 +1,7 @@
 import type { ZodTypeAny } from "zod";
 import type { JsonObject } from "../schema/common";
 import type { ScopeType } from "./scope";
-import type { ResourceRef } from "./resource";
+import type { ResourceRef, CollectionClientConfig } from "./resource";
 
 // Re-export pattern utilities for consumers
 export {
@@ -37,6 +37,9 @@ export type ResourceCollectionConfig = {
   stateSchema: ZodTypeAny;
   maxInstances?: number;
   eviction?: EvictionPolicy;
+
+  /** Client visibility configuration. Omit to keep the collection invisible to clients. */
+  client?: CollectionClientConfig;
 
   /** Fires when a specific instance is created (e.g., files/utils.ts). */
   onInstanceCreated?: (key: string, state: JsonObject, ctx: CollectionHookContext) => void | Promise<void>;

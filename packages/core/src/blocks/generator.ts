@@ -21,12 +21,62 @@ import type {
 } from "../types/model";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
 import type { CapabilityRef, InferCapabilities } from "../capability/types";
+import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { toError, withTimeout } from "./internal/utils";
 
 const DEFAULT_MAX_ITERATIONS = 8;
 const DEFAULT_REPAIR_ATTEMPTS = 1;
+
+// ---------------------------------------------------------------------------
+// Dynamic capability helpers — resolve context/tools from runtime-resolved caps
+// ---------------------------------------------------------------------------
+
+interface DynamicCapSurface {
+  contextEntries: Array<(input: any, ctx: any) => any>;
+  tools: GeneratorTool[];
+}
+
+/**
+ * Extract context and tool entries from a capability's active presets in a
+ * single traversal. Walks nested static uses recursively via flattenCapabilities.
+ */
+async function resolveDynamicCapSurface(
+  cap: CapabilityRef,
+  ctx: BlockContext,
+): Promise<DynamicCapSurface> {
+  const contextEntries: Array<(input: any, ctx: any) => any> = [];
+  const tools: GeneratorTool[] = [];
+
+  // Walk nested static uses
+  if (cap.uses) {
+    const flattened = flattenCapabilities(
+      cap.uses.filter((e): e is CapabilityRef => typeof e !== "function")
+    );
+    for (const nested of flattened) {
+      const nestedSurface = await resolveDynamicCapSurface(nested, ctx);
+      contextEntries.push(...nestedSurface.contextEntries);
+      tools.push(...nestedSurface.tools);
+    }
+  }
+
+  for (const { preset } of resolveActivePresets(cap)) {
+    if (preset.context) {
+      const entries = Array.isArray(preset.context) ? preset.context : [preset.context];
+      contextEntries.push(...entries);
+    }
+    if (preset.tools) {
+      if (Array.isArray(preset.tools)) {
+        tools.push(...preset.tools);
+      } else {
+        tools.push(...(await preset.tools(ctx)));
+      }
+    }
+  }
+
+  return { contextEntries, tools };
+}
 
 type MaybePromise<TValue> = TValue | Promise<TValue>;
 
@@ -95,6 +145,9 @@ export interface GeneratorToolResult {
 }
 
 export type GeneratorTool = BlockDefinition<any, any>;
+
+/** Tools slot accepted by generators and pattern factories — static array or context-aware function. */
+export type ToolsSlot = GeneratorTool[] | ((ctx: any) => MaybePromise<GeneratorTool[]>);
 
 /**
  * @deprecated Use GeneratorTool. Kept as an alias for compatibility.
@@ -771,12 +824,14 @@ async function executeStreamingGeneration<TInput, TOutput>(
 ): Promise<TOutput> {
   const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const contentPartIndex = 0;
+  const identity = ctx._blockIdentity;
   const provenance = {
-    blockName,
-    blockInstanceId: blockName,
+    blockName: identity?.blockName ?? blockName,
+    blockInstanceId: identity?.blockInstanceId ?? blockName,
+    parentBlockInstanceId: identity?.parentBlockInstanceId,
     phase: "main" as const
   };
-  const ownedBy = ctx._blockIdentity?.ownedBy;
+  const ownedBy = identity?.ownedBy;
   const emitReasoning = emitConfig.reasoning;
   let reasoningAccumulated = "";
 
@@ -1144,7 +1199,7 @@ export function generator<
     TUses, TCapabilities, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
-  const { declaredResources, resolvedCapabilities, mergedSurface } = resolveCapabilities(config, "generator");
+  const { declaredResources, resolvedCapabilities, mergedSurface, dynamicUses } = resolveCapabilities(config, "generator");
 
   const outputSchema = (config.outputSchema ?? z.string()) as ZodTypeAny;
   const normalizedConfig: GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput> = {
@@ -1152,35 +1207,79 @@ export function generator<
     outputSchema: outputSchema as TOutputSchema
   } as GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
 
-  // Merge capability context entries into the generator's context slot
-  if (mergedSurface && mergedSurface.contextEntries.length > 0) {
-    const existingContext = normalizedConfig.context;
-    if (existingContext === undefined) {
-      (normalizedConfig as any).context = mergedSurface.contextEntries;
-    } else {
-      const existingArr = Array.isArray(existingContext) ? existingContext : [existingContext];
-      (normalizedConfig as any).context = [...existingArr, ...mergedSurface.contextEntries];
+  // -----------------------------------------------------------------------
+  // Merge all capability contributions (static + dynamic) into the
+  // generator's context and tools slots in a single pass. No layered
+  // wrapping — each slot is set exactly once.
+  // -----------------------------------------------------------------------
+
+  const staticContextEntries = mergedSurface?.contextEntries ?? [];
+  const staticToolEntries = mergedSurface?.toolEntries ?? [];
+  const hasStaticContext = staticContextEntries.length > 0;
+  const hasStaticTools = staticToolEntries.length > 0;
+  const hasDynamic = dynamicUses.length > 0;
+
+  // -- Context: append static + dynamic entries to the user's context array
+  if (hasStaticContext || hasDynamic) {
+    const userContext = normalizedConfig.context;
+    const userArr = userContext === undefined
+      ? []
+      : Array.isArray(userContext)
+        ? userContext
+        : [userContext];
+
+    const additions: unknown[] = [...staticContextEntries];
+
+    // Dynamic context: a single entry that resolves all dynamic capabilities.
+    // Uses resolveDynamicCapSurface for a single-pass traversal.
+    if (hasDynamic) {
+      additions.push(async (input: unknown, ctx: BlockContext) => {
+        const parts: string[] = [];
+        for (const resolver of dynamicUses) {
+          for (const cap of resolver(ctx)) {
+            const surface = await resolveDynamicCapSurface(cap, ctx);
+            for (const entry of surface.contextEntries) {
+              const v = typeof entry === "function" ? entry(input, ctx) : entry;
+              if (v != null && v !== "") parts.push(String(v));
+            }
+          }
+        }
+        return parts.length > 0 ? parts.join("\n\n") : null;
+      });
     }
+
+    (normalizedConfig as any).context = [...userArr, ...additions];
   }
 
-  // Merge capability tools into the generator's tools
-  if (mergedSurface && mergedSurface.toolEntries.length > 0) {
-    const existingTools = normalizedConfig.tools;
-    const capToolEntries = mergedSurface.toolEntries;
+  // -- Tools: single async resolver combining user tools + static caps + dynamic caps
+  if (hasStaticTools || hasDynamic) {
+    const userTools = normalizedConfig.tools;
+
     (normalizedConfig as any).tools = async (ctx: BlockContext) => {
-      const userTools = existingTools
-        ? Array.isArray(existingTools)
-          ? existingTools
-          : await existingTools(ctx as any)
+      // 1. User-declared tools (static array or function)
+      const base: GeneratorTool[] = userTools
+        ? Array.isArray(userTools) ? userTools : await userTools(ctx as any)
         : [];
-      const presetTools = (
-        await Promise.all(
-          capToolEntries.map((factory) =>
-            Array.isArray(factory) ? factory : factory(ctx)
-          )
-        )
-      ).flat();
-      return [...userTools, ...presetTools];
+
+      // 2. Static capability preset tools
+      const staticTools: GeneratorTool[] = hasStaticTools
+        ? (await Promise.all(
+            staticToolEntries.map((f) => Array.isArray(f) ? f : f(ctx))
+          )).flat()
+        : [];
+
+      // 3. Dynamic capability tools (single-pass via resolveDynamicCapSurface)
+      const dynTools: GeneratorTool[] = [];
+      if (hasDynamic) {
+        for (const resolver of dynamicUses) {
+          for (const cap of resolver(ctx)) {
+            const surface = await resolveDynamicCapSurface(cap, ctx);
+            dynTools.push(...surface.tools);
+          }
+        }
+      }
+
+      return [...base, ...staticTools, ...dynTools];
     };
   }
 
@@ -1356,7 +1455,13 @@ export function generator<
 
       // Emit source items from provider-native tools (e.g., web search).
       if (generation.sources !== undefined && generation.sources.length > 0) {
-        const sourceProv = { blockName, blockInstanceId: blockName, phase: "main" as const };
+        const sourceIdentity = ctx._blockIdentity;
+        const sourceProv = {
+          blockName: sourceIdentity?.blockName ?? blockName,
+          blockInstanceId: sourceIdentity?.blockInstanceId ?? blockName,
+          parentBlockInstanceId: sourceIdentity?.parentBlockInstanceId,
+          phase: "main" as const
+        };
         for (const source of generation.sources) {
           const sourceItem = buildSourceItem(source, ctx, sourceProv);
           await ctx.response.emit({ type: "item.added", item: sourceItem });
@@ -1387,8 +1492,14 @@ export function generator<
       // Suppress entirely when emit.messages is false.
       if (emitConfig.messages !== false && isTextOutputSchema(outputSchema) && typeof output === "string") {
         const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        const provenance = { blockName, blockInstanceId: blockName, phase: "main" as const };
-        const nsOwnedBy = ctx._blockIdentity?.ownedBy;
+        const outputIdentity = ctx._blockIdentity;
+        const provenance = {
+          blockName: outputIdentity?.blockName ?? blockName,
+          blockInstanceId: outputIdentity?.blockInstanceId ?? blockName,
+          parentBlockInstanceId: outputIdentity?.parentBlockInstanceId,
+          phase: "main" as const
+        };
+        const nsOwnedBy = outputIdentity?.ownedBy;
         if (emitConfig.messages === 'reasoning') {
           const reasoningItem = {
             id: itemId,

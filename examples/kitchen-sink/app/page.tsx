@@ -6,6 +6,7 @@ import {
   useFlow,
   useSession,
   useClientData,
+  useResourceCollection,
   useVoice,
 } from "@flow-state-dev/react";
 import { Button } from "@/components/ui/button";
@@ -61,7 +62,7 @@ const SIDEBAR_MAX_WIDTH = 700;
 const SIDEBAR_STORAGE_KEY = "ks-sidebar-width";
 
 const CLIENT_DATA_OPTIONS = {
-  session: ["artifacts", "modeStatus", "workingMemory"] as string[],
+  session: ["modeStatus", "workingMemory"] as string[],
   user: ["preferences"] as string[],
 };
 
@@ -78,10 +79,10 @@ function KitchenSinkApp() {
   const session = useSession(flow.activeSessionId, { items: true, autoResume: true });
 
   const [message, setMessage] = useState("");
-  const [mode, setMode] = useState<Mode>("chat");
+  const [mode, setMode] = useState<Mode>("ask");
   const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("auto");
   const [modelPreset, setModelPreset] = useState<ModelPreset>("preset/small");
-  const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
+  const [features, setFeatures] = useState<Features>({ ...DEFAULT_FEATURES, bashTool: false });
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("chat");
@@ -124,10 +125,26 @@ function KitchenSinkApp() {
   }, [session.detail?.title, flow]);
 
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
+  const { items: artifactItems, actions: artifactActions } = useResourceCollection(session, "artifacts");
 
   const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined } | undefined;
   const userPrefs = clientData.user?.preferences as { displayName: string; preferredModel: string } | undefined;
-  const artifacts = (clientData.session?.artifacts ?? []) as Array<{ id: string; title: string; summary: string; content: string; updatedAt: number }>;
+
+  // Derive artifact summaries from the resource collection snapshot.
+  // Content is loaded lazily when a specific artifact is opened.
+  const artifacts = useMemo(() => {
+    return Object.entries(artifactItems).map(([key, item]) => {
+      const data = item.clientData as { title: string; summary: string; updatedAt: number; extension: string | null; content: string } | undefined;
+      return {
+        id: key.replace("artifacts/", ""),
+        title: data?.title ?? "Untitled",
+        summary: data?.summary ?? "",
+        updatedAt: data?.updatedAt ?? 0,
+        extension: data?.extension ?? null,
+        content: data?.content ?? "",
+      };
+    });
+  }, [artifactItems]);
 
   // Sync local model preset from server state on initial load / session switch.
   const serverPreferredModel = userPrefs?.preferredModel;
@@ -139,10 +156,40 @@ function KitchenSinkApp() {
     }
   }, [serverPreferredModel]);
 
-  const selectedArtifact = useMemo(
+  // Artifact content is loaded lazily when an artifact is selected.
+  const [artifactContent, setArtifactContent] = useState<string | null>(null);
+
+  const selectedArtifactMeta = useMemo(
     () => artifacts.find((a) => a.id === selectedArtifactId) ?? null,
     [artifacts, selectedArtifactId]
   );
+
+  // Fetch content when a new artifact is selected
+  useEffect(() => {
+    if (!selectedArtifactId) {
+      setArtifactContent(null);
+      return;
+    }
+    const storageKey = `artifacts/${selectedArtifactId}`;
+    const item = artifactItems[storageKey];
+    if (!item) {
+      setArtifactContent(null);
+      return;
+    }
+    item.fetchContent().then((content) => {
+      setArtifactContent(content);
+    }).catch(() => {
+      setArtifactContent(null);
+    });
+  }, [selectedArtifactId, artifactItems]);
+
+  const selectedArtifact = useMemo(() => {
+    if (!selectedArtifactMeta) return null;
+    return {
+      ...selectedArtifactMeta,
+      content: artifactContent ?? "",
+    };
+  }, [selectedArtifactMeta, artifactContent]);
 
   const handleSubmit = useCallback(
     async (msg: PromptInputMessage) => {
@@ -184,6 +231,21 @@ function KitchenSinkApp() {
     [flow.activeSessionId, session],
   );
 
+  // Apply side-effects when mode changes:
+  // Ask mode force-disables bash and hides artifacts; Build mode restores defaults.
+  const handleModeChange = useCallback(
+    (newMode: Mode) => {
+      setMode(newMode);
+      if (newMode === "ask") {
+        setFeatures((prev) => ({ ...prev, bashTool: false }));
+        setMobilePanel("chat");
+      } else {
+        setFeatures((prev) => ({ ...prev, bashTool: true }));
+      }
+    },
+    [],
+  );
+
   const handleSuggestionClick = useCallback((text: string) => {
     setMessage(text);
   }, []);
@@ -191,6 +253,8 @@ function KitchenSinkApp() {
   const handleSaveArtifact = useCallback(
     async (artifact: { id: string; title: string; content: string }) => {
       if (!flow.activeSessionId) return;
+      // Use the flow action for saves — this triggers server-side processing
+      // (state updates, summary generation) alongside the content update.
       await session.sendAction("saveArtifact", artifact);
     },
     [flow.activeSessionId, session]
@@ -243,15 +307,17 @@ function KitchenSinkApp() {
             <MessageSquareText className="h-4 w-4" />
             Chat
           </Button>
-          <Button
-            variant={mobilePanel === "artifacts" ? "secondary" : "outline"}
-            size="sm"
-            className="gap-2 sm:hidden"
-            onClick={() => setMobilePanel("artifacts")}
-          >
-            <Package className="h-4 w-4" />
-            Artifacts ({artifacts.length})
-          </Button>
+          {mode === "build" && (
+            <Button
+              variant={mobilePanel === "artifacts" ? "secondary" : "outline"}
+              size="sm"
+              className="gap-2 sm:hidden"
+              onClick={() => setMobilePanel("artifacts")}
+            >
+              <Package className="h-4 w-4" />
+              Artifacts ({artifacts.length})
+            </Button>
+          )}
           <div className="ml-auto">
             <ThemeToggle />
           </div>
@@ -279,7 +345,7 @@ function KitchenSinkApp() {
               ttsEnabled={ttsEnabled}
               onToggleTTS={() => setTtsEnabled((v) => !v)}
               onSetMessage={setMessage}
-              onSetMode={setMode}
+              onSetMode={handleModeChange}
               onSetThinkingStyle={setThinkingStyle}
               onModelPresetChange={handleModelPresetChange}
               onSetFeatures={setFeatures}
@@ -288,7 +354,7 @@ function KitchenSinkApp() {
             />
           )}
 
-          {mobilePanel === "artifacts" && (
+          {mobilePanel === "artifacts" && mode === "build" && (
             <div className="flex min-w-0 flex-1">
               {selectedArtifact ? (
                 <ArtifactViewer
@@ -327,7 +393,7 @@ function KitchenSinkApp() {
             ttsEnabled={ttsEnabled}
             onToggleTTS={() => setTtsEnabled((v) => !v)}
             onSetMessage={setMessage}
-            onSetMode={setMode}
+            onSetMode={handleModeChange}
             onSetThinkingStyle={setThinkingStyle}
             onModelPresetChange={handleModelPresetChange}
             onSetFeatures={setFeatures}
@@ -335,24 +401,28 @@ function KitchenSinkApp() {
             onSuggestionClick={handleSuggestionClick}
           />
 
-          <ResizeHandle onResize={handleSidebarResize} />
+          {mode === "build" && (
+            <>
+              <ResizeHandle onResize={handleSidebarResize} />
 
-          {selectedArtifact ? (
-            <ArtifactViewer
-              artifact={selectedArtifact}
-              isSaving={session.isStreaming}
-              onSaveArtifact={handleSaveArtifact}
-              onClose={() => setSelectedArtifactId(null)}
-              onBack={() => setSelectedArtifactId(null)}
-              style={sidebarStyle}
-            />
-          ) : (
-            <ArtifactPanel
-              artifacts={artifacts}
-              selectedId={selectedArtifactId}
-              onSelect={setSelectedArtifactId}
-              style={sidebarStyle}
-            />
+              {selectedArtifact ? (
+                <ArtifactViewer
+                  artifact={selectedArtifact}
+                  isSaving={session.isStreaming}
+                  onSaveArtifact={handleSaveArtifact}
+                  onClose={() => setSelectedArtifactId(null)}
+                  onBack={() => setSelectedArtifactId(null)}
+                  style={sidebarStyle}
+                />
+              ) : (
+                <ArtifactPanel
+                  artifacts={artifacts}
+                  selectedId={selectedArtifactId}
+                  onSelect={setSelectedArtifactId}
+                  style={sidebarStyle}
+                />
+              )}
+            </>
           )}
         </div>
       </main>
@@ -458,13 +528,13 @@ function ChatPanel({
             <ModeSelector mode={mode} onModeChange={onSetMode} disabled={isDisabled} />
             <ThinkingStyleSelector value={thinkingStyle} onValueChange={onSetThinkingStyle} disabled={isDisabled} />
             <ModelPresetSelector value={modelPreset} onValueChange={onModelPresetChange} disabled={isDisabled} />
-            <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={isDisabled} />
+            <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={isDisabled} mode={mode} />
             <VoiceToggle voice={voice} disabled={isDisabled} ttsEnabled={ttsEnabled} onToggleTTS={onToggleTTS} />
           </div>
           <PromptInput onSubmit={onSubmit}>
             <PromptInputTextarea
               name="message"
-              placeholder={`Send a message in ${mode} mode...`}
+              placeholder={mode === "ask" ? "Ask a question..." : "Describe what to build..."}
               value={message}
               onChange={(e) => onSetMessage(e.target.value)}
               disabled={isDisabled}

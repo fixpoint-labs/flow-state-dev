@@ -167,6 +167,17 @@ export type SourceItem = OutputItemBase & {
   providerMetadata?: Record<string, Record<string, unknown>>;
 };
 
+/** Full state snapshot emitted at sequencer step boundaries for devtool inspection. */
+export type SequencerStateSnapshotItem = OutputItemBase & {
+  type: "sequencer_state_snapshot";
+  sequencerName: string;
+  sequencerInstanceId: string;
+  stepName: string;
+  stepIndex: number;
+  state: unknown;
+  version: number;
+};
+
 export type OutputItem =
   | BlockOutputItem
   | BlockToolOutputItem
@@ -181,4 +192,5 @@ export type OutputItem =
   | ResourceChangeItem
   | ErrorItem
   | StepErrorItem
-  | SourceItem;
+  | SourceItem
+  | SequencerStateSnapshotItem;

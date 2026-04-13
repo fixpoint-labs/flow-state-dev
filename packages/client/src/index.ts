@@ -27,9 +27,19 @@ export {
   type CreateUserSSEClientOptions
 } from "./stream-client/createSSEClient";
 
+export {
+  createResourceClient,
+  type CreateResourceClientOptions,
+  type ResourceClient,
+  type ResourceContentResponse,
+  type CreateCollectionItemOptions,
+  type UpdateResourceContentOptions
+} from "./resource-client/resources";
+
 export type {
   ClientFetch,
   ClientTransportOptions,
+  CollectionSnapshotEntry,
   ExecuteActionRequestBody,
   ExecuteActionResponse,
   FlowCapabilities,
@@ -42,6 +52,7 @@ export type {
   QueryValue,
   RequestSSECallbacks,
   RequestStreamHandle,
+  ResourceSnapshotEntry,
   SendActionOptions,
   SessionDetail,
   SessionRequestSummary,

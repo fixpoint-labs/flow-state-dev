@@ -4,21 +4,37 @@ import { useCallback } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuCheckboxItem,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Settings2, ShieldCheck, ChevronDownIcon } from "lucide-react";
+import {
+  Settings2,
+  ShieldCheck,
+  Terminal,
+  Search,
+  Globe,
+  Network,
+  ChevronDownIcon,
+} from "lucide-react";
 
 export interface Features {
   biasCheck: boolean;
+  bashTool: boolean;
+  search: boolean;
+  fetch: boolean;
+  crawl: boolean;
 }
 
 export const DEFAULT_FEATURES: Features = {
   biasCheck: false,
+  bashTool: true,
+  search: true,
+  fetch: true,
+  crawl: true,
 };
 
 interface FeatureOption {
@@ -30,6 +46,34 @@ interface FeatureOption {
 }
 
 const FEATURE_OPTIONS: FeatureOption[] = [
+  {
+    key: "bashTool",
+    label: "Bash Tool",
+    description: "Execute commands and manage files in a sandbox workspace",
+    icon: Terminal,
+    color: "text-emerald-500 dark:text-emerald-400",
+  },
+  {
+    key: "search",
+    label: "Search",
+    description: "Search the web for information",
+    icon: Search,
+    color: "text-blue-500 dark:text-blue-400",
+  },
+  {
+    key: "fetch",
+    label: "Fetch",
+    description: "Fetch and read the full content of web pages",
+    icon: Globe,
+    color: "text-violet-500 dark:text-violet-400",
+  },
+  {
+    key: "crawl",
+    label: "Crawl",
+    description: "Crawl websites following links up to a specified depth",
+    icon: Network,
+    color: "text-amber-500 dark:text-amber-400",
+  },
   {
     key: "biasCheck",
     label: "Bias Check",
@@ -43,20 +87,26 @@ interface FeatureSelectorProps {
   features: Features;
   onFeaturesChange: (features: Features) => void;
   disabled?: boolean;
+  /** Current mode — Ask mode locks out bash regardless of feature state. */
+  mode?: "ask" | "build";
 }
 
 export function FeatureSelector({
   features,
   onFeaturesChange,
   disabled,
+  mode,
 }: FeatureSelectorProps) {
   const activeCount = Object.values(features).filter(Boolean).length;
+  const isAskMode = mode === "ask";
 
   const handleToggle = useCallback(
     (key: keyof Features) => {
+      // Bash cannot be toggled in Ask mode — it is always disabled server-side.
+      if (key === "bashTool" && isAskMode) return;
       onFeaturesChange({ ...features, [key]: !features[key] });
     },
-    [features, onFeaturesChange],
+    [features, onFeaturesChange, isAskMode],
   );
 
   return (
@@ -93,35 +143,50 @@ export function FeatureSelector({
         <DropdownMenuSeparator />
         {FEATURE_OPTIONS.map((option) => {
           const Icon = option.icon;
-          const isChecked = features[option.key];
+          const isActive = features[option.key];
+          const isLocked = option.key === "bashTool" && isAskMode;
 
           return (
-            <DropdownMenuCheckboxItem
+            <DropdownMenuItem
               key={option.key}
-              checked={isChecked}
-              onCheckedChange={() => handleToggle(option.key)}
-              className="flex cursor-pointer items-start gap-3 rounded-md px-3 py-2.5"
+              onSelect={(e) => {
+                e.preventDefault();
+                handleToggle(option.key);
+              }}
+              className={cn(
+                "flex cursor-pointer items-start gap-3 rounded-md px-3 py-2.5",
+                isLocked && "cursor-not-allowed opacity-50",
+              )}
             >
               <Icon
                 className={cn(
-                  "mt-0.5 size-4 shrink-0",
-                  isChecked ? option.color : "text-muted-foreground",
+                  "mt-0.5 size-4 shrink-0 transition-colors",
+                  isLocked
+                    ? "text-muted-foreground/40"
+                    : isActive
+                      ? option.color
+                      : "text-muted-foreground/40",
                 )}
               />
               <div className="flex flex-col gap-0.5">
                 <span
                   className={cn(
-                    "text-sm font-medium leading-none",
-                    isChecked && "text-foreground",
+                    "text-sm font-medium leading-none transition-colors",
+                    isLocked
+                      ? "text-muted-foreground"
+                      : isActive
+                        ? "text-foreground"
+                        : "text-muted-foreground",
                   )}
                 >
                   {option.label}
+                  {isLocked && " (Ask mode)"}
                 </span>
                 <span className="text-xs leading-snug text-muted-foreground">
-                  {option.description}
+                  {isLocked ? "Disabled in Ask mode" : option.description}
                 </span>
               </div>
-            </DropdownMenuCheckboxItem>
+            </DropdownMenuItem>
           );
         })}
       </DropdownMenuContent>
