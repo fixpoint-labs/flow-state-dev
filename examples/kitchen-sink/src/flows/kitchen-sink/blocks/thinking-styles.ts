@@ -437,11 +437,9 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
         const state = ctx.session.resources.reactiveBlackboard.state as {
           entries: Array<Record<string, unknown>>;
         };
+        const newEntry = { type: "observation" as const, topic: actorConfig.role, body: output };
         await ctx.session.resources.reactiveBlackboard.patchState({
-          entries: [
-            ...state.entries,
-            { type: "observation", topic: actorConfig.role, body: output },
-          ],
+          entries: [...state.entries, newEntry] as any,
         });
         ctx
           .emitComponent(
