@@ -12,7 +12,7 @@ Use it when:
 - You want decoupled coordination without a central orchestrator
 - New agents should be pluggable without modifying existing ones
 
-If you need a controller that reads shared state and decides which specialist to invoke next, use [Blackboard](./blackboard) instead. Both patterns are siblings under the same composable patterns library.
+If you need a controller that reads shared state and decides which specialist to invoke next, use the Blackboard pattern instead. Both patterns are siblings under the same composable patterns library.
 
 ## Block composition
 
@@ -196,10 +196,10 @@ import { createAppendEntry } from "@flow-state-dev/patterns/reactive-blackboard"
 
 **Reactive Blackboard** (this pattern): No controller. Actors subscribe to topics and react when matching entries are written. Coordination is emergent. Best for event-driven systems, continuous monitoring, and broadcast/notification scenarios where you want agents to react independently.
 
-**[Blackboard](./blackboard)**: Controller-driven. An LLM controller reads shared state and picks which specialist to invoke next, in a loop. Best for incremental synthesis, directed problem-solving, and tasks where a "what's next" decision is needed on each iteration.
+**Blackboard**: Controller-driven. An LLM controller reads shared state and picks which specialist to invoke next, in a loop. Best for incremental synthesis, directed problem-solving, and tasks where a "what's next" decision is needed on each iteration.
 
 ## See also
 
-- [Blackboard](./blackboard) -- the controller-driven sibling pattern
+- Blackboard -- the controller-driven sibling pattern
 - [Coordinator](./coordinator) -- single-pass fan-out (use when tasks are known upfront)
 - [Supervisor](./supervisor) -- fan-out with review loop (use when quality review is needed)
