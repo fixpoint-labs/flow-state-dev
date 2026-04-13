@@ -308,6 +308,71 @@ pipeline
 - Failure propagates to the next handler or bubbles up
 - Only handles errors from steps **before** the rescue in the chain
 
+### `thenAll(blocks, options?)` — Parallel Array Execution
+
+Run an array of blocks concurrently with the same input. Returns results as an ordered array.
+
+```ts
+pipeline.thenAll([
+  analysisBlock,
+  summaryBlock,
+  { connector: (input) => input.text, block: tagBlock },
+], { maxConcurrency: 3 });
+
+// Output: [analysisResult, summaryResult, tagResult]
+```
+
+Like `Promise.all` — if any block throws, the entire step fails. Results are ordered by array index regardless of completion order.
+
+**Difference from `.parallel()`:** `.parallel()` returns a named object `{ key: result }`. `.thenAll()` returns an ordered array `[result, ...]`. Use `.parallel()` when you need named access to results. Use `.thenAll()` when you have a dynamic list of blocks or prefer array indexing.
+
+### `thenAny(blocks)` — First Successful Result (Sequential)
+
+Try blocks sequentially in order. Return the first successful result; skip remaining blocks.
+
+```ts
+pipeline.thenAny([
+  primaryProvider,
+  fallbackProviderA,
+  fallbackProviderB,
+]);
+
+// Output: result from primaryProvider if it succeeds,
+//         otherwise fallbackProviderA, otherwise fallbackProviderB
+```
+
+Blocks are attempted one at a time in array order. On the first success, the result becomes the step output and remaining blocks are never executed. If all blocks fail, throws an `AggregateError` with all individual errors.
+
+### `race(blocks, options?)` — First Successful Result (Concurrent)
+
+Run blocks concurrently, resolve with the first one that succeeds. Abort the rest.
+
+```ts
+pipeline.race([
+  expensiveDeepAnalysis,
+  quickHeuristicAnalysis,
+], { maxConcurrency: 4 });
+
+// Output: result from whichever block succeeds first
+```
+
+All blocks start concurrently (bounded by `maxConcurrency` if specified). The first block to complete successfully wins. Remaining blocks are signaled for cancellation via abort signal. If all blocks fail, throws an `AggregateError` with all individual errors.
+
+### `exitIf(condition)` — Conditional Early Exit
+
+Exit the sequencer chain early when a condition is met. The current value becomes the sequencer output.
+
+```ts
+pipeline
+  .then(generateBlock)
+  .then(validateBlock)
+  .exitIf((value, ctx) => value.confidence > 0.95)
+  .then(refineBlock)   // skipped if confidence is high enough
+  .then(finalizeBlock); // also skipped
+```
+
+The exit proceeds to auto-await of any outstanding `.work()` tasks before returning. Does not skip rescue handlers for errors that occurred before the exit.
+
 ### `branch(branches)` — Conditional Multi-Path
 
 Execute the first branch whose condition is true.
@@ -331,7 +396,7 @@ Each branch is a tuple: `[connector, condition, block]`.
 
 ## Resource Collection
 
-Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain. Every method that accepts a block — `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `work`, `background`, `tap`, `tapIf`, `rescue`, `branch` — merges that block's declared resources into the sequencer's accumulated set.
+Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain. Every method that accepts a block — `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `work`, `background`, `tap`, `tapIf`, `rescue`, `branch`, `thenAll`, `thenAny`, `race` — merges that block's declared resources into the sequencer's accumulated set.
 
 ```ts
 const pipeline = sequencer({ name: "pipeline" })

@@ -15,10 +15,11 @@ import { AuditAnnotation } from "./audit-annotation";
  * Sources are excluded (source: false) — render them grouped via
  * <SourcesGroup items={session.items} /> alongside <ItemsRenderer>.
  *
- * Component renderers (emitComponent items) are registered under `component`:
- *   - plan: renders plan snapshots emitted via emitPlanSnapshot()
- *   - blackboard: renders blackboard workspace state snapshots
- *   - audit-annotation: renders response auditor findings
+ * Container renderers (plan) receive a ContainerItem and compose their
+ * view from per-task ComponentItems via useContainerItems.
+ *
+ * Component renderers (blackboard, audit-annotation) receive a single
+ * ComponentItem with the full snapshot data.
  */
 export const chatAssistantRenderers: RendererRegistry = {
   message: Message,
@@ -29,8 +30,10 @@ export const chatAssistantRenderers: RendererRegistry = {
   error: ErrorDisplay,
   step_error: ErrorDisplay,
   source: false,
-  component: {
+  container: {
     plan: Plan,
+  },
+  component: {
     blackboard: Blackboard,
     "audit-annotation": AuditAnnotation,
   },

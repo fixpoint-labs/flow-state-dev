@@ -13,13 +13,13 @@ type ComponentItem = OutputItem & { type: "component"; component: string; key?: 
 type BlockOutputItem = OutputItem & { type: "block_output"; blockName: string };
 
 function inferThinkingStyle(items: OutputItem[]): ThinkingStyle | null {
-  const planItems = items.filter(
-    (i) => i.type === "component" && (i as ComponentItem).component === "plan",
+  const planMetaItems = items.filter(
+    (i) => i.type === "component" && (i as ComponentItem).component === "plan-meta",
   ) as ComponentItem[];
 
-  if (planItems.length > 0) {
-    // Supervisor plan snapshots use keys like "supervisor-thinking:iter-1"
-    const isSupervisor = planItems.some((i) => i.key?.includes("supervisor"));
+  if (planMetaItems.length > 0) {
+    // Supervisor plan-meta items use keys like "supervisor-thinking:plan-meta"
+    const isSupervisor = planMetaItems.some((i) => i.key?.includes("supervisor"));
     return isSupervisor ? "supervisor" : "plan-and-execute";
   }
 

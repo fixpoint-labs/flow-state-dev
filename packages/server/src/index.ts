@@ -6,11 +6,13 @@ export type {
 } from "./context/types";
 export {
   ConcurrentModificationError,
+  createFilesystemContentStore,
   createFilesystemProjectStore,
   createFilesystemRequestStore,
   createFilesystemSessionStore,
   createFilesystemStores,
   createFilesystemUserStore,
+  createInMemoryContentStore,
   createInMemoryProjectStore,
   createInMemoryRequestStore,
   createInMemorySessionStore,
@@ -23,6 +25,8 @@ export {
 export type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
+  ContentScopeType,
+  ContentStore,
   ProjectListOptions,
   ProjectRecord,
   ProjectStore,

@@ -31,6 +31,7 @@ import {
   NOOP_INTERNAL_EXECUTION_SEAMS,
   type InternalExecutionSeams
 } from "./internal/seams";
+import { applyRetentionPolicy, resolveRetentionPolicy } from "./retention";
 import type {
   ExecutionResult,
   RunActionOptions
@@ -318,6 +319,7 @@ export async function runActionInternal<
     internalSeams: undefined
   });
   const logger = options.logger ?? DEFAULT_RUNTIME_LOGGER;
+  const resolvedRetention = resolveRetentionPolicy(options.flow.session?.retention);
 
   response.setLogCallback((eventType, detail) => {
     logRuntimeEvent(logger, "debug", `[flow-state] ${eventType}`, {
@@ -573,6 +575,23 @@ export async function runActionInternal<
 
     if (terminalStatus === "completed") {
       await emitActionLifecycleSeam(internalSeams, "completed", metadata);
+
+      // Retention eviction: remove old request records if session exceeds limits
+      if (options.sessionId !== undefined && resolvedRetention !== undefined) {
+        try {
+          await applyRetentionPolicy(
+            options.stores,
+            options.sessionId,
+            requestId,
+            resolvedRetention,
+            completedAt
+          );
+        } catch (err) {
+          logRuntimeEvent(logger, "warn", "[flow-state] retention eviction failed", {
+            requestId, sessionId: options.sessionId, error: String(err)
+          });
+        }
+      }
     }
 
     logRuntimeEvent(logger, "info", "[flow-state] action execution completed", {

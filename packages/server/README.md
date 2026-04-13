@@ -47,6 +47,31 @@ const guardedRouter = createFlowApiRouter({
 });
 ```
 
+## Session retention policies
+
+Long-running sessions accumulate items over time. Retention policies provide a safety net that bounds storage growth by evicting old completed request records when limits are exceeded.
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+
+const flow = defineFlow({
+  kind: "my-flow",
+  session: {
+    retention: {
+      maxItems: 500,   // evict oldest requests when total items exceed 500
+      maxAge: "24h",   // evict requests older than 24 hours
+    },
+  },
+  actions: { /* ... */ },
+});
+```
+
+Both constraints are optional and independent. When both are set, either condition triggers eviction. Eviction runs lazily after each completed request (no background process). The current request is never evicted.
+
+Retention policies operate at **request granularity** — entire old request records are removed, not individual items. For items that should never be stored at all, use `transient: true` on block definitions.
+
+Supported duration formats: `'30s'`, `'5m'`, `'2h'`, `'7d'`, or a raw number in milliseconds.
+
 ## Custom model resolution
 
 ```ts
@@ -91,6 +116,7 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 **Stores:**
 - `createInMemoryStores` — Fast, ephemeral stores for testing
 - `createFilesystemStores` — Persistent stores for development and production
+- `createInMemoryContentStore` / `createFilesystemContentStore` — Content store adapters
 - Scope store factories and CAS/state ops
 
 **Streaming:**
@@ -106,6 +132,37 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 **Errors:**
 - `FlowError` and canonical subclasses
 - `normalizeError` — Wrap any thrown value into a typed FlowError
+
+## ContentStore
+
+`StoreRegistry` includes a required `content: ContentStore` field that separates resource content persistence from scope record persistence. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ContentStore`.
+
+```ts
+interface ContentStore {
+  get(scopeType, scopeId, resourceKey): Promise<string | undefined>;
+  set(scopeType, scopeId, resourceKey, content): Promise<void>;
+  delete(scopeType, scopeId, resourceKey): Promise<void>;
+  getAll(scopeType, scopeId): Promise<Record<string, string>>;
+  deleteAll(scopeType, scopeId): Promise<void>;
+}
+```
+
+For custom store registries, provide a `ContentStore` implementation. `createInMemoryContentStore()` is the simplest option:
+
+```ts
+import { createInMemoryContentStore } from "@flow-state-dev/server";
+
+const stores: StoreRegistry = {
+  session: mySessionStore,
+  request: myRequestStore,
+  user: myUserStore,
+  project: myProjectStore,
+  activeRequests: myActiveRequestRegistry,
+  content: createInMemoryContentStore(),
+};
+```
+
+Database adapters can implement `ContentStore` to route content to blob storage, S3, or a separate table while keeping scope metadata in the primary store.
 
 ## Notes
 

@@ -34,20 +34,22 @@ type PlanTaskStatus =
   | "needs-revision"
   | "escalated";
 
-type PlanTask = {
+type PlanMeta = {
+  goal: string;
+  taskOrder: string[];
+  taskGoals: Record<string, string>;
+  status?: string;
+  iteration?: number;
+};
+
+type PlanTaskData = {
   id: string;
   goal: string;
-  assignee?: string;
   status: PlanTaskStatus;
   result?: unknown;
   error?: string;
-};
-
-type Plan = {
-  goal: string;
-  tasks: PlanTask[];
-  status?: string;
-  iteration?: number;
+  feedback?: string;
+  assignee?: string;
 };
 
 type StatusConfig = {
@@ -82,18 +84,17 @@ function getResultSummary(result: unknown): string | undefined {
 /**
  * Build a map from task ID → tool calls that ran during that task's execution.
  *
- * Items are already scoped to this container via ownedBy, so no requestId
- * grouping is needed. Correlates tool calls to tasks by finding which task
- * transitioned between consecutive plan snapshots and windowing tool calls
- * by itemIndex between those snapshots.
+ * With per-task emissions, tool calls are windowed between a task's
+ * "in-progress" and "completed"/"failed" plan-task items by itemIndex.
  */
 function buildTaskToolMap(
   ownedItems: OutputItem[]
 ): Map<string, BlockToolOutputItem[]> {
-  const snapshots = ownedItems.filter(
-    (item) => item.type === "component" && (item as ComponentItem).component === "plan"
+  // Collect all plan-task component items, sorted by itemIndex.
+  const taskItems = ownedItems.filter(
+    (item) => item.type === "component" && (item as ComponentItem).component === "plan-task"
   ) as ComponentItem[];
-  snapshots.sort((a, b) => a.itemIndex - b.itemIndex);
+  taskItems.sort((a, b) => a.itemIndex - b.itemIndex);
 
   const tools = ownedItems.filter(
     (item) => item.type === "block_tool_output"
@@ -101,32 +102,31 @@ function buildTaskToolMap(
 
   const result = new Map<string, BlockToolOutputItem[]>();
 
-  for (let i = 1; i < snapshots.length; i++) {
-    const prevSnap = snapshots[i - 1];
-    const currSnap = snapshots[i];
-    const prevPlan = prevSnap.data as Plan;
-    const plan = currSnap.data as Plan;
-
-    const prevById = new Map(prevPlan.tasks.map((t) => [t.id, t]));
-    let executedTaskId: string | undefined;
-    for (const task of plan.tasks) {
-      const prev = prevById.get(task.id);
-      if (
-        (prev?.status === "pending" || prev?.status === "in-progress") &&
-        (task.status === "completed" || task.status === "failed")
-      ) {
-        executedTaskId = task.id;
-        break;
-      }
+  // For each task, find the "in-progress" → "completed"/"failed" window and
+  // collect tool calls between those itemIndex values.
+  const taskTimeline = new Map<string, { start?: number; end?: number }>();
+  for (const item of taskItems) {
+    const data = item.data as unknown as PlanTaskData;
+    const entry = taskTimeline.get(data.id) ?? {};
+    if (data.status === "in-progress" && entry.start === undefined) {
+      entry.start = item.itemIndex;
+    } else if (
+      (data.status === "completed" || data.status === "failed") &&
+      entry.end === undefined
+    ) {
+      entry.end = item.itemIndex;
     }
+    taskTimeline.set(data.id, entry);
+  }
 
-    if (!executedTaskId) continue;
-
+  for (const [taskId, window] of taskTimeline) {
+    if (window.start === undefined) continue;
+    const endIdx = window.end ?? Infinity;
     const taskTools = tools.filter(
-      (t) => t.itemIndex > prevSnap.itemIndex && t.itemIndex < currSnap.itemIndex
+      (t) => t.itemIndex > window.start! && t.itemIndex < endIdx
     );
     if (taskTools.length > 0) {
-      result.set(executedTaskId, taskTools);
+      result.set(taskId, taskTools);
     }
   }
 
@@ -135,42 +135,78 @@ function buildTaskToolMap(
 
 /**
  * Container renderer for plan-and-execute and supervisor sequencers.
+ * Composes the plan view from granular per-task ComponentItems emitted
+ * by emitPlanMeta and emitTaskUpdate.
  *
  * Register via:
  *   <FlowProvider renderers={{ container: { plan: Plan } }}>
- *
- * Uses useContainerItems to resolve owned items and extract the plan state.
- * Items owned by this container (tool calls, plan snapshots, messages) are
- * automatically suppressed from top-level rendering by ItemRenderer when
- * this container renderer is registered.
  */
 export function Plan({ item }: { item: ContainerItem }) {
   const allItems = useSessionItems();
-  const { state: plan, items: ownedItems } = useContainerItems<Plan>(
+  const { items: ownedItems, componentsByKey } = useContainerItems(
     item,
     allItems
   );
+
+  const { meta, tasks } = useMemo(() => {
+    let planMeta: PlanMeta | undefined;
+    const taskMap = new Map<string, PlanTaskData>();
+
+    for (const [key, data] of componentsByKey) {
+      if (key.endsWith(":plan-meta")) {
+        planMeta = data as unknown as PlanMeta;
+      } else if (key.includes("plan-task:")) {
+        taskMap.set(key, data as unknown as PlanTaskData);
+      }
+    }
+
+    const ordered: PlanTaskData[] = [];
+    if (planMeta) {
+      for (const id of planMeta.taskOrder) {
+        const taskKey = [...taskMap.keys()].find((k) => k.endsWith(`plan-task:${id}`));
+        if (taskKey) {
+          ordered.push(taskMap.get(taskKey)!);
+        } else {
+          // Task listed in taskOrder but no individual update yet — show from meta
+          ordered.push({
+            id,
+            goal: planMeta.taskGoals[id] ?? id,
+            status: "pending",
+          });
+        }
+      }
+    }
+    return { meta: planMeta, tasks: ordered };
+  }, [componentsByKey]);
 
   const taskToolMap = useMemo(
     () => buildTaskToolMap(ownedItems),
     [ownedItems]
   );
 
-  if (!plan) return null;
+  if (!meta) return null;
 
-  const completedCount = plan.tasks.filter((t) => t.status === "completed").length;
+  const completedCount = tasks.filter((t) => t.status === "completed").length;
 
   return (
     <div className="not-prose my-2 rounded-md border bg-card p-3 text-card-foreground">
       <div className="mb-2 flex items-start justify-between gap-2">
-        <p className="text-sm font-medium leading-snug">Tasks</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium leading-snug">Tasks</p>
+          {meta.status === "reviewing" && (
+            <span className="text-[10px] font-medium text-cyan-500">Reviewing…</span>
+          )}
+          {meta.status === "replanning" && (
+            <span className="text-[10px] font-medium text-amber-500">Replanning…</span>
+          )}
+        </div>
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-          {completedCount}/{plan.tasks.length}
-          {plan.iteration !== undefined && plan.iteration > 0 && ` · pass ${plan.iteration}`}
+          {completedCount}/{tasks.length}
+          {meta.iteration !== undefined && meta.iteration > 0 && ` · pass ${meta.iteration}`}
         </span>
       </div>
       <ul className="space-y-1.5">
-        {plan.tasks.map((task) => (
+        {tasks.map((task) => (
           <PlanTaskRow key={task.id} task={task} toolCalls={taskToolMap.get(task.id)} />
         ))}
       </ul>
@@ -203,13 +239,14 @@ function PlanTaskRow({
   task,
   toolCalls,
 }: {
-  task: PlanTask;
+  task: PlanTaskData;
   toolCalls?: BlockToolOutputItem[];
 }) {
   const config = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.pending;
   const Icon = config.icon;
   const summary = getResultSummary(task.result);
-  const hasDetails = summary || (toolCalls && toolCalls.length > 0);
+  const showFeedback = task.feedback && (task.status === "needs-revision" || task.status === "escalated");
+  const hasDetails = summary || showFeedback || (toolCalls && toolCalls.length > 0);
 
   const assigneeLabel = task.assignee ? (
     <span className="ml-1 shrink-0 text-[10px] font-medium text-muted-foreground/60">
@@ -243,6 +280,11 @@ function PlanTaskRow({
           />
         </summary>
         <div className="mt-1.5 space-y-1.5 pl-5">
+          {showFeedback && (
+            <p className="whitespace-pre-wrap text-xs leading-snug text-amber-500/80">
+              {task.feedback}
+            </p>
+          )}
           {toolCalls && toolCalls.length > 0 && (
             <ul className="space-y-0.5">
               {toolCalls.map((tc) => (

@@ -142,7 +142,8 @@ function resolveStores(partial: Partial<StoreRegistry> | undefined): StoreRegist
     request: partial?.request ?? fallback.request,
     user: partial?.user ?? fallback.user,
     project: partial?.project ?? fallback.project,
-    activeRequests: partial?.activeRequests ?? fallback.activeRequests
+    activeRequests: partial?.activeRequests ?? fallback.activeRequests,
+    content: partial?.content ?? fallback.content
   };
 }
 

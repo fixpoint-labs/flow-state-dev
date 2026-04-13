@@ -25,6 +25,7 @@ export type {
   ReasoningItem,
   ResourceChangeItem,
   RouterDecisionItem,
+  SequencerStateSnapshotItem,
   StateChangeItem,
   SourceItem,
   StatusItem,

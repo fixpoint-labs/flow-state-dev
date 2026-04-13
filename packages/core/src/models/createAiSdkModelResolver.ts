@@ -195,7 +195,8 @@ function buildAiSdkRequest(
     maxSteps?: number;
     providerOptions?: Record<string, unknown>;
     prepareStep?: PrepareStepFn;
-  }
+  },
+  resolveLanguageModel?: ResolveAiSdkLanguageModel
 ): Record<string, unknown> {
   const request: Record<string, unknown> = {
     model: languageModel,
@@ -257,11 +258,20 @@ function buildAiSdkRequest(
       steps: unknown[];
       model: unknown;
     }) => {
-      return fn({
+      const result = await fn({
         stepNumber: stepInfo.stepNumber,
         messages: stepInfo.messages,
         steps: normalizeSteps(stepInfo.steps) ?? []
       });
+
+      // When the callback returns a modelId and a resolver is available,
+      // re-resolve the model ID to an AI SDK LanguageModel for this step.
+      if (result?.modelId !== undefined && resolveLanguageModel !== undefined) {
+        const { modelId: _modelId, ...rest } = result;
+        return { ...rest, model: resolveLanguageModel(result.modelId) };
+      }
+
+      return result;
     };
   }
 
@@ -540,13 +550,14 @@ export function wrapAiSdkModel(
 function createGeneratorModelFromAiSdk(
   modelId: string,
   languageModel: unknown,
-  providerWithTools: unknown | undefined
+  providerWithTools: unknown | undefined,
+  resolveLanguageModel?: ResolveAiSdkLanguageModel
 ): GeneratorModel {
   return {
     modelId,
 
     async generate(options): Promise<GeneratorModelResult> {
-      const request = buildAiSdkRequest(languageModel, options);
+      const request = buildAiSdkRequest(languageModel, options, resolveLanguageModel);
       try {
         const result = (await generateText(
           request as any
@@ -575,7 +586,7 @@ function createGeneratorModelFromAiSdk(
     },
 
     async *stream(options): AsyncGenerator<GeneratorModelStreamChunk> {
-      const request = buildAiSdkRequest(languageModel, options);
+      const request = buildAiSdkRequest(languageModel, options, resolveLanguageModel);
 
       // onError: AI SDK v6 callback for streaming errors. Captures errors
       // inline rather than letting them surface as unhandled rejections.
@@ -743,6 +754,7 @@ export function createAiSdkModelResolver(
     createGeneratorModelFromAiSdk(
       modelId,
       resolveLanguageModel(modelId),
-      providerWithTools
+      providerWithTools,
+      resolveLanguageModel
     );
 }

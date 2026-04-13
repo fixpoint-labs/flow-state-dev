@@ -6,12 +6,21 @@ import { z } from "zod";
 
 export const modeSchema = z.enum(["chat", "create"]).default("chat");
 
+export const featuresSchema = z.object({
+  biasCheck: z.boolean().default(false),
+  bashTool: z.boolean().default(true),
+  search: z.boolean().default(true),
+  fetch: z.boolean().default(true),
+  crawl: z.boolean().default(false),
+});
+
 // Per-instance state for an artifact resource. State tracks metadata only —
 // the document body is stored as resource content via writeContent/readContent.
 // The summary field is populated by a background .work() block after each update.
 export const artifactStateSchema = z.object({
   title: z.string(),
   summary: z.string().default(""),
+  extension: z.string().optional(),
   updatedAt: z.number()
 });
 
@@ -23,7 +32,7 @@ export const artifactStateSchema = z.object({
 // client.data exposes title, summary, and updatedAt metadata in the snapshot
 // without eagerly loading document bodies.
 export const artifactsCollection = defineResourceCollection({
-  pattern: "artifacts/*",
+  pattern: "artifacts/**",
   stateSchema: artifactStateSchema,
   client: {
     content: { read: true, update: true },
