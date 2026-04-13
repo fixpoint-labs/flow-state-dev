@@ -28,29 +28,36 @@ import {
   CodeBlockContent,
   CodeBlockContainer,
 } from "@/components/flow-state/code-block";
-import { Sandbox } from "@/components/flow-state/sandbox";
-
 const streamdownPlugins = { cjk, code, math, mermaid };
 
 // ---------------------------------------------------------------------------
 // Extension-to-renderer mapping
 // ---------------------------------------------------------------------------
 
-type RendererType = "markdown" | "jsx" | "code" | "text";
+type RendererType = "markdown" | "code" | "image" | "text";
 
 const MARKDOWN_EXTS = new Set(["md", "mdx"]);
-const JSX_EXTS = new Set(["jsx", "tsx"]);
 const CODE_EXTS = new Set([
-  "ts", "js", "py", "sh", "bash", "json", "yaml", "yml",
+  "jsx", "tsx", "ts", "js", "py", "sh", "bash", "json", "yaml", "yml",
   "css", "scss", "html", "xml", "sql", "go", "rs", "java", "c", "cpp",
   "h", "rb", "php", "swift", "kt", "toml", "ini", "env", "dockerfile",
+  "svg",
 ]);
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"]);
+
+/** Infer extension from a filename/title when the stored extension is missing. */
+function inferExtension(title: string, storedExtension: string | null | undefined): string | null {
+  if (storedExtension) return storedExtension;
+  const dot = title.lastIndexOf(".");
+  if (dot === -1 || dot === title.length - 1) return null;
+  return title.slice(dot + 1).toLowerCase();
+}
 
 function getRendererType(extension: string | null): RendererType {
   if (!extension) return "text";
   const ext = extension.toLowerCase();
   if (MARKDOWN_EXTS.has(ext)) return "markdown";
-  if (JSX_EXTS.has(ext)) return "jsx";
+  if (IMAGE_EXTS.has(ext)) return "image";
   if (CODE_EXTS.has(ext)) return "code";
   return "text";
 }
@@ -73,6 +80,9 @@ function getContentTypeLabel(extension: string | null): string {
     md: "Markdown", mdx: "MDX", ts: "TypeScript", js: "JavaScript",
     tsx: "TSX", jsx: "JSX", py: "Python", json: "JSON", css: "CSS",
     html: "HTML", yaml: "YAML", yml: "YAML", sh: "Shell",
+    png: "PNG Image", jpg: "JPEG Image", jpeg: "JPEG Image",
+    gif: "GIF Image", webp: "WebP Image", svg: "SVG",
+    ico: "Icon", bmp: "Bitmap Image",
   };
   return labels[extension.toLowerCase()] ?? extension.toUpperCase();
 }
@@ -151,9 +161,14 @@ export function ArtifactViewer({
     }
   }, [artifact.content]);
 
+  const resolvedExtension = useMemo(
+    () => inferExtension(artifact.title, artifact.extension),
+    [artifact.title, artifact.extension],
+  );
+
   const rendererType = useMemo(
-    () => getRendererType(artifact.extension),
-    [artifact.extension],
+    () => getRendererType(resolvedExtension),
+    [resolvedExtension],
   );
 
   return (
@@ -170,7 +185,7 @@ export function ArtifactViewer({
           {isEditing ? title : artifact.title}
         </ArtifactTitle>
         <ArtifactDescription>
-          {getContentTypeLabel(artifact.extension)}
+          {getContentTypeLabel(resolvedExtension)}
         </ArtifactDescription>
         <ArtifactActions>
           <ArtifactAction
@@ -213,7 +228,7 @@ export function ArtifactViewer({
           <ContentRenderer
             content={artifact.content}
             rendererType={rendererType}
-            extension={artifact.extension}
+            extension={resolvedExtension}
           />
         )}
       </ArtifactContent>
@@ -276,10 +291,14 @@ function ContentRenderer({
         </div>
       );
 
-    case "jsx":
+    case "image":
       return (
-        <div className="flex-1 overflow-auto">
-          <Sandbox jsx={content} />
+        <div className="flex flex-1 items-center justify-center overflow-auto bg-[repeating-conic-gradient(var(--color-muted)_0%_25%,transparent_0%_50%)_0_0/16px_16px] p-4">
+          <img
+            src={content.startsWith("data:") ? content : `data:image/${extension};base64,${content}`}
+            alt="Artifact image"
+            className="max-h-full max-w-full object-contain"
+          />
         </div>
       );
 
