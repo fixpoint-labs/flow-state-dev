@@ -102,6 +102,15 @@ export type SandboxProvider =
        * - `"project"` — shared across all sessions in a project
        */
       scope?: WorkspaceScope;
+      /**
+       * Enforce that all filesystem operations stay within the workspace root.
+       * When `true` (default), commands and file paths are validated before
+       * execution. Absolute paths outside the workspace, traversals (`../`),
+       * home references (`~/`, `$HOME`), and command substitution are rejected.
+       *
+       * Set to `false` to disable guards. A warning is logged at initialization.
+       */
+      strictPaths?: boolean;
     }
   | { type: "vercel"; sandboxId?: string }
   | { type: "upstash"; boxId?: string }
