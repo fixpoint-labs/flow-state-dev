@@ -220,6 +220,28 @@ pipeline
 
 Work failures do NOT abort the main chain. They emit `step_error` items.
 
+### Conditional Background Work
+
+`.workIf()` dispatches a background sidechain only when a condition is truthy. When falsy, it's a complete no-op — no block execution, no items emitted.
+
+```ts
+pipeline
+  .then(mainProcessing)
+  .workIf(
+    (ctx) => ctx.session.state.features.memory,
+    memoryObserveBlock
+  )
+  .then(nextStep);  // continues immediately regardless of condition
+```
+
+The condition receives the `BlockContext`, so it can check session state, feature flags, or any runtime value. It also accepts a static boolean for compile-time toggling:
+
+```ts
+pipeline.workIf(ENABLE_ANALYTICS, analyticsBlock);
+```
+
+See [Side Chains](/docs/sequencers/side-chains) for the full story on `.work()`, `.workIf()`, and `.forEachBackground()`.
+
 ### Wait for Work
 
 ```ts

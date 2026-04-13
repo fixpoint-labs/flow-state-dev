@@ -199,6 +199,25 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<an
     options?: { name?: string }
   ): SequencerDefinition<TInput, TOutput>;
 
+  /**
+   * Conditional variant of `.work()` — dispatches a fire-and-forget sidechain
+   * only when the condition is truthy. Complete no-op when falsy (no items, no trace).
+   *
+   * The condition is evaluated once per execution before dispatching. It receives
+   * the full `BlockContext` so it can read live session/request state.
+   */
+  workIf(
+    condition: boolean | ((ctx: BlockContext) => boolean | Promise<boolean>),
+    block: BlockDefinition<any, any>,
+    options?: { name?: string }
+  ): SequencerDefinition<TInput, TOutput>;
+  workIf<TStepIn>(
+    condition: boolean | ((ctx: BlockContext) => boolean | Promise<boolean>),
+    connector: ConnectorFn<TOutput, TStepIn>,
+    block: BlockDefinition<any, any>,
+    options?: { name?: string }
+  ): SequencerDefinition<TInput, TOutput>;
+
   waitForWork(options?: {
     failOnError?: boolean;
     timeoutMs?: number;

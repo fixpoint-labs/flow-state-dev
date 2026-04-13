@@ -967,6 +967,56 @@ function createSequencer<TInput, TOutput>(
       return definition.work(arg1 as any, arg2 as any, arg3 as any);
     },
 
+    workIf<TStepIn>(
+      condition: boolean | ((ctx: BlockContext) => boolean | Promise<boolean>),
+      arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
+      arg3?: BlockDefinition<any, any> | WorkOptions,
+      arg4?: WorkOptions
+    ): SequencerDefinition<TInput, TOutput> {
+      const hasConnector = isBlockDefinition(arg3);
+      const connector = hasConnector ? (arg2 as ConnectorFn<TOutput, TStepIn>) : undefined;
+      const block = (hasConnector ? arg3 : arg2) as BlockDefinition<any, any>;
+      const options = (hasConnector ? arg4 : arg3) as WorkOptions | undefined;
+
+      return extend<TOutput>(
+        {
+          name: options?.name ?? `workIf:${block.name}`,
+          run: async (value, ctx, runtime) => {
+            const shouldDispatch =
+              typeof condition === "function" ? await condition(ctx) : condition;
+
+            if (!shouldDispatch) {
+              return { value };
+            }
+
+            const name = options?.name ?? block.name;
+            const input =
+              connector === undefined ? value : await connector(value as TOutput, ctx);
+
+            const promise = executeBlock(block, input, ctx)
+              .then(
+                (result): WorkResult => ({
+                  name,
+                  status: "fulfilled",
+                  value: result
+                })
+              )
+              .catch((error): WorkResult => ({
+                name,
+                status: "rejected",
+                reason: toError(error)
+              }));
+
+            runtime.workTasks.push({ name, promise });
+            return { value };
+          }
+        },
+        lastOutputSchema,
+        undefined,
+        mergeFrom(block)
+      );
+    },
+
     waitForWork(options?: WaitForWorkOptions): SequencerDefinition<TInput, TOutput> {
       return extend<TOutput>(
         {
