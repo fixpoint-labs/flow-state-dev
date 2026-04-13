@@ -244,13 +244,6 @@ export function ReactiveBlackboard({ item }: { item: ContainerItem }) {
           aria-hidden="true"
         />
         <span className="text-sm font-medium">Blackboard</span>
-        <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
-          {isFinished ? (
-            <CheckCircle2Icon className="h-3 w-3 text-emerald-500" />
-          ) : (
-            <Loader2Icon className="h-3 w-3 animate-spin" />
-          )}
-        </span>
       </button>
 
       {/* Content — timeline */}
