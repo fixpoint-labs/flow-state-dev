@@ -1204,4 +1204,228 @@ describe("sequencer builder", () => {
       await expect(seq.run(1, ctx)).resolves.toBe(13);
     });
   });
+
+  describe("workIf", () => {
+    it("dispatches sidechain when condition function returns true", async () => {
+      let workExecuted = false;
+      const workBlock = handler({
+        name: "bg-work",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (value) => {
+          workExecuted = true;
+          return value + 10;
+        }
+      });
+
+      const seq = sequencer({ name: "workIf-true", inputSchema: z.number() })
+        .workIf(() => true, workBlock)
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      const result = await seq.run(1, ctx);
+      expect(result).toBe(1);
+      expect(workExecuted).toBe(true);
+    });
+
+    it("skips sidechain when condition function returns false", async () => {
+      let workExecuted = false;
+      const workBlock = handler({
+        name: "bg-work",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (value) => {
+          workExecuted = true;
+          return value + 10;
+        }
+      });
+
+      const seq = sequencer({ name: "workIf-false", inputSchema: z.number() })
+        .workIf(() => false, workBlock)
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      const result = await seq.run(1, ctx);
+      expect(result).toBe(1);
+      expect(workExecuted).toBe(false);
+    });
+
+    it("accepts static boolean true (equivalent to work())", async () => {
+      let workExecuted = false;
+      const workBlock = handler({
+        name: "bg-work",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (value) => {
+          workExecuted = true;
+          return value + 10;
+        }
+      });
+
+      const seq = sequencer({ name: "workIf-static-true", inputSchema: z.number() })
+        .workIf(true, workBlock)
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      const result = await seq.run(1, ctx);
+      expect(result).toBe(1);
+      expect(workExecuted).toBe(true);
+    });
+
+    it("accepts static boolean false (complete no-op)", async () => {
+      let workExecuted = false;
+      const workBlock = handler({
+        name: "bg-work",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (value) => {
+          workExecuted = true;
+          return value + 10;
+        }
+      });
+
+      const seq = sequencer({ name: "workIf-static-false", inputSchema: z.number() })
+        .workIf(false, workBlock)
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      const result = await seq.run(1, ctx);
+      expect(result).toBe(1);
+      expect(workExecuted).toBe(false);
+    });
+
+    it("condition receives BlockContext", async () => {
+      let receivedCtx: unknown = null;
+      const workBlock = handler({
+        name: "bg-work",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (value) => value
+      });
+
+      const seq = sequencer({ name: "workIf-ctx", inputSchema: z.number() })
+        .workIf((ctx) => {
+          receivedCtx = ctx;
+          return true;
+        }, workBlock)
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      await seq.run(1, ctx);
+      expect(receivedCtx).not.toBeNull();
+      expect((receivedCtx as any).request).toBeDefined();
+    });
+
+    it("supports async condition functions", async () => {
+      let workExecuted = false;
+      const workBlock = handler({
+        name: "bg-work",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (value) => {
+          workExecuted = true;
+          return value + 10;
+        }
+      });
+
+      const seq = sequencer({ name: "workIf-async", inputSchema: z.number() })
+        .workIf(async () => {
+          await new Promise((r) => setTimeout(r, 5));
+          return true;
+        }, workBlock)
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      const result = await seq.run(1, ctx);
+      expect(result).toBe(1);
+      expect(workExecuted).toBe(true);
+    });
+
+    it("supports connector overload", async () => {
+      const executed: string[] = [];
+      const workBlock = handler({
+        name: "bg-work",
+        inputSchema: z.string(),
+        outputSchema: z.string(),
+        execute: async (value) => {
+          executed.push(value);
+          return value.toUpperCase();
+        }
+      });
+
+      const seq = sequencer({ name: "workIf-conn", inputSchema: z.number() })
+        .workIf(
+          () => true,
+          (value) => String(value),
+          workBlock
+        )
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      const result = await seq.run(42, ctx);
+      expect(result).toBe(42);
+      expect(executed).toEqual(["42"]);
+    });
+
+    it("does not dispatch connector when condition is false", async () => {
+      let connectorCalled = false;
+      const workBlock = handler({
+        name: "bg-work",
+        inputSchema: z.string(),
+        outputSchema: z.string(),
+        execute: async (value) => value
+      });
+
+      const seq = sequencer({ name: "workIf-no-conn", inputSchema: z.number() })
+        .workIf(
+          () => false,
+          (value) => {
+            connectorCalled = true;
+            return String(value);
+          },
+          workBlock
+        )
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      await seq.run(42, ctx);
+      expect(connectorCalled).toBe(false);
+    });
+
+    it("returns original value unchanged (fire-and-forget)", async () => {
+      const workBlock = handler({
+        name: "bg-work",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (value) => value * 100
+      });
+
+      const addOne = addHandler("add-one", 1);
+      const seq = sequencer({ name: "workIf-passthrough", inputSchema: z.number() })
+        .workIf(() => true, workBlock)
+        .then(addOne);
+
+      const ctx = createMockContext();
+      // workIf returns unchanged value (5), then addOne → 6
+      await expect(seq.run(5, ctx)).resolves.toBe(6);
+    });
+
+    it("propagates sidechain failures via waitForWork failOnError", async () => {
+      const failingWork = handler({
+        name: "failing-work",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: () => {
+          throw new Error("conditional background failure");
+        }
+      });
+
+      const seq = sequencer({ name: "workIf-fail", inputSchema: z.number() })
+        .workIf(() => true, failingWork)
+        .waitForWork({ failOnError: true });
+
+      const ctx = createMockContext();
+      await expect(seq.run(1, ctx)).rejects.toThrow("conditional background failure");
+    });
+  });
 });

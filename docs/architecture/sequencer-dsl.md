@@ -247,6 +247,42 @@ pipeline
 
 **Auto-await:** When the sequencer's main chain finishes, any outstanding work tasks are automatically awaited before the sequencer returns. This ensures the request stream stays open until all background work completes. Before the auto-await, the sequencer emits a `StatusItem` with message `"finishing"` — clients can use this signal to know the main chain's output is ready and it's safe to accept new user input (see `isFinishing` on `SessionView` / `UseRequestStreamResult`).
 
+### `workIf(condition, block)` — Conditional Background Work
+
+Queue a background sidechain only when a condition is truthy. Complete no-op when falsy — no items emitted, no cost incurred.
+
+```ts
+pipeline
+  .then(mainProcessing)
+  .workIf(
+    (ctx) => ctx.session.state.features.memory,
+    memoryObserveBlock
+  )
+  .then(nextStep);  // continues immediately regardless of condition
+```
+
+The condition is evaluated once per execution before dispatching. It receives the full `BlockContext` so it can read live session/request state.
+
+**Static boolean:** Passing `true` is equivalent to `.work(block)`. Passing `false` makes the step a permanent no-op (useful during development).
+
+```ts
+// Feature-flagged background work
+pipeline.workIf(ENABLE_ANALYTICS, analyticsBlock);
+```
+
+With a connector:
+
+```ts
+pipeline.workIf(
+  (ctx) => ctx.session.state.observeEnabled,
+  (output) => ({ event: "processed", data: output }),
+  analyticsBlock,
+  { name: "conditional-analytics" }
+);
+```
+
+When the condition is falsy, the connector is never called.
+
 ### `waitForWork(opts)` — Converge Work Queue
 
 Wait for all queued work to complete at a specific point in the pipeline. This is useful when a later step depends on work task results. If you don't need the results mid-pipeline, the auto-await at the end of the sequencer handles it automatically.
@@ -396,7 +432,7 @@ Each branch is a tuple: `[connector, condition, block]`.
 
 ## Resource Collection
 
-Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain. Every method that accepts a block — `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `work`, `background`, `tap`, `tapIf`, `rescue`, `branch`, `thenAll`, `thenAny`, `race` — merges that block's declared resources into the sequencer's accumulated set.
+Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain. Every method that accepts a block — `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `work`, `workIf`, `background`, `tap`, `tapIf`, `rescue`, `branch`, `thenAll`, `thenAny`, `race` — merges that block's declared resources into the sequencer's accumulated set.
 
 ```ts
 const pipeline = sequencer({ name: "pipeline" })
