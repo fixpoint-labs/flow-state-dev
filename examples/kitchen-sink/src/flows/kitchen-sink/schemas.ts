@@ -20,6 +20,7 @@ export const featuresSchema = z.object({
 export const artifactStateSchema = z.object({
   title: z.string(),
   summary: z.string().default(""),
+  extension: z.string().optional(),
   updatedAt: z.number()
 });
 

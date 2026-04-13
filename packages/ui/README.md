@@ -39,6 +39,10 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `request-group` | Groups items by request ID with streaming and sources |
 | `session-items-context` | React context for passing session items to nested components |
 | `plan` | Task list display for plan snapshots from planning patterns |
+| `artifact` | Composable artifact viewer shell with header, actions, and content areas |
+| `file-tree` | Tree-structured file and folder display with expand/collapse and selection |
+| `jsx-preview` | Live JSX/TSX renderer with streaming support and error fallback |
+| `sandbox` | Source/preview tab wrapper for JSX artifacts using JSXPreview and CodeBlock |
 
 ## Framework Integration
 
