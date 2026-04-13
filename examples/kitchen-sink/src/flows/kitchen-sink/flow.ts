@@ -39,7 +39,7 @@ import {
   artifactResources,
 } from "./blocks";
 import { modeSchema, featuresSchema } from "./schemas";
-import { CHAT_PROMPT, CREATE_PROMPT } from "./prompts";
+import { ASK_PROMPT, BUILD_PROMPT } from "./prompts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -93,7 +93,7 @@ const userStateSchema = z.object({
 const assistantGenerator = generator({
   name: "assistant-generator",
   userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
-  sessionStateSchema: z.object({ mode: modeSchema.default("chat"), thinkingStyle: z.string().optional() }),
+  sessionStateSchema: z.object({ mode: modeSchema.default("ask"), thinkingStyle: z.string().optional() }),
 
   // Capabilities: auto-install resources, context formatters, and tools.
   // mem.capability includes a context preset that injects unified memory recall.
@@ -110,7 +110,7 @@ const assistantGenerator = generator({
   outputSchema: z.string(),
 
   prompt: (_input, ctx) =>
-    ctx.session.state.mode === "create" ? CREATE_PROMPT : CHAT_PROMPT,
+    ctx.session.state.mode === "build" ? BUILD_PROMPT : ASK_PROMPT,
 
   emit: { messages: true, reasoning: true },
   model: selectModel(MODEL_ID, {
@@ -139,7 +139,7 @@ export { thinkingStyleRouter };
 const applyRequestedMode = handler({
   name: "apply-requested-mode",
   inputSchema,
-  sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
+  sessionStateSchema: z.object({ mode: modeSchema.default("ask") }),
   execute: async (input, ctx) => {
     await ctx.session.patchState({ mode: input.mode });
   },
@@ -346,7 +346,7 @@ const kitchenSinkFlow = defineFlow({
     resources: { ...artifactResources, ...mem.sessionResources },
     clientData: {
       modeStatus: (ctx) => ({
-        currentMode: modeSchema.parse(ctx.state.mode ?? "chat"),
+        currentMode: modeSchema.parse(ctx.state.mode ?? "ask"),
         thinkingStyle:
           (ctx.state.thinkingStyle as string | undefined) ?? null,
         requestCount: Number(ctx.state.requestCount ?? 0),
