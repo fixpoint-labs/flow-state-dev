@@ -91,10 +91,7 @@ export function ModeSelector({ mode, onModeChange, disabled }: ModeSelectorProps
               <DropdownMenuRadioItem
                 key={option.value}
                 value={option.value}
-                className={cn(
-                  "flex cursor-pointer items-start gap-3 rounded-md px-3 py-2.5",
-                  isActive && "bg-accent",
-                )}
+                className="flex cursor-pointer items-start gap-3 rounded-md px-3 py-2.5"
               >
                 <Icon
                   className={cn(
