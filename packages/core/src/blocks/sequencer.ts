@@ -200,6 +200,7 @@ async function emitGeneratorBlockOutput(
     provenance: {
       blockName: block.name,
       blockInstanceId: instanceId,
+      parentBlockInstanceId: ctx._blockIdentity?.parentBlockInstanceId,
       phase: "main" as const,
     },
     ts: completedAt,
@@ -263,8 +264,12 @@ async function executeBlock(
       scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt);
 
       // Emit block_output with modelUsage for nested generator blocks.
+      // Use the scope's instanceId from _blockIdentity so this trace item
+      // shares the same identity as streaming items emitted during execution,
+      // preventing orphaned duplicate nodes in the devtool trace tree.
       if (modelUsage) {
-        const instanceId = `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const identity = scopedCtx._blockIdentity;
+        const instanceId = identity?.blockInstanceId ?? `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         await emitGeneratorBlockOutput(block, output, scopedCtx, startedAt, instanceId, modelUsage);
       }
 
