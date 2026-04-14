@@ -83,3 +83,22 @@ export type {
   ResponseAuditorConfig,
   DisplayMode,
 } from "./response-auditor";
+export {
+  reactiveBlackboard,
+  actor,
+  mesh,
+  matchTopic,
+  compilePattern,
+  createReactiveBlackboard,
+  reactiveBlackboardStateSchema,
+  emitControlSchema,
+  createAppendEntry,
+} from "./reactive-blackboard";
+export type {
+  ReactiveBlackboardConfig,
+  ActorConfig,
+  Actor,
+  MeshConfig,
+  ReactiveBlackboardState,
+  EmitControlState,
+} from "./reactive-blackboard";

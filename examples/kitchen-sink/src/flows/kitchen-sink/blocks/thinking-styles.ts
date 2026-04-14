@@ -5,8 +5,8 @@
  *   1. Keyword handler — fast heuristic scan, patches session state directly if match
  *   2. LLM classifier — intentClassifier fallback when no keyword matched
  *
- * Defines the three concrete pipelines (default, plan-and-execute, supervisor)
- * and the router that dispatches between them.
+ * Defines five concrete pipelines (default, plan-and-execute, supervisor,
+ * blackboard, reactive-blackboard) and the router that dispatches between them.
  */
 import { generator, handler, router, sequencer, utility } from "@flow-state-dev/core";
 import type { GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
@@ -14,6 +14,11 @@ import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { supervisor } from "@flow-state-dev/patterns/supervisor";
 import { blackboard, createBlackboard } from "@flow-state-dev/patterns/blackboard";
+import {
+  reactiveBlackboard,
+  actor,
+  mesh,
+} from "@flow-state-dev/patterns/reactive-blackboard";
 import { z } from "zod";
 
 // -------------------------------------------------------------------------
@@ -24,6 +29,7 @@ export const thinkingStyleSchema = z.enum([
   "plan-and-execute",
   "supervisor",
   "blackboard",
+  "reactive-blackboard",
   "default",
 ]);
 
@@ -68,6 +74,19 @@ export const BLACKBOARD_KEYWORDS = [
   "contribute independently",
 ];
 
+export const REACTIVE_BLACKBOARD_KEYWORDS = [
+  "reactive blackboard",
+  "reactive analysis",
+  "parallel analysis",
+  "multiple angles",
+  "different angles",
+  "simultaneous perspectives",
+  "concurrent analysis",
+  "parallel perspectives",
+  "explore",
+  "challenge ideas"
+];
+
 export const PLAN_KEYWORDS = [
   "plan",
   "steps",
@@ -98,6 +117,8 @@ export const keywordHandler = handler({
     let matched: ThinkingStyle | null = null;
     if (SUPERVISOR_KEYWORDS.some((kw) => message.includes(kw))) {
       matched = "supervisor";
+    } else if (REACTIVE_BLACKBOARD_KEYWORDS.some((kw) => message.includes(kw))) {
+      matched = "reactive-blackboard";
     } else if (BLACKBOARD_KEYWORDS.some((kw) => message.includes(kw))) {
       matched = "blackboard";
     } else if (PLAN_KEYWORDS.some((kw) => message.includes(kw))) {
@@ -142,6 +163,14 @@ export const classifierBlock = utility.intentClassifier({
       knowledge. Examples: document analysis from legal/technical/business angles,
       complex problem-solving requiring research + analysis + critique,
       multi-disciplinary review where each discipline contributes independently.
+    `,
+    "reactive-blackboard": `
+      The message asks for analysis where multiple independent perspectives should
+      examine the problem in parallel — reacting simultaneously rather than being
+      orchestrated by a controller. Each perspective fires independently and
+      results are synthesized at the end. Examples: "analyze this from multiple
+      angles", "give me parallel perspectives", "examine this simultaneously from
+      different viewpoints", "concurrent analysis from different angles".
     `,
     default: `
       The message is a direct question, a reasoning task, an explanation request,
@@ -367,12 +396,228 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     outputSchema: z.string(),
   });
 
+  // -----------------------------------------------------------------------
+  // Reactive Blackboard — stigmergic multi-agent coordination.
+  //
+  // Actors produce granular entries (observations, findings, challenges)
+  // that trigger other actors via topic-based watch patterns. The reactive
+  // chain creates data-dependent fan-out: 1 request → N observations →
+  // N×M findings → N×M×K challenges. The mesh's reEmit mechanism handles
+  // appending entries and dispatching matching actors automatically.
+  // -----------------------------------------------------------------------
+
+  const rbEntrySchema = z.object({
+    type: z.string(),
+    topic: z.string(),
+    body: z.any(),
+  });
+
+  const rb = reactiveBlackboard({ name: "reactive", entries: rbEntrySchema });
+
+  // Shared output schema for actors that produce re-emittable entries.
+  // Wrapped in an object because the AI SDK requires top-level "type: object".
+  // The pattern's normalizeToEntries() unwraps { entries: [...] } automatically.
+  const entryOutputSchema = z.object({
+    entries: z.array(z.object({
+      type: z.string(),
+      topic: z.string(),
+      body: z.string(),
+    })),
+  });
+
+  // Helper: build the user prompt from the triggering entry + blackboard context.
+  function rbUserPrompt(input: any, ctx: any): string {
+    const state = ctx.session.resources.reactiveBlackboard.state as {
+      entries: Array<{ type: string; topic: string; body: string }>;
+    };
+    const entries = state?.entries ?? [];
+    const body = typeof input === "string"
+      ? input
+      : (input.body ?? JSON.stringify(input));
+
+    const prior = entries
+      .filter((e: any) => e.type !== "request")
+      .map((e: any) => `[${e.type}:${e.topic}] ${e.body}`)
+      .join("\n\n");
+
+    return prior
+      ? `Entry: ${body}\n\nPrior entries on the blackboard:\n${prior}`
+      : `Entry: ${body}`;
+  }
+
+  // Explorer — watches requests, produces granular observations.
+  const rbExplorer = actor({
+    name: "rb-explorer",
+    watch: ["request:**"],
+    body: generator({
+      name: "rb-explorer-gen",
+      model: modelId,
+      outputSchema: entryOutputSchema,
+      sessionResources: { reactiveBlackboard: rb.blackboard },
+      ...(uses ? { uses: uses as any } : {}),
+      context,
+      history: config.history,
+      search: true,
+      prompt: [
+        "You are an Explorer in a reactive blackboard analysis.",
+        "Investigate the question broadly: identify key concepts, gather",
+        "evidence, surface context others might miss.",
+        "",
+        "Use your available tools to research the topic — search the web,",
+        "fetch relevant pages, and gather real data before forming observations.",
+        "Do not rely solely on your training data when current information",
+        "would strengthen your observations.",
+        "",
+        "Return 2-4 distinct observations as a JSON array.",
+        "Each entry must have: type \"observation\", a short descriptive",
+        "topic slug (e.g. \"key-concept\", \"historical-context\"), and a",
+        "body with your substantive observation. Focus on breadth — each",
+        "observation should cover a different angle.",
+      ].join("\n"),
+      user: rbUserPrompt,
+    }),
+  });
+
+  // Analyst — watches observations, produces findings (structured analysis).
+  // Fires once per observation, so N observations → N analyst invocations.
+  const rbAnalyst = actor({
+    name: "rb-analyst",
+    watch: ["observation:**"],
+    body: generator({
+      name: "rb-analyst-gen",
+      model: modelId,
+      outputSchema: entryOutputSchema,
+      sessionResources: { reactiveBlackboard: rb.blackboard },
+      ...(uses ? { uses: uses as any } : {}),
+      context,
+      history: config.history,
+      search: true,
+      prompt: [
+        "You are an Analyst in a reactive blackboard analysis.",
+        "You receive a specific observation from the Explorer.",
+        "Analyze it in the context of the full blackboard state:",
+        "identify patterns, draw inferences, evaluate trade-offs.",
+        "",
+        "Use your available tools to research specifics when the observation",
+        "references claims, data, or topics that would benefit from verification",
+        "or deeper investigation.",
+        "",
+        "Return 1-2 findings as a JSON array.",
+        "Each entry must have: type \"finding\", a short descriptive",
+        "topic slug (e.g. \"pattern-identified\", \"trade-off\"), and a",
+        "body with your structured analysis.",
+      ].join("\n"),
+      user: rbUserPrompt,
+    }),
+  });
+
+  // Challenger — watches findings, produces challenges.
+  // Fires once per finding, stress-testing each conclusion.
+  const rbChallenger = actor({
+    name: "rb-challenger",
+    watch: ["finding:**"],
+    body: generator({
+      name: "rb-challenger-gen",
+      model: modelId,
+      outputSchema: entryOutputSchema,
+      sessionResources: { reactiveBlackboard: rb.blackboard },
+      ...(uses ? { uses: uses as any } : {}),
+      context,
+      history: config.history,
+      search: true,
+      prompt: [
+        "You are a Challenger in a reactive blackboard analysis.",
+        "You receive a specific finding from the Analyst.",
+        "Stress-test it: find gaps, counter-arguments, edge cases,",
+        "hidden assumptions. Be constructive but rigorous.",
+        "",
+        "Use your available tools to find counter-evidence or alternative",
+        "viewpoints that challenge the finding.",
+        "",
+        "Return 1 challenge as a JSON array with a single entry.",
+        "The entry must have: type \"challenge\", a short descriptive",
+        "topic slug (e.g. \"assumption-gap\", \"counter-evidence\"), and",
+        "a body explaining the weakness or alternative perspective.",
+      ].join("\n"),
+      user: rbUserPrompt,
+    }),
+  });
+
+  const rbMesh = mesh({
+    name: "reactive-thinking",
+    blackboard: rb,
+    actors: [rbExplorer, rbAnalyst, rbChallenger],
+    concurrency: 3,
+    reEmit: true,
+    maxDepth: 3,
+  });
+
+  const rbSynthesizer = generator({
+    name: "rb-synthesizer",
+    model: modelId,
+    outputSchema: z.string(),
+    sessionResources: { reactiveBlackboard: rb.blackboard },
+    ...(uses ? { uses: uses as any } : {}),
+    context,
+    history: config.history,
+    search: true,
+    prompt: [
+      "You are a synthesis agent. A reactive analysis just completed.",
+      "An Explorer produced observations, an Analyst turned each into",
+      "findings, and a Challenger stress-tested each finding. All entries",
+      "are shown below, grouped by tier.",
+      "",
+      "Produce a coherent, well-rounded response that integrates the",
+      "full chain of reasoning. Highlight areas of agreement, acknowledge",
+      "tensions or gaps the Challenger raised, and give the user a",
+      "comprehensive answer. Do not mention the analysts or the process.",
+    ].join("\n"),
+    user: (_input: any, ctx: any) => {
+      const state = ctx.session.resources.reactiveBlackboard.state as {
+        entries: Array<{ type: string; topic: string; body: string }>;
+      };
+      const entries = state?.entries ?? [];
+      const request = entries.find((e) => e.type === "request");
+      const observations = entries.filter((e) => e.type === "observation");
+      const findings = entries.filter((e) => e.type === "finding");
+      const challenges = entries.filter((e) => e.type === "challenge");
+
+      const parts: string[] = [];
+      if (request) parts.push(`## Original Question\n${request.body}`);
+      if (observations.length) {
+        parts.push(`## Observations (${observations.length})\n` +
+          observations.map((o) => `### ${o.topic}\n${o.body}`).join("\n\n"));
+      }
+      if (findings.length) {
+        parts.push(`## Findings (${findings.length})\n` +
+          findings.map((f) => `### ${f.topic}\n${f.body}`).join("\n\n"));
+      }
+      if (challenges.length) {
+        parts.push(`## Challenges (${challenges.length})\n` +
+          challenges.map((c) => `### ${c.topic}\n${c.body}`).join("\n\n"));
+      }
+      return parts.join("\n\n---\n\n") || "No contributions were gathered.";
+    },
+  });
+
+  const reactiveBlackboardPipeline = sequencer({
+    name: "reactive-blackboard-thinking",
+    inputSchema: z.any(),
+  })
+    .map((input: any) => ({
+      type: "request",
+      topic: "query",
+      body: input.message ?? input,
+    }))
+    .then(rbMesh.emit)
+    .then(rbSynthesizer);
+
   // Router — adapts flow input to each pipeline's expected shape via connectInput.
   // connectInput delegates through the original block's .run, so route
   // interception (e.g. testRouter) works transparently.
   const thinkingStyleRouter = router({
     name: "thinking-style-router",
-    routes: [defaultPipeline, paePipeline, supervisorPipeline, blackboardPipeline],
+    routes: [defaultPipeline, paePipeline, supervisorPipeline, blackboardPipeline, reactiveBlackboardPipeline],
     execute: (input, ctx) => {
       const style = ctx.session.state.thinkingStyle as string | undefined;
       switch (style) {
@@ -382,11 +627,13 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
           return supervisorPipeline.connectInput(() => ({ goal: input.message }));
         case "blackboard":
           return blackboardPipeline.connectInput(() => input);
+        case "reactive-blackboard":
+          return reactiveBlackboardPipeline.connectInput(() => input);
         default:
           return defaultPipeline;
       }
     },
   });
 
-  return { thinkingStyleRouter, defaultPipeline, paePipeline, supervisorPipeline, blackboardPipeline };
+  return { thinkingStyleRouter, defaultPipeline, paePipeline, supervisorPipeline, blackboardPipeline, reactiveBlackboardPipeline };
 }

@@ -36,6 +36,10 @@
     "./response-auditor": {
       "types": "./dist/response-auditor/index.d.ts",
       "default": "./dist/response-auditor/index.js"
+    },
+    "./reactive-blackboard": {
+      "types": "./dist/reactive-blackboard/index.d.ts",
+      "default": "./dist/reactive-blackboard/index.js"
     }
   },
   "license": "MIT",

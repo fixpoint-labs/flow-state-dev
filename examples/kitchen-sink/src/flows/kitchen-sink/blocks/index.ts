@@ -12,6 +12,7 @@ export {
   thinkingStyleSessionStateSchema,
   SUPERVISOR_KEYWORDS,
   BLACKBOARD_KEYWORDS,
+  REACTIVE_BLACKBOARD_KEYWORDS,
   PLAN_KEYWORDS,
   type ThinkingStyle,
 } from "./thinking-styles";

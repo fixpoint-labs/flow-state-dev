@@ -18,10 +18,11 @@ import {
   ListChecks,
   Users,
   ClipboardList,
+  RadioIcon,
   ChevronDownIcon,
 } from "lucide-react";
 
-export type ThinkingStyle = "auto" | "default" | "plan-and-execute" | "supervisor" | "blackboard";
+export type ThinkingStyle = "auto" | "default" | "plan-and-execute" | "supervisor" | "blackboard" | "reactive-blackboard";
 
 interface StyleOption {
   value: ThinkingStyle;
@@ -69,9 +70,17 @@ const STYLE_OPTIONS: StyleOption[] = [
     value: "blackboard",
     label: "Blackboard",
     shortLabel: "Board",
-    description: "Independent experts contribute to a shared workspace",
+    description: "Controller picks which expert to consult next",
     icon: ClipboardList,
     color: "text-emerald-500 dark:text-emerald-400",
+  },
+  {
+    value: "reactive-blackboard",
+    label: "Reactive Board",
+    shortLabel: "Reactive",
+    description: "Parallel actors react independently, no controller",
+    icon: RadioIcon,
+    color: "text-cyan-500 dark:text-cyan-400",
   },
 ];
 

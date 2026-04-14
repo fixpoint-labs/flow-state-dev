@@ -52,25 +52,6 @@ function StyleBadge({ style }: { style: ThinkingStyle }) {
   );
 }
 
-function ModelBadge({ preset }: { preset: string }) {
-  const option = getPresetOption(preset);
-  const Icon = option.icon;
-
-  return (
-    <div
-      className={cn(
-        "mb-2 inline-flex items-center gap-1 rounded-full",
-        "border border-border/50 bg-muted/50 px-2 py-0.5",
-        "text-[10px] font-medium leading-none text-muted-foreground",
-        "animate-in fade-in-0 slide-in-from-top-1 duration-200",
-      )}
-    >
-      <Icon className={cn("size-2.5", option.color)} />
-      {option.label}
-    </div>
-  );
-}
-
 export function KitchenSinkMessage({ item }: { item: MessageItem }) {
   const allItems = useSessionItems();
   const modelPreset = useModelPreset();
@@ -96,7 +77,7 @@ export function KitchenSinkMessage({ item }: { item: MessageItem }) {
       {isAssistant && (
         <div className="flex items-center gap-1.5">
           {style && <StyleBadge style={style} />}
-          <ModelBadge preset={modelPreset} />
+          {/* <ModelBadge preset={modelPreset} /> */}
         </div>
       )}
       <Message item={item} />
