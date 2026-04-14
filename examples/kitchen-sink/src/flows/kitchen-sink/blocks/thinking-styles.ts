@@ -229,7 +229,8 @@ export const autoClassifyStyle = sequencer({
 
 export interface ThinkingStyleRouterConfig {
   assistantGenerator: BlockDefinition<any, any>;
-  modelId: string;
+  /** Model ID string or a selectModel() resolver. */
+  modelId: string | ((input: any, ctx: any) => any);
   history?: GeneratorSlot<any, any>;
   context: GeneratorSlot<any, any>;
   /** Capabilities to install on all default pattern blocks. */
@@ -245,7 +246,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   // Plan and Execute — decomposes into steps, executes, synthesizes.
   const paePipeline = planAndExecute({
     name: "pae-thinking",
-    model: modelId,
+    model: modelId as any,
     context,
     history: config.history,
     search: true,
@@ -385,7 +386,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       "bb-analyst": bbAnalyst,
       "bb-critic": bbCritic,
     },
-    model: modelId,
+    model: modelId as any,
     context,
     uses,
     maxIterations: 8,
