@@ -37,14 +37,17 @@ import { createVercelHandler } from "@flow-state-dev/vercel";
 import { router } from "@/lib/server";
 
 export const { GET, POST, PATCH, DELETE } = createVercelHandler(router);
-export { runtime, maxDuration, dynamic } from "@flow-state-dev/vercel/config";
+
+// Next.js reads these statically — must be literal declarations, not re-exports.
+export const runtime = "nodejs";
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
 ```
 
 `createVercelHandler` takes care of:
 - Unwrapping Next.js 15's async params
 - Adding SSE headers (`Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`) to prevent Vercel's edge layer from buffering tokens
 - Injecting periodic heartbeat comments to keep long-lived connections alive
-- Setting `maxDuration` to 300 seconds (overridable)
 
 If your router setup is async (e.g. Postgres pool creation), pass a factory:
 
@@ -54,23 +57,15 @@ export const { GET, POST, PATCH, DELETE } = createVercelHandler(() => getRouter(
 
 The factory is called once and cached.
 
-### Config exports
+### Route config values
 
-The `@flow-state-dev/vercel/config` module exports these defaults:
+Next.js reads `runtime`, `maxDuration`, and `dynamic` via static analysis at build time. They must be **literal `export const` declarations** in the route file — `export { runtime } from '...'` re-exports will not work.
 
-| Export | Default | Purpose |
+| Field | Recommended value | Purpose |
 |--------|---------|---------|
 | `runtime` | `"nodejs"` | Vercel runtime |
 | `maxDuration` | `300` | Max function execution time in seconds |
 | `dynamic` | `"force-dynamic"` | Prevents Next.js from caching SSE routes |
-
-To override `maxDuration`, export your own value instead:
-
-```ts
-export const { GET, POST, PATCH, DELETE } = createVercelHandler(router);
-export { runtime, dynamic } from "@flow-state-dev/vercel/config";
-export const maxDuration = 60;
-```
 
 ---
 
