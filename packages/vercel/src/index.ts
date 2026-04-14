@@ -6,10 +6,11 @@
  * and runtime configuration. One import + one route file to deploy any
  * FSD app to Vercel.
  */
-export { createVercelHandler } from "./handler";
+export { createVercelHandler, createVercelBareHandler } from "./handler";
 export type {
   FlowApiRouter,
   NextAppRouteHandler,
+  NextBareRouteHandler,
   VercelHandlerInput,
   VercelHandlerOptions
 } from "./types";

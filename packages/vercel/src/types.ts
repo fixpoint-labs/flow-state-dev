@@ -60,3 +60,8 @@ export type NextAppRouteHandler = (
   req: Request,
   ctx: { params: Promise<{ path?: string[] }> }
 ) => Promise<Response>;
+
+/**
+ * Handler for the bare `/api/flows` route (no catch-all params).
+ */
+export type NextBareRouteHandler = (req: Request) => Promise<Response>;

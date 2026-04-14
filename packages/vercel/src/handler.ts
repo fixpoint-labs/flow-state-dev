@@ -8,6 +8,7 @@
 import type {
   FlowApiRouter,
   NextAppRouteHandler,
+  NextBareRouteHandler,
   VercelHandlerInput,
   VercelHandlerOptions
 } from "./types";
@@ -48,7 +49,7 @@ function resolveRouter(input: VercelHandlerInput): FlowApiRouter | Promise<FlowA
  * to keep long-lived streams alive.
  *
  * ```ts
- * // app/api/fsd/[[...path]]/route.ts
+ * // app/api/fsd/[...path]/route.ts
  * import { createVercelHandler } from '@flow-state-dev/vercel';
  * import { getRouter } from '@/lib/server';
  *
@@ -57,6 +58,17 @@ function resolveRouter(input: VercelHandlerInput): FlowApiRouter | Promise<FlowA
  * export const runtime = "nodejs";
  * export const maxDuration = 300;
  * export const dynamic = "force-dynamic";
+ * ```
+ *
+ * For the bare `/api/fsd` path (required by Next.js `[...path]` catch-all),
+ * use `createVercelBareHandler`:
+ *
+ * ```ts
+ * // app/api/fsd/route.ts
+ * import { createVercelBareHandler } from '@flow-state-dev/vercel';
+ * import { getRouter } from '@/lib/server';
+ *
+ * export const { GET, POST } = createVercelBareHandler(getRouter);
  * ```
  */
 export function createVercelHandler(
@@ -117,5 +129,64 @@ export function createVercelHandler(
     POST: makeHandler("POST"),
     PATCH: makeHandler("PATCH"),
     DELETE: makeHandler("DELETE")
+  };
+}
+
+/**
+ * Creates bare-path handlers for the `/api/flows` route (no path segments).
+ *
+ * Next.js `[...path]` catch-all requires at least one segment, so the bare
+ * path needs a sibling `route.ts`. This helper creates handlers that forward
+ * to the router with an empty path array.
+ *
+ * ```ts
+ * // app/api/flows/route.ts
+ * import { createVercelBareHandler } from '@flow-state-dev/vercel';
+ * import { getRouter } from '@/lib/server';
+ *
+ * export const { GET, POST } = createVercelBareHandler(getRouter);
+ * ```
+ */
+export function createVercelBareHandler(
+  app: VercelHandlerInput,
+  options?: VercelHandlerOptions
+): {
+  GET: (req: Request) => Promise<Response>;
+  POST: (req: Request) => Promise<Response>;
+} {
+  const heartbeatMs = options?.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
+
+  let cachedRouter: FlowApiRouter | Promise<FlowApiRouter> | undefined;
+
+  function getRouter(): FlowApiRouter | Promise<FlowApiRouter> {
+    if (cachedRouter === undefined) {
+      cachedRouter = resolveRouter(app);
+    }
+    return cachedRouter;
+  }
+
+  function wrapResponse(response: Response): Response {
+    if (!isSSEResponse(response) || response.body === null) {
+      return response;
+    }
+    const headers = new Headers(response.headers);
+    for (const [key, value] of Object.entries(VERCEL_SSE_HEADERS)) {
+      headers.set(key, value);
+    }
+    const body = injectHeartbeat(response.body, heartbeatMs);
+    return new Response(body, { status: response.status, headers });
+  }
+
+  function makeBareHandler(method: keyof FlowApiRouter): (req: Request) => Promise<Response> {
+    return async (req) => {
+      const router = await getRouter();
+      const response = await router[method](req, { params: { path: [] } });
+      return wrapResponse(response);
+    };
+  }
+
+  return {
+    GET: makeBareHandler("GET"),
+    POST: makeBareHandler("POST")
   };
 }
