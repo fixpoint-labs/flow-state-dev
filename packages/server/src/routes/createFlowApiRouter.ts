@@ -36,6 +36,15 @@ export type CreateFlowApiRouterOptions = {
    * Default: true.
    */
   detectInterruptedOnStartup?: boolean;
+  /**
+   * Called with a promise that must complete for background action execution
+   * to finish. On serverless platforms, pass this promise to `waitUntil()`
+   * so the function instance stays alive after the 202 response is sent.
+   *
+   * Without this, fire-and-forget `runAction` may be killed before persisting
+   * results, causing stream 404s and lost data.
+   */
+  onBackgroundWork?: (promise: Promise<unknown>) => void;
 };
 
 type CreateInternalFlowApiRouterOptions = CreateFlowApiRouterOptions & {

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { after } from "next/server";
 import { openai } from "@ai-sdk/openai";
 import {
   createModelResolver,
@@ -58,9 +59,11 @@ export function getRouter(): Promise<FlowApiRouter> {
         modelResolver,
         speechResolver,
         transcriptionResolver,
-        // Serverless: background queries on init can exhaust the Postgres pool
-        // before actual requests are served. Disable for Vercel/Lambda.
         detectInterruptedOnStartup: false,
+        // Keep the serverless function alive while runAction executes.
+        // Without this, Vercel kills the function after the 202 response,
+        // before results are persisted — causing stream 404s and lost data.
+        onBackgroundWork: (promise) => after(() => promise),
         onError: (error, context) => {
           console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
         },

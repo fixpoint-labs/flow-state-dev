@@ -46,6 +46,7 @@ type ActionRouteContext = {
   speechResolver?: SpeechResolver;
   middleware?: Middleware[];
   maxResponseBufferSize?: number;
+  onBackgroundWork?: (promise: Promise<unknown>) => void;
   seams: InternalRouteSeams;
   bootstrapMetadata: Record<string, unknown>;
   requestContext: RequestContext;
@@ -138,15 +139,18 @@ export async function handleExecuteAction(
     ctx.stores.activeRequests.deregister(resolvedActionInput.requestId).catch(() => {});
   });
 
+  // Notify the platform that background work must complete. On serverless
+  // platforms this is critical: without it the function instance is killed
+  // after the 202 response is sent, before runAction persists anything.
+  if (ctx.onBackgroundWork !== undefined) {
+    ctx.onBackgroundWork(runPromise);
+  }
+
   // Inline streaming: when the client sends Accept: text/event-stream, return
   // the SSE stream directly from the POST response. This keeps the action
-  // execution and stream delivery on the same function instance — essential
-  // for serverless platforms where POST and GET may hit different instances.
+  // execution and stream delivery on the same function instance.
   const accept = request.headers.get("accept") ?? "";
   if (accept.includes("text/event-stream")) {
-    // Don't void the promise — the function must stay alive while streaming.
-    // On Vercel Fluid Compute the response body keeps the instance alive.
-    void runPromise;
     return new Response(liveStream.readable, {
       status: 200,
       headers: {
@@ -156,9 +160,6 @@ export async function handleExecuteAction(
       }
     });
   }
-
-  // Fire-and-forget mode (traditional servers, CLI, etc.)
-  void runPromise;
 
   return jsonResponse(202, {
     status: "in_progress",
