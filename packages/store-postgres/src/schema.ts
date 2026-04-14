@@ -129,6 +129,16 @@ const REQUEST_EVENTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_request_events_request_id ON request_events(request_id)"
 ];
 
+/**
+ * Stable advisory lock key for schema initialization.
+ * Prevents concurrent `CREATE TABLE IF NOT EXISTS` races in serverless
+ * environments where multiple cold starts hit initializeSchema simultaneously.
+ * (Postgres `IF NOT EXISTS` checks and type catalog inserts are not atomic —
+ * two concurrent CREATE TABLE statements can both pass the existence check
+ * and then collide on the pg_type unique constraint.)
+ */
+const SCHEMA_LOCK_KEY = 819297; // arbitrary stable integer
+
 export async function initializeSchema(executor: QueryExecutor): Promise<void> {
   const tables = [
     SESSIONS_TABLE,
@@ -150,11 +160,15 @@ export async function initializeSchema(executor: QueryExecutor): Promise<void> {
     ...REQUEST_EVENTS_INDEXES
   ];
 
-  for (const ddl of tables) {
-    await executor.query(ddl);
-  }
-
-  for (const ddl of indexes) {
-    await executor.query(ddl);
+  await executor.query("SELECT pg_advisory_lock($1)", [SCHEMA_LOCK_KEY]);
+  try {
+    for (const ddl of tables) {
+      await executor.query(ddl);
+    }
+    for (const ddl of indexes) {
+      await executor.query(ddl);
+    }
+  } finally {
+    await executor.query("SELECT pg_advisory_unlock($1)", [SCHEMA_LOCK_KEY]);
   }
 }
