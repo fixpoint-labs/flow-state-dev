@@ -16,6 +16,15 @@ import type { GeneratorModelResult, GeneratorModelUsage } from "./model";
 
 export type BlockKind = "handler" | "generator" | "sequencer" | "router";
 
+/** Payload emitted by the generator after resolving its config, for debug item capture. */
+export type BlockDebugCapturePayload = {
+  model: string;
+  prompt: string;
+  tools: string[];
+  maxTokens?: number;
+  search: boolean;
+};
+
 export type ExecutionParent = {
   name: string;
   kind: BlockKind;
@@ -162,6 +171,8 @@ export interface BlockContext<
       usage?: GeneratorModelUsage;
       providerMetadata?: GeneratorModelResult["providerMetadata"];
     }) => void;
+    /** Captures resolved generator config for debug item emission. */
+    onBlockDebugCapture?: (payload: BlockDebugCapturePayload) => void;
   };
 
   /** @internal Current block's identity within the execution chain. */

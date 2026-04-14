@@ -1,14 +1,20 @@
 /**
  * Central block execution entrypoint: dispatch, seam interception, retry, and error normalization.
  */
-import type { BlockOutputItem, ItemProvenance } from "@flow-state-dev/core/items";
-import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockOutputItem, BlockDebugPayload, ItemProvenance } from "@flow-state-dev/core/items";
+import type { BlockContext, BlockDebugCapturePayload, BlockDefinition } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
 import { getBaseCapability } from "@flow-state-dev/core";
 import { composeMiddleware, mergeMiddlewareStacks } from "../middleware/compose";
 import type { BlockMiddlewareContext } from "../middleware/types";
 import { normalizeError } from "../errors/normalize-error";
 import { getResponseItems } from "./internal/response";
+import {
+  isDebugItemsEnabled,
+  buildStaticBlockDebugPayload,
+  buildGeneratorDebugPayload,
+  emitBlockDebugItem
+} from "./internal/debug-items";
 import {
   applyBlockInputSeam,
   applyBlockOutputSeam,
@@ -35,6 +41,7 @@ import { createExecutionMetadata } from "./types";
 type ExecuteDispatcherOptions = {
   internalSeams: InternalExecutionSeams;
   metadata: ExecutionMetadata;
+  emitDebugItems: boolean;
 };
 
 type GeneratorModelUsageMeta = {
@@ -130,6 +137,8 @@ async function executeByKind(
   ctx: ExecuteBlockContext,
   options: ExecuteDispatcherOptions
 ): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta }> {
+  const debugEnabled = options.emitDebugItems && isDebugItemsEnabled();
+
   if (block.kind === "generator") {
     const seams = options.internalSeams;
     let modelUsage: GeneratorModelUsageMeta | undefined;
@@ -155,7 +164,14 @@ async function executeByKind(
           };
         }
         ctx._runtimeHooks?.onGeneratorModelResult?.(payload);
-      }
+      },
+      // Capture resolved generator config for block_debug item emission.
+      onBlockDebugCapture: debugEnabled
+        ? (capture: BlockDebugCapturePayload) => {
+            const payload = buildGeneratorDebugPayload(capture);
+            emitBlockDebugItem(ctx.response, block, options.metadata, payload);
+          }
+        : undefined,
     };
     const generatorCtx = {
       ...ctx,
@@ -177,6 +193,11 @@ async function executeByKind(
     block.kind === "sequencer" ||
     block.kind === "router"
   ) {
+    // Emit static debug info for non-generator blocks.
+    if (debugEnabled) {
+      const payload = buildStaticBlockDebugPayload(block);
+      await emitBlockDebugItem(ctx.response, block, options.metadata, payload);
+    }
     return { output: await block.run(input, ctx as any) };
   }
 
@@ -291,6 +312,8 @@ export async function executeBlock(
         );
       }
 
+      const debugItemsEnabled = isDebugItemsEnabled();
+
       const executeCore = async (): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta }> => {
         if (options.ctx._withExecutionScope === undefined) {
           return executeByKind(
@@ -299,7 +322,8 @@ export async function executeBlock(
             options.ctx,
             {
               internalSeams: seams,
-              metadata: attemptMetadata
+              metadata: attemptMetadata,
+              emitDebugItems: debugItemsEnabled,
             }
           );
         }
@@ -333,7 +357,8 @@ export async function executeBlock(
               scopedCtx as ExecuteBlockContext,
               {
                 internalSeams: seams,
-                metadata: attemptMetadata
+                metadata: attemptMetadata,
+                emitDebugItems: debugItemsEnabled,
               }
             )
         );

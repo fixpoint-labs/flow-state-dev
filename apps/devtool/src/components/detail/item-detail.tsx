@@ -118,6 +118,8 @@ function ItemTypeDetail({ item }: { item: OutputItem }) {
       return <SourceDetail item={item} />;
     case "sequencer_state_snapshot":
       return <SequencerStateSnapshotDetail item={item} />;
+    case "block_debug":
+      return <BlockDebugDetail item={item} />;
     default:
       return <JsonViewer data={item} />;
   }
@@ -359,6 +361,53 @@ function SequencerStateSnapshotDetail({ item }: { item: OutputItem & { type: "se
   );
 }
 
+function BlockDebugDetail({ item }: { item: OutputItem & { type: "block_debug" } }) {
+  const p = item.payload;
+  return (
+    <div className="space-y-2">
+      <MetadataRow label="Block" value={item.blockName} mono />
+      <MetadataRow label="Kind" value={item.blockKind} />
+      {p.model && <MetadataRow label="Model" value={p.model} mono />}
+      {p.maxTokens !== undefined && <MetadataRow label="Max Tokens" value={String(p.maxTokens)} />}
+      {p.search && <MetadataRow label="Search" value="enabled" />}
+      {p.tools && p.tools.length > 0 && (
+        <CollapsibleSection title={`Tools (${p.tools.length})`} defaultOpen>
+          <div className="space-y-0.5">
+            {p.tools.map((name) => (
+              <div key={name} className="text-[11px] text-slate-300 font-mono">{name}</div>
+            ))}
+          </div>
+        </CollapsibleSection>
+      )}
+      {p.prompt && (
+        <CollapsibleSection title="Prompt" defaultOpen={false}>
+          <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
+            {p.prompt}
+          </pre>
+        </CollapsibleSection>
+      )}
+      {p.inputSchema && <MetadataRow label="Input Schema" value={p.inputSchema} mono />}
+      {p.outputSchema && <MetadataRow label="Output Schema" value={p.outputSchema} mono />}
+      {p.candidates && p.candidates.length > 0 && (
+        <CollapsibleSection title={`Candidates (${p.candidates.length})`} defaultOpen>
+          <div className="space-y-0.5">
+            {p.candidates.map((name) => (
+              <div key={name} className="text-[11px] text-slate-300 font-mono">{name}</div>
+            ))}
+          </div>
+        </CollapsibleSection>
+      )}
+      {p.stateKeys && p.stateKeys.length > 0 && (
+        <CollapsibleSection title="State Keys" defaultOpen>
+          <div className="text-[11px] text-slate-300 font-mono">
+            {p.stateKeys.join(", ")}
+          </div>
+        </CollapsibleSection>
+      )}
+    </div>
+  );
+}
+
 /* --- Shared components --- */
 
 function TypePill({ type }: { type: string }) {
@@ -378,6 +427,7 @@ function TypePill({ type }: { type: string }) {
     router_decision: "text-orange-400 border-orange-800/50",
     source: "text-blue-400 border-blue-800/50",
     sequencer_state_snapshot: "text-amber-500 border-amber-800/50",
+    block_debug: "text-purple-500 border-purple-800/50",
   };
   return (
     <span className={`text-[10px] font-mono px-1.5 py-0 rounded border ${colors[type] ?? "text-slate-500 border-slate-700"}`}>

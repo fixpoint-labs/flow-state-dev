@@ -21,6 +21,7 @@ import { ResourceChangeItemView } from "./resource-change-item";
 import { BlockToolOutputItemView } from "./block-tool-output-item";
 import { RouterDecisionItemView } from "./router-decision-item";
 import { SourceItemView } from "./source-item";
+import { BlockDebugItemView } from "./block-debug-item";
 import { useDebug } from "@/context/debug-context";
 import { useSelection } from "@/context/selection-context";
 import { DebugOverlay } from "./debug-overlay";
@@ -30,7 +31,7 @@ type ItemRendererProps = {
   item: OutputItem;
 };
 
-const TIER_3_TYPES = new Set(["context", "state_change", "resource_change", "sequencer_state_snapshot"]);
+const TIER_3_TYPES = new Set(["context", "state_change", "resource_change", "sequencer_state_snapshot", "block_debug"]);
 
 export const ItemRenderer = memo(function ItemRenderer({ item }: ItemRendererProps) {
   const { isDebugMode } = useDebug();
@@ -124,6 +125,8 @@ function ItemContent({ item }: { item: OutputItem }) {
       return <SourceItemView item={item} />;
     case "sequencer_state_snapshot":
       return <SequencerStateSnapshotItemView item={item} />;
+    case "block_debug":
+      return <BlockDebugItemView item={item} />;
     default:
       return null;
   }

@@ -178,6 +178,40 @@ export type SequencerStateSnapshotItem = OutputItemBase & {
   version: number;
 };
 
+/** Resolved block configuration snapshot emitted at block start for devtool debugging. */
+export type BlockDebugPayload = {
+  /** Resolved model identifier (generators only). */
+  model?: string;
+  /** Fully assembled prompt as sent to the model (generators only). */
+  prompt?: string;
+  /** Registered tool names (generators only). */
+  tools?: string[];
+  /** Temperature setting if configured (generators only). */
+  temperature?: number;
+  /** Max tokens setting if configured (generators only). */
+  maxTokens?: number;
+  /** Whether provider-native search is enabled (generators only). */
+  search?: boolean;
+  /** Input schema name (handlers). */
+  inputSchema?: string;
+  /** Output schema name (handlers). */
+  outputSchema?: string;
+  /** Route candidate names (routers). */
+  candidates?: string[];
+  /** State schema key names (sequencers). */
+  stateKeys?: string[];
+};
+
+/** Resolved block configuration snapshot emitted at block start for devtool debugging.
+ *  Always transient and trace-only — never persisted, never sent to LLM context. */
+export type BlockDebugItem = OutputItemBase & {
+  type: "block_debug";
+  blockName: string;
+  blockKind: "generator" | "handler" | "sequencer" | "router";
+  blockInstanceId: string;
+  payload: BlockDebugPayload;
+};
+
 export type OutputItem =
   | BlockOutputItem
   | BlockToolOutputItem
@@ -193,4 +227,5 @@ export type OutputItem =
   | ErrorItem
   | StepErrorItem
   | SourceItem
-  | SequencerStateSnapshotItem;
+  | SequencerStateSnapshotItem
+  | BlockDebugItem;

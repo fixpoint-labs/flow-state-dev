@@ -1,4 +1,4 @@
-import type { BlockOutputItem, OutputItem, SequencerStateSnapshotItem } from "@flow-state-dev/core/items";
+import type { BlockDebugItem, BlockOutputItem, OutputItem, SequencerStateSnapshotItem } from "@flow-state-dev/core/items";
 import type { RequestGroup } from "@/components/workspace/stream-view";
 
 /** A single snapshot in a sequencer's state timeline. */
@@ -74,6 +74,13 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       // use it directly instead of re-scanning the items array.
       if (prov.parentBlockInstanceId && !parentOf.has(prov.blockInstanceId)) {
         parentOf.set(prov.blockInstanceId, prov.parentBlockInstanceId);
+      }
+
+      // Block debug items provide early kind inference. They render as T3
+      // debug-only children (controlled by debug mode in item-renderer).
+      if (item.type === "block_debug") {
+        const dbg = item as BlockDebugItem;
+        blockNode.blockKind = blockNode.blockKind ?? dbg.blockKind;
       }
 
       // Collect sequencer state snapshots into the block node.

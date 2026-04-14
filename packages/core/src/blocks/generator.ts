@@ -1416,6 +1416,15 @@ export function generator<
       const hasTools = compiledTools.length > 0 || resolvedProviderTools.length > 0;
       const canStream = (messagesEnabled || hasTools) && isTextOutputSchema(outputSchema) && model.stream !== undefined;
 
+      // Emit debug capture for devtool inspection before the LLM call.
+      ctx._runtimeHooks?.onBlockDebugCapture?.({
+        model: modelId,
+        prompt: [prompt, ...contextValues].filter(Boolean).join("\n\n"),
+        tools: toolBlocks.map((t) => t.name),
+        maxTokens: normalizedConfig.maxTokens,
+        search: !!normalizedConfig.search,
+      });
+
       if (canStream) {
         return await executeStreamingGeneration(
           model,
