@@ -25,7 +25,8 @@ export type PostgresStoreRegistry = StoreRegistry & {
  *
  * Accepts one of:
  * - `{ pool }` — a pre-configured pg.Pool
- * - `{ connectionString, max? }` — connection config (pool is created internally)
+ * - `{ connectionString?, max? }` — connection config (pool created internally).
+ *    When `connectionString` is omitted, reads from `FSD_DB_URL` then `DATABASE_URL`.
  * - `{ executor }` — a QueryExecutor-compatible client (e.g. PGlite for testing)
  */
 export async function createPostgresStores(
@@ -47,9 +48,19 @@ export async function createPostgresStores(
     };
     closePool = () => pool.end();
   } else {
+    const connStr =
+      options.connectionString ??
+      process.env.FSD_DB_URL ??
+      process.env.DATABASE_URL;
+    if (!connStr) {
+      throw new Error(
+        "createPostgresStores: no connection string provided. " +
+        "Pass { connectionString } or set FSD_DB_URL / DATABASE_URL."
+      );
+    }
     const { default: pg } = await import("pg");
     const pool = new pg.Pool({
-      connectionString: options.connectionString,
+      connectionString: connStr,
       max: options.max ?? 10
     });
     executor = {
