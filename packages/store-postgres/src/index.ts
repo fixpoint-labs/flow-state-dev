@@ -61,7 +61,12 @@ export async function createPostgresStores(
     const { default: pg } = await import("pg");
     const pool = new pg.Pool({
       connectionString: connStr,
-      max: options.max ?? 10
+      max: options.max ?? 10,
+      // Serverless-safe defaults: detect stale connections from frozen function
+      // instances instead of hanging indefinitely on half-open TCP sockets.
+      connectionTimeoutMillis: options.connectionTimeoutMillis ?? 10_000,
+      idleTimeoutMillis: options.idleTimeoutMillis ?? 30_000,
+      allowExitOnIdle: true
     });
     executor = {
       async query(text: string, values?: unknown[]) {
