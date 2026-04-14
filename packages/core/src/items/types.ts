@@ -2,6 +2,11 @@ import type { Content } from "./content";
 
 export type ItemStatus = "in_progress" | "completed" | "incomplete" | "failed";
 
+/** Designates whether an item participates in conversation history.
+ * - `message`: included in history assembly for subsequent requests
+ * - `trace`: streamed for observability but excluded from history */
+export type ItemRole = "message" | "trace";
+
 export type ItemProvenance = {
   blockName: string;
   blockDefinitionId?: string;
@@ -20,6 +25,11 @@ export type OutputItemBase = {
   transient?: boolean;
   /** Structural lifecycle item — excluded from LLM context, visible in devtool trace. */
   trace?: boolean;
+  /** Designates whether this item participates in conversation history.
+   * - `message`: included in history assembly for subsequent requests
+   * - `trace`: streamed for observability but excluded from history
+   * When undefined, resolved at query time from provenance and item type. */
+  itemRole?: ItemRole;
   requestId: string;
   itemIndex: number;
   provenance: ItemProvenance;

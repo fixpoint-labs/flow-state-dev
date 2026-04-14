@@ -11,6 +11,7 @@ import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
 import type { Content } from "../items/content";
+import type { ItemRole } from "../items/types";
 import type { JsonObject } from "../schema/common";
 import type { GeneratorModelResult, GeneratorModelUsage } from "./model";
 
@@ -30,6 +31,8 @@ export type ExecutionParent = {
     label?: string;
     metadata?: Record<string, unknown>;
   };
+  /** Propagated item role for items emitted within this execution scope. */
+  itemRole?: ItemRole;
 };
 
 export interface ResponseEmitterHandle {
@@ -170,6 +173,8 @@ export interface BlockContext<
     blockInstanceId: string;
     parentBlockInstanceId?: string;
     ownedBy?: string;
+    /** Effective item role for this execution scope. */
+    itemRole?: ItemRole;
   };
 
   /** @internal Runtime hook that executes nested blocks with parent-chain metadata. */
@@ -206,6 +211,9 @@ export interface BlockConfig<
   name: string;
   description?: string;
   transient?: boolean;
+  /** Override the default item role for all items emitted by this block.
+   * Background blocks default to `"trace"`; main-phase blocks to `"message"`. */
+  itemRole?: ItemRole;
   inputSchema?: TInputSchema;
   outputSchema?: TOutputSchema;
   stateSchema?: ZodTypeAny;
@@ -243,6 +251,8 @@ export interface BlockDefinition<
   name: string;
   description?: string;
   transient: boolean;
+  /** Item role override for all items emitted by this block. */
+  itemRole?: ItemRole;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
   config: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>;

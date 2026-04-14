@@ -1,4 +1,4 @@
-import type { ItemStatus } from "../items/types";
+import type { ItemRole, ItemStatus } from "../items/types";
 import type { JsonObject } from "../schema/common";
 import type { AnyResourceRef, ResourceRegistry } from "./resource";
 import type { CostEstimate, TokenLedger } from "./flow";
@@ -18,6 +18,8 @@ export type SessionItem = {
   type: string;
   status: ItemStatus;
   transient?: boolean;
+  /** Item role for conversation history filtering. */
+  itemRole?: ItemRole;
   requestId: string;
   itemIndex: number;
   payload: unknown;

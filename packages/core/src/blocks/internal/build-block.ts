@@ -168,6 +168,7 @@ export function buildBlock<
     name: runtimeConfig.name,
     description: runtimeConfig.description,
     transient,
+    itemRole: config.itemRole,
     inputSchema: resolvedInputSchema,
     outputSchema: resolvedOutputSchema,
     config: runtimeConfig,

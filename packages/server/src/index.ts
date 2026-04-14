@@ -1,4 +1,4 @@
-export { createExecutionContext } from "./context/createExecutionContext";
+export { createExecutionContext, resolveItemRole } from "./context/createExecutionContext";
 export type {
   CreateExecutionContextOptions,
   ExecutionContext,

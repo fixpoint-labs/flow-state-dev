@@ -478,6 +478,7 @@ function compileToolsWithExecute(
               id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
               type: "block_tool_output" as const,
               status: "completed" as const,
+              ...(identity?.itemRole !== undefined ? { itemRole: identity.itemRole } : {}),
               requestId: scopedCtx.request.identity.id,
               itemIndex: getEmitterItemCount(scopedCtx.response),
               provenance: {
@@ -513,6 +514,7 @@ function compileToolsWithExecute(
               id: `item_tool_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
               type: "block_tool_output" as const,
               status: "failed" as const,
+              ...(identity?.itemRole !== undefined ? { itemRole: identity.itemRole } : {}),
               requestId: scopedCtx.request.identity.id,
               itemIndex: getEmitterItemCount(scopedCtx.response),
               provenance: {
@@ -745,7 +747,8 @@ function resolveMaxIterations(config: { loop?: GeneratorLoopConfig<unknown>; max
 function buildSourceItem(
   source: GeneratorModelSource,
   ctx: BlockContext,
-  provenance: { blockName: string; blockInstanceId: string; phase: "main" | "work" }
+  provenance: { blockName: string; blockInstanceId: string; phase: "main" | "work" },
+  itemRoleTag: Record<string, unknown> = {}
 ) {
   return {
     id: `item_source_${Date.now()}_${Math.random().toString(16).slice(2)}`,
@@ -756,6 +759,7 @@ function buildSourceItem(
     provenance,
     ts: Date.now(),
     ownedBy: ctx._blockIdentity?.ownedBy,
+    ...itemRoleTag,
     sourceType: "url" as const,
     sourceId: source.id,
     url: source.url,
@@ -832,6 +836,10 @@ async function executeStreamingGeneration<TInput, TOutput>(
     phase: "main" as const
   };
   const ownedBy = identity?.ownedBy;
+  /** Spread into item literals to stamp the execution scope's item role. */
+  const itemRoleTag = identity?.itemRole !== undefined
+    ? { itemRole: identity.itemRole } as const
+    : {};
   const emitReasoning = emitConfig.reasoning;
   let reasoningAccumulated = "";
 
@@ -872,6 +880,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             provenance,
             ts: Date.now(),
             ownedBy,
+            ...itemRoleTag,
             summary: [{ type: "reasoning_text" as const, text: "" }]
           };
           await ctx.response.emit({ type: "item.added", item: reasoningItem });
@@ -915,6 +924,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             provenance,
             ts: Date.now(),
             ownedBy,
+            ...itemRoleTag,
             summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
           };
           await ctx.response.emit({ type: "item.done", item: completedReasoning });
@@ -934,6 +944,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             provenance,
             ts: Date.now(),
             ownedBy,
+            ...itemRoleTag,
             summary: [{ type: "reasoning_text" as const, text: "" }]
           };
           await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -956,6 +967,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             provenance,
             ts: Date.now(),
             ownedBy,
+            ...itemRoleTag,
             content: [{ type: "output_text" as const, text: "" }]
           };
           await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -1044,7 +1056,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         await ctx.response.emit({ type: "item.done", item: toolResultItem });
       }
     } else if (chunk.type === "source_url" && chunk.source !== undefined) {
-      const sourceItem = buildSourceItem(chunk.source, ctx, provenance);
+      const sourceItem = buildSourceItem(chunk.source, ctx, provenance, itemRoleTag);
       await ctx.response.emit({ type: "item.added", item: sourceItem });
       await ctx.response.emit({ type: "item.done", item: sourceItem });
     } else if (chunk.type === "finish") {
@@ -1072,6 +1084,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         provenance,
         ts: Date.now(),
         ownedBy,
+        ...itemRoleTag,
         summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
       };
       await ctx.response.emit({ type: "item.done", item: completedReasoning });
@@ -1089,6 +1102,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         provenance,
         ts: Date.now(),
         ownedBy,
+        ...itemRoleTag,
         summary: [{ type: "reasoning_text" as const, text: "" }]
       };
       await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -1110,6 +1124,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         provenance,
         ts: Date.now(),
         ownedBy,
+        ...itemRoleTag,
         content: [{ type: "output_text" as const, text: "" }]
       };
       await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -1462,8 +1477,11 @@ export function generator<
           parentBlockInstanceId: sourceIdentity?.parentBlockInstanceId,
           phase: "main" as const
         };
+        const sourceItemRoleTag = sourceIdentity?.itemRole !== undefined
+          ? { itemRole: sourceIdentity.itemRole } as const
+          : {};
         for (const source of generation.sources) {
-          const sourceItem = buildSourceItem(source, ctx, sourceProv);
+          const sourceItem = buildSourceItem(source, ctx, sourceProv, sourceItemRoleTag);
           await ctx.response.emit({ type: "item.added", item: sourceItem });
           await ctx.response.emit({ type: "item.done", item: sourceItem });
         }
@@ -1500,6 +1518,9 @@ export function generator<
           phase: "main" as const
         };
         const nsOwnedBy = outputIdentity?.ownedBy;
+        const nsItemRoleTag = outputIdentity?.itemRole !== undefined
+          ? { itemRole: outputIdentity.itemRole } as const
+          : {};
         if (emitConfig.messages === 'reasoning') {
           const reasoningItem = {
             id: itemId,
@@ -1511,6 +1532,7 @@ export function generator<
             provenance,
             ts: Date.now(),
             ownedBy: nsOwnedBy,
+            ...nsItemRoleTag,
             summary: [{ type: "reasoning_text" as const, text: output }]
           };
           await ctx.response.emit({ type: "item.added", item: reasoningItem });
@@ -1527,6 +1549,7 @@ export function generator<
             provenance,
             ts: Date.now(),
             ownedBy: nsOwnedBy,
+            ...nsItemRoleTag,
             content: [{ type: "output_text" as const, text: output }]
           };
           await ctx.response.emit({ type: "item.added", item: messageItem });

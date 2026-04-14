@@ -40,6 +40,7 @@ import type {
   Content,
   ContextItem,
   ItemProvenance,
+  ItemRole,
   MessageItem,
   OutputItem,
   RouterDecisionItem,
@@ -764,17 +765,39 @@ const CLIENT_AUDIENCE_TYPES = new Set([
   "step_error"
 ]);
 
+/** Item types that are always structural/trace — never conversational. */
+const STRUCTURAL_ITEM_TYPES = new Set([
+  "block_output",
+  "router_decision",
+  "sequencer_state_snapshot",
+  "container",
+  "state_change",
+  "resource_change"
+]);
+
+/**
+ * Resolves the effective item role for an OutputItem.
+ * Uses explicit `itemRole` when set, otherwise derives from provenance and type.
+ */
+export function resolveItemRole(item: OutputItem): ItemRole {
+  if (item.itemRole !== undefined) return item.itemRole;
+  if (item.trace === true) return "trace";
+  if (STRUCTURAL_ITEM_TYPES.has(item.type)) return "trace";
+  if (item.provenance.phase === "work") return "trace";
+  return "message";
+}
+
 /**
  * Converts a persisted OutputItem into an LLM-ready message.
  * Uses type-based audience routing: message, reasoning, context, and
  * block_output (with toolCall) enter LLM context.
- * Structural trace items (trace: true) are always excluded — they carry
- * lifecycle metadata for debugging, not conversational content.
+ * Items with trace role are excluded from LLM context — they carry
+ * execution metadata for observability, not conversational content.
  * Returns null for item types that don't map to conversation messages.
  */
 function itemToLLMMessages(item: OutputItem): LLMMessage[] {
-  // Fast path: structural trace items never enter LLM context.
-  if (item.trace === true) {
+  // Items with trace role never enter LLM context.
+  if (resolveItemRole(item) === "trace") {
     return [];
   }
 
@@ -1036,6 +1059,7 @@ function outputItemToSessionItem(item: OutputItem): SessionItem {
     type: item.type,
     status: item.status,
     transient: item.transient,
+    itemRole: item.itemRole,
     requestId: item.requestId,
     itemIndex: item.itemIndex,
     payload,
@@ -1128,6 +1152,9 @@ type EmissionContext = {
   nextItemIndex: () => number;
   /** Container ownership tag — set when emitting inside a container scope. */
   ownedBy?: string;
+  /** Default item role for items emitted in this scope. Derived from block
+   *  config or execution phase. Undefined means "message" (the default). */
+  itemRole?: ItemRole;
 };
 
 function createEmitMessage(
@@ -1148,6 +1175,7 @@ function createEmitMessage(
       type: "message",
       status: "in_progress",
       transient: emCtx.blockTransient || undefined,
+      itemRole: emCtx.itemRole,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -1208,6 +1236,7 @@ function createEmitComponent(
       type: "component",
       status: "in_progress",
       transient: emCtx.blockTransient || undefined,
+      itemRole: emCtx.itemRole,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -1242,6 +1271,7 @@ function createEmitLLMContext(
       type: "context",
       status: "completed",
       transient: emCtx.blockTransient || undefined,
+      itemRole: emCtx.itemRole,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -1477,6 +1507,7 @@ function createEmitStatus(
       type: "status",
       status: "completed",
       transient: true,
+      itemRole: emCtx.itemRole,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -2193,6 +2224,7 @@ export async function createExecutionContext<
       type: "block_output",
       status,
       trace: true,
+      itemRole: "trace" as ItemRole,
       transient: parent.transient || undefined,
       requestId: reqRef.current.id,
       itemIndex,
@@ -2323,6 +2355,7 @@ export async function createExecutionContext<
         type: "router_decision",
         status: "completed",
         trace: true,
+        itemRole: "trace" as ItemRole,
         requestId: requestRef.current.id,
         itemIndex,
         provenance: {
@@ -2551,6 +2584,7 @@ export async function createExecutionContext<
               type: "container",
               status: "completed",
               transient: resolvedParent.transient || undefined,
+              itemRole: "trace" as ItemRole,
               requestId: requestRef.current.id,
               itemIndex,
               provenance: {
@@ -2597,7 +2631,8 @@ export async function createExecutionContext<
           nextItemIndex: () => emittedItemCount++,
           ownedBy: resolvedParent.container !== undefined
             ? resolvedParent.instanceId
-            : activeEmCtx.ownedBy
+            : activeEmCtx.ownedBy,
+          itemRole: resolvedParent.itemRole ?? activeEmCtx.itemRole,
         };
         const childContext = createContext(
           childChain,
@@ -2613,7 +2648,8 @@ export async function createExecutionContext<
           blockName: resolvedParent.name,
           blockInstanceId: resolvedParent.instanceId,
           parentBlockInstanceId: resolvedParent.parentInstanceId,
-          ownedBy: childEmCtx.ownedBy
+          ownedBy: childEmCtx.ownedBy,
+          itemRole: childEmCtx.itemRole,
         };
 
         // Capture start time before execution — this is the only trace cost paid

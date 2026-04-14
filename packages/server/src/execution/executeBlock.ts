@@ -1,7 +1,7 @@
 /**
  * Central block execution entrypoint: dispatch, seam interception, retry, and error normalization.
  */
-import type { BlockOutputItem, ItemProvenance } from "@flow-state-dev/core/items";
+import type { BlockOutputItem, ItemProvenance, ItemRole } from "@flow-state-dev/core/items";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
 import { getBaseCapability } from "@flow-state-dev/core";
@@ -102,6 +102,7 @@ async function emitBlockOutputItem(
     type: "block_output",
     status: options.status ?? "completed",
     trace: true,
+    itemRole: "trace" as ItemRole,
     transient: options.block.transient || undefined,
     requestId: options.metadata.requestId,
     itemIndex,
@@ -311,6 +312,8 @@ export async function executeBlock(
             transient: options.block.transient || undefined,
             stateSchema: options.block.kind === "sequencer" ? options.block.config.stateSchema : undefined,
             parentInstanceId: attemptMetadata.parentBlockInstanceId,
+            itemRole: options.block.itemRole
+              ?? (attemptMetadata.scope === "work" ? "trace" as ItemRole : undefined),
             container:
               containerConfig === undefined
                 ? undefined

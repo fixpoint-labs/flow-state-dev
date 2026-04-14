@@ -18,6 +18,7 @@ export type {
   ContextItem,
   ErrorItem,
   ItemProvenance,
+  ItemRole,
   ItemStatus,
   MessageItem,
   OutputItem,

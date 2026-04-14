@@ -155,6 +155,7 @@ async function emitSequencerStateSnapshot(
     type: "sequencer_state_snapshot" as const,
     status: "completed" as const,
     trace: true,
+    itemRole: "trace" as const,
     transient: true,
     requestId: ctx.request.identity.id,
     itemIndex: getSequencerEmitterItemCount(ctx.response),
@@ -297,6 +298,7 @@ async function executeBlock(
       transient: block.transient || undefined,
       stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined,
       input,
+      itemRole: block.itemRole,
       container:
         containerConfig === undefined
           ? undefined
