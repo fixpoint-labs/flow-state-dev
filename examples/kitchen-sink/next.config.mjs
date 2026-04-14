@@ -13,6 +13,7 @@ const nextConfig = {
     "@flow-state-dev/react",
     "@flow-state-dev/server",
     "@flow-state-dev/store-postgres",
+    "@flow-state-dev/vercel",
   ],
   turbopack: {
     root: resolve(__dirname, "../../"),

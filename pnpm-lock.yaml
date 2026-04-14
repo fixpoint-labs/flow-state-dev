@@ -230,6 +230,9 @@ importers:
       '@flow-state-dev/tools':
         specifier: workspace:*
         version: link:../../packages/tools
+      '@flow-state-dev/vercel':
+        specifier: workspace:*
+        version: link:../../packages/vercel
       '@radix-ui/react-use-controllable-state':
         specifier: ^1.2.2
         version: 1.2.2(@types/react@19.2.14)(react@19.2.4)
@@ -588,6 +591,16 @@ importers:
       vitest:
         specifier: ^3.0.0
         version: 3.2.4(@types/debug@4.1.12)(@types/node@25.3.2)(happy-dom@17.6.3)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.3)
+
+  packages/vercel:
+    dependencies:
+      '@flow-state-dev/server':
+        specifier: workspace:*
+        version: link:../server
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.13
 
 packages:
 
