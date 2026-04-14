@@ -5,6 +5,7 @@ import type {
   RequestRecord,
   RequestStore
 } from "@flow-state-dev/server";
+import { stripExpiredFromRecord } from "@flow-state-dev/server";
 import { createSQLiteRecordStore } from "./sqlite-store";
 
 export function createSQLiteRequestStore(db: Database.Database): RequestStore {
@@ -75,10 +76,16 @@ export function createSQLiteRequestStore(db: Database.Database): RequestStore {
   );
 
   return {
-    get: base.get,
+    async get(id: string): Promise<RequestRecord | undefined> {
+      const record = await base.get(id);
+      return record === undefined ? undefined : stripExpiredFromRecord(record);
+    },
     set: base.set,
     delete: base.delete,
-    list: base.list,
+    async list(options?: RequestListOptions): Promise<RequestRecord[]> {
+      const records = await base.list(options);
+      return records.map(record => stripExpiredFromRecord(record));
+    },
 
     persistItems(requestId: string, items: OutputItem[]): void {
       // Always capture the latest snapshot so the queued write uses the most

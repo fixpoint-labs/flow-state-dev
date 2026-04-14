@@ -10,6 +10,7 @@ export {
 } from "./retry";
 export { applyRetentionPolicy, resolveRetentionPolicy } from "./retention";
 export type { ResolvedRetentionPolicy } from "./retention";
+export { isItemExpired, stripExpiredItems, stripExpiredFromRecord } from "./item-ttl";
 export { runAction } from "./runAction";
 export {
   detectInterruptedRequests,

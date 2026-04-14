@@ -9,6 +9,7 @@ import {
   type FilesystemRecordStore
 } from "./shared";
 import { ensureDirectory, toRecordPath } from "./shared";
+import { stripExpiredFromRecord } from "../../execution/item-ttl";
 import { readFile, writeFile, rename } from "node:fs/promises";
 import {
   createSerializedWriteQueue,
@@ -77,7 +78,8 @@ export class FilesystemRequestStore implements RequestStore {
   }
 
   async get(id: string): Promise<RequestRecord | undefined> {
-    return this.store.get(id);
+    const record = await this.store.get(id);
+    return record === undefined ? undefined : stripExpiredFromRecord(record);
   }
 
   async set(id: string, value: RequestRecord): Promise<void> {
@@ -89,7 +91,8 @@ export class FilesystemRequestStore implements RequestStore {
   }
 
   async list(options?: RequestListOptions): Promise<RequestRecord[]> {
-    return this.store.list(options);
+    const records = await this.store.list(options);
+    return records.map(record => stripExpiredFromRecord(record));
   }
 
   persistItems(requestId: string, items: OutputItem[]): void {

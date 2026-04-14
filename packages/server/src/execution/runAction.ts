@@ -3,6 +3,7 @@
  */
 import type { ErrorItem, ItemProvenance, MessageItem, OutputItem } from "@flow-state-dev/core/items";
 import { isEphemeralContent } from "@flow-state-dev/core/items";
+import { stripExpiredItems } from "./item-ttl";
 import type {
   ActionConfig,
   BlockDefinition,
@@ -134,7 +135,7 @@ async function patchRequestRecord(
   }
 
   const sanitized = patch.items !== undefined
-    ? { ...patch, items: stripEphemeralContent(patch.items.filter(item => item.transient !== true)) }
+    ? { ...patch, items: stripExpiredItems(stripEphemeralContent(patch.items.filter(item => item.transient !== true))) }
     : patch;
 
   await stores.request.set(requestId, {

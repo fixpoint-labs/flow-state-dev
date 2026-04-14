@@ -20,6 +20,10 @@ export type OutputItemBase = {
   transient?: boolean;
   /** Structural lifecycle item — excluded from LLM context, visible in devtool trace. */
   trace?: boolean;
+  /** Time-to-live in milliseconds. When set, the item is eligible for eviction
+   *  after `ts + ttl` has passed. Eviction is lazy — expired items are stripped
+   *  on read, not deleted in the background. */
+  ttl?: number;
   requestId: string;
   itemIndex: number;
   provenance: ItemProvenance;

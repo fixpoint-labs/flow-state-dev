@@ -18,6 +18,7 @@ export type SessionItem = {
   type: string;
   status: ItemStatus;
   transient?: boolean;
+  ttl?: number;
   requestId: string;
   itemIndex: number;
   payload: unknown;

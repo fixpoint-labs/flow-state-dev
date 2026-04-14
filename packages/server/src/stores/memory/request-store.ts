@@ -5,6 +5,7 @@ import type {
   RequestStore
 } from "../types";
 import { applyOffsetLimit, cloneValue } from "./shared";
+import { stripExpiredFromRecord } from "../../execution/item-ttl";
 
 export class InMemoryRequestStore implements RequestStore {
   private readonly records = new Map<string, RequestRecord>();
@@ -12,7 +13,8 @@ export class InMemoryRequestStore implements RequestStore {
 
   async get(id: string): Promise<RequestRecord | undefined> {
     const record = this.records.get(id);
-    return record === undefined ? undefined : cloneValue(record);
+    if (record === undefined) return undefined;
+    return stripExpiredFromRecord(cloneValue(record));
   }
 
   async set(id: string, value: RequestRecord): Promise<void> {
@@ -72,7 +74,7 @@ export class InMemoryRequestStore implements RequestStore {
 
     filtered.sort((left, right) => right.updatedAt - left.updatedAt);
     return applyOffsetLimit(filtered, options).map((record) =>
-      cloneValue(record)
+      stripExpiredFromRecord(cloneValue(record))
     );
   }
 }

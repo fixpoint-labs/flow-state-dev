@@ -72,6 +72,23 @@ Retention policies operate at **request granularity** — entire old request rec
 
 Supported duration formats: `'30s'`, `'5m'`, `'2h'`, `'7d'`, or a raw number in milliseconds.
 
+### Per-item TTL
+
+Individual items can declare a time-to-live via the `ttl` field (milliseconds). When an item's TTL expires (`item.ts + item.ttl < now`), it is automatically stripped from persisted records on the next read. This is useful for items that are valuable during active debugging but expensive to keep indefinitely.
+
+```ts
+// Emit an item with a 5-day TTL
+await ctx.emitItem({
+  type: "block_debug",
+  ttl: 5 * 86_400_000, // 5 days in ms
+  payload: { /* ... */ },
+});
+```
+
+TTL eviction is lazy — expired items are filtered on read, not via a background process. All store adapters (in-memory, filesystem, SQLite) handle TTL-aware reads. Items without a `ttl` field are persisted indefinitely (the default). Items with `transient: true` are never persisted regardless of TTL.
+
+Helpers: `isItemExpired(item, now?)`, `stripExpiredItems(items, now?)`, `stripExpiredFromRecord(record, now?)`.
+
 ## Custom model resolution
 
 ```ts

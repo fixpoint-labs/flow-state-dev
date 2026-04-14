@@ -56,6 +56,7 @@ import type {
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
+import { isItemExpired } from "../execution/item-ttl";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
 import { cloneValue } from "../utils/clone";
@@ -951,6 +952,10 @@ async function loadLLMHistory(
         continue;
       }
 
+      if (isItemExpired(item)) {
+        continue;
+      }
+
       if (!allowedTypes.has(item.type)) {
         continue;
       }
@@ -1036,6 +1041,7 @@ function outputItemToSessionItem(item: OutputItem): SessionItem {
     type: item.type,
     status: item.status,
     transient: item.transient,
+    ttl: item.ttl,
     requestId: item.requestId,
     itemIndex: item.itemIndex,
     payload,
@@ -1073,6 +1079,10 @@ function createSessionItemViews(
 
     const filtered = allItems.filter((item) => {
       if (!includeTransient && item.transient === true) {
+        return false;
+      }
+
+      if (isItemExpired(item)) {
         return false;
       }
 
