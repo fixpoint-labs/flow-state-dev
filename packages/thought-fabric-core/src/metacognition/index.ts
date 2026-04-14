@@ -1,5 +1,29 @@
 // ---------------------------------------------------------------------------
-// Layer 1: Schemas, types
+// Layer 1: Schemas, types — Response Auditor (canonical)
+// ---------------------------------------------------------------------------
+
+export {
+  severitySchema,
+  analyzerAnnotationSchema,
+  analyzerResultSchema,
+  auditorInputSchema,
+  auditVerdictSchema,
+  auditReportSchema,
+  DEFAULT_AUDIT_THRESHOLDS,
+} from './response-auditor.js'
+export type {
+  Severity,
+  AnalyzerAnnotation,
+  AnalyzerResult,
+  AuditorInput,
+  AuditVerdict,
+  AuditReport,
+  AnalyzerEntry,
+  AuditThresholds,
+} from './response-auditor.js'
+
+// ---------------------------------------------------------------------------
+// Layer 1: Schemas, types — Bias detection
 // ---------------------------------------------------------------------------
 
 export {
@@ -11,7 +35,6 @@ export {
   sycophancyScoreSchema,
   biasAnalyzerInputSchema,
   biasAnalyzerOutputSchema,
-  analyzerResultSchema,
   // Intermediate schemas (for custom pipeline composition)
   agreementDetectionOutputSchema,
   biasClassificationOutputSchema,
@@ -27,7 +50,6 @@ export type {
   SycophancyScore,
   BiasAnalyzerInput,
   BiasAnalyzerOutput,
-  AnalyzerResult,
   AgreementDetectionOutput,
   BiasClassificationOutput,
   BiasScoringOutput,
@@ -35,7 +57,20 @@ export type {
 } from './bias-detection.js'
 
 // ---------------------------------------------------------------------------
-// Layer 2: Helpers (verb-first naming)
+// Layer 2: Helpers — Response Auditor
+// ---------------------------------------------------------------------------
+
+export {
+  worstSeverity,
+  aggregateSeverity,
+  aggregateScore,
+  determineVerdict,
+  summarizeAudit,
+  buildAuditReport,
+} from './response-auditor-helpers.js'
+
+// ---------------------------------------------------------------------------
+// Layer 2: Helpers — Bias detection (verb-first naming)
 // ---------------------------------------------------------------------------
 
 export {
@@ -49,7 +84,17 @@ export {
 export type { BiasAnalyzerConfig } from './bias-detection-helpers.js'
 
 // ---------------------------------------------------------------------------
-// Layer 3: Block factories
+// Layer 3: Block factories — Response Auditor
+// ---------------------------------------------------------------------------
+
+export {
+  responseAuditor,
+  auditAggregate,
+} from './response-auditor-blocks.js'
+export type { ResponseAuditorConfig } from './response-auditor-blocks.js'
+
+// ---------------------------------------------------------------------------
+// Layer 3: Block factories — Bias detection
 // ---------------------------------------------------------------------------
 
 export {

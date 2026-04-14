@@ -8,6 +8,8 @@
  */
 
 import { z } from 'zod'
+import { analyzerResultSchema } from './response-auditor.js'
+import type { AnalyzerResult } from './response-auditor.js'
 
 // ---------------------------------------------------------------------------
 // Bias taxonomy
@@ -116,43 +118,13 @@ export const biasAnalyzerInputSchema = z.object({
 export type BiasAnalyzerInput = z.infer<typeof biasAnalyzerInputSchema>
 
 // ---------------------------------------------------------------------------
-// Analyzer result (conforms to FIX-307 AnalyzerResult contract)
+// Analyzer result (canonical schema from response-auditor.ts)
 // ---------------------------------------------------------------------------
 
-/**
- * Generic AnalyzerResult contract from FIX-307 (Response Auditor pattern).
- *
- * Defined here as a forward declaration until FIX-307 ships its own
- * canonical schema. The bias analyzer output extends this base contract
- * with bias-specific fields.
- */
-export const analyzerResultSchema = z.object({
-  /** Unique identifier for this analyzer type. */
-  analyzerId: z.string(),
-  /** Domain category this analyzer belongs to. */
-  category: z.string(),
-  /** Overall severity of findings. */
-  severity: z.enum(['info', 'warning', 'critical']),
-  /** Composite score. Range [0, 1]. */
-  score: z.number().min(0).max(1),
-  /** Human-readable label for the score. */
-  label: z.string(),
-  /** Brief summary of findings. */
-  summary: z.string(),
-  /** Structured annotations (analyzer-specific detail). */
-  annotations: z.array(z.object({
-    type: z.string(),
-    content: z.string(),
-    confidence: z.number().min(0).max(1),
-    evidence: z.string().optional(),
-  })),
-  /** Suggested actions or improvements. */
-  suggestions: z.array(z.string()).optional(),
-  /** Arbitrary metadata for extensibility. */
-  metadata: z.record(z.unknown()).optional(),
-})
-
-export type AnalyzerResult = z.infer<typeof analyzerResultSchema>
+// Re-export the canonical AnalyzerResult contract from the response auditor
+// module. Previously forward-declared here; now lives in response-auditor.ts.
+export { analyzerResultSchema }
+export type { AnalyzerResult }
 
 /**
  * Full output of the bias analyzer.
