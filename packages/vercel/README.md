@@ -33,7 +33,11 @@ import { createVercelHandler } from "@flow-state-dev/vercel";
 import { router } from "@/lib/server";
 
 export const { GET, POST, PATCH, DELETE } = createVercelHandler(router);
-export { runtime, maxDuration, dynamic } from "@flow-state-dev/vercel/config";
+
+// Next.js reads these statically — must be literal declarations, not re-exports.
+export const runtime = "nodejs";
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
 ```
 
 That's it. SSE streams get the right headers, heartbeats prevent proxy timeouts, and `maxDuration` is set to 300 seconds.
@@ -44,7 +48,6 @@ That's it. SSE streams get the right headers, heartbeats prevent proxy timeouts,
 - **SSE response shaping** — adds `Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no` to prevent Vercel's edge layer from buffering streamed tokens.
 - **Heartbeat keep-alive** — injects periodic `: ping` SSE comments (default every 15s) to defeat intermediate proxy idle timeouts.
 - **AbortSignal wiring** — request cancellation propagates into flow execution.
-- **Runtime config** — re-exports `runtime`, `maxDuration`, and `dynamic` from `@flow-state-dev/vercel/config` as a single source of truth.
 
 ## Lazy router initialization
 
@@ -56,7 +59,10 @@ import { getRouter } from "@/lib/server";
 
 // getRouter returns Promise<FlowApiRouter> — called once, cached internally.
 export const { GET, POST, PATCH, DELETE } = createVercelHandler(getRouter);
-export { runtime, maxDuration, dynamic } from "@flow-state-dev/vercel/config";
+
+export const runtime = "nodejs";
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
 ```
 
 ## Configuration
@@ -69,23 +75,17 @@ createVercelHandler(router, {
 });
 ```
 
-### Config exports
+### Route config values
 
-`@flow-state-dev/vercel/config` exports these values. Override them if needed:
+Next.js reads `runtime`, `maxDuration`, and `dynamic` via static analysis. They must be **literal `export const` declarations** in your route file — re-exports from another module won't work.
 
-| Export | Default | Purpose |
+| Field | Recommended value | Purpose |
 |--------|---------|---------|
 | `runtime` | `"nodejs"` | Vercel runtime (use `"edge"` only with edge-safe stores) |
 | `maxDuration` | `300` | Max function execution time in seconds |
 | `dynamic` | `"force-dynamic"` | Prevents Next.js from caching SSE routes |
 
-To override `maxDuration`, re-export your own value from the route file instead of importing from the config module:
-
-```ts
-export const { GET, POST, PATCH, DELETE } = createVercelHandler(router);
-export { runtime, dynamic } from "@flow-state-dev/vercel/config";
-export const maxDuration = 60; // Override: 60 seconds
-```
+The `@flow-state-dev/vercel/config` module exports these same values for programmatic access (tests, non-Next.js adapters), but they cannot be re-exported into a Next.js route file.
 
 ## API
 

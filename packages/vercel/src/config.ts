@@ -1,13 +1,21 @@
 /**
- * Vercel route configuration exports.
+ * Recommended Vercel route configuration values.
  *
- * Re-export these from your Next.js route file so Vercel picks up the correct
- * runtime settings. Vercel reads these as static exports at build time.
+ * Next.js reads `runtime`, `maxDuration`, and `dynamic` via static analysis —
+ * they must be **literal declarations** in your route file. Re-exporting from
+ * this module (`export { runtime } from '...'`) will NOT work.
+ *
+ * Copy these values into your route file:
  *
  * ```ts
- * // app/api/fsd/[...path]/route.ts
- * export { runtime, maxDuration, dynamic } from '@flow-state-dev/vercel/config';
+ * // app/api/fsd/[[...path]]/route.ts
+ * export const runtime = "nodejs";
+ * export const maxDuration = 300;
+ * export const dynamic = "force-dynamic";
  * ```
+ *
+ * This module is exported for programmatic access (e.g. custom middleware,
+ * test assertions, or non-Next.js adapters).
  */
 
 /** Use Node.js runtime for full API compatibility (streams, pg, fs). */

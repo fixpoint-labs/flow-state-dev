@@ -48,12 +48,15 @@ function resolveRouter(input: VercelHandlerInput): FlowApiRouter | Promise<FlowA
  * to keep long-lived streams alive.
  *
  * ```ts
- * // app/api/fsd/[...path]/route.ts
+ * // app/api/fsd/[[...path]]/route.ts
  * import { createVercelHandler } from '@flow-state-dev/vercel';
  * import { getRouter } from '@/lib/server';
  *
  * export const { GET, POST, PATCH, DELETE } = createVercelHandler(getRouter);
- * export { runtime, maxDuration, dynamic } from '@flow-state-dev/vercel/config';
+ *
+ * export const runtime = "nodejs";
+ * export const maxDuration = 300;
+ * export const dynamic = "force-dynamic";
  * ```
  */
 export function createVercelHandler(

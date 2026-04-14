@@ -3,4 +3,7 @@ import { getRouter } from "@/lib/server";
 
 export const { GET, POST, PATCH, DELETE } = createVercelHandler(getRouter);
 
-export { runtime, maxDuration, dynamic } from "@flow-state-dev/vercel/config";
+// Next.js reads these statically — they must be literal declarations, not re-exports.
+export const runtime = "nodejs";
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
