@@ -35,6 +35,7 @@ import { ThinkingStyleSelector, type ThinkingStyle } from "@/components/thinking
 import { ModelPresetSelector, type ModelPreset } from "@/components/model-preset-selector";
 import { FeatureSelector, type Features, DEFAULT_FEATURES } from "@/components/feature-selector";
 import { ClientDataBar } from "@/components/client-data-bar";
+import { inferResolvedModel, inferThinkingStyle } from "@/lib/item-inference";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactViewer } from "@/components/artifact-viewer";
 import { ResizeHandle } from "@/components/resize-handle";
@@ -129,6 +130,20 @@ function KitchenSinkApp() {
 
   const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined } | undefined;
   const userPrefs = clientData.user?.preferences as { displayName: string; preferredModel: string } | undefined;
+
+  // Derive resolved model from the most recent generator block_output item.
+  const resolvedModel = useMemo(
+    () => inferResolvedModel(session.items),
+    [session.items],
+  );
+
+  // Derive resolved thinking style from the most recent request's items.
+  const resolvedThinkingStyle = useMemo(() => {
+    if (session.items.length === 0) return null;
+    const lastRequestId = session.items[session.items.length - 1].requestId;
+    const requestItems = session.items.filter((i) => i.requestId === lastRequestId);
+    return inferThinkingStyle(requestItems);
+  }, [session.items]);
 
   // Derive artifact summaries from the resource collection snapshot.
   // Content is loaded lazily when a specific artifact is opened.
@@ -328,7 +343,9 @@ function KitchenSinkApp() {
           requestCount={modeStatus?.requestCount}
           displayName={userPrefs?.displayName}
           preferredModel={userPrefs?.preferredModel}
-          thinkingStyle={modeStatus?.thinkingStyle}
+          resolvedModel={resolvedModel}
+          thinkingStyleMode={thinkingStyle}
+          thinkingStyle={resolvedThinkingStyle ?? modeStatus?.thinkingStyle}
         />
 
         <div className="flex min-h-0 flex-1 sm:hidden">
