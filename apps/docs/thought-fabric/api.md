@@ -173,7 +173,25 @@ Bias detection, sycophancy scoring, and counter-argument generation.
 | `sycophancyScoreSchema` | Composite score with label and four-dimension breakdown |
 | `sycophancyBreakdownSchema` | Four dimension scores |
 | `sycophancyLabelSchema` | Enum: balanced, mild_bias, moderate_bias, sycophantic |
-| `analyzerResultSchema` | Generic AnalyzerResult contract (FIX-307 forward declaration) |
+| `analyzerResultSchema` | Canonical AnalyzerResult contract for any metacognition analyzer |
+
+### Response Auditor
+
+| Export | Kind | Purpose |
+|--------|------|---------|
+| `responseAuditor(config)` | sequencer | Runs analyzers in parallel, produces AuditReport |
+| `auditAggregate(config?)` | handler | Standalone aggregation for custom pipelines |
+| `analyzerAnnotationSchema` | schema | Single finding: type, content, confidence, evidence |
+| `auditorInputSchema` | schema | `{ userInput, aiResponse }` |
+| `auditReportSchema` | schema | Aggregated: verdict, severity, score, results |
+| `severitySchema` | schema | info, warning, critical |
+| `auditVerdictSchema` | schema | pass, review, fail |
+| `worstSeverity(a, b)` | helper | Returns the more severe of two levels |
+| `aggregateSeverity(results)` | helper | Worst severity across results |
+| `aggregateScore(results)` | helper | Max score across results |
+| `determineVerdict(score, thresholds?)` | helper | Score → pass/review/fail |
+| `buildAuditReport(results, thresholds?)` | helper | Full report from analyzer results |
+| `DEFAULT_AUDIT_THRESHOLDS` | const | `{ reviewThreshold: 0.3, failThreshold: 0.7 }` |
 
 ### Helpers
 

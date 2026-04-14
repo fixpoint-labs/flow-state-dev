@@ -292,7 +292,7 @@ const result = await audit.run({
 | `biasAnnotationSchema` | Zod schema | Per-bias annotation with type, confidence, description, evidence. |
 | `counterArgumentSchema` | Zod schema | Counter-argument with claim, counterpoint, strength, sources. |
 | `sycophancyScoreSchema` | Zod schema | Composite score with label and four-dimension breakdown. |
-| `analyzerResultSchema` | Zod schema | Generic AnalyzerResult contract (FIX-307 forward declaration). |
+| `analyzerResultSchema` | Zod schema | Canonical AnalyzerResult contract for any metacognition analyzer. |
 | **Helpers** | | |
 | `labelForSycophancyScore(score)` | pure function | Maps score [0,1] to label: balanced / mild_bias / moderate_bias / sycophantic. |
 | `severityForSycophancyScore(score)` | pure function | Maps score to severity: info / warning / critical. |
@@ -310,6 +310,60 @@ const result = await audit.run({
 | 0.2 - 0.4 | `mild_bias` | info | No |
 | 0.4 - 0.7 | `moderate_bias` | warning | Yes |
 | 0.7 - 1.0 | `sycophantic` | critical | Yes |
+
+### Response Auditor
+
+The response auditor runs multiple analyzers over an AI response and aggregates their results into a single audit report with a pass/review/fail verdict.
+
+```ts
+import { responseAuditor, biasAnalyzer } from '@thought-fabric/core/metacognition'
+
+const auditor = responseAuditor({
+  analyzers: {
+    'bias-sycophancy': biasAnalyzer({ model: 'preset/fast' }),
+  },
+  thresholds: { reviewThreshold: 0.3, failThreshold: 0.7 },
+})
+
+const report = await auditor.run({
+  userInput: 'I think we should use microservices',
+  aiResponse: 'Great idea! Microservices are definitely the best approach...',
+}, ctx)
+
+// report.verdict: 'review' | 'pass' | 'fail'
+// report.severity: 'info' | 'warning' | 'critical'
+// report.results: AnalyzerResult[] (one per analyzer)
+```
+
+| Export | Kind | Description |
+|--------|------|-------------|
+| **Block factories** | | |
+| `responseAuditor(config)` | sequencer | Runs analyzers in parallel, aggregates into AuditReport. |
+| `auditAggregate(config?)` | handler | Standalone aggregation handler for custom pipelines. |
+| **Schemas** | | |
+| `analyzerResultSchema` | Zod schema | Canonical contract any analyzer must produce. |
+| `analyzerAnnotationSchema` | Zod schema | Single finding: type, content, confidence, evidence. |
+| `auditorInputSchema` | Zod schema | `{ userInput: string, aiResponse: string }` |
+| `auditReportSchema` | Zod schema | Aggregated report: verdict, severity, score, results. |
+| `severitySchema` | Zod enum | `info`, `warning`, `critical`. |
+| `auditVerdictSchema` | Zod enum | `pass`, `review`, `fail`. |
+| **Helpers** | | |
+| `worstSeverity(a, b)` | pure function | Returns the more severe of two levels. |
+| `aggregateSeverity(results)` | pure function | Worst severity across results. |
+| `aggregateScore(results)` | pure function | Maximum score across results. |
+| `determineVerdict(score, thresholds?)` | pure function | Score → pass/review/fail. |
+| `summarizeAudit(results, verdict)` | pure function | Human-readable audit summary. |
+| `buildAuditReport(results, thresholds?)` | pure function | Full report from analyzer results. |
+| **Config** | | |
+| `DEFAULT_AUDIT_THRESHOLDS` | const | `{ reviewThreshold: 0.3, failThreshold: 0.7 }` |
+
+### Verdict Thresholds
+
+| Score Range | Verdict |
+|---|---|
+| 0.0 - 0.3 | `pass` |
+| 0.3 - 0.7 | `review` |
+| 0.7 - 1.0 | `fail` |
 
 ## Dependencies
 
