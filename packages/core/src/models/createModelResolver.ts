@@ -344,7 +344,28 @@ export function createModelResolver(
     });
   }
 
-  return (modelId: string, _blockName?: string): GeneratorModel => {
+  const resolver = ((modelId: string, _blockName?: string): GeneratorModel => {
     return resolveSingleModel(modelId);
+  }) as ModelResolver;
+
+  resolver.resolveId = (modelId: string): string => {
+    const parsed = parseModelString(modelId);
+    if (parsed.type !== "preset") return modelId;
+
+    const preset = allPresets[parsed.presetName!];
+    if (!preset) return modelId;
+
+    // Return the first available model in the preset's preference list.
+    for (const modelString of preset.models) {
+      try {
+        resolveSingleModel(modelString);
+        return modelString;
+      } catch {
+        // Model not available — try next
+      }
+    }
+    return modelId;
   };
+
+  return resolver;
 }

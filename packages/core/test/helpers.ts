@@ -1,5 +1,5 @@
 import type { BlockContext } from "../src/types/block";
-import type { GeneratorModel } from "../src/types/model";
+import type { GeneratorModel, ModelResolver } from "../src/types/model";
 import type { ScopeStateOps } from "../src/types/state";
 
 function createStateOps<TState extends object>(): ScopeStateOps<TState> {
@@ -16,9 +16,10 @@ function createStateOps<TState extends object>(): ScopeStateOps<TState> {
 
 export function createMockContext(overrides?: Partial<BlockContext>): BlockContext {
   const stateOps = createStateOps<Record<string, unknown>>();
-  const resolveModel = (): GeneratorModel => {
+  const resolveModel = ((): GeneratorModel => {
     throw new Error("No model resolver configured in createMockContext");
-  };
+  }) as ModelResolver;
+  resolveModel.resolveId = (modelId: string) => modelId;
 
   const baseContext: BlockContext = {
     request: {

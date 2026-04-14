@@ -1,6 +1,5 @@
 /**
- * Item inference helpers for deriving resolved model and thinking style
- * from the session item stream.
+ * Item inference helpers for deriving thinking style from the session item stream.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ThinkingStyle } from "@/components/thinking-style-selector";
@@ -9,7 +8,6 @@ type ComponentItem = OutputItem & { type: "component"; component: string; key?: 
 type BlockOutputItem = OutputItem & {
   type: "block_output";
   blockName: string;
-  modelUsage?: { model: string };
 };
 
 /**
@@ -34,21 +32,4 @@ export function inferThinkingStyle(items: OutputItem[]): ThinkingStyle | null {
   if (hasSupervisor) return "supervisor";
 
   return null;
-}
-
-/**
- * Returns the resolved model string from the most recent block_output item
- * that has modelUsage metadata.
- */
-export function inferResolvedModel(items: OutputItem[]): string | undefined {
-  for (let i = items.length - 1; i >= 0; i--) {
-    const item = items[i];
-    if (item.type === "block_output") {
-      const blockItem = item as BlockOutputItem;
-      if (blockItem.modelUsage?.model) {
-        return blockItem.modelUsage.model;
-      }
-    }
-  }
-  return undefined;
 }

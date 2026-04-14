@@ -35,7 +35,7 @@ import { ThinkingStyleSelector, type ThinkingStyle } from "@/components/thinking
 import { ModelPresetSelector, type ModelPreset } from "@/components/model-preset-selector";
 import { FeatureSelector, type Features, DEFAULT_FEATURES } from "@/components/feature-selector";
 import { ClientDataBar } from "@/components/client-data-bar";
-import { inferResolvedModel, inferThinkingStyle } from "@/lib/item-inference";
+import { inferThinkingStyle } from "@/lib/item-inference";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactViewer } from "@/components/artifact-viewer";
 import { ResizeHandle } from "@/components/resize-handle";
@@ -128,14 +128,8 @@ function KitchenSinkApp() {
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
   const { items: artifactItems, actions: artifactActions } = useResourceCollection(session, "artifacts");
 
-  const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined } | undefined;
+  const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined; resolvedModel: string | null } | undefined;
   const userPrefs = clientData.user?.preferences as { displayName: string; preferredModel: string } | undefined;
-
-  // Derive resolved model from the most recent generator block_output item.
-  const resolvedModel = useMemo(
-    () => inferResolvedModel(session.items),
-    [session.items],
-  );
 
   // Derive resolved thinking style from the most recent request's items.
   const resolvedThinkingStyle = useMemo(() => {
@@ -342,8 +336,7 @@ function KitchenSinkApp() {
           currentMode={modeStatus?.currentMode}
           requestCount={modeStatus?.requestCount}
           displayName={userPrefs?.displayName}
-          preferredModel={userPrefs?.preferredModel}
-          resolvedModel={resolvedModel}
+          resolvedModel={modeStatus?.resolvedModel ?? undefined}
           thinkingStyleMode={thinkingStyle}
           thinkingStyle={resolvedThinkingStyle ?? modeStatus?.thinkingStyle}
         />

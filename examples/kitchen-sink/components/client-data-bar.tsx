@@ -24,17 +24,10 @@ export function ClientDataBar({
   currentMode,
   requestCount,
   displayName,
-  preferredModel,
   resolvedModel,
   thinkingStyleMode,
   thinkingStyle,
 }: ClientDataBarProps) {
-  const presetOption = getPresetOption(preferredModel ?? "preset/small");
-  const PresetIcon = presetOption.icon;
-
-  // Show resolved model name when available, fall back to preset label.
-  const modelDisplay = resolvedModel ?? presetOption.label;
-
   // Only show resolved thinking style when user selected "auto".
   const showThinkingStyle = thinkingStyleMode === "auto" && thinkingStyle;
   const styleOption = showThinkingStyle ? getStyleOption(thinkingStyle as any) : null;
@@ -61,15 +54,15 @@ export function ClientDataBar({
         <User className="h-3.5 w-3.5" />
         <span>{displayName ?? "Developer"}</span>
       </div>
-      <Separator orientation="vertical" className="hidden h-4 md:block" />
-      <div className="hidden items-center gap-1.5 text-muted-foreground md:flex">
-        {resolvedModel ? (
-          <Cpu className="h-3.5 w-3.5" />
-        ) : (
-          <PresetIcon className={cn("h-3.5 w-3.5", presetOption.color)} />
-        )}
-        <span>{modelDisplay}</span>
-      </div>
+      {resolvedModel && (
+        <>
+          <Separator orientation="vertical" className="hidden h-4 md:block" />
+        <div className="hidden items-center gap-1.5 text-muted-foreground md:flex">
+            <Cpu className="h-3.5 w-3.5" />
+            <span>{resolvedModel}</span>
+          </div>
+        </>
+      ) }
       {showThinkingStyle && StyleIcon && (
         <>
           <Separator orientation="vertical" className="hidden h-4 md:block" />
