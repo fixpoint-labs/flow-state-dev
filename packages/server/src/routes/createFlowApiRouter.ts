@@ -29,6 +29,13 @@ export type CreateFlowApiRouterOptions = {
   staleStreamTtlMs?: number;
   middleware?: Middleware[];
   onError?: (error: Error, context: { method: string; path: string }) => void;
+  /**
+   * Whether to detect interrupted requests from previous runs on startup.
+   * Disable on serverless platforms where background queries on init can
+   * exhaust the Postgres pool before actual requests are served.
+   * Default: true.
+   */
+  detectInterruptedOnStartup?: boolean;
 };
 
 type CreateInternalFlowApiRouterOptions = CreateFlowApiRouterOptions & {

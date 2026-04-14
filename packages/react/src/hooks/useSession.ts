@@ -6,7 +6,9 @@ import {
   createClient,
   createSessionClient,
   createSSEClient,
+  createSSEClientFromResponse,
   type ExecuteActionResponse,
+  type RequestSSECallbacks,
   type RequestStreamHandle,
   type SessionDetail,
   type SessionStateSnapshotResponse
@@ -550,9 +552,14 @@ export function useSession(
   /**
    * Attach to an existing request's stream, optionally resuming from a cursor.
    * Used by both sendAction (new requests) and autoResume (in-progress requests).
+   *
+   * When `inlineResponse` is provided, SSE events are consumed directly from
+   * the POST action response body (inline streaming) instead of opening a
+   * separate GET connection. This is essential on serverless platforms where
+   * POST and GET may hit different instances.
    */
   const attachToStream = useCallback(
-    (requestId: string, startingAfter?: string) => {
+    (requestId: string, startingAfter?: string, inlineResponse?: Response) => {
       if (streamHandleRef.current !== null) {
         streamHandleRef.current.close();
         streamHandleRef.current = null;
@@ -566,10 +573,7 @@ export function useSession(
         itemTypes: itemConfig.itemTypes
       };
 
-      const handle = createSSEClient({
-        url: `/api/flows/${encodeURIComponent(resolvedFlowKind)}/requests/${encodeURIComponent(requestId)}/stream`,
-        baseUrl,
-        startingAfter: startingAfter !== undefined ? Number(startingAfter) : undefined,
+      const sseCallbacks: RequestSSECallbacks = {
         onItemAdded: (event) => {
           if (event.item.type === "status" && (event.item as OutputItem & { message?: string }).message === "finishing") {
             setIsFinishing(true);
@@ -737,7 +741,16 @@ export function useSession(
           streamHandleRef.current?.close();
           streamHandleRef.current = null;
         }
-      });
+      };
+
+      const handle = inlineResponse !== undefined
+        ? createSSEClientFromResponse({ response: inlineResponse, ...sseCallbacks })
+        : createSSEClient({
+            url: `/api/flows/${encodeURIComponent(resolvedFlowKind)}/requests/${encodeURIComponent(requestId)}/stream`,
+            baseUrl,
+            startingAfter: startingAfter !== undefined ? Number(startingAfter) : undefined,
+            ...sseCallbacks
+          });
 
       streamHandleRef.current = handle;
     },
@@ -888,25 +901,64 @@ export function useSession(
       }
 
       try {
-        const postPromise = client.sendAction(action, input, {
-          sessionId,
-          requestId,
-          metadata: actionOptions?.metadata
-        });
-
         if (itemConfig.enabled) {
-          // Store the optimistic ID so the stream handler can clean it up.
           const optimisticId = actionOptions?.userMessage !== undefined
             ? `item_msg_optimistic_${requestId}`
             : undefined;
-
-          // Stash the optimistic ID for the onItemAdded handler in attachToStream.
-          // We use a ref so the closure in attachToStream can read it.
           optimisticIdRef.current = optimisticId ?? null;
-          attachToStream(requestId);
         }
 
-        const response = await postPromise;
+        // Inline streaming: POST with Accept: text/event-stream so the server
+        // returns SSE events directly from the POST response. This keeps action
+        // execution and stream delivery on the same function instance — critical
+        // for serverless platforms where POST and GET may hit different instances.
+        const actionName = action;
+        const postUrl = sessionId
+          ? `${baseUrl}/api/flows/${encodeURIComponent(resolvedFlowKind)}/${encodeURIComponent(sessionId)}/actions/${encodeURIComponent(actionName)}`
+          : `${baseUrl}/api/flows/${encodeURIComponent(resolvedFlowKind)}/actions/${encodeURIComponent(actionName)}`;
+
+        const postResponse = await fetch(postUrl, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "accept": "text/event-stream"
+          },
+          body: JSON.stringify({
+            input,
+            userId,
+            sessionId,
+            requestId,
+            metadata: actionOptions?.metadata
+          })
+        });
+
+        if (!postResponse.ok) {
+          const errorBody = await postResponse.text();
+          throw new Error(`Action request failed (${postResponse.status}): ${errorBody}`);
+        }
+
+        const contentType = postResponse.headers.get("content-type") ?? "";
+
+        if (contentType.includes("text/event-stream") && itemConfig.enabled) {
+          // Server returned inline SSE — consume events from the POST response body.
+          attachToStream(requestId, undefined, postResponse);
+          return {
+            status: "in_progress" as const,
+            request: {
+              id: requestId,
+              flowKind: resolvedFlowKind,
+              actionName,
+              status: "in_progress" as const
+            }
+          };
+        }
+
+        // Fallback: server returned 202 JSON (non-streaming server or items disabled).
+        const response = await postResponse.json() as ExecuteActionResponse;
+
+        if (itemConfig.enabled) {
+          attachToStream(response.request.id);
+        }
 
         if (!itemConfig.enabled && response.status === "completed") {
           await refreshSnapshot();
@@ -922,6 +974,9 @@ export function useSession(
     },
     [
       sessionId,
+      userId,
+      resolvedFlowKind,
+      baseUrl,
       client,
       itemConfig.enabled,
       attachToStream,

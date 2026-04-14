@@ -21,7 +21,8 @@ import {
   asObject,
   getString,
   jsonResponse,
-  parseJsonBody
+  parseJsonBody,
+  SSE_HEADERS
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { InternalRouteSeams, RequestContext } from "./http-handlers";
@@ -115,7 +116,7 @@ export async function handleExecuteAction(
 
   registerStream(resolvedActionInput.requestId, liveStream);
 
-  void runAction({
+  const runPromise = runAction({
     flow,
     actionName: resolvedActionInput.actionName as keyof typeof flow.actions & string,
     input: resolvedActionInput.input,
@@ -136,6 +137,28 @@ export async function handleExecuteAction(
     // Safety net: deregister if runAction didn't (e.g., truly catastrophic failure)
     ctx.stores.activeRequests.deregister(resolvedActionInput.requestId).catch(() => {});
   });
+
+  // Inline streaming: when the client sends Accept: text/event-stream, return
+  // the SSE stream directly from the POST response. This keeps the action
+  // execution and stream delivery on the same function instance — essential
+  // for serverless platforms where POST and GET may hit different instances.
+  const accept = request.headers.get("accept") ?? "";
+  if (accept.includes("text/event-stream")) {
+    // Don't void the promise — the function must stay alive while streaming.
+    // On Vercel Fluid Compute the response body keeps the instance alive.
+    void runPromise;
+    return new Response(liveStream.readable, {
+      status: 200,
+      headers: {
+        ...SSE_HEADERS,
+        "x-request-id": resolvedActionInput.requestId,
+        "x-session-id": resolvedActionInput.sessionId ?? ""
+      }
+    });
+  }
+
+  // Fire-and-forget mode (traditional servers, CLI, etc.)
+  void runPromise;
 
   return jsonResponse(202, {
     status: "in_progress",
