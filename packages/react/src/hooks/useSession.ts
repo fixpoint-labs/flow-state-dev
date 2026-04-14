@@ -908,57 +908,17 @@ export function useSession(
           optimisticIdRef.current = optimisticId ?? null;
         }
 
-        // Inline streaming: POST with Accept: text/event-stream so the server
-        // returns SSE events directly from the POST response. This keeps action
-        // execution and stream delivery on the same function instance — critical
-        // for serverless platforms where POST and GET may hit different instances.
-        const actionName = action;
-        const postUrl = sessionId
-          ? `${baseUrl}/api/flows/${encodeURIComponent(resolvedFlowKind)}/${encodeURIComponent(sessionId)}/actions/${encodeURIComponent(actionName)}`
-          : `${baseUrl}/api/flows/${encodeURIComponent(resolvedFlowKind)}/actions/${encodeURIComponent(actionName)}`;
-
-        const postResponse = await fetch(postUrl, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "accept": "text/event-stream"
-          },
-          body: JSON.stringify({
-            input,
-            userId,
-            sessionId,
-            requestId,
-            metadata: actionOptions?.metadata
-          })
+        const postPromise = client.sendAction(action, input, {
+          sessionId,
+          requestId,
+          metadata: actionOptions?.metadata
         });
 
-        if (!postResponse.ok) {
-          const errorBody = await postResponse.text();
-          throw new Error(`Action request failed (${postResponse.status}): ${errorBody}`);
-        }
-
-        const contentType = postResponse.headers.get("content-type") ?? "";
-
-        if (contentType.includes("text/event-stream") && itemConfig.enabled) {
-          // Server returned inline SSE — consume events from the POST response body.
-          attachToStream(requestId, undefined, postResponse);
-          return {
-            status: "in_progress" as const,
-            request: {
-              id: requestId,
-              flowKind: resolvedFlowKind,
-              actionName,
-              status: "in_progress" as const
-            }
-          };
-        }
-
-        // Fallback: server returned 202 JSON (non-streaming server or items disabled).
-        const response = await postResponse.json() as ExecuteActionResponse;
-
         if (itemConfig.enabled) {
-          attachToStream(response.request.id);
+          attachToStream(requestId);
         }
+
+        const response = await postPromise;
 
         if (!itemConfig.enabled && response.status === "completed") {
           await refreshSnapshot();
@@ -974,9 +934,6 @@ export function useSession(
     },
     [
       sessionId,
-      userId,
-      resolvedFlowKind,
-      baseUrl,
       client,
       itemConfig.enabled,
       attachToStream,
