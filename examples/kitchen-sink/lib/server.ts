@@ -10,7 +10,9 @@ import {
   createFlowRegistry,
   createFilesystemStores,
   createInMemoryStores,
+  type StoreRegistry,
 } from "@flow-state-dev/server";
+import { createPostgresStores } from "@flow-state-dev/store-postgres";
 import kitchenSinkFlow from "@/src/flows/kitchen-sink/flow";
 
 // Auto-detects providers from env vars (OPENAI_API_KEY, etc.).
@@ -22,21 +24,44 @@ const modelResolver = createModelResolver();
 const speechResolver = createAiSdkSpeechResolver((modelId) => openai.speech(modelId));
 const transcriptionResolver = createAiSdkTranscriptionResolver((modelId) => openai.transcription(modelId));
 
-// Store type: "filesystem" persists to .fsdev/data/, "memory" (default) is ephemeral.
-const stores = process.env.STORE_TYPE === "filesystem"
-  ? createFilesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") })
-  : createInMemoryStores();
-
 const registry = createFlowRegistry();
 registry.register(kitchenSinkFlow);
 
-export const router = createFlowApiRouter({
-  registry,
-  stores,
-  modelResolver,
-  speechResolver,
-  transcriptionResolver,
-  onError: (error, context) => {
-    console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
-  },
-});
+/**
+ * Resolve persistence stores based on environment:
+ *   DATABASE_URL set        → Postgres (Neon on Vercel)
+ *   STORE_TYPE=filesystem   → local filesystem (.fsdev/data/)
+ *   otherwise               → in-memory (ephemeral, default for local dev)
+ */
+async function createStores(): Promise<StoreRegistry> {
+  if (process.env.DATABASE_URL) {
+    return createPostgresStores({ connectionString: process.env.DATABASE_URL });
+  }
+  if (process.env.STORE_TYPE === "filesystem") {
+    return createFilesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") });
+  }
+  return createInMemoryStores();
+}
+
+type FlowApiRouter = ReturnType<typeof createFlowApiRouter>;
+
+let _routerPromise: Promise<FlowApiRouter> | null = null;
+
+/** Lazily initialised router — awaits async Postgres pool+schema on first call. */
+export function getRouter(): Promise<FlowApiRouter> {
+  if (!_routerPromise) {
+    _routerPromise = createStores().then((stores) =>
+      createFlowApiRouter({
+        registry,
+        stores,
+        modelResolver,
+        speechResolver,
+        transcriptionResolver,
+        onError: (error, context) => {
+          console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
+        },
+      })
+    );
+  }
+  return _routerPromise;
+}
