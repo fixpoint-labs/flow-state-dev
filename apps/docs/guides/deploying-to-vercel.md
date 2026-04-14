@@ -28,11 +28,11 @@ pnpm add @flow-state-dev/vercel
 
 ---
 
-## 2. Configure the API route
+## 2. Configure the API routes
 
-Create a single catch-all route file. The `[[...path]]` optional catch-all handles both `/api/flows` and `/api/flows/anything/else` — no sibling route file needed.
+You need two route files. The catch-all handles all paths with segments, and a bare sibling handles `/api/flows` itself (Next.js `[...path]` requires at least one segment).
 
-```ts title="app/api/flows/[[...path]]/route.ts"
+```ts title="app/api/flows/[...path]/route.ts"
 import { createVercelHandler } from "@flow-state-dev/vercel";
 import { router } from "@/lib/server";
 
@@ -44,15 +44,23 @@ export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 ```
 
+```ts title="app/api/flows/route.ts"
+import { createVercelBareHandler } from "@flow-state-dev/vercel";
+import { router } from "@/lib/server";
+
+export const { GET, POST } = createVercelBareHandler(router);
+```
+
 `createVercelHandler` takes care of:
 - Unwrapping Next.js 15's async params
 - Adding SSE headers (`Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`) to prevent Vercel's edge layer from buffering tokens
 - Injecting periodic heartbeat comments to keep long-lived connections alive
 
-If your router setup is async (e.g. Postgres pool creation), pass a factory:
+If your router setup is async (e.g. Postgres pool creation), pass a factory function:
 
 ```ts
-export const { GET, POST, PATCH, DELETE } = createVercelHandler(() => getRouter());
+export const { GET, POST, PATCH, DELETE } = createVercelHandler(getRouter);
+export const { GET, POST } = createVercelBareHandler(getRouter); // in route.ts
 ```
 
 The factory is called once and cached.

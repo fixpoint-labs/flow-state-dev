@@ -8,7 +8,7 @@ Vercel deployment adapter for flow-state-dev. Wraps a flow-state-dev router into
 pnpm add @flow-state-dev/vercel
 ```
 
-Two files to deploy any FSD app to Vercel:
+Three files to deploy any FSD app to Vercel:
 
 **1. Server setup** (`lib/server.ts`) — same as local dev:
 
@@ -26,7 +26,7 @@ export const router = createFlowApiRouter({
 });
 ```
 
-**2. Route file** (`app/api/flows/[[...path]]/route.ts`):
+**2. Catch-all route** (`app/api/flows/[...path]/route.ts`):
 
 ```ts
 import { createVercelHandler } from "@flow-state-dev/vercel";
@@ -40,7 +40,18 @@ export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 ```
 
-That's it. SSE streams get the right headers, heartbeats prevent proxy timeouts, and `maxDuration` is set to 300 seconds.
+**3. Bare route** (`app/api/flows/route.ts`):
+
+Next.js `[...path]` catch-all requires at least one segment. This sibling route handles `/api/flows` with no trailing path.
+
+```ts
+import { createVercelBareHandler } from "@flow-state-dev/vercel";
+import { router } from "@/lib/server";
+
+export const { GET, POST } = createVercelBareHandler(router);
+```
+
+SSE streams get the right headers, heartbeats prevent proxy timeouts, and `maxDuration` is set to 300 seconds.
 
 ## What it does
 
@@ -51,18 +62,24 @@ That's it. SSE streams get the right headers, heartbeats prevent proxy timeouts,
 
 ## Lazy router initialization
 
-If your store setup is async (e.g. Postgres connection pool), pass a factory function:
+If your store setup is async (e.g. Postgres connection pool), pass a factory function instead of a pre-built router:
 
 ```ts
+// [... path]/route.ts
 import { createVercelHandler } from "@flow-state-dev/vercel";
 import { getRouter } from "@/lib/server";
 
 // getRouter returns Promise<FlowApiRouter> — called once, cached internally.
 export const { GET, POST, PATCH, DELETE } = createVercelHandler(getRouter);
+// ...runtime config...
+```
 
-export const runtime = "nodejs";
-export const maxDuration = 300;
-export const dynamic = "force-dynamic";
+```ts
+// route.ts (bare)
+import { createVercelBareHandler } from "@flow-state-dev/vercel";
+import { getRouter } from "@/lib/server";
+
+export const { GET, POST } = createVercelBareHandler(getRouter);
 ```
 
 ## Configuration
@@ -91,11 +108,17 @@ The `@flow-state-dev/vercel/config` module exports these same values for program
 
 ### `createVercelHandler(app, options?)`
 
-Creates Next.js App Router `GET`, `POST`, `PATCH`, `DELETE` handlers.
+Creates Next.js App Router `GET`, `POST`, `PATCH`, `DELETE` handlers for `[...path]` catch-all routes.
 
 **`app`**: Either a `FlowApiRouter` (from `createFlowApiRouter`) or a `() => FlowApiRouter | Promise<FlowApiRouter>` factory. The factory is called at most once and cached.
 
 **Returns**: `{ GET, POST, PATCH, DELETE }` — export these directly from your route file.
+
+### `createVercelBareHandler(app, options?)`
+
+Creates handlers for the bare `/api/flows` route (no path segments). Same `app` input as above.
+
+**Returns**: `{ GET, POST }` — export from the sibling `route.ts`.
 
 ## Scripts
 
