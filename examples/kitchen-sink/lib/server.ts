@@ -58,6 +58,9 @@ export function getRouter(): Promise<FlowApiRouter> {
         modelResolver,
         speechResolver,
         transcriptionResolver,
+        // Serverless: background queries on init can exhaust the Postgres pool
+        // before actual requests are served. Disable for Vercel/Lambda.
+        detectInterruptedOnStartup: false,
         onError: (error, context) => {
           console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
         },
