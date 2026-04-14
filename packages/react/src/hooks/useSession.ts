@@ -95,6 +95,8 @@ export type SessionView = {
     input: unknown,
     options?: { metadata?: Record<string, unknown>; userMessage?: string }
   ) => Promise<ExecuteActionResponse>;
+  /** Abort the currently in-flight request. No-op if nothing is in flight. */
+  abortRequest: () => Promise<void>;
   refresh: () => Promise<void>;
 };
 
@@ -327,6 +329,8 @@ export function useSession(
   const [error, setError] = useState<Error | null>(null);
 
   const streamHandleRef = useRef<RequestStreamHandle | null>(null);
+  /** The requestId of the currently in-flight request, used for abort. */
+  const activeRequestIdRef = useRef<string | null>(null);
   const itemsByIdRef = useRef<Map<string, OutputItem>>(new Map());
   const sortedItemIdsRef = useRef<string[]>([]);
   const deltaQueueRef = useRef<Map<string, ContentDeltaAccumulator>>(new Map());
@@ -712,15 +716,17 @@ export function useSession(
           if (
             event.status === "completed" ||
             event.status === "failed" ||
-            event.status === "incomplete"
+            event.status === "incomplete" ||
+            event.status === "aborted"
           ) {
             flushContentDeltas();
             setIsStreaming(false);
             setIsFinishing(false);
+            activeRequestIdRef.current = null;
             streamHandleRef.current?.close();
             streamHandleRef.current = null;
 
-            // Refresh on completion, or on failure/incomplete if resources
+            // Refresh on completion, or on failure/incomplete/aborted if resources
             // changed during streaming (batched instead of per-change).
             if (
               event.status === "completed" ||
@@ -856,6 +862,7 @@ export function useSession(
       setIsFinishing(false);
 
       const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      activeRequestIdRef.current = requestId;
 
       // Optimistic user message: inject immediately so the user sees their own
       // message without waiting for the server round-trip. The server will emit
@@ -936,6 +943,13 @@ export function useSession(
     return sortItemsChronologically(result);
   }, []);
 
+  const abortRequest = useCallback(async () => {
+    const requestId = activeRequestIdRef.current;
+    if (requestId === null) return;
+    await client.abortRequest(requestId);
+    // The SSE stream will receive request.aborted and clean up state.
+  }, [client]);
+
   const refresh = useCallback(async () => {
     await refreshSnapshot();
   }, [refreshSnapshot]);
@@ -954,6 +968,7 @@ export function useSession(
     items,
     getOwnedItems,
     sendAction,
+    abortRequest,
     refresh
   };
 }

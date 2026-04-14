@@ -124,6 +124,12 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 - `encodeStreamEvent` / `serializeSSEFrame` — Low-level SSE encoding
 - `replayRequestEvents` — Replay events from a sequence cursor
 
+**Request abort:**
+- `abortRequest(requestId)` — Signal an in-progress request to stop via `AbortController`
+- `hasActiveAbortController(requestId)` — Check if a request can be aborted
+- Abort endpoint: `POST /api/flows/:flowKind/requests/:requestId/abort` — returns 204 on success, 404 if not in progress, 409 if already terminal
+- Aborted requests receive `status: "aborted"` with an `abortedAt` timestamp. The SSE stream emits `request.aborted` and closes.
+
 **Registry/routes:**
 - `createFlowRegistry` — Register flow instances
 - `createFlowApiRouter` — Generate HTTP route handlers from a registry

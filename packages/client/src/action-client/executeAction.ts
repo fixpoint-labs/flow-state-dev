@@ -42,6 +42,8 @@ export type Client = {
     input: unknown,
     options?: SendActionOptions
   ) => Promise<ExecuteActionResponse>;
+  /** Signal the server to abort an in-progress request. */
+  abortRequest: (requestId: string) => Promise<void>;
 };
 
 /**
@@ -118,12 +120,25 @@ export function createClient(options: CreateClientOptions): Client {
     });
   };
 
+  const abortRequest = async (requestId: string): Promise<void> => {
+    const path = `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/abort`;
+    const url = buildFlowApiUrl({ baseUrl: options.baseUrl, path });
+    const response = await fetcher(url, { method: "POST" });
+    if (!response.ok && response.status !== 204) {
+      const body = await response.text().catch(() => "");
+      throw new Error(
+        `Abort request failed (${response.status}): ${body}`.trim()
+      );
+    }
+  };
+
   return {
     flowKind,
     userId,
     listFlows,
     getCapabilities,
-    sendAction
+    sendAction,
+    abortRequest
   };
 }
 
@@ -159,6 +174,7 @@ export function createTypedClient<TFlow extends FlowLike>(
     flowKind,
     userId: client.userId,
     sendAction: client.sendAction,
+    abortRequest: client.abortRequest,
     actions,
     state: {
       getSnapshot: (sessionId: string) =>

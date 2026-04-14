@@ -91,6 +91,7 @@ export async function handleRequestStream(
             event.type === "request.completed" ||
             event.type === "request.failed" ||
             event.type === "request.incomplete" ||
+            event.type === "request.aborted" ||
             (event.type === "request.interrupted" && status === "interrupted")
           ) {
             try {

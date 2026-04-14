@@ -176,7 +176,7 @@ export async function handleListSessionRequests(
   const requests = await ctx.stores.request.list({
     sessionId: route.sessionId,
     status: getString(url.searchParams.get("status")) as
-      | "in_progress" | "completed" | "failed" | "incomplete"
+      | "in_progress" | "completed" | "failed" | "incomplete" | "aborted"
       | undefined,
     limit: getPositiveInteger(url.searchParams.get("limit")),
     offset: getPositiveInteger(url.searchParams.get("offset"))

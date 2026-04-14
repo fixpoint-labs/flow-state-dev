@@ -400,7 +400,8 @@ function dispatchRequestEvent(
     event.type === "request.in_progress" ||
     event.type === "request.completed" ||
     event.type === "request.incomplete" ||
-    event.type === "request.failed"
+    event.type === "request.failed" ||
+    event.type === "request.aborted"
   ) {
     callbacks.onRequestStatus?.(event);
     return;

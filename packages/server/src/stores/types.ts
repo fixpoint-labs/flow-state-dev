@@ -4,7 +4,7 @@ import type {
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 
-export type RequestStatus = "in_progress" | "completed" | "incomplete" | "failed" | "interrupted";
+export type RequestStatus = "in_progress" | "completed" | "incomplete" | "failed" | "interrupted" | "aborted";
 
 export type ScopeRecordBase<TState extends JsonObject = JsonObject> = {
   id: string;
@@ -42,6 +42,7 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   input?: unknown;
   items?: OutputItem[];
   interruptedAt?: number;
+  abortedAt?: number;
 };
 
 export type UserRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
