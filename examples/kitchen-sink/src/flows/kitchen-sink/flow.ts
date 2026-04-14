@@ -124,7 +124,9 @@ const assistantGenerator = generator({
 
 const { thinkingStyleRouter } = createThinkingStyleRouter({
   assistantGenerator,
-  modelId: MODEL_ID,
+  modelId: selectModel(MODEL_ID, {
+    prefer: (_input: any, ctx: any) => ctx.user?.state.preferredModel,
+  }),
   history: (_input: any, ctx: any) => ctx.session.items.llm({ limit: 8 }),
   context: [mem.contextFormatter, artifactListContext],
   uses: [featuresCapability],
