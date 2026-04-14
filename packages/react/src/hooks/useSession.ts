@@ -826,6 +826,8 @@ export function useSession(
     };
   }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, autoResume, itemConfig.enabled, attachToStream]);
 
+  // Clean up when sessionId changes — close old stream and reset request state
+  // so the new session isn't blocked by the previous session's in-flight request.
   useEffect(() => {
     return () => {
       if (streamHandleRef.current !== null) {
@@ -833,6 +835,8 @@ export function useSession(
         streamHandleRef.current = null;
       }
 
+      setIsStreaming(false);
+      setIsFinishing(false);
       cancelScheduledFlush();
     };
   }, [sessionId, cancelScheduledFlush]);
