@@ -29,13 +29,14 @@ registry.register(kitchenSinkFlow);
 
 /**
  * Resolve persistence stores based on environment:
- *   DATABASE_URL set        → Postgres (Neon on Vercel)
- *   STORE_TYPE=filesystem   → local filesystem (.fsdev/data/)
- *   otherwise               → in-memory (ephemeral, default for local dev)
+ *   FSD_DB_URL / DATABASE_URL → Postgres (Neon on Vercel)
+ *   STORE_TYPE=filesystem     → local filesystem (.fsdev/data/)
+ *   otherwise                 → in-memory (ephemeral, default for local dev)
  */
 async function createStores(): Promise<StoreRegistry> {
-  if (process.env.DATABASE_URL) {
-    return createPostgresStores({ connectionString: process.env.DATABASE_URL });
+  const dbUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
+  if (dbUrl) {
+    return createPostgresStores({ connectionString: dbUrl });
   }
   if (process.env.STORE_TYPE === "filesystem") {
     return createFilesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") });
