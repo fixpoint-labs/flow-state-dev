@@ -20,6 +20,7 @@ import { crawl } from "@flow-state-dev/tools/crawl";
 import { z } from "zod";
 import { modeSchema, featuresSchema } from "../schemas";
 import { artifactResources, artifactsCapability } from "./artifacts";
+import { mcpCapability } from "./mcp-capability";
 import path from "node:path";
 
 const featuresSessionStateSchema = z.object({
@@ -66,12 +67,15 @@ export const featuresCapability = defineCapability({
   uses: [
     // Conditionally include bash or artifact tools based on mode and feature flags.
     // Ask mode always excludes bash — Build mode defers to the bashTool feature flag.
+    // MCP capability included when servers are configured (null when absent).
     (ctx) => {
       const bashEnabled =
         ctx.session.state.mode !== "ask" && ctx.session.state.features.bashTool;
-      return bashEnabled
+      const caps = bashEnabled
         ? [bashCap, artifactsCapability.presets({ inventory: true, tools: false })]
         : [artifactsCapability];
+      if (mcpCapability) caps.push(mcpCapability);
+      return caps;
     },
   ],
 

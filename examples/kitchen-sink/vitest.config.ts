@@ -13,6 +13,7 @@ export default defineConfig({
       "@flow-state-dev/tools/crawl": resolve(root, "packages/tools/src/crawl/index.ts"),
       "@flow-state-dev/tools": resolve(root, "packages/tools/src/index.ts"),
       "@thought-fabric/core/memory": resolve(root, "packages/thought-fabric-core/src/memory/index.ts"),
+      "@thought-fabric/core/metacognition": resolve(root, "packages/thought-fabric-core/src/metacognition/index.ts"),
     },
   },
 });
