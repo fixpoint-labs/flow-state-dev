@@ -38,7 +38,7 @@ import {
   artifactResources,
 } from "./blocks";
 import { modeSchema, featuresSchema } from "./schemas";
-import { ASK_PROMPT, BUILD_PROMPT } from "./prompts";
+import { ASK_PROMPT, BUILD_PROMPT, INTERVIEW_PROMPT, DEBATE_PROMPT } from "./prompts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -109,8 +109,14 @@ const assistantGenerator = generator({
   maxIterations: 20,
   outputSchema: z.string(),
 
-  prompt: (_input, ctx) =>
-    ctx.session.state.mode === "build" ? BUILD_PROMPT : ASK_PROMPT,
+  prompt: (_input, ctx) => {
+    switch (ctx.session.state.mode) {
+      case "build": return BUILD_PROMPT;
+      case "interview": return INTERVIEW_PROMPT;
+      case "debate": return DEBATE_PROMPT;
+      default: return ASK_PROMPT;
+    }
+  },
 
   emit: { messages: true, reasoning: true },
   model: (_input: any, ctx: any) => ctx.session.state.resolvedModel ?? MODEL_ID,

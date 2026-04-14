@@ -87,8 +87,8 @@ interface FeatureSelectorProps {
   features: Features;
   onFeaturesChange: (features: Features) => void;
   disabled?: boolean;
-  /** Current mode — Ask mode locks out bash regardless of feature state. */
-  mode?: "ask" | "build";
+  /** Current mode — only Build mode allows bash. */
+  mode?: string;
 }
 
 export function FeatureSelector({
@@ -98,15 +98,15 @@ export function FeatureSelector({
   mode,
 }: FeatureSelectorProps) {
   const activeCount = Object.values(features).filter(Boolean).length;
-  const isAskMode = mode === "ask";
+  const isBuildMode = mode === "build";
 
   const handleToggle = useCallback(
     (key: keyof Features) => {
-      // Bash cannot be toggled in Ask mode — it is always disabled server-side.
-      if (key === "bashTool" && isAskMode) return;
+      // Bash cannot be toggled outside Build mode — it is always disabled server-side.
+      if (key === "bashTool" && !isBuildMode) return;
       onFeaturesChange({ ...features, [key]: !features[key] });
     },
-    [features, onFeaturesChange, isAskMode],
+    [features, onFeaturesChange, isBuildMode],
   );
 
   return (
@@ -144,7 +144,7 @@ export function FeatureSelector({
         {FEATURE_OPTIONS.map((option) => {
           const Icon = option.icon;
           const isActive = features[option.key];
-          const isLocked = option.key === "bashTool" && isAskMode;
+          const isLocked = option.key === "bashTool" && !isBuildMode;
 
           return (
             <DropdownMenuItem

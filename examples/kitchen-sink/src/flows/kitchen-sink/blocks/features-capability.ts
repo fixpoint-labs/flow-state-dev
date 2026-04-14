@@ -65,10 +65,10 @@ export const featuresCapability = defineCapability({
 
   uses: [
     // Conditionally include bash or artifact tools based on mode and feature flags.
-    // Ask mode always excludes bash — Build mode defers to the bashTool feature flag.
+    // Only Build mode enables bash — all other modes defer to artifact tools.
     (ctx) => {
       const bashEnabled =
-        ctx.session.state.mode !== "ask" && ctx.session.state.features.bashTool;
+        ctx.session.state.mode === "build" && ctx.session.state.features.bashTool;
       return bashEnabled
         ? [bashCap, artifactsCapability.presets({ inventory: true, tools: false })]
         : [artifactsCapability];
@@ -90,9 +90,9 @@ export const featuresCapability = defineCapability({
       },
       context: [
         (_input, ctx) => {
-          // Bash is disabled in Ask mode regardless of the feature flag.
+          // Bash is only active in Build mode with the feature flag enabled.
           const bashActive =
-            ctx.session.state.mode !== "ask" && ctx.session.state.features.bashTool;
+            ctx.session.state.mode === "build" && ctx.session.state.features.bashTool;
           if (bashActive) return null;
           return [
             "You have access to artifacts and can read or create them:",
