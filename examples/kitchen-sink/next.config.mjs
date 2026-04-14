@@ -6,11 +6,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   outputFileTracingRoot: resolve(__dirname, "../../"),
+  serverExternalPackages: ["pg"],
   transpilePackages: [
     "@flow-state-dev/core",
     "@flow-state-dev/client",
     "@flow-state-dev/react",
     "@flow-state-dev/server",
+    "@flow-state-dev/store-postgres",
   ],
   turbopack: {
     root: resolve(__dirname, "../../"),
