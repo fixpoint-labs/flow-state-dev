@@ -120,6 +120,15 @@ export function createVercelHandler(
 
       const [router, params] = await Promise.all([getRouter(), ctx.params]);
       const response = await router[method](req, { params });
+
+      // Skip heartbeat wrapping for POST SSE responses (inline streaming).
+      // The server is actively writing events — no idle period for proxies to
+      // close. Adding a heartbeat wrapper introduces an extra ReadableStream
+      // pump layer that can interfere with data flow on some runtimes.
+      if (method === "POST") {
+        return response;
+      }
+
       return wrapResponse(response);
     };
   }
