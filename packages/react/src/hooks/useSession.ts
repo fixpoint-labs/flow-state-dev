@@ -908,17 +908,39 @@ export function useSession(
           optimisticIdRef.current = optimisticId ?? null;
         }
 
-        const postPromise = client.sendAction(action, input, {
+        // Use sendActionStream to POST with Accept: text/event-stream.
+        // On serverless (Vercel), this returns the SSE stream directly from
+        // the POST response — keeping action execution and event delivery
+        // on the same function instance. Falls back to 202 JSON + separate
+        // GET stream for servers that don't support inline streaming.
+        const postResponse = await client.sendActionStream(action, input, {
           sessionId,
           requestId,
           metadata: actionOptions?.metadata
         });
 
-        if (itemConfig.enabled) {
-          attachToStream(requestId);
+        const contentType = postResponse.headers.get("content-type") ?? "";
+
+        if (contentType.includes("text/event-stream") && itemConfig.enabled) {
+          // Inline streaming: consume SSE events from the POST response body.
+          attachToStream(requestId, undefined, postResponse);
+          return {
+            status: "in_progress" as const,
+            request: {
+              id: requestId,
+              flowKind: resolvedFlowKind,
+              actionName: action,
+              status: "in_progress" as const
+            }
+          };
         }
 
-        const response = await postPromise;
+        // Fallback: server returned 202 JSON (no inline streaming support).
+        const response = (await postResponse.json()) as ExecuteActionResponse;
+
+        if (itemConfig.enabled) {
+          attachToStream(response.request.id);
+        }
 
         if (!itemConfig.enabled && response.status === "completed") {
           await refreshSnapshot();
@@ -934,6 +956,7 @@ export function useSession(
     },
     [
       sessionId,
+      resolvedFlowKind,
       client,
       itemConfig.enabled,
       attachToStream,
