@@ -6,7 +6,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   outputFileTracingRoot: resolve(__dirname, "../../"),
-  serverExternalPackages: ["pg"],
+  serverExternalPackages: ["pg", "@ai-sdk/gateway"],
   transpilePackages: [
     "@flow-state-dev/core",
     "@flow-state-dev/client",
