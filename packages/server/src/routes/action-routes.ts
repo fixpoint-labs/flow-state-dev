@@ -148,13 +148,18 @@ export async function handleExecuteAction(
 
   // Inline streaming: when the client sends Accept: text/event-stream, return
   // the SSE stream directly from the POST response. This keeps the action
-  // execution and stream delivery on the same function instance.
+  // execution and stream delivery on the same function instance — essential
+  // for serverless platforms where POST and GET may hit different instances.
   const accept = request.headers.get("accept") ?? "";
   if (accept.includes("text/event-stream")) {
     return new Response(liveStream.readable, {
       status: 200,
       headers: {
         ...SSE_HEADERS,
+        // Vercel/Nginx proxy anti-buffering headers — needed here because
+        // the Vercel adapter skips heartbeat wrapping for POST responses.
+        "cache-control": "no-cache, no-transform",
+        "x-accel-buffering": "no",
         "x-request-id": resolvedActionInput.requestId,
         "x-session-id": resolvedActionInput.sessionId ?? ""
       }
