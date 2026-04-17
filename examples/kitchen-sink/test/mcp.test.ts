@@ -13,18 +13,23 @@ function setEnv(key: string, value: string | undefined) {
   }
 }
 
-/** Fake MCP tool matching the AI SDK's tool shape. */
+/**
+ * Fake MCP tool matching the AI SDK's real tool shape: `inputSchema` is a
+ * `jsonSchema()` wrapper containing the raw JSON Schema under `.jsonSchema`.
+ */
 function fakeMcpTool(name: string, description: string) {
   return {
     description,
-    parameters: { type: "object", properties: { query: { type: "string" } } },
+    inputSchema: {
+      jsonSchema: { type: "object", properties: { query: { type: "string" } } },
+    },
     execute: vi.fn().mockResolvedValue({ result: `${name}-output` }),
   };
 }
 
 type MockTool = {
   description: string;
-  parameters: Record<string, unknown>;
+  inputSchema: { jsonSchema: Record<string, unknown> };
   execute?: (args: unknown) => Promise<unknown>;
 };
 
@@ -155,6 +160,29 @@ describe("MCP Manager", () => {
       expect(tools[1].name).toBe("mcp__linear__get_issue");
     });
 
+    it("keeps the AI-SDK jsonSchema() wrapper intact on the block", async () => {
+      // The AI SDK tool protocol consumes `jsonSchema()` wrappers directly.
+      // We used to unwrap to raw JSON and coerce the shape ourselves, which
+      // meant every provider-specific strict-mode rule became our problem.
+      // Now we pass the wrapper through so the AI SDK handles conversion.
+      setEnv("LINEAR_MCP_API_KEY", "test-key");
+      const wrappedSchema = { jsonSchema: { type: "object", properties: {} } };
+      const { factory } = createMockClientFactory({
+        linear: {
+          get_attachment: {
+            description: "no-arg tool (Linear's get_attachment shape)",
+            inputSchema: wrappedSchema,
+            execute: vi.fn(),
+          },
+        },
+      });
+
+      const manager = createMcpManager({ _createClient: factory });
+      const tools = await manager.getTools();
+
+      expect((tools[0] as any).inputSchema).toBe(wrappedSchema);
+    });
+
     it("caches tools on subsequent calls (lazy init)", async () => {
       setEnv("LINEAR_MCP_API_KEY", "test-key");
       const factorySpy = vi.fn(
@@ -237,7 +265,7 @@ describe("MCP Manager", () => {
         linear: {
           create_issue: {
             description: "Create an issue",
-            parameters: { type: "object", properties: {} },
+            inputSchema: { jsonSchema: { type: "object", properties: {} } },
             execute: executeFn,
           },
         },
@@ -259,7 +287,7 @@ describe("MCP Manager", () => {
         linear: {
           no_exec: {
             description: "A tool without execute",
-            parameters: { type: "object", properties: {} },
+            inputSchema: { jsonSchema: { type: "object", properties: {} } },
           } as any,
         },
       });
@@ -343,3 +371,4 @@ describe("MCP Capability", () => {
     expect((cap as any).name).toBe("mcp");
   });
 });
+

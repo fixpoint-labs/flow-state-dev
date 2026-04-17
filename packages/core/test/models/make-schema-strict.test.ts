@@ -93,6 +93,27 @@ describe("makeSchemaStrict", () => {
     expect(valid.success).toBe(true);
   });
 
+  it("unwraps ZodEffects so .superRefine() at the root doesn't skip strict mode", () => {
+    // Regression: intent-classifier wraps its output schema with
+    // `.superRefine()`, which returned ZodEffects. Before this fix, the strict
+    // transform bailed on non-ZodObject inputs, letting `.default()` properties
+    // leak through as non-required into the provider schema.
+    const schema = z
+      .object({
+        category: z.string(),
+        confidence: z.number(),
+        reasoning: z.string().default(""),
+      })
+      .superRefine(() => {});
+
+    const strict = makeSchemaStrict(schema);
+    const missingReasoning = strict.safeParse({ category: "x", confidence: 1 });
+    expect(missingReasoning.success).toBe(false);
+
+    const complete = strict.safeParse({ category: "x", confidence: 1, reasoning: "because" });
+    expect(complete.success).toBe(true);
+  });
+
   it("returns non-object schemas unchanged", () => {
     const stringSchema = z.string();
     expect(makeSchemaStrict(stringSchema)).toBe(stringSchema);

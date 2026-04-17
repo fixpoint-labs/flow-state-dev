@@ -19,9 +19,12 @@ import kitchenSinkFlow from "@/src/flows/kitchen-sink/flow";
 
 // Pass explicit provider/gateway instances. The model resolver's dynamic
 // require() path doesn't work in bundled Next.js — static imports do.
+// Only bind the openai provider when OPENAI_API_KEY is present; otherwise
+// leave the openai slot empty so availability-based resolution can route
+// openai/* model strings through the configured gateway.
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
 const modelResolver = createModelResolver({
-  providers: { openai },
+  providers: process.env.OPENAI_API_KEY ? { openai } : undefined,
   gateways: gatewayApiKey
     ? { vercel: createGateway({ apiKey: gatewayApiKey }) }
     : undefined,

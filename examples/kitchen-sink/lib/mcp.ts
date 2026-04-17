@@ -38,9 +38,21 @@ export type MCPManager = {
   close(): Promise<void>;
 };
 
+/**
+ * Shape of a tool returned by the AI SDK's MCP client.
+ *
+ * `inputSchema` is an AI SDK `jsonSchema()` wrapper: `{ jsonSchema, validate, [schemaSymbol] }`.
+ * We pass the wrapper through unchanged — the AI SDK's tool protocol consumes it natively.
+ */
+type AiSdkMcpTool = {
+  description?: string;
+  inputSchema?: unknown;
+  execute?: (args: any) => Promise<unknown>;
+};
+
 /** MCP client interface — abstracted for testability. */
 type MCPClient = {
-  tools(): Promise<Record<string, { description?: string; parameters?: unknown; execute?: (args: any) => Promise<unknown> }>>;
+  tools(): Promise<Record<string, AiSdkMcpTool>>;
   close(): Promise<void>;
 };
 
@@ -96,21 +108,20 @@ function resolveConfigs(): MCPServerConfig[] {
 /**
  * Convert an MCP tool (AI SDK format) into a framework handler block.
  *
- * Uses a permissive Zod schema (z.record) for framework input validation,
- * and patches the block's inputSchema with the MCP tool's JSON Schema
- * so the AI SDK sends correct parameter definitions to the model.
+ * The framework's `z.record(z.unknown())` Zod schema serves as a permissive
+ * runtime validator. We override the block's `inputSchema` with the MCP tool's
+ * `jsonSchema()` wrapper so the LLM sees accurate parameter definitions — the
+ * generator normalizes whatever we pass into a form the AI SDK recognizes.
  *
- * The MCP server handles its own argument validation on the execute path.
+ * The MCP server handles authoritative argument validation on the execute path.
  */
 function mcpToolToHandler(
   serverName: string,
   toolName: string,
-  mcpTool: { description?: string; parameters?: unknown; execute?: (args: any) => Promise<unknown> },
+  mcpTool: AiSdkMcpTool,
 ): GeneratorTool {
   const namespacedName = `mcp__${serverName}__${toolName}`;
 
-  // Use a permissive Zod schema for the framework's input validation.
-  // The MCP server validates arguments on its end.
   const validationSchema = z.record(z.unknown());
 
   const block = handler({
@@ -125,11 +136,8 @@ function mcpToolToHandler(
     },
   });
 
-  // Patch the block's inputSchema with the MCP tool's JSON Schema if available.
-  // compileToolsWithExecute reads tool.inputSchema → AI SDK tool parameters.
-  // The AI SDK accepts jsonSchema() objects, Zod schemas, and raw JSON Schema.
-  if (mcpTool.parameters) {
-    (block as any).inputSchema = mcpTool.parameters;
+  if (mcpTool.inputSchema !== undefined) {
+    (block as any).inputSchema = mcpTool.inputSchema;
   }
 
   return block;

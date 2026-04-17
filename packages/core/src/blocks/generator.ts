@@ -1,4 +1,5 @@
 import { z, type ZodTypeAny } from "zod";
+import { jsonSchema } from "ai";
 import type {
   BlockConfig,
   BlockContext,
@@ -430,6 +431,27 @@ async function resolveTools<TCtx extends BlockContext>(
   return Array.isArray(resolved) ? resolved : [];
 }
 
+const AI_SDK_SCHEMA_SYMBOL = Symbol.for("vercel.ai.schema");
+
+/**
+ * Normalize a tool's `inputSchema` into a form the AI SDK's `asSchema()` can
+ * consume. Zod schemas carry `~standard`, AI-SDK Schema wrappers carry the
+ * `vercel.ai.schema` symbol — both are already handled by `asSchema`. Anything
+ * else (raw JSON Schema objects, MCP tool definitions that were unwrapped
+ * somewhere upstream) gets wrapped via `jsonSchema()` so it doesn't fall into
+ * the LazySchema `schema()` fallback and crash with "schema is not a function".
+ */
+function normalizeToolSchema(inputSchema: unknown): unknown {
+  if (inputSchema == null) return inputSchema;
+  if (typeof inputSchema !== "object") return inputSchema;
+  // Zod and other Standard Schemas — AI SDK detects and handles these.
+  if ("~standard" in inputSchema) return inputSchema;
+  // Already an AI SDK Schema wrapper (from any compatible package version).
+  if (AI_SDK_SCHEMA_SYMBOL in inputSchema) return inputSchema;
+  // Raw JSON Schema object — wrap so AI SDK recognizes it as a Schema.
+  return jsonSchema(inputSchema as any);
+}
+
 /**
  * Compile tools WITHOUT execute functions. Used when `runTools: false` — the
  * model will suggest tool calls, but the AI SDK won't auto-execute them.
@@ -438,7 +460,7 @@ function compileToolsForModel(tools: GeneratorTool[]): GeneratorModelTool[] {
   return tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
-    parameters: tool.inputSchema
+    parameters: normalizeToolSchema(tool.inputSchema) as GeneratorModelTool["parameters"]
   }));
 }
 
@@ -459,7 +481,7 @@ function compileToolsWithExecute(
   return tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
-    parameters: tool.inputSchema,
+    parameters: normalizeToolSchema(tool.inputSchema) as GeneratorModelTool["parameters"],
     execute: async (args: unknown, options?: { toolCallId?: string }) => {
       const runTool = async (scopedCtx: BlockContext): Promise<unknown> => {
         await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
