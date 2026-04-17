@@ -2,6 +2,8 @@
 
 Flow State Dev uses SSE (Server-Sent Events) for real-time streaming. The streaming model is built on **items** (persisted artifacts) and **content** (chunks within items).
 
+For the complete item type registry, classification rules, and rendering contracts, see [Items](./items.md).
+
 ## Stream Architecture
 
 ```
