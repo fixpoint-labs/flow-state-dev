@@ -4,8 +4,7 @@
  * Split from capability.ts so enrichment, context, and filter modules can
  * import types without pulling the factory and its transitive dependencies.
  */
-import type { GeneratorTool } from "@flow-state-dev/core";
-import type { ZodTypeAny } from "zod";
+import type { CapabilityPresetCtx, GeneratorTool } from "@flow-state-dev/core";
 
 // ---------------------------------------------------------------------------
 // Server configuration
@@ -98,14 +97,8 @@ export type CreateMcpManagerOptions = {
 // Capability
 // ---------------------------------------------------------------------------
 
-export type FilterToolsCtx = {
-  request: { state: any };
-  session: { state: any };
-  [key: string]: any;
-};
-
 export type FilterTools = (
-  ctx: FilterToolsCtx,
+  ctx: CapabilityPresetCtx,
   tools: GeneratorTool[],
 ) => GeneratorTool[] | Promise<GeneratorTool[]>;
 
@@ -121,5 +114,3 @@ export type CreateMcpCapabilityOptions =
   | ({ servers: MCPServerConfig[]; manager?: never } & CommonCapabilityOptions)
   | ({ manager: MCPManager; servers?: never } & CommonCapabilityOptions);
 
-// Shared zod module alias (so other files can avoid re-resolving types).
-export type { ZodTypeAny };
