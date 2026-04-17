@@ -8,65 +8,68 @@ When a block executes, it produces **items**. Items flow to clients over SSE in 
 
 Every item has a `type` that determines what it is, a `status` that tracks its lifecycle (`in_progress` → `completed | incomplete | failed`), and `provenance` that records which block produced it.
 
-## Three audiences
+## Item roles
 
-The most important thing to understand about items is that different items are meant for different consumers:
+Every item has a **role** that controls which consumers can see it. There are three roles:
 
-**The browser** — what ends up in the chat UI or any client-side rendering. Most items are client-visible, but structural trace items (`block_output`, `router_decision`, `sequencer_state_snapshot`) are not. Clients receive items filtered to the client audience set.
+**`external`** — the default. The browser renders it, the LLM sees it in history (for items that carry conversational content), the devtool sees it. Most items are external.
 
-**The LLM** — what goes into the conversation history for the next model call. Only content-bearing items enter LLM context: `message`, `reasoning`, `context`, and tool results (`block_tool_output`). Items with `trace: true` are always excluded — they carry lifecycle metadata, not conversational content.
+**`internal`** — hidden from the browser, but participates in LLM history. Use this for helper blocks that produce content the next model call should know about, but that the user shouldn't see. Think of it as the programmatic equivalent of a system message — invisible to the end user, meaningful to the model.
 
-**The devtool** — sees everything. The devtool reads the raw event stream, so it receives trace items, transient items, and all the observability data that the browser never sees.
+**`trace`** — visible only in the devtool. Neither the browser nor the LLM sees it. Use this for structural/observability items: execution timings, route decisions, state snapshots.
 
-When you create an item type, the first question is: which of these three consumers should see it? That answer drives the trace flag, client audience membership, and persistence decisions.
+The hierarchy is `external ⊃ internal ⊃ trace`: external items have the broadest visibility, trace items the narrowest.
+
+Role is resolved in this order when an item is emitted:
+1. Explicit `itemRole` field on the emitted item
+2. Legacy `trace: true` boolean (backward compatible — treated as `"trace"`)
+3. Structural item types (`block_output`, `router_decision`, `sequencer_state_snapshot`) default to `"trace"`
+4. Work-phase items (inside a sequencer work queue) default to `"trace"`
+5. Everything else → `"external"`
+
+You can set a block-level default on generators via `itemRole: "internal" | "trace"`. This stamps all items the block emits with that role, overridable per-item-type using the generator's `emit` config.
+
+The devtool always sees everything, regardless of role. That's the point — it's the observability surface for what the browser and LLM don't see.
 
 ## Item types
 
-### Content items — what the user sees
+### External items — what the user sees
 
-These are the items a chat UI renders.
+**`message`** is the primary content item. Generators emit these automatically; any block can call `ctx.emitMessage()`. Messages enter LLM history so future model calls know what was said. This is the item type you'll work with most.
 
-**`message`** is the primary content item. It carries conversational text from the model, user, or system. Generators emit these automatically; handlers and sequencers can emit them via `ctx.emitMessage()`. Messages enter LLM history so future model calls know what was said. This is the item type you'll work with most.
+**`reasoning`** holds chain-of-thought output when a model produces thinking. Rendered as a collapsible block in the UI. Goes into LLM history.
 
-**`reasoning`** holds chain-of-thought output when a model produces thinking before responding. Rendered as a collapsible block in the UI. Goes into LLM history.
+**`component`** is a structured data item rendered by a registered UI component. Use it when `message` can't express the output — a plan visualization, a search results card, a form. See [Component items](#component-items) for details.
 
-**`component`** is a structured data item rendered by a registered UI component. Use it when you need custom UI that `message` can't express — a plan visualization, a search results card, a structured form. The component name (`item.component`) maps to a registered React component that receives the item's `data` payload. See [Component items](#component-items) for details.
-
-**`container`** is emitted by sequencers and routers that declare a `container` config. It marks the start of a visual grouping and establishes an ownership scope — items emitted during the container's execution carry an `ownedBy` reference back to it. The container renderer is responsible for displaying its owned items.
+**`container`** is emitted by sequencers and routers that declare a `container` config. It marks the start of a visual grouping and establishes an ownership scope — items emitted during the container's execution carry an `ownedBy` reference back to it.
 
 **`source`** holds a URL reference from a provider-native tool like web search. Rendered alongside the message that produced it.
 
-### Notifications and errors
+**`status`** is a transient progress update — "Searching the web...", "Running analysis...". Streams to the client but is never persisted. Emit via `ctx.emitStatus()`.
 
-These items inform the client about things that happened, but don't carry content.
+**`state_change`** records that a state mutation happened. In production it's transient; the client uses it to know something changed so it can update its view. In development it's persisted to support the devtool state timeline.
 
-**`status`** is a transient progress update — "Searching the web...", "Running analysis...". It streams to the client during execution but is never persisted. When the user refreshes, status items are gone. Emit via `ctx.emitStatus()`.
-
-**`state_change`** records that a state mutation happened (`patchState`, `setState`, etc.). In production it's transient — the client uses it to know something changed so it can update its view, but the actual state lives in the state store. In development, state changes are persisted to support the devtool state timeline.
-
-**`resource_change`** records that a resource was created, updated, or deleted. Like `state_change`, it's a notification — the real state is in the resource store. Transient by default.
+**`resource_change`** records that a resource was created, updated, or deleted. A notification — the real state lives in the resource store. Transient by default.
 
 **`error`** is the terminal error item emitted when a request fails unrecoverably. Always transient.
 
-**`step_error`** is a block-level error within a sequencer — either handled by a rescue boundary (`recovered: true`) or unrecovered. Persisted, so you can see what went wrong in the session history.
+**`step_error`** is a block-level error within a sequencer — either handled by a rescue boundary (`recovered: true`) or not. Persisted so you can see what went wrong in session history.
 
-### Tool use
+**`block_tool_output`** is emitted when a generator invokes a block as a tool. Carries the tool name, input arguments, and result. Goes into LLM history as the tool result so the model can continue reasoning. Also visible in the chat UI for tool call rendering.
 
-**`block_tool_output`** is emitted when a generator invokes a block as a tool. It carries the tool name, the input arguments, and the result. Goes into LLM history as the tool result so the model can continue reasoning. Also visible to the client — chat UIs can render tool call groups from these items.
+### Internal items — what the LLM sees but the user doesn't
+
+**`context`** injects text into the LLM prompt without showing it to the user. Emit via `ctx.emitLLMContext()`. Useful for dynamic system prompts computed at runtime.
+
+Any block can produce internal items by setting `itemRole: "internal"` on the generator config or by using the `emit` config to assign the role per item type. An internal `message`, for example, contributes to LLM conversation history across turns without ever appearing in the browser.
 
 ### Trace items — what the devtool sees
 
-These items carry structural execution metadata. They're not shown in the chat UI and don't enter LLM history. They exist for observability and debugging.
+**`block_output`** is emitted after every block finishes, automatically. It records the block name, kind, output, timing, and model usage. This is how the devtool builds its execution trace tree.
 
-**`block_output`** is emitted after every block finishes, automatically. It records the block name, kind, output, timing, and model usage. This is how the devtool builds its execution trace tree. Not client-visible.
+**`router_decision`** records which branch a router selected.
 
-**`router_decision`** records which branch a router selected. Visible only in the devtool.
-
-**`sequencer_state_snapshot`** captures the full sequencer state at each step boundary. Transient — it streams to the devtool during execution but isn't persisted.
-
-### Hidden from clients
-
-**`context`** injects text into the LLM prompt without showing it to the user. Emit via `ctx.emitLLMContext()`. Useful for dynamic system prompts computed at runtime. Not client-visible.
+**`sequencer_state_snapshot`** captures the full sequencer state at each step boundary. Transient — streams to the devtool during execution but isn't persisted.
 
 ## Persistence
 
@@ -86,25 +89,27 @@ There are two storage targets, kept separate:
 
 ## The full registry
 
-| Type | Emitted by | Client | LLM | Trace | Persistence |
-|------|------------|:------:|:---:|:-----:|-------------|
-| `message` | Generator (auto), `ctx.emitMessage()` | ✓ | ✓ | — | Persistent |
-| `reasoning` | Generator (auto, CoT models) | ✓ | ✓ | — | Persistent |
-| `component` | `ctx.emitComponent()` | ✓ | — | — | Persistent |
-| `container` | Sequencer/Router with `container` config | ✓ | — | — | Persistent |
-| `source` | Generator (provider-native tools) | ✓ | — | — | Persistent |
-| `status` | `ctx.emitStatus()` | ✓ | — | — | **Always transient** |
-| `state_change` | Auto on state mutations | ✓ | — | — | Transient in prod / persistent in dev |
-| `resource_change` | Auto on resource mutations | ✓ | — | — | Transient by default |
-| `error` | Runtime (terminal failure) | ✓ | — | — | **Always transient** |
-| `step_error` | Sequencer (block error, with/without rescue) | ✓ | — | — | Persistent |
-| `block_tool_output` | Generator (per tool invocation) | ✓ | ✓ | — | Persistent |
-| `block_output` | Every block (auto, post-execution) | — | ¹ | ✓ | Persistent |
-| `router_decision` | Router (auto, on selection) | — | — | ✓ | Persistent |
-| `sequencer_state_snapshot` | Sequencer (at step boundaries) | — | — | ✓ | **Always transient** |
-| `context` | `ctx.emitLLMContext()` | — | ✓ | — | Persistent |
+| Type | Emitted by | Role | LLM history | Persistence |
+|------|------------|:----:|:-----------:|-------------|
+| `message` | Generator (auto), `ctx.emitMessage()` | external | ✓ | Persistent |
+| `reasoning` | Generator (auto, CoT models) | external | ✓ | Persistent |
+| `component` | `ctx.emitComponent()` | external | — | Persistent |
+| `container` | Sequencer/Router with `container` config | external | — | Persistent |
+| `source` | Generator (provider-native tools) | external | — | Persistent |
+| `status` | `ctx.emitStatus()` | external | — | **Always transient** |
+| `state_change` | Auto on state mutations | external | — | Transient in prod / persistent in dev |
+| `resource_change` | Auto on resource mutations | external | — | Transient by default |
+| `error` | Runtime (terminal failure) | external | — | **Always transient** |
+| `step_error` | Sequencer (block error, with/without rescue) | external | — | Persistent |
+| `block_tool_output` | Generator (per tool invocation) | external | ✓ | Persistent |
+| `context` | `ctx.emitLLMContext()` | internal | ✓ | Persistent |
+| `block_output` | Every block (auto, post-execution) | trace | ¹ | Persistent |
+| `router_decision` | Router (auto, on selection) | trace | — | Persistent |
+| `sequencer_state_snapshot` | Sequencer (at step boundaries) | trace | — | **Always transient** |
 
-¹ `block_output` enters LLM context only when it has a `toolCall` field (legacy generator tool path). New code uses `block_tool_output`.
+¹ `block_output` enters LLM history only when it has a `toolCall` field (legacy generator tool path). New code uses `block_tool_output`.
+
+**Role meanings:** `external` = browser + LLM history; `internal` = LLM history only, hidden from browser; `trace` = devtool only.
 
 ## Component items
 
@@ -190,23 +195,24 @@ If a new type is genuinely needed:
 
 1. **Define the schema** in `packages/core/src/items/types.ts` and add it to the `OutputItem` union.
 2. **Add a registry row** to the table in this document — all columns required.
-3. **Declare LLM audience** — if it enters LLM history, add it to `LLM_AUDIENCE_TYPES` in `createExecutionContext.ts`.
-4. **Declare client audience** — if it goes to the browser, add it to `CLIENT_AUDIENCE_TYPES` in `createExecutionContext.ts` and `CLIENT_ITEM_TYPES` in `useSession.ts`.
-5. **Set trace flag** — `trace: true` for structural/observability items that must never enter LLM context.
-6. **Set persistence** — `transient: true` at emission for stream-only items.
-7. **Define kitchen sink rendering** — register a built-in fallback in `ItemRenderer.ts`, add to `NON_RENDERABLE_TYPES`, or accept the JSON dev fallback. Don't leave it implicit.
-8. **Define devtool rendering** — generic types fall through to the stream view; add a dedicated renderer if the type needs special treatment.
-9. **Write the rationale** in the PR — why can't an existing type do this?
+3. **Assign a role** — decide if the type is `external` (browser + LLM history), `internal` (LLM history only, not browser), or `trace` (devtool only). Update audience routing in `createExecutionContext.ts` and `CLIENT_ITEM_TYPES` in `useSession.ts` as needed.
+4. **Set persistence** — `transient: true` at emission for stream-only items.
+5. **Define kitchen sink rendering** — register a built-in fallback in `ItemRenderer.ts`, add to `NON_RENDERABLE_TYPES`, or accept the JSON dev fallback. Don't leave it implicit.
+6. **Define devtool rendering** — generic types fall through to the stream view; add a dedicated renderer if the type needs special treatment.
+7. **Write the rationale** in the PR — why can't an existing type do this?
 
 ## Base schema reference
 
 ```ts
+type ItemRole = "external" | "internal" | "trace";
+
 type OutputItemBase = {
   id: string;
   type: string;
   status: "in_progress" | "completed" | "incomplete" | "failed";
+  itemRole?: ItemRole;    // Visibility tier. Resolved via resolveItemRole() if absent.
   transient?: boolean;    // true = stream-only, never persisted
-  trace?: boolean;        // true = excluded from LLM context, devtool-visible
+  trace?: boolean;        // Legacy — treated as itemRole: "trace". Prefer itemRole.
   requestId: string;
   itemIndex: number;      // Monotonic within the request
   provenance: ItemProvenance;
