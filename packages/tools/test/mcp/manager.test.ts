@@ -146,4 +146,44 @@ describe("createMcpManager", () => {
       expect(result).toEqual({ error: expect.stringContaining("does not support execution") });
     });
   });
+
+  describe("error resilience", () => {
+    it("skips servers that fail to connect and returns tools from healthy ones", async () => {
+      const { factory } = createMockClientFactory(
+        { good: { ok: fakeMcpTool("ok", "Ok") } },
+        { failServers: ["bad"] },
+      );
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const manager = createMcpManager({
+        servers: [
+          { name: "good", transport: { type: "sse", url: "https://good.com" } },
+          { name: "bad", transport: { type: "sse", url: "https://bad.com" } },
+        ],
+        _createClient: factory,
+      });
+
+      const tools = await manager.getTools();
+
+      expect(tools).toHaveLength(1);
+      expect(tools[0].name).toBe("mcp__good__ok");
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to connect to "bad"'));
+      warnSpy.mockRestore();
+    });
+
+    it("marks failed servers as errored in the catalog", async () => {
+      const { factory } = createMockClientFactory({}, { failServers: ["bad"] });
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const manager = createMcpManager({
+        servers: [{ name: "bad", transport: { type: "sse", url: "https://bad.com" } }],
+        _createClient: factory,
+      });
+      await manager.getTools();
+
+      const catalog = manager.getCatalog();
+      expect(catalog.servers[0].status).toBe("errored");
+      expect(catalog.servers[0].error).toBe("Connection refused");
+    });
+  });
 });
