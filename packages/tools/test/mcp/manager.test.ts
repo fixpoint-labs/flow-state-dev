@@ -186,4 +186,71 @@ describe("createMcpManager", () => {
       expect(catalog.servers[0].error).toBe("Connection refused");
     });
   });
+
+  describe("catalog + close", () => {
+    it("getCatalog populates tool list after connect with namespaced + originalName", async () => {
+      const { factory } = createMockClientFactory({
+        linear: {
+          list_issues: fakeMcpTool("list_issues", "List issues"),
+        },
+      });
+
+      const manager = createMcpManager({ servers: [linearConfig], _createClient: factory });
+      expect(manager.getCatalog().servers[0].tools).toEqual([]); // pre-connect
+
+      await manager.getTools();
+
+      const catalog = manager.getCatalog();
+      expect(catalog.servers[0].tools).toEqual([
+        {
+          name: "mcp__linear__list_issues",
+          originalName: "list_issues",
+          description: "List issues",
+          inputSchema: expect.objectContaining({ jsonSchema: expect.any(Object) }),
+        },
+      ]);
+      expect(catalog.servers[0].status).toBe("connected");
+    });
+
+    it("getCatalog is callable before any connect and returns pending entries", () => {
+      const manager = createMcpManager({ servers: [linearConfig] });
+      const catalog = manager.getCatalog();
+      expect(catalog.servers).toEqual([
+        expect.objectContaining({
+          name: "linear",
+          status: "pending",
+          tools: [],
+        }),
+      ]);
+    });
+
+    it("close() disconnects clients and resets the cache", async () => {
+      const { factory, closeFns } = createMockClientFactory({
+        linear: { t: fakeMcpTool("t", "Test") },
+      });
+      const factorySpy = vi.fn(factory);
+
+      const manager = createMcpManager({ servers: [linearConfig], _createClient: factorySpy });
+      await manager.getTools();
+      await manager.close();
+
+      expect(closeFns[0]).toHaveBeenCalledTimes(1);
+      expect(manager.getConnectedServerNames()).toEqual([]);
+
+      // Re-load triggers new connection
+      await manager.getTools();
+      expect(factorySpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("close() is idempotent", async () => {
+      const { factory } = createMockClientFactory({
+        linear: { t: fakeMcpTool("t", "Test") },
+      });
+      const manager = createMcpManager({ servers: [linearConfig], _createClient: factory });
+      await manager.getTools();
+
+      await expect(manager.close()).resolves.toBeUndefined();
+      await expect(manager.close()).resolves.toBeUndefined();
+    });
+  });
 });

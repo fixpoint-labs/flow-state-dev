@@ -11,6 +11,7 @@ import type {
   CreateMcpManagerOptions,
   MCPCatalog,
   MCPCatalogServer,
+  MCPCatalogTool,
   MCPClient,
   MCPManager,
   MCPServerConfig,
@@ -21,6 +22,7 @@ type ServerEntry = {
   status: "pending" | "connected" | "errored";
   error?: string;
   tools: GeneratorTool[];
+  catalogTools: MCPCatalogTool[];
   close?: () => Promise<void>;
 };
 
@@ -95,6 +97,7 @@ export function createMcpManager(options: CreateMcpManagerOptions): MCPManager {
     config,
     status: "pending",
     tools: [],
+    catalogTools: [],
   }));
   let loadPromise: Promise<GeneratorTool[]> | null = null;
 
@@ -102,10 +105,18 @@ export function createMcpManager(options: CreateMcpManagerOptions): MCPManager {
     const client = await _createClient(entry.config);
     const mcpTools = await client.tools();
     const handlers: GeneratorTool[] = [];
+    const catalog: MCPCatalogTool[] = [];
     for (const [originalName, mcpTool] of Object.entries(mcpTools)) {
       handlers.push(mcpToolToHandler(entry.config.name, originalName, mcpTool));
+      catalog.push({
+        name: `mcp__${entry.config.name}__${originalName}`,
+        originalName,
+        description: mcpTool.description ?? `Tool from MCP server: ${entry.config.name}`,
+        inputSchema: mcpTool.inputSchema,
+      });
     }
     entry.tools = handlers;
+    entry.catalogTools = catalog;
     entry.close = () => client.close();
     entry.status = "connected";
   }
@@ -144,7 +155,7 @@ export function createMcpManager(options: CreateMcpManagerOptions): MCPManager {
         },
         status: entry.status,
         error: entry.error,
-        tools: [],
+        tools: entry.catalogTools,
       }));
       return { servers: catalogServers };
     },
@@ -163,6 +174,7 @@ export function createMcpManager(options: CreateMcpManagerOptions): MCPManager {
         entry.status = "pending";
         entry.error = undefined;
         entry.tools = [];
+        entry.catalogTools = [];
         entry.close = undefined;
       }
       loadPromise = null;
