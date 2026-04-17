@@ -1,95 +1,27 @@
 /**
- * MCP (Model Context Protocol) client manager for kitchen-sink.
+ * MCP (Model Context Protocol) shorthand for kitchen-sink.
  *
- * Manages connections to MCP servers and converts their tools into framework
- * handler blocks. Tools are lazily loaded on first access and cached. Each
- * MCP tool becomes a namespaced handler block (mcp__{server}__{tool}) that
- * proxies execution to the MCP server.
- *
- * Config comes from environment variables:
- *   - MCP_SERVERS: JSON array of MCPServerConfig objects
- *   - LINEAR_MCP_API_KEY: shorthand that auto-configures Linear MCP
+ * Reads `LINEAR_MCP_API_KEY` from the environment and builds an MCP capability
+ * with curated metadata. Apps needing additional servers import them inline.
+ * Heavy lifting (client management, tool namespacing, filtering, guidance)
+ * lives in `@flow-state-dev/tools/mcp`.
  */
-import { handler, type GeneratorTool } from "@flow-state-dev/core";
-import { z } from "zod";
+import { createMcpCapability, type MCPServerConfig } from "@flow-state-dev/tools/mcp";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+function resolveServers(): MCPServerConfig[] {
+  const servers: MCPServerConfig[] = [];
 
-export type MCPServerConfig = {
-  /** Display name used for tool namespacing (e.g. "linear" → mcp__linear__*) */
-  name: string;
-  transport: {
-    type: "sse";
-    url: string;
-    headers?: Record<string, string>;
-  };
-};
-
-export type MCPManager = {
-  /** Returns handler blocks for all tools from all connected MCP servers. */
-  getTools(): Promise<GeneratorTool[]>;
-  /** Returns the names of servers that have successfully connected. */
-  getConnectedServerNames(): string[];
-  /** Returns the raw config for all configured servers. */
-  getServerConfigs(): MCPServerConfig[];
-  /** Closes all MCP client connections. */
-  close(): Promise<void>;
-};
-
-/**
- * Shape of a tool returned by the AI SDK's MCP client.
- *
- * `inputSchema` is an AI SDK `jsonSchema()` wrapper: `{ jsonSchema, validate, [schemaSymbol] }`.
- * We pass the wrapper through unchanged — the AI SDK's tool protocol consumes it natively.
- */
-type AiSdkMcpTool = {
-  description?: string;
-  inputSchema?: unknown;
-  execute?: (args: any) => Promise<unknown>;
-};
-
-/** MCP client interface — abstracted for testability. */
-type MCPClient = {
-  tools(): Promise<Record<string, AiSdkMcpTool>>;
-  close(): Promise<void>;
-};
-
-export type MCPManagerOptions = {
-  /** Override the MCP client factory (for testing). */
-  _createClient?: (config: MCPServerConfig) => Promise<MCPClient>;
-};
-
-// ---------------------------------------------------------------------------
-// Config resolution
-// ---------------------------------------------------------------------------
-
-function resolveConfigs(): MCPServerConfig[] {
-  const configs: MCPServerConfig[] = [];
-
-  // Explicit config via MCP_SERVERS env var (JSON array)
-  const serversJson = process.env.MCP_SERVERS;
-  if (serversJson) {
-    try {
-      const parsed = JSON.parse(serversJson);
-      if (Array.isArray(parsed)) {
-        for (const entry of parsed) {
-          if (entry.name && entry.transport?.url) {
-            configs.push(entry as MCPServerConfig);
-          }
-        }
-      }
-    } catch {
-      console.warn("[mcp] Failed to parse MCP_SERVERS env var — ignoring.");
-    }
-  }
-
-  // Shorthand: LINEAR_MCP_API_KEY auto-configures Linear MCP server
   const linearKey = process.env.LINEAR_MCP_API_KEY;
-  if (linearKey && !configs.some((c) => c.name === "linear")) {
-    configs.push({
+  if (linearKey) {
+    servers.push({
       name: "linear",
+      description: "Project management: issues, projects, cycles, teams.",
+      whenToUse: "User asks about tasks, tickets, sprint status, or project work.",
+      examples: [
+        "To find open bugs: mcp__linear__list_issues({ filter: { state: 'open', labels: ['bug'] } })",
+        "To create a task: mcp__linear__create_issue({ title, teamId })",
+      ],
+      category: "project-management",
       transport: {
         type: "sse",
         url: "https://mcp.linear.app/sse",
@@ -98,178 +30,11 @@ function resolveConfigs(): MCPServerConfig[] {
     });
   }
 
-  return configs;
+  return servers;
 }
 
-// ---------------------------------------------------------------------------
-// Tool conversion — MCP tool → handler block
-// ---------------------------------------------------------------------------
+const servers = resolveServers();
 
-/**
- * Convert an MCP tool (AI SDK format) into a framework handler block.
- *
- * The framework's `z.record(z.unknown())` Zod schema serves as a permissive
- * runtime validator. We override the block's `inputSchema` with the MCP tool's
- * `jsonSchema()` wrapper so the LLM sees accurate parameter definitions — the
- * generator normalizes whatever we pass into a form the AI SDK recognizes.
- *
- * The MCP server handles authoritative argument validation on the execute path.
- */
-function mcpToolToHandler(
-  serverName: string,
-  toolName: string,
-  mcpTool: AiSdkMcpTool,
-): GeneratorTool {
-  const namespacedName = `mcp__${serverName}__${toolName}`;
-
-  const validationSchema = z.record(z.unknown());
-
-  const block = handler({
-    name: namespacedName,
-    description: mcpTool.description ?? `Tool from MCP server: ${serverName}`,
-    inputSchema: validationSchema,
-    execute: async (input: Record<string, unknown>) => {
-      if (!mcpTool.execute) {
-        return { error: `Tool ${toolName} on server ${serverName} does not support execution.` };
-      }
-      return mcpTool.execute(input);
-    },
-  });
-
-  if (mcpTool.inputSchema !== undefined) {
-    (block as any).inputSchema = mcpTool.inputSchema;
-  }
-
-  return block;
-}
-
-// ---------------------------------------------------------------------------
-// Client connection — lazy, cached, resilient
-// ---------------------------------------------------------------------------
-
-type ClientEntry = {
-  config: MCPServerConfig;
-  tools: GeneratorTool[] | null;
-  connected: boolean;
-  error?: string;
-};
-
-/** Default client factory — uses @ai-sdk/mcp (dynamic import). */
-async function defaultCreateClient(config: MCPServerConfig): Promise<MCPClient> {
-  const { createMCPClient } = await import("@ai-sdk/mcp");
-  return createMCPClient({
-    transport: {
-      type: config.transport.type,
-      url: config.transport.url,
-      headers: config.transport.headers,
-    },
-  }) as unknown as MCPClient;
-}
-
-async function connectAndLoadTools(
-  config: MCPServerConfig,
-  createClient: (config: MCPServerConfig) => Promise<MCPClient>,
-): Promise<{ tools: GeneratorTool[]; close: () => Promise<void> }> {
-  const client = await createClient(config);
-  const mcpTools = await client.tools();
-  const handlers: GeneratorTool[] = [];
-
-  for (const [name, tool] of Object.entries(mcpTools)) {
-    handlers.push(mcpToolToHandler(config.name, name, tool as any));
-  }
-
-  return {
-    tools: handlers,
-    close: () => client.close(),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Manager factory
-// ---------------------------------------------------------------------------
-
-/**
- * Creates an MCP manager that reads server config from environment variables
- * and lazily connects to servers on first tool request.
- */
-export function createMcpManager(options?: MCPManagerOptions): MCPManager {
-  const configs = resolveConfigs();
-  const createClient = options?._createClient ?? defaultCreateClient;
-  const entries = new Map<string, ClientEntry>();
-  const closeFns: Array<() => Promise<void>> = [];
-  let toolsPromise: Promise<GeneratorTool[]> | null = null;
-
-  // Initialize entries from config (not yet connected)
-  for (const config of configs) {
-    entries.set(config.name, { config, tools: null, connected: false });
-  }
-
-  if (configs.length > 0) {
-    console.log(`[mcp] Configured ${configs.length} MCP server(s): ${configs.map((c) => c.name).join(", ")}`);
-  }
-
-  async function loadAllTools(): Promise<GeneratorTool[]> {
-    const allTools: GeneratorTool[] = [];
-
-    const results = await Promise.allSettled(
-      configs.map(async (config) => {
-        const entry = entries.get(config.name)!;
-        try {
-          const { tools, close } = await connectAndLoadTools(config, createClient);
-          entry.tools = tools;
-          entry.connected = true;
-          closeFns.push(close);
-          return tools;
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          entry.error = message;
-          console.warn(`[mcp] Failed to connect to "${config.name}": ${message}`);
-          return [];
-        }
-      }),
-    );
-
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        allTools.push(...result.value);
-      }
-    }
-
-    if (allTools.length > 0) {
-      console.log(`[mcp] Loaded ${allTools.length} tool(s) from MCP servers.`);
-    }
-
-    return allTools;
-  }
-
-  return {
-    async getTools(): Promise<GeneratorTool[]> {
-      if (configs.length === 0) return [];
-      // Lazy init — connect on first tool request, cache the result.
-      if (!toolsPromise) {
-        toolsPromise = loadAllTools();
-      }
-      return toolsPromise;
-    },
-
-    getConnectedServerNames(): string[] {
-      return [...entries.values()]
-        .filter((e) => e.connected)
-        .map((e) => e.config.name);
-    },
-
-    getServerConfigs(): MCPServerConfig[] {
-      return configs;
-    },
-
-    async close(): Promise<void> {
-      await Promise.allSettled(closeFns.map((fn) => fn()));
-      closeFns.length = 0;
-      for (const entry of entries.values()) {
-        entry.connected = false;
-        entry.tools = null;
-      }
-      toolsPromise = null;
-    },
-  };
-}
+export const mcpCapability = servers.length > 0
+  ? createMcpCapability({ servers })
+  : null;
