@@ -82,4 +82,29 @@ describe("defaultMcpGuidanceFormatter", () => {
     expect(out).toContain("### Other");
     expect(out).toContain("#### alpha");
   });
+
+  it("emits a fallback line for bare servers in a mixed catalog (no headless heading)", () => {
+    const catalog: MCPCatalog = {
+      servers: [
+        {
+          name: "linear",
+          metadata: { description: "Issues.", category: "project-management" },
+          status: "connected",
+          tools: [],
+        },
+        {
+          name: "bare",
+          metadata: {},
+          status: "connected",
+          tools: [],
+        },
+      ],
+    };
+
+    const out = defaultMcpGuidanceFormatter(catalog);
+    expect(out).toContain("#### bare");
+    expect(out).toContain("Tools are prefixed with `mcp__bare__`");
+    // Sanity: there should be no `#### bare` line immediately followed by a blank or another heading.
+    expect(out).not.toMatch(/#### bare\s*\n\s*(?:###|$)/);
+  });
 });

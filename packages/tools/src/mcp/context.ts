@@ -23,6 +23,10 @@ function hasRichMetadata(server: MCPCatalogServer): boolean {
   );
 }
 
+/**
+ * Render the generic guidance block when no connected server has rich metadata.
+ * Caller guarantees `servers` is non-empty (empty catalogs return early).
+ */
 function formatDegraded(servers: MCPCatalogServer[]): string {
   const names = servers.map((s) => s.name).join(", ");
   const first = servers[0].name;
@@ -35,6 +39,18 @@ function formatDegraded(servers: MCPCatalogServer[]): string {
 
 function formatServer(server: MCPCatalogServer): string {
   const lines: string[] = [`#### ${server.name}`];
+  const hasAny =
+    Boolean(server.metadata.description) ||
+    Boolean(server.metadata.whenToUse) ||
+    (server.metadata.examples?.length ?? 0) > 0;
+
+  if (!hasAny) {
+    lines.push(
+      `Tools are prefixed with \`mcp__${server.name}__\`. Consult their descriptions to decide when to call.`,
+    );
+    return lines.join("\n");
+  }
+
   if (server.metadata.description) lines.push(server.metadata.description);
   if (server.metadata.whenToUse) lines.push(`Use when: ${server.metadata.whenToUse}`);
   if (server.metadata.examples && server.metadata.examples.length > 0) {
