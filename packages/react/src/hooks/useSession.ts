@@ -921,9 +921,14 @@ export function useSession(
 
         const contentType = postResponse.headers.get("content-type") ?? "";
 
-        if (contentType.includes("text/event-stream") && itemConfig.enabled) {
-          // Inline streaming: consume SSE events from the POST response body.
-          attachToStream(requestId, undefined, postResponse);
+        if (contentType.includes("text/event-stream")) {
+          if (itemConfig.enabled) {
+            // Inline streaming: consume SSE events from the POST response body.
+            attachToStream(requestId, undefined, postResponse);
+          } else {
+            // Items disabled — release the unconsumed SSE body.
+            postResponse.body?.cancel().catch(() => {});
+          }
           return {
             status: "in_progress" as const,
             request: {

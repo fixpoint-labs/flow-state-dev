@@ -33,7 +33,6 @@
       "@flow-state-dev/devtool": ["packages/devtool/src/index.ts"],
       "@flow-state-dev/store-sqlite": ["packages/store-sqlite/src/index.ts"],
       "@flow-state-dev/vercel": ["packages/vercel/src/index.ts"],
-      "@flow-state-dev/vercel/config": ["packages/vercel/src/config.ts"],
       "@thought-fabric/core": ["packages/thought-fabric-core/src/index.ts"]
     }
   }

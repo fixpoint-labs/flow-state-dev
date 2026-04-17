@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { createVercelHandler } from "../src/handler";
+import { createVercelHandler, createVercelBareHandler } from "../src/handler";
 import type { FlowApiRouter } from "../src/types";
 
 function createMockRouter(overrides?: Partial<FlowApiRouter>): FlowApiRouter {
@@ -22,6 +22,19 @@ function makeRequest(method = "GET"): Request {
 
 function makeRouteContext(path: string[] = ["test"]): { params: Promise<{ path: string[] }> } {
   return { params: Promise.resolve({ path }) };
+}
+
+function createSSEResponse(): Response {
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode("data: test\n\n"));
+      controller.close();
+    }
+  });
+  return new Response(body, {
+    status: 200,
+    headers: { "content-type": "text/event-stream; charset=utf-8" }
+  });
 }
 
 describe("createVercelHandler", () => {
@@ -65,32 +78,28 @@ describe("createVercelHandler", () => {
 
     expect(response.status).toBe(202);
     expect(response.headers.get("content-type")).toBe("application/json");
-    // Should NOT have Vercel SSE headers on non-SSE responses
     expect(response.headers.get("x-accel-buffering")).toBeNull();
     expect(await response.text()).toBe(jsonBody);
   });
 
-  it("adds Vercel SSE headers to event-stream responses", async () => {
-    const sseBody = new ReadableStream({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode("data: test\n\n"));
-        controller.close();
-      }
-    });
-
-    const router = createMockRouter({
-      GET: async () => new Response(sseBody, {
-        status: 200,
-        headers: { "content-type": "text/event-stream; charset=utf-8" }
-      })
-    });
-
+  it("adds Vercel SSE headers to GET event-stream responses", async () => {
+    const router = createMockRouter({ GET: async () => createSSEResponse() });
     const handler = createVercelHandler(router);
     const response = await handler.GET(makeRequest(), makeRouteContext());
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-cache, no-transform");
     expect(response.headers.get("x-accel-buffering")).toBe("no");
+  });
+
+  it("skips heartbeat wrapping for POST SSE responses", async () => {
+    const router = createMockRouter({ POST: async () => createSSEResponse() });
+    const handler = createVercelHandler(router);
+    const response = await handler.POST(makeRequest("POST"), makeRouteContext());
+
+    const text = await response.text();
+    expect(text).toBe("data: test\n\n");
+    expect(text).not.toContain(": ping");
   });
 
   it("accepts a factory function for lazy router creation", async () => {
@@ -100,7 +109,6 @@ describe("createVercelHandler", () => {
     await handler.GET(makeRequest(), makeRouteContext());
     await handler.GET(makeRequest(), makeRouteContext());
 
-    // Factory called once and cached
     expect(factory).toHaveBeenCalledOnce();
   });
 
@@ -118,12 +126,10 @@ describe("createVercelHandler", () => {
     const router = createMockRouter({ GET: spy });
     const handler = createVercelHandler(router);
 
-    // Simulate [[...path]] with no segments (bare /api/flows)
     const ctx = { params: Promise.resolve({ path: undefined as unknown as string[] }) };
     await handler.GET(makeRequest(), ctx);
 
     const [, routerCtx] = spy.mock.calls[0];
-    // Passes through whatever params are resolved
     expect(routerCtx.params).toBeDefined();
   });
 
@@ -148,5 +154,44 @@ describe("createVercelHandler", () => {
     expect(handler.POST).toBeTypeOf("function");
     expect(handler.PATCH).toBeTypeOf("function");
     expect(handler.DELETE).toBeTypeOf("function");
+  });
+});
+
+describe("createVercelBareHandler", () => {
+  it("forwards requests with empty path array", async () => {
+    const spy = vi.fn(async () => new Response("ok"));
+    const router = createMockRouter({ GET: spy });
+    const handler = createVercelBareHandler(router);
+
+    await handler.GET(makeRequest());
+
+    expect(spy).toHaveBeenCalledOnce();
+    const [, ctx] = spy.mock.calls[0];
+    expect(ctx.params.path).toEqual([]);
+  });
+
+  it("exposes GET and POST methods", () => {
+    const handler = createVercelBareHandler(createMockRouter());
+    expect(handler.GET).toBeTypeOf("function");
+    expect(handler.POST).toBeTypeOf("function");
+  });
+
+  it("wraps SSE responses with Vercel headers", async () => {
+    const router = createMockRouter({ GET: async () => createSSEResponse() });
+    const handler = createVercelBareHandler(router);
+    const response = await handler.GET(makeRequest());
+
+    expect(response.headers.get("cache-control")).toBe("no-cache, no-transform");
+    expect(response.headers.get("x-accel-buffering")).toBe("no");
+  });
+
+  it("accepts a factory function for lazy router creation", async () => {
+    const factory = vi.fn(() => createMockRouter());
+    const handler = createVercelBareHandler(factory);
+
+    await handler.GET(makeRequest());
+    await handler.POST(makeRequest("POST"));
+
+    expect(factory).toHaveBeenCalledOnce();
   });
 });

@@ -6,16 +6,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   outputFileTracingRoot: resolve(__dirname, "../../"),
-  serverExternalPackages: [
-    "pg",
-    // Provider/gateway packages loaded via createRequire() in the model
-    // resolver. Must be external so Node.js module resolution can find them.
-    "@ai-sdk/openai",
-    "@ai-sdk/anthropic",
-    "@ai-sdk/google",
-    "@ai-sdk/gateway",
-    "@openrouter/ai-sdk-provider",
-  ],
+  serverExternalPackages: ["pg"],
   transpilePackages: [
     "@flow-state-dev/core",
     "@flow-state-dev/client",
