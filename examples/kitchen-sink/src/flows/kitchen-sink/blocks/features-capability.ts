@@ -20,7 +20,7 @@ import { crawl } from "@flow-state-dev/tools/crawl";
 import { z } from "zod";
 import { modeSchema, featuresSchema } from "../schemas";
 import { artifactResources, artifactsCapability } from "./artifacts";
-import { mcpCapability } from "./mcp-capability";
+import { mcpCapability } from "../../../../lib/mcp";
 import path from "node:path";
 
 const featuresSessionStateSchema = z.object({
