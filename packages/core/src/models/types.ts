@@ -49,7 +49,7 @@ export interface FSDProviderConfig {
    */
   keys?: Partial<Record<string, string>>;
   /** Gateway providers that can route to multiple backends. */
-  gateways?: Record<string, GatewayConfig>;
+  gateways?: Record<string, GatewayEntry>;
   /** Retry policy for failed model calls. */
   retryPolicy?: RetryPolicy;
 }
@@ -57,20 +57,14 @@ export interface FSDProviderConfig {
 export interface GatewayConfig {
   type: GatewayType;
   apiKey?: string;
-  /**
-   * Pre-created gateway instance. When provided, bypasses dynamic loading
-   * of the gateway package — essential for bundled environments (Next.js,
-   * Webpack) where `createRequire()` can't resolve external packages.
-   *
-   * Expected shape:
-   *   - Vercel gateway: `{ languageModel(id: string): LanguageModel }`
-   *   - OpenRouter: `{ chat(id: string): LanguageModel }`
-   *
-   * Typically created by calling the gateway package's factory directly:
-   *   `createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY })`
-   */
-  instance?: unknown;
 }
+
+/**
+ * Gateway value: either a config object for auto-detection, or a pre-created
+ * gateway instance (e.g., `createGateway({ apiKey })`). Instances bypass
+ * dynamic package loading — essential for bundled environments like Next.js.
+ */
+export type GatewayEntry = GatewayConfig | unknown;
 
 export interface RetryPolicy {
   /** Max attempts per model before falling back. Default: 2. */
