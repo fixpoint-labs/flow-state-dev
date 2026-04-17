@@ -70,6 +70,7 @@
     }
   },
   "devDependencies": {
+    "@ai-sdk/mcp": "^1.0.0",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/turndown": "^5.0.6",

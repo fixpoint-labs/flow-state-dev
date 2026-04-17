@@ -1,7 +1,8 @@
 /**
  * MCP manager — lazy connection to configured servers, tool caching, catalog,
- * and idempotent close. Errors per-server are isolated so one failed server
- * does not prevent others from loading.
+ * and idempotent close.
+ *
+ * Per-server error isolation is added in Task 6.
  */
 import type { GeneratorTool } from "@flow-state-dev/core";
 import type {
@@ -43,10 +44,9 @@ export function createMcpManager(options: CreateMcpManagerOptions): MCPManager {
 
   async function connect(entry: ServerEntry): Promise<void> {
     const client = await _createClient(entry.config);
-    const mcpTools = await client.tools();
-    // Tool conversion is added in Task 4; for now keep shape clear.
+    // TODO(Task 4): convert client.tools() result into GeneratorTool[] with MCP_TOOL_META markers.
+    await client.tools();
     entry.tools = [];
-    void mcpTools;
     entry.close = () => client.close();
     entry.status = "connected";
   }
