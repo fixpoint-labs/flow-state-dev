@@ -205,6 +205,54 @@ import {
 } from "@flow-state-dev/tools/bash";
 ```
 
+## MCP (Model Context Protocol)
+
+Connect external MCP servers and expose their tools to generators as framework handler blocks, with selection guidance, tool-description enrichment, and a request-state filter.
+
+```typescript
+import { createMcpCapability } from "@flow-state-dev/tools/mcp";
+
+const mcpCap = createMcpCapability({
+  servers: [
+    {
+      name: "linear",
+      description: "Project management: issues, projects, cycles, teams.",
+      whenToUse: "User asks about tasks, tickets, or project work.",
+      examples: [
+        "To find open bugs: mcp__linear__list_issues({ filter: { state: 'open' } })",
+      ],
+      category: "project-management",
+      transport: {
+        type: "sse",
+        url: "https://mcp.linear.app/sse",
+        headers: { Authorization: `Bearer ${process.env.LINEAR_MCP_API_KEY}` },
+      },
+    },
+  ],
+});
+
+generator({
+  uses: [mcpCap],
+  // ...
+});
+```
+
+### Features
+
+- **Namespaced tools.** Each MCP tool becomes a handler block named `mcp__<server>__<tool>`.
+- **Selection guidance.** A markdown system-prompt block is generated from per-server metadata (`description`, `whenToUse`, `examples`), grouped by `category`.
+- **Description enrichment.** Tool descriptions are prefixed with `[server]` (or `[server · category]`) so attribution reads as natural language during tool selection.
+- **Request-state filter.** The capability contributes a `requestStateSchema`. Flows can set `ctx.request.state.mcp.disabledTools` or `disabledServers` to narrow tools per turn without reconnecting.
+- **Error isolation.** A failed server does not block healthy ones.
+
+### Dependency
+
+`@ai-sdk/mcp` is an optional peer dependency and is loaded dynamically the first time a tool is requested. Apps that don't configure MCP pay no install or bundle cost.
+
+### Escape hatch
+
+Use `createMcpManager({ servers })` when you need the raw client outside a capability (custom wiring, calling `getCatalog()` directly, etc.), then pass it to `createMcpCapability({ manager })`.
+
 ## Provider-native search
 
 For provider-level search tools (grounded responses, citations), use the `search` field on generator config instead:
