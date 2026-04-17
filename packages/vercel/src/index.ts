@@ -9,8 +9,6 @@
 export { createVercelHandler, createVercelBareHandler } from "./handler";
 export type {
   FlowApiRouter,
-  NextAppRouteHandler,
-  NextBareRouteHandler,
   VercelHandlerInput,
   VercelHandlerOptions
 } from "./types";

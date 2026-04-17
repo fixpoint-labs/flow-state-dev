@@ -111,23 +111,37 @@ Vercel serverless functions run in ephemeral containers. The filesystem doesn't 
 For production on Vercel, use an external database like Postgres (via `@flow-state-dev/store-postgres`):
 
 ```ts title="lib/server.ts"
+import { after } from "next/server";
+import { openai } from "@ai-sdk/openai";
+import { createGateway } from "@ai-sdk/gateway";
 import { createModelResolver } from "@flow-state-dev/core/models";
 import {
   createFlowApiRouter,
   createFlowRegistry,
+  createInMemoryStores,
+  type StoreRegistry,
 } from "@flow-state-dev/server";
 import { createPostgresStores } from "@flow-state-dev/store-postgres";
 import myFlow from "@/flows/my-flow/flow";
 
+// Pass explicit provider/gateway instances. The model resolver's dynamic
+// require() path doesn't work in bundled Next.js — static imports do.
+const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
+const modelResolver = createModelResolver({
+  providers: { openai },
+  gateways: gatewayApiKey
+    ? { vercel: { type: "vercel", apiKey: gatewayApiKey, instance: createGateway({ apiKey: gatewayApiKey }) } }
+    : undefined,
+});
+
 const registry = createFlowRegistry();
 registry.register(myFlow);
 
-async function createStores() {
-  if (process.env.DATABASE_URL) {
-    return createPostgresStores({ connectionString: process.env.DATABASE_URL });
+async function createStores(): Promise<StoreRegistry> {
+  const dbUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
+  if (dbUrl) {
+    return createPostgresStores({ connectionString: dbUrl });
   }
-  // Fallback to in-memory for local dev
-  const { createInMemoryStores } = await import("@flow-state-dev/server");
   return createInMemoryStores();
 }
 
@@ -139,13 +153,20 @@ export function getRouter() {
       createFlowApiRouter({
         registry,
         stores,
-        modelResolver: createModelResolver(),
+        modelResolver,
+        detectInterruptedOnStartup: false,
+        onBackgroundWork: (promise) => after(() => promise),
       })
     );
   }
   return _router;
 }
 ```
+
+**Key points:**
+- **Explicit provider/gateway instances**: Next.js bundles server code, breaking the model resolver's dynamic `require()` path. Pass providers and gateways as static imports instead.
+- **`detectInterruptedOnStartup: false`**: Disables a background Postgres query on startup that can exhaust the pool during serverless cold starts.
+- **`onBackgroundWork` + `after()`**: Keeps the serverless function alive for fire-and-forget action execution. Without this, Vercel kills the function after the response is sent.
 
 ---
 
@@ -154,9 +175,11 @@ export function getRouter() {
 In your Vercel project settings (Settings > Environment Variables), add:
 
 ```
-OPENAI_API_KEY=sk-...
-DATABASE_URL=postgresql://...
+AI_GATEWAY_API_KEY=...
+FSD_DB_URL=postgresql://...
 ```
+
+`FSD_DB_URL` is preferred over `DATABASE_URL` to avoid collisions with other services. The store adapter checks both (`FSD_DB_URL` first).
 
 Or whichever provider keys and connection strings your flows need.
 

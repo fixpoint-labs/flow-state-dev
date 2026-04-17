@@ -107,6 +107,17 @@ export function createSSEClientFromResponse(
   let closed = false;
   let lastEventId: string | undefined;
 
+  if (!options.response.ok) {
+    const error = new Error(
+      `SSE response failed (${options.response.status}) ${options.response.statusText || ""}`.trim()
+    );
+    queueMicrotask(() => options.onError?.(error));
+    return {
+      close: () => {},
+      get lastEventId() { return undefined; }
+    };
+  }
+
   void consumeSSEResponse({
     response: options.response,
     signal: controller.signal,
