@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@flow-state-dev/tools/bash": resolve(root, "packages/tools/src/bash/index.ts"),
+      "@flow-state-dev/tools/mcp": resolve(root, "packages/tools/src/mcp/index.ts"),
       "@flow-state-dev/tools/search": resolve(root, "packages/tools/src/search/index.ts"),
       "@flow-state-dev/tools/fetch": resolve(root, "packages/tools/src/fetch/index.ts"),
       "@flow-state-dev/tools/crawl": resolve(root, "packages/tools/src/crawl/index.ts"),
