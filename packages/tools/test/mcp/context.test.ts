@@ -63,7 +63,7 @@ describe("defaultMcpGuidanceFormatter", () => {
     };
 
     const out = defaultMcpGuidanceFormatter(catalog);
-    expect(out).toContain("### Project-management");
+    expect(out).toContain("### Project management");
     expect(out).toContain("#### linear");
     expect(out).toContain("#### jira");
     expect(out).toContain("### Docs");

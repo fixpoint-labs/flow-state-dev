@@ -8,7 +8,7 @@ export { createMcpCapability } from "./capability";
 export { createMcpManager } from "./manager";
 export { defaultMcpGuidanceFormatter } from "./context";
 export { defaultMcpFilterTools, mcpRequestStateSchema } from "./filter";
-export { enrichDescription, getMcpToolMeta } from "./enrich";
+export { getMcpToolMeta } from "./enrich";
 export { MCP_TOOL_META } from "./types";
 export type {
   CreateMcpCapabilityOptions,

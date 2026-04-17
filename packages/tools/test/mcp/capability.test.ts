@@ -74,9 +74,8 @@ describe("createMcpCapability", () => {
     const first = contextEntries[0](null, ctx);
     expect(first).toContain("## MCP Tools");
     expect(first).toContain("linear");
-    // The formatter applies titleCase to categories, so "project-management" → "Project-management".
-    // We check for the partial slug that is case-invariant to the titleCase transform.
-    expect(first.toLowerCase()).toContain("project-management");
+    expect(first).toContain("Project management");
+    expect(first).toContain("linear");
   });
 
   it("honors a custom formatGuidance", async () => {

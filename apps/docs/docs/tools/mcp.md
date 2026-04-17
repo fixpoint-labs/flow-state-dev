@@ -79,12 +79,10 @@ import { createMcpCapability, defaultMcpFilterTools } from "@flow-state-dev/tool
 
 const mcpCap = createMcpCapability({
   servers: [/* ... */],
-  filterTools: (ctx, tools) => {
+  filterTools: async (ctx, tools) => {
     const sessionDisabled: string[] = ctx.session.state.mcpDisabledTools ?? [];
-    const narrowed = defaultMcpFilterTools(ctx, tools);
-    return (Array.isArray(narrowed) ? narrowed : narrowed).filter(
-      (t) => !sessionDisabled.includes(t.name),
-    );
+    const narrowed = await defaultMcpFilterTools(ctx, tools);
+    return narrowed.filter((t) => !sessionDisabled.includes(t.name));
   },
 });
 ```

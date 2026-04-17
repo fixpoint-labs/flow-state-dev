@@ -12,7 +12,8 @@ const OTHER_CATEGORY = "Other";
 
 function titleCase(value: string): string {
   if (value.length === 0) return value;
-  return value[0].toUpperCase() + value.slice(1);
+  const normalized = value.replace(/-/g, " ");
+  return normalized[0].toUpperCase() + normalized.slice(1);
 }
 
 function hasRichMetadata(server: MCPCatalogServer): boolean {

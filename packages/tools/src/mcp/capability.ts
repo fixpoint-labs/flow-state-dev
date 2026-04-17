@@ -66,6 +66,8 @@ export function createMcpCapability(
         tools: async (ctx) => {
           const raw = await manager.getTools();
           const enriched = applyEnrichment(raw, manager.getServerConfigs(), enrichMode);
+          // See filter.ts: CapabilityPresetCtx does not type `request`, so we cast to
+          // allow filterTools implementations to read ctx.request.state.mcp.*.
           return filterTools(ctx as any, enriched);
         },
       },
