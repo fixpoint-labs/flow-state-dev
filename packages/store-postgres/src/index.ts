@@ -6,7 +6,7 @@
 
 import type { StoreRegistry } from "@flow-state-dev/server";
 import type { PostgresStoreOptions, QueryExecutor } from "./types";
-import { initializeSchema } from "./schema";
+import { initializeSchema, initializeSchemaWithDedicatedClient } from "./schema";
 import { createPostgresSessionStore } from "./session-store";
 import { createPostgresRequestStore } from "./request-store";
 import { createPostgresUserStore } from "./user-store";
@@ -75,6 +75,22 @@ export async function createPostgresStores(
       }
     };
     closePool = () => pool.end();
+
+    // Schema init needs session-scoped advisory locks — lock and unlock MUST
+    // run on the same pg connection. Use a dedicated client, not the pool.
+    await initializeSchemaWithDedicatedClient(pool);
+
+    return {
+      session: createPostgresSessionStore(executor),
+      request: createPostgresRequestStore(executor),
+      user: createPostgresUserStore(executor),
+      project: createPostgresProjectStore(executor),
+      activeRequests: createPostgresActiveRequestRegistry(executor),
+      content: createPostgresContentStore(executor),
+      async close() {
+        await closePool();
+      }
+    };
   }
 
   await initializeSchema(executor);
