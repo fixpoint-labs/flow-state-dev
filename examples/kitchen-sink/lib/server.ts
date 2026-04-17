@@ -1,6 +1,7 @@
 import path from "node:path";
 import { after } from "next/server";
 import { openai } from "@ai-sdk/openai";
+import { createGateway } from "@ai-sdk/gateway";
 import {
   createModelResolver,
   createAiSdkSpeechResolver,
@@ -16,9 +17,21 @@ import {
 import { createPostgresStores } from "@flow-state-dev/store-postgres";
 import kitchenSinkFlow from "@/src/flows/kitchen-sink/flow";
 
-// Auto-detects providers from env vars (OPENAI_API_KEY, etc.).
-// Model strings like "openai/gpt-5-mini" in flow definitions are resolved automatically.
-const modelResolver = createModelResolver();
+// Pass explicit provider/gateway instances. The model resolver's dynamic
+// require() path doesn't work in bundled Next.js — static imports do.
+const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
+const modelResolver = createModelResolver({
+  providers: { openai },
+  gateways: gatewayApiKey
+    ? {
+        vercel: {
+          type: "vercel",
+          apiKey: gatewayApiKey,
+          instance: createGateway({ apiKey: gatewayApiKey }),
+        },
+      }
+    : undefined,
+});
 
 // Voice: speech (TTS) and transcription (STT) resolvers.
 // Uses OpenAI's gpt-4o-mini-tts for speech and gpt-4o-mini-transcribe for transcription.

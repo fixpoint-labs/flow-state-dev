@@ -57,6 +57,19 @@ export interface FSDProviderConfig {
 export interface GatewayConfig {
   type: GatewayType;
   apiKey?: string;
+  /**
+   * Pre-created gateway instance. When provided, bypasses dynamic loading
+   * of the gateway package — essential for bundled environments (Next.js,
+   * Webpack) where `createRequire()` can't resolve external packages.
+   *
+   * Expected shape:
+   *   - Vercel gateway: `{ languageModel(id: string): LanguageModel }`
+   *   - OpenRouter: `{ chat(id: string): LanguageModel }`
+   *
+   * Typically created by calling the gateway package's factory directly:
+   *   `createGateway({ apiKey: process.env.AI_GATEWAY_API_KEY })`
+   */
+  instance?: unknown;
 }
 
 export interface RetryPolicy {
