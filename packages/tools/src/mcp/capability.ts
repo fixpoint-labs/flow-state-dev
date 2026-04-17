@@ -16,7 +16,6 @@ import { enrichDescription, getMcpToolMeta } from "./enrich";
 import type {
   CreateMcpCapabilityOptions,
   EnrichDescriptionsMode,
-  MCPCatalog,
   MCPManager,
   MCPServerConfig,
 } from "./types";
@@ -28,18 +27,23 @@ function applyEnrichment(
 ): GeneratorTool[] {
   if (mode === false) return tools;
   const byName = new Map(servers.map((s) => [s.name, s]));
-  for (const tool of tools) {
+  // Map to fresh objects rather than mutating. The manager caches the tool
+  // list, so mutating `description` in place compounds the enrichment on
+  // repeated preset invocations (e.g. "[linear] [linear] ...").
+  return tools.map((tool) => {
     const meta = getMcpToolMeta(tool);
-    if (!meta) continue;
+    if (!meta) return tool;
     const server = byName.get(meta.mcp.server);
-    if (!server) continue;
-    (tool as any).description = enrichDescription(
+    if (!server) return tool;
+    const description = enrichDescription(
       (tool as any).description ?? "",
       server,
       mode,
     );
-  }
-  return tools;
+    // Shallow spread preserves `run`, MCP_TOOL_META symbol slot, inputSchema,
+    // and any other own properties added by handler() or the manager.
+    return { ...tool, description } as GeneratorTool;
+  });
 }
 
 export function createMcpCapability(
@@ -52,8 +56,7 @@ export function createMcpCapability(
 
   const enrichMode: EnrichDescriptionsMode = options.enrichDescriptions ?? "prefix";
   const filterTools = options.filterTools ?? defaultMcpFilterTools;
-  const formatGuidance =
-    options.formatGuidance ?? ((catalog: MCPCatalog) => defaultMcpGuidanceFormatter(catalog));
+  const formatGuidance = options.formatGuidance ?? defaultMcpGuidanceFormatter;
 
   return defineCapability({
     name: "mcp",

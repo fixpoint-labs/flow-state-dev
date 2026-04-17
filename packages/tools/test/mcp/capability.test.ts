@@ -103,4 +103,23 @@ describe("createMcpCapability", () => {
     });
     expect(tools[0].description).toBe("List issues");
   });
+
+  it("does not compound enrichment across repeated preset calls", async () => {
+    const { factory } = createMockClientFactory({
+      linear: { list_issues: fakeMcpTool("list_issues", "List issues") },
+    });
+    const cap = createMcpCapability({
+      manager: createMcpManager({ servers: [linearConfig], _createClient: factory }),
+    });
+    const toolsFn = (cap as any).__presetDefs.tools.tools;
+    const ctx = { request: { state: {} }, session: { state: {} } };
+
+    const first = await toolsFn(ctx);
+    const second = await toolsFn(ctx);
+    const third = await toolsFn(ctx);
+
+    expect(first[0].description).toBe("[linear] List issues");
+    expect(second[0].description).toBe("[linear] List issues");
+    expect(third[0].description).toBe("[linear] List issues");
+  });
 });
