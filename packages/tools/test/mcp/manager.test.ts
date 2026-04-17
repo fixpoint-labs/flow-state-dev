@@ -42,4 +42,108 @@ describe("createMcpManager", () => {
       expect(manager.getConnectedServerNames()).toEqual(["linear"]);
     });
   });
+
+  describe("tool loading + namespacing", () => {
+    it("converts MCP tools to handler blocks with namespaced names", async () => {
+      const { factory } = createMockClientFactory({
+        linear: {
+          create_issue: fakeMcpTool("create_issue", "Create an issue"),
+          get_issue: fakeMcpTool("get_issue", "Get an issue"),
+        },
+      });
+
+      const manager = createMcpManager({ servers: [linearConfig], _createClient: factory });
+      const tools = await manager.getTools();
+
+      expect(tools).toHaveLength(2);
+      expect(tools.map((t) => t.name).sort()).toEqual([
+        "mcp__linear__create_issue",
+        "mcp__linear__get_issue",
+      ]);
+      expect(tools[0].kind).toBe("handler");
+    });
+
+    it("keeps the AI-SDK jsonSchema wrapper intact on the block", async () => {
+      const wrappedSchema = { jsonSchema: { type: "object", properties: {} } };
+      const { factory } = createMockClientFactory({
+        linear: {
+          get_attachment: {
+            description: "no-arg tool",
+            inputSchema: wrappedSchema,
+            execute: vi.fn(),
+          },
+        },
+      });
+
+      const manager = createMcpManager({ servers: [linearConfig], _createClient: factory });
+      const tools = await manager.getTools();
+
+      expect((tools[0] as any).inputSchema).toBe(wrappedSchema);
+    });
+
+    it("attaches MCPToolMeta marker so filters can identify origin", async () => {
+      const { MCP_TOOL_META } = await import("../../src/mcp/types");
+      const { factory } = createMockClientFactory({
+        linear: { list_issues: fakeMcpTool("list_issues", "List issues") },
+      });
+
+      const manager = createMcpManager({ servers: [linearConfig], _createClient: factory });
+      const [tool] = await manager.getTools();
+
+      expect((tool as any)[MCP_TOOL_META]).toEqual({
+        mcp: { server: "linear", originalName: "list_issues" },
+      });
+    });
+
+    it("caches tools on subsequent calls (lazy init only fires once)", async () => {
+      const { factory } = createMockClientFactory({
+        linear: { t: fakeMcpTool("t", "Test") },
+      });
+      const factorySpy = vi.fn(factory);
+
+      const manager = createMcpManager({ servers: [linearConfig], _createClient: factorySpy });
+      const first = await manager.getTools();
+      const second = await manager.getTools();
+
+      expect(first).toBe(second);
+      expect(factorySpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("proxies tool execution to the MCP client", async () => {
+      const executeFn = vi.fn().mockResolvedValue({ id: "ISS-1" });
+      const { factory } = createMockClientFactory({
+        linear: {
+          create_issue: {
+            description: "Create an issue",
+            inputSchema: { jsonSchema: { type: "object", properties: {} } },
+            execute: executeFn,
+          },
+        },
+      });
+
+      const manager = createMcpManager({ servers: [linearConfig], _createClient: factory });
+      const [tool] = await manager.getTools();
+      const result = await tool.run({ title: "Test" }, {} as any);
+
+      expect(executeFn).toHaveBeenCalledWith({ title: "Test" });
+      expect(result).toEqual({ id: "ISS-1" });
+    });
+
+    it("reports a helpful error when MCP tool has no execute", async () => {
+      const { factory } = createMockClientFactory({
+        linear: {
+          no_exec: {
+            description: "No execute",
+            inputSchema: { jsonSchema: { type: "object", properties: {} } },
+          } as any,
+        },
+      });
+
+      const manager = createMcpManager({ servers: [linearConfig], _createClient: factory });
+      const [tool] = await manager.getTools();
+      const result = await tool.run({}, {} as any);
+
+      expect(result).toEqual({ error: expect.stringContaining("does not support execution") });
+    });
+  });
 });

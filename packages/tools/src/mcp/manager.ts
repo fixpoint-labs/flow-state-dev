@@ -1,10 +1,14 @@
 /**
  * MCP manager — lazy connection to configured servers, tool caching, catalog,
- * and idempotent close.
+ * and idempotent close. Converts MCP tool definitions into namespaced handler
+ * blocks and attaches MCPToolMeta markers for downstream filtering.
  *
  * Per-server error isolation is added in Task 6.
  */
+import { handler } from "@flow-state-dev/core";
 import type { GeneratorTool } from "@flow-state-dev/core";
+import { z } from "zod";
+import { MCP_TOOL_META, type MCPToolMeta, type AiSdkMcpTool } from "./types";
 import type {
   CreateMcpManagerOptions,
   MCPCatalog,
@@ -21,6 +25,40 @@ type ServerEntry = {
   tools: GeneratorTool[];
   close?: () => Promise<void>;
 };
+
+const passthroughSchema = z.record(z.unknown());
+
+function mcpToolToHandler(
+  serverName: string,
+  originalName: string,
+  mcpTool: AiSdkMcpTool,
+): GeneratorTool {
+  const namespacedName = `mcp__${serverName}__${originalName}`;
+
+  const block = handler({
+    name: namespacedName,
+    description: mcpTool.description ?? `Tool from MCP server: ${serverName}`,
+    inputSchema: passthroughSchema,
+    execute: async (input: Record<string, unknown>) => {
+      if (!mcpTool.execute) {
+        return {
+          error: `Tool ${originalName} on server ${serverName} does not support execution.`,
+        };
+      }
+      return mcpTool.execute(input);
+    },
+  });
+
+  if (mcpTool.inputSchema !== undefined) {
+    (block as any).inputSchema = mcpTool.inputSchema;
+  }
+
+  (block as any)[MCP_TOOL_META] = {
+    mcp: { server: serverName, originalName },
+  } satisfies MCPToolMeta;
+
+  return block;
+}
 
 async function defaultCreateClient(config: MCPServerConfig): Promise<MCPClient> {
   const { createMCPClient } = await import("@ai-sdk/mcp");
@@ -44,9 +82,12 @@ export function createMcpManager(options: CreateMcpManagerOptions): MCPManager {
 
   async function connect(entry: ServerEntry): Promise<void> {
     const client = await _createClient(entry.config);
-    // TODO(Task 4): convert client.tools() result into GeneratorTool[] with MCP_TOOL_META markers.
-    await client.tools();
-    entry.tools = [];
+    const mcpTools = await client.tools();
+    const handlers: GeneratorTool[] = [];
+    for (const [originalName, mcpTool] of Object.entries(mcpTools)) {
+      handlers.push(mcpToolToHandler(entry.config.name, originalName, mcpTool));
+    }
+    entry.tools = handlers;
     entry.close = () => client.close();
     entry.status = "connected";
   }
