@@ -126,12 +126,22 @@ const assistantGenerator = generator({
 // Thinking style router (via factory — see blocks/thinking-styles.ts)
 // ---------------------------------------------------------------------------
 
+const modeInstructions = (_input: any, ctx: any): string => {
+  switch (ctx.session.state.mode) {
+    case "build": return BUILD_PROMPT;
+    case "interview": return INTERVIEW_PROMPT;
+    case "debate": return DEBATE_PROMPT;
+    default: return ASK_PROMPT;
+  }
+};
+
 const { thinkingStyleRouter } = createThinkingStyleRouter({
   assistantGenerator,
   modelId: (_input: any, ctx: any) => ctx.session.state.resolvedModel ?? MODEL_ID,
   history: (_input: any, ctx: any) => ctx.session.items.llm({ limit: 8 }),
   context: [mem.contextFormatter, artifactListContext],
   uses: [featuresCapability],
+  instructions: modeInstructions,
 });
 
 export { thinkingStyleRouter };

@@ -583,4 +583,131 @@ describe("supervisor pattern", () => {
     expect(supervisorStateSchema).toBeDefined();
     expect(reviewOutputSchema).toBeDefined();
   });
+
+  it("accepts static instructions without crashing", async () => {
+    const planner = makeDeterministicPlanner("instr-planner", [
+      { id: "t1", goal: "Task A" },
+    ]);
+    const reviewer = makeDeterministicReviewer("instr-reviewer", [
+      {
+        assessments: [
+          { taskId: "t1", verdict: "accepted", feedback: "Good", score: 0.9 },
+        ],
+        needsReplanning: false,
+        overallAssessment: "Done",
+      },
+    ]);
+    const synth = makeDeterministicSynthesizer("instr-synthesizer");
+
+    const sup = supervisor({
+      name: "with-instructions",
+      worker: echoWorker,
+      instructions: "You are a debate partner. Challenge positions.",
+      planner,
+      reviewer,
+      synthesizer: synth,
+    });
+
+    const result = await testBlock(sup, {
+      input: { goal: "Test instructions" },
+    });
+    expect(result.error).toBeNull();
+    expect(result.output).toBeDefined();
+  });
+
+  it("accepts dynamic instructions function without crashing", async () => {
+    const planner = makeDeterministicPlanner("dyn-planner", [
+      { id: "t1", goal: "Task A" },
+    ]);
+    const reviewer = makeDeterministicReviewer("dyn-reviewer", [
+      {
+        assessments: [
+          { taskId: "t1", verdict: "accepted", feedback: "Good", score: 0.9 },
+        ],
+        needsReplanning: false,
+        overallAssessment: "Done",
+      },
+    ]);
+    const synth = makeDeterministicSynthesizer("dyn-synthesizer");
+
+    const sup = supervisor({
+      name: "with-dynamic-instructions",
+      worker: echoWorker,
+      instructions: () => "Dynamic debate instructions",
+      planner,
+      reviewer,
+      synthesizer: synth,
+    });
+
+    const result = await testBlock(sup, {
+      input: { goal: "Test dynamic instructions" },
+    });
+    expect(result.error).toBeNull();
+    expect(result.output).toBeDefined();
+  });
+
+  it("forwards context field from planner to worker", async () => {
+    const receivedInputs: unknown[] = [];
+    const contextAwareWorker = handler({
+      name: "context-worker",
+      inputSchema: z.any(),
+      outputSchema: z.any(),
+      execute: (input) => {
+        receivedInputs.push(input);
+        return { source: "worker", finding: "done" };
+      },
+    });
+
+    const plannerWithContext = handler({
+      name: "ctx-planner",
+      inputSchema: z.any(),
+      outputSchema: z.object({
+        tasks: z.array(z.object({
+          id: z.string(),
+          goal: z.string(),
+          context: z.string().optional(),
+        })),
+      }),
+      execute: () => ({
+        tasks: [
+          { id: "t1", goal: "Task A", context: "Use a formal tone" },
+          { id: "t2", goal: "Task B" },
+        ],
+      }),
+    });
+
+    const reviewer = makeDeterministicReviewer("ctx-reviewer", [
+      {
+        assessments: [
+          { taskId: "t1", verdict: "accepted", feedback: "Good", score: 0.9 },
+          { taskId: "t2", verdict: "accepted", feedback: "Good", score: 0.9 },
+        ],
+        needsReplanning: false,
+        overallAssessment: "Done",
+      },
+    ]);
+    const synth = makeDeterministicSynthesizer("ctx-synthesizer");
+
+    const sup = supervisor({
+      name: "context-forward",
+      worker: contextAwareWorker,
+      planner: plannerWithContext,
+      reviewer,
+      synthesizer: synth,
+    });
+
+    const result = await testBlock(sup, {
+      input: { goal: "Test context forwarding" },
+    });
+
+    expect(result.error).toBeNull();
+    const t1Input = receivedInputs.find(
+      (i: any) => i.id === "t1"
+    ) as any;
+    const t2Input = receivedInputs.find(
+      (i: any) => i.id === "t2"
+    ) as any;
+    expect(t1Input.context).toBe("Use a formal tone");
+    expect(t2Input.context).toBeUndefined();
+  });
 });
