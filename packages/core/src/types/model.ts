@@ -168,7 +168,18 @@ export interface GeneratorModel {
   resolveSearchTool?(config: GeneratorSearchConfig): { name: string; tool: unknown } | undefined;
 }
 
-export type ModelResolver = (
+export type ModelResolver = ((
   modelId: string,
   blockName?: string
-) => GeneratorModel;
+) => GeneratorModel) & {
+  /**
+   * Returns the primary underlying model string for any model reference.
+   * For presets, returns the first available provider/model string.
+   * For direct model strings, returns the input as-is.
+   *
+   * @example
+   * resolver.resolveId("preset/medium")         // → "anthropic/claude-sonnet-4-6"
+   * resolver.resolveId("anthropic/claude-sonnet-4-6") // → "anthropic/claude-sonnet-4-6"
+   */
+  resolveId(modelId: string): string;
+};

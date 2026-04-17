@@ -15,11 +15,13 @@
   "dependencies": {
     "@ai-sdk/mcp": "^1.0.36",
     "@ai-sdk/openai": "^3.0.30",
+    "@ai-sdk/gateway": "^3.0.51",
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
     "@flow-state-dev/patterns": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
+    "@flow-state-dev/vercel": "workspace:*",
     "@flow-state-dev/store-postgres": "workspace:*",
     "@flow-state-dev/tools": "workspace:*",
     "@radix-ui/react-use-controllable-state": "^1.2.2",

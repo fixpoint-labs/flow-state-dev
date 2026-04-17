@@ -30,6 +30,7 @@ You are not a sycophant. You don't tell the user they have a good idea until you
 | `@flow-state-dev/cli` | Terminal interface (`fsdev`) |
 | `@flow-state-dev/devtool` | Pre-built DevTool assets for `fsdev dev` |
 | `@flow-state-dev/store-sqlite` | SQLite-backed persistent store |
+| `@flow-state-dev/vercel` | Vercel deployment adapter (SSE shaping, heartbeats, runtime config) |
 | `@flow-state-dev/tools` | Reusable tool blocks |
 | `@flow-state-dev/patterns` | Higher-level composition patterns |
 | `@flow-state-dev/ui` | Component registry for flow UIs |

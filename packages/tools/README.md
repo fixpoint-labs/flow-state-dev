@@ -175,6 +175,26 @@ createBashTool({
 3. **Flush** — after every `bash` and `writeFile`, changed files sync back to resources
 4. Deleted files are removed from resource collections. `readFile` does not trigger a flush.
 
+### Workspace path restrictions (Local FS)
+
+The local adapter enforces that all filesystem operations stay within the workspace root. This is enabled by default (`strictPaths: true`) and protects against accidental workspace escapes by LLM agents.
+
+Guarded operations:
+- **`executeCommand`** — rejects commands containing absolute paths outside the workspace, path traversals (`../`), home references (`~/`, `$HOME`), and command substitution (`$()`, backticks).
+- **`readFile` / `writeFile`** — resolves paths against the workspace root and rejects any result that falls outside it.
+
+```typescript
+// Default: strictPaths is true
+provider: { type: "local", cwd: "./workspace" }
+
+// Opt out for power users (logs a warning):
+provider: { type: "local", cwd: "./workspace", strictPaths: false }
+```
+
+When a command or path is rejected, the error message describes what was blocked and why, so the LLM agent can self-correct.
+
+This is a best-effort defense layer for cooperative agents. For true isolation, use the `just-bash` adapter (in-memory emulation) or plan for OS-level sandboxing in a future release.
+
 ### Direct adapter constructors
 
 ```typescript

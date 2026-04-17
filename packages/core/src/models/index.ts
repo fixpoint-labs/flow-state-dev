@@ -32,6 +32,7 @@ export type {
   ModelGroupConfig,
   ModelGroupDefaults,
   GatewayConfig,
+  GatewayEntry,
   RetryPolicy,
   GatewayType,
   ProviderName

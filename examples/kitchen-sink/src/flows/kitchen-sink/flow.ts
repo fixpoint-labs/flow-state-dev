@@ -17,7 +17,6 @@ import {
   handler,
   sequencer,
   utility,
-  selectModel,
 } from "@flow-state-dev/core";
 
 import { system as memorySystem } from "@thought-fabric/core/memory";
@@ -76,6 +75,7 @@ const inputSchema = z.object({
 const sessionStateSchema = z.object({
   mode: modeSchema,
   thinkingStyle: thinkingStyleSchema.optional(),
+  resolvedModel: z.string().optional(),
   requestCount: z.number().default(0),
   lastAction: z.string().optional(),
   features: featuresSchema.default({}),
@@ -113,9 +113,7 @@ const assistantGenerator = generator({
     ctx.session.state.mode === "build" ? BUILD_PROMPT : ASK_PROMPT,
 
   emit: { messages: true, reasoning: true },
-  model: selectModel(MODEL_ID, {
-    prefer: (_input, ctx) => ctx.user?.state.preferredModel,
-  }),
+  model: (_input: any, ctx: any) => ctx.session.state.resolvedModel ?? MODEL_ID,
 });
 
 // ---------------------------------------------------------------------------
@@ -124,9 +122,7 @@ const assistantGenerator = generator({
 
 const { thinkingStyleRouter } = createThinkingStyleRouter({
   assistantGenerator,
-  modelId: selectModel(MODEL_ID, {
-    prefer: (_input: any, ctx: any) => ctx.user?.state.preferredModel,
-  }),
+  modelId: (_input: any, ctx: any) => ctx.session.state.resolvedModel ?? MODEL_ID,
   history: (_input: any, ctx: any) => ctx.session.items.llm({ limit: 8 }),
   context: [mem.contextFormatter, artifactListContext],
   uses: [featuresCapability],
@@ -196,6 +192,22 @@ const applyFeatures = handler({
   sessionStateSchema: z.object({ features: featuresSchema.default({}) }),
   execute: async (input, ctx) => {
     await ctx.session.patchState({ features: input.features });
+  },
+});
+
+// Resolve the model once per request so downstream blocks and clientData can
+// Resolve the preset to its primary concrete model string (e.g.
+// "preset/medium" → "anthropic/claude-sonnet-4-6") so downstream blocks
+// and clientData can read ctx.session.state.resolvedModel.
+const resolveModel = handler({
+  name: "resolve-model",
+  inputSchema,
+  userStateSchema,
+  sessionStateSchema: z.object({ resolvedModel: z.string().optional() }),
+  execute: async (_input, ctx) => {
+    const preferred = ctx.user?.state.preferredModel ?? MODEL_ID;
+    const resolved = ctx.resolveModel.resolveId(preferred);
+    await ctx.session.patchState({ resolvedModel: resolved });
   },
 });
 
@@ -300,6 +312,7 @@ const setPreferredModelHandler = handler({
 const runSequencer = sequencer({ name: "run", inputSchema })
   .tap(applyRequestedMode)
   .tap(applyFeatures)
+  .tap(resolveModel)
   .tap(resolveThinkingStyle)
   .then(thinkingStyleRouter)
   .work(biasCheck)
@@ -351,6 +364,8 @@ const kitchenSinkFlow = defineFlow({
         currentMode: modeSchema.parse(ctx.state.mode ?? "ask"),
         thinkingStyle:
           (ctx.state.thinkingStyle as string | undefined) ?? null,
+        resolvedModel:
+          (ctx.state.resolvedModel as string | undefined) ?? null,
         requestCount: Number(ctx.state.requestCount ?? 0),
         features: ctx.state.features ?? { biasCheck: false, bashTool: true, search: true, fetch: true, crawl: true },
       }),

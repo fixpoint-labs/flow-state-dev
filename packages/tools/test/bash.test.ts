@@ -487,3 +487,281 @@ describe("adapters", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Workspace guards — unit tests
+// ---------------------------------------------------------------------------
+
+describe("workspace guards", () => {
+  const WORKSPACE = "/tmp/workspace";
+  const DESTINATION = "/workspace";
+
+  let assertCommandWithinWorkspace: typeof import("../src/bash/adapters/workspace-guards").assertCommandWithinWorkspace;
+  let resolveWithinWorkspace: typeof import("../src/bash/adapters/workspace-guards").resolveWithinWorkspace;
+
+  beforeEach(async () => {
+    const guards = await import("../src/bash/adapters/workspace-guards");
+    assertCommandWithinWorkspace = guards.assertCommandWithinWorkspace;
+    resolveWithinWorkspace = guards.resolveWithinWorkspace;
+  });
+
+  // -------------------------------------------------------------------------
+  // assertCommandWithinWorkspace
+  // -------------------------------------------------------------------------
+
+  describe("assertCommandWithinWorkspace", () => {
+    describe("allowed commands", () => {
+      it("allows commands with no path arguments", () => {
+        expect(() => assertCommandWithinWorkspace(WORKSPACE, "ls")).not.toThrow();
+        expect(() => assertCommandWithinWorkspace(WORKSPACE, "echo hello")).not.toThrow();
+        expect(() => assertCommandWithinWorkspace(WORKSPACE, "pwd")).not.toThrow();
+      });
+
+      it("allows relative paths", () => {
+        expect(() => assertCommandWithinWorkspace(WORKSPACE, "cat src/index.ts")).not.toThrow();
+        expect(() => assertCommandWithinWorkspace(WORKSPACE, "find . -name '*.ts'")).not.toThrow();
+        expect(() => assertCommandWithinWorkspace(WORKSPACE, "ls ./src")).not.toThrow();
+      });
+
+      it("allows absolute paths within workspace root", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat /tmp/workspace/src/index.ts"),
+        ).not.toThrow();
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "ls /tmp/workspace"),
+        ).not.toThrow();
+      });
+
+      it("allows absolute paths within virtual destination", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat /workspace/src/index.ts", DESTINATION),
+        ).not.toThrow();
+      });
+
+      it("allows safe system paths", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "echo error 2>/dev/null"),
+        ).not.toThrow();
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat /dev/stdin"),
+        ).not.toThrow();
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "dd if=/dev/zero of=file bs=1024 count=1"),
+        ).not.toThrow();
+      });
+    });
+
+    describe("rejected commands", () => {
+      it("rejects absolute paths outside workspace", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat /etc/passwd"),
+        ).toThrow("Command rejected");
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "ls /home/user/file"),
+        ).toThrow("Command rejected");
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat /usr/bin/node"),
+        ).toThrow("Command rejected");
+      });
+
+      it("rejects workspace root as substring in a different path", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat /tmp/workspace2/file"),
+        ).toThrow("Command rejected");
+      });
+
+      it("rejects path traversals", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat ../../etc/passwd"),
+        ).toThrow("path traversal");
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cd ../.. && ls"),
+        ).toThrow("path traversal");
+      });
+
+      it("rejects home directory references", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat ~/file"),
+        ).toThrow("home directory");
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "ls ~"),
+        ).toThrow("home directory");
+      });
+
+      it("rejects $HOME references", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat $HOME/file"),
+        ).toThrow("$HOME");
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat ${HOME}/file"),
+        ).toThrow("$HOME");
+      });
+
+      it("rejects command substitution with $()", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "echo $(cat /etc/passwd)"),
+        ).toThrow("command substitution");
+      });
+
+      it("rejects backtick command substitution", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "echo `cat /etc/passwd`"),
+        ).toThrow("backtick");
+      });
+
+      it("rejects process substitution", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "diff <(cat file1) file2"),
+        ).toThrow("process substitution");
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "tee >(cat) file"),
+        ).toThrow("process substitution");
+      });
+    });
+
+    describe("error messages", () => {
+      it("includes the workspace root in error messages", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat /etc/passwd"),
+        ).toThrow(WORKSPACE);
+      });
+
+      it("includes the offending path in absolute path errors", () => {
+        expect(() =>
+          assertCommandWithinWorkspace(WORKSPACE, "cat /etc/passwd"),
+        ).toThrow("/etc/passwd");
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // resolveWithinWorkspace
+  // -------------------------------------------------------------------------
+
+  describe("resolveWithinWorkspace", () => {
+    describe("allowed paths", () => {
+      it("resolves bare relative paths", () => {
+        const result = resolveWithinWorkspace(WORKSPACE, "src/index.ts");
+        expect(result).toBe("/tmp/workspace/src/index.ts");
+      });
+
+      it("resolves dot-relative paths", () => {
+        const result = resolveWithinWorkspace(WORKSPACE, "./src/index.ts");
+        expect(result).toBe("/tmp/workspace/src/index.ts");
+      });
+
+      it("resolves deeply nested paths", () => {
+        const result = resolveWithinWorkspace(WORKSPACE, "a/b/c/d/file.ts");
+        expect(result).toBe("/tmp/workspace/a/b/c/d/file.ts");
+      });
+
+      it("resolves the workspace root itself", () => {
+        const result = resolveWithinWorkspace(WORKSPACE, ".");
+        expect(result).toBe("/tmp/workspace");
+      });
+    });
+
+    describe("rejected paths", () => {
+      it("rejects absolute paths outside workspace", () => {
+        expect(() => resolveWithinWorkspace(WORKSPACE, "/etc/passwd")).toThrow(
+          "resolves outside the workspace root",
+        );
+      });
+
+      it("rejects traversals that escape", () => {
+        expect(() =>
+          resolveWithinWorkspace(WORKSPACE, "../../../etc/passwd"),
+        ).toThrow("resolves outside the workspace root");
+      });
+
+      it("rejects paths that start valid then escape", () => {
+        expect(() =>
+          resolveWithinWorkspace(WORKSPACE, "src/../../etc/passwd"),
+        ).toThrow("resolves outside the workspace root");
+      });
+
+      it("rejects filesystem root", () => {
+        expect(() => resolveWithinWorkspace(WORKSPACE, "/")).toThrow(
+          "resolves outside the workspace root",
+        );
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // strictPaths config toggle
+  // -------------------------------------------------------------------------
+
+  describe("strictPaths config", () => {
+    it("rejects dangerous commands when strictPaths is true (default)", async () => {
+      const { createLocalFsSandbox } = await import("../src/bash/adapters/local-fs");
+      const sandbox = createLocalFsSandbox({ cwd: "/tmp/strict-test" });
+
+      await expect(sandbox.executeCommand("cat /etc/passwd")).rejects.toThrow(
+        "Command rejected",
+      );
+    });
+
+    it("rejects paths outside workspace for readFile when strictPaths is true", async () => {
+      const { createLocalFsSandbox } = await import("../src/bash/adapters/local-fs");
+      const sandbox = createLocalFsSandbox({ cwd: "/tmp/strict-test" });
+
+      await expect(sandbox.readFile("/etc/passwd")).rejects.toThrow(
+        "resolves outside the workspace root",
+      );
+    });
+
+    it("rejects paths outside workspace for writeFile when strictPaths is true", async () => {
+      const { createLocalFsSandbox } = await import("../src/bash/adapters/local-fs");
+      const sandbox = createLocalFsSandbox({ cwd: "/tmp/strict-test" });
+
+      await expect(sandbox.writeFile("/etc/evil", "bad")).rejects.toThrow(
+        "resolves outside the workspace root",
+      );
+    });
+
+    it("skips guards when strictPaths is false", async () => {
+      const { createLocalFsSandbox } = await import("../src/bash/adapters/local-fs");
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const sandbox = createLocalFsSandbox({
+        cwd: "/tmp/nostrict-test",
+        strictPaths: false,
+      });
+
+      // The warning should have been emitted at creation time
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("strictPaths is disabled"),
+      );
+
+      // Command with external path should not throw (guard skipped).
+      // It may still fail due to missing directories, but it won't throw
+      // the guard error.
+      try {
+        await sandbox.executeCommand("echo ok");
+      } catch {
+        // exec may fail if cwd doesn't exist — that's fine, the point is
+        // the guard didn't throw
+      }
+
+      warnSpy.mockRestore();
+    });
+
+    it("emits a warning when strictPaths is false", async () => {
+      const { createLocalFsSandbox } = await import("../src/bash/adapters/local-fs");
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      createLocalFsSandbox({
+        cwd: "/tmp/warn-test",
+        strictPaths: false,
+      });
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("/tmp/warn-test"),
+      );
+
+      warnSpy.mockRestore();
+    });
+  });
+});

@@ -32,6 +32,7 @@
       "@flow-state-dev/tools/bash": ["packages/tools/src/bash/index.ts"],
       "@flow-state-dev/devtool": ["packages/devtool/src/index.ts"],
       "@flow-state-dev/store-sqlite": ["packages/store-sqlite/src/index.ts"],
+      "@flow-state-dev/vercel": ["packages/vercel/src/index.ts"],
       "@thought-fabric/core": ["packages/thought-fabric-core/src/index.ts"]
     }
   }

@@ -10,7 +10,7 @@
  *   - MCP_SERVERS: JSON array of MCPServerConfig objects
  *   - LINEAR_MCP_API_KEY: shorthand that auto-configures Linear MCP
  */
-import { handler, type BlockDefinition } from "@flow-state-dev/core";
+import { handler, type GeneratorTool } from "@flow-state-dev/core";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
@@ -29,7 +29,7 @@ export type MCPServerConfig = {
 
 export type MCPManager = {
   /** Returns handler blocks for all tools from all connected MCP servers. */
-  getTools(): Promise<BlockDefinition[]>;
+  getTools(): Promise<GeneratorTool[]>;
   /** Returns the names of servers that have successfully connected. */
   getConnectedServerNames(): string[];
   /** Returns the raw config for all configured servers. */
@@ -106,7 +106,7 @@ function mcpToolToHandler(
   serverName: string,
   toolName: string,
   mcpTool: { description?: string; parameters?: unknown; execute?: (args: any) => Promise<unknown> },
-): BlockDefinition {
+): GeneratorTool {
   const namespacedName = `mcp__${serverName}__${toolName}`;
 
   // Use a permissive Zod schema for the framework's input validation.
@@ -141,7 +141,7 @@ function mcpToolToHandler(
 
 type ClientEntry = {
   config: MCPServerConfig;
-  tools: BlockDefinition[] | null;
+  tools: GeneratorTool[] | null;
   connected: boolean;
   error?: string;
 };
@@ -161,10 +161,10 @@ async function defaultCreateClient(config: MCPServerConfig): Promise<MCPClient> 
 async function connectAndLoadTools(
   config: MCPServerConfig,
   createClient: (config: MCPServerConfig) => Promise<MCPClient>,
-): Promise<{ tools: BlockDefinition[]; close: () => Promise<void> }> {
+): Promise<{ tools: GeneratorTool[]; close: () => Promise<void> }> {
   const client = await createClient(config);
   const mcpTools = await client.tools();
-  const handlers: BlockDefinition[] = [];
+  const handlers: GeneratorTool[] = [];
 
   for (const [name, tool] of Object.entries(mcpTools)) {
     handlers.push(mcpToolToHandler(config.name, name, tool as any));
@@ -189,7 +189,7 @@ export function createMcpManager(options?: MCPManagerOptions): MCPManager {
   const createClient = options?._createClient ?? defaultCreateClient;
   const entries = new Map<string, ClientEntry>();
   const closeFns: Array<() => Promise<void>> = [];
-  let toolsPromise: Promise<BlockDefinition[]> | null = null;
+  let toolsPromise: Promise<GeneratorTool[]> | null = null;
 
   // Initialize entries from config (not yet connected)
   for (const config of configs) {
@@ -200,8 +200,8 @@ export function createMcpManager(options?: MCPManagerOptions): MCPManager {
     console.log(`[mcp] Configured ${configs.length} MCP server(s): ${configs.map((c) => c.name).join(", ")}`);
   }
 
-  async function loadAllTools(): Promise<BlockDefinition[]> {
-    const allTools: BlockDefinition[] = [];
+  async function loadAllTools(): Promise<GeneratorTool[]> {
+    const allTools: GeneratorTool[] = [];
 
     const results = await Promise.allSettled(
       configs.map(async (config) => {
@@ -235,7 +235,7 @@ export function createMcpManager(options?: MCPManagerOptions): MCPManager {
   }
 
   return {
-    async getTools(): Promise<BlockDefinition[]> {
+    async getTools(): Promise<GeneratorTool[]> {
       if (configs.length === 0) return [];
       // Lazy init — connect on first tool request, cache the result.
       if (!toolsPromise) {

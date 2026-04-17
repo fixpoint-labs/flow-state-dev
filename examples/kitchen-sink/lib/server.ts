@@ -1,5 +1,7 @@
 import path from "node:path";
+import { after } from "next/server";
 import { openai } from "@ai-sdk/openai";
+import { createGateway } from "@ai-sdk/gateway";
 import {
   createModelResolver,
   createAiSdkSpeechResolver,
@@ -15,9 +17,15 @@ import {
 import { createPostgresStores } from "@flow-state-dev/store-postgres";
 import kitchenSinkFlow from "@/src/flows/kitchen-sink/flow";
 
-// Auto-detects providers from env vars (OPENAI_API_KEY, etc.).
-// Model strings like "openai/gpt-5-mini" in flow definitions are resolved automatically.
-const modelResolver = createModelResolver();
+// Pass explicit provider/gateway instances. The model resolver's dynamic
+// require() path doesn't work in bundled Next.js — static imports do.
+const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
+const modelResolver = createModelResolver({
+  providers: { openai },
+  gateways: gatewayApiKey
+    ? { vercel: createGateway({ apiKey: gatewayApiKey }) }
+    : undefined,
+});
 
 // Voice: speech (TTS) and transcription (STT) resolvers.
 // Uses OpenAI's gpt-4o-mini-tts for speech and gpt-4o-mini-transcribe for transcription.
@@ -29,13 +37,14 @@ registry.register(kitchenSinkFlow);
 
 /**
  * Resolve persistence stores based on environment:
- *   DATABASE_URL set        → Postgres (Neon on Vercel)
- *   STORE_TYPE=filesystem   → local filesystem (.fsdev/data/)
- *   otherwise               → in-memory (ephemeral, default for local dev)
+ *   FSD_DB_URL / DATABASE_URL → Postgres (Neon on Vercel)
+ *   STORE_TYPE=filesystem     → local filesystem (.fsdev/data/)
+ *   otherwise                 → in-memory (ephemeral, default for local dev)
  */
 async function createStores(): Promise<StoreRegistry> {
-  if (process.env.DATABASE_URL) {
-    return createPostgresStores({ connectionString: process.env.DATABASE_URL });
+  const dbUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
+  if (dbUrl) {
+    return createPostgresStores({ connectionString: dbUrl });
   }
   if (process.env.STORE_TYPE === "filesystem") {
     return createFilesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") });
@@ -57,6 +66,11 @@ export function getRouter(): Promise<FlowApiRouter> {
         modelResolver,
         speechResolver,
         transcriptionResolver,
+        detectInterruptedOnStartup: false,
+        // Keep the serverless function alive while runAction executes.
+        // Without this, Vercel kills the function after the 202 response,
+        // before results are persisted — causing stream 404s and lost data.
+        onBackgroundWork: (promise) => after(() => promise),
         onError: (error, context) => {
           console.error(`[flow-api] ${context.method} ${context.path}:`, error.message);
         },

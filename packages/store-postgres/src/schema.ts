@@ -139,26 +139,37 @@ const REQUEST_EVENTS_INDEXES = [
  */
 const SCHEMA_LOCK_KEY = 819297; // arbitrary stable integer
 
-export async function initializeSchema(executor: QueryExecutor): Promise<void> {
-  const tables = [
-    SESSIONS_TABLE,
-    REQUESTS_TABLE,
-    USERS_TABLE,
-    PROJECTS_TABLE,
-    ACTIVE_REQUESTS_TABLE,
-    RESOURCE_CONTENT_TABLE,
-    REQUEST_EVENTS_TABLE
-  ];
+function getSchemaDDL(): { tables: string[]; indexes: string[] } {
+  return {
+    tables: [
+      SESSIONS_TABLE,
+      REQUESTS_TABLE,
+      USERS_TABLE,
+      PROJECTS_TABLE,
+      ACTIVE_REQUESTS_TABLE,
+      RESOURCE_CONTENT_TABLE,
+      REQUEST_EVENTS_TABLE
+    ],
+    indexes: [
+      ...SESSIONS_INDEXES,
+      ...REQUESTS_INDEXES,
+      ...USERS_INDEXES,
+      ...PROJECTS_INDEXES,
+      ...ACTIVE_REQUESTS_INDEXES,
+      ...RESOURCE_CONTENT_INDEXES,
+      ...REQUEST_EVENTS_INDEXES
+    ]
+  };
+}
 
-  const indexes = [
-    ...SESSIONS_INDEXES,
-    ...REQUESTS_INDEXES,
-    ...USERS_INDEXES,
-    ...PROJECTS_INDEXES,
-    ...ACTIVE_REQUESTS_INDEXES,
-    ...RESOURCE_CONTENT_INDEXES,
-    ...REQUEST_EVENTS_INDEXES
-  ];
+/**
+ * Initialize the schema using a QueryExecutor. Each query may run on a
+ * different pool connection, so the advisory lock may leak onto an
+ * unknown connection. Prefer `initializeSchemaWithDedicatedClient` when
+ * you have direct pg.Pool access.
+ */
+export async function initializeSchema(executor: QueryExecutor): Promise<void> {
+  const { tables, indexes } = getSchemaDDL();
 
   await executor.query("SELECT pg_advisory_lock($1)", [SCHEMA_LOCK_KEY]);
   try {
@@ -170,5 +181,62 @@ export async function initializeSchema(executor: QueryExecutor): Promise<void> {
     }
   } finally {
     await executor.query("SELECT pg_advisory_unlock($1)", [SCHEMA_LOCK_KEY]);
+  }
+}
+
+/**
+ * Initialize the schema using a dedicated pool client so the advisory lock
+ * and all DDL run on the same connection. This is critical for serverless —
+ * a leaked lock (from lock/unlock on different connections) blocks other
+ * function instances from initializing schema and causes indefinite hangs.
+ *
+ * Uses `pg_try_advisory_lock` with a retry loop rather than blocking
+ * `pg_advisory_lock`, so a stuck lock from a prior instance doesn't hang
+ * the current function.
+ */
+export async function initializeSchemaWithDedicatedClient(
+  pool: import("pg").Pool
+): Promise<void> {
+  const { tables, indexes } = getSchemaDDL();
+  const client = await pool.connect();
+
+  try {
+    // Try the lock up to 20 times with 500ms between attempts (10s total).
+    // If we never get it, skip schema init — another instance is presumably
+    // running it, or the schema is already initialized.
+    let locked = false;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const result = await client.query(
+        "SELECT pg_try_advisory_lock($1) AS locked",
+        [SCHEMA_LOCK_KEY]
+      );
+      if (result.rows[0]?.locked === true) {
+        locked = true;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    if (!locked) {
+      // Could not acquire lock — assume schema is being initialized elsewhere
+      // or already exists. Our DDL uses IF NOT EXISTS so this is safe.
+      console.warn(
+        "[flow-state/store-postgres] could not acquire schema advisory lock; skipping init"
+      );
+      return;
+    }
+
+    try {
+      for (const ddl of tables) {
+        await client.query(ddl);
+      }
+      for (const ddl of indexes) {
+        await client.query(ddl);
+      }
+    } finally {
+      await client.query("SELECT pg_advisory_unlock($1)", [SCHEMA_LOCK_KEY]);
+    }
+  } finally {
+    client.release();
   }
 }

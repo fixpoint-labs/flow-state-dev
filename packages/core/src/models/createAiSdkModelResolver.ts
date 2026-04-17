@@ -750,11 +750,16 @@ export function createAiSdkModelResolver(
     ? resolveLanguageModel
     : undefined;
 
-  return (modelId: string) =>
+  const resolver = ((modelId: string) =>
     createGeneratorModelFromAiSdk(
       modelId,
       resolveLanguageModel(modelId),
       providerWithTools,
       resolveLanguageModel
-    );
+    )) as ModelResolver;
+
+  // Direct AI SDK resolver — no presets, so model strings are already concrete.
+  resolver.resolveId = (modelId: string): string => modelId;
+
+  return resolver;
 }
