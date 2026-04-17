@@ -28,6 +28,20 @@ type ServerEntry = {
 
 const passthroughSchema = z.record(z.unknown());
 
+/**
+ * Convert a single MCP tool definition into a framework handler block.
+ *
+ * Two post-construction mutations are deliberate:
+ *   1. `inputSchema` is overridden with the MCP tool's native AI-SDK
+ *      `jsonSchema()` wrapper (when provided) so the AI SDK can consume it
+ *      directly without our passthrough Zod schema being in the way.
+ *   2. The `MCP_TOOL_META` symbol-keyed marker is attached so capability-level
+ *      filters can identify MCP-origin tools without parsing tool names.
+ *      This marker is invisible to the rest of the framework.
+ *
+ * The MCP server is authoritative for argument validation on the execute
+ * path; our passthrough schema is only a permissive framework-level fallback.
+ */
 function mcpToolToHandler(
   serverName: string,
   originalName: string,
@@ -41,6 +55,9 @@ function mcpToolToHandler(
     inputSchema: passthroughSchema,
     execute: async (input: Record<string, unknown>) => {
       if (!mcpTool.execute) {
+        // Deliberate soft-fail: surface the configuration issue to the model as a
+        // tool result rather than throwing. A missing `execute` is an MCP server
+        // defect, but for Phase 1 we'd rather keep the flow running than abort.
         return {
           error: `Tool ${originalName} on server ${serverName} does not support execution.`,
         };
@@ -49,6 +66,9 @@ function mcpToolToHandler(
     },
   });
 
+  // Override the passthrough Zod schema with the AI SDK jsonSchema() wrapper so
+  // the generator's normalizeToolSchema passes it through unmodified. `as any`
+  // is needed because the block's `inputSchema` is typed as `typeof passthroughSchema`.
   if (mcpTool.inputSchema !== undefined) {
     (block as any).inputSchema = mcpTool.inputSchema;
   }
