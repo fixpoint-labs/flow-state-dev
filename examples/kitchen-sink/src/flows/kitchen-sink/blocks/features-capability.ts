@@ -12,7 +12,7 @@
  *   - readArtifact/updateArtifact are included as fallback
  *   - no bash tools or guidance
  */
-import { defineCapability } from "@flow-state-dev/core";
+import { defineCapability, type CapabilityRef } from "@flow-state-dev/core";
 import { createBashCapability } from "@flow-state-dev/tools/bash";
 import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
@@ -71,7 +71,7 @@ export const featuresCapability = defineCapability({
     (ctx) => {
       const bashEnabled =
         ctx.session.state.mode !== "ask" && ctx.session.state.features.bashTool;
-      const caps = bashEnabled
+      const caps: CapabilityRef[] = bashEnabled
         ? [bashCap, artifactsCapability.presets({ inventory: true, tools: false })]
         : [artifactsCapability];
       if (mcpCapability) caps.push(mcpCapability);

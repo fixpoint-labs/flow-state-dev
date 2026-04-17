@@ -22,9 +22,15 @@ function fakeMcpTool(name: string, description: string) {
   };
 }
 
+type MockTool = {
+  description: string;
+  parameters: Record<string, unknown>;
+  execute?: (args: unknown) => Promise<unknown>;
+};
+
 /** Creates a mock MCP client factory that returns tools based on server name. */
 function createMockClientFactory(
-  toolsByServer: Record<string, Record<string, ReturnType<typeof fakeMcpTool>>>,
+  toolsByServer: Record<string, Record<string, MockTool>>,
   opts?: { failServers?: string[] },
 ) {
   const closeFns: Array<ReturnType<typeof vi.fn>> = [];
