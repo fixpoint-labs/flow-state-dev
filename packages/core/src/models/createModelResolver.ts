@@ -190,6 +190,20 @@ export function createModelResolver(
   // Cache for auto-loaded gateway resolvers (by gateway type)
   const gatewayCache = new Map<string, { gateway: Record<string, unknown>; type: string }>();
 
+  // Seed gateway cache with explicit instances from options.gateways[*].instance.
+  // This bypasses dynamic loading via createRequire, which fails in bundled
+  // Next.js/Webpack environments even when the package is externalized.
+  if (options?.gateways) {
+    for (const [, gwConfig] of Object.entries(options.gateways)) {
+      if (gwConfig.instance !== undefined) {
+        gatewayCache.set(gwConfig.type, {
+          gateway: gwConfig.instance as Record<string, unknown>,
+          type: gwConfig.type
+        });
+      }
+    }
+  }
+
   function getProviderResolver(providerName: string): ProviderResolver | undefined {
     // Check explicit providers first
     if (explicitProviders?.has(providerName)) {
