@@ -23,13 +23,7 @@ const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
 const modelResolver = createModelResolver({
   providers: { openai },
   gateways: gatewayApiKey
-    ? {
-        vercel: {
-          type: "vercel",
-          apiKey: gatewayApiKey,
-          instance: createGateway({ apiKey: gatewayApiKey }),
-        },
-      }
+    ? { vercel: createGateway({ apiKey: gatewayApiKey }) }
     : undefined,
 });
 
