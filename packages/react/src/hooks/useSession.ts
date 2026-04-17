@@ -20,10 +20,15 @@ import type {
   ReasoningItem,
   SessionMetadataChangedEvent
 } from "@flow-state-dev/core/items";
+import { resolveItemRole } from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
 
 /**
- * Client-audience item types used for default filtering.
+ * Client-audience item types used as a fallback when an explicit `itemTypes`
+ * filter is provided. The primary client-side filter is role-based:
+ * `resolveItemRole(item) === "external"` (see `passesItemFilter`). The type
+ * whitelist still scopes a few non-role-bearing item kinds (state_change,
+ * resource_change, error, step_error) that clients surface regardless of role.
  */
 const CLIENT_ITEM_TYPES = new Set([
   "message",
@@ -149,13 +154,18 @@ function passesItemFilter(
     return false;
   }
 
-  // Type-based audience filtering: if explicit types provided, use those;
-  // otherwise default to client-audience types.
+  // Explicit itemTypes override uses type matching only (legacy opt-in).
   if (filter.itemTypes !== undefined && filter.itemTypes.length > 0) {
     return filter.itemTypes.includes(item.type);
   }
 
-  return CLIENT_ITEM_TYPES.has(item.type);
+  // Default client view: only `external` items are shown. `internal` and
+  // `trace` items stream via SSE for devtool consumers but stay out of the
+  // user-facing conversation view.
+  if (!CLIENT_ITEM_TYPES.has(item.type)) {
+    return false;
+  }
+  return resolveItemRole(item) === "external";
 }
 
 /**
