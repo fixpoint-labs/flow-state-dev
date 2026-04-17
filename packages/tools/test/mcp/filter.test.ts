@@ -54,6 +54,19 @@ describe("defaultMcpFilterTools", () => {
     );
     expect(result).toEqual([nonMcp]);
   });
+
+  it("applies both disabledTools and disabledServers simultaneously", async () => {
+    const result = await defaultMcpFilterTools(
+      ctx({
+        mcp: {
+          disabledTools: ["mcp__linear__list_issues"],
+          disabledServers: ["notion"],
+        },
+      }),
+      [linearList, linearCreate, notionSearch, nonMcp],
+    );
+    expect(result).toEqual([linearCreate, nonMcp]);
+  });
 });
 
 describe("mcpRequestStateSchema", () => {
