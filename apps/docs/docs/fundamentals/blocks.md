@@ -60,7 +60,7 @@ What the framework handles for you:
 
 #### Controlling what gets emitted
 
-The `emit` config controls which items a generator sends to the client stream. By default everything is emitted. You can selectively suppress or remap:
+The `emit` config controls which items a generator emits and at what visibility level. By default everything is emitted as `external` (visible to the browser and LLM).
 
 ```ts
 // Suppress all streaming output — the generator runs silently
@@ -69,19 +69,35 @@ const silent = generator({ emit: false, /* ... */ });
 // Suppress message items but keep tool call status events
 const workerGen = generator({ emit: { messages: false }, /* ... */ });
 
-// Remap messages to reasoning items (visible as "thinking", not conversation text)
-const thinker = generator({ emit: { messages: 'reasoning' }, /* ... */ });
+// Emit messages as internal (LLM sees them, browser doesn't)
+const helper = generator({ emit: { messages: "internal" }, /* ... */ });
+
+// Make all output trace-only (devtool-only, neither browser nor LLM)
+const debugGen = generator({ emit: "trace", /* ... */ });
 ```
 
 | Flag | Values | Default | Effect |
 |------|--------|---------|--------|
-| `reasoning` | `true` / `false` | `true` | Emit reasoning/thinking items from models that support it |
-| `messages` | `true` / `false` / `'reasoning'` | `true` | `true` emits normal assistant messages. `false` suppresses them entirely. `'reasoning'` emits message text as reasoning items instead |
-| `toolCalls` | `true` / `false` | `true` | Emit tool call status items during the tool execution loop |
+| `reasoning` | `true` / `false` / `ItemRole` | `true` | Emit reasoning/thinking items from models that support it |
+| `messages` | `true` / `false` / `ItemRole` | `true` | `true` emits normal assistant messages. `false` suppresses them. A role string sets visibility. |
+| `toolCalls` | `true` / `false` / `ItemRole` | `true` | Emit tool call status items during the tool execution loop |
 
-Setting `emit: false` is shorthand for suppressing all three. When `messages` is `false` but the generator has tools, the streaming path is still used so tool call status events reach the client — only the text output items are suppressed.
+Setting `emit: false` is shorthand for suppressing all three. A top-level role string (`emit: "internal"`) applies that role to every item type. The object form overrides per-type.
 
-This is particularly useful for worker generators inside orchestration patterns (supervisor, coordinator) where you want tool progress visible but don't want each sub-task's text polluting the main conversation stream.
+You can also set item visibility at the block level with `itemRole`:
+
+```ts
+const helper = generator({
+  name: "background-analysis",
+  model: "preset/fast",
+  prompt: "Analyze the user's intent...",
+  itemRole: "internal", // default role for all items this block emits
+});
+```
+
+Precedence (high → low): per-type `emit` value → top-level `emit` value → block `itemRole` → position-based default (main phase → `external`, tool-call / work phase → `trace`).
+
+See [Items](/docs/streaming/overview#item-roles) for the full role model.
 
 #### Any block can be a tool
 

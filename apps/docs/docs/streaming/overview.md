@@ -16,17 +16,19 @@ Every item has a type that determines how it's persisted, routed, and rendered:
 |------|-----------|
 | `message` | Chat message (user or assistant) with content parts |
 | `reasoning` | Model reasoning/thinking tokens |
-| `block_output` | Structured output from any block |
 | `component` | Custom UI component with typed props |
 | `container` | Groups child items for visual layout |
+| `block_tool_output` | Result of a tool invocation within a generator's tool loop |
+| `source` | URL reference from provider-native tools (web search, etc.) |
+| `status` | Transient progress updates (not persisted) |
 | `state_change` | State mutation notification |
 | `resource_change` | Resource mutation notification |
 | `step_error` | Non-terminal error in a pipeline step |
 | `error` | Terminal request error |
-| `status` | Transient progress updates (not persisted) |
 | `context` | Hidden context for LLMs only. Not sent to the client. |
-
-Tool invocations use `block_output` items: `item.added` with `toolCall` populated (no output yet), then `item.done` with `output` populated after the tool block runs.
+| `block_output` | Execution record for every block (trace-only) |
+| `router_decision` | Route selection record (trace-only) |
+| `sequencer_state_snapshot` | Sequencer state at step boundaries (trace-only, transient) |
 
 ## Emitting items
 
@@ -34,14 +36,14 @@ Generators emit items automatically as they stream. Handlers are silent by defau
 
 ```ts
 execute: async (input, ctx) => {
-  await ctx.emitMessage("Processing your request...");
-  await ctx.emitComponent("progress-bar", { percent: 50, label: "Analyzing..." });
-  await ctx.emitStatus("Fetching data from external API...");
+  ctx.emitMessage("Processing your request...");
+  ctx.emitComponent("progress-bar", { percent: 50, label: "Analyzing..." });
+  ctx.emitStatus("Fetching data from external API...");
   return result;
 }
 ```
 
-`emitMessage()` creates a `message` item. `emitComponent()` creates a `component` item with the component name and typed props. `emitStatus()` creates a transient `status` item for progress indicators.
+`emitMessage()` creates a `message` item. `emitComponent()` creates a `component` item with the component name and typed props. `emitStatus()` creates a transient `status` item for progress indicators. `emitLLMContext()` creates a `context` item that feeds the LLM but is hidden from the browser.
 
 ## Session items
 
@@ -50,18 +52,37 @@ Items accumulate in the session across requests. When a user sends a second mess
 Three views for accessing session items:
 
 - **`items.all()`** — Everything in the session. The full log.
-- **`items.client()`** — Items intended for the client UI. Excludes `context` and internal `block_output`.
+- **`items.client()`** — Items intended for the client UI. Excludes `context` and trace items like `block_output`.
 - **`items.llm()`** — Items formatted for the model. Supports token limiting: `items.llm({ limit: { tokens: 20_000 } })` packs from newest to oldest within the budget.
 
-## Audiences
+## Item roles
 
-Not all items go everywhere. The framework uses type-based audience routing:
+Every item has a **role** that controls who can see it. There are three roles, each with progressively narrower visibility:
 
-| Audience | Types |
-|----------|-------|
-| **Client** | `message`, `reasoning`, `component`, `container`, `status`, `state_change`, `resource_change`, `error`, `step_error` |
-| **LLM** | `message`, `reasoning`, `context`, `block_output` (when it has `toolCall` — the tool result) |
-| **Internal** | `block_output` without `toolCall` — devtools only |
+| Role | Browser | LLM history | DevTool |
+|------|:-------:|:-----------:|:-------:|
+| `external` | ✓ | ✓ | ✓ |
+| `internal` | — | ✓ | ✓ |
+| `trace` | — | — | ✓ |
+
+**`external`** is the default. The browser renders it, and the LLM can use it in conversation history. Most items are external.
+
+**`internal`** is hidden from the browser but participates in LLM history. Use it for helper blocks that produce content the next model call should see, but the user shouldn't. Think of it as a programmatic system message.
+
+**`trace`** is devtool-only. Neither the browser nor the LLM sees it. Structural items like `block_output`, `router_decision`, and `sequencer_state_snapshot` default to trace.
+
+You can set item roles on generators with the `itemRole` config:
+
+```ts
+const helper = generator({
+  name: "background-analysis",
+  model: "preset/fast",
+  prompt: "Analyze the user's intent...",
+  itemRole: "internal", // LLM sees the output, user doesn't
+});
+```
+
+Not all external items enter LLM history — only content types like `message`, `reasoning`, and `block_tool_output`. UI-only types like `component`, `status`, and `state_change` are external (browser sees them) but don't go into LLM conversation history.
 
 ## Content model
 
@@ -72,8 +93,7 @@ Message and reasoning items have a **content array** with typed parts:
   type: "message",
   role: "assistant",
   content: [
-    { type: "text", text: "Here's what I found:" },
-    { type: "data", data: { results: [...] } },
+    { type: "output_text", text: "Here's what I found:" },
   ]
 }
 ```
@@ -112,9 +132,12 @@ This powers the DevTool's trace timeline, UI grouping, and correlating items to 
 
 Most items are persisted to the session store. Exceptions:
 
-- `status` items are always transient (stream-only, not persisted).
+- `status` and `error` items are always transient (stream-only, not persisted).
+- `sequencer_state_snapshot` is always transient.
 - `state_change` and `resource_change` are transient by default in production; persisted in dev mode for the DevTool.
 - Everything else is persisted by default.
+
+When a block is configured with `transient: true`, all items it emits become transient regardless of type.
 
 See [Persistence](/docs/persistence/overview) for store configuration.
 
@@ -125,5 +148,16 @@ Emit custom UI components from any block:
 ```ts
 ctx.emitComponent("chart", { data: chartData, title: "Monthly Revenue" });
 ```
+
+Component items support streaming updates via a handle:
+
+```ts
+const handle = ctx.emitComponent("plan-view", { steps: [], status: "working" });
+handle.update({ steps: ["Step 1 done"], status: "working" });
+handle.update({ steps: ["Step 1 done", "Step 2 done"], status: "complete" });
+handle.done();
+```
+
+Live clients see every intermediate update via SSE. The persisted record holds only the final state.
 
 Register component renderers on the React side. The `ItemsRenderer` dispatches to your registered renderers based on the component name. See [React Integration](/docs/client/react) for renderer setup.
