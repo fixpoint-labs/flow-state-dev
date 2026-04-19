@@ -391,6 +391,16 @@ describe("runAction — abort path", () => {
     const abortEvent = events.find((e) => e.type === "request.aborted");
     expect(abortEvent).toBeDefined();
     expect((abortEvent as { status?: string })?.status).toBe("aborted");
+
+    // Check that a persistent status item was emitted with the abort message
+    const record = await stores.request.get(requestId);
+    const items = record?.items ?? [];
+    const abortStatusItem = items.find(
+      (i) => i.type === "status" && (i as { detail?: { code?: string } }).detail?.code === "system.request_aborted"
+    );
+    expect(abortStatusItem).toBeDefined();
+    expect((abortStatusItem as { message?: string })?.message).toBe("Request was stopped.");
+    expect(abortStatusItem?.transient).not.toBe(true);
   });
 
   it("aborting a non-existent request returns 409 after terminal write (or 404 if no record)", async () => {

@@ -1,7 +1,7 @@
 /**
  * Action-level orchestration runtime for request lifecycle, observers, persistence, and terminal errors.
  */
-import type { ErrorItem, ItemProvenance, MessageItem, OutputItem } from "@flow-state-dev/core/items";
+import type { ErrorItem, ItemProvenance, MessageItem, OutputItem, StatusItem } from "@flow-state-dev/core/items";
 import { isEphemeralContent } from "@flow-state-dev/core/items";
 import type {
   ActionConfig,
@@ -284,6 +284,42 @@ async function emitBudgetWarning(
     ts: Date.now(),
     message,
     detail: { code: "system.token_budget_warning" }
+  };
+
+  await response.emitItemAdded(item);
+  await response.emitItemDone(item);
+}
+
+/**
+ * Emits a persistent status item indicating the request was stopped by the user.
+ */
+async function emitAbortedMessage(
+  ctx: ExecutionContext
+): Promise<void> {
+  if (
+    typeof ctx.response !== "object" ||
+    ctx.response === null ||
+    typeof (ctx.response as { emitItemAdded?: unknown }).emitItemAdded !== "function" ||
+    typeof (ctx.response as { emitItemDone?: unknown }).emitItemDone !== "function"
+  ) {
+    return;
+  }
+
+  const response = ctx.response as unknown as {
+    emitItemAdded: (item: StatusItem) => Promise<unknown>;
+    emitItemDone: (item: StatusItem) => Promise<unknown>;
+  };
+
+  const item: StatusItem = {
+    id: `item_status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: "status",
+    status: "completed",
+    requestId: ctx.requestRuntime.requestId,
+    itemIndex: getResponseItems(ctx.response).length,
+    provenance: RUNTIME_PROVENANCE,
+    ts: Date.now(),
+    message: "Request was stopped.",
+    detail: { code: "system.request_aborted" }
   };
 
   await response.emitItemAdded(item);
@@ -655,6 +691,7 @@ export async function runActionInternal<
 
     if (wasAborted) {
       // --- Abort path: user explicitly stopped the request ---
+      await emitAbortedMessage(ctx);
       await response.emitRequestStatus("aborted");
 
       await options.stores.request.flushItems(requestId);
