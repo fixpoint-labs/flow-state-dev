@@ -2,61 +2,41 @@
 sidebar_position: 1
 ---
 
-# Overview
+# Items
 
-Items are a core part of the data model. Every artifact produced during block execution — a chat message, a tool call result, a state change, a custom UI component — is persisted as an item. Items accumulate in sessions to form the conversation log. They power streaming to clients, provide conversation history to LLMs, enable the DevTool's trace view, and support resumable connections.
+Every artifact produced during block execution is an **item**. A chat message, a tool call result, a progress indicator, a custom UI component — each one is an item that streams to connected clients in real time and (in most cases) gets persisted to the session record.
 
-Items aren't just a transport mechanism. They're the durable record of what happened.
+Items serve three purposes:
 
-## Item types
+1. **Streaming output** — clients receive items over SSE as blocks execute
+2. **Session history** — persisted items accumulate across requests, forming the conversation log
+3. **LLM context** — some item types feed into conversation history for future model calls
 
-Every item has a type that determines how it's persisted, routed, and rendered:
+## The items you'll use most
 
-| Type | What it is |
-|------|-----------|
-| `message` | Chat message (user or assistant) with content parts |
-| `reasoning` | Model reasoning/thinking tokens |
-| `component` | Custom UI component with typed props |
-| `container` | Groups child items for visual layout |
-| `block_tool_output` | Result of a tool invocation within a generator's tool loop |
-| `source` | URL reference from provider-native tools (web search, etc.) |
-| `status` | Transient progress updates (not persisted) |
-| `state_change` | State mutation notification |
-| `resource_change` | Resource mutation notification |
-| `step_error` | Non-terminal error in a pipeline step |
-| `error` | Terminal request error |
-| `block_output` | Execution record for every block (trace-only) |
-| `router_decision` | Route selection record (trace-only) |
-| `sequencer_state_snapshot` | Sequencer state at step boundaries (trace-only, transient) |
+Most of the time you'll work with three emit methods. Generators call these automatically for their own output, but you can also call them explicitly from any block:
 
-## Emitting items
+| Method | What it creates | Persisted | Enters LLM history |
+|--------|----------------|:---------:|:------------------:|
+| `ctx.emitMessage(text)` | A chat message visible to the user | Yes | Yes |
+| `ctx.emitComponent(name, data)` | A custom UI component with structured data | Yes | No |
+| `ctx.emitStatus(message)` | A transient progress indicator | No | No |
 
-Generators emit items automatically as they stream. Handlers are silent by default. To emit items from a handler (or any block), use the context methods:
+These are covered in depth in [Emitting Items](/docs/streaming/emitting-items).
 
-```ts
-execute: async (input, ctx) => {
-  ctx.emitMessage("Processing your request...");
-  ctx.emitComponent("progress-bar", { percent: 50, label: "Analyzing..." });
-  ctx.emitStatus("Fetching data from external API...");
-  return result;
-}
-```
+## What happens automatically
 
-`emitMessage()` creates a `message` item. `emitComponent()` creates a `component` item with the component name and typed props. `emitStatus()` creates a transient `status` item for progress indicators.
+You don't need to emit most item types yourself. The framework handles them:
 
-## Session items
-
-Items accumulate in the session across requests. When a user sends a second message, the session already holds every item from the first request. This is how conversation history works — generators read from session items to build context.
-
-Three views for accessing session items:
-
-- **`items.all()`** — Everything in the session. The full log.
-- **`items.client()`** — Items intended for the client UI. Excludes trace items like `block_output`.
-- **`items.llm()`** — Items formatted for the model. Supports token limiting: `items.llm({ limit: { tokens: 20_000 } })` packs from newest to oldest within the budget.
+- **Generators** automatically emit `message` and `reasoning` items as the model streams
+- **Tool calls** produce `block_tool_output` items with the tool name, input, and result
+- **State mutations** emit `state_change` notifications so the client stays in sync
+- **Resource mutations** emit `resource_change` notifications
+- **Errors** produce `error` or `step_error` items depending on whether they're terminal
 
 ## Item roles
 
-Every item has a **role** that controls who can see it. There are three roles, each with progressively narrower visibility:
+Every item has a role that controls who sees it:
 
 | Role | Browser | LLM history | DevTool |
 |------|:-------:|:-----------:|:-------:|
@@ -64,99 +44,71 @@ Every item has a **role** that controls who can see it. There are three roles, e
 | `internal` | — | ✓ | ✓ |
 | `trace` | — | — | ✓ |
 
-**`external`** is the default. The browser renders it, and the LLM can use it in conversation history. Most items are external.
+Most items are `external` by default. A few things to know:
 
-**`internal`** is hidden from the browser but participates in LLM history. Use it for helper blocks that produce content the next model call should see, but the user shouldn't. Think of it as a programmatic system message.
-
-**`trace`** is devtool-only. Neither the browser nor the LLM sees it. Structural items like `block_output`, `router_decision`, and `sequencer_state_snapshot` default to trace.
-
-You can set item roles on generators with the `itemRole` config:
+- **Not all external items enter LLM history.** Only content types (`message`, `reasoning`, `block_tool_output`) do. UI types like `component` and `status` are visible in the browser but don't feed into model context.
+- **Internal items** are for helper blocks whose output the next model call should see, but the user shouldn't. Set `itemRole: "internal"` on a generator to make its output internal.
+- **Trace items** are devtool-only. Structural items like `block_output` and `router_decision` default to trace.
 
 ```ts
 const helper = generator({
   name: "background-analysis",
   model: "preset/fast",
   prompt: "Analyze the user's intent...",
-  itemRole: "internal", // LLM sees the output, user doesn't
+  itemRole: "internal", // LLM sees output, user doesn't
 });
 ```
 
-Not all external items enter LLM history — only content types like `message`, `reasoning`, and `block_tool_output`. UI-only types like `component`, `status`, and `state_change` are external (browser sees them) but don't go into LLM conversation history.
+## Persistence
 
-## Content model
+Most items persist to the session store automatically. Exceptions:
 
-Message and reasoning items have a **content array** with typed parts:
+- `status` items are always transient (stream-only, never persisted)
+- `sequencer_state_snapshot` is always transient
+- `state_change` and `resource_change` are transient in production, persisted in dev mode for the DevTool
+- Everything else persists by default
+
+When a block is configured with `transient: true`, all items it emits become transient regardless of type.
+
+## Session items
+
+Items accumulate across requests. When a user sends a second message, the session already holds every item from the first request. Generators use this to build conversation history.
+
+Three views for accessing session items:
+
+- **`items.all()`** — everything in the session
+- **`items.client()`** — items intended for the client UI (excludes trace items)
+- **`items.llm()`** — items formatted for the model, with optional token limiting:
 
 ```ts
-{
-  type: "message",
-  role: "assistant",
-  content: [
-    { type: "output_text", text: "Here's what I found:" },
-  ]
-}
-```
-
-When [voice](/docs/fundamentals/voice) is enabled, audio content parts arrive on the same message:
-
-```ts
-{ type: "output_audio", audio: "base64...", mediaType: "audio/mp3", transcript: "Here's what I found:" }
+const history = ctx.session.items.llm({ limit: { tokens: 20_000 } });
 ```
 
 ## Item lifecycle
 
-Items follow a three-phase lifecycle:
+Items go through three phases:
 
-1. **Added** — Item exists with `status: "in_progress"`. Persisted immediately.
-2. **Content deltas** — For streaming content (messages, reasoning), text arrives in chunks. The client accumulates deltas.
-3. **Done** — Item finalized with `status: "completed"`, `"incomplete"`, or `"failed"`. Terminal states are immutable.
+1. **Added** — item exists with `status: "in_progress"`
+2. **Streaming** — for messages and reasoning, text arrives in chunks via content deltas
+3. **Done** — item finalized as `"completed"`, `"incomplete"`, or `"failed"` (terminal, immutable)
 
-## Provenance
+## All item types
 
-Every item carries provenance metadata — which block produced it, where in the execution tree it came from:
+For reference, here's the complete registry:
 
-```ts
-type ItemProvenance = {
-  blockName: string;
-  blockInstanceId: string;
-  parentBlockInstanceId?: string;
-  phase: "main" | "work";
-  stepIndex?: number;
-};
-```
-
-This powers the DevTool's trace timeline, UI grouping, and correlating items to specific block executions.
-
-## Persistence behavior
-
-Most items are persisted to the session store. Exceptions:
-
-- `status` items are always transient (stream-only, not persisted).
-- `sequencer_state_snapshot` is always transient.
-- `state_change` and `resource_change` are transient by default in production; persisted in dev mode for the DevTool.
-- Everything else is persisted by default.
-
-When a block is configured with `transient: true`, all items it emits become transient regardless of type.
-
-See [Persistence](/docs/persistence/overview) for store configuration.
-
-## Custom components
-
-Emit custom UI components from any block:
-
-```ts
-ctx.emitComponent("chart", { data: chartData, title: "Monthly Revenue" });
-```
-
-Component items support streaming updates via a handle:
-
-```ts
-const handle = ctx.emitComponent("plan-view", { steps: [], status: "working" });
-handle.update({ steps: ["Step 1 done"], status: "working" });
-handle.update({ steps: ["Step 1 done", "Step 2 done"], status: "complete" });
-handle.done();
-```
-
-Each `emitComponent()` call creates exactly one item. `update()` mutates that item's data in-place — it does not create additional items. Live clients see every intermediate state via SSE. The persisted record holds only the final state after `done()` is called.
-
-Register component renderers on the React side. The `ItemsRenderer` dispatches to your registered renderers based on the component name. See [React Integration](/docs/client/react) for renderer setup.
+| Type | What it is | Persisted |
+|------|-----------|:---------:|
+| `message` | Chat message (user or assistant) | Yes |
+| `reasoning` | Model thinking tokens | Yes |
+| `component` | Custom UI component | Yes |
+| `container` | Groups child items for visual layout | Yes |
+| `block_tool_output` | Tool invocation result | Yes |
+| `source` | URL reference from web search, etc. | Yes |
+| `status` | Progress indicator | No |
+| `state_change` | State mutation notification | Dev only |
+| `resource_change` | Resource mutation notification | No (default) |
+| `step_error` | Non-terminal error in a pipeline step | Yes |
+| `error` | Terminal request error | Yes |
+| `block_output` | Execution record (trace-only) | Yes |
+| `router_decision` | Route selection (trace-only) | Yes |
+| `sequencer_state_snapshot` | Sequencer state snapshot (trace-only) | No |
