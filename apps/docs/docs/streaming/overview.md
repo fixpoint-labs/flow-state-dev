@@ -18,11 +18,11 @@ Items serve three purposes:
 
 Most of the time you'll work with three emit methods. Generators call these automatically for their own output, but you can also call them explicitly from any block:
 
-| Method | What it creates | Persisted | Enters LLM history |
-|--------|----------------|:---------:|:------------------:|
-| `ctx.emitMessage(text)` | A chat message visible to the user | Yes | Yes |
-| `ctx.emitComponent(name, data)` | A custom UI component with structured data | Yes | No |
-| `ctx.emitStatus(message)` | A transient progress indicator | No | No |
+| Method | What it creates | LLM History | Transient |
+|--------|----------------|:-----------:|:---------:|
+| `ctx.emitMessage(text)` | A chat message visible to the user | ✓ | — |
+| `ctx.emitComponent(name, data)` | A custom UI component with structured data | — | — |
+| `ctx.emitStatus(message)` | A progress indicator | — | Always |
 
 These are covered in depth in [Emitting Items](/docs/streaming/emitting-items).
 
@@ -36,21 +36,24 @@ You don't need to emit most item types yourself. The framework handles them:
 - **Resource mutations** emit `resource_change` notifications
 - **Errors** produce `error` or `step_error` items depending on whether they're terminal
 
-## Item roles
+## Visibility
 
-Every item has a role that controls who sees it:
+The reference table below shows where each item type appears by default. Two things to note:
 
-| Role | Browser | LLM history | DevTool |
+- **Client** means the client receives and can render it. Most items are client-visible.
+- **LLM History** means the item enters conversation history for future model calls. Only content-bearing types (`message`, `reasoning`, `block_tool_output`) do this. Other client-visible types like `component` and `status` don't feed into model context — they're purely for the UI.
+
+### Changing visibility with roles
+
+Every item has a **role** that you can override to change its default visibility:
+
+| Role | Client | LLM history | DevTool |
 |------|:-------:|:-----------:|:-------:|
 | `external` | ✓ | ✓ | ✓ |
 | `internal` | — | ✓ | ✓ |
 | `trace` | — | — | ✓ |
 
-Most items are `external` by default. A few things to know:
-
-- **Not all external items enter LLM history.** Only content types (`message`, `reasoning`, `block_tool_output`) do. UI types like `component` and `status` are visible in the browser but don't feed into model context.
-- **Internal items** are for helper blocks whose output the next model call should see, but the user shouldn't. Set `itemRole: "internal"` on a generator to make its output internal.
-- **Trace items** are devtool-only. Structural items like `block_output` and `router_decision` default to trace.
+Set `itemRole: "internal"` on a generator to hide its output from the client while keeping it in LLM history. This is useful for helper blocks that produce content the next model call should see, but the user shouldn't:
 
 ```ts
 const helper = generator({
@@ -61,16 +64,13 @@ const helper = generator({
 });
 ```
 
+Set `itemRole: "trace"` to make items devtool-only. Structural items like `block_output` and `router_decision` default to trace.
+
 ## Persistence
 
-Most items persist to the session store automatically. Exceptions:
+Items are persisted by default. A few types are **transient** — they stream to clients during execution but are never written to the session store. When someone reconnects or opens a past session, transient items won't appear.
 
-- `status` items are always transient (stream-only, never persisted)
-- `sequencer_state_snapshot` is always transient
-- `state_change` and `resource_change` are transient in production, persisted in dev mode for the DevTool
-- Everything else persists by default
-
-When a block is configured with `transient: true`, all items it emits become transient regardless of type.
+The reference table below marks which types are transient. You can also make any block's output transient by setting `transient: true` on the block config.
 
 ## Accessing items
 
@@ -98,19 +98,19 @@ Items go through three phases:
 
 For reference, here's the complete registry:
 
-| Type | What it is | Default Role | Persisted |
-|------|-----------|:------------:|:---------:|
-| `message` | Chat message (user or assistant) | external | Yes |
-| `reasoning` | Model thinking tokens | external | Yes |
-| `component` | Custom UI component | external | Yes |
-| `container` | Groups child items for visual layout | external | Yes |
-| `block_tool_output` | Tool invocation result | external | Yes |
-| `source` | URL reference from web search, etc. | external | Yes |
-| `status` | Progress indicator | external | No |
-| `state_change` | State mutation notification | external | Dev only |
-| `resource_change` | Resource mutation notification | external | No (default) |
-| `step_error` | Non-terminal error in a pipeline step | external | Yes |
-| `error` | Terminal request error | external | Yes |
-| `block_output` | Execution record | trace | Yes |
-| `router_decision` | Route selection record | trace | Yes |
-| `sequencer_state_snapshot` | Sequencer state snapshot | trace | No |
+| Type | What it is | Client | LLM History | Transient |
+|------|-----------|:-------:|:-----------:|:---------:|
+| `message` | Chat message (user or assistant) | ✓ | ✓ | — |
+| `reasoning` | Model thinking tokens | ✓ | ✓ | — |
+| `component` | Custom UI component | ✓ | — | — |
+| `container` | Groups child items for visual layout | ✓ | — | — |
+| `block_tool_output` | Tool invocation result | ✓ | ✓ | — |
+| `source` | URL reference from web search, etc. | ✓ | — | — |
+| `status` | Progress indicator | ✓ | — | Always |
+| `state_change` | State mutation notification | ✓ | — | Production |
+| `resource_change` | Resource mutation notification | ✓ | — | Always |
+| `step_error` | Non-terminal error in a pipeline step | ✓ | — | — |
+| `error` | Terminal request error | ✓ | — | — |
+| `block_output` | Execution record | — | — | — |
+| `router_decision` | Route selection record | — | — | — |
+| `sequencer_state_snapshot` | Sequencer state snapshot | — | — | Always |
