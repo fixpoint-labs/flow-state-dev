@@ -27,7 +27,7 @@ export const chatGen = generator({
   model: "preset/fast",
   prompt: "You are a helpful assistant. Be concise and friendly.",
   inputSchema: z.object({ message: z.string() }),
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: (_input, ctx) => ctx.session.items.history(),
   user: (input) => input.message,
 });
 ```
@@ -36,7 +36,7 @@ export const chatGen = generator({
 
 - **`model`** — The model ID. The framework resolves this at runtime via a model resolver (OpenAI, Anthropic, etc.). You can override it per request for testing or A/B runs.
 - **`prompt`** — The system instruction. Sent first in every model call. Can be a string or a function `(input, ctx) => string` for dynamic prompts.
-- **`history`** — Prior conversation messages. This is how the model remembers what was said before. The framework calls `ctx.session.items.llm()` to get completed messages in `{ role, content }` format, filters and formats them, and injects them into the prompt. Without this, each request would be stateless.
+- **`history`** — Prior conversation messages. This is how the model remembers what was said before. The framework calls `ctx.session.items.history()` to get completed messages in `{ role, content }` format, filters and formats them, and injects them into the prompt. Without this, each request would be stateless.
 - **`user`** — The current user input. Extracted from the action input. In our case, it's `input.message`. The framework adds this as the final user-role message before calling the model.
 
 The framework assembles the full prompt in order: prompt, context (if any), history, user. It handles tool calls, retries, and streaming. You focus on what goes in, not how it gets there.

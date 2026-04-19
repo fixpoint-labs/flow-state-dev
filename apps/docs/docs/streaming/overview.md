@@ -91,10 +91,10 @@ Three views for accessing session items:
 
 - **`items.all()`** — everything in the session
 - **`items.client()`** — items intended for the client UI (excludes trace items)
-- **`items.llm()`** — items formatted for the model, with optional token limiting:
+- **`items.history()`** — items formatted for the model, with optional token limiting:
 
 ```ts
-const history = ctx.session.items.llm({ limit: { tokens: 20_000 } });
+const history = ctx.session.items.history({ limit: { tokens: 20_000 } });
 ```
 
 ## Item lifecycle

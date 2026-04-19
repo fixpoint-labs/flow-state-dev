@@ -285,7 +285,7 @@ const chatGenerator = generator({
   model: "preset/fast",
   prompt: "You are a helpful assistant.",
   context: [myContext],
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: (_input, ctx) => ctx.session.items.history(),
   user: (input) => input.message,
 });
 ```

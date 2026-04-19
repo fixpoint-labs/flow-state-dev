@@ -40,9 +40,7 @@ const chatGenerator = generator({
   prompt: "You are a helpful, concise assistant.",
   inputSchema: chatInputSchema,
   // history slot: load prior conversation from persisted request items.
-  // session.items.llm() aggregates completed requests, filters to LLM-visible
-  // message items, and returns them as {role, content} pairs chronologically.
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: (_input, ctx) => ctx.session.items.history(),
   user: (input) => input.message,
   emit: {
     reasoning: true

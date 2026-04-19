@@ -188,7 +188,7 @@ const chatGenerator = generator({
   prompt: "You are a helpful, concise assistant.",
   inputSchema: z.object({ message: z.string().min(1) }),
   // Default outputSchema is z.string() — enables text streaming
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: (_input, ctx) => ctx.session.items.history(),
   user: (input) => input.message,
   tools: [searchTool, calculatorTool],
   emit: { reasoning: true },

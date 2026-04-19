@@ -132,7 +132,7 @@ const agent = generator({
   model: "preset/fast",
   prompt: "You are a research assistant.",
   // history feeds completed turns back to the model automatically
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: (_input, ctx) => ctx.session.items.history(),
   tools: [deepResearch, analyze, readDoc, writeDoc],
 });
 

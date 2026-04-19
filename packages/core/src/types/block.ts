@@ -17,6 +17,15 @@ import type { GeneratorModelResult, GeneratorModelUsage } from "./model";
 
 export type BlockKind = "handler" | "generator" | "sequencer" | "router";
 
+/**
+ * Audience for auto-emitted generator items. Controls who receives items:
+ *
+ * - `"client"`: sent to the client and entered into LLM history (default for main-phase generators)
+ * - `"history"`: entered into LLM history but hidden from the client
+ * - `"trace"`: emitted for tracing only — neither client nor history (default for tool-call children and work-phase generators)
+ */
+export type EmitAudience = "client" | "history" | "trace";
+
 export type ExecutionParent = {
   name: string;
   kind: BlockKind;
@@ -228,14 +237,8 @@ export interface BlockConfig<
   name: string;
   description?: string;
   transient?: boolean;
-  /** Whether items this block emits are sent to clients. Defaults to per-type
-   *  defaults; overridden by per-type `emit` values on generators. */
-  client?: boolean;
-  /** Whether items this block emits enter LLM history. Defaults to per-type
-   *  defaults; overridden by per-type `emit` values on generators. */
-  history?: boolean;
   /**
-   * @deprecated Use `client`/`history` instead.
+   * @deprecated Use `emitAudience` on generators instead.
    */
   itemRole?: ItemRole;
   inputSchema?: TInputSchema;

@@ -1092,7 +1092,7 @@ function createSessionItemViews(
   return {
     all: (query) => select(query),
     client: (query) => select(query, undefined, true),
-    llm: (query) =>
+    history: (query) =>
       loadLLMHistory(
         priorRequests,
         options.tokenCounter,
@@ -1523,7 +1523,7 @@ export async function createExecutionContext<
   ]);
 
   // Filter to completed prior requests once — reused by both all()/client()
-  // (via priorItems) and llm() (via loadLLMHistory).
+  // (via priorItems) and history() (via loadLLMHistory).
   const completedPriorRequests = priorRequests
     .filter((r) => r.id !== requestId && r.status === "completed")
     .sort((a, b) => a.startedAtMs - b.startedAtMs);

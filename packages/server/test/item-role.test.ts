@@ -6,7 +6,7 @@
  *   - `resolveItemVisibility` resolution order across explicit client/history,
  *     legacy `itemRole`, legacy `trace: true`, and per-type defaults.
  *   - `resolveItemRole` backward-compat shim mapping.
- *   - `normalizeEmit` precedence with the new EmitOverride shape.
+ *   - `resolveEmitConfig` with emitAudience and emit suppression.
  *   - `resolvePositionDefault` for main vs work/tool positions.
  *   - History assembly: items with `history: true` included; `history: false`
  *     excluded.
@@ -203,75 +203,59 @@ describe("emitMessage visibility stamping", () => {
 });
 
 // ---------------------------------------------------------------------------
-// normalizeEmit precedence (pure unit tests)
+// resolveEmitConfig (pure unit tests)
 // ---------------------------------------------------------------------------
 
-describe("normalizeEmit precedence", () => {
+describe("resolveEmitConfig", () => {
+  const mainCtx = {
+    _blockIdentity: { blockName: "b", blockInstanceId: "b_1", phase: "main" as const }
+  } as unknown as Parameters<typeof import("../../core/src/blocks/generator").resolveEmitConfig>[2];
+
   it("emit: false suppresses every item type", async () => {
-    const { normalizeEmit } = await import("../../core/src/blocks/generator");
-    expect(normalizeEmit(false, undefined, { client: true, history: true })).toEqual({
-      reasoning: false,
-      messages: false,
-      toolCalls: false
-    });
-  });
-
-  it("per-type override with explicit client/history", async () => {
-    const { normalizeEmit } = await import("../../core/src/blocks/generator");
-    const result = normalizeEmit(
-      { messages: { client: false }, reasoning: false },
-      undefined,
-      { client: true, history: true }
-    );
-    expect(result.messages).toEqual({ client: false, history: true });
+    const { resolveEmitConfig } = await import("../../core/src/blocks/generator");
+    const result = resolveEmitConfig(false, undefined, mainCtx);
     expect(result.reasoning).toBe(false);
-    expect(result.toolCalls).toEqual({ client: true, history: true });
+    expect(result.messages).toBe(false);
+    expect(result.tools).toBe(false);
+    expect(result.visibility).toEqual({ client: true, history: true });
   });
 
-  it("block-level client overrides position default", async () => {
-    const { normalizeEmit } = await import("../../core/src/blocks/generator");
-    const result = normalizeEmit(
-      undefined,
-      { client: false },
-      { client: true, history: true }
-    );
-    expect(result.messages).toEqual({ client: false, history: true });
-    expect(result.reasoning).toEqual({ client: false, history: true });
-    expect(result.toolCalls).toEqual({ client: false, history: true });
+  it("emit: true enables all item types", async () => {
+    const { resolveEmitConfig } = await import("../../core/src/blocks/generator");
+    const result = resolveEmitConfig(true, undefined, mainCtx);
+    expect(result.reasoning).toBe(true);
+    expect(result.messages).toBe(true);
+    expect(result.tools).toBe(true);
   });
 
-  it("position default applies when block visibility and emit are absent", async () => {
-    const { normalizeEmit } = await import("../../core/src/blocks/generator");
-    const result = normalizeEmit(
-      undefined,
-      undefined,
-      { client: false, history: false }
-    );
-    expect(result.messages).toEqual({ client: false, history: false });
-    expect(result.reasoning).toEqual({ client: false, history: false });
-    expect(result.toolCalls).toEqual({ client: false, history: false });
-  });
-
-  it("per-type boolean false suppresses that type", async () => {
-    const { normalizeEmit } = await import("../../core/src/blocks/generator");
-    const result = normalizeEmit(
-      { reasoning: false },
-      undefined,
-      { client: true, history: true }
-    );
+  it("per-type false suppresses that type only", async () => {
+    const { resolveEmitConfig } = await import("../../core/src/blocks/generator");
+    const result = resolveEmitConfig({ reasoning: false }, undefined, mainCtx);
     expect(result.reasoning).toBe(false);
-    expect(result.messages).toEqual({ client: true, history: true });
-    expect(result.toolCalls).toEqual({ client: true, history: true });
+    expect(result.messages).toBe(true);
+    expect(result.tools).toBe(true);
   });
 
-  it("per-type boolean true uses block defaults", async () => {
-    const { normalizeEmit } = await import("../../core/src/blocks/generator");
-    const result = normalizeEmit(
-      { reasoning: true },
-      { client: false },
-      { client: true, history: true }
-    );
-    expect(result.reasoning).toEqual({ client: false, history: true });
+  it("emitAudience: 'history' sets visibility to client: false, history: true", async () => {
+    const { resolveEmitConfig } = await import("../../core/src/blocks/generator");
+    const result = resolveEmitConfig(undefined, "history", mainCtx);
+    expect(result.visibility).toEqual({ client: false, history: true });
+    expect(result.messages).toBe(true);
+  });
+
+  it("emitAudience: 'trace' sets visibility to both false", async () => {
+    const { resolveEmitConfig } = await import("../../core/src/blocks/generator");
+    const result = resolveEmitConfig(undefined, "trace", mainCtx);
+    expect(result.visibility).toEqual({ client: false, history: false });
+  });
+
+  it("emitAudience overrides position default", async () => {
+    const { resolveEmitConfig } = await import("../../core/src/blocks/generator");
+    const workCtx = {
+      _blockIdentity: { blockName: "b", blockInstanceId: "b_1", phase: "work" as const }
+    } as unknown as typeof mainCtx;
+    const result = resolveEmitConfig(undefined, "client", workCtx);
+    expect(result.visibility).toEqual({ client: true, history: true });
   });
 });
 
@@ -280,29 +264,29 @@ describe("normalizeEmit precedence", () => {
 // ---------------------------------------------------------------------------
 
 describe("resolvePositionDefault", () => {
-  it("defaults to client+history in the main phase with no generator parent", async () => {
+  it("defaults to 'client' in the main phase with no generator parent", async () => {
     const { resolvePositionDefault } = await import("../../core/src/blocks/generator");
     const ctx = {
       _blockIdentity: { blockName: "b", blockInstanceId: "b_1", phase: "main" as const }
     } as unknown as Parameters<typeof resolvePositionDefault>[0];
-    expect(resolvePositionDefault(ctx)).toEqual({ client: true, history: true });
+    expect(resolvePositionDefault(ctx)).toBe("client");
   });
 
-  it("returns suppressed when parent is a generator (tool-call position)", async () => {
+  it("returns 'trace' when parent is a generator (tool-call position)", async () => {
     const { resolvePositionDefault } = await import("../../core/src/blocks/generator");
     const ctx = {
       parent: { name: "caller", kind: "generator" as const, input: undefined },
       _blockIdentity: { blockName: "b", blockInstanceId: "b_1", phase: "main" as const }
     } as unknown as Parameters<typeof resolvePositionDefault>[0];
-    expect(resolvePositionDefault(ctx)).toEqual({ client: false, history: false });
+    expect(resolvePositionDefault(ctx)).toBe("trace");
   });
 
-  it("returns suppressed when the block identity marks phase as work", async () => {
+  it("returns 'trace' when the block identity marks phase as work", async () => {
     const { resolvePositionDefault } = await import("../../core/src/blocks/generator");
     const ctx = {
       _blockIdentity: { blockName: "b", blockInstanceId: "b_1", phase: "work" as const }
     } as unknown as Parameters<typeof resolvePositionDefault>[0];
-    expect(resolvePositionDefault(ctx)).toEqual({ client: false, history: false });
+    expect(resolvePositionDefault(ctx)).toBe("trace");
   });
 });
 
@@ -439,7 +423,7 @@ describe("itemToLLMMessages visibility filtering", () => {
       stores
     });
 
-    const llmMessages = await ctx.session.items.llm();
+    const llmMessages = await ctx.session.items.history();
     expect(llmMessages.map((m) => m.content)).toEqual([
       "user input",
       "internal synthesis"
@@ -511,7 +495,7 @@ describe("itemToLLMMessages visibility filtering", () => {
       stores
     });
 
-    const llmMessages = await ctx.session.items.llm();
+    const llmMessages = await ctx.session.items.history();
     expect(llmMessages).toEqual([{ role: "user", content: "hello" }]);
   });
 
@@ -579,7 +563,7 @@ describe("itemToLLMMessages visibility filtering", () => {
       stores
     });
 
-    const llmMessages = await ctx.session.items.llm();
+    const llmMessages = await ctx.session.items.history();
     expect(llmMessages).toEqual([{ role: "user", content: "hello" }]);
   });
 });

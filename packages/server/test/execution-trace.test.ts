@@ -473,7 +473,7 @@ describe("execution trace system", () => {
         stores
       });
 
-      const llmMessages = await ctx.session.items.llm();
+      const llmMessages = await ctx.session.items.history();
 
       // Should contain the two messages, plus the tool-call/tool-result pair.
       // AI SDK v6 requires tool results to be preceded by an assistant message

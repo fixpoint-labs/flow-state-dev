@@ -105,7 +105,7 @@ export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
     user: (input: string) => input,
     // Suppress all item emission — this is an internal extraction step,
     // not a conversational response visible to the end user.
-    emit: { messages: false, reasoning: false, toolCalls: false },
+    emit: { messages: false, reasoning: false, tools: false },
   })
 }
 
