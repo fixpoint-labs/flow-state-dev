@@ -1,7 +1,7 @@
 import { defineFlow, handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it, beforeEach } from "vitest";
-import { createInMemoryStores, runAction } from "../src";
+import { createInMemoryStores, runAction, createFlowRegistry, createFlowApiRouter } from "../src";
 import { parseFlowRoute } from "../src/routes/parseFlowRoute";
 import {
   registerAbortController,
@@ -455,5 +455,85 @@ describe("runAction — abort path", () => {
     expect(response.status).toBe(409);
     const body = await response.json();
     expect(body.error).toContain("terminal state");
+  });
+
+  it("delivers the abort status item over the inline SSE stream", async () => {
+    const stores = createInMemoryStores();
+    const flow = defineFlow({
+      kind: "sse-abort-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({}),
+          block: handler({
+            name: "wait-handler",
+            inputSchema: z.object({}),
+            outputSchema: z.string(),
+            execute: async (_input, ctx) => {
+              await new Promise((_resolve, reject) => {
+                ctx.signal.addEventListener("abort", () => {
+                  reject(new DOMException("Aborted", "AbortError"));
+                });
+              });
+              return "unreachable";
+            }
+          })
+        }
+      }
+    })();
+
+    const registry = createFlowRegistry();
+    registry.register(flow);
+    const router = createFlowApiRouter({ registry, stores });
+
+    const requestId = "req_sse_abort";
+    const sseRequest = new Request(
+      "http://localhost/api/flows/sse-abort-flow/actions/run",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "accept": "text/event-stream"
+        },
+        body: JSON.stringify({ userId: "user_sse", requestId, input: {} })
+      }
+    );
+    const sseResponse = await router.POST(sseRequest, {
+      params: { path: ["sse-abort-flow", "actions", "run"] }
+    });
+    expect(sseResponse.headers.get("content-type")).toContain("text/event-stream");
+
+    // Start consuming the SSE stream in the background
+    const reader = sseResponse.body!.getReader();
+    const decoder = new TextDecoder();
+    const collected: string[] = [];
+    const consume = (async () => {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        collected.push(decoder.decode(value, { stream: true }));
+      }
+    })();
+
+    // Wait briefly for the handler to begin, then abort via the abort endpoint
+    await new Promise((r) => setTimeout(r, 50));
+    const abortResponse = await router.POST(
+      new Request(
+        `http://localhost/api/flows/sse-abort-flow/requests/${requestId}/abort`,
+        { method: "POST" }
+      ),
+      { params: { path: ["sse-abort-flow", "requests", requestId, "abort"] } }
+    );
+    expect(abortResponse.status).toBe(204);
+
+    await consume;
+    const body = collected.join("");
+
+    // The abort status item must appear in the SSE stream BEFORE the terminal event
+    const abortedItemIdx = body.indexOf("system.request_aborted");
+    const requestAbortedIdx = body.indexOf("\"type\":\"request.aborted\"");
+    expect(abortedItemIdx).toBeGreaterThan(-1);
+    expect(requestAbortedIdx).toBeGreaterThan(-1);
+    expect(abortedItemIdx).toBeLessThan(requestAbortedIdx);
+    expect(body).toContain("Request was stopped.");
   });
 });
