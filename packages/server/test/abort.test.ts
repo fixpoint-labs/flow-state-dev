@@ -287,4 +287,163 @@ describe("runAction — abort path", () => {
     // The abort controller should be cleaned up
     expect(hasActiveAbortController("req_complete_test")).toBe(false);
   });
+
+  it("abort endpoint triggers abort path end-to-end (aborts running request)", async () => {
+    const stores = createInMemoryStores();
+
+    // Handler waits for ctx.signal to abort
+    const flow = defineFlow({
+      kind: "endpoint-abort-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({}),
+          block: handler({
+            name: "wait-handler",
+            inputSchema: z.object({}),
+            outputSchema: z.string(),
+            execute: async (_input, ctx) => {
+              await new Promise((_resolve, reject) => {
+                ctx.signal.addEventListener("abort", () => {
+                  reject(new DOMException("Aborted", "AbortError"));
+                });
+              });
+              return "unreachable";
+            }
+          })
+        }
+      }
+    })();
+
+    const requestId = "req_endpoint_abort";
+    const resultPromise = runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "user_1",
+      stores
+    });
+
+    // Give runAction a moment to reach the handler and register the controller
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Call the abort endpoint like a real client would
+    const response = await handleAbortRequest(
+      new Request(`http://localhost/api/flows/endpoint-abort-flow/requests/${requestId}/abort`, {
+        method: "POST"
+      }),
+      { kind: "abort_request", flowKind: "endpoint-abort-flow", requestId },
+      { stores }
+    );
+    expect(response.status).toBe(204);
+
+    const result = await resultPromise;
+    expect(result.error).toBeUndefined();
+
+    const record = await stores.request.get(requestId);
+    expect(record?.status).toBe("aborted");
+    expect(record?.abortedAt).toBeTypeOf("number");
+  });
+
+  it("emits request.aborted terminal event in the response emitter", async () => {
+    const stores = createInMemoryStores();
+    const abortController = new AbortController();
+
+    const flow = defineFlow({
+      kind: "emit-abort-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({}),
+          block: handler({
+            name: "wait-handler",
+            inputSchema: z.object({}),
+            outputSchema: z.string(),
+            execute: async (_input, ctx) => {
+              await new Promise((_resolve, reject) => {
+                ctx.signal.addEventListener("abort", () => {
+                  reject(new DOMException("Aborted", "AbortError"));
+                });
+              });
+              return "unreachable";
+            }
+          })
+        }
+      }
+    })();
+
+    const requestId = "req_emit_abort";
+    const resultPromise = runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "user_emit",
+      signal: abortController.signal,
+      stores
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    abortController.abort();
+    await resultPromise;
+
+    // Check persisted events include request.aborted terminal
+    const events = await stores.request.getEvents(requestId);
+    const abortEvent = events.find((e) => e.type === "request.aborted");
+    expect(abortEvent).toBeDefined();
+    expect((abortEvent as { status?: string })?.status).toBe("aborted");
+  });
+
+  it("aborting a non-existent request returns 409 after terminal write (or 404 if no record)", async () => {
+    const stores = createInMemoryStores();
+    const abortController = new AbortController();
+
+    const flow = defineFlow({
+      kind: "double-abort-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({}),
+          block: handler({
+            name: "wait-handler",
+            inputSchema: z.object({}),
+            outputSchema: z.string(),
+            execute: async (_input, ctx) => {
+              await new Promise((_resolve, reject) => {
+                ctx.signal.addEventListener("abort", () => {
+                  reject(new DOMException("Aborted", "AbortError"));
+                });
+              });
+              return "unreachable";
+            }
+          })
+        }
+      }
+    })();
+
+    const requestId = "req_double_abort";
+    const resultPromise = runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      requestId,
+      userId: "user_double",
+      signal: abortController.signal,
+      stores
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    abortController.abort();
+    await resultPromise;
+
+    // Second abort call on the same requestId — now terminal
+    const response = await handleAbortRequest(
+      new Request(`http://localhost/api/flows/double-abort-flow/requests/${requestId}/abort`, {
+        method: "POST"
+      }),
+      { kind: "abort_request", flowKind: "double-abort-flow", requestId },
+      { stores }
+    );
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body.error).toContain("terminal state");
+  });
 });

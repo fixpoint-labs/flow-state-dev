@@ -116,6 +116,7 @@ export type CreateFlowRouteHandlersOptions = {
   staleStreamTtlMs?: number;
   middleware?: Middleware[];
   onError?: (error: Error, context: { method: string; path: string }) => void;
+  onBackgroundWork?: (promise: Promise<unknown>) => void;
   internalSeams?: InternalRouteSeams;
   /**
    * Stale threshold for interrupted request detection on startup.
@@ -232,6 +233,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           speechResolver: options.speechResolver,
           middleware: options.middleware,
           maxResponseBufferSize: options.maxResponseBufferSize,
+          onBackgroundWork: options.onBackgroundWork,
           seams,
           bootstrapMetadata,
           requestContext

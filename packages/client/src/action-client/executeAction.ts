@@ -42,6 +42,17 @@ export type Client = {
     input: unknown,
     options?: SendActionOptions
   ) => Promise<ExecuteActionResponse>;
+  /**
+   * Sends an action with `Accept: text/event-stream` so the server returns
+   * the SSE stream directly from the POST response. Returns the raw Response
+   * whose body is the event stream. Falls back to a 202 JSON response when
+   * the server does not support inline streaming.
+   */
+  sendActionStream: (
+    action: string,
+    input: unknown,
+    options?: SendActionOptions
+  ) => Promise<Response>;
   /** Signal the server to abort an in-progress request. */
   abortRequest: (requestId: string) => Promise<void>;
 };
@@ -120,6 +131,45 @@ export function createClient(options: CreateClientOptions): Client {
     });
   };
 
+  const sendActionStream = async (
+    action: string,
+    input: unknown,
+    sendOptions?: SendActionOptions
+  ): Promise<Response> => {
+    const actionName = ensureRequired(action, "action");
+    const requestBody: ExecuteActionRequestBody = {
+      input,
+      userId,
+      sessionId: sendOptions?.sessionId,
+      requestId: sendOptions?.requestId,
+      projectId: sendOptions?.projectId,
+      metadata: sendOptions?.metadata
+    };
+
+    const path =
+      sendOptions?.sessionId === undefined
+        ? `/api/flows/${encodeURIComponent(flowKind)}/actions/${encodeURIComponent(actionName)}`
+        : `/api/flows/${encodeURIComponent(flowKind)}/${encodeURIComponent(sendOptions.sessionId)}/actions/${encodeURIComponent(actionName)}`;
+
+    const url = buildFlowApiUrl({ baseUrl: options.baseUrl, path });
+
+    const response = await fetcher(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "accept": "text/event-stream"
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Action request failed (${response.status}): ${text}`);
+    }
+
+    return response;
+  };
+
   const abortRequest = async (requestId: string): Promise<void> => {
     const path = `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/abort`;
     const url = buildFlowApiUrl({ baseUrl: options.baseUrl, path });
@@ -138,6 +188,7 @@ export function createClient(options: CreateClientOptions): Client {
     listFlows,
     getCapabilities,
     sendAction,
+    sendActionStream,
     abortRequest
   };
 }

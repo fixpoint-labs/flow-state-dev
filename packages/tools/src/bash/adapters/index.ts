@@ -7,6 +7,11 @@
  */
 
 export { createLocalFsSandbox } from "./local-fs";
+export type { LocalFsSandboxOptions } from "./local-fs";
+export {
+  assertCommandWithinWorkspace,
+  resolveWithinWorkspace,
+} from "./workspace-guards";
 export { createVercelAdapter, resolveVercelSandbox } from "./vercel";
 export { createUpstashAdapter, resolveUpstashBox } from "./upstash";
 export type { UpstashBoxClient } from "./upstash";

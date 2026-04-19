@@ -55,6 +55,7 @@ import type {
   UserRecord
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
+import type { ModelResolver } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
@@ -1969,10 +1970,11 @@ export async function createExecutionContext<
     }
   };
   const resolvedModelStorage = new AsyncLocalStorage<string>();
-  const resolveModel = (modelId: string, blockName?: string) => {
+  const resolveModel = ((modelId: string, blockName?: string) => {
     resolvedModelStorage.enterWith(modelId);
     return modelResolver(modelId, blockName);
-  };
+  }) as ModelResolver;
+  resolveModel.resolveId = (modelId: string) => modelResolver.resolveId(modelId);
 
   const readLiveItems = (): OutputItem[] => {
     const typedResponse = responseRef.current as { getItems?: () => OutputItem[] };

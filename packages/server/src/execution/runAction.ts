@@ -354,12 +354,10 @@ export async function runActionInternal<
   }
 
   // --- Abort controller: register so the abort endpoint can signal cancellation ---
-  const abortController = registerAbortController(requestId);
-  const composedSignal = options.signal
-    ? AbortSignal.any([options.signal, abortController.signal])
-    : abortController.signal;
-
-  // --- Active request registry: register + heartbeat ---
+  // Register just before `createExecutionContext` to minimize the leak window
+  // if setup (registry register, session update, initial emits) throws before
+  // the main try/catch. Registration must happen before createExecutionContext
+  // because composedSignal is consumed by it.
   const registry = options.stores.activeRequests;
   await registry.register({
     requestId,
@@ -447,21 +445,37 @@ export async function runActionInternal<
     parseError = error;
   }
 
-  const ctx = await createExecutionContext({
-    flow: options.flow,
-    actionName: options.actionName,
-    requestId,
-    userId: options.userId,
-    sessionId: options.sessionId,
-    projectId: options.projectId,
-    metadata: options.metadata,
-    input: options.input,
-    signal: composedSignal,
-    modelResolver: options.modelResolver,
-    response,
-    stores: options.stores,
-    logger
-  });
+  // Register the abort controller just before we consume its signal.
+  // If anything above threw, the controller would never be registered.
+  // If anything between here and the main try block throws, the outer
+  // try/catch below cleans it up.
+  const abortController = registerAbortController(requestId);
+  const composedSignal = options.signal
+    ? AbortSignal.any([options.signal, abortController.signal])
+    : abortController.signal;
+
+  let ctx: ExecutionContext;
+  try {
+    ctx = await createExecutionContext({
+      flow: options.flow,
+      actionName: options.actionName,
+      requestId,
+      userId: options.userId,
+      sessionId: options.sessionId,
+      projectId: options.projectId,
+      metadata: options.metadata,
+      input: options.input,
+      signal: composedSignal,
+      modelResolver: options.modelResolver,
+      response,
+      stores: options.stores,
+      logger
+    });
+  } catch (setupError) {
+    deregisterAbortController(requestId);
+    if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+    throw setupError;
+  }
 
   const metadata = createExecutionMetadata(ctx, {
     scope: "request"

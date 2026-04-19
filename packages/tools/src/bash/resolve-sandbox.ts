@@ -30,6 +30,7 @@ export async function resolveSandbox(
         sandbox: createLocalFsSandbox({
           cwd: options.cwd ?? provider.cwd,
           destination: options.destination,
+          strictPaths: provider.strictPaths,
         }),
       };
 

@@ -4,12 +4,32 @@
  * Uses the real filesystem via `node:fs` and `node:child_process` for bash
  * commands. Best for development, local agents, and environments where you
  * control the machine.
+ *
+ * When `strictPaths` is enabled (the default), all operations are validated
+ * against the workspace root before execution. See `workspace-guards.ts`
+ * for the guard implementation.
  */
 
 import { exec } from "node:child_process";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { Sandbox, CommandResult } from "../types";
+import {
+  assertCommandWithinWorkspace,
+  resolveWithinWorkspace,
+} from "./workspace-guards";
+
+export interface LocalFsSandboxOptions {
+  /** Working directory on the real filesystem. */
+  cwd?: string;
+  /** Virtual workspace prefix (e.g. `/workspace`) stripped from file paths. */
+  destination?: string;
+  /**
+   * Enforce workspace path restrictions. Default: `true`.
+   * When `false`, a warning is logged and all guards are skipped.
+   */
+  strictPaths?: boolean;
+}
 
 /**
  * Creates a sandbox backed by the local filesystem.
@@ -24,16 +44,26 @@ import type { Sandbox, CommandResult } from "../types";
  * maps to `<cwd>/src/index.ts` on the real filesystem.
  */
 export function createLocalFsSandbox(
-  options: { cwd?: string; destination?: string } = {},
+  options: LocalFsSandboxOptions = {},
 ): Sandbox {
   const cwd = options.cwd ?? path.join(process.cwd(), ".bash-workspace");
   const destination = options.destination;
+  const strictPaths = options.strictPaths ?? true;
+
+  if (!strictPaths) {
+    console.warn(
+      `[LocalFs] strictPaths is disabled for workspace "${cwd}".` +
+        ` Commands and file operations will not be restricted to the workspace root.`,
+    );
+  }
 
   /**
    * Translate a virtual sandbox path to a real filesystem path.
    *
    * Strips the virtual destination prefix (e.g. `/workspace/`) so that
    * absolute sandbox paths resolve correctly against the local `cwd`.
+   * When `strictPaths` is enabled, validates the resolved path stays
+   * within the workspace root.
    */
   function toLocalPath(filePath: string): string {
     let rel = filePath;
@@ -48,11 +78,20 @@ export function createLocalFsSandbox(
       }
     }
 
+    if (strictPaths) {
+      return resolveWithinWorkspace(cwd, rel);
+    }
+
     return path.resolve(cwd, rel);
   }
 
   return {
     async executeCommand(command: string): Promise<CommandResult> {
+      // Validate command before execution
+      if (strictPaths) {
+        assertCommandWithinWorkspace(cwd, command, destination);
+      }
+
       // Ensure cwd exists before running commands
       await mkdir(cwd, { recursive: true });
 

@@ -22,8 +22,10 @@ export {
 
 export {
   createSSEClient,
+  createSSEClientFromResponse,
   createUserSSEClient,
   type CreateSSEClientOptions,
+  type CreateSSEClientFromResponseOptions,
   type CreateUserSSEClientOptions
 } from "./stream-client/createSSEClient";
 

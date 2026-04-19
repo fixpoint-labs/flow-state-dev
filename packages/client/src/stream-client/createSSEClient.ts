@@ -82,6 +82,77 @@ function createSlidingEventDeduper(windowSize: number): {
 }
 
 /**
+ * Options for creating an SSE client from a pre-fetched Response (inline streaming).
+ * Used when the POST action response itself is the SSE stream.
+ */
+export type CreateSSEClientFromResponseOptions = RequestSSECallbacks & {
+  response: Response;
+  dedupWindowSize?: number;
+};
+
+/**
+ * Creates a request-stream SSE client from an existing Response object.
+ * Used for inline streaming where the POST action response returns SSE directly
+ * instead of a 202 JSON response. This eliminates the need for a separate GET
+ * stream connection — essential on serverless platforms where POST and GET may
+ * hit different instances.
+ */
+export function createSSEClientFromResponse(
+  options: CreateSSEClientFromResponseOptions
+): RequestStreamHandle {
+  const controller = new AbortController();
+  const deduper = createSlidingEventDeduper(
+    options.dedupWindowSize ?? DEFAULT_DEDUP_WINDOW_SIZE
+  );
+  let closed = false;
+  let lastEventId: string | undefined;
+
+  if (!options.response.ok) {
+    const error = new Error(
+      `SSE response failed (${options.response.status}) ${options.response.statusText || ""}`.trim()
+    );
+    queueMicrotask(() => options.onError?.(error));
+    return {
+      close: () => {},
+      get lastEventId() { return undefined; }
+    };
+  }
+
+  void consumeSSEResponse({
+    response: options.response,
+    signal: controller.signal,
+    onFrame: (frame) => {
+      if (closed) return;
+      if (frame.id !== undefined) lastEventId = frame.id;
+      if (frame.data === undefined) return;
+      try {
+        const parsed = JSON.parse(frame.data) as RequestStreamEvent;
+        const key = requestEventKey(parsed);
+        if (deduper.seen(key)) return;
+        dispatchRequestEvent(parsed, options);
+      } catch (error) {
+        options.onError?.(normalizeError(error));
+      }
+    },
+    onError: (error) => {
+      if (!closed) options.onError?.(error);
+    }
+  });
+
+  return {
+    close: () => {
+      if (closed) return;
+      closed = true;
+      deduper.clear();
+      controller.abort();
+    },
+    get lastEventId() {
+      return lastEventId;
+    }
+  };
+}
+
+/**
  * Creates a request-stream SSE client that parses frames and dispatches typed callbacks.
  */
 export function createSSEClient(options: CreateSSEClientOptions): RequestStreamHandle {
@@ -245,6 +316,75 @@ export function createUserSSEClient(
   };
 }
 
+/**
+ * Reads SSE frames from a Response body. Shared by both the GET SSE client
+ * and the inline streaming (POST response) client.
+ */
+async function readSSEBody(options: {
+  response: Response;
+  signal: AbortSignal;
+  onFrame: (frame: Frame) => void;
+}): Promise<void> {
+  if (options.response.body === null) {
+    const text = await options.response.text();
+    for (const frame of parseFrames(text)) {
+      options.onFrame(frame);
+    }
+    return;
+  }
+
+  const reader = options.response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  // Abort listener to cancel the reader when the handle is closed.
+  const onAbort = () => { reader.cancel().catch(() => {}); };
+  options.signal.addEventListener("abort", onAbort, { once: true });
+
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+
+      buffer += decoder.decode(result.value, { stream: true });
+      const split = splitCompleteFrames(buffer);
+      buffer = split.remainder;
+
+      for (const frameText of split.frames) {
+        for (const frame of parseFrames(frameText)) {
+          options.onFrame(frame);
+        }
+      }
+    }
+
+    buffer += decoder.decode();
+    if (buffer.trim().length > 0) {
+      for (const frame of parseFrames(buffer)) {
+        options.onFrame(frame);
+      }
+    }
+  } finally {
+    options.signal.removeEventListener("abort", onAbort);
+  }
+}
+
+/**
+ * Consumes SSE from a pre-fetched Response (inline streaming from POST).
+ */
+async function consumeSSEResponse(options: {
+  response: Response;
+  signal: AbortSignal;
+  onFrame: (frame: Frame) => void;
+  onError: (error: Error) => void;
+}): Promise<void> {
+  try {
+    await readSSEBody(options);
+  } catch (error) {
+    if (isAbortError(error)) return;
+    options.onError(normalizeError(error));
+  }
+}
+
 async function consumeSSE(options: {
   fetcher: ClientFetch;
   url: string;
@@ -267,41 +407,11 @@ async function consumeSSE(options: {
       throw new Error(`SSE request failed (${response.status}) ${response.statusText || ""}`.trim());
     }
 
-    if (response.body === null) {
-      const text = await response.text();
-      for (const frame of parseFrames(text)) {
-        options.onFrame(frame);
-      }
-      return;
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const result = await reader.read();
-      if (result.done) {
-        break;
-      }
-
-      buffer += decoder.decode(result.value, { stream: true });
-      const split = splitCompleteFrames(buffer);
-      buffer = split.remainder;
-
-      for (const frameText of split.frames) {
-        for (const frame of parseFrames(frameText)) {
-          options.onFrame(frame);
-        }
-      }
-    }
-
-    buffer += decoder.decode();
-    if (buffer.trim().length > 0) {
-      for (const frame of parseFrames(buffer)) {
-        options.onFrame(frame);
-      }
-    }
+    await readSSEBody({
+      response,
+      signal: options.signal,
+      onFrame: options.onFrame
+    });
   } catch (error) {
     if (isAbortError(error)) {
       return;
