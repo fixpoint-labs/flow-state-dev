@@ -8,28 +8,55 @@ When a block executes, it produces **items**. Items flow to clients over SSE in 
 
 Every item has a `type` that determines what it is, a `status` that tracks its lifecycle (`in_progress` → `completed | incomplete | failed`), and `provenance` that records which block produced it.
 
-## Item roles
+## Visibility
 
-Every item has a **role** that controls which consumers can see it. There are three roles:
+Every item has two independent visibility flags:
 
-**`external`** — the default. The browser renders it, the LLM sees it in history (for items that carry conversational content), the devtool sees it. Most items are external.
+- **`client`** — whether the item is sent to connected clients (browser, mobile, CLI)
+- **`history`** — whether the item is included in LLM conversation history
 
-**`internal`** — hidden from the browser, but participates in LLM history. Use this for helper blocks that produce content the next model call should know about, but that the user shouldn't see. Think of it as the programmatic equivalent of a system message — invisible to the end user, meaningful to the model.
+Both are optional on the item. When unset, they resolve from per-type defaults via `resolveItemVisibility()`. The devtool always sees everything regardless of these flags.
 
-**`trace`** — visible only in the devtool. Neither the browser nor the LLM sees it. Use this for structural/observability items: execution timings, route decisions, state snapshots.
+### Per-type defaults
 
-The hierarchy is `external ⊃ internal ⊃ trace`: external items have the broadest visibility, trace items the narrowest.
+Content-bearing types (`message`, `reasoning`, `block_tool_output`) default to `client: true, history: true`. UI-only types (`component`, `status`, `error`, etc.) default to `client: true, history: false`. Structural types (`block_output`, `router_decision`, `sequencer_state_snapshot`) default to `client: false, history: false` — they're devtool-only.
 
-Role is resolved in this order when an item is emitted:
-1. Explicit `itemRole` field on the emitted item
-2. Legacy `trace: true` boolean (backward compatible — treated as `"trace"`)
-3. Structural item types (`block_output`, `router_decision`, `sequencer_state_snapshot`) default to `"trace"`
-4. Work-phase items (inside a sequencer work queue) default to `"trace"`
-5. Everything else → `"external"`
+### Overriding visibility
 
-You can set a block-level default on generators via `itemRole: "internal" | "trace"`. This stamps all items the block emits with that role, overridable per-item-type using the generator's `emit` config.
+Set `client` and/or `history` on a block config to change the default for all items that block emits:
 
-The devtool always sees everything, regardless of role. That's the point — it's the observability surface for what the browser and LLM don't see.
+```ts
+const helper = generator({
+  name: "background-analysis",
+  model: "preset/fast",
+  prompt: "Analyze the user's intent...",
+  client: false, // LLM sees output, user doesn't
+});
+```
+
+For generators, the `emit` config provides per-type overrides:
+
+```ts
+emit: { messages: { client: false }, reasoning: false }
+```
+
+Direct emit methods accept per-call overrides:
+
+```ts
+ctx.emitMessage("internal note", { client: false, history: true });
+```
+
+### Resolution order
+
+`resolveItemVisibility()` resolves in this order:
+1. Explicit `client`/`history` on the item
+2. Legacy `itemRole` mapped to booleans (`external` → both true, `internal` → client false / history true, `trace` → both false)
+3. Legacy `trace: true` → both false
+4. Per-type defaults from `ITEM_TYPE_DEFAULTS`
+
+### Legacy compatibility
+
+The `itemRole` field (`"external" | "internal" | "trace"`) and `trace` boolean are deprecated but still supported. `resolveItemVisibility()` maps them to the equivalent boolean pair. Persisted items from older versions work without data migration.
 
 ## Item types
 
@@ -57,11 +84,11 @@ The devtool always sees everything, regardless of role. That's the point — it'
 
 **`block_tool_output`** is emitted when a generator invokes a block as a tool. Carries the tool name, input arguments, and result. Goes into LLM history as the tool result so the model can continue reasoning. Also visible in the chat UI for tool call rendering.
 
-### Internal items — what the LLM sees but the user doesn't
+### History-only items — what the LLM sees but the user doesn't
 
-Any block can produce internal items by setting `itemRole: "internal"` on the generator config or by using the `emit` config to assign the role per item type. An internal `message`, for example, contributes to LLM conversation history across turns without ever appearing in the browser.
+Any block can produce history-only items by setting `client: false` on the block config. A message with `client: false, history: true` contributes to LLM conversation history across turns without ever appearing in the client UI.
 
-### Trace items — what the devtool sees
+### Devtool-only items — what the devtool sees
 
 **`block_output`** is emitted after every block finishes, automatically. It records the block name, kind, output, timing, and model usage. This is how the devtool builds its execution trace tree.
 
@@ -87,26 +114,24 @@ There are two storage targets, kept separate:
 
 ## The full registry
 
-| Type | Emitted by | Role | LLM history | Persistence |
-|------|------------|:----:|:-----------:|-------------|
-| `message` | Generator (auto), `ctx.emitMessage()` | external | ✓ | Persistent |
-| `reasoning` | Generator (auto, CoT models) | external | ✓ | Persistent |
-| `component` | `ctx.emitComponent()` | external | — | Persistent |
-| `container` | Sequencer/Router with `container` config | external | — | Persistent |
-| `source` | Generator (provider-native tools) | external | — | Persistent |
-| `status` | `ctx.emitStatus()` | external | — | **Always transient** |
-| `state_change` | Auto on state mutations | external | — | Transient in prod / persistent in dev |
-| `resource_change` | Auto on resource mutations | external | — | Transient by default |
-| `error` | Runtime (terminal failure) | external | — | Persistent |
-| `step_error` | Sequencer (block error, with/without rescue) | external | — | Persistent |
-| `block_tool_output` | Generator (per tool invocation) | external | ✓ | Persistent |
-| `block_output` | Every block (auto, post-execution) | trace | ¹ | Persistent |
-| `router_decision` | Router (auto, on selection) | trace | — | Persistent |
-| `sequencer_state_snapshot` | Sequencer (at step boundaries) | trace | — | **Always transient** |
+| Type | Emitted by | Client | History | Persistence |
+|------|------------|:------:|:-------:|-------------|
+| `message` | Generator (auto), `ctx.emitMessage()` | ✓ | ✓ | Persistent |
+| `reasoning` | Generator (auto, CoT models) | ✓ | ✓ | Persistent |
+| `block_tool_output` | Generator (per tool invocation) | ✓ | ✓ | Persistent |
+| `component` | `ctx.emitComponent()` | ✓ | — | Persistent |
+| `container` | Sequencer/Router with `container` config | ✓ | — | Persistent |
+| `source` | Generator (provider-native tools) | ✓ | — | Persistent |
+| `status` | `ctx.emitStatus()` | ✓ | — | **Always transient** |
+| `state_change` | Auto on state mutations | ✓ | — | Transient in prod / persistent in dev |
+| `resource_change` | Auto on resource mutations | ✓ | — | Transient by default |
+| `error` | Runtime (terminal failure) | ✓ | — | Persistent |
+| `step_error` | Sequencer (block error, with/without rescue) | ✓ | — | Persistent |
+| `block_output` | Every block (auto, post-execution) | — | — | Persistent |
+| `router_decision` | Router (auto, on selection) | — | — | Persistent |
+| `sequencer_state_snapshot` | Sequencer (at step boundaries) | — | — | **Always transient** |
 
-¹ `block_output` enters LLM history only when it has a `toolCall` field (legacy generator tool path). New code uses `block_tool_output`.
-
-**Role meanings:** `external` = browser + LLM history; `internal` = LLM history only, hidden from browser; `trace` = devtool only.
+**Column meanings:** `Client` = sent to connected clients; `History` = included in LLM conversation history. Items with neither are devtool-only.
 
 ## Component items
 
@@ -191,8 +216,8 @@ Most new UI needs can be expressed via `component` items with a registered rende
 If a new type is genuinely needed:
 
 1. **Define the schema** in `packages/core/src/items/types.ts` and add it to the `OutputItem` union.
-2. **Add a registry row** to the table in this document — all columns required.
-3. **Assign a role** — decide if the type is `external` (browser + LLM history), `internal` (LLM history only, not browser), or `trace` (devtool only). Update audience routing in `createExecutionContext.ts` and `CLIENT_ITEM_TYPES` in `useSession.ts` as needed.
+2. **Add per-type defaults** to `ITEM_TYPE_DEFAULTS` in `packages/core/src/items/resolve-role.ts` — set `client` and `history` appropriately.
+3. **Add a registry row** to the table in this document — all columns required.
 4. **Set persistence** — `transient: true` at emission for stream-only items.
 5. **Define kitchen sink rendering** — register a built-in fallback in `ItemRenderer.ts`, add to `NON_RENDERABLE_TYPES`, or accept the JSON dev fallback. Don't leave it implicit.
 6. **Define devtool rendering** — generic types fall through to the stream view; add a dedicated renderer if the type needs special treatment.
@@ -201,15 +226,15 @@ If a new type is genuinely needed:
 ## Base schema reference
 
 ```ts
-type ItemRole = "external" | "internal" | "trace";
-
 type OutputItemBase = {
   id: string;
   type: string;
   status: "in_progress" | "completed" | "incomplete" | "failed";
-  itemRole?: ItemRole;    // Visibility tier. Resolved via resolveItemRole() if absent.
+  client?: boolean;       // Sent to clients. Resolved via resolveItemVisibility() if absent.
+  history?: boolean;      // Included in LLM history. Resolved via resolveItemVisibility() if absent.
   transient?: boolean;    // true = stream-only, never persisted
-  trace?: boolean;        // Legacy — treated as itemRole: "trace". Prefer itemRole.
+  itemRole?: ItemRole;    // @deprecated — use client/history instead
+  trace?: boolean;        // @deprecated — use client: false, history: false instead
   requestId: string;
   itemIndex: number;      // Monotonic within the request
   provenance: ItemProvenance;

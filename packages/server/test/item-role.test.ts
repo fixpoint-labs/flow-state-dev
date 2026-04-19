@@ -1,19 +1,20 @@
 /**
- * Tests for the three-tier item visibility role system (FIX-389).
+ * Tests for item visibility (client/history booleans) and backward
+ * compatibility with the legacy itemRole / trace fields.
  *
  * Exercises:
- *   - `resolveItemRole` resolution order across explicit role, legacy
- *     `trace: true`, structural item types, work-phase fallback, and defaults.
- *   - `emit` config shapes: `false`, role strings, boolean per-type, role
- *     per-type, and backward-compatible boolean values.
- *   - `normalizeEmit` precedence: per-type > top-level > block-level `itemRole`
- *     > position-based default.
- *   - History assembly: `external` and `internal` included; `trace` excluded.
- *   - Emission helpers (`emitMessage`, `emitStatus`) stamp the resolved role.
+ *   - `resolveItemVisibility` resolution order across explicit client/history,
+ *     legacy `itemRole`, legacy `trace: true`, and per-type defaults.
+ *   - `resolveItemRole` backward-compat shim mapping.
+ *   - `normalizeEmit` precedence with the new EmitOverride shape.
+ *   - `resolvePositionDefault` for main vs work/tool positions.
+ *   - History assembly: items with `history: true` included; `history: false`
+ *     excluded.
+ *   - Emission helpers (`emitMessage`, `emitStatus`) stamp the new booleans.
  */
 import { defineFlow, handler } from "@flow-state-dev/core";
-import type { ItemRole, OutputItem } from "@flow-state-dev/core/items";
-import { resolveItemRole } from "@flow-state-dev/core/items";
+import type { OutputItem } from "@flow-state-dev/core/items";
+import { resolveItemRole, resolveItemVisibility } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
@@ -24,7 +25,7 @@ import {
 } from "../src";
 
 // ---------------------------------------------------------------------------
-// resolveItemRole
+// resolveItemVisibility
 // ---------------------------------------------------------------------------
 
 function baseItem(overrides: Partial<OutputItem> = {}): OutputItem {
@@ -46,56 +47,114 @@ function baseItem(overrides: Partial<OutputItem> = {}): OutputItem {
   return { ...defaults, ...overrides };
 }
 
-describe("resolveItemRole", () => {
-  it("returns explicit itemRole when set", () => {
-    expect(resolveItemRole(baseItem({ itemRole: "internal" }))).toBe("internal");
-    expect(resolveItemRole(baseItem({ itemRole: "trace" }))).toBe("trace");
-    expect(resolveItemRole(baseItem({ itemRole: "external" }))).toBe("external");
+describe("resolveItemVisibility", () => {
+  it("returns explicit client/history when set", () => {
+    expect(resolveItemVisibility(baseItem({ client: false, history: true }))).toEqual({
+      client: false,
+      history: true,
+    });
   });
 
-  it("falls back to trace when legacy trace: true is set", () => {
-    expect(resolveItemRole(baseItem({ trace: true }))).toBe("trace");
+  it("partial explicit: fills from type defaults", () => {
+    const vis = resolveItemVisibility(baseItem({ client: false }));
+    expect(vis.client).toBe(false);
+    expect(vis.history).toBe(true);
   });
 
-  it("prefers explicit itemRole over legacy trace boolean", () => {
+  it("maps legacy itemRole: external to client+history", () => {
+    expect(resolveItemVisibility(baseItem({ itemRole: "external" }))).toEqual({
+      client: true,
+      history: true,
+    });
+  });
+
+  it("maps legacy itemRole: internal to !client+history", () => {
+    expect(resolveItemVisibility(baseItem({ itemRole: "internal" }))).toEqual({
+      client: false,
+      history: true,
+    });
+  });
+
+  it("maps legacy itemRole: trace to !client+!history", () => {
+    expect(resolveItemVisibility(baseItem({ itemRole: "trace" }))).toEqual({
+      client: false,
+      history: false,
+    });
+  });
+
+  it("maps legacy trace: true to !client+!history", () => {
+    expect(resolveItemVisibility(baseItem({ trace: true }))).toEqual({
+      client: false,
+      history: false,
+    });
+  });
+
+  it("explicit client/history takes precedence over legacy itemRole", () => {
     expect(
-      resolveItemRole(baseItem({ itemRole: "internal", trace: true }))
-    ).toBe("internal");
+      resolveItemVisibility(baseItem({ client: true, history: false, itemRole: "trace" }))
+    ).toEqual({ client: true, history: false });
   });
 
-  it("returns trace for structural item types without explicit role", () => {
-    const structural: string[] = [
-      "block_output",
-      "router_decision",
-      "sequencer_state_snapshot",
-      "container",
-      "state_change",
-      "resource_change"
-    ];
+  it("returns per-type defaults for structural types", () => {
+    const structural = ["block_output", "router_decision", "sequencer_state_snapshot"];
     for (const type of structural) {
       const item = baseItem() as OutputItem & { type: string };
       (item as { type: string }).type = type;
-      expect(resolveItemRole(item as OutputItem)).toBe("trace");
+      const vis = resolveItemVisibility(item as OutputItem);
+      expect(vis.client).toBe(false);
+      expect(vis.history).toBe(false);
     }
   });
 
-  it("returns trace for work-phase items without explicit role", () => {
-    const workItem = baseItem();
-    (workItem.provenance as { phase: "main" | "work" }).phase = "work";
-    expect(resolveItemRole(workItem)).toBe("trace");
+  it("returns client-only defaults for component/status types", () => {
+    for (const type of ["component", "status", "error", "step_error"]) {
+      const item = baseItem() as OutputItem & { type: string };
+      (item as { type: string }).type = type;
+      const vis = resolveItemVisibility(item as OutputItem);
+      expect(vis.client).toBe(true);
+      expect(vis.history).toBe(false);
+    }
   });
 
-  it("defaults to external for conversational items without role hints", () => {
-    expect(resolveItemRole(baseItem())).toBe("external");
+  it("returns client+history defaults for message/reasoning/block_tool_output", () => {
+    for (const type of ["message", "reasoning", "block_tool_output"]) {
+      const item = baseItem() as OutputItem & { type: string };
+      (item as { type: string }).type = type;
+      const vis = resolveItemVisibility(item as OutputItem);
+      expect(vis.client).toBe(true);
+      expect(vis.history).toBe(true);
+    }
   });
 });
 
 // ---------------------------------------------------------------------------
-// Emission helpers stamp roles (and itemToLLMMessages respects them)
+// resolveItemRole backward compat shim
 // ---------------------------------------------------------------------------
 
-describe("emitMessage role stamping", () => {
-  it("stamps external role at the root scope and includes the message in LLM history", async () => {
+describe("resolveItemRole (deprecated shim)", () => {
+  it("returns external for client+history items", () => {
+    expect(resolveItemRole(baseItem({ client: true, history: true }))).toBe("external");
+  });
+
+  it("returns internal for !client+history items", () => {
+    expect(resolveItemRole(baseItem({ client: false, history: true }))).toBe("internal");
+  });
+
+  it("returns trace for !client+!history items", () => {
+    expect(resolveItemRole(baseItem({ client: false, history: false }))).toBe("trace");
+  });
+
+  it("returns external for client-only items (no history)", () => {
+    expect(resolveItemRole(baseItem({ client: true, history: false }))).toBe("external");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Emission helpers stamp client/history
+// ---------------------------------------------------------------------------
+
+describe("emitMessage visibility stamping", () => {
+  it("stamps client: true, history: true at the root scope", async () => {
     const emitter = handler({
       name: "emitter",
       inputSchema: z.object({}).passthrough(),
@@ -108,7 +167,7 @@ describe("emitMessage role stamping", () => {
     });
 
     const flow = defineFlow({
-      kind: "role-emit-flow",
+      kind: "vis-emit-flow",
       actions: {
         run: {
           inputSchema: z.object({}).passthrough(),
@@ -138,157 +197,121 @@ describe("emitMessage role stamping", () => {
       .filter((item) => item.type === "message");
     expect(messageItems.length).toBeGreaterThanOrEqual(1);
     const message = messageItems[0]!;
-    expect(message.itemRole).toBe("external" satisfies ItemRole);
-    expect(resolveItemRole(message)).toBe("external");
-  });
-
-  it("propagates block-level itemRole to emitted messages", async () => {
-    const internalBlock = handler({
-      name: "internal-emitter",
-      itemRole: "internal",
-      inputSchema: z.object({}).passthrough(),
-      outputSchema: z.object({ ok: z.boolean() }),
-      execute: (_input, ctx) => {
-        ctx.emitMessage("only for the model").done();
-        return { ok: true };
-      }
-    });
-
-    const flow = defineFlow({
-      kind: "role-internal-flow",
-      actions: {
-        run: {
-          inputSchema: z.object({}).passthrough(),
-          block: internalBlock
-        }
-      }
-    })();
-
-    const stores = createInMemoryStores();
-    const response = createResponseEmitter({
-      requestId: "req_internal",
-      now: () => Date.now()
-    });
-
-    await runAction({
-      flow,
-      actionName: "run",
-      input: {},
-      userId: "user_internal",
-      sessionId: "sess_internal",
-      stores,
-      responseEmitter: response
-    });
-
-    const message = response
-      .getItems()
-      .find((item) => item.type === "message" && (item as { role?: string }).role === "assistant");
-    expect(message).toBeDefined();
-    expect(message!.itemRole).toBe("internal" satisfies ItemRole);
+    expect(message.client).toBe(true);
+    expect(message.history).toBe(true);
   });
 });
 
 // ---------------------------------------------------------------------------
-// normalizeEmit precedence + position-default resolution (pure unit tests)
+// normalizeEmit precedence (pure unit tests)
 // ---------------------------------------------------------------------------
 
 describe("normalizeEmit precedence", () => {
   it("emit: false suppresses every item type", async () => {
     const { normalizeEmit } = await import("../../core/src/blocks/generator");
-    expect(normalizeEmit(false, undefined, "external")).toEqual({
+    expect(normalizeEmit(false, undefined, { client: true, history: true })).toEqual({
       reasoning: false,
       messages: false,
       toolCalls: false
     });
   });
 
-  it("top-level role string applies to every item type", async () => {
+  it("per-type override with explicit client/history", async () => {
     const { normalizeEmit } = await import("../../core/src/blocks/generator");
-    expect(normalizeEmit("internal", undefined, "external")).toEqual({
-      reasoning: "internal",
-      messages: "internal",
-      toolCalls: "internal"
-    });
+    const result = normalizeEmit(
+      { messages: { client: false }, reasoning: false },
+      undefined,
+      { client: true, history: true }
+    );
+    expect(result.messages).toEqual({ client: false, history: true });
+    expect(result.reasoning).toBe(false);
+    expect(result.toolCalls).toEqual({ client: true, history: true });
   });
 
-  it("per-type role overrides the block-level default", async () => {
+  it("block-level client overrides position default", async () => {
     const { normalizeEmit } = await import("../../core/src/blocks/generator");
-    expect(
-      normalizeEmit({ messages: "internal", reasoning: "trace" }, "external", "external")
-    ).toEqual({
-      reasoning: "trace",
-      messages: "internal",
-      toolCalls: "external"
-    });
+    const result = normalizeEmit(
+      undefined,
+      { client: false },
+      { client: true, history: true }
+    );
+    expect(result.messages).toEqual({ client: false, history: true });
+    expect(result.reasoning).toEqual({ client: false, history: true });
+    expect(result.toolCalls).toEqual({ client: false, history: true });
   });
 
-  it("block-level itemRole overrides the position default when emit is absent", async () => {
+  it("position default applies when block visibility and emit are absent", async () => {
     const { normalizeEmit } = await import("../../core/src/blocks/generator");
-    expect(normalizeEmit(undefined, "internal", "external")).toEqual({
-      reasoning: "internal",
-      messages: "internal",
-      toolCalls: "internal"
-    });
+    const result = normalizeEmit(
+      undefined,
+      undefined,
+      { client: false, history: false }
+    );
+    expect(result.messages).toEqual({ client: false, history: false });
+    expect(result.reasoning).toEqual({ client: false, history: false });
+    expect(result.toolCalls).toEqual({ client: false, history: false });
   });
 
-  it("position default applies when both block itemRole and emit are absent", async () => {
+  it("per-type boolean false suppresses that type", async () => {
     const { normalizeEmit } = await import("../../core/src/blocks/generator");
-    expect(normalizeEmit(undefined, undefined, "trace")).toEqual({
-      reasoning: "trace",
-      messages: "trace",
-      toolCalls: "trace"
-    });
+    const result = normalizeEmit(
+      { reasoning: false },
+      undefined,
+      { client: true, history: true }
+    );
+    expect(result.reasoning).toBe(false);
+    expect(result.messages).toEqual({ client: true, history: true });
+    expect(result.toolCalls).toEqual({ client: true, history: true });
   });
 
-  it("preserves per-type boolean false (backward compat)", async () => {
+  it("per-type boolean true uses block defaults", async () => {
     const { normalizeEmit } = await import("../../core/src/blocks/generator");
-    expect(
-      normalizeEmit({ reasoning: false }, undefined, "external")
-    ).toEqual({
-      reasoning: false,
-      messages: "external",
-      toolCalls: "external"
-    });
+    const result = normalizeEmit(
+      { reasoning: true },
+      { client: false },
+      { client: true, history: true }
+    );
+    expect(result.reasoning).toEqual({ client: false, history: true });
   });
 });
 
 // ---------------------------------------------------------------------------
-// resolvePositionDefaultRole (reads _blockIdentity.phase + ctx.parent)
+// resolvePositionDefault
 // ---------------------------------------------------------------------------
 
-describe("resolvePositionDefaultRole", () => {
-  it("defaults to external in the main phase with no generator parent", async () => {
-    const { resolvePositionDefaultRole } = await import("../../core/src/blocks/generator");
+describe("resolvePositionDefault", () => {
+  it("defaults to client+history in the main phase with no generator parent", async () => {
+    const { resolvePositionDefault } = await import("../../core/src/blocks/generator");
     const ctx = {
       _blockIdentity: { blockName: "b", blockInstanceId: "b_1", phase: "main" as const }
-    } as unknown as Parameters<typeof resolvePositionDefaultRole>[0];
-    expect(resolvePositionDefaultRole(ctx)).toBe("external");
+    } as unknown as Parameters<typeof resolvePositionDefault>[0];
+    expect(resolvePositionDefault(ctx)).toEqual({ client: true, history: true });
   });
 
-  it("returns trace when parent is a generator (tool-call position)", async () => {
-    const { resolvePositionDefaultRole } = await import("../../core/src/blocks/generator");
+  it("returns suppressed when parent is a generator (tool-call position)", async () => {
+    const { resolvePositionDefault } = await import("../../core/src/blocks/generator");
     const ctx = {
       parent: { name: "caller", kind: "generator" as const, input: undefined },
       _blockIdentity: { blockName: "b", blockInstanceId: "b_1", phase: "main" as const }
-    } as unknown as Parameters<typeof resolvePositionDefaultRole>[0];
-    expect(resolvePositionDefaultRole(ctx)).toBe("trace");
+    } as unknown as Parameters<typeof resolvePositionDefault>[0];
+    expect(resolvePositionDefault(ctx)).toEqual({ client: false, history: false });
   });
 
-  it("returns trace when the block identity marks phase as work", async () => {
-    const { resolvePositionDefaultRole } = await import("../../core/src/blocks/generator");
+  it("returns suppressed when the block identity marks phase as work", async () => {
+    const { resolvePositionDefault } = await import("../../core/src/blocks/generator");
     const ctx = {
       _blockIdentity: { blockName: "b", blockInstanceId: "b_1", phase: "work" as const }
-    } as unknown as Parameters<typeof resolvePositionDefaultRole>[0];
-    expect(resolvePositionDefaultRole(ctx)).toBe("trace");
+    } as unknown as Parameters<typeof resolvePositionDefault>[0];
+    expect(resolvePositionDefault(ctx)).toEqual({ client: false, history: false });
   });
 });
 
 // ---------------------------------------------------------------------------
-// Structural items stamp trace role
+// Structural items stamp client: false, history: false
 // ---------------------------------------------------------------------------
 
-describe("structural item role stamping", () => {
-  it("stamps block_output items with itemRole: trace", async () => {
+describe("structural item visibility stamping", () => {
+  it("stamps block_output items with client: false, history: false", async () => {
     const h = handler({
       name: "noop",
       inputSchema: z.object({}).passthrough(),
@@ -297,7 +320,7 @@ describe("structural item role stamping", () => {
     });
 
     const flow = defineFlow({
-      kind: "role-struct-flow",
+      kind: "vis-struct-flow",
       actions: {
         run: {
           inputSchema: z.object({}).passthrough(),
@@ -325,21 +348,20 @@ describe("structural item role stamping", () => {
     const blockOutputs = response.getItems().filter((i) => i.type === "block_output");
     expect(blockOutputs.length).toBeGreaterThan(0);
     for (const item of blockOutputs) {
-      expect(item.itemRole).toBe("trace" satisfies ItemRole);
-      // Legacy flag retained for backward compatibility.
-      expect(item.trace).toBe(true);
+      expect(item.client).toBe(false);
+      expect(item.history).toBe(false);
     }
   });
 });
 
 // ---------------------------------------------------------------------------
-// History assembly respects role (external + internal included, trace excluded)
+// History assembly respects visibility
 // ---------------------------------------------------------------------------
 
-describe("itemToLLMMessages role filtering", () => {
-  it("includes external and internal messages, excludes trace items", async () => {
+describe("itemToLLMMessages visibility filtering", () => {
+  it("includes items with history: true, excludes history: false", async () => {
     const flow = defineFlow({
-      kind: "llm-role-filter-flow",
+      kind: "llm-vis-filter-flow",
       actions: {
         run: {
           inputSchema: z.object({}).passthrough(),
@@ -356,49 +378,49 @@ describe("itemToLLMMessages role filtering", () => {
     const stores = createInMemoryStores();
     const prov = { blockName: "gen", blockInstanceId: "gen_1", phase: "main" as const };
 
-    await stores.request.set("req_prev_role", {
-      id: "req_prev_role",
+    await stores.request.set("req_prev_vis", {
+      id: "req_prev_vis",
       flowKind: flow.kind,
       actionName: "run",
-      sessionId: "sess_role",
-      userId: "user_role",
+      sessionId: "sess_vis",
+      userId: "user_vis",
       status: "completed",
       startedAtMs: 1,
       updatedAt: 1,
       items: [
-        // External message — included.
         {
           id: "m_ext",
           type: "message",
           status: "completed",
-          itemRole: "external",
-          requestId: "req_prev_role",
+          client: true,
+          history: true,
+          requestId: "req_prev_vis",
           itemIndex: 0,
           ts: 1,
           role: "user",
           content: [{ type: "output_text", text: "user input" }],
           provenance: prov
         },
-        // Internal assistant note — included (hidden from UI, visible to LLM).
         {
           id: "m_int",
           type: "message",
           status: "completed",
-          itemRole: "internal",
-          requestId: "req_prev_role",
+          client: false,
+          history: true,
+          requestId: "req_prev_vis",
           itemIndex: 1,
           ts: 2,
           role: "assistant",
           content: [{ type: "output_text", text: "internal synthesis" }],
           provenance: prov
         },
-        // Trace message — excluded by role even though type is "message".
         {
-          id: "m_trc",
+          id: "m_hidden",
           type: "message",
           status: "completed",
-          itemRole: "trace",
-          requestId: "req_prev_role",
+          client: false,
+          history: false,
+          requestId: "req_prev_vis",
           itemIndex: 2,
           ts: 3,
           role: "assistant",
@@ -411,24 +433,22 @@ describe("itemToLLMMessages role filtering", () => {
     const ctx = await createExecutionContext({
       flow,
       actionName: "run",
-      requestId: "req_cur_role",
-      sessionId: "sess_role",
-      userId: "user_role",
+      requestId: "req_cur_vis",
+      sessionId: "sess_vis",
+      userId: "user_vis",
       stores
     });
 
     const llmMessages = await ctx.session.items.llm();
-
-    // Exactly the external + internal messages — no trace content.
     expect(llmMessages.map((m) => m.content)).toEqual([
       "user input",
       "internal synthesis"
     ]);
   });
 
-  it("still excludes legacy trace: true items (backward compat)", async () => {
+  it("backward compat: legacy itemRole still gates history inclusion", async () => {
     const flow = defineFlow({
-      kind: "legacy-trace-flow",
+      kind: "legacy-role-flow",
       actions: {
         run: {
           inputSchema: z.object({}).passthrough(),
@@ -459,6 +479,7 @@ describe("itemToLLMMessages role filtering", () => {
           id: "m_user",
           type: "message",
           status: "completed",
+          itemRole: "external",
           requestId: "req_legacy",
           itemIndex: 0,
           ts: 1,
@@ -466,12 +487,11 @@ describe("itemToLLMMessages role filtering", () => {
           content: [{ type: "output_text", text: "hello" }],
           provenance: prov
         },
-        // Legacy trace marker (no itemRole) — must still be excluded.
         {
-          id: "m_legacy_trace",
+          id: "m_trace",
           type: "message",
           status: "completed",
-          trace: true,
+          itemRole: "trace",
           requestId: "req_legacy",
           itemIndex: 1,
           ts: 2,
@@ -495,4 +515,71 @@ describe("itemToLLMMessages role filtering", () => {
     expect(llmMessages).toEqual([{ role: "user", content: "hello" }]);
   });
 
+  it("backward compat: legacy trace: true still excludes from history", async () => {
+    const flow = defineFlow({
+      kind: "legacy-trace-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({}).passthrough(),
+          block: handler({
+            name: "noop",
+            inputSchema: z.object({}).passthrough(),
+            outputSchema: z.object({ ok: z.boolean() }),
+            execute: () => ({ ok: true })
+          })
+        }
+      }
+    })();
+
+    const stores = createInMemoryStores();
+    const prov = { blockName: "gen", blockInstanceId: "gen_1", phase: "main" as const };
+
+    await stores.request.set("req_trace", {
+      id: "req_trace",
+      flowKind: flow.kind,
+      actionName: "run",
+      sessionId: "sess_trace",
+      userId: "user_trace",
+      status: "completed",
+      startedAtMs: 1,
+      updatedAt: 1,
+      items: [
+        {
+          id: "m_user",
+          type: "message",
+          status: "completed",
+          requestId: "req_trace",
+          itemIndex: 0,
+          ts: 1,
+          role: "user",
+          content: [{ type: "output_text", text: "hello" }],
+          provenance: prov
+        },
+        {
+          id: "m_legacy_trace",
+          type: "message",
+          status: "completed",
+          trace: true,
+          requestId: "req_trace",
+          itemIndex: 1,
+          ts: 2,
+          role: "assistant",
+          content: [{ type: "output_text", text: "hidden" }],
+          provenance: prov
+        }
+      ]
+    } as any);
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_cur_trace",
+      sessionId: "sess_trace",
+      userId: "user_trace",
+      stores
+    });
+
+    const llmMessages = await ctx.session.items.llm();
+    expect(llmMessages).toEqual([{ role: "user", content: "hello" }]);
+  });
 });

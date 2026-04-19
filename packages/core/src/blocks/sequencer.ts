@@ -154,8 +154,8 @@ async function emitSequencerStateSnapshot(
     id: `item_seq_state_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "sequencer_state_snapshot" as const,
     status: "completed" as const,
-    trace: true,
-    itemRole: "trace" as const,
+    client: false,
+    history: false,
     transient: true,
     requestId: ctx.request.identity.id,
     itemIndex: getSequencerEmitterItemCount(ctx.response),
@@ -194,8 +194,8 @@ async function emitGeneratorBlockOutput(
     id: `item_block_output_${completedAt}_${Math.random().toString(16).slice(2)}`,
     type: "block_output" as const,
     status: "completed" as const,
-    trace: true,
-    itemRole: "trace" as const,
+    client: false,
+    history: false,
     transient: block.transient || undefined,
     requestId: ctx.request.identity.id,
     itemIndex: getSequencerEmitterItemCount(ctx.response),
@@ -300,10 +300,8 @@ async function executeBlock(
       transient: block.transient || undefined,
       stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined,
       input,
-      // Propagate the child block's declared role so nested generators can
-      // resolve their emit defaults. Phase is inherited from the current
-      // scope (parent's _blockIdentity) so work-phase trees stay `"work"`,
-      // unless a dispatch site (forEachBackground) explicitly overrides.
+      client: block.client,
+      history: block.history,
       itemRole: block.itemRole,
       phase: options?.phase ?? ctx._blockIdentity?.phase,
       container:

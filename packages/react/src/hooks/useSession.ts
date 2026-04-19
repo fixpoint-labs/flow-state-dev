@@ -15,7 +15,7 @@ import {
 } from "@flow-state-dev/client";
 import type {
   Content,
-  ItemRole,
+  ItemVisibility,
   MessageItem,
   OutputItem,
   ReasoningItem,
@@ -24,60 +24,56 @@ import type {
 import { useFlowContext } from "../context/FlowContext";
 
 /**
- * Structural item types that default to `"trace"` when the item has no
- * explicit `itemRole`. Mirrors the canonical list in
- * `@flow-state-dev/core/items/resolve-role.ts` (package boundaries require
- * type-only imports from core, so this pure logic is duplicated here).
+ * Per-type default visibility — mirrors `ITEM_TYPE_DEFAULTS` from core.
+ * Duplicated because the react package may only type-import from core.
  */
-const STRUCTURAL_TRACE_TYPES = new Set<string>([
-  "block_output",
-  "router_decision",
-  "sequencer_state_snapshot",
-  "container",
-  "state_change",
-  "resource_change"
-]);
+const ITEM_TYPE_DEFAULTS: Record<string, ItemVisibility> = {
+  message:                      { client: true,  history: true  },
+  reasoning:                    { client: true,  history: true  },
+  block_tool_output:            { client: true,  history: true  },
+  component:                    { client: true,  history: false },
+  container:                    { client: true,  history: false },
+  source:                       { client: true,  history: false },
+  status:                       { client: true,  history: false },
+  state_change:                 { client: true,  history: false },
+  resource_change:              { client: true,  history: false },
+  error:                        { client: true,  history: false },
+  step_error:                   { client: true,  history: false },
+  block_output:                 { client: false, history: false },
+  router_decision:              { client: false, history: false },
+  sequencer_state_snapshot:     { client: false, history: false },
+};
+
+const FALLBACK_DEFAULTS: ItemVisibility = { client: true, history: false };
 
 /**
- * Isomorphic role resolver (mirror of core's `resolveItemRole`). Duplicated
- * because the react package may only type-import from core.
+ * Resolves item visibility — mirrors core's `resolveItemVisibility()`.
+ * Duplicated because the react package may only type-import from core.
  */
-function resolveItemRole(item: OutputItem): ItemRole {
+function resolveItemVisibility(item: OutputItem): ItemVisibility {
+  const hasExplicit = item.client !== undefined || item.history !== undefined;
+  if (hasExplicit) {
+    const typeDefaults = ITEM_TYPE_DEFAULTS[item.type] ?? FALLBACK_DEFAULTS;
+    return {
+      client: item.client ?? typeDefaults.client,
+      history: item.history ?? typeDefaults.history,
+    };
+  }
+
   if (item.itemRole !== undefined) {
-    return item.itemRole;
+    switch (item.itemRole) {
+      case "external": return { client: true,  history: true  };
+      case "internal": return { client: false, history: true  };
+      case "trace":    return { client: false, history: false };
+    }
   }
-  if (item.trace === true) {
-    return "trace";
-  }
-  if (STRUCTURAL_TRACE_TYPES.has(item.type)) {
-    return "trace";
-  }
-  if (item.provenance?.phase === "work") {
-    return "trace";
-  }
-  return "external";
-}
 
-/**
- * Client-audience item types used as a fallback when an explicit `itemTypes`
- * filter is provided. The primary client-side filter is role-based:
- * `resolveItemRole(item) === "external"` (see `passesItemFilter`). The type
- * whitelist still scopes a few non-role-bearing item kinds (state_change,
- * resource_change, error, step_error) that clients surface regardless of role.
- */
-const CLIENT_ITEM_TYPES = new Set([
-  "message",
-  "reasoning",
-  "block_tool_output",
-  "component",
-  "container",
-  "status",
-  "source",
-  "state_change",
-  "resource_change",
-  "error",
-  "step_error"
-]);
+  if (item.trace === true) {
+    return { client: false, history: false };
+  }
+
+  return ITEM_TYPE_DEFAULTS[item.type] ?? FALLBACK_DEFAULTS;
+}
 
 const DEFAULT_STATE_PAGE_LIMIT = 100;
 
@@ -189,18 +185,11 @@ function passesItemFilter(
     return false;
   }
 
-  // Explicit itemTypes override uses type matching only (legacy opt-in).
   if (filter.itemTypes !== undefined && filter.itemTypes.length > 0) {
     return filter.itemTypes.includes(item.type);
   }
 
-  // Default client view: only `external` items are shown. `internal` and
-  // `trace` items stream via SSE for devtool consumers but stay out of the
-  // user-facing conversation view.
-  if (!CLIENT_ITEM_TYPES.has(item.type)) {
-    return false;
-  }
-  return resolveItemRole(item) === "external";
+  return resolveItemVisibility(item).client;
 }
 
 /**

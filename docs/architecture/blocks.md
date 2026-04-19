@@ -57,7 +57,7 @@ interface BlockContext {
 }
 ```
 
-Each emitted item carries a visibility role — `external`, `internal`, or `trace` — that controls whether it reaches the UI and the LLM's history. The block's `itemRole` config sets the default role for the emissions; generators can override per-type via `emit`. See the [item roles and emit config](#item-visibility-roles) section for the full model.
+Each emitted item has two visibility flags — `client` (sent to the UI) and `history` (included in LLM context) — that default per item type. The block's `client`/`history` config overrides these defaults for all emissions; generators can override per-type via `emit`. See the [item visibility](#item-visibility) section for the full model.
 
 Blocks are **silent by default** — if a block doesn't explicitly emit via `ctx` methods, it produces nothing visible to the client or LLM.
 
@@ -348,24 +348,24 @@ Every emitted item has a visibility `role` that controls how it participates in 
 | `internal` | Yes | No | Yes |
 | `trace` | No | No | Yes |
 
-The hierarchy is strict: `external ⊃ internal ⊃ trace`. There is no combination where an item is shown in the UI but excluded from history.
+`client` and `history` are independent — you can have items that go to the client but not LLM history (components, status), or to history but not the client (internal analysis).
 
 To suppress an item type entirely (no item at all, not even for observability), set `emit: false` on a generator or its per-type key: `emit: { reasoning: false }`.
 
-### Default roles
+### Position defaults
 
-The position of a block in the execution graph determines the default role for items it emits:
+The position of a block in the execution graph determines the default visibility for items it emits:
 
-- **Main phase** (the primary generator chain of a request): `"external"`.
-- **Tool call** (a generator executed as a tool by another generator): `"trace"`.
-- **Work phase** (background / scoped work): `"trace"`.
+- **Main phase** (the primary generator chain of a request): `client: true, history: true`.
+- **Tool call** (a generator executed as a tool by another generator): `client: false, history: false`.
+- **Work phase** (background / scoped work): `client: false, history: false`.
 
-A block's `itemRole` config overrides the position-based default for that block's emissions:
+A block's `client`/`history` config overrides the position-based default:
 
 ```ts
 const researcher = generator({
   name: "researcher",
-  itemRole: "internal", // findings feed the next turn's LLM context, but users don't see them
+  client: false, // findings feed the next turn's LLM context, but users don't see them
   prompt: "Analyze and summarize.",
   model: "anthropic:claude-sonnet-4-6",
 });
@@ -373,34 +373,32 @@ const researcher = generator({
 
 ### Emit config (generators)
 
-Generators can override role per item type via `emit`:
+Generators can override visibility per item type via `emit`:
 
 ```ts
-emit?: false | ItemRole | {
-  reasoning?: boolean | ItemRole;
-  messages?: boolean | ItemRole;
-  toolCalls?: boolean | ItemRole;
+emit?: false | {
+  reasoning?: boolean | { client?: boolean; history?: boolean };
+  messages?: boolean | { client?: boolean; history?: boolean };
+  toolCalls?: boolean | { client?: boolean; history?: boolean };
 };
 ```
 
 - `false` suppresses all item types.
-- An `ItemRole` string applies the same role to every item type.
-- The object form overrides per-type. `true` = use the block default, `false` = suppress that type, or a role string for an explicit override.
+- The object form overrides per-type. `true` = use the block default, `false` = suppress that type, or `{ client?, history? }` for explicit visibility.
 
 Precedence (highest to lowest):
 
-1. Per-type emit value: `emit: { messages: "internal" }`
-2. Top-level emit value: `emit: "trace"`
-3. Block-level `itemRole`: `itemRole: "internal"`
-4. Position-based default (main → `external`, tool call / work → `trace`)
+1. Per-type emit value: `emit: { messages: { client: false } }`
+2. Block-level `client`/`history`: `client: false`
+3. Position-based default (main → both true, tool call / work → both false)
 
 ### Emission helpers
 
-- `ctx.emitMessage(text | content[])` — the primary way to emit assistant-visible content. Role comes from the surrounding scope, so the same call produces different visibility in different contexts.
-- `ctx.emitComponent(component, data)` — UI components. Role follows the scope.
-- `ctx.emitStatus(message)` — transient progress indicators. Always `external` (intended for the user).
+- `ctx.emitMessage(text | content[], options?)` — the primary way to emit assistant-visible content. Accepts optional `{ client?, history? }` overrides.
+- `ctx.emitComponent(component, data, options?)` — UI components. Accepts optional `{ key?, client?, history? }`.
+- `ctx.emitStatus(message, options?)` — transient progress indicators. Always `history: false`; client defaults to `true`.
 
-There is no `ctx.emitLLMContext` — to emit a message that's hidden from the UI but kept in LLM history, use `ctx.emitMessage()` on a block configured with `itemRole: "internal"`.
+To emit a message hidden from the UI but kept in LLM history, use `ctx.emitMessage("text", { client: false })`.
 
 ## Canonical Authority
 

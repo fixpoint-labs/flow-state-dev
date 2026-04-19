@@ -43,28 +43,39 @@ The reference table below shows where each item type appears by default. Two thi
 - **Client** means the client receives and can render it. Most items are client-visible.
 - **LLM History** means the item enters conversation history for future model calls. Only content-bearing types (`message`, `reasoning`, `block_tool_output`) do this. Other client-visible types like `component` and `status` don't feed into model context — they're purely for the UI.
 
-### Changing visibility with roles
+### Changing visibility
 
-Every item has a **role** that you can override to change its default visibility:
+Every item has two independent visibility flags you can override:
 
-| Role | Client | LLM history | DevTool |
-|------|:-------:|:-----------:|:-------:|
-| `external` | ✓ | ✓ | ✓ |
-| `internal` | — | ✓ | ✓ |
-| `trace` | — | — | ✓ |
+| Flag | What it controls |
+|------|-----------------|
+| `client` | Whether the item is sent to connected clients |
+| `history` | Whether the item enters LLM conversation history |
 
-Set `itemRole: "internal"` on a generator to hide its output from the client while keeping it in LLM history. This is useful for helper blocks that produce content the next model call should see, but the user shouldn't:
+Each item type has sensible defaults — `message` defaults to both, `component` defaults to client-only, `block_output` defaults to neither (devtool-only). You can override per-block or per-item.
+
+Set `client: false` on a generator to hide its output from the client while keeping it in LLM history:
 
 ```ts
 const helper = generator({
   name: "background-analysis",
   model: "preset/fast",
   prompt: "Analyze the user's intent...",
-  itemRole: "internal", // LLM sees output, user doesn't
+  client: false, // LLM sees output, user doesn't
 });
 ```
 
-Set `itemRole: "trace"` to make items devtool-only. Structural items like `block_output` and `router_decision` default to trace.
+The `emit` config on generators provides per-type control:
+
+```ts
+emit: { messages: { client: false }, reasoning: false }
+```
+
+Direct emit methods accept per-call overrides:
+
+```ts
+ctx.emitMessage("internal note", { client: false, history: true });
+```
 
 ## Persistence
 
@@ -98,13 +109,13 @@ Items go through three phases:
 
 For reference, here's the complete registry:
 
-| Type | What it is | Client | LLM History | Transient |
-|------|-----------|:-------:|:-----------:|:---------:|
+| Type | What it is | Client | History | Transient |
+|------|-----------|:-------:|:-------:|:---------:|
 | `message` | Chat message (user or assistant) | ✓ | ✓ | — |
 | `reasoning` | Model thinking tokens | ✓ | ✓ | — |
+| `block_tool_output` | Tool invocation result | ✓ | ✓ | — |
 | `component` | Custom UI component | ✓ | — | — |
 | `container` | Groups child items for visual layout | ✓ | — | — |
-| `block_tool_output` | Tool invocation result | ✓ | ✓ | — |
 | `source` | URL reference from web search, etc. | ✓ | — | — |
 | `status` | Progress indicator | ✓ | — | Always |
 | `state_change` | State mutation notification | ✓ | — | Production |

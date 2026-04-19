@@ -13,7 +13,21 @@ export type ItemStatus = "in_progress" | "completed" | "incomplete" | "failed";
  * user is always also in history; an item hidden from history is also hidden
  * from the UI. To suppress an item entirely, set `emit: false` on the block.
  */
+/**
+ * @deprecated Use `client` and `history` boolean flags instead. Kept for
+ * backward compatibility — `resolveItemVisibility()` maps legacy roles to
+ * the new booleans at read time.
+ */
 export type ItemRole = "external" | "internal" | "trace";
+
+/**
+ * Resolved visibility of an item: whether it should be sent to the client
+ * and whether it should be included in LLM conversation history.
+ */
+export type ItemVisibility = {
+  client: boolean;
+  history: boolean;
+};
 
 export type ItemProvenance = {
   blockName: string;
@@ -31,17 +45,21 @@ export type OutputItemBase = {
   type: string;
   status: ItemStatus;
   transient?: boolean;
+  /** Whether this item is sent to connected clients. When unset, resolved
+   *  from per-type defaults via `resolveItemVisibility()`. */
+  client?: boolean;
+  /** Whether this item is included in LLM conversation history. When unset,
+   *  resolved from per-type defaults via `resolveItemVisibility()`. */
+  history?: boolean;
   /**
-   * Visibility role controlling UI display and LLM history inclusion.
-   * New items set this explicitly. Pre-existing items without the field are
-   * resolved via `resolveItemRole()` using the legacy `trace` boolean and
-   * structural item type list as fallbacks.
+   * @deprecated Use `client` and `history` booleans instead.
+   * Retained for backward compatibility with pre-boolean items.
+   * `resolveItemVisibility()` maps this to booleans as a fallback.
    */
   itemRole?: ItemRole;
   /**
-   * @deprecated Use `itemRole: "trace"` instead. Retained for backward
-   * compatibility with pre-role items. `resolveItemRole()` checks this as a
-   * fallback when `itemRole` is absent.
+   * @deprecated Use `client: false, history: false` instead. Retained for
+   * backward compatibility with pre-role items.
    */
   trace?: boolean;
   requestId: string;
@@ -143,6 +161,11 @@ export type StatusItem = OutputItemBase & {
   detail?: unknown;
 };
 
+/**
+ * @deprecated The `context` item type has been removed. Use generator
+ * `context` slot configuration or `emitMessage` with `history: true,
+ * client: false` instead.
+ */
 export type ContextItem = OutputItemBase & {
   type: "context";
   text: string;
@@ -211,7 +234,6 @@ export type OutputItem =
   | ComponentItem
   | ContainerItem
   | StatusItem
-  | ContextItem
   | StateChangeItem
   | ResourceChangeItem
   | ErrorItem

@@ -38,16 +38,14 @@ import type {
   ComponentItem,
   ContainerItem,
   Content,
-  ContextItem,
   ItemProvenance,
-  ItemRole,
   MessageItem,
   OutputItem,
   RouterDecisionItem,
   StateChangeItem,
   StatusItem
 } from "@flow-state-dev/core/items";
-import { resolveItemRole } from "@flow-state-dev/core/items";
+import { resolveItemVisibility } from "@flow-state-dev/core/items";
 import type { BlockContext, BlockResult, ComponentHandle, ExecutionParent, MessageHandle, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import type {
@@ -744,7 +742,6 @@ function defineStateProperty<THandle extends object, TState extends object>(
 const LLM_AUDIENCE_TYPES = new Set([
   "message",
   "reasoning",
-  "context",
   "block_output",
   "block_tool_output"
 ]);
@@ -770,18 +767,12 @@ const CLIENT_AUDIENCE_TYPES = new Set([
 /**
  * Converts a persisted OutputItem into an LLM-ready message.
  *
- * Role determines inclusion: `external` and `internal` items both participate
- * in LLM history (external is also shown in the UI; internal is hidden from
- * the UI but kept for LLM context). `trace` items are excluded — they carry
- * lifecycle/diagnostic metadata for observability only.
- *
- * Returns an empty array for item types that don't map to conversation
- * messages (status, state_change, resource_change, etc.).
+ * Items with `history: false` (resolved via `resolveItemVisibility`) are
+ * excluded. Returns an empty array for item types that don't map to
+ * conversation messages (status, state_change, resource_change, etc.).
  */
 function itemToLLMMessages(item: OutputItem): LLMMessage[] {
-  // Fast path: trace items (explicit role, legacy `trace: true`, or
-  // structural item types resolved via resolveItemRole) never enter history.
-  if (resolveItemRole(item) === "trace") {
+  if (!resolveItemVisibility(item).history) {
     return [];
   }
 
@@ -808,13 +799,6 @@ function itemToLLMMessages(item: OutputItem): LLMMessage[] {
 
     return text.length > 0
       ? [{ role: "assistant", content: text }]
-      : [];
-  }
-
-  if (item.type === "context") {
-    const ctx = item as ContextItem;
-    return ctx.text.length > 0
-      ? [{ role: "system", content: ctx.text }]
       : [];
   }
 
@@ -1064,7 +1048,8 @@ function createSessionItemViews(
 
   const select = (
     query: ItemQuery | undefined,
-    audienceTypes?: Set<string>
+    audienceTypes?: Set<string>,
+    clientOnly?: boolean
   ): SessionItem[] => {
     const includeTransient = query?.includeTransient === true;
     const itemTypeFilter = query?.itemTypes
@@ -1083,7 +1068,12 @@ function createSessionItemViews(
         return false;
       }
 
-      // Type-based audience filtering when provided.
+      // Visibility-based audience filtering: client view uses resolveItemVisibility.
+      if (clientOnly && !resolveItemVisibility(item as unknown as OutputItem).client) {
+        return false;
+      }
+
+      // Type-based audience filtering when provided (for LLM audience).
       if (audienceTypes !== undefined && !audienceTypes.has(item.type)) {
         return false;
       }
@@ -1101,7 +1091,7 @@ function createSessionItemViews(
 
   return {
     all: (query) => select(query),
-    client: (query) => select(query, CLIENT_AUDIENCE_TYPES),
+    client: (query) => select(query, undefined, true),
     llm: (query) =>
       loadLLMHistory(
         priorRequests,
@@ -1135,22 +1125,19 @@ type EmissionContext = {
   nextItemIndex: () => number;
   /** Container ownership tag — set when emitting inside a container scope. */
   ownedBy?: string;
-  /**
-   * Resolved visibility role for items emitted via `emitMessage` /
-   * `emitComponent`. Defaults to `"external"` at the root scope. Flows down
-   * via `_withExecutionScope`, taking the current block's `itemRole`, the
-   * parent scope's role, and the execution phase into account.
-   */
-  itemRole: ItemRole;
+  /** Whether emitted items are sent to clients by default in this scope. */
+  client: boolean;
+  /** Whether emitted items enter LLM history by default in this scope. */
+  history: boolean;
 };
 
 function createEmitMessage(
   emCtx: EmissionContext
 ): {
-  (text: string): MessageHandle;
-  (content: Content[]): MessageHandle;
+  (text: string, options?: { client?: boolean; history?: boolean }): MessageHandle;
+  (content: Content[], options?: { client?: boolean; history?: boolean }): MessageHandle;
 } {
-  return function emitMessage(textOrContent: string | Content[]): MessageHandle {
+  return function emitMessage(textOrContent: string | Content[], options?: { client?: boolean; history?: boolean }): MessageHandle {
     const content: Content[] =
       typeof textOrContent === "string"
         ? [{ type: "output_text", text: textOrContent }]
@@ -1162,7 +1149,8 @@ function createEmitMessage(
       type: "message",
       status: "in_progress",
       transient: emCtx.blockTransient || undefined,
-      itemRole: emCtx.itemRole,
+      client: options?.client ?? emCtx.client,
+      history: options?.history ?? emCtx.history,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -1211,11 +1199,11 @@ function createEmitMessage(
 
 function createEmitComponent(
   emCtx: EmissionContext
-): (component: string, data: Record<string, unknown>, options?: { key?: string }) => ComponentHandle {
+): (component: string, data: Record<string, unknown>, options?: { key?: string; client?: boolean; history?: boolean }) => ComponentHandle {
   return function emitComponent(
     component: string,
     data: Record<string, unknown>,
-    options?: { key?: string }
+    options?: { key?: string; client?: boolean; history?: boolean }
   ): ComponentHandle {
     const itemIndex = emCtx.nextItemIndex();
     const item: ComponentItem = {
@@ -1223,7 +1211,8 @@ function createEmitComponent(
       type: "component",
       status: "in_progress",
       transient: emCtx.blockTransient || undefined,
-      itemRole: emCtx.itemRole,
+      client: options?.client ?? emCtx.client,
+      history: options?.history ?? emCtx.history,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -1460,18 +1449,16 @@ function createTargetStateOps<TState extends JsonObject>(options: {
 }
 function createEmitStatus(
   emCtx: EmissionContext
-): (message: string) => void {
-  return function emitStatus(message: string): void {
+): (message: string, options?: { client?: boolean }) => void {
+  return function emitStatus(message: string, options?: { client?: boolean }): void {
     const itemIndex = emCtx.nextItemIndex();
-    // Status items always have the "external" role: they are transient UI
-    // indicators (progress, tool usage) meant for the user. Future work
-    // may fold status into the block's container item.
     const item: StatusItem = {
       id: `item_status_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "status",
       status: "completed",
       transient: true,
-      itemRole: "external",
+      client: options?.client ?? true,
+      history: false,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -2188,8 +2175,8 @@ export async function createExecutionContext<
       id: `item_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "block_output",
       status,
-      trace: true,
-      itemRole: "trace",
+      client: false,
+      history: false,
       transient: parent.transient || undefined,
       requestId: reqRef.current.id,
       itemIndex,
@@ -2262,7 +2249,8 @@ export async function createExecutionContext<
       phase: "main" as const
     }),
     nextItemIndex: () => emittedItemCount++,
-    itemRole: "external"
+    client: true,
+    history: true,
   };
 
   const logger = options.logger;
@@ -2320,8 +2308,8 @@ export async function createExecutionContext<
         id: `item_router_${itemIndex}_${Math.random().toString(16).slice(2)}`,
         type: "router_decision",
         status: "completed",
-        trace: true,
-        itemRole: "trace",
+        client: false,
+        history: false,
         requestId: requestRef.current.id,
         itemIndex,
         provenance: {
@@ -2549,7 +2537,8 @@ export async function createExecutionContext<
               id: `item_container_${itemIndex}_${Math.random().toString(16).slice(2)}`,
               type: "container",
               status: "completed",
-              itemRole: "trace",
+              client: false,
+              history: false,
               transient: resolvedParent.transient || undefined,
               requestId: requestRef.current.id,
               itemIndex,
@@ -2584,11 +2573,8 @@ export async function createExecutionContext<
           result: siblingEntry.result,
           previous: parentChain
         };
-        // Resolve the emission role for this scope. The block's declared
-        // `itemRole` takes precedence over the parent scope's role so a
-        // subagent with `itemRole: "internal"` hides its helper emissions
-        // even when nested inside an `"external"` parent.
-        const childItemRole: ItemRole = resolvedParent.itemRole ?? activeEmCtx.itemRole;
+        const childClient = resolvedParent.client ?? activeEmCtx.client;
+        const childHistory = resolvedParent.history ?? activeEmCtx.history;
         const childPhase = resolvedParent.phase ?? "main";
         const childEmCtx: EmissionContext = {
           requestId: requestRef.current.id,
@@ -2604,7 +2590,8 @@ export async function createExecutionContext<
           ownedBy: resolvedParent.container !== undefined
             ? resolvedParent.instanceId
             : activeEmCtx.ownedBy,
-          itemRole: childItemRole
+          client: childClient,
+          history: childHistory,
         };
         const childContext = createContext(
           childChain,
@@ -2613,17 +2600,13 @@ export async function createExecutionContext<
           childEmCtx
         );
 
-        // Expose the block's identity so nested code (e.g. generator tool
-        // output emission) can construct provenance without reaching into
-        // server-internal structures. `itemRole` and `phase` let the
-        // generator's emit-config resolver apply the right default role.
-        // Phase is inherited via resolvedParent so work-phase trees
-        // propagate automatically to nested blocks.
         (childContext as { _blockIdentity?: unknown })._blockIdentity = {
           blockName: resolvedParent.name,
           blockInstanceId: resolvedParent.instanceId,
           parentBlockInstanceId: resolvedParent.parentInstanceId,
           ownedBy: childEmCtx.ownedBy,
+          client: resolvedParent.client,
+          history: resolvedParent.history,
           itemRole: resolvedParent.itemRole,
           phase: resolvedParent.phase ?? "main"
         };
