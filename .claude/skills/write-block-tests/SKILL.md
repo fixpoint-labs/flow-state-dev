@@ -25,11 +25,13 @@ Read the test that most closely matches your block kind:
 
 | Block kind | Reference test file |
 |------------|-------------------|
-| Utility (generator) | `packages/core/test/summarizer.test.ts` |
+| Utility (generator) | `packages/core/test/generator.test.ts` |
 | Handler | `packages/core/test/handler.test.ts` |
 | Sequencer | `packages/core/test/sequencer.test.ts` |
 | Router | `packages/core/test/router.test.ts` |
+| Capability integration | `packages/core/test/capability-block-integration.test.ts` |
 | Pattern | `packages/patterns/test/event-queue.test.ts` or `packages/patterns/test/blackboard.test.ts` |
+| Reactive blackboard | `packages/patterns/test/reactive-blackboard.test.ts` |
 
 Also read `packages/core/test/helpers.ts` — it defines `createMockContext()` which is used in most tests.
 
@@ -44,8 +46,14 @@ import { z } from "zod";
 // For unit tests (core package blocks):
 import { createMockContext } from "./helpers";
 // For integration tests (patterns, cross-package):
-import { testBlock } from "@flow-state-dev/testing";
+import { testBlock, testSequencer, testRouter } from "@flow-state-dev/testing";
+// For scripted generator responses in multi-step tests:
+import { mockGenerator } from "@flow-state-dev/testing";
 ```
+
+- `testSequencer(seq, options)` — returns `TestSequencerResult` with `.steps: StepTrace[]` for inspecting step-by-step execution
+- `testRouter(router, options)` — returns `TestRouterResult` with `.selectedRoute: string`
+- `mockGenerator({ name, script })` — creates a generator with scripted responses (each call consumes the next entry in `script`). Entries can be `{ structuredOutput }` or `{ text }`. Preferred over inline mock functions for complex multi-step tests.
 
 ### Step 4: Write Tests by Category
 
@@ -199,6 +207,68 @@ it("is composable inside sequencers", async () => {
   const ctx = createMockContext({ /* ... */ });
   const result = await chain.run({ text: "hello" }, ctx);
   expect(result).toEqual({ /* expected */ });
+});
+```
+
+#### E2. Sequencer DSL Method Tests
+
+Test DSL methods like `exitIf()`, `thenAll()`, and `workIf()`:
+
+```typescript
+it("exits early when exitIf condition is met", async () => {
+  const chain = seq({ name: "early-exit", inputSchema: z.object({ done: z.boolean() }) })
+    .exitIf((input) => input.done, { output: { skipped: true } })
+    .then(expensiveBlock);
+
+  const result = await testSequencer(chain, { input: { done: true } });
+  expect(result.output).toEqual({ skipped: true });
+  // expensiveBlock should never execute
+  expect(result.steps).toHaveLength(1);
+});
+
+it("runs parallel branches with thenAll", async () => {
+  const chain = seq({ name: "parallel", inputSchema: z.any() })
+    .thenAll([branchA, branchB]);
+
+  const result = await testSequencer(chain, { input: {} });
+  expect(result.steps).toHaveLength(1); // thenAll is one step
+  expect(result.output).toHaveProperty("branchA");
+  expect(result.output).toHaveProperty("branchB");
+});
+
+it("conditionally runs background work", async () => {
+  const chain = seq({ name: "conditional-bg", inputSchema: z.any() })
+    .workIf((input) => input.needsCleanup, cleanupBlock)
+    .then(mainBlock);
+
+  const result = await testSequencer(chain, { input: { needsCleanup: false } });
+  // cleanupBlock should be skipped
+  expect(result.steps.find(s => s.name === "cleanup")).toBeUndefined();
+});
+```
+
+#### E3. Using mockGenerator for Multi-Step Tests
+
+For tests involving multiple generator calls with scripted responses, use `mockGenerator` instead of inline mock functions:
+
+```typescript
+it("follows a multi-step plan", async () => {
+  const mock = mockGenerator({
+    name: "mock-llm",
+    script: [
+      { structuredOutput: { plan: ["step1", "step2"] } },
+      { text: "Step 1 complete" },
+      { text: "Step 2 complete" },
+    ],
+  });
+
+  const chain = seq({ name: "planner", inputSchema: z.any() })
+    .then(mock)  // first call returns plan
+    .then(mock)  // second call returns step 1
+    .then(mock); // third call returns step 2
+
+  const result = await testSequencer(chain, { input: {} });
+  expect(result.steps).toHaveLength(3);
 });
 ```
 

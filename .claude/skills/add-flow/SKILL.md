@@ -100,7 +100,11 @@ const chatGenerator = generator({
   inputSchema: chatInputSchema,
   history: (_input, ctx) => ctx.session.items.llm(),
   user: (input) => input.message,
+  emit: { reasoning: true },
 });
+
+// Generator `prompt` accepts arrays for composition (PromptSlot):
+// prompt: ["Base instructions.", config.systemPrompt, "Output format instructions."],
 
 const incrementCount = handler({
   name: "increment-count",
@@ -170,6 +174,11 @@ const planResource = defineResource({
     })).default([]),
   }),
   writable: true,
+  // Expose resource data to clients via ResourceClientConfig:
+  client: {
+    content: { read: true },
+    data: (state) => ({ stepCount: state.steps.length }),
+  },
 });
 
 defineFlow({
@@ -251,7 +260,9 @@ request: {
   onStarted: logRequestStart,       // Fire when request begins
   onCompleted: logRequestComplete,   // Terminal success only
   onErrored: handleRequestError,     // Terminal failure only
+  onStepErrored: logStepError,       // Non-terminal step/work failure (observational)
   onFinished: cleanupRequest,        // Always (success or failure)
+  heartbeatIntervalMs: 10000,        // Active request registry heartbeat (default 10s, 0 to disable). Relevant for serverless.
 },
 ```
 
@@ -277,6 +288,7 @@ Intercept all block execution for logging, timing, or transformation:
 middleware: [
   {
     name: "timing",
+    filter: (block) => block.kind === "generator",  // Optional: target specific block kinds
     execute: async (ctx, next) => {
       const start = Date.now();
       const output = await next();
@@ -367,6 +379,7 @@ fsdev run <flow-kind> chat --input '{"message": "hello"}'
 - **Partial state schemas on blocks.** Blocks declare only the state fields they use. The flow-level `stateSchema` is the full picture.
 - **BP-011**: Don't call `block.run()` inside handlers. Compose with sequencers.
 - **BP-014**: Handlers must never `return input`. Use `.tap()` for state-only mutations.
+- **Abort support.** RequestStatus includes `"aborted"`. Blocks can check `ctx.signal` (AbortSignal) for client-initiated cancellation. Long-running handlers should respect the signal to enable graceful abort.
 
 ## Guidelines
 

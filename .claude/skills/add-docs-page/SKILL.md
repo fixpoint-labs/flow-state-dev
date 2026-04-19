@@ -18,25 +18,45 @@ Parse $ARGUMENTS to identify:
 1. What topic does this page cover?
 2. Which section does it belong in?
 
-The docs site has this structure:
+The docs site has two content areas with separate sidebars:
+
+**Docs** (`apps/docs/docs/`, sidebar: `apps/docs/sidebars.ts`):
 
 ```
 apps/docs/docs/
   getting-started/      # Onboarding, installation, first flow
-  fundamentals/         # Core concepts (blocks, flows, state, actions)
-  sequencers/           # Sequencer DSL, composition
-  server/               # Server setup, routes, middleware
+  fundamentals/         # Core concepts (blocks, flows, state, actions, capabilities)
+  sequencers/           # Sequencer DSL, composition, connectors
+  resources/            # Resources, storage, collections, client-access
+  patterns/             # Composable patterns (coordinator, supervisor, plan-and-execute, reactive-blackboard)
+    utility-blocks/     # Core and extension utility blocks
   streaming/            # SSE, item model, resume
-  client/               # Client API, sessions
-  api/                  # React hooks, components
-  resources/            # Resources, client data
+  server/               # Server setup, model resolver, model groups
+  client/               # Client API, React hooks
   persistence/          # Store adapters, data model
-  tools/                # Utility blocks, tool library
-  patterns/             # Composable patterns
+  tools/                # Tool blocks (fetch, crawl, bash, mcp)
   testing/              # Test harness, mocking
   cli/                  # CLI reference
-  devtool/              # DevTool usage
+  devtool/              # DevTool setup and usage
+  api/                  # API reference per package
 ```
+
+**Guides** (`apps/docs/guides/`, sidebar: `apps/docs/sidebarsGuides.ts`):
+
+```
+apps/docs/guides/
+  anatomy-of-a-flow.md
+  building-a-chat-app.md
+  nextjs-setup.md
+  development-tips.md
+  building-agents.md
+  deployment.md                # Deployment overview
+  deploying-to-vercel.md       # Vercel-specific guide
+  deploying-to-railway.md      # Railway-specific guide
+  deploying-with-docker.md     # Docker-specific guide
+```
+
+Guides appear as a separate "Guides" nav item, not inside the Docs sidebar.
 
 If unsure which section, read the existing pages in candidate sections to find the best fit.
 
@@ -47,6 +67,8 @@ Read 1-2 existing pages from the target section to understand:
 - Content structure and depth
 - Code example style
 - How concepts are introduced
+
+Good reference pages for current conventions: `tools/bash.md`, `tools/mcp.md`, `resources/client-access.md`. These reflect the most recent style and structure.
 
 Also read `CLAUDE.md` for the **Writing Style** section — it defines the voice for all docs content.
 
@@ -100,23 +122,67 @@ Follow this general structure (adapt as needed):
   - No wrapper functions for simple property access
   - Schemas belong with their blocks
 
-### Step 4: Add to Sidebar (if needed)
+### Step 4: Add to Sidebar
 
-Docusaurus auto-generates the sidebar from the directory structure and `sidebar_position` frontmatter. If the page is in an existing section, just set the right `sidebar_position`.
+The sidebar is **manually configured**, not auto-generated. Every new page must be added to the appropriate sidebar file or it will not appear in navigation.
 
-If you're creating a new section:
+**For docs pages** (`apps/docs/docs/`):
+
+1. Open `apps/docs/sidebars.ts`
+2. Find the category where your page belongs
+3. Add the page path (relative to `docs/`, without the `.md` extension) to that category's `items` array
+
+Example: adding a new page `docs/tools/mcp.md` to the Tools category:
+
+```ts
+{
+  type: "category",
+  label: "Tools",
+  items: [
+    "tools/overview",
+    "tools/fetch",
+    "tools/crawl",
+    "tools/bash",
+    "tools/mcp",       // <-- new page
+  ],
+},
+```
+
+**For guide pages** (`apps/docs/guides/`):
+
+1. Open `apps/docs/sidebarsGuides.ts`
+2. Add the page path to the `guidesSidebar` array (top-level or inside a category like `"Deployment"`)
+
+Example: adding a new deployment guide:
+
+```ts
+{
+  type: "category",
+  label: "Deployment",
+  items: [
+    "deployment",
+    "deploying-to-vercel",
+    "deploying-to-railway",
+    "deploying-with-docker",
+    "deploying-to-fly",   // <-- new page
+  ],
+},
+```
+
+**Creating a new section** in the docs sidebar:
+
 1. Create the directory under `apps/docs/docs/`
-2. Add a `_category_.json` file:
-   ```json
-   {
-     "label": "Section Name",
-     "position": <number>,
-     "link": {
-       "type": "generated-index",
-       "description": "One sentence describing this section."
-     }
-   }
-   ```
+2. Add a new category object in `sidebars.ts` at the appropriate position:
+
+```ts
+{
+  type: "category",
+  label: "New Section",
+  items: [
+    "new-section/overview",
+  ],
+},
+```
 
 ### Step 5: Cross-link
 

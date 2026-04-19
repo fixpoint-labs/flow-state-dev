@@ -35,6 +35,8 @@ Before writing any code, read the relevant reference:
 - `packages/core/src/utility/context-reducer.ts` — example with multiple output schemas
 - `packages/core/src/utility/decomposer.ts` — example with context/history slots
 
+Many more utility blocks exist in `packages/core/src/utility/` (analyzer, combiner, synthesizer, intent-classifier, etc.). Browse the directory for current examples closest to your target block.
+
 **For handler blocks**, read:
 - `packages/core/src/blocks/handler.ts` (first 30 lines for the `HandlerConfig` shape)
 - Any handler in `packages/tools/src/` for a tool example
@@ -93,13 +95,24 @@ export function <name><
     outputSchema,
     prompt: [
       "You are a <role> assistant.",
+      config.instructions,  // optional — undefined/null values are filtered out
       // ... instructions
       "Return output that exactly matches the required schema."
-    ].join("\n"),
+    ],
     user: (input) => typeof input === "string" ? input : JSON.stringify(input, null, 2)
   });
 }
 ```
+
+**`prompt` accepts `PromptSlot`** — a string, an array of strings/nulls/functions (nulls and undefineds are filtered out, the rest joined with newlines), or a function returning string/null. Prefer array form for composable prompts where some segments are optional config values.
+
+**Additional generator config options** — beyond the template basics, generators support:
+- `history: (input, ctx) => ctx.session.items.llm()` — supply conversation history
+- `emit: { reasoning: true }` — control which items are emitted (reasoning, messages, toolCalls)
+- `providerOptions: { openai: { ... } }` — provider-specific settings
+- `providerTools: [providerTool(...)]` — provider-native tools (e.g., web search)
+
+**Three-tier item visibility** — items have roles: `external` (user-visible), `internal` (framework-visible), `trace` (debug only). Use the `emit` config on generators to control what gets emitted. Generators that should hide internal reasoning can suppress message/reasoning items to `trace` or `internal` level.
 
 #### Handler Block Template
 
@@ -205,6 +218,12 @@ const agentNoTools = generator({
 #### Critical Rules
 
 - **BP-011**: Handlers must NOT call `block.run()` inside `execute`. Compose with a sequencer instead: `.then(generator).then(handler)`.
+- **Sequencer DSL methods** beyond `.then()`:
+  - `workIf(condition, block)` — conditional background work
+  - `thenAll(blocks)` — parallel execution, collect all results
+  - `thenAny(blocks)` — try each in order, first success wins
+  - `race(blocks)` — parallel execution, first to finish wins
+  - `exitIf(condition)` — early exit from the sequence
 - **BP-012**: If the block only mutates state, use `.tap()`. No `outputSchema`, no `return input`.
 - **BP-014**: Never `return input` from a handler. Return a transformation or use `.tap()`.
 - **BP-007**: File header comment required. Document all exports.

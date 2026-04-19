@@ -31,6 +31,7 @@ Before writing, read at least two existing patterns in `packages/patterns/src/`:
 | `event-queue/index.ts` | Typed state schema, loopBack, internal block factories, FIFO processing |
 | `response-auditor/index.ts` | Simpler pattern: linear chain, tap for side effects, evaluation criteria |
 | `supervisor/index.ts` | forEachBackground for concurrent work, resource-based coordination |
+| `reactive-blackboard/index.ts` | Stigmergic multi-agent coordination, actor dispatch, background work |
 
 Also read:
 - `docs/contributing/best-practices.md` — especially BP-011 (no block.run in handlers), BP-012 (use .tap for state-only), BP-014 (never return input)
@@ -65,7 +66,11 @@ packages/patterns/src/<pattern-name>/
 
 ```typescript
 import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { GeneratorSlot, ToolsSlot, UsesSlot } from "@flow-state-dev/core";
 import type { ZodTypeAny } from "zod";
+
+/** Resolvable string — static or computed at runtime from input and context. */
+type InstructionsSlot = string | ((input: any, ctx: any) => string | Promise<string>);
 
 export interface <PatternName>Config<
   TOutputSchema extends ZodTypeAny = ZodTypeAny
@@ -81,6 +86,35 @@ export interface <PatternName>Config<
 
   /** Output schema for the final result. */
   outputSchema?: TOutputSchema;
+
+  // ---------------------------------------------------------------------------
+  // Shared defaults — apply only to default blocks, ignored when overridden.
+  // ---------------------------------------------------------------------------
+
+  /** Overall instructions injected into all default internal generators. */
+  instructions?: InstructionsSlot;
+
+  /** Context slot applied to default internal generators. */
+  context?: GeneratorSlot<any, any>;
+
+  /** Tools forwarded to default internal generators. */
+  tools?: ToolsSlot;
+
+  /** Capabilities installed on default internal blocks. */
+  uses?: UsesSlot;
+
+  // ---------------------------------------------------------------------------
+  // Resource declarations — registered on the outer sequencer.
+  // ---------------------------------------------------------------------------
+
+  /** Session resources declared on the outer sequencer. */
+  sessionResources?: Record<string, any>;
+
+  /** User resources declared on the outer sequencer. */
+  userResources?: Record<string, any>;
+
+  /** Project resources declared on the outer sequencer. */
+  projectResources?: Record<string, any>;
 }
 ```
 
@@ -145,52 +179,64 @@ export function create<BlockName>(
 }
 ```
 
-#### Packaging as a Capability
+#### Forwarding `uses`, `tools`, and Resources
 
-When a pattern provides resources + helpers that external blocks should also access, export a capability alongside the pattern factory:
+The most common pattern: accept `uses`, `tools`, and resource declarations in your config and forward them to the internal blocks that need them. This is how `planAndExecute` and `supervisor` work.
+
+```typescript
+export function <patternName>(config: <PatternName>Config) {
+  const { name, uses, tools, instructions, sessionResources, userResources, projectResources } = config;
+
+  // Forward uses/tools to default internal generators (skip when overridden)
+  const executor = config.executor ?? generator({
+    name: `${name}-executor`,
+    model: config.model ?? "openai/gpt-5.4-mini",
+    ...(tools !== undefined ? { tools } : {}),
+    ...(uses ? { uses: uses as any } : {}),
+    prompt: [instructions, "Execute the task."],
+    // ...
+  });
+
+  // Declare resources on the outer sequencer
+  return sequencer({
+    name,
+    stateSchema,
+    ...(sessionResources ? { sessionResources } : {}),
+    ...(userResources ? { userResources } : {}),
+    ...(projectResources ? { projectResources } : {}),
+  })
+    .then(executor)
+    // ...
+}
+```
+
+Resources are declared on the outer sequencer so the runtime registers them. `uses` and `tools` go on the generators that actually call LLMs. Only spread them when the consumer hasn't provided a custom override block.
+
+#### Exporting a Capability
+
+Some patterns provide reusable infrastructure (shared resources, context formatters, helper tools) that blocks outside the pattern also need. In that case, export a `defineCapability()` alongside the factory:
 
 ```typescript
 import { defineCapability, defineResource } from "@flow-state-dev/core";
 
-// The capability packages resources + runtime helpers
 export const <patternName>Capability = defineCapability({
   name: "<pattern-name>",
   sessionResources: {
     <resourceName>: defineResource({ stateSchema: <schema>, writable: true }),
   },
   presets: {
-    context: { context: [<contextFormatter>] },   // For generators
-    tools: { tools: [<readTool>, <writeTool>] },  // Tools that interact with the resource
+    context: { context: [<contextFormatter>] },
+    tools: { tools: [<readTool>, <writeTool>] },
     default: ["context", "tools"],
   },
   fns: (ctx) => ({
-    // Typed helpers available via ctx.cap.<patternName>
     list: () => ctx.session.resources.<resourceName>.state.items,
     add: async (item) => { /* ... */ },
   }),
 });
-
-// Pattern factory uses the capability internally
-export function <patternName>(config: <PatternName>Config) {
-  return sequencer({
-    name: config.name,
-    uses: [<patternName>Capability],
-    stateSchema,
-  })
-    .then(/* ... */)
-}
 ```
 
-This lets other blocks in the same flow opt into the pattern's resources:
-
-```typescript
-const myAgent = generator({
-  name: "agent",
-  uses: [<patternName>Capability],  // Gets context + tools + ctx.cap helpers
-  model: "openai/gpt-4",
-  prompt: "...",
-});
-```
+This is the less common case. Most patterns just forward `uses` from their config. Only create a dedicated capability when the pattern owns resources that external blocks should opt into.
 
 #### Critical Rules
 
