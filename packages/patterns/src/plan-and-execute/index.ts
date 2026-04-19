@@ -65,6 +65,9 @@ export {
 // Config
 // ---------------------------------------------------------------------------
 
+/** Resolvable string — static or computed at runtime from input and context. */
+type InstructionsSlot = string | ((input: any, ctx: any) => string | Promise<string>);
+
 export interface PlanAndExecuteConfig<
   TOutputSchema extends ZodTypeAny = ZodTypeAny
 > {
@@ -106,6 +109,17 @@ export interface PlanAndExecuteConfig<
   // Shared defaults — apply only to default blocks (planner, executor, replanner, synthesizer).
   // Ignored when a custom block is provided for that role.
   // ---------------------------------------------------------------------------
+
+  /**
+   * Overall instructions for this pipeline — role, stance, rules, or goal framing.
+   *
+   * Digested by the default planner (via context), executor, and synthesizer.
+   * Not injected when the corresponding block is overridden.
+   *
+   * Composes with `executionInstructions` and `synthesizeInstructions` — top-level
+   * instructions come first, granular ones are appended after.
+   */
+  instructions?: InstructionsSlot;
 
   /** Context slot applied to all default blocks. Accepts a single entry or an array. */
   context?: GeneratorSlot<any, any>;
@@ -335,6 +349,7 @@ function createDefaultSynthesizer(config: {
   history?: GeneratorSlot<any, any>;
   tools?: ToolsSlot;
   uses?: UsesSlot;
+  instructions?: InstructionsSlot;
   synthesizeInstructions?: string;
 }) {
   const basePrompt = [
@@ -343,7 +358,8 @@ function createDefaultSynthesizer(config: {
     "Integrate the findings into a coherent narrative — do not just summarize each step.",
     "Be specific and draw on the concrete facts gathered.",
     "If no findings are available, briefly explain that the research could not be completed and why, without asking the user for more information.",
-  ];
+  ].join("\n");
+
   return generator({
     name: `${config.name}-synthesizer`,
     model: config.model ?? "openai/gpt-5.4-mini",
@@ -365,9 +381,7 @@ function createDefaultSynthesizer(config: {
       totalSteps: z.number(),
     }),
     outputSchema: z.string(),
-    prompt: config.synthesizeInstructions
-      ? [...basePrompt, config.synthesizeInstructions].join("\n")
-      : basePrompt.join("\n"),
+    prompt: [config.instructions, basePrompt, config.synthesizeInstructions],
     user: buildSynthesizerUserPrompt,
     emit: { messages: true },
   });
@@ -432,7 +446,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
     "- success: true if you found meaningful information, false if the information was unavailable or missing",
     "- reason: (only if success is false) a brief explanation of why the task could not be completed",
     "- sources: list of { title?, url } for any web sources you consulted (omit if no search was performed)",
-  ];
+  ].join("\n");
 
   return generator({
     name: `${config.name}-executor`,
@@ -458,9 +472,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
     ...(config.sessionResources !== undefined ? { sessionResources: config.sessionResources } : {}),
     ...(config.userResources !== undefined ? { userResources: config.userResources } : {}),
     ...(config.projectResources !== undefined ? { projectResources: config.projectResources } : {}),
-    prompt: config.executionInstructions
-      ? [...basePrompt, config.executionInstructions].join("\n")
-      : basePrompt.join("\n"),
+    prompt: [config.instructions, basePrompt, config.executionInstructions],
     user: (input: { goal: string; dependencyResults?: Record<string, unknown> }) => {
       const parts = [`Task: ${input.goal}`];
       if (input.dependencyResults && Object.keys(input.dependencyResults).length > 0) {
@@ -501,10 +513,22 @@ export function planAndExecute<
 
   const stepExecutor = config.stepExecutor ?? createDefaultExecutor(config);
 
+  const plannerContext: GeneratorSlot<any, any> | undefined = config.instructions && !config.planner
+    ? [
+        ...(config.context ? (Array.isArray(config.context) ? config.context : [config.context]) : []),
+        async (_input: any, ctx: any) => {
+          const resolved = typeof config.instructions! === "function"
+            ? await config.instructions!(_input, ctx)
+            : config.instructions!;
+          return resolved ? `Overall instructions for this workflow:\n${resolved}` : null;
+        },
+      ]
+    : config.context;
+
   const planner = config.planner ?? utility.decomposer({
     name: `${name}-planner`,
     model: config.model,
-    context: config.context,
+    context: plannerContext,
     history: config.history,
   });
 
@@ -533,6 +557,7 @@ export function planAndExecute<
           history: config.history,
           tools: config.tools,
           uses: config.uses,
+          instructions: config.instructions,
           synthesizeInstructions: config.synthesizeInstructions,
         }))
       : null;

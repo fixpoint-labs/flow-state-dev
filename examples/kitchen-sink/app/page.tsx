@@ -241,15 +241,15 @@ function KitchenSinkApp() {
   );
 
   // Apply side-effects when mode changes:
-  // Ask mode force-disables bash and hides artifacts; Build mode restores defaults.
+  // Only Build mode enables bash; all other modes disable it and stay on chat panel.
   const handleModeChange = useCallback(
     (newMode: Mode) => {
       setMode(newMode);
-      if (newMode === "ask") {
+      if (newMode === "build") {
+        setFeatures((prev) => ({ ...prev, bashTool: true }));
+      } else {
         setFeatures((prev) => ({ ...prev, bashTool: false }));
         setMobilePanel("chat");
-      } else {
-        setFeatures((prev) => ({ ...prev, bashTool: true }));
       }
     },
     [],
@@ -544,7 +544,12 @@ function ChatPanel({
           <PromptInput onSubmit={onSubmit}>
             <PromptInputTextarea
               name="message"
-              placeholder={mode === "ask" ? "Ask a question..." : "Describe what to build..."}
+              placeholder={
+                mode === "build" ? "Describe what to build..." :
+                mode === "interview" ? "Name a topic to explore..." :
+                mode === "debate" ? "State a position to challenge..." :
+                "Ask a question..."
+              }
               value={message}
               onChange={(e) => onSetMessage(e.target.value)}
               disabled={isDisabled}

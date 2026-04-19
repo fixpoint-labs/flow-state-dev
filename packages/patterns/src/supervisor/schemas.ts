@@ -58,6 +58,7 @@ export const plannerOutputSchema = z.object({
       assignee: z.string().optional(),
       deps: z.array(z.string()).optional(),
       priority: z.enum(["high", "medium", "low"]).optional(),
+      context: z.string().optional(),
     })
   ),
 });
@@ -68,6 +69,7 @@ export type PlannerOutput = z.infer<typeof plannerOutputSchema>;
 export const executableTaskSchema = z.object({
   id: z.string(),
   goal: z.string(),
+  context: z.string().optional(),
   feedback: z.string().optional(),
 });
 

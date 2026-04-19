@@ -235,6 +235,9 @@ export const autoClassifyStyle = sequencer({
 // and flow.ts (where the assistant generator is defined).
 // -------------------------------------------------------------------------
 
+/** Resolvable string — static or computed at runtime from input and context. */
+type InstructionsSlot = string | ((input: any, ctx: any) => string | Promise<string>);
+
 export interface ThinkingStyleRouterConfig {
   assistantGenerator: BlockDefinition<any, any>;
   /** Model ID string or a selectModel() resolver. */
@@ -243,10 +246,12 @@ export interface ThinkingStyleRouterConfig {
   context: GeneratorSlot<any, any>;
   /** Capabilities to install on all default pattern blocks. */
   uses?: UsesSlot;
+  /** Overall instructions passed to pattern sub-blocks (planner, controller, synthesizer). */
+  instructions?: InstructionsSlot;
 }
 
 export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
-  const { assistantGenerator, modelId, context, uses } = config;
+  const { assistantGenerator, modelId, context, uses, instructions } = config;
 
   // Default — direct generation.
   const defaultPipeline = assistantGenerator;
@@ -255,6 +260,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   const paePipeline = planAndExecute({
     name: "pae-thinking",
     model: modelId as any,
+    instructions,
     context,
     history: config.history,
     search: true,
@@ -271,6 +277,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     inputSchema: z.object({
       id: z.string(),
       goal: z.string(),
+      context: z.string().optional(),
       feedback: z.string().optional(),
     }),
     outputSchema: z.string(),
@@ -281,18 +288,22 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     prompt: [
       "You are a focused task executor within a supervisor workflow.",
       "Complete the assigned task concisely and accurately.",
+      "If task context is provided, follow those guidelines while completing the task.",
       "If feedback from a prior attempt is provided, address it directly.",
       "IMPORTANT: Your text response IS the task deliverable. Return all substantive content as your response text — do not write it to files instead.",
     ].join("\n"),
-    user: (input) =>
-      input.feedback
-        ? `Task: ${input.goal}\n\nPrevious feedback: ${input.feedback}`
-        : `Task: ${input.goal}`,
+    user: (input) => {
+      const parts = [`Task: ${input.goal}`];
+      if (input.context) parts.push(`\nContext: ${input.context}`);
+      if (input.feedback) parts.push(`\nPrevious feedback: ${input.feedback}`);
+      return parts.join("\n");
+    },
   });
 
   const supervisorPipeline = supervisor({
     name: "supervisor-thinking",
     worker: supervisorWorker,
+    instructions,
     maxIterations: 3,
     maxConcurrency: 3,
     onSubTaskError: "skip",
@@ -394,6 +405,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       "bb-analyst": bbAnalyst,
       "bb-critic": bbCritic,
     },
+    instructions,
     model: modelId as any,
     context,
     uses,
@@ -561,6 +573,18 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     maxDepth: 3,
   });
 
+  const rbBasePrompt = [
+    "You are a synthesis agent. A reactive analysis just completed.",
+    "An Explorer produced observations, an Analyst turned each into",
+    "findings, and a Challenger stress-tested each finding. All entries",
+    "are shown below, grouped by tier.",
+    "",
+    "Produce a coherent, well-rounded response that integrates the",
+    "full chain of reasoning. Highlight areas of agreement, acknowledge",
+    "tensions or gaps the Challenger raised, and give the user a",
+    "comprehensive answer. Do not mention the analysts or the process.",
+  ];
+
   const rbSynthesizer = generator({
     name: "rb-synthesizer",
     model: modelId,
@@ -570,17 +594,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     context,
     history: config.history,
     search: true,
-    prompt: [
-      "You are a synthesis agent. A reactive analysis just completed.",
-      "An Explorer produced observations, an Analyst turned each into",
-      "findings, and a Challenger stress-tested each finding. All entries",
-      "are shown below, grouped by tier.",
-      "",
-      "Produce a coherent, well-rounded response that integrates the",
-      "full chain of reasoning. Highlight areas of agreement, acknowledge",
-      "tensions or gaps the Challenger raised, and give the user a",
-      "comprehensive answer. Do not mention the analysts or the process.",
-    ].join("\n"),
+    prompt: [instructions, rbBasePrompt.join("\n")],
     user: (_input: any, ctx: any) => {
       const state = ctx.session.resources.reactiveBlackboard.state as {
         entries: Array<{ type: string; topic: string; body: string }>;
