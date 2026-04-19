@@ -990,9 +990,54 @@ export function useSession(
   const abortRequest = useCallback(async () => {
     const requestId = activeRequestIdRef.current;
     if (requestId === null) return;
-    await client.abortRequest(requestId);
-    // The SSE stream will receive request.aborted and clean up state.
-  }, [client]);
+
+    let endpointReached = false;
+    try {
+      await client.abortRequest(requestId);
+      endpointReached = true;
+    } catch {
+      // Abort endpoint unreachable (e.g. serverless — different instance).
+    }
+
+    if (endpointReached) {
+      // The abort endpoint fired the in-memory controller. The SSE stream
+      // will deliver the abort status item and request.aborted terminal
+      // event, which triggers cleanup in onRequestStatus.
+      return;
+    }
+
+    // Serverless fallback: close the SSE connection to signal the server
+    // via request.signal, then clean up client state directly.
+    streamHandleRef.current?.close();
+    streamHandleRef.current = null;
+    activeRequestIdRef.current = null;
+
+    flushContentDeltas();
+    setIsStreaming(false);
+    setIsFinishing(false);
+
+    if (itemConfig.enabled) {
+      const abortItem: OutputItem = {
+        id: `item_status_aborted_${requestId}`,
+        type: "status",
+        status: "completed",
+        requestId,
+        itemIndex: itemsByIdRef.current.size,
+        provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
+        ts: Date.now(),
+        message: "Request was stopped.",
+        detail: { code: "system.request_aborted" }
+      } as OutputItem;
+
+      itemsByIdRef.current.set(abortItem.id, abortItem);
+      sortedItemIdsRef.current = insertSortedItemId(
+        sortedItemIdsRef.current,
+        abortItem,
+        itemsByIdRef.current
+      );
+      setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+    }
+  }, [client, flushContentDeltas, itemConfig.enabled]);
 
   const refresh = useCallback(async () => {
     await refreshSnapshot();
