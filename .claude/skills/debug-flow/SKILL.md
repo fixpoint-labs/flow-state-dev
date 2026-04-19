@@ -168,7 +168,7 @@ Based on the trace evidence, classify the problem:
 | **State not persisted** | `state_change` events missing or state reads return defaults | State ops not awaited, wrong scope, or ephemeral session | Check `await ctx.session.patchState(...)` calls, verify `--session` flag for persistence |
 | **Infinite loop** | `durationMs` very high, many repeated `nested block started` logs | `doWhile`/`loopBack` condition never becomes false | Check loop guard (max 250 iterations), verify loop exit condition |
 | **Rescue swallowing errors** | No error in trace but output is wrong | A `.rescue()` handler caught the error and returned fallback output | Check rescue handler — is it masking a real problem? |
-| **Missing items** | Expected `item_added` events never appear | Block's `emit` config filters them out, or block short-circuits | Check generator `emit: { reasoning, messages, toolCalls }` flags |
+| **Missing items** | Expected `item_added` events never appear | Block's `emit` config filters them out, or block short-circuits | Check generator `emit: { reasoning, messages, tools }` flags |
 | **Wrong route selected** | `router selected route` shows unexpected block | Router's `execute` function returned wrong block based on input | Test router selection logic with known inputs |
 | **Timeout** | `code: "timeout_error"` in error event | Block or model call exceeded timeout | Check tool `timeoutMs` config, network conditions, model latency |
 | **Retry exhaustion** | Multiple `block execution retry` logs then `block execution failed` | All retry attempts failed | Check `retry: { maxAttempts, retryableErrors }` config, investigate underlying transient error |

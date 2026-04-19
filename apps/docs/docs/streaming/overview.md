@@ -65,10 +65,11 @@ const helper = generator({
 });
 ```
 
-The `emit` config on generators provides per-type control:
+Generators use `emitAudience` to set default visibility, and `emit` for per-type control:
 
 ```ts
-emit: { messages: { client: false }, reasoning: false }
+emitAudience: "history"  // output goes to LLM history but not client
+emit: { reasoning: false }  // suppress reasoning items
 ```
 
 Direct emit methods accept per-call overrides:

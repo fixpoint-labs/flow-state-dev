@@ -68,7 +68,7 @@ Each emitted item has a visibility role — `external`, `internal`, or `trace` �
 | `internal` | No | Yes | Yes |
 | `trace` | No | No | Yes |
 
-The `emit` config controls visibility per item type (or suppresses emission entirely):
+The `emitAudience` config sets the default audience for all items a generator emits. The `emit` config controls visibility per item type (or suppresses emission entirely):
 
 ```ts
 // Suppress all streaming output — the generator runs silently
@@ -78,23 +78,24 @@ const silent = generator({ emit: false, /* ... */ });
 const workerGen = generator({ emit: { messages: false }, /* ... */ });
 
 // Keep messages in LLM history but hide from client UI
-const thinker = generator({ emit: { messages: { client: false } }, /* ... */ });
+const thinker = generator({ emitAudience: "history", /* ... */ });
 
-// Background researcher: suppress all output from client and history
-const researcher = generator({ client: false, /* ... */ });
+// Devtool-only: suppress all output from client and history
+const researcher = generator({ emitAudience: "trace", /* ... */ });
 ```
 
-| Flag | Values | Default | Effect |
+| Config | Values | Default | Effect |
 |------|--------|---------|--------|
-| `reasoning` | `true` / `false` / `{ client?, history? }` | block default | `false` suppresses reasoning items. An object overrides visibility. |
-| `messages` | `true` / `false` / `{ client?, history? }` | block default | `false` suppresses assistant messages. An object overrides visibility. |
-| `toolCalls` | `true` / `false` / `{ client?, history? }` | block default | `false` suppresses tool status items during the tool loop. |
+| `emitAudience` | `"client"` / `"history"` / `"trace"` | position-based | Sets the default audience for all items. `"client"` = both client and history (default for main phase). `"history"` = LLM history only. `"trace"` = devtool only. |
+| `reasoning` | `true` / `false` | block default | `false` suppresses reasoning items. |
+| `messages` | `true` / `false` | block default | `false` suppresses assistant messages. |
+| `tools` | `true` / `false` | block default | `false` suppresses tool status items during the tool loop. |
 
-Setting `emit: false` is shorthand for suppressing all three. The block-level `client`/`history` config sets the default visibility for all emissions; per-type `emit` values override it.
+Setting `emit: false` is shorthand for suppressing all three. The `emitAudience` config sets the default visibility for all emissions; per-type `emit` values override it.
 
 When `messages` is `false` but the generator has tools, the streaming path is still used so tool call status events reach the client — only the text output items are suppressed.
 
-This is particularly useful for worker generators inside orchestration patterns (supervisor, coordinator) where you want tool progress visible but don't want each sub-task's text polluting the main conversation stream. You can keep the worker's findings in LLM context (`messages: { client: false }`) without showing them to the user.
+This is particularly useful for worker generators inside orchestration patterns (supervisor, coordinator) where you want tool progress visible but don't want each sub-task's text polluting the main conversation stream. You can keep the worker's findings in LLM context (`emitAudience: "history"`) without showing them to the user.
 
 #### Any block can be a tool
 

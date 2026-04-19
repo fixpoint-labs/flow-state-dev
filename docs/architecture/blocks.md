@@ -227,7 +227,7 @@ Generators auto-emit items based on model output:
 - Tool invocation → `block_output` with `toolCall` (two-phase: in_progress → completed)
 - Final return value → `block_output` (internal/devtools only)
 
-Suppress with `emit: { reasoning: false, messages: false, toolCalls: false }`.
+Suppress with `emit: { reasoning: false, messages: false, tools: false }`.
 
 ## Sequencer
 
@@ -373,23 +373,25 @@ const researcher = generator({
 
 ### Emit config (generators)
 
-Generators can override visibility per item type via `emit`:
+Generators can override visibility per item type via `emit`, and set the default audience via `emitAudience`:
 
 ```ts
+emitAudience?: "client" | "history" | "trace";
 emit?: false | {
-  reasoning?: boolean | { client?: boolean; history?: boolean };
-  messages?: boolean | { client?: boolean; history?: boolean };
-  toolCalls?: boolean | { client?: boolean; history?: boolean };
+  reasoning?: boolean;
+  messages?: boolean;
+  tools?: boolean;
 };
 ```
 
-- `false` suppresses all item types.
-- The object form overrides per-type. `true` = use the block default, `false` = suppress that type, or `{ client?, history? }` for explicit visibility.
+- `emitAudience` (generator-only) sets the default audience for all items the generator emits. `"client"` means items go to both client and LLM history (the default for main-phase generators). `"history"` means items enter LLM history but are hidden from the client UI. `"trace"` means items are devtool-only.
+- `emit: false` suppresses all item types.
+- The object form overrides per-type. `true` = use the block default, `false` = suppress that type.
 
 Precedence (highest to lowest):
 
-1. Per-type emit value: `emit: { messages: { client: false } }`
-2. Block-level `client`/`history`: `client: false`
+1. Per-type emit value: `emit: { messages: false }`
+2. `emitAudience`: `emitAudience: "history"`
 3. Position-based default (main → both true, tool call / work → both false)
 
 ### Emission helpers

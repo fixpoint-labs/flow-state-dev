@@ -23,21 +23,21 @@ Content-bearing types (`message`, `reasoning`, `block_tool_output`) default to `
 
 ### Overriding visibility
 
-Set `client` and/or `history` on a block config to change the default for all items that block emits:
+For generators, use `emitAudience` to change the default audience for all items the generator emits:
 
 ```ts
 const helper = generator({
   name: "background-analysis",
   model: "preset/fast",
   prompt: "Analyze the user's intent...",
-  client: false, // LLM sees output, user doesn't
+  emitAudience: "history", // LLM sees output, user doesn't
 });
 ```
 
-For generators, the `emit` config provides per-type overrides:
+The `emit` config provides per-type overrides:
 
 ```ts
-emit: { messages: { client: false }, reasoning: false }
+emit: { messages: false, reasoning: false }
 ```
 
 Direct emit methods accept per-call overrides:
@@ -86,7 +86,7 @@ The `itemRole` field (`"external" | "internal" | "trace"`) and `trace` boolean a
 
 ### History-only items — what the LLM sees but the user doesn't
 
-Any block can produce history-only items by setting `client: false` on the block config. A message with `client: false, history: true` contributes to LLM conversation history across turns without ever appearing in the client UI.
+Any block can produce history-only items. For generators, use `emitAudience: "history"`. For other block kinds, set `client: false` on the block config or on individual emit calls. A message with `client: false, history: true` contributes to LLM conversation history across turns without ever appearing in the client UI.
 
 ### Devtool-only items — what the devtool sees
 

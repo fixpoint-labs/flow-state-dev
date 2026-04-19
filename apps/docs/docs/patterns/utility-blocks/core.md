@@ -1250,7 +1250,7 @@ The block is designed for `.work()`. It fires after the main generator completes
 
 It's a sequencer with two steps:
 
-1. A **generator** reads `ctx.session.items.llm({ limit: messageLimit })` — which includes the current request's output — builds a prompt with the current title for reference, and produces a title candidate.
+1. A **generator** reads `ctx.session.items.history({ limit: messageLimit })` — which includes the current request's output — builds a prompt with the current title for reference, and produces a title candidate.
 2. A **handler** compares the candidate against `ctx.session.metadata.title`. If the title changed, it calls `ctx.session.setMetadata({ title })`, which persists the change and emits a `session.metadata.changed` SSE event. If the title is identical, nothing happens.
 
 The whole block is `transient: true`, so it produces no visible items in the stream.
