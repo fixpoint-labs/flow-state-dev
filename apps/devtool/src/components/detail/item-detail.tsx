@@ -106,8 +106,6 @@ function ItemTypeDetail({ item }: { item: OutputItem }) {
       return <StateChangeDetail item={item} />;
     case "resource_change":
       return <ResourceChangeDetail item={item} />;
-    case "context":
-      return <ContextDetail item={item} />;
     case "status":
       return <StatusDetail item={item} />;
     case "block_tool_output":
@@ -263,14 +261,6 @@ function ResourceChangeDetail({ item }: { item: OutputItem & { type: "resource_c
           <JsonViewer data={item.delta} />
         </CollapsibleSection>
       )}
-    </div>
-  );
-}
-
-function ContextDetail({ item }: { item: OutputItem & { type: "context" } }) {
-  return (
-    <div>
-      <p className="text-xs text-slate-400 whitespace-pre-wrap leading-relaxed">{item.text}</p>
     </div>
   );
 }

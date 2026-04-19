@@ -262,10 +262,6 @@ function TraceNodeView({
   if (node.type === "item" && node.item) {
     const item = node.item;
     const isSelected = selectedItemId === item.id;
-    const isContext = item.type === "context";
-
-    if (isContext && !isDebugMode) return null;
-
     const icon = getItemIcon(item.type);
     const preview = getItemPreview(item);
 
@@ -274,7 +270,6 @@ function TraceNodeView({
         className={cn(
           "flex w-full items-center gap-1.5 py-0.5 text-left hover:bg-slate-800/30",
           isSelected && "bg-slate-800/50 border-l-2 border-green-500",
-          isContext && "opacity-50",
         )}
         style={{ paddingLeft: `${depth * 16 + 12}px` }}
         onClick={() => selectItem(item.id, item)}
@@ -337,8 +332,6 @@ function getItemPreview(item: OutputItem): string {
       return item.component;
     case "container":
       return item.blockName + (item.label ? ` (${item.label})` : "");
-    case "context":
-      return item.text.slice(0, 60);
     case "state_change":
       return `${item.scope}.${item.path ?? ""} ${item.operation}`;
     case "resource_change":
