@@ -564,7 +564,7 @@ export function useSession(
 
       const sseCallbacks: RequestSSECallbacks = {
         onItemAdded: (event) => {
-          if (event.item.type === "status" && (event.item as OutputItem & { message?: string }).message === "finishing") {
+          if (event.item.type === "status" && (event.item as OutputItem & { blocked?: boolean }).blocked === false) {
             setIsFinishing(true);
           }
 

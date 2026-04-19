@@ -53,7 +53,7 @@ interface BlockContext {
   // Item emission
   emitMessage(text: string, options?: { client?: boolean; history?: boolean }): void;
   emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; client?: boolean; history?: boolean }): void;
-  emitStatus(message: string): void;
+  emitStatus(message: string, metadata?: { blocked?: boolean; backgroundTasks?: number }): void;
 }
 ```
 

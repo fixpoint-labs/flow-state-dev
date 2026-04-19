@@ -128,6 +128,43 @@ describe("sequencer builder", () => {
     await expect(seq.run(1, ctx)).rejects.toThrow("background failure");
   });
 
+  it("emits structured status metadata during auto-await of work tasks", async () => {
+    const statusCalls: Array<{ message: string; metadata?: { blocked?: boolean; backgroundTasks?: number } }> = [];
+    const slowWork = handler({
+      name: "slow-work",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: async (v) => {
+        await new Promise((r) => setTimeout(r, 10));
+        return v;
+      }
+    });
+    const fastWork = handler({
+      name: "fast-work",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: async (v) => v
+    });
+
+    const seq = sequencer({ name: "status-meta", inputSchema: z.number() })
+      .work(slowWork)
+      .work(fastWork);
+
+    const ctx = createMockContext({
+      emitStatus: (message: string, metadata?: { blocked?: boolean; backgroundTasks?: number }) => {
+        statusCalls.push({ message, metadata });
+      }
+    });
+
+    await seq.run(1, ctx);
+
+    expect(statusCalls.length).toBeGreaterThanOrEqual(1);
+    // First status: unblock client, report total background tasks
+    expect(statusCalls[0]!.metadata?.blocked).toBe(false);
+    expect(statusCalls[0]!.metadata?.backgroundTasks).toBe(2);
+    // After both complete, no final status (only emitted when remaining > 0)
+  });
+
   describe("forEachBackground", () => {
     it("dispatches iterations as background work and returns immediately", async () => {
       const executed: number[] = [];

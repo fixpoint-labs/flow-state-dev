@@ -159,6 +159,10 @@ export type StatusItem = OutputItemBase & {
   type: "status";
   message: string;
   detail?: unknown;
+  /** When false, the client may send new actions even though the stream is still open. */
+  blocked?: boolean;
+  /** Number of background work tasks still running. */
+  backgroundTasks?: number;
 };
 
 /**
