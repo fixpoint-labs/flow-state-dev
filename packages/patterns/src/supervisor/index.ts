@@ -361,11 +361,9 @@ function buildDefaultReviewer(
       "    (e.g., foundational tasks are done but the main deliverable hasn't been produced yet).",
       "Provide specific, actionable feedback for tasks that need revision.",
       "Score each task from 0 to 1 based on quality.",
-      criteriaBlock,
+      criteriaBlock || null,
       "Return output that exactly matches the required schema.",
-    ]
-      .filter(Boolean)
-      .join("\n"),
+    ],
     emit: { messages: true, reasoning: false },
     user: (input) =>
       typeof input === "string" ? input : JSON.stringify(input),
@@ -391,7 +389,7 @@ function buildDefaultSynthesizer(
     "Merge overlapping content, resolve conflicts, and ensure the result reads as one unified piece — not a list of fragments.",
     "Do NOT describe what the workers did. Do NOT recommend next steps. Do NOT output JSON unless the goal explicitly requires it.",
     "Deliver the finished work.",
-  ];
+  ].join("\n");
 
   return generator({
     name: `${name}-synthesizer`,
@@ -401,14 +399,7 @@ function buildDefaultSynthesizer(
     history: opts?.history,
     ...(opts?.uses ? { uses: opts.uses as any } : {}),
     emit: { messages: true, reasoning: false },
-    prompt: opts?.instructions
-      ? async (_input: any, ctx: any) => {
-          const resolved = typeof opts.instructions! === "function"
-            ? await opts.instructions!(_input, ctx)
-            : opts.instructions!;
-          return [resolved, "", ...basePrompt].join("\n");
-        }
-      : basePrompt.join("\n"),
+    prompt: [opts?.instructions, basePrompt],
     user: (input: unknown) => {
       if (typeof input === "string") return input;
       const data = input as { goal?: string; results?: unknown[] };

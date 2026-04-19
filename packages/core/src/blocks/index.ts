@@ -17,6 +17,7 @@ export type {
   GeneratorTool,
   GeneratorToolResult,
   ToolsSlot,
+  PromptSlot,
 } from "./generator";
 export type {
   BranchStep,

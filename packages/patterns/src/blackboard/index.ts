@@ -193,7 +193,7 @@ function buildDefaultSynthesizer(config: {
     "The blackboard contains contributions from multiple specialist agents.",
     "Synthesize the blackboard state into a coherent, unified result.",
     "Include key findings from each specialist's contribution.",
-  ];
+  ].join("\n");
 
   return generator({
     name: `${config.name}-synthesizer`,
@@ -203,14 +203,7 @@ function buildDefaultSynthesizer(config: {
     ...(config.outputSchema ? { outputSchema: config.outputSchema } : {}),
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.uses ? { uses: config.uses as any } : {}),
-    prompt: config.instructions
-      ? async (_input: any, ctx: any) => {
-          const resolved = typeof config.instructions! === "function"
-            ? await config.instructions!(_input, ctx)
-            : config.instructions!;
-          return [resolved, "", ...basePrompt].join("\n");
-        }
-      : basePrompt.join("\n"),
+    prompt: [config.instructions, basePrompt],
     user: (input) => {
       const data = input as { blackboard: unknown; iterations: number; history: unknown[] };
       return [

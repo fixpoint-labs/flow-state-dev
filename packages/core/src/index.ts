@@ -73,6 +73,7 @@ export type {
   GeneratorTool,
   GeneratorToolResult,
   ToolsSlot,
+  PromptSlot,
   HandlerConfig,
   InlineBlockFactory,
   InlineConfig,

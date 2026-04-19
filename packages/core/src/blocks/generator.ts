@@ -82,6 +82,26 @@ type MaybePromise<TValue> = TValue | Promise<TValue>;
 
 type ResolvableString<TInput, TCtx = BlockContext> =
   string | ((input: TInput, ctx: TCtx) => MaybePromise<string>);
+
+/** Single prompt entry: a static string, a resolver function, or null/undefined (filtered out). */
+type PromptSlotEntry<TInput, TCtx = BlockContext> =
+  | string
+  | null
+  | undefined
+  | ((input: TInput, ctx: TCtx) => MaybePromise<string | null | undefined>);
+
+/**
+ * Prompt slot — accepts a single entry or an array. Array entries are resolved
+ * individually (functions called with input+ctx), nulls filtered, then joined
+ * with newlines. This lets patterns compose prompts declaratively:
+ *
+ * ```ts
+ * prompt: [instructions, basePrompt]
+ * ```
+ */
+export type PromptSlot<TInput = unknown, TCtx = BlockContext> =
+  | PromptSlotEntry<TInput, TCtx>
+  | PromptSlotEntry<TInput, TCtx>[];
 type ResolvableModel<TInput, TCtx = BlockContext> =
   | string
   | string[]
@@ -249,7 +269,7 @@ export interface GeneratorConfig<
    *  and any active preset surfaces into this block's config. */
   uses?: TUses;
   model: ResolvableModel<NoInfer<TInput>, TCtx>;
-  prompt: ResolvableString<TInput, TCtx>;
+  prompt: PromptSlot<NoInfer<TInput>, TCtx>;
   context?: GeneratorSlot<NoInfer<TInput>, TCtx>;
   history?: GeneratorSlot<NoInfer<TInput>, TCtx>;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
@@ -293,6 +313,24 @@ async function resolveString<TInput, TCtx extends BlockContext>(
   ctx: TCtx
 ): Promise<string> {
   return typeof value === "function" ? value(input, ctx) : value;
+}
+
+async function resolvePrompt<TInput, TCtx extends BlockContext>(
+  value: PromptSlot<TInput, TCtx>,
+  input: TInput,
+  ctx: TCtx
+): Promise<string> {
+  if (!Array.isArray(value)) {
+    if (value == null) return "";
+    return typeof value === "function" ? (await value(input, ctx)) ?? "" : value;
+  }
+  const parts: string[] = [];
+  for (const entry of value) {
+    if (entry == null) continue;
+    const resolved = typeof entry === "function" ? await entry(input, ctx) : entry;
+    if (resolved != null) parts.push(resolved);
+  }
+  return parts.join("\n");
 }
 
 async function resolveProviderOptions<TInput, TCtx extends BlockContext>(
@@ -1318,7 +1356,7 @@ export function generator<
       const autoDescribe = normalizedConfig.describeTools !== false;
       const toolBlocks = await resolveTools(normalizedConfig.tools, ctx);
 
-      const prompt = await resolveString(normalizedConfig.prompt, input, ctx);
+      const prompt = await resolvePrompt(normalizedConfig.prompt, input, ctx);
       const contextValues = await resolveSlotValues(normalizedConfig.context, input, ctx);
 
       // Auto-describe: inject tool name+description pairs into context.
@@ -1349,7 +1387,8 @@ export function generator<
       // dynamic (function-typed) entries. The AI SDK calls this before each
       // step of the multi-step tool loop, letting us re-resolve dynamic
       // slots so the LLM sees fresh state and the correct active tools.
-      const hasDynamicPrompt = typeof normalizedConfig.prompt === "function";
+      const hasDynamicPrompt = typeof normalizedConfig.prompt === "function"
+        || (Array.isArray(normalizedConfig.prompt) && normalizedConfig.prompt.some((e) => typeof e === "function"));
       const hasDynamicContext = normalizeSlotEntries(normalizedConfig.context).some(
         (entry) => typeof entry === "function"
       );
@@ -1376,7 +1415,7 @@ export function generator<
             freshToolDescription = buildToolDescriptionContext(toolBlocks);
           }
 
-          const freshPrompt = await resolveString(normalizedConfig.prompt, input, ctx);
+          const freshPrompt = await resolvePrompt(normalizedConfig.prompt, input, ctx);
           const freshContext = await resolveSlotValues(normalizedConfig.context, input, ctx);
           if (freshToolDescription !== undefined) {
             freshContext.push(freshToolDescription);

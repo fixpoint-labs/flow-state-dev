@@ -586,14 +586,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     context,
     history: config.history,
     search: true,
-    prompt: instructions
-      ? async (_input: any, ctx: any) => {
-          const resolved = typeof instructions === "function"
-            ? await instructions(_input, ctx)
-            : instructions;
-          return [resolved, "", ...rbBasePrompt].join("\n");
-        }
-      : rbBasePrompt.join("\n"),
+    prompt: [instructions, rbBasePrompt.join("\n")],
     user: (_input: any, ctx: any) => {
       const state = ctx.session.resources.reactiveBlackboard.state as {
         entries: Array<{ type: string; topic: string; body: string }>;

@@ -358,23 +358,7 @@ function createDefaultSynthesizer(config: {
     "Integrate the findings into a coherent narrative — do not just summarize each step.",
     "Be specific and draw on the concrete facts gathered.",
     "If no findings are available, briefly explain that the research could not be completed and why, without asking the user for more information.",
-  ];
-
-  const hasInstructions = !!config.instructions;
-  const hasGranular = !!config.synthesizeInstructions;
-
-  const buildPrompt = hasInstructions
-    ? async (_input: any, ctx: any) => {
-        const resolved = typeof config.instructions! === "function"
-          ? await config.instructions!(_input, ctx)
-          : config.instructions!;
-        const parts = [resolved, "", ...basePrompt];
-        if (hasGranular) parts.push(config.synthesizeInstructions!);
-        return parts.join("\n");
-      }
-    : hasGranular
-      ? [...basePrompt, config.synthesizeInstructions!].join("\n")
-      : basePrompt.join("\n");
+  ].join("\n");
 
   return generator({
     name: `${config.name}-synthesizer`,
@@ -397,7 +381,7 @@ function createDefaultSynthesizer(config: {
       totalSteps: z.number(),
     }),
     outputSchema: z.string(),
-    prompt: buildPrompt,
+    prompt: [config.instructions, basePrompt, config.synthesizeInstructions],
     user: buildSynthesizerUserPrompt,
     emit: { messages: true },
   });
@@ -462,23 +446,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
     "- success: true if you found meaningful information, false if the information was unavailable or missing",
     "- reason: (only if success is false) a brief explanation of why the task could not be completed",
     "- sources: list of { title?, url } for any web sources you consulted (omit if no search was performed)",
-  ];
-
-  const hasInstructions = !!config.instructions;
-  const hasGranular = !!config.executionInstructions;
-
-  const buildPrompt = hasInstructions
-    ? async (_input: any, ctx: any) => {
-        const resolved = typeof config.instructions! === "function"
-          ? await config.instructions!(_input, ctx)
-          : config.instructions!;
-        const parts = [resolved, "", ...basePrompt];
-        if (hasGranular) parts.push(config.executionInstructions!);
-        return parts.join("\n");
-      }
-    : hasGranular
-      ? [...basePrompt, config.executionInstructions!].join("\n")
-      : basePrompt.join("\n");
+  ].join("\n");
 
   return generator({
     name: `${config.name}-executor`,
@@ -504,7 +472,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
     ...(config.sessionResources !== undefined ? { sessionResources: config.sessionResources } : {}),
     ...(config.userResources !== undefined ? { userResources: config.userResources } : {}),
     ...(config.projectResources !== undefined ? { projectResources: config.projectResources } : {}),
-    prompt: buildPrompt,
+    prompt: [config.instructions, basePrompt, config.executionInstructions],
     user: (input: { goal: string; dependencyResults?: Record<string, unknown> }) => {
       const parts = [`Task: ${input.goal}`];
       if (input.dependencyResults && Object.keys(input.dependencyResults).length > 0) {
