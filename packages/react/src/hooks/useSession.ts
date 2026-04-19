@@ -15,13 +15,48 @@ import {
 } from "@flow-state-dev/client";
 import type {
   Content,
+  ItemRole,
   MessageItem,
   OutputItem,
   ReasoningItem,
   SessionMetadataChangedEvent
 } from "@flow-state-dev/core/items";
-import { resolveItemRole } from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
+
+/**
+ * Structural item types that default to `"trace"` when the item has no
+ * explicit `itemRole`. Mirrors the canonical list in
+ * `@flow-state-dev/core/items/resolve-role.ts` (package boundaries require
+ * type-only imports from core, so this pure logic is duplicated here).
+ */
+const STRUCTURAL_TRACE_TYPES = new Set<string>([
+  "block_output",
+  "router_decision",
+  "sequencer_state_snapshot",
+  "container",
+  "state_change",
+  "resource_change"
+]);
+
+/**
+ * Isomorphic role resolver (mirror of core's `resolveItemRole`). Duplicated
+ * because the react package may only type-import from core.
+ */
+function resolveItemRole(item: OutputItem): ItemRole {
+  if (item.itemRole !== undefined) {
+    return item.itemRole;
+  }
+  if (item.trace === true) {
+    return "trace";
+  }
+  if (STRUCTURAL_TRACE_TYPES.has(item.type)) {
+    return "trace";
+  }
+  if (item.provenance?.phase === "work") {
+    return "trace";
+  }
+  return "external";
+}
 
 /**
  * Client-audience item types used as a fallback when an explicit `itemTypes`
