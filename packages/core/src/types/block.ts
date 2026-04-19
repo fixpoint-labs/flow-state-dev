@@ -11,6 +11,7 @@ import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
 import type { Content } from "../items/content";
+import type { ItemRole } from "../items/types";
 import type { JsonObject } from "../schema/common";
 import type { GeneratorModelResult, GeneratorModelUsage } from "./model";
 
@@ -25,6 +26,18 @@ export type ExecutionParent = {
   stateSchema?: ZodTypeAny;
   /** The input value passed to this block when it was executed. Populated for sequencers. */
   input?: unknown;
+  /**
+   * Block-declared default role for items emitted within this scope. Flows to
+   * `_blockIdentity.itemRole`, which the emission helpers and generator use as
+   * the block-level default before applying emit overrides.
+   */
+  itemRole?: ItemRole;
+  /**
+   * Execution phase for this scope. Inherited by nested scopes when not
+   * explicitly overridden. Used by the generator's emit resolver to default
+   * work-phase emissions to `"trace"`.
+   */
+  phase?: "main" | "work";
   container?: {
     component?: string;
     label?: string;
@@ -138,7 +151,6 @@ export interface BlockContext<
   emitMessage(text: string): MessageHandle;
   emitMessage(content: Content[]): MessageHandle;
   emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string }): ComponentHandle;
-  emitLLMContext(text: string): void;
   emitStatus(message: string): void;
 
   /**
@@ -170,6 +182,10 @@ export interface BlockContext<
     blockInstanceId: string;
     parentBlockInstanceId?: string;
     ownedBy?: string;
+    /** Block-declared default role (from `itemRole` on the block config). */
+    itemRole?: ItemRole;
+    /** Execution phase — "work" for background scopes, "main" otherwise. */
+    phase?: "main" | "work";
   };
 
   /** @internal Runtime hook that executes nested blocks with parent-chain metadata. */
@@ -206,6 +222,13 @@ export interface BlockConfig<
   name: string;
   description?: string;
   transient?: boolean;
+  /**
+   * Default visibility role for all items this block emits. Overridden by
+   * per-type `emit` values on generators. When omitted, the role defaults to
+   * `"external"` in the main phase and `"trace"` when running as a tool call
+   * or in a work phase.
+   */
+  itemRole?: ItemRole;
   inputSchema?: TInputSchema;
   outputSchema?: TOutputSchema;
   stateSchema?: ZodTypeAny;
@@ -243,6 +266,8 @@ export interface BlockDefinition<
   name: string;
   description?: string;
   transient: boolean;
+  /** Block-declared default role for emitted items. Mirrors `config.itemRole`. */
+  itemRole?: ItemRole;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
   config: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
