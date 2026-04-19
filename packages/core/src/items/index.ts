@@ -18,6 +18,7 @@ export type {
   ContextItem,
   ErrorItem,
   ItemProvenance,
+  ItemRole,
   ItemStatus,
   MessageItem,
   OutputItem,
@@ -31,6 +32,8 @@ export type {
   StatusItem,
   StepErrorItem
 } from "./types";
+
+export { resolveItemRole } from "./resolve-role";
 
 export type {
   ContentPartAddedEvent,

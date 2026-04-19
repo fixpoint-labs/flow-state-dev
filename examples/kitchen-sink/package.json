@@ -13,6 +13,7 @@
     "test:watch": "vitest --root ."
   },
   "dependencies": {
+    "@ai-sdk/mcp": "^1.0.36",
     "@ai-sdk/openai": "^3.0.30",
     "@ai-sdk/gateway": "^3.0.51",
     "@flow-state-dev/client": "workspace:*",

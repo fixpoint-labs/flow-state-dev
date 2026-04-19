@@ -27,6 +27,7 @@ export { defineResource, resource } from "./types/resource";
 export { defineResourceCollection, isDefinedResourceCollection, defineResourceNamespace, isDefinedResourceNamespace } from "./types/resource-collection";
 export { defineCapability, getBaseCapability } from "./capability";
 export type {
+  CapabilityPresetCtx,
   CapabilityRef,
   ConfiguredCapability,
   DefinedCapability,

@@ -1,6 +1,7 @@
 export { defineCapability } from "./define-capability";
 export type {
   CapabilityConfig,
+  CapabilityPresetCtx,
   CapabilityRef,
   UsesEntry,
   UsesSlot,
