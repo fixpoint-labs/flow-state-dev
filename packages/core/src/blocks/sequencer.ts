@@ -155,6 +155,7 @@ async function emitSequencerStateSnapshot(
     type: "sequencer_state_snapshot" as const,
     status: "completed" as const,
     trace: true,
+    itemRole: "trace" as const,
     transient: true,
     requestId: ctx.request.identity.id,
     itemIndex: getSequencerEmitterItemCount(ctx.response),
@@ -194,6 +195,7 @@ async function emitGeneratorBlockOutput(
     type: "block_output" as const,
     status: "completed" as const,
     trace: true,
+    itemRole: "trace" as const,
     transient: block.transient || undefined,
     requestId: ctx.request.identity.id,
     itemIndex: getSequencerEmitterItemCount(ctx.response),
@@ -220,7 +222,8 @@ async function emitGeneratorBlockOutput(
 async function executeBlock(
   block: BlockDefinition<any, any>,
   input: unknown,
-  ctx: BlockContext
+  ctx: BlockContext,
+  options?: { phase?: "main" | "work" }
 ): Promise<unknown> {
   const startedAt = Date.now();
   const run = async (scopedCtx: BlockContext): Promise<unknown> => {
@@ -297,6 +300,12 @@ async function executeBlock(
       transient: block.transient || undefined,
       stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined,
       input,
+      // Propagate the child block's declared role so nested generators can
+      // resolve their emit defaults. Phase is inherited from the current
+      // scope (parent's _blockIdentity) so work-phase trees stay `"work"`,
+      // unless a dispatch site (forEachBackground) explicitly overrides.
+      itemRole: block.itemRole,
+      phase: options?.phase ?? ctx._blockIdentity?.phase,
       container:
         containerConfig === undefined
           ? undefined
@@ -784,7 +793,10 @@ function createSequencer<TInput, TOutput>(
 
                 const iterName = `${block.name}[${currentIndex}]`;
                 try {
-                  const result = await executeBlock(block, item, ctx);
+                  // Background iterations run in the "work" phase; this flows
+                  // into _blockIdentity.phase and drives the generator's
+                  // position-based default role (work → "trace").
+                  const result = await executeBlock(block, item, ctx, { phase: "work" });
                   iterationResults.push({ name: iterName, status: "fulfilled", value: result });
                 } catch (error) {
                   iterationResults.push({ name: iterName, status: "rejected", reason: toError(error) });
@@ -940,7 +952,9 @@ function createSequencer<TInput, TOutput>(
             const input =
               connector === undefined ? value : await connector(value as TOutput, ctx);
 
-            const promise = executeBlock(block, input, ctx)
+            // work() dispatches run in the "work" phase so nested generators
+            // see phase === "work" and apply the trace default for emissions.
+            const promise = executeBlock(block, input, ctx, { phase: "work" })
               .then(
                 (result): WorkResult => ({
                   name,
@@ -998,7 +1012,8 @@ function createSequencer<TInput, TOutput>(
             const input =
               connector === undefined ? value : await connector(value as TOutput, ctx);
 
-            const promise = executeBlock(block, input, ctx)
+            // workIf() dispatches run in the "work" phase, matching work().
+            const promise = executeBlock(block, input, ctx, { phase: "work" })
               .then(
                 (result): WorkResult => ({
                   name,

@@ -21,7 +21,8 @@ import {
   asObject,
   getString,
   jsonResponse,
-  parseJsonBody
+  parseJsonBody,
+  SSE_HEADERS
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { InternalRouteSeams, RequestContext } from "./http-handlers";
@@ -45,6 +46,7 @@ type ActionRouteContext = {
   speechResolver?: SpeechResolver;
   middleware?: Middleware[];
   maxResponseBufferSize?: number;
+  onBackgroundWork?: (promise: Promise<unknown>) => void;
   seams: InternalRouteSeams;
   bootstrapMetadata: Record<string, unknown>;
   requestContext: RequestContext;
@@ -115,7 +117,7 @@ export async function handleExecuteAction(
 
   registerStream(resolvedActionInput.requestId, liveStream);
 
-  void runAction({
+  const runPromise = runAction({
     flow,
     actionName: resolvedActionInput.actionName as keyof typeof flow.actions & string,
     input: resolvedActionInput.input,
@@ -136,6 +138,33 @@ export async function handleExecuteAction(
     // Safety net: deregister if runAction didn't (e.g., truly catastrophic failure)
     ctx.stores.activeRequests.deregister(resolvedActionInput.requestId).catch(() => {});
   });
+
+  // Notify the platform that background work must complete. On serverless
+  // platforms this is critical: without it the function instance is killed
+  // after the 202 response is sent, before runAction persists anything.
+  if (ctx.onBackgroundWork !== undefined) {
+    ctx.onBackgroundWork(runPromise);
+  }
+
+  // Inline streaming: when the client sends Accept: text/event-stream, return
+  // the SSE stream directly from the POST response. This keeps the action
+  // execution and stream delivery on the same function instance — essential
+  // for serverless platforms where POST and GET may hit different instances.
+  const accept = request.headers.get("accept") ?? "";
+  if (accept.includes("text/event-stream")) {
+    return new Response(liveStream.readable, {
+      status: 200,
+      headers: {
+        ...SSE_HEADERS,
+        // Vercel/Nginx proxy anti-buffering headers — needed here because
+        // the Vercel adapter skips heartbeat wrapping for POST responses.
+        "cache-control": "no-cache, no-transform",
+        "x-accel-buffering": "no",
+        "x-request-id": resolvedActionInput.requestId,
+        "x-session-id": resolvedActionInput.sessionId ?? ""
+      }
+    });
+  }
 
   return jsonResponse(202, {
     status: "in_progress",

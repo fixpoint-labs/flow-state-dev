@@ -12,7 +12,7 @@
  *   - readArtifact/updateArtifact are included as fallback
  *   - no bash tools or guidance
  */
-import { defineCapability } from "@flow-state-dev/core";
+import { defineCapability, type CapabilityRef } from "@flow-state-dev/core";
 import { createBashCapability } from "@flow-state-dev/tools/bash";
 import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
@@ -20,6 +20,7 @@ import { crawl } from "@flow-state-dev/tools/crawl";
 import { z } from "zod";
 import { modeSchema, featuresSchema } from "../schemas";
 import { artifactResources, artifactsCapability } from "./artifacts";
+import { mcpCapability } from "../../../../lib/mcp";
 import path from "node:path";
 
 const featuresSessionStateSchema = z.object({
@@ -66,12 +67,15 @@ export const featuresCapability = defineCapability({
   uses: [
     // Conditionally include bash or artifact tools based on mode and feature flags.
     // Ask mode always excludes bash — Build mode defers to the bashTool feature flag.
+    // MCP capability included when servers are configured (null when absent).
     (ctx) => {
       const bashEnabled =
         ctx.session.state.mode !== "ask" && ctx.session.state.features.bashTool;
-      return bashEnabled
+      const caps: CapabilityRef[] = bashEnabled
         ? [bashCap, artifactsCapability.presets({ inventory: true, tools: false })]
         : [artifactsCapability];
+      if (mcpCapability) caps.push(mcpCapability);
+      return caps;
     },
   ],
 

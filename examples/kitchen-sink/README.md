@@ -11,7 +11,7 @@ The canonical reference application for `@flow-state-dev`. A full Next.js app de
 - Router decisions from both action input and `ctx.session.state`
 - Generator tool loop with handler-backed tools (`readArtifact`, `updateArtifact`)
 - Generator slots: `prompt`, `context`, `history`, `user`
-- Emission API: `ctx.emitMessage()`, `ctx.emitComponent()`, `ctx.emitStatus()`
+- Emission API: `ctx.emitMessage()`, `ctx.emitComponent()`, `ctx.emitStatus()` (visibility controlled via item roles — see `docs/architecture/blocks.md`)
 - Sequencer DSL: `.then()`, `.thenIf()`, `.map()`, `.tap()`, `.rescue()`
 - Session resources (`artifacts`) with typed resource reads/writes
 - clientData on `session` and `user` scopes

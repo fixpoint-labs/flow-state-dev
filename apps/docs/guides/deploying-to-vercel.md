@@ -5,7 +5,7 @@ title: Deploying to Vercel
 
 # Deploying to Vercel
 
-How to deploy a flow-state-dev Next.js application to Vercel. This covers the App Router pattern, SSE streaming configuration, persistence on serverless, and the common problems you'll hit.
+How to deploy a flow-state-dev Next.js application to Vercel. The `@flow-state-dev/vercel` package handles SSE headers, heartbeats, and runtime configuration so you don't have to.
 
 If you haven't set up a Next.js project with the framework yet, start with the [Next.js Setup](/guides/nextjs-setup) guide first.
 
@@ -20,56 +20,64 @@ If you haven't set up a Next.js project with the framework yet, start with the [
 
 ---
 
-## 1. Configure the API route
+## 1. Install the adapter
 
-Your catch-all route handler needs one critical setting:
-
-```ts title="app/api/flows/[...path]/route.ts"
-import { router } from "@/lib/server";
-import { type NextRequest } from "next/server";
-
-// Required: prevents Next.js from buffering the response body.
-// Without this, SSE tokens arrive in bursts instead of real-time.
-export const dynamic = "force-dynamic";
-
-type RouteContext = { params: Promise<{ path: string[] }> };
-
-export async function GET(req: NextRequest, ctx: RouteContext) {
-  const params = await ctx.params;
-  return router.GET(req, { params });
-}
-
-export async function POST(req: NextRequest, ctx: RouteContext) {
-  const params = await ctx.params;
-  return router.POST(req, { params });
-}
-
-export async function DELETE(req: NextRequest, ctx: RouteContext) {
-  const params = await ctx.params;
-  return router.DELETE(req, { params });
-}
+```bash
+pnpm add @flow-state-dev/vercel
 ```
-
-You also need a sibling route for the bare `/api/flows` path, because Next.js `[...path]` catch-all requires at least one segment:
-
-```ts title="app/api/flows/route.ts"
-import { router } from "@/lib/server";
-import { type NextRequest } from "next/server";
-
-export async function GET(req: NextRequest) {
-  return router.GET(req, { params: { path: [] } });
-}
-
-export async function POST(req: NextRequest) {
-  return router.POST(req, { params: { path: [] } });
-}
-```
-
-**Why `force-dynamic`?** Next.js aggressively optimizes routes. Without this flag, it may try to statically render or cache the response, which breaks SSE streaming entirely. This is the single most common deployment issue.
 
 ---
 
-## 2. Configure Next.js
+## 2. Configure the API routes
+
+You need two route files. The catch-all handles all paths with segments, and a bare sibling handles `/api/flows` itself (Next.js `[...path]` requires at least one segment).
+
+```ts title="app/api/flows/[...path]/route.ts"
+import { createVercelHandler } from "@flow-state-dev/vercel";
+import { router } from "@/lib/server";
+
+export const { GET, POST, PATCH, DELETE } = createVercelHandler(router);
+
+// Next.js reads these statically — must be literal declarations, not re-exports.
+export const runtime = "nodejs";
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
+```
+
+```ts title="app/api/flows/route.ts"
+import { createVercelBareHandler } from "@flow-state-dev/vercel";
+import { router } from "@/lib/server";
+
+export const { GET, POST } = createVercelBareHandler(router);
+```
+
+`createVercelHandler` takes care of:
+- Unwrapping Next.js 15's async params
+- Adding SSE headers (`Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`) to prevent Vercel's edge layer from buffering tokens
+- Injecting periodic heartbeat comments to keep long-lived connections alive
+
+If your router setup is async (e.g. Postgres pool creation), pass a factory function:
+
+```ts
+export const { GET, POST, PATCH, DELETE } = createVercelHandler(getRouter);
+export const { GET, POST } = createVercelBareHandler(getRouter); // in route.ts
+```
+
+The factory is called once and cached.
+
+### Route config values
+
+Next.js reads `runtime`, `maxDuration`, and `dynamic` via static analysis at build time. They must be **literal `export const` declarations** in the route file — `export { runtime } from '...'` re-exports will not work.
+
+| Field | Recommended value | Purpose |
+|--------|---------|---------|
+| `runtime` | `"nodejs"` | Vercel runtime |
+| `maxDuration` | `300` | Max function execution time in seconds |
+| `dynamic` | `"force-dynamic"` | Prevents Next.js from caching SSE routes |
+
+---
+
+## 3. Configure Next.js
 
 If your flow-state-dev packages are local workspace dependencies (monorepo), tell Next.js to transpile them:
 
@@ -81,6 +89,7 @@ const nextConfig = {
     "@flow-state-dev/client",
     "@flow-state-dev/react",
     "@flow-state-dev/server",
+    "@flow-state-dev/vercel",
   ],
 };
 
@@ -91,47 +100,88 @@ If you're consuming published packages from npm, you can skip `transpilePackages
 
 ---
 
-## 3. Choose a persistence store
+## 4. Choose a persistence store
 
 Vercel serverless functions run in ephemeral containers. The filesystem doesn't persist between invocations. This means:
 
 - **In-memory store**: works, but every cold start loses all data
 - **Filesystem store**: don't use it — writes succeed but data disappears on the next invocation
-- **SQLite store**: partially works for short-lived demos (the DB file is ephemeral), but don't rely on it for production persistence
+- **SQLite store**: partially works for short-lived demos (the DB file is ephemeral), but don't rely on it
 
-For production on Vercel, use an external database. The SQLite adapter works for demos where losing data on cold start is acceptable:
+For production on Vercel, use an external database like Postgres (via `@flow-state-dev/store-postgres`):
 
 ```ts title="lib/server.ts"
+import { after } from "next/server";
+import { openai } from "@ai-sdk/openai";
+import { createGateway } from "@ai-sdk/gateway";
 import { createModelResolver } from "@flow-state-dev/core/models";
 import {
   createFlowApiRouter,
   createFlowRegistry,
+  createInMemoryStores,
+  type StoreRegistry,
 } from "@flow-state-dev/server";
+import { createPostgresStores } from "@flow-state-dev/store-postgres";
 import myFlow from "@/flows/my-flow/flow";
+
+// Pass explicit provider/gateway instances. The model resolver's dynamic
+// require() path doesn't work in bundled Next.js — static imports do.
+const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
+const modelResolver = createModelResolver({
+  providers: { openai },
+  gateways: gatewayApiKey
+    ? { vercel: createGateway({ apiKey: gatewayApiKey }) }
+    : undefined,
+});
 
 const registry = createFlowRegistry();
 registry.register(myFlow);
 
-export const router = createFlowApiRouter({
-  registry,
-  modelResolver: createModelResolver(),
-  // In-memory is the default. Fine for stateless or demo use.
-  // For production persistence, use an external database adapter
-  // when one becomes available (PostgreSQL, MongoDB).
-});
+async function createStores(): Promise<StoreRegistry> {
+  const dbUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
+  if (dbUrl) {
+    return createPostgresStores({ connectionString: dbUrl });
+  }
+  return createInMemoryStores();
+}
+
+let _router: Promise<ReturnType<typeof createFlowApiRouter>> | null = null;
+
+export function getRouter() {
+  if (!_router) {
+    _router = createStores().then((stores) =>
+      createFlowApiRouter({
+        registry,
+        stores,
+        modelResolver,
+        detectInterruptedOnStartup: false,
+        onBackgroundWork: (promise) => after(() => promise),
+      })
+    );
+  }
+  return _router;
+}
 ```
+
+**Key points:**
+- **Explicit provider/gateway instances**: Next.js bundles server code, breaking the model resolver's dynamic `require()` path. Pass providers and gateways as static imports instead.
+- **`detectInterruptedOnStartup: false`**: Disables a background Postgres query on startup that can exhaust the pool during serverless cold starts.
+- **`onBackgroundWork` + `after()`**: Keeps the serverless function alive for fire-and-forget action execution. Without this, Vercel kills the function after the response is sent.
 
 ---
 
-## 4. Set environment variables
+## 5. Set environment variables
 
 In your Vercel project settings (Settings > Environment Variables), add:
 
 ```
-OPENAI_API_KEY=sk-...
+AI_GATEWAY_API_KEY=...
+FSD_DB_URL=postgresql://...
 ```
 
-Or whichever provider keys your flows need. The model resolver reads these at runtime.
+`FSD_DB_URL` is preferred over `DATABASE_URL` to avoid collisions with other services. The store adapter checks both (`FSD_DB_URL` first).
+
+Or whichever provider keys and connection strings your flows need.
 
 For local testing with `vercel dev`, use `.env.local`:
 
@@ -141,7 +191,7 @@ OPENAI_API_KEY=sk-...
 
 ---
 
-## 5. Deploy
+## 6. Deploy
 
 **From the CLI:**
 
@@ -157,7 +207,7 @@ vercel --prod
 
 ---
 
-## 6. Verify
+## 7. Verify
 
 ```bash
 # 1. Check the API responds
@@ -184,7 +234,7 @@ Vercel serverless functions have execution time limits:
 | Pro | 60 seconds |
 | Enterprise | 900 seconds |
 
-If your flow takes longer than the limit, the function is killed and the SSE stream drops. The client will see an incomplete response.
+The `@flow-state-dev/vercel/config` module exports `maxDuration = 300`. If your Vercel plan's limit is lower, the plan limit takes precedence. The adapter sets the max so that plan upgrades immediately unlock longer execution times without redeploying.
 
 **What this means in practice:**
 
@@ -192,7 +242,7 @@ If your flow takes longer than the limit, the function is killed and the SSE str
 - Multi-step agent flows with tool calls can take 30-120 seconds. Needs Pro or higher.
 - Long-running workflows (research agents, multi-model pipelines) may need a different platform entirely.
 
-There's no workaround for this limit on Vercel. If your flows consistently exceed the timeout, consider [Railway](/guides/deploying-to-railway) or [Docker](/guides/deploying-with-docker) instead.
+If your flows consistently exceed the timeout, consider [Railway](/guides/deploying-to-railway) or [Docker](/guides/deploying-with-docker) instead.
 
 ---
 
@@ -200,7 +250,7 @@ There's no workaround for this limit on Vercel. If your flows consistently excee
 
 ### SSE stream arrives all at once
 
-Your route is missing `export const dynamic = "force-dynamic"`. Add it to the catch-all route file.
+If you're not using `@flow-state-dev/vercel`, make sure your route file exports `export const dynamic = "force-dynamic"`. The adapter handles this automatically.
 
 ### "Module not found" for @flow-state-dev packages
 
@@ -216,24 +266,7 @@ The first request after a period of inactivity takes longer because Vercel start
 
 ### CORS errors from a different frontend
 
-If your frontend is on a different domain than the API, you'll need to add CORS headers. The framework doesn't add them by default. Wrap your route handlers:
-
-```ts title="app/api/flows/[...path]/route.ts"
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://your-frontend.com",
-  "Access-Control-Allow-Methods": "GET, POST, DELETE",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
-export async function GET(req: NextRequest, ctx: RouteContext) {
-  const params = await ctx.params;
-  const response = await router.GET(req, { params });
-  Object.entries(corsHeaders).forEach(([k, v]) => response.headers.set(k, v));
-  return response;
-}
-
-// Repeat for POST, DELETE, and add an OPTIONS handler
-```
+If your frontend is on a different domain than the API, you'll need to add CORS headers. The framework doesn't add them by default. Handle this at the Next.js middleware level or by wrapping the handler response.
 
 ### Environment variable not found
 
