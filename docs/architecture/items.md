@@ -51,15 +51,13 @@ The devtool always sees everything, regardless of role. That's the point — it'
 
 **`resource_change`** records that a resource was created, updated, or deleted. A notification — the real state lives in the resource store. Transient by default.
 
-**`error`** is the terminal error item emitted when a request fails unrecoverably. Always transient.
+**`error`** is the terminal error item emitted when a request fails unrecoverably. Persisted so session history shows what went wrong.
 
 **`step_error`** is a block-level error within a sequencer — either handled by a rescue boundary (`recovered: true`) or not. Persisted so you can see what went wrong in session history.
 
 **`block_tool_output`** is emitted when a generator invokes a block as a tool. Carries the tool name, input arguments, and result. Goes into LLM history as the tool result so the model can continue reasoning. Also visible in the chat UI for tool call rendering.
 
 ### Internal items — what the LLM sees but the user doesn't
-
-**`context`** injects text into the LLM prompt without showing it to the user. Emit via `ctx.emitLLMContext()`. Useful for dynamic system prompts computed at runtime.
 
 Any block can produce internal items by setting `itemRole: "internal"` on the generator config or by using the `emit` config to assign the role per item type. An internal `message`, for example, contributes to LLM conversation history across turns without ever appearing in the browser.
 
@@ -77,7 +75,7 @@ Items fall into three buckets:
 
 **Persistent** — stored in the request record. Survive page refreshes. Form the session's durable history. Most items are persistent.
 
-**Transient** — stream-only. The client sees them during execution via SSE, but they're stripped before the request record is written. When someone reconnects or opens a past session, these items don't appear. `status` and `error` are always transient. `resource_change` and `sequencer_state_snapshot` are transient by default.
+**Transient** — stream-only. The client sees them during execution via SSE, but they're stripped before the request record is written. When someone reconnects or opens a past session, these items don't appear. `status` is always transient. `resource_change` and `sequencer_state_snapshot` are transient by default.
 
 **Conditionally persistent** — `state_change` items are transient in production and persistent in development. Use `persistStateChanges: true` on the flow config to force persistence in production (needed for the devtool state timeline).
 
@@ -99,10 +97,9 @@ There are two storage targets, kept separate:
 | `status` | `ctx.emitStatus()` | external | — | **Always transient** |
 | `state_change` | Auto on state mutations | external | — | Transient in prod / persistent in dev |
 | `resource_change` | Auto on resource mutations | external | — | Transient by default |
-| `error` | Runtime (terminal failure) | external | — | **Always transient** |
+| `error` | Runtime (terminal failure) | external | — | Persistent |
 | `step_error` | Sequencer (block error, with/without rescue) | external | — | Persistent |
 | `block_tool_output` | Generator (per tool invocation) | external | ✓ | Persistent |
-| `context` | `ctx.emitLLMContext()` | internal | ✓ | Persistent |
 | `block_output` | Every block (auto, post-execution) | trace | ¹ | Persistent |
 | `router_decision` | Router (auto, on selection) | trace | — | Persistent |
 | `sequencer_state_snapshot` | Sequencer (at step boundaries) | trace | — | **Always transient** |
@@ -127,7 +124,7 @@ handle.update({ steps: ["Step 1 done", "Step 2 done"], status: "complete" });
 handle.done();
 ```
 
-`update()` mutates the item's data in-place. Live clients see every intermediate state via SSE events on the same item ID. The persisted record holds only the final state — there's no history of intermediate updates stored.
+Each `emitComponent()` call creates exactly one item. `update()` mutates that item's data in-place — it does not create additional items. Live clients see every intermediate state via SSE events on the same item ID. The persisted record holds only the final state after `done()` is called. There is no history of intermediate updates stored.
 
 If you need each step to be a distinct persisted item (e.g. a plan where each step is independently addressable), emit them as separate items with different `key` values rather than updates to a single item.
 

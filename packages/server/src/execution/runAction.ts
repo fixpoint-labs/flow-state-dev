@@ -221,7 +221,6 @@ async function emitTerminalError(
     id: `item_error_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "error",
     status: "failed",
-    transient: true,
     requestId: ctx.requestRuntime.requestId,
     itemIndex: getResponseItems(ctx.response).length,
     provenance: RUNTIME_PROVENANCE,

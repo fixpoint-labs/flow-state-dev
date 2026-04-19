@@ -36,7 +36,6 @@ Items are the canonical persisted artifacts. Their type determines audience rout
 | `message` | Yes | Yes | Conversational content (user/assistant/system) |
 | `reasoning` | Yes | Yes | Model reasoning/thinking traces |
 | `component` | Yes | No | Structured data rendered by registered component |
-| `context` | No | Yes | Hidden context for LLMs only |
 | `container` | Yes | No | Visual grouping (sequencer/router frame) |
 | `status` | Yes | No | Transient progress updates |
 | `state_change` | Yes | No | Scope state mutation record |

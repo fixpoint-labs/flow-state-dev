@@ -25,7 +25,6 @@ Every item has a type that determines how it's persisted, routed, and rendered:
 | `resource_change` | Resource mutation notification |
 | `step_error` | Non-terminal error in a pipeline step |
 | `error` | Terminal request error |
-| `context` | Hidden context for LLMs only. Not sent to the client. |
 | `block_output` | Execution record for every block (trace-only) |
 | `router_decision` | Route selection record (trace-only) |
 | `sequencer_state_snapshot` | Sequencer state at step boundaries (trace-only, transient) |
@@ -43,7 +42,7 @@ execute: async (input, ctx) => {
 }
 ```
 
-`emitMessage()` creates a `message` item. `emitComponent()` creates a `component` item with the component name and typed props. `emitStatus()` creates a transient `status` item for progress indicators. `emitLLMContext()` creates a `context` item that feeds the LLM but is hidden from the browser.
+`emitMessage()` creates a `message` item. `emitComponent()` creates a `component` item with the component name and typed props. `emitStatus()` creates a transient `status` item for progress indicators.
 
 ## Session items
 
@@ -52,7 +51,7 @@ Items accumulate in the session across requests. When a user sends a second mess
 Three views for accessing session items:
 
 - **`items.all()`** — Everything in the session. The full log.
-- **`items.client()`** — Items intended for the client UI. Excludes `context` and trace items like `block_output`.
+- **`items.client()`** — Items intended for the client UI. Excludes trace items like `block_output`.
 - **`items.llm()`** — Items formatted for the model. Supports token limiting: `items.llm({ limit: { tokens: 20_000 } })` packs from newest to oldest within the budget.
 
 ## Item roles
@@ -132,7 +131,7 @@ This powers the DevTool's trace timeline, UI grouping, and correlating items to 
 
 Most items are persisted to the session store. Exceptions:
 
-- `status` and `error` items are always transient (stream-only, not persisted).
+- `status` items are always transient (stream-only, not persisted).
 - `sequencer_state_snapshot` is always transient.
 - `state_change` and `resource_change` are transient by default in production; persisted in dev mode for the DevTool.
 - Everything else is persisted by default.
@@ -158,6 +157,6 @@ handle.update({ steps: ["Step 1 done", "Step 2 done"], status: "complete" });
 handle.done();
 ```
 
-Live clients see every intermediate update via SSE. The persisted record holds only the final state.
+Each `emitComponent()` call creates exactly one item. `update()` mutates that item's data in-place — it does not create additional items. Live clients see every intermediate state via SSE. The persisted record holds only the final state after `done()` is called.
 
 Register component renderers on the React side. The `ItemsRenderer` dispatches to your registered renderers based on the component name. See [React Integration](/docs/client/react) for renderer setup.

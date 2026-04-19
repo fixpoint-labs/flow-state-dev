@@ -53,7 +53,6 @@ interface BlockContext {
   // Item emission
   emitMessage(text: string): MessageHandle;
   emitComponent(component: string, data: Record<string, unknown>): ComponentHandle;
-  emitLLMContext(text: string): void;
   emitStatus(message: string): void;
 }
 ```
@@ -344,7 +343,6 @@ Blocks shape what the LLM sees through emission methods:
 | Method | In LLM Context | In Client UI |
 |--------|----------------|--------------|
 | `ctx.emitMessage(text)` | Yes (conversation message) | Yes |
-| `ctx.emitLLMContext(text)` | Yes (replaces tool result when in tool context) | No |
 | `ctx.emitComponent(comp, data)` | No | Yes |
 | `ctx.emitStatus(msg)` | No | Yes (transient) |
 
