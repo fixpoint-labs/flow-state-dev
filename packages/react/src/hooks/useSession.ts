@@ -137,6 +137,8 @@ export type SessionView = {
     input: unknown,
     options?: { metadata?: Record<string, unknown>; userMessage?: string }
   ) => Promise<ExecuteActionResponse>;
+  /** Abort the currently in-flight request. No-op if nothing is in flight. */
+  abortRequest: () => Promise<void>;
   refresh: () => Promise<void>;
 };
 
@@ -374,6 +376,8 @@ export function useSession(
   const [error, setError] = useState<Error | null>(null);
 
   const streamHandleRef = useRef<RequestStreamHandle | null>(null);
+  /** The requestId of the currently in-flight request, used for abort. */
+  const activeRequestIdRef = useRef<string | null>(null);
   const itemsByIdRef = useRef<Map<string, OutputItem>>(new Map());
   const sortedItemIdsRef = useRef<string[]>([]);
   const deltaQueueRef = useRef<Map<string, ContentDeltaAccumulator>>(new Map());
@@ -761,15 +765,18 @@ export function useSession(
           if (
             event.status === "completed" ||
             event.status === "failed" ||
-            event.status === "incomplete"
+            event.status === "incomplete" ||
+            event.status === "interrupted" ||
+            event.status === "aborted"
           ) {
             flushContentDeltas();
             setIsStreaming(false);
             setIsFinishing(false);
+            activeRequestIdRef.current = null;
             streamHandleRef.current?.close();
             streamHandleRef.current = null;
 
-            // Refresh on completion, or on failure/incomplete if resources
+            // Refresh on completion, or on failure/incomplete/aborted if resources
             // changed during streaming (batched instead of per-change).
             if (
               event.status === "completed" ||
@@ -918,6 +925,7 @@ export function useSession(
       setIsFinishing(false);
 
       const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      activeRequestIdRef.current = requestId;
 
       // Optimistic user message: inject immediately so the user sees their own
       // message without waiting for the server round-trip. The server will emit
@@ -1025,6 +1033,54 @@ export function useSession(
     return sortItemsChronologically(result);
   }, []);
 
+  const abortRequest = useCallback(async () => {
+    const requestId = activeRequestIdRef.current;
+    if (requestId === null) return;
+
+    // Mark the request as abort-requested in the persistent store. This
+    // flag lets the server distinguish an intentional stop from an
+    // accidental disconnect (browser reload, network drop).
+    try {
+      await client.abortRequest(requestId);
+    } catch {
+      // Best-effort — if the endpoint is unreachable the server will
+      // treat the subsequent disconnect as "interrupted" instead.
+    }
+
+    // Close the SSE connection. On the server, request.signal fires
+    // and the catch block checks the abortRequested flag to decide
+    // between "aborted" (intentional) or "interrupted" (accidental).
+    streamHandleRef.current?.close();
+    streamHandleRef.current = null;
+    activeRequestIdRef.current = null;
+
+    flushContentDeltas();
+    setIsStreaming(false);
+    setIsFinishing(false);
+
+    if (itemConfig.enabled) {
+      const abortItem: OutputItem = {
+        id: `item_status_aborted_${requestId}`,
+        type: "status",
+        status: "completed",
+        requestId,
+        itemIndex: itemsByIdRef.current.size,
+        provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
+        ts: Date.now(),
+        message: "Request was stopped.",
+        detail: { code: "system.request_aborted" }
+      } as OutputItem;
+
+      itemsByIdRef.current.set(abortItem.id, abortItem);
+      sortedItemIdsRef.current = insertSortedItemId(
+        sortedItemIdsRef.current,
+        abortItem,
+        itemsByIdRef.current
+      );
+      setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+    }
+  }, [client, flushContentDeltas, itemConfig.enabled]);
+
   const refresh = useCallback(async () => {
     await refreshSnapshot();
   }, [refreshSnapshot]);
@@ -1043,6 +1099,7 @@ export function useSession(
     items,
     getOwnedItems,
     sendAction,
+    abortRequest,
     refresh
   };
 }

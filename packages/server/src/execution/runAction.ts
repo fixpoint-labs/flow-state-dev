@@ -1,7 +1,7 @@
 /**
  * Action-level orchestration runtime for request lifecycle, observers, persistence, and terminal errors.
  */
-import type { ErrorItem, ItemProvenance, MessageItem, OutputItem } from "@flow-state-dev/core/items";
+import type { ErrorItem, ItemProvenance, MessageItem, OutputItem, StatusItem } from "@flow-state-dev/core/items";
 import { isEphemeralContent } from "@flow-state-dev/core/items";
 import type {
   ActionConfig,
@@ -39,6 +39,10 @@ import type {
 import { createExecutionMetadata } from "./types";
 import { createTTSEmitterHook, type TTSEmitterHook } from "../voice/tts-emitter-hook";
 import { generateId } from "../utils/generate-id";
+import {
+  registerAbortController,
+  deregisterAbortController
+} from "./abort-registry";
 
 type RunActionInternalOptions<
   TFlow extends FlowInstance = FlowInstance,
@@ -287,6 +291,42 @@ async function emitBudgetWarning(
 }
 
 /**
+ * Emits a persistent status item indicating the request was stopped by the user.
+ */
+async function emitAbortedMessage(
+  ctx: ExecutionContext
+): Promise<void> {
+  if (
+    typeof ctx.response !== "object" ||
+    ctx.response === null ||
+    typeof (ctx.response as { emitItemAdded?: unknown }).emitItemAdded !== "function" ||
+    typeof (ctx.response as { emitItemDone?: unknown }).emitItemDone !== "function"
+  ) {
+    return;
+  }
+
+  const response = ctx.response as unknown as {
+    emitItemAdded: (item: StatusItem) => Promise<unknown>;
+    emitItemDone: (item: StatusItem) => Promise<unknown>;
+  };
+
+  const item: StatusItem = {
+    id: `item_status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: "status",
+    status: "completed",
+    requestId: ctx.requestRuntime.requestId,
+    itemIndex: getResponseItems(ctx.response).length,
+    provenance: RUNTIME_PROVENANCE,
+    ts: Date.now(),
+    message: "Request was stopped.",
+    detail: { code: "system.request_aborted" }
+  };
+
+  await response.emitItemAdded(item);
+  await response.emitItemDone(item);
+}
+
+/**
  * Public action execution API using default internal seams.
  */
 export async function runAction<
@@ -349,7 +389,11 @@ export async function runActionInternal<
     response.addEventObserver((event) => ttsHook!.onEvent(event));
   }
 
-  // --- Active request registry: register + heartbeat ---
+  // --- Abort controller: register so the abort endpoint can signal cancellation ---
+  // Register just before `createExecutionContext` to minimize the leak window
+  // if setup (registry register, session update, initial emits) throws before
+  // the main try/catch. Registration must happen before createExecutionContext
+  // because composedSignal is consumed by it.
   const registry = options.stores.activeRequests;
   await registry.register({
     requestId,
@@ -437,21 +481,37 @@ export async function runActionInternal<
     parseError = error;
   }
 
-  const ctx = await createExecutionContext({
-    flow: options.flow,
-    actionName: options.actionName,
-    requestId,
-    userId: options.userId,
-    sessionId: options.sessionId,
-    projectId: options.projectId,
-    metadata: options.metadata,
-    input: options.input,
-    signal: options.signal,
-    modelResolver: options.modelResolver,
-    response,
-    stores: options.stores,
-    logger
-  });
+  // Register the abort controller just before we consume its signal.
+  // If anything above threw, the controller would never be registered.
+  // If anything between here and the main try block throws, the outer
+  // try/catch below cleans it up.
+  const abortController = registerAbortController(requestId);
+  const composedSignal = options.signal
+    ? AbortSignal.any([options.signal, abortController.signal])
+    : abortController.signal;
+
+  let ctx: ExecutionContext;
+  try {
+    ctx = await createExecutionContext({
+      flow: options.flow,
+      actionName: options.actionName,
+      requestId,
+      userId: options.userId,
+      sessionId: options.sessionId,
+      projectId: options.projectId,
+      metadata: options.metadata,
+      input: options.input,
+      signal: composedSignal,
+      modelResolver: options.modelResolver,
+      response,
+      stores: options.stores,
+      logger
+    });
+  } catch (setupError) {
+    deregisterAbortController(requestId);
+    if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
+    throw setupError;
+  }
 
   const metadata = createExecutionMetadata(ctx, {
     scope: "request"
@@ -608,7 +668,8 @@ export async function runActionInternal<
     }, ctx, { internalSeams });
     await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
-    // Deregister from active registry
+    // Deregister abort controller and active registry
+    deregisterAbortController(requestId);
     await registry.deregister(requestId).catch((err) => {
       logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
         requestId, error: String(err)
@@ -624,60 +685,129 @@ export async function runActionInternal<
     // Clear heartbeat
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
 
-    const normalized = applyNormalizedErrorSeam(
-      internalSeams,
-      normalizeError(error, {
-        scope: "request",
-        blockName: action.block.name
-      }),
-      metadata
-    );
+    // The composed signal fires when the abort endpoint calls
+    // abortController.abort() or when the client disconnects (browser
+    // reload, network drop, tab close). Check the persistent
+    // abortRequested flag to distinguish intentional abort from
+    // accidental disconnect.
+    const signalAborted = composedSignal.aborted;
 
-    await emitTerminalError(ctx, normalized);
-    await response.emitRequestStatus("failed");
+    if (signalAborted) {
+      const record = await options.stores.request.get(requestId).catch(() => undefined);
+      const wasIntentionalAbort = record?.abortRequested === true;
 
-    // Flush pending item and event writes before terminal status
-    await options.stores.request.flushItems(requestId);
-    await options.stores.request.flushEvents(requestId);
+      if (wasIntentionalAbort) {
+        // --- Abort path: user explicitly stopped the request ---
+        await emitAbortedMessage(ctx);
+        await response.emitRequestStatus("aborted");
 
-    const failedAt = Date.now();
-    await patchRequestRecord(options.stores, requestId, {
-      status: "failed",
-      failedAtMs: failedAt,
-      items: response.getItems()
-    });
+        await options.stores.request.flushItems(requestId);
+        await options.stores.request.flushEvents(requestId);
 
-    ctx.requestRuntime.status = "failed";
-    ctx.requestRuntime.failedAtMs = failedAt;
+        const abortedAt = Date.now();
+        await patchRequestRecord(options.stores, requestId, {
+          status: "aborted",
+          abortedAt,
+          items: response.getItems()
+        });
 
-    await runObserverSafely(action.onErrored, {
-      requestId,
-      actionName: options.actionName,
-      error: normalized
-    }, ctx, { internalSeams });
+        ctx.requestRuntime.status = "aborted";
 
-    await runObserverSafely(options.flow.request?.onErrored, {
-      requestId,
-      actionName: options.actionName,
-      error: normalized
-    }, ctx, { internalSeams });
-    await emitActionLifecycleSeam(internalSeams, "errored", metadata);
+        await runObserverSafely(options.flow.request?.onFinished, {
+          requestId,
+          actionName: options.actionName,
+          status: "aborted"
+        }, ctx, { internalSeams });
+        await emitActionLifecycleSeam(internalSeams, "finished", metadata);
 
-    await runObserverSafely(options.flow.request?.onFinished, {
-      requestId,
-      actionName: options.actionName,
-      status: "failed",
-      error: normalized
-    }, ctx, { internalSeams });
-    await emitActionLifecycleSeam(internalSeams, "finished", metadata);
+        logRuntimeEvent(logger, "info", "[flow-state] action execution aborted", {
+          ...createExecutionLogContext(metadata),
+          durationMs: Date.now() - startedAt
+        });
+      } else {
+        // --- Disconnect path: client went away without explicit abort ---
+        await response.emitRequestStatus("interrupted");
 
-    logRuntimeEvent(logger, "error", "[flow-state] action execution failed", {
-      ...createExecutionLogContext(metadata),
-      durationMs: Date.now() - startedAt,
-      error: summarizeForLog(normalized)
-    });
+        await options.stores.request.flushItems(requestId);
+        await options.stores.request.flushEvents(requestId);
 
-    // Deregister from active registry
+        await patchRequestRecord(options.stores, requestId, {
+          status: "interrupted",
+          interruptedAt: Date.now(),
+          items: response.getItems()
+        });
+
+        ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;
+
+        await runObserverSafely(options.flow.request?.onFinished, {
+          requestId,
+          actionName: options.actionName,
+          status: "interrupted"
+        }, ctx, { internalSeams });
+        await emitActionLifecycleSeam(internalSeams, "finished", metadata);
+
+        logRuntimeEvent(logger, "info", "[flow-state] action execution interrupted (client disconnect)", {
+          ...createExecutionLogContext(metadata),
+          durationMs: Date.now() - startedAt
+        });
+      }
+    } else {
+      // --- Failure path: execution error ---
+      const normalized = applyNormalizedErrorSeam(
+        internalSeams,
+        normalizeError(error, {
+          scope: "request",
+          blockName: action.block.name
+        }),
+        metadata
+      );
+
+      await emitTerminalError(ctx, normalized);
+      await response.emitRequestStatus("failed");
+
+      await options.stores.request.flushItems(requestId);
+      await options.stores.request.flushEvents(requestId);
+
+      const failedAt = Date.now();
+      await patchRequestRecord(options.stores, requestId, {
+        status: "failed",
+        failedAtMs: failedAt,
+        items: response.getItems()
+      });
+
+      ctx.requestRuntime.status = "failed";
+      ctx.requestRuntime.failedAtMs = failedAt;
+
+      await runObserverSafely(action.onErrored, {
+        requestId,
+        actionName: options.actionName,
+        error: normalized
+      }, ctx, { internalSeams });
+
+      await runObserverSafely(options.flow.request?.onErrored, {
+        requestId,
+        actionName: options.actionName,
+        error: normalized
+      }, ctx, { internalSeams });
+      await emitActionLifecycleSeam(internalSeams, "errored", metadata);
+
+      await runObserverSafely(options.flow.request?.onFinished, {
+        requestId,
+        actionName: options.actionName,
+        status: "failed",
+        error: normalized
+      }, ctx, { internalSeams });
+      await emitActionLifecycleSeam(internalSeams, "finished", metadata);
+
+      logRuntimeEvent(logger, "error", "[flow-state] action execution failed", {
+        ...createExecutionLogContext(metadata),
+        durationMs: Date.now() - startedAt,
+        error: summarizeForLog(normalized)
+      });
+    }
+
+    // Deregister abort controller and active registry
+    deregisterAbortController(requestId);
     await registry.deregister(requestId).catch((err) => {
       logRuntimeEvent(logger, "warn", "[flow-state] registry deregister failed", {
         requestId, error: String(err)
@@ -688,7 +818,14 @@ export async function runActionInternal<
       output: undefined,
       items: response.getItems(),
       durationMs: Date.now() - startedAt,
-      error: normalized
+      error: signalAborted ? undefined : applyNormalizedErrorSeam(
+        internalSeams,
+        normalizeError(error, {
+          scope: "request",
+          blockName: action.block.name
+        }),
+        metadata
+      )
     };
   }
 }

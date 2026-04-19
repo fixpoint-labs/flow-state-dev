@@ -557,7 +557,8 @@ function ChatPanel({
             <PromptInputSubmit
               className="mr-2 sm:mr-4"
               status={session.isStreaming ? "streaming" : "ready"}
-              disabled={isDisabled || message.trim().length === 0}
+              disabled={!session.isStreaming && (isDisabled || message.trim().length === 0)}
+              onStop={session.abortRequest}
             />
           </PromptInput>
         </div>

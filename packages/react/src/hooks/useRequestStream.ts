@@ -93,7 +93,9 @@ export function useRequestStream(
         if (
           event.status === "completed" ||
           event.status === "failed" ||
-          event.status === "incomplete"
+          event.status === "incomplete" ||
+          event.status === "interrupted" ||
+          event.status === "aborted"
         ) {
           setIsStreaming(false);
           setIsFinishing(false);

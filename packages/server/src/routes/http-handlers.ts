@@ -26,6 +26,7 @@ import {
   errorStatus,
   jsonResponse
 } from "./route-utils";
+import { handleAbortRequest } from "./abort-routes";
 import { handleExecuteAction } from "./action-routes";
 import { handleListActiveRequests, handleRetryRequest } from "./recovery-routes";
 import {
@@ -317,6 +318,12 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           modelResolver: options.modelResolver,
           speechResolver: options.speechResolver,
           middleware: options.middleware
+        });
+      }
+
+      if (route.kind === "abort_request") {
+        return await handleAbortRequest(request, route, {
+          stores
         });
       }
 
