@@ -2,9 +2,11 @@
 sidebar_position: 1
 ---
 
-# Items
+# Overview
 
-Every artifact produced during block execution is an **item**. A chat message, a tool call result, a progress indicator, a custom UI component — each one is an item that streams to connected clients in real time and (in most cases) gets persisted to the session record.
+Every artifact produced during block execution is an **item**. A chat message, a tool call result, a progress indicator, a custom UI component — each one is an item that streams to connected clients in real time and (in most cases) gets persisted.
+
+Items belong to **requests**, and requests belong to **sessions**. When a user sends a message, the framework creates a request, executes the action's root block, and the items produced during that execution are stored on the request record. The session collects items from all its requests and exposes them as a single timeline — so you can access them conveniently as one collection, but each item is tied to the request that produced it.
 
 Items serve three purposes:
 
@@ -70,9 +72,9 @@ Most items persist to the session store automatically. Exceptions:
 
 When a block is configured with `transient: true`, all items it emits become transient regardless of type.
 
-## Session items
+## Accessing items
 
-Items accumulate across requests. When a user sends a second message, the session already holds every item from the first request. Generators use this to build conversation history.
+Each item lives on the request that produced it, but the session aggregates items from all requests into a single timeline. When a user sends a second message, the session already holds every item from the first request. Generators use this aggregated view to build conversation history.
 
 Three views for accessing session items:
 
@@ -96,19 +98,19 @@ Items go through three phases:
 
 For reference, here's the complete registry:
 
-| Type | What it is | Persisted |
-|------|-----------|:---------:|
-| `message` | Chat message (user or assistant) | Yes |
-| `reasoning` | Model thinking tokens | Yes |
-| `component` | Custom UI component | Yes |
-| `container` | Groups child items for visual layout | Yes |
-| `block_tool_output` | Tool invocation result | Yes |
-| `source` | URL reference from web search, etc. | Yes |
-| `status` | Progress indicator | No |
-| `state_change` | State mutation notification | Dev only |
-| `resource_change` | Resource mutation notification | No (default) |
-| `step_error` | Non-terminal error in a pipeline step | Yes |
-| `error` | Terminal request error | Yes |
-| `block_output` | Execution record (trace-only) | Yes |
-| `router_decision` | Route selection (trace-only) | Yes |
-| `sequencer_state_snapshot` | Sequencer state snapshot (trace-only) | No |
+| Type | What it is | Default Role | Persisted |
+|------|-----------|:------------:|:---------:|
+| `message` | Chat message (user or assistant) | external | Yes |
+| `reasoning` | Model thinking tokens | external | Yes |
+| `component` | Custom UI component | external | Yes |
+| `container` | Groups child items for visual layout | external | Yes |
+| `block_tool_output` | Tool invocation result | external | Yes |
+| `source` | URL reference from web search, etc. | external | Yes |
+| `status` | Progress indicator | external | No |
+| `state_change` | State mutation notification | external | Dev only |
+| `resource_change` | Resource mutation notification | external | No (default) |
+| `step_error` | Non-terminal error in a pipeline step | external | Yes |
+| `error` | Terminal request error | external | Yes |
+| `block_output` | Execution record | trace | Yes |
+| `router_decision` | Route selection record | trace | Yes |
+| `sequencer_state_snapshot` | Sequencer state snapshot | trace | No |
