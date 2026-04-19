@@ -238,6 +238,95 @@ export const <patternName>Capability = defineCapability({
 
 This is the less common case. Most patterns just forward `uses` from their config. Only create a dedicated capability when the pattern owns resources that external blocks should opt into.
 
+#### Sequencer DSL Reference
+
+Beyond the basics (`.then()`, `.doUntil()`, `.tap()`, `.loopBack()`), the sequencer provides additional composition methods useful in patterns:
+
+| Method | Behavior |
+|--------|----------|
+| `workIf(condition, block)` | Conditional background work dispatch. No-op when falsy. |
+| `thenAll(blocks)` | Parallel execution of multiple blocks with the same input. Collects all results (like `Promise.all`). |
+| `thenAny(blocks)` | Sequential attempt through blocks in order. Returns the first success, skips the rest. Throws `AggregateError` if all fail. |
+| `race(blocks)` | Parallel execution, returns the first success, aborts the rest. Throws `AggregateError` if all fail. |
+| `exitIf(condition)` | Early exit from the sequencer chain. Current value becomes the sequencer output. |
+| `thenIf(condition, block)` | Conditional step execution. Passthrough when condition is false. |
+| `work(block)` / `background(block)` | Fire-and-forget sidechain. Main chain continues immediately. |
+| `rescue(handlers)` | Error recovery. Matches thrown errors to handler blocks. |
+| `branch(branches)` | Multi-way conditional dispatch with connectors. |
+
+See `packages/core/src/blocks/sequencer-methods.ts` for full type signatures.
+
+#### Instructions Composition
+
+When your pattern has multiple internal generators, use `config.instructions` as a shared base that composes with block-specific prompts. The `prompt` field on generators accepts an array where `null`/`undefined` entries are filtered out:
+
+```typescript
+function createDefaultExecutor(config: <PatternName>Config) {
+  const basePrompt = "You are a focused task executor. ...";
+
+  return generator({
+    name: `${config.name}-executor`,
+    // instructions come first, base prompt follows, then block-specific instructions
+    prompt: [config.instructions, basePrompt, config.executionInstructions],
+    // ...
+  });
+}
+
+function createDefaultSynthesizer(config: <PatternName>Config) {
+  const basePrompt = "Synthesize findings into a coherent answer. ...";
+
+  return generator({
+    name: `${config.name}-synthesizer`,
+    prompt: [config.instructions, basePrompt, config.synthesizeInstructions],
+    // ...
+  });
+}
+```
+
+When `instructions` is a function (dynamic), and the block needs it as context rather than system prompt (e.g., the planner), resolve it in a context formatter:
+
+```typescript
+const plannerContext = config.instructions && !config.planner
+  ? [
+      ...(config.context ? (Array.isArray(config.context) ? config.context : [config.context]) : []),
+      async (_input: any, ctx: any) => {
+        const resolved = typeof config.instructions === "function"
+          ? await config.instructions(_input, ctx)
+          : config.instructions;
+        return resolved ? `Overall instructions:\n${resolved}` : null;
+      },
+    ]
+  : config.context;
+```
+
+#### Task Progress Emission
+
+Patterns that decompose work into trackable tasks should emit progress via `emitPlanMeta` and `emitTaskUpdate` from `packages/patterns/src/shared/plan.ts`. These produce keyed `ComponentItem`s that the UI renders as live task trackers.
+
+```typescript
+import { emitPlanMeta, emitTaskUpdate } from "../shared/plan";
+
+// After planning: emit the plan structure
+emitPlanMeta(ctx, {
+  goal: state.goal,
+  taskOrder: tasks.map(t => t.id),
+  taskGoals: Object.fromEntries(tasks.map(t => [t.id, t.goal])),
+  status: "executing",
+  iteration: 0,
+}, { key: config.name });
+
+// As each task progresses: emit individual updates
+emitTaskUpdate(ctx, {
+  id: task.id,
+  goal: task.goal,
+  status: "in-progress",  // or "completed", "failed", "skipped"
+  result: task.result,     // on completion
+  error: task.error,       // on failure
+}, { key: config.name });
+```
+
+The `key` option namespaces emissions so multiple pattern instances don't collide. Both `planAndExecute` and `supervisor` use these helpers. If your pattern tracks multi-step progress, use the same utilities for a consistent UI experience.
+
 #### Critical Rules
 
 - **Prefix all internal block names** with `${config.name}-` to avoid collisions when multiple pattern instances exist.

@@ -272,9 +272,9 @@ it("follows a multi-step plan", async () => {
 });
 ```
 
-#### F. Pattern Tests (using testBlock)
+#### F. Pattern Tests (using testBlock / testSequencer)
 
-Patterns use `testBlock` from `@flow-state-dev/testing` for integration-level tests:
+Patterns use `testBlock` from `@flow-state-dev/testing` for integration-level tests. When you need step-level inspection (which sub-blocks ran, in what order, what each produced), use `testSequencer` instead:
 
 ```typescript
 it("runs to completion", async () => {
@@ -284,6 +284,17 @@ it("runs to completion", async () => {
   });
   expect(result.error).toBeNull();
   expect(result.output).toBeDefined();
+});
+```
+
+**Step-level inspection with testSequencer**:
+
+```typescript
+it("executes steps in correct order", async () => {
+  const pattern = myPattern({ name: "test" });
+  const result = await testSequencer(pattern, { input: { query: "test" } });
+  expect(result.steps.map(s => s.name)).toEqual(["plan", "execute", "summarize"]);
+  expect(result.steps[0].output).toMatchObject({ plan: expect.any(Array) });
 });
 ```
 
@@ -334,6 +345,26 @@ it("accesses session resources", async () => {
 });
 ```
 
+#### H. Capability Tests
+
+For blocks that use `uses: [capability]`, `testBlock` auto-installs capability resources so you don't need manual setup:
+
+```typescript
+it("accesses capability helpers", async () => {
+  const block = myBlock; // block with uses: [myCapability]
+  const result = await testBlock(block, { input: { query: "test" } });
+  // testBlock auto-installs capability resources
+  expect(result.error).toBeNull();
+  expect(result.output).toBeDefined();
+});
+```
+
+For more complex capability integration scenarios, see `packages/core/test/capability-block-integration.test.ts` as a reference. Key things to test:
+
+- The block can access resources provided by the capability
+- Capability tools are available in the block's context
+- Multiple capabilities compose correctly (no resource collisions)
+
 ### Step 5: Test Coverage Checklist
 
 For each block, verify you have tests for:
@@ -346,6 +377,7 @@ For each block, verify you have tests for:
 - [ ] Composability (works inside a sequencer chain)
 - [ ] State mutations (if applicable)
 - [ ] Resource access (if applicable)
+- [ ] Capability integration (if block uses `uses: [capability]`)
 
 ### Step 6: Verify
 
