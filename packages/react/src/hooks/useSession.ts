@@ -721,6 +721,7 @@ export function useSession(
             event.status === "completed" ||
             event.status === "failed" ||
             event.status === "incomplete" ||
+            event.status === "interrupted" ||
             event.status === "aborted"
           ) {
             flushContentDeltas();
@@ -991,23 +992,19 @@ export function useSession(
     const requestId = activeRequestIdRef.current;
     if (requestId === null) return;
 
-    let endpointReached = false;
+    // Mark the request as abort-requested in the persistent store. This
+    // flag lets the server distinguish an intentional stop from an
+    // accidental disconnect (browser reload, network drop).
     try {
       await client.abortRequest(requestId);
-      endpointReached = true;
     } catch {
-      // Abort endpoint unreachable (e.g. serverless — different instance).
+      // Best-effort — if the endpoint is unreachable the server will
+      // treat the subsequent disconnect as "interrupted" instead.
     }
 
-    if (endpointReached) {
-      // The abort endpoint fired the in-memory controller. The SSE stream
-      // will deliver the abort status item and request.aborted terminal
-      // event, which triggers cleanup in onRequestStatus.
-      return;
-    }
-
-    // Serverless fallback: close the SSE connection to signal the server
-    // via request.signal, then clean up client state directly.
+    // Close the SSE connection. On the server, request.signal fires
+    // and the catch block checks the abortRequested flag to decide
+    // between "aborted" (intentional) or "interrupted" (accidental).
     streamHandleRef.current?.close();
     streamHandleRef.current = null;
     activeRequestIdRef.current = null;

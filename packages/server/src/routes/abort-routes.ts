@@ -16,11 +16,16 @@ type AbortRouteContext = {
 /**
  * POST /api/flows/:flowKind/requests/:requestId/abort
  *
- * Signals the AbortController for an in-progress request. The actual
- * status transition happens inside runAction's catch path.
+ * Marks a request as abort-requested in the persistent store and, when
+ * available, fires the in-memory AbortController. On single-server
+ * deployments the controller fires immediately. On serverless (where
+ * this handler may run on a different instance), the persistent flag
+ * tells the running instance to treat the next client disconnect as
+ * an intentional abort rather than an accidental one.
  *
- * Returns 204 on success, 404 if the request is not in progress,
- * 409 if the request is already in a terminal state.
+ * Returns 202 when the flag was set (abort will happen when the running
+ * instance detects it), 204 when the in-memory controller was also
+ * fired, 404 if the request doesn't exist, 409 if it's already terminal.
  */
 export async function handleAbortRequest(
   _request: Request,
@@ -29,21 +34,34 @@ export async function handleAbortRequest(
 ): Promise<Response> {
   const { requestId } = route;
 
-  // Check if the request has an active abort controller (i.e., runAction is running)
-  if (hasActiveAbortController(requestId)) {
-    abortRequest(requestId);
-    return new Response(null, { status: 204 });
+  const record = await ctx.stores.request.get(requestId);
+
+  if (record === undefined) {
+    return jsonResponse(404, {
+      error: `Request "${requestId}" is not in progress`
+    });
   }
 
-  // No active controller — check if the request exists but is already terminal
-  const record = await ctx.stores.request.get(requestId);
-  if (record !== undefined && record.status !== "in_progress") {
+  if (record.status !== "in_progress") {
     return jsonResponse(409, {
       error: `Request "${requestId}" is already in terminal state "${record.status}"`
     });
   }
 
-  return jsonResponse(404, {
-    error: `Request "${requestId}" is not in progress`
+  // Persist intent so the running instance can distinguish intentional
+  // abort from accidental disconnect (browser reload, network drop).
+  await ctx.stores.request.set(requestId, {
+    ...record,
+    abortRequested: true
   });
+
+  // Fire the in-memory controller if this is the same instance.
+  if (hasActiveAbortController(requestId)) {
+    abortRequest(requestId);
+    return new Response(null, { status: 204 });
+  }
+
+  // Cross-instance: flag is set, abort will happen when the client
+  // closes the SSE connection and request.signal fires.
+  return new Response(null, { status: 202 });
 }

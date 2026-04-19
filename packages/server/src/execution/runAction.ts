@@ -685,38 +685,72 @@ export async function runActionInternal<
     // Clear heartbeat
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
 
-    // Detect user-initiated abort: the composed signal fires when the abort
-    // endpoint calls abortController.abort() or when the client disconnects.
-    const wasAborted = composedSignal.aborted;
+    // The composed signal fires when the abort endpoint calls
+    // abortController.abort() or when the client disconnects (browser
+    // reload, network drop, tab close). Check the persistent
+    // abortRequested flag to distinguish intentional abort from
+    // accidental disconnect.
+    const signalAborted = composedSignal.aborted;
 
-    if (wasAborted) {
-      // --- Abort path: user explicitly stopped the request ---
-      await emitAbortedMessage(ctx);
-      await response.emitRequestStatus("aborted");
+    if (signalAborted) {
+      const record = await options.stores.request.get(requestId).catch(() => undefined);
+      const wasIntentionalAbort = record?.abortRequested === true;
 
-      await options.stores.request.flushItems(requestId);
-      await options.stores.request.flushEvents(requestId);
+      if (wasIntentionalAbort) {
+        // --- Abort path: user explicitly stopped the request ---
+        await emitAbortedMessage(ctx);
+        await response.emitRequestStatus("aborted");
 
-      const abortedAt = Date.now();
-      await patchRequestRecord(options.stores, requestId, {
-        status: "aborted",
-        abortedAt,
-        items: response.getItems()
-      });
+        await options.stores.request.flushItems(requestId);
+        await options.stores.request.flushEvents(requestId);
 
-      ctx.requestRuntime.status = "aborted";
+        const abortedAt = Date.now();
+        await patchRequestRecord(options.stores, requestId, {
+          status: "aborted",
+          abortedAt,
+          items: response.getItems()
+        });
 
-      await runObserverSafely(options.flow.request?.onFinished, {
-        requestId,
-        actionName: options.actionName,
-        status: "aborted"
-      }, ctx, { internalSeams });
-      await emitActionLifecycleSeam(internalSeams, "finished", metadata);
+        ctx.requestRuntime.status = "aborted";
 
-      logRuntimeEvent(logger, "info", "[flow-state] action execution aborted", {
-        ...createExecutionLogContext(metadata),
-        durationMs: Date.now() - startedAt
-      });
+        await runObserverSafely(options.flow.request?.onFinished, {
+          requestId,
+          actionName: options.actionName,
+          status: "aborted"
+        }, ctx, { internalSeams });
+        await emitActionLifecycleSeam(internalSeams, "finished", metadata);
+
+        logRuntimeEvent(logger, "info", "[flow-state] action execution aborted", {
+          ...createExecutionLogContext(metadata),
+          durationMs: Date.now() - startedAt
+        });
+      } else {
+        // --- Disconnect path: client went away without explicit abort ---
+        await response.emitRequestStatus("interrupted");
+
+        await options.stores.request.flushItems(requestId);
+        await options.stores.request.flushEvents(requestId);
+
+        await patchRequestRecord(options.stores, requestId, {
+          status: "interrupted",
+          interruptedAt: Date.now(),
+          items: response.getItems()
+        });
+
+        ctx.requestRuntime.status = "interrupted" as typeof ctx.requestRuntime.status;
+
+        await runObserverSafely(options.flow.request?.onFinished, {
+          requestId,
+          actionName: options.actionName,
+          status: "interrupted"
+        }, ctx, { internalSeams });
+        await emitActionLifecycleSeam(internalSeams, "finished", metadata);
+
+        logRuntimeEvent(logger, "info", "[flow-state] action execution interrupted (client disconnect)", {
+          ...createExecutionLogContext(metadata),
+          durationMs: Date.now() - startedAt
+        });
+      }
     } else {
       // --- Failure path: execution error ---
       const normalized = applyNormalizedErrorSeam(
@@ -784,7 +818,7 @@ export async function runActionInternal<
       output: undefined,
       items: response.getItems(),
       durationMs: Date.now() - startedAt,
-      error: wasAborted ? undefined : applyNormalizedErrorSeam(
+      error: signalAborted ? undefined : applyNormalizedErrorSeam(
         internalSeams,
         normalizeError(error, {
           scope: "request",

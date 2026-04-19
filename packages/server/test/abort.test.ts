@@ -104,8 +104,21 @@ describe("handleAbortRequest", () => {
     deregisterAbortController("req_terminal");
   });
 
-  it("returns 204 when aborting an active request", async () => {
+  it("returns 204 when aborting an active request with in-memory controller", async () => {
     registerAbortController("req_active");
+    await stores.request.set("req_active", {
+      id: "req_active",
+      flowKind: "chat",
+      actionName: "run",
+      userId: "user_1",
+      status: "in_progress",
+      startedAtMs: Date.now(),
+      state: {},
+      version: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      journal: []
+    } as any);
 
     const response = await handleAbortRequest(
       new Request("http://localhost/api/flows/chat/requests/req_active/abort", { method: "POST" }),
@@ -114,7 +127,39 @@ describe("handleAbortRequest", () => {
     );
 
     expect(response.status).toBe(204);
+
+    // Verify the abortRequested flag was set
+    const record = await stores.request.get("req_active");
+    expect(record?.abortRequested).toBe(true);
     deregisterAbortController("req_active");
+  });
+
+  it("returns 202 when request is in-progress but on a different instance (no controller)", async () => {
+    await stores.request.set("req_remote", {
+      id: "req_remote",
+      flowKind: "chat",
+      actionName: "run",
+      userId: "user_1",
+      status: "in_progress",
+      startedAtMs: Date.now(),
+      state: {},
+      version: 1,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      journal: []
+    } as any);
+
+    const response = await handleAbortRequest(
+      new Request("http://localhost/api/flows/chat/requests/req_remote/abort", { method: "POST" }),
+      { kind: "abort_request", flowKind: "chat", requestId: "req_remote" },
+      { stores }
+    );
+
+    expect(response.status).toBe(202);
+
+    // Verify the abortRequested flag was set
+    const record = await stores.request.get("req_remote");
+    expect(record?.abortRequested).toBe(true);
   });
 
   it("returns 404 when request is not in progress and not in store", async () => {
@@ -202,8 +247,12 @@ describe("runAction — abort path", () => {
       stores
     });
 
-    // Give runAction a moment to start, then abort
+    // Give runAction a moment to start, then set the abort flag and fire the signal
     await new Promise((resolve) => setTimeout(resolve, 50));
+    const record = await stores.request.get("req_abort_test");
+    if (record) {
+      await stores.request.set("req_abort_test", { ...record, abortRequested: true } as any);
+    }
     abortController.abort();
 
     const result = await resultPromise;
@@ -212,9 +261,59 @@ describe("runAction — abort path", () => {
     expect(result.error).toBeUndefined();
 
     // Request record should be "aborted"
-    const record = await stores.request.get("req_abort_test");
-    expect(record?.status).toBe("aborted");
-    expect(record?.abortedAt).toBeTypeOf("number");
+    const updatedRecord = await stores.request.get("req_abort_test");
+    expect(updatedRecord?.status).toBe("aborted");
+    expect(updatedRecord?.abortedAt).toBeTypeOf("number");
+  });
+
+  it("writes interrupted status when signal aborts without abortRequested flag", async () => {
+    const stores = createInMemoryStores();
+    const abortController = new AbortController();
+
+    const flow = defineFlow({
+      kind: "disconnect-test-flow",
+      actions: {
+        run: {
+          inputSchema: z.object({ message: z.string() }),
+          block: handler({
+            name: "slow-handler",
+            inputSchema: z.object({ message: z.string() }),
+            outputSchema: z.string(),
+            execute: async (_input, ctx) => {
+              await new Promise((_resolve, reject) => {
+                ctx.signal.addEventListener("abort", () => {
+                  reject(new DOMException("Aborted", "AbortError"));
+                });
+              });
+              return "should not reach";
+            }
+          })
+        }
+      }
+    })();
+
+    const resultPromise = runAction({
+      flow,
+      actionName: "run",
+      input: { message: "hello" },
+      requestId: "req_disconnect_test",
+      userId: "user_disconnect",
+      sessionId: "sess_disconnect",
+      signal: abortController.signal,
+      stores
+    });
+
+    // Simulate accidental disconnect (no abortRequested flag set)
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    abortController.abort();
+
+    const result = await resultPromise;
+
+    expect(result.error).toBeUndefined();
+
+    const record = await stores.request.get("req_disconnect_test");
+    expect(record?.status).toBe("interrupted");
+    expect(record?.interruptedAt).toBeTypeOf("number");
   });
 
   it("writes failed status when execution errors without abort", async () => {
@@ -383,6 +482,11 @@ describe("runAction — abort path", () => {
     });
 
     await new Promise((r) => setTimeout(r, 50));
+    // Set the abort flag to simulate an intentional abort
+    const rec = await stores.request.get(requestId);
+    if (rec) {
+      await stores.request.set(requestId, { ...rec, abortRequested: true } as any);
+    }
     abortController.abort();
     await resultPromise;
 
