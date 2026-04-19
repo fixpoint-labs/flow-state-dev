@@ -95,7 +95,7 @@ export default defineFlow({
 **Block builders:**
 - `handler(config)` — Synchronous/async logic block
 - `generator(config)` — LLM call with framework-managed tool loop, streaming, and structured output repair
-- `sequencer(config)` — Fluent composition DSL (16 methods: `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `background`, `waitForWork`, `loopBack`)
+- `sequencer(config)` — Fluent composition DSL (21 methods: `then`, `thenIf`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `map`, `tap`, `tapIf`, `rescue`, `branch`, `work`, `workIf`, `background`, `waitForWork`, `loopBack`, `thenAll`, `thenAny`, `race`, `exitIf`)
 - `router(config)` — Runtime block selection from declared routes
 
 **Flow:**

@@ -475,7 +475,7 @@ describe("blackboard", () => {
   });
 
   describe("error handling", () => {
-    it("throws descriptive error for unknown specialist name", async () => {
+    it("rescues unknown specialist name and continues loop", async () => {
       const ctrl = makeDeterministicController("ctrl-unknown", [
         { specialist: "nonexistent", done: false, reasoning: "Bad routing" },
       ]);
@@ -494,13 +494,12 @@ describe("blackboard", () => {
         session: { resources: { blackboard: emptyBoardState } },
       });
 
-      expect(result.error).not.toBeNull();
-      expect(String(result.error)).toContain("No specialist registered for");
-      expect(String(result.error)).toContain("nonexistent");
-      expect(String(result.error)).toContain("analyst");
+      // Specialist dispatch errors are rescued — the pipeline completes
+      // (exits via maxIterations) rather than failing.
+      expect(result.error).toBeNull();
     });
 
-    it("propagates specialist errors", async () => {
+    it("rescues specialist errors and continues loop", async () => {
       const failingSpecialist = handler({
         name: "failing-specialist",
         inputSchema: z.any(),
@@ -528,8 +527,8 @@ describe("blackboard", () => {
         session: { resources: { blackboard: emptyBoardState } },
       });
 
-      expect(result.error).not.toBeNull();
-      expect(String(result.error)).toContain("specialist exploded");
+      // Specialist errors are rescued — the pipeline completes rather than failing.
+      expect(result.error).toBeNull();
     });
 
     it("throws when specialists record is empty", () => {
@@ -675,6 +674,90 @@ describe("blackboard", () => {
       expect(output.iterations).toBe(3);
       expect(output.history).toHaveLength(1);
       expect(output.history[0].reasoning).toBe("final");
+    });
+  });
+
+  describe("instructions prop", () => {
+    it("accepts static instructions without crashing", async () => {
+      const ctrl = makeDeterministicController("ctrl-instr-static", [
+        { specialist: "analyst", done: false, reasoning: "Go" },
+        { specialist: null, done: true, reasoning: "Done" },
+      ]);
+
+      const block = blackboard({
+        name: "instr-static",
+        blackboard: board,
+        specialists: { analyst },
+        controller: ctrl.block,
+        instructions: "You are in debate mode. Challenge all claims.",
+        synthesizer: false,
+      });
+
+      ctrl.reset();
+      const result = await testBlock(block, {
+        input: {},
+        session: { resources: { blackboard: emptyBoardState } },
+      });
+
+      expect(result.error).toBeNull();
+      const output = result.output as { iterations: number };
+      expect(output.iterations).toBe(2);
+    });
+
+    it("accepts dynamic instructions function without crashing", async () => {
+      const ctrl = makeDeterministicController("ctrl-instr-dynamic", [
+        { specialist: "analyst", done: false, reasoning: "Go" },
+        { specialist: null, done: true, reasoning: "Done" },
+      ]);
+
+      const block = blackboard({
+        name: "instr-dynamic",
+        blackboard: board,
+        specialists: { analyst },
+        controller: ctrl.block,
+        instructions: (_input: any, _ctx: any) => "Dynamic debate instructions",
+        synthesizer: false,
+      });
+
+      ctrl.reset();
+      const result = await testBlock(block, {
+        input: {},
+        session: { resources: { blackboard: emptyBoardState } },
+      });
+
+      expect(result.error).toBeNull();
+      const output = result.output as { iterations: number };
+      expect(output.iterations).toBe(2);
+    });
+
+    it("does not inject instructions when controller is overridden", async () => {
+      let controllerPromptReceived = false;
+      const customController = handler({
+        name: "custom-ctrl",
+        inputSchema: z.any(),
+        outputSchema: controllerOutputSchema,
+        execute: () => {
+          controllerPromptReceived = true;
+          return { specialist: null, done: true, reasoning: "Done" };
+        },
+      });
+
+      const block = blackboard({
+        name: "instr-override",
+        blackboard: board,
+        specialists: { analyst },
+        controller: customController,
+        instructions: "These instructions should not appear in controller",
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: {},
+        session: { resources: { blackboard: emptyBoardState } },
+      });
+
+      expect(result.error).toBeNull();
+      expect(controllerPromptReceived).toBe(true);
     });
   });
 

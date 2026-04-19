@@ -27,12 +27,15 @@ export { defineResource, resource } from "./types/resource";
 export { defineResourceCollection, isDefinedResourceCollection, defineResourceNamespace, isDefinedResourceNamespace } from "./types/resource-collection";
 export { defineCapability, getBaseCapability } from "./capability";
 export type {
+  CapabilityPresetCtx,
   CapabilityRef,
   ConfiguredCapability,
   DefinedCapability,
   InferCapabilities,
   PresetDef,
   PresetOverrides,
+  UsesEntry,
+  UsesSlot,
 } from "./capability";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
@@ -70,6 +73,8 @@ export type {
   GeneratorSlotReference,
   GeneratorTool,
   GeneratorToolResult,
+  ToolsSlot,
+  PromptSlot,
   HandlerConfig,
   InlineBlockFactory,
   InlineConfig,
@@ -108,6 +113,7 @@ export type {
   GeneratorSearchConfig,
   ModelResolver,
   PrepareStepFn,
+  PrepareStepResult,
   ProviderTool
 } from "./types/model";
 

@@ -117,6 +117,13 @@ export type GeneratorModelStreamChunk = {
  * keep defaults.
  */
 export type PrepareStepResult = {
+  /**
+   * Switch to a different model for this step. The model ID string is
+   * re-resolved through the model resolver at the AI SDK adapter layer.
+   * Only effective when the GeneratorModel was created via
+   * `createAiSdkModelResolver` (not `wrapAiSdkModel`).
+   */
+  modelId?: string;
   system?: unknown;
   messages?: unknown[];
   /** Tool names to enable for this step (filters the compiled tool set). */
@@ -161,7 +168,18 @@ export interface GeneratorModel {
   resolveSearchTool?(config: GeneratorSearchConfig): { name: string; tool: unknown } | undefined;
 }
 
-export type ModelResolver = (
+export type ModelResolver = ((
   modelId: string,
   blockName?: string
-) => GeneratorModel;
+) => GeneratorModel) & {
+  /**
+   * Returns the primary underlying model string for any model reference.
+   * For presets, returns the first available provider/model string.
+   * For direct model strings, returns the input as-is.
+   *
+   * @example
+   * resolver.resolveId("preset/medium")         // → "anthropic/claude-sonnet-4-6"
+   * resolver.resolveId("anthropic/claude-sonnet-4-6") // → "anthropic/claude-sonnet-4-6"
+   */
+  resolveId(modelId: string): string;
+};

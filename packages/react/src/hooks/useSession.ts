@@ -6,13 +6,16 @@ import {
   createClient,
   createSessionClient,
   createSSEClient,
+  createSSEClientFromResponse,
   type ExecuteActionResponse,
+  type RequestSSECallbacks,
   type RequestStreamHandle,
   type SessionDetail,
   type SessionStateSnapshotResponse
 } from "@flow-state-dev/client";
 import type {
   Content,
+  ItemRole,
   MessageItem,
   OutputItem,
   ReasoningItem,
@@ -21,7 +24,46 @@ import type {
 import { useFlowContext } from "../context/FlowContext";
 
 /**
- * Client-audience item types used for default filtering.
+ * Structural item types that default to `"trace"` when the item has no
+ * explicit `itemRole`. Mirrors the canonical list in
+ * `@flow-state-dev/core/items/resolve-role.ts` (package boundaries require
+ * type-only imports from core, so this pure logic is duplicated here).
+ */
+const STRUCTURAL_TRACE_TYPES = new Set<string>([
+  "block_output",
+  "router_decision",
+  "sequencer_state_snapshot",
+  "container",
+  "state_change",
+  "resource_change"
+]);
+
+/**
+ * Isomorphic role resolver (mirror of core's `resolveItemRole`). Duplicated
+ * because the react package may only type-import from core.
+ */
+function resolveItemRole(item: OutputItem): ItemRole {
+  if (item.itemRole !== undefined) {
+    return item.itemRole;
+  }
+  if (item.trace === true) {
+    return "trace";
+  }
+  if (STRUCTURAL_TRACE_TYPES.has(item.type)) {
+    return "trace";
+  }
+  if (item.provenance?.phase === "work") {
+    return "trace";
+  }
+  return "external";
+}
+
+/**
+ * Client-audience item types used as a fallback when an explicit `itemTypes`
+ * filter is provided. The primary client-side filter is role-based:
+ * `resolveItemRole(item) === "external"` (see `passesItemFilter`). The type
+ * whitelist still scopes a few non-role-bearing item kinds (state_change,
+ * resource_change, error, step_error) that clients surface regardless of role.
  */
 const CLIENT_ITEM_TYPES = new Set([
   "message",
@@ -95,6 +137,8 @@ export type SessionView = {
     input: unknown,
     options?: { metadata?: Record<string, unknown>; userMessage?: string }
   ) => Promise<ExecuteActionResponse>;
+  /** Abort the currently in-flight request. No-op if nothing is in flight. */
+  abortRequest: () => Promise<void>;
   refresh: () => Promise<void>;
 };
 
@@ -147,13 +191,18 @@ function passesItemFilter(
     return false;
   }
 
-  // Type-based audience filtering: if explicit types provided, use those;
-  // otherwise default to client-audience types.
+  // Explicit itemTypes override uses type matching only (legacy opt-in).
   if (filter.itemTypes !== undefined && filter.itemTypes.length > 0) {
     return filter.itemTypes.includes(item.type);
   }
 
-  return CLIENT_ITEM_TYPES.has(item.type);
+  // Default client view: only `external` items are shown. `internal` and
+  // `trace` items stream via SSE for devtool consumers but stay out of the
+  // user-facing conversation view.
+  if (!CLIENT_ITEM_TYPES.has(item.type)) {
+    return false;
+  }
+  return resolveItemRole(item) === "external";
 }
 
 /**
@@ -237,6 +286,58 @@ function buildItemsFromMap(
 function sameChronologicalOrder(left: OutputItem, right: OutputItem): boolean {
   return left.ts === right.ts && left.itemIndex === right.itemIndex;
 }
+
+/**
+ * Compares two items for chronological ordering (ts first, itemIndex tiebreaker).
+ * Returns negative if a < b, positive if a > b, zero if equal.
+ */
+function compareItemOrder(a: OutputItem, b: OutputItem): number {
+  const tsDiff = a.ts - b.ts;
+  if (tsDiff !== 0) return tsDiff;
+  return a.itemIndex - b.itemIndex;
+}
+
+/**
+ * Inserts an item ID into a sorted ID array using binary search.
+ * Items nearly always arrive in chronological order, so we check the tail first
+ * for an O(1) fast path before falling back to binary search + splice.
+ */
+function insertSortedItemId(
+  sortedIds: string[],
+  newItem: OutputItem,
+  itemsById: ReadonlyMap<string, OutputItem>
+): string[] {
+  const next = [...sortedIds];
+  const len = next.length;
+
+  // Fast path: item belongs at the end (most common during streaming).
+  if (len === 0) {
+    next.push(newItem.id);
+    return next;
+  }
+
+  const lastItem = itemsById.get(next[len - 1]!);
+  if (lastItem !== undefined && compareItemOrder(newItem, lastItem) >= 0) {
+    next.push(newItem.id);
+    return next;
+  }
+
+  // Binary search for insertion position.
+  let lo = 0;
+  let hi = len;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    const midItem = itemsById.get(next[mid]!);
+    if (midItem !== undefined && compareItemOrder(midItem, newItem) < 0) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+
+  next.splice(lo, 0, newItem.id);
+  return next;
+}
 export function useSession(
   sessionId: string | undefined,
   options?: UseSessionHookOptions
@@ -275,6 +376,8 @@ export function useSession(
   const [error, setError] = useState<Error | null>(null);
 
   const streamHandleRef = useRef<RequestStreamHandle | null>(null);
+  /** The requestId of the currently in-flight request, used for abort. */
+  const activeRequestIdRef = useRef<string | null>(null);
   const itemsByIdRef = useRef<Map<string, OutputItem>>(new Map());
   const sortedItemIdsRef = useRef<string[]>([]);
   const deltaQueueRef = useRef<Map<string, ContentDeltaAccumulator>>(new Map());
@@ -282,6 +385,8 @@ export function useSession(
   const optimisticIdRef = useRef<string | null>(null);
   /** Maps container ownedBy values to sets of item IDs for O(1) container lookups. */
   const ownershipIndexRef = useRef<Map<string, Set<string>>>(new Map());
+  /** Tracks whether resource changes occurred during streaming, so we can batch one refresh at completion. */
+  const resourceChangedDuringStreamRef = useRef(false);
 
   /** Track an item's ownedBy in the ownership index. */
   const trackOwnership = useCallback((item: OutputItem) => {
@@ -493,26 +598,17 @@ export function useSession(
     }
   }, [sessionId, sessionClient, itemConfig.enabled, itemConfig.itemTypes, applySnapshot]);
 
-  // Debounced snapshot refresh: batches multiple rapid resource_change events
-  // (e.g., working memory + artifact writes in the same request) into a single
-  // refresh call. Fires 300ms after the last trigger.
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scheduleRefreshSnapshot = useCallback(() => {
-    if (refreshTimerRef.current !== null) {
-      clearTimeout(refreshTimerRef.current);
-    }
-    refreshTimerRef.current = setTimeout(() => {
-      refreshTimerRef.current = null;
-      void refreshSnapshot();
-    }, 300);
-  }, [refreshSnapshot]);
-
   /**
    * Attach to an existing request's stream, optionally resuming from a cursor.
    * Used by both sendAction (new requests) and autoResume (in-progress requests).
+   *
+   * When `inlineResponse` is provided, SSE events are consumed directly from
+   * the POST action response body (inline streaming) instead of opening a
+   * separate GET connection. This is essential on serverless platforms where
+   * POST and GET may hit different instances.
    */
   const attachToStream = useCallback(
-    (requestId: string, startingAfter?: string) => {
+    (requestId: string, startingAfter?: string, inlineResponse?: Response) => {
       if (streamHandleRef.current !== null) {
         streamHandleRef.current.close();
         streamHandleRef.current = null;
@@ -526,13 +622,18 @@ export function useSession(
         itemTypes: itemConfig.itemTypes
       };
 
-      const handle = createSSEClient({
-        url: `/api/flows/${encodeURIComponent(resolvedFlowKind)}/requests/${encodeURIComponent(requestId)}/stream`,
-        baseUrl,
-        startingAfter: startingAfter !== undefined ? Number(startingAfter) : undefined,
+      const sseCallbacks: RequestSSECallbacks = {
         onItemAdded: (event) => {
           if (event.item.type === "status" && (event.item as OutputItem & { message?: string }).message === "finishing") {
             setIsFinishing(true);
+          }
+
+          // Track that resources changed during streaming. Rather than firing
+          // individual HTTP fetches per resource_change (which creates bursts
+          // during artifact-heavy flows), we batch into one refresh at request
+          // completion. The onRequestStatus handler checks this flag.
+          if (event.item.type === "resource_change") {
+            resourceChangedDuringStreamRef.current = true;
           }
 
           if (!passesItemFilter(event.item, filter)) {
@@ -559,19 +660,27 @@ export function useSession(
           itemsByIdRef.current.set(event.item.id, event.item);
           trackOwnership(event.item);
 
-          if (isNewItem || orderChanged) {
-            const ordered = sortItemsChronologically([
-              ...itemsByIdRef.current.values()
-            ]);
-            sortedItemIdsRef.current = ordered.map((item) => item.id);
-            setItems(ordered);
+          if (isNewItem) {
+            // Binary insertion: O(log n) search + O(1) amortized for in-order arrivals.
+            sortedItemIdsRef.current = insertSortedItemId(
+              sortedItemIdsRef.current,
+              event.item,
+              itemsByIdRef.current
+            );
+            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+          } else if (orderChanged) {
+            // Order changed — remove old position and re-insert.
+            const filtered = sortedItemIdsRef.current.filter((id) => id !== event.item.id);
+            sortedItemIdsRef.current = insertSortedItemId(
+              filtered,
+              event.item,
+              itemsByIdRef.current
+            );
+            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
           } else {
             setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
           }
 
-          if (event.item.type === "resource_change") {
-            scheduleRefreshSnapshot();
-          }
         },
         onItemDone: (event) => {
           if (!passesItemFilter(event.item, filter)) {
@@ -586,12 +695,21 @@ export function useSession(
           itemsByIdRef.current.set(event.item.id, event.item);
           trackOwnership(event.item);
 
-          if (isNewItem || orderChanged) {
-            const ordered = sortItemsChronologically([
-              ...itemsByIdRef.current.values()
-            ]);
-            sortedItemIdsRef.current = ordered.map((item) => item.id);
-            setItems(ordered);
+          if (isNewItem) {
+            sortedItemIdsRef.current = insertSortedItemId(
+              sortedItemIdsRef.current,
+              event.item,
+              itemsByIdRef.current
+            );
+            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+          } else if (orderChanged) {
+            const filtered = sortedItemIdsRef.current.filter((id) => id !== event.item.id);
+            sortedItemIdsRef.current = insertSortedItemId(
+              filtered,
+              event.item,
+              itemsByIdRef.current
+            );
+            setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
           } else {
             setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
           }
@@ -647,15 +765,24 @@ export function useSession(
           if (
             event.status === "completed" ||
             event.status === "failed" ||
-            event.status === "incomplete"
+            event.status === "incomplete" ||
+            event.status === "interrupted" ||
+            event.status === "aborted"
           ) {
             flushContentDeltas();
             setIsStreaming(false);
             setIsFinishing(false);
+            activeRequestIdRef.current = null;
             streamHandleRef.current?.close();
             streamHandleRef.current = null;
 
-            if (event.status === "completed") {
+            // Refresh on completion, or on failure/incomplete/aborted if resources
+            // changed during streaming (batched instead of per-change).
+            if (
+              event.status === "completed" ||
+              resourceChangedDuringStreamRef.current
+            ) {
+              resourceChangedDuringStreamRef.current = false;
               void refreshSnapshot();
             }
           }
@@ -666,7 +793,16 @@ export function useSession(
           streamHandleRef.current?.close();
           streamHandleRef.current = null;
         }
-      });
+      };
+
+      const handle = inlineResponse !== undefined
+        ? createSSEClientFromResponse({ response: inlineResponse, ...sseCallbacks })
+        : createSSEClient({
+            url: `/api/flows/${encodeURIComponent(resolvedFlowKind)}/requests/${encodeURIComponent(requestId)}/stream`,
+            baseUrl,
+            startingAfter: startingAfter !== undefined ? Number(startingAfter) : undefined,
+            ...sseCallbacks
+          });
 
       streamHandleRef.current = handle;
     },
@@ -676,7 +812,6 @@ export function useSession(
       resolvedFlowKind,
       baseUrl,
       refreshSnapshot,
-      scheduleRefreshSnapshot,
       scheduleContentFlush,
       flushContentDeltas,
       trackOwnership
@@ -685,10 +820,7 @@ export function useSession(
 
   useEffect(() => {
     if (sessionId === undefined) {
-      if (refreshTimerRef.current !== null) {
-        clearTimeout(refreshTimerRef.current);
-        refreshTimerRef.current = null;
-      }
+      resourceChangedDuringStreamRef.current = false;
       itemsByIdRef.current = new Map();
       sortedItemIdsRef.current = [];
       deltaQueueRef.current.clear();
@@ -759,6 +891,8 @@ export function useSession(
     };
   }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, autoResume, itemConfig.enabled, attachToStream]);
 
+  // Clean up when sessionId changes — close old stream and reset request state
+  // so the new session isn't blocked by the previous session's in-flight request.
   useEffect(() => {
     return () => {
       if (streamHandleRef.current !== null) {
@@ -766,6 +900,8 @@ export function useSession(
         streamHandleRef.current = null;
       }
 
+      setIsStreaming(false);
+      setIsFinishing(false);
       cancelScheduledFlush();
     };
   }, [sessionId, cancelScheduledFlush]);
@@ -789,6 +925,7 @@ export function useSession(
       setIsFinishing(false);
 
       const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      activeRequestIdRef.current = requestId;
 
       // Optimistic user message: inject immediately so the user sees their own
       // message without waiting for the server round-trip. The server will emit
@@ -817,25 +954,51 @@ export function useSession(
       }
 
       try {
-        const postPromise = client.sendAction(action, input, {
+        if (itemConfig.enabled) {
+          const optimisticId = actionOptions?.userMessage !== undefined
+            ? `item_msg_optimistic_${requestId}`
+            : undefined;
+          optimisticIdRef.current = optimisticId ?? null;
+        }
+
+        // Use sendActionStream to POST with Accept: text/event-stream.
+        // On serverless (Vercel), this returns the SSE stream directly from
+        // the POST response — keeping action execution and event delivery
+        // on the same function instance. Falls back to 202 JSON + separate
+        // GET stream for servers that don't support inline streaming.
+        const postResponse = await client.sendActionStream(action, input, {
           sessionId,
           requestId,
           metadata: actionOptions?.metadata
         });
 
-        if (itemConfig.enabled) {
-          // Store the optimistic ID so the stream handler can clean it up.
-          const optimisticId = actionOptions?.userMessage !== undefined
-            ? `item_msg_optimistic_${requestId}`
-            : undefined;
+        const contentType = postResponse.headers.get("content-type") ?? "";
 
-          // Stash the optimistic ID for the onItemAdded handler in attachToStream.
-          // We use a ref so the closure in attachToStream can read it.
-          optimisticIdRef.current = optimisticId ?? null;
-          attachToStream(requestId);
+        if (contentType.includes("text/event-stream")) {
+          if (itemConfig.enabled) {
+            // Inline streaming: consume SSE events from the POST response body.
+            attachToStream(requestId, undefined, postResponse);
+          } else {
+            // Items disabled — release the unconsumed SSE body.
+            postResponse.body?.cancel().catch(() => {});
+          }
+          return {
+            status: "in_progress" as const,
+            request: {
+              id: requestId,
+              flowKind: resolvedFlowKind,
+              actionName: action,
+              status: "in_progress" as const
+            }
+          };
         }
 
-        const response = await postPromise;
+        // Fallback: server returned 202 JSON (no inline streaming support).
+        const response = (await postResponse.json()) as ExecuteActionResponse;
+
+        if (itemConfig.enabled) {
+          attachToStream(response.request.id);
+        }
 
         if (!itemConfig.enabled && response.status === "completed") {
           await refreshSnapshot();
@@ -851,6 +1014,7 @@ export function useSession(
     },
     [
       sessionId,
+      resolvedFlowKind,
       client,
       itemConfig.enabled,
       attachToStream,
@@ -868,6 +1032,54 @@ export function useSession(
     }
     return sortItemsChronologically(result);
   }, []);
+
+  const abortRequest = useCallback(async () => {
+    const requestId = activeRequestIdRef.current;
+    if (requestId === null) return;
+
+    // Mark the request as abort-requested in the persistent store. This
+    // flag lets the server distinguish an intentional stop from an
+    // accidental disconnect (browser reload, network drop).
+    try {
+      await client.abortRequest(requestId);
+    } catch {
+      // Best-effort — if the endpoint is unreachable the server will
+      // treat the subsequent disconnect as "interrupted" instead.
+    }
+
+    // Close the SSE connection. On the server, request.signal fires
+    // and the catch block checks the abortRequested flag to decide
+    // between "aborted" (intentional) or "interrupted" (accidental).
+    streamHandleRef.current?.close();
+    streamHandleRef.current = null;
+    activeRequestIdRef.current = null;
+
+    flushContentDeltas();
+    setIsStreaming(false);
+    setIsFinishing(false);
+
+    if (itemConfig.enabled) {
+      const abortItem: OutputItem = {
+        id: `item_status_aborted_${requestId}`,
+        type: "status",
+        status: "completed",
+        requestId,
+        itemIndex: itemsByIdRef.current.size,
+        provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
+        ts: Date.now(),
+        message: "Request was stopped.",
+        detail: { code: "system.request_aborted" }
+      } as OutputItem;
+
+      itemsByIdRef.current.set(abortItem.id, abortItem);
+      sortedItemIdsRef.current = insertSortedItemId(
+        sortedItemIdsRef.current,
+        abortItem,
+        itemsByIdRef.current
+      );
+      setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+    }
+  }, [client, flushContentDeltas, itemConfig.enabled]);
 
   const refresh = useCallback(async () => {
     await refreshSnapshot();
@@ -887,6 +1099,7 @@ export function useSession(
     items,
     getOwnedItems,
     sendAction,
+    abortRequest,
     refresh
   };
 }

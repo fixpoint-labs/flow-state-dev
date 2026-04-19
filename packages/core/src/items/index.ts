@@ -18,6 +18,7 @@ export type {
   ContextItem,
   ErrorItem,
   ItemProvenance,
+  ItemRole,
   ItemStatus,
   MessageItem,
   OutputItem,
@@ -25,11 +26,14 @@ export type {
   ReasoningItem,
   ResourceChangeItem,
   RouterDecisionItem,
+  SequencerStateSnapshotItem,
   StateChangeItem,
   SourceItem,
   StatusItem,
   StepErrorItem
 } from "./types";
+
+export { resolveItemRole } from "./resolve-role";
 
 export type {
   ContentPartAddedEvent,
@@ -51,6 +55,9 @@ export type {
   ScopeStateChangedEvent,
   SessionMetadataChangedEvent,
   ResourceChangedEvent,
+  ResourceContentCreatedEvent,
+  ResourceContentDeletedEvent,
+  ResourceContentUpdatedEvent,
   StreamEvent,
   UserDebugEvent,
   UserEventBase,

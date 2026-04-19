@@ -14,7 +14,13 @@ pnpm test:watch   # Watch mode
 
 ## Capabilities
 
-This example uses `defineCapability()` to bundle related resources, context formatters, and tools into reusable units. See `src/flows/kitchen-sink/blocks/artifact-capability.ts` for the pattern — blocks opt in via `uses: [artifactsCapability]` instead of manually spreading resources, context, and tools.
+This example uses `defineCapability()` to bundle related resources, context formatters, and tools into reusable units.
+
+- **`artifactsCapability`** (`blocks/artifacts.ts`) — artifact resources + inventory context + read/write tools.
+- **`featuresCapability`** (`blocks/features-capability.ts`) — feature-flag-gated tool selection. Conditionally includes `bashCapability` (from `@flow-state-dev/tools/bash`) when the bash feature is enabled. When bash is available, it replaces `readArtifact`/`updateArtifact` as the single artifact creation path.
+- **`bashCapability`** (framework: `createBashCapability()` from `@flow-state-dev/tools/bash`) — bash tool blocks + environment-aware context guidance. Adapts prompt based on provider config (network access, python, just-bash vs local).
+
+Generators and pattern factories declare `uses: [featuresCapability]` — one line replaces manual tools/context/resources plumbing.
 
 ## UI Components: Upstream-First Convention
 

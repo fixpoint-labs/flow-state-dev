@@ -2,6 +2,19 @@ import type { Content } from "./content";
 
 export type ItemStatus = "in_progress" | "completed" | "incomplete" | "failed";
 
+/**
+ * Visibility role of an item within the system. Answers "who is this for?"
+ *
+ * - `external`: shown to the user, included in LLM history, visible in devtool.
+ * - `internal`: included in LLM history, hidden from UI, visible in devtool.
+ * - `trace`: observability only — excluded from UI and LLM history, visible in devtool.
+ *
+ * The hierarchy is strict: `external ⊃ internal ⊃ trace`. An item shown to the
+ * user is always also in history; an item hidden from history is also hidden
+ * from the UI. To suppress an item entirely, set `emit: false` on the block.
+ */
+export type ItemRole = "external" | "internal" | "trace";
+
 export type ItemProvenance = {
   blockName: string;
   blockDefinitionId?: string;
@@ -18,7 +31,18 @@ export type OutputItemBase = {
   type: string;
   status: ItemStatus;
   transient?: boolean;
-  /** Structural lifecycle item — excluded from LLM context, visible in devtool trace. */
+  /**
+   * Visibility role controlling UI display and LLM history inclusion.
+   * New items set this explicitly. Pre-existing items without the field are
+   * resolved via `resolveItemRole()` using the legacy `trace` boolean and
+   * structural item type list as fallbacks.
+   */
+  itemRole?: ItemRole;
+  /**
+   * @deprecated Use `itemRole: "trace"` instead. Retained for backward
+   * compatibility with pre-role items. `resolveItemRole()` checks this as a
+   * fallback when `itemRole` is absent.
+   */
   trace?: boolean;
   requestId: string;
   itemIndex: number;
@@ -167,6 +191,17 @@ export type SourceItem = OutputItemBase & {
   providerMetadata?: Record<string, Record<string, unknown>>;
 };
 
+/** Full state snapshot emitted at sequencer step boundaries for devtool inspection. */
+export type SequencerStateSnapshotItem = OutputItemBase & {
+  type: "sequencer_state_snapshot";
+  sequencerName: string;
+  sequencerInstanceId: string;
+  stepName: string;
+  stepIndex: number;
+  state: unknown;
+  version: number;
+};
+
 export type OutputItem =
   | BlockOutputItem
   | BlockToolOutputItem
@@ -181,4 +216,5 @@ export type OutputItem =
   | ResourceChangeItem
   | ErrorItem
   | StepErrorItem
-  | SourceItem;
+  | SourceItem
+  | SequencerStateSnapshotItem;

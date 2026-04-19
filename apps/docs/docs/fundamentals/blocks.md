@@ -60,7 +60,15 @@ What the framework handles for you:
 
 #### Controlling what gets emitted
 
-The `emit` config controls which items a generator sends to the client stream. By default everything is emitted. You can selectively suppress or remap:
+Each emitted item has a visibility role — `external`, `internal`, or `trace` — that controls whether it reaches the user-facing UI and the LLM's history:
+
+| Role | UI | LLM History | DevTool |
+|--|--|--|--|
+| `external` | Yes | Yes | Yes |
+| `internal` | No | Yes | Yes |
+| `trace` | No | No | Yes |
+
+The `emit` config selects the role per item type (or suppresses emission entirely):
 
 ```ts
 // Suppress all streaming output — the generator runs silently
@@ -69,19 +77,24 @@ const silent = generator({ emit: false, /* ... */ });
 // Suppress message items but keep tool call status events
 const workerGen = generator({ emit: { messages: false }, /* ... */ });
 
-// Remap messages to reasoning items (visible as "thinking", not conversation text)
-const thinker = generator({ emit: { messages: 'reasoning' }, /* ... */ });
+// Keep messages in LLM history but hide from UI (replaces `messages: 'reasoning'`)
+const thinker = generator({ emit: { messages: "internal" }, /* ... */ });
+
+// Background researcher: everything goes to DevTool trace only
+const researcher = generator({ emit: "trace", /* ... */ });
 ```
 
 | Flag | Values | Default | Effect |
 |------|--------|---------|--------|
-| `reasoning` | `true` / `false` | `true` | Emit reasoning/thinking items from models that support it |
-| `messages` | `true` / `false` / `'reasoning'` | `true` | `true` emits normal assistant messages. `false` suppresses them entirely. `'reasoning'` emits message text as reasoning items instead |
-| `toolCalls` | `true` / `false` | `true` | Emit tool call status items during the tool execution loop |
+| `reasoning` | `true` / `false` / `ItemRole` | block default | `false` suppresses reasoning items. A role string stamps that role. |
+| `messages` | `true` / `false` / `ItemRole` | block default | `false` suppresses assistant messages. A role string controls visibility. |
+| `toolCalls` | `true` / `false` / `ItemRole` | block default | `false` suppresses tool status items during the tool loop. |
 
-Setting `emit: false` is shorthand for suppressing all three. When `messages` is `false` but the generator has tools, the streaming path is still used so tool call status events reach the client — only the text output items are suppressed.
+Setting `emit: false` is shorthand for suppressing all three. `emit: "internal"` or `emit: "trace"` are shorthands for stamping the same role on every item type. The block-level `itemRole` config sets the default role for all emissions; per-type `emit` values override it.
 
-This is particularly useful for worker generators inside orchestration patterns (supervisor, coordinator) where you want tool progress visible but don't want each sub-task's text polluting the main conversation stream.
+When `messages` is `false` but the generator has tools, the streaming path is still used so tool call status events reach the client — only the text output items are suppressed.
+
+This is particularly useful for worker generators inside orchestration patterns (supervisor, coordinator) where you want tool progress visible but don't want each sub-task's text polluting the main conversation stream. With roles you can keep the worker's findings in LLM context (`messages: "internal"`) without showing them to the user.
 
 #### Any block can be a tool
 

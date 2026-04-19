@@ -1,4 +1,5 @@
 import { z, type ZodTypeAny } from "zod";
+import { jsonSchema } from "ai";
 import type {
   BlockConfig,
   BlockContext,
@@ -8,6 +9,7 @@ import type {
   InferStateFromSchema,
   RetryPolicy
 } from "../types/block";
+import type { ItemRole } from "../items/types";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
 import type {
@@ -21,6 +23,7 @@ import type {
 } from "../types/model";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
 import type { CapabilityRef, InferCapabilities } from "../capability/types";
+import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import { toError, withTimeout } from "./internal/utils";
@@ -28,10 +31,79 @@ import { toError, withTimeout } from "./internal/utils";
 const DEFAULT_MAX_ITERATIONS = 8;
 const DEFAULT_REPAIR_ATTEMPTS = 1;
 
+// ---------------------------------------------------------------------------
+// Dynamic capability helpers — resolve context/tools from runtime-resolved caps
+// ---------------------------------------------------------------------------
+
+interface DynamicCapSurface {
+  contextEntries: Array<(input: any, ctx: any) => any>;
+  tools: GeneratorTool[];
+}
+
+/**
+ * Extract context and tool entries from a capability's active presets in a
+ * single traversal. Walks nested static uses recursively via flattenCapabilities.
+ */
+async function resolveDynamicCapSurface(
+  cap: CapabilityRef,
+  ctx: BlockContext,
+): Promise<DynamicCapSurface> {
+  const contextEntries: Array<(input: any, ctx: any) => any> = [];
+  const tools: GeneratorTool[] = [];
+
+  // Walk nested static uses
+  if (cap.uses) {
+    const flattened = flattenCapabilities(
+      cap.uses.filter((e): e is CapabilityRef => typeof e !== "function")
+    );
+    for (const nested of flattened) {
+      const nestedSurface = await resolveDynamicCapSurface(nested, ctx);
+      contextEntries.push(...nestedSurface.contextEntries);
+      tools.push(...nestedSurface.tools);
+    }
+  }
+
+  for (const { preset } of resolveActivePresets(cap)) {
+    if (preset.context) {
+      const entries = Array.isArray(preset.context) ? preset.context : [preset.context];
+      contextEntries.push(...entries);
+    }
+    if (preset.tools) {
+      if (Array.isArray(preset.tools)) {
+        tools.push(...preset.tools);
+      } else {
+        tools.push(...(await preset.tools(ctx)));
+      }
+    }
+  }
+
+  return { contextEntries, tools };
+}
+
 type MaybePromise<TValue> = TValue | Promise<TValue>;
 
 type ResolvableString<TInput, TCtx = BlockContext> =
   string | ((input: TInput, ctx: TCtx) => MaybePromise<string>);
+
+/** Single prompt entry: a static string, a resolver function, or null/undefined (filtered out). */
+type PromptSlotEntry<TInput, TCtx = BlockContext> =
+  | string
+  | null
+  | undefined
+  | ((input: TInput, ctx: TCtx) => MaybePromise<string | null | undefined>);
+
+/**
+ * Prompt slot — accepts a single entry or an array. Array entries are resolved
+ * individually (functions called with input+ctx), nulls filtered, then joined
+ * with newlines. This lets patterns compose prompts declaratively:
+ *
+ * ```ts
+ * prompt: [instructions, basePrompt]
+ * ```
+ */
+export type PromptSlot<TInput = unknown, TCtx = BlockContext> =
+  | PromptSlotEntry<TInput, TCtx>
+  | PromptSlotEntry<TInput, TCtx>[];
 type ResolvableModel<TInput, TCtx = BlockContext> =
   | string
   | string[]
@@ -95,6 +167,9 @@ export interface GeneratorToolResult {
 }
 
 export type GeneratorTool = BlockDefinition<any, any>;
+
+/** Tools slot accepted by generators and pattern factories — static array or context-aware function. */
+export type ToolsSlot = GeneratorTool[] | ((ctx: any) => MaybePromise<GeneratorTool[]>);
 
 /**
  * @deprecated Use GeneratorTool. Kept as an alias for compatibility.
@@ -196,7 +271,7 @@ export interface GeneratorConfig<
    *  and any active preset surfaces into this block's config. */
   uses?: TUses;
   model: ResolvableModel<NoInfer<TInput>, TCtx>;
-  prompt: ResolvableString<TInput, TCtx>;
+  prompt: PromptSlot<NoInfer<TInput>, TCtx>;
   context?: GeneratorSlot<NoInfer<TInput>, TCtx>;
   history?: GeneratorSlot<NoInfer<TInput>, TCtx>;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
@@ -222,11 +297,22 @@ export interface GeneratorConfig<
   ) => MaybePromise<unknown>;
   flowTools?: ToolsConfig;
   retry?: RetryPolicy;
-  emit?: false | {
-    reasoning?: boolean;
-    messages?: boolean | 'reasoning';
-    toolCalls?: boolean;
-  };
+  /**
+   * Controls item emission and visibility.
+   *
+   * - `false`: suppress all item types (block still executes, no items emitted).
+   * - A role string (`"external"` | `"internal"` | `"trace"`): emit all item
+   *   types at the specified role.
+   * - An object: per-type overrides. Each value may be `true` (default role),
+   *   `false` (suppress that type), or a role string. Unspecified types fall
+   *   back to the block-level default (see below).
+   *
+   * The block-level default is, in order of precedence:
+   *   1. `itemRole` on this block's config
+   *   2. `"external"` when running in the main phase
+   *   3. `"trace"` when running as a tool call under a generator, or in a work phase
+   */
+  emit?: GeneratorEmitConfig;
   providerOptions?: ResolvableProviderOptions<TInput, TCtx>;
   /** When true (default), auto-inject tool name+description pairs into the system context. */
   describeTools?: boolean;
@@ -240,6 +326,24 @@ async function resolveString<TInput, TCtx extends BlockContext>(
   ctx: TCtx
 ): Promise<string> {
   return typeof value === "function" ? value(input, ctx) : value;
+}
+
+async function resolvePrompt<TInput, TCtx extends BlockContext>(
+  value: PromptSlot<TInput, TCtx>,
+  input: TInput,
+  ctx: TCtx
+): Promise<string> {
+  if (!Array.isArray(value)) {
+    if (value == null) return "";
+    return typeof value === "function" ? (await value(input, ctx)) ?? "" : value;
+  }
+  const parts: string[] = [];
+  for (const entry of value) {
+    if (entry == null) continue;
+    const resolved = typeof entry === "function" ? await entry(input, ctx) : entry;
+    if (resolved != null) parts.push(resolved);
+  }
+  return parts.join("\n");
 }
 
 async function resolveProviderOptions<TInput, TCtx extends BlockContext>(
@@ -377,6 +481,27 @@ async function resolveTools<TCtx extends BlockContext>(
   return Array.isArray(resolved) ? resolved : [];
 }
 
+const AI_SDK_SCHEMA_SYMBOL = Symbol.for("vercel.ai.schema");
+
+/**
+ * Normalize a tool's `inputSchema` into a form the AI SDK's `asSchema()` can
+ * consume. Zod schemas carry `~standard`, AI-SDK Schema wrappers carry the
+ * `vercel.ai.schema` symbol — both are already handled by `asSchema`. Anything
+ * else (raw JSON Schema objects, MCP tool definitions that were unwrapped
+ * somewhere upstream) gets wrapped via `jsonSchema()` so it doesn't fall into
+ * the LazySchema `schema()` fallback and crash with "schema is not a function".
+ */
+function normalizeToolSchema(inputSchema: unknown): unknown {
+  if (inputSchema == null) return inputSchema;
+  if (typeof inputSchema !== "object") return inputSchema;
+  // Zod and other Standard Schemas — AI SDK detects and handles these.
+  if ("~standard" in inputSchema) return inputSchema;
+  // Already an AI SDK Schema wrapper (from any compatible package version).
+  if (AI_SDK_SCHEMA_SYMBOL in inputSchema) return inputSchema;
+  // Raw JSON Schema object — wrap so AI SDK recognizes it as a Schema.
+  return jsonSchema(inputSchema as any);
+}
+
 /**
  * Compile tools WITHOUT execute functions. Used when `runTools: false` — the
  * model will suggest tool calls, but the AI SDK won't auto-execute them.
@@ -385,7 +510,7 @@ function compileToolsForModel(tools: GeneratorTool[]): GeneratorModelTool[] {
   return tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
-    parameters: tool.inputSchema
+    parameters: normalizeToolSchema(tool.inputSchema) as GeneratorModelTool["parameters"]
   }));
 }
 
@@ -406,7 +531,7 @@ function compileToolsWithExecute(
   return tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
-    parameters: tool.inputSchema,
+    parameters: normalizeToolSchema(tool.inputSchema) as GeneratorModelTool["parameters"],
     execute: async (args: unknown, options?: { toolCallId?: string }) => {
       const runTool = async (scopedCtx: BlockContext): Promise<unknown> => {
         await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
@@ -692,12 +817,14 @@ function resolveMaxIterations(config: { loop?: GeneratorLoopConfig<unknown>; max
 function buildSourceItem(
   source: GeneratorModelSource,
   ctx: BlockContext,
-  provenance: { blockName: string; blockInstanceId: string; phase: "main" | "work" }
+  provenance: { blockName: string; blockInstanceId: string; phase: "main" | "work" },
+  itemRole: ItemRole | false
 ) {
   return {
     id: `item_source_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "source" as const,
     status: "completed" as const,
+    ...(itemRole !== false ? { itemRole } : {}),
     requestId: ctx.request.identity.id,
     itemIndex: getEmitterItemCount(ctx.response),
     provenance,
@@ -730,21 +857,93 @@ function getEmitterItemCount(response: unknown): number {
   return 0;
 }
 
-/** Resolved emit configuration with all flags normalized to concrete values. */
+/**
+ * Per-type emit value. `true` means "use the block-level default role",
+ * `false` means "do not emit this item type", and a role string selects
+ * an explicit role.
+ */
+export type EmitLevel = boolean | ItemRole;
+
+/**
+ * Full emit configuration for a generator.
+ *
+ * - `false`: suppress all item types.
+ * - `ItemRole`: top-level shorthand applying the same role to every type.
+ * - object: per-type overrides (`reasoning`, `messages`, `toolCalls`).
+ */
+export type GeneratorEmitConfig =
+  | false
+  | ItemRole
+  | {
+      reasoning?: EmitLevel;
+      messages?: EmitLevel;
+      toolCalls?: EmitLevel;
+    };
+
+/**
+ * Resolved emit configuration. Each type is either `false` (don't emit) or
+ * a concrete `ItemRole` that should be stamped on emitted items.
+ */
 type NormalizedEmit = {
-  reasoning: boolean;
-  messages: boolean | 'reasoning';
-  toolCalls: boolean;
+  reasoning: ItemRole | false;
+  messages: ItemRole | false;
+  toolCalls: ItemRole | false;
 };
 
-/** Normalizes the user-facing emit config into concrete flags. */
-function normalizeEmit(emit: GeneratorConfig<any, any, any, any>['emit']): NormalizedEmit {
-  if (emit === false) return { reasoning: false, messages: false, toolCalls: false };
+function resolveEmitLevel(
+  level: EmitLevel | undefined,
+  blockDefault: ItemRole
+): ItemRole | false {
+  if (level === false) return false;
+  if (level === true || level === undefined) return blockDefault;
+  return level;
+}
+
+/**
+ * Resolves the user-facing emit config into per-type roles using the
+ * precedence chain: per-type emit > top-level emit > block-level `itemRole` >
+ * position-based default (`positionDefault`, which the generator computes
+ * from context at execution time).
+ *
+ * @internal Exported for unit testing. Not a public API.
+ */
+export function normalizeEmit(
+  emit: GeneratorEmitConfig | undefined,
+  blockItemRole: ItemRole | undefined,
+  positionDefault: ItemRole
+): NormalizedEmit {
+  if (emit === false) {
+    return { reasoning: false, messages: false, toolCalls: false };
+  }
+
+  const blockDefault: ItemRole = blockItemRole ?? positionDefault;
+
+  if (emit === "external" || emit === "internal" || emit === "trace") {
+    return { reasoning: emit, messages: emit, toolCalls: emit };
+  }
+
   return {
-    reasoning: emit?.reasoning !== false,
-    messages: emit?.messages ?? true,
-    toolCalls: emit?.toolCalls !== false,
+    reasoning: resolveEmitLevel(emit?.reasoning, blockDefault),
+    messages: resolveEmitLevel(emit?.messages, blockDefault),
+    toolCalls: resolveEmitLevel(emit?.toolCalls, blockDefault),
   };
+}
+
+/**
+ * Computes the position-based default role for a generator's emissions.
+ * Tool-call children (parent is a generator) and work-phase executions
+ * default to `"trace"`; everything else defaults to `"external"`.
+ *
+ * @internal Exported for unit testing. Not a public API.
+ */
+export function resolvePositionDefaultRole(ctx: BlockContext): ItemRole {
+  if (ctx.parent?.kind === "generator") {
+    return "trace";
+  }
+  if (ctx._blockIdentity?.phase === "work") {
+    return "trace";
+  }
+  return "external";
 }
 
 /**
@@ -771,13 +970,17 @@ async function executeStreamingGeneration<TInput, TOutput>(
 ): Promise<TOutput> {
   const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const contentPartIndex = 0;
+  const identity = ctx._blockIdentity;
   const provenance = {
-    blockName,
-    blockInstanceId: blockName,
-    phase: "main" as const
+    blockName: identity?.blockName ?? blockName,
+    blockInstanceId: identity?.blockInstanceId ?? blockName,
+    parentBlockInstanceId: identity?.parentBlockInstanceId,
+    phase: identity?.phase ?? ("main" as const)
   };
-  const ownedBy = ctx._blockIdentity?.ownedBy;
-  const emitReasoning = emitConfig.reasoning;
+  const ownedBy = identity?.ownedBy;
+  const reasoningRole = emitConfig.reasoning;
+  const messagesRole = emitConfig.messages;
+  const toolCallsRole = emitConfig.toolCalls;
   let reasoningAccumulated = "";
 
   // Reasoning and message items are emitted lazily so their order in the
@@ -803,7 +1006,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     prepareStep
   })) {
     if (chunk.type === "reasoning_delta" && chunk.reasoningDelta !== undefined) {
-      if (emitReasoning) {
+      if (reasoningRole !== false) {
         // On first reasoning delta, emit in-progress reasoning item
         if (!reasoningStarted) {
           reasoningStarted = true;
@@ -812,6 +1015,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             type: "reasoning" as const,
             status: "in_progress" as const,
             transient: false,
+            itemRole: reasoningRole,
             requestId: ctx.request.identity.id,
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
@@ -837,13 +1041,12 @@ async function executeStreamingGeneration<TInput, TOutput>(
         });
       }
     } else if (chunk.type === "text_delta" && chunk.textDelta !== undefined) {
-      // On first text delta, finalize reasoning and start the message (or
-      // a reasoning item when messages are remapped via emit.messages: 'reasoning').
-      // When messages are fully suppressed, just accumulate text silently.
-      const emitMessages = emitConfig.messages;
+      // On first text delta, finalize reasoning and start the message. When
+      // messages are suppressed (emitConfig.messages === false), just
+      // accumulate text silently so the schema validation still runs.
       if (!messageEmitted) {
         // Close reasoning item if it was started
-        if (reasoningStarted) {
+        if (reasoningStarted && reasoningRole !== false) {
           await ctx.response.emit({
             type: "content.done",
             itemId: reasoningItemId,
@@ -855,6 +1058,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
             type: "reasoning" as const,
             status: "completed" as const,
             transient: false,
+            itemRole: reasoningRole,
             requestId: ctx.request.identity.id,
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
@@ -865,37 +1069,14 @@ async function executeStreamingGeneration<TInput, TOutput>(
           await ctx.response.emit({ type: "item.done", item: completedReasoning });
         }
 
-        if (emitMessages === false) {
-          // Messages suppressed — no item emitted, just accumulate text
-        } else if (emitMessages === 'reasoning') {
-          // Emit text as a reasoning item instead of a message
-          messageItem = {
-            id: itemId,
-            type: "reasoning" as const,
-            status: "in_progress" as const,
-            transient: false,
-            requestId: ctx.request.identity.id,
-            itemIndex: getEmitterItemCount(ctx.response),
-            provenance,
-            ts: Date.now(),
-            ownedBy,
-            summary: [{ type: "reasoning_text" as const, text: "" }]
-          };
-          await ctx.response.emit({ type: "item.added", item: messageItem });
-          await ctx.response.emit({
-            type: "content.added",
-            itemId,
-            contentIndex: contentPartIndex,
-            content: { type: "reasoning_text", text: "" }
-          });
-        } else {
-          // Normal assistant message
+        if (messagesRole !== false) {
           messageItem = {
             id: itemId,
             type: "message" as const,
             role: "assistant" as const,
             status: "in_progress" as const,
             transient: false,
+            itemRole: messagesRole,
             requestId: ctx.request.identity.id,
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
@@ -914,7 +1095,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         messageEmitted = true;
       }
       accumulated += chunk.textDelta;
-      if (emitMessages !== false) {
+      if (messagesRole !== false) {
         await ctx.response.emit({
           type: "content.delta",
           itemId,
@@ -925,13 +1106,14 @@ async function executeStreamingGeneration<TInput, TOutput>(
     } else if (chunk.type === "tool_input_start" && chunk.toolInput !== undefined) {
       // Emit a status item so clients see progress during provider tool execution.
       // Gated by emit.toolCalls — worker generators suppress these to avoid flooding.
-      if (emitConfig.toolCalls) {
+      if (toolCallsRole !== false) {
         const toolName = chunk.toolInput.toolName;
         const statusItem = {
           id: `item_status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
           type: "status" as const,
           status: "completed" as const,
           transient: true,
+          itemRole: toolCallsRole,
           requestId: ctx.request.identity.id,
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
@@ -947,13 +1129,14 @@ async function executeStreamingGeneration<TInput, TOutput>(
       // Each delta is emitted as a transient status update — the full tool call
       // lifecycle (start → args → result) is tracked by toolCallId.
       // Gated by emit.toolCalls — worker generators suppress these to avoid flooding.
-      if (emitConfig.toolCalls) {
+      if (toolCallsRole !== false) {
         const delta = chunk.toolCallDelta;
         const toolCallItem = {
           id: `item_toolcall_${delta.toolCallId}`,
           type: "tool_call_progress" as const,
           status: "in_progress" as const,
           transient: true,
+          itemRole: toolCallsRole,
           requestId: ctx.request.identity.id,
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
@@ -969,13 +1152,14 @@ async function executeStreamingGeneration<TInput, TOutput>(
     } else if (chunk.type === "tool_result" && chunk.toolResult !== undefined) {
       // Emit completed tool result so clients see the outcome of tool execution.
       // Gated by emit.toolCalls — worker generators suppress these to avoid flooding.
-      if (emitConfig.toolCalls) {
+      if (toolCallsRole !== false) {
         const tr = chunk.toolResult;
         const toolResultItem = {
           id: `item_toolresult_${tr.toolCallId}`,
           type: "tool_call_progress" as const,
           status: "completed" as const,
           transient: true,
+          itemRole: toolCallsRole,
           requestId: ctx.request.identity.id,
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
@@ -989,7 +1173,11 @@ async function executeStreamingGeneration<TInput, TOutput>(
         await ctx.response.emit({ type: "item.done", item: toolResultItem });
       }
     } else if (chunk.type === "source_url" && chunk.source !== undefined) {
-      const sourceItem = buildSourceItem(chunk.source, ctx, provenance);
+      // Sources are citations attached to the assistant's message. They share
+      // the messages role; when messages are suppressed we demote to trace so
+      // devtools still see the citation without leaking it to the UI.
+      const sourceRole: ItemRole = messagesRole !== false ? messagesRole : "trace";
+      const sourceItem = buildSourceItem(chunk.source, ctx, provenance, sourceRole);
       await ctx.response.emit({ type: "item.added", item: sourceItem });
       await ctx.response.emit({ type: "item.done", item: sourceItem });
     } else if (chunk.type === "finish") {
@@ -998,9 +1186,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
   }
 
   // If no text deltas arrived, still finalize reasoning and emit message
-  const emitMessages = emitConfig.messages;
   if (!messageEmitted) {
-    if (reasoningStarted) {
+    if (reasoningStarted && reasoningRole !== false) {
       await ctx.response.emit({
         type: "content.done",
         itemId: reasoningItemId,
@@ -1012,6 +1199,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         type: "reasoning" as const,
         status: "completed" as const,
         transient: false,
+        itemRole: reasoningRole,
         requestId: ctx.request.identity.id,
         itemIndex: getEmitterItemCount(ctx.response),
         provenance,
@@ -1021,35 +1209,14 @@ async function executeStreamingGeneration<TInput, TOutput>(
       };
       await ctx.response.emit({ type: "item.done", item: completedReasoning });
     }
-    if (emitMessages === false) {
-      // Messages suppressed — no item emitted
-    } else if (emitMessages === 'reasoning') {
-      messageItem = {
-        id: itemId,
-        type: "reasoning" as const,
-        status: "in_progress" as const,
-        transient: false,
-        requestId: ctx.request.identity.id,
-        itemIndex: getEmitterItemCount(ctx.response),
-        provenance,
-        ts: Date.now(),
-        ownedBy,
-        summary: [{ type: "reasoning_text" as const, text: "" }]
-      };
-      await ctx.response.emit({ type: "item.added", item: messageItem });
-      await ctx.response.emit({
-        type: "content.added",
-        itemId,
-        contentIndex: contentPartIndex,
-        content: { type: "reasoning_text", text: "" }
-      });
-    } else {
+    if (messagesRole !== false) {
       messageItem = {
         id: itemId,
         type: "message" as const,
         role: "assistant" as const,
         status: "in_progress" as const,
         transient: false,
+        itemRole: messagesRole,
         requestId: ctx.request.identity.id,
         itemIndex: getEmitterItemCount(ctx.response),
         provenance,
@@ -1077,18 +1244,18 @@ async function executeStreamingGeneration<TInput, TOutput>(
   }
 
   // Emit content.done and completed item (skip when messages are suppressed)
-  if (emitMessages !== false && messageItem) {
-    const isReasoning = emitMessages === 'reasoning';
-    const contentType = isReasoning ? "reasoning_text" : "output_text";
+  if (messagesRole !== false && messageItem) {
     await ctx.response.emit({
       type: "content.done",
       itemId,
       contentIndex: contentPartIndex,
-      content: { type: contentType, text: accumulated }
+      content: { type: "output_text", text: accumulated }
     });
-    const completedItem = isReasoning
-      ? { ...messageItem, status: "completed" as const, summary: [{ type: "reasoning_text" as const, text: accumulated }] }
-      : { ...messageItem, status: "completed" as const, content: [{ type: "output_text" as const, text: accumulated }] };
+    const completedItem = {
+      ...messageItem,
+      status: "completed" as const,
+      content: [{ type: "output_text" as const, text: accumulated }]
+    };
     await ctx.response.emit({ type: "item.done", item: completedItem });
   }
 
@@ -1144,7 +1311,7 @@ export function generator<
     TUses, TCapabilities, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
-  const { declaredResources, resolvedCapabilities, mergedSurface } = resolveCapabilities(config, "generator");
+  const { declaredResources, resolvedCapabilities, mergedSurface, dynamicUses } = resolveCapabilities(config, "generator");
 
   const outputSchema = (config.outputSchema ?? z.string()) as ZodTypeAny;
   const normalizedConfig: GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput> = {
@@ -1152,35 +1319,79 @@ export function generator<
     outputSchema: outputSchema as TOutputSchema
   } as GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
 
-  // Merge capability context entries into the generator's context slot
-  if (mergedSurface && mergedSurface.contextEntries.length > 0) {
-    const existingContext = normalizedConfig.context;
-    if (existingContext === undefined) {
-      (normalizedConfig as any).context = mergedSurface.contextEntries;
-    } else {
-      const existingArr = Array.isArray(existingContext) ? existingContext : [existingContext];
-      (normalizedConfig as any).context = [...existingArr, ...mergedSurface.contextEntries];
+  // -----------------------------------------------------------------------
+  // Merge all capability contributions (static + dynamic) into the
+  // generator's context and tools slots in a single pass. No layered
+  // wrapping — each slot is set exactly once.
+  // -----------------------------------------------------------------------
+
+  const staticContextEntries = mergedSurface?.contextEntries ?? [];
+  const staticToolEntries = mergedSurface?.toolEntries ?? [];
+  const hasStaticContext = staticContextEntries.length > 0;
+  const hasStaticTools = staticToolEntries.length > 0;
+  const hasDynamic = dynamicUses.length > 0;
+
+  // -- Context: append static + dynamic entries to the user's context array
+  if (hasStaticContext || hasDynamic) {
+    const userContext = normalizedConfig.context;
+    const userArr = userContext === undefined
+      ? []
+      : Array.isArray(userContext)
+        ? userContext
+        : [userContext];
+
+    const additions: unknown[] = [...staticContextEntries];
+
+    // Dynamic context: a single entry that resolves all dynamic capabilities.
+    // Uses resolveDynamicCapSurface for a single-pass traversal.
+    if (hasDynamic) {
+      additions.push(async (input: unknown, ctx: BlockContext) => {
+        const parts: string[] = [];
+        for (const resolver of dynamicUses) {
+          for (const cap of resolver(ctx)) {
+            const surface = await resolveDynamicCapSurface(cap, ctx);
+            for (const entry of surface.contextEntries) {
+              const v = typeof entry === "function" ? entry(input, ctx) : entry;
+              if (v != null && v !== "") parts.push(String(v));
+            }
+          }
+        }
+        return parts.length > 0 ? parts.join("\n\n") : null;
+      });
     }
+
+    (normalizedConfig as any).context = [...userArr, ...additions];
   }
 
-  // Merge capability tools into the generator's tools
-  if (mergedSurface && mergedSurface.toolEntries.length > 0) {
-    const existingTools = normalizedConfig.tools;
-    const capToolEntries = mergedSurface.toolEntries;
+  // -- Tools: single async resolver combining user tools + static caps + dynamic caps
+  if (hasStaticTools || hasDynamic) {
+    const userTools = normalizedConfig.tools;
+
     (normalizedConfig as any).tools = async (ctx: BlockContext) => {
-      const userTools = existingTools
-        ? Array.isArray(existingTools)
-          ? existingTools
-          : await existingTools(ctx as any)
+      // 1. User-declared tools (static array or function)
+      const base: GeneratorTool[] = userTools
+        ? Array.isArray(userTools) ? userTools : await userTools(ctx as any)
         : [];
-      const presetTools = (
-        await Promise.all(
-          capToolEntries.map((factory) =>
-            Array.isArray(factory) ? factory : factory(ctx)
-          )
-        )
-      ).flat();
-      return [...userTools, ...presetTools];
+
+      // 2. Static capability preset tools
+      const staticTools: GeneratorTool[] = hasStaticTools
+        ? (await Promise.all(
+            staticToolEntries.map((f) => Array.isArray(f) ? f : f(ctx))
+          )).flat()
+        : [];
+
+      // 3. Dynamic capability tools (single-pass via resolveDynamicCapSurface)
+      const dynTools: GeneratorTool[] = [];
+      if (hasDynamic) {
+        for (const resolver of dynamicUses) {
+          for (const cap of resolver(ctx)) {
+            const surface = await resolveDynamicCapSurface(cap, ctx);
+            dynTools.push(...surface.tools);
+          }
+        }
+      }
+
+      return [...base, ...staticTools, ...dynTools];
     };
   }
 
@@ -1219,7 +1430,7 @@ export function generator<
       const autoDescribe = normalizedConfig.describeTools !== false;
       const toolBlocks = await resolveTools(normalizedConfig.tools, ctx);
 
-      const prompt = await resolveString(normalizedConfig.prompt, input, ctx);
+      const prompt = await resolvePrompt(normalizedConfig.prompt, input, ctx);
       const contextValues = await resolveSlotValues(normalizedConfig.context, input, ctx);
 
       // Auto-describe: inject tool name+description pairs into context.
@@ -1250,7 +1461,8 @@ export function generator<
       // dynamic (function-typed) entries. The AI SDK calls this before each
       // step of the multi-step tool loop, letting us re-resolve dynamic
       // slots so the LLM sees fresh state and the correct active tools.
-      const hasDynamicPrompt = typeof normalizedConfig.prompt === "function";
+      const hasDynamicPrompt = typeof normalizedConfig.prompt === "function"
+        || (Array.isArray(normalizedConfig.prompt) && normalizedConfig.prompt.some((e) => typeof e === "function"));
       const hasDynamicContext = normalizeSlotEntries(normalizedConfig.context).some(
         (entry) => typeof entry === "function"
       );
@@ -1277,7 +1489,7 @@ export function generator<
             freshToolDescription = buildToolDescriptionContext(toolBlocks);
           }
 
-          const freshPrompt = await resolveString(normalizedConfig.prompt, input, ctx);
+          const freshPrompt = await resolvePrompt(normalizedConfig.prompt, input, ctx);
           const freshContext = await resolveSlotValues(normalizedConfig.context, input, ctx);
           if (freshToolDescription !== undefined) {
             freshContext.push(freshToolDescription);
@@ -1312,7 +1524,12 @@ export function generator<
       // Streaming path: text output + model supports streaming.
       // Use streaming when messages are enabled OR when tools are present (so tool
       // status events flow to the client even when message text is suppressed).
-      const emitConfig = normalizeEmit(normalizedConfig.emit);
+      const positionDefaultRole = resolvePositionDefaultRole(ctx);
+      const emitConfig = normalizeEmit(
+        normalizedConfig.emit,
+        normalizedConfig.itemRole,
+        positionDefaultRole
+      );
       const messagesEnabled = emitConfig.messages !== false;
       const hasTools = compiledTools.length > 0 || resolvedProviderTools.length > 0;
       const canStream = (messagesEnabled || hasTools) && isTextOutputSchema(outputSchema) && model.stream !== undefined;
@@ -1356,9 +1573,18 @@ export function generator<
 
       // Emit source items from provider-native tools (e.g., web search).
       if (generation.sources !== undefined && generation.sources.length > 0) {
-        const sourceProv = { blockName, blockInstanceId: blockName, phase: "main" as const };
+        const sourceIdentity = ctx._blockIdentity;
+        const sourceProv = {
+          blockName: sourceIdentity?.blockName ?? blockName,
+          blockInstanceId: sourceIdentity?.blockInstanceId ?? blockName,
+          parentBlockInstanceId: sourceIdentity?.parentBlockInstanceId,
+          phase: sourceIdentity?.phase ?? ("main" as const)
+        };
+        const nsSourceRole: ItemRole = emitConfig.messages !== false
+          ? emitConfig.messages
+          : "trace";
         for (const source of generation.sources) {
-          const sourceItem = buildSourceItem(source, ctx, sourceProv);
+          const sourceItem = buildSourceItem(source, ctx, sourceProv, nsSourceRole);
           await ctx.response.emit({ type: "item.added", item: sourceItem });
           await ctx.response.emit({ type: "item.done", item: sourceItem });
         }
@@ -1382,45 +1608,35 @@ export function generator<
         normalizedConfig, outputSchema, candidate, state, ctx
       );
 
-      // For text-output generators, emit an assistant MessageItem (or reasoning
-      // item when messages are remapped) so the output appears in the stream.
-      // Suppress entirely when emit.messages is false.
+      // For text-output generators, emit an assistant MessageItem so the
+      // output appears in the stream. Suppress entirely when
+      // emit.messages is false; stamp the resolved role otherwise.
       if (emitConfig.messages !== false && isTextOutputSchema(outputSchema) && typeof output === "string") {
         const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        const provenance = { blockName, blockInstanceId: blockName, phase: "main" as const };
-        const nsOwnedBy = ctx._blockIdentity?.ownedBy;
-        if (emitConfig.messages === 'reasoning') {
-          const reasoningItem = {
-            id: itemId,
-            type: "reasoning" as const,
-            status: "completed" as const,
-            transient: false,
-            requestId: ctx.request.identity.id,
-            itemIndex: getEmitterItemCount(ctx.response),
-            provenance,
-            ts: Date.now(),
-            ownedBy: nsOwnedBy,
-            summary: [{ type: "reasoning_text" as const, text: output }]
-          };
-          await ctx.response.emit({ type: "item.added", item: reasoningItem });
-          await ctx.response.emit({ type: "item.done", item: reasoningItem });
-        } else {
-          const messageItem = {
-            id: itemId,
-            type: "message" as const,
-            role: "assistant" as const,
-            status: "completed" as const,
-            transient: false,
-            requestId: ctx.request.identity.id,
-            itemIndex: getEmitterItemCount(ctx.response),
-            provenance,
-            ts: Date.now(),
-            ownedBy: nsOwnedBy,
-            content: [{ type: "output_text" as const, text: output }]
-          };
-          await ctx.response.emit({ type: "item.added", item: messageItem });
-          await ctx.response.emit({ type: "item.done", item: messageItem });
-        }
+        const outputIdentity = ctx._blockIdentity;
+        const provenance = {
+          blockName: outputIdentity?.blockName ?? blockName,
+          blockInstanceId: outputIdentity?.blockInstanceId ?? blockName,
+          parentBlockInstanceId: outputIdentity?.parentBlockInstanceId,
+          phase: outputIdentity?.phase ?? ("main" as const)
+        };
+        const nsOwnedBy = outputIdentity?.ownedBy;
+        const messageItem = {
+          id: itemId,
+          type: "message" as const,
+          role: "assistant" as const,
+          status: "completed" as const,
+          transient: false,
+          itemRole: emitConfig.messages,
+          requestId: ctx.request.identity.id,
+          itemIndex: getEmitterItemCount(ctx.response),
+          provenance,
+          ts: Date.now(),
+          ownedBy: nsOwnedBy,
+          content: [{ type: "output_text" as const, text: output }]
+        };
+        await ctx.response.emit({ type: "item.added", item: messageItem });
+        await ctx.response.emit({ type: "item.done", item: messageItem });
       }
 
       return output;

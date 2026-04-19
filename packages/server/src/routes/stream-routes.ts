@@ -80,7 +80,9 @@ export async function handleRequestStream(
             const frame = encodeStreamEvent(event);
             controller.enqueue(textEncoder.encode(frame));
           } catch {
-            // Controller may be closed if client disconnected.
+            // Controller closed — client disconnected or navigated away.
+            // This is expected during long-running background work
+            // (e.g. forEachBackground dispatches). Silently ignore.
           }
 
           // Close when terminal status is reached.
@@ -89,6 +91,7 @@ export async function handleRequestStream(
             event.type === "request.completed" ||
             event.type === "request.failed" ||
             event.type === "request.incomplete" ||
+            event.type === "request.aborted" ||
             (event.type === "request.interrupted" && status === "interrupted")
           ) {
             try {
@@ -110,7 +113,40 @@ export async function handleRequestStream(
     });
   }
 
-  const requestRecord = await ctx.stores.request.get(route.requestId);
+  let requestRecord = await ctx.stores.request.get(route.requestId);
+
+  // On serverless platforms the POST (action execution) and GET (stream) may
+  // land on different instances. The request record might not be persisted yet
+  // if createExecutionContext is still running. Check the active_requests
+  // registry (written earlier in the runAction lifecycle) and wait briefly.
+  if (requestRecord === undefined) {
+    const active = await ctx.stores.activeRequests.get(route.requestId);
+    if (active !== undefined) {
+      // Request is in-flight — wait for the record to appear.
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await new Promise((r) => setTimeout(r, 500));
+        requestRecord = await ctx.stores.request.get(route.requestId);
+        if (requestRecord !== undefined) break;
+      }
+    }
+  }
+
+  // If the record still doesn't exist, check whether events were persisted
+  // (events are written before the main record via incremental persistence hooks).
+  if (requestRecord === undefined) {
+    const events = await ctx.stores.request.getEvents(route.requestId);
+    if (events.length > 0) {
+      const replay = replayRequestEvents({
+        requestId: route.requestId,
+        events,
+        lastEventId: request.headers.get("last-event-id"),
+        startingAfter: url.searchParams.get("starting_after")
+      });
+      const payload = replay.map((event) => encodeStreamEvent(event)).join("");
+      return new Response(payload, { status: 200, headers: SSE_HEADERS });
+    }
+  }
+
   if (
     requestRecord === undefined ||
     requestRecord.flowKind !== flow.kind

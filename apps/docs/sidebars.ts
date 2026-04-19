@@ -45,6 +45,7 @@ const sidebars: SidebarsConfig = {
         "resources/overview",
         "resources/storage",
         "resources/collections",
+        "resources/client-access",
       ],
     },
     {
@@ -122,6 +123,7 @@ const sidebars: SidebarsConfig = {
         "tools/overview",
         "tools/fetch",
         "tools/crawl",
+        "tools/bash",
       ],
     },
     "roadmap",

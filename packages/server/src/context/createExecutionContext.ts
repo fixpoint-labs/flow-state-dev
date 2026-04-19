@@ -40,12 +40,14 @@ import type {
   Content,
   ContextItem,
   ItemProvenance,
+  ItemRole,
   MessageItem,
   OutputItem,
   RouterDecisionItem,
   StateChangeItem,
   StatusItem
 } from "@flow-state-dev/core/items";
+import { resolveItemRole } from "@flow-state-dev/core/items";
 import type { BlockContext, BlockResult, ComponentHandle, ExecutionParent, MessageHandle, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import type {
@@ -55,6 +57,7 @@ import type {
   UserRecord
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
+import type { ModelResolver } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
@@ -278,6 +281,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
     persistResources: (next: Record<string, JsonObject>) => Promise<void>;
     readResourceContent: () => Record<string, string>;
     persistResourceContent: (next: Record<string, string>) => Promise<void>;
+    /** Called after any resource mutation so the streaming layer can push change events to clients. */
+    onResourceChanged?: (resourcePath: string, changeType: "created" | "updated" | "deleted") => void;
   }
 ): ResourceRegistry<TResources> {
   const handles = {} as Record<string, ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>>;
@@ -385,6 +390,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             nsHookCtx
           );
         }
+        options.onResourceChanged?.(storageKey, "updated");
       },
       async setState(nextState: JsonObject): Promise<void> {
         const prev = readState();
@@ -397,6 +403,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             nsHookCtx
           );
         }
+        options.onResourceChanged?.(storageKey, "updated");
       },
       async updateState(
         updater: (state: JsonObject) => JsonObject | Promise<JsonObject>
@@ -412,6 +419,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             nsHookCtx
           );
         }
+        options.onResourceChanged?.(storageKey, "updated");
       },
       async readContentRaw(): Promise<string | null> {
         const content = options.readResourceContent()[storageKey];
@@ -427,6 +435,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           [storageKey]: content
         };
         await options.persistResourceContent(nextContent);
+        options.onResourceChanged?.(storageKey, "updated");
       }
     };
   }
@@ -526,6 +535,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             await nsConfig.onInstanceCreated(storageKey, state, hookCtx);
           }
 
+          options.onResourceChanged?.(storageKey, "created");
+
           return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
         },
 
@@ -573,6 +584,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           if (nsConfig.onInstanceDeleted) {
             await nsConfig.onInstanceDeleted(storageKey, hookCtx);
           }
+
+          options.onResourceChanged?.(storageKey, "deleted");
         },
 
         count(): number {
@@ -756,15 +769,19 @@ const CLIENT_AUDIENCE_TYPES = new Set([
 
 /**
  * Converts a persisted OutputItem into an LLM-ready message.
- * Uses type-based audience routing: message, reasoning, context, and
- * block_output (with toolCall) enter LLM context.
- * Structural trace items (trace: true) are always excluded — they carry
- * lifecycle metadata for debugging, not conversational content.
- * Returns null for item types that don't map to conversation messages.
+ *
+ * Role determines inclusion: `external` and `internal` items both participate
+ * in LLM history (external is also shown in the UI; internal is hidden from
+ * the UI but kept for LLM context). `trace` items are excluded — they carry
+ * lifecycle/diagnostic metadata for observability only.
+ *
+ * Returns an empty array for item types that don't map to conversation
+ * messages (status, state_change, resource_change, etc.).
  */
 function itemToLLMMessages(item: OutputItem): LLMMessage[] {
-  // Fast path: structural trace items never enter LLM context.
-  if (item.trace === true) {
+  // Fast path: trace items (explicit role, legacy `trace: true`, or
+  // structural item types resolved via resolveItemRole) never enter history.
+  if (resolveItemRole(item) === "trace") {
     return [];
   }
 
@@ -1118,6 +1135,13 @@ type EmissionContext = {
   nextItemIndex: () => number;
   /** Container ownership tag — set when emitting inside a container scope. */
   ownedBy?: string;
+  /**
+   * Resolved visibility role for items emitted via `emitMessage` /
+   * `emitComponent`. Defaults to `"external"` at the root scope. Flows down
+   * via `_withExecutionScope`, taking the current block's `itemRole`, the
+   * parent scope's role, and the execution phase into account.
+   */
+  itemRole: ItemRole;
 };
 
 function createEmitMessage(
@@ -1138,6 +1162,7 @@ function createEmitMessage(
       type: "message",
       status: "in_progress",
       transient: emCtx.blockTransient || undefined,
+      itemRole: emCtx.itemRole,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -1198,6 +1223,7 @@ function createEmitComponent(
       type: "component",
       status: "in_progress",
       transient: emCtx.blockTransient || undefined,
+      itemRole: emCtx.itemRole,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -1221,31 +1247,6 @@ function createEmitComponent(
     };
   };
 }
-
-function createEmitLLMContext(
-  emCtx: EmissionContext
-): (text: string) => void {
-  return function emitLLMContext(text: string): void {
-    const itemIndex = emCtx.nextItemIndex();
-    const item: ContextItem = {
-      id: `item_context_${itemIndex}_${Math.random().toString(16).slice(2)}`,
-      type: "context",
-      status: "completed",
-      transient: emCtx.blockTransient || undefined,
-      requestId: emCtx.requestId,
-      itemIndex,
-      provenance: emCtx.provenance(),
-      ts: Date.now(),
-      ownedBy: emCtx.ownedBy,
-      text
-    };
-
-    void emCtx.response.emitItemAdded(item);
-    void emCtx.response.emitItemDone(item);
-  };
-}
-
-
 
 type StateChangeScope = StateChangeItem["scope"];
 type StateChangeOperation = StateChangeItem["operation"];
@@ -1462,11 +1463,15 @@ function createEmitStatus(
 ): (message: string) => void {
   return function emitStatus(message: string): void {
     const itemIndex = emCtx.nextItemIndex();
+    // Status items always have the "external" role: they are transient UI
+    // indicators (progress, tool usage) meant for the user. Future work
+    // may fold status into the block's container item.
     const item: StatusItem = {
       id: `item_status_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "status",
       status: "completed",
       transient: true,
+      itemRole: "external",
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -1560,7 +1565,6 @@ export async function createExecutionContext<
       userId,
       state: (options.userState ?? {}) as TUserState,
       resources: normalizeScopeResources(userResourceConfigs, undefined),
-      resourceContent: normalizeScopeResourceContent(userResourceConfigs, undefined),
       version: 0,
       createdAt: now,
       updatedAt: now
@@ -1577,7 +1581,6 @@ export async function createExecutionContext<
       projectId: options.projectId,
       state: (options.sessionState ?? {}) as TSessionState,
       resources: normalizeScopeResources(sessionResourceConfigs, undefined),
-      resourceContent: normalizeScopeResourceContent(sessionResourceConfigs, undefined),
       version: 0,
       createdAt: now,
       updatedAt: now,
@@ -1603,13 +1606,36 @@ export async function createExecutionContext<
       userId,
       state: (options.projectState ?? {}) as TProjectState,
       resources: normalizeScopeResources(projectResourceConfigs, undefined),
-      resourceContent: normalizeScopeResourceContent(projectResourceConfigs, undefined),
       version: 0,
       createdAt: now,
       updatedAt: now
     };
     await stores.project.set(projectRecord.id, projectRecord);
   }
+
+  // Load content from ContentStore, merging with any inline record content
+  // for backward compatibility with records created before ContentStore existed.
+  // ContentStore values take precedence over inline record values.
+  const [sessionContentFromStore, userContentFromStore, projectContentFromStore] = await Promise.all([
+    stores.content.getAll("session", sessionId),
+    stores.content.getAll("user", userId),
+    resolvedProjectId !== undefined ? stores.content.getAll("project", resolvedProjectId) : Promise.resolve({})
+  ]);
+
+  const initialSessionContent = normalizeScopeResourceContent(
+    sessionResourceConfigs,
+    { ...(sessionRecord.resourceContent ?? {}), ...sessionContentFromStore }
+  );
+  const initialUserContent = normalizeScopeResourceContent(
+    userResourceConfigs,
+    { ...(userRecord.resourceContent ?? {}), ...userContentFromStore }
+  );
+  const initialProjectContent = normalizeScopeResourceContent(
+    projectResourceConfigs,
+    resolvedProjectId !== undefined
+      ? { ...(projectRecord?.resourceContent ?? {}), ...projectContentFromStore }
+      : undefined
+  );
 
   let requestRecord = loadedRequest;
   if (requestRecord === undefined) {
@@ -1655,11 +1681,15 @@ export async function createExecutionContext<
       sessionRef.current.resources as Record<string, unknown> | undefined
     );
 
+  // Content refs: eagerly loaded from ContentStore at initialization.
+  // All reads during execution use the in-memory cache (synchronous).
+  // Writes update the cache and persist to ContentStore (async, per-key).
+  const sessionContentRef = { current: initialSessionContent };
+  const userContentRef = { current: initialUserContent };
+  const projectContentRef = { current: initialProjectContent };
+
   const readSessionResourceContent = (): Record<string, string> =>
-    normalizeScopeResourceContent(
-      sessionResourceConfigs,
-      sessionRef.current.resourceContent as Record<string, unknown> | undefined
-    );
+    sessionContentRef.current;
 
   const readUserResources = (): Record<string, JsonObject> =>
     normalizeScopeResources(
@@ -1668,10 +1698,7 @@ export async function createExecutionContext<
     );
 
   const readUserResourceContent = (): Record<string, string> =>
-    normalizeScopeResourceContent(
-      userResourceConfigs,
-      userRef.current.resourceContent as Record<string, unknown> | undefined
-    );
+    userContentRef.current;
 
   const readProjectResources = (): Record<string, JsonObject> =>
     normalizeScopeResources(
@@ -1680,10 +1707,7 @@ export async function createExecutionContext<
     );
 
   const readProjectResourceContent = (): Record<string, string> =>
-    normalizeScopeResourceContent(
-      projectResourceConfigs,
-      projectRef.current?.resourceContent as Record<string, unknown> | undefined
-    );
+    projectContentRef.current;
 
   const persistSessionResources = async (
     next: Record<string, JsonObject>
@@ -1699,12 +1723,21 @@ export async function createExecutionContext<
   const persistSessionResourceContent = async (
     next: Record<string, string>
   ): Promise<void> => {
-    sessionRef.current = {
-      ...sessionRef.current,
-      resourceContent: normalizeScopeResourceContent(sessionResourceConfigs, next),
-      updatedAt: Date.now()
-    };
-    await stores.session.set(sessionRef.current.id, sessionRef.current);
+    const normalized = normalizeScopeResourceContent(sessionResourceConfigs, next);
+    const previous = sessionContentRef.current;
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (previous[key] !== value) {
+        await stores.content.set("session", sessionId, key, value);
+      }
+    }
+    for (const key of Object.keys(previous)) {
+      if (!(key in normalized)) {
+        await stores.content.delete("session", sessionId, key);
+      }
+    }
+
+    sessionContentRef.current = normalized;
   };
 
   const persistUserResources = async (
@@ -1721,12 +1754,21 @@ export async function createExecutionContext<
   const persistUserResourceContent = async (
     next: Record<string, string>
   ): Promise<void> => {
-    userRef.current = {
-      ...userRef.current,
-      resourceContent: normalizeScopeResourceContent(userResourceConfigs, next),
-      updatedAt: Date.now()
-    };
-    await stores.user.set(userRef.current.id, userRef.current);
+    const normalized = normalizeScopeResourceContent(userResourceConfigs, next);
+    const previous = userContentRef.current;
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (previous[key] !== value) {
+        await stores.content.set("user", userId, key, value);
+      }
+    }
+    for (const key of Object.keys(previous)) {
+      if (!(key in normalized)) {
+        await stores.content.delete("user", userId, key);
+      }
+    }
+
+    userContentRef.current = normalized;
   };
 
   const persistProjectResources = async (
@@ -1748,17 +1790,25 @@ export async function createExecutionContext<
   const persistProjectResourceContent = async (
     next: Record<string, string>
   ): Promise<void> => {
-    const current = projectRef.current;
-    if (current === undefined) {
+    if (resolvedProjectId === undefined) {
       return;
     }
 
-    projectRef.current = {
-      ...current,
-      resourceContent: normalizeScopeResourceContent(projectResourceConfigs, next),
-      updatedAt: Date.now()
-    };
-    await stores.project.set(projectRef.current.id, projectRef.current);
+    const normalized = normalizeScopeResourceContent(projectResourceConfigs, next);
+    const previous = projectContentRef.current;
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (previous[key] !== value) {
+        await stores.content.set("project", resolvedProjectId, key, value);
+      }
+    }
+    for (const key of Object.keys(previous)) {
+      if (!(key in normalized)) {
+        await stores.content.delete("project", resolvedProjectId, key);
+      }
+    }
+
+    projectContentRef.current = normalized;
   };
 
   const requestContainer = createStateContainer<TRequestState>(
@@ -1854,13 +1904,28 @@ export async function createExecutionContext<
           }
         });
 
+  // Resource change emitter — pushes transient resource_change items via SSE
+  // so clients can refresh clientData without waiting for request completion.
+  const rawResponse = options.response as unknown as Record<string, unknown> | undefined;
+  const emitter = rawResponse && typeof rawResponse.emitResourceChange === "function"
+    ? (rawResponse as unknown as { emitResourceChange: (opts: { scope: string; resourcePath: string; changeType: string; transient?: boolean }) => Promise<unknown> })
+    : undefined;
+
+  function makeResourceChangeHandler(scope: "session" | "user" | "project") {
+    if (!emitter) return undefined;
+    return (resourcePath: string, changeType: "created" | "updated" | "deleted") => {
+      void emitter.emitResourceChange({ scope, resourcePath, changeType, transient: true });
+    };
+  }
+
   const userResources = createScopeResourceRegistry({
     scope: "user",
     configs: userResourceConfigs,
     readResources: readUserResources,
     persistResources: persistUserResources,
     readResourceContent: readUserResourceContent,
-    persistResourceContent: persistUserResourceContent
+    persistResourceContent: persistUserResourceContent,
+    onResourceChanged: makeResourceChangeHandler("user"),
   });
 
   const sessionResources = createScopeResourceRegistry({
@@ -1869,7 +1934,8 @@ export async function createExecutionContext<
     readResources: readSessionResources,
     persistResources: persistSessionResources,
     readResourceContent: readSessionResourceContent,
-    persistResourceContent: persistSessionResourceContent
+    persistResourceContent: persistSessionResourceContent,
+    onResourceChanged: makeResourceChangeHandler("session"),
   });
 
   const projectResources =
@@ -1881,7 +1947,8 @@ export async function createExecutionContext<
           readResources: readProjectResources,
           persistResources: persistProjectResources,
           readResourceContent: readProjectResourceContent,
-          persistResourceContent: persistProjectResourceContent
+          persistResourceContent: persistProjectResourceContent,
+          onResourceChanged: makeResourceChangeHandler("project"),
         });
 
 
@@ -1897,10 +1964,11 @@ export async function createExecutionContext<
     }
   };
   const resolvedModelStorage = new AsyncLocalStorage<string>();
-  const resolveModel = (modelId: string, blockName?: string) => {
+  const resolveModel = ((modelId: string, blockName?: string) => {
     resolvedModelStorage.enterWith(modelId);
     return modelResolver(modelId, blockName);
-  };
+  }) as ModelResolver;
+  resolveModel.resolveId = (modelId: string) => modelResolver.resolveId(modelId);
 
   const readLiveItems = (): OutputItem[] => {
     const typedResponse = responseRef.current as { getItems?: () => OutputItem[] };
@@ -2121,6 +2189,7 @@ export async function createExecutionContext<
       type: "block_output",
       status,
       trace: true,
+      itemRole: "trace",
       transient: parent.transient || undefined,
       requestId: reqRef.current.id,
       itemIndex,
@@ -2163,7 +2232,7 @@ export async function createExecutionContext<
     current: response
   };
 
-  // Emission context used by emitMessage/emitComponent/emitLLMContext/emitStatus.
+  // Emission context used by emitMessage/emitComponent/emitStatus.
   // Duck-type the response: if it has emitItemAdded/emitItemDone, use those;
   // otherwise fall back to the generic emit() method via a thin adapter.
   let emittedItemCount = 0;
@@ -2192,7 +2261,8 @@ export async function createExecutionContext<
       blockInstanceId: `runtime_${requestRef.current.id}`,
       phase: "main" as const
     }),
-    nextItemIndex: () => emittedItemCount++
+    nextItemIndex: () => emittedItemCount++,
+    itemRole: "external"
   };
 
   const logger = options.logger;
@@ -2251,6 +2321,7 @@ export async function createExecutionContext<
         type: "router_decision",
         status: "completed",
         trace: true,
+        itemRole: "trace",
         requestId: requestRef.current.id,
         itemIndex,
         provenance: {
@@ -2444,7 +2515,6 @@ export async function createExecutionContext<
       },
       emitMessage: createEmitMessage(activeEmCtx),
       emitComponent: createEmitComponent(activeEmCtx),
-      emitLLMContext: createEmitLLMContext(activeEmCtx),
       emitStatus: createEmitStatus(activeEmCtx),
       // ctx.cap is populated per-block in executeBlock (see buildCapObject below).
       cap: {} as any,
@@ -2454,7 +2524,8 @@ export async function createExecutionContext<
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>) => {
         const resolvedParent: ExecutionParent = {
           ...parent,
-          parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId
+          parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId,
+          phase: parent.phase ?? parentChain?.parent.phase
         };
 
         const parentStateContainer =
@@ -2478,6 +2549,7 @@ export async function createExecutionContext<
               id: `item_container_${itemIndex}_${Math.random().toString(16).slice(2)}`,
               type: "container",
               status: "completed",
+              itemRole: "trace",
               transient: resolvedParent.transient || undefined,
               requestId: requestRef.current.id,
               itemIndex,
@@ -2512,6 +2584,12 @@ export async function createExecutionContext<
           result: siblingEntry.result,
           previous: parentChain
         };
+        // Resolve the emission role for this scope. The block's declared
+        // `itemRole` takes precedence over the parent scope's role so a
+        // subagent with `itemRole: "internal"` hides its helper emissions
+        // even when nested inside an `"external"` parent.
+        const childItemRole: ItemRole = resolvedParent.itemRole ?? activeEmCtx.itemRole;
+        const childPhase = resolvedParent.phase ?? "main";
         const childEmCtx: EmissionContext = {
           requestId: requestRef.current.id,
           blockTransient: resolvedParent.transient === true,
@@ -2520,12 +2598,13 @@ export async function createExecutionContext<
             blockName: resolvedParent.name,
             blockInstanceId: resolvedParent.instanceId,
             parentBlockInstanceId: resolvedParent.parentInstanceId,
-            phase: "main" as const
+            phase: childPhase
           }),
           nextItemIndex: () => emittedItemCount++,
           ownedBy: resolvedParent.container !== undefined
             ? resolvedParent.instanceId
-            : activeEmCtx.ownedBy
+            : activeEmCtx.ownedBy,
+          itemRole: childItemRole
         };
         const childContext = createContext(
           childChain,
@@ -2536,12 +2615,17 @@ export async function createExecutionContext<
 
         // Expose the block's identity so nested code (e.g. generator tool
         // output emission) can construct provenance without reaching into
-        // server-internal structures.
+        // server-internal structures. `itemRole` and `phase` let the
+        // generator's emit-config resolver apply the right default role.
+        // Phase is inherited via resolvedParent so work-phase trees
+        // propagate automatically to nested blocks.
         (childContext as { _blockIdentity?: unknown })._blockIdentity = {
           blockName: resolvedParent.name,
           blockInstanceId: resolvedParent.instanceId,
           parentBlockInstanceId: resolvedParent.parentInstanceId,
-          ownedBy: childEmCtx.ownedBy
+          ownedBy: childEmCtx.ownedBy,
+          itemRole: resolvedParent.itemRole,
+          phase: resolvedParent.phase ?? "main"
         };
 
         // Capture start time before execution — this is the only trace cost paid

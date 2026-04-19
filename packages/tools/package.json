@@ -20,6 +20,14 @@
     "./crawl": {
       "types": "./dist/crawl/index.d.ts",
       "default": "./dist/crawl/index.js"
+    },
+    "./bash": {
+      "types": "./dist/bash/index.d.ts",
+      "default": "./dist/bash/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "default": "./dist/mcp/index.js"
     }
   },
   "license": "MIT",
@@ -31,17 +39,23 @@
   },
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
+    "ai": "^6.0.93",
     "@mozilla/readability": "^0.6.0",
     "linkedom": "^0.18.12",
     "turndown": "^7.2.4",
     "zod": "^3.24.1"
   },
   "peerDependencies": {
+    "@ai-sdk/mcp": "^1.0.0",
     "@mendable/firecrawl-js": "^1.15.0",
     "@tavily/core": "^0.7.0",
-    "exa-js": "^1.5.0"
+    "exa-js": "^1.5.0",
+    "just-bash": "^2.14.0"
   },
   "peerDependenciesMeta": {
+    "@ai-sdk/mcp": {
+      "optional": true
+    },
     "@tavily/core": {
       "optional": true
     },
@@ -50,9 +64,13 @@
     },
     "@mendable/firecrawl-js": {
       "optional": true
+    },
+    "just-bash": {
+      "optional": true
     }
   },
   "devDependencies": {
+    "@ai-sdk/mcp": "^1.0.0",
     "@flow-state-dev/testing": "workspace:*",
     "@types/node": "^22.0.0",
     "@types/turndown": "^5.0.6",

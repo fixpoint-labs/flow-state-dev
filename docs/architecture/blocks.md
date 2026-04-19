@@ -53,10 +53,11 @@ interface BlockContext {
   // Item emission
   emitMessage(text: string): MessageHandle;
   emitComponent(component: string, data: Record<string, unknown>): ComponentHandle;
-  emitLLMContext(text: string): void;
   emitStatus(message: string): void;
 }
 ```
+
+Each emitted item carries a visibility role — `external`, `internal`, or `trace` — that controls whether it reaches the UI and the LLM's history. The block's `itemRole` config sets the default role for the emissions; generators can override per-type via `emit`. See the [item roles and emit config](#item-visibility-roles) section for the full model.
 
 Blocks are **silent by default** — if a block doesn't explicitly emit via `ctx` methods, it produces nothing visible to the client or LLM.
 
@@ -240,7 +241,7 @@ const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSc
   .then(incrementCounter);
 ```
 
-### DSL Methods (14 total)
+### DSL Methods (20 total)
 
 | Method | Purpose |
 |--------|---------|
@@ -250,15 +251,21 @@ const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSc
 | `map(fn)` | Transform current value without a block |
 | `parallel(steps)` | Execute named steps concurrently |
 | `forEach(block)` | Execute block for each array element |
+| `forEachBackground(block)` | Fire-and-forget fan-out per element |
 | `doUntil(condition, block)` | Loop until condition is true |
 | `doWhile(condition, block)` | Loop while condition is true |
 | `loopBack(stepName, opts)` | Jump back to a named step (bounded) |
 | `work(block)` | Queue non-aborting side-chain execution |
+| `background(block)` | Alias for `.work()` |
 | `waitForWork(opts)` | Wait for queued work to complete |
 | `tap(block)` | Side effect without changing payload |
 | `tapIf(condition, block)` | Conditional side effect |
 | `rescue(handlers)` | Error recovery by error type |
 | `branch(branches)` | Conditional multi-path execution |
+| `thenAll(blocks)` | Run array of blocks concurrently, collect all results |
+| `thenAny(blocks)` | Try blocks sequentially, first success wins |
+| `race(blocks)` | Run blocks concurrently, first success wins |
+| `exitIf(condition)` | Conditional early exit from chain |
 
 ### Work Semantics
 
@@ -331,18 +338,69 @@ pipeline.then((output, ctx) => ({ query: output.text }), searchBlock);
 - Ambiguous same-precedence collisions raise `AmbiguousBlockNameError`
 - Runtime identity uses `blockInstanceId`, not `name`
 
-## LLM Context Control
+## Item Visibility Roles
 
-Blocks shape what the LLM sees through emission methods:
+Every emitted item has a visibility `role` that controls how it participates in the system:
 
-| Method | In LLM Context | In Client UI |
-|--------|----------------|--------------|
-| `ctx.emitMessage(text)` | Yes (conversation message) | Yes |
-| `ctx.emitLLMContext(text)` | Yes (replaces tool result when in tool context) | No |
-| `ctx.emitComponent(comp, data)` | No | Yes |
-| `ctx.emitStatus(msg)` | No | Yes (transient) |
+| Role | In LLM Context | In Client UI | In DevTool/Observability |
+|--|--|--|--|
+| `external` | Yes | Yes | Yes |
+| `internal` | Yes | No | Yes |
+| `trace` | No | No | Yes |
 
-No block-level configuration is needed — the emission API is the control mechanism.
+The hierarchy is strict: `external ⊃ internal ⊃ trace`. There is no combination where an item is shown in the UI but excluded from history.
+
+To suppress an item type entirely (no item at all, not even for observability), set `emit: false` on a generator or its per-type key: `emit: { reasoning: false }`.
+
+### Default roles
+
+The position of a block in the execution graph determines the default role for items it emits:
+
+- **Main phase** (the primary generator chain of a request): `"external"`.
+- **Tool call** (a generator executed as a tool by another generator): `"trace"`.
+- **Work phase** (background / scoped work): `"trace"`.
+
+A block's `itemRole` config overrides the position-based default for that block's emissions:
+
+```ts
+const researcher = generator({
+  name: "researcher",
+  itemRole: "internal", // findings feed the next turn's LLM context, but users don't see them
+  prompt: "Analyze and summarize.",
+  model: "anthropic:claude-sonnet-4-6",
+});
+```
+
+### Emit config (generators)
+
+Generators can override role per item type via `emit`:
+
+```ts
+emit?: false | ItemRole | {
+  reasoning?: boolean | ItemRole;
+  messages?: boolean | ItemRole;
+  toolCalls?: boolean | ItemRole;
+};
+```
+
+- `false` suppresses all item types.
+- An `ItemRole` string applies the same role to every item type.
+- The object form overrides per-type. `true` = use the block default, `false` = suppress that type, or a role string for an explicit override.
+
+Precedence (highest to lowest):
+
+1. Per-type emit value: `emit: { messages: "internal" }`
+2. Top-level emit value: `emit: "trace"`
+3. Block-level `itemRole`: `itemRole: "internal"`
+4. Position-based default (main → `external`, tool call / work → `trace`)
+
+### Emission helpers
+
+- `ctx.emitMessage(text | content[])` — the primary way to emit assistant-visible content. Role comes from the surrounding scope, so the same call produces different visibility in different contexts.
+- `ctx.emitComponent(component, data)` — UI components. Role follows the scope.
+- `ctx.emitStatus(message)` — transient progress indicators. Always `external` (intended for the user).
+
+There is no `ctx.emitLLMContext` — to emit a message that's hidden from the UI but kept in LLM history, use `ctx.emitMessage()` on a block configured with `itemRole: "internal"`.
 
 ## Canonical Authority
 

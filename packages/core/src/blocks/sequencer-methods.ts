@@ -199,6 +199,25 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<an
     options?: { name?: string }
   ): SequencerDefinition<TInput, TOutput>;
 
+  /**
+   * Conditional variant of `.work()` — dispatches a fire-and-forget sidechain
+   * only when the condition is truthy. Complete no-op when falsy (no items, no trace).
+   *
+   * The condition is evaluated once per execution before dispatching. It receives
+   * the full `BlockContext` so it can read live session/request state.
+   */
+  workIf(
+    condition: boolean | ((ctx: BlockContext) => boolean | Promise<boolean>),
+    block: BlockDefinition<any, any>,
+    options?: { name?: string }
+  ): SequencerDefinition<TInput, TOutput>;
+  workIf<TStepIn>(
+    condition: boolean | ((ctx: BlockContext) => boolean | Promise<boolean>),
+    connector: ConnectorFn<TOutput, TStepIn>,
+    block: BlockDefinition<any, any>,
+    options?: { name?: string }
+  ): SequencerDefinition<TInput, TOutput>;
+
   waitForWork(options?: {
     failOnError?: boolean;
     timeoutMs?: number;
@@ -235,6 +254,28 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<an
   branch<TBranches extends Record<string, BranchStep<TOutput>>>(
     branches: TBranches
   ): SequencerDefinition<TInput, BranchStepOutput<TBranches[keyof TBranches]>>;
+
+  /** Run an array of blocks concurrently with the same input, collect all results as an ordered array. Like Promise.all. */
+  thenAll<TSteps extends Array<ParallelStep<TOutput>>>(
+    steps: [...TSteps],
+    options?: { maxConcurrency?: number }
+  ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>;
+
+  /** Try blocks sequentially in order. Return the first successful result; skip remaining blocks. Throws AggregateError if all fail. */
+  thenAny(
+    blocks: BlockDefinition<any, any>[]
+  ): SequencerDefinition<TInput, unknown>;
+
+  /** Run blocks concurrently, return the first successful result, abort the rest. Throws AggregateError if all fail. */
+  race(
+    blocks: BlockDefinition<any, any>[],
+    options?: { maxConcurrency?: number }
+  ): SequencerDefinition<TInput, unknown>;
+
+  /** Exit the sequencer chain early if condition returns true. Current value becomes the sequencer output. */
+  exitIf(
+    condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>
+  ): SequencerDefinition<TInput, TOutput>;
 
   validate(): SequencerDefinition<TInput, TOutput>;
 

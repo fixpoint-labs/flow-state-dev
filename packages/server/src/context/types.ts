@@ -11,7 +11,7 @@ import type { StoreRegistry } from "../stores/types";
 export type RequestRuntime = {
   requestId: string;
   actionName: string;
-  status: "in_progress" | "completed" | "incomplete" | "failed" | "interrupted";
+  status: "in_progress" | "completed" | "incomplete" | "failed" | "interrupted" | "aborted";
   startedAtMs: number;
   completedAtMs?: number;
   failedAtMs?: number;

@@ -4,7 +4,7 @@ import type {
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 
-export type RequestStatus = "in_progress" | "completed" | "incomplete" | "failed" | "interrupted";
+export type RequestStatus = "in_progress" | "completed" | "incomplete" | "failed" | "interrupted" | "aborted";
 
 export type ScopeRecordBase<TState extends JsonObject = JsonObject> = {
   id: string;
@@ -42,6 +42,8 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   input?: unknown;
   items?: OutputItem[];
   interruptedAt?: number;
+  abortRequested?: boolean;
+  abortedAt?: number;
 };
 
 export type UserRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
@@ -178,10 +180,41 @@ export interface ActiveRequestRegistry {
   get(requestId: string): Promise<ActiveRequestEntry | undefined>;
 }
 
+/**
+ * Scope discriminator for content storage.
+ * Excludes "request" since request-scoped resources are not supported.
+ */
+export type ContentScopeType = "session" | "user" | "project";
+
+/**
+ * Separates resource content persistence from scope record persistence.
+ *
+ * Content is addressed by (scopeType, scopeId, resourceKey). This allows
+ * adapters to store content independently of metadata — e.g., SQL metadata
+ * with blob storage for content, or individual files on the filesystem.
+ */
+export interface ContentStore {
+  /** Read a single resource's content. */
+  get(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<string | undefined>;
+
+  /** Write a single resource's content. Creates or overwrites. */
+  set(scopeType: ContentScopeType, scopeId: string, resourceKey: string, content: string): Promise<void>;
+
+  /** Delete a single resource's content. */
+  delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void>;
+
+  /** Read all content for a scope instance. Used during context initialization and state route reads. */
+  getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, string>>;
+
+  /** Delete all content for a scope instance. Used during scope record deletion. */
+  deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void>;
+}
+
 export type StoreRegistry = {
   session: SessionStore;
   request: RequestStore;
   user: UserStore;
   project: ProjectStore;
   activeRequests: ActiveRequestRegistry;
+  content: ContentStore;
 };

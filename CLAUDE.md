@@ -30,6 +30,7 @@ You are not a sycophant. You don't tell the user they have a good idea until you
 | `@flow-state-dev/cli` | Terminal interface (`fsdev`) |
 | `@flow-state-dev/devtool` | Pre-built DevTool assets for `fsdev dev` |
 | `@flow-state-dev/store-sqlite` | SQLite-backed persistent store |
+| `@flow-state-dev/vercel` | Vercel deployment adapter (SSE shaping, heartbeats, runtime config) |
 | `@flow-state-dev/tools` | Reusable tool blocks |
 | `@flow-state-dev/patterns` | Higher-level composition patterns |
 | `@flow-state-dev/ui` | Component registry for flow UIs |
@@ -71,6 +72,15 @@ Development task skills live in `.claude/skills/`. Use these when performing com
 | `add-store-adapter` | Create a new persistence store adapter package |
 | `add-docs-page` | Add a page to the Docusaurus documentation site |
 
+## Capabilities
+
+- **Prefer capabilities over manual plumbing.** Use `defineCapability` + `uses: [cap]` instead of manually spreading `tools`, `context`, `sessionResources` into blocks. Capabilities are self-contained, portable, and composable.
+- **Factory pattern for configurable capabilities.** When a capability needs config (provider type, resource refs), export a factory: `createXCapability(options)` → `DefinedCapability`.
+- **Dynamic `uses` for conditional capabilities.** `uses` arrays accept `(ctx) => CapabilityRef[]` functions. Static entries install resources at build time; dynamic entries add context/tools at runtime. Resources must be declared statically somewhere.
+- **Presets for opt-in/opt-out.** Use presets to bundle context/tools that consumers can enable/disable: `cap.presets({ tools: false })`.
+- **`ToolsSlot` and `UsesSlot`** are framework types exported from `@flow-state-dev/core` for factory interfaces.
+- **Pattern factories accept `uses`.** `planAndExecute`, `supervisor`, `blackboard` all forward `uses` to their default internal generators.
+
 ## Key Architectural Constraints
 
 - Block kinds: exactly `handler`, `generator`, `sequencer`, `router`
@@ -81,6 +91,8 @@ Development task skills live in `.claude/skills/`. Use these when performing com
 - Lifecycle hooks: past tense (`onStarted`, `onCompleted`, `onErrored`, `onFinished`)
 - Package boundary: `react` wraps `client` — no transport logic in react
 - Package boundary: `server` never depends on `client` or `react`
+- Collection key resolution: `collection.create("key")` auto-prepends the pattern prefix. `ref.name` returns the full storage key (e.g., `"artifacts/my-doc"`). Strip the prefix for bare keys.
+- Resource mutations emit `resource_change` SSE events via `onResourceChanged` in `createScopeResourceRegistry`. These are transient items — `useSession` checks for them before the transient filter.
 
 ## Authority Hierarchy
 

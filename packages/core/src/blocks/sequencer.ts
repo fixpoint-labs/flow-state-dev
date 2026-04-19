@@ -76,7 +76,7 @@ type SequencerOperation = {
     ctx: BlockContext,
     runtime: SequencerRuntimeState,
     stepIndex: number
-  ) => Promise<{ value: unknown; jumpTo?: string }>;
+  ) => Promise<{ value: unknown; jumpTo?: string; exit?: boolean }>;
 };
 
 type WorkOptions = {
@@ -125,6 +125,61 @@ function getSequencerEmitterItemCount(response: unknown): number {
   return 0;
 }
 
+/**
+ * Emits a sequencer_state_snapshot item at step boundaries so the devtool
+ * can display the full state of a sequencer at each point in its execution.
+ *
+ * Only emits when state has actually changed since the last snapshot,
+ * avoiding redundant snapshots for steps that don't mutate state.
+ * When multiple steps run without changing state, the emitted snapshot
+ * records which step actually caused the change.
+ */
+async function emitSequencerStateSnapshot(
+  ctx: BlockContext,
+  stepName: string,
+  stepIndex: number,
+  lastStateJson: string | undefined
+): Promise<string | undefined> {
+  const seqRef = ctx.sequencer;
+  if (seqRef === undefined) return lastStateJson;
+
+  const currentStateJson = JSON.stringify(seqRef.state);
+
+  // Skip emission if state hasn't changed since the last snapshot.
+  if (lastStateJson !== undefined && currentStateJson === lastStateJson) {
+    return lastStateJson;
+  }
+
+  const item = {
+    id: `item_seq_state_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: "sequencer_state_snapshot" as const,
+    status: "completed" as const,
+    trace: true,
+    itemRole: "trace" as const,
+    transient: true,
+    requestId: ctx.request.identity.id,
+    itemIndex: getSequencerEmitterItemCount(ctx.response),
+    provenance: {
+      blockName: seqRef.name,
+      blockInstanceId: seqRef.instanceId,
+      phase: "main" as const,
+      stepIndex,
+    },
+    ts: Date.now(),
+    sequencerName: seqRef.name,
+    sequencerInstanceId: seqRef.instanceId,
+    stepName,
+    stepIndex,
+    state: structuredClone(seqRef.state),
+    version: 0,
+  };
+
+  await ctx.response.emit({ type: "item.added", item });
+  await ctx.response.emit({ type: "item.done", item });
+
+  return currentStateJson;
+}
+
 /** Emit a block_output item with optional modelUsage for generator blocks run inside a sequencer. */
 async function emitGeneratorBlockOutput(
   block: BlockDefinition<any, any>,
@@ -140,12 +195,14 @@ async function emitGeneratorBlockOutput(
     type: "block_output" as const,
     status: "completed" as const,
     trace: true,
+    itemRole: "trace" as const,
     transient: block.transient || undefined,
     requestId: ctx.request.identity.id,
     itemIndex: getSequencerEmitterItemCount(ctx.response),
     provenance: {
       blockName: block.name,
       blockInstanceId: instanceId,
+      parentBlockInstanceId: ctx._blockIdentity?.parentBlockInstanceId,
       phase: "main" as const,
     },
     ts: completedAt,
@@ -165,7 +222,8 @@ async function emitGeneratorBlockOutput(
 async function executeBlock(
   block: BlockDefinition<any, any>,
   input: unknown,
-  ctx: BlockContext
+  ctx: BlockContext,
+  options?: { phase?: "main" | "work" }
 ): Promise<unknown> {
   const startedAt = Date.now();
   const run = async (scopedCtx: BlockContext): Promise<unknown> => {
@@ -209,8 +267,12 @@ async function executeBlock(
       scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt);
 
       // Emit block_output with modelUsage for nested generator blocks.
+      // Use the scope's instanceId from _blockIdentity so this trace item
+      // shares the same identity as streaming items emitted during execution,
+      // preventing orphaned duplicate nodes in the devtool trace tree.
       if (modelUsage) {
-        const instanceId = `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const identity = scopedCtx._blockIdentity;
+        const instanceId = identity?.blockInstanceId ?? `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         await emitGeneratorBlockOutput(block, output, scopedCtx, startedAt, instanceId, modelUsage);
       }
 
@@ -238,6 +300,12 @@ async function executeBlock(
       transient: block.transient || undefined,
       stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined,
       input,
+      // Propagate the child block's declared role so nested generators can
+      // resolve their emit defaults. Phase is inherited from the current
+      // scope (parent's _blockIdentity) so work-phase trees stay `"work"`,
+      // unless a dispatch site (forEachBackground) explicitly overrides.
+      itemRole: block.itemRole,
+      phase: options?.phase ?? ctx._blockIdentity?.phase,
       container:
         containerConfig === undefined
           ? undefined
@@ -318,12 +386,22 @@ function runSequencerOperations(
     const runtime = createRuntimeState();
     let currentValue: unknown = input;
 
+    // Emit initial state snapshot before any steps execute.
+    let lastStateJson = await emitSequencerStateSnapshot(ctx, "__initial__", -1, undefined);
+
     try {
       for (let index = 0; index < operations.length; index += 1) {
         const operation = operations[index];
         runtime.stepHistory.push(operation.name);
         const result = await operation.run(currentValue, ctx, runtime, index);
         currentValue = result.value;
+
+        // Emit state snapshot only if state changed since last snapshot.
+        lastStateJson = await emitSequencerStateSnapshot(ctx, operation.name, index, lastStateJson);
+        
+        if (result.exit === true) {
+          break;
+        }
 
         if (result.jumpTo !== undefined) {
           const jumpIndex = operations.findIndex((candidate) => candidate.name === result.jumpTo);
@@ -715,7 +793,10 @@ function createSequencer<TInput, TOutput>(
 
                 const iterName = `${block.name}[${currentIndex}]`;
                 try {
-                  const result = await executeBlock(block, item, ctx);
+                  // Background iterations run in the "work" phase; this flows
+                  // into _blockIdentity.phase and drives the generator's
+                  // position-based default role (work → "trace").
+                  const result = await executeBlock(block, item, ctx, { phase: "work" });
                   iterationResults.push({ name: iterName, status: "fulfilled", value: result });
                 } catch (error) {
                   iterationResults.push({ name: iterName, status: "rejected", reason: toError(error) });
@@ -871,7 +952,9 @@ function createSequencer<TInput, TOutput>(
             const input =
               connector === undefined ? value : await connector(value as TOutput, ctx);
 
-            const promise = executeBlock(block, input, ctx)
+            // work() dispatches run in the "work" phase so nested generators
+            // see phase === "work" and apply the trace default for emissions.
+            const promise = executeBlock(block, input, ctx, { phase: "work" })
               .then(
                 (result): WorkResult => ({
                   name,
@@ -901,6 +984,57 @@ function createSequencer<TInput, TOutput>(
       arg3?: WorkOptions
     ): SequencerDefinition<TInput, TOutput> {
       return definition.work(arg1 as any, arg2 as any, arg3 as any);
+    },
+
+    workIf<TStepIn>(
+      condition: boolean | ((ctx: BlockContext) => boolean | Promise<boolean>),
+      arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
+      arg3?: BlockDefinition<any, any> | WorkOptions,
+      arg4?: WorkOptions
+    ): SequencerDefinition<TInput, TOutput> {
+      const hasConnector = isBlockDefinition(arg3);
+      const connector = hasConnector ? (arg2 as ConnectorFn<TOutput, TStepIn>) : undefined;
+      const block = (hasConnector ? arg3 : arg2) as BlockDefinition<any, any>;
+      const options = (hasConnector ? arg4 : arg3) as WorkOptions | undefined;
+
+      return extend<TOutput>(
+        {
+          name: options?.name ?? `workIf:${block.name}`,
+          run: async (value, ctx, runtime) => {
+            const shouldDispatch =
+              typeof condition === "function" ? await condition(ctx) : condition;
+
+            if (!shouldDispatch) {
+              return { value };
+            }
+
+            const name = options?.name ?? block.name;
+            const input =
+              connector === undefined ? value : await connector(value as TOutput, ctx);
+
+            // workIf() dispatches run in the "work" phase, matching work().
+            const promise = executeBlock(block, input, ctx, { phase: "work" })
+              .then(
+                (result): WorkResult => ({
+                  name,
+                  status: "fulfilled",
+                  value: result
+                })
+              )
+              .catch((error): WorkResult => ({
+                name,
+                status: "rejected",
+                reason: toError(error)
+              }));
+
+            runtime.workTasks.push({ name, promise });
+            return { value };
+          }
+        },
+        lastOutputSchema,
+        undefined,
+        mergeFrom(block)
+      );
     },
 
     waitForWork(options?: WaitForWorkOptions): SequencerDefinition<TInput, TOutput> {
@@ -1086,6 +1220,188 @@ function createSequencer<TInput, TOutput>(
         firstBranchSchema,
         undefined,
         mergeFrom(...branchBlocks)
+      );
+    },
+
+    thenAll<TSteps extends Array<ParallelStep<TOutput>>>(
+      steps: [...TSteps],
+      options?: { maxConcurrency?: number }
+    ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }> {
+      const stepBlocks: BlockDefinition<any, any>[] = steps.map((step) =>
+        isBlockDefinition(step) ? (step as BlockDefinition<any, any>) : (step as { block: BlockDefinition<any, any> }).block
+      );
+
+      return extend<{ [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>(
+        {
+          name: "thenAll",
+          run: async (value, ctx) => {
+            const outputs = await mapWithConcurrency(
+              steps,
+              options?.maxConcurrency,
+              async (step): Promise<unknown> => {
+                if (isBlockDefinition(step)) {
+                  return executeBlock(step as BlockDefinition<any, any>, value, ctx);
+                }
+
+                const connected = await step.connector(value as TOutput, ctx);
+                return executeBlock(step.block, connected, ctx);
+              }
+            );
+
+            return { value: outputs };
+          }
+        },
+        undefined,
+        undefined,
+        mergeFrom(...stepBlocks)
+      );
+    },
+
+    thenAny(
+      blocks: BlockDefinition<any, any>[]
+    ): SequencerDefinition<TInput, unknown> {
+      return extend<unknown>(
+        {
+          name: "thenAny",
+          run: async (value, ctx) => {
+            if (blocks.length === 0) {
+              throw new AggregateError([], "thenAny called with no blocks");
+            }
+
+            // Try each block sequentially; return the first that succeeds.
+            const errors: Error[] = [];
+
+            for (const block of blocks) {
+              try {
+                const output = await executeBlock(block, value, ctx);
+                return { value: output };
+              } catch (error) {
+                errors.push(toError(error));
+              }
+            }
+
+            throw new AggregateError(errors, "All blocks in thenAny failed");
+          }
+        },
+        undefined,
+        undefined,
+        mergeFrom(...blocks)
+      );
+    },
+
+    race(
+      blocks: BlockDefinition<any, any>[],
+      options?: { maxConcurrency?: number }
+    ): SequencerDefinition<TInput, unknown> {
+      return extend<unknown>(
+        {
+          name: "race",
+          run: async (value, ctx, runtime) => {
+            if (blocks.length === 0) {
+              throw new Error("race called with no blocks");
+            }
+
+            if (blocks.length === 1) {
+              const output = await executeBlock(blocks[0], value, ctx);
+              return { value: output };
+            }
+
+            // Create a derived abort controller to cancel losers once a winner is found.
+            const controller = new AbortController();
+            const onParentAbort = (): void => { controller.abort(); };
+            ctx.signal?.addEventListener("abort", onParentAbort);
+
+            const derivedCtx = { ...ctx, signal: controller.signal } as BlockContext;
+
+            const errors: Error[] = [];
+            let resolved = false;
+            let resolvedValue: unknown;
+
+            try {
+              if (options?.maxConcurrency !== undefined) {
+                // Worker-pool approach: concurrency-limited, first success wins.
+                const limit = Math.max(1, options.maxConcurrency);
+                let nextIndex = 0;
+
+                const worker = async (): Promise<void> => {
+                  while (nextIndex < blocks.length && !resolved) {
+                    const currentIndex = nextIndex;
+                    nextIndex += 1;
+                    try {
+                      const output = await executeBlock(blocks[currentIndex], value, derivedCtx);
+                      if (!resolved) {
+                        resolved = true;
+                        resolvedValue = output;
+                        controller.abort();
+                      }
+                    } catch (error) {
+                      errors.push(toError(error));
+                    }
+                  }
+                };
+
+                const workers: Promise<void>[] = [];
+                for (let i = 0; i < Math.min(limit, blocks.length); i += 1) {
+                  workers.push(worker());
+                }
+                await Promise.all(workers);
+              } else {
+                // Full parallelism — fire all, first success wins.
+                await new Promise<void>((resolve) => {
+                  let remaining = blocks.length;
+
+                  for (const block of blocks) {
+                    executeBlock(block, value, derivedCtx).then(
+                      (output) => {
+                        if (!resolved) {
+                          resolved = true;
+                          resolvedValue = output;
+                          controller.abort();
+                        }
+                        remaining -= 1;
+                        if (remaining === 0) resolve();
+                      },
+                      (error) => {
+                        errors.push(toError(error));
+                        remaining -= 1;
+                        if (remaining === 0) resolve();
+                      }
+                    );
+                  }
+                });
+              }
+            } finally {
+              ctx.signal?.removeEventListener("abort", onParentAbort);
+            }
+
+            if (!resolved) {
+              throw new AggregateError(errors, "All blocks in race failed");
+            }
+
+            return { value: resolvedValue };
+          }
+        },
+        undefined,
+        undefined,
+        mergeFrom(...blocks)
+      );
+    },
+
+    exitIf(
+      condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>
+    ): SequencerDefinition<TInput, TOutput> {
+      return extend<TOutput>(
+        {
+          name: "exitIf",
+          run: async (value, ctx) => {
+            const shouldExit = await condition(value as TOutput, ctx);
+            if (shouldExit) {
+              return { value, exit: true };
+            }
+            return { value };
+          }
+        },
+        lastOutputSchema
       );
     },
 

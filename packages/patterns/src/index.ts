@@ -46,8 +46,10 @@ export {
   BasePlanSchema,
   BasePlanTaskSchema,
   emitPlanSnapshot,
+  emitPlanMeta,
+  emitTaskUpdate,
 } from "./shared/plan";
-export type { BasePlan, BasePlanTask } from "./shared/plan";
+export type { BasePlan, BasePlanTask, PlanMeta, PlanTaskUpdate } from "./shared/plan";
 export { eventQueue, createEventQueueStateSchema } from "./event-queue";
 export type { EventQueueConfig, EventQueueState } from "./event-queue";
 export {
@@ -81,3 +83,22 @@ export type {
   ResponseAuditorConfig,
   DisplayMode,
 } from "./response-auditor";
+export {
+  reactiveBlackboard,
+  actor,
+  mesh,
+  matchTopic,
+  compilePattern,
+  createReactiveBlackboard,
+  reactiveBlackboardStateSchema,
+  emitControlSchema,
+  createAppendEntry,
+} from "./reactive-blackboard";
+export type {
+  ReactiveBlackboardConfig,
+  ActorConfig,
+  Actor,
+  MeshConfig,
+  ReactiveBlackboardState,
+  EmitControlState,
+} from "./reactive-blackboard";
