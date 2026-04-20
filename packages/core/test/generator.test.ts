@@ -562,13 +562,13 @@ describe("generator streaming", () => {
     expect(toolResultItems[0].item.result).toEqual({ found: true });
   });
 
-  it("suppresses tool_input_start status items when emit.toolCalls is false", async () => {
+  it("suppresses tool_input_start status items when emit.tools is false", async () => {
     const emitted: Array<{ type: string; item?: any }> = [];
     const block = generator({
       name: "suppress-tool-input",
       model: "mock-model",
       prompt: "Use tools",
-      emit: { toolCalls: false }
+      emit: { tools: false }
     });
 
     const ctx = createMockContext({
@@ -604,13 +604,13 @@ describe("generator streaming", () => {
     expect(statusItems.length).toBe(0);
   });
 
-  it("suppresses tool_call_delta items when emit.toolCalls is false", async () => {
+  it("suppresses tool_call_delta items when emit.tools is false", async () => {
     const emitted: Array<{ type: string; item?: any }> = [];
     const block = generator({
       name: "suppress-tool-delta",
       model: "mock-model",
       prompt: "Use tools",
-      emit: { toolCalls: false }
+      emit: { tools: false }
     });
 
     const ctx = createMockContext({
@@ -646,13 +646,13 @@ describe("generator streaming", () => {
     expect(toolCallItems.length).toBe(0);
   });
 
-  it("suppresses tool_result items when emit.toolCalls is false", async () => {
+  it("suppresses tool_result items when emit.tools is false", async () => {
     const emitted: Array<{ type: string; item?: any }> = [];
     const block = generator({
       name: "suppress-tool-result",
       model: "mock-model",
       prompt: "Use tools",
-      emit: { toolCalls: false }
+      emit: { tools: false }
     });
 
     const ctx = createMockContext({
@@ -688,13 +688,13 @@ describe("generator streaming", () => {
     expect(toolResultItems.length).toBe(0);
   });
 
-  it("still emits text content when emit.toolCalls is false", async () => {
+  it("still emits text content when emit.tools is false", async () => {
     const emitted: Array<{ type: string; item?: any; delta?: string }> = [];
     const block = generator({
       name: "text-still-flows",
       model: "mock-model",
       prompt: "Use tools",
-      emit: { toolCalls: false }
+      emit: { tools: false }
     });
 
     const ctx = createMockContext({

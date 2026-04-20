@@ -132,7 +132,7 @@ const agent = generator({
   model: "preset/fast",
   prompt: "You are a research assistant.",
   // history feeds completed turns back to the model automatically
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: true,
   tools: [deepResearch, analyze, readDoc, writeDoc],
 });
 
@@ -258,7 +258,7 @@ The React hooks abstract over all of this. You can write a streaming chat UI wit
     title: report.title,
     findings: report.findings,
     confidence: report.score,
-  }).done();
+  });
 });
 
 // Resume from a cursor after a dropped connection

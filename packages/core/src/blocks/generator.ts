@@ -5,11 +5,13 @@ import type {
   BlockContext,
   BlockDefinition,
   ConnectorFn,
+  EmitAudience,
   InferBlockResources,
   InferStateFromSchema,
   RetryPolicy
 } from "../types/block";
-import type { ItemRole } from "../items/types";
+import type { ItemQuery } from "../types/scope";
+import type { ItemVisibility } from "../items/types";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
 import type {
@@ -127,6 +129,18 @@ export type GeneratorSlotEntry<TInput = unknown, TCtx = BlockContext> =
 export type GeneratorSlot<TInput = unknown, TCtx = BlockContext> =
   | GeneratorSlotEntry<TInput, TCtx>
   | GeneratorSlotEntry<TInput, TCtx>[];
+
+/**
+ * History slot config with shorthands:
+ *
+ * - `true` — auto-fetch session history with defaults
+ * - `ItemQuery` object — auto-fetch with options (e.g. `{ limit: 8 }`)
+ * - `GeneratorSlot` — custom function or static messages (full control)
+ */
+export type GeneratorHistoryConfig<TInput = unknown, TCtx = BlockContext> =
+  | true
+  | ItemQuery
+  | GeneratorSlot<TInput, TCtx>;
 
 export type GeneratorSlotRefOptions = {
   optional?: boolean;
@@ -270,10 +284,21 @@ export interface GeneratorConfig<
   /** Capabilities to install. Merges resources, state schemas, targets,
    *  and any active preset surfaces into this block's config. */
   uses?: TUses;
+  /**
+   * Controls who receives auto-emitted items from this generator.
+   *
+   * - `"client"`: items are sent to the client and enter LLM history (default)
+   * - `"history"`: items enter LLM history but are hidden from the client
+   * - `"trace"`: items are emitted for tracing only (neither client nor history)
+   *
+   * Defaults to `"client"` for main-phase generators. Tool-call children and
+   * work-phase generators default to `"trace"`.
+   */
+  emitAudience?: EmitAudience;
   model: ResolvableModel<NoInfer<TInput>, TCtx>;
   prompt: PromptSlot<NoInfer<TInput>, TCtx>;
   context?: GeneratorSlot<NoInfer<TInput>, TCtx>;
-  history?: GeneratorSlot<NoInfer<TInput>, TCtx>;
+  history?: GeneratorHistoryConfig<NoInfer<TInput>, TCtx>;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
   user?: TypedUserSlotFn<TInput, TCtx> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
   tools?: GeneratorTool[] | ((ctx: TCtx) => MaybePromise<GeneratorTool[]>);
@@ -298,19 +323,13 @@ export interface GeneratorConfig<
   flowTools?: ToolsConfig;
   retry?: RetryPolicy;
   /**
-   * Controls item emission and visibility.
+   * Controls which item types the generator auto-emits.
    *
-   * - `false`: suppress all item types (block still executes, no items emitted).
-   * - A role string (`"external"` | `"internal"` | `"trace"`): emit all item
-   *   types at the specified role.
-   * - An object: per-type overrides. Each value may be `true` (default role),
-   *   `false` (suppress that type), or a role string. Unspecified types fall
-   *   back to the block-level default (see below).
+   * - `true` (default): emit all item types (reasoning, messages, tools)
+   * - `false`: suppress all auto-emitted items (block still executes)
+   * - object: selectively suppress specific types; unspecified types default to `true`
    *
-   * The block-level default is, in order of precedence:
-   *   1. `itemRole` on this block's config
-   *   2. `"external"` when running in the main phase
-   *   3. `"trace"` when running as a tool call under a generator, or in a work phase
+   * Visibility of emitted items is controlled by `emitAudience`, not here.
    */
   emit?: GeneratorEmitConfig;
   providerOptions?: ResolvableProviderOptions<TInput, TCtx>;
@@ -414,6 +433,29 @@ async function resolveModel<TInput, TCtx extends BlockContext>(
   throw new Error(
     `Generator "${blockName}" model must resolve to a model id string, string array, or GeneratorModel instance`
   );
+}
+
+/**
+ * Resolves history shorthand (`true` or `ItemQuery`) into a slot function.
+ * Pass-through for function/static slot entries.
+ */
+function normalizeHistorySlot<TInput, TCtx extends BlockContext>(
+  history: GeneratorHistoryConfig<TInput, TCtx> | undefined
+): GeneratorSlot<TInput, TCtx> | undefined {
+  if (history === undefined) return undefined;
+  if (history === true) {
+    return ((_input: TInput, ctx: TCtx) =>
+      ctx.session.items.history()) as GeneratorSlotReference<TInput, TCtx>;
+  }
+  if (typeof history !== "function" && !Array.isArray(history) && typeof history === "object") {
+    const obj = history as Record<string, unknown>;
+    if (!("content" in obj) && !("role" in obj)) {
+      const query = history as ItemQuery;
+      return ((_input: TInput, ctx: TCtx) =>
+        ctx.session.items.history(query)) as GeneratorSlotReference<TInput, TCtx>;
+    }
+  }
+  return history as GeneratorSlot<TInput, TCtx>;
 }
 
 function normalizeSlotEntries<TInput, TCtx extends BlockContext>(
@@ -818,13 +860,13 @@ function buildSourceItem(
   source: GeneratorModelSource,
   ctx: BlockContext,
   provenance: { blockName: string; blockInstanceId: string; phase: "main" | "work" },
-  itemRole: ItemRole | false
+  vis: ItemVisibility | false
 ) {
   return {
     id: `item_source_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "source" as const,
     status: "completed" as const,
-    ...(itemRole !== false ? { itemRole } : {}),
+    ...(vis !== false ? { client: vis.client, history: vis.history } : {}),
     requestId: ctx.request.identity.id,
     itemIndex: getEmitterItemCount(ctx.response),
     provenance,
@@ -858,92 +900,87 @@ function getEmitterItemCount(response: unknown): number {
 }
 
 /**
- * Per-type emit value. `true` means "use the block-level default role",
- * `false` means "do not emit this item type", and a role string selects
- * an explicit role.
- */
-export type EmitLevel = boolean | ItemRole;
-
-/**
- * Full emit configuration for a generator.
+ * Full emit configuration for a generator. Controls which item types are
+ * auto-emitted. Visibility of emitted items is controlled separately by
+ * `emitAudience`.
  *
- * - `false`: suppress all item types.
- * - `ItemRole`: top-level shorthand applying the same role to every type.
- * - object: per-type overrides (`reasoning`, `messages`, `toolCalls`).
+ * - `true` (default): emit all item types.
+ * - `false`: suppress all auto-emitted items.
+ * - object: selectively suppress specific types; unspecified default to `true`.
  */
 export type GeneratorEmitConfig =
-  | false
-  | ItemRole
+  | boolean
   | {
-      reasoning?: EmitLevel;
-      messages?: EmitLevel;
-      toolCalls?: EmitLevel;
+      reasoning?: boolean;
+      messages?: boolean;
+      tools?: boolean;
     };
 
-/**
- * Resolved emit configuration. Each type is either `false` (don't emit) or
- * a concrete `ItemRole` that should be stamped on emitted items.
- */
-type NormalizedEmit = {
-  reasoning: ItemRole | false;
-  messages: ItemRole | false;
-  toolCalls: ItemRole | false;
+/** Maps emit audience labels to concrete visibility flags for item stamping. */
+export const AUDIENCE_TO_VISIBILITY: Record<EmitAudience, ItemVisibility> = {
+  client: { client: true, history: true },
+  history: { client: false, history: true },
+  trace: { client: false, history: false },
 };
 
-function resolveEmitLevel(
-  level: EmitLevel | undefined,
-  blockDefault: ItemRole
-): ItemRole | false {
-  if (level === false) return false;
-  if (level === true || level === undefined) return blockDefault;
-  return level;
-}
+/**
+ * Resolved emit configuration. Per-type booleans control whether items are
+ * emitted; `visibility` controls the audience flags stamped on emitted items.
+ */
+export type ResolvedEmitConfig = {
+  reasoning: boolean;
+  messages: boolean;
+  tools: boolean;
+  visibility: ItemVisibility;
+};
 
 /**
- * Resolves the user-facing emit config into per-type roles using the
- * precedence chain: per-type emit > top-level emit > block-level `itemRole` >
- * position-based default (`positionDefault`, which the generator computes
- * from context at execution time).
+ * Resolves the user-facing emit config and audience into a concrete
+ * per-type emit/suppress decision plus a single visibility for all
+ * emitted items.
  *
  * @internal Exported for unit testing. Not a public API.
  */
-export function normalizeEmit(
+export function resolveEmitConfig(
   emit: GeneratorEmitConfig | undefined,
-  blockItemRole: ItemRole | undefined,
-  positionDefault: ItemRole
-): NormalizedEmit {
+  emitAudience: EmitAudience | undefined,
+  ctx: BlockContext
+): ResolvedEmitConfig {
+  const audience = emitAudience ?? resolvePositionDefault(ctx);
+  const visibility = AUDIENCE_TO_VISIBILITY[audience];
+
   if (emit === false) {
-    return { reasoning: false, messages: false, toolCalls: false };
+    return { reasoning: false, messages: false, tools: false, visibility };
   }
 
-  const blockDefault: ItemRole = blockItemRole ?? positionDefault;
-
-  if (emit === "external" || emit === "internal" || emit === "trace") {
-    return { reasoning: emit, messages: emit, toolCalls: emit };
+  if (emit === true || emit === undefined) {
+    return { reasoning: true, messages: true, tools: true, visibility };
   }
 
   return {
-    reasoning: resolveEmitLevel(emit?.reasoning, blockDefault),
-    messages: resolveEmitLevel(emit?.messages, blockDefault),
-    toolCalls: resolveEmitLevel(emit?.toolCalls, blockDefault),
+    reasoning: emit.reasoning !== false,
+    messages: emit.messages !== false,
+    tools: emit.tools !== false,
+    visibility,
   };
 }
 
 /**
- * Computes the position-based default role for a generator's emissions.
+ * Computes the position-based default audience for a generator's emissions.
  * Tool-call children (parent is a generator) and work-phase executions
- * default to `"trace"`; everything else defaults to `"external"`.
+ * default to `"trace"` (neither client nor history); everything else
+ * defaults to `"client"` (full visibility).
  *
  * @internal Exported for unit testing. Not a public API.
  */
-export function resolvePositionDefaultRole(ctx: BlockContext): ItemRole {
+export function resolvePositionDefault(ctx: BlockContext): EmitAudience {
   if (ctx.parent?.kind === "generator") {
     return "trace";
   }
   if (ctx._blockIdentity?.phase === "work") {
     return "trace";
   }
-  return "external";
+  return "client";
 }
 
 /**
@@ -964,7 +1001,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
   blockName: string,
   maxSteps: number,
   ctx: BlockContext,
-  emitConfig: NormalizedEmit,
+  emitConfig: ResolvedEmitConfig,
   prepareStep?: PrepareStepFn,
   resolvedProviderOpts?: Record<string, unknown>
 ): Promise<TOutput> {
@@ -978,9 +1015,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     phase: identity?.phase ?? ("main" as const)
   };
   const ownedBy = identity?.ownedBy;
-  const reasoningRole = emitConfig.reasoning;
-  const messagesRole = emitConfig.messages;
-  const toolCallsRole = emitConfig.toolCalls;
+  const { reasoning: emitReasoning, messages: emitMessages, tools: emitTools, visibility } = emitConfig;
   let reasoningAccumulated = "";
 
   // Reasoning and message items are emitted lazily so their order in the
@@ -1006,7 +1041,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     prepareStep
   })) {
     if (chunk.type === "reasoning_delta" && chunk.reasoningDelta !== undefined) {
-      if (reasoningRole !== false) {
+      if (emitReasoning) {
         // On first reasoning delta, emit in-progress reasoning item
         if (!reasoningStarted) {
           reasoningStarted = true;
@@ -1015,7 +1050,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
             type: "reasoning" as const,
             status: "in_progress" as const,
             transient: false,
-            itemRole: reasoningRole,
+            client: visibility.client,
+            history: visibility.history,
             requestId: ctx.request.identity.id,
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
@@ -1046,7 +1082,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
       // accumulate text silently so the schema validation still runs.
       if (!messageEmitted) {
         // Close reasoning item if it was started
-        if (reasoningStarted && reasoningRole !== false) {
+        if (reasoningStarted && emitReasoning) {
           await ctx.response.emit({
             type: "content.done",
             itemId: reasoningItemId,
@@ -1058,7 +1094,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
             type: "reasoning" as const,
             status: "completed" as const,
             transient: false,
-            itemRole: reasoningRole,
+            client: visibility.client,
+            history: visibility.history,
             requestId: ctx.request.identity.id,
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
@@ -1069,14 +1106,15 @@ async function executeStreamingGeneration<TInput, TOutput>(
           await ctx.response.emit({ type: "item.done", item: completedReasoning });
         }
 
-        if (messagesRole !== false) {
+        if (emitMessages) {
           messageItem = {
             id: itemId,
             type: "message" as const,
             role: "assistant" as const,
             status: "in_progress" as const,
             transient: false,
-            itemRole: messagesRole,
+            client: visibility.client,
+            history: visibility.history,
             requestId: ctx.request.identity.id,
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
@@ -1095,7 +1133,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         messageEmitted = true;
       }
       accumulated += chunk.textDelta;
-      if (messagesRole !== false) {
+      if (emitMessages) {
         await ctx.response.emit({
           type: "content.delta",
           itemId,
@@ -1105,15 +1143,16 @@ async function executeStreamingGeneration<TInput, TOutput>(
       }
     } else if (chunk.type === "tool_input_start" && chunk.toolInput !== undefined) {
       // Emit a status item so clients see progress during provider tool execution.
-      // Gated by emit.toolCalls — worker generators suppress these to avoid flooding.
-      if (toolCallsRole !== false) {
+      // Gated by emit.tools — worker generators suppress these to avoid flooding.
+      if (emitTools) {
         const toolName = chunk.toolInput.toolName;
         const statusItem = {
           id: `item_status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
           type: "status" as const,
           status: "completed" as const,
           transient: true,
-          itemRole: toolCallsRole,
+          client: visibility.client,
+          history: visibility.history,
           requestId: ctx.request.identity.id,
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
@@ -1128,15 +1167,16 @@ async function executeStreamingGeneration<TInput, TOutput>(
       // Emit tool call progress so clients can show incremental tool call args.
       // Each delta is emitted as a transient status update — the full tool call
       // lifecycle (start → args → result) is tracked by toolCallId.
-      // Gated by emit.toolCalls — worker generators suppress these to avoid flooding.
-      if (toolCallsRole !== false) {
+      // Gated by emit.tools — worker generators suppress these to avoid flooding.
+      if (emitTools) {
         const delta = chunk.toolCallDelta;
         const toolCallItem = {
           id: `item_toolcall_${delta.toolCallId}`,
           type: "tool_call_progress" as const,
           status: "in_progress" as const,
           transient: true,
-          itemRole: toolCallsRole,
+          client: visibility.client,
+          history: visibility.history,
           requestId: ctx.request.identity.id,
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
@@ -1151,15 +1191,16 @@ async function executeStreamingGeneration<TInput, TOutput>(
       }
     } else if (chunk.type === "tool_result" && chunk.toolResult !== undefined) {
       // Emit completed tool result so clients see the outcome of tool execution.
-      // Gated by emit.toolCalls — worker generators suppress these to avoid flooding.
-      if (toolCallsRole !== false) {
+      // Gated by emit.tools — worker generators suppress these to avoid flooding.
+      if (emitTools) {
         const tr = chunk.toolResult;
         const toolResultItem = {
           id: `item_toolresult_${tr.toolCallId}`,
           type: "tool_call_progress" as const,
           status: "completed" as const,
           transient: true,
-          itemRole: toolCallsRole,
+          client: visibility.client,
+          history: visibility.history,
           requestId: ctx.request.identity.id,
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
@@ -1176,8 +1217,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
       // Sources are citations attached to the assistant's message. They share
       // the messages role; when messages are suppressed we demote to trace so
       // devtools still see the citation without leaking it to the UI.
-      const sourceRole: ItemRole = messagesRole !== false ? messagesRole : "trace";
-      const sourceItem = buildSourceItem(chunk.source, ctx, provenance, sourceRole);
+      const sourceVis: ItemVisibility = emitMessages ? visibility : { client: false, history: false };
+      const sourceItem = buildSourceItem(chunk.source, ctx, provenance, sourceVis);
       await ctx.response.emit({ type: "item.added", item: sourceItem });
       await ctx.response.emit({ type: "item.done", item: sourceItem });
     } else if (chunk.type === "finish") {
@@ -1187,7 +1228,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
 
   // If no text deltas arrived, still finalize reasoning and emit message
   if (!messageEmitted) {
-    if (reasoningStarted && reasoningRole !== false) {
+    if (reasoningStarted && emitReasoning) {
       await ctx.response.emit({
         type: "content.done",
         itemId: reasoningItemId,
@@ -1199,7 +1240,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
         type: "reasoning" as const,
         status: "completed" as const,
         transient: false,
-        itemRole: reasoningRole,
+        client: visibility.client,
+        history: visibility.history,
         requestId: ctx.request.identity.id,
         itemIndex: getEmitterItemCount(ctx.response),
         provenance,
@@ -1209,14 +1251,15 @@ async function executeStreamingGeneration<TInput, TOutput>(
       };
       await ctx.response.emit({ type: "item.done", item: completedReasoning });
     }
-    if (messagesRole !== false) {
+    if (emitMessages) {
       messageItem = {
         id: itemId,
         type: "message" as const,
         role: "assistant" as const,
         status: "in_progress" as const,
         transient: false,
-        itemRole: messagesRole,
+        client: visibility.client,
+        history: visibility.history,
         requestId: ctx.request.identity.id,
         itemIndex: getEmitterItemCount(ctx.response),
         provenance,
@@ -1244,7 +1287,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
   }
 
   // Emit content.done and completed item (skip when messages are suppressed)
-  if (messagesRole !== false && messageItem) {
+  if (emitMessages && messageItem) {
     await ctx.response.emit({
       type: "content.done",
       itemId,
@@ -1395,7 +1438,7 @@ export function generator<
     };
   }
 
-  return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
+  const definition = buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "generator",
     config: normalizedConfig as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     declaredResources,
@@ -1441,7 +1484,8 @@ export function generator<
         }
       }
 
-      const historyValues = await resolveSlotValues(normalizedConfig.history, input, ctx);
+      const historySlot = normalizeHistorySlot(normalizedConfig.history);
+      const historyValues = await resolveSlotValues(historySlot, input, ctx);
       const userValues = await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
 
       // Build initial system prefix (prompt + context + tool descriptions)
@@ -1524,13 +1568,8 @@ export function generator<
       // Streaming path: text output + model supports streaming.
       // Use streaming when messages are enabled OR when tools are present (so tool
       // status events flow to the client even when message text is suppressed).
-      const positionDefaultRole = resolvePositionDefaultRole(ctx);
-      const emitConfig = normalizeEmit(
-        normalizedConfig.emit,
-        normalizedConfig.itemRole,
-        positionDefaultRole
-      );
-      const messagesEnabled = emitConfig.messages !== false;
+      const emitConfig = resolveEmitConfig(normalizedConfig.emit, normalizedConfig.emitAudience, ctx);
+      const messagesEnabled = emitConfig.messages;
       const hasTools = compiledTools.length > 0 || resolvedProviderTools.length > 0;
       const canStream = (messagesEnabled || hasTools) && isTextOutputSchema(outputSchema) && model.stream !== undefined;
 
@@ -1580,11 +1619,11 @@ export function generator<
           parentBlockInstanceId: sourceIdentity?.parentBlockInstanceId,
           phase: sourceIdentity?.phase ?? ("main" as const)
         };
-        const nsSourceRole: ItemRole = emitConfig.messages !== false
-          ? emitConfig.messages
-          : "trace";
+        const nsSourceVis: ItemVisibility = emitConfig.messages
+          ? emitConfig.visibility
+          : { client: false, history: false };
         for (const source of generation.sources) {
-          const sourceItem = buildSourceItem(source, ctx, sourceProv, nsSourceRole);
+          const sourceItem = buildSourceItem(source, ctx, sourceProv, nsSourceVis);
           await ctx.response.emit({ type: "item.added", item: sourceItem });
           await ctx.response.emit({ type: "item.done", item: sourceItem });
         }
@@ -1611,7 +1650,7 @@ export function generator<
       // For text-output generators, emit an assistant MessageItem so the
       // output appears in the stream. Suppress entirely when
       // emit.messages is false; stamp the resolved role otherwise.
-      if (emitConfig.messages !== false && isTextOutputSchema(outputSchema) && typeof output === "string") {
+      if (emitConfig.messages && isTextOutputSchema(outputSchema) && typeof output === "string") {
         const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         const outputIdentity = ctx._blockIdentity;
         const provenance = {
@@ -1627,7 +1666,8 @@ export function generator<
           role: "assistant" as const,
           status: "completed" as const,
           transient: false,
-          itemRole: emitConfig.messages,
+          client: emitConfig.visibility.client,
+          history: emitConfig.visibility.history,
           requestId: ctx.request.identity.id,
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
@@ -1642,4 +1682,12 @@ export function generator<
       return output;
     }
   });
+
+  if (normalizedConfig.emitAudience) {
+    const vis = AUDIENCE_TO_VISIBILITY[normalizedConfig.emitAudience];
+    definition.client = vis.client;
+    definition.history = vis.history;
+  }
+
+  return definition;
 }

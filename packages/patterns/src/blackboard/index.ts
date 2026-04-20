@@ -344,7 +344,7 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         iteration: controlState.iteration,
         specialist: controlState.currentSpecialist ?? null,
         done: controlState.done,
-      } as unknown as Record<string, unknown>, { key: name }).done();
+      } as unknown as Record<string, unknown>, { key: name });
       return input;
     },
   });

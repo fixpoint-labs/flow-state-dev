@@ -12,7 +12,7 @@
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import { emitPlanMeta, emitTaskUpdate } from "../shared/plan";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
-import type { GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
+import type { GeneratorHistoryConfig, GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   supervisorInputSchema,
@@ -99,7 +99,7 @@ export interface SupervisorConfig<
   context?: GeneratorSlot<any, any>;
 
   /** History slot applied to default planner and synthesizer. */
-  history?: GeneratorSlot<any, any>;
+  history?: GeneratorHistoryConfig<any, any>;
 
   /** Capabilities to install on default blocks (planner, reviewer, synthesizer). */
   uses?: UsesSlot;
@@ -250,7 +250,7 @@ export const applyReview = handler({
 
 function buildDefaultPlanner(name: string, opts?: {
   context?: GeneratorSlot<any, any>;
-  history?: GeneratorSlot<any, any>;
+  history?: GeneratorHistoryConfig<any, any>;
   uses?: UsesSlot;
   instructions?: InstructionsSlot;
 }) {
@@ -375,7 +375,7 @@ function buildDefaultSynthesizer(
   outputSchema?: ZodTypeAny,
   opts?: {
     context?: GeneratorSlot<any, any>;
-    history?: GeneratorSlot<any, any>;
+    history?: GeneratorHistoryConfig<any, any>;
     uses?: UsesSlot;
     instructions?: InstructionsSlot;
   }

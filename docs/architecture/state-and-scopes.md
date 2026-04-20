@@ -132,12 +132,12 @@ ctx.session.items.client()
 ctx.session.items.client({ limit: 50 })
 
 // LLM view: messages suitable for model context (async)
-await ctx.session.items.llm()
-await ctx.session.items.llm({ limit: 20 })
-await ctx.session.items.llm({ limit: { tokens: 20_000 } })
+await ctx.session.items.history()
+await ctx.session.items.history({ limit: 20 })
+await ctx.session.items.history({ limit: { tokens: 20_000 } })
 ```
 
-The LLM view converts completed request items with `llm` or `both` visibility into `{ role, content }` message pairs for model context assembly.
+The history view converts completed request items with `history: true` into `{ role, content }` message pairs for model context assembly.
 
 ## Session Journal
 
@@ -223,7 +223,7 @@ const pipeline = sequencer({ name: "chat", inputSchema })
 
 Internally it is a sequencer with two steps: a generator that produces the title, and a handler that calls `setMetadata` only if the title has changed. The whole block is marked `transient: true` so it produces no visible items in the stream.
 
-`ctx.session.items.llm()` includes items from the current in-flight request, so the title generator sees the just-completed generator output even on the first message of a session.
+`ctx.session.items.history()` includes items from the current in-flight request, so the title generator sees the just-completed generator output even on the first message of a session.
 
 ## Persistence Adapters
 
@@ -266,5 +266,5 @@ For full type signatures, resource/clientData details, and edge cases, see `../p
 
 ### Token-aware MessageLimit
 
-`session.items.llm({ limit: { tokens: N } })` now performs token-aware packing from newest to oldest using the configured flow `tokenCounter` and the active resolved model ID from generator execution.
+`session.items.history({ limit: { tokens: N } })` now performs token-aware packing from newest to oldest using the configured flow `tokenCounter` and the active resolved model ID from generator execution.
 

@@ -193,7 +193,7 @@ const detect = generator({
   }),
   prompt: "Analyze the tone of the AI response. Flag condescending, dismissive, or unprofessional language.",
   user: (input) => `User: ${input.userInput}\n\nAI: ${input.response}`,
-  emit: { messages: false, reasoning: false, toolCalls: false },
+  emit: { messages: false, reasoning: false, tools: false },
 });
 
 const format = handler({

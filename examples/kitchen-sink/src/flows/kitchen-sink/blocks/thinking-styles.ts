@@ -9,7 +9,7 @@
  * blackboard, reactive-blackboard) and the router that dispatches between them.
  */
 import { generator, handler, router, sequencer, utility } from "@flow-state-dev/core";
-import type { GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
+import type { GeneratorHistoryConfig, GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { supervisor } from "@flow-state-dev/patterns/supervisor";
@@ -242,7 +242,7 @@ export interface ThinkingStyleRouterConfig {
   assistantGenerator: BlockDefinition<any, any>;
   /** Model ID string or a selectModel() resolver. */
   modelId: string | ((input: any, ctx: any) => any);
-  history?: GeneratorSlot<any, any>;
+  history?: GeneratorHistoryConfig<any, any>;
   context: GeneratorSlot<any, any>;
   /** Capabilities to install on all default pattern blocks. */
   uses?: UsesSlot;
@@ -284,7 +284,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     context,
     ...(uses ? { uses: uses as any } : {}),
     search: true,
-    emit: { messages: false, toolCalls: false },
+    emit: { messages: false, tools: false },
     prompt: [
       "You are a focused task executor within a supervisor workflow.",
       "Complete the assigned task concisely and accurately.",
@@ -337,7 +337,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       context,
       history: config.history,
       search: true,
-      emit: { messages: false, toolCalls: false },
+      emit: { messages: false, tools: false },
       prompt: specConfig.prompt,
       user: (_input: any, ctx: any) => {
         const state = ctx.session.resources.blackboard.state;

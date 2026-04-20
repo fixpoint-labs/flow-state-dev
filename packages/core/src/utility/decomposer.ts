@@ -1,5 +1,5 @@
 import { z, type ZodTypeAny } from "zod";
-import type { GeneratorConfig, GeneratorSlot } from "../blocks";
+import type { GeneratorConfig, GeneratorHistoryConfig, GeneratorSlot } from "../blocks";
 import { generator } from "../blocks";
 
 export const decomposerTaskSchema = z.object({
@@ -22,7 +22,7 @@ export interface DecomposerConfig<
   /** Additional context injected into the system prompt before decomposition. */
   context?: GeneratorSlot;
   /** History slot — provides conversation history so the decomposer can resolve references. */
-  history?: GeneratorSlot;
+  history?: GeneratorHistoryConfig;
 }
 
 function toUserContent(input: unknown): string {

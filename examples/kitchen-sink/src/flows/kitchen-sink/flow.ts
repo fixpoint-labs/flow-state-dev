@@ -103,7 +103,7 @@ const assistantGenerator = generator({
   context: [voiceContext],
 
   inputSchema,
-  history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
+  history: { limit: 8 },
   user: (input) => input.message,
   search: true,
   maxIterations: 20,
@@ -138,7 +138,7 @@ const modeInstructions = (_input: any, ctx: any): string => {
 const { thinkingStyleRouter } = createThinkingStyleRouter({
   assistantGenerator,
   modelId: (_input: any, ctx: any) => ctx.session.state.resolvedModel ?? MODEL_ID,
-  history: (_input: any, ctx: any) => ctx.session.items.llm({ limit: 8 }),
+  history: { limit: 8 },
   context: [mem.contextFormatter, artifactListContext],
   uses: [featuresCapability],
   instructions: modeInstructions,
@@ -298,12 +298,10 @@ const biasCheck = sequencer({ name: "bias-check", inputSchema: z.string() })
         overallScore: number;
       };
       if (data.surfacedResults.length > 0) {
-        ctx
-          .emitComponent(
-            "audit-annotation",
-            data as unknown as Record<string, unknown>,
-          )
-          .done();
+        ctx.emitComponent(
+          "audit-annotation",
+          data as unknown as Record<string, unknown>,
+        );
       }
     }
   });

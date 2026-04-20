@@ -136,7 +136,8 @@ describe("execution trace system", () => {
       const rootItem = blockOutputItems.find((i) => i.blockName === "simple-handler");
       expect(rootItem).toBeDefined();
       expect(rootItem!.blockKind).toBe("handler");
-      expect(rootItem!.trace).toBe(true);
+      expect(rootItem!.client).toBe(false);
+      expect(rootItem!.history).toBe(false);
       expect(rootItem!.startedAt).toBeDefined();
       expect(rootItem!.completedAt).toBeDefined();
       expect(rootItem!.duration).toBeGreaterThanOrEqual(0);
@@ -165,7 +166,7 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const traceItems = items.filter(
-        (i) => i.type === "block_output" && i.trace === true
+        (i) => i.type === "block_output" && i.client === false
       ) as BlockOutputItem[];
 
       // At least the root pipeline + nested handlers should produce trace items.
@@ -229,7 +230,7 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const traceItems = items.filter(
-        (i) => i.type === "block_output" && i.trace === true
+        (i) => i.type === "block_output" && i.client === false
       ) as BlockOutputItem[];
 
       expect(traceItems.length).toBeGreaterThanOrEqual(1);
@@ -277,7 +278,8 @@ describe("execution trace system", () => {
       const decision = routerDecisions[0]!;
       expect(decision.routerName).toBe("test-router");
       expect(decision.selectedRoute).toBe("handler-a");
-      expect(decision.trace).toBe(true);
+      expect(decision.client).toBe(false);
+      expect(decision.history).toBe(false);
     });
 
     it("selects the correct route based on input", async () => {
@@ -328,13 +330,13 @@ describe("execution trace system", () => {
         (i) => i.type === "block_output"
       ) as BlockOutputItem[];
 
-      // All block_output items from lifecycle tracing should have trace: true.
       for (const item of blockOutputItems) {
-        expect(item.trace).toBe(true);
+        expect(item.client).toBe(false);
+        expect(item.history).toBe(false);
       }
     });
 
-    it("marks all router_decision items with trace: true", async () => {
+    it("marks all router_decision items as devtool-only", async () => {
       const flow = createRouterFlow();
       const stores = createInMemoryStores();
       const response = createResponseEmitter({ requestId: "req_rd_filter", now: () => Date.now() });
@@ -354,7 +356,8 @@ describe("execution trace system", () => {
       const items = response.getItems();
       const routerDecisions = items.filter((i) => i.type === "router_decision");
       for (const item of routerDecisions) {
-        expect(item.trace).toBe(true);
+        expect(item.client).toBe(false);
+        expect(item.history).toBe(false);
       }
     });
 
@@ -470,7 +473,7 @@ describe("execution trace system", () => {
         stores
       });
 
-      const llmMessages = await ctx.session.items.llm();
+      const llmMessages = await ctx.session.items.history();
 
       // Should contain the two messages, plus the tool-call/tool-result pair.
       // AI SDK v6 requires tool results to be preceded by an assistant message
@@ -545,7 +548,7 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const traceItems = items.filter(
-        (i) => i.type === "block_output" && i.trace === true
+        (i) => i.type === "block_output" && i.client === false
       ) as BlockOutputItem[];
 
       // Nested handler trace items should have parentBlockInstanceId set.

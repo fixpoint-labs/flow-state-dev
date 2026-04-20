@@ -30,7 +30,7 @@ type ItemRendererProps = {
   item: OutputItem;
 };
 
-const TIER_3_TYPES = new Set(["context", "state_change", "resource_change", "sequencer_state_snapshot"]);
+const TIER_3_TYPES = new Set(["state_change", "resource_change", "sequencer_state_snapshot"]);
 
 export const ItemRenderer = memo(function ItemRenderer({ item }: ItemRendererProps) {
   const { isDebugMode } = useDebug();
@@ -110,8 +110,6 @@ function ItemContent({ item }: { item: OutputItem }) {
       return <ComponentItemView item={item} />;
     case "container":
       return <ContainerItemView item={item} />;
-    case "context":
-      return <ContextItemView item={item} />;
     case "state_change":
       return <StateChangeItemView item={item} />;
     case "resource_change":

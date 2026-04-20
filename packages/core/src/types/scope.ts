@@ -36,7 +36,7 @@ export type ItemQuery = {
 export type SessionItemViews = {
   all: (query?: ItemQuery) => SessionItem[];
   client: (query?: ItemQuery) => SessionItem[];
-  llm: (query?: ItemQuery) => Promise<LLMMessage[]>;
+  history: (query?: ItemQuery) => Promise<LLMMessage[]>;
 };
 
 export type Message = {
@@ -57,7 +57,7 @@ export type MessageQuery = {
 
 export type MessageViews = {
   ui: (query?: MessageQuery) => Message[];
-  llm: (query?: MessageQuery) => LLMMessage[];
+  history: (query?: MessageQuery) => LLMMessage[];
 };
 
 export type JournalEntry = {

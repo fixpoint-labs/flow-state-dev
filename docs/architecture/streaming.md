@@ -2,6 +2,8 @@
 
 Flow State Dev uses SSE (Server-Sent Events) for real-time streaming. The streaming model is built on **items** (persisted artifacts) and **content** (chunks within items).
 
+For the complete item type registry, classification rules, and rendering contracts, see [Items](./items.md).
+
 ## Stream Architecture
 
 ```
@@ -34,7 +36,6 @@ Items are the canonical persisted artifacts. Their type determines audience rout
 | `message` | Yes | Yes | Conversational content (user/assistant/system) |
 | `reasoning` | Yes | Yes | Model reasoning/thinking traces |
 | `component` | Yes | No | Structured data rendered by registered component |
-| `context` | No | Yes | Hidden context for LLMs only |
 | `container` | Yes | No | Visual grouping (sequencer/router frame) |
 | `status` | Yes | No | Transient progress updates |
 | `state_change` | Yes | No | Scope state mutation record |
@@ -48,9 +49,9 @@ Items are the canonical persisted artifacts. Their type determines audience rout
 
 For `block_output`: When the item has `toolCall` metadata (legacy tool invocation by a generator), the output enters LLM context as the tool result. Otherwise, it's internal/devtools only. New tool invocations emit `block_tool_output` items instead.
 
-### Trace Flag
+### Visibility Flags
 
-Items may carry `trace: true` on `OutputItemBase` to mark them as structural lifecycle metadata. Trace items are always excluded from LLM context (filtered by `itemToLLMMessage`) but remain visible in the devtool trace tree for debugging and performance analysis. Currently, `block_output` items from lifecycle tracing, `router_decision` items, and `sequencer_state_snapshot` items are marked as trace. Tool result items (`block_tool_output`) are never trace-flagged because they must enter LLM context for multi-turn tool calling.
+Items carry `client?: boolean` and `history?: boolean` flags that control whether they're sent to connected clients and whether they enter LLM conversation history. When unset, `resolveItemVisibility()` resolves from per-type defaults in `ITEM_TYPE_DEFAULTS`. Structural items (`block_output`, `router_decision`, `sequencer_state_snapshot`) default to both false — they're devtool-only.
 
 ### Container Ownership (`ownedBy`)
 

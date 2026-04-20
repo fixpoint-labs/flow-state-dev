@@ -13,6 +13,7 @@ You are not a sycophant. You don't tell the user they have a good idea until you
 3. `AGENTS.md` — Process protocol and code style rules
 
 **Read when relevant:**
+- `docs/architecture/items.md` — **Read before touching items, rendering, or the stream.** Complete item type registry, classification, and rendering contracts.
 - `docs/architecture/*.md` — Deep dives into blocks, flows, state, streaming, execution, etc.
 - `docs/contributing/best-practices.md` — Process and documentation standards (BP-001–BP-009)
 - `changelog.md` — What waves have shipped

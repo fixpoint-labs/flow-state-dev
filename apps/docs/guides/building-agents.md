@@ -87,7 +87,7 @@ const respond = generator({
   inputSchema: z.object({ message: z.string(), context: z.string() }),
   context: (input) => input.context,
   user: (input) => input.message,
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: true,
 });
 
 const trackTopic = handler({
@@ -95,7 +95,7 @@ const trackTopic = handler({
   sessionStateSchema: z.object({ previousTopics: z.array(z.string()).default([]) }),
   execute: async (_input, ctx) => {
     // Extract topic from the latest assistant message
-    const lastMessage = ctx.session.items.llm().at(-1);
+    const lastMessage = ctx.session.items.history().at(-1);
     if (lastMessage) {
       await ctx.session.pushState("previousTopics", "conversation-turn");
     }
@@ -147,7 +147,7 @@ const agent = generator({
   model: "preset/capable",
   prompt: "You are a research assistant. Search documentation and save notes as needed.",
   inputSchema: z.object({ message: z.string() }),
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: true,
   user: (input) => input.message,
   tools: [searchDocs, createNote],
   maxIterations: 10,
@@ -252,7 +252,7 @@ const analyzeData = handler({
     ctx.emitComponent("analysis-card", {
       summary: result.summary,
       charts: result.charts,
-    }).done();
+    });
 
     return { summary: result.summary, rowCount: data.length };
   },

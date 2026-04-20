@@ -181,7 +181,7 @@ describe("createExecutionContext", () => {
       stores
     });
 
-    const messages = await ctx.session.items.llm({ limit: { tokens: 28 } });
+    const messages = await ctx.session.items.history({ limit: { tokens: 28 } });
     expect(messages).toHaveLength(1);
   });
 

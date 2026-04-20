@@ -78,6 +78,7 @@ const sidebars: SidebarsConfig = {
       label: "Items",
       items: [
         "streaming/overview",
+        "streaming/emitting-items",
         "streaming/items",
       ],
     },

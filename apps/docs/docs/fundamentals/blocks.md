@@ -45,7 +45,7 @@ const agent = generator({
   model: "preset/fast",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: true,
   user: (input) => input.message,
   tools: [searchTool, createArtifactTool],
   emit: { reasoning: true, messages: true },
@@ -60,15 +60,15 @@ What the framework handles for you:
 
 #### Controlling what gets emitted
 
-Each emitted item has a visibility role — `external`, `internal`, or `trace` — that controls whether it reaches the user-facing UI and the LLM's history:
+Each emitted item carries `client` and `history` flags that control whether it reaches the user-facing UI and the LLM's conversation history:
 
-| Role | UI | LLM History | DevTool |
+| Audience | UI | LLM History | DevTool |
 |--|--|--|--|
-| `external` | Yes | Yes | Yes |
-| `internal` | No | Yes | Yes |
-| `trace` | No | No | Yes |
+| `"client"` | Yes | Yes | Yes |
+| `"history"` | No | Yes | Yes |
+| `"trace"` | No | No | Yes |
 
-The `emit` config selects the role per item type (or suppresses emission entirely):
+The `emitAudience` config sets the default audience for all items a generator emits. The `emit` config controls which item types are emitted (or suppresses emission entirely):
 
 ```ts
 // Suppress all streaming output — the generator runs silently
@@ -77,24 +77,25 @@ const silent = generator({ emit: false, /* ... */ });
 // Suppress message items but keep tool call status events
 const workerGen = generator({ emit: { messages: false }, /* ... */ });
 
-// Keep messages in LLM history but hide from UI (replaces `messages: 'reasoning'`)
-const thinker = generator({ emit: { messages: "internal" }, /* ... */ });
+// Keep messages in LLM history but hide from client UI
+const thinker = generator({ emitAudience: "history", /* ... */ });
 
-// Background researcher: everything goes to DevTool trace only
-const researcher = generator({ emit: "trace", /* ... */ });
+// Devtool-only: suppress all output from client and history
+const researcher = generator({ emitAudience: "trace", /* ... */ });
 ```
 
-| Flag | Values | Default | Effect |
+| Config | Values | Default | Effect |
 |------|--------|---------|--------|
-| `reasoning` | `true` / `false` / `ItemRole` | block default | `false` suppresses reasoning items. A role string stamps that role. |
-| `messages` | `true` / `false` / `ItemRole` | block default | `false` suppresses assistant messages. A role string controls visibility. |
-| `toolCalls` | `true` / `false` / `ItemRole` | block default | `false` suppresses tool status items during the tool loop. |
+| `emitAudience` | `"client"` / `"history"` / `"trace"` | position-based | Sets the default audience for all items. `"client"` = both client and history (default for main phase). `"history"` = LLM history only. `"trace"` = devtool only. |
+| `reasoning` | `true` / `false` | block default | `false` suppresses reasoning items. |
+| `messages` | `true` / `false` | block default | `false` suppresses assistant messages. |
+| `tools` | `true` / `false` | block default | `false` suppresses tool status items during the tool loop. |
 
-Setting `emit: false` is shorthand for suppressing all three. `emit: "internal"` or `emit: "trace"` are shorthands for stamping the same role on every item type. The block-level `itemRole` config sets the default role for all emissions; per-type `emit` values override it.
+Setting `emit: false` is shorthand for suppressing all three. The `emitAudience` config sets the default visibility for all emissions; per-type `emit` values override it.
 
 When `messages` is `false` but the generator has tools, the streaming path is still used so tool call status events reach the client — only the text output items are suppressed.
 
-This is particularly useful for worker generators inside orchestration patterns (supervisor, coordinator) where you want tool progress visible but don't want each sub-task's text polluting the main conversation stream. With roles you can keep the worker's findings in LLM context (`messages: "internal"`) without showing them to the user.
+This is particularly useful for worker generators inside orchestration patterns (supervisor, coordinator) where you want tool progress visible but don't want each sub-task's text polluting the main conversation stream. You can keep the worker's findings in LLM context (`emitAudience: "history"`) without showing them to the user.
 
 #### Any block can be a tool
 

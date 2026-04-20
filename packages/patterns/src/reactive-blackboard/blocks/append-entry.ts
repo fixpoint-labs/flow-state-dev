@@ -65,13 +65,11 @@ export function createAppendEntry(
       // track entries in real-time. Status items are transient and filtered
       // by useSession, but component items survive and are visible to
       // useContainerItems.
-      ctx
-        .emitComponent("rb-entry", {
-          type: entryType,
-          topic: entryTopic,
-          body: (entry as Record<string, unknown>).body,
-        }, { key: `entry-${controlState.emissionCount}` })
-        .done();
+      ctx.emitComponent("rb-entry", {
+        type: entryType,
+        topic: entryTopic,
+        body: (entry as Record<string, unknown>).body,
+      }, { key: `entry-${controlState.emissionCount}` });
 
       return entry;
     },

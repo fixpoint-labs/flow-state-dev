@@ -55,18 +55,15 @@ const myGenerator = generator({
   tools: [myTool],
   search: true,
   context: [myContextFn],
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: true,
   repair: { mode: "auto", maxAttempts: 3 },
 });
 ```
 
 **Emit config:**
 
-- `emit?: false | ItemRole | { reasoning?: boolean | ItemRole; messages?: boolean | ItemRole; toolCalls?: boolean | ItemRole }` — Control which items the generator emits and at what visibility. `false` suppresses all emissions (block still runs). A role string (`"external" | "internal" | "trace"`) applies that role to every item type. The object form overrides per-type: `true` = block default, `false` = suppress, role string = explicit role. Precedence (high → low): per-type value → top-level value → block-level `itemRole` → position-based default (main phase → `external`, tool-call / work phase → `trace`). When `messages: false` but tools are present, streaming is still used for tool call status events.
-
-**Item visibility:**
-
-- `itemRole?: "external" | "internal" | "trace"` — block-level default role for all items this block emits. Use `"internal"` for helpers whose output should feed the next turn's LLM context but stay hidden from the UI. Use `"trace"` for blocks whose output is only interesting in DevTool (e.g., debug synthesis). See `ItemRole` in `@flow-state-dev/core/items`.
+- `emitAudience?: "client" | "history" | "trace"` — Generator-only. Sets the default audience for all items the generator emits. `"client"` = sent to both client and LLM history (default for main-phase generators). `"history"` = enters LLM history but hidden from client UI. `"trace"` = devtool-only. Precedence (high → low): per-type `emit` value → `emitAudience` → position-based default (main phase → `"client"`, tool-call / work phase → `"trace"`).
+- `emit?: false | { reasoning?: boolean; messages?: boolean; tools?: boolean }` — Control which items the generator emits. `false` suppresses all emissions (block still runs). The object form overrides per-type: `true` = block default, `false` = suppress. When `messages: false` but tools are present, streaming is still used for tool call status events.
 
 **Search config:**
 
