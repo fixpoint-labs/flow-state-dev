@@ -51,7 +51,7 @@ For `block_output`: When the item has `toolCall` metadata (legacy tool invocatio
 
 ### Visibility Flags
 
-Items carry `client?: boolean` and `history?: boolean` flags that control whether they're sent to connected clients and whether they enter LLM conversation history. When unset, `resolveItemVisibility()` resolves from per-type defaults in `ITEM_TYPE_DEFAULTS`. Structural items (`block_output`, `router_decision`, `sequencer_state_snapshot`) default to both false — they're devtool-only. The legacy `trace: true` and `itemRole` fields are still supported via backward-compat mapping in `resolveItemVisibility()`.
+Items carry `client?: boolean` and `history?: boolean` flags that control whether they're sent to connected clients and whether they enter LLM conversation history. When unset, `resolveItemVisibility()` resolves from per-type defaults in `ITEM_TYPE_DEFAULTS`. Structural items (`block_output`, `router_decision`, `sequencer_state_snapshot`) default to both false — they're devtool-only.
 
 ### Container Ownership (`ownedBy`)
 

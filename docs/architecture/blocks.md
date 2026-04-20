@@ -51,13 +51,13 @@ interface BlockContext {
     | { status: "failed"; error: Error };
 
   // Item emission
-  emitMessage(text: string): MessageHandle;
-  emitComponent(component: string, data: Record<string, unknown>): ComponentHandle;
+  emitMessage(text: string, options?: { client?: boolean; history?: boolean }): void;
+  emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; client?: boolean; history?: boolean }): void;
   emitStatus(message: string): void;
 }
 ```
 
-Each emitted item has two visibility flags — `client` (sent to the UI) and `history` (included in LLM context) — that default per item type. The block's `client`/`history` config overrides these defaults for all emissions; generators can override per-type via `emit`. See the [item visibility](#item-visibility) section for the full model.
+Each emitted item has two visibility flags — `client` (sent to the UI) and `history` (included in LLM context) — that default per item type. Generators control defaults via `emitAudience` and can suppress per-type via `emit`. See the [item visibility](#item-visibility) section for the full model.
 
 Blocks are **silent by default** — if a block doesn't explicitly emit via `ctx` methods, it produces nothing visible to the client or LLM.
 
@@ -356,11 +356,11 @@ To suppress an item type entirely (no item at all, not even for observability), 
 
 ### Position defaults
 
-The position of a block in the execution graph determines the default visibility for items it emits:
+The position of a block in the execution graph determines the default audience for items it emits:
 
-- **Main phase** (the primary generator chain of a request): `client: true, history: true`.
-- **Tool call** (a generator executed as a tool by another generator): `client: false, history: false`.
-- **Work phase** (background / scoped work): `client: false, history: false`.
+- **Main phase** (the primary generator chain of a request): defaults to `"client"` — items go to both client and LLM history.
+- **Tool call** (a generator executed as a tool by another generator): defaults to `"trace"` — items are devtool-only.
+- **Work phase** (background / scoped work): defaults to `"trace"` — items are devtool-only.
 
 A generator's `emitAudience` overrides the position-based default:
 

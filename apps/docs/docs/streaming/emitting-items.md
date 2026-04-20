@@ -14,22 +14,11 @@ Generators emit messages automatically as they stream. But blocks can also emit 
 const notify = handler({
   name: "notify",
   execute: async (input, ctx) => {
-    ctx.emitMessage("Your file has been saved.").done();
+    ctx.emitMessage("Your file has been saved.");
     return input;
   },
 });
 ```
-
-The returned handle supports streaming for longer content:
-
-```ts
-const handle = ctx.emitMessage("Starting analysis");
-handle.appendDelta("...found 3 issues");
-handle.appendDelta("...all resolved");
-handle.done();
-```
-
-Live clients see each delta appear in real time. The persisted record holds the final accumulated text.
 
 Most of the time you won't call `emitMessage()` directly — generators handle message emission as the model streams. Use it in handlers when you need to inject a visible message into the conversation outside of a generator.
 
@@ -51,7 +40,7 @@ const pipeline = sequencer({ name: "pipeline" })
   .then(analyzer);
 ```
 
-Status messages are fire-and-forget. No handle, no `.done()` call. They're lightweight by design — emit them freely to keep the user informed without cluttering session history.
+Status messages are fire-and-forget. They're lightweight by design — emit them freely to keep the user informed without cluttering session history.
 
 Good status messages are specific: "Searching 3 databases..." is better than "Working...". They help users understand what's taking time.
 
@@ -67,7 +56,7 @@ execute: async (input, ctx) => {
     query: input.query,
     results: searchResults,
     totalCount: 42,
-  }).done();
+  });
   return input;
 }
 ```
@@ -78,47 +67,43 @@ Each call creates one persisted item. The component name (`"search-results"`) ma
 <FlowProvider renderers={{ component: { "search-results": SearchResults } }}>
 ```
 
-### Streaming updates
-
-For components that change over time — progress indicators, plans being executed, results accumulating — use the handle's `update()` method:
-
-```ts
-const handle = ctx.emitComponent("progress", { percent: 0, label: "Starting" });
-
-await step1();
-handle.update({ percent: 33, label: "Step 1 complete" });
-
-await step2();
-handle.update({ percent: 66, label: "Step 2 complete" });
-
-await step3();
-handle.update({ percent: 100, label: "Done" });
-handle.done();
-```
-
-`update()` mutates the item's data in-place. Live clients see each intermediate state via SSE. Only the final state (after `done()`) is persisted. There is no history of intermediate updates stored — if you need that, emit separate items instead.
-
 ### Keyed components
 
-When you emit a component with the same `key`, the client replaces the previous component instead of appending a new one. This is useful when multiple blocks update the same view:
+When you emit a component with the same `key`, the client replaces the previous component instead of appending a new one. This is how you build components that update over time — progress indicators, plans being executed, results accumulating:
 
 ```ts
-// First block creates the initial view
-ctx.emitComponent("task-status", { id: "task-1", status: "pending" }, { key: "task-1" }).done();
+// Create initial view
+ctx.emitComponent("task-status", { id: "task-1", status: "pending" }, { key: "task-1" });
 
-// Later block updates the same view
-ctx.emitComponent("task-status", { id: "task-1", status: "complete", result: "..." }, { key: "task-1" }).done();
+// Update it as work progresses
+await step1();
+ctx.emitComponent("task-status", { id: "task-1", status: "running", progress: 50 }, { key: "task-1" });
+
+await step2();
+ctx.emitComponent("task-status", { id: "task-1", status: "complete", result: "..." }, { key: "task-1" });
 ```
 
-The client only renders the latest component for each key within a request. Both items are persisted, but the UI shows just the most recent one.
+Each `emitComponent` call with the same key replaces the previous one. Live clients see each intermediate state via SSE. All versions are persisted, but the UI shows just the most recent one for each key.
 
 This pattern is central to how the framework's built-in patterns work. The plan-and-execute pattern, for example, emits keyed components for each task so they update independently:
 
 ```ts
 // Each task gets its own key
-emitComponent("plan-task", { id: task.id, status: "running" }, { key: `plan-task:${task.id}` }).done();
+ctx.emitComponent("plan-task", { id: task.id, status: "running" }, { key: `plan-task:${task.id}` });
 // Later, same key replaces it
-emitComponent("plan-task", { id: task.id, status: "complete" }, { key: `plan-task:${task.id}` }).done();
+ctx.emitComponent("plan-task", { id: task.id, status: "complete" }, { key: `plan-task:${task.id}` });
+```
+
+### Updating across blocks
+
+Keyed components work across multiple blocks in a sequencer. Different blocks can emit to the same key:
+
+```ts
+// First block creates the initial view
+ctx.emitComponent("task-status", { id: "task-1", status: "pending" }, { key: "task-1" });
+
+// Later block updates the same view
+ctx.emitComponent("task-status", { id: "task-1", status: "complete", result: "..." }, { key: "task-1" });
 ```
 
 ### Multiple calls without a key
@@ -169,8 +154,7 @@ Primary output types (`message`, `reasoning`, `status`, `error`) always render i
 |----------|-------------|
 | Show text to the user and LLM | `emitMessage()` |
 | Show progress during a long operation | `emitStatus()` |
-| Render custom UI from a single block | `emitComponent().done()` |
-| Update a component as work progresses within one block | `handle.update()` then `handle.done()` |
-| Update a view across multiple blocks in a sequencer | Keyed components: same `key`, multiple `emitComponent()` calls |
+| Render custom UI from a single block | `emitComponent()` |
+| Update a component as work progresses | Keyed components: same `key`, multiple `emitComponent()` calls |
 | Build a composite UI from multiple child blocks | Container component on the sequencer |
 | Append multiple independent items (log entries, cards) | `emitComponent()` without a key, one call per item |

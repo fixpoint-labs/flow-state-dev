@@ -252,7 +252,7 @@ const analyzeData = handler({
     ctx.emitComponent("analysis-card", {
       summary: result.summary,
       charts: result.charts,
-    }).done();
+    });
 
     return { summary: result.summary, rowCount: data.length };
   },

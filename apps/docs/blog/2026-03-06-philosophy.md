@@ -258,7 +258,7 @@ The React hooks abstract over all of this. You can write a streaming chat UI wit
     title: report.title,
     findings: report.findings,
     confidence: report.score,
-  }).done();
+  });
 });
 
 // Resume from a cursor after a dropped connection

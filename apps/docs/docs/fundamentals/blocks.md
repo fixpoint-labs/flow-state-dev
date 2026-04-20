@@ -60,15 +60,15 @@ What the framework handles for you:
 
 #### Controlling what gets emitted
 
-Each emitted item has a visibility role — `external`, `internal`, or `trace` — that controls whether it reaches the user-facing UI and the LLM's history:
+Each emitted item carries `client` and `history` flags that control whether it reaches the user-facing UI and the LLM's conversation history:
 
-| Role | UI | LLM History | DevTool |
+| Audience | UI | LLM History | DevTool |
 |--|--|--|--|
-| `external` | Yes | Yes | Yes |
-| `internal` | No | Yes | Yes |
-| `trace` | No | No | Yes |
+| `"client"` | Yes | Yes | Yes |
+| `"history"` | No | Yes | Yes |
+| `"trace"` | No | No | Yes |
 
-The `emitAudience` config sets the default audience for all items a generator emits. The `emit` config controls visibility per item type (or suppresses emission entirely):
+The `emitAudience` config sets the default audience for all items a generator emits. The `emit` config controls which item types are emitted (or suppresses emission entirely):
 
 ```ts
 // Suppress all streaming output — the generator runs silently

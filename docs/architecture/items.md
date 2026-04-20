@@ -50,13 +50,7 @@ ctx.emitMessage("internal note", { client: false, history: true });
 
 `resolveItemVisibility()` resolves in this order:
 1. Explicit `client`/`history` on the item
-2. Legacy `itemRole` mapped to booleans (`external` → both true, `internal` → client false / history true, `trace` → both false)
-3. Legacy `trace: true` → both false
-4. Per-type defaults from `ITEM_TYPE_DEFAULTS`
-
-### Legacy compatibility
-
-The `itemRole` field (`"external" | "internal" | "trace"`) and `trace` boolean are deprecated but still supported. `resolveItemVisibility()` maps them to the equivalent boolean pair. Persisted items from older versions work without data migration.
+2. Per-type defaults from `ITEM_TYPE_DEFAULTS`
 
 ## Item types
 
@@ -140,18 +134,17 @@ Component items are more complex than other types because they support streaming
 ### Emitting a component item
 
 ```ts
-const handle = ctx.emitComponent("plan-view", { steps: [], status: "working" });
+// Emit initial state
+ctx.emitComponent("plan-view", { steps: [], status: "working" }, { key: "plan" });
 
-// Update data in-place as work progresses:
-handle.update({ steps: ["Step 1 done"], status: "working" });
-handle.update({ steps: ["Step 1 done", "Step 2 done"], status: "complete" });
-
-handle.done();
+// Update by emitting with the same key — replaces the previous version:
+ctx.emitComponent("plan-view", { steps: ["Step 1 done"], status: "working" }, { key: "plan" });
+ctx.emitComponent("plan-view", { steps: ["Step 1 done", "Step 2 done"], status: "complete" }, { key: "plan" });
 ```
 
-Each `emitComponent()` call creates exactly one item. `update()` mutates that item's data in-place — it does not create additional items. Live clients see every intermediate state via SSE events on the same item ID. The persisted record holds only the final state after `done()` is called. There is no history of intermediate updates stored.
+Each `emitComponent()` call with the same `key` replaces the previous version in the client UI. Live clients see every update via SSE events. All versions are persisted, but the client renders only the latest for each key.
 
-If you need each step to be a distinct persisted item (e.g. a plan where each step is independently addressable), emit them as separate items with different `key` values rather than updates to a single item.
+If you need each step to be a distinct persisted item (e.g. a plan where each step is independently addressable), emit them as separate items with different `key` values.
 
 ### Stable key for deduplication
 
@@ -233,8 +226,6 @@ type OutputItemBase = {
   client?: boolean;       // Sent to clients. Resolved via resolveItemVisibility() if absent.
   history?: boolean;      // Included in LLM history. Resolved via resolveItemVisibility() if absent.
   transient?: boolean;    // true = stream-only, never persisted
-  itemRole?: ItemRole;    // @deprecated — use client/history instead
-  trace?: boolean;        // @deprecated — use emitAudience: "trace" on generators instead
   requestId: string;
   itemIndex: number;      // Monotonic within the request
   provenance: ItemProvenance;
