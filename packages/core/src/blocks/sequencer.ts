@@ -424,9 +424,7 @@ function runSequencerOperations(
             if (result.status === "rejected") {
               console.error(`[sequencer] Background work "${result.name}" failed:`, result.reason?.message ?? result.reason);
             }
-            if (remaining > 0) {
-              ctx.emitStatus("", { blocked: false, backgroundTasks: remaining });
-            }
+            ctx.emitStatus("", { blocked: false, backgroundTasks: remaining });
           })
         ));
       }

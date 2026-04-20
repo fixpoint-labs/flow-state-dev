@@ -1408,15 +1408,15 @@ function createTargetStateOps<TState extends JsonObject>(options: {
 }
 function createEmitStatus(
   emCtx: EmissionContext
-): (message: string, metadata?: { blocked?: boolean; backgroundTasks?: number; client?: boolean }) => void {
-  return function emitStatus(message: string, metadata?: { blocked?: boolean; backgroundTasks?: number; client?: boolean }): void {
+): (message: string, options?: { blocked?: boolean; backgroundTasks?: number; client?: boolean }) => void {
+  return function emitStatus(message: string, options?: { blocked?: boolean; backgroundTasks?: number; client?: boolean }): void {
     const itemIndex = emCtx.nextItemIndex();
     const item: StatusItem = {
       id: `item_status_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "status",
       status: "completed",
       transient: true,
-      client: metadata?.client ?? true,
+      client: options?.client ?? true,
       history: false,
       requestId: emCtx.requestId,
       itemIndex,
@@ -1424,8 +1424,8 @@ function createEmitStatus(
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
       message,
-      blocked: metadata?.blocked,
-      backgroundTasks: metadata?.backgroundTasks
+      blocked: options?.blocked,
+      backgroundTasks: options?.backgroundTasks
     };
 
     void emCtx.response.emitItemAdded(item);

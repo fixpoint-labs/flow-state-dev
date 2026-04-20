@@ -128,8 +128,8 @@ describe("sequencer builder", () => {
     await expect(seq.run(1, ctx)).rejects.toThrow("background failure");
   });
 
-  it("emits structured status metadata during auto-await of work tasks", async () => {
-    const statusCalls: Array<{ message: string; metadata?: { blocked?: boolean; backgroundTasks?: number } }> = [];
+  it("emits structured status options during auto-await of work tasks", async () => {
+    const statusCalls: Array<{ message: string; options?: { blocked?: boolean; backgroundTasks?: number } }> = [];
     const slowWork = handler({
       name: "slow-work",
       inputSchema: z.number(),
@@ -151,18 +151,20 @@ describe("sequencer builder", () => {
       .work(fastWork);
 
     const ctx = createMockContext({
-      emitStatus: (message: string, metadata?: { blocked?: boolean; backgroundTasks?: number }) => {
-        statusCalls.push({ message, metadata });
+      emitStatus: (message: string, options?: { blocked?: boolean; backgroundTasks?: number }) => {
+        statusCalls.push({ message, options });
       }
     });
 
     await seq.run(1, ctx);
 
-    expect(statusCalls.length).toBeGreaterThanOrEqual(1);
     // First status: unblock client, report total background tasks
-    expect(statusCalls[0]!.metadata?.blocked).toBe(false);
-    expect(statusCalls[0]!.metadata?.backgroundTasks).toBe(2);
-    // After both complete, no final status (only emitted when remaining > 0)
+    expect(statusCalls[0]!.options?.blocked).toBe(false);
+    expect(statusCalls[0]!.options?.backgroundTasks).toBe(2);
+    // Final status: all background tasks done
+    const last = statusCalls[statusCalls.length - 1]!;
+    expect(last.options?.blocked).toBe(false);
+    expect(last.options?.backgroundTasks).toBe(0);
   });
 
   describe("forEachBackground", () => {
