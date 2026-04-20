@@ -2,6 +2,33 @@ import type { Content } from "./content";
 
 export type ItemStatus = "in_progress" | "completed" | "incomplete" | "failed";
 
+/**
+ * Visibility role of an item within the system. Answers "who is this for?"
+ *
+ * - `external`: shown to the user, included in LLM history, visible in devtool.
+ * - `internal`: included in LLM history, hidden from UI, visible in devtool.
+ * - `trace`: observability only — excluded from UI and LLM history, visible in devtool.
+ *
+ * The hierarchy is strict: `external ⊃ internal ⊃ trace`. An item shown to the
+ * user is always also in history; an item hidden from history is also hidden
+ * from the UI. To suppress an item entirely, set `emit: false` on the block.
+ */
+/**
+ * @deprecated Use `client` and `history` boolean flags instead. Kept for
+ * backward compatibility — `resolveItemVisibility()` maps legacy roles to
+ * the new booleans at read time.
+ */
+export type ItemRole = "external" | "internal" | "trace";
+
+/**
+ * Resolved visibility of an item: whether it should be sent to the client
+ * and whether it should be included in LLM conversation history.
+ */
+export type ItemVisibility = {
+  client: boolean;
+  history: boolean;
+};
+
 export type ItemProvenance = {
   blockName: string;
   blockDefinitionId?: string;
@@ -18,7 +45,22 @@ export type OutputItemBase = {
   type: string;
   status: ItemStatus;
   transient?: boolean;
-  /** Structural lifecycle item — excluded from LLM context, visible in devtool trace. */
+  /** Whether this item is sent to connected clients. When unset, resolved
+   *  from per-type defaults via `resolveItemVisibility()`. */
+  client?: boolean;
+  /** Whether this item is included in LLM conversation history. When unset,
+   *  resolved from per-type defaults via `resolveItemVisibility()`. */
+  history?: boolean;
+  /**
+   * @deprecated Use `client` and `history` booleans instead.
+   * Retained for backward compatibility with pre-boolean items.
+   * `resolveItemVisibility()` maps this to booleans as a fallback.
+   */
+  itemRole?: ItemRole;
+  /**
+   * @deprecated Use `client: false, history: false` instead. Retained for
+   * backward compatibility with pre-role items.
+   */
   trace?: boolean;
   requestId: string;
   itemIndex: number;
@@ -117,8 +159,17 @@ export type StatusItem = OutputItemBase & {
   type: "status";
   message: string;
   detail?: unknown;
+  /** When false, the client may send new actions even though the stream is still open. */
+  blocked?: boolean;
+  /** Number of background work tasks still running. */
+  backgroundTasks?: number;
 };
 
+/**
+ * @deprecated The `context` item type has been removed. Use generator
+ * `context` slot configuration or `emitMessage` with `history: true,
+ * client: false` instead.
+ */
 export type ContextItem = OutputItemBase & {
   type: "context";
   text: string;
@@ -221,7 +272,6 @@ export type OutputItem =
   | ComponentItem
   | ContainerItem
   | StatusItem
-  | ContextItem
   | StateChangeItem
   | ResourceChangeItem
   | ErrorItem

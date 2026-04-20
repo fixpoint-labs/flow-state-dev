@@ -12,7 +12,7 @@
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import { emitPlanMeta, emitTaskUpdate } from "../shared/plan";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
-import type { GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
+import type { GeneratorHistoryConfig, GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   supervisorInputSchema,
@@ -45,14 +45,29 @@ export type {
   SubTaskErrorStrategy,
 } from "./schemas";
 
+/** Resolvable string — static or computed at runtime from input and context. */
+type InstructionsSlot = string | ((input: any, ctx: any) => string | Promise<string>);
+
 export interface SupervisorConfig<
   TOutputSchema extends ZodTypeAny = ZodTypeAny
 > {
   /** Name for this supervisor instance. */
   name: string;
 
-  /** The worker block that processes each sub-task. Receives `{ id, goal, feedback? }`. */
+  /** The worker block that processes each sub-task. Receives `{ id, goal, context?, feedback? }`. */
   worker: BlockDefinition<any, any, ExecutableTask, any>;
+
+  /**
+   * Overall instructions for this supervisor — role, stance, rules, or goal framing.
+   *
+   * Digested by the default planner and synthesizer only. Workers don't receive
+   * these directly — the planner distills relevant parts into each task's
+   * `context` field when dispatching.
+   *
+   * Not injected when `planner` or `synthesizer` are overridden (consumer owns
+   * full control).
+   */
+  instructions?: InstructionsSlot;
 
   /** Criteria the reviewer uses to evaluate sub-task quality. */
   reviewCriteria?: string[];
@@ -84,7 +99,7 @@ export interface SupervisorConfig<
   context?: GeneratorSlot<any, any>;
 
   /** History slot applied to default planner and synthesizer. */
-  history?: GeneratorSlot<any, any>;
+  history?: GeneratorHistoryConfig<any, any>;
 
   /** Capabilities to install on default blocks (planner, reviewer, synthesizer). */
   uses?: UsesSlot;
@@ -235,8 +250,9 @@ export const applyReview = handler({
 
 function buildDefaultPlanner(name: string, opts?: {
   context?: GeneratorSlot<any, any>;
-  history?: GeneratorSlot<any, any>;
+  history?: GeneratorHistoryConfig<any, any>;
   uses?: UsesSlot;
+  instructions?: InstructionsSlot;
 }) {
   return generator({
     name: `${name}-planner`,
@@ -246,7 +262,27 @@ function buildDefaultPlanner(name: string, opts?: {
     context: opts?.context,
     history: opts?.history,
     ...(opts?.uses ? { uses: opts.uses as any } : {}),
-    prompt: (_input, ctx) => {
+    prompt: async (_input, ctx) => {
+      const resolved = opts?.instructions
+        ? typeof opts.instructions === "function"
+          ? await opts.instructions(_input, ctx)
+          : opts.instructions
+        : null;
+
+      const instructionsBlock = resolved
+        ? [
+            "",
+            "## Overall Instructions",
+            "The following instructions define the role, stance, and rules for this entire workflow.",
+            "Keep them in mind when decomposing tasks.",
+            "When relevant, distill the appropriate parts into each task's `context` field so workers",
+            "understand the stance or constraints they should follow. Keep task context concise —",
+            "workers don't need the full brief, just the parts relevant to their specific task.",
+            "",
+            resolved,
+          ].join("\n")
+        : "";
+
       const state = ctx.sequencer?.state as SupervisorState | undefined;
       if (!state || state.iteration === 0) {
         return [
@@ -256,7 +292,9 @@ function buildDefaultPlanner(name: string, opts?: {
           "Dependent follow-up tasks will be planned in a later iteration once earlier results are available.",
           "Each task must include a stable unique id and a clear goal.",
           "Optionally assign each task an assignee — a role, team member, or specialist best suited for that task.",
+          "Use the optional `context` field to pass relevant instructions or constraints to the worker for that task.",
           "Return output that exactly matches the required schema.",
+          instructionsBlock,
         ].join("\n");
       }
 
@@ -281,10 +319,10 @@ function buildDefaultPlanner(name: string, opts?: {
           "Also include any NEW follow-up tasks that can now run given the completed results above.",
           "Do not re-plan tasks that were already accepted.",
           "Return output that exactly matches the required schema.",
+          instructionsBlock,
         ].join("\n");
       }
 
-      // No revisions — this is a follow-up wave for dependent tasks
       return [
         `Original goal: ${state.goal}`,
         completedSummary,
@@ -293,6 +331,7 @@ function buildDefaultPlanner(name: string, opts?: {
         "If the goal is fully addressed, return an empty tasks array.",
         "Every task you emit will run concurrently, so only include tasks that are independent of each other.",
         "Return output that exactly matches the required schema.",
+        instructionsBlock,
       ].join("\n");
     },
     user: (input) =>
@@ -322,11 +361,9 @@ function buildDefaultReviewer(
       "    (e.g., foundational tasks are done but the main deliverable hasn't been produced yet).",
       "Provide specific, actionable feedback for tasks that need revision.",
       "Score each task from 0 to 1 based on quality.",
-      criteriaBlock,
+      criteriaBlock || null,
       "Return output that exactly matches the required schema.",
-    ]
-      .filter(Boolean)
-      .join("\n"),
+    ],
     emit: { messages: true, reasoning: false },
     user: (input) =>
       typeof input === "string" ? input : JSON.stringify(input),
@@ -338,10 +375,22 @@ function buildDefaultSynthesizer(
   outputSchema?: ZodTypeAny,
   opts?: {
     context?: GeneratorSlot<any, any>;
-    history?: GeneratorSlot<any, any>;
+    history?: GeneratorHistoryConfig<any, any>;
     uses?: UsesSlot;
+    instructions?: InstructionsSlot;
   }
 ) {
+  const basePrompt = [
+    "You are a final synthesis step in a supervisor workflow.",
+    "A team of workers has already completed the tasks. You will receive the original goal and their outputs.",
+    "Your job is to combine the workers' outputs into the FINAL DELIVERABLE that the user requested.",
+    "Your output IS the end product — not a summary, not a recommendation, not commentary about the process.",
+    "If the workers wrote a story, output the story. If they produced a report, output the report. If they built a plan, output the plan.",
+    "Merge overlapping content, resolve conflicts, and ensure the result reads as one unified piece — not a list of fragments.",
+    "Do NOT describe what the workers did. Do NOT recommend next steps. Do NOT output JSON unless the goal explicitly requires it.",
+    "Deliver the finished work.",
+  ].join("\n");
+
   return generator({
     name: `${name}-synthesizer`,
     model: "preset/fast",
@@ -350,16 +399,7 @@ function buildDefaultSynthesizer(
     history: opts?.history,
     ...(opts?.uses ? { uses: opts.uses as any } : {}),
     emit: { messages: true, reasoning: false },
-    prompt: [
-      "You are a final synthesis step in a supervisor workflow.",
-      "A team of workers has already completed the tasks. You will receive the original goal and their outputs.",
-      "Your job is to combine the workers' outputs into the FINAL DELIVERABLE that the user requested.",
-      "Your output IS the end product — not a summary, not a recommendation, not commentary about the process.",
-      "If the workers wrote a story, output the story. If they produced a report, output the report. If they built a plan, output the plan.",
-      "Merge overlapping content, resolve conflicts, and ensure the result reads as one unified piece — not a list of fragments.",
-      "Do NOT describe what the workers did. Do NOT recommend next steps. Do NOT output JSON unless the goal explicitly requires it.",
-      "Deliver the finished work.",
-    ].join("\n"),
+    prompt: [opts?.instructions, basePrompt],
     user: (input: unknown) => {
       if (typeof input === "string") return input;
       const data = input as { goal?: string; results?: unknown[] };
@@ -394,14 +434,20 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   };
 
   const planner =
-    config.planner ?? buildDefaultPlanner(name, slotOpts);
+    config.planner ?? buildDefaultPlanner(name, {
+      ...slotOpts,
+      instructions: config.instructions,
+    });
 
   const reviewer =
     config.reviewer ?? buildDefaultReviewer(name, config.reviewCriteria);
 
   const finalSynthesizer =
     config.synthesizer ??
-    buildDefaultSynthesizer(name, config.outputSchema, slotOpts);
+    buildDefaultSynthesizer(name, config.outputSchema, {
+      ...slotOpts,
+      instructions: config.instructions,
+    });
 
   // Wrap the worker in a sequencer with rescue for skip/retry strategies.
   // "fail" uses the bare worker so errors propagate naturally.
@@ -480,9 +526,11 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
 
       return newPlan.map((t) => {
         const prior = state.plan.find((p) => p.id === t.id);
+        const plannerTask = input.tasks.find((pt) => pt.id === t.id);
         return {
           id: t.id,
           goal: t.goal,
+          ...(plannerTask?.context ? { context: plannerTask.context } : {}),
           feedback: prior?.feedback,
         };
       });

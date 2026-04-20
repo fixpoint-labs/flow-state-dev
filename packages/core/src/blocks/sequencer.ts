@@ -154,7 +154,8 @@ async function emitSequencerStateSnapshot(
     id: `item_seq_state_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "sequencer_state_snapshot" as const,
     status: "completed" as const,
-    trace: true,
+    client: false,
+    history: false,
     transient: true,
     requestId: ctx.request.identity.id,
     itemIndex: getSequencerEmitterItemCount(ctx.response),
@@ -193,7 +194,8 @@ async function emitGeneratorBlockOutput(
     id: `item_block_output_${completedAt}_${Math.random().toString(16).slice(2)}`,
     type: "block_output" as const,
     status: "completed" as const,
-    trace: true,
+    client: false,
+    history: false,
     transient: block.transient || undefined,
     requestId: ctx.request.identity.id,
     itemIndex: getSequencerEmitterItemCount(ctx.response),
@@ -220,7 +222,8 @@ async function emitGeneratorBlockOutput(
 async function executeBlock(
   block: BlockDefinition<any, any>,
   input: unknown,
-  ctx: BlockContext
+  ctx: BlockContext,
+  options?: { phase?: "main" | "work" }
 ): Promise<unknown> {
   const startedAt = Date.now();
   const run = async (scopedCtx: BlockContext): Promise<unknown> => {
@@ -297,6 +300,10 @@ async function executeBlock(
       transient: block.transient || undefined,
       stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined,
       input,
+      client: block.client,
+      history: block.history,
+      itemRole: block.itemRole,
+      phase: options?.phase ?? ctx._blockIdentity?.phase,
       container:
         containerConfig === undefined
           ? undefined
@@ -407,15 +414,19 @@ function runSequencerOperations(
       // Auto-await any outstanding .work() tasks so the block (and its
       // parent stream) stays alive until background work finishes.
       if (runtime.workTasks.length > 0) {
-        ctx.emitStatus("finishing");
         const pending = runtime.workTasks.splice(0, runtime.workTasks.length);
-        const settled = await Promise.allSettled(pending.map((t) => t.promise));
-        for (const result of settled) {
-          if (result.status === "fulfilled" && result.value.status === "rejected") {
-            const { name: taskName, reason } = result.value;
-            console.error(`[sequencer] Background work "${taskName}" failed:`, reason?.message ?? reason);
-          }
-        }
+        let remaining = pending.length;
+        ctx.emitStatus("", { blocked: false, backgroundTasks: remaining });
+
+        await Promise.all(pending.map((t) =>
+          t.promise.then((result) => {
+            remaining--;
+            if (result.status === "rejected") {
+              console.error(`[sequencer] Background work "${result.name}" failed:`, result.reason?.message ?? result.reason);
+            }
+            ctx.emitStatus("", { blocked: false, backgroundTasks: remaining });
+          })
+        ));
       }
 
       return currentValue;
@@ -784,7 +795,10 @@ function createSequencer<TInput, TOutput>(
 
                 const iterName = `${block.name}[${currentIndex}]`;
                 try {
-                  const result = await executeBlock(block, item, ctx);
+                  // Background iterations run in the "work" phase; this flows
+                  // into _blockIdentity.phase and drives the generator's
+                  // position-based default role (work → "trace").
+                  const result = await executeBlock(block, item, ctx, { phase: "work" });
                   iterationResults.push({ name: iterName, status: "fulfilled", value: result });
                 } catch (error) {
                   iterationResults.push({ name: iterName, status: "rejected", reason: toError(error) });
@@ -940,7 +954,9 @@ function createSequencer<TInput, TOutput>(
             const input =
               connector === undefined ? value : await connector(value as TOutput, ctx);
 
-            const promise = executeBlock(block, input, ctx)
+            // work() dispatches run in the "work" phase so nested generators
+            // see phase === "work" and apply the trace default for emissions.
+            const promise = executeBlock(block, input, ctx, { phase: "work" })
               .then(
                 (result): WorkResult => ({
                   name,
@@ -998,7 +1014,8 @@ function createSequencer<TInput, TOutput>(
             const input =
               connector === undefined ? value : await connector(value as TOutput, ctx);
 
-            const promise = executeBlock(block, input, ctx)
+            // workIf() dispatches run in the "work" phase, matching work().
+            const promise = executeBlock(block, input, ctx, { phase: "work" })
               .then(
                 (result): WorkResult => ({
                   name,

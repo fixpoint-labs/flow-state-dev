@@ -175,6 +175,26 @@ createBashTool({
 3. **Flush** — after every `bash` and `writeFile`, changed files sync back to resources
 4. Deleted files are removed from resource collections. `readFile` does not trigger a flush.
 
+### Workspace path restrictions (Local FS)
+
+The local adapter enforces that all filesystem operations stay within the workspace root. This is enabled by default (`strictPaths: true`) and protects against accidental workspace escapes by LLM agents.
+
+Guarded operations:
+- **`executeCommand`** — rejects commands containing absolute paths outside the workspace, path traversals (`../`), home references (`~/`, `$HOME`), and command substitution (`$()`, backticks).
+- **`readFile` / `writeFile`** — resolves paths against the workspace root and rejects any result that falls outside it.
+
+```typescript
+// Default: strictPaths is true
+provider: { type: "local", cwd: "./workspace" }
+
+// Opt out for power users (logs a warning):
+provider: { type: "local", cwd: "./workspace", strictPaths: false }
+```
+
+When a command or path is rejected, the error message describes what was blocked and why, so the LLM agent can self-correct.
+
+This is a best-effort defense layer for cooperative agents. For true isolation, use the `just-bash` adapter (in-memory emulation) or plan for OS-level sandboxing in a future release.
+
 ### Direct adapter constructors
 
 ```typescript
@@ -184,6 +204,54 @@ import {
   createJustBashSandbox,
 } from "@flow-state-dev/tools/bash";
 ```
+
+## MCP (Model Context Protocol)
+
+Connect external MCP servers and expose their tools to generators as framework handler blocks, with selection guidance, tool-description enrichment, and a request-state filter.
+
+```typescript
+import { createMcpCapability } from "@flow-state-dev/tools/mcp";
+
+const mcpCap = createMcpCapability({
+  servers: [
+    {
+      name: "linear",
+      description: "Project management: issues, projects, cycles, teams.",
+      whenToUse: "User asks about tasks, tickets, or project work.",
+      examples: [
+        "To find open bugs: mcp__linear__list_issues({ filter: { state: 'open' } })",
+      ],
+      category: "project-management",
+      transport: {
+        type: "sse",
+        url: "https://mcp.linear.app/sse",
+        headers: { Authorization: `Bearer ${process.env.LINEAR_MCP_API_KEY}` },
+      },
+    },
+  ],
+});
+
+generator({
+  uses: [mcpCap],
+  // ...
+});
+```
+
+### Features
+
+- **Namespaced tools.** Each MCP tool becomes a handler block named `mcp__<server>__<tool>`.
+- **Selection guidance.** A markdown system-prompt block is generated from per-server metadata (`description`, `whenToUse`, `examples`), grouped by `category`.
+- **Description enrichment.** Tool descriptions are prefixed with `[server]` (or `[server · category]`) so attribution reads as natural language during tool selection.
+- **Request-state filter.** The capability contributes a `requestStateSchema`. Flows can set `ctx.request.state.mcp.disabledTools` or `disabledServers` to narrow tools per turn without reconnecting.
+- **Error isolation.** A failed server does not block healthy ones.
+
+### Dependency
+
+`@ai-sdk/mcp` is an optional peer dependency and is loaded dynamically the first time a tool is requested. Apps that don't configure MCP pay no install or bundle cost.
+
+### Escape hatch
+
+Use `createMcpManager({ servers })` when you need the raw client outside a capability (custom wiring, calling `getCatalog()` directly, etc.), then pass it to `createMcpCapability({ manager })`.
 
 ## Provider-native search
 

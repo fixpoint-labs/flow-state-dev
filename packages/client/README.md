@@ -80,6 +80,7 @@ const snapshot = await sessions.getSessionState("sess_1", {
 - `createSessionClient(options)` — Session CRUD and state snapshots
 - `createSSEClient(options)` — Request stream consumer
 - `createUserSSEClient(options)` — User-level stream consumer
+- `client.abortRequest(requestId)` — Signal the server to abort an in-progress request
 - `ClientHttpError` — Typed HTTP error class
 
 ## Notes

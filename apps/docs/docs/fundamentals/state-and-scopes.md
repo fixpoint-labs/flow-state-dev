@@ -437,7 +437,7 @@ const allItems = ctx.session.items.all();
 const clientItems = ctx.session.items.client();
 
 // Messages formatted for LLM context (async, supports token limiting)
-const llmMessages = await ctx.session.items.llm({ limit: { tokens: 20_000 } });
+const llmMessages = await ctx.session.items.history({ limit: { tokens: 20_000 } });
 ```
 
 **Metadata** — first-class `title`, `description`, and `tags` fields that live outside workflow state:

@@ -101,14 +101,15 @@ async function emitBlockOutputItem(
 
   const completedAt = Date.now();
   const itemIndex = getResponseItems(options.ctx.response).length;
-  // Root block_output items carry lifecycle timing and are marked trace: true.
+  // Root block_output items carry lifecycle timing and are marked for trace.
   // Items with toolCall (generator tool results) are emitted separately and
   // do NOT pass through this function — they retain their existing LLM audience.
   const item: BlockOutputItem = {
     id: `item_block_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "block_output",
     status: options.status ?? "completed",
-    trace: true,
+    client: false,
+    history: false,
     transient: options.block.transient || undefined,
     requestId: options.metadata.requestId,
     itemIndex,
@@ -335,6 +336,8 @@ export async function executeBlock(
             transient: options.block.transient || undefined,
             stateSchema: options.block.kind === "sequencer" ? options.block.config.stateSchema : undefined,
             parentInstanceId: attemptMetadata.parentBlockInstanceId,
+            itemRole: options.block.itemRole,
+            phase: attemptMetadata.scope === "work" ? "work" : "main",
             container:
               containerConfig === undefined
                 ? undefined

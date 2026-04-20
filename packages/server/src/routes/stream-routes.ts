@@ -8,6 +8,10 @@ import {
   cleanupStaleStreams,
   getActiveStream
 } from "../streaming/active-streams";
+import {
+  createClientEventFilter,
+  filterClientEvents
+} from "../streaming/client-filter";
 import { encodeStreamEvent } from "../streaming/encode-event";
 import {
   resolveRequestReplayCursor,
@@ -15,6 +19,7 @@ import {
 } from "../streaming/resume";
 import {
   buildReplayEvents,
+  getBooleanFlag,
   getString,
   jsonResponse,
   parseJsonBody,
@@ -44,6 +49,7 @@ export async function handleRequestStream(
   }
 
   const url = new URL(request.url);
+  const unfiltered = getBooleanFlag(url.searchParams.get("unfiltered"));
 
   const activeStream = getActiveStream(route.requestId);
   if (activeStream !== undefined) {
@@ -63,11 +69,14 @@ export async function handleRequestStream(
 
     const readable = new ReadableStream<Uint8Array>({
       start(controller) {
+        const shouldForward = unfiltered ? undefined : createClientEventFilter();
+
         // 1. Replay buffered events after the cursor.
         const buffered = emitter.getEvents();
         for (const event of buffered) {
           if (event.sequence_number <= minSeq) continue;
           if (event.type === "ping" || event.type === "debug") continue;
+          if (shouldForward && !shouldForward(event)) continue;
           const frame = encodeStreamEvent(event);
           controller.enqueue(textEncoder.encode(frame));
         }
@@ -76,6 +85,7 @@ export async function handleRequestStream(
         emitter.addEventObserver((event) => {
           if (event.sequence_number <= minSeq) return;
           if (event.type === "ping" || event.type === "debug") return;
+          if (shouldForward && !shouldForward(event)) return;
           try {
             const frame = encodeStreamEvent(event);
             controller.enqueue(textEncoder.encode(frame));
@@ -91,6 +101,7 @@ export async function handleRequestStream(
             event.type === "request.completed" ||
             event.type === "request.failed" ||
             event.type === "request.incomplete" ||
+            event.type === "request.aborted" ||
             (event.type === "request.interrupted" && status === "interrupted")
           ) {
             try {
@@ -112,7 +123,41 @@ export async function handleRequestStream(
     });
   }
 
-  const requestRecord = await ctx.stores.request.get(route.requestId);
+  let requestRecord = await ctx.stores.request.get(route.requestId);
+
+  // On serverless platforms the POST (action execution) and GET (stream) may
+  // land on different instances. The request record might not be persisted yet
+  // if createExecutionContext is still running. Check the active_requests
+  // registry (written earlier in the runAction lifecycle) and wait briefly.
+  if (requestRecord === undefined) {
+    const active = await ctx.stores.activeRequests.get(route.requestId);
+    if (active !== undefined) {
+      // Request is in-flight — wait for the record to appear.
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await new Promise((r) => setTimeout(r, 500));
+        requestRecord = await ctx.stores.request.get(route.requestId);
+        if (requestRecord !== undefined) break;
+      }
+    }
+  }
+
+  // If the record still doesn't exist, check whether events were persisted
+  // (events are written before the main record via incremental persistence hooks).
+  if (requestRecord === undefined) {
+    const events = await ctx.stores.request.getEvents(route.requestId);
+    if (events.length > 0) {
+      let replay = replayRequestEvents({
+        requestId: route.requestId,
+        events,
+        lastEventId: request.headers.get("last-event-id"),
+        startingAfter: url.searchParams.get("starting_after")
+      });
+      if (!unfiltered) replay = filterClientEvents(replay);
+      const payload = replay.map((event) => encodeStreamEvent(event)).join("");
+      return new Response(payload, { status: 200, headers: SSE_HEADERS });
+    }
+  }
+
   if (
     requestRecord === undefined ||
     requestRecord.flowKind !== flow.kind
@@ -134,12 +179,13 @@ export async function handleRequestStream(
     replaySource = buildReplayEvents(requestRecord, session);
   }
 
-  const replay = replayRequestEvents({
+  let replay = replayRequestEvents({
     requestId: route.requestId,
     events: replaySource,
     lastEventId: request.headers.get("last-event-id"),
     startingAfter: url.searchParams.get("starting_after")
   });
+  if (!unfiltered) replay = filterClientEvents(replay);
   const payload = replay.map((event) => encodeStreamEvent(event)).join("");
 
   return new Response(payload, {

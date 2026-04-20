@@ -45,7 +45,7 @@ const agent = generator({
   model: "preset/fast",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: true,
   user: (input) => input.message,
   tools: [searchTool, createArtifactTool],
   emit: { reasoning: true, messages: true },
@@ -60,7 +60,15 @@ What the framework handles for you:
 
 #### Controlling what gets emitted
 
-The `emit` config controls which items a generator sends to the client stream. By default everything is emitted. You can selectively suppress or remap:
+Each emitted item carries `client` and `history` flags that control whether it reaches the user-facing UI and the LLM's conversation history:
+
+| Audience | UI | LLM History | DevTool |
+|--|--|--|--|
+| `"client"` | Yes | Yes | Yes |
+| `"history"` | No | Yes | Yes |
+| `"trace"` | No | No | Yes |
+
+The `emitAudience` config sets the default audience for all items a generator emits. The `emit` config controls which item types are emitted (or suppresses emission entirely):
 
 ```ts
 // Suppress all streaming output — the generator runs silently
@@ -69,19 +77,25 @@ const silent = generator({ emit: false, /* ... */ });
 // Suppress message items but keep tool call status events
 const workerGen = generator({ emit: { messages: false }, /* ... */ });
 
-// Remap messages to reasoning items (visible as "thinking", not conversation text)
-const thinker = generator({ emit: { messages: 'reasoning' }, /* ... */ });
+// Keep messages in LLM history but hide from client UI
+const thinker = generator({ emitAudience: "history", /* ... */ });
+
+// Devtool-only: suppress all output from client and history
+const researcher = generator({ emitAudience: "trace", /* ... */ });
 ```
 
-| Flag | Values | Default | Effect |
+| Config | Values | Default | Effect |
 |------|--------|---------|--------|
-| `reasoning` | `true` / `false` | `true` | Emit reasoning/thinking items from models that support it |
-| `messages` | `true` / `false` / `'reasoning'` | `true` | `true` emits normal assistant messages. `false` suppresses them entirely. `'reasoning'` emits message text as reasoning items instead |
-| `toolCalls` | `true` / `false` | `true` | Emit tool call status items during the tool execution loop |
+| `emitAudience` | `"client"` / `"history"` / `"trace"` | position-based | Sets the default audience for all items. `"client"` = both client and history (default for main phase). `"history"` = LLM history only. `"trace"` = devtool only. |
+| `reasoning` | `true` / `false` | block default | `false` suppresses reasoning items. |
+| `messages` | `true` / `false` | block default | `false` suppresses assistant messages. |
+| `tools` | `true` / `false` | block default | `false` suppresses tool status items during the tool loop. |
 
-Setting `emit: false` is shorthand for suppressing all three. When `messages` is `false` but the generator has tools, the streaming path is still used so tool call status events reach the client — only the text output items are suppressed.
+Setting `emit: false` is shorthand for suppressing all three. The `emitAudience` config sets the default visibility for all emissions; per-type `emit` values override it.
 
-This is particularly useful for worker generators inside orchestration patterns (supervisor, coordinator) where you want tool progress visible but don't want each sub-task's text polluting the main conversation stream.
+When `messages` is `false` but the generator has tools, the streaming path is still used so tool call status events reach the client — only the text output items are suppressed.
+
+This is particularly useful for worker generators inside orchestration patterns (supervisor, coordinator) where you want tool progress visible but don't want each sub-task's text polluting the main conversation stream. You can keep the worker's findings in LLM context (`emitAudience: "history"`) without showing them to the user.
 
 #### Any block can be a tool
 

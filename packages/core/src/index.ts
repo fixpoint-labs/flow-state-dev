@@ -1,4 +1,4 @@
-export type { BlockInput, BlockOutput, DeclaredResources } from "./types/block";
+export type { BlockInput, BlockOutput, DeclaredResources, EmitAudience } from "./types/block";
 export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
 export type {
   CollectionHookContext,
@@ -27,6 +27,7 @@ export { defineResource, resource } from "./types/resource";
 export { defineResourceCollection, isDefinedResourceCollection, defineResourceNamespace, isDefinedResourceNamespace } from "./types/resource-collection";
 export { defineCapability, getBaseCapability } from "./capability";
 export type {
+  CapabilityPresetCtx,
   CapabilityRef,
   ConfiguredCapability,
   DefinedCapability,
@@ -62,6 +63,7 @@ export type {
   BranchStepOutput,
   FactoryConfig,
   GeneratorConfig,
+  GeneratorHistoryConfig,
   GeneratorLoopConfig,
   GeneratorLoopState,
   GeneratorRepairConfig,
@@ -73,6 +75,7 @@ export type {
   GeneratorTool,
   GeneratorToolResult,
   ToolsSlot,
+  PromptSlot,
   HandlerConfig,
   InlineBlockFactory,
   InlineConfig,

@@ -8,14 +8,16 @@ import {
 } from "../src";
 
 function createStubModelResolver(): ModelResolver {
-  return (modelId: string): GeneratorModel => ({
+  const resolver = ((modelId: string): GeneratorModel => ({
     modelId,
     generate: async () => ({
       text: `stub response from ${modelId}`,
       finishReason: "stop",
       usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
     }),
-  });
+  })) as ModelResolver;
+  resolver.resolveId = (modelId: string) => modelId;
+  return resolver;
 }
 
 function createFlow() {
@@ -179,7 +181,7 @@ describe("createExecutionContext", () => {
       stores
     });
 
-    const messages = await ctx.session.items.llm({ limit: { tokens: 28 } });
+    const messages = await ctx.session.items.history({ limit: { tokens: 28 } });
     expect(messages).toHaveLength(1);
   });
 

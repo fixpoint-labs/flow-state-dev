@@ -51,8 +51,15 @@ export interface CreateBashCapabilityOptions {
 // Context guidance generators
 // ---------------------------------------------------------------------------
 
-function buildJustBashGuidance(provider: Extract<SandboxProvider, { type: "just-bash" }>): string {
-  const lines: string[] = ["You have a sandboxed bash workspace with 60+ built-in commands (jq, awk, sed, grep, rg, sort, etc.)."];
+function buildWorkspaceBoundary(destination: string): string {
+  return `Your workspace directory is ${destination}. You must only read, write, and operate on files within this directory. Do not access, list, or traverse files or directories outside of ${destination} — including home directories, other projects, or system paths. This applies to all commands, scripts, and embedded code (Python, Node, etc.).`;
+}
+
+function buildJustBashGuidance(provider: Extract<SandboxProvider, { type: "just-bash" }>, destination: string): string {
+  const lines: string[] = [
+    "You have a sandboxed bash workspace with 60+ built-in commands (curl, find, join, jq, awk, sed, grep, rg, sort, column, yq, html-to-markdown, etc.). You are not able to install new packages or dependencies, you must only use the packages that are already installed.",
+    buildWorkspaceBoundary(destination),
+  ];
 
   // Python
   if (provider.python) {
@@ -61,8 +68,9 @@ function buildJustBashGuidance(provider: Extract<SandboxProvider, { type: "just-
 
   // JavaScript/TypeScript
   if (provider.javascript) {
-    lines.push("JavaScript/TypeScript execution is available via `node` (QuickJS WASM).");
+    lines.push("JavaScript/TypeScript execution is available via `js-exec` (QuickJS WASM). You do not have node installed.");
   }
+  
 
   // Network
   if (provider.network?.dangerouslyAllowFullInternetAccess) {
@@ -80,28 +88,29 @@ function buildJustBashGuidance(provider: Extract<SandboxProvider, { type: "just-
   return lines.join(" ");
 }
 
-function buildLocalGuidance(provider: Extract<SandboxProvider, { type: "local" }>): string {
+function buildLocalGuidance(provider: Extract<SandboxProvider, { type: "local" }>, destination: string): string {
   const scope = provider.scope ?? "session";
   const lines: string[] = [
     `You have a local bash workspace (${scope}-scoped) with full access to host binaries (npm, python, gcc, etc.).`,
+    buildWorkspaceBoundary(destination),
     "Files you create or modify in the workspace are automatically saved as artifacts.",
     "Use bash to create and edit files — do not use separate artifact tools.",
   ];
   return lines.join(" ");
 }
 
-function buildGuidance(provider: SandboxProvider): string {
+function buildGuidance(provider: SandboxProvider, destination: string): string {
   switch (provider.type) {
     case "just-bash":
-      return buildJustBashGuidance(provider);
+      return buildJustBashGuidance(provider, destination);
     case "local":
-      return buildLocalGuidance(provider);
+      return buildLocalGuidance(provider, destination);
     case "vercel":
-      return "You have a Vercel Sandbox bash workspace. Files are automatically saved as artifacts. Use bash to create and edit files.";
+      return `You have a Vercel Sandbox bash workspace. ${buildWorkspaceBoundary(destination)} Files are automatically saved as artifacts. Use bash to create and edit files.`;
     case "upstash":
-      return "You have an Upstash Box bash workspace. Files are automatically saved as artifacts. Use bash to create and edit files.";
+      return `You have an Upstash Box bash workspace. ${buildWorkspaceBoundary(destination)} Files are automatically saved as artifacts. Use bash to create and edit files.`;
     case "custom":
-      return "You have a bash workspace. Files are automatically saved as artifacts. Use bash to create and edit files.";
+      return `You have a bash workspace. ${buildWorkspaceBoundary(destination)} Files are automatically saved as artifacts. Use bash to create and edit files.`;
   }
 }
 
@@ -136,7 +145,8 @@ export function createBashCapability(options: CreateBashCapabilityOptions) {
     createState,
   });
 
-  const guidance = buildGuidance(provider);
+  const resolvedDestination = destination ?? "/workspace";
+  const guidance = buildGuidance(provider, resolvedDestination);
 
   return defineCapability({
     name: "bash",

@@ -88,8 +88,8 @@ export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
       `Extract 0-${maxExtract} items. For each:`,
       '- content: what to remember (be concise)',
       '- importance: 0-1 (goals/constraints: 0.8-1.0, key facts: 0.5-0.8, context: 0.3-0.5)',
-      '- pinned: true only for explicit user goals or critical constraints, false otherwise',
-      '- replaces: the exact ID of an existing entry this supersedes (e.g. "wm_abc1"), or empty string "" if not replacing anything',
+      '- pinned: true only for explicit user goals or critical constraints (default: false)',
+      '- replaces: the exact ID of an existing entry this supersedes (e.g. "wm_abc1"), or omit if not replacing',
       '',
       'Rules:',
       '- Don\'t duplicate what\'s already in working memory',
@@ -105,7 +105,7 @@ export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
     user: (input: string) => input,
     // Suppress all item emission — this is an internal extraction step,
     // not a conversational response visible to the end user.
-    emit: { messages: false, reasoning: false, toolCalls: false },
+    emit: { messages: false, reasoning: false, tools: false },
   })
 }
 

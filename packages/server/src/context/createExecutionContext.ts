@@ -38,7 +38,6 @@ import type {
   ComponentItem,
   ContainerItem,
   Content,
-  ContextItem,
   ItemProvenance,
   MessageItem,
   OutputItem,
@@ -46,7 +45,8 @@ import type {
   StateChangeItem,
   StatusItem
 } from "@flow-state-dev/core/items";
-import type { BlockContext, BlockResult, ComponentHandle, ExecutionParent, MessageHandle, StateRef } from "@flow-state-dev/core/types";
+import { resolveItemVisibility } from "@flow-state-dev/core/items";
+import type { BlockContext, BlockResult, ExecutionParent, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import type {
   ProjectRecord,
@@ -55,6 +55,7 @@ import type {
   UserRecord
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
+import type { ModelResolver } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
@@ -741,7 +742,6 @@ function defineStateProperty<THandle extends object, TState extends object>(
 const LLM_AUDIENCE_TYPES = new Set([
   "message",
   "reasoning",
-  "context",
   "block_output",
   "block_tool_output"
 ]);
@@ -766,15 +766,13 @@ const CLIENT_AUDIENCE_TYPES = new Set([
 
 /**
  * Converts a persisted OutputItem into an LLM-ready message.
- * Uses type-based audience routing: message, reasoning, context, and
- * block_output (with toolCall) enter LLM context.
- * Structural trace items (trace: true) are always excluded — they carry
- * lifecycle metadata for debugging, not conversational content.
- * Returns null for item types that don't map to conversation messages.
+ *
+ * Items with `history: false` (resolved via `resolveItemVisibility`) are
+ * excluded. Returns an empty array for item types that don't map to
+ * conversation messages (status, state_change, resource_change, etc.).
  */
 function itemToLLMMessages(item: OutputItem): LLMMessage[] {
-  // Fast path: structural trace items never enter LLM context.
-  if (item.trace === true) {
+  if (!resolveItemVisibility(item).history) {
     return [];
   }
 
@@ -801,13 +799,6 @@ function itemToLLMMessages(item: OutputItem): LLMMessage[] {
 
     return text.length > 0
       ? [{ role: "assistant", content: text }]
-      : [];
-  }
-
-  if (item.type === "context") {
-    const ctx = item as ContextItem;
-    return ctx.text.length > 0
-      ? [{ role: "system", content: ctx.text }]
       : [];
   }
 
@@ -1057,7 +1048,8 @@ function createSessionItemViews(
 
   const select = (
     query: ItemQuery | undefined,
-    audienceTypes?: Set<string>
+    audienceTypes?: Set<string>,
+    clientOnly?: boolean
   ): SessionItem[] => {
     const includeTransient = query?.includeTransient === true;
     const itemTypeFilter = query?.itemTypes
@@ -1076,7 +1068,12 @@ function createSessionItemViews(
         return false;
       }
 
-      // Type-based audience filtering when provided.
+      // Visibility-based audience filtering: client view uses resolveItemVisibility.
+      if (clientOnly && !resolveItemVisibility(item as unknown as OutputItem).client) {
+        return false;
+      }
+
+      // Type-based audience filtering when provided (for LLM audience).
       if (audienceTypes !== undefined && !audienceTypes.has(item.type)) {
         return false;
       }
@@ -1094,8 +1091,8 @@ function createSessionItemViews(
 
   return {
     all: (query) => select(query),
-    client: (query) => select(query, CLIENT_AUDIENCE_TYPES),
-    llm: (query) =>
+    client: (query) => select(query, undefined, true),
+    history: (query) =>
       loadLLMHistory(
         priorRequests,
         options.tokenCounter,
@@ -1128,15 +1125,19 @@ type EmissionContext = {
   nextItemIndex: () => number;
   /** Container ownership tag — set when emitting inside a container scope. */
   ownedBy?: string;
+  /** Whether emitted items are sent to clients by default in this scope. */
+  client: boolean;
+  /** Whether emitted items enter LLM history by default in this scope. */
+  history: boolean;
 };
 
 function createEmitMessage(
   emCtx: EmissionContext
 ): {
-  (text: string): MessageHandle;
-  (content: Content[]): MessageHandle;
+  (text: string, options?: { client?: boolean; history?: boolean }): void;
+  (content: Content[], options?: { client?: boolean; history?: boolean }): void;
 } {
-  return function emitMessage(textOrContent: string | Content[]): MessageHandle {
+  return function emitMessage(textOrContent: string | Content[], options?: { client?: boolean; history?: boolean }): void {
     const content: Content[] =
       typeof textOrContent === "string"
         ? [{ type: "output_text", text: textOrContent }]
@@ -1146,8 +1147,10 @@ function createEmitMessage(
     const item: MessageItem = {
       id: `item_message_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "message",
-      status: "in_progress",
+      status: "completed",
       transient: emCtx.blockTransient || undefined,
+      client: options?.client ?? emCtx.client,
+      history: options?.history ?? emCtx.history,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -1157,57 +1160,27 @@ function createEmitMessage(
       content
     };
 
-    // Fire-and-forget the added event; streaming content follows via handle.
     void emCtx.response.emitItemAdded(item);
-
-    let contentIndex = content.length;
-
-    const handle: MessageHandle = {
-      addContent(newContent: Content): void {
-        const idx = contentIndex;
-        contentIndex += 1;
-        item.content.push(newContent);
-        if (emCtx.response.emitContentAdded) {
-          void emCtx.response.emitContentAdded(item.id, idx, newContent);
-        }
-      },
-      appendDelta(delta: string): void {
-        // Append delta to last output_text content part or create new one.
-        const lastIdx = item.content.length - 1;
-        const last = item.content[lastIdx];
-        if (last !== undefined && last.type === "output_text") {
-          (last as { text: string }).text += delta;
-          if (emCtx.response.emitContentDelta) {
-            void emCtx.response.emitContentDelta(item.id, lastIdx, delta);
-          }
-        } else {
-          handle.addContent({ type: "output_text", text: delta });
-        }
-      },
-      done(): void {
-        item.status = "completed";
-        void emCtx.response.emitItemDone(item);
-      }
-    };
-
-    return handle;
+    void emCtx.response.emitItemDone(item);
   };
 }
 
 function createEmitComponent(
   emCtx: EmissionContext
-): (component: string, data: Record<string, unknown>, options?: { key?: string }) => ComponentHandle {
+): (component: string, data: Record<string, unknown>, options?: { key?: string; client?: boolean; history?: boolean }) => void {
   return function emitComponent(
     component: string,
     data: Record<string, unknown>,
-    options?: { key?: string }
-  ): ComponentHandle {
+    options?: { key?: string; client?: boolean; history?: boolean }
+  ): void {
     const itemIndex = emCtx.nextItemIndex();
     const item: ComponentItem = {
       id: `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "component",
-      status: "in_progress",
+      status: "completed",
       transient: emCtx.blockTransient || undefined,
+      client: options?.client ?? emCtx.client,
+      history: options?.history ?? emCtx.history,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -1219,43 +1192,9 @@ function createEmitComponent(
     };
 
     void emCtx.response.emitItemAdded(item);
-
-    return {
-      update(newData: Record<string, unknown>): void {
-        Object.assign(item.data, newData);
-      },
-      done(): void {
-        item.status = "completed";
-        void emCtx.response.emitItemDone(item);
-      }
-    };
-  };
-}
-
-function createEmitLLMContext(
-  emCtx: EmissionContext
-): (text: string) => void {
-  return function emitLLMContext(text: string): void {
-    const itemIndex = emCtx.nextItemIndex();
-    const item: ContextItem = {
-      id: `item_context_${itemIndex}_${Math.random().toString(16).slice(2)}`,
-      type: "context",
-      status: "completed",
-      transient: emCtx.blockTransient || undefined,
-      requestId: emCtx.requestId,
-      itemIndex,
-      provenance: emCtx.provenance(),
-      ts: Date.now(),
-      ownedBy: emCtx.ownedBy,
-      text
-    };
-
-    void emCtx.response.emitItemAdded(item);
     void emCtx.response.emitItemDone(item);
   };
 }
-
-
 
 type StateChangeScope = StateChangeItem["scope"];
 type StateChangeOperation = StateChangeItem["operation"];
@@ -1469,20 +1408,24 @@ function createTargetStateOps<TState extends JsonObject>(options: {
 }
 function createEmitStatus(
   emCtx: EmissionContext
-): (message: string) => void {
-  return function emitStatus(message: string): void {
+): (message: string, options?: { blocked?: boolean; backgroundTasks?: number; client?: boolean }) => void {
+  return function emitStatus(message: string, options?: { blocked?: boolean; backgroundTasks?: number; client?: boolean }): void {
     const itemIndex = emCtx.nextItemIndex();
     const item: StatusItem = {
       id: `item_status_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "status",
       status: "completed",
       transient: true,
+      client: options?.client ?? true,
+      history: false,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
-      message
+      message,
+      blocked: options?.blocked,
+      backgroundTasks: options?.backgroundTasks
     };
 
     void emCtx.response.emitItemAdded(item);
@@ -1541,7 +1484,7 @@ export async function createExecutionContext<
   ]);
 
   // Filter to completed prior requests once — reused by both all()/client()
-  // (via priorItems) and llm() (via loadLLMHistory).
+  // (via priorItems) and history() (via loadLLMHistory).
   const completedPriorRequests = priorRequests
     .filter((r) => r.id !== requestId && r.status === "completed")
     .sort((a, b) => a.startedAtMs - b.startedAtMs);
@@ -1969,10 +1912,11 @@ export async function createExecutionContext<
     }
   };
   const resolvedModelStorage = new AsyncLocalStorage<string>();
-  const resolveModel = (modelId: string, blockName?: string) => {
+  const resolveModel = ((modelId: string, blockName?: string) => {
     resolvedModelStorage.enterWith(modelId);
     return modelResolver(modelId, blockName);
-  };
+  }) as ModelResolver;
+  resolveModel.resolveId = (modelId: string) => modelResolver.resolveId(modelId);
 
   const readLiveItems = (): OutputItem[] => {
     const typedResponse = responseRef.current as { getItems?: () => OutputItem[] };
@@ -2192,7 +2136,8 @@ export async function createExecutionContext<
       id: `item_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "block_output",
       status,
-      trace: true,
+      client: false,
+      history: false,
       transient: parent.transient || undefined,
       requestId: reqRef.current.id,
       itemIndex,
@@ -2235,7 +2180,7 @@ export async function createExecutionContext<
     current: response
   };
 
-  // Emission context used by emitMessage/emitComponent/emitLLMContext/emitStatus.
+  // Emission context used by emitMessage/emitComponent/emitStatus.
   // Duck-type the response: if it has emitItemAdded/emitItemDone, use those;
   // otherwise fall back to the generic emit() method via a thin adapter.
   let emittedItemCount = 0;
@@ -2264,7 +2209,9 @@ export async function createExecutionContext<
       blockInstanceId: `runtime_${requestRef.current.id}`,
       phase: "main" as const
     }),
-    nextItemIndex: () => emittedItemCount++
+    nextItemIndex: () => emittedItemCount++,
+    client: true,
+    history: true,
   };
 
   const logger = options.logger;
@@ -2322,7 +2269,8 @@ export async function createExecutionContext<
         id: `item_router_${itemIndex}_${Math.random().toString(16).slice(2)}`,
         type: "router_decision",
         status: "completed",
-        trace: true,
+        client: false,
+        history: false,
         requestId: requestRef.current.id,
         itemIndex,
         provenance: {
@@ -2516,7 +2464,6 @@ export async function createExecutionContext<
       },
       emitMessage: createEmitMessage(activeEmCtx),
       emitComponent: createEmitComponent(activeEmCtx),
-      emitLLMContext: createEmitLLMContext(activeEmCtx),
       emitStatus: createEmitStatus(activeEmCtx),
       // ctx.cap is populated per-block in executeBlock (see buildCapObject below).
       cap: {} as any,
@@ -2526,7 +2473,8 @@ export async function createExecutionContext<
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>) => {
         const resolvedParent: ExecutionParent = {
           ...parent,
-          parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId
+          parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId,
+          phase: parent.phase ?? parentChain?.parent.phase
         };
 
         const parentStateContainer =
@@ -2550,6 +2498,8 @@ export async function createExecutionContext<
               id: `item_container_${itemIndex}_${Math.random().toString(16).slice(2)}`,
               type: "container",
               status: "completed",
+              client: false,
+              history: false,
               transient: resolvedParent.transient || undefined,
               requestId: requestRef.current.id,
               itemIndex,
@@ -2584,6 +2534,9 @@ export async function createExecutionContext<
           result: siblingEntry.result,
           previous: parentChain
         };
+        const childClient = resolvedParent.client ?? activeEmCtx.client;
+        const childHistory = resolvedParent.history ?? activeEmCtx.history;
+        const childPhase = resolvedParent.phase ?? "main";
         const childEmCtx: EmissionContext = {
           requestId: requestRef.current.id,
           blockTransient: resolvedParent.transient === true,
@@ -2592,12 +2545,14 @@ export async function createExecutionContext<
             blockName: resolvedParent.name,
             blockInstanceId: resolvedParent.instanceId,
             parentBlockInstanceId: resolvedParent.parentInstanceId,
-            phase: "main" as const
+            phase: childPhase
           }),
           nextItemIndex: () => emittedItemCount++,
           ownedBy: resolvedParent.container !== undefined
             ? resolvedParent.instanceId
-            : activeEmCtx.ownedBy
+            : activeEmCtx.ownedBy,
+          client: childClient,
+          history: childHistory,
         };
         const childContext = createContext(
           childChain,
@@ -2606,14 +2561,15 @@ export async function createExecutionContext<
           childEmCtx
         );
 
-        // Expose the block's identity so nested code (e.g. generator tool
-        // output emission) can construct provenance without reaching into
-        // server-internal structures.
         (childContext as { _blockIdentity?: unknown })._blockIdentity = {
           blockName: resolvedParent.name,
           blockInstanceId: resolvedParent.instanceId,
           parentBlockInstanceId: resolvedParent.parentInstanceId,
-          ownedBy: childEmCtx.ownedBy
+          ownedBy: childEmCtx.ownedBy,
+          client: resolvedParent.client,
+          history: resolvedParent.history,
+          itemRole: resolvedParent.itemRole,
+          phase: resolvedParent.phase ?? "main"
         };
 
         // Capture start time before execution — this is the only trace cost paid

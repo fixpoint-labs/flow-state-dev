@@ -268,6 +268,8 @@ export type FlowClient<TFlow extends FlowLike> = {
     input: unknown,
     options?: SendActionOptions
   ) => Promise<ExecuteActionResponse>;
+  /** Signal the server to abort an in-progress request. */
+  abortRequest: (requestId: string) => Promise<void>;
   actions: TypedActionMethods<TFlow>;
   state: {
     getSnapshot: (sessionId: string) => Promise<SessionStateSnapshotResponse>;

@@ -43,7 +43,6 @@ export type ItemRendererProps = {
 
 /** Item types that are never rendered on the client. */
 const NON_RENDERABLE_TYPES = new Set([
-  "context",
   "state_change",
   "resource_change"
 ]);

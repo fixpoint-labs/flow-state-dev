@@ -1,13 +1,17 @@
 import { z, type ZodTypeAny } from "zod";
+import { jsonSchema } from "ai";
 import type {
   BlockConfig,
   BlockContext,
   BlockDefinition,
   ConnectorFn,
+  EmitAudience,
   InferBlockResources,
   InferStateFromSchema,
   RetryPolicy
 } from "../types/block";
+import type { ItemQuery } from "../types/scope";
+import type { ItemVisibility } from "../items/types";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
 import type {
@@ -82,6 +86,26 @@ type MaybePromise<TValue> = TValue | Promise<TValue>;
 
 type ResolvableString<TInput, TCtx = BlockContext> =
   string | ((input: TInput, ctx: TCtx) => MaybePromise<string>);
+
+/** Single prompt entry: a static string, a resolver function, or null/undefined (filtered out). */
+type PromptSlotEntry<TInput, TCtx = BlockContext> =
+  | string
+  | null
+  | undefined
+  | ((input: TInput, ctx: TCtx) => MaybePromise<string | null | undefined>);
+
+/**
+ * Prompt slot — accepts a single entry or an array. Array entries are resolved
+ * individually (functions called with input+ctx), nulls filtered, then joined
+ * with newlines. This lets patterns compose prompts declaratively:
+ *
+ * ```ts
+ * prompt: [instructions, basePrompt]
+ * ```
+ */
+export type PromptSlot<TInput = unknown, TCtx = BlockContext> =
+  | PromptSlotEntry<TInput, TCtx>
+  | PromptSlotEntry<TInput, TCtx>[];
 type ResolvableModel<TInput, TCtx = BlockContext> =
   | string
   | string[]
@@ -105,6 +129,18 @@ export type GeneratorSlotEntry<TInput = unknown, TCtx = BlockContext> =
 export type GeneratorSlot<TInput = unknown, TCtx = BlockContext> =
   | GeneratorSlotEntry<TInput, TCtx>
   | GeneratorSlotEntry<TInput, TCtx>[];
+
+/**
+ * History slot config with shorthands:
+ *
+ * - `true` — auto-fetch session history with defaults
+ * - `ItemQuery` object — auto-fetch with options (e.g. `{ limit: 8 }`)
+ * - `GeneratorSlot` — custom function or static messages (full control)
+ */
+export type GeneratorHistoryConfig<TInput = unknown, TCtx = BlockContext> =
+  | true
+  | ItemQuery
+  | GeneratorSlot<TInput, TCtx>;
 
 export type GeneratorSlotRefOptions = {
   optional?: boolean;
@@ -248,10 +284,21 @@ export interface GeneratorConfig<
   /** Capabilities to install. Merges resources, state schemas, targets,
    *  and any active preset surfaces into this block's config. */
   uses?: TUses;
+  /**
+   * Controls who receives auto-emitted items from this generator.
+   *
+   * - `"client"`: items are sent to the client and enter LLM history (default)
+   * - `"history"`: items enter LLM history but are hidden from the client
+   * - `"trace"`: items are emitted for tracing only (neither client nor history)
+   *
+   * Defaults to `"client"` for main-phase generators. Tool-call children and
+   * work-phase generators default to `"trace"`.
+   */
+  emitAudience?: EmitAudience;
   model: ResolvableModel<NoInfer<TInput>, TCtx>;
-  prompt: ResolvableString<TInput, TCtx>;
+  prompt: PromptSlot<NoInfer<TInput>, TCtx>;
   context?: GeneratorSlot<NoInfer<TInput>, TCtx>;
-  history?: GeneratorSlot<NoInfer<TInput>, TCtx>;
+  history?: GeneratorHistoryConfig<NoInfer<TInput>, TCtx>;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
   user?: TypedUserSlotFn<TInput, TCtx> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
   tools?: GeneratorTool[] | ((ctx: TCtx) => MaybePromise<GeneratorTool[]>);
@@ -275,11 +322,16 @@ export interface GeneratorConfig<
   ) => MaybePromise<unknown>;
   flowTools?: ToolsConfig;
   retry?: RetryPolicy;
-  emit?: false | {
-    reasoning?: boolean;
-    messages?: boolean | 'reasoning';
-    toolCalls?: boolean;
-  };
+  /**
+   * Controls which item types the generator auto-emits.
+   *
+   * - `true` (default): emit all item types (reasoning, messages, tools)
+   * - `false`: suppress all auto-emitted items (block still executes)
+   * - object: selectively suppress specific types; unspecified types default to `true`
+   *
+   * Visibility of emitted items is controlled by `emitAudience`, not here.
+   */
+  emit?: GeneratorEmitConfig;
   providerOptions?: ResolvableProviderOptions<TInput, TCtx>;
   /** When true (default), auto-inject tool name+description pairs into the system context. */
   describeTools?: boolean;
@@ -293,6 +345,24 @@ async function resolveString<TInput, TCtx extends BlockContext>(
   ctx: TCtx
 ): Promise<string> {
   return typeof value === "function" ? value(input, ctx) : value;
+}
+
+async function resolvePrompt<TInput, TCtx extends BlockContext>(
+  value: PromptSlot<TInput, TCtx>,
+  input: TInput,
+  ctx: TCtx
+): Promise<string> {
+  if (!Array.isArray(value)) {
+    if (value == null) return "";
+    return typeof value === "function" ? (await value(input, ctx)) ?? "" : value;
+  }
+  const parts: string[] = [];
+  for (const entry of value) {
+    if (entry == null) continue;
+    const resolved = typeof entry === "function" ? await entry(input, ctx) : entry;
+    if (resolved != null) parts.push(resolved);
+  }
+  return parts.join("\n");
 }
 
 async function resolveProviderOptions<TInput, TCtx extends BlockContext>(
@@ -365,6 +435,29 @@ async function resolveModel<TInput, TCtx extends BlockContext>(
   );
 }
 
+/**
+ * Resolves history shorthand (`true` or `ItemQuery`) into a slot function.
+ * Pass-through for function/static slot entries.
+ */
+function normalizeHistorySlot<TInput, TCtx extends BlockContext>(
+  history: GeneratorHistoryConfig<TInput, TCtx> | undefined
+): GeneratorSlot<TInput, TCtx> | undefined {
+  if (history === undefined) return undefined;
+  if (history === true) {
+    return ((_input: TInput, ctx: TCtx) =>
+      ctx.session.items.history()) as GeneratorSlotReference<TInput, TCtx>;
+  }
+  if (typeof history !== "function" && !Array.isArray(history) && typeof history === "object") {
+    const obj = history as Record<string, unknown>;
+    if (!("content" in obj) && !("role" in obj)) {
+      const query = history as ItemQuery;
+      return ((_input: TInput, ctx: TCtx) =>
+        ctx.session.items.history(query)) as GeneratorSlotReference<TInput, TCtx>;
+    }
+  }
+  return history as GeneratorSlot<TInput, TCtx>;
+}
+
 function normalizeSlotEntries<TInput, TCtx extends BlockContext>(
   slot: GeneratorSlot<TInput, TCtx> | undefined
 ): GeneratorSlotEntry<TInput, TCtx>[] {
@@ -430,6 +523,27 @@ async function resolveTools<TCtx extends BlockContext>(
   return Array.isArray(resolved) ? resolved : [];
 }
 
+const AI_SDK_SCHEMA_SYMBOL = Symbol.for("vercel.ai.schema");
+
+/**
+ * Normalize a tool's `inputSchema` into a form the AI SDK's `asSchema()` can
+ * consume. Zod schemas carry `~standard`, AI-SDK Schema wrappers carry the
+ * `vercel.ai.schema` symbol — both are already handled by `asSchema`. Anything
+ * else (raw JSON Schema objects, MCP tool definitions that were unwrapped
+ * somewhere upstream) gets wrapped via `jsonSchema()` so it doesn't fall into
+ * the LazySchema `schema()` fallback and crash with "schema is not a function".
+ */
+function normalizeToolSchema(inputSchema: unknown): unknown {
+  if (inputSchema == null) return inputSchema;
+  if (typeof inputSchema !== "object") return inputSchema;
+  // Zod and other Standard Schemas — AI SDK detects and handles these.
+  if ("~standard" in inputSchema) return inputSchema;
+  // Already an AI SDK Schema wrapper (from any compatible package version).
+  if (AI_SDK_SCHEMA_SYMBOL in inputSchema) return inputSchema;
+  // Raw JSON Schema object — wrap so AI SDK recognizes it as a Schema.
+  return jsonSchema(inputSchema as any);
+}
+
 /**
  * Compile tools WITHOUT execute functions. Used when `runTools: false` — the
  * model will suggest tool calls, but the AI SDK won't auto-execute them.
@@ -438,7 +552,7 @@ function compileToolsForModel(tools: GeneratorTool[]): GeneratorModelTool[] {
   return tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
-    parameters: tool.inputSchema
+    parameters: normalizeToolSchema(tool.inputSchema) as GeneratorModelTool["parameters"]
   }));
 }
 
@@ -459,7 +573,7 @@ function compileToolsWithExecute(
   return tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
-    parameters: tool.inputSchema,
+    parameters: normalizeToolSchema(tool.inputSchema) as GeneratorModelTool["parameters"],
     execute: async (args: unknown, options?: { toolCallId?: string }) => {
       const runTool = async (scopedCtx: BlockContext): Promise<unknown> => {
         await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
@@ -745,12 +859,14 @@ function resolveMaxIterations(config: { loop?: GeneratorLoopConfig<unknown>; max
 function buildSourceItem(
   source: GeneratorModelSource,
   ctx: BlockContext,
-  provenance: { blockName: string; blockInstanceId: string; phase: "main" | "work" }
+  provenance: { blockName: string; blockInstanceId: string; phase: "main" | "work" },
+  vis: ItemVisibility | false
 ) {
   return {
     id: `item_source_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "source" as const,
     status: "completed" as const,
+    ...(vis !== false ? { client: vis.client, history: vis.history } : {}),
     requestId: ctx.request.identity.id,
     itemIndex: getEmitterItemCount(ctx.response),
     provenance,
@@ -783,21 +899,88 @@ function getEmitterItemCount(response: unknown): number {
   return 0;
 }
 
-/** Resolved emit configuration with all flags normalized to concrete values. */
-type NormalizedEmit = {
-  reasoning: boolean;
-  messages: boolean | 'reasoning';
-  toolCalls: boolean;
+/**
+ * Full emit configuration for a generator. Controls which item types are
+ * auto-emitted. Visibility of emitted items is controlled separately by
+ * `emitAudience`.
+ *
+ * - `true` (default): emit all item types.
+ * - `false`: suppress all auto-emitted items.
+ * - object: selectively suppress specific types; unspecified default to `true`.
+ */
+export type GeneratorEmitConfig =
+  | boolean
+  | {
+      reasoning?: boolean;
+      messages?: boolean;
+      tools?: boolean;
+    };
+
+/** Maps emit audience labels to concrete visibility flags for item stamping. */
+export const AUDIENCE_TO_VISIBILITY: Record<EmitAudience, ItemVisibility> = {
+  client: { client: true, history: true },
+  history: { client: false, history: true },
+  trace: { client: false, history: false },
 };
 
-/** Normalizes the user-facing emit config into concrete flags. */
-function normalizeEmit(emit: GeneratorConfig<any, any, any, any>['emit']): NormalizedEmit {
-  if (emit === false) return { reasoning: false, messages: false, toolCalls: false };
+/**
+ * Resolved emit configuration. Per-type booleans control whether items are
+ * emitted; `visibility` controls the audience flags stamped on emitted items.
+ */
+export type ResolvedEmitConfig = {
+  reasoning: boolean;
+  messages: boolean;
+  tools: boolean;
+  visibility: ItemVisibility;
+};
+
+/**
+ * Resolves the user-facing emit config and audience into a concrete
+ * per-type emit/suppress decision plus a single visibility for all
+ * emitted items.
+ *
+ * @internal Exported for unit testing. Not a public API.
+ */
+export function resolveEmitConfig(
+  emit: GeneratorEmitConfig | undefined,
+  emitAudience: EmitAudience | undefined,
+  ctx: BlockContext
+): ResolvedEmitConfig {
+  const audience = emitAudience ?? resolvePositionDefault(ctx);
+  const visibility = AUDIENCE_TO_VISIBILITY[audience];
+
+  if (emit === false) {
+    return { reasoning: false, messages: false, tools: false, visibility };
+  }
+
+  if (emit === true || emit === undefined) {
+    return { reasoning: true, messages: true, tools: true, visibility };
+  }
+
   return {
-    reasoning: emit?.reasoning !== false,
-    messages: emit?.messages ?? true,
-    toolCalls: emit?.toolCalls !== false,
+    reasoning: emit.reasoning !== false,
+    messages: emit.messages !== false,
+    tools: emit.tools !== false,
+    visibility,
   };
+}
+
+/**
+ * Computes the position-based default audience for a generator's emissions.
+ * Tool-call children (parent is a generator) and work-phase executions
+ * default to `"trace"` (neither client nor history); everything else
+ * defaults to `"client"` (full visibility).
+ *
+ * @internal Exported for unit testing. Not a public API.
+ */
+export function resolvePositionDefault(ctx: BlockContext): EmitAudience {
+  if (ctx.parent?.kind === "generator") {
+    return "trace";
+  }
+  if (ctx._blockIdentity?.phase === "work") {
+    return "trace";
+  }
+  return "client";
 }
 
 /**
@@ -818,7 +1001,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
   blockName: string,
   maxSteps: number,
   ctx: BlockContext,
-  emitConfig: NormalizedEmit,
+  emitConfig: ResolvedEmitConfig,
   prepareStep?: PrepareStepFn,
   resolvedProviderOpts?: Record<string, unknown>
 ): Promise<TOutput> {
@@ -829,10 +1012,10 @@ async function executeStreamingGeneration<TInput, TOutput>(
     blockName: identity?.blockName ?? blockName,
     blockInstanceId: identity?.blockInstanceId ?? blockName,
     parentBlockInstanceId: identity?.parentBlockInstanceId,
-    phase: "main" as const
+    phase: identity?.phase ?? ("main" as const)
   };
   const ownedBy = identity?.ownedBy;
-  const emitReasoning = emitConfig.reasoning;
+  const { reasoning: emitReasoning, messages: emitMessages, tools: emitTools, visibility } = emitConfig;
   let reasoningAccumulated = "";
 
   // Reasoning and message items are emitted lazily so their order in the
@@ -867,6 +1050,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
             type: "reasoning" as const,
             status: "in_progress" as const,
             transient: false,
+            client: visibility.client,
+            history: visibility.history,
             requestId: ctx.request.identity.id,
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
@@ -892,13 +1077,12 @@ async function executeStreamingGeneration<TInput, TOutput>(
         });
       }
     } else if (chunk.type === "text_delta" && chunk.textDelta !== undefined) {
-      // On first text delta, finalize reasoning and start the message (or
-      // a reasoning item when messages are remapped via emit.messages: 'reasoning').
-      // When messages are fully suppressed, just accumulate text silently.
-      const emitMessages = emitConfig.messages;
+      // On first text delta, finalize reasoning and start the message. When
+      // messages are suppressed (emitConfig.messages === false), just
+      // accumulate text silently so the schema validation still runs.
       if (!messageEmitted) {
         // Close reasoning item if it was started
-        if (reasoningStarted) {
+        if (reasoningStarted && emitReasoning) {
           await ctx.response.emit({
             type: "content.done",
             itemId: reasoningItemId,
@@ -910,6 +1094,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
             type: "reasoning" as const,
             status: "completed" as const,
             transient: false,
+            client: visibility.client,
+            history: visibility.history,
             requestId: ctx.request.identity.id,
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
@@ -920,37 +1106,15 @@ async function executeStreamingGeneration<TInput, TOutput>(
           await ctx.response.emit({ type: "item.done", item: completedReasoning });
         }
 
-        if (emitMessages === false) {
-          // Messages suppressed — no item emitted, just accumulate text
-        } else if (emitMessages === 'reasoning') {
-          // Emit text as a reasoning item instead of a message
-          messageItem = {
-            id: itemId,
-            type: "reasoning" as const,
-            status: "in_progress" as const,
-            transient: false,
-            requestId: ctx.request.identity.id,
-            itemIndex: getEmitterItemCount(ctx.response),
-            provenance,
-            ts: Date.now(),
-            ownedBy,
-            summary: [{ type: "reasoning_text" as const, text: "" }]
-          };
-          await ctx.response.emit({ type: "item.added", item: messageItem });
-          await ctx.response.emit({
-            type: "content.added",
-            itemId,
-            contentIndex: contentPartIndex,
-            content: { type: "reasoning_text", text: "" }
-          });
-        } else {
-          // Normal assistant message
+        if (emitMessages) {
           messageItem = {
             id: itemId,
             type: "message" as const,
             role: "assistant" as const,
             status: "in_progress" as const,
             transient: false,
+            client: visibility.client,
+            history: visibility.history,
             requestId: ctx.request.identity.id,
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
@@ -969,7 +1133,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         messageEmitted = true;
       }
       accumulated += chunk.textDelta;
-      if (emitMessages !== false) {
+      if (emitMessages) {
         await ctx.response.emit({
           type: "content.delta",
           itemId,
@@ -979,14 +1143,16 @@ async function executeStreamingGeneration<TInput, TOutput>(
       }
     } else if (chunk.type === "tool_input_start" && chunk.toolInput !== undefined) {
       // Emit a status item so clients see progress during provider tool execution.
-      // Gated by emit.toolCalls — worker generators suppress these to avoid flooding.
-      if (emitConfig.toolCalls) {
+      // Gated by emit.tools — worker generators suppress these to avoid flooding.
+      if (emitTools) {
         const toolName = chunk.toolInput.toolName;
         const statusItem = {
           id: `item_status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
           type: "status" as const,
           status: "completed" as const,
           transient: true,
+          client: visibility.client,
+          history: visibility.history,
           requestId: ctx.request.identity.id,
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
@@ -1001,14 +1167,16 @@ async function executeStreamingGeneration<TInput, TOutput>(
       // Emit tool call progress so clients can show incremental tool call args.
       // Each delta is emitted as a transient status update — the full tool call
       // lifecycle (start → args → result) is tracked by toolCallId.
-      // Gated by emit.toolCalls — worker generators suppress these to avoid flooding.
-      if (emitConfig.toolCalls) {
+      // Gated by emit.tools — worker generators suppress these to avoid flooding.
+      if (emitTools) {
         const delta = chunk.toolCallDelta;
         const toolCallItem = {
           id: `item_toolcall_${delta.toolCallId}`,
           type: "tool_call_progress" as const,
           status: "in_progress" as const,
           transient: true,
+          client: visibility.client,
+          history: visibility.history,
           requestId: ctx.request.identity.id,
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
@@ -1023,14 +1191,16 @@ async function executeStreamingGeneration<TInput, TOutput>(
       }
     } else if (chunk.type === "tool_result" && chunk.toolResult !== undefined) {
       // Emit completed tool result so clients see the outcome of tool execution.
-      // Gated by emit.toolCalls — worker generators suppress these to avoid flooding.
-      if (emitConfig.toolCalls) {
+      // Gated by emit.tools — worker generators suppress these to avoid flooding.
+      if (emitTools) {
         const tr = chunk.toolResult;
         const toolResultItem = {
           id: `item_toolresult_${tr.toolCallId}`,
           type: "tool_call_progress" as const,
           status: "completed" as const,
           transient: true,
+          client: visibility.client,
+          history: visibility.history,
           requestId: ctx.request.identity.id,
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
@@ -1044,7 +1214,11 @@ async function executeStreamingGeneration<TInput, TOutput>(
         await ctx.response.emit({ type: "item.done", item: toolResultItem });
       }
     } else if (chunk.type === "source_url" && chunk.source !== undefined) {
-      const sourceItem = buildSourceItem(chunk.source, ctx, provenance);
+      // Sources are citations attached to the assistant's message. They share
+      // the messages role; when messages are suppressed we demote to trace so
+      // devtools still see the citation without leaking it to the UI.
+      const sourceVis: ItemVisibility = emitMessages ? visibility : { client: false, history: false };
+      const sourceItem = buildSourceItem(chunk.source, ctx, provenance, sourceVis);
       await ctx.response.emit({ type: "item.added", item: sourceItem });
       await ctx.response.emit({ type: "item.done", item: sourceItem });
     } else if (chunk.type === "finish") {
@@ -1053,9 +1227,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
   }
 
   // If no text deltas arrived, still finalize reasoning and emit message
-  const emitMessages = emitConfig.messages;
   if (!messageEmitted) {
-    if (reasoningStarted) {
+    if (reasoningStarted && emitReasoning) {
       await ctx.response.emit({
         type: "content.done",
         itemId: reasoningItemId,
@@ -1067,6 +1240,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
         type: "reasoning" as const,
         status: "completed" as const,
         transient: false,
+        client: visibility.client,
+        history: visibility.history,
         requestId: ctx.request.identity.id,
         itemIndex: getEmitterItemCount(ctx.response),
         provenance,
@@ -1076,35 +1251,15 @@ async function executeStreamingGeneration<TInput, TOutput>(
       };
       await ctx.response.emit({ type: "item.done", item: completedReasoning });
     }
-    if (emitMessages === false) {
-      // Messages suppressed — no item emitted
-    } else if (emitMessages === 'reasoning') {
-      messageItem = {
-        id: itemId,
-        type: "reasoning" as const,
-        status: "in_progress" as const,
-        transient: false,
-        requestId: ctx.request.identity.id,
-        itemIndex: getEmitterItemCount(ctx.response),
-        provenance,
-        ts: Date.now(),
-        ownedBy,
-        summary: [{ type: "reasoning_text" as const, text: "" }]
-      };
-      await ctx.response.emit({ type: "item.added", item: messageItem });
-      await ctx.response.emit({
-        type: "content.added",
-        itemId,
-        contentIndex: contentPartIndex,
-        content: { type: "reasoning_text", text: "" }
-      });
-    } else {
+    if (emitMessages) {
       messageItem = {
         id: itemId,
         type: "message" as const,
         role: "assistant" as const,
         status: "in_progress" as const,
         transient: false,
+        client: visibility.client,
+        history: visibility.history,
         requestId: ctx.request.identity.id,
         itemIndex: getEmitterItemCount(ctx.response),
         provenance,
@@ -1132,18 +1287,18 @@ async function executeStreamingGeneration<TInput, TOutput>(
   }
 
   // Emit content.done and completed item (skip when messages are suppressed)
-  if (emitMessages !== false && messageItem) {
-    const isReasoning = emitMessages === 'reasoning';
-    const contentType = isReasoning ? "reasoning_text" : "output_text";
+  if (emitMessages && messageItem) {
     await ctx.response.emit({
       type: "content.done",
       itemId,
       contentIndex: contentPartIndex,
-      content: { type: contentType, text: accumulated }
+      content: { type: "output_text", text: accumulated }
     });
-    const completedItem = isReasoning
-      ? { ...messageItem, status: "completed" as const, summary: [{ type: "reasoning_text" as const, text: accumulated }] }
-      : { ...messageItem, status: "completed" as const, content: [{ type: "output_text" as const, text: accumulated }] };
+    const completedItem = {
+      ...messageItem,
+      status: "completed" as const,
+      content: [{ type: "output_text" as const, text: accumulated }]
+    };
     await ctx.response.emit({ type: "item.done", item: completedItem });
   }
 
@@ -1283,7 +1438,7 @@ export function generator<
     };
   }
 
-  return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
+  const definition = buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "generator",
     config: normalizedConfig as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     declaredResources,
@@ -1318,7 +1473,7 @@ export function generator<
       const autoDescribe = normalizedConfig.describeTools !== false;
       const toolBlocks = await resolveTools(normalizedConfig.tools, ctx);
 
-      const prompt = await resolveString(normalizedConfig.prompt, input, ctx);
+      const prompt = await resolvePrompt(normalizedConfig.prompt, input, ctx);
       const contextValues = await resolveSlotValues(normalizedConfig.context, input, ctx);
 
       // Auto-describe: inject tool name+description pairs into context.
@@ -1329,7 +1484,8 @@ export function generator<
         }
       }
 
-      const historyValues = await resolveSlotValues(normalizedConfig.history, input, ctx);
+      const historySlot = normalizeHistorySlot(normalizedConfig.history);
+      const historyValues = await resolveSlotValues(historySlot, input, ctx);
       const userValues = await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
 
       // Build initial system prefix (prompt + context + tool descriptions)
@@ -1349,7 +1505,8 @@ export function generator<
       // dynamic (function-typed) entries. The AI SDK calls this before each
       // step of the multi-step tool loop, letting us re-resolve dynamic
       // slots so the LLM sees fresh state and the correct active tools.
-      const hasDynamicPrompt = typeof normalizedConfig.prompt === "function";
+      const hasDynamicPrompt = typeof normalizedConfig.prompt === "function"
+        || (Array.isArray(normalizedConfig.prompt) && normalizedConfig.prompt.some((e) => typeof e === "function"));
       const hasDynamicContext = normalizeSlotEntries(normalizedConfig.context).some(
         (entry) => typeof entry === "function"
       );
@@ -1376,7 +1533,7 @@ export function generator<
             freshToolDescription = buildToolDescriptionContext(toolBlocks);
           }
 
-          const freshPrompt = await resolveString(normalizedConfig.prompt, input, ctx);
+          const freshPrompt = await resolvePrompt(normalizedConfig.prompt, input, ctx);
           const freshContext = await resolveSlotValues(normalizedConfig.context, input, ctx);
           if (freshToolDescription !== undefined) {
             freshContext.push(freshToolDescription);
@@ -1411,8 +1568,8 @@ export function generator<
       // Streaming path: text output + model supports streaming.
       // Use streaming when messages are enabled OR when tools are present (so tool
       // status events flow to the client even when message text is suppressed).
-      const emitConfig = normalizeEmit(normalizedConfig.emit);
-      const messagesEnabled = emitConfig.messages !== false;
+      const emitConfig = resolveEmitConfig(normalizedConfig.emit, normalizedConfig.emitAudience, ctx);
+      const messagesEnabled = emitConfig.messages;
       const hasTools = compiledTools.length > 0 || resolvedProviderTools.length > 0;
       const canStream = (messagesEnabled || hasTools) && isTextOutputSchema(outputSchema) && model.stream !== undefined;
 
@@ -1469,10 +1626,13 @@ export function generator<
           blockName: sourceIdentity?.blockName ?? blockName,
           blockInstanceId: sourceIdentity?.blockInstanceId ?? blockName,
           parentBlockInstanceId: sourceIdentity?.parentBlockInstanceId,
-          phase: "main" as const
+          phase: sourceIdentity?.phase ?? ("main" as const)
         };
+        const nsSourceVis: ItemVisibility = emitConfig.messages
+          ? emitConfig.visibility
+          : { client: false, history: false };
         for (const source of generation.sources) {
-          const sourceItem = buildSourceItem(source, ctx, sourceProv);
+          const sourceItem = buildSourceItem(source, ctx, sourceProv, nsSourceVis);
           await ctx.response.emit({ type: "item.added", item: sourceItem });
           await ctx.response.emit({ type: "item.done", item: sourceItem });
         }
@@ -1496,54 +1656,47 @@ export function generator<
         normalizedConfig, outputSchema, candidate, state, ctx
       );
 
-      // For text-output generators, emit an assistant MessageItem (or reasoning
-      // item when messages are remapped) so the output appears in the stream.
-      // Suppress entirely when emit.messages is false.
-      if (emitConfig.messages !== false && isTextOutputSchema(outputSchema) && typeof output === "string") {
+      // For text-output generators, emit an assistant MessageItem so the
+      // output appears in the stream. Suppress entirely when
+      // emit.messages is false; stamp the resolved role otherwise.
+      if (emitConfig.messages && isTextOutputSchema(outputSchema) && typeof output === "string") {
         const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         const outputIdentity = ctx._blockIdentity;
         const provenance = {
           blockName: outputIdentity?.blockName ?? blockName,
           blockInstanceId: outputIdentity?.blockInstanceId ?? blockName,
           parentBlockInstanceId: outputIdentity?.parentBlockInstanceId,
-          phase: "main" as const
+          phase: outputIdentity?.phase ?? ("main" as const)
         };
         const nsOwnedBy = outputIdentity?.ownedBy;
-        if (emitConfig.messages === 'reasoning') {
-          const reasoningItem = {
-            id: itemId,
-            type: "reasoning" as const,
-            status: "completed" as const,
-            transient: false,
-            requestId: ctx.request.identity.id,
-            itemIndex: getEmitterItemCount(ctx.response),
-            provenance,
-            ts: Date.now(),
-            ownedBy: nsOwnedBy,
-            summary: [{ type: "reasoning_text" as const, text: output }]
-          };
-          await ctx.response.emit({ type: "item.added", item: reasoningItem });
-          await ctx.response.emit({ type: "item.done", item: reasoningItem });
-        } else {
-          const messageItem = {
-            id: itemId,
-            type: "message" as const,
-            role: "assistant" as const,
-            status: "completed" as const,
-            transient: false,
-            requestId: ctx.request.identity.id,
-            itemIndex: getEmitterItemCount(ctx.response),
-            provenance,
-            ts: Date.now(),
-            ownedBy: nsOwnedBy,
-            content: [{ type: "output_text" as const, text: output }]
-          };
-          await ctx.response.emit({ type: "item.added", item: messageItem });
-          await ctx.response.emit({ type: "item.done", item: messageItem });
-        }
+        const messageItem = {
+          id: itemId,
+          type: "message" as const,
+          role: "assistant" as const,
+          status: "completed" as const,
+          transient: false,
+          client: emitConfig.visibility.client,
+          history: emitConfig.visibility.history,
+          requestId: ctx.request.identity.id,
+          itemIndex: getEmitterItemCount(ctx.response),
+          provenance,
+          ts: Date.now(),
+          ownedBy: nsOwnedBy,
+          content: [{ type: "output_text" as const, text: output }]
+        };
+        await ctx.response.emit({ type: "item.added", item: messageItem });
+        await ctx.response.emit({ type: "item.done", item: messageItem });
       }
 
       return output;
     }
   });
+
+  if (normalizedConfig.emitAudience) {
+    const vis = AUDIENCE_TO_VISIBILITY[normalizedConfig.emitAudience];
+    definition.client = vis.client;
+    definition.history = vis.history;
+  }
+
+  return definition;
 }

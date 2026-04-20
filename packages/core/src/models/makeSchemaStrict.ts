@@ -15,14 +15,23 @@
 import { z, type ZodTypeAny } from "zod";
 
 /**
- * Recursively unwraps ZodOptional and ZodDefault wrappers from a single
- * schema node, returning the innermost non-optional/non-default type.
+ * Recursively unwraps ZodOptional, ZodDefault, and ZodEffects wrappers from a
+ * single schema node, returning the innermost non-optional/non-default type.
+ *
+ * ZodEffects (from `.superRefine()` / `.refine()` / `.transform()`) is
+ * unwrapped to its inner schema — the runtime refinements only run against
+ * the original schema during response validation, so dropping them for the
+ * strict-provider schema is safe.
  */
 function unwrapOptionalAndDefault(schema: ZodTypeAny): ZodTypeAny {
   const typeName = (schema as any)._def?.typeName as string | undefined;
 
   if (typeName === "ZodOptional" || typeName === "ZodDefault") {
     return unwrapOptionalAndDefault((schema as any)._def.innerType);
+  }
+
+  if (typeName === "ZodEffects") {
+    return unwrapOptionalAndDefault((schema as any)._def.schema);
   }
 
   if (typeName === "ZodNullable") {
@@ -50,16 +59,22 @@ function unwrapOptionalAndDefault(schema: ZodTypeAny): ZodTypeAny {
 
 /**
  * Returns a copy of a ZodObject schema where every property is required
- * (no `.optional()` or `.default()` wrappers). Nested objects and arrays
- * are handled recursively.
+ * (no `.optional()`, `.default()`, or `.superRefine()` wrappers hiding
+ * nested objects). Nested objects and arrays are handled recursively.
  *
  * Non-object schemas are returned as-is — this is a no-op for primitives,
  * strings, enums, etc.
  */
 export function makeSchemaStrict(schema: ZodTypeAny): ZodTypeAny {
-  const typeName = (schema as any)._def?.typeName as string | undefined;
+  // Unwrap ZodEffects so `.superRefine()` at the root doesn't bypass the
+  // strict-mode transform. Runtime refinements still apply to the original
+  // schema during response validation — this copy is provider-only.
+  const rootTypeName = (schema as any)._def?.typeName as string | undefined;
+  if (rootTypeName === "ZodEffects") {
+    return makeSchemaStrict((schema as any)._def.schema);
+  }
 
-  if (typeName !== "ZodObject") {
+  if (rootTypeName !== "ZodObject") {
     return schema;
   }
 

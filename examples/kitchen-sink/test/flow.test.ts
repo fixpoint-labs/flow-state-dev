@@ -48,7 +48,7 @@ const testFlow = defineFlow({
     run: {
       inputSchema: z.object({
         message: z.string(),
-        mode: z.enum(["ask", "build"]).default("ask"),
+        mode: z.enum(["ask", "build", "interview", "debate"]).default("ask"),
         thinkingStyle: z.enum(["auto", "default", "plan-and-execute", "supervisor", "blackboard"]).default("auto"),
       }),
       block: thinkingStyleRouter,
@@ -56,7 +56,7 @@ const testFlow = defineFlow({
   },
   session: {
     stateSchema: z.object({
-      mode: z.enum(["ask", "build"]).default("ask"),
+      mode: z.enum(["ask", "build", "interview", "debate"]).default("ask"),
       thinkingStyle: z.enum(["plan-and-execute", "supervisor", "blackboard", "default"]).optional(),
       requestCount: z.number().default(0),
       lastAction: z.string().optional(),
@@ -252,6 +252,70 @@ describe("kitchen-sink flow", () => {
     expect(scripted.next()?.text).toBe("Scripted reply");
     scripted.reset();
     expect(scripted.next()).toBeDefined();
+  });
+
+  it("routes interview mode through default-pipeline", async () => {
+    assistantFixture.reset();
+    observeFixture.reset();
+    const routed = await testRouter(thinkingStyleRouter, {
+      input: { message: "Tell me about your project", mode: "interview", thinkingStyle: "auto" },
+      flow: testFlow,
+      session: {
+        state: { mode: "interview", thinkingStyle: "default", features: { biasCheck: false, bashTool: false } },
+        resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
+      },
+      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
+    });
+    expect(routed.error).toBeNull();
+    expect(routed.selectedRoute).toBe("assistant-generator");
+  });
+
+  it("routes debate mode through default-pipeline", async () => {
+    assistantFixture.reset();
+    observeFixture.reset();
+    const routed = await testRouter(thinkingStyleRouter, {
+      input: { message: "I think React is better than Vue", mode: "debate", thinkingStyle: "auto" },
+      flow: testFlow,
+      session: {
+        state: { mode: "debate", thinkingStyle: "default", features: { biasCheck: false, bashTool: false } },
+        resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
+      },
+      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
+    });
+    expect(routed.error).toBeNull();
+    expect(routed.selectedRoute).toBe("assistant-generator");
+  });
+
+  it("completes a chat action in interview mode", async () => {
+    assistantFixture.reset();
+    observeFixture.reset();
+    const result = await testBlock(thinkingStyleRouter, {
+      input: { message: "Let's explore my project requirements", mode: "interview", thinkingStyle: "auto" },
+      flow: testFlow,
+      session: {
+        state: { mode: "interview", thinkingStyle: "default", features: { biasCheck: false, bashTool: false } },
+        resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
+      },
+      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
+    });
+    expect(result.error).toBeNull();
+    expect(result.output).toBeDefined();
+  });
+
+  it("completes a chat action in debate mode", async () => {
+    assistantFixture.reset();
+    observeFixture.reset();
+    const result = await testBlock(thinkingStyleRouter, {
+      input: { message: "Microservices are always better than monoliths", mode: "debate", thinkingStyle: "auto" },
+      flow: testFlow,
+      session: {
+        state: { mode: "debate", thinkingStyle: "default", features: { biasCheck: false, bashTool: false } },
+        resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
+      },
+      generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
+    });
+    expect(result.error).toBeNull();
+    expect(result.output).toBeDefined();
   });
 
   it("contains no legacy part-rendering terminology", () => {

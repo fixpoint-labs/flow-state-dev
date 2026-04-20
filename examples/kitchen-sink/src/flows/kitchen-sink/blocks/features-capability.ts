@@ -12,7 +12,7 @@
  *   - readArtifact/updateArtifact are included as fallback
  *   - no bash tools or guidance
  */
-import { defineCapability } from "@flow-state-dev/core";
+import { defineCapability, type CapabilityRef } from "@flow-state-dev/core";
 import { createBashCapability } from "@flow-state-dev/tools/bash";
 import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
@@ -20,6 +20,7 @@ import { crawl } from "@flow-state-dev/tools/crawl";
 import { z } from "zod";
 import { modeSchema, featuresSchema } from "../schemas";
 import { artifactResources, artifactsCapability } from "./artifacts";
+import { mcpCapability } from "../../../../lib/mcp";
 import path from "node:path";
 
 const featuresSessionStateSchema = z.object({
@@ -65,13 +66,16 @@ export const featuresCapability = defineCapability({
 
   uses: [
     // Conditionally include bash or artifact tools based on mode and feature flags.
-    // Ask mode always excludes bash — Build mode defers to the bashTool feature flag.
+    // Most modes always excludes bash — Build mode defers to the bashTool feature flag.
+    // MCP capability included when servers are configured (null when absent).
     (ctx) => {
       const bashEnabled =
-        ctx.session.state.mode !== "ask" && ctx.session.state.features.bashTool;
-      return bashEnabled
+        ctx.session.state.mode === "build" && ctx.session.state.features.bashTool;
+      const caps: CapabilityRef[] = bashEnabled
         ? [bashCap, artifactsCapability.presets({ inventory: true, tools: false })]
         : [artifactsCapability];
+      if (mcpCapability) caps.push(mcpCapability);
+      return caps;
     },
   ],
 
@@ -90,9 +94,9 @@ export const featuresCapability = defineCapability({
       },
       context: [
         (_input, ctx) => {
-          // Bash is disabled in Ask mode regardless of the feature flag.
+          // Bash is only active in Build mode with the feature flag enabled.
           const bashActive =
-            ctx.session.state.mode !== "ask" && ctx.session.state.features.bashTool;
+            ctx.session.state.mode === "build" && ctx.session.state.features.bashTool;
           if (bashActive) return null;
           return [
             "You have access to artifacts and can read or create them:",

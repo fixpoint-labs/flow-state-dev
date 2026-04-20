@@ -55,14 +55,15 @@ const myGenerator = generator({
   tools: [myTool],
   search: true,
   context: [myContextFn],
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: true,
   repair: { mode: "auto", maxAttempts: 3 },
 });
 ```
 
 **Emit config:**
 
-- `emit?: false | { reasoning?: boolean; messages?: boolean | 'reasoning'; toolCalls?: boolean }` — Control which items the generator emits to the client stream. `false` suppresses everything. Individual flags default to `true`. Set `messages: 'reasoning'` to remap assistant text as reasoning items. When `messages` is `false` but tools are present, streaming is still used for tool call status events.
+- `emitAudience?: "client" | "history" | "trace"` — Generator-only. Sets the default audience for all items the generator emits. `"client"` = sent to both client and LLM history (default for main-phase generators). `"history"` = enters LLM history but hidden from client UI. `"trace"` = devtool-only. Precedence (high → low): per-type `emit` value → `emitAudience` → position-based default (main phase → `"client"`, tool-call / work phase → `"trace"`).
+- `emit?: false | { reasoning?: boolean; messages?: boolean; tools?: boolean }` — Control which items the generator emits. `false` suppresses all emissions (block still runs). The object form overrides per-type: `true` = block default, `false` = suppress. When `messages: false` but tools are present, streaming is still used for tool call status events.
 
 **Search config:**
 

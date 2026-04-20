@@ -82,19 +82,6 @@ describe("renderer map utilities", () => {
 
 describe("ItemRenderer dispatch", () => {
   it("returns null for non-client types", () => {
-    const contextItem: OutputItem = {
-      id: "ctx_1",
-      type: "context",
-      text: "system info",
-      status: "completed",
-      requestId: "req_1",
-      itemIndex: 1,
-      provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
-      ts: 1
-    };
-
-    expect(ItemRenderer({ item: contextItem })).toBeNull();
-
     const stateChangeItem: OutputItem = {
       id: "sc_1",
       type: "state_change",

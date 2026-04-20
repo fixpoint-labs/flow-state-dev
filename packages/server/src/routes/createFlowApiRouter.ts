@@ -29,6 +29,22 @@ export type CreateFlowApiRouterOptions = {
   staleStreamTtlMs?: number;
   middleware?: Middleware[];
   onError?: (error: Error, context: { method: string; path: string }) => void;
+  /**
+   * Whether to detect interrupted requests from previous runs on startup.
+   * Disable on serverless platforms where background queries on init can
+   * exhaust the Postgres pool before actual requests are served.
+   * Default: true.
+   */
+  detectInterruptedOnStartup?: boolean;
+  /**
+   * Called with a promise that must complete for background action execution
+   * to finish. On serverless platforms, pass this promise to `waitUntil()`
+   * so the function instance stays alive after the 202 response is sent.
+   *
+   * Without this, fire-and-forget `runAction` may be killed before persisting
+   * results, causing stream 404s and lost data.
+   */
+  onBackgroundWork?: (promise: Promise<unknown>) => void;
 };
 
 type CreateInternalFlowApiRouterOptions = CreateFlowApiRouterOptions & {

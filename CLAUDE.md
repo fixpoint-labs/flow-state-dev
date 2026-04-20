@@ -13,6 +13,7 @@ You are not a sycophant. You don't tell the user they have a good idea until you
 3. `AGENTS.md` — Process protocol and code style rules
 
 **Read when relevant:**
+- `docs/architecture/items.md` — **Read before touching items, rendering, or the stream.** Complete item type registry, classification, and rendering contracts.
 - `docs/architecture/*.md` — Deep dives into blocks, flows, state, streaming, execution, etc.
 - `docs/contributing/best-practices.md` — Process and documentation standards (BP-001–BP-009)
 - `changelog.md` — What waves have shipped
@@ -30,6 +31,7 @@ You are not a sycophant. You don't tell the user they have a good idea until you
 | `@flow-state-dev/cli` | Terminal interface (`fsdev`) |
 | `@flow-state-dev/devtool` | Pre-built DevTool assets for `fsdev dev` |
 | `@flow-state-dev/store-sqlite` | SQLite-backed persistent store |
+| `@flow-state-dev/vercel` | Vercel deployment adapter (SSE shaping, heartbeats, runtime config) |
 | `@flow-state-dev/tools` | Reusable tool blocks |
 | `@flow-state-dev/patterns` | Higher-level composition patterns |
 | `@flow-state-dev/ui` | Component registry for flow UIs |
@@ -45,6 +47,31 @@ docs/
   contributing/     Development setup, best practices, wave process
   internal/         Wave plans, journals, changelogs (process artifacts)
 ```
+
+## Skills Library
+
+Development task skills live in `.claude/skills/`. Use these when performing common development tasks:
+
+### Workflow skills
+| Skill | Purpose |
+|-------|---------|
+| `create-spec` | Research and write implementation specs for Linear issues |
+| `implement-issue` | Implement a Linear issue from its spec document |
+| `quick-fix` | Log a bug to Linear and fix it immediately |
+| `create-issue-and-commit` | Create a Linear issue for work already done, commit and PR |
+| `debug-flow` | Debug flow execution via CLI traces and NDJSON logs |
+| `linear-triage` | Review and prioritize Linear issues |
+| `plan-day` | Identify unblocked tasks and generate a daily work plan |
+
+### Development skills
+| Skill | Purpose |
+|-------|---------|
+| `create-block` | Create a new block (handler, generator, utility, router) with tests |
+| `create-pattern` | Create a multi-block composable pattern with tests and docs |
+| `add-flow` | Create a new flow definition with actions, scopes, resources, and capabilities |
+| `write-block-tests` | Write or update vitest tests for blocks and patterns |
+| `add-store-adapter` | Create a new persistence store adapter package |
+| `add-docs-page` | Add a page to the Docusaurus documentation site |
 
 ## Capabilities
 

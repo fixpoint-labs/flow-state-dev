@@ -9,7 +9,7 @@
  * blackboard, reactive-blackboard) and the router that dispatches between them.
  */
 import { generator, handler, router, sequencer, utility } from "@flow-state-dev/core";
-import type { GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
+import type { GeneratorHistoryConfig, GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { supervisor } from "@flow-state-dev/patterns/supervisor";
@@ -109,6 +109,7 @@ const messageSchema = z.object({ message: z.string() });
 export const keywordHandler = handler({
   name: "keyword-style-handler",
   inputSchema: messageSchema,
+  outputSchema: z.object({ matched: z.boolean() }),
   sequencerStateSchema: autoClassifyStateSchema,
   sessionStateSchema: thinkingStyleSessionStateSchema,
   execute: async (input, ctx) => {
@@ -130,7 +131,11 @@ export const keywordHandler = handler({
       if (matched !== ctx.session.state.thinkingStyle) {
         await ctx.session.patchState({ thinkingStyle: matched });
       }
+      return { matched: true };
     }
+
+    // returning the match is for tracing purposes, we don't use the output
+    return { matched: false };
   },
 });
 
@@ -184,6 +189,7 @@ export const classifierBlock = utility.intentClassifier({
 const applyClassifiedStyle = handler({
   name: "apply-classified-style",
   inputSchema: classifierOutputSchema,
+  outputSchema: z.object({ style: thinkingStyleSchema }),
   sessionStateSchema: thinkingStyleSessionStateSchema,
   execute: async (input, ctx) => {
     const parsed = thinkingStyleSchema.safeParse(input.category);
@@ -194,6 +200,8 @@ const applyClassifiedStyle = handler({
     if (style !== ctx.session.state.thinkingStyle) {
       await ctx.session.patchState({ thinkingStyle: style });
     }
+    // returning the style is for tracing purposes, we don't use the output
+    return { style };
   },
 });
 
@@ -227,18 +235,23 @@ export const autoClassifyStyle = sequencer({
 // and flow.ts (where the assistant generator is defined).
 // -------------------------------------------------------------------------
 
+/** Resolvable string — static or computed at runtime from input and context. */
+type InstructionsSlot = string | ((input: any, ctx: any) => string | Promise<string>);
+
 export interface ThinkingStyleRouterConfig {
   assistantGenerator: BlockDefinition<any, any>;
   /** Model ID string or a selectModel() resolver. */
   modelId: string | ((input: any, ctx: any) => any);
-  history?: GeneratorSlot<any, any>;
+  history?: GeneratorHistoryConfig<any, any>;
   context: GeneratorSlot<any, any>;
   /** Capabilities to install on all default pattern blocks. */
   uses?: UsesSlot;
+  /** Overall instructions passed to pattern sub-blocks (planner, controller, synthesizer). */
+  instructions?: InstructionsSlot;
 }
 
 export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
-  const { assistantGenerator, modelId, context, uses } = config;
+  const { assistantGenerator, modelId, context, uses, instructions } = config;
 
   // Default — direct generation.
   const defaultPipeline = assistantGenerator;
@@ -247,6 +260,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   const paePipeline = planAndExecute({
     name: "pae-thinking",
     model: modelId as any,
+    instructions,
     context,
     history: config.history,
     search: true,
@@ -263,28 +277,33 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     inputSchema: z.object({
       id: z.string(),
       goal: z.string(),
+      context: z.string().optional(),
       feedback: z.string().optional(),
     }),
     outputSchema: z.string(),
     context,
     ...(uses ? { uses: uses as any } : {}),
     search: true,
-    emit: { messages: false, toolCalls: false },
+    emit: { messages: false, tools: false },
     prompt: [
       "You are a focused task executor within a supervisor workflow.",
       "Complete the assigned task concisely and accurately.",
+      "If task context is provided, follow those guidelines while completing the task.",
       "If feedback from a prior attempt is provided, address it directly.",
       "IMPORTANT: Your text response IS the task deliverable. Return all substantive content as your response text — do not write it to files instead.",
     ].join("\n"),
-    user: (input) =>
-      input.feedback
-        ? `Task: ${input.goal}\n\nPrevious feedback: ${input.feedback}`
-        : `Task: ${input.goal}`,
+    user: (input) => {
+      const parts = [`Task: ${input.goal}`];
+      if (input.context) parts.push(`\nContext: ${input.context}`);
+      if (input.feedback) parts.push(`\nPrevious feedback: ${input.feedback}`);
+      return parts.join("\n");
+    },
   });
 
   const supervisorPipeline = supervisor({
     name: "supervisor-thinking",
     worker: supervisorWorker,
+    instructions,
     maxIterations: 3,
     maxConcurrency: 3,
     onSubTaskError: "skip",
@@ -318,7 +337,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       context,
       history: config.history,
       search: true,
-      emit: { messages: false, toolCalls: false },
+      emit: { messages: false, tools: false },
       prompt: specConfig.prompt,
       user: (_input: any, ctx: any) => {
         const state = ctx.session.resources.blackboard.state;
@@ -386,6 +405,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       "bb-analyst": bbAnalyst,
       "bb-critic": bbCritic,
     },
+    instructions,
     model: modelId as any,
     context,
     uses,
@@ -553,6 +573,18 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     maxDepth: 3,
   });
 
+  const rbBasePrompt = [
+    "You are a synthesis agent. A reactive analysis just completed.",
+    "An Explorer produced observations, an Analyst turned each into",
+    "findings, and a Challenger stress-tested each finding. All entries",
+    "are shown below, grouped by tier.",
+    "",
+    "Produce a coherent, well-rounded response that integrates the",
+    "full chain of reasoning. Highlight areas of agreement, acknowledge",
+    "tensions or gaps the Challenger raised, and give the user a",
+    "comprehensive answer. Do not mention the analysts or the process.",
+  ];
+
   const rbSynthesizer = generator({
     name: "rb-synthesizer",
     model: modelId,
@@ -562,17 +594,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     context,
     history: config.history,
     search: true,
-    prompt: [
-      "You are a synthesis agent. A reactive analysis just completed.",
-      "An Explorer produced observations, an Analyst turned each into",
-      "findings, and a Challenger stress-tested each finding. All entries",
-      "are shown below, grouped by tier.",
-      "",
-      "Produce a coherent, well-rounded response that integrates the",
-      "full chain of reasoning. Highlight areas of agreement, acknowledge",
-      "tensions or gaps the Challenger raised, and give the user a",
-      "comprehensive answer. Do not mention the analysts or the process.",
-    ].join("\n"),
+    prompt: [instructions, rbBasePrompt.join("\n")],
     user: (_input: any, ctx: any) => {
       const state = ctx.session.resources.reactiveBlackboard.state as {
         entries: Array<{ type: string; topic: string; body: string }>;

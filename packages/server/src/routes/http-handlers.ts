@@ -26,6 +26,7 @@ import {
   errorStatus,
   jsonResponse
 } from "./route-utils";
+import { handleAbortRequest } from "./abort-routes";
 import { handleExecuteAction } from "./action-routes";
 import { handleListActiveRequests, handleRetryRequest } from "./recovery-routes";
 import {
@@ -115,6 +116,7 @@ export type CreateFlowRouteHandlersOptions = {
   staleStreamTtlMs?: number;
   middleware?: Middleware[];
   onError?: (error: Error, context: { method: string; path: string }) => void;
+  onBackgroundWork?: (promise: Promise<unknown>) => void;
   internalSeams?: InternalRouteSeams;
   /**
    * Stale threshold for interrupted request detection on startup.
@@ -231,6 +233,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           speechResolver: options.speechResolver,
           middleware: options.middleware,
           maxResponseBufferSize: options.maxResponseBufferSize,
+          onBackgroundWork: options.onBackgroundWork,
           seams,
           bootstrapMetadata,
           requestContext
@@ -315,6 +318,12 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
           modelResolver: options.modelResolver,
           speechResolver: options.speechResolver,
           middleware: options.middleware
+        });
+      }
+
+      if (route.kind === "abort_request") {
+        return await handleAbortRequest(request, route, {
+          stores
         });
       }
 

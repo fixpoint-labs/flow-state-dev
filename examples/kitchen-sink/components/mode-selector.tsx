@@ -12,9 +12,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { MessageCircleQuestion, Hammer, ChevronDownIcon } from "lucide-react";
+import { MessageCircleQuestion, Hammer, Mic, Swords, ChevronDownIcon } from "lucide-react";
 
-export type Mode = "ask" | "build";
+export type Mode = "ask" | "build" | "interview" | "debate";
 
 interface ModeOption {
   value: Mode;
@@ -38,6 +38,20 @@ const MODE_OPTIONS: ModeOption[] = [
     description: "File-writing, app-building, agentic execution.",
     icon: Hammer,
     color: "text-amber-500 dark:text-amber-400",
+  },
+  {
+    value: "interview",
+    label: "Interview",
+    description: "Structured questioning to extract knowledge and context.",
+    icon: Mic,
+    color: "text-emerald-500 dark:text-emerald-400",
+  },
+  {
+    value: "debate",
+    label: "Debate",
+    description: "Adversarial challenge to stress-test your ideas.",
+    icon: Swords,
+    color: "text-rose-500 dark:text-rose-400",
   },
 ];
 

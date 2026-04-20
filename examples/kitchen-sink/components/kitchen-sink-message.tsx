@@ -1,37 +1,13 @@
 "use client";
 
 import { useMemo } from "react";
-import type { MessageItem, OutputItem } from "@flow-state-dev/core/items";
+import type { MessageItem } from "@flow-state-dev/core/items";
 import { Message } from "@/components/flow-state/message";
 import { useSessionItems } from "@/components/flow-state/session-items-context";
 import { useModelPreset } from "@/components/model-preset-context";
-import { getPresetOption } from "@/components/model-preset-selector";
 import { getStyleOption, type ThinkingStyle } from "@/components/thinking-style-selector";
+import { inferThinkingStyle } from "@/lib/item-inference";
 import { cn } from "@/lib/utils";
-
-type ComponentItem = OutputItem & { type: "component"; component: string; key?: string };
-type BlockOutputItem = OutputItem & { type: "block_output"; blockName: string };
-
-function inferThinkingStyle(items: OutputItem[]): ThinkingStyle | null {
-  const planMetaItems = items.filter(
-    (i) => i.type === "component" && (i as ComponentItem).component === "plan-meta",
-  ) as ComponentItem[];
-
-  if (planMetaItems.length > 0) {
-    // Supervisor plan-meta items use keys like "supervisor-thinking:plan-meta"
-    const isSupervisor = planMetaItems.some((i) => i.key?.includes("supervisor"));
-    return isSupervisor ? "supervisor" : "plan-and-execute";
-  }
-
-  const hasSupervisor = items.some(
-    (i) =>
-      i.type === "block_output" &&
-      (i as BlockOutputItem).blockName.includes("supervisor"),
-  );
-  if (hasSupervisor) return "supervisor";
-
-  return null;
-}
 
 function StyleBadge({ style }: { style: ThinkingStyle }) {
   const option = getStyleOption(style);

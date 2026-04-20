@@ -17,10 +17,13 @@ export type {
   BlockToolOutputItem,
   ComponentItem,
   ContainerItem,
+  /** @deprecated The `context` item type has been removed from the OutputItem union. */
   ContextItem,
   ErrorItem,
   ItemProvenance,
+  ItemRole,
   ItemStatus,
+  ItemVisibility,
   MessageItem,
   OutputItem,
   OutputItemBase,
@@ -33,6 +36,8 @@ export type {
   StatusItem,
   StepErrorItem
 } from "./types";
+
+export { resolveItemVisibility, resolveItemRole, ITEM_TYPE_DEFAULTS } from "./resolve-role";
 
 export type {
   ContentPartAddedEvent,

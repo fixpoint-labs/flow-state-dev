@@ -238,7 +238,8 @@ describe("block_debug emission via executeBlock", () => {
     const debugItem = items.find((i) => i.type === "block_debug");
     expect(debugItem).toBeDefined();
     expect(debugItem!.transient).toBe(true);
-    expect(debugItem!.trace).toBe(true);
+    expect((debugItem as any).client).toBe(false);
+    expect((debugItem as any).history).toBe(false);
     expect((debugItem as any).blockName).toBe("test-handler");
     expect((debugItem as any).blockKind).toBe("handler");
   });

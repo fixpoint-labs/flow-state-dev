@@ -35,6 +35,7 @@ import { ThinkingStyleSelector, type ThinkingStyle } from "@/components/thinking
 import { ModelPresetSelector, type ModelPreset } from "@/components/model-preset-selector";
 import { FeatureSelector, type Features, DEFAULT_FEATURES } from "@/components/feature-selector";
 import { ClientDataBar } from "@/components/client-data-bar";
+import { inferThinkingStyle } from "@/lib/item-inference";
 import { ArtifactPanel } from "@/components/artifact-panel";
 import { ArtifactViewer } from "@/components/artifact-viewer";
 import { ResizeHandle } from "@/components/resize-handle";
@@ -127,8 +128,16 @@ function KitchenSinkApp() {
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
   const { items: artifactItems, actions: artifactActions } = useResourceCollection(session, "artifacts");
 
-  const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined } | undefined;
+  const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined; resolvedModel: string | null } | undefined;
   const userPrefs = clientData.user?.preferences as { displayName: string; preferredModel: string } | undefined;
+
+  // Derive resolved thinking style from the most recent request's items.
+  const resolvedThinkingStyle = useMemo(() => {
+    if (session.items.length === 0) return null;
+    const lastRequestId = session.items[session.items.length - 1].requestId;
+    const requestItems = session.items.filter((i) => i.requestId === lastRequestId);
+    return inferThinkingStyle(requestItems);
+  }, [session.items]);
 
   // Derive artifact summaries from the resource collection snapshot.
   // Content is loaded lazily when a specific artifact is opened.
@@ -232,15 +241,15 @@ function KitchenSinkApp() {
   );
 
   // Apply side-effects when mode changes:
-  // Ask mode force-disables bash and hides artifacts; Build mode restores defaults.
+  // Only Build mode enables bash; all other modes disable it and stay on chat panel.
   const handleModeChange = useCallback(
     (newMode: Mode) => {
       setMode(newMode);
-      if (newMode === "ask") {
+      if (newMode === "build") {
+        setFeatures((prev) => ({ ...prev, bashTool: true }));
+      } else {
         setFeatures((prev) => ({ ...prev, bashTool: false }));
         setMobilePanel("chat");
-      } else {
-        setFeatures((prev) => ({ ...prev, bashTool: true }));
       }
     },
     [],
@@ -327,8 +336,9 @@ function KitchenSinkApp() {
           currentMode={modeStatus?.currentMode}
           requestCount={modeStatus?.requestCount}
           displayName={userPrefs?.displayName}
-          preferredModel={userPrefs?.preferredModel}
-          thinkingStyle={modeStatus?.thinkingStyle}
+          resolvedModel={modeStatus?.resolvedModel ?? undefined}
+          thinkingStyleMode={thinkingStyle}
+          thinkingStyle={resolvedThinkingStyle ?? modeStatus?.thinkingStyle}
         />
 
         <div className="flex min-h-0 flex-1 sm:hidden">
@@ -534,7 +544,12 @@ function ChatPanel({
           <PromptInput onSubmit={onSubmit}>
             <PromptInputTextarea
               name="message"
-              placeholder={mode === "ask" ? "Ask a question..." : "Describe what to build..."}
+              placeholder={
+                mode === "build" ? "Describe what to build..." :
+                mode === "interview" ? "Name a topic to explore..." :
+                mode === "debate" ? "State a position to challenge..." :
+                "Ask a question..."
+              }
               value={message}
               onChange={(e) => onSetMessage(e.target.value)}
               disabled={isDisabled}
@@ -542,7 +557,8 @@ function ChatPanel({
             <PromptInputSubmit
               className="mr-2 sm:mr-4"
               status={session.isStreaming ? "streaming" : "ready"}
-              disabled={isDisabled || message.trim().length === 0}
+              disabled={!session.isStreaming && (isDisabled || message.trim().length === 0)}
+              onStop={session.abortRequest}
             />
           </PromptInput>
         </div>
