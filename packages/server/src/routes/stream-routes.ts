@@ -19,6 +19,7 @@ import {
 } from "../streaming/resume";
 import {
   buildReplayEvents,
+  getBooleanFlag,
   getString,
   jsonResponse,
   parseJsonBody,
@@ -48,6 +49,7 @@ export async function handleRequestStream(
   }
 
   const url = new URL(request.url);
+  const unfiltered = getBooleanFlag(url.searchParams.get("unfiltered"));
 
   const activeStream = getActiveStream(route.requestId);
   if (activeStream !== undefined) {
@@ -67,14 +69,14 @@ export async function handleRequestStream(
 
     const readable = new ReadableStream<Uint8Array>({
       start(controller) {
-        const shouldForward = createClientEventFilter();
+        const shouldForward = unfiltered ? undefined : createClientEventFilter();
 
         // 1. Replay buffered events after the cursor.
         const buffered = emitter.getEvents();
         for (const event of buffered) {
           if (event.sequence_number <= minSeq) continue;
           if (event.type === "ping" || event.type === "debug") continue;
-          if (!shouldForward(event)) continue;
+          if (shouldForward && !shouldForward(event)) continue;
           const frame = encodeStreamEvent(event);
           controller.enqueue(textEncoder.encode(frame));
         }
@@ -83,7 +85,7 @@ export async function handleRequestStream(
         emitter.addEventObserver((event) => {
           if (event.sequence_number <= minSeq) return;
           if (event.type === "ping" || event.type === "debug") return;
-          if (!shouldForward(event)) return;
+          if (shouldForward && !shouldForward(event)) return;
           try {
             const frame = encodeStreamEvent(event);
             controller.enqueue(textEncoder.encode(frame));
@@ -143,12 +145,13 @@ export async function handleRequestStream(
   if (requestRecord === undefined) {
     const events = await ctx.stores.request.getEvents(route.requestId);
     if (events.length > 0) {
-      const replay = filterClientEvents(replayRequestEvents({
+      let replay = replayRequestEvents({
         requestId: route.requestId,
         events,
         lastEventId: request.headers.get("last-event-id"),
         startingAfter: url.searchParams.get("starting_after")
-      }));
+      });
+      if (!unfiltered) replay = filterClientEvents(replay);
       const payload = replay.map((event) => encodeStreamEvent(event)).join("");
       return new Response(payload, { status: 200, headers: SSE_HEADERS });
     }
@@ -175,12 +178,13 @@ export async function handleRequestStream(
     replaySource = buildReplayEvents(requestRecord, session);
   }
 
-  const replay = filterClientEvents(replayRequestEvents({
+  let replay = replayRequestEvents({
     requestId: route.requestId,
     events: replaySource,
     lastEventId: request.headers.get("last-event-id"),
     startingAfter: url.searchParams.get("starting_after")
-  }));
+  });
+  if (!unfiltered) replay = filterClientEvents(replay);
   const payload = replay.map((event) => encodeStreamEvent(event)).join("");
 
   return new Response(payload, {
