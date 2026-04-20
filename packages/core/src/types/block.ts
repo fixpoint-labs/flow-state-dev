@@ -151,7 +151,7 @@ export interface BlockContext<
   emitMessage(text: string, options?: { client?: boolean; history?: boolean }): void;
   emitMessage(content: Content[], options?: { client?: boolean; history?: boolean }): void;
   emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; client?: boolean; history?: boolean }): void;
-  emitStatus(message: string, options?: { client?: boolean }): void;
+  emitStatus(message: string, options?: { blocked?: boolean; backgroundTasks?: number; client?: boolean }): void;
 
   /**
    * Runtime metadata for the current request. Available during server-side

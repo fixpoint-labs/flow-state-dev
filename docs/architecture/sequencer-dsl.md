@@ -245,7 +245,7 @@ pipeline
 
 **Key:** Work failures do NOT abort the main chain. They emit `step_error` items.
 
-**Auto-await:** When the sequencer's main chain finishes, any outstanding work tasks are automatically awaited before the sequencer returns. This ensures the request stream stays open until all background work completes. Before the auto-await, the sequencer emits a `StatusItem` with message `"finishing"` — clients can use this signal to know the main chain's output is ready and it's safe to accept new user input (see `isFinishing` on `SessionView` / `UseRequestStreamResult`).
+**Auto-await:** When the sequencer's main chain finishes, any outstanding work tasks are automatically awaited before the sequencer returns. This ensures the request stream stays open until all background work completes. Before the auto-await, the sequencer emits a `StatusItem` with `blocked: false` and `backgroundTasks: N` — clients use `blocked` to know it's safe to accept new user input (see `isFinishing` on `SessionView` / `UseRequestStreamResult`). As each task completes, an updated status is emitted with the decremented count.
 
 ### `workIf(condition, block)` — Conditional Background Work
 

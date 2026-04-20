@@ -414,15 +414,19 @@ function runSequencerOperations(
       // Auto-await any outstanding .work() tasks so the block (and its
       // parent stream) stays alive until background work finishes.
       if (runtime.workTasks.length > 0) {
-        ctx.emitStatus("finishing");
         const pending = runtime.workTasks.splice(0, runtime.workTasks.length);
-        const settled = await Promise.allSettled(pending.map((t) => t.promise));
-        for (const result of settled) {
-          if (result.status === "fulfilled" && result.value.status === "rejected") {
-            const { name: taskName, reason } = result.value;
-            console.error(`[sequencer] Background work "${taskName}" failed:`, reason?.message ?? reason);
-          }
-        }
+        let remaining = pending.length;
+        ctx.emitStatus("", { blocked: false, backgroundTasks: remaining });
+
+        await Promise.all(pending.map((t) =>
+          t.promise.then((result) => {
+            remaining--;
+            if (result.status === "rejected") {
+              console.error(`[sequencer] Background work "${result.name}" failed:`, result.reason?.message ?? result.reason);
+            }
+            ctx.emitStatus("", { blocked: false, backgroundTasks: remaining });
+          })
+        ));
       }
 
       return currentValue;
