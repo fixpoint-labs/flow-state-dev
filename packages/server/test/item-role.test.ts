@@ -160,8 +160,7 @@ describe("emitMessage visibility stamping", () => {
       inputSchema: z.object({}).passthrough(),
       outputSchema: z.object({ ok: z.boolean() }),
       execute: (_input, ctx) => {
-        const handle = ctx.emitMessage("hello from emitter");
-        handle.done();
+        ctx.emitMessage("hello from emitter");
         return { ok: true };
       }
     });

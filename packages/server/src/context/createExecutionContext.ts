@@ -46,7 +46,7 @@ import type {
   StatusItem
 } from "@flow-state-dev/core/items";
 import { resolveItemVisibility } from "@flow-state-dev/core/items";
-import type { BlockContext, BlockResult, ComponentHandle, ExecutionParent, MessageHandle, StateRef } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockResult, ExecutionParent, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import type {
   ProjectRecord,
@@ -1134,10 +1134,10 @@ type EmissionContext = {
 function createEmitMessage(
   emCtx: EmissionContext
 ): {
-  (text: string, options?: { client?: boolean; history?: boolean }): MessageHandle;
-  (content: Content[], options?: { client?: boolean; history?: boolean }): MessageHandle;
+  (text: string, options?: { client?: boolean; history?: boolean }): void;
+  (content: Content[], options?: { client?: boolean; history?: boolean }): void;
 } {
-  return function emitMessage(textOrContent: string | Content[], options?: { client?: boolean; history?: boolean }): MessageHandle {
+  return function emitMessage(textOrContent: string | Content[], options?: { client?: boolean; history?: boolean }): void {
     const content: Content[] =
       typeof textOrContent === "string"
         ? [{ type: "output_text", text: textOrContent }]
@@ -1147,7 +1147,7 @@ function createEmitMessage(
     const item: MessageItem = {
       id: `item_message_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "message",
-      status: "in_progress",
+      status: "completed",
       transient: emCtx.blockTransient || undefined,
       client: options?.client ?? emCtx.client,
       history: options?.history ?? emCtx.history,
@@ -1160,56 +1160,24 @@ function createEmitMessage(
       content
     };
 
-    // Fire-and-forget the added event; streaming content follows via handle.
     void emCtx.response.emitItemAdded(item);
-
-    let contentIndex = content.length;
-
-    const handle: MessageHandle = {
-      addContent(newContent: Content): void {
-        const idx = contentIndex;
-        contentIndex += 1;
-        item.content.push(newContent);
-        if (emCtx.response.emitContentAdded) {
-          void emCtx.response.emitContentAdded(item.id, idx, newContent);
-        }
-      },
-      appendDelta(delta: string): void {
-        // Append delta to last output_text content part or create new one.
-        const lastIdx = item.content.length - 1;
-        const last = item.content[lastIdx];
-        if (last !== undefined && last.type === "output_text") {
-          (last as { text: string }).text += delta;
-          if (emCtx.response.emitContentDelta) {
-            void emCtx.response.emitContentDelta(item.id, lastIdx, delta);
-          }
-        } else {
-          handle.addContent({ type: "output_text", text: delta });
-        }
-      },
-      done(): void {
-        item.status = "completed";
-        void emCtx.response.emitItemDone(item);
-      }
-    };
-
-    return handle;
+    void emCtx.response.emitItemDone(item);
   };
 }
 
 function createEmitComponent(
   emCtx: EmissionContext
-): (component: string, data: Record<string, unknown>, options?: { key?: string; client?: boolean; history?: boolean }) => ComponentHandle {
+): (component: string, data: Record<string, unknown>, options?: { key?: string; client?: boolean; history?: boolean }) => void {
   return function emitComponent(
     component: string,
     data: Record<string, unknown>,
     options?: { key?: string; client?: boolean; history?: boolean }
-  ): ComponentHandle {
+  ): void {
     const itemIndex = emCtx.nextItemIndex();
     const item: ComponentItem = {
       id: `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "component",
-      status: "in_progress",
+      status: "completed",
       transient: emCtx.blockTransient || undefined,
       client: options?.client ?? emCtx.client,
       history: options?.history ?? emCtx.history,
@@ -1224,16 +1192,7 @@ function createEmitComponent(
     };
 
     void emCtx.response.emitItemAdded(item);
-
-    return {
-      update(newData: Record<string, unknown>): void {
-        Object.assign(item.data, newData);
-      },
-      done(): void {
-        item.status = "completed";
-        void emCtx.response.emitItemDone(item);
-      }
-    };
+    void emCtx.response.emitItemDone(item);
   };
 }
 

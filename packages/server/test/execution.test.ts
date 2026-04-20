@@ -1842,8 +1842,7 @@ describe("transient block output", () => {
             inputSchema: z.object({ prompt: z.string() }),
             outputSchema: z.string(),
             execute: async ({ prompt }, ctx) => {
-              const msg = ctx.emitMessage(`Response: ${prompt}`);
-              msg.done();
+              ctx.emitMessage(`Response: ${prompt}`);
               return `done:${prompt}`;
             }
           })

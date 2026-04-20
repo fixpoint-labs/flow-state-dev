@@ -93,17 +93,6 @@ export type BlockResult<TOutput> =
   | { status: "completed"; output: TOutput }
   | { status: "failed"; error: Error };
 
-export interface MessageHandle {
-  addContent(content: Content): void;
-  appendDelta(text: string): void;
-  done(): void;
-}
-
-export interface ComponentHandle {
-  update(data: Record<string, unknown>): void;
-  done(): void;
-}
-
 export interface BlockContext<
   TRequestState extends object = Record<string, unknown>,
   TSessionState extends object = Record<string, unknown>,
@@ -159,9 +148,9 @@ export interface BlockContext<
    *  Each capability's fns(ctx) result is memoized on first access. */
   cap: TCapabilities;
 
-  emitMessage(text: string, options?: { client?: boolean; history?: boolean }): MessageHandle;
-  emitMessage(content: Content[], options?: { client?: boolean; history?: boolean }): MessageHandle;
-  emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; client?: boolean; history?: boolean }): ComponentHandle;
+  emitMessage(text: string, options?: { client?: boolean; history?: boolean }): void;
+  emitMessage(content: Content[], options?: { client?: boolean; history?: boolean }): void;
+  emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; client?: boolean; history?: boolean }): void;
   emitStatus(message: string, options?: { client?: boolean }): void;
 
   /**

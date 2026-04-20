@@ -282,12 +282,10 @@ const biasCheck = sequencer({ name: "bias-check", inputSchema: z.string() })
         overallScore: number;
       };
       if (data.surfacedResults.length > 0) {
-        ctx
-          .emitComponent(
-            "audit-annotation",
-            data as unknown as Record<string, unknown>,
-          )
-          .done();
+        ctx.emitComponent(
+          "audit-annotation",
+          data as unknown as Record<string, unknown>,
+        );
       }
     }
   });

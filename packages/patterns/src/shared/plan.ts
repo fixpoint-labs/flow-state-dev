@@ -90,7 +90,7 @@ type EmitCtx = {
     component: string,
     data: Record<string, unknown>,
     options?: { key?: string },
-  ) => { done(): void };
+  ) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -113,7 +113,7 @@ export function emitPlanMeta(
     "plan-meta",
     meta as unknown as Record<string, unknown>,
     { key },
-  ).done();
+  );
 }
 
 /**
@@ -131,7 +131,7 @@ export function emitTaskUpdate(
     "plan-task",
     task as unknown as Record<string, unknown>,
     { key },
-  ).done();
+  );
 }
 
 // ---------------------------------------------------------------------------
