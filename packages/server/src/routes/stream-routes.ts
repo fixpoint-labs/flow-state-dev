@@ -8,6 +8,10 @@ import {
   cleanupStaleStreams,
   getActiveStream
 } from "../streaming/active-streams";
+import {
+  createClientEventFilter,
+  filterClientEvents
+} from "../streaming/client-filter";
 import { encodeStreamEvent } from "../streaming/encode-event";
 import {
   resolveRequestReplayCursor,
@@ -63,11 +67,14 @@ export async function handleRequestStream(
 
     const readable = new ReadableStream<Uint8Array>({
       start(controller) {
+        const shouldForward = createClientEventFilter();
+
         // 1. Replay buffered events after the cursor.
         const buffered = emitter.getEvents();
         for (const event of buffered) {
           if (event.sequence_number <= minSeq) continue;
           if (event.type === "ping" || event.type === "debug") continue;
+          if (!shouldForward(event)) continue;
           const frame = encodeStreamEvent(event);
           controller.enqueue(textEncoder.encode(frame));
         }
@@ -76,6 +83,7 @@ export async function handleRequestStream(
         emitter.addEventObserver((event) => {
           if (event.sequence_number <= minSeq) return;
           if (event.type === "ping" || event.type === "debug") return;
+          if (!shouldForward(event)) return;
           try {
             const frame = encodeStreamEvent(event);
             controller.enqueue(textEncoder.encode(frame));
@@ -135,12 +143,12 @@ export async function handleRequestStream(
   if (requestRecord === undefined) {
     const events = await ctx.stores.request.getEvents(route.requestId);
     if (events.length > 0) {
-      const replay = replayRequestEvents({
+      const replay = filterClientEvents(replayRequestEvents({
         requestId: route.requestId,
         events,
         lastEventId: request.headers.get("last-event-id"),
         startingAfter: url.searchParams.get("starting_after")
-      });
+      }));
       const payload = replay.map((event) => encodeStreamEvent(event)).join("");
       return new Response(payload, { status: 200, headers: SSE_HEADERS });
     }
@@ -167,12 +175,12 @@ export async function handleRequestStream(
     replaySource = buildReplayEvents(requestRecord, session);
   }
 
-  const replay = replayRequestEvents({
+  const replay = filterClientEvents(replayRequestEvents({
     requestId: route.requestId,
     events: replaySource,
     lastEventId: request.headers.get("last-event-id"),
     startingAfter: url.searchParams.get("starting_after")
-  });
+  }));
   const payload = replay.map((event) => encodeStreamEvent(event)).join("");
 
   return new Response(payload, {

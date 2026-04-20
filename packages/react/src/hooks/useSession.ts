@@ -15,65 +15,12 @@ import {
 } from "@flow-state-dev/client";
 import type {
   Content,
-  ItemVisibility,
   MessageItem,
   OutputItem,
   ReasoningItem,
   SessionMetadataChangedEvent
 } from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
-
-/**
- * Per-type default visibility — mirrors `ITEM_TYPE_DEFAULTS` from core.
- * Duplicated because the react package may only type-import from core.
- */
-const ITEM_TYPE_DEFAULTS: Record<string, ItemVisibility> = {
-  message:                      { client: true,  history: true  },
-  reasoning:                    { client: true,  history: true  },
-  block_tool_output:            { client: true,  history: true  },
-  component:                    { client: true,  history: false },
-  container:                    { client: true,  history: false },
-  source:                       { client: true,  history: false },
-  status:                       { client: true,  history: false },
-  state_change:                 { client: true,  history: false },
-  resource_change:              { client: true,  history: false },
-  error:                        { client: true,  history: false },
-  step_error:                   { client: true,  history: false },
-  block_output:                 { client: false, history: false },
-  router_decision:              { client: false, history: false },
-  sequencer_state_snapshot:     { client: false, history: false },
-};
-
-const FALLBACK_DEFAULTS: ItemVisibility = { client: true, history: false };
-
-/**
- * Resolves item visibility — mirrors core's `resolveItemVisibility()`.
- * Duplicated because the react package may only type-import from core.
- */
-function resolveItemVisibility(item: OutputItem): ItemVisibility {
-  const hasExplicit = item.client !== undefined || item.history !== undefined;
-  if (hasExplicit) {
-    const typeDefaults = ITEM_TYPE_DEFAULTS[item.type] ?? FALLBACK_DEFAULTS;
-    return {
-      client: item.client ?? typeDefaults.client,
-      history: item.history ?? typeDefaults.history,
-    };
-  }
-
-  if (item.itemRole !== undefined) {
-    switch (item.itemRole) {
-      case "external": return { client: true,  history: true  };
-      case "internal": return { client: false, history: true  };
-      case "trace":    return { client: false, history: false };
-    }
-  }
-
-  if (item.trace === true) {
-    return { client: false, history: false };
-  }
-
-  return ITEM_TYPE_DEFAULTS[item.type] ?? FALLBACK_DEFAULTS;
-}
 
 const DEFAULT_STATE_PAGE_LIMIT = 100;
 
@@ -174,6 +121,10 @@ function resolveItemsConfig(
   };
 }
 
+/**
+ * Client-side item filter. The server already strips non-client items from the
+ * SSE stream, so this only handles transience and explicit type filtering.
+ */
 function passesItemFilter(
   item: OutputItem,
   filter: {
@@ -189,7 +140,7 @@ function passesItemFilter(
     return filter.itemTypes.includes(item.type);
   }
 
-  return resolveItemVisibility(item).client;
+  return true;
 }
 
 /**
