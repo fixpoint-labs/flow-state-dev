@@ -24,7 +24,7 @@ const chat = generator({
   name: "chat",
   model: "preset/fast",
   prompt: "You are a helpful assistant.",
-  history: (_input, ctx) => ctx.session.items.history(),
+  history: true,
   user: (input) => input.message,
   tools: [searchDocs, createArtifact],
 });

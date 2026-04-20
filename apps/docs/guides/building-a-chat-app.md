@@ -27,7 +27,7 @@ export const chatGen = generator({
   model: "preset/fast",
   prompt: "You are a helpful assistant. Be concise and friendly.",
   inputSchema: z.object({ message: z.string() }),
-  history: (_input, ctx) => ctx.session.items.history(),
+  history: true,
   user: (input) => input.message,
 });
 ```

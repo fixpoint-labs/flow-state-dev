@@ -87,7 +87,7 @@ const respond = generator({
   inputSchema: z.object({ message: z.string(), context: z.string() }),
   context: (input) => input.context,
   user: (input) => input.message,
-  history: (_input, ctx) => ctx.session.items.history(),
+  history: true,
 });
 
 const trackTopic = handler({
@@ -147,7 +147,7 @@ const agent = generator({
   model: "preset/capable",
   prompt: "You are a research assistant. Search documentation and save notes as needed.",
   inputSchema: z.object({ message: z.string() }),
-  history: (_input, ctx) => ctx.session.items.history(),
+  history: true,
   user: (input) => input.message,
   tools: [searchDocs, createNote],
   maxIterations: 10,

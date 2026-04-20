@@ -45,7 +45,7 @@ const agent = generator({
   model: "preset/fast",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
-  history: (_input, ctx) => ctx.session.items.history(),
+  history: true,
   user: (input) => input.message,
   tools: [searchTool, createArtifactTool],
   emit: { reasoning: true, messages: true },

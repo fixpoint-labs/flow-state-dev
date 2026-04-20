@@ -54,25 +54,19 @@ Every item has two independent visibility flags you can override:
 
 Each item type has sensible defaults — `message` defaults to both, `component` defaults to client-only, `block_output` defaults to neither (devtool-only). You can override per-block or per-item.
 
-Set `client: false` on a generator to hide its output from the client while keeping it in LLM history:
+Generators use `emitAudience` to control who sees their output, and `emit` for per-type suppression:
 
 ```ts
 const helper = generator({
   name: "background-analysis",
   model: "preset/fast",
   prompt: "Analyze the user's intent...",
-  client: false, // LLM sees output, user doesn't
+  emitAudience: "history", // LLM sees output, user doesn't
+  emit: { reasoning: false }, // suppress reasoning items
 });
 ```
 
-Generators use `emitAudience` to set default visibility, and `emit` for per-type control:
-
-```ts
-emitAudience: "history"  // output goes to LLM history but not client
-emit: { reasoning: false }  // suppress reasoning items
-```
-
-Direct emit methods accept per-call overrides:
+Direct emit methods accept per-call visibility overrides:
 
 ```ts
 ctx.emitMessage("internal note", { client: false, history: true });

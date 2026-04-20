@@ -55,7 +55,7 @@ const myGenerator = generator({
   tools: [myTool],
   search: true,
   context: [myContextFn],
-  history: (_input, ctx) => ctx.session.items.history(),
+  history: true,
   repair: { mode: "auto", maxAttempts: 3 },
 });
 ```

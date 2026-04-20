@@ -86,7 +86,7 @@ The `itemRole` field (`"external" | "internal" | "trace"`) and `trace` boolean a
 
 ### History-only items — what the LLM sees but the user doesn't
 
-Any block can produce history-only items. For generators, use `emitAudience: "history"`. For other block kinds, set `client: false` on the block config or on individual emit calls. A message with `client: false, history: true` contributes to LLM conversation history across turns without ever appearing in the client UI.
+Any block can produce history-only items. For generators, use `emitAudience: "history"`. Other block kinds can use per-call overrides on emit methods: `ctx.emitMessage("note", { client: false })`. A message with `client: false, history: true` contributes to LLM conversation history across turns without ever appearing in the client UI.
 
 ### Devtool-only items — what the devtool sees
 
@@ -234,7 +234,7 @@ type OutputItemBase = {
   history?: boolean;      // Included in LLM history. Resolved via resolveItemVisibility() if absent.
   transient?: boolean;    // true = stream-only, never persisted
   itemRole?: ItemRole;    // @deprecated — use client/history instead
-  trace?: boolean;        // @deprecated — use client: false, history: false instead
+  trace?: boolean;        // @deprecated — use emitAudience: "trace" on generators instead
   requestId: string;
   itemIndex: number;      // Monotonic within the request
   provenance: ItemProvenance;

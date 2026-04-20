@@ -63,6 +63,7 @@ export type {
   BranchStepOutput,
   FactoryConfig,
   GeneratorConfig,
+  GeneratorHistoryConfig,
   GeneratorLoopConfig,
   GeneratorLoopState,
   GeneratorRepairConfig,

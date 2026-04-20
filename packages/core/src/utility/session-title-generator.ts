@@ -49,7 +49,7 @@ export function sessionTitleGenerator(config: SessionTitleGeneratorConfig) {
     outputSchema: titleSchema,
     model: modelId,
     prompt: "You generate short, descriptive titles for chat sessions.",
-    history: async (_input, ctx) => ctx.session.items.history({ limit: messageLimit }),
+    history: { limit: messageLimit },
     user: (_input, ctx) => {
       const currentTitle = ctx.session.metadata.title;
       return `Generate a title for this conversation based on the conversation messages.

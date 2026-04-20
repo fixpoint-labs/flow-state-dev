@@ -6,6 +6,7 @@ export { router } from "./router";
 export type { HandlerConfig } from "./handler";
 export type {
   GeneratorConfig,
+  GeneratorHistoryConfig,
   GeneratorLoopConfig,
   GeneratorLoopState,
   GeneratorRepairConfig,

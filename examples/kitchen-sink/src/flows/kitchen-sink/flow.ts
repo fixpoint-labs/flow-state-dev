@@ -103,7 +103,7 @@ const assistantGenerator = generator({
   context: [voiceContext],
 
   inputSchema,
-  history: (_input, ctx) => ctx.session.items.history({ limit: 8 }),
+  history: { limit: 8 },
   user: (input) => input.message,
   search: true,
   maxIterations: 20,
@@ -123,7 +123,7 @@ const assistantGenerator = generator({
 const { thinkingStyleRouter } = createThinkingStyleRouter({
   assistantGenerator,
   modelId: (_input: any, ctx: any) => ctx.session.state.resolvedModel ?? MODEL_ID,
-  history: (_input: any, ctx: any) => ctx.session.items.history({ limit: 8 }),
+  history: { limit: 8 },
   context: [mem.contextFormatter, artifactListContext],
   uses: [featuresCapability],
 });

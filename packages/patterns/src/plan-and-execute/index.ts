@@ -19,7 +19,7 @@
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import { utility } from "@flow-state-dev/core";
 import type { BlockDefinition, BlockContext } from "@flow-state-dev/core/types";
-import type { GeneratorSlot, GeneratorSearchConfig, ToolsSlot, UsesSlot } from "@flow-state-dev/core";
+import type { GeneratorHistoryConfig, GeneratorSlot, GeneratorSearchConfig, ToolsSlot, UsesSlot } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   planAndExecuteInputSchema,
@@ -111,7 +111,7 @@ export interface PlanAndExecuteConfig<
   context?: GeneratorSlot<any, any>;
 
   /** History slot applied to default planner and synthesizer. */
-  history?: GeneratorSlot<any, any>;
+  history?: GeneratorHistoryConfig<any, any>;
 
   /** Tools assigned to all default blocks (executor, replanner, synthesizer). */
   tools?: ToolsSlot;
@@ -151,7 +151,7 @@ function createDefaultReplanner(config: {
   name: string;
   model?: string;
   context?: GeneratorSlot<any, any>;
-  history?: GeneratorSlot<any, any>;
+  history?: GeneratorHistoryConfig<any, any>;
   tools?: ToolsSlot;
   uses?: UsesSlot;
 }) {
@@ -332,7 +332,7 @@ function createDefaultSynthesizer(config: {
   name: string;
   model?: string;
   context?: GeneratorSlot<any, any>;
-  history?: GeneratorSlot<any, any>;
+  history?: GeneratorHistoryConfig<any, any>;
   tools?: ToolsSlot;
   uses?: UsesSlot;
   synthesizeInstructions?: string;

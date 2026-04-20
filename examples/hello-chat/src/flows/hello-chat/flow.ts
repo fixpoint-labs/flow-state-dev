@@ -40,7 +40,7 @@ const chatGenerator = generator({
   prompt: "You are a helpful, concise assistant.",
   inputSchema: chatInputSchema,
   // history slot: load prior conversation from persisted request items.
-  history: (_input, ctx) => ctx.session.items.history(),
+  history: true,
   user: (input) => input.message,
   emit: {
     reasoning: true

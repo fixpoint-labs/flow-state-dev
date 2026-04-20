@@ -10,6 +10,7 @@ import type {
   InferStateFromSchema,
   RetryPolicy
 } from "../types/block";
+import type { ItemQuery } from "../types/scope";
 import type { ItemVisibility } from "../items/types";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
@@ -108,6 +109,18 @@ export type GeneratorSlotEntry<TInput = unknown, TCtx = BlockContext> =
 export type GeneratorSlot<TInput = unknown, TCtx = BlockContext> =
   | GeneratorSlotEntry<TInput, TCtx>
   | GeneratorSlotEntry<TInput, TCtx>[];
+
+/**
+ * History slot config with shorthands:
+ *
+ * - `true` — auto-fetch session history with defaults
+ * - `ItemQuery` object — auto-fetch with options (e.g. `{ limit: 8 }`)
+ * - `GeneratorSlot` — custom function or static messages (full control)
+ */
+export type GeneratorHistoryConfig<TInput = unknown, TCtx = BlockContext> =
+  | true
+  | ItemQuery
+  | GeneratorSlot<TInput, TCtx>;
 
 export type GeneratorSlotRefOptions = {
   optional?: boolean;
@@ -265,7 +278,7 @@ export interface GeneratorConfig<
   model: ResolvableModel<NoInfer<TInput>, TCtx>;
   prompt: ResolvableString<TInput, TCtx>;
   context?: GeneratorSlot<NoInfer<TInput>, TCtx>;
-  history?: GeneratorSlot<NoInfer<TInput>, TCtx>;
+  history?: GeneratorHistoryConfig<NoInfer<TInput>, TCtx>;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
   user?: TypedUserSlotFn<TInput, TCtx> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
   tools?: GeneratorTool[] | ((ctx: TCtx) => MaybePromise<GeneratorTool[]>);
@@ -382,6 +395,29 @@ async function resolveModel<TInput, TCtx extends BlockContext>(
   throw new Error(
     `Generator "${blockName}" model must resolve to a model id string, string array, or GeneratorModel instance`
   );
+}
+
+/**
+ * Resolves history shorthand (`true` or `ItemQuery`) into a slot function.
+ * Pass-through for function/static slot entries.
+ */
+function normalizeHistorySlot<TInput, TCtx extends BlockContext>(
+  history: GeneratorHistoryConfig<TInput, TCtx> | undefined
+): GeneratorSlot<TInput, TCtx> | undefined {
+  if (history === undefined) return undefined;
+  if (history === true) {
+    return ((_input: TInput, ctx: TCtx) =>
+      ctx.session.items.history()) as GeneratorSlotReference<TInput, TCtx>;
+  }
+  if (typeof history !== "function" && !Array.isArray(history) && typeof history === "object") {
+    const obj = history as Record<string, unknown>;
+    if (!("content" in obj) && !("role" in obj)) {
+      const query = history as ItemQuery;
+      return ((_input: TInput, ctx: TCtx) =>
+        ctx.session.items.history(query)) as GeneratorSlotReference<TInput, TCtx>;
+    }
+  }
+  return history as GeneratorSlot<TInput, TCtx>;
 }
 
 function normalizeSlotEntries<TInput, TCtx extends BlockContext>(
@@ -1410,7 +1446,8 @@ export function generator<
         }
       }
 
-      const historyValues = await resolveSlotValues(normalizedConfig.history, input, ctx);
+      const historySlot = normalizeHistorySlot(normalizedConfig.history);
+      const historyValues = await resolveSlotValues(historySlot, input, ctx);
       const userValues = await resolveSlotValues(normalizedConfig.user as GeneratorSlot | undefined, input, ctx);
 
       // Build initial system prefix (prompt + context + tool descriptions)

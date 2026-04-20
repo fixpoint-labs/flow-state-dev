@@ -188,7 +188,7 @@ const chatGenerator = generator({
   prompt: "You are a helpful, concise assistant.",
   inputSchema: z.object({ message: z.string().min(1) }),
   // Default outputSchema is z.string() — enables text streaming
-  history: (_input, ctx) => ctx.session.items.history(),
+  history: true,
   user: (input) => input.message,
   tools: [searchTool, calculatorTool],
   emit: { reasoning: true },
@@ -205,6 +205,8 @@ Generators assemble model messages from four slots, resolved in order:
 4. **`user`** — Current user input
 
 Each slot can be a string, object, array, or async function `(input, ctx) => value`.
+
+The `history` slot supports additional shorthands: `true` auto-fetches session history with defaults, and an options object (e.g. `{ limit: 8 }`) passes those options to `items.history()`. A function still works for full control.
 
 ### Tool Loop
 
@@ -360,12 +362,12 @@ The position of a block in the execution graph determines the default visibility
 - **Tool call** (a generator executed as a tool by another generator): `client: false, history: false`.
 - **Work phase** (background / scoped work): `client: false, history: false`.
 
-A block's `client`/`history` config overrides the position-based default:
+A generator's `emitAudience` overrides the position-based default:
 
 ```ts
 const researcher = generator({
   name: "researcher",
-  client: false, // findings feed the next turn's LLM context, but users don't see them
+  emitAudience: "history", // findings feed the next turn's LLM context, but users don't see them
   prompt: "Analyze and summarize.",
   model: "anthropic:claude-sonnet-4-6",
 });
