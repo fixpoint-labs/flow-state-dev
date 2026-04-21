@@ -1,15 +1,21 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
-import { readDebugMode } from "@/config";
+import { readDebugMode, readTraceItemsVisible, writeTraceItemsVisible } from "@/config";
 
 type DebugState = {
   isDebugMode: boolean;
   toggleDebugMode: () => void;
+  /** Whether raw trace item rows (block_debug, state_*, router_decision,
+   *  nested block_output) are rendered in the trace tree. Default off —
+   *  trace data lives on the block detail sidebar via composed sections. */
+  traceItemsVisible: boolean;
+  toggleTraceItemsVisible: () => void;
 };
 
 const DebugContext = createContext<DebugState | null>(null);
 
 export function DebugProvider({ children }: { children: ReactNode }) {
   const [isDebugMode, setIsDebugMode] = useState(readDebugMode);
+  const [traceItemsVisible, setTraceItemsVisible] = useState(readTraceItemsVisible);
 
   const toggleDebugMode = useCallback(() => {
     setIsDebugMode((prev) => {
@@ -19,8 +25,18 @@ export function DebugProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const toggleTraceItemsVisible = useCallback(() => {
+    setTraceItemsVisible((prev) => {
+      const next = !prev;
+      writeTraceItemsVisible(next);
+      return next;
+    });
+  }, []);
+
   return (
-    <DebugContext.Provider value={{ isDebugMode, toggleDebugMode }}>
+    <DebugContext.Provider
+      value={{ isDebugMode, toggleDebugMode, traceItemsVisible, toggleTraceItemsVisible }}
+    >
       {children}
     </DebugContext.Provider>
   );

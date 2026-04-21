@@ -1,4 +1,4 @@
-import type { BlockDebugItem, BlockOutputItem, OutputItem, StateSnapshotItem, StatusItem } from "@flow-state-dev/core/items";
+import type { BlockDebugItem, BlockDebugPayload, BlockOutputItem, OutputItem, StateSnapshotItem, StatusItem } from "@flow-state-dev/core/items";
 import type { RequestGroup } from "@/components/workspace/stream-view";
 
 /** A single snapshot in a sequencer's state timeline. */
@@ -29,6 +29,11 @@ export type TraceNode = {
   traceItem?: OutputItem;
   /** State snapshots for sequencer blocks, ordered by step execution. */
   stateSnapshots?: StateSnapshot[];
+  /** Latest resolved debug payload for this block. Replace-in-place — no
+   *  history. Reset each time a new block_debug item arrives for this block
+   *  instance. Generators get a single capture; other blocks only get one
+   *  when `connectInput` transformed the raw input. */
+  debugPayload?: BlockDebugPayload;
   children: TraceNode[];
   isExpanded: boolean;
 };
@@ -76,11 +81,15 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
         parentOf.set(prov.blockInstanceId, prov.parentBlockInstanceId);
       }
 
-      // Block debug items provide early kind inference. They render as T3
-      // debug-only children (controlled by debug mode in item-renderer).
+      // Block debug items attach to the block node with replace-in-place
+      // semantics — no history. The block detail panel renders them as a
+      // composed section (prompt, connected input). They never appear as
+      // sibling rows in the tree.
       if (item.type === "block_debug") {
         const dbg = item as BlockDebugItem;
         blockNode.blockKind = blockNode.blockKind ?? dbg.blockKind;
+        blockNode.debugPayload = dbg.payload;
+        continue;
       }
 
       // Drop structural status items with nothing to render. The sequencer

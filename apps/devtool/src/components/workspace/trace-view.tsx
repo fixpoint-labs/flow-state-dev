@@ -17,6 +17,7 @@ type TraceViewProps = {
 
 export function TraceView({ requestGroups }: TraceViewProps) {
   const { selectedItemId } = useSelection();
+  const { traceItemsVisible, toggleTraceItemsVisible } = useDebug();
   // Manual overrides from user clicks. `undefined` = no override (use computed).
   const [manualExpand, setManualExpand] = useState<Record<string, boolean>>({});
   // Track which request was last active so it stays expanded after completion.
@@ -124,23 +125,49 @@ export function TraceView({ requestGroups }: TraceViewProps) {
   }
 
   return (
-    <div ref={scrollContainerRef} className="overflow-auto h-full">
-      {sortedTree.map((node, index) => (
-        <TraceNodeView
-          key={node.id}
-          node={node}
-          depth={0}
-          index={index + 1}
-          shouldExpand={shouldExpand}
-          parentRequestExpanded={false}
-          toggleNode={toggleNode}
-          isActive={activeRequestIds.has(node.id)}
-          activeNodeRef={activeNodeRef}
-        />
-      ))}
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-end gap-2 px-3 py-1.5 border-b border-slate-800/50">
+        <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={traceItemsVisible}
+            onChange={toggleTraceItemsVisible}
+            className="h-3 w-3 rounded border-slate-600 bg-slate-800"
+          />
+          Show trace items
+        </label>
+      </div>
+      <div ref={scrollContainerRef} className="overflow-auto flex-1">
+        {sortedTree.map((node, index) => (
+          <TraceNodeView
+            key={node.id}
+            node={node}
+            depth={0}
+            index={index + 1}
+            shouldExpand={shouldExpand}
+            parentRequestExpanded={false}
+            toggleNode={toggleNode}
+            isActive={activeRequestIds.has(node.id)}
+            activeNodeRef={activeNodeRef}
+            traceItemsVisible={traceItemsVisible}
+          />
+        ))}
+      </div>
     </div>
   );
 }
+
+// Types that are always cosmetic in the tree — their payloads show up in
+// the block detail sidebar (or other surfaces). Hidden from the trace
+// tree unless the user flips "Show trace items" on.
+const HIDDEN_TRACE_ITEM_TYPES = new Set([
+  "block_debug",
+  "state_snapshot",
+  "state_change",
+  "resource_change",
+  "router_decision",
+  "block_output",
+]);
 
 function TraceNodeView({
   node,
@@ -151,6 +178,7 @@ function TraceNodeView({
   toggleNode,
   isActive,
   activeNodeRef,
+  traceItemsVisible,
 }: {
   node: TraceNode;
   depth: number;
@@ -160,11 +188,21 @@ function TraceNodeView({
   toggleNode: (id: string, currentlyExpanded: boolean) => void;
   isActive?: boolean;
   activeNodeRef?: React.RefObject<HTMLDivElement | null>;
+  traceItemsVisible: boolean;
 }) {
-  const { selectedItemId, selectItem } = useSelection();
+  const { selectedItemId, selectItem, selectedBlockNode, selectBlock } = useSelection();
   const { isDebugMode } = useDebug();
   const isExpanded = shouldExpand(node, parentRequestExpanded);
-  const hasChildren = node.children.length > 0;
+  // Children actually rendered — filter out hidden trace item rows unless
+  // the user has opted in. Block children and request children always show.
+  const visibleChildren = traceItemsVisible
+    ? node.children
+    : node.children.filter((child) => {
+        if (child.type !== "item") return true;
+        const itemType = child.item?.type;
+        return itemType === undefined || !HIDDEN_TRACE_ITEM_TYPES.has(itemType);
+      });
+  const hasChildren = visibleChildren.length > 0;
 
   if (node.type === "request") {
     return (
@@ -187,40 +225,61 @@ function TraceNodeView({
           )}
         </button>
         {isExpanded &&
-          node.children.map((child) => (
-            <TraceNodeView key={child.id} node={child} depth={depth + 1} shouldExpand={shouldExpand} parentRequestExpanded={isExpanded} toggleNode={toggleNode} />
+          visibleChildren.map((child) => (
+            <TraceNodeView
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              shouldExpand={shouldExpand}
+              parentRequestExpanded={isExpanded}
+              toggleNode={toggleNode}
+              traceItemsVisible={traceItemsVisible}
+            />
           ))}
       </div>
     );
   }
 
   if (node.type === "block") {
-    const isBlockSelected = node.traceItem ? selectedItemId === node.traceItem.id : false;
+    const isBlockSelected = selectedBlockNode?.id === node.id;
     const traceError =
       node.traceItem?.type === "block_output" && node.traceItem.status === "failed"
         ? node.traceItem.error?.message
         : undefined;
 
-    const handleBlockClick = () => {
+    // Chevron toggles expansion; clicking the row body selects the block.
+    // Keeping these separate means you can inspect a block without
+    // collapsing its child list.
+    const handleChevronClick = (event: React.MouseEvent) => {
+      event.stopPropagation();
       toggleNode(node.id, isExpanded);
-      if (node.traceItem) {
-        selectItem(node.traceItem.id, node.traceItem, node.stateSnapshots ?? undefined);
-      }
     };
+    const handleRowClick = () => selectBlock(node);
 
     return (
       <div>
-        <button
+        <div
           className={cn(
-            "flex w-full items-center gap-1.5 py-1 text-left hover:bg-slate-800/30",
+            "flex w-full items-center gap-1.5 py-1 text-left hover:bg-slate-800/30 cursor-pointer",
             isBlockSelected && "bg-slate-800/50 border-l-2 border-green-500",
           )}
           style={{ paddingLeft: `${depth * 16 + 12}px` }}
-          onClick={handleBlockClick}
+          onClick={handleRowClick}
         >
-          {hasChildren &&
-            (isExpanded ? <ChevronDown className="h-3 w-3 text-slate-500" /> : <ChevronRight className="h-3 w-3 text-slate-500" />)}
-          {!hasChildren && <span className="w-3" />}
+          {hasChildren ? (
+            <button
+              type="button"
+              className="p-0.5 -m-0.5 hover:text-slate-300"
+              aria-label={isExpanded ? "Collapse" : "Expand"}
+              onClick={handleChevronClick}
+            >
+              {isExpanded
+                ? <ChevronDown className="h-3 w-3 text-slate-500" />
+                : <ChevronRight className="h-3 w-3 text-slate-500" />}
+            </button>
+          ) : (
+            <span className="w-3" />
+          )}
           {node.blockKind && <KindIndicator kind={node.blockKind} />}
           <span className="text-xs text-slate-300">{node.blockName}</span>
           {traceError && (
@@ -229,6 +288,14 @@ function TraceNodeView({
               title={traceError}
             >
               {traceError}
+            </span>
+          )}
+          {node.debugPayload && (
+            <span
+              className="text-[10px] font-mono text-purple-400/70 px-1 rounded border border-purple-800/40"
+              title={node.debugPayload.prompt ? "Resolved prompt captured" : "Connected input captured"}
+            >
+              D
             </span>
           )}
           {node.stateSnapshots && node.stateSnapshots.length > 0 && (
@@ -250,10 +317,18 @@ function TraceNodeView({
               {node.blockDuration}ms
             </span>
           )}
-        </button>
+        </div>
         {isExpanded &&
-          node.children.map((child) => (
-            <TraceNodeView key={child.id} node={child} depth={depth + 1} shouldExpand={shouldExpand} parentRequestExpanded={parentRequestExpanded} toggleNode={toggleNode} />
+          visibleChildren.map((child) => (
+            <TraceNodeView
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              shouldExpand={shouldExpand}
+              parentRequestExpanded={parentRequestExpanded}
+              toggleNode={toggleNode}
+              traceItemsVisible={traceItemsVisible}
+            />
           ))}
       </div>
     );
