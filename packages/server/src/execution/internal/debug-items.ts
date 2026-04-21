@@ -65,7 +65,20 @@ export function buildConnectedInputDebugPayload(
 
 /**
  * Emit a block_debug item via the response emitter.
- * Callers must check isDebugItemsEnabled() before calling.
+ *
+ * Prefers `emitItemOneShot` when available — it streams item.added/item.done
+ * to connected clients and persists to the events log, but does NOT add the
+ * item to `response.getItems()`. Full prompts can be tens of kilobytes each
+ * and a long request may capture many; keeping them out of the in-memory
+ * items buffer avoids O(N × prompt-size) request-state bulk. The tradeoff
+ * is loss of in-request replay from the response buffer, which is
+ * acceptable for observability data that's durably persisted in the events
+ * log anyway.
+ *
+ * Falls back to the standard emitItemAdded/emitItemDone pair for emitters
+ * (e.g. test mocks) that haven't implemented the one-shot path.
+ *
+ * Callers must check `isTraceObservabilityEnabled()` before calling.
  */
 export async function emitBlockDebugItem(
   response: unknown,
@@ -81,11 +94,6 @@ export async function emitBlockDebugItem(
   ) {
     return;
   }
-
-  const emitter = response as {
-    emitItemAdded: (item: BlockDebugItem) => Promise<unknown>;
-    emitItemDone: (item: BlockDebugItem) => Promise<unknown>;
-  };
 
   const itemIndex = getResponseItems(response).length;
   const item: BlockDebugItem = {
@@ -105,6 +113,16 @@ export async function emitBlockDebugItem(
     payload,
   };
 
+  const oneShot = (response as { emitItemOneShot?: unknown }).emitItemOneShot;
+  if (typeof oneShot === "function") {
+    await (oneShot as (item: BlockDebugItem) => Promise<unknown>).call(response, item);
+    return;
+  }
+
+  const emitter = response as {
+    emitItemAdded: (item: BlockDebugItem) => Promise<unknown>;
+    emitItemDone: (item: BlockDebugItem) => Promise<unknown>;
+  };
   await emitter.emitItemAdded(item);
   await emitter.emitItemDone(item);
 }

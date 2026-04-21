@@ -154,7 +154,8 @@ describe("block_debug emission via executeBlock", () => {
   const originalEnv = { ...process.env };
 
   beforeEach(() => {
-    process.env.FSDEV_DEBUG_ITEMS = "true";
+    process.env.FSDEV_TRACE_OBSERVABILITY = "true";
+    delete process.env.FSDEV_DEBUG_ITEMS;
   });
 
   afterEach(() => {
@@ -210,18 +211,20 @@ describe("block_debug emission via executeBlock", () => {
       },
     });
 
-    const items = response.getItems();
-    const debugItem = items.find((i) => i.type === "block_debug");
-    expect(debugItem).toBeDefined();
-    expect(debugItem!.transient).toBe(true);
-    expect((debugItem as any).client).toBe(false);
-    expect((debugItem as any).history).toBe(false);
-    expect((debugItem as any).blockName).toBe("transforming-handler");
-    expect((debugItem as any).payload.connectedInput).toEqual({ upper: "HELLO" });
+    const debugEvent = response
+      .getEvents()
+      .find((e) => e.type === "item.added" && (e as any).item.type === "block_debug") as any;
+    expect(debugEvent).toBeDefined();
+    expect(debugEvent.item.transient).toBe(true);
+    expect(debugEvent.item.client).toBe(false);
+    expect(debugEvent.item.history).toBe(false);
+    expect(debugEvent.item.blockName).toBe("transforming-handler");
+    expect(debugEvent.item.payload.connectedInput).toEqual({ upper: "HELLO" });
   });
 
-  it("does NOT emit block_debug when FSDEV_DEBUG_ITEMS=false", async () => {
-    process.env.FSDEV_DEBUG_ITEMS = "false";
+  it("does NOT emit block_debug when observability is disabled", async () => {
+    process.env.FSDEV_TRACE_OBSERVABILITY = "false";
+    delete process.env.FSDEV_DEBUG_ITEMS;
 
     const { ctx, response } = await createTestContext("req_no_debug");
 
@@ -244,12 +247,14 @@ describe("block_debug emission via executeBlock", () => {
       },
     });
 
-    const items = response.getItems();
-    const debugItems = items.filter((i) => i.type === "block_debug");
-    expect(debugItems).toHaveLength(0);
+    const debugEvents = response
+      .getEvents()
+      .filter((e) => e.type === "item.added" && (e as any).item.type === "block_debug");
+    expect(debugEvents).toHaveLength(0);
   });
 
   it("does NOT emit block_debug in production mode (default)", async () => {
+    delete process.env.FSDEV_TRACE_OBSERVABILITY;
     delete process.env.FSDEV_DEBUG_ITEMS;
     process.env.NODE_ENV = "production";
 
@@ -274,12 +279,13 @@ describe("block_debug emission via executeBlock", () => {
       },
     });
 
-    const items = response.getItems();
-    const debugItems = items.filter((i) => i.type === "block_debug");
-    expect(debugItems).toHaveLength(0);
+    const debugEvents = response
+      .getEvents()
+      .filter((e) => e.type === "item.added" && (e as any).item.type === "block_debug");
+    expect(debugEvents).toHaveLength(0);
   });
 
-  it("emits block_debug for generator blocks via onBlockDebugCapture hook", async () => {
+  it("emits block_debug for generator blocks via one-shot emission (not in getItems, present in events)", async () => {
     const { ctx, response } = await createTestContext("req_debug_gen");
 
     const block = generator({
@@ -301,11 +307,20 @@ describe("block_debug emission via executeBlock", () => {
       },
     });
 
+    // One-shot: block_debug items are NOT tracked in the response's items
+    // buffer — they'd bloat memory for big prompts. They reach clients via
+    // SSE events and are persisted to the events log.
     const items = response.getItems();
-    const debugItem = items.find((i) => i.type === "block_debug");
-    expect(debugItem).toBeDefined();
-    expect((debugItem as any).blockKind).toBe("generator");
-    expect((debugItem as any).payload.model).toBe("mock-model");
-    expect((debugItem as any).payload.prompt).toContain("You are helpful.");
+    expect(items.find((i) => i.type === "block_debug")).toBeUndefined();
+
+    const events = response.getEvents();
+    const addedEvents = events.filter(
+      (e) => e.type === "item.added" && (e as any).item.type === "block_debug"
+    );
+    expect(addedEvents).toHaveLength(1);
+    const debugEvent = addedEvents[0] as any;
+    expect(debugEvent.item.blockKind).toBe("generator");
+    expect(debugEvent.item.payload.model).toBe("mock-model");
+    expect(debugEvent.item.payload.prompt).toContain("You are helpful.");
   });
 });
