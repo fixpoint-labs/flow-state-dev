@@ -103,9 +103,7 @@ export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
       return formatted || 'Working memory is empty.'
     },
     user: (input: string) => input,
-    // Suppress all item emission — this is an internal extraction step,
-    // not a conversational response visible to the end user.
-    emit: { messages: false, reasoning: false, tools: false },
+    agentType: "trace",
   })
 }
 

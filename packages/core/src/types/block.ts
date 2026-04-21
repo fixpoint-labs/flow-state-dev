@@ -11,7 +11,7 @@ import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
 import type { Content } from "../items/content";
-import type { ItemRole, ItemVisibility } from "../items/types";
+import type { AgentType } from "../items/types";
 import type { JsonObject } from "../schema/common";
 import type { GeneratorModelResult, GeneratorModelUsage } from "./model";
 
@@ -24,15 +24,6 @@ export type BlockDebugCapturePayload = {
   tools: string[];
 };
 
-/**
- * Audience for auto-emitted generator items. Controls who receives items:
- *
- * - `"client"`: sent to the client and entered into LLM history (default for main-phase generators)
- * - `"history"`: entered into LLM history but hidden from the client
- * - `"trace"`: emitted for tracing only — neither client nor history (default for tool-call children and work-phase generators)
- */
-export type EmitAudience = "client" | "history" | "trace";
-
 export type ExecutionParent = {
   name: string;
   kind: BlockKind;
@@ -42,18 +33,9 @@ export type ExecutionParent = {
   stateSchema?: ZodTypeAny;
   /** The input value passed to this block when it was executed. Populated for sequencers. */
   input?: unknown;
-  /** Whether items emitted within this scope are sent to clients by default. */
-  client?: boolean;
-  /** Whether items emitted within this scope enter LLM history by default. */
-  history?: boolean;
-  /**
-   * @deprecated Use `client`/`history` instead. Retained for backward compat.
-   */
-  itemRole?: ItemRole;
   /**
    * Execution phase for this scope. Inherited by nested scopes when not
-   * explicitly overridden. Used by the generator's emit resolver to default
-   * work-phase emissions to `"trace"`.
+   * explicitly overridden.
    */
   phase?: "main" | "work";
   container?: {
@@ -162,10 +144,10 @@ export interface BlockContext<
    *  Each capability's fns(ctx) result is memoized on first access. */
   cap: TCapabilities;
 
-  emitMessage(text: string, options?: { client?: boolean; history?: boolean }): void;
-  emitMessage(content: Content[], options?: { client?: boolean; history?: boolean }): void;
-  emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; client?: boolean; history?: boolean }): void;
-  emitStatus(message: string, options?: { blocked?: boolean; backgroundTasks?: number; client?: boolean }): void;
+  emitMessage(text: string, options?: { agentType?: AgentType; agentName?: string }): void;
+  emitMessage(content: Content[], options?: { agentType?: AgentType; agentName?: string }): void;
+  emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; agentType?: AgentType; agentName?: string }): void;
+  emitStatus(message: string, options?: { blocked?: boolean; backgroundTasks?: number }): void;
 
   /**
    * Runtime metadata for the current request. Available during server-side
@@ -216,12 +198,6 @@ export interface BlockContext<
     blockInstanceId: string;
     parentBlockInstanceId?: string;
     ownedBy?: string;
-    /** Block-declared client visibility override. */
-    client?: boolean;
-    /** Block-declared history inclusion override. */
-    history?: boolean;
-    /** @deprecated Use `client`/`history` instead. */
-    itemRole?: ItemRole;
     /** Execution phase — "work" for background scopes, "main" otherwise. */
     phase?: "main" | "work";
   };
@@ -260,10 +236,6 @@ export interface BlockConfig<
   name: string;
   description?: string;
   transient?: boolean;
-  /**
-   * @deprecated Use `emitAudience` on generators instead.
-   */
-  itemRole?: ItemRole;
   inputSchema?: TInputSchema;
   outputSchema?: TOutputSchema;
   stateSchema?: ZodTypeAny;
@@ -301,12 +273,6 @@ export interface BlockDefinition<
   name: string;
   description?: string;
   transient: boolean;
-  /** Whether items this block emits are sent to clients. */
-  client?: boolean;
-  /** Whether items this block emits enter LLM history. */
-  history?: boolean;
-  /** @deprecated Use `client`/`history` instead. */
-  itemRole?: ItemRole;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
   config: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>;

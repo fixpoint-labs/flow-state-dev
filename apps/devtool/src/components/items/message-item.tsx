@@ -1,9 +1,21 @@
 /**
  * Chat-style message renderer.
  * User messages align right, assistant messages align left.
- * No role badges — position implies role.
+ * Assistant messages show an identity badge when agentType/agentName are present.
  */
 import type { MessageItem } from "@flow-state-dev/core/items";
+
+function IdentityBadge({ item }: { item: MessageItem }) {
+  if (item.agentType === undefined && item.agentName === undefined) return null;
+  return (
+    <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-1 flex gap-1.5">
+      {item.agentName !== undefined && <span className="font-mono">{item.agentName}</span>}
+      {item.agentType !== undefined && (
+        <span className="px-1 rounded-sm bg-slate-800/70 text-slate-400">{item.agentType}</span>
+      )}
+    </div>
+  );
+}
 
 export function MessageItemView({ item }: { item: MessageItem }) {
   const textParts = item.content
@@ -27,6 +39,7 @@ export function MessageItemView({ item }: { item: MessageItem }) {
 
   return (
     <div className="max-w-[95%]">
+      <IdentityBadge item={item} />
       <div className="text-sm text-slate-200 whitespace-pre-wrap break-words leading-relaxed">
         {text}
         {isStreaming && (

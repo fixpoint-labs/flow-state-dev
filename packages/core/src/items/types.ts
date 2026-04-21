@@ -3,20 +3,8 @@ import type { Content } from "./content";
 export type ItemStatus = "in_progress" | "completed" | "incomplete" | "failed";
 
 /**
- * Visibility role of an item within the system. Answers "who is this for?"
- *
- * - `external`: shown to the user, included in LLM history, visible in devtool.
- * - `internal`: included in LLM history, hidden from UI, visible in devtool.
- * - `trace`: observability only — excluded from UI and LLM history, visible in devtool.
- *
- * The hierarchy is strict: `external ⊃ internal ⊃ trace`. An item shown to the
- * user is always also in history; an item hidden from history is also hidden
- * from the UI. To suppress an item entirely, set `emit: false` on the block.
- */
-/**
- * @deprecated Use `client` and `history` boolean flags instead. Kept for
- * backward compatibility — `resolveItemVisibility()` maps legacy roles to
- * the new booleans at read time.
+ * @deprecated Legacy visibility role. Retained only for the deprecated
+ * `resolveItemRole()` shim. Do not use in new code.
  */
 export type ItemRole = "external" | "internal" | "trace";
 
@@ -28,6 +16,22 @@ export type ItemVisibility = {
   client: boolean;
   history: boolean;
 };
+
+/**
+ * Identity classification for the generator that produced an item.
+ *
+ * - `"agent"`: a user-facing agent. Items flow to the client and into
+ *   conversation history.
+ * - `"sub-agent"`: a task-executor under an agent. Items flow to the client
+ *   (for observability / live rendering) but are excluded from conversation
+ *   history — sub-agents are deaf to the broader conversation by design.
+ * - `"trace"`: items produced for observability only (devtool/replay). They
+ *   do not reach the client SSE stream and are not in history.
+ *
+ * A generator that declares no `agentType` produces no auto-emitted items —
+ * only its typed `block_output` flows to parents via graph edges.
+ */
+export type AgentType = "agent" | "sub-agent" | "trace";
 
 export type ItemProvenance = {
   blockName: string;
@@ -45,23 +49,6 @@ export type OutputItemBase = {
   type: string;
   status: ItemStatus;
   transient?: boolean;
-  /** Whether this item is sent to connected clients. When unset, resolved
-   *  from per-type defaults via `resolveItemVisibility()`. */
-  client?: boolean;
-  /** Whether this item is included in LLM conversation history. When unset,
-   *  resolved from per-type defaults via `resolveItemVisibility()`. */
-  history?: boolean;
-  /**
-   * @deprecated Use `client` and `history` booleans instead.
-   * Retained for backward compatibility with pre-boolean items.
-   * `resolveItemVisibility()` maps this to booleans as a fallback.
-   */
-  itemRole?: ItemRole;
-  /**
-   * @deprecated Use `client: false, history: false` instead. Retained for
-   * backward compatibility with pre-role items.
-   */
-  trace?: boolean;
   requestId: string;
   itemIndex: number;
   provenance: ItemProvenance;
@@ -69,6 +56,20 @@ export type OutputItemBase = {
   /** When set, this item was emitted inside a container scope. The value is the
    *  `blockInstanceId` of the sequencer/router that declared the container. */
   ownedBy?: string;
+  /**
+   * Identity of the generator that produced this item. Governs visibility
+   * via `resolveItemVisibility()` for conversational item types
+   * (`message`, `reasoning`, `block_tool_output`). Structural items
+   * (status, component, block_output, etc.) ignore this field.
+   */
+  agentType?: AgentType;
+  /**
+   * Stable name of the producing agent. Defaults to the generator's block
+   * `name` when `agentType` is set. Multiple generators that share an
+   * `agentName` collaborate (same logical agent across instances); distinct
+   * names stay isolated.
+   */
+  agentName?: string;
 };
 
 export type BlockOutputItem = OutputItemBase & {

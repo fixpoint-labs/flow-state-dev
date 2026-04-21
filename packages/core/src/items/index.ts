@@ -11,6 +11,7 @@ export type {
 export { isEphemeralContent } from "./content";
 
 export type {
+  AgentType,
   BlockDebugItem,
   BlockDebugPayload,
   BlockOutputItem,

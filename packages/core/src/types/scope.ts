@@ -1,4 +1,4 @@
-import type { ItemStatus } from "../items/types";
+import type { AgentType, ItemStatus } from "../items/types";
 import type { JsonObject } from "../schema/common";
 import type { AnyResourceRef, ResourceRegistry } from "./resource";
 import type { CostEstimate, TokenLedger } from "./flow";
@@ -22,6 +22,9 @@ export type SessionItem = {
   itemIndex: number;
   payload: unknown;
   ts?: number;
+  /** Identity of the producing agent (post-FIX-391). */
+  agentType?: AgentType;
+  agentName?: string;
 };
 
 export type MessageLimit = number | { tokens: number };
@@ -31,12 +34,33 @@ export type ItemQuery = {
   includeTransient?: boolean;
   itemTypes?: string[];
   roles?: Array<"user" | "assistant" | "system" | "developer" | "tool">;
+  /** Filter by producing agent type. Scalar or array form. */
+  agentType?: AgentType | AgentType[];
+  /** Filter by producing agent name. Scalar or array form. */
+  agentName?: string | string[];
 };
 
 export type SessionItemViews = {
+  /** Every session item. Respects `includeTransient`. No visibility filter. */
   all: (query?: ItemQuery) => SessionItem[];
+  /** Items where `resolveItemVisibility(item).client === true`. Excludes trace items. */
   client: (query?: ItemQuery) => SessionItem[];
+  /**
+   * LLM-ready conversation history. Applies the transient filter, the type
+   * allowlist, `resolveItemVisibility(item).history`, role filtering, and
+   * limiting. Effectively returns only items whose resolved visibility
+   * includes them in history (agent-typed conversational items + user
+   * messages).
+   */
   history: (query?: ItemQuery) => Promise<LLMMessage[]>;
+  /**
+   * Raw-query view for custom context assembly. Returns `SessionItem[]`
+   * unfiltered by visibility. Respects `includeTransient` per query, and
+   * honors the `agentType` / `agentName` filters. Use this to build
+   * custom prompt context that reaches beyond the conversation-history
+   * default (e.g., a long-running sub-agent pulling its own prior outputs).
+   */
+  selectForContext: (query?: ItemQuery) => SessionItem[];
 };
 
 export type Message = {

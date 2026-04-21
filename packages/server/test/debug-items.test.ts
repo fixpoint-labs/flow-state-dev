@@ -19,6 +19,7 @@ import {
   executeBlock
 } from "../src";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { resolveItemVisibility } from "@flow-state-dev/core/items";
 import {
   buildGeneratorDebugPayload,
   buildConnectedInputDebugPayload
@@ -216,8 +217,9 @@ describe("block_debug emission via executeBlock", () => {
       .find((e) => e.type === "item.added" && (e as any).item.type === "block_debug") as any;
     expect(debugEvent).toBeDefined();
     expect(debugEvent.item.transient).toBe(true);
-    expect(debugEvent.item.client).toBe(false);
-    expect(debugEvent.item.history).toBe(false);
+    const debugVis = resolveItemVisibility(debugEvent.item);
+    expect(debugVis.client).toBe(false);
+    expect(debugVis.history).toBe(false);
     expect(debugEvent.item.blockName).toBe("transforming-handler");
     expect(debugEvent.item.payload.connectedInput).toEqual({ upper: "HELLO" });
   });

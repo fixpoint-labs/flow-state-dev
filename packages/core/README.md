@@ -22,7 +22,7 @@ const agent = generator({
   history: true,
   user: (input) => input.message,
   tools: [readDoc, writeDoc],
-  emit: { reasoning: true, messages: true },
+  agentType: "agent",
 });
 ```
 

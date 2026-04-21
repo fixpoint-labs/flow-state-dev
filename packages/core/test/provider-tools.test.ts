@@ -149,9 +149,9 @@ describe("generator search config", () => {
 
     const block = generator({
       name: "source-gen",
+      agentType: "agent",
       model: "test-model",
       prompt: "Search",
-      emit: { messages: false },
     });
 
     const ctx = createMockContext({

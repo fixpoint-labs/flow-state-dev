@@ -12,7 +12,7 @@
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import { emitPlanMeta, emitTaskUpdate } from "../shared/plan";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
-import type { GeneratorHistoryConfig, GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
+import type { AgentType, GeneratorHistoryConfig, GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   supervisorInputSchema,
@@ -106,6 +106,12 @@ export interface SupervisorConfig<
 
   /** Schema for the final synthesized output. */
   outputSchema?: TOutputSchema;
+
+  /** Agent type for the default reviewer. Default: "sub-agent". */
+  reviewerAgentType?: AgentType;
+
+  /** Agent type for the default synthesizer. Default: "agent". */
+  synthesizerAgentType?: AgentType;
 }
 
 const SKIPPED_SENTINEL = "__supervisorSkipped";
@@ -341,7 +347,8 @@ function buildDefaultPlanner(name: string, opts?: {
 
 function buildDefaultReviewer(
   name: string,
-  reviewCriteria?: string[]
+  reviewCriteria?: string[],
+  agentType?: AgentType
 ) {
   const criteriaBlock = reviewCriteria?.length
     ? `\nEvaluation criteria:\n${reviewCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}`
@@ -364,7 +371,7 @@ function buildDefaultReviewer(
       criteriaBlock || null,
       "Return output that exactly matches the required schema.",
     ],
-    emit: { messages: true, reasoning: false },
+    agentType: agentType ?? "sub-agent",
     user: (input) =>
       typeof input === "string" ? input : JSON.stringify(input),
   });
@@ -378,6 +385,7 @@ function buildDefaultSynthesizer(
     history?: GeneratorHistoryConfig<any, any>;
     uses?: UsesSlot;
     instructions?: InstructionsSlot;
+    agentType?: AgentType;
   }
 ) {
   const basePrompt = [
@@ -398,7 +406,7 @@ function buildDefaultSynthesizer(
     context: opts?.context,
     history: opts?.history,
     ...(opts?.uses ? { uses: opts.uses as any } : {}),
-    emit: { messages: true, reasoning: false },
+    agentType: opts?.agentType ?? "agent",
     prompt: [opts?.instructions, basePrompt],
     user: (input: unknown) => {
       if (typeof input === "string") return input;
@@ -440,13 +448,14 @@ export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     });
 
   const reviewer =
-    config.reviewer ?? buildDefaultReviewer(name, config.reviewCriteria);
+    config.reviewer ?? buildDefaultReviewer(name, config.reviewCriteria, config.reviewerAgentType);
 
   const finalSynthesizer =
     config.synthesizer ??
     buildDefaultSynthesizer(name, config.outputSchema, {
       ...slotOpts,
       instructions: config.instructions,
+      agentType: config.synthesizerAgentType,
     });
 
   // Wrap the worker in a sequencer with rescue for skip/retry strategies.

@@ -100,8 +100,6 @@ export async function emitBlockDebugItem(
     id: `item_block_debug_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "block_debug",
     status: "completed",
-    client: false,
-    history: false,
     transient: true,
     requestId: metadata.requestId,
     itemIndex,

@@ -10,7 +10,6 @@ export type {
   ChunkValidation,
   ConnectorFn,
   DeclaredResourceEntry,
-  EmitAudience,
   ExecutionParent,
   RescueHandlerSpec,
   ResponseEmitterHandle,

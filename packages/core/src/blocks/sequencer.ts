@@ -159,8 +159,6 @@ async function emitStateSnapshot(
     id: `item_state_snap_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "state_snapshot" as const,
     status: "completed" as const,
-    client: false,
-    history: false,
     transient: true,
     requestId: ctx.request.identity.id,
     itemIndex: getSequencerEmitterItemCount(ctx.response),
@@ -174,7 +172,7 @@ async function emitStateSnapshot(
     stepName,
     stepIndex,
     state: structuredClone(seqRef.state),
-    version: 0,
+    version: 0
   };
 
   await ctx.response.emit({ type: "item.added", item });
@@ -203,8 +201,6 @@ async function emitGeneratorBlockOutput(
     id: `item_block_output_${completedAt}_${Math.random().toString(16).slice(2)}`,
     type: "block_output" as const,
     status: (error ? "failed" : "completed") as "completed" | "failed",
-    client: false,
-    history: false,
     transient: block.transient || undefined,
     requestId: ctx.request.identity.id,
     itemIndex: getSequencerEmitterItemCount(ctx.response),
@@ -339,9 +335,6 @@ async function executeBlock(
       transient: block.transient || undefined,
       stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined,
       input,
-      client: block.client,
-      history: block.history,
-      itemRole: block.itemRole,
       phase: options?.phase ?? ctx._blockIdentity?.phase,
       container:
         containerConfig === undefined
