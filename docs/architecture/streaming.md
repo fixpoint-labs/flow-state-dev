@@ -43,7 +43,7 @@ Items are the canonical persisted artifacts. Their type determines audience rout
 | `block_output` | No | Conditional | Execution record (every block) |
 | `block_tool_output` | No | Yes | Tool result from generator tool invocation |
 | `router_decision` | No | No | Route selection record (trace only) |
-| `sequencer_state_snapshot` | No | No | Full sequencer state at step boundary (trace only) |
+| `state_snapshot` | No | No | Full sequencer state at step boundary (trace only) |
 | `error` | Yes | No | Terminal errors |
 | `step_error` | Yes | No | Recoverable step errors |
 
@@ -51,7 +51,7 @@ For `block_output`: When the item has `toolCall` metadata (legacy tool invocatio
 
 ### Visibility Flags
 
-Items carry `client?: boolean` and `history?: boolean` flags that control whether they're sent to connected clients and whether they enter LLM conversation history. When unset, `resolveItemVisibility()` resolves from per-type defaults in `ITEM_TYPE_DEFAULTS`. Structural items (`block_output`, `router_decision`, `sequencer_state_snapshot`) default to both false — they're devtool-only.
+Items carry `client?: boolean` and `history?: boolean` flags that control whether they're sent to connected clients and whether they enter LLM conversation history. When unset, `resolveItemVisibility()` resolves from per-type defaults in `ITEM_TYPE_DEFAULTS`. Structural items (`block_output`, `router_decision`, `state_snapshot`) default to both false — they're devtool-only.
 
 ### Container Ownership (`ownedBy`)
 
@@ -169,7 +169,7 @@ Because events are operationally independent from items, they can be:
 - Retained with a different policy (e.g., capped collection, age-based pruning)
 - Disabled entirely in production without affecting app behavior
 
-This separation means observability-only item types (like `sequencer_state_snapshot` or `block_debug`) should use `transient: true` — they flow through the event stream for live and replay consumption without bloating the persisted item record.
+This separation means observability-only item types (like `state_snapshot` or `block_debug`) should use `transient: true` — they flow through the event stream for live and replay consumption without bloating the persisted item record.
 
 ## Resume Semantics
 

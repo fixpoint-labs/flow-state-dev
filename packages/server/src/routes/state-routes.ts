@@ -80,7 +80,7 @@ export async function handleGetSessionState(
   const TRACE_ITEM_TYPES = new Set([
     "block_output",
     "router_decision",
-    "sequencer_state_snapshot",
+    "state_snapshot",
   ]);
 
   let aggregatedItems: OutputItem[] | undefined;

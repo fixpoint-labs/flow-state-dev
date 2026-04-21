@@ -31,7 +31,7 @@ type ItemRendererProps = {
   item: OutputItem;
 };
 
-const TIER_3_TYPES = new Set(["state_change", "resource_change", "sequencer_state_snapshot", "block_debug"]);
+const TIER_3_TYPES = new Set(["state_change", "resource_change", "state_snapshot", "block_debug"]);
 
 export const ItemRenderer = memo(function ItemRenderer({ item }: ItemRendererProps) {
   const { isDebugMode } = useDebug();
@@ -121,8 +121,8 @@ function ItemContent({ item }: { item: OutputItem }) {
       return <RouterDecisionItemView item={item} />;
     case "source":
       return <SourceItemView item={item} />;
-    case "sequencer_state_snapshot":
-      return <SequencerStateSnapshotItemView item={item} />;
+    case "state_snapshot":
+      return <StateSnapshotItemView item={item} />;
     case "block_debug":
       return <BlockDebugItemView item={item} />;
     default:
@@ -130,12 +130,12 @@ function ItemContent({ item }: { item: OutputItem }) {
   }
 }
 
-function SequencerStateSnapshotItemView({ item }: { item: OutputItem & { type: "sequencer_state_snapshot" } }) {
+function StateSnapshotItemView({ item }: { item: OutputItem & { type: "state_snapshot" } }) {
   return (
     <div className="flex items-center gap-1.5 text-[11px] text-slate-600 font-mono">
       <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500/60 shrink-0" />
       <span className="text-amber-600/80">state</span>
-      <span className="text-slate-500">{item.sequencerName}</span>
+      <span className="text-slate-500">{item.provenance.blockName}</span>
       <span className="text-slate-700">{item.stepName === "__initial__" ? "init" : item.stepName}</span>
     </div>
   );

@@ -126,15 +126,15 @@ function getSequencerEmitterItemCount(response: unknown): number {
 }
 
 /**
- * Emits a sequencer_state_snapshot item at step boundaries so the devtool
- * can display the full state of a sequencer at each point in its execution.
+ * Emits a state_snapshot item at step boundaries so the devtool can display
+ * the full state of a sequencer at each point in its execution.
  *
  * Only emits when state has actually changed since the last snapshot,
  * avoiding redundant snapshots for steps that don't mutate state.
  * When multiple steps run without changing state, the emitted snapshot
  * records which step actually caused the change.
  */
-async function emitSequencerStateSnapshot(
+async function emitStateSnapshot(
   ctx: BlockContext,
   stepName: string,
   stepIndex: number,
@@ -151,8 +151,8 @@ async function emitSequencerStateSnapshot(
   }
 
   const item = {
-    id: `item_seq_state_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-    type: "sequencer_state_snapshot" as const,
+    id: `item_state_snap_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: "state_snapshot" as const,
     status: "completed" as const,
     client: false,
     history: false,
@@ -166,8 +166,6 @@ async function emitSequencerStateSnapshot(
       stepIndex,
     },
     ts: Date.now(),
-    sequencerName: seqRef.name,
-    sequencerInstanceId: seqRef.instanceId,
     stepName,
     stepIndex,
     state: structuredClone(seqRef.state),
@@ -421,7 +419,7 @@ function runSequencerOperations(
     let currentValue: unknown = input;
 
     // Emit initial state snapshot before any steps execute.
-    let lastStateJson = await emitSequencerStateSnapshot(ctx, "__initial__", -1, undefined);
+    let lastStateJson = await emitStateSnapshot(ctx, "__initial__", -1, undefined);
 
     try {
       for (let index = 0; index < operations.length; index += 1) {
@@ -431,7 +429,7 @@ function runSequencerOperations(
         currentValue = result.value;
 
         // Emit state snapshot only if state changed since last snapshot.
-        lastStateJson = await emitSequencerStateSnapshot(ctx, operation.name, index, lastStateJson);
+        lastStateJson = await emitStateSnapshot(ctx, operation.name, index, lastStateJson);
         
         if (result.exit === true) {
           break;

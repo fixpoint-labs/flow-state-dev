@@ -30,8 +30,8 @@ export type {
   ReasoningItem,
   ResourceChangeItem,
   RouterDecisionItem,
-  SequencerStateSnapshotItem,
   StateChangeItem,
+  StateSnapshotItem,
   SourceItem,
   StatusItem,
   StepErrorItem

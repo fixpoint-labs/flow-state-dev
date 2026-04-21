@@ -114,8 +114,8 @@ function ItemTypeDetail({ item }: { item: OutputItem }) {
       return <RouterDecisionDetail item={item} />;
     case "source":
       return <SourceDetail item={item} />;
-    case "sequencer_state_snapshot":
-      return <SequencerStateSnapshotDetail item={item} />;
+    case "state_snapshot":
+      return <StateSnapshotDetail item={item} />;
     case "block_debug":
       return <BlockDebugDetail item={item} />;
     default:
@@ -337,10 +337,10 @@ function SourceDetail({ item }: { item: OutputItem & { type: "source" } }) {
   );
 }
 
-function SequencerStateSnapshotDetail({ item }: { item: OutputItem & { type: "sequencer_state_snapshot" } }) {
+function StateSnapshotDetail({ item }: { item: OutputItem & { type: "state_snapshot" } }) {
   return (
     <div className="space-y-2">
-      <MetadataRow label="Sequencer" value={item.sequencerName} mono />
+      <MetadataRow label="Block" value={item.provenance.blockName} mono />
       <MetadataRow label="Step" value={item.stepName === "__initial__" ? "initial" : item.stepName} />
       <MetadataRow label="Step Index" value={item.stepIndex === -1 ? "initial" : String(item.stepIndex)} />
       <MetadataRow label="Version" value={String(item.version)} />
@@ -401,7 +401,7 @@ function TypePill({ type }: { type: string }) {
     block_tool_output: "text-purple-400 border-purple-800/50",
     router_decision: "text-orange-400 border-orange-800/50",
     source: "text-blue-400 border-blue-800/50",
-    sequencer_state_snapshot: "text-amber-500 border-amber-800/50",
+    state_snapshot: "text-amber-500 border-amber-800/50",
     block_debug: "text-purple-500 border-purple-800/50",
   };
   return (

@@ -26,7 +26,7 @@ export const ITEM_TYPE_DEFAULTS: Record<string, ItemVisibility> = {
   step_error:                   { client: true,  history: false },
   block_output:                 { client: false, history: false },
   router_decision:              { client: false, history: false },
-  sequencer_state_snapshot:     { client: false, history: false },
+  state_snapshot:               { client: false, history: false },
 };
 
 const FALLBACK_DEFAULTS: ItemVisibility = { client: true, history: false };

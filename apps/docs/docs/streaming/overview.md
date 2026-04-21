@@ -119,4 +119,4 @@ For reference, here's the complete registry:
 | `error` | Terminal request error | ✓ | — | — |
 | `block_output` | Execution record | — | — | — |
 | `router_decision` | Route selection record | — | — | — |
-| `sequencer_state_snapshot` | Sequencer state snapshot | — | — | Always |
+| `state_snapshot` | Sequencer state snapshot | — | — | Always |

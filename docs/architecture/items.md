@@ -19,7 +19,7 @@ Both are optional on the item. When unset, they resolve from per-type defaults v
 
 ### Per-type defaults
 
-Content-bearing types (`message`, `reasoning`, `block_tool_output`) default to `client: true, history: true`. UI-only types (`component`, `status`, `error`, etc.) default to `client: true, history: false`. Structural types (`block_output`, `router_decision`, `sequencer_state_snapshot`) default to `client: false, history: false` — they're devtool-only.
+Content-bearing types (`message`, `reasoning`, `block_tool_output`) default to `client: true, history: true`. UI-only types (`component`, `status`, `error`, etc.) default to `client: true, history: false`. Structural types (`block_output`, `router_decision`, `state_snapshot`) default to `client: false, history: false` — they're devtool-only.
 
 ### Overriding visibility
 
@@ -88,7 +88,7 @@ Any block can produce history-only items. For generators, use `emitAudience: "hi
 
 **`router_decision`** records which branch a router selected.
 
-**`sequencer_state_snapshot`** captures the full sequencer state at each step boundary. Transient — streams to the devtool during execution but isn't persisted.
+**`state_snapshot`** captures the full sequencer state at each step boundary. Transient — streams to the devtool during execution but isn't persisted.
 
 ## Persistence
 
@@ -96,7 +96,7 @@ Items fall into three buckets:
 
 **Persistent** — stored in the request record. Survive page refreshes. Form the session's durable history. Most items are persistent.
 
-**Transient** — stream-only. The client sees them during execution via SSE, but they're stripped before the request record is written. When someone reconnects or opens a past session, these items don't appear. `status` is always transient. `resource_change` and `sequencer_state_snapshot` are transient by default.
+**Transient** — stream-only. The client sees them during execution via SSE, but they're stripped before the request record is written. When someone reconnects or opens a past session, these items don't appear. `status` is always transient. `resource_change` and `state_snapshot` are transient by default.
 
 **Conditionally persistent** — `state_change` items are transient in production and persistent in development. Use `persistStateChanges: true` on the flow config to force persistence in production (needed for the devtool state timeline).
 
@@ -123,7 +123,7 @@ There are two storage targets, kept separate:
 | `step_error` | Sequencer (block error, with/without rescue) | ✓ | — | Persistent |
 | `block_output` | Every block (auto, post-execution) | — | — | Persistent |
 | `router_decision` | Router (auto, on selection) | — | — | Persistent |
-| `sequencer_state_snapshot` | Sequencer (at step boundaries) | — | — | **Always transient** |
+| `state_snapshot` | Sequencer (at step boundaries) | — | — | **Always transient** |
 
 **Column meanings:** `Client` = sent to connected clients; `History` = included in LLM conversation history. Items with neither are devtool-only.
 

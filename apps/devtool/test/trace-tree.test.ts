@@ -279,11 +279,11 @@ describe("buildTraceTree", () => {
     expect(blockNode.blockDuration).toBe(2500);
   });
 
-  it("collects sequencer_state_snapshot items into stateSnapshots", () => {
+  it("collects state_snapshot items into stateSnapshots", () => {
     const items = [
       makeItem({
         id: "snap-init",
-        type: "sequencer_state_snapshot",
+        type: "state_snapshot",
         transient: true,
         provenance: makeProvenance("research", "seq-inst"),
         sequencerName: "research",
@@ -302,7 +302,7 @@ describe("buildTraceTree", () => {
       } as Partial<OutputItem> & { id: string; type: string }),
       makeItem({
         id: "snap-step0",
-        type: "sequencer_state_snapshot",
+        type: "state_snapshot",
         transient: true,
         ts: 2000,
         provenance: makeProvenance("research", "seq-inst"),
@@ -315,7 +315,7 @@ describe("buildTraceTree", () => {
       } as Partial<OutputItem> & { id: string; type: string }),
       makeItem({
         id: "snap-step1",
-        type: "sequencer_state_snapshot",
+        type: "state_snapshot",
         transient: true,
         ts: 3000,
         provenance: makeProvenance("research", "seq-inst"),
@@ -351,7 +351,7 @@ describe("buildTraceTree", () => {
     const items = [
       makeItem({
         id: "parent-snap",
-        type: "sequencer_state_snapshot",
+        type: "state_snapshot",
         provenance: makeProvenance("outer", "outer-inst"),
         sequencerName: "outer",
         sequencerInstanceId: "outer-inst",
@@ -362,7 +362,7 @@ describe("buildTraceTree", () => {
       } as Partial<OutputItem> & { id: string; type: string }),
       makeItem({
         id: "child-snap",
-        type: "sequencer_state_snapshot",
+        type: "state_snapshot",
         provenance: makeProvenance("inner", "inner-inst", "outer-inst"),
         sequencerName: "inner",
         sequencerInstanceId: "inner-inst",

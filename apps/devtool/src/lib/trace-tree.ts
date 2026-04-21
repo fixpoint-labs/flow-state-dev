@@ -1,4 +1,4 @@
-import type { BlockDebugItem, BlockOutputItem, OutputItem, SequencerStateSnapshotItem, StatusItem } from "@flow-state-dev/core/items";
+import type { BlockDebugItem, BlockOutputItem, OutputItem, StateSnapshotItem, StatusItem } from "@flow-state-dev/core/items";
 import type { RequestGroup } from "@/components/workspace/stream-view";
 
 /** A single snapshot in a sequencer's state timeline. */
@@ -95,9 +95,9 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
         }
       }
 
-      // Collect sequencer state snapshots into the block node.
-      if (item.type === "sequencer_state_snapshot") {
-        const snap = item as SequencerStateSnapshotItem;
+      // Collect state snapshots into the owning block node.
+      if (item.type === "state_snapshot") {
+        const snap = item as StateSnapshotItem;
         if (!blockNode.stateSnapshots) blockNode.stateSnapshots = [];
         blockNode.stateSnapshots.push({
           stepName: snap.stepName,

@@ -301,7 +301,7 @@ function getItemIcon(type: string): string {
     block_tool_output: "{}",
     router_decision: "🔀",
     source: "🔗",
-    sequencer_state_snapshot: "📊",
+    state_snapshot: "📊",
   };
   return icons[type] ?? "?";
 }
@@ -353,8 +353,8 @@ function getItemPreview(item: OutputItem): string {
       return `${item.routerName} → ${item.selectedRoute}`;
     case "source":
       return (item as any).title ?? (item as any).url ?? "source";
-    case "sequencer_state_snapshot":
-      return `${(item as any).sequencerName} → ${(item as any).stepName === "__initial__" ? "init" : (item as any).stepName}`;
+    case "state_snapshot":
+      return `${item.provenance.blockName} → ${item.stepName === "__initial__" ? "init" : item.stepName}`;
     default:
       return "";
   }

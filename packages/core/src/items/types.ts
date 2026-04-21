@@ -218,11 +218,15 @@ export type SourceItem = OutputItemBase & {
   providerMetadata?: Record<string, Record<string, unknown>>;
 };
 
-/** Full state snapshot emitted at sequencer step boundaries for devtool inspection. */
-export type SequencerStateSnapshotItem = OutputItemBase & {
-  type: "sequencer_state_snapshot";
-  sequencerName: string;
-  sequencerInstanceId: string;
+/**
+ * Full state snapshot emitted at a step boundary for devtool inspection.
+ * Today only sequencers emit these; the type is kind-agnostic so any future
+ * block with stepped state can reuse it. The owning block is identified by
+ * `provenance.blockName` / `provenance.blockInstanceId`, so no separate
+ * sequencer-specific fields are carried.
+ */
+export type StateSnapshotItem = OutputItemBase & {
+  type: "state_snapshot";
   stepName: string;
   stepIndex: number;
   state: unknown;
@@ -277,5 +281,5 @@ export type OutputItem =
   | ErrorItem
   | StepErrorItem
   | SourceItem
-  | SequencerStateSnapshotItem
+  | StateSnapshotItem
   | BlockDebugItem;
