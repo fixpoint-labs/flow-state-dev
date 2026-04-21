@@ -318,8 +318,19 @@ function getItemPreview(item: OutputItem): string {
       return item.message;
     case "step_error":
       return item.message;
-    case "status":
-      return item.message;
+    case "status": {
+      // Structural status items from the sequencer's auto-await (FIX-369)
+      // arrive with an empty `message` and only a `backgroundTasks` count.
+      // Synthesize a label so the trace row isn't blank. See also
+      // `StatusItemView` in components/items/status-item.tsx — same contract.
+      if (item.message) return item.message;
+      if (typeof item.backgroundTasks === "number") {
+        return item.backgroundTasks === 0
+          ? "background work complete"
+          : `background tasks: ${item.backgroundTasks} pending`;
+      }
+      return "";
+    }
     case "block_output":
       return item.blockName + (item.toolCall ? ` → ${item.toolCall.callId}` : "");
     case "reasoning": {

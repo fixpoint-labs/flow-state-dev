@@ -1,4 +1,4 @@
-import type { BlockDebugItem, BlockOutputItem, OutputItem, SequencerStateSnapshotItem } from "@flow-state-dev/core/items";
+import type { BlockDebugItem, BlockOutputItem, OutputItem, SequencerStateSnapshotItem, StatusItem } from "@flow-state-dev/core/items";
 import type { RequestGroup } from "@/components/workspace/stream-view";
 
 /** A single snapshot in a sequencer's state timeline. */
@@ -81,6 +81,18 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
       if (item.type === "block_debug") {
         const dbg = item as BlockDebugItem;
         blockNode.blockKind = blockNode.blockKind ?? dbg.blockKind;
+      }
+
+      // Drop structural status items with nothing to render. The sequencer
+      // emits `status` items with an empty `message` carrying only a
+      // `backgroundTasks` count (FIX-369) — those still get a synthesized
+      // label in `getItemPreview`. Items with no message AND no
+      // backgroundTasks have no label to render, so skip the row entirely.
+      if (item.type === "status") {
+        const status = item as StatusItem;
+        if (!status.message && typeof status.backgroundTasks !== "number") {
+          continue;
+        }
       }
 
       // Collect sequencer state snapshots into the block node.
