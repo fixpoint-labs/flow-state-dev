@@ -57,6 +57,12 @@ import type {
 import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
+import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import {
+  buildConnectedInputDebugPayload,
+  buildGeneratorDebugPayload,
+  emitBlockDebugItem,
+} from "../execution/internal/debug-items";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
 import { cloneValue } from "../utils/clone";
@@ -2286,9 +2292,64 @@ export async function createExecutionContext<
         .then(() => emissionResponse.emitItemDone(decisionItem))
         .catch(() => { /* trace emission is best-effort */ });
     },
-    // Nested-block debug emission is now handled by the root-installed
-    // onBlockDebugCapture / onConnectedInput hooks, which inherit down the
-    // scopedCtx chain and self-identify via `_blockIdentity` at fire time.
+    // Debug observability hooks — installed on the shared _runtimeHooks so
+    // every context (root and nested) fires them. The hooks read the firing
+    // ctx's `_blockIdentity` at invocation time to emit against the correct
+    // block instance, avoiding closure capture of any specific block.
+    onBlockDebugCapture: isTraceObservabilityEnabled()
+      ? (capture, firingCtx) => {
+          const identity = firingCtx._blockIdentity;
+          if (identity === undefined) return;
+          const metadata = {
+            requestId: requestRef.current.id,
+            userId: userRef.current.id,
+            flowKind: baseLogContext.flowKind,
+            actionName: baseLogContext.actionName,
+            blockName: identity.blockName,
+            blockKind: (identity.blockKind ?? "generator") as "handler" | "generator" | "sequencer" | "router",
+            blockInstanceId: identity.blockInstanceId,
+            parentBlockInstanceId: identity.parentBlockInstanceId,
+            scope: identity.phase === "work" ? "work" : "block",
+          } as Parameters<typeof emitBlockDebugItem>[2];
+          const blockShim = {
+            name: identity.blockName,
+            kind: identity.blockKind ?? "generator",
+          } as Parameters<typeof emitBlockDebugItem>[1];
+          void emitBlockDebugItem(
+            emissionResponse,
+            blockShim,
+            metadata,
+            buildGeneratorDebugPayload(capture)
+          ).catch(() => { /* best-effort */ });
+        }
+      : undefined,
+    onConnectedInput: isTraceObservabilityEnabled()
+      ? (value, firingCtx) => {
+          const identity = firingCtx._blockIdentity;
+          if (identity === undefined) return;
+          const metadata = {
+            requestId: requestRef.current.id,
+            userId: userRef.current.id,
+            flowKind: baseLogContext.flowKind,
+            actionName: baseLogContext.actionName,
+            blockName: identity.blockName,
+            blockKind: (identity.blockKind ?? "handler") as "handler" | "generator" | "sequencer" | "router",
+            blockInstanceId: identity.blockInstanceId,
+            parentBlockInstanceId: identity.parentBlockInstanceId,
+            scope: identity.phase === "work" ? "work" : "block",
+          } as Parameters<typeof emitBlockDebugItem>[2];
+          const blockShim = {
+            name: identity.blockName,
+            kind: identity.blockKind ?? "handler",
+          } as Parameters<typeof emitBlockDebugItem>[1];
+          void emitBlockDebugItem(
+            emissionResponse,
+            blockShim,
+            metadata,
+            buildConnectedInputDebugPayload(value)
+          ).catch(() => { /* best-effort */ });
+        }
+      : undefined,
     emitNestedBlockDebug: undefined,
   };
 
