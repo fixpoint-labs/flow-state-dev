@@ -2539,7 +2539,15 @@ export async function createExecutionContext<
               id: `item_container_${itemIndex}_${Math.random().toString(16).slice(2)}`,
               type: "container",
               status: "completed",
-              client: false,
+              // FIX-391: container items MUST be client-visible — they carry
+              // the component key (e.g. "reactive-blackboard") the UI uses to
+              // pick a renderer and suppress owned children. Hardcoding
+              // client: false here caused the SSE client-filter to strip the
+              // container during live streaming, leaving rb-entry children to
+              // render as raw JSON. Revisit when the client/history model is
+              // redesigned — until then, keep in sync with ITEM_TYPE_DEFAULTS
+              // in core/items/resolve-role.ts (container: client: true).
+              client: true,
               history: false,
               transient: resolvedParent.transient || undefined,
               requestId: requestRef.current.id,

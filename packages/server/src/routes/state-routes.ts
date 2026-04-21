@@ -70,6 +70,19 @@ export async function handleGetSessionState(
     ? new Set(itemTypesParam.split(",").map((t) => t.trim()).filter(Boolean))
     : undefined;
 
+  // FIX-391: type-based strip of known trace items on reload. The SSE
+  // transport filters by `resolveItemVisibility(item).client`, but we can't
+  // do the same here without also stripping container items from older
+  // sessions (which were persisted with the now-fixed `client: false`).
+  // Until the visibility model is redesigned, hardcode the known-trace type
+  // list — these types have `client: false` defaults in ITEM_TYPE_DEFAULTS
+  // and should never reach the UI as raw JSON.
+  const TRACE_ITEM_TYPES = new Set([
+    "block_output",
+    "router_decision",
+    "sequencer_state_snapshot",
+  ]);
+
   let aggregatedItems: OutputItem[] | undefined;
   let totalItems = 0;
   if (includeItems) {
@@ -80,9 +93,13 @@ export async function handleGetSessionState(
     for (const req of requests) {
       if (req.items !== undefined) {
         for (const item of req.items) {
-          if (itemTypeFilter === undefined || itemTypeFilter.has(item.type)) {
-            aggregatedItems.push(item);
+          if (itemTypeFilter !== undefined && !itemTypeFilter.has(item.type)) {
+            continue;
           }
+          if (itemTypeFilter === undefined && TRACE_ITEM_TYPES.has(item.type)) {
+            continue;
+          }
+          aggregatedItems.push(item);
         }
       }
     }
