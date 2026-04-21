@@ -246,6 +246,46 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   }
 
   /**
+   * Emits item.added + item.done events for a single transient item without
+   * tracking it in `itemsById`. The events reach connected clients via the
+   * SSE stream and are persisted to the events log (the durable source for
+   * replay). The item is NOT returned from `getItems()` and therefore never
+   * enters the request-record items array — useful for large observability
+   * payloads (e.g. full LLM prompts in block_debug) that would otherwise
+   * balloon in-memory request state.
+   *
+   * Tradeoff: one-shot items cannot be replayed from the in-memory response
+   * buffer after a reconnect — only from the events log store. For
+   * block_debug this is acceptable because a reconnecting client sees the
+   * next emission when the block re-resolves, and devtool replay reads from
+   * the events log anyway.
+   */
+  async emitItemOneShot(item: OutputItem): Promise<{
+    addedEvent: RequestStreamEventWithId;
+    doneEvent: RequestStreamEventWithId;
+  }> {
+    const interceptedAdded = applyItemSeam(
+      this.internalSeams,
+      item,
+      "item.added"
+    );
+    const addedEvent = await this.appendEvent<ItemAddedEvent>({
+      type: "item.added",
+      item: interceptedAdded
+    });
+    const interceptedDone = applyItemSeam(
+      this.internalSeams,
+      interceptedAdded,
+      "item.done"
+    );
+    const doneEvent = await this.appendEvent<ItemDoneEvent>({
+      type: "item.done",
+      item: interceptedDone
+    });
+    return { addedEvent, doneEvent };
+  }
+
+  /**
    * Emits a content-part added event for an item.
    */
   async emitContentAdded(

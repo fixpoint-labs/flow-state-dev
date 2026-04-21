@@ -96,7 +96,7 @@ describe("resolveItemVisibility", () => {
   });
 
   it("returns per-type defaults for structural types", () => {
-    const structural = ["block_output", "router_decision", "sequencer_state_snapshot"];
+    const structural = ["block_output", "router_decision", "state_snapshot"];
     for (const type of structural) {
       const item = baseItem() as OutputItem & { type: string };
       (item as { type: string }).type = type;

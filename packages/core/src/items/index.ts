@@ -11,6 +11,8 @@ export type {
 export { isEphemeralContent } from "./content";
 
 export type {
+  BlockDebugItem,
+  BlockDebugPayload,
   BlockOutputItem,
   BlockToolOutputItem,
   ComponentItem,
@@ -28,8 +30,8 @@ export type {
   ReasoningItem,
   ResourceChangeItem,
   RouterDecisionItem,
-  SequencerStateSnapshotItem,
   StateChangeItem,
+  StateSnapshotItem,
   SourceItem,
   StatusItem,
   StepErrorItem

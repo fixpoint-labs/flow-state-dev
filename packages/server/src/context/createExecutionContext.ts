@@ -57,6 +57,12 @@ import type {
 import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
+import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import {
+  buildConnectedInputDebugPayload,
+  buildGeneratorDebugPayload,
+  emitBlockDebugItem,
+} from "../execution/internal/debug-items";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
 import { cloneValue } from "../utils/clone";
@@ -2285,7 +2291,66 @@ export async function createExecutionContext<
       void emissionResponse.emitItemAdded(decisionItem)
         .then(() => emissionResponse.emitItemDone(decisionItem))
         .catch(() => { /* trace emission is best-effort */ });
-    }
+    },
+    // Debug observability hooks — installed on the shared _runtimeHooks so
+    // every context (root and nested) fires them. The hooks read the firing
+    // ctx's `_blockIdentity` at invocation time to emit against the correct
+    // block instance, avoiding closure capture of any specific block.
+    onBlockDebugCapture: isTraceObservabilityEnabled()
+      ? (capture, firingCtx) => {
+          const identity = firingCtx._blockIdentity;
+          if (identity === undefined) return;
+          const metadata = {
+            requestId: requestRef.current.id,
+            userId: userRef.current.id,
+            flowKind: baseLogContext.flowKind,
+            actionName: baseLogContext.actionName,
+            blockName: identity.blockName,
+            blockKind: (identity.blockKind ?? "generator") as "handler" | "generator" | "sequencer" | "router",
+            blockInstanceId: identity.blockInstanceId,
+            parentBlockInstanceId: identity.parentBlockInstanceId,
+            scope: identity.phase === "work" ? "work" : "block",
+          } as Parameters<typeof emitBlockDebugItem>[2];
+          const blockShim = {
+            name: identity.blockName,
+            kind: identity.blockKind ?? "generator",
+          } as Parameters<typeof emitBlockDebugItem>[1];
+          void emitBlockDebugItem(
+            emissionResponse,
+            blockShim,
+            metadata,
+            buildGeneratorDebugPayload(capture)
+          ).catch(() => { /* best-effort */ });
+        }
+      : undefined,
+    onConnectedInput: isTraceObservabilityEnabled()
+      ? (value, firingCtx) => {
+          const identity = firingCtx._blockIdentity;
+          if (identity === undefined) return;
+          const metadata = {
+            requestId: requestRef.current.id,
+            userId: userRef.current.id,
+            flowKind: baseLogContext.flowKind,
+            actionName: baseLogContext.actionName,
+            blockName: identity.blockName,
+            blockKind: (identity.blockKind ?? "handler") as "handler" | "generator" | "sequencer" | "router",
+            blockInstanceId: identity.blockInstanceId,
+            parentBlockInstanceId: identity.parentBlockInstanceId,
+            scope: identity.phase === "work" ? "work" : "block",
+          } as Parameters<typeof emitBlockDebugItem>[2];
+          const blockShim = {
+            name: identity.blockName,
+            kind: identity.blockKind ?? "handler",
+          } as Parameters<typeof emitBlockDebugItem>[1];
+          void emitBlockDebugItem(
+            emissionResponse,
+            blockShim,
+            metadata,
+            buildConnectedInputDebugPayload(value)
+          ).catch(() => { /* best-effort */ });
+        }
+      : undefined,
+    emitNestedBlockDebug: undefined,
   };
 
   const createContext = (
@@ -2498,7 +2563,15 @@ export async function createExecutionContext<
               id: `item_container_${itemIndex}_${Math.random().toString(16).slice(2)}`,
               type: "container",
               status: "completed",
-              client: false,
+              // FIX-391: container items MUST be client-visible — they carry
+              // the component key (e.g. "reactive-blackboard") the UI uses to
+              // pick a renderer and suppress owned children. Hardcoding
+              // client: false here caused the SSE client-filter to strip the
+              // container during live streaming, leaving rb-entry children to
+              // render as raw JSON. Revisit when the client/history model is
+              // redesigned — until then, keep in sync with ITEM_TYPE_DEFAULTS
+              // in core/items/resolve-role.ts (container: client: true).
+              client: true,
               history: false,
               transient: resolvedParent.transient || undefined,
               requestId: requestRef.current.id,
@@ -2563,6 +2636,7 @@ export async function createExecutionContext<
 
         (childContext as { _blockIdentity?: unknown })._blockIdentity = {
           blockName: resolvedParent.name,
+          blockKind: resolvedParent.kind,
           blockInstanceId: resolvedParent.instanceId,
           parentBlockInstanceId: resolvedParent.parentInstanceId,
           ownedBy: childEmCtx.ownedBy,
@@ -2584,7 +2658,16 @@ export async function createExecutionContext<
 
           // Emit lifecycle trace item for nested blocks only.
           // Root blocks are traced by executeBlock's emitBlockOutputItem.
-          if (parentChain !== undefined) {
+          // Suppressed for:
+          //  - tool calls — the generator's tool wrapper emits a richer
+          //    `block_tool_output` that supersedes this trace.
+          //  - generator blocks — sequencer.ts owns the generator trace so
+          //    modelUsage can ride on a single block_output item without
+          //    producing a duplicate here.
+          const suppressTrace =
+            resolvedParent.isToolCall === true ||
+            resolvedParent.kind === "generator";
+          if (parentChain !== undefined && !suppressTrace) {
             emitNestedBlockTrace(
               resolvedParent, traceStartedAt, "completed",
               emissionResponse, requestRef, () => emittedItemCount++,
@@ -2604,7 +2687,10 @@ export async function createExecutionContext<
             scope: "block"
           });
 
-          if (parentChain !== undefined) {
+          const suppressFailureTrace =
+            resolvedParent.isToolCall === true ||
+            resolvedParent.kind === "generator";
+          if (parentChain !== undefined && !suppressFailureTrace) {
             emitNestedBlockTrace(
               resolvedParent, traceStartedAt, "failed",
               emissionResponse, requestRef, () => emittedItemCount++,

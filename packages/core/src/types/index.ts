@@ -1,6 +1,7 @@
 export type {
   BlockConfig,
   BlockContext,
+  BlockDebugCapturePayload,
   BlockDefinition,
   BlockInput,
   BlockKind,

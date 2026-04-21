@@ -17,6 +17,13 @@ import type { GeneratorModelResult, GeneratorModelUsage } from "./model";
 
 export type BlockKind = "handler" | "generator" | "sequencer" | "router";
 
+/** Payload emitted by the generator after resolving its config, for debug item capture. */
+export type BlockDebugCapturePayload = {
+  model: string;
+  prompt: string;
+  tools: string[];
+};
+
 /**
  * Audience for auto-emitted generator items. Controls who receives items:
  *
@@ -54,6 +61,13 @@ export type ExecutionParent = {
     label?: string;
     metadata?: Record<string, unknown>;
   };
+  /**
+   * True when this scope represents a tool invocation from a generator.
+   * Suppresses the redundant `block_output` trace item — the generator's
+   * tool wrapper emits a richer `block_tool_output` item that fully
+   * describes the tool call (name, arguments, result, error).
+   */
+  isToolCall?: boolean;
 };
 
 export interface ResponseEmitterHandle {
@@ -174,11 +188,31 @@ export interface BlockContext<
       usage?: GeneratorModelUsage;
       providerMetadata?: GeneratorModelResult["providerMetadata"];
     }) => void;
+    /** Captures resolved generator config for debug item emission. The hook
+     *  receives the firing block's context so it can read `_blockIdentity` to
+     *  self-identify — required because a single hook closure handles nested
+     *  blocks that each have distinct identities. */
+    onBlockDebugCapture?: (payload: BlockDebugCapturePayload, ctx: BlockContext) => void;
+    /** Fires when a block's `connectInput` actually transformed raw input.
+     *  Receives the post-connector value plus the firing block's context so
+     *  the server can emit a debug item against the correct block identity. */
+    onConnectedInput?: (value: unknown, ctx: BlockContext) => void;
+    /**
+     * Emits a block_debug item for a nested block. Wired by the server when
+     * trace observability is enabled; no-op otherwise. Called from core's
+     * sequencer.ts executeBlock before the nested block runs, so the devtool
+     * sees a debug row for every block in the trace — not just the root.
+     */
+    emitNestedBlockDebug?: (
+      block: { name: string; kind: string; inputSchema?: unknown; outputSchema?: unknown; config: unknown; transient?: boolean },
+      scopedCtx: unknown
+    ) => void | Promise<void>;
   };
 
   /** @internal Current block's identity within the execution chain. */
   _blockIdentity?: {
     blockName: string;
+    blockKind?: BlockKind;
     blockInstanceId: string;
     parentBlockInstanceId?: string;
     ownedBy?: string;

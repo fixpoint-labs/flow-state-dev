@@ -15,6 +15,7 @@ import { buildBlock, mergeDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import type { DeclaredResources } from "../types/block";
 import { isBlockDefinition, toError, withTimeout } from "./internal/utils";
+import { isTraceObservabilityEnabled } from "../utils/trace-observability";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
 
@@ -126,20 +127,24 @@ function getSequencerEmitterItemCount(response: unknown): number {
 }
 
 /**
- * Emits a sequencer_state_snapshot item at step boundaries so the devtool
- * can display the full state of a sequencer at each point in its execution.
+ * Emits a state_snapshot item at step boundaries so the devtool can display
+ * the full state of a sequencer at each point in its execution.
  *
  * Only emits when state has actually changed since the last snapshot,
  * avoiding redundant snapshots for steps that don't mutate state.
  * When multiple steps run without changing state, the emitted snapshot
  * records which step actually caused the change.
  */
-async function emitSequencerStateSnapshot(
+async function emitStateSnapshot(
   ctx: BlockContext,
   stepName: string,
   stepIndex: number,
   lastStateJson: string | undefined
 ): Promise<string | undefined> {
+  // Gate on the shared trace-observability flag. Off in production unless the
+  // operator opts in; on in dev/test by default.
+  if (!isTraceObservabilityEnabled()) return lastStateJson;
+
   const seqRef = ctx.sequencer;
   if (seqRef === undefined) return lastStateJson;
 
@@ -151,8 +156,8 @@ async function emitSequencerStateSnapshot(
   }
 
   const item = {
-    id: `item_seq_state_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-    type: "sequencer_state_snapshot" as const,
+    id: `item_state_snap_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: "state_snapshot" as const,
     status: "completed" as const,
     client: false,
     history: false,
@@ -166,8 +171,6 @@ async function emitSequencerStateSnapshot(
       stepIndex,
     },
     ts: Date.now(),
-    sequencerName: seqRef.name,
-    sequencerInstanceId: seqRef.instanceId,
     stepName,
     stepIndex,
     state: structuredClone(seqRef.state),
@@ -180,20 +183,26 @@ async function emitSequencerStateSnapshot(
   return currentStateJson;
 }
 
-/** Emit a block_output item with optional modelUsage for generator blocks run inside a sequencer. */
+/**
+ * Emit a block_output item for a generator block. Owns the trace for
+ * generators so `_withExecutionScope` can skip its default emission and
+ * avoid duplicates. `modelUsage` and `error` are optional — the caller
+ * passes whichever matches the success/failure path.
+ */
 async function emitGeneratorBlockOutput(
   block: BlockDefinition<any, any>,
   output: unknown,
   ctx: BlockContext,
   startedAt: number,
   instanceId: string,
-  modelUsage: GeneratorModelUsageMeta
+  modelUsage?: GeneratorModelUsageMeta,
+  error?: { message: string; code?: string }
 ): Promise<void> {
   const completedAt = Date.now();
   const item = {
     id: `item_block_output_${completedAt}_${Math.random().toString(16).slice(2)}`,
     type: "block_output" as const,
-    status: "completed" as const,
+    status: (error ? "failed" : "completed") as "completed" | "failed",
     client: false,
     history: false,
     transient: block.transient || undefined,
@@ -209,6 +218,7 @@ async function emitGeneratorBlockOutput(
     blockName: block.name,
     blockKind: block.kind,
     output,
+    error,
     startedAt,
     completedAt,
     duration: completedAt - startedAt,
@@ -262,15 +272,26 @@ async function executeBlock(
         } as BlockContext
       : scopedCtx;
 
+    // Fire the nested-block debug hook so the devtool sees a block_debug row
+    // for every block, not just the root. No-op when debug is disabled.
+    if (scopedCtx._runtimeHooks?.emitNestedBlockDebug !== undefined) {
+      try {
+        await scopedCtx._runtimeHooks.emitNestedBlockDebug(block, scopedCtx);
+      } catch {
+        // Debug emission is best-effort; never fail a block because of it.
+      }
+    }
+
     try {
       const output = await block.run(input, execCtx);
       scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt);
 
-      // Emit block_output with modelUsage for nested generator blocks.
-      // Use the scope's instanceId from _blockIdentity so this trace item
-      // shares the same identity as streaming items emitted during execution,
-      // preventing orphaned duplicate nodes in the devtool trace tree.
-      if (modelUsage) {
+      // Generator blocks own their own block_output trace (carries modelUsage
+      // and shares the scope's instanceId with streaming items). We emit it
+      // here unconditionally so `_withExecutionScope` can skip its nested
+      // trace for generators — otherwise each generator produced two
+      // block_output items in the devtool.
+      if (block.kind === "generator") {
         const identity = scopedCtx._blockIdentity;
         const instanceId = identity?.blockInstanceId ?? `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         await emitGeneratorBlockOutput(block, output, scopedCtx, startedAt, instanceId, modelUsage);
@@ -279,6 +300,24 @@ async function executeBlock(
       return output;
     } catch (error) {
       scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt);
+
+      // Mirror the success path: emit the generator's failure trace here so
+      // `_withExecutionScope` can skip its nested failure trace.
+      if (block.kind === "generator") {
+        const identity = scopedCtx._blockIdentity;
+        const instanceId = identity?.blockInstanceId ?? `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const err = error instanceof Error ? error : new Error(String(error));
+        await emitGeneratorBlockOutput(
+          block,
+          undefined,
+          scopedCtx,
+          startedAt,
+          instanceId,
+          modelUsage,
+          { message: err.message, code: (err as { code?: string }).code }
+        );
+      }
+
       throw error;
     }
   };
@@ -385,7 +424,7 @@ function runSequencerOperations(
     let currentValue: unknown = input;
 
     // Emit initial state snapshot before any steps execute.
-    let lastStateJson = await emitSequencerStateSnapshot(ctx, "__initial__", -1, undefined);
+    let lastStateJson = await emitStateSnapshot(ctx, "__initial__", -1, undefined);
 
     try {
       for (let index = 0; index < operations.length; index += 1) {
@@ -395,7 +434,7 @@ function runSequencerOperations(
         currentValue = result.value;
 
         // Emit state snapshot only if state changed since last snapshot.
-        lastStateJson = await emitSequencerStateSnapshot(ctx, operation.name, index, lastStateJson);
+        lastStateJson = await emitStateSnapshot(ctx, operation.name, index, lastStateJson);
         
         if (result.exit === true) {
           break;

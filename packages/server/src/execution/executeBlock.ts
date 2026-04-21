@@ -124,6 +124,11 @@ async function emitBlockOutputItem(
 
 /**
  * Dispatches block execution to the runtime for each supported block kind.
+ *
+ * Note: observability hooks (`onBlockDebugCapture`, `onConnectedInput`) are
+ * installed on the shared `_runtimeHooks` inside `createExecutionContext`.
+ * They're visible to every context (root and nested) via the same shared
+ * reference, so this function no longer wires them per-block.
  */
 async function executeByKind(
   block: BlockDefinition,
@@ -156,7 +161,7 @@ async function executeByKind(
           };
         }
         ctx._runtimeHooks?.onGeneratorModelResult?.(payload);
-      }
+      },
     };
     const generatorCtx = {
       ...ctx,
@@ -300,7 +305,7 @@ export async function executeBlock(
             options.ctx,
             {
               internalSeams: seams,
-              metadata: attemptMetadata
+              metadata: attemptMetadata,
             }
           );
         }
@@ -336,7 +341,7 @@ export async function executeBlock(
               scopedCtx as ExecuteBlockContext,
               {
                 internalSeams: seams,
-                metadata: attemptMetadata
+                metadata: attemptMetadata,
               }
             )
         );

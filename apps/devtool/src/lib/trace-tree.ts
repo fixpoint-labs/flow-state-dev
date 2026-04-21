@@ -1,4 +1,4 @@
-import type { BlockOutputItem, OutputItem, SequencerStateSnapshotItem } from "@flow-state-dev/core/items";
+import type { BlockDebugItem, BlockDebugPayload, BlockOutputItem, OutputItem, StateSnapshotItem, StatusItem } from "@flow-state-dev/core/items";
 import type { RequestGroup } from "@/components/workspace/stream-view";
 
 /** A single snapshot in a sequencer's state timeline. */
@@ -29,6 +29,11 @@ export type TraceNode = {
   traceItem?: OutputItem;
   /** State snapshots for sequencer blocks, ordered by step execution. */
   stateSnapshots?: StateSnapshot[];
+  /** Latest resolved debug payload for this block. Replace-in-place — no
+   *  history. Reset each time a new block_debug item arrives for this block
+   *  instance. Generators get a single capture; other blocks only get one
+   *  when `connectInput` transformed the raw input. */
+  debugPayload?: BlockDebugPayload;
   children: TraceNode[];
   isExpanded: boolean;
 };
@@ -76,9 +81,32 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
         parentOf.set(prov.blockInstanceId, prov.parentBlockInstanceId);
       }
 
-      // Collect sequencer state snapshots into the block node.
-      if (item.type === "sequencer_state_snapshot") {
-        const snap = item as SequencerStateSnapshotItem;
+      // Block debug items attach to the block node with replace-in-place
+      // semantics — no history. The block detail panel renders them as a
+      // composed section (prompt, connected input). They never appear as
+      // sibling rows in the tree.
+      if (item.type === "block_debug") {
+        const dbg = item as BlockDebugItem;
+        blockNode.blockKind = blockNode.blockKind ?? dbg.blockKind;
+        blockNode.debugPayload = dbg.payload;
+        continue;
+      }
+
+      // Drop structural status items with nothing to render. The sequencer
+      // emits `status` items with an empty `message` carrying only a
+      // `backgroundTasks` count (FIX-369) — those still get a synthesized
+      // label in `getItemPreview`. Items with no message AND no
+      // backgroundTasks have no label to render, so skip the row entirely.
+      if (item.type === "status") {
+        const status = item as StatusItem;
+        if (!status.message && typeof status.backgroundTasks !== "number") {
+          continue;
+        }
+      }
+
+      // Collect state snapshots into the owning block node.
+      if (item.type === "state_snapshot") {
+        const snap = item as StateSnapshotItem;
         if (!blockNode.stateSnapshots) blockNode.stateSnapshots = [];
         blockNode.stateSnapshots.push({
           stepName: snap.stepName,
@@ -106,17 +134,14 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
         }
         if (item.status === "completed") blockNode.blockStatus = "completed";
         if (item.status === "failed") blockNode.blockStatus = "failed";
-        // Trace block_output items are lifecycle metadata already reflected
-        // in the block node header — don't add as visible children.
-        // Store as traceItem so block nodes can be selected for detail view.
-        if (item.trace) {
-          // Two trace sources emit for the same block: executeBlock (has output)
-          // and emitNestedBlockTrace (output: undefined). Keep whichever has output.
-          if (!blockNode.traceItem || bo.output !== undefined) {
-            blockNode.traceItem = item;
-          }
-          continue;
+        // Every block_output is lifecycle metadata — never render as a visible
+        // child. Store as traceItem so block nodes can be selected for detail.
+        // Two trace sources emit for the same block: executeBlock (has output)
+        // and emitNestedBlockTrace (output: undefined). Keep whichever has output.
+        if (!blockNode.traceItem || bo.output !== undefined) {
+          blockNode.traceItem = item;
         }
+        continue;
       }
       if (item.type === "block_tool_output") {
         blockNode.blockKind = blockNode.blockKind ?? "generator";

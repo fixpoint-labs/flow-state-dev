@@ -11,7 +11,7 @@
  */
 import { useState } from "react";
 import { Copy, ChevronDown, ChevronRight } from "lucide-react";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { BlockDebugPayload, BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
 import { Button } from "@/components/ui/button";
 import { useSelection } from "@/context/selection-context";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -19,17 +19,172 @@ import { JsonViewer } from "@/components/shared/json-viewer";
 import { EmptyState } from "@/components/shared/empty-state";
 import { SequencerStateSection } from "@/components/detail/sequencer-state-panel";
 import { safeParseJson } from "@/lib/utils";
+import type { TraceNode } from "@/lib/trace-tree";
 
 export function ItemDetail() {
-  const { selectedItem, selectedStateSnapshots } = useSelection();
+  const { selection, selectedItem, selectedStateSnapshots, selectedBlockNode } = useSelection();
 
-  if (!selectedItem) {
+  if (selection === null) {
     return (
-      <EmptyState message="Select an item to inspect its details." className="h-full" />
+      <EmptyState message="Select a block or item to inspect." className="h-full" />
     );
   }
 
-  return <ItemDetailContent item={selectedItem} stateSnapshots={selectedStateSnapshots} />;
+  if (selection.kind === "block" && selectedBlockNode) {
+    return <BlockNodeDetail node={selectedBlockNode} />;
+  }
+
+  if (selectedItem) {
+    return <ItemDetailContent item={selectedItem} stateSnapshots={selectedStateSnapshots} />;
+  }
+
+  return null;
+}
+
+/**
+ * Block-level detail sidebar. Composes every observability surface attached
+ * to the selected block into one panel so users don't hunt through sibling
+ * rows for debug payload / state timeline / final output.
+ */
+function BlockNodeDetail({ node }: { node: TraceNode }) {
+  const traceItem = node.traceItem as BlockOutputItem | undefined;
+
+  const handleCopy = () => {
+    const payload = {
+      block: {
+        name: node.blockName,
+        kind: node.blockKind,
+        instanceId: node.blockInstanceId,
+        status: node.blockStatus,
+        durationMs: node.blockDuration,
+      },
+      debug: node.debugPayload,
+      stateSnapshots: node.stateSnapshots,
+      output: traceItem?.output,
+      error: traceItem?.error,
+    };
+    void navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+  };
+
+  const prompt = node.debugPayload?.prompt;
+
+  return (
+    <div className="space-y-3 text-xs">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-medium uppercase text-slate-500">Block</span>
+          <span className="text-[10px] font-mono px-1.5 py-0 rounded border border-slate-700 text-slate-300">
+            {node.blockKind ?? "?"}
+          </span>
+          <span className="text-xs text-slate-200 font-mono">{node.blockName}</span>
+        </div>
+        <Button variant="ghost" size="icon-xs" onClick={handleCopy} title="Copy block detail">
+          <Copy className="h-3 w-3 text-slate-500" />
+        </Button>
+      </div>
+
+      {node.blockStatus && (
+        <div className="flex items-center gap-2">
+          <StatusBadge status={node.blockStatus} />
+          {node.blockDuration !== undefined && (
+            <span className="text-[10px] font-mono text-slate-500">{node.blockDuration}ms</span>
+          )}
+        </div>
+      )}
+
+      {traceItem?.status === "failed" && traceItem.error && (
+        <div className="rounded bg-red-950/30 border border-red-800/50 px-3 py-2">
+          <span className="text-[10px] uppercase text-red-400 font-medium">Error</span>
+          <p className="text-xs text-red-300 mt-0.5 font-mono">{traceItem.error.message}</p>
+          {traceItem.error.code && (
+            <p className="text-[10px] text-red-400/60 mt-0.5 font-mono">{traceItem.error.code}</p>
+          )}
+        </div>
+      )}
+
+      {/* Prompt — the #1 thing you want to see for generators */}
+      {prompt && (
+        <CollapsibleSection title="Prompt" defaultOpen>
+          <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
+            {prompt}
+          </pre>
+        </CollapsibleSection>
+      )}
+
+      {/* Resolved generator config */}
+      {node.debugPayload && <DebugPayloadSection payload={node.debugPayload} />}
+
+      {/* State snapshots timeline (sequencers) */}
+      {node.stateSnapshots && node.stateSnapshots.length > 0 && (
+        <SequencerStateSection snapshots={node.stateSnapshots} />
+      )}
+
+      {/* Output — collapsed by default, output blobs can be large */}
+      {traceItem?.output !== undefined && (
+        <CollapsibleSection title="Output" defaultOpen={false}>
+          <JsonViewer data={traceItem.output} />
+        </CollapsibleSection>
+      )}
+
+      {/* Model usage for generators */}
+      {traceItem?.modelUsage && (
+        <CollapsibleSection title="Model Usage" defaultOpen={false}>
+          <div className="space-y-1">
+            {traceItem.modelUsage.model && <MetadataRow label="Model" value={traceItem.modelUsage.model} />}
+            {traceItem.modelUsage.promptTokens !== undefined && <MetadataRow label="Prompt tokens" value={String(traceItem.modelUsage.promptTokens)} />}
+            {traceItem.modelUsage.completionTokens !== undefined && <MetadataRow label="Completion tokens" value={String(traceItem.modelUsage.completionTokens)} />}
+            {traceItem.modelUsage.cacheReadTokens !== undefined && <MetadataRow label="Cache read" value={String(traceItem.modelUsage.cacheReadTokens)} />}
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {/* Identity */}
+      <CollapsibleSection title="Identity" defaultOpen={false}>
+        <div className="space-y-1">
+          {node.blockInstanceId && <MetadataRow label="Instance" value={node.blockInstanceId} mono />}
+          {node.blockKind && <MetadataRow label="Kind" value={node.blockKind} />}
+          {node.blockStartedAt !== undefined && (
+            <MetadataRow label="Started" value={new Date(node.blockStartedAt).toISOString().slice(11, 23)} mono />
+          )}
+          {node.blockCompletedAt !== undefined && (
+            <MetadataRow label="Completed" value={new Date(node.blockCompletedAt).toISOString().slice(11, 23)} mono />
+          )}
+        </div>
+      </CollapsibleSection>
+    </div>
+  );
+}
+
+function DebugPayloadSection({ payload }: { payload: BlockDebugPayload }) {
+  const hasConfig = payload.model || (payload.tools && payload.tools.length > 0);
+  const hasConnected = payload.connectedInput !== undefined;
+  if (!hasConfig && !hasConnected) return null;
+  return (
+    <>
+      {hasConfig && (
+        <CollapsibleSection title="Resolved Config" defaultOpen={false}>
+          <div className="space-y-1">
+            {payload.model && <MetadataRow label="Model" value={payload.model} mono />}
+            {payload.tools && payload.tools.length > 0 && (
+              <div>
+                <span className="text-[10px] text-slate-600 uppercase">Tools ({payload.tools.length})</span>
+                <div className="mt-0.5 space-y-0.5">
+                  {payload.tools.map((name) => (
+                    <div key={name} className="text-[11px] text-slate-300 font-mono">{name}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </CollapsibleSection>
+      )}
+      {hasConnected && (
+        <CollapsibleSection title="Connected Input" defaultOpen>
+          <JsonViewer data={payload.connectedInput} />
+        </CollapsibleSection>
+      )}
+    </>
+  );
 }
 
 function ItemDetailContent({ item, stateSnapshots }: { item: OutputItem; stateSnapshots: import("@/lib/trace-tree").StateSnapshot[] | null }) {
@@ -114,8 +269,10 @@ function ItemTypeDetail({ item }: { item: OutputItem }) {
       return <RouterDecisionDetail item={item} />;
     case "source":
       return <SourceDetail item={item} />;
-    case "sequencer_state_snapshot":
-      return <SequencerStateSnapshotDetail item={item} />;
+    case "state_snapshot":
+      return <StateSnapshotDetail item={item} />;
+    case "block_debug":
+      return <BlockDebugDetail item={item} />;
     default:
       return <JsonViewer data={item} />;
   }
@@ -335,16 +492,48 @@ function SourceDetail({ item }: { item: OutputItem & { type: "source" } }) {
   );
 }
 
-function SequencerStateSnapshotDetail({ item }: { item: OutputItem & { type: "sequencer_state_snapshot" } }) {
+function StateSnapshotDetail({ item }: { item: OutputItem & { type: "state_snapshot" } }) {
   return (
     <div className="space-y-2">
-      <MetadataRow label="Sequencer" value={item.sequencerName} mono />
+      <MetadataRow label="Block" value={item.provenance.blockName} mono />
       <MetadataRow label="Step" value={item.stepName === "__initial__" ? "initial" : item.stepName} />
       <MetadataRow label="Step Index" value={item.stepIndex === -1 ? "initial" : String(item.stepIndex)} />
       <MetadataRow label="Version" value={String(item.version)} />
       <CollapsibleSection title="State" defaultOpen>
         <JsonViewer data={item.state} />
       </CollapsibleSection>
+    </div>
+  );
+}
+
+function BlockDebugDetail({ item }: { item: OutputItem & { type: "block_debug" } }) {
+  const p = item.payload;
+  return (
+    <div className="space-y-2">
+      <MetadataRow label="Block" value={item.blockName} mono />
+      <MetadataRow label="Kind" value={item.blockKind} />
+      {p.model && <MetadataRow label="Model" value={p.model} mono />}
+      {p.tools && p.tools.length > 0 && (
+        <CollapsibleSection title={`Tools (${p.tools.length})`} defaultOpen>
+          <div className="space-y-0.5">
+            {p.tools.map((name) => (
+              <div key={name} className="text-[11px] text-slate-300 font-mono">{name}</div>
+            ))}
+          </div>
+        </CollapsibleSection>
+      )}
+      {p.prompt && (
+        <CollapsibleSection title="Prompt" defaultOpen>
+          <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
+            {p.prompt}
+          </pre>
+        </CollapsibleSection>
+      )}
+      {p.connectedInput !== undefined && (
+        <CollapsibleSection title="Connected Input" defaultOpen>
+          <JsonViewer data={p.connectedInput} />
+        </CollapsibleSection>
+      )}
     </div>
   );
 }
@@ -367,7 +556,8 @@ function TypePill({ type }: { type: string }) {
     block_tool_output: "text-purple-400 border-purple-800/50",
     router_decision: "text-orange-400 border-orange-800/50",
     source: "text-blue-400 border-blue-800/50",
-    sequencer_state_snapshot: "text-amber-500 border-amber-800/50",
+    state_snapshot: "text-amber-500 border-amber-800/50",
+    block_debug: "text-purple-500 border-purple-800/50",
   };
   return (
     <span className={`text-[10px] font-mono px-1.5 py-0 rounded border ${colors[type] ?? "text-slate-500 border-slate-700"}`}>

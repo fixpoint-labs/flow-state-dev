@@ -218,15 +218,53 @@ export type SourceItem = OutputItemBase & {
   providerMetadata?: Record<string, Record<string, unknown>>;
 };
 
-/** Full state snapshot emitted at sequencer step boundaries for devtool inspection. */
-export type SequencerStateSnapshotItem = OutputItemBase & {
-  type: "sequencer_state_snapshot";
-  sequencerName: string;
-  sequencerInstanceId: string;
+/**
+ * Full state snapshot emitted at a step boundary for devtool inspection.
+ * Today only sequencers emit these; the type is kind-agnostic so any future
+ * block with stepped state can reuse it. The owning block is identified by
+ * `provenance.blockName` / `provenance.blockInstanceId`, so no separate
+ * sequencer-specific fields are carried.
+ */
+export type StateSnapshotItem = OutputItemBase & {
+  type: "state_snapshot";
   stepName: string;
   stepIndex: number;
   state: unknown;
   version: number;
+};
+
+/**
+ * Resolved block observability data captured at runtime. Emitted only when it
+ * reveals something not inferable from surrounding items:
+ *   - Generators: the resolved prompt, model, and registered tools.
+ *   - Any block with a `connectInput` connector that transformed raw input:
+ *     the transformed value, so debugging isn't guessing what the block
+ *     actually received vs. what the previous block emitted.
+ *
+ * Blocks with none of the above (most handlers/sequencers/routers) emit no
+ * debug item at all. Replace-in-place per block instance on the client.
+ */
+export type BlockDebugPayload = {
+  /** Resolved model identifier (generators only). */
+  model?: string;
+  /** Fully assembled prompt as sent to the model (generators only). */
+  prompt?: string;
+  /** Registered tool names (generators only). */
+  tools?: string[];
+  /** Input after `connectInput` transformation. Only set when the connector
+   *  actually changed the value — otherwise the previous block's output is
+   *  the input, already visible via block_output. */
+  connectedInput?: unknown;
+};
+
+/** Resolved block configuration snapshot emitted at block start for devtool debugging.
+ *  Always transient and trace-only — never persisted, never sent to LLM context. */
+export type BlockDebugItem = OutputItemBase & {
+  type: "block_debug";
+  blockName: string;
+  blockKind: "generator" | "handler" | "sequencer" | "router";
+  blockInstanceId: string;
+  payload: BlockDebugPayload;
 };
 
 export type OutputItem =
@@ -243,4 +281,5 @@ export type OutputItem =
   | ErrorItem
   | StepErrorItem
   | SourceItem
-  | SequencerStateSnapshotItem;
+  | StateSnapshotItem
+  | BlockDebugItem;

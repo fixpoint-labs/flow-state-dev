@@ -253,7 +253,7 @@ State and resource mutations emit streaming events:
 
 - `state_change` items track each scope operation
 - `resource_change` items track resource mutations
-- `sequencer_state_snapshot` items capture the full sequencer state at each step boundary (initial + after every step)
+- `state_snapshot` items capture the full sequencer state at each step boundary (initial + after every step)
 - `state_change` and `resource_change` items are **invalidation signals** — clients should refetch snapshots for source-of-truth reads
 - In production mode, these items are transient (stream-only, not persisted)
 - Set `persistStateChanges: true` on the flow to persist them (useful for devtools state timeline)
