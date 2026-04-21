@@ -358,8 +358,6 @@ function BlockDebugDetail({ item }: { item: OutputItem & { type: "block_debug" }
       <MetadataRow label="Block" value={item.blockName} mono />
       <MetadataRow label="Kind" value={item.blockKind} />
       {p.model && <MetadataRow label="Model" value={p.model} mono />}
-      {p.maxTokens !== undefined && <MetadataRow label="Max Tokens" value={String(p.maxTokens)} />}
-      {p.search && <MetadataRow label="Search" value="enabled" />}
       {p.tools && p.tools.length > 0 && (
         <CollapsibleSection title={`Tools (${p.tools.length})`} defaultOpen>
           <div className="space-y-0.5">
@@ -370,28 +368,15 @@ function BlockDebugDetail({ item }: { item: OutputItem & { type: "block_debug" }
         </CollapsibleSection>
       )}
       {p.prompt && (
-        <CollapsibleSection title="Prompt" defaultOpen={false}>
+        <CollapsibleSection title="Prompt" defaultOpen>
           <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
             {p.prompt}
           </pre>
         </CollapsibleSection>
       )}
-      {p.inputSchema && <MetadataRow label="Input Schema" value={p.inputSchema} mono />}
-      {p.outputSchema && <MetadataRow label="Output Schema" value={p.outputSchema} mono />}
-      {p.candidates && p.candidates.length > 0 && (
-        <CollapsibleSection title={`Candidates (${p.candidates.length})`} defaultOpen>
-          <div className="space-y-0.5">
-            {p.candidates.map((name) => (
-              <div key={name} className="text-[11px] text-slate-300 font-mono">{name}</div>
-            ))}
-          </div>
-        </CollapsibleSection>
-      )}
-      {p.stateKeys && p.stateKeys.length > 0 && (
-        <CollapsibleSection title="State Keys" defaultOpen>
-          <div className="text-[11px] text-slate-300 font-mono">
-            {p.stateKeys.join(", ")}
-          </div>
+      {p.connectedInput !== undefined && (
+        <CollapsibleSection title="Connected Input" defaultOpen>
+          <JsonViewer data={p.connectedInput} />
         </CollapsibleSection>
       )}
     </div>

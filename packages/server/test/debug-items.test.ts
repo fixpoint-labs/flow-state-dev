@@ -1,18 +1,17 @@
 /**
  * Tests for block_debug item emission.
  *
- * Validates: env var gating, payload construction for each block kind,
- * transient/trace flags, and the generator runtime hook path.
+ * Validates: env var gating, payload shape, transient/trace flags, the
+ * generator runtime hook path, the connected-input capture path, and
+ * suppression for non-generator blocks with no transforming connector.
  */
 import {
   defineFlow,
   generator,
   handler,
-  router,
-  sequencer
 } from "@flow-state-dev/core";
 import { z } from "zod";
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import {
   createExecutionContext,
   createInMemoryStores,
@@ -21,8 +20,8 @@ import {
 } from "../src";
 import {
   isDebugItemsEnabled,
-  buildStaticBlockDebugPayload,
-  buildGeneratorDebugPayload
+  buildGeneratorDebugPayload,
+  buildConnectedInputDebugPayload
 } from "../src/execution/internal/debug-items";
 
 /* ---------- isDebugItemsEnabled ---------- */
@@ -73,59 +72,7 @@ describe("isDebugItemsEnabled", () => {
   });
 });
 
-/* ---------- buildStaticBlockDebugPayload ---------- */
-
-describe("buildStaticBlockDebugPayload", () => {
-  it("extracts router candidates", () => {
-    const routeA = handler({
-      name: "route-a",
-      execute: () => "a"
-    });
-    const routeB = handler({
-      name: "route-b",
-      execute: () => "b"
-    });
-
-    const block = router({
-      name: "test-router",
-      routes: [routeA, routeB],
-      execute: () => routeA,
-    });
-
-    const payload = buildStaticBlockDebugPayload(block);
-    expect(payload.candidates).toEqual(["route-a", "route-b"]);
-  });
-
-  it("extracts sequencer state keys", () => {
-    const step = handler({
-      name: "step",
-      execute: () => "done"
-    });
-    const block = sequencer({
-      name: "test-seq",
-      stateSchema: z.object({
-        count: z.number(),
-        label: z.string(),
-      }),
-      steps: [step],
-    });
-
-    const payload = buildStaticBlockDebugPayload(block);
-    expect(payload.stateKeys).toEqual(["count", "label"]);
-  });
-
-  it("returns empty payload for handler without schemas", () => {
-    const block = handler({
-      name: "simple",
-      execute: () => "ok",
-    });
-
-    const payload = buildStaticBlockDebugPayload(block);
-    expect(payload).toEqual({});
-  });
-});
-
-/* ---------- buildGeneratorDebugPayload ---------- */
+/* ---------- payload builders ---------- */
 
 describe("buildGeneratorDebugPayload", () => {
   it("maps capture payload to debug payload", () => {
@@ -133,15 +80,11 @@ describe("buildGeneratorDebugPayload", () => {
       model: "claude-sonnet-4-5",
       prompt: "You are a helpful assistant.\n\nAdditional context here.",
       tools: ["search", "calculator"],
-      maxTokens: 4096,
-      search: true,
     });
 
     expect(payload.model).toBe("claude-sonnet-4-5");
     expect(payload.prompt).toBe("You are a helpful assistant.\n\nAdditional context here.");
     expect(payload.tools).toEqual(["search", "calculator"]);
-    expect(payload.maxTokens).toBe(4096);
-    expect(payload.search).toBe(true);
   });
 
   it("omits empty tools array", () => {
@@ -149,15 +92,20 @@ describe("buildGeneratorDebugPayload", () => {
       model: "gpt-4o",
       prompt: "hello",
       tools: [],
-      search: false,
     });
 
     expect(payload.tools).toBeUndefined();
-    expect(payload.search).toBeUndefined();
   });
 });
 
-/* ---------- Integration: block_debug emission during executeBlock ---------- */
+describe("buildConnectedInputDebugPayload", () => {
+  it("wraps the transformed value", () => {
+    const payload = buildConnectedInputDebugPayload({ a: 1, b: "two" });
+    expect(payload.connectedInput).toEqual({ a: 1, b: "two" });
+  });
+});
+
+/* ---------- Integration: emission during executeBlock ---------- */
 
 async function createTestContext(requestId: string) {
   const block = handler({
@@ -213,7 +161,7 @@ describe("block_debug emission via executeBlock", () => {
     process.env = { ...originalEnv };
   });
 
-  it("emits block_debug item for handler blocks", async () => {
+  it("does NOT emit block_debug for a plain handler (no connector)", async () => {
     const { ctx, response } = await createTestContext("req_debug_handler");
 
     const block = handler({
@@ -235,52 +183,52 @@ describe("block_debug emission via executeBlock", () => {
     });
 
     const items = response.getItems();
-    const debugItem = items.find((i) => i.type === "block_debug");
-    expect(debugItem).toBeDefined();
-    expect(debugItem!.transient).toBe(true);
-    expect((debugItem as any).client).toBe(false);
-    expect((debugItem as any).history).toBe(false);
-    expect((debugItem as any).blockName).toBe("test-handler");
-    expect((debugItem as any).blockKind).toBe("handler");
+    const debugItems = items.filter((i) => i.type === "block_debug");
+    expect(debugItems).toHaveLength(0);
   });
 
-  it("emits block_debug item for router blocks", async () => {
-    const { ctx, response } = await createTestContext("req_debug_router");
+  it("emits block_debug with connectedInput when a handler's connectInput transforms the input", async () => {
+    const { ctx, response } = await createTestContext("req_debug_connected");
 
-    const routeA = handler({ name: "route-a", execute: () => "a" });
-    const block = router({
-      name: "test-router",
-      routes: [routeA],
-      execute: () => routeA,
+    const block = handler({
+      name: "transforming-handler",
+      inputSchema: z.object({ upper: z.string() }),
+      connectInput: (raw: { text: string }) => ({ upper: raw.text.toUpperCase() }),
+      execute: (input) => input.upper,
     });
 
     await executeBlock({
       block,
-      input: "hello",
+      input: { text: "hello" },
       ctx,
       metadata: {
-        requestId: "req_debug_router",
+        requestId: "req_debug_connected",
         actionName: "run",
-        blockName: "test-router",
-        blockKind: "router",
-        blockInstanceId: "inst_2",
+        blockName: "transforming-handler",
+        blockKind: "handler",
+        blockInstanceId: "inst_connected",
       },
     });
 
     const items = response.getItems();
     const debugItem = items.find((i) => i.type === "block_debug");
     expect(debugItem).toBeDefined();
-    expect((debugItem as any).payload.candidates).toEqual(["route-a"]);
+    expect(debugItem!.transient).toBe(true);
+    expect((debugItem as any).client).toBe(false);
+    expect((debugItem as any).history).toBe(false);
+    expect((debugItem as any).blockName).toBe("transforming-handler");
+    expect((debugItem as any).payload.connectedInput).toEqual({ upper: "HELLO" });
   });
 
-  it("does not emit block_debug when FSDEV_DEBUG_ITEMS=false", async () => {
+  it("does NOT emit block_debug when FSDEV_DEBUG_ITEMS=false", async () => {
     process.env.FSDEV_DEBUG_ITEMS = "false";
 
     const { ctx, response } = await createTestContext("req_no_debug");
 
     const block = handler({
       name: "quiet-handler",
-      execute: () => "result",
+      connectInput: (raw: string) => raw.toUpperCase(),
+      execute: (v: string) => v,
     });
 
     await executeBlock({
@@ -301,15 +249,16 @@ describe("block_debug emission via executeBlock", () => {
     expect(debugItems).toHaveLength(0);
   });
 
-  it("does not emit block_debug in production mode (default)", async () => {
+  it("does NOT emit block_debug in production mode (default)", async () => {
     delete process.env.FSDEV_DEBUG_ITEMS;
     process.env.NODE_ENV = "production";
 
     const { ctx, response } = await createTestContext("req_prod");
 
-    const block = handler({
-      name: "prod-handler",
-      execute: () => "result",
+    const block = generator({
+      name: "prod-gen",
+      model: "mock-model",
+      prompt: "hi",
     });
 
     await executeBlock({
@@ -319,8 +268,8 @@ describe("block_debug emission via executeBlock", () => {
       metadata: {
         requestId: "req_prod",
         actionName: "run",
-        blockName: "prod-handler",
-        blockKind: "handler",
+        blockName: "prod-gen",
+        blockKind: "generator",
         blockInstanceId: "inst_4",
       },
     });

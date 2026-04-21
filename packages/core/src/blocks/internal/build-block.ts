@@ -178,6 +178,12 @@ export function buildBlock<
         const connectedInput = runtimeConfig.connectInput
           ? await runtimeConfig.connectInput(rawInput, ctx)
           : rawInput;
+        // Fire the runtime hook only when the connector actually transformed
+        // the value. Identity check avoids spurious debug items when the
+        // connector is a no-op passthrough.
+        if (runtimeConfig.connectInput && connectedInput !== rawInput) {
+          ctx._runtimeHooks?.onConnectedInput?.(connectedInput, ctx);
+        }
         const validatedInput = validateSchema<TInput>(runtimeConfig.inputSchema, connectedInput, "input", runtimeConfig.name);
         const output = await internalExecute(validatedInput, ctx);
         const validatedOutput = validateSchema<TOutput>(

@@ -1,9 +1,15 @@
 /**
- * Block debug item emission: captures resolved block configuration for devtool inspection.
+ * Block debug item emission: captures resolved block observability for devtool inspection.
  *
  * Debug items are transient + trace-only — they stream to connected clients and appear in
  * the events log but are never persisted in the items record or sent to LLM context.
  * Emission is gated by the FSDEV_DEBUG_ITEMS env var (defaults to on in dev, off in production).
+ *
+ * Emission scope:
+ *   - Generators: always emit when gate is on (model, prompt, tools).
+ *   - Any block kind: emit when its `connectInput` connector transformed the
+ *     raw input (payload carries `connectedInput`).
+ *   - Non-generator blocks with no transforming connector: no emission.
  */
 import type { BlockDebugItem, BlockDebugPayload, ItemProvenance } from "@flow-state-dev/core/items";
 import type { BlockDebugCapturePayload, BlockDefinition } from "@flow-state-dev/core/types";
@@ -35,44 +41,6 @@ function createDebugProvenance(
 }
 
 /**
- * Build the debug payload for a non-generator block from its definition.
- * Generators fire the runtimeHook path instead (they have richer resolved data).
- */
-export function buildStaticBlockDebugPayload(
-  block: BlockDefinition
-): BlockDebugPayload {
-  const payload: BlockDebugPayload = {};
-  const config = block.config as unknown as Record<string, unknown>;
-
-  if (block.kind === "handler") {
-    const inputTypeName = block.inputSchema?._def?.typeName;
-    if (inputTypeName && inputTypeName !== "ZodAny") {
-      payload.inputSchema = block.inputSchema!.description ?? inputTypeName;
-    }
-    const outputTypeName = block.outputSchema?._def?.typeName;
-    if (outputTypeName && outputTypeName !== "ZodAny") {
-      payload.outputSchema = block.outputSchema!.description ?? outputTypeName;
-    }
-  }
-
-  if (block.kind === "router") {
-    const routes = config.routes as Array<{ name?: string }> | undefined;
-    if (routes) {
-      payload.candidates = routes.map((r) => r.name ?? "unnamed");
-    }
-  }
-
-  if (block.kind === "sequencer") {
-    const stateSchema = config.stateSchema as { shape?: Record<string, unknown> } | undefined;
-    if (stateSchema?.shape) {
-      payload.stateKeys = Object.keys(stateSchema.shape);
-    }
-  }
-
-  return payload;
-}
-
-/**
  * Convert a generator's runtime capture payload to the stored debug payload format.
  */
 export function buildGeneratorDebugPayload(
@@ -82,9 +50,17 @@ export function buildGeneratorDebugPayload(
     model: capture.model,
     prompt: capture.prompt,
     tools: capture.tools.length > 0 ? capture.tools : undefined,
-    maxTokens: capture.maxTokens,
-    search: capture.search || undefined,
   };
+}
+
+/**
+ * Build a debug payload carrying only the connector-transformed input. Used
+ * for any block kind whose `connectInput` rewrote the raw input.
+ */
+export function buildConnectedInputDebugPayload(
+  connectedInput: unknown
+): BlockDebugPayload {
+  return { connectedInput };
 }
 
 /**

@@ -57,12 +57,6 @@ import type {
 import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
-import {
-  buildStaticBlockDebugPayload,
-  emitBlockDebugItem,
-  isDebugItemsEnabled,
-} from "../execution/internal/debug-items";
-import type { ExecutionMetadata } from "../execution/types";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
 import { cloneValue } from "../utils/clone";
@@ -2292,41 +2286,10 @@ export async function createExecutionContext<
         .then(() => emissionResponse.emitItemDone(decisionItem))
         .catch(() => { /* trace emission is best-effort */ });
     },
-    emitNestedBlockDebug: isDebugItemsEnabled()
-      ? async (block, scopedCtx) => {
-          // Generators emit their own richer debug payload via
-          // onBlockDebugCapture (resolved prompt, model, tools). Skip here to
-          // avoid a duplicate empty-payload row.
-          if (block.kind === "generator") return;
-
-          const identity = (scopedCtx as { _blockIdentity?: { blockName: string; blockInstanceId: string; parentBlockInstanceId?: string; phase?: "main" | "work" } })._blockIdentity;
-          if (identity === undefined) return;
-
-          const metadata: ExecutionMetadata = {
-            requestId: requestRef.current.id,
-            userId: userRef.current.id,
-            flowKind: baseLogContext.flowKind,
-            actionName: baseLogContext.actionName,
-            blockName: identity.blockName,
-            blockKind: block.kind as ExecutionMetadata["blockKind"],
-            blockInstanceId: identity.blockInstanceId,
-            parentBlockInstanceId: identity.parentBlockInstanceId,
-            scope: identity.phase === "work" ? "work" : "block",
-          };
-
-          try {
-            const payload = buildStaticBlockDebugPayload(block as unknown as Parameters<typeof buildStaticBlockDebugPayload>[0]);
-            await emitBlockDebugItem(
-              emissionResponse,
-              block as unknown as Parameters<typeof emitBlockDebugItem>[1],
-              metadata,
-              payload
-            );
-          } catch {
-            // Best-effort — never fail a block because debug emission failed.
-          }
-        }
-      : undefined,
+    // Nested-block debug emission is now handled by the root-installed
+    // onBlockDebugCapture / onConnectedInput hooks, which inherit down the
+    // scopedCtx chain and self-identify via `_blockIdentity` at fire time.
+    emitNestedBlockDebug: undefined,
   };
 
   const createContext = (
@@ -2612,6 +2575,7 @@ export async function createExecutionContext<
 
         (childContext as { _blockIdentity?: unknown })._blockIdentity = {
           blockName: resolvedParent.name,
+          blockKind: resolvedParent.kind,
           blockInstanceId: resolvedParent.instanceId,
           parentBlockInstanceId: resolvedParent.parentInstanceId,
           ownedBy: childEmCtx.ownedBy,

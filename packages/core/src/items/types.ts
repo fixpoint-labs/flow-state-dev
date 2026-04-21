@@ -229,7 +229,17 @@ export type SequencerStateSnapshotItem = OutputItemBase & {
   version: number;
 };
 
-/** Resolved block configuration snapshot emitted at block start for devtool debugging. */
+/**
+ * Resolved block observability data captured at runtime. Emitted only when it
+ * reveals something not inferable from surrounding items:
+ *   - Generators: the resolved prompt, model, and registered tools.
+ *   - Any block with a `connectInput` connector that transformed raw input:
+ *     the transformed value, so debugging isn't guessing what the block
+ *     actually received vs. what the previous block emitted.
+ *
+ * Blocks with none of the above (most handlers/sequencers/routers) emit no
+ * debug item at all. Replace-in-place per block instance on the client.
+ */
 export type BlockDebugPayload = {
   /** Resolved model identifier (generators only). */
   model?: string;
@@ -237,20 +247,10 @@ export type BlockDebugPayload = {
   prompt?: string;
   /** Registered tool names (generators only). */
   tools?: string[];
-  /** Temperature setting if configured (generators only). */
-  temperature?: number;
-  /** Max tokens setting if configured (generators only). */
-  maxTokens?: number;
-  /** Whether provider-native search is enabled (generators only). */
-  search?: boolean;
-  /** Input schema name (handlers). */
-  inputSchema?: string;
-  /** Output schema name (handlers). */
-  outputSchema?: string;
-  /** Route candidate names (routers). */
-  candidates?: string[];
-  /** State schema key names (sequencers). */
-  stateKeys?: string[];
+  /** Input after `connectInput` transformation. Only set when the connector
+   *  actually changed the value — otherwise the previous block's output is
+   *  the input, already visible via block_output. */
+  connectedInput?: unknown;
 };
 
 /** Resolved block configuration snapshot emitted at block start for devtool debugging.

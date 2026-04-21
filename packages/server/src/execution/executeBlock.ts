@@ -1,7 +1,7 @@
 /**
  * Central block execution entrypoint: dispatch, seam interception, retry, and error normalization.
  */
-import type { BlockOutputItem, BlockDebugPayload, ItemProvenance } from "@flow-state-dev/core/items";
+import type { BlockOutputItem, ItemProvenance } from "@flow-state-dev/core/items";
 import type { BlockContext, BlockDebugCapturePayload, BlockDefinition } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
 import { getBaseCapability } from "@flow-state-dev/core";
@@ -11,8 +11,8 @@ import { normalizeError } from "../errors/normalize-error";
 import { getResponseItems } from "./internal/response";
 import {
   isDebugItemsEnabled,
-  buildStaticBlockDebugPayload,
   buildGeneratorDebugPayload,
+  buildConnectedInputDebugPayload,
   emitBlockDebugItem
 } from "./internal/debug-items";
 import {
@@ -130,6 +130,36 @@ async function emitBlockOutputItem(
 }
 
 /**
+ * Resolves the block identity that a debug hook is firing for. Nested blocks
+ * inherit their parent's root-installed hook closures, so the hook must read
+ * `_blockIdentity` from the firing ctx rather than capturing the root block
+ * in its closure. Falls back to root metadata when identity is missing.
+ */
+function resolveDebugTarget(
+  firingCtx: BlockContext,
+  rootBlock: BlockDefinition,
+  rootMetadata: ExecutionMetadata
+): { metadata: ExecutionMetadata; block: BlockDefinition } {
+  const identity = firingCtx._blockIdentity;
+  if (identity === undefined) {
+    return { metadata: rootMetadata, block: rootBlock };
+  }
+  const blockShim = {
+    name: identity.blockName,
+    kind: identity.blockKind ?? rootBlock.kind,
+  } as unknown as BlockDefinition;
+  const metadata: ExecutionMetadata = {
+    ...rootMetadata,
+    blockName: identity.blockName,
+    blockKind: identity.blockKind ?? rootMetadata.blockKind,
+    blockInstanceId: identity.blockInstanceId,
+    parentBlockInstanceId: identity.parentBlockInstanceId,
+    scope: identity.phase === "work" ? "work" : rootMetadata.scope,
+  };
+  return { metadata, block: blockShim };
+}
+
+/**
  * Dispatches block execution to the runtime for each supported block kind.
  */
 async function executeByKind(
@@ -139,6 +169,26 @@ async function executeByKind(
   options: ExecuteDispatcherOptions
 ): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta }> {
   const debugEnabled = options.emitDebugItems && isDebugItemsEnabled();
+
+  // Install observability hooks at the root. Hooks read `_blockIdentity` from
+  // the firing context at invocation time, so they emit against the correct
+  // block identity even when invoked by deeply nested blocks inheriting these
+  // closures via scopedCtx._runtimeHooks.
+  const onBlockDebugCapture = debugEnabled
+    ? (capture: BlockDebugCapturePayload, firingCtx: BlockContext) => {
+        const { metadata, block: targetBlock } = resolveDebugTarget(firingCtx, block, options.metadata);
+        const payload = buildGeneratorDebugPayload(capture);
+        void emitBlockDebugItem(ctx.response, targetBlock, metadata, payload);
+      }
+    : undefined;
+
+  const onConnectedInput = debugEnabled
+    ? (value: unknown, firingCtx: BlockContext) => {
+        const { metadata, block: targetBlock } = resolveDebugTarget(firingCtx, block, options.metadata);
+        const payload = buildConnectedInputDebugPayload(value);
+        void emitBlockDebugItem(ctx.response, targetBlock, metadata, payload);
+      }
+    : undefined;
 
   if (block.kind === "generator") {
     const seams = options.internalSeams;
@@ -166,13 +216,8 @@ async function executeByKind(
         }
         ctx._runtimeHooks?.onGeneratorModelResult?.(payload);
       },
-      // Capture resolved generator config for block_debug item emission.
-      onBlockDebugCapture: debugEnabled
-        ? (capture: BlockDebugCapturePayload) => {
-            const payload = buildGeneratorDebugPayload(capture);
-            emitBlockDebugItem(ctx.response, block, options.metadata, payload);
-          }
-        : undefined,
+      onBlockDebugCapture,
+      onConnectedInput,
     };
     const generatorCtx = {
       ...ctx,
@@ -194,12 +239,28 @@ async function executeByKind(
     block.kind === "sequencer" ||
     block.kind === "router"
   ) {
-    // Emit static debug info for non-generator blocks.
-    if (debugEnabled) {
-      const payload = buildStaticBlockDebugPayload(block);
-      await emitBlockDebugItem(ctx.response, block, options.metadata, payload);
+    // Non-generator roots: install both hooks so nested generators and nested
+    // blocks with connectors inherit them. Each hook self-identifies from the
+    // firing ctx's _blockIdentity.
+    //
+    // Important: mutate _runtimeHooks on the existing ctx rather than
+    // spreading into a new ctx. User execute() code may mutate ctx fields
+    // (notably ctx.response) and rely on those mutations reaching the outer
+    // runAction. A shallow spread would break that contract.
+    if (!debugEnabled) {
+      return { output: await block.run(input, ctx as any) };
     }
-    return { output: await block.run(input, ctx as any) };
+    const prevHooks = ctx._runtimeHooks;
+    (ctx as { _runtimeHooks?: unknown })._runtimeHooks = {
+      ...prevHooks,
+      onBlockDebugCapture,
+      onConnectedInput,
+    };
+    try {
+      return { output: await block.run(input, ctx as any) };
+    } finally {
+      (ctx as { _runtimeHooks?: unknown })._runtimeHooks = prevHooks;
+    }
   }
 
   throw new Error(`Unknown block kind "${String(block.kind)}"`);
