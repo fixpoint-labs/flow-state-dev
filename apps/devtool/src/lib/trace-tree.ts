@@ -125,17 +125,14 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
         }
         if (item.status === "completed") blockNode.blockStatus = "completed";
         if (item.status === "failed") blockNode.blockStatus = "failed";
-        // Trace block_output items are lifecycle metadata already reflected
-        // in the block node header — don't add as visible children.
-        // Store as traceItem so block nodes can be selected for detail view.
-        if (item.trace) {
-          // Two trace sources emit for the same block: executeBlock (has output)
-          // and emitNestedBlockTrace (output: undefined). Keep whichever has output.
-          if (!blockNode.traceItem || bo.output !== undefined) {
-            blockNode.traceItem = item;
-          }
-          continue;
+        // Every block_output is lifecycle metadata — never render as a visible
+        // child. Store as traceItem so block nodes can be selected for detail.
+        // Two trace sources emit for the same block: executeBlock (has output)
+        // and emitNestedBlockTrace (output: undefined). Keep whichever has output.
+        if (!blockNode.traceItem || bo.output !== undefined) {
+          blockNode.traceItem = item;
         }
+        continue;
       }
       if (item.type === "block_tool_output") {
         blockNode.blockKind = blockNode.blockKind ?? "generator";

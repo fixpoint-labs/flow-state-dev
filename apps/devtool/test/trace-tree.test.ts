@@ -67,7 +67,7 @@ describe("buildTraceTree", () => {
   it("groups items under their block by blockInstanceId", () => {
     const items = [
       makeItem({ id: "i1", type: "message", provenance: makeProvenance("chatBlock", "block-A") }),
-      makeItem({ id: "i2", type: "status", provenance: makeProvenance("chatBlock", "block-A") }),
+      makeItem({ id: "i2", type: "status", message: "working", provenance: makeProvenance("chatBlock", "block-A") } as Partial<OutputItem> & { id: string; type: string }),
       makeItem({ id: "i3", type: "message", provenance: makeProvenance("otherBlock", "block-B") }),
     ];
 
@@ -185,7 +185,6 @@ describe("buildTraceTree", () => {
         id: "i2",
         type: "block_output",
         provenance: makeProvenance("child-gen", "gen-inst", "rtr-inst"),
-        trace: true,
         blockKind: "generator",
       } as Partial<OutputItem> & { id: string; type: string }),
       // Child's regular item
@@ -285,7 +284,6 @@ describe("buildTraceTree", () => {
       makeItem({
         id: "snap-init",
         type: "sequencer_state_snapshot",
-        trace: true,
         transient: true,
         provenance: makeProvenance("research", "seq-inst"),
         sequencerName: "research",
@@ -305,7 +303,6 @@ describe("buildTraceTree", () => {
       makeItem({
         id: "snap-step0",
         type: "sequencer_state_snapshot",
-        trace: true,
         transient: true,
         ts: 2000,
         provenance: makeProvenance("research", "seq-inst"),
@@ -319,7 +316,6 @@ describe("buildTraceTree", () => {
       makeItem({
         id: "snap-step1",
         type: "sequencer_state_snapshot",
-        trace: true,
         transient: true,
         ts: 3000,
         provenance: makeProvenance("research", "seq-inst"),
@@ -356,7 +352,6 @@ describe("buildTraceTree", () => {
       makeItem({
         id: "parent-snap",
         type: "sequencer_state_snapshot",
-        trace: true,
         provenance: makeProvenance("outer", "outer-inst"),
         sequencerName: "outer",
         sequencerInstanceId: "outer-inst",
@@ -368,7 +363,6 @@ describe("buildTraceTree", () => {
       makeItem({
         id: "child-snap",
         type: "sequencer_state_snapshot",
-        trace: true,
         provenance: makeProvenance("inner", "inner-inst", "outer-inst"),
         sequencerName: "inner",
         sequencerInstanceId: "inner-inst",
