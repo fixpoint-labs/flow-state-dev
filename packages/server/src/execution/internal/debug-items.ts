@@ -3,7 +3,9 @@
  *
  * Debug items are transient + trace-only — they stream to connected clients and appear in
  * the events log but are never persisted in the items record or sent to LLM context.
- * Emission is gated by the FSDEV_DEBUG_ITEMS env var (defaults to on in dev, off in production).
+ * Emission is gated by `isTraceObservabilityEnabled()` — the same gate used by
+ * sequencer state snapshots, so a single env var (`FSDEV_TRACE_OBSERVABILITY`)
+ * controls all trace observability output.
  *
  * Emission scope:
  *   - Generators: always emit when gate is on (model, prompt, tools).
@@ -13,17 +15,15 @@
  */
 import type { BlockDebugItem, BlockDebugPayload, ItemProvenance } from "@flow-state-dev/core/items";
 import type { BlockDebugCapturePayload, BlockDefinition } from "@flow-state-dev/core/types";
+import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import type { ExecutionMetadata } from "../types";
 import { getResponseItems } from "./response";
 
-/** Returns true when debug item emission is enabled for this process. */
-export function isDebugItemsEnabled(): boolean {
-  const explicit = process.env.FSDEV_DEBUG_ITEMS;
-  if (explicit !== undefined) {
-    return explicit === "true" || explicit === "1";
-  }
-  return process.env.NODE_ENV !== "production";
-}
+/**
+ * @deprecated Use `isTraceObservabilityEnabled` directly. Retained for one
+ * release cycle so existing call sites and tests don't break in lockstep.
+ */
+export const isDebugItemsEnabled = isTraceObservabilityEnabled;
 
 function createDebugProvenance(
   metadata: ExecutionMetadata,

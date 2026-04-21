@@ -18,57 +18,57 @@ import {
   createResponseEmitter,
   executeBlock
 } from "../src";
+import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import {
-  isDebugItemsEnabled,
   buildGeneratorDebugPayload,
   buildConnectedInputDebugPayload
 } from "../src/execution/internal/debug-items";
 
-/* ---------- isDebugItemsEnabled ---------- */
+/* ---------- trace observability gate ---------- */
 
-describe("isDebugItemsEnabled", () => {
+describe("isTraceObservabilityEnabled", () => {
   const originalEnv = { ...process.env };
 
   afterEach(() => {
     process.env = { ...originalEnv };
   });
 
-  it('returns true when FSDEV_DEBUG_ITEMS=true', () => {
+  it('returns true when FSDEV_TRACE_OBSERVABILITY=true', () => {
+    process.env.FSDEV_TRACE_OBSERVABILITY = "true";
+    delete process.env.FSDEV_DEBUG_ITEMS;
+    expect(isTraceObservabilityEnabled()).toBe(true);
+  });
+
+  it('returns false when FSDEV_TRACE_OBSERVABILITY=false', () => {
+    process.env.FSDEV_TRACE_OBSERVABILITY = "false";
+    delete process.env.FSDEV_DEBUG_ITEMS;
+    expect(isTraceObservabilityEnabled()).toBe(false);
+  });
+
+  it('honors FSDEV_TRACE_OBSERVABILITY over legacy FSDEV_DEBUG_ITEMS', () => {
+    process.env.FSDEV_TRACE_OBSERVABILITY = "false";
     process.env.FSDEV_DEBUG_ITEMS = "true";
-    expect(isDebugItemsEnabled()).toBe(true);
+    expect(isTraceObservabilityEnabled()).toBe(false);
   });
 
-  it('returns true when FSDEV_DEBUG_ITEMS=1', () => {
-    process.env.FSDEV_DEBUG_ITEMS = "1";
-    expect(isDebugItemsEnabled()).toBe(true);
-  });
-
-  it('returns false when FSDEV_DEBUG_ITEMS=false', () => {
-    process.env.FSDEV_DEBUG_ITEMS = "false";
-    expect(isDebugItemsEnabled()).toBe(false);
-  });
-
-  it('returns false when FSDEV_DEBUG_ITEMS=0', () => {
-    process.env.FSDEV_DEBUG_ITEMS = "0";
-    expect(isDebugItemsEnabled()).toBe(false);
+  it('falls back to legacy FSDEV_DEBUG_ITEMS when primary is unset', () => {
+    delete process.env.FSDEV_TRACE_OBSERVABILITY;
+    process.env.FSDEV_DEBUG_ITEMS = "true";
+    expect(isTraceObservabilityEnabled()).toBe(true);
   });
 
   it('defaults to true when NODE_ENV is not production', () => {
+    delete process.env.FSDEV_TRACE_OBSERVABILITY;
     delete process.env.FSDEV_DEBUG_ITEMS;
     process.env.NODE_ENV = "development";
-    expect(isDebugItemsEnabled()).toBe(true);
-  });
-
-  it('defaults to true when NODE_ENV is test', () => {
-    delete process.env.FSDEV_DEBUG_ITEMS;
-    process.env.NODE_ENV = "test";
-    expect(isDebugItemsEnabled()).toBe(true);
+    expect(isTraceObservabilityEnabled()).toBe(true);
   });
 
   it('defaults to false when NODE_ENV is production', () => {
+    delete process.env.FSDEV_TRACE_OBSERVABILITY;
     delete process.env.FSDEV_DEBUG_ITEMS;
     process.env.NODE_ENV = "production";
-    expect(isDebugItemsEnabled()).toBe(false);
+    expect(isTraceObservabilityEnabled()).toBe(false);
   });
 });
 

@@ -15,6 +15,7 @@ import { buildBlock, mergeDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import type { DeclaredResources } from "../types/block";
 import { isBlockDefinition, toError, withTimeout } from "./internal/utils";
+import { isTraceObservabilityEnabled } from "../utils/trace-observability";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
 
@@ -140,6 +141,10 @@ async function emitStateSnapshot(
   stepIndex: number,
   lastStateJson: string | undefined
 ): Promise<string | undefined> {
+  // Gate on the shared trace-observability flag. Off in production unless the
+  // operator opts in; on in dev/test by default.
+  if (!isTraceObservabilityEnabled()) return lastStateJson;
+
   const seqRef = ctx.sequencer;
   if (seqRef === undefined) return lastStateJson;
 

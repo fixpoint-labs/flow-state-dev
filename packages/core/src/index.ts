@@ -39,6 +39,7 @@ export type {
 } from "./capability";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
+export { isTraceObservabilityEnabled } from "./utils/trace-observability";
 export {
   generator,
   handler,
