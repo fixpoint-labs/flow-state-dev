@@ -63,6 +63,13 @@ export type ExecutionParent = {
     label?: string;
     metadata?: Record<string, unknown>;
   };
+  /**
+   * True when this scope represents a tool invocation from a generator.
+   * Suppresses the redundant `block_output` trace item — the generator's
+   * tool wrapper emits a richer `block_tool_output` item that fully
+   * describes the tool call (name, arguments, result, error).
+   */
+  isToolCall?: boolean;
 };
 
 export interface ResponseEmitterHandle {
@@ -185,6 +192,16 @@ export interface BlockContext<
     }) => void;
     /** Captures resolved generator config for debug item emission. */
     onBlockDebugCapture?: (payload: BlockDebugCapturePayload) => void;
+    /**
+     * Emits a block_debug item for a nested block. Wired by the server when
+     * `isDebugItemsEnabled()` is true; no-op otherwise. Called from core's
+     * sequencer.ts executeBlock before the nested block runs, so the devtool
+     * sees a debug row for every block in the trace — not just the root.
+     */
+    emitNestedBlockDebug?: (
+      block: { name: string; kind: string; inputSchema?: unknown; outputSchema?: unknown; config: unknown; transient?: boolean },
+      scopedCtx: unknown
+    ) => void | Promise<void>;
   };
 
   /** @internal Current block's identity within the execution chain. */

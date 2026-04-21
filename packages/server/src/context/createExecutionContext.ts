@@ -57,6 +57,12 @@ import type {
 import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
+import {
+  buildStaticBlockDebugPayload,
+  emitBlockDebugItem,
+  isDebugItemsEnabled,
+} from "../execution/internal/debug-items";
+import type { ExecutionMetadata } from "../execution/types";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
 import { cloneValue } from "../utils/clone";
@@ -2285,7 +2291,42 @@ export async function createExecutionContext<
       void emissionResponse.emitItemAdded(decisionItem)
         .then(() => emissionResponse.emitItemDone(decisionItem))
         .catch(() => { /* trace emission is best-effort */ });
-    }
+    },
+    emitNestedBlockDebug: isDebugItemsEnabled()
+      ? async (block, scopedCtx) => {
+          // Generators emit their own richer debug payload via
+          // onBlockDebugCapture (resolved prompt, model, tools). Skip here to
+          // avoid a duplicate empty-payload row.
+          if (block.kind === "generator") return;
+
+          const identity = (scopedCtx as { _blockIdentity?: { blockName: string; blockInstanceId: string; parentBlockInstanceId?: string; phase?: "main" | "work" } })._blockIdentity;
+          if (identity === undefined) return;
+
+          const metadata: ExecutionMetadata = {
+            requestId: requestRef.current.id,
+            userId: userRef.current.id,
+            flowKind: baseLogContext.flowKind,
+            actionName: baseLogContext.actionName,
+            blockName: identity.blockName,
+            blockKind: block.kind as ExecutionMetadata["blockKind"],
+            blockInstanceId: identity.blockInstanceId,
+            parentBlockInstanceId: identity.parentBlockInstanceId,
+            scope: identity.phase === "work" ? "work" : "block",
+          };
+
+          try {
+            const payload = buildStaticBlockDebugPayload(block as unknown as Parameters<typeof buildStaticBlockDebugPayload>[0]);
+            await emitBlockDebugItem(
+              emissionResponse,
+              block as unknown as Parameters<typeof emitBlockDebugItem>[1],
+              metadata,
+              payload
+            );
+          } catch {
+            // Best-effort — never fail a block because debug emission failed.
+          }
+        }
+      : undefined,
   };
 
   const createContext = (
@@ -2584,7 +2625,16 @@ export async function createExecutionContext<
 
           // Emit lifecycle trace item for nested blocks only.
           // Root blocks are traced by executeBlock's emitBlockOutputItem.
-          if (parentChain !== undefined) {
+          // Suppressed for:
+          //  - tool calls — the generator's tool wrapper emits a richer
+          //    `block_tool_output` that supersedes this trace.
+          //  - generator blocks — sequencer.ts owns the generator trace so
+          //    modelUsage can ride on a single block_output item without
+          //    producing a duplicate here.
+          const suppressTrace =
+            resolvedParent.isToolCall === true ||
+            resolvedParent.kind === "generator";
+          if (parentChain !== undefined && !suppressTrace) {
             emitNestedBlockTrace(
               resolvedParent, traceStartedAt, "completed",
               emissionResponse, requestRef, () => emittedItemCount++,
@@ -2604,7 +2654,10 @@ export async function createExecutionContext<
             scope: "block"
           });
 
-          if (parentChain !== undefined) {
+          const suppressFailureTrace =
+            resolvedParent.isToolCall === true ||
+            resolvedParent.kind === "generator";
+          if (parentChain !== undefined && !suppressFailureTrace) {
             emitNestedBlockTrace(
               resolvedParent, traceStartedAt, "failed",
               emissionResponse, requestRef, () => emittedItemCount++,

@@ -180,20 +180,26 @@ async function emitSequencerStateSnapshot(
   return currentStateJson;
 }
 
-/** Emit a block_output item with optional modelUsage for generator blocks run inside a sequencer. */
+/**
+ * Emit a block_output item for a generator block. Owns the trace for
+ * generators so `_withExecutionScope` can skip its default emission and
+ * avoid duplicates. `modelUsage` and `error` are optional — the caller
+ * passes whichever matches the success/failure path.
+ */
 async function emitGeneratorBlockOutput(
   block: BlockDefinition<any, any>,
   output: unknown,
   ctx: BlockContext,
   startedAt: number,
   instanceId: string,
-  modelUsage: GeneratorModelUsageMeta
+  modelUsage?: GeneratorModelUsageMeta,
+  error?: { message: string; code?: string }
 ): Promise<void> {
   const completedAt = Date.now();
   const item = {
     id: `item_block_output_${completedAt}_${Math.random().toString(16).slice(2)}`,
     type: "block_output" as const,
-    status: "completed" as const,
+    status: (error ? "failed" : "completed") as "completed" | "failed",
     client: false,
     history: false,
     transient: block.transient || undefined,
@@ -209,6 +215,7 @@ async function emitGeneratorBlockOutput(
     blockName: block.name,
     blockKind: block.kind,
     output,
+    error,
     startedAt,
     completedAt,
     duration: completedAt - startedAt,
@@ -262,15 +269,26 @@ async function executeBlock(
         } as BlockContext
       : scopedCtx;
 
+    // Fire the nested-block debug hook so the devtool sees a block_debug row
+    // for every block, not just the root. No-op when debug is disabled.
+    if (scopedCtx._runtimeHooks?.emitNestedBlockDebug !== undefined) {
+      try {
+        await scopedCtx._runtimeHooks.emitNestedBlockDebug(block, scopedCtx);
+      } catch {
+        // Debug emission is best-effort; never fail a block because of it.
+      }
+    }
+
     try {
       const output = await block.run(input, execCtx);
       scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt);
 
-      // Emit block_output with modelUsage for nested generator blocks.
-      // Use the scope's instanceId from _blockIdentity so this trace item
-      // shares the same identity as streaming items emitted during execution,
-      // preventing orphaned duplicate nodes in the devtool trace tree.
-      if (modelUsage) {
+      // Generator blocks own their own block_output trace (carries modelUsage
+      // and shares the scope's instanceId with streaming items). We emit it
+      // here unconditionally so `_withExecutionScope` can skip its nested
+      // trace for generators — otherwise each generator produced two
+      // block_output items in the devtool.
+      if (block.kind === "generator") {
         const identity = scopedCtx._blockIdentity;
         const instanceId = identity?.blockInstanceId ?? `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         await emitGeneratorBlockOutput(block, output, scopedCtx, startedAt, instanceId, modelUsage);
@@ -279,6 +297,24 @@ async function executeBlock(
       return output;
     } catch (error) {
       scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt);
+
+      // Mirror the success path: emit the generator's failure trace here so
+      // `_withExecutionScope` can skip its nested failure trace.
+      if (block.kind === "generator") {
+        const identity = scopedCtx._blockIdentity;
+        const instanceId = identity?.blockInstanceId ?? `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const err = error instanceof Error ? error : new Error(String(error));
+        await emitGeneratorBlockOutput(
+          block,
+          undefined,
+          scopedCtx,
+          startedAt,
+          instanceId,
+          modelUsage,
+          { message: err.message, code: (err as { code?: string }).code }
+        );
+      }
+
       throw error;
     }
   };

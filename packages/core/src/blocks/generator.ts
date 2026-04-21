@@ -667,7 +667,10 @@ function compileToolsWithExecute(
           name: tool.name,
           kind: tool.kind,
           instanceId: `${tool.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-          input: args
+          input: args,
+          // Suppress the default block_output trace — the tool wrapper above
+          // emits a richer block_tool_output that supersedes it.
+          isToolCall: true
         },
         runTool
       );
