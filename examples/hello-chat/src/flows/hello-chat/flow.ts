@@ -42,9 +42,7 @@ const chatGenerator = generator({
   // history slot: load prior conversation from persisted request items.
   history: true,
   user: (input) => input.message,
-  emit: {
-    reasoning: true
-  },
+  agentType: "agent",
   providerOptions: {
     openai: {
       reasoningSummary: "detailed"
