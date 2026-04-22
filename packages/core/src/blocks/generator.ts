@@ -286,9 +286,9 @@ export interface GeneratorConfig<
   /**
    * Identity of this generator — classifies its auto-emitted items.
    *
-   * - `"agent"`: user-facing agent. Items flow to the client and into
+   * - `"primary"`: user-facing agent. Items flow to the client and into
    *   conversation history.
-   * - `"sub-agent"`: task-executor under an agent. Items reach the client
+   * - `"sub"`: task-executor under a primary agent. Items reach the client
    *   for live observability but are excluded from conversation history —
    *   sub-agents are deaf to prior turns by design.
    * - `"trace"`: observability-only emissions (devtool/replay). Not on the

@@ -75,8 +75,8 @@ Every auto-emitted item from a generator is stamped with the producing generator
 
 | `agentType` | On client stream | In conversation history | In devtool |
 |-------------|:---:|:---:|:---:|
-| `"agent"` | ✓ | ✓ | ✓ |
-| `"sub-agent"` | ✓ | — | ✓ |
+| `"primary"` | ✓ | ✓ | ✓ |
+| `"sub"` | ✓ | — | ✓ |
 | `"trace"` | — | — | ✓ |
 | *unset* | no auto-emission at all — only `block_output` flows via graph edges |
 
@@ -84,11 +84,11 @@ A generator with no `agentType` is a pure transformer: it runs the model, return
 
 ### Multi-peer agents
 
-Two generators with `agentType: "agent"` and distinct `agentName`s can coexist in the same session. Both see the user's messages and each other's messages via `history: true`:
+Two generators with `agentType: "primary"` and distinct `agentName`s can coexist in the same session. Both see the user's messages and each other's messages via `history: true`:
 
 ```ts
-const planner = generator({ name: "planner", agentType: "agent", agentName: "planner", /* ... */ });
-const executor = generator({ name: "executor", agentType: "agent", agentName: "executor", /* ... */ });
+const planner = generator({ name: "planner", agentType: "primary", agentName: "planner", /* ... */ });
+const executor = generator({ name: "executor", agentType: "primary", agentName: "executor", /* ... */ });
 ```
 
 ### Parallel sub-agents — collaborative vs. isolated
@@ -97,20 +97,20 @@ const executor = generator({ name: "executor", agentType: "agent", agentName: "e
 
 ```ts
 // Collaborative: all instances share one identity.
-generator({ agentType: "sub-agent", agentName: "researcher", /* ... */ });
+generator({ agentType: "sub", agentName: "researcher", /* ... */ });
 
 // Isolated: each instance unique. selectForContext can address them individually.
-(id) => generator({ agentType: "sub-agent", agentName: `researcher-${id}`, /* ... */ });
+(id) => generator({ agentType: "sub", agentName: `researcher-${id}`, /* ... */ });
 ```
 
 ### Custom context via `selectForContext`
 
-`session.items.history()` is the ambient conversation-history view — user messages + `"agent"`-typed conversational items. For anything else (long-running sub-agents pulling their own prior outputs, coordinators aggregating peer outputs, debugging flows that want trace items), use `selectForContext`:
+`session.items.history()` is the ambient conversation-history view — user messages + `"primary"`-typed conversational items. For anything else (long-running sub-agents pulling their own prior outputs, coordinators aggregating peer outputs, debugging flows that want trace items), use `selectForContext`:
 
 ```ts
 const researcher = generator({
   name: "researcher",
-  agentType: "sub-agent",
+  agentType: "sub",
   agentName: "researcher",
   context: (input, ctx) => {
     const priorFindings = ctx.session.items.selectForContext({
@@ -127,7 +127,7 @@ const researcher = generator({
 
 ### React renderer behavior
 
-The default `<ItemsRenderer>` filters `agentType: "sub-agent"` items from the rendered list. Opt in via the `showSubAgents` prop to surface them inline, or use `session.getItemsByAgent(name)` for per-agent side panels. Trace items are filtered at the SSE transport layer and never reach the client.
+The default `<ItemsRenderer>` filters `agentType: "sub"` items from the rendered list. Opt in via the `showSubAgents` prop to surface them inline, or use `session.getItemsByAgent(name)` for per-agent side panels. Trace items are filtered at the SSE transport layer and never reach the client.
 
 ## React integration
 

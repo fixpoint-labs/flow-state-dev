@@ -33,7 +33,7 @@ ctx.emitMessage("Debug: classifier chose route A", {
 });
 
 ctx.emitMessage("Background audit complete.", {
-  agentType: "sub-agent",
+  agentType: "sub",
   agentName: "auditor",
 });
 ```

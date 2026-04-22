@@ -191,13 +191,13 @@ supervisor({
   outputSchema?: ZodSchema;
 
   // Identity assigned to the internal reviewer generator.
-  // Default: "sub-agent". Override to "agent" if the reviewer's output
+  // Default: "sub". Override to "primary" if the reviewer's output
   // should appear in the top-level conversation stream.
-  reviewerAgentType?: "agent" | "sub-agent" | "trace";
+  reviewerAgentType?: "primary" | "sub" | "trace";
 
   // Identity assigned to the internal synthesizer generator.
-  // Default: "agent" — synthesis is the user-facing final answer.
-  synthesizerAgentType?: "agent" | "sub-agent" | "trace";
+  // Default: "primary" — synthesis is the user-facing final answer.
+  synthesizerAgentType?: "primary" | "sub" | "trace";
 });
 ```
 

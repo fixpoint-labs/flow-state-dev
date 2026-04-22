@@ -118,7 +118,7 @@ const assistantGenerator = generator({
     }
   },
 
-  agentType: "agent",
+  agentType: "primary",
   model: (_input: any, ctx: any) => ctx.session.state.resolvedModel ?? MODEL_ID,
 });
 

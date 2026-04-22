@@ -149,7 +149,7 @@ describe("generator search config", () => {
 
     const block = generator({
       name: "source-gen",
-      agentType: "agent",
+      agentType: "primary",
       model: "test-model",
       prompt: "Search",
     });

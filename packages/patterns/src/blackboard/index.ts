@@ -101,10 +101,10 @@ export interface BlackboardConfig<
   /** Capabilities to install on default blocks (controller, synthesizer). */
   uses?: UsesSlot;
 
-  /** Agent type for the default controller. Default: "sub-agent". */
+  /** Agent type for the default controller. Default: "sub". */
   controllerAgentType?: AgentType;
 
-  /** Agent type for the default synthesizer. Default: "agent". */
+  /** Agent type for the default synthesizer. Default: "primary". */
   synthesizerAgentType?: AgentType;
 
   /**
@@ -138,7 +138,7 @@ function buildDefaultController(config: {
     outputSchema: controllerOutputSchema,
     sessionResources: { blackboard: config.blackboardResource },
     sequencerStateSchema: blackboardControlSchema,
-    agentType: config.agentType ?? "sub-agent",
+    agentType: config.agentType ?? "sub",
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.uses ? { uses: config.uses as any } : {}),
     prompt: async (_input, ctx) => {
@@ -207,7 +207,7 @@ function buildDefaultSynthesizer(config: {
     name: `${config.name}-synthesizer`,
     model: config.model ?? "openai/gpt-5.4-mini",
     sessionResources: { blackboard: config.blackboardResource },
-    agentType: config.agentType ?? "agent",
+    agentType: config.agentType ?? "primary",
     ...(config.outputSchema ? { outputSchema: config.outputSchema } : {}),
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.uses ? { uses: config.uses as any } : {}),

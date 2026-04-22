@@ -23,12 +23,12 @@ Messages, reasoning, and `block_tool_output` items — the conversational types 
 
 | `agentType` | Client | History |
 |-------------|:------:|:-------:|
-| `"agent"`     | ✓ | ✓ |
-| `"sub-agent"` | ✓ | — |
-| `"trace"`     | — | — |
-| *unset*       | ✓ | ✓ (handler-emit fallback) |
+| `"primary"` | ✓ | ✓ |
+| `"sub"`     | ✓ | — |
+| `"trace"`   | — | — |
+| *unset*     | ✓ | ✓ (handler-emit fallback) |
 
-`sub-agent` items reach the client for live observability but are excluded from conversation history. `trace` items are observability-only — devtool and `selectForContext` can see them, nothing else.
+`sub` items reach the client for live observability but are excluded from conversation history. `trace` items are observability-only — devtool and `selectForContext` can see them, nothing else.
 
 See `generator-identity.md` for the full identity model.
 
@@ -202,7 +202,7 @@ If a new type is genuinely needed:
 ## Base schema reference
 
 ```ts
-type AgentType = "agent" | "sub-agent" | "trace";
+type AgentType = "primary" | "sub" | "trace";
 
 type OutputItemBase = {
   id: string;

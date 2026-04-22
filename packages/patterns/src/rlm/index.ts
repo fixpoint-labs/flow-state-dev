@@ -66,7 +66,7 @@ export const subQueryGenerator = generator({
   maxIterations: 5,
   outputSchema: subQueryOutputSchema,
   sessionResourceSchemas: z.object({ context: contextResourceStateSchema }),
-  agentType: "sub-agent",
+  agentType: "sub",
 });
 
 // ---------------------------------------------------------------------------
@@ -118,7 +118,7 @@ export const rootGenerator = generator({
   maxIterations: 10,
   outputSchema: rlmOutputSchema,
   sessionResourceSchemas: z.object({ context: contextResourceStateSchema }),
-  agentType: "agent",
+  agentType: "primary",
 });
 
 // ---------------------------------------------------------------------------

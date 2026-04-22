@@ -447,7 +447,7 @@ describe("generator streaming", () => {
     let receivedOutputSchema: unknown = "NOT_CALLED";
     const block = generator({
       name: "stream-schema",
-      agentType: "agent",
+      agentType: "primary",
       model: "mock-model",
       prompt: "Return text"
     });
@@ -480,7 +480,7 @@ describe("generator streaming", () => {
     const emitted: Array<{ type: string; item?: any }> = [];
     const block = generator({
       name: "stream-tool-delta",
-      agentType: "agent",
+      agentType: "primary",
       model: "mock-model",
       prompt: "Use tools"
     });
@@ -525,7 +525,7 @@ describe("generator streaming", () => {
     const emitted: Array<{ type: string; item?: any }> = [];
     const block = generator({
       name: "stream-tool-result",
-      agentType: "agent",
+      agentType: "primary",
       model: "mock-model",
       prompt: "Use tools"
     });
@@ -607,7 +607,7 @@ describe("generator streaming", () => {
     const emitted: Array<{ type: string; item?: any; delta?: string }> = [];
     const block = generator({
       name: "text-still-flows",
-      agentType: "agent",
+      agentType: "primary",
       model: "mock-model",
       prompt: "Use tools"
     });
@@ -643,7 +643,7 @@ describe("generator streaming", () => {
 
     await block.run({ value: "x" }, ctx);
 
-    // Tool call events and text content both emit under agentType: "agent".
+    // Tool call events and text content both emit under agentType: "primary".
     const toolItems = emitted.filter(
       e => e.type === "item.added" && e.item?.type === "tool_call_progress"
     );

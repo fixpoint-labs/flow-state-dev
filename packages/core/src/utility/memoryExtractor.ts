@@ -30,7 +30,7 @@ export interface MemoryExtractorConfig<
   /**
    * Identity for emitted items. Unset by default — extractor output is a
    * background step that flows via graph edges to a memory-write handler.
-   * Set to `"trace"` for observability-only runs, or `"agent"` if the
+   * Set to `"trace"` for observability-only runs, or `"primary"` if the
    * extraction itself should be visible to the user.
    */
   agentType?: AgentType;

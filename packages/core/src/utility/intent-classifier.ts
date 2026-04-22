@@ -21,7 +21,7 @@ export interface IntentClassifierConfig<
   /**
    * Identity for emitted items. Unset by default — classification output
    * flows via graph edges only, which is the usual routing case. Set to
-   * `"agent"` if you want the classification surfaced to the user, or
+   * `"primary"` if you want the classification surfaced to the user, or
    * `"trace"` for observability-only runs.
    */
   agentType?: AgentType;

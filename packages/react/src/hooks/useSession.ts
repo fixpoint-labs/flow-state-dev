@@ -78,7 +78,7 @@ export type SessionView = {
   /** Returns items stamped with the given `agentName`. Useful for rendering per-agent panels. */
   getItemsByAgent: (agentName: string) => OutputItem[];
   /** Returns items stamped with the given `agentType`. */
-  getItemsByAgentType: (agentType: "agent" | "sub-agent" | "trace") => OutputItem[];
+  getItemsByAgentType: (agentType: "primary" | "sub" | "trace") => OutputItem[];
   sendAction: (
     action: string,
     input: unknown,
@@ -984,7 +984,7 @@ export function useSession(
   );
 
   const getItemsByAgentType = useCallback(
-    (agentType: "agent" | "sub-agent" | "trace"): OutputItem[] =>
+    (agentType: "primary" | "sub" | "trace"): OutputItem[] =>
       items.filter((item) => item.agentType === agentType),
     [items]
   );

@@ -146,13 +146,13 @@ export interface PlanAndExecuteConfig<
   /** Capabilities to install on default blocks (executor, replanner, synthesizer). */
   uses?: UsesSlot;
 
-  /** Agent type for the default planner. Default: "sub-agent". */
+  /** Agent type for the default planner. Default: "sub". */
   plannerAgentType?: AgentType;
 
-  /** Agent type for the default step executor. Default: "sub-agent". */
+  /** Agent type for the default step executor. Default: "sub". */
   stepExecutorAgentType?: AgentType;
 
-  /** Agent type for the default synthesizer. Default: "agent". */
+  /** Agent type for the default synthesizer. Default: "primary". */
   synthesizerAgentType?: AgentType;
 
   /** Session resources to declare on the outer sequencer. */
@@ -393,7 +393,7 @@ function createDefaultSynthesizer(config: {
     outputSchema: z.string(),
     prompt: [config.instructions, basePrompt, config.synthesizeInstructions],
     user: buildSynthesizerUserPrompt,
-    agentType: config.agentType ?? "agent",
+    agentType: config.agentType ?? "primary",
   });
 }
 
@@ -498,7 +498,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
       }
       return parts.join("\n");
     },
-    agentType: config.stepExecutorAgentType ?? "sub-agent",
+    agentType: config.stepExecutorAgentType ?? "sub",
   });
 }
 

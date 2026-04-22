@@ -26,7 +26,7 @@ export interface DecomposerConfig<
   history?: GeneratorHistoryConfig;
   /**
    * Identity for emitted items. Unset by default — decomposed task lists flow
-   * via graph edges only. Set to `"agent"` to surface the plan to the user,
+   * via graph edges only. Set to `"primary"` to surface the plan to the user,
    * or `"trace"` for observability-only runs.
    */
   agentType?: AgentType;

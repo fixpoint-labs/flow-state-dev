@@ -191,7 +191,7 @@ const chatGenerator = generator({
   history: true,
   user: (input) => input.message,
   tools: [searchTool, calculatorTool],
-  agentType: "agent",
+  agentType: "primary",
 });
 ```
 
@@ -350,17 +350,17 @@ Every generator declares one of four stances:
 
 | `agentType` | Client stream | LLM history | DevTool |
 |-------------|:-------------:|:-----------:|:-------:|
-| `"agent"`     | ✓ | ✓ | ✓ |
-| `"sub-agent"` | ✓ | — | ✓ |
-| `"trace"`     | — | — | ✓ |
-| *unset*       | *no auto-emission* — only `block_output` flows via graph edges |
+| `"primary"` | ✓ | ✓ | ✓ |
+| `"sub"`     | ✓ | — | ✓ |
+| `"trace"`   | — | — | ✓ |
+| *unset*     | *no auto-emission* — only `block_output` flows via graph edges |
 
 No position-inferred default. Every generator declares its own identity.
 
 ```ts
 const researcher = generator({
   name: "researcher",
-  agentType: "sub-agent",     // visible to the user for observability,
+  agentType: "sub",           // visible to the user for observability,
   agentName: "researcher",    // not inherited by the orchestrator's history.
   prompt: "Analyze and summarize.",
   model: "anthropic:claude-sonnet-4-6",
@@ -388,7 +388,7 @@ ctx.emitMessage("Analysis complete.");
 ctx.emitMessage("Debug: classifier chose route A", { agentType: "trace", agentName: "classifier" });
 // Devtool-only observation — hidden from user and LLM.
 
-ctx.emitMessage("Background audit complete.", { agentType: "sub-agent", agentName: "auditor" });
+ctx.emitMessage("Background audit complete.", { agentType: "sub", agentName: "auditor" });
 // Visible live but excluded from conversation history.
 ```
 

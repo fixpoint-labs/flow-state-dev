@@ -26,7 +26,7 @@ export interface SummarizerConfig<
   outputSchema?: TOutputSchema;
   /**
    * Identity for emitted items. Unset by default — summaries flow via graph
-   * edges only. Set to `"agent"` to surface the summary to the user, or
+   * edges only. Set to `"primary"` to surface the summary to the user, or
    * `"trace"` for observability-only runs.
    */
   agentType?: AgentType;

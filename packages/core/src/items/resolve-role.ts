@@ -38,15 +38,15 @@ const CONVERSATIONAL_TYPES = new Set<string>([
 /**
  * Visibility by `agentType` for conversational items.
  *
- * - `agent`: user-facing; in both client stream and conversation history.
- * - `sub-agent`: visible to the client for live observability but excluded
+ * - `primary`: user-facing; in both client stream and conversation history.
+ * - `sub`: visible to the client for live observability but excluded
  *   from conversation history (sub-agents are deaf to prior turns by design).
  * - `trace`: observability only — never client, never history.
  */
 const AGENT_TYPE_VISIBILITY: Record<AgentType, ItemVisibility> = {
-  "agent":     { client: true,  history: true  },
-  "sub-agent": { client: true,  history: false },
-  "trace":     { client: false, history: false },
+  "primary": { client: true,  history: true  },
+  "sub":     { client: true,  history: false },
+  "trace":   { client: false, history: false },
 };
 
 /**

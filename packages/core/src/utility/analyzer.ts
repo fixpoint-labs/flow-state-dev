@@ -27,7 +27,7 @@ export interface AnalyzerConfig<
   outputSchema?: TOutputSchema;
   /**
    * Identity for emitted items. Unset by default — analysis output flows via
-   * graph edges only. Set to `"agent"` to surface findings to the user, or
+   * graph edges only. Set to `"primary"` to surface findings to the user, or
    * `"trace"` for observability-only runs.
    */
   agentType?: AgentType;

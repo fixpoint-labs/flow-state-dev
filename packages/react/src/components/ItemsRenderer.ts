@@ -21,7 +21,7 @@ export type ItemsRendererProps = {
    */
   deduplicateByKey?: boolean;
   /**
-   * When true, items produced by sub-agents (`agentType: "sub-agent"`) are
+   * When true, items produced by sub-agents (`agentType: "sub"`) are
    * rendered inline with the rest of the stream. Default: false — sub-agent
    * items are filtered out of the default conversation view. The data still
    * flows through `useSession().items`; use a custom renderer (e.g., a
@@ -110,7 +110,7 @@ export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
   const deduplicated = deduplicateByKey ? deduplicateComponentItems(props.items) : props.items;
   const items = showSubAgents
     ? deduplicated
-    : deduplicated.filter((item) => item.agentType !== "sub-agent");
+    : deduplicated.filter((item) => item.agentType !== "sub");
 
   const suppressedOwners = buildSuppressedOwners(items, renderers?.container);
 

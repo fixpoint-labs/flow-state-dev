@@ -37,11 +37,11 @@ Every generator-based utility defaults to `"gpt-5-mini"` and accepts a `model` o
 
 ### `agentType` — control output visibility
 
-Every generator-based utility accepts an optional `agentType` (`"agent"` | `"sub-agent"` | `"trace"`) that controls how the block's output is surfaced. This maps to the [generator identity model](/docs/streaming/emitting-items).
+Every generator-based utility accepts an optional `agentType` (`"primary"` | `"sub"` | `"trace"`) that controls how the block's output is surfaced. This maps to the [generator identity model](/docs/streaming/emitting-items).
 
-- `synthesizer` defaults to `agentType: "agent"` — its output is user-facing by convention.
+- `synthesizer` defaults to `agentType: "primary"` — its output is user-facing by convention.
 - All other utilities leave `agentType` unset by default — their output flows to the next block via graph edges but is not auto-emitted to the client or history. This matches the typical use case: internal pipeline steps that feed downstream blocks.
-- Set `agentType: "agent"` on any utility when its output should be visible to the user (e.g. using `analyzer` as a user-facing critic).
+- Set `agentType: "primary"` on any utility when its output should be visible to the user (e.g. using `analyzer` as a user-facing critic).
 - Set `agentType: "trace"` when the output is observability-only — visible in the devtool, not to the client or in history.
 
 ```ts
@@ -51,7 +51,7 @@ const classify = utility.intentClassifier({ name: "classify", categories });
 // Opt in to user visibility
 const critic = utility.analyzer({
   name: "critic",
-  agentType: "agent",
+  agentType: "primary",
   criteria: ["clarity", "accuracy"],
 });
 ```

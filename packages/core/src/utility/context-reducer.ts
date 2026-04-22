@@ -51,7 +51,7 @@ export interface ContextReducerConfig<
   outputSchema?: TOutputSchema;
   /**
    * Identity for emitted items. Unset by default — reducer output flows via
-   * graph edges only. Set to `"agent"` to surface the reduction to the user,
+   * graph edges only. Set to `"primary"` to surface the reduction to the user,
    * or `"trace"` for observability-only runs.
    */
   agentType?: AgentType;

@@ -57,11 +57,11 @@ Generators declare an identity via `agentType`. The framework uses that identity
 
 ```ts
 // User-facing agent — on the client stream, in conversation history.
-const chatbot = generator({ agentType: "agent", /* ... */ });
+const chatbot = generator({ agentType: "primary", /* ... */ });
 
 // Sub-agent — visible to the client (live observability), but its output
 // does NOT enter history.
-const worker = generator({ agentType: "sub-agent", /* ... */ });
+const worker = generator({ agentType: "sub", /* ... */ });
 
 // Devtool-only observer — not on the client stream, not in history.
 const memoryObserver = generator({ agentType: "trace", /* ... */ });

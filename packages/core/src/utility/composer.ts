@@ -17,7 +17,7 @@ export interface ComposerConfig<
   outputSchema?: TOutputSchema;
   /**
    * Identity for emitted items. Unset by default — composed output flows via
-   * graph edges only. Set to `"agent"` to surface it to the user, or
+   * graph edges only. Set to `"primary"` to surface it to the user, or
    * `"trace"` for observability-only runs.
    */
   agentType?: AgentType;

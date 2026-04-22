@@ -32,14 +32,14 @@ function baseItem(overrides: Partial<OutputItem> = {}): OutputItem {
 
 describe("resolveItemVisibility — conversational types", () => {
   it("agent-typed message → client + history", () => {
-    expect(resolveItemVisibility(baseItem({ agentType: "agent" }))).toEqual({
+    expect(resolveItemVisibility(baseItem({ agentType: "primary" }))).toEqual({
       client: true,
       history: true,
     });
   });
 
   it("sub-agent-typed message → client, no history", () => {
-    expect(resolveItemVisibility(baseItem({ agentType: "sub-agent" }))).toEqual({
+    expect(resolveItemVisibility(baseItem({ agentType: "sub" }))).toEqual({
       client: true,
       history: false,
     });
@@ -62,7 +62,7 @@ describe("resolveItemVisibility — conversational types", () => {
   it("agent-typed reasoning → client + history", () => {
     const item = baseItem({
       type: "reasoning",
-      agentType: "agent",
+      agentType: "primary",
       summary: [{ type: "reasoning_text", text: "thinking" }],
     } as unknown as Partial<OutputItem>);
     expect(resolveItemVisibility(item)).toEqual({ client: true, history: true });
@@ -71,7 +71,7 @@ describe("resolveItemVisibility — conversational types", () => {
   it("sub-agent reasoning → client only", () => {
     const item = baseItem({
       type: "reasoning",
-      agentType: "sub-agent",
+      agentType: "sub",
       summary: [{ type: "reasoning_text", text: "thinking" }],
     } as unknown as Partial<OutputItem>);
     expect(resolveItemVisibility(item)).toEqual({ client: true, history: false });
@@ -80,7 +80,7 @@ describe("resolveItemVisibility — conversational types", () => {
   it("block_tool_output from sub-agent → client only", () => {
     const item = baseItem({
       type: "block_tool_output",
-      agentType: "sub-agent",
+      agentType: "sub",
       blockName: "search",
       output: {},
       toolCall: { callId: "c1", name: "search", arguments: "{}", generatorBlock: "gen" },
@@ -156,7 +156,7 @@ describe("resolveItemVisibility — structural types", () => {
   it("agent agentType on structural type does not promote to history", () => {
     const item = baseItem({
       type: "status",
-      agentType: "agent",
+      agentType: "primary",
       message: "Working…",
     } as unknown as Partial<OutputItem>);
     expect(resolveItemVisibility(item)).toEqual({ client: true, history: false });
@@ -165,12 +165,12 @@ describe("resolveItemVisibility — structural types", () => {
 
 describe("resolveItemRole — deprecated shim", () => {
   it("maps agent-typed message → external", () => {
-    expect(resolveItemRole(baseItem({ agentType: "agent" }))).toBe("external");
+    expect(resolveItemRole(baseItem({ agentType: "primary" }))).toBe("external");
   });
 
   it("maps sub-agent-typed message → external (client+no history is still external per shim)", () => {
     // Shim returns "external" for client-visible items regardless of history.
-    expect(resolveItemRole(baseItem({ agentType: "sub-agent" }))).toBe("external");
+    expect(resolveItemRole(baseItem({ agentType: "sub" }))).toBe("external");
   });
 
   it("maps trace-typed message → trace", () => {

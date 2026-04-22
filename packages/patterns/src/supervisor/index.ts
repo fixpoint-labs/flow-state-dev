@@ -107,10 +107,10 @@ export interface SupervisorConfig<
   /** Schema for the final synthesized output. */
   outputSchema?: TOutputSchema;
 
-  /** Agent type for the default reviewer. Default: "sub-agent". */
+  /** Agent type for the default reviewer. Default: "sub". */
   reviewerAgentType?: AgentType;
 
-  /** Agent type for the default synthesizer. Default: "agent". */
+  /** Agent type for the default synthesizer. Default: "primary". */
   synthesizerAgentType?: AgentType;
 }
 
@@ -371,7 +371,7 @@ function buildDefaultReviewer(
       criteriaBlock || null,
       "Return output that exactly matches the required schema.",
     ],
-    agentType: agentType ?? "sub-agent",
+    agentType: agentType ?? "sub",
     user: (input) =>
       typeof input === "string" ? input : JSON.stringify(input),
   });
@@ -406,7 +406,7 @@ function buildDefaultSynthesizer(
     context: opts?.context,
     history: opts?.history,
     ...(opts?.uses ? { uses: opts.uses as any } : {}),
-    agentType: opts?.agentType ?? "agent",
+    agentType: opts?.agentType ?? "primary",
     prompt: [opts?.instructions, basePrompt],
     user: (input: unknown) => {
       if (typeof input === "string") return input;

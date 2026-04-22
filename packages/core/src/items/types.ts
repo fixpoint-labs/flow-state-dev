@@ -20,9 +20,9 @@ export type ItemVisibility = {
 /**
  * Identity classification for the generator that produced an item.
  *
- * - `"agent"`: a user-facing agent. Items flow to the client and into
+ * - `"primary"`: a user-facing agent. Items flow to the client and into
  *   conversation history.
- * - `"sub-agent"`: a task-executor under an agent. Items flow to the client
+ * - `"sub"`: a task-executor under a primary agent. Items flow to the client
  *   (for observability / live rendering) but are excluded from conversation
  *   history — sub-agents are deaf to the broader conversation by design.
  * - `"trace"`: items produced for observability only (devtool/replay). They
@@ -31,7 +31,7 @@ export type ItemVisibility = {
  * A generator that declares no `agentType` produces no auto-emitted items —
  * only its typed `block_output` flows to parents via graph edges.
  */
-export type AgentType = "agent" | "sub-agent" | "trace";
+export type AgentType = "primary" | "sub" | "trace";
 
 export type ItemProvenance = {
   blockName: string;

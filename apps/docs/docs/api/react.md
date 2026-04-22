@@ -71,7 +71,7 @@ session.error;         // Error | null
 
 // Identity-based filtering:
 session.getItemsByAgent("researcher");      // items stamped with agentName
-session.getItemsByAgentType("sub-agent");   // items stamped with agentType
+session.getItemsByAgentType("sub");         // items stamped with agentType
 
 // Container-scoped items:
 session.getOwnedItems(containerBlockInstanceId);
@@ -162,7 +162,7 @@ import { ItemRenderer } from "@flow-state-dev/react";
 
 ### `ItemsRenderer`
 
-Render a list of items. By default, items produced by generators with `agentType: "sub-agent"` are filtered out — they're available in `session.items` but hidden from the default conversation view so orchestrator chatter doesn't crowd the UI. Pass `showSubAgents` to surface them inline, or render a per-agent view via `session.getItemsByAgent(name)`.
+Render a list of items. By default, items produced by generators with `agentType: "sub"` are filtered out — they're available in `session.items` but hidden from the default conversation view so orchestrator chatter doesn't crowd the UI. Pass `showSubAgents` to surface them inline, or render a per-agent view via `session.getItemsByAgent(name)`.
 
 ```tsx
 import { ItemsRenderer } from "@flow-state-dev/react";

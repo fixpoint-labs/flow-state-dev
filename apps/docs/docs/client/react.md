@@ -73,7 +73,7 @@ session.error;         // Error state
 
 // Identity-based filtering:
 session.getItemsByAgent("researcher");     // items stamped with agentName
-session.getItemsByAgentType("sub-agent");  // items stamped with agentType
+session.getItemsByAgentType("sub");        // items stamped with agentType
 
 // Container-scoped items:
 session.getOwnedItems(containerBlockInstanceId);

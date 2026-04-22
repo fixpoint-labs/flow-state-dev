@@ -16,8 +16,8 @@ export interface SynthesizerConfig<
   objectives?: string | string[];
   outputSchema?: TOutputSchema;
   /**
-   * Identity for emitted items. Default: `"agent"` — synthesis output is
-   * user-facing by convention. Override to `"sub-agent"` or `"trace"` when
+   * Identity for emitted items. Default: `"primary"` — synthesis output is
+   * user-facing by convention. Override to `"sub"` or `"trace"` when
    * using this factory as an internal pipeline step.
    */
   agentType?: AgentType;
@@ -49,7 +49,7 @@ export function synthesizer<
     name: config.name,
     model: config.model ?? "preset/fast",
     outputSchema,
-    agentType: config.agentType ?? "agent",
+    agentType: config.agentType ?? "primary",
     prompt: [
       "You are a synthesis assistant.",
       "Combine multiple intermediate artifacts into one coherent, non-redundant final output.",

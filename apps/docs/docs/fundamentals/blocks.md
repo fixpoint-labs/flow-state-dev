@@ -48,7 +48,7 @@ const agent = generator({
   history: true,
   user: (input) => input.message,
   tools: [searchTool, createArtifactTool],
-  agentType: "agent",
+  agentType: "primary",
 });
 ```
 
@@ -64,8 +64,8 @@ Each generator declares its identity via `agentType`, which governs where its au
 
 | `agentType` | Client UI | LLM History | DevTool |
 |-------------|:--:|:--:|:--:|
-| `"agent"` | ✓ | ✓ | ✓ |
-| `"sub-agent"` | ✓ | — | ✓ |
+| `"primary"` | ✓ | ✓ | ✓ |
+| `"sub"` | ✓ | — | ✓ |
 | `"trace"` | — | — | ✓ |
 | *unset* | no auto-emission — only `block_output` flows via graph edges |
 
@@ -73,11 +73,11 @@ Set `agentType` explicitly on every generator that should stream. There is no po
 
 ```ts
 // User-facing chatbot. Messages + reasoning go to UI and enter history.
-const chatbot = generator({ agentType: "agent", /* ... */ });
+const chatbot = generator({ agentType: "primary", /* ... */ });
 
 // Worker inside a supervisor pattern. Visible to the user for observability,
 // but its output does not pollute the orchestrator's next-turn history.
-const worker = generator({ agentType: "sub-agent", /* ... */ });
+const worker = generator({ agentType: "sub", /* ... */ });
 
 // Background observer. Items appear in the devtool stream for debugging;
 // they never reach the client or the LLM.
@@ -98,10 +98,10 @@ Optionally, set `agentName` to give the identity a stable label — useful for p
 ```ts
 // Collaborative: all parallel instances share one identity.
 // selectForContext({ agentName: "researcher" }) returns them all.
-generator({ agentType: "sub-agent", agentName: "researcher", /* ... */ });
+generator({ agentType: "sub", agentName: "researcher", /* ... */ });
 
 // Isolated: each instance has a unique identity.
-generator({ agentType: "sub-agent", agentName: `researcher-${id}`, /* ... */ });
+generator({ agentType: "sub", agentName: `researcher-${id}`, /* ... */ });
 ```
 
 `agentName` defaults to the block's `name` when omitted.

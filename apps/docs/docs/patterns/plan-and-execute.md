@@ -178,18 +178,18 @@ planAndExecute({
   userResources?: Record<string, any>;
   projectResources?: Record<string, any>;
 
-  // Identity for the internal planner generator. Default: "sub-agent".
+  // Identity for the internal planner generator. Default: "sub".
   // The default planner is a utility decomposer that does not currently
   // accept agentType; this knob applies when a custom `planner` is supplied.
-  plannerAgentType?: "agent" | "sub-agent" | "trace";
+  plannerAgentType?: "primary" | "sub" | "trace";
 
-  // Identity for the internal step executor generator. Default: "sub-agent" —
+  // Identity for the internal step executor generator. Default: "sub" —
   // executor chatter stays out of the orchestrator's conversation history.
-  stepExecutorAgentType?: "agent" | "sub-agent" | "trace";
+  stepExecutorAgentType?: "primary" | "sub" | "trace";
 
-  // Identity for the final synthesizer generator. Default: "agent" —
+  // Identity for the final synthesizer generator. Default: "primary" —
   // synthesis is the user-facing answer for the plan.
-  synthesizerAgentType?: "agent" | "sub-agent" | "trace";
+  synthesizerAgentType?: "primary" | "sub" | "trace";
 });
 ```
 
