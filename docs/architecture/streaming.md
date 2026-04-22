@@ -49,9 +49,9 @@ Items are the canonical persisted artifacts. Their type determines audience rout
 
 For `block_output`: When the item has `toolCall` metadata (legacy tool invocation by a generator), the output enters LLM context as the tool result. Otherwise, it's internal/devtools only. New tool invocations emit `block_tool_output` items instead.
 
-### Visibility Flags
+### Visibility Resolution
 
-Items carry `client?: boolean` and `history?: boolean` flags that control whether they're sent to connected clients and whether they enter LLM conversation history. When unset, `resolveItemVisibility()` resolves from per-type defaults in `ITEM_TYPE_DEFAULTS`. Structural items (`block_output`, `router_decision`, `state_snapshot`) default to both false — they're devtool-only.
+`resolveItemVisibility(item)` returns `{ client, history }` as a pure function of `(item.type, item.agentType)`. There are no per-item override flags. Conversational types (`message`, `reasoning`, `block_tool_output`) inherit visibility from the producing generator's `agentType` (`"primary"`, `"sub"`, `"trace"`). Structural items have fixed per-type visibility — `block_output`, `router_decision`, `state_snapshot`, and `block_debug` are devtool-only.
 
 ### Container Ownership (`ownedBy`)
 

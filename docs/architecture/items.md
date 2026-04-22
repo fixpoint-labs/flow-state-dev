@@ -192,7 +192,7 @@ Most new UI needs can be expressed via `component` items with a registered rende
 If a new type is genuinely needed:
 
 1. **Define the schema** in `packages/core/src/items/types.ts` and add it to the `OutputItem` union.
-2. **Decide visibility** — is it conversational (identity-governed) or structural? If structural, add it to `STRUCTURAL_TYPE_DEFAULTS` in `packages/core/src/items/resolve-role.ts` with fixed `client` / `history` values. If conversational, add it to `CONVERSATIONAL_TYPES` so `agentType` governs visibility.
+2. **Decide visibility** — is it conversational (identity-governed) or structural? If structural, add it to `STRUCTURAL_TYPE_DEFAULTS` in `packages/core/src/items/resolve-visibility.ts` with fixed `client` / `history` values. If conversational, add it to `CONVERSATIONAL_TYPES` so `agentType` governs visibility.
 3. **Add a registry row** to the table in this document — all columns required.
 4. **Set persistence** — `transient: true` at emission for stream-only items.
 5. **Define kitchen sink rendering** — register a built-in fallback in `ItemRenderer.ts`, add to `NON_RENDERABLE_TYPES`, or accept the JSON dev fallback. Don't leave it implicit.

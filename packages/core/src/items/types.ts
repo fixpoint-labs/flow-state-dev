@@ -3,12 +3,6 @@ import type { Content } from "./content";
 export type ItemStatus = "in_progress" | "completed" | "incomplete" | "failed";
 
 /**
- * @deprecated Legacy visibility role. Retained only for the deprecated
- * `resolveItemRole()` shim. Do not use in new code.
- */
-export type ItemRole = "external" | "internal" | "trace";
-
-/**
  * Resolved visibility of an item: whether it should be sent to the client
  * and whether it should be included in LLM conversation history.
  */

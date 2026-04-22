@@ -1,14 +1,11 @@
 /**
- * Tests for item visibility under the FIX-391 identity model.
- *
- * Visibility is a pure function of `(item.type, item.agentType)` resolved by
- * `resolveItemVisibility()`. Per-item `client`/`history` overrides no longer
- * exist; legacy `itemRole` / `trace` fields are removed. Generator identity
- * (`agentType` + `agentName`) governs conversational item visibility;
- * structural items have fixed per-type visibility.
+ * Tests for `resolveItemVisibility()` — the pure function that derives
+ * `{ client, history }` from `(item.type, item.agentType)`. Generator
+ * identity governs conversational items; structural items have fixed
+ * per-type visibility.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { resolveItemRole, resolveItemVisibility } from "@flow-state-dev/core/items";
+import { resolveItemVisibility } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
 
 function baseItem(overrides: Partial<OutputItem> = {}): OutputItem {
@@ -160,29 +157,5 @@ describe("resolveItemVisibility — structural types", () => {
       message: "Working…",
     } as unknown as Partial<OutputItem>);
     expect(resolveItemVisibility(item)).toEqual({ client: true, history: false });
-  });
-});
-
-describe("resolveItemRole — deprecated shim", () => {
-  it("maps agent-typed message → external", () => {
-    expect(resolveItemRole(baseItem({ agentType: "primary" }))).toBe("external");
-  });
-
-  it("maps sub-agent-typed message → external (client+no history is still external per shim)", () => {
-    // Shim returns "external" for client-visible items regardless of history.
-    expect(resolveItemRole(baseItem({ agentType: "sub" }))).toBe("external");
-  });
-
-  it("maps trace-typed message → trace", () => {
-    expect(resolveItemRole(baseItem({ agentType: "trace" }))).toBe("trace");
-  });
-
-  it("maps block_output → trace", () => {
-    const item = baseItem({
-      type: "block_output",
-      blockName: "b",
-      output: {},
-    } as unknown as Partial<OutputItem>);
-    expect(resolveItemRole(item)).toBe("trace");
   });
 });

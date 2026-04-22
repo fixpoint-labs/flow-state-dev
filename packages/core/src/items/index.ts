@@ -22,7 +22,6 @@ export type {
   ContextItem,
   ErrorItem,
   ItemProvenance,
-  ItemRole,
   ItemStatus,
   ItemVisibility,
   MessageItem,
@@ -38,7 +37,7 @@ export type {
   StepErrorItem
 } from "./types";
 
-export { resolveItemVisibility, resolveItemRole, ITEM_TYPE_DEFAULTS } from "./resolve-role";
+export { resolveItemVisibility } from "./resolve-visibility";
 
 export type {
   ContentPartAddedEvent,
