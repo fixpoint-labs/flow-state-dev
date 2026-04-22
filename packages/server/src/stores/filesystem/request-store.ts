@@ -37,6 +37,12 @@ export class FilesystemRequestStore implements RequestStore {
   private readonly eventWriteQueued = new Set<string>();
   /** Accumulates new events between coalesced writes for incremental persistence. */
   private readonly pendingNewEvents = new Map<string, RequestStreamEvent[]>();
+  /**
+   * Tracks the most recent persistence error per request. flushEvents drains
+   * the queue then throws (and clears) any captured error so callers can
+   * propagate persist failures instead of silently swallowing them (FIX-399).
+   */
+  private readonly lastEventError = new Map<string, Error>();
 
   constructor(options: FilesystemRequestStoreOptions) {
     this.rootDir = options.rootDir;
@@ -174,6 +180,11 @@ export class FilesystemRequestStore implements RequestStore {
     if (queue !== undefined) {
       await queue.drain();
     }
+    const lastError = this.lastEventError.get(requestId);
+    if (lastError !== undefined) {
+      this.lastEventError.delete(requestId);
+      throw lastError;
+    }
   }
 
   async getEvents(requestId: string): Promise<RequestStreamEvent[]> {
@@ -196,6 +207,11 @@ export class FilesystemRequestStore implements RequestStore {
       queue = createSerializedWriteQueue({
         label: `request-events:${requestId}`,
         onError: (err) => {
+          // Capture so flushEvents can re-throw to the emitter (FIX-399).
+          // Still log here for ops visibility — the emitter's onPersistError
+          // hook is the structured propagation channel; this is the safety net
+          // for callers that haven't wired the hook.
+          this.lastEventError.set(requestId, err);
           console.error(
             `[flow-state] event persistence failed for ${requestId}`,
             err
