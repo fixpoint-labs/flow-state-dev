@@ -43,33 +43,46 @@ The reference table below shows where each item type appears by default. Two thi
 - **Client** means the client receives and can render it. Most items are client-visible.
 - **LLM History** means the item enters conversation history for future model calls. Only content-bearing types (`message`, `reasoning`, `block_tool_output`) do this. Other client-visible types like `component` and `status` don't feed into model context — they're purely for the UI.
 
-### Changing visibility
+### How visibility is resolved
 
-Every item has two independent visibility flags you can override:
+Visibility is a pure function of `(item.type, item.agentType)` computed by `resolveItemVisibility()`:
 
-| Flag | What it controls |
-|------|-----------------|
-| `client` | Whether the item is sent to connected clients |
-| `history` | Whether the item enters LLM conversation history |
+- **Conversational types** (`message`, `reasoning`, `block_tool_output`) inherit visibility from the producing generator's `agentType`.
+- **Structural types** (`component`, `status`, `block_output`, etc.) have fixed per-type visibility.
+- An `agentType: "trace"` item is always `{ client: false, history: false }` regardless of type — trace is observability-only.
 
-Each item type has sensible defaults — `message` defaults to both, `component` defaults to client-only, `block_output` defaults to neither (devtool-only). You can override per-block or per-item.
+### Generator identity controls conversational visibility
 
-Generators use `emitAudience` to control who sees their output, and `emit` for per-type suppression:
+Generators declare an identity via `agentType`. The framework uses that identity to route the auto-emitted messages and reasoning:
 
 ```ts
-const helper = generator({
-  name: "background-analysis",
-  model: "preset/fast",
-  prompt: "Analyze the user's intent...",
-  emitAudience: "history", // LLM sees output, user doesn't
-  emit: { reasoning: false }, // suppress reasoning items
-});
+// User-facing agent — on the client stream, in conversation history.
+const chatbot = generator({ agentType: "agent", /* ... */ });
+
+// Sub-agent — visible to the client (live observability), but its output
+// does NOT enter history.
+const worker = generator({ agentType: "sub-agent", /* ... */ });
+
+// Devtool-only observer — not on the client stream, not in history.
+const memoryObserver = generator({ agentType: "trace", /* ... */ });
+
+// No agentType → the generator produces no auto-emitted items. Its typed
+// `block_output` still flows to parents via graph edges.
+const classifier = generator({ outputSchema: z.enum(["A", "B"]), /* ... */ });
 ```
 
-Direct emit methods accept per-call visibility overrides:
+See [Generator identity](../streaming/items#generator-identity) for the full model — multi-peer agents, collaborative vs. isolated parallel work, and the `selectForContext` escape hatch for custom prompt context.
+
+### Handler-emitted items
+
+Handlers don't declare `agentType` — but their emit helpers accept optional identity:
 
 ```ts
-ctx.emitMessage("internal note", { client: false, history: true });
+ctx.emitMessage("Analysis complete.");
+// Implicit agent-equivalent visibility: on the client, enters history.
+
+ctx.emitMessage("Debug observation", { agentType: "trace" });
+// Observability-only: devtool sees it, users and the LLM don't.
 ```
 
 ## Persistence

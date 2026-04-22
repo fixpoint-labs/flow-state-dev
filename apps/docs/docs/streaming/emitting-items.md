@@ -22,6 +22,24 @@ const notify = handler({
 
 Most of the time you won't call `emitMessage()` directly — generators handle message emission as the model streams. Use it in handlers when you need to inject a visible message into the conversation outside of a generator.
 
+### Stamping identity on handler emits
+
+Handler-emitted messages default to agent-equivalent visibility (on the client, in conversation history). To mark a message as observability-only (devtool visible, hidden from user and LLM) or tie it to a sub-agent identity, pass `agentType` / `agentName`:
+
+```ts
+ctx.emitMessage("Debug: classifier chose route A", {
+  agentType: "trace",
+  agentName: "classifier",
+});
+
+ctx.emitMessage("Background audit complete.", {
+  agentType: "sub-agent",
+  agentName: "auditor",
+});
+```
+
+Without identity options, the item is client- and history-visible — the ergonomic default for handlers that speak directly to the user. See [Generator identity](items#generator-identity) for the full model.
+
 ## Status messages
 
 `ctx.emitStatus()` sends a transient progress indicator. It appears briefly in the UI during execution but is never persisted and doesn't enter LLM history. Use it to tell the user what's happening during long operations.

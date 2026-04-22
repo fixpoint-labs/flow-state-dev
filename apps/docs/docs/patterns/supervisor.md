@@ -189,6 +189,15 @@ supervisor({
   // Output schema for the final synthesized result.
   // Passed through to the synthesizer block.
   outputSchema?: ZodSchema;
+
+  // Identity assigned to the internal reviewer generator.
+  // Default: "sub-agent". Override to "agent" if the reviewer's output
+  // should appear in the top-level conversation stream.
+  reviewerAgentType?: "agent" | "sub-agent" | "trace";
+
+  // Identity assigned to the internal synthesizer generator.
+  // Default: "agent" — synthesis is the user-facing final answer.
+  synthesizerAgentType?: "agent" | "sub-agent" | "trace";
 });
 ```
 

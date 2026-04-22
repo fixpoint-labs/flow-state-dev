@@ -60,10 +60,10 @@ const myGenerator = generator({
 });
 ```
 
-**Emit config:**
+**Identity config:**
 
-- `emitAudience?: "client" | "history" | "trace"` — Generator-only. Sets the default audience for all items the generator emits. `"client"` = sent to both client and LLM history (default for main-phase generators). `"history"` = enters LLM history but hidden from client UI. `"trace"` = devtool-only. Precedence (high → low): per-type `emit` value → `emitAudience` → position-based default (main phase → `"client"`, tool-call / work phase → `"trace"`).
-- `emit?: false | { reasoning?: boolean; messages?: boolean; tools?: boolean }` — Control which items the generator emits. `false` suppresses all emissions (block still runs). The object form overrides per-type: `true` = block default, `false` = suppress. When `messages: false` but tools are present, streaming is still used for tool call status events.
+- `agentType?: "agent" | "sub-agent" | "trace"` — Declares the generator's identity. Governs visibility of auto-emitted conversational items (messages, reasoning, tool outputs). `"agent"` = user-facing (client + history). `"sub-agent"` = task-executor (client, not history). `"trace"` = observability-only (neither). When **unset**, the generator performs no auto-emission — only its typed `block_output` flows via graph edges. No position-inferred default; every generator declares.
+- `agentName?: string` — Stable name stamped on every emitted item. Defaults to the block's `name` when `agentType` is set. Generators that share an `agentName` represent the same logical agent; distinct names stay isolated. Used by the client for per-agent rendering and by `items.selectForContext({ agentName })` for scoped context assembly.
 
 **Search config:**
 

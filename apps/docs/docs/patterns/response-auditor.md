@@ -193,7 +193,8 @@ const detect = generator({
   }),
   prompt: "Analyze the tone of the AI response. Flag condescending, dismissive, or unprofessional language.",
   user: (input) => `User: ${input.userInput}\n\nAI: ${input.response}`,
-  emit: { messages: false, reasoning: false, tools: false },
+  // No `agentType` — the generator runs silently and returns its typed
+  // `block_output` for the format handler to consume.
 });
 
 const format = handler({
