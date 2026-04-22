@@ -1,4 +1,4 @@
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { AgentType, OutputItem } from "@flow-state-dev/core/items";
 
 /**
  * Builds item-focused query helpers for deterministic test assertions.
@@ -65,6 +65,12 @@ export function testItems(items: OutputItem[]) {
     },
     main(): OutputItem[] {
       return allItems.filter((item) => item.provenance.phase === "main");
+    },
+    byAgent(agentName: string): OutputItem[] {
+      return allItems.filter((item) => item.agentName === agentName);
+    },
+    byAgentType(agentType: AgentType): OutputItem[] {
+      return allItems.filter((item) => item.agentType === agentType);
     }
   };
 }

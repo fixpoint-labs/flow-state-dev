@@ -64,12 +64,19 @@ const session = useSession(flow.activeSessionId, {
 
 // Available:
 session.detail;        // SessionDetail object
-session.items;         // All items
+session.items;         // All items, including sub-agent items
 session.messages;      // Message items only
 session.blockOutputs;  // Block output items only
 session.isStreaming;   // Active request in progress
 session.isLoading;     // Initial load in progress
 session.error;         // Error state
+
+// Identity-based filtering:
+session.getItemsByAgent("researcher");     // items stamped with agentName
+session.getItemsByAgentType("sub");        // items stamped with agentType
+
+// Container-scoped items:
+session.getOwnedItems(containerBlockInstanceId);
 
 // Actions:
 await session.sendAction("chat", { message: "Hello!" });
@@ -120,8 +127,12 @@ const { items, status, isStreaming } = useRequestStream({
 ```tsx
 import { ItemRenderer, ItemsRenderer } from "@flow-state-dev/react";
 
-// Render all items
+// Render all items. Sub-agent items are filtered out of the default
+// conversation view — pass `showSubAgents` to surface them inline.
 <ItemsRenderer items={session.items} />
+
+// Show sub-agent items in the main stream (e.g., for a debug view).
+<ItemsRenderer items={session.items} showSubAgents />
 
 // Render a single item
 <ItemRenderer item={item} />

@@ -51,13 +51,13 @@ interface BlockContext {
     | { status: "failed"; error: Error };
 
   // Item emission
-  emitMessage(text: string, options?: { client?: boolean; history?: boolean }): void;
-  emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; client?: boolean; history?: boolean }): void;
+  emitMessage(text: string, options?: { agentType?: AgentType; agentName?: string }): void;
+  emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; agentType?: AgentType; agentName?: string }): void;
   emitStatus(message: string, options?: { blocked?: boolean; backgroundTasks?: number }): void;
 }
 ```
 
-Each emitted item has two visibility flags — `client` (sent to the UI) and `history` (included in LLM context) — that default per item type. Generators control defaults via `emitAudience` and can suppress per-type via `emit`. See the [item visibility](#item-visibility) section for the full model.
+Each emitted item's visibility is derived from `(item.type, item.agentType)` via `resolveItemVisibility()`. Generators declare identity by setting `agentType` on their config; conversational items (message, reasoning, block_tool_output) inherit visibility from that identity, structural items have fixed per-type defaults. See the [item visibility](#item-visibility) section for the full model.
 
 Blocks are **silent by default** — if a block doesn't explicitly emit via `ctx` methods, it produces nothing visible to the client or LLM.
 
@@ -191,7 +191,7 @@ const chatGenerator = generator({
   history: true,
   user: (input) => input.message,
   tools: [searchTool, calculatorTool],
-  emit: { reasoning: true },
+  agentType: "primary",
 });
 ```
 
@@ -223,13 +223,13 @@ The `history` slot supports additional shorthands: `true` auto-fetches session h
 
 ### Automatic Emissions
 
-Generators auto-emit items based on model output:
+Generators auto-emit items based on model output — but only when `agentType` is set:
 - Reasoning/thinking → `reasoning` item
 - Text response → `message` item (role: "assistant"), streamed via `content.delta`
 - Tool invocation → `block_output` with `toolCall` (two-phase: in_progress → completed)
 - Final return value → `block_output` (internal/devtools only)
 
-Suppress with `emit: { reasoning: false, messages: false, tools: false }`.
+To run a generator silently (no session items, only `block_output` via graph edges), omit `agentType`. See [Item Visibility](#item-visibility) for the identity model.
 
 ## Sequencer
 
@@ -340,69 +340,57 @@ pipeline.then((output, ctx) => ({ query: output.text }), searchBlock);
 - Ambiguous same-precedence collisions raise `AmbiguousBlockNameError`
 - Runtime identity uses `blockInstanceId`, not `name`
 
-## Item Visibility Roles
+## Item Visibility
 
-Every emitted item has a visibility `role` that controls how it participates in the system:
+Visibility is a pure function of `(item.type, item.agentType)` computed by `resolveItemVisibility()`. There are no per-item `client` / `history` overrides — identity is the lever.
 
-| Role | In LLM Context | In Client UI | In DevTool/Observability |
-|--|--|--|--|
-| `external` | Yes | Yes | Yes |
-| `internal` | Yes | No | Yes |
-| `trace` | No | No | Yes |
+### Generator identity (`agentType`)
 
-`client` and `history` are independent — you can have items that go to the client but not LLM history (components, status), or to history but not the client (internal analysis).
+Every generator declares one of four stances:
 
-To suppress an item type entirely (no item at all, not even for observability), set `emit: false` on a generator or its per-type key: `emit: { reasoning: false }`.
+| `agentType` | Client stream | LLM history | DevTool |
+|-------------|:-------------:|:-----------:|:-------:|
+| `"primary"` | ✓ | ✓ | ✓ |
+| `"sub"`     | ✓ | — | ✓ |
+| `"trace"`   | — | — | ✓ |
+| *unset*     | *no auto-emission* — only `block_output` flows via graph edges |
 
-### Position defaults
-
-The position of a block in the execution graph determines the default audience for items it emits:
-
-- **Main phase** (the primary generator chain of a request): defaults to `"client"` — items go to both client and LLM history.
-- **Tool call** (a generator executed as a tool by another generator): defaults to `"trace"` — items are devtool-only.
-- **Work phase** (background / scoped work): defaults to `"trace"` — items are devtool-only.
-
-A generator's `emitAudience` overrides the position-based default:
+No position-inferred default. Every generator declares its own identity.
 
 ```ts
 const researcher = generator({
   name: "researcher",
-  emitAudience: "history", // findings feed the next turn's LLM context, but users don't see them
+  agentType: "sub",           // visible to the user for observability,
+  agentName: "researcher",    // not inherited by the orchestrator's history.
   prompt: "Analyze and summarize.",
   model: "anthropic:claude-sonnet-4-6",
 });
 ```
 
-### Emit config (generators)
+Structural item types (`component`, `status`, `container`, `state_change`, `resource_change`, `error`, `step_error`, `block_output`, `router_decision`, `state_snapshot`, `block_debug`) have fixed per-type visibility. `agentType` on a structural item is metadata for filtering / rendering, not visibility — except `"trace"`, which always forces `{ client: false, history: false }` regardless of type.
 
-Generators can override visibility per item type via `emit`, and set the default audience via `emitAudience`:
+### `agentName`
 
-```ts
-emitAudience?: "client" | "history" | "trace";
-emit?: false | {
-  reasoning?: boolean;
-  messages?: boolean;
-  tools?: boolean;
-};
-```
-
-- `emitAudience` (generator-only) sets the default audience for all items the generator emits. `"client"` means items go to both client and LLM history (the default for main-phase generators). `"history"` means items enter LLM history but are hidden from the client UI. `"trace"` means items are devtool-only.
-- `emit: false` suppresses all item types.
-- The object form overrides per-type. `true` = use the block default, `false` = suppress that type.
-
-Precedence (highest to lowest):
-
-1. Per-type emit value: `emit: { messages: false }`
-2. `emitAudience`: `emitAudience: "history"`
-3. Position-based default (main → both true, tool call / work → both false)
+Stable name stamped on every emitted item. Defaults to the block's `name`. Generators that share an `agentName` represent one logical agent (collaborative parallel work); distinct names stay isolated.
 
 ### Emission helpers
 
-- `ctx.emitMessage(text | content[], options?)` — the primary way to emit assistant-visible content. Accepts optional `{ client?, history? }` overrides.
-- `ctx.emitComponent(component, data, options?)` — UI components. Accepts optional `{ key?, client?, history? }`.
-- `ctx.emitStatus(message, options?)` — transient progress indicators. Always `history: false`; client defaults to `true`.
+- `ctx.emitMessage(text | content[], options?)` — the primary way to emit assistant-visible content. Accepts optional `{ key?, agentType?, agentName? }`. Without identity, a handler-emitted message defaults to agent-equivalent visibility (on client, in history).
+- `ctx.emitComponent(component, data, options?)` — UI components. Accepts optional `{ key?, agentType?, agentName? }`.
+- `ctx.emitStatus(message, options?)` — transient progress indicators. Structural; identity does not affect visibility.
 
-To emit a message hidden from the UI but kept in LLM history, use `ctx.emitMessage("text", { client: false })`.
+Examples:
+
+```ts
+ctx.emitMessage("Analysis complete.");
+// Agent-equivalent visibility (client + history).
+
+ctx.emitMessage("Debug: classifier chose route A", { agentType: "trace", agentName: "classifier" });
+// Devtool-only observation — hidden from user and LLM.
+
+ctx.emitMessage("Background audit complete.", { agentType: "sub", agentName: "auditor" });
+// Visible live but excluded from conversation history.
+```
 
 ## Canonical Authority
 

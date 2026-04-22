@@ -22,7 +22,7 @@ const agent = generator({
   history: true,
   user: (input) => input.message,
   tools: [readDoc, writeDoc],
-  emit: { reasoning: true, messages: true },
+  agentType: "primary",
 });
 ```
 
@@ -112,6 +112,8 @@ export default defineFlow({
 - `utility.intentClassifier(config)` — Generator factory for bounded intent classification with required category descriptions and default `{ category, confidence, reasoning? }` output contract
 - `utility.intentRouter(config)` — Sequencer factory that composes `intentClassifier` + `router` into classification-driven branching with category descriptions, handlers, optional `confidenceThreshold`, and optional fallback routing
 - `utility.memoryExtractor(config)` — Generator factory for stateless durable-memory extraction with a default `{ memories: Array<{ type, content, confidence?, source? }> }` output contract (`type` ∈ `fact | preference | constraint | decision`)
+
+Every generator-based utility above accepts an optional `agentType` (`"primary" | "sub" | "trace"`) to control whether output is surfaced to the client/history. `synthesizer` defaults to `"primary"`; all others default to unset (silent — output flows only via graph edges). Set explicitly to opt in when the utility should be user-facing.
 
 **Resources:**
 - `defineResource(config)` — Portable resource definition (also usable for block-level resource declarations via `sessionResources`, `userResources`, `projectResources`)

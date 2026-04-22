@@ -13,7 +13,7 @@
  */
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import type { BlockDefinition, DefinedResource } from "@flow-state-dev/core/types";
-import type { GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
+import type { AgentType, GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   blackboardControlSchema,
@@ -101,6 +101,12 @@ export interface BlackboardConfig<
   /** Capabilities to install on default blocks (controller, synthesizer). */
   uses?: UsesSlot;
 
+  /** Agent type for the default controller. Default: "sub". */
+  controllerAgentType?: AgentType;
+
+  /** Agent type for the default synthesizer. Default: "primary". */
+  synthesizerAgentType?: AgentType;
+
   /**
    * Final synthesis step — receives `{ blackboard, iterations, history }`.
    * Default: generator that reads the blackboard and produces a coherent result.
@@ -124,6 +130,7 @@ function buildDefaultController(config: {
   context?: GeneratorSlot<any, any>;
   uses?: UsesSlot;
   instructions?: InstructionsSlot;
+  agentType?: AgentType;
 }) {
   return generator({
     name: `${config.name}-controller`,
@@ -131,7 +138,7 @@ function buildDefaultController(config: {
     outputSchema: controllerOutputSchema,
     sessionResources: { blackboard: config.blackboardResource },
     sequencerStateSchema: blackboardControlSchema,
-    emit: { messages: false, reasoning: false },
+    agentType: config.agentType ?? "sub",
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.uses ? { uses: config.uses as any } : {}),
     prompt: async (_input, ctx) => {
@@ -187,6 +194,7 @@ function buildDefaultSynthesizer(config: {
   uses?: UsesSlot;
   outputSchema?: ZodTypeAny;
   instructions?: InstructionsSlot;
+  agentType?: AgentType;
 }) {
   const basePrompt = [
     "You are a synthesis assistant.",
@@ -199,7 +207,7 @@ function buildDefaultSynthesizer(config: {
     name: `${config.name}-synthesizer`,
     model: config.model ?? "openai/gpt-5.4-mini",
     sessionResources: { blackboard: config.blackboardResource },
-    emit: { messages: true, reasoning: false },
+    agentType: config.agentType ?? "primary",
     ...(config.outputSchema ? { outputSchema: config.outputSchema } : {}),
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.uses ? { uses: config.uses as any } : {}),
@@ -266,6 +274,7 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       context: config.context,
       uses: config.uses,
       instructions: config.instructions,
+      agentType: config.controllerAgentType,
     });
 
   // 3. Record decision: stores controller output in sequencer state and
@@ -365,6 +374,7 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
           uses: config.uses,
           outputSchema: config.outputSchema,
           instructions: config.instructions,
+          agentType: config.synthesizerAgentType,
         });
 
   // 8. Assemble pipeline

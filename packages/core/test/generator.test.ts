@@ -447,6 +447,7 @@ describe("generator streaming", () => {
     let receivedOutputSchema: unknown = "NOT_CALLED";
     const block = generator({
       name: "stream-schema",
+      agentType: "primary",
       model: "mock-model",
       prompt: "Return text"
     });
@@ -479,6 +480,7 @@ describe("generator streaming", () => {
     const emitted: Array<{ type: string; item?: any }> = [];
     const block = generator({
       name: "stream-tool-delta",
+      agentType: "primary",
       model: "mock-model",
       prompt: "Use tools"
     });
@@ -523,6 +525,7 @@ describe("generator streaming", () => {
     const emitted: Array<{ type: string; item?: any }> = [];
     const block = generator({
       name: "stream-tool-result",
+      agentType: "primary",
       model: "mock-model",
       prompt: "Use tools"
     });
@@ -562,26 +565,21 @@ describe("generator streaming", () => {
     expect(toolResultItems[0].item.result).toEqual({ found: true });
   });
 
-  it("suppresses tool_input_start status items when emit.tools is false", async () => {
+  it("does not emit any items when agentType is unset", async () => {
     const emitted: Array<{ type: string; item?: any }> = [];
     const block = generator({
-      name: "suppress-tool-input",
+      name: "no-identity",
       model: "mock-model",
-      prompt: "Use tools",
-      emit: { tools: false }
+      prompt: "Use tools"
     });
 
     const ctx = createMockContext({
       resolveModel: () => ({
         modelId: "mock-model",
         async generate() {
-          return { text: "fallback" };
+          return { text: "result" };
         },
         async *stream() {
-          yield {
-            type: "tool_input_start" as const,
-            toolInput: { toolName: "web_search", providerExecuted: true }
-          };
           yield { type: "text_delta" as const, textDelta: "result" };
           yield {
             type: "finish" as const,
@@ -598,103 +596,20 @@ describe("generator streaming", () => {
 
     await block.run({ value: "x" }, ctx);
 
-    const statusItems = emitted.filter(
-      e => e.type === "item.added" && e.item?.type === "status" && e.item?.message?.includes("web_search")
+    const convItems = emitted.filter(
+      e => e.type === "item.added" &&
+           ["message", "reasoning", "tool_call_progress", "status", "source"].includes(e.item?.type)
     );
-    expect(statusItems.length).toBe(0);
+    expect(convItems.length).toBe(0);
   });
 
-  it("suppresses tool_call_delta items when emit.tools is false", async () => {
-    const emitted: Array<{ type: string; item?: any }> = [];
-    const block = generator({
-      name: "suppress-tool-delta",
-      model: "mock-model",
-      prompt: "Use tools",
-      emit: { tools: false }
-    });
-
-    const ctx = createMockContext({
-      resolveModel: () => ({
-        modelId: "mock-model",
-        async generate() {
-          return { text: "fallback" };
-        },
-        async *stream() {
-          yield {
-            type: "tool_call_delta" as const,
-            toolCallDelta: { toolCallId: "tc_1", toolName: "search", argsDelta: '{"q":"test"}' }
-          };
-          yield { type: "text_delta" as const, textDelta: "result" };
-          yield {
-            type: "finish" as const,
-            fullResult: { text: "result" }
-          };
-        }
-      }),
-      response: {
-        emit: (event: any) => {
-          emitted.push(event);
-        }
-      }
-    });
-
-    await block.run({ value: "x" }, ctx);
-
-    const toolCallItems = emitted.filter(
-      e => e.type === "item.added" && e.item?.type === "tool_call_progress"
-    );
-    expect(toolCallItems.length).toBe(0);
-  });
-
-  it("suppresses tool_result items when emit.tools is false", async () => {
-    const emitted: Array<{ type: string; item?: any }> = [];
-    const block = generator({
-      name: "suppress-tool-result",
-      model: "mock-model",
-      prompt: "Use tools",
-      emit: { tools: false }
-    });
-
-    const ctx = createMockContext({
-      resolveModel: () => ({
-        modelId: "mock-model",
-        async generate() {
-          return { text: "fallback" };
-        },
-        async *stream() {
-          yield {
-            type: "tool_result" as const,
-            toolResult: { toolCallId: "tc_1", toolName: "search", result: { found: true } }
-          };
-          yield { type: "text_delta" as const, textDelta: "done" };
-          yield {
-            type: "finish" as const,
-            fullResult: { text: "done" }
-          };
-        }
-      }),
-      response: {
-        emit: (event: any) => {
-          emitted.push(event);
-        }
-      }
-    });
-
-    await block.run({ value: "x" }, ctx);
-
-    const toolResultItems = emitted.filter(
-      e => e.type === "item.added" && e.item?.type === "tool_call_progress"
-    );
-    expect(toolResultItems.length).toBe(0);
-  });
-
-  it("still emits text content when emit.tools is false", async () => {
+  it("still streams text through to schema validation when agentType is set", async () => {
     const emitted: Array<{ type: string; item?: any; delta?: string }> = [];
     const block = generator({
       name: "text-still-flows",
+      agentType: "primary",
       model: "mock-model",
-      prompt: "Use tools",
-      emit: { tools: false }
+      prompt: "Use tools"
     });
 
     const ctx = createMockContext({
@@ -728,14 +643,13 @@ describe("generator streaming", () => {
 
     await block.run({ value: "x" }, ctx);
 
-    // Tool call events should be suppressed
+    // Tool call events and text content both emit under agentType: "primary".
     const toolItems = emitted.filter(
       e => e.type === "item.added" && e.item?.type === "tool_call_progress"
     );
-    expect(toolItems.length).toBe(0);
+    expect(toolItems.length).toBeGreaterThan(0);
 
-    // Text content should still flow
     const contentDeltas = emitted.filter(e => e.type === "content.delta");
-    expect(contentDeltas.length).toBe(1);
+    expect(contentDeltas.length).toBeGreaterThan(0);
   });
 });

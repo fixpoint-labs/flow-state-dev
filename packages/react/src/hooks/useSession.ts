@@ -75,6 +75,10 @@ export type SessionView = {
   readonly items: OutputItem[];
   /** Returns items owned by a container scope (items where `ownedBy === blockInstanceId`). */
   getOwnedItems: (ownedBy: string) => OutputItem[];
+  /** Returns items stamped with the given `agentName`. Useful for rendering per-agent panels. */
+  getItemsByAgent: (agentName: string) => OutputItem[];
+  /** Returns items stamped with the given `agentType`. */
+  getItemsByAgentType: (agentType: "primary" | "sub" | "trace") => OutputItem[];
   sendAction: (
     action: string,
     input: unknown,
@@ -973,6 +977,18 @@ export function useSession(
     return sortItemsChronologically(result);
   }, []);
 
+  const getItemsByAgent = useCallback(
+    (agentName: string): OutputItem[] =>
+      items.filter((item) => item.agentName === agentName),
+    [items]
+  );
+
+  const getItemsByAgentType = useCallback(
+    (agentType: "primary" | "sub" | "trace"): OutputItem[] =>
+      items.filter((item) => item.agentType === agentType),
+    [items]
+  );
+
   const abortRequest = useCallback(async () => {
     const requestId = activeRequestIdRef.current;
     if (requestId === null) return;
@@ -1038,6 +1054,8 @@ export function useSession(
     snapshot,
     items,
     getOwnedItems,
+    getItemsByAgent,
+    getItemsByAgentType,
     sendAction,
     abortRequest,
     refresh

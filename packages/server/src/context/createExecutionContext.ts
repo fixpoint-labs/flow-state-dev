@@ -33,6 +33,7 @@ import {
   getPatternPrefix,
 } from "@flow-state-dev/core/types";
 import type {
+  AgentType,
   BlockOutputItem,
   BlockToolOutputItem,
   ComponentItem,
@@ -1037,7 +1038,37 @@ function outputItemToSessionItem(item: OutputItem): SessionItem {
     itemIndex: item.itemIndex,
     payload,
     ts: item.ts,
+    agentType: item.agentType,
+    agentName: item.agentName,
   };
+}
+
+/**
+ * Applies `agentType` / `agentName` filters from a SessionItem query.
+ * Both accept scalar or array form; scalar treated as single-element set.
+ * Returns true if the item passes the filter (or no filter applies).
+ */
+function matchesIdentityFilter(
+  item: SessionItem,
+  query: ItemQuery | undefined,
+): boolean {
+  if (query?.agentType !== undefined) {
+    const allowed = Array.isArray(query.agentType)
+      ? new Set(query.agentType)
+      : new Set([query.agentType]);
+    if (item.agentType === undefined || !allowed.has(item.agentType)) {
+      return false;
+    }
+  }
+  if (query?.agentName !== undefined) {
+    const allowed = Array.isArray(query.agentName)
+      ? new Set(query.agentName)
+      : new Set([query.agentName]);
+    if (item.agentName === undefined || !allowed.has(item.agentName)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function createSessionItemViews(
@@ -1089,6 +1120,11 @@ function createSessionItemViews(
         return false;
       }
 
+      // Identity filters (agentType, agentName) — honored by all views.
+      if (!matchesIdentityFilter(item, query)) {
+        return false;
+      }
+
       return true;
     });
 
@@ -1105,7 +1141,8 @@ function createSessionItemViews(
         options.resolveModelId,
         query,
         options.readLiveItems
-      )
+      ),
+    selectForContext: (query) => select(query),
   };
 }
 
@@ -1131,19 +1168,22 @@ type EmissionContext = {
   nextItemIndex: () => number;
   /** Container ownership tag — set when emitting inside a container scope. */
   ownedBy?: string;
-  /** Whether emitted items are sent to clients by default in this scope. */
-  client: boolean;
-  /** Whether emitted items enter LLM history by default in this scope. */
-  history: boolean;
+  /**
+   * Agent identity that scope-emitted items inherit. Set by the owning
+   * generator; undefined at the root (runtime-level emissions carry no
+   * identity). Callers may override per-emission via options.
+   */
+  agentType?: AgentType;
+  agentName?: string;
 };
 
 function createEmitMessage(
   emCtx: EmissionContext
 ): {
-  (text: string, options?: { client?: boolean; history?: boolean }): void;
-  (content: Content[], options?: { client?: boolean; history?: boolean }): void;
+  (text: string, options?: { agentType?: AgentType; agentName?: string }): void;
+  (content: Content[], options?: { agentType?: AgentType; agentName?: string }): void;
 } {
-  return function emitMessage(textOrContent: string | Content[], options?: { client?: boolean; history?: boolean }): void {
+  return function emitMessage(textOrContent: string | Content[], options?: { agentType?: AgentType; agentName?: string }): void {
     const content: Content[] =
       typeof textOrContent === "string"
         ? [{ type: "output_text", text: textOrContent }]
@@ -1155,13 +1195,13 @@ function createEmitMessage(
       type: "message",
       status: "completed",
       transient: emCtx.blockTransient || undefined,
-      client: options?.client ?? emCtx.client,
-      history: options?.history ?? emCtx.history,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
+      agentType: options?.agentType ?? emCtx.agentType,
+      agentName: options?.agentName ?? emCtx.agentName,
       role: "assistant",
       content
     };
@@ -1173,11 +1213,11 @@ function createEmitMessage(
 
 function createEmitComponent(
   emCtx: EmissionContext
-): (component: string, data: Record<string, unknown>, options?: { key?: string; client?: boolean; history?: boolean }) => void {
+): (component: string, data: Record<string, unknown>, options?: { key?: string; agentType?: AgentType; agentName?: string }) => void {
   return function emitComponent(
     component: string,
     data: Record<string, unknown>,
-    options?: { key?: string; client?: boolean; history?: boolean }
+    options?: { key?: string; agentType?: AgentType; agentName?: string }
   ): void {
     const itemIndex = emCtx.nextItemIndex();
     const item: ComponentItem = {
@@ -1185,13 +1225,13 @@ function createEmitComponent(
       type: "component",
       status: "completed",
       transient: emCtx.blockTransient || undefined,
-      client: options?.client ?? emCtx.client,
-      history: options?.history ?? emCtx.history,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
+      agentType: options?.agentType ?? emCtx.agentType,
+      agentName: options?.agentName ?? emCtx.agentName,
       component,
       data,
       ...(options?.key !== undefined ? { key: options.key } : {}),
@@ -1414,16 +1454,14 @@ function createTargetStateOps<TState extends JsonObject>(options: {
 }
 function createEmitStatus(
   emCtx: EmissionContext
-): (message: string, options?: { blocked?: boolean; backgroundTasks?: number; client?: boolean }) => void {
-  return function emitStatus(message: string, options?: { blocked?: boolean; backgroundTasks?: number; client?: boolean }): void {
+): (message: string, options?: { blocked?: boolean; backgroundTasks?: number }) => void {
+  return function emitStatus(message: string, options?: { blocked?: boolean; backgroundTasks?: number }): void {
     const itemIndex = emCtx.nextItemIndex();
     const item: StatusItem = {
       id: `item_status_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "status",
       status: "completed",
       transient: true,
-      client: options?.client ?? true,
-      history: false,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -2142,8 +2180,6 @@ export async function createExecutionContext<
       id: `item_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "block_output",
       status,
-      client: false,
-      history: false,
       transient: parent.transient || undefined,
       requestId: reqRef.current.id,
       itemIndex,
@@ -2216,8 +2252,6 @@ export async function createExecutionContext<
       phase: "main" as const
     }),
     nextItemIndex: () => emittedItemCount++,
-    client: true,
-    history: true,
   };
 
   const logger = options.logger;
@@ -2275,8 +2309,6 @@ export async function createExecutionContext<
         id: `item_router_${itemIndex}_${Math.random().toString(16).slice(2)}`,
         type: "router_decision",
         status: "completed",
-        client: false,
-        history: false,
         requestId: requestRef.current.id,
         itemIndex,
         provenance: {
@@ -2563,16 +2595,6 @@ export async function createExecutionContext<
               id: `item_container_${itemIndex}_${Math.random().toString(16).slice(2)}`,
               type: "container",
               status: "completed",
-              // FIX-391: container items MUST be client-visible — they carry
-              // the component key (e.g. "reactive-blackboard") the UI uses to
-              // pick a renderer and suppress owned children. Hardcoding
-              // client: false here caused the SSE client-filter to strip the
-              // container during live streaming, leaving rb-entry children to
-              // render as raw JSON. Revisit when the client/history model is
-              // redesigned — until then, keep in sync with ITEM_TYPE_DEFAULTS
-              // in core/items/resolve-role.ts (container: client: true).
-              client: true,
-              history: false,
               transient: resolvedParent.transient || undefined,
               requestId: requestRef.current.id,
               itemIndex,
@@ -2607,9 +2629,12 @@ export async function createExecutionContext<
           result: siblingEntry.result,
           previous: parentChain
         };
-        const childClient = resolvedParent.client ?? activeEmCtx.client;
-        const childHistory = resolvedParent.history ?? activeEmCtx.history;
         const childPhase = resolvedParent.phase ?? "main";
+        // Each scope starts with no identity. Generators that declare an
+        // `agentType` stamp it directly on the items they emit; other
+        // blocks inherit nothing — they emit structural items (status,
+        // component, container) whose visibility comes from the type
+        // defaults in `resolveItemVisibility()`.
         const childEmCtx: EmissionContext = {
           requestId: requestRef.current.id,
           blockTransient: resolvedParent.transient === true,
@@ -2624,8 +2649,6 @@ export async function createExecutionContext<
           ownedBy: resolvedParent.container !== undefined
             ? resolvedParent.instanceId
             : activeEmCtx.ownedBy,
-          client: childClient,
-          history: childHistory,
         };
         const childContext = createContext(
           childChain,
@@ -2640,9 +2663,6 @@ export async function createExecutionContext<
           blockInstanceId: resolvedParent.instanceId,
           parentBlockInstanceId: resolvedParent.parentInstanceId,
           ownedBy: childEmCtx.ownedBy,
-          client: resolvedParent.client,
-          history: resolvedParent.history,
-          itemRole: resolvedParent.itemRole,
           phase: resolvedParent.phase ?? "main"
         };
 

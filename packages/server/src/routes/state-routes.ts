@@ -75,7 +75,7 @@ export async function handleGetSessionState(
   // do the same here without also stripping container items from older
   // sessions (which were persisted with the now-fixed `client: false`).
   // Until the visibility model is redesigned, hardcode the known-trace type
-  // list — these types have `client: false` defaults in ITEM_TYPE_DEFAULTS
+  // list — these types resolve to `client: false` via resolveItemVisibility
   // and should never reach the UI as raw JSON.
   const TRACE_ITEM_TYPES = new Set([
     "block_output",

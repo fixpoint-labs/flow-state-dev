@@ -48,7 +48,7 @@ const agent = generator({
   history: true,
   user: (input) => input.message,
   tools: [searchTool, createArtifactTool],
-  emit: { reasoning: true, messages: true },
+  agentType: "primary",
 });
 ```
 
@@ -58,44 +58,55 @@ What the framework handles for you:
 - **Streaming** — content deltas flow to the client as they're generated
 - **Structured output repair** — if the LLM returns invalid JSON, the framework can auto-retry or route to a rescue block
 
-#### Controlling what gets emitted
+#### Generator identity — who is emitting?
 
-Each emitted item carries `client` and `history` flags that control whether it reaches the user-facing UI and the LLM's conversation history:
+Each generator declares its identity via `agentType`, which governs where its auto-emitted items flow:
 
-| Audience | UI | LLM History | DevTool |
-|--|--|--|--|
-| `"client"` | Yes | Yes | Yes |
-| `"history"` | No | Yes | Yes |
-| `"trace"` | No | No | Yes |
+| `agentType` | Client UI | LLM History | DevTool |
+|-------------|:--:|:--:|:--:|
+| `"primary"` | ✓ | ✓ | ✓ |
+| `"sub"` | ✓ | — | ✓ |
+| `"trace"` | — | — | ✓ |
+| *unset* | no auto-emission — only `block_output` flows via graph edges |
 
-The `emitAudience` config sets the default audience for all items a generator emits. The `emit` config controls which item types are emitted (or suppresses emission entirely):
+Set `agentType` explicitly on every generator that should stream. There is no position-inferred default — each generator's identity is visible in its own config.
 
 ```ts
-// Suppress all streaming output — the generator runs silently
-const silent = generator({ emit: false, /* ... */ });
+// User-facing chatbot. Messages + reasoning go to UI and enter history.
+const chatbot = generator({ agentType: "primary", /* ... */ });
 
-// Suppress message items but keep tool call status events
-const workerGen = generator({ emit: { messages: false }, /* ... */ });
+// Worker inside a supervisor pattern. Visible to the user for observability,
+// but its output does not pollute the orchestrator's next-turn history.
+const worker = generator({ agentType: "sub", /* ... */ });
 
-// Keep messages in LLM history but hide from client UI
-const thinker = generator({ emitAudience: "history", /* ... */ });
+// Background observer. Items appear in the devtool stream for debugging;
+// they never reach the client or the LLM.
+const memoryObserver = generator({ agentType: "trace", /* ... */ });
 
-// Devtool-only: suppress all output from client and history
-const researcher = generator({ emitAudience: "trace", /* ... */ });
+// Pure structured-output transformer. Feeds its typed output to the next
+// block via graph edges. No session items at all.
+const classifier = generator({
+  model: "preset/fast",
+  prompt: "Classify input as A, B, or C.",
+  outputSchema: z.enum(["A", "B", "C"]),
+  // agentType omitted — no auto-emission.
+});
 ```
 
-| Config | Values | Default | Effect |
-|------|--------|---------|--------|
-| `emitAudience` | `"client"` / `"history"` / `"trace"` | position-based | Sets the default audience for all items. `"client"` = both client and history (default for main phase). `"history"` = LLM history only. `"trace"` = devtool only. |
-| `reasoning` | `true` / `false` | block default | `false` suppresses reasoning items. |
-| `messages` | `true` / `false` | block default | `false` suppresses assistant messages. |
-| `tools` | `true` / `false` | block default | `false` suppresses tool status items during the tool loop. |
+Optionally, set `agentName` to give the identity a stable label — useful for parallel workers that should share or differ:
 
-Setting `emit: false` is shorthand for suppressing all three. The `emitAudience` config sets the default visibility for all emissions; per-type `emit` values override it.
+```ts
+// Collaborative: all parallel instances share one identity.
+// selectForContext({ agentName: "researcher" }) returns them all.
+generator({ agentType: "sub", agentName: "researcher", /* ... */ });
 
-When `messages` is `false` but the generator has tools, the streaming path is still used so tool call status events reach the client — only the text output items are suppressed.
+// Isolated: each instance has a unique identity.
+generator({ agentType: "sub", agentName: `researcher-${id}`, /* ... */ });
+```
 
-This is particularly useful for worker generators inside orchestration patterns (supervisor, coordinator) where you want tool progress visible but don't want each sub-task's text polluting the main conversation stream. You can keep the worker's findings in LLM context (`emitAudience: "history"`) without showing them to the user.
+`agentName` defaults to the block's `name` when omitted.
+
+See [Generator identity](../streaming/items#generator-identity) for the full model.
 
 #### Any block can be a tool
 

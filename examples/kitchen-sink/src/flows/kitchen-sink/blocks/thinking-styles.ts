@@ -284,7 +284,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     context,
     ...(uses ? { uses: uses as any } : {}),
     search: true,
-    emit: { messages: false, tools: false },
+    agentType: "sub",
     prompt: [
       "You are a focused task executor within a supervisor workflow.",
       "Complete the assigned task concisely and accurately.",
@@ -337,7 +337,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       context,
       history: config.history,
       search: true,
-      emit: { messages: false, tools: false },
+      agentType: "sub",
       prompt: specConfig.prompt,
       user: (_input: any, ctx: any) => {
         const state = ctx.session.resources.blackboard.state;
@@ -595,6 +595,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     history: config.history,
     search: true,
     prompt: [instructions, rbBasePrompt.join("\n")],
+    agentType: "primary",
     user: (_input: any, ctx: any) => {
       const state = ctx.session.resources.reactiveBlackboard.state as {
         entries: Array<{ type: string; topic: string; body: string }>;

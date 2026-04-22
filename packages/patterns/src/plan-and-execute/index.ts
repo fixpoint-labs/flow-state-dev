@@ -19,7 +19,7 @@
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import { utility } from "@flow-state-dev/core";
 import type { BlockDefinition, BlockContext } from "@flow-state-dev/core/types";
-import type { GeneratorHistoryConfig, GeneratorSlot, GeneratorSearchConfig, ToolsSlot, UsesSlot } from "@flow-state-dev/core";
+import type { AgentType, GeneratorHistoryConfig, GeneratorSlot, GeneratorSearchConfig, ToolsSlot, UsesSlot } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   planAndExecuteInputSchema,
@@ -145,6 +145,15 @@ export interface PlanAndExecuteConfig<
 
   /** Capabilities to install on default blocks (executor, replanner, synthesizer). */
   uses?: UsesSlot;
+
+  /** Agent type for the default planner. Default: "sub". */
+  plannerAgentType?: AgentType;
+
+  /** Agent type for the default step executor. Default: "sub". */
+  stepExecutorAgentType?: AgentType;
+
+  /** Agent type for the default synthesizer. Default: "primary". */
+  synthesizerAgentType?: AgentType;
 
   /** Session resources to declare on the outer sequencer. */
   sessionResources?: Record<string, any>;
@@ -351,6 +360,7 @@ function createDefaultSynthesizer(config: {
   uses?: UsesSlot;
   instructions?: InstructionsSlot;
   synthesizeInstructions?: string;
+  agentType?: AgentType;
 }) {
   const basePrompt = [
     "You are synthesizing findings from a structured multi-step research process.",
@@ -383,7 +393,7 @@ function createDefaultSynthesizer(config: {
     outputSchema: z.string(),
     prompt: [config.instructions, basePrompt, config.synthesizeInstructions],
     user: buildSynthesizerUserPrompt,
-    emit: { messages: true },
+    agentType: config.agentType ?? "primary",
   });
 }
 
@@ -488,7 +498,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
       }
       return parts.join("\n");
     },
-    emit: { messages: false },
+    agentType: config.stepExecutorAgentType ?? "sub",
   });
 }
 
@@ -559,6 +569,7 @@ export function planAndExecute<
           uses: config.uses,
           instructions: config.instructions,
           synthesizeInstructions: config.synthesizeInstructions,
+          agentType: config.synthesizerAgentType,
         }))
       : null;
 

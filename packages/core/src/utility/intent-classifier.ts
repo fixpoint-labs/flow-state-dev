@@ -1,5 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig } from "../blocks";
+import type { AgentType } from "../items/types";
 import { generator } from "../blocks";
 
 export type IntentCategories = Record<string, string>;
@@ -17,6 +18,13 @@ export interface IntentClassifierConfig<
   categories: IntentCategories;
   model?: GeneratorConfig["model"];
   outputSchema?: TOutputSchema;
+  /**
+   * Identity for emitted items. Unset by default — classification output
+   * flows via graph edges only, which is the usual routing case. Set to
+   * `"primary"` if you want the classification surfaced to the user, or
+   * `"trace"` for observability-only runs.
+   */
+  agentType?: AgentType;
 }
 
 function toUserContent(input: unknown): string {
@@ -89,6 +97,7 @@ export function intentClassifier<
     name: config.name,
     model: config.model ?? "preset/fast",
     outputSchema,
+    agentType: config.agentType,
     prompt: [
       "You are an intent classification assistant.",
       "Classify the user input into exactly one category from the provided list.",

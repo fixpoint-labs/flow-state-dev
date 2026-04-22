@@ -61,13 +61,20 @@ const session = useSession(sessionId, {
 
 session.detail;        // SessionDetail | null
 session.snapshot;      // SessionStateSnapshotResponse | null
-session.items;         // OutputItem[]
+session.items;         // OutputItem[]  — includes sub-agent items
 session.messages;      // MessageItem[]
 session.blockOutputs;  // BlockOutputItem[]
 session.functionCalls; // FunctionCallItem[]
 session.isLoading;     // boolean
 session.isStreaming;    // boolean
 session.error;         // Error | null
+
+// Identity-based filtering:
+session.getItemsByAgent("researcher");      // items stamped with agentName
+session.getItemsByAgentType("sub");         // items stamped with agentType
+
+// Container-scoped items:
+session.getOwnedItems(containerBlockInstanceId);
 
 await session.sendAction("chat", { message: "Hello!" });
 session.refresh();
@@ -155,12 +162,16 @@ import { ItemRenderer } from "@flow-state-dev/react";
 
 ### `ItemsRenderer`
 
-Render a list of items.
+Render a list of items. By default, items produced by generators with `agentType: "sub"` are filtered out — they're available in `session.items` but hidden from the default conversation view so orchestrator chatter doesn't crowd the UI. Pass `showSubAgents` to surface them inline, or render a per-agent view via `session.getItemsByAgent(name)`.
 
 ```tsx
 import { ItemsRenderer } from "@flow-state-dev/react";
 
+// Default — filters sub-agent items
 <ItemsRenderer items={session.items} />
+
+// Opt in — show sub-agent items inline
+<ItemsRenderer items={session.items} showSubAgents />
 ```
 
 ### Custom Renderers

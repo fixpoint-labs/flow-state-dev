@@ -83,6 +83,7 @@ export function scoreSalience<TOutputSchema extends ZodTypeAny = typeof salience
     model: config.model ?? 'gpt-5-mini',
     inputSchema: salienceInputSchema,
     outputSchema: config.outputSchema ?? salienceOutputSchema,
+    agentType: 'trace',
     prompt: [
       'You are a salience scoring assistant for cognitive attention management.',
       'Score each item along all dimensions on a 0-1 scale, then compute composite salience.',

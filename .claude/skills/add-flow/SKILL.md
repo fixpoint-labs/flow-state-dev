@@ -98,9 +98,9 @@ const chatGenerator = generator({
   model: "openai/gpt-5-mini",
   prompt: "You are a helpful assistant.",
   inputSchema: chatInputSchema,
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: (_input, ctx) => ctx.session.items.history(),
   user: (input) => input.message,
-  emit: { reasoning: true },
+  agentType: "primary",
 });
 
 // Generator `prompt` accepts arrays for composition (PromptSlot):

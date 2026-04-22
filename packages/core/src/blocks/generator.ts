@@ -5,13 +5,12 @@ import type {
   BlockContext,
   BlockDefinition,
   ConnectorFn,
-  EmitAudience,
   InferBlockResources,
   InferStateFromSchema,
   RetryPolicy
 } from "../types/block";
 import type { ItemQuery } from "../types/scope";
-import type { ItemVisibility } from "../items/types";
+import type { AgentType } from "../items/types";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
 import type {
@@ -285,16 +284,31 @@ export interface GeneratorConfig<
    *  and any active preset surfaces into this block's config. */
   uses?: TUses;
   /**
-   * Controls who receives auto-emitted items from this generator.
+   * Identity of this generator — classifies its auto-emitted items.
    *
-   * - `"client"`: items are sent to the client and enter LLM history (default)
-   * - `"history"`: items enter LLM history but are hidden from the client
-   * - `"trace"`: items are emitted for tracing only (neither client nor history)
+   * - `"primary"`: user-facing agent. Items flow to the client and into
+   *   conversation history.
+   * - `"sub"`: task-executor under a primary agent. Items reach the client
+   *   for live observability but are excluded from conversation history —
+   *   sub-agents are deaf to prior turns by design.
+   * - `"trace"`: observability-only emissions (devtool/replay). Not on the
+   *   client stream, not in history.
+   * - *unset* (default): **no auto-emission**. Only the generator's typed
+   *   `block_output` flows to parents via graph edges.
    *
-   * Defaults to `"client"` for main-phase generators. Tool-call children and
-   * work-phase generators default to `"trace"`.
+   * There is no position-inferred default — every generator declares its
+   * own identity explicitly. Pattern factories set identity on their
+   * internal generators.
    */
-  emitAudience?: EmitAudience;
+  agentType?: AgentType;
+  /**
+   * Stable name of the producing agent. Defaults to the block's `name`
+   * when `agentType` is set and `agentName` is omitted. Generators that
+   * share an `agentName` collaborate (same logical agent across
+   * instances); distinct names stay isolated. Items emitted by the
+   * generator are stamped with this name.
+   */
+  agentName?: string;
   model: ResolvableModel<NoInfer<TInput>, TCtx>;
   prompt: PromptSlot<NoInfer<TInput>, TCtx>;
   context?: GeneratorSlot<NoInfer<TInput>, TCtx>;
@@ -322,16 +336,6 @@ export interface GeneratorConfig<
   ) => MaybePromise<unknown>;
   flowTools?: ToolsConfig;
   retry?: RetryPolicy;
-  /**
-   * Controls which item types the generator auto-emits.
-   *
-   * - `true` (default): emit all item types (reasoning, messages, tools)
-   * - `false`: suppress all auto-emitted items (block still executes)
-   * - object: selectively suppress specific types; unspecified types default to `true`
-   *
-   * Visibility of emitted items is controlled by `emitAudience`, not here.
-   */
-  emit?: GeneratorEmitConfig;
   providerOptions?: ResolvableProviderOptions<TInput, TCtx>;
   /** When true (default), auto-inject tool name+description pairs into the system context. */
   describeTools?: boolean;
@@ -857,24 +861,28 @@ function resolveMaxIterations(config: { loop?: GeneratorLoopConfig<unknown>; max
 
 /**
  * Builds a SourceItem from a GeneratorModelSource for emission into the
- * item stream. Used by both streaming and non-streaming paths.
+ * item stream. Used by both streaming and non-streaming paths. Visibility
+ * is derived at consumption time by `resolveItemVisibility()` from the
+ * structural default for `source`; this function only stamps identity.
  */
 function buildSourceItem(
   source: GeneratorModelSource,
   ctx: BlockContext,
   provenance: { blockName: string; blockInstanceId: string; phase: "main" | "work" },
-  vis: ItemVisibility | false
+  agentType: AgentType | undefined,
+  agentName: string | undefined
 ) {
   return {
     id: `item_source_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "source" as const,
     status: "completed" as const,
-    ...(vis !== false ? { client: vis.client, history: vis.history } : {}),
     requestId: ctx.request.identity.id,
     itemIndex: getEmitterItemCount(ctx.response),
     provenance,
     ts: Date.now(),
     ownedBy: ctx._blockIdentity?.ownedBy,
+    agentType,
+    agentName,
     sourceType: "url" as const,
     sourceId: source.id,
     url: source.url,
@@ -903,96 +911,17 @@ function getEmitterItemCount(response: unknown): number {
 }
 
 /**
- * Full emit configuration for a generator. Controls which item types are
- * auto-emitted. Visibility of emitted items is controlled separately by
- * `emitAudience`.
- *
- * - `true` (default): emit all item types.
- * - `false`: suppress all auto-emitted items.
- * - object: selectively suppress specific types; unspecified default to `true`.
- */
-export type GeneratorEmitConfig =
-  | boolean
-  | {
-      reasoning?: boolean;
-      messages?: boolean;
-      tools?: boolean;
-    };
-
-/** Maps emit audience labels to concrete visibility flags for item stamping. */
-export const AUDIENCE_TO_VISIBILITY: Record<EmitAudience, ItemVisibility> = {
-  client: { client: true, history: true },
-  history: { client: false, history: true },
-  trace: { client: false, history: false },
-};
-
-/**
- * Resolved emit configuration. Per-type booleans control whether items are
- * emitted; `visibility` controls the audience flags stamped on emitted items.
- */
-export type ResolvedEmitConfig = {
-  reasoning: boolean;
-  messages: boolean;
-  tools: boolean;
-  visibility: ItemVisibility;
-};
-
-/**
- * Resolves the user-facing emit config and audience into a concrete
- * per-type emit/suppress decision plus a single visibility for all
- * emitted items.
- *
- * @internal Exported for unit testing. Not a public API.
- */
-export function resolveEmitConfig(
-  emit: GeneratorEmitConfig | undefined,
-  emitAudience: EmitAudience | undefined,
-  ctx: BlockContext
-): ResolvedEmitConfig {
-  const audience = emitAudience ?? resolvePositionDefault(ctx);
-  const visibility = AUDIENCE_TO_VISIBILITY[audience];
-
-  if (emit === false) {
-    return { reasoning: false, messages: false, tools: false, visibility };
-  }
-
-  if (emit === true || emit === undefined) {
-    return { reasoning: true, messages: true, tools: true, visibility };
-  }
-
-  return {
-    reasoning: emit.reasoning !== false,
-    messages: emit.messages !== false,
-    tools: emit.tools !== false,
-    visibility,
-  };
-}
-
-/**
- * Computes the position-based default audience for a generator's emissions.
- * Tool-call children (parent is a generator) and work-phase executions
- * default to `"trace"` (neither client nor history); everything else
- * defaults to `"client"` (full visibility).
- *
- * @internal Exported for unit testing. Not a public API.
- */
-export function resolvePositionDefault(ctx: BlockContext): EmitAudience {
-  if (ctx.parent?.kind === "generator") {
-    return "trace";
-  }
-  if (ctx._blockIdentity?.phase === "work") {
-    return "trace";
-  }
-  return "client";
-}
-
-/**
  * Executes a streaming text generation: emits item.added, content.added,
  * content.delta per chunk, content.done, and item.done events.
  *
  * Supports multi-step tool loops — the AI SDK drives tool execution via
  * `execute` closures on compiled tools, and this function streams all text
  * deltas to the client as they arrive.
+ *
+ * When `agentType` is undefined, the generator produces no auto-emitted
+ * items: the model still streams (so tool `execute` closures fire and
+ * schema validation runs), but reasoning, messages, tool-call progress,
+ * and source items are all suppressed.
  */
 async function executeStreamingGeneration<TInput, TOutput>(
   model: GeneratorModel,
@@ -1004,10 +933,12 @@ async function executeStreamingGeneration<TInput, TOutput>(
   blockName: string,
   maxSteps: number,
   ctx: BlockContext,
-  emitConfig: ResolvedEmitConfig,
+  agentType: AgentType | undefined,
+  agentName: string | undefined,
   prepareStep?: PrepareStepFn,
   resolvedProviderOpts?: Record<string, unknown>
 ): Promise<TOutput> {
+  const emit = agentType !== undefined;
   const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const contentPartIndex = 0;
   const identity = ctx._blockIdentity;
@@ -1018,7 +949,6 @@ async function executeStreamingGeneration<TInput, TOutput>(
     phase: identity?.phase ?? ("main" as const)
   };
   const ownedBy = identity?.ownedBy;
-  const { reasoning: emitReasoning, messages: emitMessages, tools: emitTools, visibility } = emitConfig;
   let reasoningAccumulated = "";
 
   // Reasoning and message items are emitted lazily so their order in the
@@ -1044,8 +974,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     prepareStep
   })) {
     if (chunk.type === "reasoning_delta" && chunk.reasoningDelta !== undefined) {
-      if (emitReasoning) {
-        // On first reasoning delta, emit in-progress reasoning item
+      if (emit) {
         if (!reasoningStarted) {
           reasoningStarted = true;
           const reasoningItem = {
@@ -1053,13 +982,13 @@ async function executeStreamingGeneration<TInput, TOutput>(
             type: "reasoning" as const,
             status: "in_progress" as const,
             transient: false,
-            client: visibility.client,
-            history: visibility.history,
             requestId: ctx.request.identity.id,
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
             ts: Date.now(),
             ownedBy,
+            agentType,
+            agentName,
             summary: [{ type: "reasoning_text" as const, text: "" }]
           };
           await ctx.response.emit({ type: "item.added", item: reasoningItem });
@@ -1070,7 +999,6 @@ async function executeStreamingGeneration<TInput, TOutput>(
             content: { type: "reasoning_text", text: "" }
           });
         }
-        // Stream each reasoning delta to the client
         reasoningAccumulated += chunk.reasoningDelta;
         await ctx.response.emit({
           type: "content.delta",
@@ -1080,12 +1008,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
         });
       }
     } else if (chunk.type === "text_delta" && chunk.textDelta !== undefined) {
-      // On first text delta, finalize reasoning and start the message. When
-      // messages are suppressed (emitConfig.messages === false), just
-      // accumulate text silently so the schema validation still runs.
       if (!messageEmitted) {
-        // Close reasoning item if it was started
-        if (reasoningStarted && emitReasoning) {
+        if (emit && reasoningStarted) {
           await ctx.response.emit({
             type: "content.done",
             itemId: reasoningItemId,
@@ -1097,32 +1021,32 @@ async function executeStreamingGeneration<TInput, TOutput>(
             type: "reasoning" as const,
             status: "completed" as const,
             transient: false,
-            client: visibility.client,
-            history: visibility.history,
             requestId: ctx.request.identity.id,
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
             ts: Date.now(),
             ownedBy,
+            agentType,
+            agentName,
             summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
           };
           await ctx.response.emit({ type: "item.done", item: completedReasoning });
         }
 
-        if (emitMessages) {
+        if (emit) {
           messageItem = {
             id: itemId,
             type: "message" as const,
             role: "assistant" as const,
             status: "in_progress" as const,
             transient: false,
-            client: visibility.client,
-            history: visibility.history,
             requestId: ctx.request.identity.id,
             itemIndex: getEmitterItemCount(ctx.response),
             provenance,
             ts: Date.now(),
             ownedBy,
+            agentType,
+            agentName,
             content: [{ type: "output_text" as const, text: "" }]
           };
           await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -1136,7 +1060,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
         messageEmitted = true;
       }
       accumulated += chunk.textDelta;
-      if (emitMessages) {
+      if (emit) {
         await ctx.response.emit({
           type: "content.delta",
           itemId,
@@ -1145,21 +1069,19 @@ async function executeStreamingGeneration<TInput, TOutput>(
         });
       }
     } else if (chunk.type === "tool_input_start" && chunk.toolInput !== undefined) {
-      // Emit a status item so clients see progress during provider tool execution.
-      // Gated by emit.tools — worker generators suppress these to avoid flooding.
-      if (emitTools) {
+      if (emit) {
         const toolName = chunk.toolInput.toolName;
         const statusItem = {
           id: `item_status_${Date.now()}_${Math.random().toString(16).slice(2)}`,
           type: "status" as const,
           status: "completed" as const,
           transient: true,
-          client: visibility.client,
-          history: visibility.history,
           requestId: ctx.request.identity.id,
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
           ts: Date.now(),
+          agentType,
+          agentName,
           message: `Using ${toolName}…`,
           detail: { toolName, providerExecuted: chunk.toolInput.providerExecuted ?? false }
         };
@@ -1167,24 +1089,20 @@ async function executeStreamingGeneration<TInput, TOutput>(
         await ctx.response.emit({ type: "item.done", item: statusItem });
       }
     } else if (chunk.type === "tool_call_delta" && chunk.toolCallDelta !== undefined) {
-      // Emit tool call progress so clients can show incremental tool call args.
-      // Each delta is emitted as a transient status update — the full tool call
-      // lifecycle (start → args → result) is tracked by toolCallId.
-      // Gated by emit.tools — worker generators suppress these to avoid flooding.
-      if (emitTools) {
+      if (emit) {
         const delta = chunk.toolCallDelta;
         const toolCallItem = {
           id: `item_toolcall_${delta.toolCallId}`,
           type: "tool_call_progress" as const,
           status: "in_progress" as const,
           transient: true,
-          client: visibility.client,
-          history: visibility.history,
           requestId: ctx.request.identity.id,
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
           ts: Date.now(),
           ownedBy,
+          agentType,
+          agentName,
           toolCallId: delta.toolCallId,
           toolName: delta.toolName,
           argsDelta: delta.argsDelta
@@ -1193,22 +1111,20 @@ async function executeStreamingGeneration<TInput, TOutput>(
         await ctx.response.emit({ type: "item.done", item: toolCallItem });
       }
     } else if (chunk.type === "tool_result" && chunk.toolResult !== undefined) {
-      // Emit completed tool result so clients see the outcome of tool execution.
-      // Gated by emit.tools — worker generators suppress these to avoid flooding.
-      if (emitTools) {
+      if (emit) {
         const tr = chunk.toolResult;
         const toolResultItem = {
           id: `item_toolresult_${tr.toolCallId}`,
           type: "tool_call_progress" as const,
           status: "completed" as const,
           transient: true,
-          client: visibility.client,
-          history: visibility.history,
           requestId: ctx.request.identity.id,
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
           ts: Date.now(),
           ownedBy,
+          agentType,
+          agentName,
           toolCallId: tr.toolCallId,
           toolName: tr.toolName,
           result: tr.result
@@ -1217,21 +1133,20 @@ async function executeStreamingGeneration<TInput, TOutput>(
         await ctx.response.emit({ type: "item.done", item: toolResultItem });
       }
     } else if (chunk.type === "source_url" && chunk.source !== undefined) {
-      // Sources are citations attached to the assistant's message. They share
-      // the messages role; when messages are suppressed we demote to trace so
-      // devtools still see the citation without leaking it to the UI.
-      const sourceVis: ItemVisibility = emitMessages ? visibility : { client: false, history: false };
-      const sourceItem = buildSourceItem(chunk.source, ctx, provenance, sourceVis);
-      await ctx.response.emit({ type: "item.added", item: sourceItem });
-      await ctx.response.emit({ type: "item.done", item: sourceItem });
+      if (emit) {
+        const sourceItem = buildSourceItem(chunk.source, ctx, provenance, agentType, agentName);
+        await ctx.response.emit({ type: "item.added", item: sourceItem });
+        await ctx.response.emit({ type: "item.done", item: sourceItem });
+      }
     } else if (chunk.type === "finish") {
       finalResult = chunk.fullResult;
     }
   }
 
-  // If no text deltas arrived, still finalize reasoning and emit message
+  // If no text deltas arrived, still finalize reasoning and emit a message
+  // envelope so downstream consumers see a completed assistant turn.
   if (!messageEmitted) {
-    if (reasoningStarted && emitReasoning) {
+    if (emit && reasoningStarted) {
       await ctx.response.emit({
         type: "content.done",
         itemId: reasoningItemId,
@@ -1243,31 +1158,31 @@ async function executeStreamingGeneration<TInput, TOutput>(
         type: "reasoning" as const,
         status: "completed" as const,
         transient: false,
-        client: visibility.client,
-        history: visibility.history,
         requestId: ctx.request.identity.id,
         itemIndex: getEmitterItemCount(ctx.response),
         provenance,
         ts: Date.now(),
         ownedBy,
+        agentType,
+        agentName,
         summary: [{ type: "reasoning_text" as const, text: reasoningAccumulated }]
       };
       await ctx.response.emit({ type: "item.done", item: completedReasoning });
     }
-    if (emitMessages) {
+    if (emit) {
       messageItem = {
         id: itemId,
         type: "message" as const,
         role: "assistant" as const,
         status: "in_progress" as const,
         transient: false,
-        client: visibility.client,
-        history: visibility.history,
         requestId: ctx.request.identity.id,
         itemIndex: getEmitterItemCount(ctx.response),
         provenance,
         ts: Date.now(),
         ownedBy,
+        agentType,
+        agentName,
         content: [{ type: "output_text" as const, text: "" }]
       };
       await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -1289,8 +1204,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
     );
   }
 
-  // Emit content.done and completed item (skip when messages are suppressed)
-  if (emitMessages && messageItem) {
+  // Emit content.done and completed item (only when identity is declared).
+  if (emit && messageItem) {
     await ctx.response.emit({
       type: "content.done",
       itemId,
@@ -1568,13 +1483,22 @@ export function generator<
             : compileToolsForModel(toolBlocks))
         : [];
 
-      // Streaming path: text output + model supports streaming.
-      // Use streaming when messages are enabled OR when tools are present (so tool
-      // status events flow to the client even when message text is suppressed).
-      const emitConfig = resolveEmitConfig(normalizedConfig.emit, normalizedConfig.emitAudience, ctx);
-      const messagesEnabled = emitConfig.messages;
+      // Identity: generators without `agentType` produce no auto-emitted
+      // items (only block_output via graph edges). When set, `agentName`
+      // defaults to the block name so collaborating generators can be
+      // given a shared name explicitly.
+      const agentType = normalizedConfig.agentType;
+      const agentName = agentType !== undefined
+        ? (normalizedConfig.agentName ?? blockName)
+        : undefined;
+
+      // Streaming path: text output + model supports streaming. We stream
+      // whenever tools are present (so tool `execute` closures fire) or
+      // whenever identity is set (so text deltas flow to the client).
+      // Identity-less, tool-less generators fall through to non-streaming
+      // and skip message emission entirely.
       const hasTools = compiledTools.length > 0 || resolvedProviderTools.length > 0;
-      const canStream = (messagesEnabled || hasTools) && isTextOutputSchema(outputSchema) && model.stream !== undefined;
+      const canStream = (agentType !== undefined || hasTools) && isTextOutputSchema(outputSchema) && model.stream !== undefined;
 
       // Emit debug capture for devtool inspection before the LLM call.
       ctx._runtimeHooks?.onBlockDebugCapture?.(
@@ -1597,7 +1521,8 @@ export function generator<
           blockName,
           maxSteps,
           ctx,
-          emitConfig,
+          agentType,
+          agentName,
           prepareStepFn,
           resolvedProviderOpts
         );
@@ -1624,7 +1549,8 @@ export function generator<
       });
 
       // Emit source items from provider-native tools (e.g., web search).
-      if (generation.sources !== undefined && generation.sources.length > 0) {
+      // Only when the generator has a declared identity.
+      if (agentType !== undefined && generation.sources !== undefined && generation.sources.length > 0) {
         const sourceIdentity = ctx._blockIdentity;
         const sourceProv = {
           blockName: sourceIdentity?.blockName ?? blockName,
@@ -1632,11 +1558,8 @@ export function generator<
           parentBlockInstanceId: sourceIdentity?.parentBlockInstanceId,
           phase: sourceIdentity?.phase ?? ("main" as const)
         };
-        const nsSourceVis: ItemVisibility = emitConfig.messages
-          ? emitConfig.visibility
-          : { client: false, history: false };
         for (const source of generation.sources) {
-          const sourceItem = buildSourceItem(source, ctx, sourceProv, nsSourceVis);
+          const sourceItem = buildSourceItem(source, ctx, sourceProv, agentType, agentName);
           await ctx.response.emit({ type: "item.added", item: sourceItem });
           await ctx.response.emit({ type: "item.done", item: sourceItem });
         }
@@ -1660,10 +1583,10 @@ export function generator<
         normalizedConfig, outputSchema, candidate, state, ctx
       );
 
-      // For text-output generators, emit an assistant MessageItem so the
-      // output appears in the stream. Suppress entirely when
-      // emit.messages is false; stamp the resolved role otherwise.
-      if (emitConfig.messages && isTextOutputSchema(outputSchema) && typeof output === "string") {
+      // Emit a completed assistant message when the generator has identity
+      // and produced text output. Identity-less generators skip emission —
+      // their typed `block_output` is the only signal to downstream blocks.
+      if (agentType !== undefined && isTextOutputSchema(outputSchema) && typeof output === "string") {
         const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
         const outputIdentity = ctx._blockIdentity;
         const provenance = {
@@ -1679,13 +1602,13 @@ export function generator<
           role: "assistant" as const,
           status: "completed" as const,
           transient: false,
-          client: emitConfig.visibility.client,
-          history: emitConfig.visibility.history,
           requestId: ctx.request.identity.id,
           itemIndex: getEmitterItemCount(ctx.response),
           provenance,
           ts: Date.now(),
           ownedBy: nsOwnedBy,
+          agentType,
+          agentName,
           content: [{ type: "output_text" as const, text: output }]
         };
         await ctx.response.emit({ type: "item.added", item: messageItem });
@@ -1695,12 +1618,6 @@ export function generator<
       return output;
     }
   });
-
-  if (normalizedConfig.emitAudience) {
-    const vis = AUDIENCE_TO_VISIBILITY[normalizedConfig.emitAudience];
-    definition.client = vis.client;
-    definition.history = vis.history;
-  }
 
   return definition;
 }
