@@ -15,6 +15,15 @@ import { buildBlock, mergeDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 import type { DeclaredResources } from "../types/block";
 import { isBlockDefinition, toError, withTimeout } from "./internal/utils";
+import {
+  blockPathBranch,
+  blockPathIteration,
+  blockPathRescue,
+  blockPathSegment,
+  buildBlockInstanceId,
+  extendBlockPath,
+  ROOT_BLOCK_PATH
+} from "./internal/block-instance-id";
 import { isTraceObservabilityEnabled } from "../utils/trace-observability";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
@@ -225,13 +234,42 @@ async function emitGeneratorBlockOutput(
   await ctx.response.emit({ type: "item.done", item });
 }
 
+/**
+ * Returns the current sequencer's path from ctx. Defaults to the root path
+ * for standalone invocations where no execution scope is active.
+ */
+function currentPath(ctx: BlockContext): string {
+  return ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
+}
+
+/**
+ * Builds the child path for a block invoked by a sequencer operation.
+ * The op segment identifies the structural position; an optional iteration
+ * segment distinguishes individual iterations of an iterative op.
+ */
+function childBlockPath(
+  ctx: BlockContext,
+  op: string,
+  stepIndex: number,
+  iteration?: number
+): string {
+  let path = extendBlockPath(currentPath(ctx), blockPathSegment(op, stepIndex));
+  if (iteration !== undefined) {
+    path = extendBlockPath(path, blockPathIteration(iteration));
+  }
+  return path;
+}
+
 async function executeBlock(
   block: BlockDefinition<any, any>,
   input: unknown,
   ctx: BlockContext,
+  path: string,
   options?: { phase?: "main" | "work" }
 ): Promise<unknown> {
   const startedAt = Date.now();
+  const requestId = ctx.request.identity.id;
+  const instanceId = buildBlockInstanceId(requestId, path, 0);
   const run = async (scopedCtx: BlockContext): Promise<unknown> => {
     scopedCtx._runtimeHooks?.onBlockStart?.(block.name, block.kind, input);
 
@@ -289,8 +327,8 @@ async function executeBlock(
       // block_output items in the devtool.
       if (block.kind === "generator") {
         const identity = scopedCtx._blockIdentity;
-        const instanceId = identity?.blockInstanceId ?? `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        await emitGeneratorBlockOutput(block, output, scopedCtx, startedAt, instanceId, modelUsage);
+        const generatorInstanceId = identity?.blockInstanceId ?? instanceId;
+        await emitGeneratorBlockOutput(block, output, scopedCtx, startedAt, generatorInstanceId, modelUsage);
       }
 
       return output;
@@ -301,14 +339,14 @@ async function executeBlock(
       // `_withExecutionScope` can skip its nested failure trace.
       if (block.kind === "generator") {
         const identity = scopedCtx._blockIdentity;
-        const instanceId = identity?.blockInstanceId ?? `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+        const generatorInstanceId = identity?.blockInstanceId ?? instanceId;
         const err = error instanceof Error ? error : new Error(String(error));
         await emitGeneratorBlockOutput(
           block,
           undefined,
           scopedCtx,
           startedAt,
-          instanceId,
+          generatorInstanceId,
           modelUsage,
           { message: err.message, code: (err as { code?: string }).code }
         );
@@ -331,7 +369,8 @@ async function executeBlock(
     {
       name: block.name,
       kind: block.kind,
-      instanceId: `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      instanceId,
+      path,
       transient: block.transient || undefined,
       stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined,
       input,
@@ -464,12 +503,14 @@ function runSequencerOperations(
       return currentValue;
     } catch (error) {
       const normalizedError = toError(error);
-      for (const handler of rescueHandlers) {
+      for (let i = 0; i < rescueHandlers.length; i += 1) {
+        const handler = rescueHandlers[i];
         if (!matchesRescueHandler(normalizedError, handler)) {
           continue;
         }
 
-        return executeBlock(handler.block, normalizedError, ctx);
+        const rescuePath = extendBlockPath(currentPath(ctx), blockPathRescue(i));
+        return executeBlock(handler.block, normalizedError, ctx, rescuePath);
       }
 
       throw normalizedError;
@@ -560,8 +601,9 @@ function createSequencer<TInput, TOutput>(
         return extend<TNext>(
           {
             name: block.name,
-            run: async (value, ctx) => {
-              const output = await executeBlock(block, value, ctx);
+            run: async (value, ctx, _runtime, stepIndex) => {
+              const path = childBlockPath(ctx, "then", stepIndex);
+              const output = await executeBlock(block, value, ctx, path);
               return { value: output };
             }
           },
@@ -580,9 +622,10 @@ function createSequencer<TInput, TOutput>(
       return extend<TNext>(
         {
           name: block.name,
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
             const nextInput = connector === undefined ? value : await connector(value as TOutput, ctx);
-            const output = await executeBlock(block, nextInput, ctx);
+            const path = childBlockPath(ctx, "then", stepIndex);
+            const output = await executeBlock(block, nextInput, ctx, path);
             return { value: output };
           }
         },
@@ -606,13 +649,14 @@ function createSequencer<TInput, TOutput>(
             ...operations,
             {
               name: `if:${block.name}`,
-              run: async (value, ctx) => {
+              run: async (value, ctx, _runtime, stepIndex) => {
                 const matches = await condition(value as TOutput, ctx);
                 if (!matches) {
                   return { value };
                 }
 
-                const output = await executeBlock(block, value, ctx);
+                const path = childBlockPath(ctx, "thenIf", stepIndex);
+                const output = await executeBlock(block, value, ctx, path);
                 return { value: output };
               }
             }
@@ -635,14 +679,15 @@ function createSequencer<TInput, TOutput>(
           ...operations,
           {
             name: `if:${block.name}`,
-            run: async (value, ctx) => {
+            run: async (value, ctx, _runtime, stepIndex) => {
               const matches = await condition(value as TOutput, ctx);
               if (!matches) {
                 return { value };
               }
 
               const nextInput = connector === undefined ? value : await connector(value as TOutput, ctx);
-              const output = await executeBlock(block, nextInput, ctx);
+              const path = childBlockPath(ctx, "thenIf", stepIndex);
+              const output = await executeBlock(block, nextInput, ctx, path);
               return { value: output };
             }
           }
@@ -683,18 +728,20 @@ function createSequencer<TInput, TOutput>(
       return extend<{ [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>(
         {
           name: "parallel",
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
             const entries = Object.entries(steps) as Array<[keyof TSteps, TSteps[keyof TSteps]]>;
+            const parallelPath = childBlockPath(ctx, "parallel", stepIndex);
             const outputs = await mapWithConcurrency(
               entries,
               options?.maxConcurrency,
-              async ([, step]): Promise<unknown> => {
+              async ([, step], branchIndex): Promise<unknown> => {
+                const branchPath = extendBlockPath(parallelPath, blockPathSegment("branch", branchIndex));
                 if (isBlockDefinition(step)) {
-                  return executeBlock(step as BlockDefinition<any, any>, value, ctx);
+                  return executeBlock(step as BlockDefinition<any, any>, value, ctx, branchPath);
                 }
 
                 const connected = await step.connector(value as TOutput, ctx);
-                return executeBlock(step.block, connected, ctx);
+                return executeBlock(step.block, connected, ctx, branchPath);
               }
             );
 
@@ -742,7 +789,7 @@ function createSequencer<TInput, TOutput>(
       return extend<TStepOut[]>(
         {
           name: "forEach",
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
             const items = (
               connector === undefined ? (value as unknown as TStepIn[]) : await connector(value as TOutput, ctx)
             ) ?? [];
@@ -757,7 +804,8 @@ function createSequencer<TInput, TOutput>(
                   ? blockOrFactory(item, index, ctx)
                   : (blockOrFactory as BlockDefinition<any, any>);
 
-              return executeBlock(block, item, ctx);
+              const path = childBlockPath(ctx, "forEach", stepIndex, index);
+              return executeBlock(block, item, ctx, path);
             });
 
             return { value: outputs };
@@ -797,7 +845,7 @@ function createSequencer<TInput, TOutput>(
       return extend<TOutput>(
         {
           name: "forEachBackground",
-          run: async (value, ctx, runtime) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             const items = (
               connector === undefined ? (value as unknown as TStepIn[]) : await connector(value as TOutput, ctx)
             ) ?? [];
@@ -826,11 +874,12 @@ function createSequencer<TInput, TOutput>(
                     : (blockOrFactory as BlockDefinition<any, any>);
 
                 const iterName = `${block.name}[${currentIndex}]`;
+                const path = childBlockPath(ctx, "forEachBackground", stepIndex, currentIndex);
                 try {
                   // Background iterations run in the "work" phase; this flows
                   // into _blockIdentity.phase and drives the generator's
                   // position-based default role (work → "trace").
-                  const result = await executeBlock(block, item, ctx, { phase: "work" });
+                  const result = await executeBlock(block, item, ctx, path, { phase: "work" });
                   iterationResults.push({ name: iterName, status: "fulfilled", value: result });
                 } catch (error) {
                   iterationResults.push({ name: iterName, status: "rejected", reason: toError(error) });
@@ -875,13 +924,15 @@ function createSequencer<TInput, TOutput>(
       return extend<TNext>(
         {
           name: `doUntil:${block.name}`,
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
             let nextInput =
               connector === undefined ? value : await connector(value as TOutput, ctx);
             let guard = 0;
+            let iteration = 0;
 
             while (true) {
-              const output = await executeBlock(block, nextInput, ctx);
+              const path = childBlockPath(ctx, "doUntil", stepIndex, iteration);
+              const output = await executeBlock(block, nextInput, ctx, path);
               const done = await condition(output as TNext, ctx);
               if (done) {
                 return { value: output };
@@ -893,6 +944,7 @@ function createSequencer<TInput, TOutput>(
               }
 
               nextInput = output;
+              iteration += 1;
             }
           }
         },
@@ -913,10 +965,12 @@ function createSequencer<TInput, TOutput>(
       return extend<TNext>(
         {
           name: `doWhile:${block.name}`,
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
             let nextInput =
               connector === undefined ? value : await connector(value as TOutput, ctx);
-            let output = await executeBlock(block, nextInput, ctx);
+            let iteration = 0;
+            const firstPath = childBlockPath(ctx, "doWhile", stepIndex, iteration);
+            let output = await executeBlock(block, nextInput, ctx, firstPath);
             let guard = 0;
 
             while (await condition(output as TNext, ctx)) {
@@ -925,8 +979,10 @@ function createSequencer<TInput, TOutput>(
                 throw new Error(`doWhile exceeded max loop guard (${DEFAULT_MAX_LOOP_GUARD})`);
               }
 
+              iteration += 1;
               nextInput = output;
-              output = await executeBlock(block, nextInput, ctx);
+              const nextPath = childBlockPath(ctx, "doWhile", stepIndex, iteration);
+              output = await executeBlock(block, nextInput, ctx, nextPath);
             }
 
             return { value: output };
@@ -981,14 +1037,15 @@ function createSequencer<TInput, TOutput>(
       return extend<TOutput>(
         {
           name: options?.name ?? `work:${block.name}`,
-          run: async (value, ctx, runtime) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             const name = options?.name ?? block.name;
             const input =
               connector === undefined ? value : await connector(value as TOutput, ctx);
 
+            const path = childBlockPath(ctx, "work", stepIndex);
             // work() dispatches run in the "work" phase so nested generators
             // see phase === "work" and apply the trace default for emissions.
-            const promise = executeBlock(block, input, ctx, { phase: "work" })
+            const promise = executeBlock(block, input, ctx, path, { phase: "work" })
               .then(
                 (result): WorkResult => ({
                   name,
@@ -1034,7 +1091,7 @@ function createSequencer<TInput, TOutput>(
       return extend<TOutput>(
         {
           name: options?.name ?? `workIf:${block.name}`,
-          run: async (value, ctx, runtime) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             const shouldDispatch =
               typeof condition === "function" ? await condition(ctx) : condition;
 
@@ -1046,8 +1103,9 @@ function createSequencer<TInput, TOutput>(
             const input =
               connector === undefined ? value : await connector(value as TOutput, ctx);
 
+            const path = childBlockPath(ctx, "workIf", stepIndex);
             // workIf() dispatches run in the "work" phase, matching work().
-            const promise = executeBlock(block, input, ctx, { phase: "work" })
+            const promise = executeBlock(block, input, ctx, path, { phase: "work" })
               .then(
                 (result): WorkResult => ({
                   name,
@@ -1115,8 +1173,9 @@ function createSequencer<TInput, TOutput>(
         return extend<TOutput>(
           {
             name: `tap:${block.name}`,
-            run: async (value, ctx) => {
-              await executeBlock(block, value, ctx);
+            run: async (value, ctx, _runtime, stepIndex) => {
+              const path = childBlockPath(ctx, "tap", stepIndex);
+              await executeBlock(block, value, ctx, path);
               return { value };
             }
           },
@@ -1139,10 +1198,11 @@ function createSequencer<TInput, TOutput>(
       return extend<TOutput>(
         {
           name: "tap",
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
+            const path = childBlockPath(ctx, "tap", stepIndex);
             if (connector === undefined) {
               if (isBlockDefinition(tapTarget)) {
-                await executeBlock(tapTarget as BlockDefinition<any, any>, value, ctx);
+                await executeBlock(tapTarget as BlockDefinition<any, any>, value, ctx, path);
               } else {
                 await (tapTarget as (value: TOutput, ctx: BlockContext) => void | Promise<void>)(
                   value as TOutput,
@@ -1151,7 +1211,7 @@ function createSequencer<TInput, TOutput>(
               }
             } else {
               const connectedInput = await connector(value as TOutput, ctx);
-              await executeBlock(tapTarget as BlockDefinition<any, any>, connectedInput, ctx);
+              await executeBlock(tapTarget as BlockDefinition<any, any>, connectedInput, ctx, path);
             }
 
             return { value };
@@ -1181,15 +1241,16 @@ function createSequencer<TInput, TOutput>(
       return extend<TOutput>(
         {
           name: "tapIf",
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
             const matches = await condition(value as TOutput, ctx);
             if (!matches) {
               return { value };
             }
 
+            const path = childBlockPath(ctx, "tapIf", stepIndex);
             if (connector === undefined) {
               if (isBlockDefinition(tapTarget)) {
-                await executeBlock(tapTarget as BlockDefinition<any, any>, value, ctx);
+                await executeBlock(tapTarget as BlockDefinition<any, any>, value, ctx, path);
               } else {
                 await (tapTarget as (value: TOutput, ctx: BlockContext) => void | Promise<void>)(
                   value as TOutput,
@@ -1198,7 +1259,7 @@ function createSequencer<TInput, TOutput>(
               }
             } else {
               const connectedInput = await connector(value as TOutput, ctx);
-              await executeBlock(tapTarget as BlockDefinition<any, any>, connectedInput, ctx);
+              await executeBlock(tapTarget as BlockDefinition<any, any>, connectedInput, ctx, path);
             }
 
             return { value };
@@ -1235,7 +1296,8 @@ function createSequencer<TInput, TOutput>(
       return extend<BranchStepOutput<TBranches[keyof TBranches]>>(
         {
           name: "branch",
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
+            const basePath = childBlockPath(ctx, "branch", stepIndex);
             for (const key of Object.keys(branches) as Array<keyof TBranches>) {
               const [connector, condition, block] = branches[key];
               const connectedInput = await connector(value as TOutput, ctx);
@@ -1244,7 +1306,8 @@ function createSequencer<TInput, TOutput>(
                 continue;
               }
 
-              const output = await executeBlock(block, connectedInput, ctx);
+              const branchPath = extendBlockPath(basePath, blockPathBranch(String(key)));
+              const output = await executeBlock(block, connectedInput, ctx, branchPath);
               return { value: output };
             }
 
@@ -1268,17 +1331,19 @@ function createSequencer<TInput, TOutput>(
       return extend<{ [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>(
         {
           name: "thenAll",
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
+            const basePath = childBlockPath(ctx, "thenAll", stepIndex);
             const outputs = await mapWithConcurrency(
               steps,
               options?.maxConcurrency,
-              async (step): Promise<unknown> => {
+              async (step, branchIndex): Promise<unknown> => {
+                const branchPath = extendBlockPath(basePath, blockPathSegment("branch", branchIndex));
                 if (isBlockDefinition(step)) {
-                  return executeBlock(step as BlockDefinition<any, any>, value, ctx);
+                  return executeBlock(step as BlockDefinition<any, any>, value, ctx, branchPath);
                 }
 
                 const connected = await step.connector(value as TOutput, ctx);
-                return executeBlock(step.block, connected, ctx);
+                return executeBlock(step.block, connected, ctx, branchPath);
               }
             );
 
@@ -1297,17 +1362,20 @@ function createSequencer<TInput, TOutput>(
       return extend<unknown>(
         {
           name: "thenAny",
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
             if (blocks.length === 0) {
               throw new AggregateError([], "thenAny called with no blocks");
             }
 
             // Try each block sequentially; return the first that succeeds.
+            const basePath = childBlockPath(ctx, "thenAny", stepIndex);
             const errors: Error[] = [];
 
-            for (const block of blocks) {
+            for (let branchIndex = 0; branchIndex < blocks.length; branchIndex += 1) {
+              const block = blocks[branchIndex];
               try {
-                const output = await executeBlock(block, value, ctx);
+                const branchPath = extendBlockPath(basePath, blockPathSegment("branch", branchIndex));
+                const output = await executeBlock(block, value, ctx, branchPath);
                 return { value: output };
               } catch (error) {
                 errors.push(toError(error));
@@ -1330,13 +1398,16 @@ function createSequencer<TInput, TOutput>(
       return extend<unknown>(
         {
           name: "race",
-          run: async (value, ctx, runtime) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
             if (blocks.length === 0) {
               throw new Error("race called with no blocks");
             }
 
+            const basePath = childBlockPath(ctx, "race", stepIndex);
+
             if (blocks.length === 1) {
-              const output = await executeBlock(blocks[0], value, ctx);
+              const singlePath = extendBlockPath(basePath, blockPathSegment("branch", 0));
+              const output = await executeBlock(blocks[0], value, ctx, singlePath);
               return { value: output };
             }
 
@@ -1362,7 +1433,8 @@ function createSequencer<TInput, TOutput>(
                     const currentIndex = nextIndex;
                     nextIndex += 1;
                     try {
-                      const output = await executeBlock(blocks[currentIndex], value, derivedCtx);
+                      const branchPath = extendBlockPath(basePath, blockPathSegment("branch", currentIndex));
+                      const output = await executeBlock(blocks[currentIndex], value, derivedCtx, branchPath);
                       if (!resolved) {
                         resolved = true;
                         resolvedValue = output;
@@ -1384,8 +1456,10 @@ function createSequencer<TInput, TOutput>(
                 await new Promise<void>((resolve) => {
                   let remaining = blocks.length;
 
-                  for (const block of blocks) {
-                    executeBlock(block, value, derivedCtx).then(
+                  for (let i = 0; i < blocks.length; i += 1) {
+                    const block = blocks[i];
+                    const branchPath = extendBlockPath(basePath, blockPathSegment("branch", i));
+                    executeBlock(block, value, derivedCtx, branchPath).then(
                       (output) => {
                         if (!resolved) {
                           resolved = true;
