@@ -914,7 +914,10 @@ describe("execution runtime", () => {
     expect(snapshots.find((entry) => entry.key === "fallback")?.value).toBe("outer");
 
     const dupInstanceId = snapshots.find((entry) => entry.key === "dup")?.value;
-    expect(dupInstanceId).toMatch(/^dup_/);
+    // Deterministic instance IDs use the shape
+    // `${requestId}:${path}:${attempt}`; the path points at the sibling
+    // `dup` target's location in the execution tree.
+    expect(dupInstanceId).toMatch(/^req_targets_siblings:root\/then\[/);
   });
 
   it("prefers sibling target over same-name ancestor target", async () => {
@@ -933,7 +936,12 @@ describe("execution runtime", () => {
       outputSchema: z.number(),
       execute: (value, stepCtx) => {
         const target = stepCtx.getTarget("dup");
-        expect(target?.instanceId).toMatch(/^dup_/);
+        // Deterministic IDs: `${requestId}:${path}:${attempt}`. The sibling
+        // `dup` lives inside the child sequencer, so the path should include
+        // `child/then[...]`, not point at the ancestor `dup` sequencer.
+        expect(target?.instanceId).toMatch(
+          /^req_targets_sibling_shadow:root\/then\[0\]\/then\[/
+        );
         return value;
       }
     });

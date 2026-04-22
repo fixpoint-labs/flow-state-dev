@@ -42,6 +42,17 @@ export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
 export { isTraceObservabilityEnabled } from "./utils/trace-observability";
 export {
+  buildBlockInstanceId,
+  blockPathBranch,
+  blockPathIteration,
+  blockPathRescue,
+  blockPathSegment,
+  blockPathTool,
+  extendBlockPath,
+  parseBlockInstanceId,
+  ROOT_BLOCK_PATH
+} from "./blocks/internal/block-instance-id";
+export {
   generator,
   handler,
   providerTool,

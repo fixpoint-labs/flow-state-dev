@@ -7,6 +7,7 @@ import type { CapabilityRef } from "@flow-state-dev/core";
 import { getBaseCapability } from "@flow-state-dev/core";
 import { composeMiddleware, mergeMiddlewareStacks } from "../middleware/compose";
 import type { BlockMiddlewareContext } from "../middleware/types";
+import { buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import { normalizeError } from "../errors/normalize-error";
 import { getResponseItems } from "./internal/response";
 import {
@@ -223,26 +224,39 @@ export async function executeBlock(
 ): Promise<ExecuteBlockResult> {
   const startedAt = Date.now();
   const seams = options.internalSeams ?? NOOP_INTERNAL_EXECUTION_SEAMS;
-  const blockInstanceId =
-    options.metadata?.blockInstanceId ??
-    `${options.block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  // Resolve the request and structural path. For the root block this falls
+  // back to ROOT_BLOCK_PATH; nested blocks inherit their parent's path via
+  // `_blockIdentity.blockPath`.
+  const identity = (options.ctx as { _blockIdentity?: { blockPath?: string } })._blockIdentity;
+  const requestId =
+    options.metadata?.requestId ?? options.ctx.requestRuntime.requestId;
+  const blockPath =
+    options.metadata?.blockPath ?? identity?.blockPath ?? ROOT_BLOCK_PATH;
   const metadata = createExecutionMetadata(options.ctx, {
     ...options.metadata,
     blockName: options.block.name,
     blockKind: options.block.kind,
-    blockInstanceId,
+    blockPath,
     scope: options.metadata?.scope ?? "block"
   });
   const logger = options.logger ?? DEFAULT_RUNTIME_LOGGER;
-  let attempt = 0;
+  // 0-indexed attempt counter. Initial execution is attempt 0; each retry
+  // increments it. buildBlockInstanceId(requestId, blockPath, attempt) gives
+  // a deterministic ID per (request, path, attempt) tuple.
+  let attempt = -1;
 
   try {
     const run = async (): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta }> => {
       attempt += 1;
+      const currentInstanceId = buildBlockInstanceId(requestId, blockPath, attempt);
       const attemptMetadata = {
         ...metadata,
-        attempt
+        attempt,
+        blockInstanceId: currentInstanceId
       };
+      // Expose attempt counter on ctx so handlers (e.g. FIX-402 runOnce) can
+      // read it without reaching into `_blockIdentity`.
+      (options.ctx as { attempt?: number }).attempt = attempt;
 
       logRuntimeEvent(
         logger,
@@ -311,10 +325,11 @@ export async function executeBlock(
           {
             name: options.block.name,
             kind: options.block.kind,
-            instanceId: attemptMetadata.blockInstanceId ?? blockInstanceId,
+            instanceId: currentInstanceId,
             transient: options.block.transient || undefined,
             stateSchema: options.block.kind === "sequencer" ? options.block.config.stateSchema : undefined,
             parentInstanceId: attemptMetadata.parentBlockInstanceId,
+            path: blockPath,
             phase: attemptMetadata.scope === "work" ? "work" : "main",
             container:
               containerConfig === undefined
@@ -331,8 +346,16 @@ export async function executeBlock(
                         : containerConfig.metadata
                   }
           },
-          async (scopedCtx) =>
-            executeByKind(
+          async (scopedCtx) => {
+            // Mirror the attempt counter onto the scoped context so
+            // handler code reading `ctx.attempt` sees the current retry.
+            (scopedCtx as { attempt?: number }).attempt = attempt;
+            const childIdentity = (scopedCtx as { _blockIdentity?: { attempt?: number } })
+              ._blockIdentity;
+            if (childIdentity !== undefined) {
+              childIdentity.attempt = attempt;
+            }
+            return executeByKind(
               options.block,
               interceptedInput,
               scopedCtx as ExecuteBlockContext,
@@ -340,7 +363,8 @@ export async function executeBlock(
                 internalSeams: seams,
                 metadata: attemptMetadata,
               }
-            )
+            );
+          }
         );
       };
 
@@ -388,6 +412,9 @@ export async function executeBlock(
         : await retryWithPolicy(run, retryPolicy, {
             signal: options.ctx.signal,
             onRetry: (retryAttempt, error) => {
+              // retry.ts's onRetry fires with a 1-indexed "attempt that just
+              // failed"; report it 0-indexed to stay consistent with the
+              // deterministic-ID attempt suffix.
               logRuntimeEvent(
                 logger,
                 "warn",
@@ -395,7 +422,7 @@ export async function executeBlock(
                 {
                   ...createExecutionLogContext({
                     ...metadata,
-                    attempt: retryAttempt
+                    attempt: retryAttempt - 1
                   }),
                   maxAttempts: retryPolicy.maxAttempts,
                   delayMs: Math.min(
@@ -414,7 +441,8 @@ export async function executeBlock(
       ctx: options.ctx,
       metadata: {
         ...metadata,
-        attempt
+        attempt,
+        blockInstanceId: buildBlockInstanceId(requestId, blockPath, attempt)
       },
       startedAt,
       modelUsage: executionResult.modelUsage
@@ -431,6 +459,12 @@ export async function executeBlock(
       scope: "block"
     });
 
+    // `attempt` may be -1 if we never entered `run()` (e.g. ctx setup threw
+    // before the retry loop started). Fall back to the incoming metadata's
+    // attempt in that case.
+    const terminalAttempt = attempt >= 0 ? attempt : metadata.attempt ?? 0;
+    const terminalInstanceId = buildBlockInstanceId(requestId, blockPath, terminalAttempt);
+
     logRuntimeEvent(
       logger,
       "error",
@@ -438,7 +472,8 @@ export async function executeBlock(
       {
         ...createExecutionLogContext({
           ...metadata,
-          attempt: attempt > 0 ? attempt : metadata.attempt
+          attempt: terminalAttempt,
+          blockInstanceId: terminalInstanceId
         }),
         durationMs: Date.now() - startedAt,
         error: summarizeForLog(normalized)
@@ -451,7 +486,8 @@ export async function executeBlock(
       ctx: options.ctx,
       metadata: {
         ...metadata,
-        attempt: attempt > 0 ? attempt : metadata.attempt
+        attempt: terminalAttempt,
+        blockInstanceId: terminalInstanceId
       },
       startedAt,
       status: "failed",

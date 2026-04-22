@@ -12,6 +12,12 @@ import type { DeclaredResourceEntry } from "../types/block";
 import type { CapabilityRef, InferCapabilities } from "../capability/types";
 import { buildBlock, extractDeclaredResources, mergeDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
+import {
+  blockPathBranch,
+  buildBlockInstanceId,
+  extendBlockPath,
+  ROOT_BLOCK_PATH
+} from "./internal/block-instance-id";
 import { isBlockDefinition } from "./internal/utils";
 
 /**
@@ -218,11 +224,20 @@ export function router<
           ? (selected.config as { container?: { component?: string; label?: string | ((input: unknown) => string); metadata?: Record<string, unknown> | ((input: unknown) => Record<string, unknown>); } }).container
           : undefined;
 
+      const parentPath = ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
+      const selectedPath = extendBlockPath(parentPath, blockPathBranch(selected.name));
+      const selectedInstanceId = buildBlockInstanceId(
+        ctx.request.identity.id,
+        selectedPath,
+        0
+      );
+
       return ctx._withExecutionScope(
         {
           name: selected.name,
           kind: selected.kind,
-          instanceId: `${selected.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          instanceId: selectedInstanceId,
+          path: selectedPath,
           stateSchema: selected.kind === "sequencer" ? selected.config.stateSchema : undefined,
           input,
           container:
