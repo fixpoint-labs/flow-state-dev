@@ -37,9 +37,8 @@ export function createAppendEntry(
     // reads the entry to surface which entry is being appended without an
     // imperative `emitStatus` call mid-execute.
     activeStatusMessage: (entry) => {
-      const entryType = (entry as Record<string, unknown> | undefined)?.type ?? "unknown";
       const entryTopic = (entry as Record<string, unknown> | undefined)?.topic ?? "";
-      return `[reactive-blackboard:${name}] emitting ${entryType}:${entryTopic}`;
+      return entryTopic ? `Considering ${entryTopic}...` : 'Considering an entry...';      
     },
     execute: async (entry, ctx) => {
       const state = (ctx.session.resources as Record<string, any>)[resourceKey]
