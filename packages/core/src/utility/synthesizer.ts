@@ -1,5 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig } from "../blocks";
+import type { AgentType } from "../items/types";
 import { generator } from "../blocks";
 
 export const synthesizerOutputSchema = z.object({
@@ -14,6 +15,12 @@ export interface SynthesizerConfig<
   model?: GeneratorConfig["model"];
   objectives?: string | string[];
   outputSchema?: TOutputSchema;
+  /**
+   * Identity for emitted items. Default: `"agent"` — synthesis output is
+   * user-facing by convention. Override to `"sub-agent"` or `"trace"` when
+   * using this factory as an internal pipeline step.
+   */
+  agentType?: AgentType;
 }
 
 function toUserContent(input: unknown): string {
@@ -42,6 +49,7 @@ export function synthesizer<
     name: config.name,
     model: config.model ?? "preset/fast",
     outputSchema,
+    agentType: config.agentType ?? "agent",
     prompt: [
       "You are a synthesis assistant.",
       "Combine multiple intermediate artifacts into one coherent, non-redundant final output.",

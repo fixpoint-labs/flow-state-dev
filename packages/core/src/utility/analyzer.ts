@@ -1,5 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig } from "../blocks";
+import type { AgentType } from "../items/types";
 import { generator } from "../blocks";
 
 export const analyzerFindingSchema = z.object({
@@ -24,6 +25,12 @@ export interface AnalyzerConfig<
   model?: GeneratorConfig["model"];
   criteria?: string[];
   outputSchema?: TOutputSchema;
+  /**
+   * Identity for emitted items. Unset by default — analysis output flows via
+   * graph edges only. Set to `"agent"` to surface findings to the user, or
+   * `"trace"` for observability-only runs.
+   */
+  agentType?: AgentType;
 }
 
 function toUserContent(input: unknown): string {
@@ -47,6 +54,7 @@ export function analyzer<
     name: config.name,
     model: config.model ?? "preset/fast",
     outputSchema,
+    agentType: config.agentType,
     prompt: [
       "You are an analysis assistant.",
       "Evaluate the provided artifact against each criterion and return structured findings.",

@@ -1,5 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig } from "../blocks";
+import type { AgentType } from "../items/types";
 import { generator } from "../blocks";
 
 export const summarizerOutputSchema = z.object({
@@ -23,6 +24,12 @@ export interface SummarizerConfig<
   granularity?: SummarizerGranularity;
   objectives?: string | string[];
   outputSchema?: TOutputSchema;
+  /**
+   * Identity for emitted items. Unset by default — summaries flow via graph
+   * edges only. Set to `"agent"` to surface the summary to the user, or
+   * `"trace"` for observability-only runs.
+   */
+  agentType?: AgentType;
 }
 
 function toUserContent(input: unknown): string {
@@ -53,6 +60,7 @@ export function summarizer<
     name: config.name,
     model: config.model ?? "preset/fast",
     outputSchema,
+    agentType: config.agentType,
     prompt: [
       "You are a summarization assistant.",
       instruction,

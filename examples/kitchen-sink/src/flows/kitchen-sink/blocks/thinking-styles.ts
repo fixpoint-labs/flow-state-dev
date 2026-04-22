@@ -595,6 +595,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     history: config.history,
     search: true,
     prompt: [instructions, rbBasePrompt.join("\n")],
+    agentType: "agent",
     user: (_input: any, ctx: any) => {
       const state = ctx.session.resources.reactiveBlackboard.state as {
         entries: Array<{ type: string; topic: string; body: string }>;

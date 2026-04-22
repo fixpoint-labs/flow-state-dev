@@ -1,5 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig } from "../blocks";
+import type { AgentType } from "../items/types";
 import { generator } from "../blocks";
 
 export const composerOutputSchema = z.object({
@@ -14,6 +15,12 @@ export interface ComposerConfig<
   model?: GeneratorConfig["model"];
   objectives?: string | string[];
   outputSchema?: TOutputSchema;
+  /**
+   * Identity for emitted items. Unset by default — composed output flows via
+   * graph edges only. Set to `"agent"` to surface it to the user, or
+   * `"trace"` for observability-only runs.
+   */
+  agentType?: AgentType;
 }
 
 function toUserContent(input: unknown): string {
@@ -42,6 +49,7 @@ export function composer<
     name: config.name,
     model: config.model ?? "preset/fast",
     outputSchema,
+    agentType: config.agentType,
     prompt: [
       "You are a composition assistant.",
       "Assemble a coherent artifact from provided parts.",

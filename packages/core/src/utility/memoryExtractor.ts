@@ -1,5 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig } from "../blocks";
+import type { AgentType } from "../items/types";
 import { generator } from "../blocks";
 
 export const memoryExtractorTypeSchema = z.enum([
@@ -26,6 +27,13 @@ export interface MemoryExtractorConfig<
   name: string;
   model?: GeneratorConfig["model"];
   outputSchema?: TOutputSchema;
+  /**
+   * Identity for emitted items. Unset by default — extractor output is a
+   * background step that flows via graph edges to a memory-write handler.
+   * Set to `"trace"` for observability-only runs, or `"agent"` if the
+   * extraction itself should be visible to the user.
+   */
+  agentType?: AgentType;
 }
 
 function toUserContent(input: unknown): string {
@@ -48,6 +56,7 @@ export function memoryExtractor<
     name: config.name,
     model: config.model ?? "preset/fast",
     outputSchema,
+    agentType: config.agentType,
     prompt: [
       "You extract durable memory candidates from user and assistant interactions.",
       "Extract only information worth persisting beyond the current request.",
