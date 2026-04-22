@@ -2029,3 +2029,147 @@ describe("rescue boundary in nested sequencer", () => {
     expect(result.output).toEqual({ result: "final: rescued" });
   });
 });
+
+describe("emitStatus single-slot semantics (FIX-387)", () => {
+  it("dedupes repeat messages — identical consecutive emits produce only the first item", async () => {
+    const { ctx } = await createRuntimeContext("req_status_dedupe");
+    const block = handler({
+      name: "dedupe-block",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value, stepCtx) => {
+        stepCtx.emitStatus("working");
+        stepCtx.emitStatus("working");
+        stepCtx.emitStatus("working");
+        return value;
+      }
+    });
+
+    await executeBlock({ block, input: 1, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const statusItems = items.filter((item: any) => item.type === "status");
+    expect(statusItems.length).toBe(1);
+    expect(statusItems[0].message).toBe("working");
+  });
+
+  it("undefined preserves the slot message while updating signals", async () => {
+    const { ctx } = await createRuntimeContext("req_status_signals");
+    const block = handler({
+      name: "signals-block",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value, stepCtx) => {
+        stepCtx.emitStatus("uploading files");
+        stepCtx.emitStatus(undefined, { blocked: false, backgroundTasks: 3 });
+        stepCtx.emitStatus(undefined, { blocked: false, backgroundTasks: 0 });
+        return value;
+      }
+    });
+
+    await executeBlock({ block, input: 1, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const statusItems = items.filter((item: any) => item.type === "status");
+    expect(statusItems.length).toBe(3);
+    // Every emitted item carries the slot message, not undefined.
+    expect(statusItems[0].message).toBe("uploading files");
+    expect(statusItems[1].message).toBe("uploading files");
+    expect(statusItems[2].message).toBe("uploading files");
+    expect(statusItems[1].backgroundTasks).toBe(3);
+    expect(statusItems[2].backgroundTasks).toBe(0);
+  });
+
+  it("empty string clears the slot — stored as the new slot value", async () => {
+    const { ctx } = await createRuntimeContext("req_status_clear");
+    const block = handler({
+      name: "clear-block",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: (value, stepCtx) => {
+        stepCtx.emitStatus("analyzing");
+        stepCtx.emitStatus("");
+        // After clearing, the next undefined-signal emit carries "".
+        stepCtx.emitStatus(undefined, { blocked: true });
+        return value;
+      }
+    });
+
+    await executeBlock({ block, input: 1, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const statusItems = items.filter((item: any) => item.type === "status");
+    expect(statusItems.map((s: any) => s.message)).toEqual(["analyzing", "", ""]);
+    expect(statusItems[2].blocked).toBe(true);
+  });
+});
+
+describe("activeStatusMessage declarative config (FIX-387)", () => {
+  it("fires a status emit at handler block start when set to a static string", async () => {
+    const { ctx } = await createRuntimeContext("req_active_static");
+    const block = handler({
+      name: "active-static",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      activeStatusMessage: "Crunching numbers...",
+      execute: (value) => value + 1
+    });
+
+    await executeBlock({ block, input: 1, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const statusItems = items.filter((item: any) => item.type === "status");
+    expect(statusItems.length).toBe(1);
+    expect(statusItems[0].message).toBe("Crunching numbers...");
+  });
+
+  it("resolves function form with (input, ctx) when the block starts", async () => {
+    const { ctx } = await createRuntimeContext("req_active_fn");
+    const block = handler({
+      name: "active-fn",
+      inputSchema: z.object({ count: z.number() }),
+      outputSchema: z.number(),
+      activeStatusMessage: (input: { count: number }) => `Analyzing ${input.count} items...`,
+      execute: (input) => input.count
+    });
+
+    await executeBlock({ block, input: { count: 7 }, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const statusItems = items.filter((item: any) => item.type === "status");
+    expect(statusItems.length).toBe(1);
+    expect(statusItems[0].message).toBe("Analyzing 7 items...");
+  });
+
+  it("nested sequencer children each resolve their own activeStatusMessage", async () => {
+    const { ctx } = await createRuntimeContext("req_active_nested");
+    const stepA = handler({
+      name: "step-a",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      activeStatusMessage: "step A running",
+      execute: (value) => value + 1
+    });
+    const stepB = handler({
+      name: "step-b",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      activeStatusMessage: "step B running",
+      execute: (value) => value + 1
+    });
+    const chain = sequencer({
+      name: "chain",
+      inputSchema: z.number()
+    })
+      .then(stepA)
+      .then(stepB);
+
+    await executeBlock({ block: chain, input: 0, ctx });
+
+    const items = (ctx.response as { getItems: () => Array<any> }).getItems();
+    const statusMessages = items
+      .filter((item: any) => item.type === "status")
+      .map((item: any) => item.message);
+    expect(statusMessages).toEqual(["step A running", "step B running"]);
+  });
+});

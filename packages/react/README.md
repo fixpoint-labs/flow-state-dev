@@ -105,6 +105,7 @@ Returns:
 - `snapshot` — Current state snapshot with clientData
 - `items`, `messages`, `blockOutputs`, `functionCalls` — Filtered item views
 - `isLoading`, `isStreaming`, `error` — Status flags
+- `statusMessage` — Request-scoped status slot mirror. Latest `emitStatus` value from the in-flight request (empty string when unset; resets on request termination). Pair with a streaming indicator to show "what's happening right now" with a "Thinking..." fallback.
 - `sendAction(action, input)` — Trigger an action
 - `getOwnedItems(ownedBy)` — Items owned by a container scope (O(1) indexed lookup)
 - `refresh()` — Manually refetch

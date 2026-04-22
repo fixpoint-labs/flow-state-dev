@@ -69,6 +69,13 @@ export type SessionView = {
   readonly isFinishing: boolean;
   /** True when the session can accept a new sendAction call (not blocked by an in-flight request). */
   readonly canSendAction: boolean;
+  /**
+   * Request-scoped status slot — the most recent value passed to
+   * `ctx.emitStatus()` during the in-flight request. Empty string when no
+   * block has emitted a status yet (or when a block explicitly cleared it).
+   * Resets to `""` when the request terminates.
+   */
+  readonly statusMessage: string;
   readonly error: Error | null;
   readonly detail: SessionDetail | null;
   readonly snapshot: SessionStateSnapshotResponse | null;
@@ -317,6 +324,10 @@ export function useSession(
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
+  // Request-scoped status slot mirror — driven by status items arriving in the
+  // SSE stream. Always tracked (even when transient items are filtered from
+  // `items`) so consumers can render a single in-flight indicator.
+  const [statusMessage, setStatusMessage] = useState<string>("");
   const [error, setError] = useState<Error | null>(null);
 
   const streamHandleRef = useRef<RequestStreamHandle | null>(null);
@@ -560,6 +571,9 @@ export function useSession(
 
       setIsStreaming(true);
       setIsFinishing(false);
+      // New request — reset any lingering status from a previous request so
+      // the in-flight indicator starts at "Thinking…" until a block emits.
+      setStatusMessage("");
 
       const filter = {
         includeTransient: itemConfig.includeTransient,
@@ -568,8 +582,21 @@ export function useSession(
 
       const sseCallbacks: RequestSSECallbacks = {
         onItemAdded: (event) => {
-          if (event.item.type === "status" && (event.item as OutputItem & { blocked?: boolean }).blocked === false) {
-            setIsFinishing(true);
+          if (event.item.type === "status") {
+            const statusItem = event.item as OutputItem & {
+              blocked?: boolean;
+              message?: string;
+            };
+            if (statusItem.blocked === false) {
+              setIsFinishing(true);
+            }
+            // Mirror the server-side status slot. Items carry the slot value
+            // whether the caller passed a message or just updated signals, so
+            // we always track the latest. Filtered separately below (status
+            // items are transient by default).
+            if (typeof statusItem.message === "string") {
+              setStatusMessage(statusItem.message);
+            }
           }
 
           // Track that resources changed during streaming. Rather than firing
@@ -716,6 +743,8 @@ export function useSession(
             flushContentDeltas();
             setIsStreaming(false);
             setIsFinishing(false);
+            // Status slot clears automatically on request termination per FIX-387.
+            setStatusMessage("");
             activeRequestIdRef.current = null;
             streamHandleRef.current?.close();
             streamHandleRef.current = null;
@@ -734,6 +763,7 @@ export function useSession(
         onError: () => {
           flushContentDeltas();
           setIsStreaming(false);
+          setStatusMessage("");
           streamHandleRef.current?.close();
           streamHandleRef.current = null;
         }
@@ -1049,6 +1079,7 @@ export function useSession(
     isStreaming,
     isFinishing,
     canSendAction: !isStreaming || isFinishing,
+    statusMessage,
     error,
     detail,
     snapshot,

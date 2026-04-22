@@ -33,6 +33,14 @@ export function createAppendEntry(
     outputSchema: z.any(),
     sessionResources: { [resourceKey]: blackboardResource },
     sequencerStateSchema: emitControlSchema,
+    // Declarative in-flight indicator for this append step. The function form
+    // reads the entry to surface which entry is being appended without an
+    // imperative `emitStatus` call mid-execute.
+    activeStatusMessage: (entry) => {
+      const entryType = (entry as Record<string, unknown> | undefined)?.type ?? "unknown";
+      const entryTopic = (entry as Record<string, unknown> | undefined)?.topic ?? "";
+      return `[reactive-blackboard:${name}] emitting ${entryType}:${entryTopic}`;
+    },
     execute: async (entry, ctx) => {
       const state = (ctx.session.resources as Record<string, any>)[resourceKey]
         .state as ReactiveBlackboardState;
@@ -56,10 +64,6 @@ export function createAppendEntry(
       await ctx.sequencer!.patchState({
         emissionCount: controlState.emissionCount + 1,
       });
-
-      ctx.emitStatus(
-        `[reactive-blackboard:${name}] emitted ${entryType}:${entryTopic}`
-      );
 
       // Emit a non-transient component item so container renderers can
       // track entries in real-time. Status items are transient and filtered

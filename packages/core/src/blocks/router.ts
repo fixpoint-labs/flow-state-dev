@@ -12,6 +12,7 @@ import type { DeclaredResourceEntry } from "../types/block";
 import type { CapabilityRef, InferCapabilities } from "../capability/types";
 import { buildBlock, extractDeclaredResources, mergeDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
+import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import {
   blockPathBranch,
   buildBlockInstanceId,
@@ -205,6 +206,7 @@ export function router<
       const startedAt = Date.now();
       const runSelected = async (scopedCtx: BlockContext): Promise<TOutput> => {
         scopedCtx._runtimeHooks?.onBlockStart?.(selected.name, selected.kind, input);
+        resolveActiveStatusMessage(selected, input, scopedCtx);
         try {
           const output = await selected.run(input, scopedCtx);
           scopedCtx._runtimeHooks?.onBlockComplete?.(selected.name, selected.kind, output, Date.now() - startedAt);
