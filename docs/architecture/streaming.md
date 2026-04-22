@@ -171,6 +171,12 @@ Because events are operationally independent from items, they can be:
 
 This separation means observability-only item types (like `state_snapshot` or `block_debug`) should use `transient: true` — they flow through the event stream for live and replay consumption without bloating the persisted item record.
 
+### Durability ordering
+
+Replayable events are persisted **before** they are flushed to the SSE wire. The emitter awaits the store's `flushEvents` after enqueueing each event and only then enqueues the SSE frame to the stream controller. This closes the window where a client could observe `sequence_number = N` while the persisted log still capped at `seq < N` — a silent gap on reconnect. Persistence failures surface via `onPersistError` and re-throw from the emitter, so a producing block fails loud rather than silently losing events.
+
+`ping` and `debug` events are not replayable and skip the durability barrier — they go straight to the wire.
+
 ## Resume Semantics
 
 Resume after disconnect uses sequence-number cursors:
