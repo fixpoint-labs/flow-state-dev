@@ -1,22 +1,29 @@
 /**
- * The `runSkill` handler — the agent's entry point into the skills system.
+ * The `runSkill` tool — the agent's entry point into the skills system.
  *
  * Skills are NOT auto-matched. The model decides when a skill applies by
  * calling this tool with `name` (and optionally `input`). The tool resolves
- * the skill from the configured collection, dispatches to inline or fork
- * mode based on `context:` frontmatter, and returns either an
- * acknowledgment (inline) or a structured subagent result (fork).
+ * the skill from the configured collection and dispatches to:
+ *   - `inlineActivate` (handler) — patches `__activeSkills` so the next
+ *     generator step renders the substituted body in its system prompt.
+ *   - `skillFork` (generator, `agentType: "sub"`) — runs the skill body as
+ *     a subagent with a resolved subset of catalog tools.
+ *
+ * The tool is a `router` rather than a handler: dispatch + per-branch
+ * input/output adaptation belongs inside a router (BP-013), and routing to
+ * a framework-native generator lets fork mode stream tool calls and text
+ * to the client in real time for DevTool observability — a concrete win
+ * over the previous hand-rolled `model.generate(...)` shortcut.
  *
  * The dynamic tool `description` is built from the active skill catalog at
- * call time so the model sees only currently-enabled skill names. The
- * generator's `describeTools` pipeline picks this up and surfaces it in
- * the tool documentation injected into the system prompt.
+ * call time so the model sees only currently-enabled skill names.
  */
 
 import { z } from "zod";
-import { handler } from "@flow-state-dev/core";
+import { router } from "@flow-state-dev/core";
 import type {
   BlockContext,
+  BlockDefinition,
   ResourceCollectionRef,
   ScopeType,
 } from "@flow-state-dev/core/types";
@@ -25,19 +32,18 @@ import type {
   SkillState,
   ToolCatalog,
 } from "@flow-state-dev/core";
-import {
-  pushActiveSkill,
-  readActiveSkills,
-  type ActiveSkillEntry,
-} from "./active-skill-state";
 import { skillManifestKey } from "./collection";
 import { ensureSeeded } from "./seeding";
-import { runSkillFork } from "./fork-runner";
+import {
+  createSkillForkGenerator,
+  type SkillForkInput,
+} from "./fork-generator";
+import { inlineActivate } from "./inline-activate";
 import { substitute, toSkill, validateSkillName } from "./skill-md";
 import path from "node:path";
 
 // ---------------------------------------------------------------------------
-// Tool I/O
+// Tool I/O — public surface unchanged from the prior handler implementation
 // ---------------------------------------------------------------------------
 
 const inputSchema = z.object({
@@ -61,6 +67,9 @@ const outputSchema = z.object({
   result: z.unknown().optional(),
 });
 
+type RunSkillInput = z.infer<typeof inputSchema>;
+type RunSkillOutput = z.infer<typeof outputSchema>;
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -81,7 +90,7 @@ export interface RunSkillToolOptions {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Helpers — retained for re-export and test use
 // ---------------------------------------------------------------------------
 
 function getCollection(
@@ -164,9 +173,9 @@ export function buildRunSkillDescription(
 // ---------------------------------------------------------------------------
 
 /**
- * Create the `runSkill` handler block configured against a specific
- * collection scope and tool catalog. The returned block is a normal
- * `BlockDefinition` and may be used wherever `GeneratorTool` is accepted.
+ * Create the `runSkill` router tool configured against a specific collection
+ * scope and tool catalog. Returns a `BlockDefinition` usable as a
+ * `GeneratorTool` (router + handler + generator all satisfy the surface).
  */
 export function createRunSkillTool(opts: RunSkillToolOptions) {
   const {
@@ -178,13 +187,21 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
     forkModelId,
   } = opts;
 
-  return handler({
+  const forkGen = createSkillForkGenerator({
+    catalog,
+    defaultModelId: forkModelId,
+  });
+
+  return router({
     name: "runSkill",
     description:
       "Invoke a named skill. The list of available skills is provided in the system context — call this tool with one of those names to activate it.",
     inputSchema,
     outputSchema,
-    execute: async (input: z.infer<typeof inputSchema>, ctx: BlockContext) => {
+    routes: [inlineActivate, forkGen] as unknown as Array<
+      BlockDefinition<typeof inputSchema, typeof outputSchema>
+    >,
+    execute: async (input: RunSkillInput, ctx) => {
       validateSkillName(input.name);
 
       const collection = getCollection(ctx, scope, collectionKey);
@@ -211,43 +228,45 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
       }
 
       const mode = state.contextMode ?? "inline";
-      const skill = toSkill(input.name, state, "");
-
       if (mode === "inline") {
-        // Activation in inline mode is just a state mutation. The next
-        // step's prepareStep re-resolves the dynamic context formatter,
-        // which reads `__activeSkills` and prepends the substituted body.
-        const current = readActiveSkills(ctx.session.state);
-        const entry: ActiveSkillEntry = {
-          name: input.name,
-          mode: "inline",
-          input: input.input,
-          activatedAt: Date.now(),
-        };
-        const next = pushActiveSkill(current, entry);
-        await ctx.session.patchState({ __activeSkills: next } as never);
-        return {
-          skill: input.name,
-          mode: "inline" as const,
-          message: `Skill "${input.name}" activated. Its instructions are now in your system context — re-read it before proceeding.`,
-        };
+        // Inline branch: adapt input shape and pass output through as the
+        // router's output (it already matches RunSkillOutput).
+        return inlineActivate.connectInput(
+          (raw: RunSkillInput) => ({
+            skillName: raw.name,
+            input: raw.input,
+          }),
+        ) as unknown as BlockDefinition<typeof inputSchema, typeof outputSchema>;
       }
 
-      // Fork mode: read the body, substitute, dispatch to subagent.
-      const body = (await manifest.readContent()) ?? "";
-      const substituted = substitute(stripFrontmatter(body), {
+      // Fork branch: resolve the skill body + allowed tools now (closure
+      // captures these so connectInput can synthesize a full SkillForkInput
+      // from the router's raw input at subagent invocation time).
+      const skill = toSkill(input.name, state, "");
+      const rawBody = (await manifest.readContent()) ?? "";
+      const substitutedBody = substitute(stripFrontmatter(rawBody), {
         arguments: input.input,
         skillDir: path.posix.join("/workspace", mountPath, input.name),
       });
+      const allowedToolNames = skill.allowedTools ?? Object.keys(catalog);
 
-      const result = await runSkillFork(ctx, {
-        skill,
-        body: substituted,
-        catalog,
-        modelId: forkModelId,
-      });
-
-      return { skill: input.name, mode: "fork" as const, result };
+      const skillName = input.name;
+      return forkGen
+        .connectInput(
+          (_raw: RunSkillInput): SkillForkInput => ({
+            skillName,
+            body: substitutedBody,
+            allowedToolNames,
+            modelId: forkModelId,
+          }),
+        )
+        .connectOutput(
+          (result: unknown): RunSkillOutput => ({
+            skill: skillName,
+            mode: "fork" as const,
+            result: result ?? null,
+          }),
+        ) as unknown as BlockDefinition<typeof inputSchema, typeof outputSchema>;
     },
   });
 }

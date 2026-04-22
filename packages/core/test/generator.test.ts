@@ -185,6 +185,58 @@ describe("generator builder", () => {
     expect(toolCalls).toEqual(["ok"]);
   });
 
+  it("tools resolver receives the current input alongside ctx", async () => {
+    // A tools function closes over per-invocation state via its `input`
+    // argument. Verifies that `tools: (input, ctx) => ...` can select tools
+    // based on the invocation's input — used by e.g. the skills fork
+    // generator to resolve catalog subsets per SKILL's allowed-tools.
+    const toolA = handler({
+      name: "toolA",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      execute: async () => ({}),
+    });
+    const toolB = handler({
+      name: "toolB",
+      inputSchema: z.object({}),
+      outputSchema: z.object({}),
+      execute: async () => ({}),
+    });
+
+    let seenToolNames: string[] = [];
+    const block = generator({
+      name: "tools-input-resolver",
+      inputSchema: z.object({ pick: z.enum(["a", "b", "both"]) }),
+      model: "m",
+      prompt: "p",
+      outputSchema: z.object({ ok: z.boolean() }),
+      tools: (input) => {
+        if (input.pick === "a") return [toolA];
+        if (input.pick === "b") return [toolB];
+        return [toolA, toolB];
+      },
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          seenToolNames = (options.tools ?? []).map((t: any) => t.name);
+          return { structuredOutput: { ok: true } };
+        },
+      }),
+    });
+
+    await block.run({ pick: "a" }, ctx);
+    expect(seenToolNames).toEqual(["toolA"]);
+
+    await block.run({ pick: "b" }, ctx);
+    expect(seenToolNames).toEqual(["toolB"]);
+
+    await block.run({ pick: "both" }, ctx);
+    expect(seenToolNames).toEqual(["toolA", "toolB"]);
+  });
+
   it("passes maxSteps to model.generate", async () => {
     let receivedMaxSteps: number | undefined;
     const block = generator({

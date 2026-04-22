@@ -315,7 +315,7 @@ export interface GeneratorConfig<
   history?: GeneratorHistoryConfig<NoInfer<TInput>, TCtx>;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
   user?: TypedUserSlotFn<TInput, TCtx> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
-  tools?: GeneratorTool[] | ((ctx: TCtx) => MaybePromise<GeneratorTool[]>);
+  tools?: GeneratorTool[] | ((input: NoInfer<TInput>, ctx: TCtx) => MaybePromise<GeneratorTool[]>);
   /**
    * Enable provider-native web search. When `true`, uses defaults.
    * When an object, maps normalized config to the provider's native search tool.
@@ -515,15 +515,19 @@ async function resolveSlotValues<TInput, TCtx extends BlockContext>(
   return values;
 }
 
-async function resolveTools<TCtx extends BlockContext>(
-  tools: GeneratorTool[] | ((ctx: TCtx) => MaybePromise<GeneratorTool[]>) | undefined,
+async function resolveTools<TInput, TCtx extends BlockContext>(
+  tools:
+    | GeneratorTool[]
+    | ((input: TInput, ctx: TCtx) => MaybePromise<GeneratorTool[]>)
+    | undefined,
+  input: TInput,
   ctx: TCtx
 ): Promise<GeneratorTool[]> {
   if (tools === undefined) {
     return [];
   }
 
-  const resolved = typeof tools === "function" ? await tools(ctx) : tools;
+  const resolved = typeof tools === "function" ? await tools(input, ctx) : tools;
   return Array.isArray(resolved) ? resolved : [];
 }
 
@@ -1330,10 +1334,10 @@ export function generator<
   if (hasStaticTools || hasDynamic) {
     const userTools = normalizedConfig.tools;
 
-    (normalizedConfig as any).tools = async (ctx: BlockContext) => {
-      // 1. User-declared tools (static array or function)
+    (normalizedConfig as any).tools = async (input: unknown, ctx: BlockContext) => {
+      // 1. User-declared tools (static array or function of input+ctx)
       const base: GeneratorTool[] = userTools
-        ? Array.isArray(userTools) ? userTools : await userTools(ctx as any)
+        ? Array.isArray(userTools) ? userTools : await (userTools as any)(input, ctx)
         : [];
 
       // 2. Static capability preset tools
@@ -1392,7 +1396,7 @@ export function generator<
       }
 
       const autoDescribe = normalizedConfig.describeTools !== false;
-      const toolBlocks = await resolveTools(normalizedConfig.tools, ctx);
+      const toolBlocks = await resolveTools(normalizedConfig.tools, input, ctx);
 
       const prompt = await resolvePrompt(normalizedConfig.prompt, input, ctx);
       const contextValues = await resolveSlotValues(normalizedConfig.context, input, ctx);
@@ -1445,7 +1449,7 @@ export function generator<
           let activeTools: string[] | undefined;
           let freshToolDescription: string | undefined;
           if (hasDynamicTools) {
-            const freshTools = await resolveTools(normalizedConfig.tools, ctx);
+            const freshTools = await resolveTools(normalizedConfig.tools, input, ctx);
             activeTools = freshTools.map((t) => t.name);
             if (autoDescribe) {
               freshToolDescription = buildToolDescriptionContext(freshTools);

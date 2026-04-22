@@ -6,8 +6,10 @@
  * The package is structured so each layer is independently usable:
  *   - `defineSkillsCollection`, `parseSkillMd`, `serializeSkillMd` —
  *     primitives for working with the on-disk format.
- *   - `createRunSkillTool` — the handler block, exported for embedding in
+ *   - `createRunSkillTool` — the router tool, exported for embedding in
  *     custom generator configurations that don't go through the capability.
+ *   - `createSkillForkGenerator`, `inlineActivate` — the two dispatch
+ *     branches, exported so custom tool wiring can reuse them.
  *   - `buildSkillsCatalogContext`, `buildActiveSkillsContext` — the dynamic
  *     context formatters, exported for the same reason.
  *   - `createSkillsCapability` — the recommended path: bundles all of the
@@ -74,9 +76,17 @@ export {
 } from "./seeding";
 
 export {
-  runSkillFork,
-  type ForkRunOptions,
-} from "./fork-runner";
+  createSkillForkGenerator,
+  forkInputSchema,
+  type CreateSkillForkGeneratorOptions,
+  type SkillForkInput,
+} from "./fork-generator";
+
+export {
+  inlineActivate,
+  inlineActivateInputSchema,
+  inlineActivateOutputSchema,
+} from "./inline-activate";
 
 export {
   readSkillsDirectory,

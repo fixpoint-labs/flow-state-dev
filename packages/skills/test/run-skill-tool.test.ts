@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { handler } from "@flow-state-dev/core";
+import { z } from "zod";
 import {
   buildRunSkillDescription,
   createRunSkillTool,
@@ -8,9 +10,14 @@ import { createMockSkillsCollection } from "./mocks";
 
 function buildCtx(collection: ReturnType<typeof createMockSkillsCollection>) {
   // Minimal BlockContext shape used by run-skill-tool — only the bits the
-  // tool actually touches.
+  // tool actually touches. Includes the fields the framework generator
+  // needs when the fork branch fires (request.identity, response.emit).
   const sessionState: Record<string, unknown> = { __activeSkills: [] };
   return {
+    request: {
+      identity: { id: "r1", userId: "u1" },
+      state: {},
+    },
     session: {
       identity: { id: "s1", userId: "u1" },
       state: sessionState,
@@ -160,5 +167,97 @@ describe("createRunSkillTool — inline mode", () => {
     await expect(tool.run({ name: "private" }, buildCtx(c))).rejects.toThrow(
       /disable-model-invocation/,
     );
+  });
+});
+
+describe("createRunSkillTool — fork mode", () => {
+  it("dispatches to the fork generator with the substituted body and resolved tools", async () => {
+    const c = createMockSkillsCollection();
+    c._store.set("skills/researcher/SKILL.md", {
+      name: "skills/researcher/SKILL.md",
+      state: {
+        description: "Research a topic",
+        contextMode: "fork",
+        allowedTools: ["webSearch"],
+      },
+      content: `---\ndescription: Research a topic\ncontext: fork\nallowed-tools: [webSearch]\n---\n\nResearch $ARGUMENTS thoroughly.`,
+    });
+
+    const webSearch = handler({
+      name: "webSearch",
+      inputSchema: z.object({ q: z.string() }),
+      outputSchema: z.object({}),
+      execute: async () => ({}),
+    });
+
+    let seenPrompt: string | undefined;
+    let seenToolNames: string[] | undefined;
+    const generate = vi.fn(async (options: { messages?: Array<{ role: string; content: string }>; tools?: Array<{ name: string }> }) => {
+      seenPrompt = options.messages?.find((m) => m.role === "system")?.content;
+      seenToolNames = (options.tools ?? []).map((t) => t.name);
+      return { text: "forked result" };
+    });
+
+    const tool = createRunSkillTool({
+      collectionKey: "skills",
+      scope: "project",
+      catalog: { webSearch },
+    });
+
+    const ctx = buildCtx(c);
+    (ctx as { resolveModel: unknown }).resolveModel = () => ({ modelId: "test", generate });
+
+    const result = await tool.run({ name: "researcher", input: "quantum" }, ctx);
+
+    expect(result.skill).toBe("researcher");
+    expect(result.mode).toBe("fork");
+    expect(result.result).toBe("forked result");
+
+    // Body substitution happened: $ARGUMENTS → "quantum".
+    expect(seenPrompt).toContain("Research quantum thoroughly.");
+    // Frontmatter was stripped from the system prompt.
+    expect(seenPrompt).not.toContain("---");
+
+    // Only allowed-tools from the catalog are exposed to the subagent.
+    expect(seenToolNames).toEqual(["webSearch"]);
+  });
+
+  it("warns on and skips unknown allowed-tools entries", async () => {
+    const c = createMockSkillsCollection();
+    c._store.set("skills/misconfig/SKILL.md", {
+      name: "skills/misconfig/SKILL.md",
+      state: {
+        description: "Misconfigured fork skill",
+        contextMode: "fork",
+        allowedTools: ["doesNotExist"],
+      },
+      content: `---\ndescription: Misconfigured fork skill\ncontext: fork\nallowed-tools: [doesNotExist]\n---\n\nBody`,
+    });
+
+    let seenToolCount: number | undefined;
+    const generate = vi.fn(async (options: { tools?: unknown[] }) => {
+      seenToolCount = (options.tools ?? []).length;
+      return { text: "done" };
+    });
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const tool = createRunSkillTool({
+        collectionKey: "skills",
+        scope: "project",
+        catalog: {},
+      });
+      const ctx = buildCtx(c);
+      (ctx as { resolveModel: unknown }).resolveModel = () => ({ modelId: "test", generate });
+
+      const result = await tool.run({ name: "misconfig" }, ctx);
+      expect(result.mode).toBe("fork");
+      expect(seenToolCount).toBe(0);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('unknown tool "doesNotExist"'),
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
