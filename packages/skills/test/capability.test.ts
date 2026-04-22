@@ -56,4 +56,17 @@ describe("createSkillsCapability", () => {
     // ConfiguredCapability sits on top of cap via Object.create
     expect(Object.getPrototypeOf(configured)).toBe(cap);
   });
+
+  it("agentType is unset by default (cap attaches to any block)", () => {
+    const cap = createSkillsCapability();
+    expect(cap.agentType).toBeUndefined();
+  });
+
+  it("forwards agentType to the defined capability", () => {
+    const cap = createSkillsCapability({ agentType: "primary" });
+    expect(cap.agentType).toBe("primary");
+
+    const arrayCap = createSkillsCapability({ agentType: ["primary", "trace"] });
+    expect(arrayCap.agentType).toEqual(["primary", "trace"]);
+  });
 });

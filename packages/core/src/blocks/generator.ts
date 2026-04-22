@@ -26,7 +26,7 @@ import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
 import type { CapabilityRef, InferCapabilities } from "../capability/types";
 import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
-import { resolveCapabilities } from "./internal/resolve-capabilities";
+import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
 import { toError, withTimeout } from "./internal/utils";
 
 const DEFAULT_MAX_ITERATIONS = 8;
@@ -1273,6 +1273,7 @@ export function generator<
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { declaredResources, resolvedCapabilities, mergedSurface, dynamicUses } = resolveCapabilities(config, "generator");
+  const blockAgentType = config.agentType;
 
   const outputSchema = (config.outputSchema ?? z.string()) as ZodTypeAny;
   const normalizedConfig: GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput> = {
@@ -1310,6 +1311,7 @@ export function generator<
         const parts: string[] = [];
         for (const resolver of dynamicUses) {
           for (const cap of resolver(ctx)) {
+            if (!capabilityMatchesAgent(cap, blockAgentType)) continue;
             const surface = await resolveDynamicCapSurface(cap, ctx);
             for (const entry of surface.contextEntries) {
               const v = typeof entry === "function" ? entry(input, ctx) : entry;
@@ -1346,6 +1348,7 @@ export function generator<
       if (hasDynamic) {
         for (const resolver of dynamicUses) {
           for (const cap of resolver(ctx)) {
+            if (!capabilityMatchesAgent(cap, blockAgentType)) continue;
             const surface = await resolveDynamicCapSurface(cap, ctx);
             dynTools.push(...surface.tools);
           }

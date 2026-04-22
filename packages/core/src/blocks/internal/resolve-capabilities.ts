@@ -9,6 +9,7 @@
 import type { BlockKind, DeclaredResources } from "../../types/block";
 import type { CapabilityRef, UsesEntry } from "../../capability/types";
 import type { MergedCapabilitySurface, DynamicUsesResolver } from "../../capability/merge";
+import type { AgentType } from "../../items/types";
 import {
   flattenCapabilities,
   mergeCapabilities,
@@ -22,6 +23,27 @@ interface HasResources {
   userResources?: Record<string, any>;
   projectResources?: Record<string, any>;
   uses?: readonly UsesEntry[];
+  agentType?: AgentType;
+}
+
+/**
+ * Test whether a capability should attach to a block with the given agentType.
+ * Unscoped caps (no `agentType`) always match. Scoped caps must have the
+ * block's effective agent type in their allowlist. A block with no agentType
+ * is treated as `"primary"` (the safe default — blocks not tagged as workers
+ * are assumed to be the main agent).
+ *
+ * Exported so runtime dynamic-capability resolvers in generator.ts can apply
+ * the same rule to caps returned by dynamic `uses` functions.
+ */
+export function capabilityMatchesAgent(
+  cap: CapabilityRef,
+  blockAgentType: AgentType | undefined,
+): boolean {
+  if (cap.agentType === undefined) return true;
+  const effective: AgentType = blockAgentType ?? "primary";
+  const allowed = Array.isArray(cap.agentType) ? cap.agentType : [cap.agentType];
+  return allowed.includes(effective);
 }
 
 export interface ResolveResult {
@@ -81,15 +103,22 @@ export function resolveCapabilities(
   const { staticRefs: flattened, dynamicResolvers: nestedDynamic } =
     flattenCapabilities(topStaticRefs, { collectDynamic: true });
 
+  // Capability-level agentType filter: drop caps whose allowlist excludes
+  // the consuming block's agentType. Each cap is filtered independently
+  // against the block; filtering is not transitive through `uses` trees
+  // (a capability that depends on a "primary"-only cap still flattens it,
+  // but the nested ref is kept or dropped based on its own agentType and
+  // the block's, not the parent's).
   const allDynamic = [...topDynamicFns, ...nestedDynamic];
+  const scoped = flattened.filter((cap) => capabilityMatchesAgent(cap, config.agentType));
 
-  const merged = mergeCapabilities(flattened, blockKind);
+  const merged = mergeCapabilities(scoped, blockKind);
   const capResources = extractMergedResources(merged);
   const declaredResources = mergeWithBlockResources(capResources, blockResources);
 
   return {
     declaredResources,
-    resolvedCapabilities: flattened,
+    resolvedCapabilities: scoped,
     mergedSurface: merged,
     dynamicUses: allDynamic,
   };

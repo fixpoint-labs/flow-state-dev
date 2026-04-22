@@ -21,6 +21,7 @@
     "@flow-state-dev/patterns": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/server": "workspace:*",
+    "@flow-state-dev/skills": "workspace:*",
     "@flow-state-dev/vercel": "workspace:*",
     "@flow-state-dev/store-postgres": "workspace:*",
     "@flow-state-dev/tools": "workspace:*",

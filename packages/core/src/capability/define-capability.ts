@@ -43,6 +43,7 @@ export function defineCapability<
     sequencerStateSchema: config.sequencerStateSchema,
     targetStateSchemas: config.targetStateSchemas,
     uses: config.uses,
+    agentType: config.agentType,
     fns: config.fns,
     __presetDefs: config.presets,
   };

@@ -22,7 +22,7 @@ import type {
   DeclaredResourceEntry,
   ScopeType,
 } from "@flow-state-dev/core/types";
-import type { InitialSkill, ToolCatalog } from "@flow-state-dev/core";
+import type { AgentType, InitialSkill, ToolCatalog } from "@flow-state-dev/core";
 import {
   defineSkillsCollection,
   type DefineSkillsCollectionOptions,
@@ -57,6 +57,17 @@ export interface SkillsCapabilityOptions {
   collectionConfig?: Pick<DefineSkillsCollectionOptions, "maxInstances" | "prefix">;
   /** Optional override of the model fork-mode subagents run on. */
   forkModelId?: string;
+  /**
+   * Restrict this capability to blocks with a matching `agentType`.
+   *
+   * Omitted (default): every generator that declares skills via `uses:`
+   * gets the full body + runSkill tool.
+   * Set to `"primary"` in multi-agent patterns so only the main agent
+   * (planner, supervisor, blackboard synthesizer) coordinates with skills;
+   * workers (`agentType: "sub"`) don't duplicate the skill body into their
+   * context on every step. See CapabilityConfig.agentType.
+   */
+  agentType?: AgentType | readonly AgentType[];
 }
 
 // ---------------------------------------------------------------------------
@@ -117,6 +128,7 @@ export function createSkillsCapability(
 
   return defineCapability({
     name: "skills",
+    agentType: options.agentType,
 
     // Always-on surface: the resource collection and the session-state slice
     // active-skills writes into.

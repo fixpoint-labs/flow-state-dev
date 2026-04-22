@@ -11,17 +11,24 @@
  * When bash is disabled:
  *   - readArtifact/updateArtifact are included as fallback
  *   - no bash tools or guidance
+ *
+ * Skills are always available on main agents via the `skills` feature flag;
+ * the skills capability is scoped to `agentType: "primary"` so worker
+ * generators inside plan-and-execute / supervisor / blackboard patterns
+ * don't replicate skill bodies into their context.
  */
 import { defineCapability, type CapabilityRef } from "@flow-state-dev/core";
 import { createBashCapability } from "@flow-state-dev/tools/bash";
 import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
 import { crawl } from "@flow-state-dev/tools/crawl";
+import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/skills";
 import { z } from "zod";
 import { modeSchema, featuresSchema } from "../schemas";
 import { artifactResources, artifactsCapability } from "./artifacts";
 import { mcpCapability } from "../../../../lib/mcp";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const featuresSessionStateSchema = z.object({
   mode: modeSchema,
@@ -32,6 +39,34 @@ const featuresSessionStateSchema = z.object({
 const searchTool = search();
 const fetchTool = fetch();
 const crawlTool = crawl();
+
+// Skills — bundled defaults live in examples/kitchen-sink/skills. Loaded at
+// module init so ensureSeeded() can hydrate the collection on first runSkill
+// invocation. Top-level await is supported here (Next.js, ESM).
+const skillsDir = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../../skills",
+);
+const { skills: initialSkills, errors: skillsLoadErrors } =
+  await readSkillsDirectory(skillsDir);
+if (skillsLoadErrors.length > 0) {
+  for (const { name, error } of skillsLoadErrors) {
+    console.warn(`[kitchen-sink] failed to load initial skill "${name}":`, error.message);
+  }
+}
+
+const skillsCap = createSkillsCapability({
+  catalog: {
+    search: searchTool,
+    fetch: fetchTool,
+    crawl: crawlTool,
+  },
+  initialSkills,
+  scope: "project",
+  // Main-agent only: in plan-and-execute / supervisor / blackboard, the
+  // synthesizer carries skills while step-executors and workers don't.
+  agentType: "primary",
+});
 
 // Bash capability — tools, guidance, and resource declarations for the
 // sandboxed bash workspace. Configured with full network access.
@@ -68,6 +103,8 @@ export const featuresCapability = defineCapability({
     // Conditionally include bash or artifact tools based on mode and feature flags.
     // Most modes always excludes bash — Build mode defers to the bashTool feature flag.
     // MCP capability included when servers are configured (null when absent).
+    // Skills included whenever the skills feature flag is on (filtered to
+    // primary agents by the capability's own agentType).
     (ctx) => {
       const bashEnabled =
         ctx.session.state.mode === "build" && ctx.session.state.features.bashTool;
@@ -75,6 +112,7 @@ export const featuresCapability = defineCapability({
         ? [bashCap, artifactsCapability.presets({ inventory: true, tools: false })]
         : [artifactsCapability];
       if (mcpCapability) caps.push(mcpCapability);
+      if (ctx.session.state.features.skills) caps.push(skillsCap);
       return caps;
     },
   ],
