@@ -7,6 +7,7 @@ const sidebars: SidebarsConfig = {
     "nextjs-setup",
     "development-tips",
     "building-agents",
+    "adding-skills-to-your-app",
     {
       type: "category",
       label: "Deployment",
