@@ -464,12 +464,14 @@ interface ChatPanelProps {
 const ConversationBody = memo(function ConversationBody({
   items,
   isStreaming,
+  statusMessage,
   isLoading,
   error,
   modelPreset,
 }: {
   items: import("@flow-state-dev/core/items").OutputItem[];
   isStreaming: boolean;
+  statusMessage: string;
   isLoading: boolean;
   error: { message: string } | null;
   modelPreset: string;
@@ -486,7 +488,7 @@ const ConversationBody = memo(function ConversationBody({
                 description="A multi-modal AI assistant demonstrating all @flow-state-dev building blocks: handlers, generators, routers, sequencers, resources, clientData, and tool-use."
               />
             )}
-            <RequestGroupRenderer items={items} isStreaming={isStreaming} />
+            <RequestGroupRenderer items={items} isStreaming={isStreaming} statusMessage={statusMessage} />
             {error && (
               <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 <span>{error.message}</span>
@@ -524,6 +526,7 @@ function ChatPanel({
         <ConversationBody
           items={session.items}
           isStreaming={session.isStreaming}
+          statusMessage={session.statusMessage}
           isLoading={session.isLoading}
           error={session.error}
           modelPreset={modelPreset}

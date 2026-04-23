@@ -298,6 +298,13 @@ export type SequencerConfig<
   /** Capabilities to install. Merges resources, state schemas, targets,
    *  and any active preset surfaces into this sequencer's config. */
   uses?: readonly CapabilityRef[];
+  /**
+   * Active status message for this sequencer — declarative sugar for
+   * `ctx.emitStatus()` at sequencer start. A static string is emitted once
+   * when the sequencer enters execution; a function receives `(input, ctx)`
+   * and its return value is emitted.
+   */
+  activeStatusMessage?: string | ((input: TInput, ctx: BlockContext) => string);
   container?: {
     component?: string;
     label?: string | ((input: TInput) => string);

@@ -29,19 +29,12 @@ function groupItemsByRequest(items: OutputItem[]): RequestGroup[] {
   return groups;
 }
 
-/**
- * Check if the last group has any assistant-produced content (reasoning, message,
- * status, block output, etc.) — i.e. anything beyond the optimistic user message.
- */
-function hasAssistantContent(group: RequestGroup): boolean {
-  return group.items.some(
-    (item) => item.type !== "message" || item.role !== "user"
-  );
-}
-
 type RequestGroupRendererProps = {
   items: OutputItem[];
   isStreaming: boolean;
+  /** Latest value from the request-scoped status slot. Falls back to
+   *  "Thinking..." in the indicator when empty. */
+  statusMessage?: string;
 };
 
 /**
@@ -51,12 +44,8 @@ type RequestGroupRendererProps = {
  * in below. As the content grows past the viewport, the min-height
  * becomes irrelevant and scrolling works normally.
  */
-export function RequestGroupRenderer({ items, isStreaming }: RequestGroupRendererProps) {
+export function RequestGroupRenderer({ items, isStreaming, statusMessage }: RequestGroupRendererProps) {
   const groups = useMemo(() => groupItemsByRequest(items), [items]);
-
-  const lastGroup = groups[groups.length - 1];
-  const showIndicator =
-    isStreaming && (!lastGroup || !hasAssistantContent(lastGroup));
 
   return groups.map((group, index) => {
     const isLast = index === groups.length - 1;
@@ -70,7 +59,7 @@ export function RequestGroupRenderer({ items, isStreaming }: RequestGroupRendere
       >
         <ItemsRenderer items={group.items} />
         <SourcesGroup items={group.items} />
-        {isLast && showIndicator && <StreamingIndicator />}
+        {isLast && isStreaming && <StreamingIndicator message={statusMessage} />}
       </div>
     );
   });

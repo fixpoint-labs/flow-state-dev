@@ -1452,10 +1452,30 @@ function createTargetStateOps<TState extends JsonObject>(options: {
     }
   };
 }
+/**
+ * Request-scoped status slot. Shared across every `createEmitStatus` call
+ * within a single request so nested scopes see the same "current message"
+ * value — implements the single-slot semantics from FIX-387.
+ */
+type StatusSlot = { message: string };
+
 function createEmitStatus(
-  emCtx: EmissionContext
-): (message: string, options?: { blocked?: boolean; backgroundTasks?: number }) => void {
-  return function emitStatus(message: string, options?: { blocked?: boolean; backgroundTasks?: number }): void {
+  emCtx: EmissionContext,
+  slot: StatusSlot
+): (message: string | undefined, options?: { blocked?: boolean; backgroundTasks?: number }) => void {
+  return function emitStatus(
+    message: string | undefined,
+    options?: { blocked?: boolean; backgroundTasks?: number }
+  ): void {
+    if (message !== undefined) {
+      // Dedupe: skip when the proposed message matches the slot. `undefined`
+      // callers fall through — they update signals only and always emit.
+      if (message === slot.message) {
+        return;
+      }
+      slot.message = message;
+    }
+
     const itemIndex = emCtx.nextItemIndex();
     const item: StatusItem = {
       id: `item_status_${itemIndex}_${Math.random().toString(16).slice(2)}`,
@@ -1467,7 +1487,7 @@ function createEmitStatus(
       provenance: emCtx.provenance(),
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
-      message,
+      message: slot.message,
       blocked: options?.blocked,
       backgroundTasks: options?.backgroundTasks
     };
@@ -2226,6 +2246,10 @@ export async function createExecutionContext<
   // Duck-type the response: if it has emitItemAdded/emitItemDone, use those;
   // otherwise fall back to the generic emit() method via a thin adapter.
   let emittedItemCount = 0;
+
+  // Request-scoped status slot — shared across every scope's createEmitStatus.
+  // Terminates naturally when this context is discarded at request end.
+  const statusSlot: StatusSlot = { message: "" };
   const typedResponse = response as unknown as Record<string, unknown>;
   const hasTypedEmitter =
     typeof typedResponse.emitItemAdded === "function" &&
@@ -2561,7 +2585,7 @@ export async function createExecutionContext<
       },
       emitMessage: createEmitMessage(activeEmCtx),
       emitComponent: createEmitComponent(activeEmCtx),
-      emitStatus: createEmitStatus(activeEmCtx),
+      emitStatus: createEmitStatus(activeEmCtx, statusSlot),
       // ctx.cap is populated per-block in executeBlock (see buildCapObject below).
       cap: {} as any,
       // Defined below via Object.defineProperty to close over parentChain.

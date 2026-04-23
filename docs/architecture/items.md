@@ -52,7 +52,7 @@ Structural items ignore `agentType` for visibility. `agentType` on a structural 
 
 **`source`** holds a URL reference from a provider-native tool like web search. Rendered alongside the message that produced it.
 
-**`status`** is a transient progress update — "Searching the web...", "Running analysis...". Streams to the client but is never persisted. Emit via `ctx.emitStatus()`.
+**`status`** is a transient progress update — "Searching the web...", "Running analysis...". Streams to the client but is never persisted. Backed by a request-scoped single slot: the latest `emitStatus` value wins, and the UI renders it as a single in-flight indicator (falling back to "Thinking..." when the slot is empty). Emit declaratively via `activeStatusMessage` on any block config, or imperatively via `ctx.emitStatus()` — see [Status slot semantics](#status-slot-semantics).
 
 **`state_change`** records that a state mutation happened. In production it's transient; the client uses it to know something changed so it can update its view. In development it's persisted to support the devtool state timeline.
 
@@ -109,6 +109,50 @@ There are two storage targets, kept separate:
 | `block_debug` | Generator (resolved config at start) | — | — | — | Transient |
 
 **Column meanings:** `Client` = sent to connected clients; `History` = included in LLM conversation history. `Identity-governed` = visibility derives from the producing generator's `agentType`. A `trace` agentType forces `client: false, history: false` regardless of type.
+
+## Status slot semantics
+
+Status is a request-scoped single slot. The latest `emitStatus` value wins; the UI renders one line — whichever message was most recently emitted. When the request terminates, the slot clears and the indicator disappears.
+
+### Declarative: `activeStatusMessage`
+
+Every block config (handler, generator, sequencer, router) accepts an `activeStatusMessage` field. It's resolved at block start and fed into `emitStatus` automatically.
+
+```ts
+handler({
+  name: "ingest-documents",
+  activeStatusMessage: "Ingesting documents...",
+  execute: async (input, ctx) => { /* ... */ },
+});
+
+generator({
+  name: "analyze",
+  activeStatusMessage: (input) => `Analyzing ${input.items.length} items...`,
+  model: "openai/gpt-5",
+  prompt: "...",
+});
+```
+
+There's no corresponding "on complete clear." The next block that sets a status overwrites the previous one; otherwise the last message lingers until the request ends. This matches the "treat status as a global value" intent and avoids flicker back to "Thinking..." between adjacent blocks.
+
+Prefer `activeStatusMessage` when a block has one meaningful status for its whole execution. Reserve `ctx.emitStatus()` for blocks that genuinely need to update status mid-execution (e.g. per-file upload progress). Don't wrap multi-phase logic in a single handler with multiple `emitStatus` calls — that's a symptom of a handler that should be a sequencer of distinct blocks (BP-011).
+
+### Imperative: `ctx.emitStatus(message, options?)`
+
+```ts
+ctx.emitStatus(
+  message: string | undefined,
+  options?: { blocked?: boolean; backgroundTasks?: number }
+): void
+```
+
+**Message update rules:**
+
+- A string (including `""`) sets the slot. `""` explicitly clears the message; the UI falls back to "Thinking...".
+- `undefined` does not touch the message. Use this when updating only `blocked` / `backgroundTasks` signals.
+- If `message` equals the current slot value, the emit is skipped (no item, no SSE event).
+
+`blocked` and `backgroundTasks` are flow-control signals — orthogonal to the human-readable message. `emitStatus(undefined, { blocked: false, backgroundTasks: 0 })` is the canonical way to update signals without changing the visible text.
 
 ## Component items
 
@@ -175,7 +219,7 @@ Using `component` for things native types cover bypasses built-in history assemb
 
 **Block execution status** — the `status` field on `block_output` already tracks `in_progress → completed/failed`. Don't emit a separate item type for each lifecycle transition.
 
-**Block activity indicators** — `ctx.setStatus()` for live activity trees is a forthcoming feature (FIX-387). The design isn't settled. Don't speculate by emitting custom items for this.
+**Per-block activity trees** — there is no per-block status hierarchy or activity graph. Status is a single request-scoped slot ("what is happening right now"). If you need per-agent live visibility of parallel work, group items by `agentName` and render that — don't invent a tree on top of status.
 
 **Session metadata** — title, description, and tags live on the session record. They flow via `session.metadata.changed` SSE events, not items.
 

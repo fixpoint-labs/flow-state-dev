@@ -4,7 +4,7 @@
 import type { BlockOutputItem, ItemProvenance } from "@flow-state-dev/core/items";
 import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
-import { getBaseCapability } from "@flow-state-dev/core";
+import { getBaseCapability, resolveActiveStatusMessage } from "@flow-state-dev/core";
 import { composeMiddleware, mergeMiddlewareStacks } from "../middleware/compose";
 import type { BlockMiddlewareContext } from "../middleware/types";
 import { buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
@@ -135,6 +135,11 @@ async function executeByKind(
   ctx: ExecuteBlockContext,
   options: ExecuteDispatcherOptions
 ): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta }> {
+  // Declarative activeStatusMessage → emitStatus. Fires before the block
+  // actually runs so the in-flight indicator updates as soon as each block
+  // enters execution. Nested sequencer/router children trigger their own
+  // resolution via the core sequencer/router code paths.
+  resolveActiveStatusMessage(block, input, ctx);
   if (block.kind === "generator") {
     const seams = options.internalSeams;
     let modelUsage: GeneratorModelUsageMeta | undefined;

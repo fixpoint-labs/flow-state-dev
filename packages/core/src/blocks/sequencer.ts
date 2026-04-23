@@ -13,6 +13,7 @@ import type {
 } from "./sequencer-methods";
 import { buildBlock, mergeDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
+import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import type { DeclaredResources } from "../types/block";
 import { isBlockDefinition, toError, withTimeout } from "./internal/utils";
 import {
@@ -272,6 +273,7 @@ async function executeBlock(
   const instanceId = buildBlockInstanceId(requestId, path, 0);
   const run = async (scopedCtx: BlockContext): Promise<unknown> => {
     scopedCtx._runtimeHooks?.onBlockStart?.(block.name, block.kind, input);
+    resolveActiveStatusMessage(block, input, scopedCtx);
 
     // For generator blocks, intercept onGeneratorModelResult to capture token usage.
     let modelUsage: GeneratorModelUsageMeta | undefined;
@@ -487,7 +489,10 @@ function runSequencerOperations(
       if (runtime.workTasks.length > 0) {
         const pending = runtime.workTasks.splice(0, runtime.workTasks.length);
         let remaining = pending.length;
-        ctx.emitStatus("", { blocked: false, backgroundTasks: remaining });
+        // Signal-only updates: undefined preserves the current status message
+        // while refreshing blocked/backgroundTasks so the client can unblock
+        // sendAction without the in-flight indicator flickering to blank.
+        ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
 
         await Promise.all(pending.map((t) =>
           t.promise.then((result) => {
@@ -495,7 +500,7 @@ function runSequencerOperations(
             if (result.status === "rejected") {
               console.error(`[sequencer] Background work "${result.name}" failed:`, result.reason?.message ?? result.reason);
             }
-            ctx.emitStatus("", { blocked: false, backgroundTasks: remaining });
+            ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
           })
         ));
       }
@@ -541,7 +546,8 @@ function createSequencer<TInput, TOutput>(
       inputSchema: resolvedInputSchema ?? config.inputSchema,
       outputSchema: undefined,
       stateSchema: config.stateSchema,
-      container: config.container
+      container: config.container,
+      activeStatusMessage: config.activeStatusMessage
     },
     execute: runSequencerOperations(operations, rescueHandlers) as (
       input: unknown,

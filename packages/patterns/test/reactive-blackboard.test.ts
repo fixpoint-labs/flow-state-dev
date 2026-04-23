@@ -517,9 +517,13 @@ describe("mesh emit", () => {
 
       expect(result.error).toBeNull();
       const statusItems = result.items.filter((item) => item.type === "status");
+      // activeStatusMessage renders a user-friendly "Considering <topic>..."
+      // line at append-block start — the topic is the identifying piece for
+      // the UI indicator; the full type:topic key lives on the emitted entry
+      // component for the devtool trace.
       expect(
         statusItems.some((s) =>
-          (s as any).message?.includes("observation:slack")
+          (s as any).message?.includes("Considering slack")
         )
       ).toBe(true);
     });

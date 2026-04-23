@@ -129,7 +129,7 @@ describe("sequencer builder", () => {
   });
 
   it("emits structured status options during auto-await of work tasks", async () => {
-    const statusCalls: Array<{ message: string; options?: { blocked?: boolean; backgroundTasks?: number } }> = [];
+    const statusCalls: Array<{ message: string | undefined; options?: { blocked?: boolean; backgroundTasks?: number } }> = [];
     const slowWork = handler({
       name: "slow-work",
       inputSchema: z.number(),
@@ -151,7 +151,7 @@ describe("sequencer builder", () => {
       .work(fastWork);
 
     const ctx = createMockContext({
-      emitStatus: (message: string, options?: { blocked?: boolean; backgroundTasks?: number }) => {
+      emitStatus: (message: string | undefined, options?: { blocked?: boolean; backgroundTasks?: number }) => {
         statusCalls.push({ message, options });
       }
     });
