@@ -6,6 +6,14 @@
  * SKILL.md entries carry the typed `SkillState`, and any other entries are
  * plain file resources whose state is just `{}`. Mixing them in one
  * collection is fine — `state` is permissive (`JsonObject`).
+ *
+ * All fields on the schema are optional because the collection holds
+ * heterogeneous entries: SKILL.md manifests populate the typed fields,
+ * supporting files (`reference/*.md`, `scripts/*.py`) carry empty state,
+ * and the internal `_meta` entry carries only `seededNames`. Required-
+ * ness of `description` on manifests is enforced upstream by `parseSkillMd`
+ * — the collection schema is a uniformly-applied shape guard, not the
+ * place to encode per-entry-kind constraints.
  */
 
 import { defineResourceCollection } from "@flow-state-dev/core";
@@ -13,7 +21,7 @@ import { z } from "zod";
 
 /** The Zod schema for a SKILL.md resource's state. */
 export const skillStateSchema = z.object({
-  description: z.string(),
+  description: z.string().optional(),
   allowedTools: z.array(z.string()).optional(),
   contextMode: z.enum(["inline", "fork"]).optional(),
   disableModelInvocation: z.boolean().optional(),
@@ -22,6 +30,7 @@ export const skillStateSchema = z.object({
   argumentHint: z.string().optional(),
   _seededAt: z.string().optional(),
   _preservedFields: z.record(z.unknown()).optional(),
+  seededNames: z.array(z.string()).optional(),
 }).passthrough();
 
 /** Public options for the helper. */
