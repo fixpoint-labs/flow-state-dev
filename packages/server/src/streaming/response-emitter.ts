@@ -62,6 +62,19 @@ export type ResponseEmitterItemHooks = {
 
 export type ResponseEmitterEventHooks = {
   onEvent?: (events: RequestStreamEventWithId[]) => void;
+  /**
+   * Awaitable durability barrier. When provided, the emitter awaits this
+   * after `onEvent` and before publishing to the wire so the client never
+   * observes an event that isn't yet durable (FIX-399). Without this hook,
+   * persistence remains fire-and-forget (legacy behavior, useful for tests).
+   */
+  flushEvents?: () => Promise<void>;
+  /**
+   * Invoked when `flushEvents` rejects. Lets operators surface persistence
+   * failures instead of silently swallowing them. The error is also re-thrown
+   * from `appendEvent` so the producing block fails loud.
+   */
+  onPersistError?: (error: Error) => void;
 };
 
 const DEFAULT_MAX_BUFFER_SIZE = 10_000;
@@ -503,6 +516,32 @@ export class ResponseEmitter implements ResponseEmitterHandle {
 
     this.events.push(withId);
     this.enforceBufferLimit();
+
+    // Persist replayable events BEFORE publishing to the wire (FIX-399).
+    // Without this barrier the client could observe `seq=N`, the process
+    // could die, and the persisted log would still cap at `seq < N` —
+    // a silent gap on reconnect. Ping/debug aren't replayable so they
+    // don't need durability and skip the barrier entirely.
+    //
+    // FIX-361's incremental batching is preserved: persistEvents accumulates
+    // events that arrive while a write is in flight, so concurrent emissions
+    // (Promise.all of content deltas, etc.) coalesce into a single write.
+    // Backpressure also comes for free — slow persistence throttles the
+    // producer instead of growing an unbounded RAM buffer.
+    const isReplayable = withId.type !== "ping" && withId.type !== "debug";
+    if (isReplayable && this.eventHooks?.onEvent !== undefined) {
+      this.eventHooks.onEvent([withId]);
+      if (this.eventHooks.flushEvents !== undefined) {
+        try {
+          await this.eventHooks.flushEvents();
+        } catch (err) {
+          const error = err instanceof Error ? err : new Error(String(err));
+          this.eventHooks.onPersistError?.(error);
+          throw error;
+        }
+      }
+    }
+
     if (this.onEvent !== undefined) {
       // Only await if the callback returns a Promise. Sync callbacks (e.g.
       // LiveRequestStream's controller.enqueue) should not yield to the
@@ -516,16 +555,6 @@ export class ResponseEmitter implements ResponseEmitterHandle {
 
     for (const observer of this.eventObservers) {
       observer(withId);
-    }
-
-    // Fire event persistence hook with only the new event (incremental).
-    // Previous implementation passed getReplayableEvents() — the full history —
-    // on every emission, causing O(n²) persistence work across N events.
-    if (this.eventHooks?.onEvent !== undefined) {
-      const eventType = withId.type;
-      if (eventType !== "ping" && eventType !== "debug") {
-        this.eventHooks.onEvent([withId]);
-      }
     }
 
     return withId;

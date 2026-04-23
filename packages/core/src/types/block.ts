@@ -34,6 +34,13 @@ export type ExecutionParent = {
   /** The input value passed to this block when it was executed. Populated for sequencers. */
   input?: unknown;
   /**
+   * Structural path locator for deterministic instance IDs. Format is a
+   * slash-delimited sequence of `{op}[{index}]` segments rooted at `root`
+   * (e.g. `root/then[0]/iter[2]`). Propagated to the child's
+   * `_blockIdentity.blockPath` so nested blocks can derive their own paths.
+   */
+  path?: string;
+  /**
    * Execution phase for this scope. Inherited by nested scopes when not
    * explicitly overridden.
    */
@@ -159,6 +166,13 @@ export interface BlockContext<
     metadata?: Record<string, unknown>;
   };
 
+  /**
+   * 0-indexed retry attempt for the currently-executing block. Starts at 0
+   * for the initial invocation and increments per retry. Handlers can use
+   * this to drive idempotent behavior (see FIX-402 runOnce).
+   */
+  attempt?: number;
+
   /** @internal Server-side instrumentation hooks. Not part of the public API. */
   _runtimeHooks?: {
     onBlockStart?: (blockName: string, blockKind: string, input: unknown) => void;
@@ -200,6 +214,14 @@ export interface BlockContext<
     ownedBy?: string;
     /** Execution phase — "work" for background scopes, "main" otherwise. */
     phase?: "main" | "work";
+    /**
+     * Structural path to this block within the request's execution tree.
+     * Used by runtime helpers to derive deterministic instance IDs for
+     * nested children. See ExecutionParent.path for format.
+     */
+    blockPath?: string;
+    /** 0-indexed retry attempt for this block's execution. */
+    attempt?: number;
   };
 
   /** @internal Runtime hook that executes nested blocks with parent-chain metadata. */

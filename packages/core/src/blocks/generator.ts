@@ -27,6 +27,13 @@ import type { CapabilityRef, InferCapabilities } from "../capability/types";
 import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
 import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
+import {
+  blockPathTool,
+  buildBlockInstanceId,
+  extendBlockPath,
+  ROOT_BLOCK_PATH
+} from "./internal/block-instance-id";
+
 import { toError, withTimeout } from "./internal/utils";
 
 const DEFAULT_MAX_ITERATIONS = 8;
@@ -670,11 +677,26 @@ function compileToolsWithExecute(
         return runTool(ctx);
       }
 
+      // Derive a deterministic path for this tool invocation. The model's
+      // `toolCallId` is the stable disambiguator across resumes when present;
+      // fall back to the tool name alone otherwise.
+      const parentPath = ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
+      const toolPath = extendBlockPath(
+        parentPath,
+        blockPathTool(tool.name, options?.toolCallId ?? "0")
+      );
+      const toolInstanceId = buildBlockInstanceId(
+        ctx.request.identity.id,
+        toolPath,
+        0
+      );
+
       return ctx._withExecutionScope(
         {
           name: tool.name,
           kind: tool.kind,
-          instanceId: `${tool.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          instanceId: toolInstanceId,
+          path: toolPath,
           input: args,
           // Suppress the default block_output trace — the tool wrapper above
           // emits a richer block_tool_output that supersedes it.

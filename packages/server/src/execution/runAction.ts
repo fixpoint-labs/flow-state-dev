@@ -439,9 +439,21 @@ export async function runActionInternal<
   });
 
   // --- Incremental event persistence ---
+  // The emitter awaits flushEvents before publishing each replayable event
+  // to the wire (FIX-399), closing the durability gap where a process crash
+  // between wire-send and persist-completion would leave the client with a
+  // sequence number the persisted log can't reproduce. onPersistError lets
+  // store failures surface instead of being swallowed.
   response.setEventHooks({
     onEvent: (events) => {
       options.stores.request.persistEvents(requestId, events);
+    },
+    flushEvents: () => options.stores.request.flushEvents(requestId),
+    onPersistError: (err) => {
+      logRuntimeEvent(logger, "error", "[flow-state] event persistence failed", {
+        requestId,
+        error: err.message
+      });
     }
   });
 

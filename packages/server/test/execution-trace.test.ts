@@ -594,9 +594,12 @@ describe("execution trace system", () => {
       expect(routerDecisions.length).toBeGreaterThanOrEqual(1);
 
       const decision = routerDecisions[0]!;
-      // Should use the router's actual blockInstanceId (dynamic, contains timestamp)
-      // not a synthetic fallback like "test-router_<requestId>".
-      expect(decision.provenance.blockInstanceId).toContain("test-router_");
+      // The router's actual blockInstanceId is now deterministic:
+      // `${requestId}:${path}:${attempt}` — verify the decision uses it
+      // rather than a synthetic fallback.
+      expect(decision.provenance.blockInstanceId).toMatch(
+        new RegExp(`^${decision.requestId}:[^:]+:\\d+$`)
+      );
       expect(decision.provenance.blockInstanceId).not.toBe(`test-router_${decision.requestId}`);
     });
   });

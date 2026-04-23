@@ -2571,7 +2571,8 @@ export async function createExecutionContext<
         const resolvedParent: ExecutionParent = {
           ...parent,
           parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId,
-          phase: parent.phase ?? parentChain?.parent.phase
+          phase: parent.phase ?? parentChain?.parent.phase,
+          path: parent.path ?? parentChain?.parent.path
         };
 
         const parentStateContainer =
@@ -2663,7 +2664,8 @@ export async function createExecutionContext<
           blockInstanceId: resolvedParent.instanceId,
           parentBlockInstanceId: resolvedParent.parentInstanceId,
           ownedBy: childEmCtx.ownedBy,
-          phase: resolvedParent.phase ?? "main"
+          phase: resolvedParent.phase ?? "main",
+          blockPath: resolvedParent.path
         };
 
         // Capture start time before execution — this is the only trace cost paid
