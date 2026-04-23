@@ -381,7 +381,7 @@ const kitchenSinkFlow = defineFlow({
         resolvedModel:
           (ctx.state.resolvedModel as string | undefined) ?? null,
         requestCount: Number(ctx.state.requestCount ?? 0),
-        features: ctx.state.features ?? { biasCheck: false, bashTool: true, search: true, fetch: true, crawl: true },
+        features: ctx.state.features ?? { biasCheck: false, search: true, fetch: true, crawl: true },
       }),
     },
   },

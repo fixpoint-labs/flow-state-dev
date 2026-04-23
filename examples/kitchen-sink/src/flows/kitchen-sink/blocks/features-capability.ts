@@ -1,25 +1,23 @@
 /**
- * Features capability — bundles conditional tool selection for the kitchen-sink.
+ * Features capability — bundles the tool + context surface for the kitchen-sink.
  *
- * Encapsulates the feature-flag logic that decides which tools and context
- * are available to generators. Consumers just declare `uses: [featuresCapability]`.
+ * Consumers just declare `uses: [featuresCapability]`. The capability
+ * pulls in everything a primary agent needs: bash + skills + artifacts
+ * (inventory context, no direct tools — bash is the single write path) +
+ * optionally MCP. Web tools are toggleable per-request via feature flags.
  *
- * When bash is enabled (default):
- *   - bashCapability tools + guidance are included
- *   - readArtifact/updateArtifact are excluded (bash is the single artifact path)
+ * Bash is always available so skills and patterns can rely on shell/Python
+ * without having to branch on mode. Artifacts is attached with tools
+ * disabled because the bash tool creates artifacts by writing to files
+ * under the artifacts mount.
  *
- * When bash is disabled:
- *   - readArtifact/updateArtifact are included as fallback
- *   - no bash tools or guidance
- *
- * Skills are always available on main agents. The capability is scoped to
- * `agentType: "primary"` so worker generators inside plan-and-execute /
- * supervisor / blackboard patterns don't replicate skill bodies into their
- * context. It's attached as a static `uses` entry so the framework installs
- * the skills collection resource at build time — dynamic `uses` callbacks
- * only contribute tools and context, not resources.
+ * Skills is scoped to `agentType: "primary"` so worker generators inside
+ * plan-and-execute / supervisor / blackboard patterns don't replicate
+ * skill bodies into their context. It's attached as a static `uses` entry
+ * so the framework installs the skills collection resource at build time —
+ * dynamic `uses` callbacks only contribute tools and context, not resources.
  */
-import { defineCapability, type CapabilityRef } from "@flow-state-dev/core";
+import { defineCapability } from "@flow-state-dev/core";
 import { createBashCapability } from "@flow-state-dev/tools/bash";
 import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
@@ -91,17 +89,20 @@ export const bashCap = createBashCapability({
 });
 
 /**
- * Features capability — the single capability that provides all
- * feature-gated tools and context to generators.
+ * Features capability — the single capability that provides all tools and
+ * context to generators.
  *
  * Static dependencies:
- *   - artifactsCapability (tools disabled — we manage tool selection here)
+ *   - skillsCap — skills collection + runSkill tool + catalog context
+ *   - bashCap — shell/python execution, always available
+ *   - artifactsCapability (inventory preset, tools disabled — bash writes
+ *     artifacts via the mounted filesystem)
  *
  * Dynamic dependencies:
- *   - bashCap — included only when the bash feature is enabled
+ *   - mcpCapability — attached only when servers are configured (null otherwise)
  *
  * Presets:
- *   - tools: artifact tools (when bash disabled) + web tools (search/fetch/crawl)
+ *   - tools: web tools (search/fetch/crawl), each per-request feature-gated
  */
 export const featuresCapability = defineCapability({
   name: "features",
@@ -114,18 +115,16 @@ export const featuresCapability = defineCapability({
     // generators in plan-and-execute / supervisor / blackboard skip it.
     skillsCap,
 
-    // Dynamic: mode- and feature-gated tools/context.
-    // Bash vs. artifact tools depends on mode + bashTool flag.
-    // MCP capability included when servers are configured (null when absent).
-    (ctx) => {
-      const bashEnabled =
-        ctx.session.state.mode === "build" && ctx.session.state.features.bashTool;
-      const caps: CapabilityRef[] = bashEnabled
-        ? [bashCap, artifactsCapability.presets({ inventory: true, tools: false })]
-        : [artifactsCapability];
-      if (mcpCapability) caps.push(mcpCapability);
-      return caps;
-    },
+    // Static: artifacts — inventory context only. Bash is the write path,
+    // so readArtifact/updateArtifact tools are disabled here.
+    artifactsCapability.presets({ inventory: true, tools: false }),
+
+    // Static: bash — always available. Skills, Artifacts and patterns can rely on
+    // shell/python without having to branch on mode.
+    bashCap,
+
+    // Dynamic: MCP attached only when servers are configured.
+    () => (mcpCapability ? [mcpCapability] : []),
   ],
 
   presets: {
@@ -141,20 +140,6 @@ export const featuresCapability = defineCapability({
 
         return tools;
       },
-      context: [
-        (_input, ctx) => {
-          // Bash is only active in Build mode with the feature flag enabled.
-          const bashActive =
-            ctx.session.state.mode === "build" && ctx.session.state.features.bashTool;
-          if (bashActive) return null;
-          return [
-            "You have access to artifacts and can read or create them:",
-            "- Use read-artifact tool when users ask about existing artifacts or you need their content.",
-            "- Use update-artifact tool when users explicitly ask you to create or save something.",
-            "Create artifacts when asked — not speculatively.",
-          ].join("\n");
-        },
-      ],
     },
     default: ["tools"],
   },

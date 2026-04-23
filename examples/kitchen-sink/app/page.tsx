@@ -83,7 +83,7 @@ function KitchenSinkApp() {
   const [mode, setMode] = useState<Mode>("ask");
   const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("auto");
   const [modelPreset, setModelPreset] = useState<ModelPreset>("preset/small");
-  const [features, setFeatures] = useState<Features>({ ...DEFAULT_FEATURES, bashTool: false });
+  const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("chat");
@@ -240,15 +240,11 @@ function KitchenSinkApp() {
     [flow.activeSessionId, session],
   );
 
-  // Apply side-effects when mode changes:
-  // Only Build mode enables bash; all other modes disable it and stay on chat panel.
+  // When switching out of Build mode, collapse the mobile view back to chat.
   const handleModeChange = useCallback(
     (newMode: Mode) => {
       setMode(newMode);
-      if (newMode === "build") {
-        setFeatures((prev) => ({ ...prev, bashTool: true }));
-      } else {
-        setFeatures((prev) => ({ ...prev, bashTool: false }));
+      if (newMode !== "build") {
         setMobilePanel("chat");
       }
     },
@@ -538,7 +534,7 @@ function ChatPanel({
             <ModeSelector mode={mode} onModeChange={onSetMode} disabled={isDisabled} />
             <ThinkingStyleSelector value={thinkingStyle} onValueChange={onSetThinkingStyle} disabled={isDisabled} />
             <ModelPresetSelector value={modelPreset} onValueChange={onModelPresetChange} disabled={isDisabled} />
-            <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={isDisabled} mode={mode} />
+            <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={isDisabled} />
             <VoiceToggle voice={voice} disabled={isDisabled} ttsEnabled={ttsEnabled} onToggleTTS={onToggleTTS} />
           </div>
           <PromptInput onSubmit={onSubmit}>
