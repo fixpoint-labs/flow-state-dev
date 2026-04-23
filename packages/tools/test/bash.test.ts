@@ -765,3 +765,284 @@ describe("workspace guards", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// createBashBlocks — readOnlyMounts
+// ---------------------------------------------------------------------------
+//
+// These tests exercise the bash-block wiring end-to-end via mocked context,
+// sandbox, and collections. Each test uses a unique session id to avoid the
+// module-scoped sandbox registry carrying state across tests.
+
+describe("createBashBlocks — readOnlyMounts", () => {
+  // Real `find .` emits `./relative/path` entries when run from the
+  // workspace root. The shared `createMockSandbox` returns absolute keys
+  // (which is fine for hydrate tests but breaks the flush path — the real
+  // flush is designed to strip `./` prefixes). This variant simulates
+  // correct find-relative output so createBashBlocks' flush resolves paths
+  // consistently with production behavior.
+  function createFlushAwareSandbox(
+    destination: string,
+  ): Sandbox & { files: Map<string, string> } {
+    const files = new Map<string, string>();
+    const destPrefix = destination.endsWith("/") ? destination : destination + "/";
+    return {
+      files,
+      async executeCommand(command: string): Promise<CommandResult> {
+        if (command.startsWith("find ")) {
+          const out: string[] = [];
+          for (const key of files.keys()) {
+            if (!key.startsWith(destPrefix)) continue;
+            const rel = key.slice(destPrefix.length);
+            if (!rel) continue;
+            out.push("./" + rel);
+          }
+          return { stdout: out.join("\n"), stderr: "", exitCode: 0 };
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
+      },
+      async readFile(path: string): Promise<string> {
+        const content = files.get(path);
+        if (content === undefined) throw new Error(`File not found: ${path}`);
+        return content;
+      },
+      async writeFile(path: string, content: string): Promise<void> {
+        files.set(path, content);
+      },
+    };
+  }
+
+  // Build a BlockContext-shaped object with the artifacts collection wired
+  // under session.resources and an optional skills collection under project.
+  function buildCtx(
+    sessionId: string,
+    artifacts: ResourceCollectionRef<FileEntryState>,
+    skills?: ResourceCollectionRef<FileEntryState>,
+  ) {
+    return {
+      session: {
+        identity: { id: sessionId, userId: "u1" },
+        resources: { artifacts },
+      },
+      project: {
+        identity: { id: "p1" },
+        resources: skills ? { skills } : {},
+      },
+      user: { identity: { id: "u1" }, resources: {} },
+    } as any;
+  }
+
+  // Build a "skills"-style collection (pattern "skills/**") matching the
+  // real @flow-state-dev/skills collection layout.
+  function createMockSkillsCollection(
+    entries: MockResourceEntry[] = [],
+  ): ResourceCollectionRef<FileEntryState> {
+    const base = createMockCollection(entries);
+    // Override pattern so getPatternPrefix returns "skills".
+    return { ...base, pattern: "skills/**" } as ResourceCollectionRef<FileEntryState>;
+  }
+
+  it("hydrates read-only mount files at the configured path prefix", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollection();
+    const skills = createMockSkillsCollection([
+      {
+        name: "skills/check-news/SKILL.md",
+        state: { path: "skills/check-news/SKILL.md", hash: "", updatedAt: "2026-01-01" },
+        content: "---\ndescription: test\n---\nbody",
+      },
+      {
+        name: "skills/check-news/scripts/hello.py",
+        state: { path: "skills/check-news/scripts/hello.py", hash: "", updatedAt: "2026-01-01" },
+        content: "print('hi')",
+      },
+    ]);
+
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      sessionResources: { artifacts: {} as any },
+      collectionKey: "artifacts",
+      readOnlyMounts: [
+        {
+          resolve: (ctx) => ctx.project?.resources?.skills,
+          pathPrefix: ".fsdev/skills",
+        },
+      ],
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("ro-hydrate-1", artifacts, skills);
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    expect(sandbox.files.get("/workspace/.fsdev/skills/check-news/SKILL.md")).toBe(
+      "---\ndescription: test\n---\nbody",
+    );
+    expect(sandbox.files.get("/workspace/.fsdev/skills/check-news/scripts/hello.py")).toBe(
+      "print('hi')",
+    );
+  });
+
+  it("skips read-only mount hydration when resolve returns undefined", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollection();
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      sessionResources: { artifacts: {} as any },
+      collectionKey: "artifacts",
+      readOnlyMounts: [
+        {
+          resolve: (ctx) => ctx.project?.resources?.skills,
+          pathPrefix: ".fsdev/skills",
+        },
+      ],
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    // ctx with NO skills collection
+    const ctx = buildCtx("ro-hydrate-2", artifacts, undefined);
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    // No files under the skills path prefix should have been written
+    for (const key of sandbox.files.keys()) {
+      expect(key.startsWith("/workspace/.fsdev/skills/")).toBe(false);
+    }
+  });
+
+  it("does not flush writes inside the read-only prefix back to the primary collection", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollection();
+    const skills = createMockSkillsCollection([
+      {
+        name: "skills/check-news/SKILL.md",
+        state: { path: "skills/check-news/SKILL.md", hash: "", updatedAt: "2026-01-01" },
+        content: "original body",
+      },
+    ]);
+
+    // Sandbox that returns both the hydrated skill file AND a pretend
+    // agent edit to that same path (content differs from what hydrate
+    // wrote, so it looks "dirty" to flush).
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand, bashWriteFile } = createBashBlocks({
+      sessionResources: { artifacts: {} as any },
+      collectionKey: "artifacts",
+      readOnlyMounts: [
+        {
+          resolve: (ctx) => ctx.project?.resources?.skills,
+          pathPrefix: ".fsdev/skills",
+        },
+      ],
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("ro-flush-skip", artifacts, skills);
+
+    // First invocation: triggers hydration.
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    // Simulate an in-sandbox edit to a skill file (the agent wrote to it).
+    await bashWriteFile.run(
+      { path: ".fsdev/skills/check-news/SKILL.md", content: "EDITED" },
+      ctx,
+    );
+
+    // Edit should be visible in the sandbox (read-only locally means the
+    // FS copy isn't restored — it just doesn't propagate back).
+    expect(sandbox.files.get("/workspace/.fsdev/skills/check-news/SKILL.md")).toBe("EDITED");
+
+    // The primary artifacts collection must NOT have received an entry
+    // for the skill path — flush skips anything under the read-only prefix.
+    expect(artifacts.count()).toBe(0);
+  });
+
+  it("still flushes writes outside the read-only prefix to the primary collection", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollection();
+    const skills = createMockSkillsCollection([
+      {
+        name: "skills/check-news/SKILL.md",
+        state: { path: "skills/check-news/SKILL.md", hash: "", updatedAt: "2026-01-01" },
+        content: "body",
+      },
+    ]);
+
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand, bashWriteFile } = createBashBlocks({
+      sessionResources: { artifacts: {} as any },
+      collectionKey: "artifacts",
+      readOnlyMounts: [
+        {
+          resolve: (ctx) => ctx.project?.resources?.skills,
+          pathPrefix: ".fsdev/skills",
+        },
+      ],
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("ro-regular-flush", artifacts, skills);
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    // Write a regular artifact outside the read-only prefix.
+    await bashWriteFile.run(
+      { path: "notes.txt", content: "hello" },
+      ctx,
+    );
+
+    expect(artifacts.count()).toBe(1);
+    expect(artifacts.getOptional("notes.txt")).toBeDefined();
+    // And the skills collection is unchanged.
+    expect(skills.count()).toBe(1);
+  });
+
+  it("does not delete primary-collection entries when their bare key collides with a read-only path", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    // Pre-seed an artifact that happens to live at `.fsdev/skills/...`
+    // inside the primary artifacts collection. (Unusual but not forbidden.)
+    // The flush logic should NOT treat its absence-from-sandbox as a delete
+    // signal, because we now skip scanning read-only prefixes entirely.
+    const artifacts = createMockCollection([
+      {
+        name: ".fsdev/skills/stale-artifact.md",
+        state: {
+          path: ".fsdev/skills/stale-artifact.md",
+          hash: "",
+          updatedAt: "2026-01-01",
+        },
+        content: "stale",
+      },
+    ]);
+    const skills = createMockSkillsCollection();
+
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      sessionResources: { artifacts: {} as any },
+      collectionKey: "artifacts",
+      readOnlyMounts: [
+        {
+          resolve: (ctx) => ctx.project?.resources?.skills,
+          pathPrefix: ".fsdev/skills",
+        },
+      ],
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("ro-no-shadow-delete", artifacts, skills);
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    // Flush runs after bashCommand. The pre-existing artifact lives under
+    // the read-only prefix, and because flush skips read-only paths (both
+    // for change detection AND for delete detection), it must still be
+    // present in the collection.
+    expect(artifacts.getOptional(".fsdev/skills/stale-artifact.md")).toBeDefined();
+  });
+});

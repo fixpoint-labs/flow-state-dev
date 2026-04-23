@@ -173,6 +173,28 @@ FileSync uses SHA-256 hashes to detect changes. In `"diff"` mode (default), only
 
 During flush, FileSync matches each workspace file back to its owning collection. If a file exists in a collection, that collection keeps ownership. New files that don't match any existing collection entry go to the first collection in the `collections` record.
 
+### Read-only mounts
+
+`createBashCapability` accepts a `readOnlyMounts` option to materialize additional collections into the workspace at a path prefix, without flushing writes back. Intended use case: bundling skill files (from `@flow-state-dev/skills`) so they're reachable via `cat`, `python3`, or any other bash-side tool.
+
+```ts
+import { createBashCapability } from "@flow-state-dev/tools/bash";
+
+const bashCap = createBashCapability({
+  sessionResources: artifactResources,
+  collectionKey: "artifacts",
+  readOnlyMounts: [
+    {
+      resolve: (ctx) => ctx.project?.resources?.skills,
+      pathPrefix: ".fsdev/skills",
+    },
+  ],
+  provider: { type: "local" },
+});
+```
+
+Each mount's `resolve` function is called per block execution with the block context; return `undefined` to skip the mount (e.g. when the corresponding capability isn't installed). Files are written once on first hydrate at `<destination>/<pathPrefix>/<collection-key>`; the flush sweep skips anything under a read-only prefix in both the change-detection and deletion loops.
+
 ## Resource definitions
 
 For the resource sync to work, your collections need a state schema that includes `path`, `hash`, and `updatedAt` fields:

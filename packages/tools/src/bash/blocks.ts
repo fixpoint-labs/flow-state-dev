@@ -54,6 +54,21 @@ export interface CreateBashBlocksOptions {
    */
   collectionKey: string;
 
+  /**
+   * Additional read-only collections to materialize into the workspace at a
+   * path prefix. Files from these collections are written on first hydrate
+   * and then excluded from flush — changes inside a read-only mount don't
+   * propagate back to the source collection. Used for bundling ancillary
+   * content like the skills collection's supporting files (scripts,
+   * references) at `/workspace/.fsdev/skills/<skill-name>/...`.
+   *
+   * Each mount's `resolve` function is called per-block-execution with the
+   * block context; return the collection or `undefined` to skip the mount.
+   * Keeps the bash capability decoupled from scope details — the caller
+   * decides where the collection lives.
+   */
+  readOnlyMounts?: Array<ReadOnlyMount>;
+
   /** Sandbox provider. Default: `{ type: "local" }`. */
   provider?: SandboxProvider;
 
@@ -68,6 +83,25 @@ export interface CreateBashBlocksOptions {
    * Default: `() => ({})` — relies on schema defaults.
    */
   createState?: (relativePath: string) => Partial<JsonObject>;
+}
+
+/**
+ * A read-only collection mounted at a path prefix inside the workspace.
+ * Files written from this mount are NOT flushed back to the collection.
+ */
+export interface ReadOnlyMount {
+  /**
+   * Resolve the collection from the block context. Return `undefined` to
+   * skip this mount for the current invocation (e.g. when the caller hasn't
+   * installed the corresponding capability).
+   */
+  resolve: (ctx: any) => ResourceCollectionRef<JsonObject> | undefined;
+  /**
+   * Workspace path prefix for this mount, relative to `destination`.
+   * E.g. `".fsdev/skills"` mounts at `/workspace/.fsdev/skills/`.
+   * Leading/trailing slashes are normalized.
+   */
+  pathPrefix: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +146,12 @@ interface SandboxEntry {
   hydrated: boolean;
   /** In-memory content hashes for diff-based flush. */
   contentHashes: Map<string, string>;
+  /**
+   * Normalized workspace path prefixes (without leading or trailing slash)
+   * covering read-only mounts. Flush skips files whose relative path starts
+   * with any entry here.
+   */
+  readOnlyPrefixes: string[];
 }
 
 // Module-level registry keyed by scope+scopeId. Entries are lightweight and
@@ -209,6 +249,62 @@ async function hydrate(
   }
 }
 
+/** Strip leading and trailing slashes so concatenation is unambiguous. */
+function normalizePrefix(prefix: string): string {
+  return prefix.replace(/^\/+|\/+$/g, "");
+}
+
+/**
+ * Hydrate a read-only mount: materialize the mount's collection entries
+ * into the sandbox under `<destination>/<pathPrefix>/<bare-key>`.
+ *
+ * Files are tracked by their full sandbox-relative path so flush's
+ * prefix-exclusion check sees them. We deliberately do not add these paths
+ * to `contentHashes` — they must not be flushed back, even on explicit
+ * agent edits within the prefix (those edits stay in-sandbox for the
+ * lifetime of the session but are not persisted).
+ *
+ * Entries whose keys begin with `_` are treated as collection-level
+ * metadata and skipped (matches the convention of `META_KEY` in
+ * `@flow-state-dev/skills`).
+ */
+async function hydrateReadOnly(
+  entry: SandboxEntry,
+  collection: ResourceCollectionRef<JsonObject>,
+  destination: string,
+  pathPrefix: string,
+): Promise<void> {
+  const collectionPrefix = getPatternPrefix(collection.pattern);
+  const mountPrefix = normalizePrefix(pathPrefix);
+  if (!mountPrefix) return;
+
+  for (const ref of collection.list()) {
+    const bareKey = stripPrefix(ref.name, collectionPrefix);
+    // Skip collection metadata entries.
+    if (bareKey.startsWith("_")) continue;
+    const content = await ref.readContent();
+    if (content === null) continue;
+    const mountedKey = path.posix.join(mountPrefix, bareKey);
+    const fullPath = path.join(destination, mountedKey);
+    await entry.sandbox.writeFile(fullPath, content);
+  }
+}
+
+/**
+ * Whether a sandbox-relative path falls inside any configured read-only
+ * mount. Matching is exact prefix: `mount/` or the mount itself.
+ */
+function isUnderReadOnlyMount(
+  relativePath: string,
+  readOnlyPrefixes: string[],
+): boolean {
+  for (const prefix of readOnlyPrefixes) {
+    if (relativePath === prefix) return true;
+    if (relativePath.startsWith(prefix + "/")) return true;
+  }
+  return false;
+}
+
 /**
  * Flush: sync sandbox filesystem changes back to the resource collection.
  *
@@ -246,6 +342,12 @@ async function flush(
       // Skip empty segments (e.g. find returns ".")
       if (!relativePath || relativePath === ".") continue;
 
+      // Files inside read-only mounts are hydrated from an external
+      // collection and must not propagate back to the primary collection —
+      // otherwise an agent reading a skill file and the flush sweep would
+      // incorrectly treat it as an artifact.
+      if (isUnderReadOnlyMount(relativePath, entry.readOnlyPrefixes)) continue;
+
       currentPaths.add(relativePath);
 
       try {
@@ -276,9 +378,16 @@ async function flush(
   // Remove resources for files deleted from the sandbox.
   // Strip prefix from ref.name to get the bare key for both the
   // currentPaths lookup and the collection.delete() call.
+  //
+  // Paths under read-only mounts are excluded here too: we never added
+  // them to currentPaths above, so without this guard any primary-
+  // collection ref whose bare key falls inside a mount would be deleted
+  // on every flush. That would silently drop artifacts the user placed
+  // at a coincidentally-colliding path.
   const prefix = getPatternPrefix(collection.pattern);
   for (const ref of collection.list()) {
     const bareKey = stripPrefix(ref.name, prefix);
+    if (isUnderReadOnlyMount(bareKey, entry.readOnlyPrefixes)) continue;
     if (!currentPaths.has(bareKey)) {
       await collection.delete(bareKey);
       entry.contentHashes.delete(bareKey);
@@ -302,10 +411,16 @@ export function createBashBlocks(options: CreateBashBlocksOptions) {
   const {
     sessionResources,
     collectionKey,
+    readOnlyMounts = [],
     provider = { type: "local" },
     destination = "/workspace",
     createState = () => ({}) as Partial<JsonObject>,
   } = options;
+
+  // Normalize once so hydrate/flush share the same shape.
+  const normalizedReadOnlyPrefixes = readOnlyMounts
+    .map((mount) => normalizePrefix(mount.pathPrefix))
+    .filter((p) => p.length > 0);
 
   /** Extract scope identity from the block execution context. */
   function getIdentity(ctx: any): ScopeIdentity {
@@ -319,10 +434,16 @@ export function createBashBlocks(options: CreateBashBlocksOptions) {
   /**
    * Lazily creates (or retrieves) the sandbox, hydrating resource files
    * on first access. The registry key is scope-dependent (session/user/project).
+   *
+   * Read-only mounts are materialized after the primary collection so that
+   * if a mount's path prefix somehow collides with an existing artifact,
+   * the read-only copy wins (intentional — skill bundle files should be
+   * stable per-session).
    */
   async function getOrCreate(
     identity: ScopeIdentity,
     collection: ResourceCollectionRef<JsonObject>,
+    ctx: any,
   ): Promise<SandboxEntry> {
     // Resolve the registry key first to avoid creating a sandbox we already have
     const scope = provider.type === "local" ? (provider.scope ?? "session") : "session";
@@ -331,12 +452,22 @@ export function createBashBlocks(options: CreateBashBlocksOptions) {
     let entry = registry.get(registryKey);
     if (!entry) {
       const sandbox = await createScopedSandbox(provider, identity, destination);
-      entry = { sandbox, hydrated: false, contentHashes: new Map() };
+      entry = {
+        sandbox,
+        hydrated: false,
+        contentHashes: new Map(),
+        readOnlyPrefixes: normalizedReadOnlyPrefixes,
+      };
       registry.set(registryKey, entry);
     }
 
     if (!entry.hydrated) {
       await hydrate(entry, collection, destination);
+      for (const mount of readOnlyMounts) {
+        const mountedCollection = mount.resolve(ctx);
+        if (!mountedCollection) continue;
+        await hydrateReadOnly(entry, mountedCollection, destination, mount.pathPrefix);
+      }
       entry.hydrated = true;
     }
 
@@ -362,7 +493,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions) {
 
     execute: async (input: z.infer<typeof bashCommandInputSchema>, ctx: any) => {
       const collection = getCollection(ctx);
-      const entry = await getOrCreate(getIdentity(ctx), collection);
+      const entry = await getOrCreate(getIdentity(ctx), collection, ctx);
       const result = await entry.sandbox.executeCommand(input.command);
       await flush(entry, collection, destination, createState);
       return result;
@@ -379,7 +510,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions) {
 
     execute: async (input: z.infer<typeof bashReadFileInputSchema>, ctx: any) => {
       const collection = getCollection(ctx);
-      const entry = await getOrCreate(getIdentity(ctx), collection);
+      const entry = await getOrCreate(getIdentity(ctx), collection, ctx);
       const fullPath = path.join(destination, input.path);
       const content = await entry.sandbox.readFile(fullPath);
       return { content };
@@ -396,7 +527,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions) {
 
     execute: async (input: z.infer<typeof bashWriteFileInputSchema>, ctx: any) => {
       const collection = getCollection(ctx);
-      const entry = await getOrCreate(getIdentity(ctx), collection);
+      const entry = await getOrCreate(getIdentity(ctx), collection, ctx);
       const fullPath = path.join(destination, input.path);
       await entry.sandbox.writeFile(fullPath, input.content);
       await flush(entry, collection, destination, createState);

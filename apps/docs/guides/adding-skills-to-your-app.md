@@ -189,7 +189,46 @@ Then `uses: [appCap]` on your generator instead of `uses: [skillsCap]`. When `fe
 
 Dynamic `uses:` entries re-run each turn, so the feature flag takes effect immediately without a new session.
 
-## Step 7: Let users edit skills at runtime
+## Step 7: Make skill bundle files reachable from bash
+
+Skills can bundle more than `SKILL.md` — reference docs, Python scripts, anything you want the agent to open at activation time. For those files to actually be readable inside the agent's workspace, mount the skills collection into your bash capability:
+
+```ts
+import { createBashCapability } from "@flow-state-dev/tools/bash";
+
+export const bashCap = createBashCapability({
+  sessionResources: artifactResources,
+  collectionKey: "artifacts",
+  readOnlyMounts: [
+    {
+      resolve: (ctx) => ctx.project?.resources?.skills,
+      pathPrefix: ".fsdev/skills",
+    },
+  ],
+  provider: { type: "local" },
+});
+```
+
+The mount materializes every skill's files at `/workspace/.fsdev/skills/<skill-name>/<relpath>` on the first bash call of a session. Writes under that prefix stay in the sandbox — they aren't flushed back to the skills collection, so an agent can't accidentally corrupt a skill mid-run.
+
+With the mount in place, the `${CLAUDE_SKILL_DIR}` substitution in a skill body resolves to a real filesystem path. A skill like the kitchen-sink's `check-news` can run a bundled Python helper:
+
+```markdown
+Before searching, compute today's date window:
+
+python3 ${CLAUDE_SKILL_DIR}/scripts/date-window.py recent
+```
+
+And load topic-specific guidance from reference files:
+
+```markdown
+For AI questions, open: ${CLAUDE_SKILL_DIR}/reference/ai-news.md
+For world events, open: ${CLAUDE_SKILL_DIR}/reference/world-events.md
+```
+
+If you don't use the bash capability, skip this step — reference files remain in the skills resource collection, just not on any filesystem path.
+
+## Step 8: Let users edit skills at runtime
 
 This is where the Markdown-as-resource design earns its keep. Skills live in the project-scoped `skills` collection. Any surface that can write to a resource can edit them:
 
@@ -201,7 +240,7 @@ The seeding step runs once per collection lifetime — after the initial seed, b
 
 If you want to ship skill updates alongside code, the pattern most apps use is: edit the source file, bump a version, and run a migration that overwrites the resource content. The Skills package doesn't prescribe this; it just persists what's in the collection.
 
-## Step 8 (optional): Fork mode for isolated tasks
+## Step 9 (optional): Fork mode for isolated tasks
 
 Some skills are better as one-shot investigations than as guidance the agent carries forward. Add `context: fork` to the frontmatter:
 

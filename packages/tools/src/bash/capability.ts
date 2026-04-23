@@ -23,7 +23,7 @@
 import { defineCapability } from "@flow-state-dev/core";
 import type { DeclaredResourceEntry, JsonObject } from "@flow-state-dev/core/types";
 import type { SandboxProvider } from "./types";
-import { createBashBlocks } from "./blocks";
+import { createBashBlocks, type ReadOnlyMount } from "./blocks";
 import path from "node:path";
 
 // ---------------------------------------------------------------------------
@@ -36,6 +36,14 @@ export interface CreateBashCapabilityOptions {
 
   /** Key in `sessionResources` for the file collection. */
   collectionKey: string;
+
+  /**
+   * Additional read-only collections to materialize into the workspace at a
+   * path prefix. Intended for bundling skill files or other ancillary
+   * content alongside the primary artifacts collection without mixing
+   * their persistence models — writes to read-only paths don't flush back.
+   */
+  readOnlyMounts?: Array<ReadOnlyMount>;
 
   /** Sandbox provider. Default: `{ type: "just-bash" }`. */
   provider?: SandboxProvider;
@@ -55,7 +63,11 @@ function buildWorkspaceBoundary(destination: string): string {
   return `Your workspace directory is ${destination}. You must only read, write, and operate on files within this directory. Do not access, list, or traverse files or directories outside of ${destination} — including home directories, other projects, or system paths. This applies to all commands, scripts, and embedded code (Python, Node, etc.).`;
 }
 
-function buildJustBashGuidance(provider: Extract<SandboxProvider, { type: "just-bash" }>, destination: string): string {
+function buildJustBashGuidance(
+  provider: Extract<SandboxProvider, { type: "just-bash" }>,
+  destination: string,
+  readOnlyMountsGuidance: string | undefined,
+): string {
   const lines: string[] = [
     "You have a sandboxed bash workspace with 60+ built-in commands (curl, find, join, jq, awk, sed, grep, rg, sort, column, yq, html-to-markdown, etc.). You are not able to install new packages or dependencies, you must only use the packages that are already installed.",
     buildWorkspaceBoundary(destination),
@@ -70,7 +82,7 @@ function buildJustBashGuidance(provider: Extract<SandboxProvider, { type: "just-
   if (provider.javascript) {
     lines.push("JavaScript/TypeScript execution is available via `js-exec` (QuickJS WASM). You do not have node installed.");
   }
-  
+
 
   // Network
   if (provider.network?.dangerouslyAllowFullInternetAccess) {
@@ -84,11 +96,16 @@ function buildJustBashGuidance(provider: Extract<SandboxProvider, { type: "just-
 
   lines.push("Files you create or modify in the workspace are automatically saved as artifacts.");
   lines.push("Use bash to create and edit files — do not use separate artifact tools.");
+  if (readOnlyMountsGuidance) lines.push(readOnlyMountsGuidance);
 
   return lines.join(" ");
 }
 
-function buildLocalGuidance(provider: Extract<SandboxProvider, { type: "local" }>, destination: string): string {
+function buildLocalGuidance(
+  provider: Extract<SandboxProvider, { type: "local" }>,
+  destination: string,
+  readOnlyMountsGuidance: string | undefined,
+): string {
   const scope = provider.scope ?? "session";
   const lines: string[] = [
     `You have a local bash workspace (${scope}-scoped) with full access to host binaries (npm, python, gcc, etc.).`,
@@ -96,21 +113,61 @@ function buildLocalGuidance(provider: Extract<SandboxProvider, { type: "local" }
     "Files you create or modify in the workspace are automatically saved as artifacts.",
     "Use bash to create and edit files — do not use separate artifact tools.",
   ];
+  if (readOnlyMountsGuidance) lines.push(readOnlyMountsGuidance);
   return lines.join(" ");
 }
 
-function buildGuidance(provider: SandboxProvider, destination: string): string {
+/**
+ * Build a single-sentence note describing which workspace paths are
+ * pre-populated but read-only. Returned `undefined` when there are no
+ * read-only mounts, so the guidance stays unchanged for default setups.
+ */
+function buildReadOnlyMountsGuidance(
+  destination: string,
+  mounts: Array<ReadOnlyMount>,
+): string | undefined {
+  if (!mounts || mounts.length === 0) return undefined;
+  const paths = mounts
+    .map((m) => path.posix.join(destination, m.pathPrefix.replace(/^\/+|\/+$/g, "")))
+    .join(", ");
+  return `Read-only files are pre-populated at: ${paths}. You can read and execute them, but any changes you make there will not be saved.`;
+}
+
+function buildGuidance(
+  provider: SandboxProvider,
+  destination: string,
+  readOnlyMounts: Array<ReadOnlyMount>,
+): string {
+  const readOnlyNote = buildReadOnlyMountsGuidance(destination, readOnlyMounts);
   switch (provider.type) {
     case "just-bash":
-      return buildJustBashGuidance(provider, destination);
+      return buildJustBashGuidance(provider, destination, readOnlyNote);
     case "local":
-      return buildLocalGuidance(provider, destination);
+      return buildLocalGuidance(provider, destination, readOnlyNote);
     case "vercel":
-      return `You have a Vercel Sandbox bash workspace. ${buildWorkspaceBoundary(destination)} Files are automatically saved as artifacts. Use bash to create and edit files.`;
+      return [
+        `You have a Vercel Sandbox bash workspace.`,
+        buildWorkspaceBoundary(destination),
+        "Files are automatically saved as artifacts.",
+        "Use bash to create and edit files.",
+        readOnlyNote,
+      ].filter(Boolean).join(" ");
     case "upstash":
-      return `You have an Upstash Box bash workspace. ${buildWorkspaceBoundary(destination)} Files are automatically saved as artifacts. Use bash to create and edit files.`;
+      return [
+        `You have an Upstash Box bash workspace.`,
+        buildWorkspaceBoundary(destination),
+        "Files are automatically saved as artifacts.",
+        "Use bash to create and edit files.",
+        readOnlyNote,
+      ].filter(Boolean).join(" ");
     case "custom":
-      return `You have a bash workspace. ${buildWorkspaceBoundary(destination)} Files are automatically saved as artifacts. Use bash to create and edit files.`;
+      return [
+        `You have a bash workspace.`,
+        buildWorkspaceBoundary(destination),
+        "Files are automatically saved as artifacts.",
+        "Use bash to create and edit files.",
+        readOnlyNote,
+      ].filter(Boolean).join(" ");
   }
 }
 
@@ -129,6 +186,7 @@ export function createBashCapability(options: CreateBashCapabilityOptions) {
   const {
     sessionResources,
     collectionKey,
+    readOnlyMounts,
     provider = { type: "just-bash" },
     destination,
     createState = (relativePath) => ({
@@ -140,13 +198,14 @@ export function createBashCapability(options: CreateBashCapabilityOptions) {
   const { bashCommand, bashReadFile, bashWriteFile } = createBashBlocks({
     sessionResources,
     collectionKey,
+    readOnlyMounts,
     provider,
     destination,
     createState,
   });
 
   const resolvedDestination = destination ?? "/workspace";
-  const guidance = buildGuidance(provider, resolvedDestination);
+  const guidance = buildGuidance(provider, resolvedDestination, readOnlyMounts ?? []);
 
   return defineCapability({
     name: "bash",

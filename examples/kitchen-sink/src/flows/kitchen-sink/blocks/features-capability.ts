@@ -70,9 +70,23 @@ const skillsCap = createSkillsCapability({
 
 // Bash capability — tools, guidance, and resource declarations for the
 // sandboxed bash workspace. Configured with full network access.
+//
+// The `readOnlyMounts` entry materializes the skills collection into the
+// workspace at `/workspace/.fsdev/skills/<skill-name>/` so skill bundle
+// files (reference docs, scripts, etc.) are readable and executable via
+// bash. Writes under that path are not flushed back — the skills
+// collection is the source of truth. When the skills feature is off, the
+// project resource isn't installed and `resolve` returns undefined, which
+// skips the mount cleanly.
 export const bashCap = createBashCapability({
   sessionResources: artifactResources,
   collectionKey: "artifacts",
+  readOnlyMounts: [
+    {
+      resolve: (ctx) => ctx.project?.resources?.skills,
+      pathPrefix: ".fsdev/skills",
+    },
+  ],
   provider: {
     type: "local"
   },

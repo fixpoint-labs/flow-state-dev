@@ -140,7 +140,58 @@ Before drafting, open:
 Follow the sections in order.
 ```
 
-In inline mode the agent reads the reference through whatever file-reading capability the parent provides (e.g. `readArtifact` or a bash `readFile` tool). In fork mode you'd add that capability to `allowed-tools`.
+For the agent to actually open these files, something has to make them readable from the workspace. The recommended pattern is `readOnlyMounts` on `createBashCapability`, which materializes the skills collection into the bash sandbox at `/workspace/.fsdev/skills/<skill-name>/...`:
+
+```ts
+import { createBashCapability } from "@flow-state-dev/tools/bash";
+
+const bashCap = createBashCapability({
+  sessionResources: artifactResources,
+  collectionKey: "artifacts",
+  readOnlyMounts: [
+    {
+      resolve: (ctx) => ctx.project?.resources?.skills,
+      pathPrefix: ".fsdev/skills",
+    },
+  ],
+  provider: { type: "local" },
+});
+```
+
+With this in place, `${CLAUDE_SKILL_DIR}` paths are reachable via `cat`, `python3`, or any other bash tool. Writes under the mount are kept local to the sandbox — they don't propagate back to the skills collection, so the agent can't accidentally edit a skill mid-run.
+
+Without a mount, reference files still exist as resources but the agent needs a different path to read them (e.g. a `readArtifact`-style tool that takes resource keys directly). Pick one.
+
+In fork mode, the sub-agent only sees tools listed in `allowed-tools`. If the skill expects to read reference files via bash, include `bash` or `bash-read-file` in the list.
+
+## Bundling scripts
+
+Because mounted skill files are materialized on real filesystem paths, scripts work too. The kitchen-sink's `check-news` skill ships a `scripts/date-window.py` helper that returns an ISO date range for different news recency targets:
+
+```
+skills/
+  check-news/
+    SKILL.md
+    scripts/
+      date-window.py
+    reference/
+      ai-news.md
+      world-events.md
+      business-markets.md
+```
+
+The body invokes it directly:
+
+```markdown
+Before searching, compute today's date window:
+
+python3 ${CLAUDE_SKILL_DIR}/scripts/date-window.py recent
+
+The script prints JSON like `{"since": "...", "until": "...", "days": 7}` —
+use `since` in your search query's recency filter.
+```
+
+This gives the agent concrete ground truth (today's date) that it can't always reliably derive from its training data. The script runs in whatever sandbox the bash capability was configured with (just-bash, local, Vercel, etc.), so the capability's provider config determines what languages and binaries are available.
 
 ## Validation errors
 
