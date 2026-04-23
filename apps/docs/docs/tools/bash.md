@@ -4,207 +4,143 @@ sidebar_position: 4
 
 # Bash
 
-`@flow-state-dev/tools` — Execute bash commands in a sandboxed workspace with bidirectional resource sync.
+`@flow-state-dev/tools/bash` — Execute bash commands in a sandboxed workspace with automatic resource-backed persistence.
 
 ## Why this exists
 
 Agents that write code, run scripts, or manage files need a real filesystem. But agent state should be portable and persistent, not tied to a particular machine. The bash tool bridges these two needs: files live as framework resources for persistence, get materialized into a sandbox for execution, and sync back after mutations.
 
-The sandbox is the execution surface. Resources are the source of truth. A `FileSync` layer handles the bidirectional mapping so you don't think about it.
+The sandbox is the execution surface. Resource collections are the source of truth. Bash mounts each collection at its pattern prefix, routes writes back by longest-prefix match, and keeps a reserved `./tmp/` directory for scratch that never persists.
 
-## Basic usage
+## Recommended path — `createBashCapability`
 
-The bash tool creates three AI SDK tools: `bash`, `readFile`, and `writeFile`. You pass resource collections to sync, pick a sandbox adapter, and get back tools ready for a generator.
-
-```ts
-import { createBashTool } from "@flow-state-dev/tools/bash";
-import { providerTool } from "@flow-state-dev/core";
-
-// Inside a handler's execute function:
-const { tools } = await createBashTool({
-  collections: { files: ctx.session.resources.files },
-  provider: { type: "local", cwd: "./workspace" },
-});
-```
-
-Pass the tools to a generator via `providerTools`:
-
-```ts
-import { generator, providerTool } from "@flow-state-dev/core";
-
-const coder = generator({
-  name: "coder",
-  model: "anthropic/claude-sonnet-4-6",
-  prompt: "You can execute bash commands and manage files.",
-  providerTools: [
-    providerTool("bash", tools.bash),
-    providerTool("readFile", tools.readFile),
-    providerTool("writeFile", tools.writeFile),
-  ],
-});
-```
-
-Or, define handler blocks that wrap bash operations and pass them as regular `tools`:
-
-```ts
-import { handler } from "@flow-state-dev/core";
-import { createLocalFsSandbox } from "@flow-state-dev/tools/bash";
-
-const bashCommand = handler({
-  name: "bash",
-  description: "Execute a bash command in the workspace.",
-  inputSchema: z.object({ command: z.string() }),
-  outputSchema: z.object({ stdout: z.string(), stderr: z.string(), exitCode: z.number() }),
-  execute: async (input) => {
-    const sandbox = createLocalFsSandbox({ cwd: "./workspace" });
-    return sandbox.executeCommand(input.command);
-  },
-});
-
-const coder = generator({
-  name: "coder",
-  tools: [bashCommand],
-});
-```
-
-The handler block approach is what the kitchen-sink example uses. It integrates naturally with the framework's tool system, typed schemas, and resource access.
-
-## Configuration
-
-```ts
-createBashTool({
-  // Resource collections to sync into the workspace.
-  // Keys are collection names; values are runtime refs from block context.
-  collections: {
-    files: ctx.session.resources.files,
-    artifacts: ctx.session.resources.artifacts,
-  },
-
-  // Sandbox adapter. Default: { type: "just-bash" }
-  provider: { type: "local", cwd: "./workspace" },
-
-  // Workspace root inside the sandbox. Default: "/workspace"
-  destination: "/workspace",
-
-  // Persist sandbox across sessions (requires bashSession resource). Default: false
-  persist: true,
-
-  // Sync strategy. "diff" uses content hashing, "full" re-reads everything. Default: "diff"
-  syncMode: "diff",
-
-  // Filter which workspace files sync back to resources
-  fileFilter: (path) => !path.includes("node_modules"),
-
-  // Rewrite commands before execution
-  onBeforeCommand: (cmd) => {
-    if (cmd.includes("rm -rf /")) return "echo 'Blocked.'";
-  },
-
-  // Override command results
-  onAfterCommand: (cmd, result) => {
-    if (result.exitCode !== 0) {
-      console.warn(`Command failed: ${cmd}`);
-    }
-  },
-})
-```
-
-## Sandbox adapters
-
-Each adapter implements the same `Sandbox` interface. Swapping adapters changes where commands run without touching tool or sync logic.
-
-| Adapter | Provider config | Best for | Real filesystem? |
-|---------|----------------|----------|-------------------|
-| Local FS | `{ type: "local", cwd?: string }` | Development, local agents | Yes |
-| Vercel | `{ type: "vercel", sandboxId?: string }` | Production, cloud execution | Yes (remote) |
-| Upstash | `{ type: "upstash", boxId?: string }` | Placeholder (FIX-314) | Yes (remote) |
-| just-bash | `{ type: "just-bash" }` | Testing, lightweight analysis | No (in-memory) |
-| Custom | `{ type: "custom", sandbox: Sandbox }` | Anything else | You decide |
-
-### The Sandbox interface
-
-Any object that implements these four methods works as a sandbox:
-
-```ts
-interface Sandbox {
-  executeCommand(command: string): Promise<CommandResult>;
-  readFile(path: string): Promise<string>;
-  writeFile(path: string, content: string): Promise<void>;
-  stop?(): Promise<void>;
-}
-
-interface CommandResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}
-```
-
-### Direct adapter constructors
-
-```ts
-import {
-  createLocalFsSandbox,
-  createJustBashSandbox,
-  createVercelAdapter,
-} from "@flow-state-dev/tools/bash";
-
-// Local filesystem
-const sandbox = createLocalFsSandbox({ cwd: "/tmp/workspace" });
-
-// In-memory (falls back gracefully if just-bash isn't installed)
-const sandbox = await createJustBashSandbox();
-```
-
-## Sync lifecycle
-
-When `createBashTool` is called with resource collections:
-
-1. **Hydrate** — all entries from every passed collection are written into the sandbox filesystem under the configured destination
-2. **Return tools** — `bash`, `readFile`, `writeFile` are returned as AI SDK tool objects
-3. **Auto-flush** — after every `bash` and `writeFile` call, FileSync walks the workspace, diffs via content hash, and upserts changed files back to the appropriate collection. Deleted files are removed from collections.
-4. **No flush on read** — `readFile` does not trigger a sync. It reads directly from the sandbox.
-
-### Content hashing
-
-FileSync uses SHA-256 hashes to detect changes. In `"diff"` mode (default), only files whose hash differs from the stored value are written back to resources. This keeps flush cheap even for large workspaces.
-
-### File ownership
-
-During flush, FileSync matches each workspace file back to its owning collection. If a file exists in a collection, that collection keeps ownership. New files that don't match any existing collection entry go to the first collection in the `collections` record.
-
-### Read-only mounts
-
-`createBashCapability` accepts a `readOnlyMounts` option to materialize additional collections into the workspace at a path prefix, without flushing writes back. Intended use case: bundling skill files (from `@flow-state-dev/skills`) so they're reachable via `cat`, `python3`, or any other bash-side tool.
+Almost every real setup wants a capability: a bundle of tool blocks + dynamic context guidance, wired in with a single `uses: [bashCap]` on a generator.
 
 ```ts
 import { createBashCapability } from "@flow-state-dev/tools/bash";
 
-const bashCap = createBashCapability({
-  sessionResources: artifactResources,
-  collectionKey: "artifacts",
-  readOnlyMounts: [
-    {
-      resolve: (ctx) => ctx.project?.resources?.skills,
-      pathPrefix: ".fsdev/skills",
-    },
-  ],
+export const bashCap = createBashCapability({
   provider: { type: "local" },
 });
 ```
 
-Each mount's `resolve` function is called per block execution with the block context; return `undefined` to skip the mount (e.g. when the corresponding capability isn't installed). Files are written once on first hydrate at `<destination>/<pathPrefix>/<collection-key>`; the flush sweep skips anything under a read-only prefix in both the change-detection and deletion loops.
+That's it. No `sessionResources`, no `collectionKey` — bash auto-discovers every `ResourceCollectionRef` installed on the block's resource context at runtime and mounts each at its pattern prefix:
+
+| Collection pattern | Workspace path |
+|--------------------|----------------|
+| `artifacts/**` | `/workspace/artifacts/...` |
+| `skills/**` | `/workspace/skills/...` |
+| `logs/**` | `/workspace/logs/...` |
+
+Writes are routed back to the owning collection by longest-prefix match. The agent creating `/workspace/skills/new-thing/SKILL.md` in bash persists to the skills collection; `/workspace/artifacts/report.md` persists to artifacts.
+
+Attach the capability to a generator alongside whatever caps install your collections:
+
+```ts
+import { generator } from "@flow-state-dev/core";
+
+const assistant = generator({
+  name: "assistant",
+  model: "preset/medium",
+  prompt: "You can run bash commands to read and write files.",
+  uses: [artifactsCap, skillsCap, bashCap],
+});
+```
+
+Bash inherits `artifacts` from `artifactsCap` and `skills` from `skillsCap` — no coordination needed between capabilities.
+
+## The workspace layout
+
+```
+/workspace/
+  artifacts/        # mounted collection, writes persist
+  skills/           # mounted collection, writes persist
+  tmp/              # scratch; never persists; silent
+  <anywhere else>   # dropped on flush with a console warning
+```
+
+Orphan files (outside any mounted collection and outside `./tmp/`) are explicitly dropped with a warning. The guidance text auto-generated by the capability tells the agent this up front so it doesn't try to write "somewhere".
+
+## Narrowing what gets mounted
+
+Explicit `collections` overrides auto-discovery:
+
+```ts
+createBashCapability({
+  provider: { type: "local" },
+  collections: ["artifacts"],  // only mount this one, ignore the rest
+});
+```
+
+Strings are shorthand for writable mounts. To mount a collection as read-only — edits stay local to the sandbox, never flush back — use the object form:
+
+```ts
+createBashCapability({
+  provider: { type: "local" },
+  collections: [
+    "artifacts",
+    { key: "skills", writable: false },
+  ],
+});
+```
+
+For the "everything except X" pattern, use `exclude`:
+
+```ts
+createBashCapability({
+  provider: { type: "local" },
+  exclude: ["logs"],
+});
+```
+
+## Sandbox providers
+
+Each provider implements the same `Sandbox` interface. Swapping providers changes where commands run without touching tool or sync logic.
+
+| Provider | Config | Best for | Real filesystem? |
+|----------|--------|----------|-------------------|
+| Local FS | `{ type: "local", cwd?: string }` | Development, local agents | Yes |
+| just-bash | `{ type: "just-bash", python?: true, ... }` | Testing, lightweight analysis | No (in-memory) |
+| Vercel | `{ type: "vercel" }` | Production, cloud execution | Yes (remote) |
+| Upstash | `{ type: "upstash" }` | Remote sandbox | Yes (remote) |
+| Custom | `{ type: "custom", sandbox: Sandbox }` | Anything else | You decide |
+
+`just-bash` takes a `python: true` toggle to expose `python3` in the sandbox, and a `network` config to gate external HTTP access. See the type definitions for the full shape.
+
+## Sync lifecycle
+
+On the first bash call in a session:
+
+1. **Discover mounts** — walk `ctx.session.resources`, `ctx.user.resources`, `ctx.project.resources`; any `ResourceCollectionRef` becomes a mount at its pattern prefix. `collections` / `exclude` can override.
+2. **Hydrate** — write every mount's entries into the sandbox under its prefix. Seed `./tmp/.keep` so the scratch directory exists.
+3. **Run the command** — whatever the agent requested.
+4. **Flush** — walk the workspace with `find`. For each file:
+   - Under a writable mount → upsert to that mount's collection with the prefix stripped.
+   - Under a read-only mount → skip.
+   - Under `./tmp/` → skip silently.
+   - Under nothing known → log a warning and drop.
+5. **Delete** — per-mount: refs whose bare key isn't in the current sandbox walk are removed from their collection.
+
+Flush runs after `bash` and after `bash-write-file`. It does NOT run after `bash-read-file` — reads don't change state.
+
+### Content hashing
+
+SHA-256 hashes detect changes. Only files whose hash differs from the stored value are written back to resources, so flush is cheap even for large workspaces.
+
+### Orphan writes
+
+Files the agent creates outside every known path are not persisted. They're logged via `console.warn` at flush time so the behavior is visible during development. If the agent genuinely needs scratch space, `./tmp/` is the explicit place: writes there are silent and never saved.
 
 ## Resource definitions
 
-For the resource sync to work, your collections need a state schema that includes `path`, `hash`, and `updatedAt` fields:
+Collections need a state schema that includes `path`, `hash`, and `updatedAt` fields to participate in bash sync:
 
 ```ts
 import { defineResourceCollection } from "@flow-state-dev/core";
 import { z } from "zod";
 
-const filesCollection = defineResourceCollection({
-  pattern: "files/*",
+const artifacts = defineResourceCollection({
+  pattern: "artifacts/**",
   stateSchema: z.object({
     path: z.string(),
     hash: z.string(),
@@ -213,20 +149,34 @@ const filesCollection = defineResourceCollection({
 });
 ```
 
-File content is stored separately via the resource content system (`readContent`/`writeContent`), not in state. State holds metadata only.
+File content is stored separately via the resource content system (`readContent` / `writeContent`), not in state. State holds metadata only.
 
 ## Error handling
 
 | Scenario | Behavior |
 |----------|----------|
 | Command fails (non-zero exit) | Returns the result with `exitCode`, `stderr`. Does not throw. |
-| File not found on read | Throws an error. Generator retry can handle transient cases. |
-| Sandbox provider unavailable | Throws on `createBashTool()` call. |
-| Upstash adapter selected | Throws — placeholder until FIX-314 ships. |
-| `just-bash` not installed | Falls back to in-memory Map-based sandbox. |
+| File not found on read | Throws. Generator retry can handle transient cases. |
+| Sandbox provider unavailable | Throws on first bash call. |
+| `just-bash` not installed | Falls back to an in-memory Map-based sandbox. |
+
+## Low-level: `createBashTool` for AI SDK integration
+
+`createBashCapability` is the recommended path. If you need AI SDK provider-native tools directly — for example, to wire bash into Anthropic's native computer-use tool contract — use `createBashTool`:
+
+```ts
+import { createBashTool } from "@flow-state-dev/tools/bash";
+
+const { tools, sandbox } = await createBashTool({
+  collections: { artifacts: ctx.session.resources.artifacts },
+  provider: { type: "local", cwd: "./workspace" },
+});
+```
+
+This returns AI SDK `tool()` objects you can pass to a generator via `providerTools`. It's a thinner layer than the capability — no auto-discovery, no guidance text, no flush-routing behavior beyond what `FileSync` provides directly. Reach for it only when you need AI SDK-shaped tools.
 
 ## Next steps
 
-- [Tools overview](/docs/tools/overview) — all available tools
+- [Skills](/docs/skills/overview) — skill bundle files become reachable in bash automatically when bash is on
 - [Resources](/docs/resources/overview) — resource system fundamentals
 - [Collections](/docs/resources/collections) — resource collection patterns

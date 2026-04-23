@@ -46,6 +46,6 @@ export type {
   CreateBashToolResult,
   BashToolkit,
 } from "./types";
-export type { CreateBashBlocksOptions, ReadOnlyMount } from "./blocks";
+export type { CreateBashBlocksOptions, BashCollectionSpec } from "./blocks";
 export type { CreateBashCapabilityOptions } from "./capability";
 export type { UpstashBoxClient } from "./adapters/upstash";

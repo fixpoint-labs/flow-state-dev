@@ -74,7 +74,7 @@ Treat the body as an imperative playbook, not a conversation. Short sections. Bu
 Two variables are substituted into the body at runtime:
 
 - `$ARGUMENTS` — the `input` string passed to `runSkill`, if any. Lets the model pass a topic or target through to the playbook.
-- `${CLAUDE_SKILL_DIR}` — the conventional path the agent can use to refer to the skill's bundled files in prose. Defaults to `/workspace/.fsdev/skills/<skill-name>`; configure via `mountPath` on `createSkillsCapability`.
+- `${CLAUDE_SKILL_DIR}` — the filesystem path where the skill's bundled files live when the bash capability is mounted. Derived from the skills collection's pattern prefix: for the default `skills/**` collection, it resolves to `/workspace/skills/<skill-name>/`. If you configure a custom collection prefix (`collectionConfig: { prefix: "playbooks" }`), the path follows automatically.
 
 Both substitutions run on the body after frontmatter is stripped. If a variable isn't used, nothing changes.
 
@@ -93,7 +93,7 @@ Open ${CLAUDE_SKILL_DIR}/reference/method.md for the step-by-step process,
 then follow it exactly.
 ```
 
-Called via `runSkill({ name: "research", input: "quantum computing" })`, the body renders with `$ARGUMENTS` replaced by `"quantum computing"` and `${CLAUDE_SKILL_DIR}` replaced by `/workspace/.fsdev/skills/research`.
+Called via `runSkill({ name: "research", input: "quantum computing" })`, the body renders with `$ARGUMENTS` replaced by `"quantum computing"` and `${CLAUDE_SKILL_DIR}` replaced by `/workspace/skills/research`.
 
 ## Inline vs fork in practice
 
@@ -140,27 +140,26 @@ Before drafting, open:
 Follow the sections in order.
 ```
 
-For the agent to actually open these files, something has to make them readable from the workspace. The recommended pattern is `readOnlyMounts` on `createBashCapability`, which materializes the skills collection into the bash sandbox at `/workspace/.fsdev/skills/<skill-name>/...`:
+For the agent to actually open these files, bash has to be on the generator. The bash capability auto-discovers every collection on the block's resource context — when skills is installed, it gets mounted at `/workspace/skills/` with no extra configuration:
 
 ```ts
 import { createBashCapability } from "@flow-state-dev/tools/bash";
 
 const bashCap = createBashCapability({
-  sessionResources: artifactResources,
-  collectionKey: "artifacts",
-  readOnlyMounts: [
-    {
-      resolve: (ctx) => ctx.project?.resources?.skills,
-      pathPrefix: ".fsdev/skills",
-    },
-  ],
   provider: { type: "local" },
 });
 ```
 
-With this in place, `${CLAUDE_SKILL_DIR}` paths are reachable via `cat`, `python3`, or any other bash tool. Writes under the mount are kept local to the sandbox — they don't propagate back to the skills collection, so the agent can't accidentally edit a skill mid-run.
+With bash on, `${CLAUDE_SKILL_DIR}` resolves to `/workspace/skills/<skill-name>/` and reference files are reachable via `cat`, `python3`, or any other bash-side tool. Writes to files in the skills mount flush back to the skills collection — which means the agent CAN edit skills mid-run if you want that. To disable, mount it read-only:
 
-Without a mount, reference files still exist as resources but the agent needs a different path to read them (e.g. a `readArtifact`-style tool that takes resource keys directly). Pick one.
+```ts
+createBashCapability({
+  provider: { type: "local" },
+  collections: [{ key: "skills", writable: false }],
+});
+```
+
+Without bash, reference files still exist as resources but the agent needs a different way to read them (e.g. a `readArtifact`-style tool that takes resource keys directly).
 
 In fork mode, the sub-agent only sees tools listed in `allowed-tools`. If the skill expects to read reference files via bash, include `bash` or `bash-read-file` in the list.
 

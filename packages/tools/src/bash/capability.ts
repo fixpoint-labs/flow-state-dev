@@ -1,29 +1,39 @@
 /**
  * Bash capability factory — bundles bash tool blocks, context guidance,
- * and resource declarations under a single `uses: [bashCapability]`.
+ * and an auto-discovered view of installed resource collections.
  *
- * The context guidance adapts to the provider configuration, informing the
- * LLM about available capabilities (network, python, builtins) and
- * instructing it to use bash for file creation.
+ * Collections to mount are discovered at runtime from the block's resource
+ * context (`ctx.session.resources`, `ctx.user.resources`, `ctx.project.resources`).
+ * Any entry that is a `ResourceCollectionRef` is mounted at its pattern
+ * prefix. Consumers that want to narrow (or exclude) can do so via the
+ * `collections` / `exclude` options.
+ *
+ * No `sessionResources` option: the bash capability does not install
+ * resources itself. Collections are installed by their owning capabilities
+ * (e.g. an artifacts capability declares the `artifacts` collection, a
+ * skills capability declares `skills`). Attaching the bash capability to a
+ * generator that also has those capabilities installed is enough — bash
+ * inherits the collections from the shared resource context.
  *
  * @example
  * ```ts
- * import { createBashCapability } from "@flow-state-dev/tools/bash";
- *
+ * // Zero-config: mount every collection installed on the block.
  * const bashCap = createBashCapability({
- *   sessionResources: artifactResources,
- *   collectionKey: "artifacts",
- *   provider: { type: "just-bash", network: { dangerouslyAllowFullInternetAccess: true } },
+ *   provider: { type: "local" },
  * });
  *
- * const gen = generator({ uses: [bashCap], ... });
+ * // Narrow to specific collections:
+ * const bashCap = createBashCapability({
+ *   provider: { type: "local" },
+ *   collections: ["artifacts"],
+ * });
  * ```
  */
 
 import { defineCapability } from "@flow-state-dev/core";
-import type { DeclaredResourceEntry, JsonObject } from "@flow-state-dev/core/types";
+import type { JsonObject } from "@flow-state-dev/core/types";
 import type { SandboxProvider } from "./types";
-import { createBashBlocks, type ReadOnlyMount } from "./blocks";
+import { createBashBlocks, type BashCollectionSpec } from "./blocks";
 import path from "node:path";
 
 // ---------------------------------------------------------------------------
@@ -31,19 +41,16 @@ import path from "node:path";
 // ---------------------------------------------------------------------------
 
 export interface CreateBashCapabilityOptions {
-  /** Session resource definitions (e.g. `artifactResources`). */
-  sessionResources: Record<string, DeclaredResourceEntry>;
-
-  /** Key in `sessionResources` for the file collection. */
-  collectionKey: string;
-
   /**
-   * Additional read-only collections to materialize into the workspace at a
-   * path prefix. Intended for bundling skill files or other ancillary
-   * content alongside the primary artifacts collection without mixing
-   * their persistence models — writes to read-only paths don't flush back.
+   * Explicit list of collections to mount. Strings are shorthand for
+   * writable mounts; `{ key, writable: false }` opts a specific collection
+   * out of flush-back. When omitted, every collection on the block's
+   * resource context is mounted (default).
    */
-  readOnlyMounts?: Array<ReadOnlyMount>;
+  collections?: BashCollectionSpec[];
+
+  /** Keys to skip during auto-discovery. Ignored when `collections` is set. */
+  exclude?: string[];
 
   /** Sandbox provider. Default: `{ type: "just-bash" }`. */
   provider?: SandboxProvider;
@@ -56,119 +63,131 @@ export interface CreateBashCapabilityOptions {
 }
 
 // ---------------------------------------------------------------------------
-// Context guidance generators
+// Context guidance
 // ---------------------------------------------------------------------------
 
 function buildWorkspaceBoundary(destination: string): string {
   return `Your workspace directory is ${destination}. You must only read, write, and operate on files within this directory. Do not access, list, or traverse files or directories outside of ${destination} — including home directories, other projects, or system paths. This applies to all commands, scripts, and embedded code (Python, Node, etc.).`;
 }
 
-function buildJustBashGuidance(
-  provider: Extract<SandboxProvider, { type: "just-bash" }>,
-  destination: string,
-  readOnlyMountsGuidance: string | undefined,
-): string {
-  const lines: string[] = [
-    "You have a sandboxed bash workspace with 60+ built-in commands (curl, find, join, jq, awk, sed, grep, rg, sort, column, yq, html-to-markdown, etc.). You are not able to install new packages or dependencies, you must only use the packages that are already installed.",
-    buildWorkspaceBoundary(destination),
-  ];
-
-  // Python
-  if (provider.python) {
-    lines.push("Python 3 is available via the `python3` command.");
-  }
-
-  // JavaScript/TypeScript
-  if (provider.javascript) {
-    lines.push("JavaScript/TypeScript execution is available via `js-exec` (QuickJS WASM). You do not have node installed.");
-  }
-
-
-  // Network
-  if (provider.network?.dangerouslyAllowFullInternetAccess) {
-    lines.push("Network access: full internet access via `curl`.");
-  } else if (provider.network?.allowedUrls && provider.network.allowedUrls.length > 0) {
-    const domains = provider.network.allowedUrls.map((u) => u.url).join(", ");
-    lines.push(`Network access: restricted to ${domains} via \`curl\`.`);
-  } else {
-    lines.push("No network access.");
-  }
-
-  lines.push("Files you create or modify in the workspace are automatically saved as artifacts.");
-  lines.push("Use bash to create and edit files — do not use separate artifact tools.");
-  if (readOnlyMountsGuidance) lines.push(readOnlyMountsGuidance);
-
-  return lines.join(" ");
-}
-
-function buildLocalGuidance(
-  provider: Extract<SandboxProvider, { type: "local" }>,
-  destination: string,
-  readOnlyMountsGuidance: string | undefined,
-): string {
-  const scope = provider.scope ?? "session";
-  const lines: string[] = [
-    `You have a local bash workspace (${scope}-scoped) with full access to host binaries (npm, python, gcc, etc.).`,
-    buildWorkspaceBoundary(destination),
-    "Files you create or modify in the workspace are automatically saved as artifacts.",
-    "Use bash to create and edit files — do not use separate artifact tools.",
-  ];
-  if (readOnlyMountsGuidance) lines.push(readOnlyMountsGuidance);
-  return lines.join(" ");
-}
-
 /**
- * Build a single-sentence note describing which workspace paths are
- * pre-populated but read-only. Returned `undefined` when there are no
- * read-only mounts, so the guidance stays unchanged for default setups.
+ * Dynamic guidance. Runs per-turn so the list of mounted directories reflects
+ * whatever collections are currently installed on the block's resource
+ * context — mounts change as capabilities are added or removed via dynamic
+ * `uses:` resolvers.
  */
-function buildReadOnlyMountsGuidance(
-  destination: string,
-  mounts: Array<ReadOnlyMount>,
-): string | undefined {
-  if (!mounts || mounts.length === 0) return undefined;
-  const paths = mounts
-    .map((m) => path.posix.join(destination, m.pathPrefix.replace(/^\/+|\/+$/g, "")))
-    .join(", ");
-  return `Read-only files are pre-populated at: ${paths}. You can read and execute them, but any changes you make there will not be saved.`;
-}
-
 function buildGuidance(
   provider: SandboxProvider,
   destination: string,
-  readOnlyMounts: Array<ReadOnlyMount>,
+  ctx: any,
 ): string {
-  const readOnlyNote = buildReadOnlyMountsGuidance(destination, readOnlyMounts);
+  const base = buildProviderLines(provider, destination);
+  const mountsLine = buildMountsGuidance(destination, ctx);
+  return [base, mountsLine].filter(Boolean).join(" ");
+}
+
+function buildProviderLines(provider: SandboxProvider, destination: string): string {
+  const boundary = buildWorkspaceBoundary(destination);
   switch (provider.type) {
-    case "just-bash":
-      return buildJustBashGuidance(provider, destination, readOnlyNote);
-    case "local":
-      return buildLocalGuidance(provider, destination, readOnlyNote);
+    case "just-bash": {
+      const lines: string[] = [
+        "You have a sandboxed bash workspace with 60+ built-in commands (curl, find, join, jq, awk, sed, grep, rg, sort, column, yq, html-to-markdown, etc.). You are not able to install new packages or dependencies, you must only use the packages that are already installed.",
+        boundary,
+      ];
+      if (provider.python) lines.push("Python 3 is available via the `python3` command.");
+      if (provider.javascript) {
+        lines.push("JavaScript/TypeScript execution is available via `js-exec` (QuickJS WASM). You do not have node installed.");
+      }
+      if (provider.network?.dangerouslyAllowFullInternetAccess) {
+        lines.push("Network access: full internet access via `curl`.");
+      } else if (provider.network?.allowedUrls && provider.network.allowedUrls.length > 0) {
+        const domains = provider.network.allowedUrls.map((u) => u.url).join(", ");
+        lines.push(`Network access: restricted to ${domains} via \`curl\`.`);
+      } else {
+        lines.push("No network access.");
+      }
+      return lines.join(" ");
+    }
+    case "local": {
+      const scope = provider.scope ?? "session";
+      return [
+        `You have a local bash workspace (${scope}-scoped) with full access to host binaries (npm, python, gcc, etc.).`,
+        boundary,
+      ].join(" ");
+    }
     case "vercel":
-      return [
-        `You have a Vercel Sandbox bash workspace.`,
-        buildWorkspaceBoundary(destination),
-        "Files are automatically saved as artifacts.",
-        "Use bash to create and edit files.",
-        readOnlyNote,
-      ].filter(Boolean).join(" ");
+      return `You have a Vercel Sandbox bash workspace. ${boundary}`;
     case "upstash":
-      return [
-        `You have an Upstash Box bash workspace.`,
-        buildWorkspaceBoundary(destination),
-        "Files are automatically saved as artifacts.",
-        "Use bash to create and edit files.",
-        readOnlyNote,
-      ].filter(Boolean).join(" ");
+      return `You have an Upstash Box bash workspace. ${boundary}`;
     case "custom":
-      return [
-        `You have a bash workspace.`,
-        buildWorkspaceBoundary(destination),
-        "Files are automatically saved as artifacts.",
-        "Use bash to create and edit files.",
-        readOnlyNote,
-      ].filter(Boolean).join(" ");
+      return `You have a bash workspace. ${boundary}`;
   }
+}
+
+/**
+ * Build the mounts + scratch guidance sentence: lists which directories are
+ * saved (and to which collection), and tells the agent about `./tmp/` as
+ * explicit scratch space. Runs per-turn via the dynamic context formatter.
+ */
+function buildMountsGuidance(destination: string, ctx: any): string {
+  const mounts = collectMounts(ctx);
+  const lines: string[] = [];
+  if (mounts.length === 0) {
+    lines.push(
+      "No collections are currently mounted — files you create or modify will not persist beyond this session unless placed under a known collection path.",
+    );
+  } else {
+    const descriptions = mounts.map((m) => {
+      const verb = m.writable === false ? "read-only mount" : "saved to the";
+      const target = m.writable === false ? `of "${m.key}"` : `"${m.key}" collection`;
+      return `  - ${path.posix.join(destination, m.prefix)}/ — ${verb} ${target}`;
+    });
+    lines.push("Files are saved as follows:");
+    lines.push(...descriptions);
+  }
+  lines.push(
+    `Use ${path.posix.join(destination, "tmp")}/ for scratch files you do not want persisted. Files created anywhere else are discarded on save with a warning.`,
+  );
+  return lines.join("\n");
+}
+
+/** Minimal mount descriptor used by the guidance formatter. */
+interface MountInfo {
+  key: string;
+  prefix: string;
+  writable: boolean;
+}
+
+function collectMounts(ctx: any): MountInfo[] {
+  const seen = new Set<string>();
+  const out: MountInfo[] = [];
+  for (const scope of ["session", "user", "project"] as const) {
+    const bag = ctx?.[scope]?.resources;
+    if (!bag || typeof bag !== "object") continue;
+    for (const [key, value] of Object.entries(bag)) {
+      if (seen.has(key)) continue;
+      if (!isCollectionLike(value)) continue;
+      const prefix = patternPrefix((value as { pattern: string }).pattern);
+      if (!prefix || prefix === "tmp") continue;
+      seen.add(key);
+      out.push({ key, prefix, writable: true });
+    }
+  }
+  out.sort((a, b) => b.prefix.length - a.prefix.length);
+  return out;
+}
+
+function isCollectionLike(value: unknown): boolean {
+  if (value === null || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.pattern === "string" && typeof v.list === "function";
+}
+
+/** Minimal re-derivation of the core pattern prefix rule — keep local to avoid an import cycle. */
+function patternPrefix(pattern: string): string {
+  const wildcardIdx = pattern.search(/[*?[{]/);
+  if (wildcardIdx === -1) return pattern.replace(/\/+$/, "");
+  return pattern.slice(0, wildcardIdx).replace(/\/+$/, "");
 }
 
 // ---------------------------------------------------------------------------
@@ -180,13 +199,12 @@ function buildGuidance(
  *
  * Returned capability has two presets (both on by default):
  * - `tools` — the three bash handler blocks (bashCommand, bashReadFile, bashWriteFile)
- * - `guidance` — context function describing the workspace environment
+ * - `guidance` — dynamic context function describing the workspace + mounted paths
  */
-export function createBashCapability(options: CreateBashCapabilityOptions) {
+export function createBashCapability(options: CreateBashCapabilityOptions = {}) {
   const {
-    sessionResources,
-    collectionKey,
-    readOnlyMounts,
+    collections,
+    exclude,
     provider = { type: "just-bash" },
     destination,
     createState = (relativePath) => ({
@@ -196,27 +214,24 @@ export function createBashCapability(options: CreateBashCapabilityOptions) {
   } = options;
 
   const { bashCommand, bashReadFile, bashWriteFile } = createBashBlocks({
-    sessionResources,
-    collectionKey,
-    readOnlyMounts,
+    collections,
+    exclude,
     provider,
     destination,
     createState,
   });
 
   const resolvedDestination = destination ?? "/workspace";
-  const guidance = buildGuidance(provider, resolvedDestination, readOnlyMounts ?? []);
 
   return defineCapability({
     name: "bash",
-    sessionResources,
 
     presets: {
       tools: {
         tools: [bashCommand, bashReadFile, bashWriteFile],
       },
       guidance: {
-        context: [() => guidance],
+        context: [(_input: unknown, ctx: any) => buildGuidance(provider, resolvedDestination, ctx)],
       },
       default: ["tools", "guidance"],
     },

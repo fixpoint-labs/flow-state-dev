@@ -191,27 +191,29 @@ Dynamic `uses:` entries re-run each turn, so the feature flag takes effect immed
 
 ## Step 7: Make skill bundle files reachable from bash
 
-Skills can bundle more than `SKILL.md` — reference docs, Python scripts, anything you want the agent to open at activation time. For those files to actually be readable inside the agent's workspace, mount the skills collection into your bash capability:
+Skills can bundle more than `SKILL.md` — reference docs, Python scripts, anything you want the agent to open at activation time. For those files to actually be readable inside the agent's workspace, put the bash capability on the generator alongside skills:
 
 ```ts
 import { createBashCapability } from "@flow-state-dev/tools/bash";
 
 export const bashCap = createBashCapability({
-  sessionResources: artifactResources,
-  collectionKey: "artifacts",
-  readOnlyMounts: [
-    {
-      resolve: (ctx) => ctx.project?.resources?.skills,
-      pathPrefix: ".fsdev/skills",
-    },
-  ],
   provider: { type: "local" },
 });
 ```
 
-The mount materializes every skill's files at `/workspace/.fsdev/skills/<skill-name>/<relpath>` on the first bash call of a session. Writes under that prefix stay in the sandbox — they aren't flushed back to the skills collection, so an agent can't accidentally corrupt a skill mid-run.
+That's the whole config. Bash auto-discovers every collection installed on the block and mounts each at its pattern prefix — so `skills/**` becomes `/workspace/skills/<skill-name>/<relpath>` with no additional wiring. `${CLAUDE_SKILL_DIR}` in skill bodies resolves to that path.
 
-With the mount in place, the `${CLAUDE_SKILL_DIR}` substitution in a skill body resolves to a real filesystem path. A skill like the kitchen-sink's `check-news` can run a bundled Python helper:
+Attach both to your generator:
+
+```ts
+const assistant = generator({
+  name: "assistant",
+  uses: [skillsCap, bashCap],
+  // ...
+});
+```
+
+With the two caps together, the kitchen-sink's `check-news` skill can run a bundled Python helper directly:
 
 ```markdown
 Before searching, compute today's date window:
@@ -226,7 +228,16 @@ For AI questions, open: ${CLAUDE_SKILL_DIR}/reference/ai-news.md
 For world events, open: ${CLAUDE_SKILL_DIR}/reference/world-events.md
 ```
 
-If you don't use the bash capability, skip this step — reference files remain in the skills resource collection, just not on any filesystem path.
+By default, writes inside `/workspace/skills/` flush back to the skills collection — which means an agent CAN add or edit skills mid-run. If you want to lock that down, mount skills read-only:
+
+```ts
+createBashCapability({
+  provider: { type: "local" },
+  collections: [{ key: "skills", writable: false }],
+});
+```
+
+If you don't use the bash capability, skip this step — reference files remain in the skills resource collection, just not on any filesystem path the agent can reach.
 
 ## Step 8: Let users edit skills at runtime
 

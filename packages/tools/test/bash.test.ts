@@ -767,20 +767,18 @@ describe("workspace guards", () => {
 });
 
 // ---------------------------------------------------------------------------
-// createBashBlocks — readOnlyMounts
+// createBashBlocks — auto-discovery, multi-mount flush, scratch, orphans
 // ---------------------------------------------------------------------------
 //
-// These tests exercise the bash-block wiring end-to-end via mocked context,
-// sandbox, and collections. Each test uses a unique session id to avoid the
-// module-scoped sandbox registry carrying state across tests.
+// The block-level tests construct a BlockContext-shaped object, a flush-aware
+// mock sandbox (see helper below), and one or more mock collections. Each
+// test uses a unique session id so the module-scoped sandbox registry
+// doesn't carry state between tests.
 
-describe("createBashBlocks — readOnlyMounts", () => {
-  // Real `find .` emits `./relative/path` entries when run from the
-  // workspace root. The shared `createMockSandbox` returns absolute keys
-  // (which is fine for hydrate tests but breaks the flush path — the real
-  // flush is designed to strip `./` prefixes). This variant simulates
-  // correct find-relative output so createBashBlocks' flush resolves paths
-  // consistently with production behavior.
+describe("createBashBlocks", () => {
+  // Real `find .` from inside a workspace emits `./relative/path`. The
+  // shared `createMockSandbox` returns absolute keys, which the flush path
+  // does not strip — we need `./`-relative output for flush assertions.
   function createFlushAwareSandbox(
     destination: string,
   ): Sandbox & { files: Map<string, string> } {
@@ -801,171 +799,62 @@ describe("createBashBlocks — readOnlyMounts", () => {
         }
         return { stdout: "", stderr: "", exitCode: 0 };
       },
-      async readFile(path: string): Promise<string> {
-        const content = files.get(path);
-        if (content === undefined) throw new Error(`File not found: ${path}`);
+      async readFile(p: string): Promise<string> {
+        const content = files.get(p);
+        if (content === undefined) throw new Error(`File not found: ${p}`);
         return content;
       },
-      async writeFile(path: string, content: string): Promise<void> {
-        files.set(path, content);
+      async writeFile(p: string, content: string): Promise<void> {
+        files.set(p, content);
       },
     };
   }
 
-  // Build a BlockContext-shaped object with the artifacts collection wired
-  // under session.resources and an optional skills collection under project.
+  // Build a BlockContext-shaped object with arbitrary collections per scope.
   function buildCtx(
     sessionId: string,
-    artifacts: ResourceCollectionRef<FileEntryState>,
-    skills?: ResourceCollectionRef<FileEntryState>,
+    scopes: {
+      session?: Record<string, ResourceCollectionRef<FileEntryState>>;
+      user?: Record<string, ResourceCollectionRef<FileEntryState>>;
+      project?: Record<string, ResourceCollectionRef<FileEntryState>>;
+    } = {},
   ) {
     return {
       session: {
         identity: { id: sessionId, userId: "u1" },
-        resources: { artifacts },
+        resources: scopes.session ?? {},
+      },
+      user: {
+        identity: { id: "u1" },
+        resources: scopes.user ?? {},
       },
       project: {
         identity: { id: "p1" },
-        resources: skills ? { skills } : {},
+        resources: scopes.project ?? {},
       },
-      user: { identity: { id: "u1" }, resources: {} },
     } as any;
   }
 
-  // Build a "skills"-style collection (pattern "skills/**") matching the
-  // real @flow-state-dev/skills collection layout.
-  function createMockSkillsCollection(
+  // Collection mock with a custom pattern (not the default `files/*`).
+  function createMockCollectionWithPattern(
+    pattern: string,
     entries: MockResourceEntry[] = [],
   ): ResourceCollectionRef<FileEntryState> {
     const base = createMockCollection(entries);
-    // Override pattern so getPatternPrefix returns "skills".
-    return { ...base, pattern: "skills/**" } as ResourceCollectionRef<FileEntryState>;
+    return { ...base, pattern } as ResourceCollectionRef<FileEntryState>;
   }
 
-  it("hydrates read-only mount files at the configured path prefix", async () => {
+  it("auto-discovers every collection on ctx and mounts each at its pattern prefix", async () => {
     const { createBashBlocks } = await import("../src/bash/blocks");
 
-    const artifacts = createMockCollection();
-    const skills = createMockSkillsCollection([
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
       {
-        name: "skills/check-news/SKILL.md",
-        state: { path: "skills/check-news/SKILL.md", hash: "", updatedAt: "2026-01-01" },
-        content: "---\ndescription: test\n---\nbody",
-      },
-      {
-        name: "skills/check-news/scripts/hello.py",
-        state: { path: "skills/check-news/scripts/hello.py", hash: "", updatedAt: "2026-01-01" },
-        content: "print('hi')",
+        name: "artifacts/notes.md",
+        state: { path: "artifacts/notes.md", hash: "", updatedAt: "2026-01-01" },
+        content: "existing note",
       },
     ]);
-
-    const sandbox = createFlushAwareSandbox("/workspace");
-    const { bashCommand } = createBashBlocks({
-      sessionResources: { artifacts: {} as any },
-      collectionKey: "artifacts",
-      readOnlyMounts: [
-        {
-          resolve: (ctx) => ctx.project?.resources?.skills,
-          pathPrefix: ".fsdev/skills",
-        },
-      ],
-      provider: { type: "custom", sandbox },
-      destination: "/workspace",
-    });
-
-    const ctx = buildCtx("ro-hydrate-1", artifacts, skills);
-    await bashCommand.run({ command: "ls" }, ctx);
-
-    expect(sandbox.files.get("/workspace/.fsdev/skills/check-news/SKILL.md")).toBe(
-      "---\ndescription: test\n---\nbody",
-    );
-    expect(sandbox.files.get("/workspace/.fsdev/skills/check-news/scripts/hello.py")).toBe(
-      "print('hi')",
-    );
-  });
-
-  it("skips read-only mount hydration when resolve returns undefined", async () => {
-    const { createBashBlocks } = await import("../src/bash/blocks");
-
-    const artifacts = createMockCollection();
-    const sandbox = createFlushAwareSandbox("/workspace");
-    const { bashCommand } = createBashBlocks({
-      sessionResources: { artifacts: {} as any },
-      collectionKey: "artifacts",
-      readOnlyMounts: [
-        {
-          resolve: (ctx) => ctx.project?.resources?.skills,
-          pathPrefix: ".fsdev/skills",
-        },
-      ],
-      provider: { type: "custom", sandbox },
-      destination: "/workspace",
-    });
-
-    // ctx with NO skills collection
-    const ctx = buildCtx("ro-hydrate-2", artifacts, undefined);
-    await bashCommand.run({ command: "ls" }, ctx);
-
-    // No files under the skills path prefix should have been written
-    for (const key of sandbox.files.keys()) {
-      expect(key.startsWith("/workspace/.fsdev/skills/")).toBe(false);
-    }
-  });
-
-  it("does not flush writes inside the read-only prefix back to the primary collection", async () => {
-    const { createBashBlocks } = await import("../src/bash/blocks");
-
-    const artifacts = createMockCollection();
-    const skills = createMockSkillsCollection([
-      {
-        name: "skills/check-news/SKILL.md",
-        state: { path: "skills/check-news/SKILL.md", hash: "", updatedAt: "2026-01-01" },
-        content: "original body",
-      },
-    ]);
-
-    // Sandbox that returns both the hydrated skill file AND a pretend
-    // agent edit to that same path (content differs from what hydrate
-    // wrote, so it looks "dirty" to flush).
-    const sandbox = createFlushAwareSandbox("/workspace");
-    const { bashCommand, bashWriteFile } = createBashBlocks({
-      sessionResources: { artifacts: {} as any },
-      collectionKey: "artifacts",
-      readOnlyMounts: [
-        {
-          resolve: (ctx) => ctx.project?.resources?.skills,
-          pathPrefix: ".fsdev/skills",
-        },
-      ],
-      provider: { type: "custom", sandbox },
-      destination: "/workspace",
-    });
-
-    const ctx = buildCtx("ro-flush-skip", artifacts, skills);
-
-    // First invocation: triggers hydration.
-    await bashCommand.run({ command: "ls" }, ctx);
-
-    // Simulate an in-sandbox edit to a skill file (the agent wrote to it).
-    await bashWriteFile.run(
-      { path: ".fsdev/skills/check-news/SKILL.md", content: "EDITED" },
-      ctx,
-    );
-
-    // Edit should be visible in the sandbox (read-only locally means the
-    // FS copy isn't restored — it just doesn't propagate back).
-    expect(sandbox.files.get("/workspace/.fsdev/skills/check-news/SKILL.md")).toBe("EDITED");
-
-    // The primary artifacts collection must NOT have received an entry
-    // for the skill path — flush skips anything under the read-only prefix.
-    expect(artifacts.count()).toBe(0);
-  });
-
-  it("still flushes writes outside the read-only prefix to the primary collection", async () => {
-    const { createBashBlocks } = await import("../src/bash/blocks");
-
-    const artifacts = createMockCollection();
-    const skills = createMockSkillsCollection([
+    const skills = createMockCollectionWithPattern("skills/**", [
       {
         name: "skills/check-news/SKILL.md",
         state: { path: "skills/check-news/SKILL.md", hash: "", updatedAt: "2026-01-01" },
@@ -974,75 +863,247 @@ describe("createBashBlocks — readOnlyMounts", () => {
     ]);
 
     const sandbox = createFlushAwareSandbox("/workspace");
-    const { bashCommand, bashWriteFile } = createBashBlocks({
-      sessionResources: { artifacts: {} as any },
-      collectionKey: "artifacts",
-      readOnlyMounts: [
-        {
-          resolve: (ctx) => ctx.project?.resources?.skills,
-          pathPrefix: ".fsdev/skills",
-        },
-      ],
+    const { bashCommand } = createBashBlocks({
       provider: { type: "custom", sandbox },
       destination: "/workspace",
     });
 
-    const ctx = buildCtx("ro-regular-flush", artifacts, skills);
+    const ctx = buildCtx("auto-1", { session: { artifacts }, project: { skills } });
     await bashCommand.run({ command: "ls" }, ctx);
 
-    // Write a regular artifact outside the read-only prefix.
+    expect(sandbox.files.get("/workspace/artifacts/notes.md")).toBe("existing note");
+    expect(sandbox.files.get("/workspace/skills/check-news/SKILL.md")).toBe("body");
+    // Scratch directory marker is seeded.
+    expect(sandbox.files.has("/workspace/tmp/.keep")).toBe(true);
+  });
+
+  it("routes writes back to the owning collection by longest-prefix match", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const skills = createMockCollectionWithPattern("skills/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand, bashWriteFile } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("flush-route-1", {
+      session: { artifacts },
+      project: { skills },
+    });
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    await bashWriteFile.run({ path: "artifacts/new-doc.md", content: "artifact content" }, ctx);
+    await bashWriteFile.run({ path: "skills/draft/SKILL.md", content: "skill content" }, ctx);
+
+    expect(artifacts.count()).toBe(1);
+    expect(skills.count()).toBe(1);
+    expect(artifacts.getOptional("new-doc.md")?.state.path).toBe("new-doc.md");
+    expect(skills.getOptional("draft/SKILL.md")).toBeDefined();
+  });
+
+  it("honors writable: false — changes in the mount are not written back", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const skills = createMockCollectionWithPattern("skills/**", [
+      {
+        name: "foo/SKILL.md",
+        state: { path: "foo/SKILL.md", hash: "", updatedAt: "2026-01-01" },
+        content: "original",
+      },
+    ]);
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand, bashWriteFile } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+      collections: [{ key: "skills", writable: false }],
+    });
+
+    const ctx = buildCtx("ro-1", { project: { skills } });
+    await bashCommand.run({ command: "ls" }, ctx);
     await bashWriteFile.run(
-      { path: "notes.txt", content: "hello" },
+      { path: "skills/foo/SKILL.md", content: "EDITED" },
       ctx,
     );
 
-    expect(artifacts.count()).toBe(1);
-    expect(artifacts.getOptional("notes.txt")).toBeDefined();
-    // And the skills collection is unchanged.
-    expect(skills.count()).toBe(1);
+    // Local edit visible in sandbox.
+    expect(sandbox.files.get("/workspace/skills/foo/SKILL.md")).toBe("EDITED");
+    // But the resource stays untouched.
+    expect(skills.getOptional("foo/SKILL.md")).toBeDefined();
+    expect(await skills.getOptional("foo/SKILL.md")!.readContent()).toBe("original");
   });
 
-  it("does not delete primary-collection entries when their bare key collides with a read-only path", async () => {
+  it("drops orphan files with a console warning (not under any mount or ./tmp/)", async () => {
     const { createBashBlocks } = await import("../src/bash/blocks");
 
-    // Pre-seed an artifact that happens to live at `.fsdev/skills/...`
-    // inside the primary artifacts collection. (Unusual but not forbidden.)
-    // The flush logic should NOT treat its absence-from-sandbox as a delete
-    // signal, because we now skip scanning read-only prefixes entirely.
-    const artifacts = createMockCollection([
-      {
-        name: ".fsdev/skills/stale-artifact.md",
-        state: {
-          path: ".fsdev/skills/stale-artifact.md",
-          hash: "",
-          updatedAt: "2026-01-01",
-        },
-        content: "stale",
-      },
-    ]);
-    const skills = createMockSkillsCollection();
-
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
     const sandbox = createFlushAwareSandbox("/workspace");
-    const { bashCommand } = createBashBlocks({
-      sessionResources: { artifacts: {} as any },
-      collectionKey: "artifacts",
-      readOnlyMounts: [
-        {
-          resolve: (ctx) => ctx.project?.resources?.skills,
-          pathPrefix: ".fsdev/skills",
-        },
-      ],
+    const { bashCommand, bashWriteFile } = createBashBlocks({
       provider: { type: "custom", sandbox },
       destination: "/workspace",
     });
 
-    const ctx = buildCtx("ro-no-shadow-delete", artifacts, skills);
+    const ctx = buildCtx("orphan-1", { session: { artifacts } });
     await bashCommand.run({ command: "ls" }, ctx);
 
-    // Flush runs after bashCommand. The pre-existing artifact lives under
-    // the read-only prefix, and because flush skips read-only paths (both
-    // for change detection AND for delete detection), it must still be
-    // present in the collection.
-    expect(artifacts.getOptional(".fsdev/skills/stale-artifact.md")).toBeDefined();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await bashWriteFile.run({ path: "random.txt", content: "uh oh" }, ctx);
+      // Orphan write stays in the sandbox for this session but is never
+      // persisted to any collection.
+      expect(sandbox.files.get("/workspace/random.txt")).toBe("uh oh");
+      expect(artifacts.count()).toBe(0);
+      // console.warn announces the drop.
+      expect(warn).toHaveBeenCalled();
+      const msg = warn.mock.calls.map((c) => c[0]).join(" ");
+      expect(msg).toMatch(/orphan/);
+      expect(msg).toMatch(/random\.txt/);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("does NOT drop or warn on files under ./tmp/ — scratch is silent", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand, bashWriteFile } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("scratch-1", { session: { artifacts } });
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await bashWriteFile.run({ path: "tmp/scratchpad.txt", content: "abc" }, ctx);
+      await bashWriteFile.run({ path: "tmp/nested/file.txt", content: "xyz" }, ctx);
+      expect(sandbox.files.get("/workspace/tmp/scratchpad.txt")).toBe("abc");
+      expect(sandbox.files.get("/workspace/tmp/nested/file.txt")).toBe("xyz");
+      expect(artifacts.count()).toBe(0);
+      // No warn for files under tmp/.
+      const orphanCalls = warn.mock.calls.filter((c) =>
+        (c[0] as string).includes("orphan"),
+      );
+      expect(orphanCalls).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("explicit `collections` narrows the mount set", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
+      {
+        name: "artifacts/foo.md",
+        state: { path: "artifacts/foo.md", hash: "", updatedAt: "2026-01-01" },
+        content: "a",
+      },
+    ]);
+    const skills = createMockCollectionWithPattern("skills/**", [
+      {
+        name: "skills/bar/SKILL.md",
+        state: { path: "skills/bar/SKILL.md", hash: "", updatedAt: "2026-01-01" },
+        content: "b",
+      },
+    ]);
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+      collections: ["artifacts"],
+    });
+
+    const ctx = buildCtx("narrow-1", {
+      session: { artifacts },
+      project: { skills },
+    });
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    expect(sandbox.files.get("/workspace/artifacts/foo.md")).toBe("a");
+    // Skills collection is NOT mounted despite being on ctx.
+    expect(sandbox.files.has("/workspace/skills/bar/SKILL.md")).toBe(false);
+  });
+
+  it("`exclude` skips named collections during auto-discovery", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
+      {
+        name: "artifacts/foo.md",
+        state: { path: "artifacts/foo.md", hash: "", updatedAt: "2026-01-01" },
+        content: "a",
+      },
+    ]);
+    const secrets = createMockCollectionWithPattern("secrets/**", [
+      {
+        name: "secrets/api-key.txt",
+        state: { path: "secrets/api-key.txt", hash: "", updatedAt: "2026-01-01" },
+        content: "sk-...",
+      },
+    ]);
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+      exclude: ["secrets"],
+    });
+
+    const ctx = buildCtx("exclude-1", {
+      session: { artifacts, secrets },
+    });
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    expect(sandbox.files.get("/workspace/artifacts/foo.md")).toBe("a");
+    expect(sandbox.files.has("/workspace/secrets/api-key.txt")).toBe(false);
+  });
+
+  it("per-mount deletion only removes entries from the owning collection", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
+      {
+        name: "keep.md",
+        state: { path: "keep.md", hash: "", updatedAt: "2026-01-01" },
+        content: "keep",
+      },
+      {
+        name: "drop.md",
+        state: { path: "drop.md", hash: "", updatedAt: "2026-01-01" },
+        content: "drop",
+      },
+    ]);
+    const skills = createMockCollectionWithPattern("skills/**", [
+      {
+        name: "stay/SKILL.md",
+        state: { path: "stay/SKILL.md", hash: "", updatedAt: "2026-01-01" },
+        content: "stay",
+      },
+    ]);
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("delete-1", {
+      session: { artifacts },
+      project: { skills },
+    });
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    // Simulate the agent deleting an artifact via the sandbox directly.
+    sandbox.files.delete("/workspace/artifacts/drop.md");
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    expect(artifacts.getOptional("keep.md")).toBeDefined();
+    expect(artifacts.getOptional("drop.md")).toBeUndefined();
+    // Skills collection is untouched — its delete loop runs against its own
+    // list and the file we deleted wasn't one of its entries.
+    expect(skills.getOptional("stay/SKILL.md")).toBeDefined();
   });
 });

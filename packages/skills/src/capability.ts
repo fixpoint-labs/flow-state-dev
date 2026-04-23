@@ -45,15 +45,18 @@ export interface SkillsCapabilityOptions {
   catalog?: ToolCatalog;
   /** Bundled defaults — seeded into the collection on first runSkill call. */
   initialSkills?: InitialSkill[];
-  /** Mount path for `${CLAUDE_SKILL_DIR}` substitution. Default `.fsdev/skills`. */
-  mountPath?: string;
   /**
    * Scope to register the skills collection at. Default `"project"` so
    * seeded skills are shared across users. Use `"user"` for personal
    * skill libraries; `"session"` is mainly for tests.
    */
   scope?: ScopeType;
-  /** Optional collection sizing overrides. */
+  /**
+   * Optional collection sizing overrides. The `prefix` here doubles as the
+   * skills workspace mount path: `${CLAUDE_SKILL_DIR}` resolves to
+   * `/workspace/<prefix>/<skill-name>/` when the skills collection is
+   * mounted via the bash capability (the default mount setup).
+   */
   collectionConfig?: Pick<DefineSkillsCollectionOptions, "maxInstances" | "prefix">;
   /** Optional override of the model fork-mode subagents run on. */
   forkModelId?: string;
@@ -85,12 +88,17 @@ export function createSkillsCapability(
 ): DefinedCapability {
   const collectionKey = options.collection ?? "skills";
   const catalog: ToolCatalog = options.catalog ?? {};
-  const mountPath = options.mountPath ?? ".fsdev/skills";
   const scope: ScopeType = options.scope ?? "project";
   const initialSkills = options.initialSkills;
 
+  // The collection's pattern prefix IS the workspace mount path: when the
+  // bash capability auto-discovers collections, it mounts them at their
+  // pattern prefix, and `${CLAUDE_SKILL_DIR}` has to point there.
+  const collectionPrefix = options.collectionConfig?.prefix ?? collectionKey;
+  const mountPath = collectionPrefix;
+
   const skillsCollection = defineSkillsCollection({
-    prefix: options.collectionConfig?.prefix ?? collectionKey,
+    prefix: collectionPrefix,
     maxInstances: options.collectionConfig?.maxInstances,
   });
 

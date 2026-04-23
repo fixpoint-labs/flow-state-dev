@@ -25,7 +25,7 @@ import { crawl } from "@flow-state-dev/tools/crawl";
 import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/skills";
 import { z } from "zod";
 import { modeSchema, featuresSchema } from "../schemas";
-import { artifactResources, artifactsCapability } from "./artifacts";
+import { artifactsCapability } from "./artifacts";
 import { mcpCapability } from "../../../../lib/mcp";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,25 +68,13 @@ const skillsCap = createSkillsCapability({
   agentType: "primary",
 });
 
-// Bash capability — tools, guidance, and resource declarations for the
-// sandboxed bash workspace. Configured with full network access.
-//
-// The `readOnlyMounts` entry materializes the skills collection into the
-// workspace at `/workspace/.fsdev/skills/<skill-name>/` so skill bundle
-// files (reference docs, scripts, etc.) are readable and executable via
-// bash. Writes under that path are not flushed back — the skills
-// collection is the source of truth. When the skills feature is off, the
-// project resource isn't installed and `resolve` returns undefined, which
-// skips the mount cleanly.
+// Bash capability — tools, guidance, and runtime auto-discovery of mounted
+// collections. No resource declarations here: bash inherits whatever
+// collections are installed on the block (artifacts from artifactsCapability,
+// skills from skillsCap) and mounts each at its pattern prefix. Writes
+// under a mount's directory route back to that collection; files under
+// /workspace/tmp/ are scratch; anything else is dropped with a warning.
 export const bashCap = createBashCapability({
-  sessionResources: artifactResources,
-  collectionKey: "artifacts",
-  readOnlyMounts: [
-    {
-      resolve: (ctx) => ctx.project?.resources?.skills,
-      pathPrefix: ".fsdev/skills",
-    },
-  ],
   provider: {
     type: "local"
   },
