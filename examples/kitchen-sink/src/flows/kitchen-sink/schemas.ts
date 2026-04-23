@@ -11,5 +11,4 @@ export const featuresSchema = z.object({
   search: z.boolean().default(true),
   fetch: z.boolean().default(true),
   crawl: z.boolean().default(false),
-  skills: z.boolean().default(true),
 });

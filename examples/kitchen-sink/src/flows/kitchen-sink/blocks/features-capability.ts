@@ -12,10 +12,12 @@
  *   - readArtifact/updateArtifact are included as fallback
  *   - no bash tools or guidance
  *
- * Skills are always available on main agents via the `skills` feature flag;
- * the skills capability is scoped to `agentType: "primary"` so worker
- * generators inside plan-and-execute / supervisor / blackboard patterns
- * don't replicate skill bodies into their context.
+ * Skills are always available on main agents. The capability is scoped to
+ * `agentType: "primary"` so worker generators inside plan-and-execute /
+ * supervisor / blackboard patterns don't replicate skill bodies into their
+ * context. It's attached as a static `uses` entry so the framework installs
+ * the skills collection resource at build time — dynamic `uses` callbacks
+ * only contribute tools and context, not resources.
  */
 import { defineCapability, type CapabilityRef } from "@flow-state-dev/core";
 import { createBashCapability } from "@flow-state-dev/tools/bash";
@@ -62,7 +64,11 @@ const skillsCap = createSkillsCapability({
     crawl: crawlTool,
   },
   initialSkills,
-  scope: "project",
+  // User scope: skills are a per-user library that persists across sessions.
+  // Project scope would be nicer for team-shared skills, but the kitchen-sink
+  // flow has no project wiring yet — "project" falls through to an ambient
+  // project with no persistence identity, which is why nothing seeds.
+  scope: "user",
   // Main-agent only: in plan-and-execute / supervisor / blackboard, the
   // synthesizer carries skills while step-executors and workers don't.
   agentType: "primary",
@@ -102,11 +108,15 @@ export const featuresCapability = defineCapability({
   sessionStateSchema: featuresSessionStateSchema,
 
   uses: [
-    // Conditionally include bash or artifact tools based on mode and feature flags.
-    // Most modes always excludes bash — Build mode defers to the bashTool feature flag.
+    // Static: skills capability — installs the skills collection resource at
+    // build time (dynamic uses callbacks can't contribute resources). Scoped
+    // to primary agents by the capability's own `agentType` so worker
+    // generators in plan-and-execute / supervisor / blackboard skip it.
+    skillsCap,
+
+    // Dynamic: mode- and feature-gated tools/context.
+    // Bash vs. artifact tools depends on mode + bashTool flag.
     // MCP capability included when servers are configured (null when absent).
-    // Skills included whenever the skills feature flag is on (filtered to
-    // primary agents by the capability's own agentType).
     (ctx) => {
       const bashEnabled =
         ctx.session.state.mode === "build" && ctx.session.state.features.bashTool;
@@ -114,7 +124,6 @@ export const featuresCapability = defineCapability({
         ? [bashCap, artifactsCapability.presets({ inventory: true, tools: false })]
         : [artifactsCapability];
       if (mcpCapability) caps.push(mcpCapability);
-      if (ctx.session.state.features.skills) caps.push(skillsCap);
       return caps;
     },
   ],
