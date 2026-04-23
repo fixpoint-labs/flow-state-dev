@@ -164,6 +164,8 @@ export function buildRunSkillDescription(
   lines.push(
     "",
     "Pass the skill name in `name`. Pass any required argument string in `input` (substituted for $ARGUMENTS in the skill body).",
+    "",
+    "Users may also invoke a skill directly with a slash command: when the user's message begins with `/<skill-name>` followed by an optional argument (e.g. `/check-news quantum computing`), treat it as an explicit instruction to call `runSkill` with that name and the remainder of the message as `input`. Do this on the first step of your response, before any other tool call.",
   );
   return lines.join("\n");
 }

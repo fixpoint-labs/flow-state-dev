@@ -113,6 +113,14 @@ describe("buildRunSkillDescription", () => {
     expect(out).toContain("- foo: foo desc");
     expect(out).toContain("- bar: bar desc");
   });
+
+  it("includes slash-command guidance so the model routes /<skill> directly to runSkill", () => {
+    const out = buildRunSkillDescription([
+      { name: "foo", description: "foo desc" },
+    ]);
+    expect(out).toMatch(/slash command/i);
+    expect(out).toContain("/<skill-name>");
+  });
 });
 
 describe("createRunSkillTool — inline mode", () => {

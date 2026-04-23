@@ -20,7 +20,7 @@ import type {
   ResourceCollectionRef,
   ScopeType,
 } from "@flow-state-dev/core/types";
-import type { SkillState } from "@flow-state-dev/core";
+import type { InitialSkill, SkillState } from "@flow-state-dev/core";
 import path from "node:path";
 import { readActiveSkills } from "./active-skill-state";
 import { skillManifestKey } from "./collection";
@@ -28,12 +28,21 @@ import {
   buildRunSkillDescription,
   listEnabledSkills,
 } from "./run-skill-tool";
+import { ensureSeeded } from "./seeding";
 import { substitute } from "./skill-md";
 
 export interface SkillsContextOptions {
   collectionKey: string;
   scope: ScopeType;
   mountPath: string;
+  /**
+   * Bundled skill defaults, passed through from the capability factory.
+   * When present, the catalog formatter seeds the collection on its first
+   * render — without this, the catalog would be empty on the first turn
+   * (seeding is otherwise triggered only inside `runSkill.execute`), and
+   * the model would never see any skills to invoke in the first place.
+   */
+  initialSkills?: InitialSkill[];
 }
 
 /** Resolve the skills collection ref from the appropriate scope registry. */
@@ -91,6 +100,16 @@ export function buildSkillsCatalogContext(
   return async (_input: unknown, ctx: BlockContext) => {
     const collection = getCollection(ctx, opts.scope, opts.collectionKey);
     if (!collection) return null;
+    // Seed on first render so the model sees the catalog on turn 1.
+    // `ensureSeeded` is memoized per collection ref, so subsequent turns
+    // are no-ops. If seeding fails, we surface an empty catalog rather
+    // than blocking the turn — the warning is logged inside ensureSeeded.
+    try {
+      await ensureSeeded(collection, opts.initialSkills);
+    } catch {
+      // Seeding failure already logged; fall through with whatever the
+      // collection contains (possibly empty).
+    }
     const enabled = listEnabledSkills(collection);
     return buildRunSkillDescription(enabled);
   };

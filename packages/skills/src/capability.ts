@@ -121,6 +121,10 @@ export function createSkillsCapability(
     collectionKey,
     scope,
     mountPath,
+    // Pass initialSkills so the catalog formatter can seed on its first
+    // render — otherwise the catalog shows empty on turn 1 and the model
+    // never calls runSkill, blocking seeding entirely.
+    initialSkills,
   });
   const activeContext = buildActiveSkillsContext({
     collectionKey,
