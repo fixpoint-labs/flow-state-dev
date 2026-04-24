@@ -186,7 +186,7 @@ export async function executeRunCommand(
         ...existing,
         state: { ...existing.state, ...seedData },
         updatedAt: Date.now(),
-      });
+      }, "any");
     } else {
       await stores.session.set(sessionId, {
         id: sessionId,
@@ -197,7 +197,7 @@ export async function executeRunCommand(
         createdAt: Date.now(),
         updatedAt: Date.now(),
         journal: [],
-      });
+      }, "any");
     }
   }
 

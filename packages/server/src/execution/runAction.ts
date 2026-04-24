@@ -141,11 +141,14 @@ async function patchRequestRecord(
     ? { ...patch, items: stripEphemeralContent(patch.items.filter(item => item.transient !== true)) }
     : patch;
 
-  await stores.request.set(requestId, {
-    ...current,
-    ...sanitized,
-    updatedAt: Date.now()
-  });
+  // Request-record patches (items, status, timestamps) are written outside
+  // the state CAS path — the state field is never patched here. Using "any"
+  // preserves last-write-wins for these framework-internal updates.
+  await stores.request.set(
+    requestId,
+    { ...current, ...sanitized, updatedAt: Date.now() },
+    "any"
+  );
 }
 
 /**
@@ -422,11 +425,11 @@ export async function runActionInternal<
   if (options.sessionId !== undefined) {
     const session = await options.stores.session.get(options.sessionId);
     if (session !== undefined) {
-      await options.stores.session.set(options.sessionId, {
-        ...session,
-        latestRequestId: requestId,
-        updatedAt: Date.now()
-      });
+      await options.stores.session.set(
+        options.sessionId,
+        { ...session, latestRequestId: requestId, updatedAt: Date.now() },
+        "any"
+      );
     }
   }
 

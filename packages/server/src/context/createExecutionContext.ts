@@ -50,6 +50,8 @@ import type {
 import { resolveBlockValue, resolveItemVisibility } from "@flow-state-dev/core/items";
 import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
+import type { CASPersist } from "../stores/cas";
+import type { SetResult } from "../stores/types";
 import type {
   ProjectRecord,
   RequestRecord,
@@ -70,6 +72,39 @@ import { normalizeError } from "../errors/normalize-error";
 import { cloneValue } from "../utils/clone";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
+
+/**
+ * Builds a CAS persist callback for a scope record. `buildNext` constructs
+ * the record to write (stamped with version/updatedAt); `write` performs the
+ * actual CAS store call. On success `ref.current` is advanced to the new
+ * record; on conflict it's refreshed to the store's current record.
+ */
+function createScopePersist<
+  TState,
+  TRecord extends { state: unknown; version: number }
+>(
+  ref: { current: TRecord },
+  buildNext: (expectedVersion: number, state: Readonly<TState>) => TRecord,
+  write: (nextRecord: TRecord, expectedVersion: number) => Promise<SetResult<TRecord>>
+): CASPersist<TState> {
+  return async (state, expectedVersion) => {
+    const nextRecord = buildNext(expectedVersion, state);
+    const result = await write(nextRecord, expectedVersion);
+    if (result.ok) {
+      ref.current = nextRecord;
+      return { ok: true, version: result.version };
+    }
+    const current = result.conflict.currentValue;
+    if (current !== undefined) {
+      ref.current = current;
+    }
+    return {
+      ok: false,
+      currentState: current?.state as TState | undefined,
+      currentVersion: result.conflict.currentVersion
+    };
+  };
+}
 
 function normalizeLimit(
   valuesLength: number,
@@ -1320,7 +1355,6 @@ async function emitStateChangeItem(options: {
 
 function createTargetStateOps<TState extends JsonObject>(options: {
   container: ReturnType<typeof createStateContainer<TState>>;
-  persist: (state: Readonly<TState>, version: number) => Promise<void> | void;
   response: unknown;
   requestId: string;
   nextItemIndex: () => number;
@@ -1328,9 +1362,10 @@ function createTargetStateOps<TState extends JsonObject>(options: {
   blockInstanceId: string;
   transientStateChanges: boolean;
 }): Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> {
-  const baseOps = createScopeStateOps<TState>(options.container, {
-    onPersist: options.persist
-  });
+  // Target state has no backing store. `createScopeStateOps` supplies a
+  // container-based CAS fallback when no `persist` is provided — that's what
+  // we want here, so concurrent mutators serialize through the container.
+  const baseOps = createScopeStateOps<TState>(options.container);
 
   return {
     async patchState(
@@ -1595,7 +1630,7 @@ export async function createExecutionContext<
       createdAt: now,
       updatedAt: now
     };
-    await stores.user.set(userRecord.id, userRecord);
+    await stores.user.set(userRecord.id, userRecord, "any");
   }
 
   let sessionRecord = loadedSession;
@@ -1612,7 +1647,7 @@ export async function createExecutionContext<
       updatedAt: now,
       journal: []
     };
-    await stores.session.set(sessionRecord.id, sessionRecord);
+    await stores.session.set(sessionRecord.id, sessionRecord, "any");
   } else {
     ensureJournalDefaults(sessionRecord);
   }
@@ -1636,7 +1671,7 @@ export async function createExecutionContext<
       createdAt: now,
       updatedAt: now
     };
-    await stores.project.set(projectRecord.id, projectRecord);
+    await stores.project.set(projectRecord.id, projectRecord, "any");
   }
 
   // Load content from ContentStore, merging with any inline record content
@@ -1681,7 +1716,7 @@ export async function createExecutionContext<
       createdAt: now,
       updatedAt: now
     };
-    await stores.request.set(requestRecord.id, requestRecord);
+    await stores.request.set(requestRecord.id, requestRecord, "any");
   }
 
   if (requestRecord === undefined) {
@@ -1743,7 +1778,11 @@ export async function createExecutionContext<
       resources: normalizeScopeResources(sessionResourceConfigs, next),
       updatedAt: Date.now()
     };
-    await stores.session.set(sessionRef.current.id, sessionRef.current);
+    // Resource metadata writes are outside the state CAS path today
+    // (see FIX-347 for splitting resources from scope records). Use "any"
+    // to preserve current last-write-wins behavior for the resources field
+    // until that split lands.
+    await stores.session.set(sessionRef.current.id, sessionRef.current, "any");
   };
 
   const persistSessionResourceContent = async (
@@ -1774,7 +1813,8 @@ export async function createExecutionContext<
       resources: normalizeScopeResources(userResourceConfigs, next),
       updatedAt: Date.now()
     };
-    await stores.user.set(userRef.current.id, userRef.current);
+    // Last-write-wins for resources; see persistSessionResources comment.
+    await stores.user.set(userRef.current.id, userRef.current, "any");
   };
 
   const persistUserResourceContent = async (
@@ -1810,7 +1850,8 @@ export async function createExecutionContext<
       resources: normalizeScopeResources(projectResourceConfigs, next),
       updatedAt: Date.now()
     };
-    await stores.project.set(projectRef.current.id, projectRef.current);
+    // Last-write-wins for resources; see persistSessionResources comment.
+    await stores.project.set(projectRef.current.id, projectRef.current, "any");
   };
 
   const persistProjectResourceContent = async (
@@ -1866,44 +1907,47 @@ export async function createExecutionContext<
 
   const requestOps = createScopeStateOps(requestContainer, {
     onStateSizeWarning,
-    onPersist: async (state, version) => {
-      requestRef.current = {
+    persist: createScopePersist<TRequestState, RequestRecord>(
+      requestRef,
+      (expectedVersion, state) => ({
         ...requestRef.current,
         state: state as TRequestState,
-        version,
+        version: expectedVersion + 1,
         updatedAt: Date.now()
-      };
-      await stores.request.set(requestRef.current.id, requestRef.current);
-    }
+      }),
+      (nextRecord, expectedVersion) =>
+        stores.request.set(nextRecord.id, nextRecord, expectedVersion)
+    )
   });
 
   const userOps = createScopeStateOps(userContainer, {
     onStateSizeWarning,
-    onPersist: async (state, version) => {
-      userRef.current = {
+    persist: createScopePersist<TUserState, UserRecord>(
+      userRef,
+      (expectedVersion, state) => ({
         ...userRef.current,
         state: state as TUserState,
-        version,
+        version: expectedVersion + 1,
         updatedAt: Date.now()
-      };
-      await stores.user.set(userRef.current.id, userRef.current);
-    }
+      }),
+      (nextRecord, expectedVersion) =>
+        stores.user.set(nextRecord.id, nextRecord, expectedVersion)
+    )
   });
 
   const sessionOps = createScopeStateOps(sessionContainer, {
     onStateSizeWarning,
-    onPersist: async (state, version) => {
-      sessionRef.current = {
+    persist: createScopePersist<TSessionState, SessionRecord>(
+      sessionRef,
+      (expectedVersion, state) => ({
         ...sessionRef.current,
         state: state as TSessionState,
-        version,
+        version: expectedVersion + 1,
         updatedAt: Date.now()
-      };
-      await stores.session.set(
-        sessionRef.current.id,
-        sessionRef.current
-      );
-    }
+      }),
+      (nextRecord, expectedVersion) =>
+        stores.session.set(nextRecord.id, nextRecord, expectedVersion)
+    )
   });
 
   const projectOps =
@@ -1911,22 +1955,36 @@ export async function createExecutionContext<
       ? undefined
       : createScopeStateOps(projectContainer, {
           onStateSizeWarning,
-          onPersist: async (state, version) => {
+          persist: async (state, expectedVersion) => {
             const current = projectRef.current;
             if (current === undefined) {
-              return;
+              // Project removed mid-execution; short-circuit so the retry loop exits.
+              return { ok: true, version: expectedVersion + 1 };
             }
-
-            projectRef.current = {
+            const nextRecord: ProjectRecord = {
               ...current,
               state: state as TProjectState,
-              version,
+              version: expectedVersion + 1,
               updatedAt: Date.now()
             };
-            await stores.project.set(
-              projectRef.current.id,
-              projectRef.current
+            const result = await stores.project.set(
+              nextRecord.id,
+              nextRecord,
+              expectedVersion
             );
+            if (result.ok) {
+              projectRef.current = nextRecord;
+              return { ok: true, version: result.version };
+            }
+            const stored = result.conflict.currentValue;
+            if (stored !== undefined) {
+              projectRef.current = stored;
+            }
+            return {
+              ok: false,
+              currentState: stored?.state as TProjectState | undefined,
+              currentVersion: result.conflict.currentVersion
+            };
           }
         });
 
@@ -2128,9 +2186,11 @@ export async function createExecutionContext<
           journal: [...sessionRef.current.journal, journalEntry],
           updatedAt: Date.now()
         };
+        // Journal is append-only and not part of the state CAS path.
         await stores.session.set(
           sessionRef.current.id,
-          sessionRef.current
+          sessionRef.current,
+          "any"
         );
       },
       getJournal: async (query?: {
@@ -2159,7 +2219,12 @@ export async function createExecutionContext<
             : {}),
           updatedAt: now
         };
-        await stores.session.set(sessionRef.current.id, sessionRef.current);
+        // Session metadata (title/description/tags/metadata) is non-CAS today.
+        await stores.session.set(
+          sessionRef.current.id,
+          sessionRef.current,
+          "any"
+        );
 
         await response.emit({
           type: "session.metadata.changed",
@@ -2541,7 +2606,6 @@ export async function createExecutionContext<
                 }
               : (createTargetStateOps({
                   container,
-                  persist: async () => undefined,
                   response: responseRef.current,
                   requestId: requestRef.current.id,
                   nextItemIndex: () => emittedItemCount++,

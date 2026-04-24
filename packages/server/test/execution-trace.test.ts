@@ -465,7 +465,7 @@ describe("execution trace system", () => {
             provenance: prov
           }
         ]
-      } as any);
+      } as any, "any");
 
       const ctx = await createExecutionContext({
         flow,

@@ -45,12 +45,16 @@ export async function detectInterruptedRequests(options: {
     const requestRecord = await stores.request.get(entry.requestId);
 
     if (requestRecord !== undefined && requestRecord.status === "in_progress") {
-      await stores.request.set(entry.requestId, {
-        ...requestRecord,
-        status: "interrupted",
-        interruptedAt: Date.now(),
-        updatedAt: Date.now()
-      });
+      await stores.request.set(
+        entry.requestId,
+        {
+          ...requestRecord,
+          status: "interrupted",
+          interruptedAt: Date.now(),
+          updatedAt: Date.now()
+        },
+        "any"
+      );
 
       logRuntimeEvent(logger, "warn", "[flow-state] detected interrupted request", {
         requestId: entry.requestId,

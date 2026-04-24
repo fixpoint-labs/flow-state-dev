@@ -88,18 +88,18 @@ describe("store adapters", () => {
     await stores.session.set(
       "sess_a",
       makeSessionRecord("sess_a", "flow-a", "user_1")
-    );
+    , "any");
     await stores.session.set(
       "sess_b",
       makeSessionRecord("sess_b", "flow-b", "user_2")
-    );
+    , "any");
 
     await stores.request.set(
       "req_a",
       makeRequestRecord("req_a", "flow-a", "run", "user_1", "sess_a")
-    );
-    await stores.user.set("user_1", makeUserRecord("user_1"));
-    await stores.project.set("proj_1", makeProjectRecord("proj_1", "user_1"));
+    , "any");
+    await stores.user.set("user_1", makeUserRecord("user_1"), "any");
+    await stores.project.set("proj_1", makeProjectRecord("proj_1", "user_1"), "any");
 
     const flowASessions = await stores.session.list({ flowKind: "flow-a" });
     const user1Requests = await stores.request.list({ userId: "user_1" });
@@ -125,16 +125,16 @@ describe("store adapters", () => {
       await stores.session.set(
         "sess_fs",
         makeSessionRecord("sess_fs", "flow-fs", "user_fs")
-      );
+      , "any");
       await stores.request.set(
         "req_fs",
         makeRequestRecord("req_fs", "flow-fs", "run", "user_fs", "sess_fs")
-      );
-      await stores.user.set("user_fs", makeUserRecord("user_fs"));
+      , "any");
+      await stores.user.set("user_fs", makeUserRecord("user_fs"), "any");
       await stores.project.set(
         "proj_fs",
         makeProjectRecord("proj_fs", "user_fs")
-      );
+      , "any");
 
       expect((await stores.session.get("sess_fs"))?.id).toBe("sess_fs");
       expect((await stores.request.get("req_fs"))?.id).toBe("req_fs");

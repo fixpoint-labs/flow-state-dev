@@ -1,9 +1,11 @@
 import type {
+  ExpectedVersion,
   ProjectListOptions,
   ProjectRecord,
-  ProjectStore
+  ProjectStore,
+  SetResult
 } from "../types";
-import { applyOffsetLimit, cloneValue } from "./shared";
+import { applyOffsetLimit, casWriteToMap, cloneValue } from "./shared";
 
 export class InMemoryProjectStore implements ProjectStore {
   private readonly records = new Map<string, ProjectRecord>();
@@ -13,8 +15,12 @@ export class InMemoryProjectStore implements ProjectStore {
     return record === undefined ? undefined : cloneValue(record);
   }
 
-  async set(id: string, value: ProjectRecord): Promise<void> {
-    this.records.set(id, cloneValue(value));
+  async set(
+    id: string,
+    value: ProjectRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<ProjectRecord>> {
+    return casWriteToMap(this.records, id, value, expectedVersion);
   }
 
   async delete(id: string): Promise<void> {

@@ -50,10 +50,11 @@ export async function handleAbortRequest(
 
   // Persist intent so the running instance can distinguish intentional
   // abort from accidental disconnect (browser reload, network drop).
-  await ctx.stores.request.set(requestId, {
-    ...record,
-    abortRequested: true
-  });
+  await ctx.stores.request.set(
+    requestId,
+    { ...record, abortRequested: true },
+    "any"
+  );
 
   // Fire the in-memory controller if this is the same instance.
   if (hasActiveAbortController(requestId)) {

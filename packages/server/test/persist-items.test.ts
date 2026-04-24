@@ -45,7 +45,7 @@ function makeRequestRecord(id: string): RequestRecord {
 describe("RequestStore.persistItems — in-memory", () => {
   it("persistItems is a no-op, flushItems resolves immediately", async () => {
     const store = createInMemoryRequestStore();
-    await store.set("req_1", makeRequestRecord("req_1"));
+    await store.set("req_1", makeRequestRecord("req_1"), "any");
 
     // Should not throw
     store.persistItems("req_1", [makeItem("item_1", 0)]);
@@ -71,7 +71,7 @@ describe("RequestStore.persistItems — filesystem", () => {
   });
 
   it("persists items and flushes correctly", async () => {
-    await store.set("req_1", makeRequestRecord("req_1"));
+    await store.set("req_1", makeRequestRecord("req_1"), "any");
 
     const items = [makeItem("item_1", 0), makeItem("item_2", 1)];
     store.persistItems("req_1", items);
@@ -84,7 +84,7 @@ describe("RequestStore.persistItems — filesystem", () => {
   });
 
   it("coalesces rapid persist calls", async () => {
-    await store.set("req_1", makeRequestRecord("req_1"));
+    await store.set("req_1", makeRequestRecord("req_1"), "any");
 
     // Fire multiple persist calls rapidly
     const items1 = [makeItem("item_1", 0)];
@@ -109,7 +109,7 @@ describe("RequestStore.persistItems — filesystem", () => {
   });
 
   it("items are persisted after flush before terminal write", async () => {
-    await store.set("req_1", makeRequestRecord("req_1"));
+    await store.set("req_1", makeRequestRecord("req_1"), "any");
 
     const items = [makeItem("item_a", 0)];
     store.persistItems("req_1", items);
@@ -122,7 +122,7 @@ describe("RequestStore.persistItems — filesystem", () => {
       status: "completed",
       completedAtMs: Date.now(),
       items: [makeItem("item_a", 0), makeItem("item_b", 1)]
-    });
+    }, "any");
 
     const final = await store.get("req_1");
     expect(final!.status).toBe("completed");

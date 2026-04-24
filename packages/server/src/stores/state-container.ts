@@ -1,9 +1,19 @@
+/**
+ * Per-request state container and scope state operation builder.
+ *
+ * The container is a same-request read-through cache over a scope's state.
+ * It does NOT enforce CAS — that responsibility lives in the `Store.set`
+ * contract (`expectedVersion` predicate). The CAS retry loop (`runWithCAS`)
+ * calls `container.commit(state, version)` to refresh the cache after a
+ * successful write or a conflict.
+ */
+
 import type {
   CASOptions,
   ScopeStateOps,
   StateContainer
 } from "@flow-state-dev/core/types";
-import { runWithCAS } from "./cas";
+import { runWithCAS, type CASPersist } from "./cas";
 import { cloneValue } from "../utils/clone";
 
 function toRecord(value: unknown): Record<string, unknown> {
@@ -39,19 +49,9 @@ export class MemoryStateContainer<TState> implements StateContainer<TState> {
     return this.version;
   }
 
-  async persist(
-    nextState: TState,
-    expectedVersion?: number
-  ): Promise<Readonly<TState> | null> {
-    if (
-      expectedVersion !== undefined &&
-      expectedVersion !== this.version
-    ) {
-      return null;
-    }
-
+  commit(nextState: TState, version: number): Readonly<TState> {
     this.state = cloneValue(nextState);
-    this.version += 1;
+    this.version = Math.max(0, version);
     return this.read();
   }
 }
@@ -63,21 +63,41 @@ export type ScopeStateOpsOptions<TState extends object> = {
     sizeBytes: number;
     maxStateSizeBytes: number;
   }) => void;
-  onPersist?: (
-    state: Readonly<TState>,
-    version: number
-  ) => Promise<void> | void;
+  /**
+   * CAS-aware persist bridge into the underlying store. Invoked inside the
+   * CAS retry loop with the proposed next state and the `expectedVersion`
+   * the container believes is currently stored. Returns the new version on
+   * success, or the store's current value/version on conflict.
+   */
+  persist?: CASPersist<TState>;
 };
 
-async function notifyPersist<TState extends object>(
-  container: StateContainer<TState>,
-  options: ScopeStateOpsOptions<TState> | undefined
-): Promise<void> {
-  if (options?.onPersist === undefined) {
-    return;
-  }
-
-  await options.onPersist(container.read(), container.getVersion());
+/**
+ * Fallback persist for state that has no backing store (e.g. target state
+ * shared across sibling blocks). The container itself plays the role of the
+ * CAS authority — the callback checks expectedVersion against the container's
+ * current version synchronously so interleaved concurrent mutators can't
+ * silently overwrite each other's commits.
+ */
+function createContainerPersist<TState>(
+  container: StateContainer<TState>
+): CASPersist<TState> {
+  return async (nextState, expectedVersion) => {
+    const currentVersion = container.getVersion();
+    if (currentVersion !== expectedVersion) {
+      return {
+        ok: false,
+        currentState: container.read() as TState,
+        currentVersion
+      };
+    }
+    // Commit inside the callback so the version check and the update form
+    // one atomic (microtask-free) step. runWithCAS does a second, idempotent
+    // commit after ok — with no store backing it, the sync pre-commit here
+    // is what prevents concurrent mutators from all passing the v-check.
+    container.commit(nextState, expectedVersion + 1);
+    return { ok: true, version: expectedVersion + 1 };
+  };
 }
 
 async function applyMutation<TState extends object>(
@@ -85,14 +105,16 @@ async function applyMutation<TState extends object>(
   options: ScopeStateOpsOptions<TState> | undefined,
   mutator: (state: Readonly<TState>) => TState | Promise<TState>
 ): Promise<void> {
+  const persist = options?.persist ?? createContainerPersist(container);
+
   await runWithCAS({
     container,
     mutator,
+    persist,
     options: options?.cas,
     maxStateSizeBytes: options?.maxStateSizeBytes,
     onStateSizeWarning: options?.onStateSizeWarning
   });
-  await notifyPersist(container, options);
 }
 
 export function createScopeStateOps<TState extends object>(

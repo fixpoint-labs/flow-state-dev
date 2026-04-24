@@ -1,7 +1,9 @@
 import type {
+  ExpectedVersion,
   ProjectListOptions,
   ProjectRecord,
-  ProjectStore
+  ProjectStore,
+  SetResult
 } from "../types";
 import {
   createFilesystemRecordStore,
@@ -38,8 +40,12 @@ export class FilesystemProjectStore implements ProjectStore {
     return this.store.get(id);
   }
 
-  async set(id: string, value: ProjectRecord): Promise<void> {
-    await this.store.set(id, value);
+  async set(
+    id: string,
+    value: ProjectRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<ProjectRecord>> {
+    return this.store.set(id, value, expectedVersion);
   }
 
   async delete(id: string): Promise<void> {
