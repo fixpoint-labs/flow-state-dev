@@ -86,16 +86,51 @@ export type ProjectListOptions = {
   offset?: number;
 };
 
+/**
+ * Indicates the expected pre-update version for a CAS write.
+ * - A number means "only write if the current stored version equals this"
+ * - "any" means "write unconditionally" (used for creates, migrations, and
+ *   system writes that fall outside the CAS retry loop)
+ */
+export type ExpectedVersion = number | "any";
+
+/**
+ * Outcome of a CAS-aware `Store.set`. Encodes conflict as data rather than
+ * throwing so retry loops stay on the hot path. On conflict the store returns
+ * the current value and version so the caller can refresh its cache and
+ * re-apply the mutator.
+ */
+export type SetResult<TRecord> =
+  | { ok: true; version: number }
+  | {
+      ok: false;
+      conflict: { currentValue: TRecord | undefined; currentVersion: number };
+    };
+
 export interface SessionStore {
   get(id: string): Promise<SessionRecord | undefined>;
-  set(id: string, value: SessionRecord): Promise<void>;
+  /**
+   * Write `value` when the stored record's version matches `expectedVersion`.
+   * Returns the new version on success or the current stored value/version on
+   * conflict. The `version` field on `value` is the NEW version to persist.
+   */
+  set(
+    id: string,
+    value: SessionRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<SessionRecord>>;
   delete(id: string): Promise<void>;
   list(options?: SessionListOptions): Promise<SessionRecord[]>;
 }
 
 export interface RequestStore {
   get(id: string): Promise<RequestRecord | undefined>;
-  set(id: string, value: RequestRecord): Promise<void>;
+  /** See `SessionStore.set` for CAS semantics. */
+  set(
+    id: string,
+    value: RequestRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<RequestRecord>>;
   delete(id: string): Promise<void>;
   list(options?: RequestListOptions): Promise<RequestRecord[]>;
 
@@ -135,14 +170,24 @@ export interface RequestStore {
 
 export interface UserStore {
   get(id: string): Promise<UserRecord | undefined>;
-  set(id: string, value: UserRecord): Promise<void>;
+  /** See `SessionStore.set` for CAS semantics. */
+  set(
+    id: string,
+    value: UserRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<UserRecord>>;
   delete(id: string): Promise<void>;
   list(options?: UserListOptions): Promise<UserRecord[]>;
 }
 
 export interface ProjectStore {
   get(id: string): Promise<ProjectRecord | undefined>;
-  set(id: string, value: ProjectRecord): Promise<void>;
+  /** See `SessionStore.set` for CAS semantics. */
+  set(
+    id: string,
+    value: ProjectRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<ProjectRecord>>;
   delete(id: string): Promise<void>;
   list(options?: ProjectListOptions): Promise<ProjectRecord[]>;
 }

@@ -83,7 +83,7 @@ async function seedFlowStores(options: {
       version: 0,
       createdAt: now,
       updatedAt: now
-    });
+    }, "any");
   }
 
   if (options.projectId !== undefined) {
@@ -99,7 +99,7 @@ async function seedFlowStores(options: {
       version: 0,
       createdAt: now,
       updatedAt: now
-    });
+    }, "any");
   }
 
   if (options.sessionId !== undefined) {
@@ -119,7 +119,7 @@ async function seedFlowStores(options: {
       createdAt: now,
       updatedAt: now,
       journal: []
-    });
+    }, "any");
   }
 
   if (options.seed?.request !== undefined) {
@@ -137,7 +137,7 @@ async function seedFlowStores(options: {
       version: 0,
       createdAt: now,
       updatedAt: now
-    });
+    }, "any");
   }
 }
 

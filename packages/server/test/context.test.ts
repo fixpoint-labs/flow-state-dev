@@ -170,7 +170,7 @@ describe("createExecutionContext", () => {
           provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" }
         } as any
       ]
-    } as any);
+    } as any, "any");
 
     const ctx = await createExecutionContext({
       flow,

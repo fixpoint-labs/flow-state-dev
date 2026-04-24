@@ -82,7 +82,7 @@ describe("applyRetentionPolicy", () => {
   async function setupStores(requests: RequestRecord[]) {
     const stores = createInMemoryStores();
     for (const req of requests) {
-      await stores.request.set(req.id, req);
+      await stores.request.set(req.id, req, "any");
     }
     return stores;
   }
@@ -283,7 +283,7 @@ describe("applyRetentionPolicy", () => {
       const record = await stores.request.get("req_no_complete");
       if (record) {
         delete record.completedAtMs;
-        await stores.request.set(record.id, record);
+        await stores.request.set(record.id, record, "any");
       }
 
       // startedAtMs=100, cutoff=1000-500=500. 100 < 500 → evicted.

@@ -112,7 +112,7 @@ describe("SQLite store adapter", () => {
     it("set then get returns the record", async () => {
       const s = freshStores();
       const record = makeSessionRecord("sess_1", "flow-a", "user_1");
-      await s.session.set("sess_1", record);
+      await s.session.set("sess_1", record, "any");
 
       const result = await s.session.get("sess_1");
       expect(result).toBeDefined();
@@ -130,10 +130,10 @@ describe("SQLite store adapter", () => {
     it("upsert updates record", async () => {
       const s = freshStores();
       const record = makeSessionRecord("sess_1", "flow-a", "user_1");
-      await s.session.set("sess_1", record);
+      await s.session.set("sess_1", record, "any");
 
       const updated = { ...record, version: 1, updatedAt: now() + 100 };
-      await s.session.set("sess_1", updated);
+      await s.session.set("sess_1", updated, "any");
 
       const result = await s.session.get("sess_1");
       expect(result!.version).toBe(1);
@@ -141,7 +141,7 @@ describe("SQLite store adapter", () => {
 
     it("delete removes record", async () => {
       const s = freshStores();
-      await s.session.set("sess_1", makeSessionRecord("sess_1", "flow-a", "user_1"));
+      await s.session.set("sess_1", makeSessionRecord("sess_1", "flow-a", "user_1"), "any");
       await s.session.delete("sess_1");
       expect(await s.session.get("sess_1")).toBeUndefined();
     });
@@ -153,9 +153,9 @@ describe("SQLite store adapter", () => {
 
     it("list returns all records sorted by updatedAt desc", async () => {
       const s = freshStores();
-      await s.session.set("sess_1", makeSessionRecord("sess_1", "flow-a", "user_1", { updatedAt: 100 }));
-      await s.session.set("sess_2", makeSessionRecord("sess_2", "flow-b", "user_2", { updatedAt: 300 }));
-      await s.session.set("sess_3", makeSessionRecord("sess_3", "flow-a", "user_1", { updatedAt: 200 }));
+      await s.session.set("sess_1", makeSessionRecord("sess_1", "flow-a", "user_1", { updatedAt: 100 }), "any");
+      await s.session.set("sess_2", makeSessionRecord("sess_2", "flow-b", "user_2", { updatedAt: 300 }), "any");
+      await s.session.set("sess_3", makeSessionRecord("sess_3", "flow-a", "user_1", { updatedAt: 200 }), "any");
 
       const all = await s.session.list();
       expect(all).toHaveLength(3);
@@ -166,8 +166,8 @@ describe("SQLite store adapter", () => {
 
     it("list filters by flowKind", async () => {
       const s = freshStores();
-      await s.session.set("sess_1", makeSessionRecord("sess_1", "flow-a", "user_1"));
-      await s.session.set("sess_2", makeSessionRecord("sess_2", "flow-b", "user_2"));
+      await s.session.set("sess_1", makeSessionRecord("sess_1", "flow-a", "user_1"), "any");
+      await s.session.set("sess_2", makeSessionRecord("sess_2", "flow-b", "user_2"), "any");
 
       const result = await s.session.list({ flowKind: "flow-a" });
       expect(result).toHaveLength(1);
@@ -176,8 +176,8 @@ describe("SQLite store adapter", () => {
 
     it("list filters by userId", async () => {
       const s = freshStores();
-      await s.session.set("sess_1", makeSessionRecord("sess_1", "flow-a", "user_1"));
-      await s.session.set("sess_2", makeSessionRecord("sess_2", "flow-b", "user_2"));
+      await s.session.set("sess_1", makeSessionRecord("sess_1", "flow-a", "user_1"), "any");
+      await s.session.set("sess_2", makeSessionRecord("sess_2", "flow-b", "user_2"), "any");
 
       const result = await s.session.list({ userId: "user_1" });
       expect(result).toHaveLength(1);
@@ -186,9 +186,9 @@ describe("SQLite store adapter", () => {
 
     it("list with limit and offset", async () => {
       const s = freshStores();
-      await s.session.set("sess_1", makeSessionRecord("sess_1", "flow-a", "user_1", { updatedAt: 100 }));
-      await s.session.set("sess_2", makeSessionRecord("sess_2", "flow-a", "user_1", { updatedAt: 200 }));
-      await s.session.set("sess_3", makeSessionRecord("sess_3", "flow-a", "user_1", { updatedAt: 300 }));
+      await s.session.set("sess_1", makeSessionRecord("sess_1", "flow-a", "user_1", { updatedAt: 100 }), "any");
+      await s.session.set("sess_2", makeSessionRecord("sess_2", "flow-a", "user_1", { updatedAt: 200 }), "any");
+      await s.session.set("sess_3", makeSessionRecord("sess_3", "flow-a", "user_1", { updatedAt: 300 }), "any");
 
       const page = await s.session.list({ limit: 1, offset: 1 });
       expect(page).toHaveLength(1);
@@ -197,13 +197,13 @@ describe("SQLite store adapter", () => {
 
     it("list with offset beyond total returns empty", async () => {
       const s = freshStores();
-      await s.session.set("sess_1", makeSessionRecord("sess_1", "flow-a", "user_1"));
+      await s.session.set("sess_1", makeSessionRecord("sess_1", "flow-a", "user_1"), "any");
       expect(await s.session.list({ offset: 100 })).toHaveLength(0);
     });
 
     it("list with limit 0 returns empty", async () => {
       const s = freshStores();
-      await s.session.set("sess_1", makeSessionRecord("sess_1", "flow-a", "user_1"));
+      await s.session.set("sess_1", makeSessionRecord("sess_1", "flow-a", "user_1"), "any");
       expect(await s.session.list({ limit: 0 })).toHaveLength(0);
     });
   });
@@ -214,7 +214,7 @@ describe("SQLite store adapter", () => {
     it("set then get returns the record", async () => {
       const s = freshStores();
       const record = makeRequestRecord("req_1", "flow-a", "run", "user_1", "sess_1");
-      await s.request.set("req_1", record);
+      await s.request.set("req_1", record, "any");
 
       const result = await s.request.get("req_1");
       expect(result).toBeDefined();
@@ -225,16 +225,16 @@ describe("SQLite store adapter", () => {
 
     it("filters by flowKind", async () => {
       const s = freshStores();
-      await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1"));
-      await s.request.set("req_2", makeRequestRecord("req_2", "flow-b", "run", "user_1"));
+      await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1"), "any");
+      await s.request.set("req_2", makeRequestRecord("req_2", "flow-b", "run", "user_1"), "any");
 
       expect(await s.request.list({ flowKind: "flow-a" })).toHaveLength(1);
     });
 
     it("filters by sessionId", async () => {
       const s = freshStores();
-      await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1", "sess_1"));
-      await s.request.set("req_2", makeRequestRecord("req_2", "flow-a", "run", "user_1", "sess_2"));
+      await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1", "sess_1"), "any");
+      await s.request.set("req_2", makeRequestRecord("req_2", "flow-a", "run", "user_1", "sess_2"), "any");
 
       const result = await s.request.list({ sessionId: "sess_1" });
       expect(result).toHaveLength(1);
@@ -243,16 +243,16 @@ describe("SQLite store adapter", () => {
 
     it("filters by userId", async () => {
       const s = freshStores();
-      await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1"));
-      await s.request.set("req_2", makeRequestRecord("req_2", "flow-a", "run", "user_2"));
+      await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1"), "any");
+      await s.request.set("req_2", makeRequestRecord("req_2", "flow-a", "run", "user_2"), "any");
 
       expect(await s.request.list({ userId: "user_1" })).toHaveLength(1);
     });
 
     it("filters by status", async () => {
       const s = freshStores();
-      await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1", undefined, { status: "completed" }));
-      await s.request.set("req_2", makeRequestRecord("req_2", "flow-a", "run", "user_1", undefined, { status: "in_progress" }));
+      await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1", undefined, { status: "completed" }), "any");
+      await s.request.set("req_2", makeRequestRecord("req_2", "flow-a", "run", "user_1", undefined, { status: "in_progress" }), "any");
 
       const result = await s.request.list({ status: "completed" });
       expect(result).toHaveLength(1);
@@ -261,8 +261,8 @@ describe("SQLite store adapter", () => {
 
     it("filters by status interrupted", async () => {
       const s = freshStores();
-      await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1", undefined, { status: "interrupted", interruptedAt: Date.now() }));
-      await s.request.set("req_2", makeRequestRecord("req_2", "flow-a", "run", "user_1", undefined, { status: "in_progress" }));
+      await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1", undefined, { status: "interrupted", interruptedAt: Date.now() }), "any");
+      await s.request.set("req_2", makeRequestRecord("req_2", "flow-a", "run", "user_1", undefined, { status: "in_progress" }), "any");
 
       const result = await s.request.list({ status: "interrupted" });
       expect(result).toHaveLength(1);
@@ -272,7 +272,7 @@ describe("SQLite store adapter", () => {
 
     it("delete removes and is no-op for non-existent", async () => {
       const s = freshStores();
-      await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1"));
+      await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1"), "any");
       await s.request.delete("req_1");
       expect(await s.request.get("req_1")).toBeUndefined();
       await s.request.delete("nope"); // should not throw
@@ -280,7 +280,7 @@ describe("SQLite store adapter", () => {
 
     it("persistItems updates items on the record", async () => {
       const s = freshStores();
-      await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1"));
+      await s.request.set("req_1", makeRequestRecord("req_1", "flow-a", "run", "user_1"), "any");
 
       const items = [
         { kind: "text" as const, content: "hello", sequenceNumber: 1 }
@@ -303,7 +303,7 @@ describe("SQLite store adapter", () => {
   describe("user store", () => {
     it("CRUD operations", async () => {
       const s = freshStores();
-      await s.user.set("user_1", makeUserRecord("user_1"));
+      await s.user.set("user_1", makeUserRecord("user_1"), "any");
 
       const result = await s.user.get("user_1");
       expect(result).toBeDefined();
@@ -315,8 +315,8 @@ describe("SQLite store adapter", () => {
 
     it("list returns all sorted by updatedAt desc", async () => {
       const s = freshStores();
-      await s.user.set("u1", { ...makeUserRecord("u1"), updatedAt: 100 });
-      await s.user.set("u2", { ...makeUserRecord("u2"), updatedAt: 300 });
+      await s.user.set("u1", { ...makeUserRecord("u1"), updatedAt: 100 }, "any");
+      await s.user.set("u2", { ...makeUserRecord("u2"), updatedAt: 300 }, "any");
 
       const all = await s.user.list();
       expect(all).toHaveLength(2);
@@ -329,7 +329,7 @@ describe("SQLite store adapter", () => {
   describe("project store", () => {
     it("CRUD operations", async () => {
       const s = freshStores();
-      await s.project.set("proj_1", makeProjectRecord("proj_1", "user_1"));
+      await s.project.set("proj_1", makeProjectRecord("proj_1", "user_1"), "any");
 
       const result = await s.project.get("proj_1");
       expect(result).toBeDefined();
@@ -342,8 +342,8 @@ describe("SQLite store adapter", () => {
 
     it("list filters by userId", async () => {
       const s = freshStores();
-      await s.project.set("proj_1", makeProjectRecord("proj_1", "user_1"));
-      await s.project.set("proj_2", makeProjectRecord("proj_2", "user_2"));
+      await s.project.set("proj_1", makeProjectRecord("proj_1", "user_1"), "any");
+      await s.project.set("proj_2", makeProjectRecord("proj_2", "user_2"), "any");
 
       const result = await s.project.list({ userId: "user_1" });
       expect(result).toHaveLength(1);
@@ -498,7 +498,7 @@ describe("SQLite store adapter", () => {
       metadata: { tags: ["a", "b"], config: { key: "val" } }
     });
 
-    await s.session.set("sess_complex", record);
+    await s.session.set("sess_complex", record, "any");
     const result = await s.session.get("sess_complex");
     expect(result!.state).toEqual(record.state);
     expect(result!.resources).toEqual(record.resources);
@@ -512,11 +512,11 @@ describe("SQLite store adapter", () => {
     const s = freshStores();
 
     // Same operations as the in-memory test in packages/server/test/stores.test.ts
-    await s.session.set("sess_a", makeSessionRecord("sess_a", "flow-a", "user_1"));
-    await s.session.set("sess_b", makeSessionRecord("sess_b", "flow-b", "user_2"));
-    await s.request.set("req_a", makeRequestRecord("req_a", "flow-a", "run", "user_1", "sess_a"));
-    await s.user.set("user_1", makeUserRecord("user_1"));
-    await s.project.set("proj_1", makeProjectRecord("proj_1", "user_1"));
+    await s.session.set("sess_a", makeSessionRecord("sess_a", "flow-a", "user_1"), "any");
+    await s.session.set("sess_b", makeSessionRecord("sess_b", "flow-b", "user_2"), "any");
+    await s.request.set("req_a", makeRequestRecord("req_a", "flow-a", "run", "user_1", "sess_a"), "any");
+    await s.user.set("user_1", makeUserRecord("user_1"), "any");
+    await s.project.set("proj_1", makeProjectRecord("proj_1", "user_1"), "any");
 
     const flowASessions = await s.session.list({ flowKind: "flow-a" });
     const user1Requests = await s.request.list({ userId: "user_1" });
@@ -539,7 +539,7 @@ describe("SQLite store adapter", () => {
     it("persists and retrieves events in sequence order", async () => {
       const s = freshStores();
       const requestId = "req_events_1";
-      await s.request.set(requestId, makeRequestRecord(requestId, "flow-a", "ask", "user_1"));
+      await s.request.set(requestId, makeRequestRecord(requestId, "flow-a", "ask", "user_1"), "any");
 
       const events = [
         {
@@ -589,7 +589,7 @@ describe("SQLite store adapter", () => {
     it("overwrites events on re-persist", async () => {
       const s = freshStores();
       const requestId = "req_overwrite";
-      await s.request.set(requestId, makeRequestRecord(requestId, "flow-a", "ask", "user_1"));
+      await s.request.set(requestId, makeRequestRecord(requestId, "flow-a", "ask", "user_1"), "any");
 
       s.request.persistEvents(requestId, [
         { stream: "request", type: "request.created", requestId, sequence_number: 1, status: "in_progress", ts: 100 }
