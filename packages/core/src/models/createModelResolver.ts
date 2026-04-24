@@ -1,11 +1,12 @@
 import { createRequire } from "node:module";
 import type { GeneratorModel, ModelResolver } from "../types/model";
-import type { RetryPolicy, GatewayConfig, GatewayEntry, ModelGroupDefaults } from "./types";
+import type { RetryPolicy, GatewayConfig, GatewayEntry, ModelGroupDefaults, ProviderPreference } from "./types";
 import type { ProviderAvailability } from "./providerDetection";
 import { detectAvailableProviders, parseModelString } from "./providerDetection";
 import { createFallbackModel } from "./fallbackModel";
 import { wrapAiSdkModel } from "./createAiSdkModelResolver";
 import { DEFAULT_PRESETS, type PresetConfig } from "./presets";
+import { reorderByPreference } from "./reorderByPreference";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -31,6 +32,14 @@ export interface CreateModelResolverOptions {
    * If omitted, auto-creates providers from env vars.
    */
   providers?: Record<string, unknown>;
+  /**
+   * Default provider preference applied to preset resolution. See
+   * {@link ProviderPreference}. Stable-reorders each preset's model list by
+   * provider bucket before availability filtering — preferred providers first
+   * (in the order given), remaining models after in their original order.
+   * Omit to preserve the preset author's ordering.
+   */
+  providerPreference?: ProviderPreference;
 }
 
 // ---------------------------------------------------------------------------
@@ -372,13 +381,30 @@ export function createModelResolver(
     presetName: string,
     preset: PresetConfig
   ): GeneratorModel {
-    const entries = preset.models
-      .map((modelString) => {
+    // Tag every preset model with its provider before any resolution attempt,
+    // so the reorder pass can see the full preference landscape (including
+    // models that will fail to resolve).
+    const tagged = preset.models.map((modelString) => {
+      let providerName = "unknown";
+      try {
+        providerName = parseModelString(modelString).provider ?? "unknown";
+      } catch {
+        // malformed model strings stay tagged as 'unknown'
+      }
+      return { modelString, providerName };
+    });
+
+    const ordered = reorderByPreference(tagged, options?.providerPreference);
+
+    const entries = ordered
+      .map((t) => {
         try {
-          const parsed = parseModelString(modelString);
-          const providerName = parsed.provider ?? "unknown";
-          const model = resolveSingleModel(modelString);
-          return { modelId: modelString, providerName, model };
+          const model = resolveSingleModel(t.modelString);
+          return {
+            modelId: t.modelString,
+            providerName: t.providerName,
+            model,
+          };
         } catch {
           // Model not available — skip
           return null;
@@ -405,11 +431,23 @@ export function createModelResolver(
     const preset = allPresets[parsed.presetName!];
     if (!preset) return modelId;
 
-    // Return the first available model in the preset's preference list.
-    for (const modelString of preset.models) {
+    // Reorder by provider preference (if any), then walk for the first
+    // available model. Keeps resolveId consistent with the fallback chain.
+    const tagged = preset.models.map((modelString) => {
+      let providerName = "unknown";
       try {
-        resolveSingleModel(modelString);
-        return modelString;
+        providerName = parseModelString(modelString).provider ?? "unknown";
+      } catch {
+        // malformed — leave as 'unknown'
+      }
+      return { modelString, providerName };
+    });
+    const ordered = reorderByPreference(tagged, options?.providerPreference);
+
+    for (const t of ordered) {
+      try {
+        resolveSingleModel(t.modelString);
+        return t.modelString;
       } catch {
         // Model not available — try next
       }

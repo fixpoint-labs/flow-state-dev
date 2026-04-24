@@ -35,8 +35,19 @@ export type {
   GatewayEntry,
   RetryPolicy,
   GatewayType,
-  ProviderName
+  ProviderName,
+  ProviderPreference,
+  ResolveOptions,
+  ExplainCandidate,
+  ExplainResult
 } from "./types";
+
+// Reorder-by-preference (FIX-425)
+export {
+  reorderByPreference,
+  normalizePreference,
+  hasPreferredProvider
+} from "./reorderByPreference";
 
 // Model selection utility
 export { selectModel } from "./selectModel";

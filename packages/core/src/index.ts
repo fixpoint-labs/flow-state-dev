@@ -192,5 +192,9 @@ export type {
   FallbackModelEntry,
   ModelRule,
   PreferRule,
-  WhenRule
+  WhenRule,
+  ProviderPreference,
+  ResolveOptions,
+  ExplainCandidate,
+  ExplainResult
 } from "./models";

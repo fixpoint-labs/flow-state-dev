@@ -82,7 +82,11 @@ export type {
   PresetConfig,
   FallbackModelEntry,
   ResolveAiSdkSpeechModel,
-  ResolveAiSdkTranscriptionModel
+  ResolveAiSdkTranscriptionModel,
+  ProviderPreference,
+  ResolveOptions,
+  ExplainCandidate,
+  ExplainResult
 } from "@flow-state-dev/core/models";
 export {
   FlowError,
