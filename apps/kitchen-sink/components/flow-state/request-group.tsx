@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo } from "react";
+import { useMemo } from "react";
 import type { BlockToolOutputItem, OutputItem } from "@flow-state-dev/core/items";
 import { ItemsRenderer } from "@flow-state-dev/react";
 import { SourcesGroup } from "./sources";
@@ -30,42 +30,50 @@ function groupItemsByRequest(items: OutputItem[]): RequestGroup[] {
   return groups;
 }
 
-type ToolGroupSegment =
-  | { kind: "items"; items: OutputItem[] }
-  | { kind: "tools"; items: BlockToolOutputItem[] };
+type RenderSegment =
+  | { type: "items"; key: string; items: OutputItem[] }
+  | { type: "tool-group"; key: string; items: BlockToolOutputItem[] };
 
 /**
- * Splits request items into normal item runs and consecutive tool-call runs.
+ * Splits request items into normal renderer runs and consecutive tool groups.
  */
-export function segmentToolGroups(items: OutputItem[]): ToolGroupSegment[] {
-  const segments: ToolGroupSegment[] = [];
-  let currentItems: OutputItem[] = [];
-  let currentTools: BlockToolOutputItem[] = [];
+export function segmentToolGroups(items: OutputItem[]): RenderSegment[] {
+  const segments: RenderSegment[] = [];
+  let normalItems: OutputItem[] = [];
+  let toolItems: BlockToolOutputItem[] = [];
 
-  const flushItems = () => {
-    if (currentItems.length === 0) return;
-    segments.push({ kind: "items", items: currentItems });
-    currentItems = [];
+  const flushNormal = () => {
+    if (normalItems.length === 0) return;
+    segments.push({
+      type: "items",
+      key: `items-${normalItems[0].id}-${normalItems[normalItems.length - 1].id}`,
+      items: normalItems,
+    });
+    normalItems = [];
   };
 
   const flushTools = () => {
-    if (currentTools.length === 0) return;
-    segments.push({ kind: "tools", items: currentTools });
-    currentTools = [];
+    if (toolItems.length === 0) return;
+    segments.push({
+      type: "tool-group",
+      key: `tools-${toolItems[0].id}-${toolItems[toolItems.length - 1].id}`,
+      items: toolItems,
+    });
+    toolItems = [];
   };
 
   for (const item of items) {
     if (item.type === "block_tool_output") {
-      flushItems();
-      currentTools.push(item);
+      flushNormal();
+      toolItems.push(item as BlockToolOutputItem);
       continue;
     }
 
     flushTools();
-    currentItems.push(item);
+    normalItems.push(item);
   }
 
-  flushItems();
+  flushNormal();
   flushTools();
   return segments;
 }
@@ -90,6 +98,7 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage }: Requ
 
   return groups.map((group, index) => {
     const isLast = index === groups.length - 1;
+    const segments = segmentToolGroups(group.items);
 
     return (
       <div
@@ -98,15 +107,13 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage }: Requ
         className="flex flex-col gap-2"
         style={isLast ? { minHeight: "70dvh" } : undefined}
       >
-        {segmentToolGroups(group.items).map((segment, segmentIndex) => (
-          <Fragment key={`${group.requestId}:${segment.kind}:${segmentIndex}`}>
-            {segment.kind === "tools" ? (
-              <ToolGroup items={segment.items} />
-            ) : (
-              <ItemsRenderer items={segment.items} />
-            )}
-          </Fragment>
-        ))}
+        {segments.map((segment) =>
+          segment.type === "tool-group" ? (
+            <ToolGroup key={segment.key} items={segment.items} />
+          ) : (
+            <ItemsRenderer key={segment.key} items={segment.items} />
+          )
+        )}
         <SourcesGroup items={group.items} />
         {isLast && isStreaming && <StreamingIndicator message={statusMessage} />}
       </div>

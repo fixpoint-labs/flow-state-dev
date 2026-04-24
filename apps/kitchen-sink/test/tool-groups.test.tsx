@@ -1,7 +1,7 @@
 import type { BlockToolOutputItem, MessageItem, OutputItem } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
 import {
-  getToolGroupSummaryLabel,
+  getToolGroupSummary,
 } from "../components/flow-state/tool";
 import {
   segmentToolGroups,
@@ -66,7 +66,7 @@ describe("tool group rendering helpers", () => {
   });
 
   it("composes known tool names into natural summary labels", () => {
-    const label = getToolGroupSummaryLabel([
+    const label = getToolGroupSummary([
       toolItem("tool_1", "write_file", 1),
       toolItem("tool_2", "search", 2),
       toolItem("tool_3", "search", 3),
@@ -77,9 +77,9 @@ describe("tool group rendering helpers", () => {
   });
 
   it("falls back to generic labels for unknown or overly broad groups", () => {
-    expect(getToolGroupSummaryLabel([toolItem("tool_1", "custom_tool", 1)])).toBe("Ran 1 tools");
+    expect(getToolGroupSummary([toolItem("tool_1", "custom_tool", 1)])).toBe("Ran 1 tool");
     expect(
-      getToolGroupSummaryLabel([
+      getToolGroupSummary([
         toolItem("tool_1", "search", 1),
         toolItem("tool_2", "fetch", 2),
         toolItem("tool_3", "read_file", 3),

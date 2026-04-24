@@ -7,6 +7,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export default defineConfig({
   resolve: {
     alias: {
+      "@": resolve(root, "apps/kitchen-sink"),
+      "@flow-state-dev/core/items": resolve(root, "packages/core/src/items/index.ts"),
+      "@flow-state-dev/react": resolve(root, "packages/react/src/index.ts"),
       "@flow-state-dev/tools/bash": resolve(root, "packages/tools/src/bash/index.ts"),
       "@flow-state-dev/tools/mcp": resolve(root, "packages/tools/src/mcp/index.ts"),
       "@flow-state-dev/tools/search": resolve(root, "packages/tools/src/search/index.ts"),

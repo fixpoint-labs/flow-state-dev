@@ -46,7 +46,7 @@ export const ToolShell = ({ className, ...props }: ToolProps) => (
 );
 
 export type ToolGroupProps = ComponentProps<typeof Collapsible> & {
-  items: BlockToolOutputItem[];
+  items: ToolItem[];
 };
 
 export type ToolHeaderProps = {
@@ -193,11 +193,6 @@ type ToolVerbPhrase = {
   plural: string;
 };
 
-const DEFAULT_TOOL_VERB_PHRASE: ToolVerbPhrase = {
-  singular: "ran a tool",
-  plural: "ran {count} tools",
-};
-
 /**
  * Data-driven phrase registry used for group summary labels.
  * Add aliases here when new tool names need a more specific phrase.
@@ -281,7 +276,7 @@ function capitalizeFirst(value: string): string {
   return value.length === 0 ? value : `${value[0].toUpperCase()}${value.slice(1)}`;
 }
 
-function getGroupState(items: BlockToolOutputItem[]): ToolState {
+function getGroupState(items: ToolItem[]): ToolState {
   if (items.some((item) => item.status === "in_progress")) return "running";
   if (items.some((item) => item.status === "failed")) return "error";
   return "completed";
@@ -291,12 +286,12 @@ function getGroupState(items: BlockToolOutputItem[]): ToolState {
  * Builds the natural-language summary for a consecutive tool-call group.
  * Unknown tool names intentionally collapse to the generic phrase.
  */
-export function getToolGroupSummary(items: BlockToolOutputItem[]): string {
+export function getToolGroupSummary(items: ToolItem[]): string {
   const counts = new Map<string, number>();
   let hasUnknown = false;
 
   for (const item of items) {
-    const toolName = item.toolCall.name;
+    const toolName = getToolName(item);
     const phrase = TOOL_VERB_PHRASES[toolName];
     if (phrase === undefined) {
       hasUnknown = true;
@@ -305,11 +300,11 @@ export function getToolGroupSummary(items: BlockToolOutputItem[]): string {
   }
 
   if (hasUnknown || counts.size > 4) {
-    return capitalizeFirst(formatPhrase(DEFAULT_TOOL_VERB_PHRASE, items.length));
+    return `Ran ${items.length} ${items.length === 1 ? "tool" : "tools"}`;
   }
 
   const phrases = [...counts].map(([toolName, count]) =>
-    formatPhrase(TOOL_VERB_PHRASES[toolName] ?? DEFAULT_TOOL_VERB_PHRASE, count)
+    formatPhrase(TOOL_VERB_PHRASES[toolName], count)
   );
 
   return capitalizeFirst(formatList(phrases));
@@ -317,20 +312,8 @@ export function getToolGroupSummary(items: BlockToolOutputItem[]): string {
 
 export function Tool({ item }: { item: BlockOutputItem | BlockToolOutputItem }) {
   if (!item.toolCall) return null;
-  const state = mapToolStatus(item.status);
-  const name = getToolName(item);
-  const args = getToolArgs(item);
   return (
-    <ToolShell>
-      <ToolHeader name={name} state={state} />
-      <ToolContent>
-        <ToolInput input={args} />
-        {item.status !== "in_progress" && (
-          <ToolOutput output={getToolOutput(item)} errorText={getToolErrorText(item)} />
-        )}
-        <ToolMetadata item={item} />
-      </ToolContent>
-    </ToolShell>
+    <ToolGroup items={[item]} />
   );
 }
 
@@ -360,7 +343,28 @@ function ToolMetadata({ item }: { item: ToolItem }) {
   );
 }
 
+export function ToolCallRow({ item }: { item: ToolItem }) {
+  if (!item.toolCall) return null;
+  const state = mapToolStatus(item.status);
+  const name = getToolName(item);
+  const args = getToolArgs(item);
+
+  return (
+    <ToolShell className="bg-background/60">
+      <ToolHeader name={name} state={state} />
+      <ToolContent>
+        <ToolInput input={args} />
+        {item.status !== "in_progress" && (
+          <ToolOutput output={getToolOutput(item)} errorText={getToolErrorText(item)} />
+        )}
+        <ToolMetadata item={item} />
+      </ToolContent>
+    </ToolShell>
+  );
+}
+
 export function ToolGroup({ items, className, ...props }: ToolGroupProps) {
+  if (items.length === 0) return null;
   const state = getGroupState(items);
   return (
     <Collapsible
@@ -384,7 +388,7 @@ export function ToolGroup({ items, className, ...props }: ToolGroupProps) {
       <CollapsibleContent className="border-t bg-background/40 p-2">
         <div className="space-y-2">
           {items.map((item) => (
-            <Tool key={item.id} item={item} />
+            <ToolCallRow key={item.id} item={item} />
           ))}
         </div>
       </CollapsibleContent>

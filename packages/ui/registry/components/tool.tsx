@@ -231,6 +231,11 @@ type ToolVerbPhrase = {
   plural: string;
 };
 
+const DEFAULT_TOOL_VERB_PHRASE: ToolVerbPhrase = {
+  singular: "ran a tool",
+  plural: "ran {count} tools",
+};
+
 /**
  * Past-tense summary phrases keyed by tool name.
  * Add aliases here as new tool names should produce richer summaries.
@@ -252,10 +257,14 @@ function capitalizeLabel(label: string): string {
   return label.length === 0 ? label : `${label[0].toUpperCase()}${label.slice(1)}`;
 }
 
+function formatToolVerbPhrase(phrase: ToolVerbPhrase, count: number): string {
+  return (count === 1 ? phrase.singular : phrase.plural).replace("{count}", String(count));
+}
+
 function formatVerbPhrase(name: string, count: number): string | null {
   const phrase = TOOL_VERB_PHRASES[name];
   if (phrase === undefined) return null;
-  return (count === 1 ? phrase.singular : phrase.plural).replace("{count}", String(count));
+  return formatToolVerbPhrase(phrase, count);
 }
 
 function joinPhrases(phrases: string[]): string {
@@ -275,12 +284,16 @@ export function getToolGroupSummaryLabel(items: ToolItem[]): string {
   }
 
   if (counts.size === 0) return "Ran 0 tools";
-  if (counts.size > 4) return `Ran ${items.length} tools`;
+  if (counts.size > 4) {
+    return capitalizeLabel(formatToolVerbPhrase(DEFAULT_TOOL_VERB_PHRASE, items.length));
+  }
 
   const phrases: string[] = [];
   for (const [name, count] of counts) {
     const phrase = formatVerbPhrase(name, count);
-    if (phrase === null) return `Ran ${items.length} tools`;
+    if (phrase === null) {
+      return capitalizeLabel(formatToolVerbPhrase(DEFAULT_TOOL_VERB_PHRASE, items.length));
+    }
     phrases.push(phrase);
   }
 
