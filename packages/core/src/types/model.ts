@@ -174,12 +174,20 @@ export type ModelResolver = ((
 ) => GeneratorModel) & {
   /**
    * Returns the primary underlying model string for any model reference.
-   * For presets, returns the first available provider/model string.
+   * For presets, returns the first available provider/model string (applying
+   * the resolver's provider preference and any call-site override).
    * For direct model strings, returns the input as-is.
    *
    * @example
-   * resolver.resolveId("preset/medium")         // → "anthropic/claude-sonnet-4-6"
-   * resolver.resolveId("anthropic/claude-sonnet-4-6") // → "anthropic/claude-sonnet-4-6"
+   * resolver.resolveId("preset/medium")
+   *   // → "anthropic/claude-sonnet-4-6"
+   * resolver.resolveId("preset/medium", { prefer: "openai" })
+   *   // → "openai/gpt-5.4" (reorders the preset before walking it)
+   * resolver.resolveId("anthropic/claude-sonnet-4-6")
+   *   // → "anthropic/claude-sonnet-4-6"
    */
-  resolveId(modelId: string): string;
+  resolveId(
+    modelId: string,
+    options?: { prefer?: string | string[] }
+  ): string;
 };

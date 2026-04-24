@@ -33,6 +33,10 @@ import { AgentResponseCard } from "@/components/agent-response-card";
 import { ModeSelector, type Mode } from "@/components/mode-selector";
 import { ThinkingStyleSelector, type ThinkingStyle } from "@/components/thinking-style-selector";
 import { ModelPresetSelector, type ModelPreset } from "@/components/model-preset-selector";
+import {
+  ProviderPreferenceSelector,
+  type ProviderPreference,
+} from "@/components/provider-preference-selector";
 import { FeatureSelector, type Features, DEFAULT_FEATURES } from "@/components/feature-selector";
 import { ClientDataBar } from "@/components/client-data-bar";
 import { inferThinkingStyle } from "@/lib/item-inference";
@@ -83,6 +87,8 @@ function KitchenSinkApp() {
   const [mode, setMode] = useState<Mode>("ask");
   const [thinkingStyle, setThinkingStyle] = useState<ThinkingStyle>("auto");
   const [modelPreset, setModelPreset] = useState<ModelPreset>("preset/small");
+  const [providerPreference, setProviderPreference] =
+    useState<ProviderPreference>("");
   const [features, setFeatures] = useState<Features>(DEFAULT_FEATURES);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
@@ -129,7 +135,7 @@ function KitchenSinkApp() {
   const { items: artifactItems, actions: artifactActions } = useResourceCollection(session, "artifacts");
 
   const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined; resolvedModel: string | null } | undefined;
-  const userPrefs = clientData.user?.preferences as { displayName: string; preferredModel: string } | undefined;
+  const userPrefs = clientData.user?.preferences as { displayName: string; preferredModel: string; preferredProvider: string } | undefined;
 
   // Derive resolved thinking style from the most recent request's items.
   const resolvedThinkingStyle = useMemo(() => {
@@ -164,6 +170,17 @@ function KitchenSinkApp() {
       setModelPreset(serverPreferredModel as ModelPreset);
     }
   }, [serverPreferredModel]);
+
+  // Sync local provider preference from server state. Treat undefined and ""
+  // as the same "no preference" state so a fresh session doesn't thrash.
+  const serverPreferredProvider = userPrefs?.preferredProvider ?? "";
+  const prevServerProvider = useRef(serverPreferredProvider);
+  useEffect(() => {
+    if (serverPreferredProvider !== prevServerProvider.current) {
+      prevServerProvider.current = serverPreferredProvider;
+      setProviderPreference(serverPreferredProvider as ProviderPreference);
+    }
+  }, [serverPreferredProvider]);
 
   // Artifact content is loaded lazily when an artifact is selected.
   const [artifactContent, setArtifactContent] = useState<string | null>(null);
@@ -235,6 +252,18 @@ function KitchenSinkApp() {
       setModelPreset(preset);
       if (flow.activeSessionId) {
         void session.sendAction("setPreferredModel", { preferredModel: preset });
+      }
+    },
+    [flow.activeSessionId, session],
+  );
+
+  const handleProviderPreferenceChange = useCallback(
+    (preference: ProviderPreference) => {
+      setProviderPreference(preference);
+      if (flow.activeSessionId) {
+        void session.sendAction("setPreferredProvider", {
+          preferredProvider: preference,
+        });
       }
     },
     [flow.activeSessionId, session],
@@ -333,6 +362,7 @@ function KitchenSinkApp() {
           requestCount={modeStatus?.requestCount}
           displayName={userPrefs?.displayName}
           resolvedModel={modeStatus?.resolvedModel ?? undefined}
+          preferredProvider={userPrefs?.preferredProvider}
           thinkingStyleMode={thinkingStyle}
           thinkingStyle={resolvedThinkingStyle ?? modeStatus?.thinkingStyle}
         />
@@ -344,6 +374,7 @@ function KitchenSinkApp() {
               mode={mode}
               thinkingStyle={thinkingStyle}
               modelPreset={modelPreset}
+              providerPreference={providerPreference}
               features={features}
               isDisabled={isDisabled}
               session={session}
@@ -354,6 +385,7 @@ function KitchenSinkApp() {
               onSetMode={handleModeChange}
               onSetThinkingStyle={setThinkingStyle}
               onModelPresetChange={handleModelPresetChange}
+              onProviderPreferenceChange={handleProviderPreferenceChange}
               onSetFeatures={setFeatures}
               onSubmit={handleSubmit}
               onSuggestionClick={handleSuggestionClick}
@@ -392,6 +424,7 @@ function KitchenSinkApp() {
             mode={mode}
             thinkingStyle={thinkingStyle}
             modelPreset={modelPreset}
+            providerPreference={providerPreference}
             features={features}
             isDisabled={isDisabled}
             session={session}
@@ -402,6 +435,7 @@ function KitchenSinkApp() {
             onSetMode={handleModeChange}
             onSetThinkingStyle={setThinkingStyle}
             onModelPresetChange={handleModelPresetChange}
+            onProviderPreferenceChange={handleProviderPreferenceChange}
             onSetFeatures={setFeatures}
             onSubmit={handleSubmit}
             onSuggestionClick={handleSuggestionClick}
@@ -441,6 +475,7 @@ interface ChatPanelProps {
   mode: Mode;
   thinkingStyle: ThinkingStyle;
   modelPreset: string;
+  providerPreference: string;
   features: Features;
   isDisabled: boolean;
   session: ReturnType<typeof useSession>;
@@ -451,6 +486,7 @@ interface ChatPanelProps {
   onSetMode: (value: Mode) => void;
   onSetThinkingStyle: (value: ThinkingStyle) => void;
   onModelPresetChange: (value: ModelPreset) => void;
+  onProviderPreferenceChange: (value: ProviderPreference) => void;
   onSetFeatures: (value: Features) => void;
   onSubmit: (msg: PromptInputMessage) => Promise<void>;
   onSuggestionClick: (text: string) => void;
@@ -502,6 +538,7 @@ function ChatPanel({
   mode,
   thinkingStyle,
   modelPreset,
+  providerPreference,
   features,
   isDisabled,
   session,
@@ -512,6 +549,7 @@ function ChatPanel({
   onSetMode,
   onSetThinkingStyle,
   onModelPresetChange,
+  onProviderPreferenceChange,
   onSetFeatures,
   onSubmit,
   onSuggestionClick,
@@ -537,6 +575,11 @@ function ChatPanel({
             <ModeSelector mode={mode} onModeChange={onSetMode} disabled={isDisabled} />
             <ThinkingStyleSelector value={thinkingStyle} onValueChange={onSetThinkingStyle} disabled={isDisabled} />
             <ModelPresetSelector value={modelPreset} onValueChange={onModelPresetChange} disabled={isDisabled} />
+            <ProviderPreferenceSelector
+              value={providerPreference}
+              onValueChange={onProviderPreferenceChange}
+              disabled={isDisabled}
+            />
             <FeatureSelector features={features} onFeaturesChange={onSetFeatures} disabled={isDisabled} />
             <VoiceToggle voice={voice} disabled={isDisabled} ttsEnabled={ttsEnabled} onToggleTTS={onToggleTTS} />
           </div>

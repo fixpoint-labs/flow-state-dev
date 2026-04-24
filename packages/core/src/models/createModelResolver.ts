@@ -424,12 +424,21 @@ export function createModelResolver(
     return resolveSingleModel(modelId);
   }) as ModelResolver;
 
-  resolver.resolveId = (modelId: string): string => {
+  resolver.resolveId = (
+    modelId: string,
+    callOptions?: { prefer?: ProviderPreference }
+  ): string => {
     const parsed = parseModelString(modelId);
     if (parsed.type !== "preset") return modelId;
 
     const preset = allPresets[parsed.presetName!];
     if (!preset) return modelId;
+
+    // Call-site `prefer` overrides resolver-level `providerPreference`.
+    const preference =
+      callOptions?.prefer !== undefined
+        ? callOptions.prefer
+        : options?.providerPreference;
 
     // Reorder by provider preference (if any), then walk for the first
     // available model. Keeps resolveId consistent with the fallback chain.
@@ -442,7 +451,7 @@ export function createModelResolver(
       }
       return { modelString, providerName };
     });
-    const ordered = reorderByPreference(tagged, options?.providerPreference);
+    const ordered = reorderByPreference(tagged, preference);
 
     for (const t of ordered) {
       try {

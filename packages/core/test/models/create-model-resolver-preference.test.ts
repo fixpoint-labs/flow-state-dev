@@ -125,4 +125,26 @@ describe("createModelResolver — providerPreference", () => {
     });
     expect(resolver.resolveId("preset/large")).toBe("openai/gpt-5.4");
   });
+
+  it("resolveId per-call prefer overrides resolver-level providerPreference", () => {
+    const resolver = createModelResolver({
+      presets: PRESETS,
+      providerPreference: "anthropic",
+      providers: {
+        openai: mockProvider(),
+        anthropic: mockProvider(),
+        google: mockProvider(),
+      },
+    });
+    // Default uses provider-level "anthropic"
+    expect(resolver.resolveId("preset/large")).toBe("anthropic/opus");
+    // Call-site override to "google"
+    expect(resolver.resolveId("preset/large", { prefer: "google" })).toBe(
+      "google/gemini-3",
+    );
+    // Explicit empty array → no preference, natural order wins
+    expect(resolver.resolveId("preset/large", { prefer: [] })).toBe(
+      "openai/gpt-5.4",
+    );
+  });
 });
