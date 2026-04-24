@@ -61,7 +61,7 @@ const jobRunner = handler({
   },
 });
 
-const pool = drainPool<z.infer<typeof jobSchema>>({
+const pool = drainPool({
   name: "jobs",
   item: jobSchema,
   concurrency: 8,
