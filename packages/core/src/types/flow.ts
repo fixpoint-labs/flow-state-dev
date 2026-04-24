@@ -193,6 +193,20 @@ export type FlowDefinition<
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
 
+  /**
+   * When true, user-scope storage is namespaced by `flowKind`. The store key
+   * becomes `${userId}:${flowKind}` and the flow does not participate in
+   * cross-flow schema registry checks for the user scope. Default: false.
+   */
+  isolateUserState?: boolean;
+
+  /**
+   * When true, project-scope storage is namespaced by `flowKind`. The store
+   * key becomes `${projectId}:${flowKind}` and the flow does not participate
+   * in cross-flow schema registry checks for the project scope. Default: false.
+   */
+  isolateProjectState?: boolean;
+
   defaultBlockRenderer?: unknown | false;
 };
 
@@ -218,6 +232,8 @@ export type FlowInstanceOptions<
   middleware?: Middleware[];
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
+  isolateUserState?: boolean;
+  isolateProjectState?: boolean;
 };
 
 export type FlowInstance<
@@ -242,6 +258,8 @@ export type FlowInstance<
   middleware?: Middleware[];
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
+  isolateUserState: boolean;
+  isolateProjectState: boolean;
 };
 
 export type FlowType<
@@ -263,6 +281,8 @@ export type FlowType<
   tools?: ToolsConfig;
   voice?: VoiceConfig;
   middleware?: Middleware[];
+  isolateUserState: boolean;
+  isolateProjectState: boolean;
 
   (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TProject, TWork>): FlowInstance<
     TActions,

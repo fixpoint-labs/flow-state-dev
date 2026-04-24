@@ -21,6 +21,7 @@ const sidebars: SidebarsConfig = {
         "fundamentals/flows",
         "fundamentals/actions",
         "fundamentals/state-and-scopes",
+        "fundamentals/flow-isolation",
         "fundamentals/capabilities",
         "fundamentals/type-system",
         "fundamentals/utility-blocks",

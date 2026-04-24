@@ -218,7 +218,9 @@ function createFlowInstance(
     voice: options?.voice ?? definition.voice,
     middleware: options?.middleware ?? definition.middleware,
     tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
-    costEstimator: options?.costEstimator ?? definition.costEstimator
+    costEstimator: options?.costEstimator ?? definition.costEstimator,
+    isolateUserState: options?.isolateUserState ?? definition.isolateUserState ?? false,
+    isolateProjectState: options?.isolateProjectState ?? definition.isolateProjectState ?? false
   };
 }
 
@@ -265,6 +267,8 @@ export function defineFlow<
     voice: baseInstance.voice,
     middleware: baseInstance.middleware,
     tokenCounter: baseInstance.tokenCounter,
-    costEstimator: baseInstance.costEstimator
+    costEstimator: baseInstance.costEstimator,
+    isolateUserState: baseInstance.isolateUserState,
+    isolateProjectState: baseInstance.isolateProjectState
   });
 }

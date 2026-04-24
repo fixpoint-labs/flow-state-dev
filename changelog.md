@@ -2,6 +2,17 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-04-24
+
+### Cross-flow schema registry + per-flow isolation (FIX-431)
+
+- Added `isolateUserState` and `isolateProjectState` flags to `defineFlow`. When set, the flow's user- or project-scope storage key is namespaced by `flowKind` (`${userId}:${flowKind}` / `${projectId}:${flowKind}`), and the flow skips cross-flow schema checks for that scope.
+- `FlowRegistry.register` now collects every non-isolated flow's `user.stateSchema`, `project.stateSchema`, and user/project resource schemas. Incompatible declarations throw `CrossFlowSchemaConflictError` at registration time — no silent data loss when a second flow's write would clobber the first flow's fields.
+- Structural compatibility check is conservative and Zod-aware: same-reference merges; compatible object extensions merge with a `console.warn`; type mismatches on a shared field throw.
+- New storage-key helpers `resolveUserStorageKey` / `resolveProjectStorageKey` exported from `@flow-state-dev/server`; `createExecutionContext` uses them for every user/project read, write, and content operation.
+- New `FlowRegistry.describeSharedSchemas()` for diagnostics.
+- Docs: new `docs/fundamentals/flow-isolation.md` guide and extended `docs/architecture/state-and-scopes.md` with a cross-flow section.
+
 ## 2026-04-11
 
 ### DevTool: View Sequencer State (FIX-348)

@@ -570,7 +570,7 @@ await client.executeAction("my-flow", "chat", {
 });
 ```
 
-The framework creates a user record on first encounter and loads it on subsequent requests. The same user record is shared across all of that user's sessions.
+The framework creates a user record on first encounter and loads it on subsequent requests. The same user record is shared across all of that user's sessions — and, by default, across every flow registered on the same server. If two flows declare incompatible user-scope schemas, `FlowRegistry.register` throws `CrossFlowSchemaConflictError` at startup. Flows that don't need cross-flow sharing can opt out with `isolateUserState: true` on `defineFlow`. See [Flow Isolation](/docs/fundamentals/flow-isolation) for details.
 
 ### Real patterns for user scope
 
@@ -689,6 +689,8 @@ execute: async (input, ctx) => {
   }
 }
 ```
+
+Like user scope, project scope is shared across flows by default and validated at registration time by `FlowRegistry`. Set `isolateProjectState: true` on `defineFlow` when a flow's project state should not be shared with other flows. See [Flow Isolation](/docs/fundamentals/flow-isolation).
 
 ### Real patterns for project scope
 

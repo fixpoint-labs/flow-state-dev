@@ -135,6 +135,10 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 - `createFlowApiRouter` — Generate HTTP route handlers from a registry
 - `parseFlowRoute` — Parse incoming request paths
 
+**Cross-flow schema validation:**
+
+`FlowRegistry.register` validates each non-isolated flow's `user.stateSchema`, `project.stateSchema`, and user/project resource schemas against every other registered flow. Incompatible declarations throw `CrossFlowSchemaConflictError` at registration time — no silent data loss when a second flow's write would overwrite the first flow's keys. Flows that opt into isolation (`isolateUserState: true` or `isolateProjectState: true` on `defineFlow`) are namespaced by `flowKind` in storage and skip the registry check. See [Flow Isolation](../../apps/docs/docs/fundamentals/flow-isolation.md) and the [state-and-scopes architecture doc](../../docs/architecture/state-and-scopes.md) for the full model.
+
 **Errors:**
 - `FlowError` and canonical subclasses
 - `normalizeError` — Wrap any thrown value into a typed FlowError
