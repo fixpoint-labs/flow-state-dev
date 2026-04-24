@@ -60,6 +60,9 @@ export type {
   VoiceConfig
 } from "./speech";
 export type {
+  CachingBreakpointMode,
+  CachingConfig,
+  CachingTtl,
   GeneratorModel,
   GeneratorModelResult,
   GeneratorModelSource,

@@ -262,6 +262,53 @@ describe("generator builder", () => {
     expect(receivedMaxSteps).toBe(4);
   });
 
+  it("forwards the resolved caching config to model.generate", async () => {
+    let receivedCaching: unknown;
+    const block = generator({
+      name: "cache-config",
+      model: "m",
+      prompt: "p",
+      outputSchema: z.object({ ok: z.literal(true) }),
+      caching: { ttl: "1h" }
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          receivedCaching = options.caching;
+          return { structuredOutput: { ok: true } };
+        }
+      })
+    });
+    await block.run({ n: 1 }, ctx);
+    expect(receivedCaching).toEqual({ ttl: "1h" });
+  });
+
+  it("resolves a function-form caching config per call", async () => {
+    let receivedCaching: unknown;
+    const block = generator({
+      name: "dynamic-cache",
+      model: "m",
+      prompt: "p",
+      outputSchema: z.object({ ok: z.literal(true) }),
+      caching: (input: { disable: boolean }) =>
+        input.disable ? { enabled: false } : { ttl: "5m" }
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          receivedCaching = options.caching;
+          return { structuredOutput: { ok: true } };
+        }
+      })
+    });
+    await block.run({ disable: true }, ctx);
+    expect(receivedCaching).toEqual({ enabled: false });
+  });
+
 
   it("does not auto-inject resource content tools", async () => {
     const block = generator({

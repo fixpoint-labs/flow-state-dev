@@ -66,7 +66,46 @@ export type GeneratorModelUsage = {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  /**
+   * Tokens billed at the cache write rate (~1.25x input). Populated when
+   * a prompt-cache-enabled request creates a new cache entry.
+   */
+  cacheCreationInputTokens?: number;
+  /**
+   * Tokens billed at the cache read rate (~0.1x input). Populated when
+   * a prompt-cache-enabled request hits an existing cache entry.
+   */
+  cacheReadInputTokens?: number;
 };
+
+// ---------------------------------------------------------------------------
+// Prompt caching
+// ---------------------------------------------------------------------------
+
+/** Cache tier. Anthropic currently exposes `5m` and `1h` ephemeral tiers. */
+export type CachingTtl = "5m" | "1h";
+
+/** Where the adapter places cache breakpoints on Anthropic-flavored calls. */
+export type CachingBreakpointMode = "auto" | "manual";
+
+/**
+ * Normalized caching config carried on a generator block and passed through
+ * the `ModelCallOptions` to the AI SDK adapter. Every field is optional so
+ * users can override just the axis they care about; defaults are documented
+ * in `@flow-state-dev/core` `DEFAULT_CACHING_CONFIG`.
+ */
+export interface CachingConfig {
+  /** Emit cache markers at all. Default `true`. */
+  enabled?: boolean;
+  /**
+   * `auto` — adapter decides breakpoint placement.
+   * `manual` — adapter passes user-supplied `cacheControl` through untouched.
+   * Default `auto`.
+   */
+  breakpoints?: CachingBreakpointMode;
+  /** Ephemeral tier for Anthropic markers. Default `5m`. */
+  ttl?: CachingTtl;
+}
 
 export type GeneratorStepResult = {
   text?: string;
@@ -148,6 +187,13 @@ export interface GeneratorModel {
     maxSteps?: number;
     providerOptions?: Record<string, unknown>;
     prepareStep?: PrepareStepFn;
+    /**
+     * Prompt-cache config. When set, the AI SDK adapter stamps provider-
+     * specific cache markers (e.g. Anthropic `cacheControl`) on the
+     * request before dispatch. Omitted or `undefined` uses framework
+     * defaults (auto breakpoints, 5m TTL, enabled).
+     */
+    caching?: CachingConfig;
   }): Promise<GeneratorModelResult>;
   stream?(options: {
     messages: unknown[];
@@ -159,6 +205,7 @@ export interface GeneratorModel {
     maxSteps?: number;
     providerOptions?: Record<string, unknown>;
     prepareStep?: PrepareStepFn;
+    caching?: CachingConfig;
   }): AsyncIterable<GeneratorModelStreamChunk>;
   /**
    * Resolves a provider-native search tool from normalized config.

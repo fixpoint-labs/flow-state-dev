@@ -130,6 +130,9 @@ export type {
   TokenCounter,
 } from "./types/tokens";
 export type {
+  CachingBreakpointMode,
+  CachingConfig,
+  CachingTtl,
   GeneratorModel,
   GeneratorModelResult,
   GeneratorModelSource,
@@ -172,7 +175,9 @@ export {
   detectAvailableProviders,
   parseModelString,
   DEFAULT_PRESETS,
-  selectModel
+  selectModel,
+  applyCaching,
+  DEFAULT_CACHING_CONFIG
 } from "./models";
 export type {
   ResolveAiSdkLanguageModel,

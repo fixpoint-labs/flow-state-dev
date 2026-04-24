@@ -3,6 +3,125 @@ import { z } from "zod";
 import { MockLanguageModelV3 } from "ai/test";
 import { createAiSdkModelResolver, wrapAiSdkModel } from "../../src/models";
 
+function makeLargeSystemContent(): string {
+  return "x".repeat(4400);
+}
+
+describe("createAiSdkModelResolver — prompt caching", () => {
+  it("stamps Anthropic cacheControl on the last system message by default", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 100, noCache: 90, cacheRead: 10, cacheWrite: undefined },
+          outputTokens: { total: 5, text: 5, reasoning: undefined },
+        },
+        warnings: [],
+      }),
+    });
+    // The provider string is what drives adapter flavor selection.
+    (model as any).provider = "anthropic.messages";
+
+    const resolver = createAiSdkModelResolver(() => model);
+    await resolver("anthropic/claude-sonnet-4-6", "gen").generate({
+      messages: [
+        { role: "system", content: makeLargeSystemContent() },
+        { role: "user", content: "hi" },
+      ],
+    });
+
+    const request = model.doGenerateCalls[0]!;
+    const prompt = request.prompt as any[];
+    const systemMsg = prompt.find((m) => m.role === "system");
+    expect(systemMsg?.providerOptions?.anthropic?.cacheControl).toEqual({
+      type: "ephemeral",
+      ttl: "5m",
+    });
+  });
+
+  it("passes caching: { enabled: false } through without markers", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 50, noCache: 50, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 5, text: 5, reasoning: undefined },
+        },
+        warnings: [],
+      }),
+    });
+    (model as any).provider = "anthropic.messages";
+
+    const resolver = createAiSdkModelResolver(() => model);
+    await resolver("anthropic/claude-sonnet-4-6", "gen").generate({
+      messages: [
+        { role: "system", content: makeLargeSystemContent() },
+        { role: "user", content: "hi" },
+      ],
+      caching: { enabled: false },
+    });
+
+    const request = model.doGenerateCalls[0]!;
+    const prompt = request.prompt as any[];
+    const systemMsg = prompt.find((m) => m.role === "system");
+    expect(systemMsg?.providerOptions).toBeUndefined();
+  });
+
+  it("propagates Anthropic cache token counts through the normalised usage", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 100, noCache: 100, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 5, text: 5, reasoning: undefined },
+        },
+        providerMetadata: {
+          anthropic: {
+            cacheReadInputTokens: 2048,
+            cacheCreationInputTokens: 128,
+          },
+        },
+        warnings: [],
+      }),
+    });
+    (model as any).provider = "anthropic.messages";
+
+    const resolver = createAiSdkModelResolver(() => model);
+    const result = await resolver("anthropic/claude-sonnet-4-6", "gen").generate({
+      messages: [{ role: "user", content: "hi" }],
+    });
+
+    expect(result.usage?.cacheReadInputTokens).toBe(2048);
+    expect(result.usage?.cacheCreationInputTokens).toBe(128);
+  });
+
+  it("opts Vercel AI Gateway into providerOptions.gateway.caching: 'auto'", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 20, noCache: 20, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 2, text: 2, reasoning: undefined },
+        },
+        warnings: [],
+      }),
+    });
+    (model as any).provider = "gateway.chat";
+
+    const resolver = createAiSdkModelResolver(() => model);
+    await resolver("vercel/anthropic/claude-sonnet-4-6", "gen").generate({
+      messages: [{ role: "user", content: "hi" }],
+    });
+
+    const request = model.doGenerateCalls[0]!;
+    expect((request.providerOptions as any)?.gateway?.caching).toBe("auto");
+  });
+});
+
 describe("createAiSdkModelResolver", () => {
   it("maps text, finish reason, and usage into GeneratorModelResult", async () => {
     const resolver = createAiSdkModelResolver((modelId) => {

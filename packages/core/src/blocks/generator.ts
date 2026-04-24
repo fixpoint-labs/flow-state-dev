@@ -14,6 +14,7 @@ import type { AgentType } from "../items/types";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
 import type {
+  CachingConfig,
   GeneratorModel,
   GeneratorModelResult,
   GeneratorModelSource,
@@ -120,6 +121,9 @@ type ResolvableModel<TInput, TCtx = BlockContext> =
 type ResolvableProviderOptions<TInput, TCtx = BlockContext> =
   | Record<string, unknown>
   | ((input: TInput, ctx: TCtx) => MaybePromise<Record<string, unknown> | undefined>);
+type ResolvableCachingConfig<TInput, TCtx = BlockContext> =
+  | CachingConfig
+  | ((input: TInput, ctx: TCtx) => MaybePromise<CachingConfig | undefined>);
 
 export type GeneratorSlotReference<TInput = unknown, TCtx = BlockContext> = (
   input: TInput,
@@ -344,6 +348,18 @@ export interface GeneratorConfig<
   flowTools?: ToolsConfig;
   retry?: RetryPolicy;
   providerOptions?: ResolvableProviderOptions<TInput, TCtx>;
+  /**
+   * Prompt caching config. Defaults to `{ enabled: true, breakpoints: 'auto',
+   * ttl: '5m' }`. In `auto` mode the adapter places a cache breakpoint at
+   * the end of the system prefix on Anthropic-flavored providers (Anthropic,
+   * OpenRouter) when the cacheable prefix is large enough to activate, and
+   * opts the Vercel AI Gateway into automatic marking (`caching: 'auto'`).
+   * Other providers (OpenAI, Google, DeepSeek) cache implicitly and are
+   * left untouched. Set `{ enabled: false }` to disable, or
+   * `{ breakpoints: 'manual' }` to take full control of `cacheControl`
+   * placement via user-supplied provider options.
+   */
+  caching?: ResolvableCachingConfig<TInput, TCtx>;
   /** When true (default), auto-inject tool name+description pairs into the system context. */
   describeTools?: boolean;
 }
@@ -381,6 +397,15 @@ async function resolveProviderOptions<TInput, TCtx extends BlockContext>(
   input: TInput,
   ctx: TCtx
 ): Promise<Record<string, unknown> | undefined> {
+  if (value === undefined) return undefined;
+  return typeof value === "function" ? value(input, ctx) : value;
+}
+
+async function resolveCachingConfig<TInput, TCtx extends BlockContext>(
+  value: ResolvableCachingConfig<TInput, TCtx> | undefined,
+  input: TInput,
+  ctx: TCtx
+): Promise<CachingConfig | undefined> {
   if (value === undefined) return undefined;
   return typeof value === "function" ? value(input, ctx) : value;
 }
@@ -962,7 +987,8 @@ async function executeStreamingGeneration<TInput, TOutput>(
   agentType: AgentType | undefined,
   agentName: string | undefined,
   prepareStep?: PrepareStepFn,
-  resolvedProviderOpts?: Record<string, unknown>
+  resolvedProviderOpts?: Record<string, unknown>,
+  resolvedCaching?: CachingConfig
 ): Promise<TOutput> {
   const emit = agentType !== undefined;
   const itemId = `item_msg_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -997,6 +1023,7 @@ async function executeStreamingGeneration<TInput, TOutput>(
     signal: ctx.signal,
     maxSteps,
     providerOptions: resolvedProviderOpts,
+    caching: resolvedCaching,
     prepareStep
   })) {
     if (chunk.type === "reasoning_delta" && chunk.reasoningDelta !== undefined) {
@@ -1405,6 +1432,12 @@ export function generator<
         ctx
       );
 
+      const resolvedCaching = await resolveCachingConfig(
+        normalizedConfig.caching,
+        input,
+        ctx
+      );
+
       // Resolve provider-native tools (search + explicit providerTools).
       const resolvedProviderTools: ProviderTool[] = [
         ...(normalizedConfig.providerTools ?? [])
@@ -1553,7 +1586,8 @@ export function generator<
           agentType,
           agentName,
           prepareStepFn,
-          resolvedProviderOpts
+          resolvedProviderOpts,
+          resolvedCaching
         );
       }
 
@@ -1567,6 +1601,7 @@ export function generator<
         signal: ctx.signal,
         maxSteps,
         providerOptions: resolvedProviderOpts,
+        caching: resolvedCaching,
         prepareStep: prepareStepFn
       });
 

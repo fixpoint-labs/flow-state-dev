@@ -2,6 +2,21 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-04-24
+
+### Prompt caching: audit and default-enable (FIX-423)
+
+- Added a `caching` field to the `generator()` block config. Default: `{ enabled: true, breakpoints: 'auto', ttl: '5m' }`. Accepts a static object or a `(input, ctx)` resolver.
+- New `packages/core/src/models/caching.ts` applies provider-specific cache markers in `buildAiSdkRequest` right before AI SDK dispatch:
+  - Anthropic / OpenRouter — stamps `providerOptions.anthropic.cacheControl` on the last system message when the cacheable system+tools prefix is large enough to activate (~1024 tokens).
+  - Vercel AI Gateway — sets `providerOptions.gateway.caching: 'auto'` and lets the gateway decide placement.
+  - OpenAI / Google / DeepSeek / unknown — no-op (those providers cache implicitly).
+  - Caller-supplied `cacheControl` markers are never overwritten (auto mode) and are left entirely untouched in `manual` mode.
+- Extended `GeneratorModelUsage` with optional `cacheReadInputTokens` and `cacheCreationInputTokens`. The AI SDK adapter normalises them from either Anthropic `providerMetadata` or the AI SDK v6 `usage.cachedInputTokens` aggregate. Sequencer and server cache-token extractors now prefer the adapter-normalised fields and fall back to provider metadata so older call paths keep working.
+- Exported `CachingConfig`, `CachingBreakpointMode`, `CachingTtl`, `applyCaching`, and `DEFAULT_CACHING_CONFIG` from `@flow-state-dev/core`.
+- Added 17 unit tests (`packages/core/test/models/caching.test.ts`) covering provider detection, threshold check, user-marker preservation, gateway delegation, manual-mode passthrough, and disabled mode; 4 integration tests in the AI SDK resolver suite verifying cache markers land on the outbound request and cache tokens round-trip into normalized usage; 2 generator-level tests verifying static + dynamic `caching` config forwarding.
+- New audit & design doc at `docs/PROMPT_CACHING.md`. User-facing prompt-caching section added to `apps/docs/docs/fundamentals/models.md`. Core package README updated.
+
 ## 2026-04-11
 
 ### DevTool: View Sequencer State (FIX-348)
