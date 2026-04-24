@@ -13,7 +13,7 @@ Use it when:
 - The queue needs to survive request interruption (durable via session resources).
 - The parent must wait for the drain to complete.
 
-If the work is a static array and you don't need mid-run enqueue, use `.forEach({ maxConcurrency })` directly on a sequencer. If you need serial dispatch with mid-run enqueue in ephemeral state, use [Event Queue](./utility-blocks). If you want fire-and-forget fan-out that doesn't wait, use `.forEachBackground()`.
+If the work is a static array and you don't need mid-run enqueue, use `.forEach({ maxConcurrency })` directly on a sequencer. If you need serial dispatch with mid-run enqueue in ephemeral state, use `eventQueue` (`@flow-state-dev/patterns/event-queue`). If you want fire-and-forget fan-out that doesn't wait, use `.forEachBackground()`.
 
 ## How it compares
 
@@ -214,6 +214,6 @@ drainPool<TItem>({
 
 ## See also
 
-- [Event Queue](./utility-blocks) — serial dispatch with mid-run enqueue, ephemeral state.
+- `eventQueue` (`@flow-state-dev/patterns/event-queue`) — serial dispatch with mid-run enqueue, ephemeral state.
 - [Reactive Blackboard](./reactive-blackboard) — stigmergic fan-out; refactored on top of drainPool for bounded aggregate concurrency.
 - `.forEachBackground()` — fire-and-forget fan-out; no result coordination, no re-enqueue.
