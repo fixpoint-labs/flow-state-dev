@@ -69,6 +69,8 @@ const sidebars: SidebarsConfig = {
             "patterns/supervisor",
             "patterns/plan-and-execute",
             "patterns/response-auditor",
+            "patterns/reactive-blackboard",
+            "patterns/drain-pool",
           ],
         },
       ],
