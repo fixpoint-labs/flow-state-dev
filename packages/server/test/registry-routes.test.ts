@@ -438,6 +438,161 @@ describe("createFlowApiRouter", () => {
     });
   });
 
+  it("loads isolated user and project scopes in the session state route", async () => {
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    const flow = defineFlow({
+      kind: "isolated-state-route",
+      isolateUserState: true,
+      isolateProjectState: true,
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: handler({
+            name: "isolated-state-route-run",
+            inputSchema: z.object({ value: z.string() }),
+            outputSchema: z.object({ ok: z.boolean() }),
+            execute: async (input, ctx) => {
+              await ctx.user.patchState({ nickname: input.value });
+              await ctx.project?.patchState({ title: `Project ${input.value}` });
+              return { ok: true };
+            }
+          })
+        }
+      },
+      user: {
+        stateSchema: z.object({ nickname: z.string().optional() }),
+        clientData: {
+          userLabel: (ctx) => ({ nickname: ctx.state.nickname })
+        }
+      },
+      project: {
+        stateSchema: z.object({ title: z.string().optional() }),
+        clientData: {
+          projectLabel: (ctx) => ({ title: ctx.state.title })
+        }
+      }
+    })({ id: "isolated-state-route" });
+
+    registry.register(flow);
+    const router = createFlowApiRouter({ registry, stores });
+
+    const executeResponse = await router.POST(
+      new Request("http://localhost/api/flows/isolated-state-route/sess_iso_state/actions/run", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: "user_iso_state",
+          projectId: "proj_iso_state",
+          input: { value: "Ada" }
+        })
+      }),
+      {
+        params: {
+          path: ["isolated-state-route", "sess_iso_state", "actions", "run"]
+        }
+      }
+    );
+    expect(executeResponse.status).toBe(202);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const stateResponse = await router.GET(
+      new Request("http://localhost/api/flows/sessions/sess_iso_state/state"),
+      { params: { path: ["sessions", "sess_iso_state", "state"] } }
+    );
+
+    expect(stateResponse.status).toBe(200);
+    const body = (await stateResponse.json()) as {
+      state: {
+        user?: Record<string, unknown>;
+        project?: Record<string, unknown>;
+      };
+      clientData: Record<string, Record<string, unknown>>;
+    };
+    expect(body.state.user).toMatchObject({ nickname: "Ada" });
+    expect(body.state.project).toMatchObject({ title: "Project Ada" });
+    expect(body.clientData).toMatchObject({
+      user: { userLabel: { nickname: "Ada" } },
+      project: { projectLabel: { title: "Project Ada" } }
+    });
+    expect(await stores.user.get("user_iso_state")).toBeUndefined();
+    expect(await stores.project.get("proj_iso_state")).toBeUndefined();
+
+    const request = (await stores.request.list({ sessionId: "sess_iso_state", limit: 1 }))[0];
+    expect(request?.projectId).toBe("proj_iso_state");
+  });
+
+  it("loads isolated user resources in resource content routes", async () => {
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    const profile = defineResource({
+      stateSchema: z.object({ label: z.string().default("") }),
+      writable: true,
+      client: {
+        content: { read: true }
+      }
+    });
+    const flow = defineFlow({
+      kind: "isolated-resource-route",
+      isolateUserState: true,
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: handler({
+            name: "isolated-resource-route-run",
+            inputSchema: z.object({ value: z.string() }),
+            outputSchema: z.object({ ok: z.boolean() }),
+            execute: async (input, ctx) => {
+              await ctx.user.resources.profile.patchState({ label: input.value });
+              await ctx.user.resources.profile.writeContent(`Profile ${input.value}`);
+              return { ok: true };
+            }
+          })
+        }
+      },
+      user: {
+        resources: {
+          profile
+        }
+      }
+    })({ id: "isolated-resource-route" });
+
+    registry.register(flow);
+    const router = createFlowApiRouter({ registry, stores });
+
+    const executeResponse = await router.POST(
+      new Request("http://localhost/api/flows/isolated-resource-route/sess_iso_resource/actions/run", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: "user_iso_resource",
+          input: { value: "Ada" }
+        })
+      }),
+      {
+        params: {
+          path: ["isolated-resource-route", "sess_iso_resource", "actions", "run"]
+        }
+      }
+    );
+    expect(executeResponse.status).toBe(202);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const contentResponse = await router.GET(
+      new Request("http://localhost/api/flows/sessions/sess_iso_resource/resources/profile/content"),
+      {
+        params: {
+          path: ["sessions", "sess_iso_resource", "resources", "profile", "content"]
+        }
+      }
+    );
+
+    expect(contentResponse.status).toBe(200);
+    expect(await contentResponse.json()).toEqual({
+      ref: "profile",
+      content: "Profile Ada"
+    });
+    expect(await stores.user.get("user_iso_resource")).toBeUndefined();
+  });
+
   it("paginates session items with metadata", async () => {
     const registry = createFlowRegistry();
     const stores = createInMemoryStores();

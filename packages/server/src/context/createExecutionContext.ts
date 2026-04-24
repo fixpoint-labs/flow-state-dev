@@ -1732,7 +1732,7 @@ export async function createExecutionContext<
       actionName: options.actionName,
       userId,
       sessionId: sessionRecord?.id,
-      projectId: projectRecord?.id,
+      projectId: projectRecord?.projectId,
       status: "in_progress",
       startedAtMs: now,
       metadata: options.metadata,
@@ -2142,7 +2142,7 @@ export async function createExecutionContext<
         type: "request" as const,
         id: requestRef.current.id,
         userId,
-        projectId: projectRef.current?.id
+        projectId: projectRef.current?.projectId
       },
       get tokenUsage() {
         return computeTokenUsage();

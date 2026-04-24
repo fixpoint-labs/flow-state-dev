@@ -14,6 +14,10 @@ import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {
+  resolveProjectStorageKey,
+  resolveUserStorageKey
+} from "../stores/scope-keys";
+import {
   isResourceConfig,
   jsonResponse,
   normalizeResourceState,
@@ -64,6 +68,11 @@ function findResourceConfig(
 
 async function getPersistedData(
   ctx: ResourceRouteContext,
+  flow: {
+    kind: string;
+    isolateUserState: boolean;
+    isolateProjectState: boolean;
+  },
   sessionId: string,
   scope: "session" | "user" | "project"
 ): Promise<{ resources: Record<string, JsonObject>; content: Record<string, string> } | undefined> {
@@ -85,7 +94,9 @@ async function getPersistedData(
   if (scope === "user") {
     const session = await ctx.stores.session.get(sessionId);
     if (!session) return undefined;
-    const user = await ctx.stores.user.get(session.userId);
+    const user = await ctx.stores.user.get(
+      resolveUserStorageKey(session.userId, flow)
+    );
     if (!user) return undefined;
     const contentFromStore = await ctx.stores.content.getAll("user", user.id);
     return {
@@ -100,7 +111,9 @@ async function getPersistedData(
   // project
   const session = await ctx.stores.session.get(sessionId);
   if (!session || !session.projectId) return undefined;
-  const project = await ctx.stores.project.get(session.projectId);
+  const project = await ctx.stores.project.get(
+    resolveProjectStorageKey(session.projectId, flow)
+  );
   if (!project) return undefined;
   const contentFromStore = await ctx.stores.content.getAll("project", project.id);
   return {
@@ -162,7 +175,7 @@ export async function handleGetResourceContent(
     return jsonResponse(403, { error: `Content read not permitted for "${route.ref}"` });
   }
 
-  const data = await getPersistedData(ctx, route.sessionId, scope);
+  const data = await getPersistedData(ctx, flow, route.sessionId, scope);
   if (!data) return jsonResponse(404, { error: "Scope data not found" });
 
   const state = normalizeResourceState(config, data.resources[route.ref]);
@@ -199,7 +212,7 @@ export async function handleGetCollectionItemContent(
     return jsonResponse(403, { error: `Content read not permitted for "${route.ref}"` });
   }
 
-  const data = await getPersistedData(ctx, route.sessionId, scope);
+  const data = await getPersistedData(ctx, flow, route.sessionId, scope);
   if (!data) return jsonResponse(404, { error: "Scope data not found" });
 
   // The topic arrives as either a bare key ("my-doc") or the full storage key
