@@ -71,6 +71,10 @@ import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
 import { cloneValue } from "../utils/clone";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
+import {
+  resolveUserStorageKey,
+  resolveProjectStorageKey
+} from "../stores/scope-keys";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
 
 /**
@@ -1585,13 +1589,22 @@ export async function createExecutionContext<
   const sessionId = options.sessionId ?? `ephemeral_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const requestId = options.requestId;
 
+  // Storage keys — namespaced by flowKind when the flow opts into per-flow
+  // isolation for user/project scope. Bare identity ids otherwise. See
+  // `packages/server/src/stores/scope-keys.ts` and FIX-431.
+  const userKey = resolveUserStorageKey(userId, flow);
+  const optionsProjectId = options.projectId;
+  const optionsProjectKey =
+    optionsProjectId !== undefined
+      ? resolveProjectStorageKey(optionsProjectId, flow)
+      : undefined;
+
   // Parallelize independent store lookups — user, session, project, and request
   // records don't depend on each other for the initial load.
-  const optionsProjectId = options.projectId;
   const [loadedUser, loadedSession, loadedProject, loadedRequest, priorRequests] = await Promise.all([
-    stores.user.get(userId),
+    stores.user.get(userKey),
     stores.session.get(sessionId),
-    optionsProjectId !== undefined ? stores.project.get(optionsProjectId) : undefined,
+    optionsProjectKey !== undefined ? stores.project.get(optionsProjectKey) : undefined,
     stores.request.get(requestId),
     stores.request.list({ sessionId })
   ]);
@@ -1621,8 +1634,11 @@ export async function createExecutionContext<
 
   let userRecord = loadedUser;
   if (userRecord === undefined) {
+    // `id` is the storage key (namespaced when isolated); `userId` stays as
+    // the bare identity so listing and cross-reference by userId work across
+    // isolated and shared records alike.
     userRecord = {
-      id: userId,
+      id: userKey,
       userId,
       state: (options.userState ?? {}) as TUserState,
       resources: normalizeScopeResources(userResourceConfigs, undefined),
@@ -1656,13 +1672,21 @@ export async function createExecutionContext<
   // If session had a projectId we didn't know about at parallel-load time,
   // we need a separate fetch.
   const resolvedProjectId = optionsProjectId ?? sessionRecord?.projectId;
+  const resolvedProjectKey =
+    resolvedProjectId !== undefined
+      ? resolveProjectStorageKey(resolvedProjectId, flow)
+      : undefined;
   let projectRecord: ProjectRecord | undefined = loadedProject;
-  if (projectRecord === undefined && resolvedProjectId !== undefined && resolvedProjectId !== optionsProjectId) {
-    projectRecord = await stores.project.get(resolvedProjectId);
+  if (
+    projectRecord === undefined &&
+    resolvedProjectKey !== undefined &&
+    resolvedProjectKey !== optionsProjectKey
+  ) {
+    projectRecord = await stores.project.get(resolvedProjectKey);
   }
-  if (resolvedProjectId !== undefined && projectRecord === undefined) {
+  if (resolvedProjectId !== undefined && resolvedProjectKey !== undefined && projectRecord === undefined) {
     projectRecord = {
-      id: resolvedProjectId,
+      id: resolvedProjectKey,
       projectId: resolvedProjectId,
       userId,
       state: (options.projectState ?? {}) as TProjectState,
@@ -1677,10 +1701,12 @@ export async function createExecutionContext<
   // Load content from ContentStore, merging with any inline record content
   // for backward compatibility with records created before ContentStore existed.
   // ContentStore values take precedence over inline record values.
+  // Content scope keys mirror the scope record keys — namespaced when the
+  // flow isolates that scope.
   const [sessionContentFromStore, userContentFromStore, projectContentFromStore] = await Promise.all([
     stores.content.getAll("session", sessionId),
-    stores.content.getAll("user", userId),
-    resolvedProjectId !== undefined ? stores.content.getAll("project", resolvedProjectId) : Promise.resolve({})
+    stores.content.getAll("user", userKey),
+    resolvedProjectKey !== undefined ? stores.content.getAll("project", resolvedProjectKey) : Promise.resolve({})
   ]);
 
   const initialSessionContent = normalizeScopeResourceContent(
@@ -1706,7 +1732,7 @@ export async function createExecutionContext<
       actionName: options.actionName,
       userId,
       sessionId: sessionRecord?.id,
-      projectId: projectRecord?.id,
+      projectId: projectRecord?.projectId,
       status: "in_progress",
       startedAtMs: now,
       metadata: options.metadata,
@@ -1825,12 +1851,12 @@ export async function createExecutionContext<
 
     for (const [key, value] of Object.entries(normalized)) {
       if (previous[key] !== value) {
-        await stores.content.set("user", userId, key, value);
+        await stores.content.set("user", userKey, key, value);
       }
     }
     for (const key of Object.keys(previous)) {
       if (!(key in normalized)) {
-        await stores.content.delete("user", userId, key);
+        await stores.content.delete("user", userKey, key);
       }
     }
 
@@ -1857,7 +1883,7 @@ export async function createExecutionContext<
   const persistProjectResourceContent = async (
     next: Record<string, string>
   ): Promise<void> => {
-    if (resolvedProjectId === undefined) {
+    if (resolvedProjectKey === undefined) {
       return;
     }
 
@@ -1866,12 +1892,12 @@ export async function createExecutionContext<
 
     for (const [key, value] of Object.entries(normalized)) {
       if (previous[key] !== value) {
-        await stores.content.set("project", resolvedProjectId, key, value);
+        await stores.content.set("project", resolvedProjectKey, key, value);
       }
     }
     for (const key of Object.keys(previous)) {
       if (!(key in normalized)) {
-        await stores.content.delete("project", resolvedProjectId, key);
+        await stores.content.delete("project", resolvedProjectKey, key);
       }
     }
 
@@ -2116,7 +2142,7 @@ export async function createExecutionContext<
         type: "request" as const,
         id: requestRef.current.id,
         userId,
-        projectId: projectRef.current?.id
+        projectId: projectRef.current?.projectId
       },
       get tokenUsage() {
         return computeTokenUsage();

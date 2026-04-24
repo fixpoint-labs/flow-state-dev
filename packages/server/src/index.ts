@@ -20,6 +20,8 @@ export {
   createInMemoryUserStore,
   createScopeStateOps,
   createStateContainer,
+  resolveProjectStorageKey,
+  resolveUserStorageKey,
   runWithCAS
 } from "./stores";
 export type {

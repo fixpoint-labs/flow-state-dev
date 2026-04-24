@@ -81,6 +81,12 @@ export type {
 } from "./types";
 
 export {
+  resolveUserStorageKey,
+  resolveProjectStorageKey
+} from "./scope-keys";
+export type { IsolationFlow } from "./scope-keys";
+
+export {
   ConcurrentModificationError,
   createScopeStateOps,
   createStateContainer,

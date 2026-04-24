@@ -6,6 +6,10 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {
+  resolveProjectStorageKey,
+  resolveUserStorageKey
+} from "../stores/scope-keys";
+import {
   buildResourceSnapshot,
   computeClientData,
   createScopeResources,
@@ -51,11 +55,13 @@ export async function handleGetSessionState(
       limit: 1
     })
   )[0];
-  const user = await ctx.stores.user.get(session.userId);
+  const user = await ctx.stores.user.get(resolveUserStorageKey(session.userId, flow));
   const project =
     session.projectId === undefined
       ? undefined
-      : await ctx.stores.project.get(session.projectId);
+      : await ctx.stores.project.get(
+          resolveProjectStorageKey(session.projectId, flow)
+        );
   const clientDataFilter = parseClientDataFilter(
     url.searchParams.get("clientData")
   );
