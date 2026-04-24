@@ -156,6 +156,35 @@ describe("FlowRegistry cross-flow schema validation", () => {
     expect(registry.list().map((f) => f.kind)).toEqual(["flow-a"]);
   });
 
+  it("rolls back user-scope indexing when the project-scope check fails", () => {
+    // Regression: if user validates but project throws, the user participant
+    // must not linger — otherwise describeSharedSchemas misreports, and a
+    // retry of the same kind would self-match and skip validation.
+    const registry = createFlowRegistry();
+    registry.register(
+      makeFlow({
+        kind: "flow-a",
+        userSchema: z.object({ theme: z.string() }),
+        projectSchema: z.object({ title: z.string() }),
+      })
+    );
+    expect(() =>
+      registry.register(
+        makeFlow({
+          kind: "flow-b",
+          // Compatible user, incompatible project.
+          userSchema: z.object({ theme: z.string() }),
+          projectSchema: z.object({ title: z.number() }),
+        })
+      )
+    ).toThrow();
+
+    const desc = registry.describeSharedSchemas();
+    expect(desc.participants.user).toEqual(["flow-a"]);
+    expect(desc.participants.project).toEqual(["flow-a"]);
+    expect(registry.list().map((f) => f.kind)).toEqual(["flow-a"]);
+  });
+
   it("describeSharedSchemas reports participating flow kinds", () => {
     const registry = createFlowRegistry();
     registry.register(makeFlow({ kind: "flow-a", userSchema: z.object({ theme: z.string() }) }));

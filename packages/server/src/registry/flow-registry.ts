@@ -65,26 +65,38 @@ export class InMemoryFlowRegistry implements FlowRegistry {
   /**
    * Registers a single flow instance. Duplicate `(kind,id)` is rejected.
    * Throws `CrossFlowSchemaConflictError` when the flow's non-isolated
-   * schemas conflict with an already-registered flow.
+   * schemas conflict with an already-registered flow. Registration is
+   * transactional — a failure leaves every internal map untouched.
    */
   register(flow: FlowInstance): void {
-    let byId = this.flowsByKind.get(flow.kind);
-    if (byId === undefined) {
-      byId = new Map<string, FlowInstance>();
-      this.flowsByKind.set(flow.kind, byId);
-    }
-
-    if (byId.has(flow.id)) {
+    const existingByKind = this.flowsByKind.get(flow.kind);
+    if (existingByKind?.has(flow.id)) {
       throw new Error(
         `Flow "${flow.kind}" with id "${flow.id}" is already registered`
       );
     }
 
-    // Validate cross-flow schemas before mutating registry state so that
-    // a failed registration leaves the registry untouched.
-    this.validateAndIndex(flow);
+    // Validate both scopes before mutating any state. If the project-scope
+    // check throws after the user-scope check passes, no participant entry
+    // should linger for the user scope.
+    const userDecl = flow.isolateUserState
+      ? undefined
+      : collectScopeDeclaration(flow, "user");
+    const projectDecl = flow.isolateProjectState
+      ? undefined
+      : collectScopeDeclaration(flow, "project");
 
+    if (userDecl) this.validateScope("user", flow.kind, userDecl);
+    if (projectDecl) this.validateScope("project", flow.kind, projectDecl);
+
+    // All validation passed — commit.
+    const byId = existingByKind ?? new Map<string, FlowInstance>();
+    if (existingByKind === undefined) {
+      this.flowsByKind.set(flow.kind, byId);
+    }
     byId.set(flow.id, flow);
+    this.indexParticipant("user", flow.kind, userDecl);
+    this.indexParticipant("project", flow.kind, projectDecl);
   }
 
   /**
@@ -153,35 +165,20 @@ export class InMemoryFlowRegistry implements FlowRegistry {
     };
   }
 
-  private validateAndIndex(flow: FlowInstance): void {
-    this.validateAndIndexScope(
-      "user",
-      flow,
-      flow.isolateUserState ? undefined : collectScopeDeclaration(flow, "user")
-    );
-    this.validateAndIndexScope(
-      "project",
-      flow,
-      flow.isolateProjectState ? undefined : collectScopeDeclaration(flow, "project")
-    );
-  }
-
-  private validateAndIndexScope(
+  private indexParticipant(
     scope: ConflictScope,
-    flow: FlowInstance,
+    flowKind: string,
     declaration: ScopeDeclaration | undefined
   ): void {
     if (declaration === undefined) return;
-    this.validateScope(scope, flow.kind, declaration);
-    // Index only the first instance of a given kind — later instances (same
-    // kind, different id) are assumed structurally equivalent.
-    if (!this.participants[scope].has(flow.kind)) {
-      this.participants[scope].set(flow.kind, {
-        flowKind: flow.kind,
-        stateSchema: declaration.stateSchema,
-        resourceSchemas: { ...declaration.resourceSchemas },
-      });
-    }
+    // Only the first instance of a given kind seeds the participant entry —
+    // later instances (same kind, different id) are structurally equivalent.
+    if (this.participants[scope].has(flowKind)) return;
+    this.participants[scope].set(flowKind, {
+      flowKind,
+      stateSchema: declaration.stateSchema,
+      resourceSchemas: { ...declaration.resourceSchemas },
+    });
   }
 
   private validateScope(
