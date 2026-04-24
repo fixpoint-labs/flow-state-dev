@@ -222,9 +222,8 @@ export function system(
     .then(analyze)
     .tap(observe)
 
-  // Capability — same scope handling, same resource refs. This keeps the
-  // bundled blocks and `uses: [sec.capability]` compatible in the same flow,
-  // including user/project-scoped positions.
+  // Capability — shares the same resource refs so capability helpers
+  // and bundled blocks operate on the same underlying state.
   const capability = createPerspectiveCapability(instance, {
     positionScope,
     _observationsResource: observationsResource,

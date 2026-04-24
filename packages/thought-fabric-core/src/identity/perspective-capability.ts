@@ -161,9 +161,8 @@ export function createPerspectiveCapability(
   // Observations are always session-scoped (singleton resource).
   const observationsResource = config?._observationsResource ?? perspectiveObservationsResource
 
-  // Positions resource: singleton for session, factory-created for user/project.
-  // The factory call produces a distinct reference, which is what diamond-dedup
-  // uses to detect "same capability declared twice" vs "different capability".
+  // Positions resource: use override from system() when provided so the
+  // capability and bundled blocks share the same underlying state.
   const positionsResource = config?._positionsResource
     ?? (positionScope === 'session'
       ? perspectivePositionsResource

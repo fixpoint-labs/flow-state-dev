@@ -1508,4 +1508,13 @@ describe('identity/perspective — system() factory', () => {
     const p2 = system(makeInstance())
     expect(p1.capability).not.toBe(p2.capability)
   })
+
+  it('capability and system share the same positions resource for non-session scopes', () => {
+    const p = system(makeInstance(), { positionScope: 'user' })
+    const capUserResources = (p.capability as any)._config?.userResources
+      ?? (p.capability as any).userResources
+    const systemPositionsResource = p.userResources.perspectivePositions
+    expect(systemPositionsResource).toBeDefined()
+    expect(capUserResources?.perspectivePositions).toBe(systemPositionsResource)
+  })
 })

@@ -20,7 +20,7 @@ import {
 } from "@flow-state-dev/core";
 
 import { system as memorySystem } from "@thought-fabric/core/memory";
-import { perspective, system as perspectiveSystem, formatPerspective } from "@thought-fabric/core/identity";
+import { perspective, system as perspectiveSystem } from "@thought-fabric/core/identity";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
 import { z } from "zod";
@@ -128,22 +128,13 @@ const assistantGenerator = generator({
   sessionStateSchema: z.object({ mode: modeSchema.default("ask"), thinkingStyle: z.string().optional() }),
 
   // Capabilities: auto-install resources, context formatters, and tools.
-  // mem.capability includes a context preset that injects unified memory recall.
-  uses: [mem.capability, featuresCapability],
+  // mem.capability injects unified memory recall context.
+  // p.capability injects perspective framing (static + accumulated presets).
+  // Perspective context appears in all modes but accumulated state only
+  // grows in ask mode (capture is gated via workIf below).
+  uses: [mem.capability, featuresCapability, p.capability],
 
-  // Perspective context is injected conditionally — only in ask mode.
-  // Resources are installed flow-wide via p.sessionResources; we inject the
-  // static framing + accumulated observations here via context instead of a
-  // dynamic capability entry.
-  context: [
-    voiceContext,
-    (_input: any, ctx: any) => {
-      if (ctx.session?.state?.mode !== "ask") return "";
-      const framing = formatPerspective(analyst);
-      const accumulated = p.contextFormatter(_input, ctx);
-      return accumulated ? `${framing}\n\n${accumulated}` : framing;
-    },
-  ],
+  context: [voiceContext],
 
   inputSchema,
   history: { limit: 8 },
@@ -382,22 +373,6 @@ const setPreferredProviderHandler = handler({
 });
 
 // ---------------------------------------------------------------------------
-// Perspective capture (ask mode only — analyze response through the
-// perspective's lens and record observations for future context)
-// ---------------------------------------------------------------------------
-
-const perspectiveCapture = sequencer({
-  name: "perspective-capture",
-  inputSchema: z.string(),
-})
-  .thenIf(
-    (_input: any, ctx: any) => (ctx.session?.state as any)?.mode === "ask",
-    sequencer({ name: "perspective-capture-bridge", inputSchema: z.string() })
-      .map((response: string) => ({ content: response }))
-      .then(p.capture),
-  );
-
-// ---------------------------------------------------------------------------
 // Run sequencer
 // ---------------------------------------------------------------------------
 
@@ -408,7 +383,11 @@ const runSequencer = sequencer({ name: "run", inputSchema })
   .tap(resolveThinkingStyle)
   .then(thinkingStyleRouter)
   .work(biasCheck)
-  .work(perspectiveCapture)
+  .workIf(
+    (ctx: any) => ctx.session?.state?.mode === "ask",
+    (response: string) => ({ content: response }),
+    p.capture,
+  )
   .work(mem.captureFromItems)
   .work(autoTitle)
 
