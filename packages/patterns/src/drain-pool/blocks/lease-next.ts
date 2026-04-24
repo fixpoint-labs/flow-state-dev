@@ -27,6 +27,7 @@ import {
   type DrainPoolProjection,
   type DrainPoolWorkerState,
 } from "../schemas";
+import { sanitizeStats } from "../shared";
 
 type QueueRef<TItem> = ResourceCollectionRef<any> & {
   get(key: string): ResourceRef<any> & { state: Readonly<DrainPoolItem<TItem>> };
@@ -35,11 +36,6 @@ type QueueRef<TItem> = ResourceCollectionRef<any> & {
 export type LeaseNextOutput<TItem> =
   | { ok: true; id: string; payload: TItem }
   | { ok: false };
-
-function sanitizeStats(state: DrainPoolProjection) {
-  const { items: _items, ...rest } = state;
-  return rest;
-}
 
 /**
  * Builds the leaseNext handler for a specific worker.

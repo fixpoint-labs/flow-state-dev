@@ -21,24 +21,13 @@ import {
   type DrainPoolItemMeta,
   type DrainPoolProjection,
 } from "../schemas";
+import { randomItemId, sanitizeStats } from "../shared";
 
 // Loose collection alias; collections store plain JSON and the payload
 // is user-typed. See seed-pool.ts for the rationale.
 type QueueRef<TItem> = ResourceCollectionRef<any> & {
   list(): ReadonlyArray<ResourceRef<any> & { state: Readonly<DrainPoolItem<TItem>> }>;
 };
-
-function randomId(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  return `item-${Date.now().toString(36)}-${Math.random().toString(16).slice(2)}`;
-}
-
-function sanitizeStats(state: DrainPoolProjection) {
-  const { items: _items, ...rest } = state;
-  return rest;
-}
 
 /**
  * Builds the seedPool handler. Runs once at the start of the drainPool
@@ -97,7 +86,7 @@ export function createSeedPool<TItem>(
       const now = Date.now();
       const newItems: Record<string, DrainPoolItemMeta> = {};
       for (const payload of initialItems) {
-        const id = randomId();
+        const id = randomItemId();
         await collection.create(id, {
           id,
           payload,

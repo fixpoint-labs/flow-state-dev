@@ -30,18 +30,7 @@ import {
   type DrainPoolItemMeta,
   type DrainPoolProjection,
 } from "../schemas";
-
-function randomId(): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return globalThis.crypto.randomUUID();
-  }
-  return `item-${Date.now().toString(36)}-${Math.random().toString(16).slice(2)}`;
-}
-
-function sanitizeStats(state: DrainPoolProjection) {
-  const { items: _items, ...rest } = state;
-  return rest;
-}
+import { randomItemId, sanitizeStats } from "../shared";
 
 export type EnqueueResolver<TItem> =
   | TItem
@@ -96,7 +85,7 @@ export function createEnqueueHelper<TItem>(
         const now = Date.now();
         const newMetas: Record<string, DrainPoolItemMeta> = {};
         for (const payload of list) {
-          const id = randomId();
+          const id = randomItemId();
           await collection.create(id, {
             id,
             payload,
