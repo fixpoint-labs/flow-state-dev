@@ -20,7 +20,7 @@ import {
 } from "@flow-state-dev/core";
 
 import { system as memorySystem } from "@thought-fabric/core/memory";
-import { perspective, system as perspectiveSystem } from "@thought-fabric/core/identity";
+import { perspective, system as perspectiveSystem, formatPerspective } from "@thought-fabric/core/identity";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
 import { z } from "zod";
@@ -129,14 +129,21 @@ const assistantGenerator = generator({
 
   // Capabilities: auto-install resources, context formatters, and tools.
   // mem.capability includes a context preset that injects unified memory recall.
-  // p.capability injects perspective framing + accumulated observations (ask mode only).
-  uses: [
-    mem.capability,
-    featuresCapability,
-    (ctx: any) => ctx.session?.state?.mode === "ask" ? [p.capability] : [],
-  ],
+  uses: [mem.capability, featuresCapability],
 
-  context: [voiceContext],
+  // Perspective context is injected conditionally — only in ask mode.
+  // Resources are installed flow-wide via p.sessionResources; we inject the
+  // static framing + accumulated observations here via context instead of a
+  // dynamic capability entry.
+  context: [
+    voiceContext,
+    (_input: any, ctx: any) => {
+      if (ctx.session?.state?.mode !== "ask") return "";
+      const framing = formatPerspective(analyst);
+      const accumulated = p.contextFormatter(_input, ctx);
+      return accumulated ? `${framing}\n\n${accumulated}` : framing;
+    },
+  ],
 
   inputSchema,
   history: { limit: 8 },
