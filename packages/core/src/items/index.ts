@@ -16,6 +16,7 @@ export type {
   BlockDebugPayload,
   BlockOutputItem,
   BlockToolOutputItem,
+  BlockValue,
   ComponentItem,
   ContainerItem,
   /** @deprecated The `context` item type has been removed from the OutputItem union. */
@@ -34,10 +35,21 @@ export type {
   StateSnapshotItem,
   SourceItem,
   StatusItem,
-  StepErrorItem
+  StepErrorItem,
+  StructureShape
 } from "./types";
 
 export { resolveItemVisibility } from "./resolve-visibility";
+
+export {
+  buildBlockOutputLookup,
+  inlineBlockValue,
+  isBlockValue,
+  refBlockValue,
+  resolveBlockValue,
+  structureBlockValue
+} from "./resolve-value";
+export type { BlockOutputLookup } from "./resolve-value";
 
 export type {
   ContentPartAddedEvent,

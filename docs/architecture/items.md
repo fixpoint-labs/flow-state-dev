@@ -68,6 +68,16 @@ Structural items ignore `agentType` for visibility. `agentType` on a structural 
 
 **`block_output`** is emitted after every block finishes, automatically. It records the block name, kind, output, timing, and model usage. This is how the devtool builds its execution trace tree.
 
+Since FIX-413, `block_output.output` is a `BlockValue<T>` discriminated union with three cases:
+
+- **`inline`** — the block produced novel content. Leaves (generators, handlers) and explicit transforms (`.map`, non-identity `connectOutput`) emit this kind. The payload rides on `output.value`.
+- **`ref`** — the block's output is reference-identical to another item's content. Pass-through composers (`.then`, `.work`, `.tap`, routers, `.rescue`) emit this kind, with `output.sourceItemId` pointing at the content-bearing item. The invariant is **flatten-at-emit**: every ref points one hop to a content-bearing item, never to another ref.
+- **`structure`** — the block produced a novel container of existing content. Aggregators (`.thenAll`, `.parallel`, `.forEach`) emit this kind, with `output.shape` describing the array or object of nested BlockValues.
+
+The union exists so a deeply nested pass-through pipeline (`s1 → s2 → s3 → generator`) persists the LLM output exactly once, on the generator's item — intermediate sequencers carry a ~40-byte ref rather than an N-byte copy.
+
+Consumers reading historical items should use `resolveBlockValue(item.output, lookup)` from `@flow-state-dev/core/items` to recover the typed payload `T`. `ctx.getBlockOutput()` and `TargetHandle` resolve transparently.
+
 **`router_decision`** records which branch a router selected.
 
 **`state_snapshot`** captures the full sequencer state at each step boundary. Transient — streams to the devtool during execution but isn't persisted.

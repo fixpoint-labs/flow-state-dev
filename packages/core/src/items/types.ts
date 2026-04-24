@@ -66,11 +66,49 @@ export type OutputItemBase = {
   agentName?: string;
 };
 
+/**
+ * Discriminated union describing how a block's `output` item carries its content.
+ *
+ * - `inline` — the block produced novel content. Leaves (generators, handlers)
+ *   and explicit transforms (`.map`, `connectOutput`) use this kind.
+ * - `ref` — the block's output is reference-identical to another item's content.
+ *   Pass-through composers (`.then`, `.work`, `.tap`, routers, `.rescue`) use this
+ *   kind to avoid duplicating content at every nesting level.
+ * - `structure` — the block produced a novel container whose slots are refs or
+ *   inlines. Aggregators (`.thenAll`, `.parallel`, `.forEach`) use this kind.
+ *
+ * Invariants:
+ * - Every `ref` points one hop to a content-bearing item (never another ref).
+ *   This is guaranteed by flatten-at-emit in the executor.
+ * - The union kind is determined by the builder step that constructed the block,
+ *   not by runtime equality. Consumers can reason about composition intent from
+ *   the shape: `inline` on a sequencer means a transform happened at that node.
+ *
+ * See FIX-413 for the design rationale and the full per-method kind table.
+ */
+export type BlockValue<T = unknown> =
+  | { kind: "inline"; value: T }
+  | { kind: "ref"; sourceItemId: string }
+  | { kind: "structure"; shape: StructureShape };
+
+/**
+ * Shape of a `structure` BlockValue: a container of nested BlockValues.
+ * Used by aggregators that produce a novel array or object of existing content.
+ */
+export type StructureShape =
+  | { container: "array"; entries: BlockValue<unknown>[] }
+  | { container: "object"; entries: Record<string, BlockValue<unknown>> };
+
 export type BlockOutputItem = OutputItemBase & {
   type: "block_output";
   blockName: string;
   blockKind?: string;
-  output: unknown;
+  /**
+   * Block output as a BlockValue discriminated union. See {@link BlockValue}.
+   * Resolve via `resolveBlockValue(item.output, lookup)` to recover the typed
+   * payload `T`. `ctx.getBlockOutput()` resolves transparently.
+   */
+  output: BlockValue<unknown>;
   /** Present when block execution failed (status will be "failed"). */
   error?: {
     message: string;

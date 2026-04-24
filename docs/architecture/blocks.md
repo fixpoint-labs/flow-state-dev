@@ -245,29 +245,40 @@ const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSc
 
 ### DSL Methods (20 total)
 
-| Method | Purpose |
-|--------|---------|
-| `then(block)` | Execute block, pass output to next step |
-| `then(connector, block)` | Transform input before block execution |
-| `thenIf(condition, block)` | Conditional step execution |
-| `map(fn)` | Transform current value without a block |
-| `parallel(steps)` | Execute named steps concurrently |
-| `forEach(block)` | Execute block for each array element |
-| `forEachBackground(block)` | Fire-and-forget fan-out per element |
-| `doUntil(condition, block)` | Loop until condition is true |
-| `doWhile(condition, block)` | Loop while condition is true |
-| `loopBack(stepName, opts)` | Jump back to a named step (bounded) |
-| `work(block)` | Queue non-aborting side-chain execution |
-| `background(block)` | Alias for `.work()` |
-| `waitForWork(opts)` | Wait for queued work to complete |
-| `tap(block)` | Side effect without changing payload |
-| `tapIf(condition, block)` | Conditional side effect |
-| `rescue(handlers)` | Error recovery by error type |
-| `branch(branches)` | Conditional multi-path execution |
-| `thenAll(blocks)` | Run array of blocks concurrently, collect all results |
-| `thenAny(blocks)` | Try blocks sequentially, first success wins |
-| `race(blocks)` | Run blocks concurrently, first success wins |
-| `exitIf(condition)` | Conditional early exit from chain |
+Each method produces a `BlockValue<T>` of a specific kind on the emitted
+`block_output` item (FIX-413). Refs and structures avoid duplicating content
+across the execution tree; see `docs/architecture/items.md` for the union
+definition and resolution semantics.
+
+| Method | Purpose | `block_output` kind |
+|--------|---------|---------------------|
+| `then(block)` | Execute block, pass output to next step | `ref` → child's item |
+| `then(connector, block)` | Transform input before block execution | `ref` → child's item |
+| `thenIf(condition, block)` | Conditional step execution | `ref` if taken, carries prior descriptor if skipped |
+| `map(fn)` | Transform current value without a block | `inline` (novel content) |
+| `parallel(steps)` | Execute named steps concurrently | `structure` (object of refs) |
+| `forEach(block)` | Execute block for each array element | `structure` (array of refs) |
+| `forEachBackground(block)` | Fire-and-forget fan-out per element | passthrough (value unchanged) |
+| `doUntil(condition, block)` | Loop until condition is true | `ref` → final iteration's item |
+| `doWhile(condition, block)` | Loop while condition is true | `ref` → final iteration's item |
+| `loopBack(stepName, opts)` | Jump back to a named step (bounded) | passthrough |
+| `work(block)` | Queue non-aborting side-chain execution | passthrough |
+| `background(block)` | Alias for `.work()` | passthrough |
+| `waitForWork(opts)` | Wait for queued work to complete | passthrough |
+| `tap(block)` | Side effect without changing payload | passthrough |
+| `tapIf(condition, block)` | Conditional side effect | passthrough |
+| `rescue(handlers)` | Error recovery by error type | `ref` → rescue branch's item (when taken) |
+| `branch(branches)` | Conditional multi-path execution | `ref` → selected branch's item |
+| `thenAll(blocks)` | Run array of blocks concurrently, collect all results | `structure` (array of refs) |
+| `thenAny(blocks)` | Try blocks sequentially, first success wins | `ref` → winning branch's item |
+| `race(blocks)` | Run blocks concurrently, first success wins | `ref` → winning branch's item |
+| `exitIf(condition)` | Conditional early exit from chain | passthrough |
+
+"passthrough" means the op does not change the sequencer's running descriptor —
+the last op that emitted `ref`, `inline`, or `structure` stays in effect.
+
+Routers always emit `ref` to the selected route's item. Generators and
+handlers always emit `inline` (they are leaves).
 
 ### Work Semantics
 

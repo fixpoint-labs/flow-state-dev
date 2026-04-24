@@ -1,8 +1,8 @@
 /**
  * Central block execution entrypoint: dispatch, seam interception, retry, and error normalization.
  */
-import type { BlockOutputItem, ItemProvenance } from "@flow-state-dev/core/items";
-import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockOutputItem, BlockValue, ItemProvenance, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockContext, BlockDefinition, BlockOutputHint } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
 import { getBaseCapability, resolveActiveStatusMessage } from "@flow-state-dev/core";
 import { composeMiddleware, mergeMiddlewareStacks } from "../middleware/compose";
@@ -77,6 +77,38 @@ function createBlockOutputProvenance(
 
 
 
+/**
+ * Builds a BlockValue from the raw output and a caller-supplied hint (FIX-413).
+ * Performs flatten-at-emit for refs: if the target item's own output is also
+ * a ref, takes that inner sourceItemId instead so every emitted ref is one hop
+ * from a content-bearing item.
+ */
+function buildBlockValueForEmit(
+  output: unknown,
+  hint: BlockOutputHint | undefined,
+  items: OutputItem[]
+): BlockValue<unknown> {
+  if (hint === undefined || hint.kind === "inline") {
+    return { kind: "inline", value: output };
+  }
+  if (hint.kind === "structure") {
+    return { kind: "structure", shape: hint.shape };
+  }
+  // ref — flatten one hop if the target's own output is itself a ref.
+  let sourceItemId = hint.sourceItemId;
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i];
+    if (item.type === "block_output" && item.id === sourceItemId) {
+      const targetValue = (item as BlockOutputItem).output;
+      if (targetValue !== undefined && typeof targetValue === "object" && "kind" in targetValue && targetValue.kind === "ref") {
+        sourceItemId = targetValue.sourceItemId;
+      }
+      break;
+    }
+  }
+  return { kind: "ref", sourceItemId };
+}
+
 async function emitBlockOutputItem(
   options: {
     block: BlockDefinition<any, any>;
@@ -87,6 +119,7 @@ async function emitBlockOutputItem(
     modelUsage?: GeneratorModelUsageMeta;
     status?: "completed" | "failed";
     error?: { message: string; code?: string };
+    hint?: BlockOutputHint;
   }
 ): Promise<void> {
   if (!hasItemEmitter(options.ctx.response)) {
@@ -94,7 +127,11 @@ async function emitBlockOutputItem(
   }
 
   const completedAt = Date.now();
-  const itemIndex = getResponseItems(options.ctx.response).length;
+  const items = getResponseItems(options.ctx.response);
+  const itemIndex = items.length;
+  const blockValue = options.status === "failed"
+    ? ({ kind: "inline", value: undefined } as BlockValue<unknown>)
+    : buildBlockValueForEmit(options.output, options.hint, items);
   // Root block_output items carry lifecycle timing and are marked for trace.
   // Items with toolCall (generator tool results) are emitted separately and
   // do NOT pass through this function — they retain their existing LLM audience.
@@ -109,7 +146,7 @@ async function emitBlockOutputItem(
     ts: completedAt,
     blockName: options.block.name,
     blockKind: options.block.kind,
-    output: options.output,
+    output: blockValue,
     error: options.error,
     startedAt: options.startedAt,
     completedAt,
@@ -440,6 +477,14 @@ export async function executeBlock(
             }
           });
 
+    // Sequencer / router execute functions set `_blockOutputHint` on ctx
+    // before returning (FIX-413). Pick it up, then clear so a retry or
+    // re-entry starts fresh.
+    const capturedHint = (options.ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint;
+    if (capturedHint !== undefined) {
+      (options.ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = undefined;
+    }
+
     await emitBlockOutputItem({
       block: options.block,
       output: executionResult.output,
@@ -450,7 +495,8 @@ export async function executeBlock(
         blockInstanceId: buildBlockInstanceId(requestId, blockPath, attempt)
       },
       startedAt,
-      modelUsage: executionResult.modelUsage
+      modelUsage: executionResult.modelUsage,
+      hint: capturedHint
     });
 
     return {

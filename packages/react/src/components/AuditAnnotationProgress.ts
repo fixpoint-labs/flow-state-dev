@@ -5,7 +5,30 @@
  * severity color-coding, and an interactive threshold slider.
  */
 import { createElement, useState, type ReactNode } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { BlockOutputItem, BlockValue, OutputItem } from "@flow-state-dev/core/items";
+
+/**
+ * Inline BlockValue resolver (FIX-413). Duplicated here instead of imported
+ * from core because `packages/react` is typeOnly against core per package
+ * boundary rules. Keep tiny and in sync with `core/items/resolve-value.ts`.
+ */
+function resolveValue(value: BlockValue<unknown> | undefined, items: readonly OutputItem[]): unknown {
+  if (value === undefined) return undefined;
+  if (value.kind === "inline") return value.value;
+  if (value.kind === "ref") {
+    const target = items.find((i) => i.id === value.sourceItemId && i.type === "block_output") as BlockOutputItem | undefined;
+    if (target === undefined) return undefined;
+    return resolveValue(target.output, items);
+  }
+  if (value.shape.container === "array") {
+    return value.shape.entries.map((entry) => resolveValue(entry, items));
+  }
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value.shape.entries)) {
+    result[k] = resolveValue(v, items);
+  }
+  return result;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -61,10 +84,12 @@ function extractAnalyzerResults(items: OutputItem[]): AnalyzerStatus[] {
       item.blockName === "aggregate-results" &&
       "output" in item
     ) {
-      const output = (item as Record<string, unknown>).output as {
-        results: AnalyzerStatus[];
-      };
-      return output.results ?? [];
+      // Resolve BlockValue union to its typed payload (FIX-413).
+      const output = resolveValue(
+        (item as BlockOutputItem).output,
+        items,
+      ) as { results?: AnalyzerStatus[] } | undefined;
+      return output?.results ?? [];
     }
   }
   return [];
@@ -79,10 +104,11 @@ function extractOverallScore(items: OutputItem[]): number | null {
       item.blockName === "aggregate-results" &&
       "output" in item
     ) {
-      const output = (item as Record<string, unknown>).output as {
-        overallScore: number;
-      };
-      return output.overallScore ?? null;
+      const output = resolveValue(
+        (item as BlockOutputItem).output,
+        items,
+      ) as { overallScore?: number } | undefined;
+      return output?.overallScore ?? null;
     }
   }
   return null;

@@ -9,7 +9,28 @@
  * session state. See the Event Queue pattern docs for that workaround.
  */
 import { createElement, type ReactNode } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { BlockOutputItem, BlockValue, OutputItem } from "@flow-state-dev/core/items";
+
+/**
+ * Inline BlockValue resolver (FIX-413). See AuditAnnotationProgress.ts for
+ * rationale — the react package cannot import runtime values from core.
+ */
+function resolveValue(value: BlockValue<unknown> | undefined, items: readonly OutputItem[]): unknown {
+  if (value === undefined) return undefined;
+  if (value.kind === "inline") return value.value;
+  if (value.kind === "ref") {
+    const target = items.find((i) => i.id === value.sourceItemId && i.type === "block_output") as BlockOutputItem | undefined;
+    return target === undefined ? undefined : resolveValue(target.output, items);
+  }
+  if (value.shape.container === "array") {
+    return value.shape.entries.map((entry) => resolveValue(entry, items));
+  }
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value.shape.entries)) {
+    result[k] = resolveValue(v, items);
+  }
+  return result;
+}
 
 // ---------------------------------------------------------------------------
 // Props
@@ -53,11 +74,12 @@ export function EventQueueProgress({
     null,
     createElement("span", null, `${dispatched.length} events processed`),
     ...dispatched.map((item, i) => {
-      const eventType =
-        item.type === "block_output" && "output" in item
-          ? ((item as Record<string, unknown>).output as { event?: { type?: string } })
-              ?.event?.type ?? "unknown"
-          : "unknown";
+      // Resolve BlockValue union to its typed payload (FIX-413).
+      const resolved = resolveValue(
+        (item as BlockOutputItem).output,
+        items,
+      ) as { event?: { type?: string } } | undefined;
+      const eventType = resolved?.event?.type ?? "unknown";
       return createElement("div", { key: i }, createElement("code", null, eventType));
     })
   );
