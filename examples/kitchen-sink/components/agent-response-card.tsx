@@ -1,6 +1,6 @@
 "use client";
 
-import type { BlockOutputItem } from "@flow-state-dev/core/items";
+import type { BlockOutputItem, BlockValue } from "@flow-state-dev/core/items";
 import { Tool } from "@/components/flow-state/tool";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,20 @@ type AgentOutput = {
   artifactsModified: string[];
 };
 
+/**
+ * Extract the resolved payload from a BlockValue. For this card we only care
+ * about the inline case — the agent generator is a leaf that produces novel
+ * content, so its block_output always carries `kind: "inline"` (FIX-413).
+ * Defensive fallback for any legacy/ref shapes just returns undefined.
+ */
+function unwrapInline(value: BlockValue<unknown> | undefined): AgentOutput | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === "object" && "kind" in value && value.kind === "inline") {
+    return value.value as AgentOutput;
+  }
+  return undefined;
+}
+
 export function AgentResponseCard({ item }: { item: BlockOutputItem }) {
   // Tool calls get rendered via the flow-state Tool component
   if (item.toolCall) {
@@ -18,7 +32,7 @@ export function AgentResponseCard({ item }: { item: BlockOutputItem }) {
   }
 
   // Show skeleton placeholder while block is still executing
-  const output = item.output as AgentOutput | undefined;
+  const output = unwrapInline(item.output);
   if (item.status === "in_progress" && !output?.reply) {
     return (
       <Card className="animate-pulse opacity-80">

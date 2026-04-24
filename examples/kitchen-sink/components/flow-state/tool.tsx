@@ -196,15 +196,30 @@ function getToolArgs(item: ToolItem): unknown {
   try { return JSON.parse(raw); } catch { return raw; }
 }
 
+/**
+ * Extract the raw tool payload. `block_tool_output.output` is always raw.
+ * `block_output.output` is a BlockValue discriminated union (FIX-413); for
+ * tool-call items the generator is a leaf, so we only see the `inline` case.
+ */
+function unwrapToolOutput(item: ToolItem): unknown {
+  if (item.type === "block_tool_output") return item.output;
+  const value = item.output;
+  if (value !== undefined && typeof value === "object" && "kind" in value && value.kind === "inline") {
+    return (value as { value: unknown }).value;
+  }
+  return undefined;
+}
+
 function getToolOutput(item: ToolItem): unknown {
   if (item.status === "failed") return undefined;
-  return item.output;
+  return unwrapToolOutput(item);
 }
 
 function getToolErrorText(item: ToolItem): string | undefined {
   if (item.status !== "failed") return undefined;
   if (item.type === "block_tool_output" && item.error) return item.error.message;
-  return String(item.output);
+  const raw = unwrapToolOutput(item);
+  return raw === undefined ? undefined : String(raw);
 }
 
 export function Tool({ item }: { item: BlockOutputItem | BlockToolOutputItem }) {
