@@ -49,14 +49,21 @@
       "name": "tool",
       "title": "Tool",
       "type": "registry:component",
-      "description": "Rich tool invocation display with args, result, timing, and status.",
+      "description": "Rich tool invocation display with args, result, status, and Claude-Code-style grouping for consecutive calls.",
       "dependencies": ["@flow-state-dev/core", "lucide-react"],
       "registryDependencies": ["collapsible", "badge", "code-block"],
-      "files": [{
-        "type": "registry:component",
-        "path": "registry/components/tool.tsx",
-        "target": "components/flow-state/tool.tsx"
-      }],
+      "files": [
+        {
+          "type": "registry:component",
+          "path": "registry/components/tool.tsx",
+          "target": "components/flow-state/tool.tsx"
+        },
+        {
+          "type": "registry:lib",
+          "path": "registry/components/tool-grouping.ts",
+          "target": "components/flow-state/tool-grouping.ts"
+        }
+      ],
       "categories": ["ai", "tools"]
     },
     {
@@ -203,9 +210,9 @@
       "name": "request-group",
       "title": "Request Group",
       "type": "registry:component",
-      "description": "Groups items by request ID with streaming indicator and source display.",
+      "description": "Groups items by request ID with streaming indicator, source display, and collapsible tool-call summaries for consecutive calls.",
       "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react"],
-      "registryDependencies": ["sources", "streaming-indicator"],
+      "registryDependencies": ["sources", "streaming-indicator", "tool"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/request-group.tsx",

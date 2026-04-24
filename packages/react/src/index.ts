@@ -70,6 +70,9 @@ export {
 
 export {
   ItemsRenderer,
+  buildItemRenderStream,
+  type BuildItemRenderStreamOptions,
+  type ItemRenderSegment,
   type ItemsRendererProps
 } from "./components/ItemsRenderer";
 
