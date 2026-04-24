@@ -5,7 +5,7 @@ title: Adding skills to your app
 
 # Adding skills to your app
 
-Skills let you extend an agent's behavior with Markdown playbooks the model invokes on demand. This guide walks through adding them to an existing flow-state.dev app, using the two example skills from the kitchen-sink example as the running case.
+Skills let you extend an agent's behavior with Markdown playbooks the model invokes on demand. This guide walks through adding them to an existing flow-state.dev app, using the two example skills from the kitchen-sink reference app as the running case.
 
 By the end you'll have:
 

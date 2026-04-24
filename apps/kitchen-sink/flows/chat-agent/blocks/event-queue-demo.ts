@@ -1,5 +1,5 @@
 /**
- * Event Queue Demo — kitchen-sink action
+ * Event Queue Demo — chat-agent action
  *
  * Demonstrates the event queue pattern with a realistic 3-event chain:
  *   SEARCH → enqueues ANALYZE → conditionally enqueues EXTRACT → terminates

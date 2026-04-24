@@ -140,71 +140,7 @@ importers:
         specifier: ~5.7.0
         version: 5.7.3
 
-  examples/hello-chat:
-    dependencies:
-      '@ai-sdk/openai':
-        specifier: ^3.0.30
-        version: 3.0.30(zod@3.25.76)
-      '@flow-state-dev/client':
-        specifier: workspace:*
-        version: link:../../packages/client
-      '@flow-state-dev/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@flow-state-dev/react':
-        specifier: workspace:*
-        version: link:../../packages/react
-      '@flow-state-dev/server':
-        specifier: workspace:*
-        version: link:../../packages/server
-      ai:
-        specifier: ^6.0.97
-        version: 6.0.97(zod@3.25.76)
-      clsx:
-        specifier: ^2.1.1
-        version: 2.1.1
-      lucide-react:
-        specifier: ^0.575.0
-        version: 0.575.0(react@19.2.4)
-      next:
-        specifier: ^16.1.6
-        version: 16.1.6(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      react:
-        specifier: ^19.2.4
-        version: 19.2.4
-      react-dom:
-        specifier: ^19.2.4
-        version: 19.2.4(react@19.2.4)
-      react-markdown:
-        specifier: ^10.1.0
-        version: 10.1.0(@types/react@19.2.14)(react@19.2.4)
-      tailwind-merge:
-        specifier: ^3.5.0
-        version: 3.5.0
-      zod:
-        specifier: ^3.25.76
-        version: 3.25.76
-    devDependencies:
-      '@flow-state-dev/testing':
-        specifier: workspace:*
-        version: link:../../packages/testing
-      '@tailwindcss/postcss':
-        specifier: ^4.2.0
-        version: 4.2.0
-      '@types/react':
-        specifier: ^19.2.14
-        version: 19.2.14
-      '@types/react-dom':
-        specifier: ^19.2.3
-        version: 19.2.3(@types/react@19.2.14)
-      tailwindcss:
-        specifier: ^4.2.0
-        version: 4.2.0
-      typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
-
-  examples/kitchen-sink:
+  apps/kitchen-sink:
     dependencies:
       '@ai-sdk/gateway':
         specifier: ^3.0.51
@@ -341,6 +277,70 @@ importers:
       use-stick-to-bottom:
         specifier: ^1.1.3
         version: 1.1.3(react@19.2.4)
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@flow-state-dev/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@tailwindcss/postcss':
+        specifier: ^4.2.0
+        version: 4.2.0
+      '@types/react':
+        specifier: ^19.2.14
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.14)
+      tailwindcss:
+        specifier: ^4.2.0
+        version: 4.2.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  examples/hello-chat:
+    dependencies:
+      '@ai-sdk/openai':
+        specifier: ^3.0.30
+        version: 3.0.30(zod@3.25.76)
+      '@flow-state-dev/client':
+        specifier: workspace:*
+        version: link:../../packages/client
+      '@flow-state-dev/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@flow-state-dev/react':
+        specifier: workspace:*
+        version: link:../../packages/react
+      '@flow-state-dev/server':
+        specifier: workspace:*
+        version: link:../../packages/server
+      ai:
+        specifier: ^6.0.97
+        version: 6.0.97(zod@3.25.76)
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      lucide-react:
+        specifier: ^0.575.0
+        version: 0.575.0(react@19.2.4)
+      next:
+        specifier: ^16.1.6
+        version: 16.1.6(@opentelemetry/api@1.9.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: ^19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.2.4
+        version: 19.2.4(react@19.2.4)
+      react-markdown:
+        specifier: ^10.1.0
+        version: 10.1.0(@types/react@19.2.14)(react@19.2.4)
+      tailwind-merge:
+        specifier: ^3.5.0
+        version: 3.5.0
       zod:
         specifier: ^3.25.76
         version: 3.25.76
@@ -4608,9 +4608,6 @@ packages:
 
   caniuse-api@3.0.0:
     resolution: {integrity: sha512-bsTwuIg/BZZK/vreVTYYbSWoe2F+71P7K5QGEX+pT250DZbfU1MQ5prOKpPR+LL6uWKK3KMwMCAS74QB3Um1uw==}
-
-  caniuse-lite@1.0.30001772:
-    resolution: {integrity: sha512-mIwLZICj+ntVTw4BT2zfp+yu/AqV6GMKfJVJMx3MwPxs+uk/uj2GLl2dH8LQbjiLDX66amCga5nKFyDgRR43kg==}
 
   caniuse-lite@1.0.30001774:
     resolution: {integrity: sha512-DDdwPGz99nmIEv216hKSgLD+D4ikHQHjBC/seF98N9CPqRX4M5mSxT9eTV6oyisnJcuzxtZy4n17yKKQYmYQOA==}
@@ -14279,7 +14276,7 @@ snapshots:
   browserslist@4.28.1:
     dependencies:
       baseline-browser-mapping: 2.10.0
-      caniuse-lite: 1.0.30001772
+      caniuse-lite: 1.0.30001774
       electron-to-chromium: 1.5.302
       node-releases: 2.0.27
       update-browserslist-db: 1.2.3(browserslist@4.28.1)
@@ -14346,11 +14343,9 @@ snapshots:
   caniuse-api@3.0.0:
     dependencies:
       browserslist: 4.28.1
-      caniuse-lite: 1.0.30001772
+      caniuse-lite: 1.0.30001774
       lodash.memoize: 4.1.2
       lodash.uniq: 4.5.0
-
-  caniuse-lite@1.0.30001772: {}
 
   caniuse-lite@1.0.30001774: {}
 
@@ -17242,7 +17237,7 @@ snapshots:
       '@next/env': 16.1.6
       '@swc/helpers': 0.5.15
       baseline-browser-mapping: 2.10.0
-      caniuse-lite: 1.0.30001772
+      caniuse-lite: 1.0.30001774
       postcss: 8.4.31
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)

@@ -10,5 +10,5 @@ This is a TypeScript block-based AI workflow framework.
 - Server implementation is in `packages/server`.
 - Client implementation is in `packages/client`.
 - React hooks are in `packages/react`.
-- Example usage is in `examples/kitchen-sink`.
+- Example usage is in `apps/kitchen-sink`.
 - Ensure new features are agent-accessible.

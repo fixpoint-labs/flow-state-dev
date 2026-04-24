@@ -48,13 +48,13 @@ import { VoiceToggle } from "@/components/voice-toggle";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SessionItemsProvider } from "@/components/flow-state/session-items-context";
 import { ModelPresetProvider } from "@/components/model-preset-context";
-import { KitchenSinkMessage } from "@/components/kitchen-sink-message";
+import { ChatAgentMessage } from "@/components/chat-agent/message";
 
 import type { RendererRegistry } from "@flow-state-dev/react";
 
-const kitchenSinkRenderers: RendererRegistry = {
+const chatAgentRenderers: RendererRegistry = {
   ...chatAssistantRenderers,
-  message: KitchenSinkMessage,
+  message: ChatAgentMessage,
   block_output: AgentResponseCard,
 };
 
@@ -73,7 +73,7 @@ const CLIENT_DATA_OPTIONS = {
 
 export default function Page() {
   return (
-    <FlowProvider flowKind="kitchen-sink" userId="devuser" baseUrl="" renderers={kitchenSinkRenderers}>
+    <FlowProvider flowKind="chat-agent" userId="devuser" baseUrl="" renderers={chatAgentRenderers}>
       <KitchenSinkApp />
     </FlowProvider>
   );

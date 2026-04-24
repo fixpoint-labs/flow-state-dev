@@ -1,6 +1,6 @@
 /**
- * Smoke tests for the kitchen-sink MCP env shorthand. Exhaustive logic tests
- * for the manager, capability, and filter live in @flow-state-dev/tools/mcp.
+ * Smoke tests for the kitchen-sink app's MCP env shorthand. Exhaustive logic
+ * tests for the manager, capability, and filter live in @flow-state-dev/tools/mcp.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 

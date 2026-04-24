@@ -1,5 +1,5 @@
 /**
- * Kitchen Sink Flow
+ * chat-agent flow
  *
  * A multi-modal AI assistant demonstrating the core building blocks of
  * @flow-state-dev: handlers, generators, routers, sequencers, typed state,
@@ -365,8 +365,8 @@ const runSequencer = sequencer({ name: "run", inputSchema })
 // Flow definition
 // ---------------------------------------------------------------------------
 
-const kitchenSinkFlow = defineFlow({
-  kind: "kitchen-sink",
+const chatAgentFlow = defineFlow({
+  kind: "chat-agent",
   requireUser: true,
 
   voice: {
@@ -429,6 +429,6 @@ const kitchenSinkFlow = defineFlow({
   },
 });
 
-const flow = kitchenSinkFlow({ id: "default" });
+const flow = chatAgentFlow({ id: "default" });
 
 export default flow;

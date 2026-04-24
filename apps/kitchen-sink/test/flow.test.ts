@@ -9,8 +9,8 @@ import {
   testBlock,
   testRouter
 } from "@flow-state-dev/testing";
-import { thinkingStyleRouter } from "../src/flows/kitchen-sink/flow";
-import { artifactsCollection } from "../src/flows/kitchen-sink/blocks/artifacts";
+import { thinkingStyleRouter } from "../flows/chat-agent/flow";
+import { artifactsCollection } from "../flows/chat-agent/blocks/artifacts";
 
 function collectSourceFiles(dir: string): string[] {
   const entries = readdirSync(dir);
@@ -43,7 +43,7 @@ const emptyMemorySystem = {
 
 // Minimal flow instance with artifacts collection for testBlock.
 const testFlow = defineFlow({
-  kind: "kitchen-sink-test",
+  kind: "chat-agent-test",
   actions: {
     run: {
       inputSchema: z.object({
@@ -88,7 +88,7 @@ const observeFixture = mockGenerator({
   ]
 });
 
-describe("kitchen-sink flow", () => {
+describe("chat-agent flow", () => {
   it("routes to default-pipeline for default style", async () => {
     assistantFixture.reset();
     observeFixture.reset();
@@ -320,8 +320,8 @@ describe("kitchen-sink flow", () => {
 
   it("contains no legacy part-rendering terminology", () => {
     const root = dirname(fileURLToPath(import.meta.url));
-    const srcDir = join(root, "../src");
-    const sourceFiles = collectSourceFiles(srcDir);
+    const flowDir = join(root, "../flows/chat-agent");
+    const sourceFiles = collectSourceFiles(flowDir);
     const legacyRendererTerm = new RegExp(`\\b${"Part"}${"Renderer"}\\b`);
     const legacyPartsTerm = new RegExp(`\\${"."}${"parts"}\\b`);
 

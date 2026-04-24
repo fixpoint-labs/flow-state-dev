@@ -8,7 +8,7 @@
  * tools to explore, search, and recursively sub-query over large contexts.
  *
  * This module exports reusable blocks and a pipeline builder. Consumers wire
- * these into their own flows — see kitchen-sink for an integration example.
+ * these into their own flows — see apps/kitchen-sink for an integration example.
  *
  * Patterns validated:
  *   - generator-as-tool (recursive AI composition)

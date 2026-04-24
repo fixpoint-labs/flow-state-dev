@@ -1,5 +1,5 @@
 /**
- * Features capability — bundles the tool + context surface for the kitchen-sink.
+ * Features capability — bundles the tool + context surface for the chat-agent flow.
  *
  * Consumers just declare `uses: [featuresCapability]`. The capability
  * pulls in everything a primary agent needs: bash + skills + artifacts
@@ -26,7 +26,7 @@ import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/ski
 import { z } from "zod";
 import { modeSchema, featuresSchema } from "../schemas";
 import { artifactsCapability } from "./artifacts";
-import { mcpCapability } from "../../../../lib/mcp";
+import { mcpCapability } from "../../../lib/mcp";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,18 +40,18 @@ const searchTool = search();
 const fetchTool = fetch();
 const crawlTool = crawl();
 
-// Skills — bundled defaults live in examples/kitchen-sink/skills. Loaded at
+// Skills — bundled defaults live in apps/kitchen-sink/skills. Loaded at
 // module init so ensureSeeded() can hydrate the collection on first runSkill
 // invocation. Top-level await is supported here (Next.js, ESM).
 const skillsDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "../../../../skills",
+  "../../../skills",
 );
 const { skills: initialSkills, errors: skillsLoadErrors } =
   await readSkillsDirectory(skillsDir);
 if (skillsLoadErrors.length > 0) {
   for (const { name, error } of skillsLoadErrors) {
-    console.warn(`[kitchen-sink] failed to load initial skill "${name}":`, error.message);
+    console.warn(`[chat-agent] failed to load initial skill "${name}":`, error.message);
   }
 }
 
@@ -63,7 +63,7 @@ const skillsCap = createSkillsCapability({
   },
   initialSkills,
   // User scope: skills are a per-user library that persists across sessions.
-  // Project scope would be nicer for team-shared skills, but the kitchen-sink
+  // Project scope would be nicer for team-shared skills, but the chat-agent
   // flow has no project wiring yet — "project" falls through to an ambient
   // project with no persistence identity, which is why nothing seeds.
   scope: "user",

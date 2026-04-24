@@ -119,7 +119,7 @@ The `shouldSurface` flag lets an analyzer force its result into `surfacedResults
 
 The `biasAnalyzer()` from `@thought-fabric/core/metacognition` detects agreement bias, cognitive biases, and sycophantic patterns. It outputs the thought-fabric `AnalyzerResult` schema, which is different from the patterns `AnalyzerResult`. You need an adapter to bridge the two.
 
-The kitchen-sink example shows this pattern:
+The kitchen-sink reference app shows this pattern:
 
 ```ts
 import { sequencer } from "@flow-state-dev/core";

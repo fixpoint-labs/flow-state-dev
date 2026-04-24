@@ -37,7 +37,7 @@ const myFlow = defineFlow({
 });
 ```
 
-See `examples/kitchen-sink` for a full integration example.
+See `apps/kitchen-sink` for a full integration example.
 
 ### Blackboard
 
