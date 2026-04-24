@@ -1,10 +1,18 @@
 "use client";
 
+/**
+ * Renders items grouped by request. Consecutive tool-call items inside the
+ * stream are collapsed into a <ToolGroup> via ItemsRenderer's
+ * `toolGroupRenderer` prop — that ensures the dedup / sub-agent /
+ * container-owner filters run before grouping.
+ */
+
 import { useMemo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import { ItemsRenderer } from "@flow-state-dev/react";
 import { SourcesGroup } from "./sources";
 import { StreamingIndicator } from "./streaming-indicator";
+import { ToolGroup } from "./tool";
 
 type RequestGroup = {
   requestId: string;
@@ -57,7 +65,7 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage }: Requ
         className="flex flex-col gap-2"
         style={isLast ? { minHeight: "70dvh" } : undefined}
       >
-        <ItemsRenderer items={group.items} />
+        <ItemsRenderer items={group.items} toolGroupRenderer={ToolGroup} />
         <SourcesGroup items={group.items} />
         {isLast && isStreaming && <StreamingIndicator message={statusMessage} />}
       </div>

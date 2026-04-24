@@ -276,6 +276,65 @@ const resolver = createModelResolver({
 
 Provider-specific options are filtered at runtime. If the preset resolves to an OpenAI model, the `anthropic` options are stripped automatically.
 
+## Prompt Caching
+
+Every generator opts into prompt caching by default. For Anthropic models that means the adapter stamps `providerOptions.anthropic.cacheControl` on the last system message, so tools + system get cached together. OpenAI, Google, and DeepSeek cache implicitly and are left alone. If you're routing through the Vercel AI Gateway, the adapter sets `providerOptions.gateway.caching: 'auto'` instead and lets the gateway mark breakpoints for the underlying provider.
+
+You don't have to configure anything to get the win. When it matters, tune it:
+
+```ts
+const chat = generator({
+  name: "chat",
+  model: "anthropic/claude-sonnet-4-6",
+  prompt: LONG_SYSTEM_PROMPT,
+  caching: {
+    enabled: true,         // default true
+    breakpoints: "auto",   // "auto" (default) or "manual"
+    ttl: "5m",             // "5m" (default) or "1h"
+  },
+});
+```
+
+What the modes do:
+
+| Mode | Behavior |
+|------|----------|
+| `enabled: false` | No cache markers emitted, regardless of provider. |
+| `breakpoints: "auto"` | Adapter decides placement per provider. Skips Anthropic marking when the cacheable prefix is below ~1024 tokens (the API activation floor). |
+| `breakpoints: "manual"` | Adapter passes your `providerOptions` through untouched. Use this when you want to place multiple breakpoints (e.g., system + end-of-history for long multi-turn agents) or different TTLs per part. |
+
+`caching` can be a function of `(input, ctx)` when the decision depends on per-call state.
+
+### Observing cache hits
+
+The adapter threads Anthropic's cache counters into `GeneratorModelUsage`:
+
+```ts
+result.usage = {
+  promptTokens: 1200,
+  completionTokens: 48,
+  totalTokens: 1248,
+  cacheCreationInputTokens: 1100,  // first turn
+  cacheReadInputTokens: 0,
+}
+// ...subsequent turn on the same stable prefix:
+result.usage = {
+  promptTokens: 1200,
+  completionTokens: 52,
+  totalTokens: 1252,
+  cacheCreationInputTokens: 0,
+  cacheReadInputTokens: 1100,       // ~90% cheaper than a fresh input
+}
+```
+
+The DevTool's token usage panel surfaces the same numbers per call and aggregated per session.
+
+### Cost model in one line
+
+Cache write is ~1.25× the input rate; cache read is ~0.1×. One read refunds the write premium. For any generator called more than once with a stable system prompt, default-on is strictly cheaper.
+
+For a fuller treatment — including the audit of call paths that existed before default-on, the minimum-prefix threshold, and manual-mode placement patterns — see [`docs/PROMPT_CACHING.md`](https://github.com/fixpoint-labs/flow-state-dev/blob/main/docs/PROMPT_CACHING.md).
+
 ## What to Read Next
 
 - [Server Setup](/docs/server/setup) — wiring the resolver into your app

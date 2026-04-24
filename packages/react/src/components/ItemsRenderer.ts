@@ -4,9 +4,15 @@
  * Items are rendered in the order provided — callers (useSession, etc.)
  * are responsible for sorting.
  */
-import { createElement, type ReactNode } from "react";
-import type { ComponentItem, ContainerItem, OutputItem } from "@flow-state-dev/core/items";
+import { createElement, Fragment, type ComponentType, type ReactNode } from "react";
+import type {
+  BlockToolOutputItem,
+  ComponentItem,
+  ContainerItem,
+  OutputItem
+} from "@flow-state-dev/core/items";
 import { useFlowContext } from "../context/FlowContext";
+import type { RendererRegistry } from "../registry/block-renderers";
 import { ItemRenderer } from "./ItemRenderer";
 
 /**
@@ -28,6 +34,43 @@ export type ItemsRendererProps = {
    * per-agent panel) to surface it explicitly.
    */
   showSubAgents?: boolean;
+  /**
+   * When provided, consecutive `block_tool_output` items that survive the
+   * dedup / sub-agent / container-owner filters are rendered through this
+   * component as a single group instead of individually via the registry.
+   *
+   * The component receives the full batch of items for that segment.
+   * Singletons still flow through the group wrapper for visual consistency.
+   *
+   * Non-tool items continue to render through the renderer registry via
+   * `ItemRenderer` as normal.
+   */
+  toolGroupRenderer?: ComponentType<{ items: BlockToolOutputItem[] }>;
+};
+
+/**
+ * A segment of the render stream after filtering and optional tool-call
+ * grouping. `item` segments pass through to the renderer registry; `group`
+ * segments represent a run of consecutive block_tool_output items that a
+ * toolGroupRenderer should render as one unit.
+ */
+export type ItemRenderSegment =
+  | { kind: "item"; item: OutputItem }
+  | { kind: "group"; items: BlockToolOutputItem[] };
+
+/**
+ * Options for {@link buildItemRenderStream}. Mirrors the ItemsRenderer
+ * public props but exposed separately so the filter + group logic is
+ * unit-testable without a React tree.
+ */
+export type BuildItemRenderStreamOptions = {
+  deduplicateByKey?: boolean;
+  showSubAgents?: boolean;
+  /**
+   * When true, consecutive block_tool_output items in the filtered stream
+   * are collapsed into `group` segments. Non-tool items break the run.
+   */
+  groupToolCalls?: boolean;
 };
 
 /**
@@ -96,6 +139,58 @@ const CONTAINER_MANAGED_TYPES = new Set([
 ]);
 
 /**
+ * Pure helper: applies dedup / sub-agent / container-owner filters, then
+ * optionally collapses consecutive block_tool_output runs into `group`
+ * segments. Returns the ordered render stream.
+ *
+ * Exposed so consumers can test filter + grouping behavior without a React
+ * tree. ItemsRenderer uses this internally.
+ */
+export function buildItemRenderStream(
+  items: OutputItem[],
+  renderers: RendererRegistry | undefined,
+  options: BuildItemRenderStreamOptions = {}
+): ItemRenderSegment[] {
+  const { deduplicateByKey = true, showSubAgents = false, groupToolCalls = false } = options;
+
+  const deduplicated = deduplicateByKey ? deduplicateComponentItems(items) : items;
+  const visibleByAgent = showSubAgents
+    ? deduplicated
+    : deduplicated.filter((item) => item.agentType !== "sub");
+
+  const suppressedOwners = buildSuppressedOwners(visibleByAgent, renderers?.container);
+
+  const filtered = visibleByAgent.filter((item) => {
+    if (suppressedOwners === null) return true;
+    const ownedBy = (item as OutputItem & { ownedBy?: string }).ownedBy;
+    if (ownedBy === undefined || !suppressedOwners.has(ownedBy)) return true;
+    return !CONTAINER_MANAGED_TYPES.has(item.type);
+  });
+
+  if (!groupToolCalls) {
+    return filtered.map((item) => ({ kind: "item", item }));
+  }
+
+  const out: ItemRenderSegment[] = [];
+  let buf: BlockToolOutputItem[] = [];
+  const flush = () => {
+    if (buf.length === 0) return;
+    out.push({ kind: "group", items: buf });
+    buf = [];
+  };
+  for (const item of filtered) {
+    if (item.type === "block_tool_output") {
+      buf.push(item as BlockToolOutputItem);
+    } else {
+      flush();
+      out.push({ kind: "item", item });
+    }
+  }
+  flush();
+  return out;
+}
+
+/**
  * Renders output items in the order provided.
  *
  * Does not re-sort — useSession already sorts by timestamp with
@@ -103,27 +198,30 @@ const CONTAINER_MANAGED_TYPES = new Set([
  *
  * Items owned by a container that has a registered renderer are suppressed —
  * the container renderer is responsible for displaying its owned items.
+ *
+ * When `toolGroupRenderer` is provided, consecutive `block_tool_output`
+ * items in the filtered stream render as a single group via the supplied
+ * component rather than individually.
  */
 export function ItemsRenderer(props: ItemsRendererProps): ReactNode[] {
-  const { deduplicateByKey = true, showSubAgents = false } = props;
+  const { deduplicateByKey = true, showSubAgents = false, toolGroupRenderer } = props;
   const { renderers } = useFlowContext();
-  const deduplicated = deduplicateByKey ? deduplicateComponentItems(props.items) : props.items;
-  const items = showSubAgents
-    ? deduplicated
-    : deduplicated.filter((item) => item.agentType !== "sub");
 
-  const suppressedOwners = buildSuppressedOwners(items, renderers?.container);
+  const stream = buildItemRenderStream(props.items, renderers, {
+    deduplicateByKey,
+    showSubAgents,
+    groupToolCalls: toolGroupRenderer !== undefined,
+  });
 
-  return items
-    .filter((item) => {
-      if (suppressedOwners === null) return true;
-      const ownedBy = (item as OutputItem & { ownedBy?: string }).ownedBy;
-      if (ownedBy === undefined || !suppressedOwners.has(ownedBy)) return true;
-      // Only suppress item types the container manages internally.
-      // Primary output (messages, reasoning, etc.) always renders normally.
-      return !CONTAINER_MANAGED_TYPES.has(item.type);
-    })
-    .map((item) =>
-      createElement(ItemRenderer, { item, key: item.id })
-    );
+  return stream.map((segment, index) => {
+    if (segment.kind === "group") {
+      const key = `tool-group-${segment.items[0]?.id ?? index}`;
+      return createElement(
+        Fragment,
+        { key },
+        createElement(toolGroupRenderer!, { items: segment.items })
+      );
+    }
+    return createElement(ItemRenderer, { item: segment.item, key: segment.item.id });
+  });
 }
