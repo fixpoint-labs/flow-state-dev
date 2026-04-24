@@ -1,8 +1,10 @@
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type {
+  ExpectedVersion,
   RequestListOptions,
   RequestRecord,
-  RequestStore
+  RequestStore,
+  SetResult
 } from "../types";
 import {
   createFilesystemRecordStore,
@@ -86,8 +88,12 @@ export class FilesystemRequestStore implements RequestStore {
     return this.store.get(id);
   }
 
-  async set(id: string, value: RequestRecord): Promise<void> {
-    await this.store.set(id, value);
+  async set(
+    id: string,
+    value: RequestRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<RequestRecord>> {
+    return this.store.set(id, value, expectedVersion);
   }
 
   async delete(id: string): Promise<void> {
@@ -117,11 +123,12 @@ export class FilesystemRequestStore implements RequestStore {
 
       const current = await this.store.get(requestId);
       if (current !== undefined) {
-        await this.store.set(requestId, {
-          ...current,
-          items: snapshot,
-          updatedAt: Date.now()
-        });
+        // Items are append-only and coalesced — last write wins intentionally.
+        await this.store.set(
+          requestId,
+          { ...current, items: snapshot, updatedAt: Date.now() },
+          "any"
+        );
       }
     });
   }

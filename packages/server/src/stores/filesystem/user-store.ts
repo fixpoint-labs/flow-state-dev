@@ -1,7 +1,9 @@
 import type {
+  ExpectedVersion,
   UserListOptions,
   UserRecord,
-  UserStore
+  UserStore,
+  SetResult
 } from "../types";
 import {
   createFilesystemRecordStore,
@@ -25,8 +27,12 @@ export class FilesystemUserStore implements UserStore {
     return this.store.get(id);
   }
 
-  async set(id: string, value: UserRecord): Promise<void> {
-    await this.store.set(id, value);
+  async set(
+    id: string,
+    value: UserRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<UserRecord>> {
+    return this.store.set(id, value, expectedVersion);
   }
 
   async delete(id: string): Promise<void> {

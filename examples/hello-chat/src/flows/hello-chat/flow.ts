@@ -5,7 +5,7 @@
  * user messages to an LLM and streams the response back token-by-token.
  *
  * This is a good starting point for understanding the framework's core
- * concepts before moving on to the kitchen-sink example:
+ * concepts before moving on to the kitchen-sink reference app:
  *   - generator() — wraps an LLM call (defaults to z.string() text output)
  *   - handler()   — synchronous logic (here: incrementing a counter)
  *   - sequencer() — composes blocks into a linear pipeline

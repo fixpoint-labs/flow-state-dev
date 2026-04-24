@@ -1,10 +1,12 @@
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type {
+  ExpectedVersion,
   RequestListOptions,
   RequestRecord,
-  RequestStore
+  RequestStore,
+  SetResult
 } from "../types";
-import { applyOffsetLimit, cloneValue } from "./shared";
+import { applyOffsetLimit, casWriteToMap, cloneValue } from "./shared";
 
 export class InMemoryRequestStore implements RequestStore {
   private readonly records = new Map<string, RequestRecord>();
@@ -15,8 +17,12 @@ export class InMemoryRequestStore implements RequestStore {
     return record === undefined ? undefined : cloneValue(record);
   }
 
-  async set(id: string, value: RequestRecord): Promise<void> {
-    this.records.set(id, cloneValue(value));
+  async set(
+    id: string,
+    value: RequestRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<RequestRecord>> {
+    return casWriteToMap(this.records, id, value, expectedVersion);
   }
 
   async delete(id: string): Promise<void> {

@@ -27,6 +27,7 @@ export type {
   ActiveRequestRegistry,
   ContentScopeType,
   ContentStore,
+  ExpectedVersion,
   ProjectListOptions,
   ProjectRecord,
   ProjectStore,
@@ -37,6 +38,7 @@ export type {
   SessionListOptions,
   SessionRecord,
   SessionStore,
+  SetResult,
   StoreRegistry,
   UserListOptions,
   UserRecord,
@@ -80,7 +82,11 @@ export type {
   PresetConfig,
   FallbackModelEntry,
   ResolveAiSdkSpeechModel,
-  ResolveAiSdkTranscriptionModel
+  ResolveAiSdkTranscriptionModel,
+  ProviderPreference,
+  ResolveOptions,
+  ExplainCandidate,
+  ExplainResult
 } from "@flow-state-dev/core/models";
 export {
   FlowError,

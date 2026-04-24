@@ -52,6 +52,78 @@ export interface FSDProviderConfig {
   gateways?: Record<string, GatewayEntry>;
   /** Retry policy for failed model calls. */
   retryPolicy?: RetryPolicy;
+  /**
+   * Default provider preference applied when a call-site `ResolveOptions.prefer`
+   * is omitted. Accepts a provider name or an ordered list. The resolver
+   * performs a stable reorder of the group's model list: preferred buckets
+   * first (in the order given), remaining models after, in their original
+   * relative order. Fully backward-compatible — omitting this preserves the
+   * preset/group author's ordering.
+   */
+  providerPreference?: ProviderPreference;
+}
+
+// ---------------------------------------------------------------------------
+// Provider preference (FIX-425)
+// ---------------------------------------------------------------------------
+
+/**
+ * Brand preference axis: a provider name ("anthropic") or an ordered list
+ * of provider names (["anthropic", "google"]). Orthogonal to the preset/tier
+ * axis — the preset defines the candidate pool; preference reorders it.
+ */
+export type ProviderPreference = string | string[];
+
+/**
+ * Options passed to a provider call site to influence model resolution
+ * without editing the preset definition.
+ */
+export interface ResolveOptions {
+  /** Preferred provider(s). Overrides any provider-level default when set. */
+  prefer?: ProviderPreference;
+  /**
+   * When true, throws if no model from the preferred providers is available.
+   * When false (default), falls back to the full preset in its natural order.
+   */
+  strict?: boolean;
+}
+
+/**
+ * One row returned by {@link FSDProvider.explain}. Reflects the resolver's
+ * decision for a single candidate model, including whether it is available
+ * and why.
+ */
+export interface ExplainCandidate {
+  /** Model string in `provider/model-id` form, verbatim from the group. */
+  modelId: string;
+  /** Provider prefix extracted from `modelId`. */
+  providerName: string;
+  /** Whether the resolver can construct a working model for this entry. */
+  available: boolean;
+  /** How this model would be reached when available. */
+  source?: "key" | "gateway";
+  /** Gateway name when `source === "gateway"`. */
+  gateway?: string;
+  /** Short reason when `available === false`. */
+  reason?: string;
+}
+
+/**
+ * Introspection output describing what a provider call will do, before it is
+ * used. Useful for debugging, UI selectors, and spec authoring.
+ */
+export interface ExplainResult {
+  /** The group (or preset) name that was resolved. */
+  preset: string;
+  /**
+   * The normalized preference list (after dedupe / empty-entry removal). An
+   * empty array means "no preference" — the preset's natural order is used.
+   */
+  prefer: string[];
+  /** Candidates in the order the fallback chain would walk them. */
+  candidates: ExplainCandidate[];
+  /** The first available candidate's model string, or `null` when none. */
+  willUse: string | null;
 }
 
 export interface GatewayConfig {
@@ -80,12 +152,25 @@ export interface RetryPolicy {
 // ---------------------------------------------------------------------------
 
 export interface FSDProvider {
-  /** Get a GeneratorModel for a named group. */
-  (groupName: string): GeneratorModel;
+  /**
+   * Get a GeneratorModel for a named group. Optional `ResolveOptions.prefer`
+   * reorders the group's models by provider before availability filtering and
+   * fallback. Call-site `prefer` overrides any provider-level default.
+   */
+  (groupName: string, options?: ResolveOptions): GeneratorModel;
   /** Explicit form: get a language model for a named group. */
-  languageModel(groupName: string): GeneratorModel;
+  languageModel(groupName: string, options?: ResolveOptions): GeneratorModel;
   /** List available groups. */
   groups(): string[];
-  /** Check which models in a group are available. */
-  available(groupName: string): string[];
+  /**
+   * Check which models in a group are available. When `options.prefer` is
+   * supplied, the returned list is ordered after the preference reorder
+   * (same order the fallback chain will walk).
+   */
+  available(groupName: string, options?: ResolveOptions): string[];
+  /**
+   * Describe the candidate list and resolver decision for a group. See
+   * {@link ExplainResult}.
+   */
+  explain(groupName: string, options?: ResolveOptions): ExplainResult;
 }

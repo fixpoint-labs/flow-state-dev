@@ -102,7 +102,7 @@ export async function handleCreateSession(
     journal: []
   };
 
-  await ctx.stores.session.set(record.id, record);
+  await ctx.stores.session.set(record.id, record, "any");
   return jsonResponse(201, {
     session: record
   });
@@ -153,7 +153,7 @@ export async function handlePatchSessionMetadata(
     updatedAt: now
   };
 
-  await ctx.stores.session.set(updated.id, updated);
+  await ctx.stores.session.set(updated.id, updated, "any");
 
   return jsonResponse(200, {
     session: updated

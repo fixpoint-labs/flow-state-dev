@@ -118,7 +118,7 @@ describe("handleAbortRequest", () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       journal: []
-    } as any);
+    } as any, "any");
 
     const response = await handleAbortRequest(
       new Request("http://localhost/api/flows/chat/requests/req_active/abort", { method: "POST" }),
@@ -147,7 +147,7 @@ describe("handleAbortRequest", () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       journal: []
-    } as any);
+    } as any, "any");
 
     const response = await handleAbortRequest(
       new Request("http://localhost/api/flows/chat/requests/req_remote/abort", { method: "POST" }),
@@ -189,7 +189,7 @@ describe("handleAbortRequest", () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       journal: []
-    } as any);
+    } as any, "any");
 
     const response = await handleAbortRequest(
       new Request("http://localhost/api/flows/chat/requests/req_terminal/abort", { method: "POST" }),
@@ -251,7 +251,7 @@ describe("runAction — abort path", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     const record = await stores.request.get("req_abort_test");
     if (record) {
-      await stores.request.set("req_abort_test", { ...record, abortRequested: true } as any);
+      await stores.request.set("req_abort_test", { ...record, abortRequested: true } as any, "any");
     }
     abortController.abort();
 
@@ -485,7 +485,7 @@ describe("runAction — abort path", () => {
     // Set the abort flag to simulate an intentional abort
     const rec = await stores.request.get(requestId);
     if (rec) {
-      await stores.request.set(requestId, { ...rec, abortRequested: true } as any);
+      await stores.request.set(requestId, { ...rec, abortRequested: true } as any, "any");
     }
     abortController.abort();
     await resultPromise;

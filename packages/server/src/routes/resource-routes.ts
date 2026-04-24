@@ -283,12 +283,16 @@ export async function handleCreateCollectionItem(
     resourceContent[storageKey] = content;
   }
 
-  await ctx.stores.session.set(route.sessionId, {
-    ...session,
-    resources: resources as Record<string, JsonObject>,
-    resourceContent,
-    updatedAt: Date.now(),
-  });
+  await ctx.stores.session.set(
+    route.sessionId,
+    {
+      ...session,
+      resources: resources as Record<string, JsonObject>,
+      resourceContent,
+      updatedAt: Date.now()
+    },
+    "any"
+  );
 
   return jsonResponse(201, { topic: topic.trim() });
 }
@@ -393,12 +397,16 @@ export async function handleDeleteCollectionItem(
   delete resourceContent[storageKey];
 
   await Promise.all([
-    ctx.stores.session.set(route.sessionId, {
-      ...session,
-      resources: resources as Record<string, JsonObject>,
-      resourceContent,
-      updatedAt: Date.now(),
-    }),
+    ctx.stores.session.set(
+      route.sessionId,
+      {
+        ...session,
+        resources: resources as Record<string, JsonObject>,
+        resourceContent,
+        updatedAt: Date.now()
+      },
+      "any"
+    ),
     ctx.stores.content.delete("session", route.sessionId, storageKey),
   ]);
 

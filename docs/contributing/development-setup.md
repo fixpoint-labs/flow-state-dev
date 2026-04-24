@@ -32,9 +32,9 @@ packages/
 apps/
   devtool/       First-party inspector app
   docs/          Documentation site (Docusaurus)
+  kitchen-sink/  Reference app (hosts chat-agent and future flows)
 examples/
   hello-chat/    Minimal canonical chat flow
-  kitchen-sink/  Comprehensive feature reference
 docs/
   architecture/  Framework architecture reference
   contributing/  This directory
@@ -51,7 +51,7 @@ docs/
 | `pnpm test:watch` | All packages | Watch mode tests |
 | `pnpm --filter @flow-state-dev/core test` | Single package | Test one package |
 | `pnpm --filter @flow-state-dev/server typecheck` | Single package | Typecheck one package |
-| `pnpm --filter @flow-state-dev/example-kitchen-sink dev` | Example | Run kitchen-sink dev server |
+| `pnpm --filter @flow-state-dev/kitchen-sink dev` | App | Run kitchen-sink dev server |
 
 
 ## Versioning and Publishing
@@ -143,12 +143,12 @@ The testing package (`@flow-state-dev/testing`) provides framework-specific harn
 | `docs/contributing/architecture-reference.md` | Quick reference for locked contracts |
 | `docs/internal/waves/` | Wave plans, journals, changelogs |
 
-## Example Flows
+## Reference Flows
 
-The best way to understand the framework is to read the example flows:
+The best way to understand the framework is to read the reference flows:
 
 - **hello-chat** (`examples/hello-chat/src/flows/hello-chat/flow.ts`): Minimal chat flow showing generator, handler, sequencer, and defineFlow patterns
-- **kitchen-sink** (`examples/kitchen-sink/src/flows/kitchen-sink/flow.ts`): Comprehensive example covering all 4 block kinds, router, tools, resources, clientData, and lifecycle hooks
+- **chat-agent** (`apps/kitchen-sink/flows/chat-agent/flow.ts`): Comprehensive example covering all 4 block kinds, router, tools, resources, clientData, and lifecycle hooks
 
 ## Package-Level READMEs
 

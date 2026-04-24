@@ -4,6 +4,7 @@
  * with store-specific column mappings and filter builders.
  */
 
+import type { ExpectedVersion, SetResult } from "@flow-state-dev/server";
 import type { QueryExecutor, QueryResultRow } from "./types";
 
 export type PgRecordStoreConfig<TRecord, TListOptions> = {
@@ -18,7 +19,11 @@ export type PgRecordStoreConfig<TRecord, TListOptions> = {
 
 export type PgRecordStore<TRecord, TListOptions> = {
   get(id: string): Promise<TRecord | undefined>;
-  set(id: string, value: TRecord): Promise<void>;
+  set(
+    id: string,
+    value: TRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<TRecord>>;
   delete(id: string): Promise<void>;
   list(options?: TListOptions): Promise<TRecord[]>;
 };
@@ -43,9 +48,32 @@ export function createPgRecordStore<
     ])
     .join(", ");
 
-  const insertSQL = `INSERT INTO ${tableName} (${allColumns.join(", ")}) VALUES (${placeholders}) ON CONFLICT(id) DO UPDATE SET ${updateSet}`;
+  const upsertSQL = `INSERT INTO ${tableName} (${allColumns.join(", ")}) VALUES (${placeholders}) ON CONFLICT(id) DO UPDATE SET ${updateSet}`;
+  const casInsertSQL = `INSERT INTO ${tableName} (${allColumns.join(", ")}) VALUES (${placeholders}) ON CONFLICT(id) DO NOTHING`;
+
+  const updateAssignments = [
+    ...columns.map((col, i) => `${col} = $${i + 1}`),
+    `version = $${columns.length + 1}`,
+    `updated_at = $${columns.length + 2}`,
+    `data = $${columns.length + 3}`
+  ].join(", ");
+  const idParam = columns.length + 4;
+  const expectedVersionParam = columns.length + 5;
+  const casUpdateSQL = `UPDATE ${tableName} SET ${updateAssignments} WHERE id = $${idParam} AND version = $${expectedVersionParam}`;
+
   const getSQL = `SELECT data FROM ${tableName} WHERE id = $1`;
   const deleteSQL = `DELETE FROM ${tableName} WHERE id = $1`;
+
+  async function loadConflict(id: string): Promise<SetResult<TRecord>> {
+    const result = await executor.query(getSQL, [id]);
+    const row = result.rows[0] as QueryResultRow | undefined;
+    const currentValue = row === undefined ? undefined : (parseData(row.data) as TRecord);
+    const currentVersion = currentValue?.version ?? 0;
+    return {
+      ok: false,
+      conflict: { currentValue, currentVersion }
+    };
+  }
 
   return {
     async get(id: string): Promise<TRecord | undefined> {
@@ -55,10 +83,57 @@ export function createPgRecordStore<
       return parseData(row.data) as TRecord;
     },
 
-    async set(id: string, value: TRecord): Promise<void> {
+    async set(
+      id: string,
+      value: TRecord,
+      expectedVersion: ExpectedVersion
+    ): Promise<SetResult<TRecord>> {
       const scalarValues = toRow(value);
       const data = JSON.stringify(value);
-      await executor.query(insertSQL, [id, ...scalarValues, value.version, value.createdAt, value.updatedAt, data]);
+
+      if (expectedVersion === "any") {
+        await executor.query(upsertSQL, [
+          id,
+          ...scalarValues,
+          value.version,
+          value.createdAt,
+          value.updatedAt,
+          data
+        ]);
+        return { ok: true, version: value.version };
+      }
+
+      // Try the CAS update first — the common case.
+      const updateResult = await executor.query(casUpdateSQL, [
+        ...scalarValues,
+        value.version,
+        value.updatedAt,
+        data,
+        id,
+        expectedVersion
+      ]);
+      if (updateResult.rowCount > 0) {
+        return { ok: true, version: value.version };
+      }
+
+      // No row matched. expectedVersion=0 may mean "no row yet" — try insert.
+      // `DO NOTHING` returns rowCount=0 when a row exists → that's a conflict.
+      if (expectedVersion === 0) {
+        const insertResult = await executor.query(casInsertSQL, [
+          id,
+          ...scalarValues,
+          value.version,
+          value.createdAt,
+          value.updatedAt,
+          data
+        ]);
+        if (insertResult.rowCount === 0) {
+          return loadConflict(id);
+        }
+        return { ok: true, version: value.version };
+      }
+
+      return loadConflict(id);
     },
 
     async delete(id: string): Promise<void> {

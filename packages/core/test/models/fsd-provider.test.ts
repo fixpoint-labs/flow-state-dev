@@ -227,3 +227,224 @@ describe("createFSDProvider", () => {
     expect(result.text).toBe("response:gpt-4o-mini");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Provider preference (FIX-425)
+// ---------------------------------------------------------------------------
+
+describe("createFSDProvider — provider preference", () => {
+  const fourProviderConfig = {
+    groups: {
+      large: {
+        models: [
+          "openai/gpt-5.4",
+          "anthropic/opus",
+          "google/gemini-3",
+          "anthropic/sonnet",
+        ],
+      },
+    },
+    providers: {
+      openai: createMockProvider(),
+      anthropic: createMockProvider(),
+      google: createMockProvider(),
+    },
+  };
+
+  it("without prefer: uses the preset's natural first model", async () => {
+    const provider = createFSDProvider(fourProviderConfig);
+    const result = await provider("large").generate({
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(result.text).toBe("response:gpt-5.4");
+  });
+
+  it("single-provider prefer: moves preferred provider to the front", async () => {
+    const provider = createFSDProvider(fourProviderConfig);
+    const result = await provider("large", { prefer: "anthropic" }).generate({
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(result.text).toBe("response:opus");
+  });
+
+  it("multi-provider prefer: uses the first in the prefer list that is available", async () => {
+    const provider = createFSDProvider(fourProviderConfig);
+    const result = await provider("large", {
+      prefer: ["google", "anthropic"],
+    }).generate({ messages: [{ role: "user", content: "hi" }] });
+    expect(result.text).toBe("response:gemini-3");
+  });
+
+  it("prefer is an array, within-bucket order preserved (opus before sonnet)", () => {
+    const provider = createFSDProvider(fourProviderConfig);
+    expect(provider.available("large", { prefer: "anthropic" })).toEqual([
+      "anthropic/opus",
+      "anthropic/sonnet",
+      "openai/gpt-5.4",
+      "google/gemini-3",
+    ]);
+  });
+
+  it("soft prefer (default): falls back when preferred provider unavailable", async () => {
+    const provider = createFSDProvider({
+      groups: fourProviderConfig.groups,
+      providers: {
+        openai: createMockProvider(),
+        google: createMockProvider(),
+        // anthropic deliberately omitted
+      },
+    });
+    const result = await provider("large", { prefer: "anthropic" }).generate({
+      messages: [{ role: "user", content: "hi" }],
+    });
+    // falls back to the natural order of the remaining models
+    expect(result.text).toBe("response:gpt-5.4");
+  });
+
+  it("strict: throws when preferred provider has no matching models in preset", () => {
+    const provider = createFSDProvider(fourProviderConfig);
+    expect(() =>
+      provider("large", { prefer: "grok", strict: true })
+    ).toThrow(/contains no models from preferred provider\(s\) \[grok\]/);
+  });
+
+  it("strict: throws when preferred provider is in preset but unavailable", () => {
+    const provider = createFSDProvider({
+      groups: fourProviderConfig.groups,
+      providers: {
+        openai: createMockProvider(),
+        google: createMockProvider(),
+        // anthropic omitted
+      },
+    });
+    expect(() =>
+      provider("large", { prefer: "anthropic", strict: true })
+    ).toThrow(/no available models from preferred provider\(s\) \[anthropic\]/);
+  });
+
+  it("config-level providerPreference is the default when call omits prefer", async () => {
+    const provider = createFSDProvider({
+      ...fourProviderConfig,
+      providerPreference: "anthropic",
+    });
+    const result = await provider("large").generate({
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(result.text).toBe("response:opus");
+  });
+
+  it("call-site prefer overrides config-level providerPreference", async () => {
+    const provider = createFSDProvider({
+      ...fourProviderConfig,
+      providerPreference: "anthropic",
+    });
+    const result = await provider("large", { prefer: "google" }).generate({
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(result.text).toBe("response:gemini-3");
+  });
+
+  it("empty prefer array is treated as no preference (no-op)", async () => {
+    const provider = createFSDProvider({
+      ...fourProviderConfig,
+      providerPreference: "anthropic",
+    });
+    const result = await provider("large", { prefer: [] }).generate({
+      messages: [{ role: "user", content: "hi" }],
+    });
+    // Empty array doesn't fall back to the config-level default — it means
+    // "no preference", so natural order wins.
+    expect(result.text).toBe("response:gpt-5.4");
+  });
+
+  it("caches per (group, prefer, strict) triple", () => {
+    const provider = createFSDProvider(fourProviderConfig);
+    const a = provider("large", { prefer: "anthropic" });
+    const b = provider("large", { prefer: "anthropic" });
+    const c = provider("large", { prefer: "google" });
+    const d = provider("large");
+    expect(a).toBe(b);
+    expect(a).not.toBe(c);
+    expect(a).not.toBe(d);
+  });
+
+  it("unknown provider in prefer silently no-ops (non-strict)", async () => {
+    const provider = createFSDProvider(fourProviderConfig);
+    const result = await provider("large", { prefer: "foobar" }).generate({
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect(result.text).toBe("response:gpt-5.4");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// provider.explain (FIX-425)
+// ---------------------------------------------------------------------------
+
+describe("createFSDProvider.explain", () => {
+  const cfg = {
+    groups: {
+      medium: {
+        models: [
+          "openai/gpt-5.4-mini",
+          "anthropic/sonnet",
+          "google/gemini-3",
+        ],
+      },
+    },
+    providers: {
+      openai: createMockProvider(),
+      anthropic: createMockProvider(),
+      // google intentionally absent
+    },
+  };
+
+  it("returns the candidate list in preference-reordered order", () => {
+    const provider = createFSDProvider(cfg);
+    const result = provider.explain("medium", { prefer: "anthropic" });
+    expect(result.preset).toBe("medium");
+    expect(result.prefer).toEqual(["anthropic"]);
+    expect(result.candidates.map((c) => c.modelId)).toEqual([
+      "anthropic/sonnet",
+      "openai/gpt-5.4-mini",
+      "google/gemini-3",
+    ]);
+  });
+
+  it("tags unavailable candidates with a reason", () => {
+    const provider = createFSDProvider(cfg);
+    const result = provider.explain("medium");
+    const google = result.candidates.find((c) => c.providerName === "google");
+    expect(google?.available).toBe(false);
+    expect(google?.reason).toBeTruthy();
+  });
+
+  it("willUse points at the first available candidate after reorder", () => {
+    const provider = createFSDProvider(cfg);
+    expect(provider.explain("medium").willUse).toBe("openai/gpt-5.4-mini");
+    expect(provider.explain("medium", { prefer: "anthropic" }).willUse).toBe(
+      "anthropic/sonnet"
+    );
+  });
+
+  it("willUse is null when no candidate is available", () => {
+    const provider = createFSDProvider({
+      groups: { only: { models: ["google/gemini-3"] } },
+      providers: { openai: createMockProvider() },
+    });
+    const result = provider.explain("only");
+    expect(result.willUse).toBeNull();
+    expect(result.candidates[0]!.available).toBe(false);
+  });
+
+  it("unknown group returns an empty result", () => {
+    const provider = createFSDProvider(cfg);
+    const result = provider.explain("nope");
+    expect(result).toEqual({
+      preset: "nope",
+      prefer: [],
+      candidates: [],
+      willUse: null,
+    });
+  });
+});

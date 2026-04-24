@@ -153,6 +153,128 @@ const resolver = createModelResolver({
 
 Provider-specific options are filtered at runtime. If `thinking` resolves to an OpenAI model, the `anthropic` provider options are stripped — they won't leak to the wrong provider.
 
+## Provider Preference
+
+Presets encode a capability tier — "how capable, how fast." They do not encode a brand choice. If you want to say "I prefer Anthropic across the board," that is an orthogonal axis called **provider preference**.
+
+Two axes, combined at resolution time:
+
+| Axis | Answers | Set by |
+|------|---------|--------|
+| Preset / tier | "How capable?" | Preset author; `model: "preset/x"` |
+| Provider preference | "Which brand, when multiple are available?" | User, flow, block, or skill |
+
+The resolver walks the preset's list, but reorders it first: models from preferred providers come first (in the order you give), the rest come after in their original order. Availability filtering and retry/fallback run on the reordered list.
+
+### With `createFSDProvider`
+
+Per-call preference:
+
+```ts
+import { createFSDProvider, defaultGroups } from "@flow-state-dev/core/models";
+
+const provider = createFSDProvider({ groups: defaultGroups });
+
+// Default: preset's natural order
+provider("balanced");
+
+// Prefer Anthropic; fall back to the rest of the preset if no Anthropic model is available
+provider("balanced", { prefer: "anthropic" });
+
+// Ordered preference
+provider("balanced", { prefer: ["anthropic", "google"] });
+```
+
+Provider-level default (applies to every call unless overridden):
+
+```ts
+const provider = createFSDProvider({
+  groups: defaultGroups,
+  providerPreference: "anthropic",
+});
+
+provider("balanced");                             // uses anthropic models first
+provider("balanced", { prefer: "openai" });       // call-site wins
+provider("balanced", { prefer: [] });             // explicit "no preference"
+```
+
+### With `createModelResolver`
+
+Set the default on the resolver; every `"preset/x"` string reorders accordingly:
+
+```ts
+const resolver = createModelResolver({
+  providerPreference: "anthropic",
+});
+```
+
+### Reordering example
+
+Preset `preset/large` = `[openai/gpt-5.4, anthropic/opus, google/gemini-3, anthropic/sonnet]`.
+
+| `prefer` | Order used |
+|----------|-----------|
+| `undefined` | openai/gpt-5.4, anthropic/opus, google/gemini-3, anthropic/sonnet |
+| `"anthropic"` | anthropic/opus, anthropic/sonnet, openai/gpt-5.4, google/gemini-3 |
+| `["anthropic","google"]` | anthropic/opus, anthropic/sonnet, google/gemini-3, openai/gpt-5.4 |
+
+Relative order within a provider bucket is preserved — opus stays before sonnet.
+
+### Strict mode
+
+By default, preference is a soft preference — if no preferred model is available, the rest of the preset is still tried. Opt in to strict mode for compliance-style use cases ("only ever Anthropic"):
+
+```ts
+provider("balanced", { prefer: "anthropic", strict: true });
+```
+
+Strict mode throws when no model from the preferred providers is available (either because the preset has none, or because the key/gateway for those providers is missing). The error message names the preset and the preferred providers.
+
+### Precedence
+
+Highest wins:
+
+1. Call-site `{ prefer }` on `provider(...)`
+2. `createFSDProvider({ providerPreference })` (or `createModelResolver({ providerPreference })`)
+3. Nothing — preset's natural order (today's behavior; fully backward-compatible)
+
+Call-site `prefer` is an override, not a merge. An empty array `prefer: []` explicitly means "no preference" — it does not re-inherit the provider-level default.
+
+### Dynamic preference (per-input or per-user)
+
+Use the existing `model: (input, ctx) => ...` callback form, not a new mechanism:
+
+```ts
+const chat = generator({
+  name: "chat",
+  model: (input, ctx) =>
+    provider("balanced", { prefer: ctx.user.state.preferredProvider }),
+});
+```
+
+The framework has one dynamism mechanism. Call sites that need per-request preference read user state (or input, or any other source) and pass the result explicitly.
+
+### Introspection
+
+`provider.explain(groupName, options?)` returns the ordered candidate list with availability status, plus the model the resolver would choose. Useful for debugging and for building UI selectors.
+
+```ts
+provider.explain("balanced", { prefer: "anthropic" });
+// {
+//   preset: "balanced",
+//   prefer: ["anthropic"],
+//   candidates: [
+//     { modelId: "anthropic/claude-sonnet-4-6", providerName: "anthropic",
+//       available: true, source: "key" },
+//     { modelId: "openai/gpt-5.4", providerName: "openai",
+//       available: true, source: "gateway", gateway: "vercel" },
+//     { modelId: "google/gemini-3-flash", providerName: "google",
+//       available: false, reason: "no-key-no-gateway" },
+//   ],
+//   willUse: "anthropic/claude-sonnet-4-6",
+// }
+```
+
 ## Retry and Fallback
 
 The fallback behavior is configurable:
