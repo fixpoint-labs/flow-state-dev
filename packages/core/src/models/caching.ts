@@ -13,7 +13,7 @@
  * `manual` mode, or directly on messages, are never overwritten.
  */
 
-import type { CachingConfig, CachingTtl } from "../types/model";
+import type { CachingConfig } from "../types/model";
 
 export type { CachingConfig, CachingTtl, CachingBreakpointMode } from "../types/model";
 
@@ -59,18 +59,23 @@ export function applyCaching(
   if (family === "other") return;
 
   if (family === "gateway") {
-    applyGatewayCaching(request);
+    setProviderOptionIfAbsent(request, "gateway", "caching", "auto");
     return;
   }
 
   // Anthropic-flavored: direct Anthropic or OpenRouter (which proxies
   // cache_control markers to Anthropic models unchanged).
   if (!meetsMinimumPrefixSize(request)) return;
-  markLastSystemMessage(request, effective.ttl);
+
+  const target = findLastSystemMessage(request.messages);
+  if (target === undefined) return;
+  setProviderOptionIfAbsent(target, "anthropic", "cacheControl", {
+    type: "ephemeral",
+    ttl: effective.ttl,
+  });
 }
 
-/** Merges user config with defaults. Exported for tests and docs tooling. */
-export function resolveEffectiveCaching(
+function resolveEffectiveCaching(
   config: CachingConfig | undefined,
 ): Required<CachingConfig> {
   if (config === undefined) return { ...DEFAULT_CACHING_CONFIG };
@@ -89,8 +94,7 @@ export function resolveEffectiveCaching(
  * signal we use to delegate breakpoint placement to the gateway.
  */
 function detectProviderFamily(languageModel: unknown): ProviderFamily {
-  const model = languageModel as Record<string, unknown> | undefined;
-  const provider = model?.provider;
+  const provider = (languageModel as { provider?: unknown } | undefined)?.provider;
   if (typeof provider !== "string") return "other";
 
   const dotIndex = provider.indexOf(".");
@@ -103,36 +107,55 @@ function detectProviderFamily(languageModel: unknown): ProviderFamily {
 }
 
 /**
- * Delegates breakpoint placement to the Vercel AI Gateway via
- * `providerOptions.gateway.caching: 'auto'`. Gateway auto-marks for
- * providers that need it (Anthropic) and no-ops elsewhere. We never
- * overwrite an explicit `caching` value set by the caller.
+ * Sets `target.providerOptions[providerName][key] = value` immutably,
+ * preserving any existing provider options and never overwriting an
+ * existing entry at the same key. Used both for per-message Anthropic
+ * cacheControl and for request-level gateway caching delegation.
  */
-function applyGatewayCaching(request: Record<string, unknown>): void {
-  const existingOpts = asOptionsRecord(request.providerOptions) ?? {};
-  const existingGateway = asRecord(existingOpts.gateway) ?? {};
-  if ("caching" in existingGateway) return;
+function setProviderOptionIfAbsent(
+  target: Record<string, unknown>,
+  providerName: string,
+  key: string,
+  value: unknown,
+): void {
+  const options = asRecord(target.providerOptions) ?? {};
+  const providerOpts = asRecord(options[providerName]) ?? {};
+  if (key in providerOpts) return;
 
-  request.providerOptions = {
-    ...existingOpts,
-    gateway: { ...existingGateway, caching: "auto" },
+  target.providerOptions = {
+    ...options,
+    [providerName]: { ...providerOpts, [key]: value },
   };
 }
 
 /**
- * Checks whether the combined system + tools prefix is large enough to be
- * worth caching. Uses a char-count heuristic; err on the side of marking.
+ * Walks the messages array from the end to find the last system-role
+ * message. Returns the message record so the caller can mutate it
+ * directly. `undefined` when no system message is present.
+ */
+function findLastSystemMessage(messages: unknown): Record<string, unknown> | undefined {
+  if (!Array.isArray(messages)) return undefined;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const record = asRecord(messages[i]);
+    if (record?.role === "system") return record;
+  }
+  return undefined;
+}
+
+/**
+ * Estimates whether the cacheable prefix (system messages + tool
+ * definitions) is large enough to be worth caching. Char-count heuristic;
+ * errs on the side of marking. JSON.stringify can throw on a tool whose
+ * schema has circular references — when that happens we conservatively
+ * skip that tool's contribution rather than failing the whole call.
  */
 function meetsMinimumPrefixSize(request: Record<string, unknown>): boolean {
   let chars = 0;
 
-  const messages = request.messages;
-  if (Array.isArray(messages)) {
-    for (const message of messages) {
+  if (Array.isArray(request.messages)) {
+    for (const message of request.messages) {
       const record = asRecord(message);
-      if (record === undefined) continue;
-      if (record.role !== "system") continue;
-      chars += contentCharLength(record.content);
+      if (record?.role === "system") chars += contentCharLength(record.content);
     }
   }
 
@@ -142,61 +165,12 @@ function meetsMinimumPrefixSize(request: Record<string, unknown>): boolean {
       try {
         chars += JSON.stringify(tool).length;
       } catch {
-        // Tools with non-serializable values (e.g., closures) still contribute
-        // their descriptions; fall back to a best-effort length.
-        const rec = asRecord(tool);
-        if (typeof rec?.description === "string") chars += rec.description.length;
+        // Best-effort estimate — skip this tool's contribution.
       }
     }
   }
 
   return chars >= MIN_CACHEABLE_CHARS;
-}
-
-/**
- * Marks the last system message with an Anthropic ephemeral cache_control.
- * Anthropic applies the marker cumulatively, so placing it on the trailing
- * system part caches tools + system together — the prime stable prefix.
- * Skips if the user already set a cacheControl at that point.
- */
-function markLastSystemMessage(
-  request: Record<string, unknown>,
-  ttl: CachingTtl,
-): void {
-  const messages = request.messages;
-  if (!Array.isArray(messages)) return;
-
-  let lastSystemIndex = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const record = asRecord(messages[i]);
-    if (record?.role === "system") {
-      lastSystemIndex = i;
-      break;
-    }
-  }
-  if (lastSystemIndex === -1) return;
-
-  const target = messages[lastSystemIndex] as Record<string, unknown>;
-  stampCacheControl(target, ttl);
-}
-
-/**
- * Sets `providerOptions.anthropic.cacheControl` on a message-like record,
- * preserving any existing provider options and never overwriting a user's
- * own cacheControl entry.
- */
-function stampCacheControl(target: Record<string, unknown>, ttl: CachingTtl): void {
-  const options = asOptionsRecord(target.providerOptions) ?? {};
-  const anthropic = asRecord(options.anthropic) ?? {};
-  if ("cacheControl" in anthropic || "cache_control" in anthropic) return;
-
-  target.providerOptions = {
-    ...options,
-    anthropic: {
-      ...anthropic,
-      cacheControl: { type: "ephemeral", ttl },
-    },
-  };
 }
 
 function contentCharLength(content: unknown): number {
@@ -215,12 +189,4 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     return undefined;
   }
   return value as Record<string, unknown>;
-}
-
-function asOptionsRecord(
-  value: unknown,
-): Record<string, Record<string, unknown>> | undefined {
-  const record = asRecord(value);
-  if (record === undefined) return undefined;
-  return record as Record<string, Record<string, unknown>>;
 }

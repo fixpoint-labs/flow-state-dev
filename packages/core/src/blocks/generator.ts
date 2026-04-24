@@ -392,22 +392,15 @@ async function resolvePrompt<TInput, TCtx extends BlockContext>(
   return parts.join("\n");
 }
 
-async function resolveProviderOptions<TInput, TCtx extends BlockContext>(
-  value: ResolvableProviderOptions<TInput, TCtx> | undefined,
+async function resolveValueOrFn<T, TInput, TCtx extends BlockContext>(
+  value: T | ((input: TInput, ctx: TCtx) => MaybePromise<T | undefined>) | undefined,
   input: TInput,
   ctx: TCtx
-): Promise<Record<string, unknown> | undefined> {
+): Promise<T | undefined> {
   if (value === undefined) return undefined;
-  return typeof value === "function" ? value(input, ctx) : value;
-}
-
-async function resolveCachingConfig<TInput, TCtx extends BlockContext>(
-  value: ResolvableCachingConfig<TInput, TCtx> | undefined,
-  input: TInput,
-  ctx: TCtx
-): Promise<CachingConfig | undefined> {
-  if (value === undefined) return undefined;
-  return typeof value === "function" ? value(input, ctx) : value;
+  return typeof value === "function"
+    ? (value as (input: TInput, ctx: TCtx) => MaybePromise<T | undefined>)(input, ctx)
+    : value;
 }
 
 function isGeneratorModel(value: unknown): value is GeneratorModel {
@@ -1426,13 +1419,13 @@ export function generator<
         blockName
       );
 
-      const resolvedProviderOpts = await resolveProviderOptions(
+      const resolvedProviderOpts = await resolveValueOrFn<Record<string, unknown>, TInput, BlockContext>(
         normalizedConfig.providerOptions,
         input,
         ctx
       );
 
-      const resolvedCaching = await resolveCachingConfig(
+      const resolvedCaching = await resolveValueOrFn<CachingConfig, TInput, BlockContext>(
         normalizedConfig.caching,
         input,
         ctx
