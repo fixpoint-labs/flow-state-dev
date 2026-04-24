@@ -33,7 +33,7 @@ const chatGen = generator({
   model: "preset/fast",
   prompt: "You are a helpful assistant.",
   inputSchema,
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: true,
   user: (input) => input.message,
 });
 

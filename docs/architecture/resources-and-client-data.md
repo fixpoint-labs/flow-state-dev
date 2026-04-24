@@ -60,6 +60,22 @@ const soul = defineResource({
 });
 ```
 
+### Content Storage
+
+Resource content is persisted separately from scope record metadata via `ContentStore`. This separation lets adapters use different backends for content and metadata — SQL for scope records, blob storage for content, for example.
+
+**Two read paths:**
+1. **Execution context** — content is eagerly loaded from `ContentStore` into an in-memory cache at context creation. All reads during block execution are synchronous from this cache.
+2. **State routes** — `handleGetSessionState` loads content fresh from `ContentStore` before building the response.
+
+**Migration from inline content:** Existing scope records may have content stored inline in `resourceContent`. Both read paths merge inline record content with `ContentStore` content, with `ContentStore` values taking precedence. New content writes go exclusively to `ContentStore` — the inline `resourceContent` field on scope records is no longer updated.
+
+**Content writes do not bump scope record version.** Content is separate from state. The scope record's `version` and `updatedAt` reflect state/metadata changes only. Content writes persist per-key to `ContentStore` without touching the scope record.
+
+**Scope deletion cascades:** When a session (or other scope) is deleted, `ContentStore.deleteAll()` is called before the scope record is removed. This prevents orphaned content.
+
+See the [server README](../../packages/server/README.md) for `ContentStore` interface details and custom adapter instructions.
+
 ### Accessing Resources
 
 Resources are accessed through scope handles in `BlockContext`:
@@ -269,7 +285,7 @@ const chatGenerator = generator({
   model: "preset/fast",
   prompt: "You are a helpful assistant.",
   context: [myContext],
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: true,
   user: (input) => input.message,
 });
 ```
@@ -307,24 +323,118 @@ type PlanCtx = ContextOf<typeof planResource, "resource">;
 
 ## Client Visibility
 
-**Important:** Raw state never reaches the client. Client-facing values are exposed **only** through `clientData` entries.
+Client-facing data is exposed through two complementary mechanisms:
 
-The client reads client data via the state snapshot endpoint:
+1. **Scope-level `clientData`** — derived views computed from scope state and resources. Best for cross-resource projections and non-resource data.
+2. **Resource-level `client`** — per-resource visibility, data projection, and content access. `client.content` controls content endpoints. `client.data` derives metadata for the snapshot. Best for exposing resource data directly to clients without manual projection.
+
+### Scope-Level Client Data
+
+Scope-level `clientData` remains unchanged — it computes derived values from state and resources within a single scope:
 
 ```
 GET /api/flows/sessions/:sessionId/state
 ```
 
-Returns client data grouped by scope:
+Returns scope-level client data grouped by scope:
 
 ```json
 {
   "clientData": {
-    "session": { "activePlan": [...], "messageCount": 5 },
-    "user": { "preferences": { "displayName": "User", "preferredModel": "preset/fast" } },
-    "project": {}
+    "session": { "modeStatus": { "currentMode": "chat" } },
+    "user": { "preferences": { "displayName": "User" } }
   }
 }
+```
+
+### Resource-Level Client Exposure
+
+Resources declare a `client` config to control what's visible to clients. `client.content` controls content endpoint access. `client.data` derives metadata for the snapshot.
+
+```ts
+// Single resource — content readable, data exposes derived state
+defineResource({
+  ref: 'soul',
+  stateSchema: z.object({ values: z.array(z.string()), tone: z.string() }),
+  content: `## Values\n{{#each values}}- {{this}}\n{{/each}}`,
+  client: {
+    content: { read: true },              // lazy by default
+    // content: { read: true, prefetch: true },  // opt-in eager load
+    data: (state) => ({ displayTone: state.tone }),
+  },
+})
+
+// Collection — content readable and mutable
+defineResourceCollection({
+  ref: 'files',
+  stateSchema: z.object({ mimeType: z.string(), size: z.number() }),
+  client: {
+    content: { read: true, create: true, update: true, delete: false },
+    data: (state) => ({ size: state.size, mimeType: state.mimeType }),
+  },
+})
+```
+
+**Key rules:**
+- `client.content` governs access to the rendered content body
+- `client.data` derives metadata visible in the snapshot
+- `create`, `update`, `delete` are collection-only — declaring them on a single resource is a type error
+- Omitting `client` entirely means the resource is invisible to clients (no change from current behavior)
+
+### Snapshot Response with Resources
+
+The snapshot includes a `resources` key with metadata and `clientData` only — no content (except `prefetch: true` resources):
+
+```json
+{
+  "clientData": { "session": { "modeStatus": {...} } },
+  "resources": {
+    "session": {
+      "soul": { "clientData": { "displayTone": "Direct" } },
+      "files": {
+        "items": {
+          "readme.md": { "clientData": { "size": 1240, "mimeType": "text/markdown" } },
+          "notes.md": { "clientData": { "size": 430 } }
+        }
+      }
+    }
+  }
+}
+```
+
+### Content Fetch Endpoints
+
+Content is lazy-loaded via dedicated endpoints, gated by `client.content.read`:
+
+```
+GET /api/flows/sessions/:sessionId/resources/:ref/content          → single resource
+GET /api/flows/sessions/:sessionId/resources/:ref/:topic/content   → collection item
+```
+
+### Mutation Endpoints (Collections Only)
+
+```
+POST   /api/flows/sessions/:sessionId/resources/:ref               → create item
+PATCH  /api/flows/sessions/:sessionId/resources/:ref/:topic/content → update content
+DELETE /api/flows/sessions/:sessionId/resources/:ref/:topic         → delete item
+```
+
+Server enforces declared permissions and rejects operations that exceed them.
+
+### React Hooks
+
+```ts
+// Single resource — metadata from snapshot, content on demand
+const { clientData, fetchContent } = useResource(session, 'soul')
+
+// Convenience hook — fetches content immediately
+const { clientData, content, isLoading } = useResourceContent(session, 'soul')
+
+// Collection — metadata from snapshot, per-item content + CRUD actions
+const { items, actions } = useResourceCollection(session, 'files')
+await items['readme.md'].fetchContent()
+await actions.create({ topic: 'spec.md', content: '# New Spec' })
+await actions.update({ topic: 'readme.md', content: '# Updated' })
 ```
 
 Mid-request, `state_change` and `resource_change` stream items signal invalidation — clients should refetch the snapshot on `request.completed`.

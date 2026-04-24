@@ -12,7 +12,7 @@ import { resolveProvider } from "./resolver";
  * Creates a search tool for use in generator blocks.
  * Auto-detects the best available search provider from env vars.
  *
- * Provider priority: Tavily → Exa → Serper → Brave
+ * Provider priority: Tavily → Exa → Perplexity → Serper → Brave → Perplexity Sonar
  */
 export function search(config: SearchConfig = {}) {
   return handler({
@@ -48,6 +48,14 @@ export function serperSearch(config: Omit<SearchConfig, "provider"> = {}) {
 
 export function braveSearch(config: Omit<SearchConfig, "provider"> = {}) {
   return search({ ...config, provider: "brave" });
+}
+
+export function perplexitySearch(config: Omit<SearchConfig, "provider"> = {}) {
+  return search({ ...config, provider: "perplexity" });
+}
+
+export function perplexitySonarSearch(config: Omit<SearchConfig, "provider"> = {}) {
+  return search({ ...config, provider: "perplexity-sonar" });
 }
 
 // Re-export types

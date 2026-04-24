@@ -1,17 +1,17 @@
 export type {
   BlockConfig,
   BlockContext,
+  BlockDebugCapturePayload,
   BlockDefinition,
   BlockInput,
   BlockKind,
   BlockOutput,
+  BlockOutputHint,
   BlockResult,
   ChunkValidation,
-  ComponentHandle,
   ConnectorFn,
   DeclaredResourceEntry,
   ExecutionParent,
-  MessageHandle,
   RescueHandlerSpec,
   ResponseEmitterHandle,
   RetryPolicy,
@@ -71,13 +71,19 @@ export type {
   GeneratorStepResult,
   ModelResolver,
   PrepareStepFn,
+  PrepareStepResult,
   ProviderTool
 } from "./model";
 
 export type {
+  CollectionClientConfig,
+  CollectionClientContentConfig,
   ContextOf,
   DefinedResource,
   MessageLike,
+  ResourceClientConfig,
+  ResourceClientContentConfig,
+  ResourceClientDataFn,
   ResourceConfig,
   ResourceContext,
   AnyResourceRef,
@@ -145,6 +151,18 @@ export type { Middleware, MiddlewareContext, MiddlewareFn } from "./middleware";
 export type { TokenCounter } from "./tokens";
 
 export type { CASOptions, ScopeStateOps, StateContainer } from "./state";
+
+export type {
+  InitialSkill,
+  RunSkillInput,
+  RunSkillOutput,
+  Skill,
+  SkillContextMode,
+  SkillFile,
+  SkillState,
+  SkillsCollectionMeta,
+  ToolCatalog,
+} from "./skill";
 
 export type {
   JsonObject,

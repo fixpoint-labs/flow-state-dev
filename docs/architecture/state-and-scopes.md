@@ -76,6 +76,8 @@ On retry exhaustion, a `ConcurrentModificationError` is thrown.
 - Prefer `incState`, `pushState`, `setStateRecord` for concurrent writes
 - Use `maxConcurrency` on `parallel`/`forEach` when shared state writes are unavoidable
 
+**Resource content writes do not bump scope record version.** Resource content is persisted via `ContentStore`, separate from the scope record. Content writes do not update the scope record's `version` or `updatedAt` fields. The scope record version reflects state and metadata changes only.
+
 ## Scope Handles
 
 Each scope is accessed through a typed handle on `BlockContext`:
@@ -130,12 +132,12 @@ ctx.session.items.client()
 ctx.session.items.client({ limit: 50 })
 
 // LLM view: messages suitable for model context (async)
-await ctx.session.items.llm()
-await ctx.session.items.llm({ limit: 20 })
-await ctx.session.items.llm({ limit: { tokens: 20_000 } })
+await ctx.session.items.history()
+await ctx.session.items.history({ limit: 20 })
+await ctx.session.items.history({ limit: { tokens: 20_000 } })
 ```
 
-The LLM view converts completed request items with `llm` or `both` visibility into `{ role, content }` message pairs for model context assembly.
+The history view converts completed request items with `history: true` into `{ role, content }` message pairs for model context assembly.
 
 ## Session Journal
 
@@ -221,7 +223,7 @@ const pipeline = sequencer({ name: "chat", inputSchema })
 
 Internally it is a sequencer with two steps: a generator that produces the title, and a handler that calls `setMetadata` only if the title has changed. The whole block is marked `transient: true` so it produces no visible items in the stream.
 
-`ctx.session.items.llm()` includes items from the current in-flight request, so the title generator sees the just-completed generator output even on the first message of a session.
+`ctx.session.items.history()` includes items from the current in-flight request, so the title generator sees the just-completed generator output even on the first message of a session.
 
 ## Persistence Adapters
 
@@ -251,9 +253,11 @@ State and resource mutations emit streaming events:
 
 - `state_change` items track each scope operation
 - `resource_change` items track resource mutations
-- These are **invalidation signals** — clients should refetch snapshots for source-of-truth reads
+- `state_snapshot` items capture the full sequencer state at each step boundary (initial + after every step)
+- `state_change` and `resource_change` items are **invalidation signals** — clients should refetch snapshots for source-of-truth reads
 - In production mode, these items are transient (stream-only, not persisted)
 - Set `persistStateChanges: true` on the flow to persist them (useful for devtools state timeline)
+- Sequencer state snapshots are always trace-only and transient. The DevTool uses them to show state evolution across steps and loopBack iterations
 
 ## Canonical Authority
 
@@ -262,5 +266,5 @@ For full type signatures, resource/clientData details, and edge cases, see `../p
 
 ### Token-aware MessageLimit
 
-`session.items.llm({ limit: { tokens: N } })` now performs token-aware packing from newest to oldest using the configured flow `tokenCounter` and the active resolved model ID from generator execution.
+`session.items.history({ limit: { tokens: N } })` now performs token-aware packing from newest to oldest using the configured flow `tokenCounter` and the active resolved model ID from generator execution.
 

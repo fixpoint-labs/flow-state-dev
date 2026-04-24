@@ -120,9 +120,11 @@ async function executeDevCommand(options: DevCommandOptions): Promise<void> {
   let modelResolver: ModelResolver | undefined;
   if (options.model !== undefined) {
     const defaultResolver = createModelResolver();
-    modelResolver = (_modelId: string, blockName?: string) => {
+    const override = ((_modelId: string, blockName?: string) => {
       return defaultResolver(options.model!, blockName);
-    };
+    }) as ModelResolver;
+    override.resolveId = (modelId: string) => defaultResolver.resolveId(modelId);
+    modelResolver = override;
   }
 
   // 6. Create flow API router

@@ -1,4 +1,5 @@
 export type { BlockInput, BlockOutput, DeclaredResources } from "./types/block";
+export type { AgentType, ItemVisibility } from "./items/types";
 export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
 export type {
   CollectionHookContext,
@@ -25,17 +26,44 @@ export type {
 
 export { defineResource, resource } from "./types/resource";
 export { defineResourceCollection, isDefinedResourceCollection, defineResourceNamespace, isDefinedResourceNamespace } from "./types/resource-collection";
+export type {
+  InitialSkill,
+  RunSkillInput,
+  RunSkillOutput,
+  Skill,
+  SkillContextMode,
+  SkillFile,
+  SkillState,
+  SkillsCollectionMeta,
+  ToolCatalog,
+} from "./types/skill";
 export { defineCapability, getBaseCapability } from "./capability";
 export type {
+  CapabilityPresetCtx,
   CapabilityRef,
   ConfiguredCapability,
   DefinedCapability,
   InferCapabilities,
   PresetDef,
   PresetOverrides,
+  UsesEntry,
+  UsesSlot,
 } from "./capability";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
+export { isTraceObservabilityEnabled } from "./utils/trace-observability";
+export {
+  buildBlockInstanceId,
+  blockPathBranch,
+  blockPathIteration,
+  blockPathRescue,
+  blockPathSegment,
+  blockPathTool,
+  extendBlockPath,
+  parseBlockInstanceId,
+  ROOT_BLOCK_PATH
+} from "./blocks/internal/block-instance-id";
+export { resolveActiveStatusMessage } from "./blocks/internal/resolve-active-status-message";
 export {
   generator,
   handler,
@@ -60,6 +88,7 @@ export type {
   BranchStepOutput,
   FactoryConfig,
   GeneratorConfig,
+  GeneratorHistoryConfig,
   GeneratorLoopConfig,
   GeneratorLoopState,
   GeneratorRepairConfig,
@@ -70,6 +99,8 @@ export type {
   GeneratorSlotReference,
   GeneratorTool,
   GeneratorToolResult,
+  ToolsSlot,
+  PromptSlot,
   HandlerConfig,
   InlineBlockFactory,
   InlineConfig,
@@ -108,6 +139,7 @@ export type {
   GeneratorSearchConfig,
   ModelResolver,
   PrepareStepFn,
+  PrepareStepResult,
   ProviderTool
 } from "./types/model";
 

@@ -209,7 +209,7 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
       prompt: observePrompt,
       context: buildContext,
       user: (_input: unknown) => 'Analyze the items in context and extract memories.',
-      emit: { messages: false, reasoning: false, toolCalls: false },
+      agentType: "trace",
     })
   }
 
@@ -224,7 +224,7 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
       prompt: observePrompt,
       context: buildContext,
       user: (_input: unknown) => 'Analyze the items in context and extract memories.',
-      emit: { messages: false, reasoning: false, toolCalls: false },
+      agentType: "trace",
     })
   }
 
@@ -237,7 +237,7 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     prompt: observePrompt,
     context: buildContext,
     user: (_input: unknown) => 'Analyze the items in context and extract memories.',
-    emit: { messages: false, reasoning: false, toolCalls: false },
+    agentType: "trace",
   })
 }
 
@@ -728,7 +728,7 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
     prompt: consolidationPrompt,
     context: buildContext,
     user: (_input: unknown) => 'Consolidate the episodes into semantic facts.',
-    emit: { messages: false, reasoning: false, toolCalls: false },
+    agentType: "trace",
   })
 }
 
@@ -1058,7 +1058,7 @@ export function pruneGenerate(config: MemorySystemBlocksConfig) {
     prompt: prunePrompt,
     context: buildContext,
     user: (_input: unknown) => 'Review the facts and identify removals and merges.',
-    emit: { messages: false, reasoning: false, toolCalls: false },
+    agentType: "trace",
   })
 }
 

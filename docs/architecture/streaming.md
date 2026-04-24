@@ -2,6 +2,8 @@
 
 Flow State Dev uses SSE (Server-Sent Events) for real-time streaming. The streaming model is built on **items** (persisted artifacts) and **content** (chunks within items).
 
+For the complete item type registry, classification rules, and rendering contracts, see [Items](./items.md).
+
 ## Stream Architecture
 
 ```
@@ -34,7 +36,6 @@ Items are the canonical persisted artifacts. Their type determines audience rout
 | `message` | Yes | Yes | Conversational content (user/assistant/system) |
 | `reasoning` | Yes | Yes | Model reasoning/thinking traces |
 | `component` | Yes | No | Structured data rendered by registered component |
-| `context` | No | Yes | Hidden context for LLMs only |
 | `container` | Yes | No | Visual grouping (sequencer/router frame) |
 | `status` | Yes | No | Transient progress updates |
 | `state_change` | Yes | No | Scope state mutation record |
@@ -42,14 +43,15 @@ Items are the canonical persisted artifacts. Their type determines audience rout
 | `block_output` | No | Conditional | Execution record (every block) |
 | `block_tool_output` | No | Yes | Tool result from generator tool invocation |
 | `router_decision` | No | No | Route selection record (trace only) |
+| `state_snapshot` | No | No | Full sequencer state at step boundary (trace only) |
 | `error` | Yes | No | Terminal errors |
 | `step_error` | Yes | No | Recoverable step errors |
 
 For `block_output`: When the item has `toolCall` metadata (legacy tool invocation by a generator), the output enters LLM context as the tool result. Otherwise, it's internal/devtools only. New tool invocations emit `block_tool_output` items instead.
 
-### Trace Flag
+### Visibility Resolution
 
-Items may carry `trace: true` on `OutputItemBase` to mark them as structural lifecycle metadata. Trace items are always excluded from LLM context (filtered by `itemToLLMMessage`) but remain visible in the devtool trace tree for debugging and performance analysis. Currently, `block_output` items from lifecycle tracing and `router_decision` items are marked as trace. Tool result items (`block_tool_output`) are never trace-flagged because they must enter LLM context for multi-turn tool calling.
+`resolveItemVisibility(item)` returns `{ client, history }` as a pure function of `(item.type, item.agentType)`. There are no per-item override flags. Conversational types (`message`, `reasoning`, `block_tool_output`) inherit visibility from the producing generator's `agentType` (`"primary"`, `"sub"`, `"trace"`). Structural items have fixed per-type visibility — `block_output`, `router_decision`, `state_snapshot`, and `block_debug` are devtool-only.
 
 ### Container Ownership (`ownedBy`)
 
@@ -137,6 +139,43 @@ Every event includes:
   // ... event-specific fields
 }
 ```
+
+## Items vs Events: Storage Model
+
+The streaming system produces two distinct data sets, stored independently:
+
+### Items (the record)
+
+The **items array** on `RequestRecord` is the canonical output of a request — what it *produced*. The runtime reads items back for session context, action history, and API responses. Transient items (`transient: true`) are stripped before persistence; only durable items are stored.
+
+Items are load-bearing. Without them, sessions cannot reconstruct history.
+
+### Events (the execution log)
+
+The **events log** is the ordered sequence of every SSE event emitted during execution — `item.added`, `content.delta`, `item.done`, etc. It includes events for transient items (sequencer snapshots, status updates, debug data) that never appear in the items record.
+
+Events are observability data. The app never reads them back for business logic. Two consumers use them:
+
+1. **SSE resume** — replaying missed events after a client disconnect
+2. **DevTool replay** — reconstructing the full execution timeline post-hoc
+
+### Storage independence
+
+All `RequestStore` providers persist items and events through separate methods (`persistItems` / `persistEvents`). The filesystem store writes them as separate files (`req_xxx.json` vs `req_xxx.events.json`); SQLite uses separate tables (`requests` vs `request_events`).
+
+Because events are operationally independent from items, they can be:
+
+- Stored on a different backend (append-only log, time-series DB, observability pipeline)
+- Retained with a different policy (e.g., capped collection, age-based pruning)
+- Disabled entirely in production without affecting app behavior
+
+This separation means observability-only item types (like `state_snapshot` or `block_debug`) should use `transient: true` — they flow through the event stream for live and replay consumption without bloating the persisted item record.
+
+### Durability ordering
+
+Replayable events are persisted **before** they are flushed to the SSE wire. The emitter awaits the store's `flushEvents` after enqueueing each event and only then enqueues the SSE frame to the stream controller. This closes the window where a client could observe `sequence_number = N` while the persisted log still capped at `seq < N` — a silent gap on reconnect. Persistence failures surface via `onPersistError` and re-throw from the emitter, so a producing block fails loud rather than silently losing events.
+
+`ping` and `debug` events are not replayable and skip the durability barrier — they go straight to the wire.
 
 ## Resume Semantics
 

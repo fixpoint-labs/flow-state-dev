@@ -428,6 +428,115 @@ describe("plan-and-execute pattern", () => {
     });
   });
 
+  describe("instructions prop", () => {
+    it("accepts static instructions without crashing", async () => {
+      const planner = createDeterministicPlanner([
+        { id: "s1", goal: "Analyze topic" },
+        { id: "s2", goal: "Summarize findings" },
+      ]);
+
+      const block = planAndExecute({
+        name: "instr-static",
+        planner,
+        stepExecutor: echoExecutor,
+        instructions: "You are in debate mode. Challenge all claims.",
+        enableReplanning: false,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "Test static instructions" },
+      });
+
+      expect(result.error).toBeNull();
+      const output = result.output as any;
+      expect(output.status).toBe("completed");
+      expect(output.completedSteps).toBe(2);
+    });
+
+    it("accepts dynamic instructions function without crashing", async () => {
+      const planner = createDeterministicPlanner([
+        { id: "s1", goal: "Research" },
+      ]);
+
+      const block = planAndExecute({
+        name: "instr-dynamic",
+        planner,
+        stepExecutor: echoExecutor,
+        instructions: (_input: any, _ctx: any) => "Dynamic interview instructions",
+        enableReplanning: false,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "Test dynamic instructions" },
+      });
+
+      expect(result.error).toBeNull();
+      const output = result.output as any;
+      expect(output.status).toBe("completed");
+    });
+
+    it("composes instructions with executionInstructions", async () => {
+      const planner = createDeterministicPlanner([
+        { id: "s1", goal: "Task with both" },
+      ]);
+
+      const block = planAndExecute({
+        name: "instr-compose",
+        planner,
+        stepExecutor: echoExecutor,
+        instructions: "Top-level debate stance",
+        executionInstructions: "Be thorough in each step",
+        enableReplanning: false,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "Test composition" },
+      });
+
+      expect(result.error).toBeNull();
+      const output = result.output as any;
+      expect(output.status).toBe("completed");
+    });
+
+    it("does not inject instructions when custom planner is provided", async () => {
+      let plannerCalled = false;
+      const customPlanner = handler({
+        name: "custom-planner",
+        inputSchema: z.any(),
+        outputSchema: z.object({
+          tasks: z.array(z.object({
+            id: z.string(),
+            goal: z.string(),
+            deps: z.array(z.string()).optional(),
+          })),
+        }),
+        execute: () => {
+          plannerCalled = true;
+          return { tasks: [{ id: "s1", goal: "Custom task" }] };
+        },
+      });
+
+      const block = planAndExecute({
+        name: "instr-custom-planner",
+        planner: customPlanner,
+        stepExecutor: echoExecutor,
+        instructions: "These instructions bypass planner when custom planner provided",
+        enableReplanning: false,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "Test custom planner" },
+      });
+
+      expect(result.error).toBeNull();
+      expect(plannerCalled).toBe(true);
+    });
+  });
+
   describe("block_output emission", () => {
     it("emits block_output items from the pipeline", async () => {
       const planner = createDeterministicPlanner([

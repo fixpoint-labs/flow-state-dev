@@ -3,15 +3,24 @@ import type {
   BlockConfig,
   BlockContext,
   BlockDefinition,
+  BlockOutputHint,
   ConnectorFn,
   InferBlockResources,
   InferStateFromSchema
 } from "../types/block";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
+import type { OutputItem } from "../items/types";
 import type { CapabilityRef, InferCapabilities } from "../capability/types";
 import { buildBlock, extractDeclaredResources, mergeDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
+import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
+import {
+  blockPathBranch,
+  buildBlockInstanceId,
+  extendBlockPath,
+  ROOT_BLOCK_PATH
+} from "./internal/block-instance-id";
 import { isBlockDefinition } from "./internal/utils";
 
 /**
@@ -199,6 +208,7 @@ export function router<
       const startedAt = Date.now();
       const runSelected = async (scopedCtx: BlockContext): Promise<TOutput> => {
         scopedCtx._runtimeHooks?.onBlockStart?.(selected.name, selected.kind, input);
+        resolveActiveStatusMessage(selected, input, scopedCtx);
         try {
           const output = await selected.run(input, scopedCtx);
           scopedCtx._runtimeHooks?.onBlockComplete?.(selected.name, selected.kind, output, Date.now() - startedAt);
@@ -209,8 +219,32 @@ export function router<
         }
       };
 
+      // Router output is always pass-through from the selected route (FIX-413).
+      // After the selected block emits its block_output, record a `ref`
+      // descriptor on the outer ctx so the router's own block_output carries
+      // the ref instead of duplicating content. Set AFTER runSelected below.
+      const installRouterHint = (selectedInstanceId: string): void => {
+        const response = ctx.response as unknown as { getItems?: () => OutputItem[] } | undefined;
+        if (response === undefined || typeof response.getItems !== "function") return;
+        const items = response.getItems();
+        for (let i = items.length - 1; i >= 0; i -= 1) {
+          const item = items[i];
+          if (item.type === "block_output" && item.provenance?.blockInstanceId === selectedInstanceId) {
+            (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = {
+              kind: "ref",
+              sourceItemId: item.id
+            };
+            return;
+          }
+        }
+      };
+
       if (ctx._withExecutionScope === undefined) {
-        return runSelected(ctx);
+        const out = await runSelected(ctx);
+        // Standalone path: selected block's blockInstanceId comes from the
+        // outer scope's identity. Route by name match (fallback).
+        installRouterHint(ctx._blockIdentity?.blockInstanceId ?? "");
+        return out;
       }
 
       const containerConfig =
@@ -218,11 +252,20 @@ export function router<
           ? (selected.config as { container?: { component?: string; label?: string | ((input: unknown) => string); metadata?: Record<string, unknown> | ((input: unknown) => Record<string, unknown>); } }).container
           : undefined;
 
-      return ctx._withExecutionScope(
+      const parentPath = ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
+      const selectedPath = extendBlockPath(parentPath, blockPathBranch(selected.name));
+      const selectedInstanceId = buildBlockInstanceId(
+        ctx.request.identity.id,
+        selectedPath,
+        0
+      );
+
+      const out = await ctx._withExecutionScope(
         {
           name: selected.name,
           kind: selected.kind,
-          instanceId: `${selected.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          instanceId: selectedInstanceId,
+          path: selectedPath,
           stateSchema: selected.kind === "sequencer" ? selected.config.stateSchema : undefined,
           input,
           container:
@@ -242,6 +285,12 @@ export function router<
         },
         runSelected
       );
+
+      // After the selected block has emitted its block_output, record the
+      // router's own ref descriptor so its outer emitter carries a ref, not
+      // a duplicate of the selected block's content (FIX-413).
+      installRouterHint(selectedInstanceId);
+      return out;
     }
   });
 }

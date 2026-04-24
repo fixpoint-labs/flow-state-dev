@@ -45,10 +45,10 @@ const agent = generator({
   model: "preset/fast",
   prompt: "You are a helpful assistant.",
   inputSchema: z.object({ message: z.string() }),
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: true,
   user: (input) => input.message,
   tools: [searchTool, createArtifactTool],
-  emit: { reasoning: true, messages: true },
+  agentType: "primary",
 });
 ```
 
@@ -58,30 +58,55 @@ What the framework handles for you:
 - **Streaming** — content deltas flow to the client as they're generated
 - **Structured output repair** — if the LLM returns invalid JSON, the framework can auto-retry or route to a rescue block
 
-#### Controlling what gets emitted
+#### Generator identity — who is emitting?
 
-The `emit` config controls which items a generator sends to the client stream. By default everything is emitted. You can selectively suppress or remap:
+Each generator declares its identity via `agentType`, which governs where its auto-emitted items flow:
+
+| `agentType` | Client UI | LLM History | DevTool |
+|-------------|:--:|:--:|:--:|
+| `"primary"` | ✓ | ✓ | ✓ |
+| `"sub"` | ✓ | — | ✓ |
+| `"trace"` | — | — | ✓ |
+| *unset* | no auto-emission — only `block_output` flows via graph edges |
+
+Set `agentType` explicitly on every generator that should stream. There is no position-inferred default — each generator's identity is visible in its own config.
 
 ```ts
-// Suppress all streaming output — the generator runs silently
-const silent = generator({ emit: false, /* ... */ });
+// User-facing chatbot. Messages + reasoning go to UI and enter history.
+const chatbot = generator({ agentType: "primary", /* ... */ });
 
-// Suppress message items but keep tool call status events
-const workerGen = generator({ emit: { messages: false }, /* ... */ });
+// Worker inside a supervisor pattern. Visible to the user for observability,
+// but its output does not pollute the orchestrator's next-turn history.
+const worker = generator({ agentType: "sub", /* ... */ });
 
-// Remap messages to reasoning items (visible as "thinking", not conversation text)
-const thinker = generator({ emit: { messages: 'reasoning' }, /* ... */ });
+// Background observer. Items appear in the devtool stream for debugging;
+// they never reach the client or the LLM.
+const memoryObserver = generator({ agentType: "trace", /* ... */ });
+
+// Pure structured-output transformer. Feeds its typed output to the next
+// block via graph edges. No session items at all.
+const classifier = generator({
+  model: "preset/fast",
+  prompt: "Classify input as A, B, or C.",
+  outputSchema: z.enum(["A", "B", "C"]),
+  // agentType omitted — no auto-emission.
+});
 ```
 
-| Flag | Values | Default | Effect |
-|------|--------|---------|--------|
-| `reasoning` | `true` / `false` | `true` | Emit reasoning/thinking items from models that support it |
-| `messages` | `true` / `false` / `'reasoning'` | `true` | `true` emits normal assistant messages. `false` suppresses them entirely. `'reasoning'` emits message text as reasoning items instead |
-| `toolCalls` | `true` / `false` | `true` | Emit tool call status items during the tool execution loop |
+Optionally, set `agentName` to give the identity a stable label — useful for parallel workers that should share or differ:
 
-Setting `emit: false` is shorthand for suppressing all three. When `messages` is `false` but the generator has tools, the streaming path is still used so tool call status events reach the client — only the text output items are suppressed.
+```ts
+// Collaborative: all parallel instances share one identity.
+// selectForContext({ agentName: "researcher" }) returns them all.
+generator({ agentType: "sub", agentName: "researcher", /* ... */ });
 
-This is particularly useful for worker generators inside orchestration patterns (supervisor, coordinator) where you want tool progress visible but don't want each sub-task's text polluting the main conversation stream.
+// Isolated: each instance has a unique identity.
+generator({ agentType: "sub", agentName: `researcher-${id}`, /* ... */ });
+```
+
+`agentName` defaults to the block's `name` when omitted.
+
+See [Generator identity](../streaming/items#generator-identity) for the full model.
 
 #### Any block can be a tool
 

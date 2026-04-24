@@ -20,6 +20,62 @@ This package is in Wave 1 foundation mode.
 
 ## Usage
 
+### Capability-based (recommended)
+
+The memory system exposes `defineCapability()`-based surfaces. Declare `uses: [...]` on a block to auto-install resources and gain typed helpers via `ctx.cap.*`.
+
+```ts
+import { system as memorySystem, workingMemoryCapability } from '@thought-fabric/core/memory'
+import { handler, generator, sequencer } from '@flow-state-dev/core'
+
+// Full system — working + episodic + semantic
+const mem = memorySystem({
+  model: 'preset/fast',
+  working: { capacity: 7 },
+  episodic: true,
+  semantic: true,
+})
+
+// Generator: auto-installs resources, context formatter, and typed helpers
+const chat = generator({
+  name: 'chat',
+  model: 'preset/fast',
+  uses: [mem.capability],
+  user: (input) => input,
+})
+
+// Handler: disable context preset (generator-only), use helpers via ctx.cap
+const myHandler = handler({
+  name: 'remember',
+  uses: [mem.capability.presets({ context: false })],
+  execute: async (input, ctx) => {
+    await ctx.cap.workingMemory.add({ content: 'User likes TypeScript', importance: 0.8 })
+    const items = ctx.cap.memory.recall()
+  },
+})
+
+// Pipeline with background capture
+const pipeline = sequencer({ name: 'chat', inputSchema })
+  .then(chat)
+  .work(mem.captureFromItems)
+```
+
+Individual tier capabilities can also be used standalone:
+
+```ts
+// Just working memory — no episodic or semantic
+const myBlock = handler({
+  name: 'wm-only',
+  uses: [workingMemoryCapability],
+  execute: async (input, ctx) => {
+    await ctx.cap.workingMemory.add({ content: 'fact', importance: 0.7 })
+    const entries = ctx.cap.workingMemory.items()
+  },
+})
+```
+
+### Imperative usage (low-level)
+
 ```ts
 import {
   workingMemoryCapture,
@@ -135,6 +191,48 @@ All exports from `@thought-fabric/core/memory` related to working memory:
 | `WorkingMemoryBlockConfig` | type | Base config shared by all working memory blocks. |
 | `WorkingMemoryCaptureConfig` | type | Config for the capture sequencer. |
 | `WorkingMemoryObserveConfig` | type | Config for the observe generator. |
+
+## Memory Capability Exports
+
+Capability-based surfaces for the memory subsystems.
+
+| Export | Kind | Description |
+|--------|------|-------------|
+| **Capabilities** | | |
+| `workingMemoryCapability` | capability | Default working memory capability (capacity 7, power-law decay). |
+| `createWorkingMemoryCapability(config?)` | factory | Custom working memory capability. |
+| `episodicMemoryCapability` | capability | Default episodic memory capability (user-scoped, 200 max). |
+| `createEpisodicMemoryCapability(config?)` | factory | Custom episodic memory capability. |
+| `semanticMemoryCapability` | capability | Default semantic memory capability (user-scoped). |
+| `createSemanticMemoryCapability(config?)` | factory | Custom semantic memory capability. |
+| **Via `memory.system()`** | | |
+| `mem.capability` | capability | Composed capability (all configured tiers). Context preset for generators. |
+| `mem.workingMemoryCapability` | capability | Working memory tier from this system instance. |
+| `mem.episodicMemoryCapability?` | capability | Episodic tier (if configured). |
+| `mem.semanticMemoryCapability?` | capability | Semantic tier (if configured). |
+| **Capability helpers (`ctx.cap.*`)** | | |
+| `ctx.cap.workingMemory.add(entry)` | helper | Add entry with auto-eviction. |
+| `ctx.cap.workingMemory.evict(id)` | helper | Remove entry by ID. |
+| `ctx.cap.workingMemory.pin(id)` | helper | Pin entry. |
+| `ctx.cap.workingMemory.unpin(id)` | helper | Unpin entry. |
+| `ctx.cap.workingMemory.refresh(id)` | helper | Refresh access time. |
+| `ctx.cap.workingMemory.tick()` | helper | Advance turn counter. |
+| `ctx.cap.workingMemory.items()` | helper | Get entries sorted by salience. |
+| `ctx.cap.workingMemory.format()` | helper | Format for LLM context. |
+| `ctx.cap.episodicMemory.encode(episode)` | helper | Encode a new episode. |
+| `ctx.cap.episodicMemory.recent(limit?)` | helper | Get recent episodes. |
+| `ctx.cap.episodicMemory.markConsolidated(ids)` | helper | Mark as consolidated. |
+| `ctx.cap.semanticMemory.addFact(fact)` | helper | Add semantic fact. |
+| `ctx.cap.semanticMemory.updateFact(...)` | helper | Update fact content. |
+| `ctx.cap.semanticMemory.reinforce(...)` | helper | Reinforce a fact. |
+| `ctx.cap.semanticMemory.removeFact(id)` | helper | Remove a fact. |
+| `ctx.cap.semanticMemory.allFacts(subject?)` | helper | Get all facts. |
+| `ctx.cap.semanticMemory.query(q, limit?, subject?)` | helper | Query by keyword. |
+| `ctx.cap.memory.recall(cue?)` | helper | Cross-store recall (composed capability only). |
+| **Types** | | |
+| `EpisodicMemoryCapabilityConfig` | type | Config for episodic capability factory. |
+| `SemanticMemoryCapabilityConfig` | type | Config for semantic capability factory. |
+| `AddSemanticFactInput` | type | Input for adding a semantic fact via capability. |
 
 ## Attention Exports
 

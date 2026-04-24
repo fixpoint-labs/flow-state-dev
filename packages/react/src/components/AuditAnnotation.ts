@@ -14,7 +14,28 @@
  * state, no "all clear" message.
  */
 import { createElement, useState, type ReactNode } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { BlockOutputItem, BlockValue, OutputItem } from "@flow-state-dev/core/items";
+
+/**
+ * Inline BlockValue resolver (FIX-413). See AuditAnnotationProgress.ts for
+ * rationale — the react package cannot import runtime values from core.
+ */
+function resolveValue(value: BlockValue<unknown> | undefined, items: readonly OutputItem[]): unknown {
+  if (value === undefined) return undefined;
+  if (value.kind === "inline") return value.value;
+  if (value.kind === "ref") {
+    const target = items.find((i) => i.id === value.sourceItemId && i.type === "block_output") as BlockOutputItem | undefined;
+    return target === undefined ? undefined : resolveValue(target.output, items);
+  }
+  if (value.shape.container === "array") {
+    return value.shape.entries.map((entry) => resolveValue(entry, items));
+  }
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value.shape.entries)) {
+    result[k] = resolveValue(v, items);
+  }
+  return result;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -89,7 +110,10 @@ function extractAuditData(items: OutputItem[]): AuditAnnotationData | null {
       item.blockName === "apply-threshold" &&
       "output" in item
     ) {
-      return (item as Record<string, unknown>).output as AuditAnnotationData;
+      return (resolveValue(
+        (item as BlockOutputItem).output,
+        items,
+      ) ?? null) as AuditAnnotationData | null;
     }
   }
   return null;

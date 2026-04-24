@@ -6,6 +6,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {
+  buildResourceSnapshot,
   computeClientData,
   createScopeResources,
   getBooleanFlag,
@@ -69,6 +70,19 @@ export async function handleGetSessionState(
     ? new Set(itemTypesParam.split(",").map((t) => t.trim()).filter(Boolean))
     : undefined;
 
+  // FIX-391: type-based strip of known trace items on reload. The SSE
+  // transport filters by `resolveItemVisibility(item).client`, but we can't
+  // do the same here without also stripping container items from older
+  // sessions (which were persisted with the now-fixed `client: false`).
+  // Until the visibility model is redesigned, hardcode the known-trace type
+  // list — these types resolve to `client: false` via resolveItemVisibility
+  // and should never reach the UI as raw JSON.
+  const TRACE_ITEM_TYPES = new Set([
+    "block_output",
+    "router_decision",
+    "state_snapshot",
+  ]);
+
   let aggregatedItems: OutputItem[] | undefined;
   let totalItems = 0;
   if (includeItems) {
@@ -79,9 +93,13 @@ export async function handleGetSessionState(
     for (const req of requests) {
       if (req.items !== undefined) {
         for (const item of req.items) {
-          if (itemTypeFilter === undefined || itemTypeFilter.has(item.type)) {
-            aggregatedItems.push(item);
+          if (itemTypeFilter !== undefined && !itemTypeFilter.has(item.type)) {
+            continue;
           }
+          if (itemTypeFilter === undefined && TRACE_ITEM_TYPES.has(item.type)) {
+            continue;
+          }
+          aggregatedItems.push(item);
         }
       }
     }
@@ -90,20 +108,37 @@ export async function handleGetSessionState(
     totalItems = aggregatedItems.length;
     aggregatedItems = aggregatedItems.slice(offset, offset + limit);
   }
+  // Load content from ContentStore, merging with any inline record content
+  // for backward compatibility with records created before ContentStore existed.
+  const [sessionContentFromStore, userContentFromStore, projectContentFromStore] = await Promise.all([
+    ctx.stores.content.getAll("session", session.id),
+    user !== undefined ? ctx.stores.content.getAll("user", user.id) : Promise.resolve({}),
+    project !== undefined ? ctx.stores.content.getAll("project", project.id) : Promise.resolve({})
+  ]);
+
   const sessionResources = createScopeResources({
     configs: flow.session?.resources as Record<string, unknown> | undefined,
     persisted: session.resources as Record<string, unknown> | undefined,
-    persistedContent: session.resourceContent as Record<string, string> | undefined
+    persistedContent: {
+      ...(session.resourceContent as Record<string, string> | undefined),
+      ...sessionContentFromStore
+    }
   });
   const userResources = createScopeResources({
     configs: flow.user?.resources as Record<string, unknown> | undefined,
     persisted: user?.resources as Record<string, unknown> | undefined,
-    persistedContent: user?.resourceContent as Record<string, string> | undefined
+    persistedContent: {
+      ...(user?.resourceContent as Record<string, string> | undefined),
+      ...userContentFromStore
+    }
   });
   const projectResources = createScopeResources({
     configs: flow.project?.resources as Record<string, unknown> | undefined,
     persisted: project?.resources as Record<string, unknown> | undefined,
-    persistedContent: project?.resourceContent as Record<string, string> | undefined
+    persistedContent: {
+      ...(project?.resourceContent as Record<string, string> | undefined),
+      ...projectContentFromStore
+    }
   });
 
   const sessionClientData = await computeClientData({
@@ -128,14 +163,39 @@ export async function handleGetSessionState(
     resources: projectResources
   });
 
-  const rawResources = {
-    session: session.resources,
-    user: user?.resources,
-    project: project?.resources
-  };
-  const hasResources = Object.values(rawResources).some(
-    (v) => v !== undefined && Object.keys(v).length > 0
-  );
+  // Build resource snapshot: includes only client-visible resources with clientData and optional prefetched content.
+  // Use the merged content (record field + ContentStore) so prefetch works correctly.
+  const [sessionResourceSnapshot, userResourceSnapshot, projectResourceSnapshot] = await Promise.all([
+    buildResourceSnapshot({
+      configs: flow.session?.resources as Record<string, unknown> | undefined,
+      persisted: session.resources as Record<string, unknown> | undefined,
+      persistedContent: {
+        ...(session.resourceContent as Record<string, string> | undefined),
+        ...sessionContentFromStore,
+      },
+    }),
+    buildResourceSnapshot({
+      configs: flow.user?.resources as Record<string, unknown> | undefined,
+      persisted: user?.resources as Record<string, unknown> | undefined,
+      persistedContent: {
+        ...(user?.resourceContent as Record<string, string> | undefined),
+        ...userContentFromStore,
+      },
+    }),
+    buildResourceSnapshot({
+      configs: flow.project?.resources as Record<string, unknown> | undefined,
+      persisted: project?.resources as Record<string, unknown> | undefined,
+      persistedContent: {
+        ...(project?.resourceContent as Record<string, string> | undefined),
+        ...projectContentFromStore,
+      },
+    }),
+  ]);
+
+  const hasResources =
+    sessionResourceSnapshot !== undefined ||
+    userResourceSnapshot !== undefined ||
+    projectResourceSnapshot !== undefined;
 
   return jsonResponse(200, {
     sessionId: session.id,
@@ -160,7 +220,13 @@ export async function handleGetSessionState(
           ? projectClientData
           : undefined
     },
-    resources: hasResources ? rawResources : undefined,
+    resources: hasResources
+      ? {
+          session: sessionResourceSnapshot,
+          user: userResourceSnapshot,
+          project: projectResourceSnapshot,
+        }
+      : undefined,
     items: includeItems
       ? aggregatedItems
       : undefined,

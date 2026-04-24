@@ -126,7 +126,7 @@ SSE-based item/content streaming with built-in resume:
 - **Sequence-number cursors** enable replay after disconnect — no data loss, no duplicates
 - **Item types determine audience routing** — some items go to the UI, some to the LLM context, some to devtools
 
-See [Streaming](./streaming.md).
+See [Streaming](./streaming.md) and [Items](./items.md).
 
 ### Resources and client data — data with policy
 

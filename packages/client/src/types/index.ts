@@ -13,6 +13,9 @@ import type {
   RequestStatus,
   RequestStatusEvent,
   RequestStreamEvent,
+  ResourceContentCreatedEvent,
+  ResourceContentDeletedEvent,
+  ResourceContentUpdatedEvent,
   ScopeStateChangedEvent,
   SessionMetadataChangedEvent,
   UserDebugEvent,
@@ -164,6 +167,26 @@ export type SessionRequestSummary = {
 };
 
 /**
+ * Client-visible metadata for a single resource in the snapshot.
+ */
+export type ResourceSnapshotEntry = {
+  clientData?: unknown;
+  /** Only present when `client.content.prefetch: true` is declared on the resource. */
+  content?: string;
+};
+
+/**
+ * Client-visible metadata for a collection resource in the snapshot.
+ */
+export type CollectionSnapshotEntry = {
+  items: Record<string, {
+    clientData?: unknown;
+    /** Only present when `client.content.prefetch: true` is declared on the collection. */
+    content?: string;
+  }>;
+};
+
+/**
  * Canonical session state snapshot response shape.
  */
 export type SessionStateSnapshotResponse = {
@@ -181,9 +204,9 @@ export type SessionStateSnapshotResponse = {
     project?: Record<string, unknown>;
   };
   resources?: {
-    session?: Record<string, Record<string, unknown>>;
-    user?: Record<string, Record<string, unknown>>;
-    project?: Record<string, Record<string, unknown>>;
+    session?: Record<string, ResourceSnapshotEntry | CollectionSnapshotEntry>;
+    user?: Record<string, ResourceSnapshotEntry | CollectionSnapshotEntry>;
+    project?: Record<string, ResourceSnapshotEntry | CollectionSnapshotEntry>;
   };
   items?: OutputItem[];
   pagination?: {
@@ -245,6 +268,8 @@ export type FlowClient<TFlow extends FlowLike> = {
     input: unknown,
     options?: SendActionOptions
   ) => Promise<ExecuteActionResponse>;
+  /** Signal the server to abort an in-progress request. */
+  abortRequest: (requestId: string) => Promise<void>;
   actions: TypedActionMethods<TFlow>;
   state: {
     getSnapshot: (sessionId: string) => Promise<SessionStateSnapshotResponse>;
@@ -299,6 +324,9 @@ export type RequestSSECallbacks = {
  */
 export type UserSSECallbacks = {
   onResourceChanged?: (event: UserResourceChangedEvent) => void;
+  onResourceContentUpdated?: (event: ResourceContentUpdatedEvent) => void;
+  onResourceContentCreated?: (event: ResourceContentCreatedEvent) => void;
+  onResourceContentDeleted?: (event: ResourceContentDeletedEvent) => void;
   onScopeStateChanged?: (event: ScopeStateChangedEvent) => void;
   onDebug?: (event: UserDebugEvent) => void;
   onEvent?: (event: UserStreamEvent) => void;

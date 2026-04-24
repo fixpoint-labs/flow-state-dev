@@ -13,3 +13,6 @@ apps/docs/build
 /todos/*
 **/.fsdev/**
 docs/superpowers/*
+
+.mcp.json
+.claude/settings.json

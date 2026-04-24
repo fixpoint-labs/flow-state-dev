@@ -44,7 +44,7 @@ export interface ProviderAvailability {
  */
 export function detectAvailableProviders(config: {
   keys?: Partial<Record<string, string>>;
-  gateways?: Record<string, GatewayConfig>;
+  gateways?: Record<string, GatewayConfig | unknown>;
   env?: Record<string, string | undefined>;
 }): Map<string, ProviderAvailability> {
   const env = config.env ?? process.env;
@@ -58,22 +58,44 @@ export function detectAvailableProviders(config: {
     }
   }
 
-  // Phase 2: Check explicitly configured gateways
+  // Phase 2: Check explicitly configured gateways.
+  // Entries can be GatewayConfig objects ({ type, apiKey }) or raw instances
+  // (objects with languageModel/chat methods). Raw instances make all
+  // gateway-supported providers available without needing an API key here
+  // (the key is already baked into the instance).
   if (config.gateways) {
-    for (const [name, gwConfig] of Object.entries(config.gateways)) {
-      const envVar = GATEWAY_ENV_VARS[gwConfig.type];
-      const key = gwConfig.apiKey ?? (envVar ? env[envVar] : undefined);
-      if (!key) continue;
+    for (const [name, entry] of Object.entries(config.gateways)) {
+      const isConfig = typeof entry === "object" && entry !== null && "type" in entry && typeof (entry as GatewayConfig).type === "string";
 
-      for (const provider of GATEWAY_SUPPORTED_PROVIDERS) {
-        if (!available.has(provider)) {
-          available.set(provider, {
-            provider,
-            source: "gateway",
-            apiKey: key,
-            gatewayType: gwConfig.type,
-            gatewayName: name,
-          });
+      if (isConfig) {
+        const gwConfig = entry as GatewayConfig;
+        const envVar = GATEWAY_ENV_VARS[gwConfig.type];
+        const key = gwConfig.apiKey ?? (envVar ? env[envVar] : undefined);
+        if (!key) continue;
+
+        for (const provider of GATEWAY_SUPPORTED_PROVIDERS) {
+          if (!available.has(provider)) {
+            available.set(provider, {
+              provider,
+              source: "gateway",
+              apiKey: key,
+              gatewayType: gwConfig.type,
+              gatewayName: name,
+            });
+          }
+        }
+      } else if (entry !== null && entry !== undefined) {
+        // Raw gateway instance — mark all providers as available
+        for (const provider of GATEWAY_SUPPORTED_PROVIDERS) {
+          if (!available.has(provider)) {
+            available.set(provider, {
+              provider,
+              source: "gateway",
+              apiKey: "",
+              gatewayType: name,
+              gatewayName: name,
+            });
+          }
         }
       }
     }

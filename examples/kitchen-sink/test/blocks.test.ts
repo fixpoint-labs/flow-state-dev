@@ -6,7 +6,7 @@ import {
   readArtifact,
   updateArtifact
 } from "../src/flows/kitchen-sink/blocks";
-import { artifactsCollection } from "../src/flows/kitchen-sink/schemas";
+import { artifactsCollection } from "../src/flows/kitchen-sink/blocks/artifacts";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 
 type ArtifactState = { title: string; summary: string; updatedAt: number };

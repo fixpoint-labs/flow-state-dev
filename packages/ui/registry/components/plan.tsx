@@ -1,7 +1,8 @@
 "use client";
 
-import React from "react";
-import type { ComponentItem } from "@flow-state-dev/core/items";
+import React, { useMemo } from "react";
+import type { ComponentItem, ContainerItem } from "@flow-state-dev/core/items";
+import { useContainerItems } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangleIcon,
@@ -14,6 +15,7 @@ import {
   MinusCircleIcon,
   XCircleIcon,
 } from "lucide-react";
+import { useSessionItems } from "./session-items-context";
 
 // ---------------------------------------------------------------------------
 // Types (inlined to keep the component registry-distributable without
@@ -30,20 +32,22 @@ type PlanTaskStatus =
   | "needs-revision"
   | "escalated";
 
-type PlanTask = {
+type PlanMeta = {
+  goal: string;
+  taskOrder: string[];
+  taskGoals: Record<string, string>;
+  status?: string;
+  iteration?: number;
+};
+
+type PlanTaskData = {
   id: string;
   goal: string;
-  assignee?: string;
   status: PlanTaskStatus;
   result?: unknown;
   error?: string;
-};
-
-type Plan = {
-  goal: string;
-  tasks: PlanTask[];
-  status?: string;
-  iteration?: number;
+  feedback?: string;
+  assignee?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -120,33 +124,77 @@ function getResultSummary(result: unknown): string | undefined {
 // ---------------------------------------------------------------------------
 
 /**
- * Renders a point-in-time plan snapshot emitted via emitPlanSnapshot().
+ * Container renderer for plan-and-execute and supervisor sequencers.
+ * Composes the plan view from granular per-task ComponentItems emitted
+ * by emitPlanMeta and emitTaskUpdate.
  *
  * Register via:
- *   <FlowProvider renderers={{ component: { plan: Plan } }}>
+ *   <FlowProvider renderers={{ container: { plan: Plan } }}>
  *
- * Or use chatAssistantRenderers from the chat-assistant component which
- * includes this renderer by default.
+ * Or use chatAssistantRenderers which includes this by default.
  */
-export function Plan({ item }: { item: ComponentItem }) {
-  const plan = item.data as Plan;
+export function Plan({ item }: { item: ContainerItem }) {
+  const allItems = useSessionItems();
+  const { componentsByKey } = useContainerItems(item, allItems);
 
-  const completedCount = plan.tasks.filter(
+  const { meta, tasks } = useMemo(() => {
+    let planMeta: PlanMeta | undefined;
+    const taskMap = new Map<string, PlanTaskData>();
+
+    for (const [key, data] of componentsByKey) {
+      if (key.endsWith(":plan-meta")) {
+        planMeta = data as unknown as PlanMeta;
+      } else if (key.includes("plan-task:")) {
+        taskMap.set(key, data as unknown as PlanTaskData);
+      }
+    }
+
+    const ordered: PlanTaskData[] = [];
+    if (planMeta) {
+      for (const id of planMeta.taskOrder) {
+        // Look up the per-task item by key suffix
+        const taskKey = [...taskMap.keys()].find((k) => k.endsWith(`plan-task:${id}`));
+        if (taskKey) {
+          ordered.push(taskMap.get(taskKey)!);
+        } else {
+          // Task listed in taskOrder but no individual update yet — show from meta
+          ordered.push({
+            id,
+            goal: planMeta.taskGoals[id] ?? id,
+            status: "pending",
+          });
+        }
+      }
+    }
+    return { meta: planMeta, tasks: ordered };
+  }, [componentsByKey]);
+
+  if (!meta) return null;
+
+  const completedCount = tasks.filter(
     (t) => t.status === "completed"
   ).length;
 
   return (
     <div className="not-prose my-2 rounded-md border bg-card p-3 text-card-foreground">
       <div className="mb-2 flex items-start justify-between gap-2">
-        <p className="text-sm font-medium leading-snug">Steps</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium leading-snug">Steps</p>
+          {meta.status === "reviewing" && (
+            <span className="text-[10px] font-medium text-cyan-500">Reviewing…</span>
+          )}
+          {meta.status === "replanning" && (
+            <span className="text-[10px] font-medium text-amber-500">Replanning…</span>
+          )}
+        </div>
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-          {completedCount}/{plan.tasks.length}
-          {plan.iteration !== undefined && plan.iteration > 0 &&
-            ` · pass ${plan.iteration + 1}`}
+          {completedCount}/{tasks.length}
+          {meta.iteration !== undefined && meta.iteration > 0 &&
+            ` · pass ${meta.iteration}`}
         </span>
       </div>
       <ul className="space-y-1.5">
-        {plan.tasks.map((task) => (
+        {tasks.map((task) => (
           <PlanTaskRow key={task.id} task={task} />
         ))}
       </ul>
@@ -154,7 +202,7 @@ export function Plan({ item }: { item: ComponentItem }) {
   );
 }
 
-function PlanTaskRow({ task }: { task: PlanTask }) {
+function PlanTaskRow({ task }: { task: PlanTaskData }) {
   const config = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.pending;
   const Icon = config.icon;
   const summary = getResultSummary(task.result);
@@ -163,8 +211,9 @@ function PlanTaskRow({ task }: { task: PlanTask }) {
       [{task.assignee}]
     </span>
   ) : null;
+  const showFeedback = task.feedback && (task.status === "needs-revision" || task.status === "escalated");
 
-  if (!summary) {
+  if (!summary && !showFeedback) {
     return (
       <li className="flex items-start gap-2">
         <Icon
@@ -197,9 +246,16 @@ function PlanTaskRow({ task }: { task: PlanTask }) {
             aria-hidden="true"
           />
         </summary>
-        <p className="mt-1 whitespace-pre-wrap pl-5 text-xs leading-snug text-muted-foreground">
-          {summary}
-        </p>
+        {showFeedback && (
+          <p className="mt-1 whitespace-pre-wrap pl-5 text-xs leading-snug text-amber-500/80">
+            {task.feedback}
+          </p>
+        )}
+        {summary && (
+          <p className="mt-1 whitespace-pre-wrap pl-5 text-xs leading-snug text-muted-foreground">
+            {summary}
+          </p>
+        )}
       </details>
     </li>
   );

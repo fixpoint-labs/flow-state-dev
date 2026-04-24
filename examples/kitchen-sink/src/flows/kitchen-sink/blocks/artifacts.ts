@@ -1,15 +1,85 @@
 /**
- * Artifact blocks — read and write artifacts.
+ * Artifact system — resource definition, capability, and tool blocks.
  *
  * Artifacts are session-scoped resources with metadata in state and document
- * body stored as resource content. These blocks are used as LLM-callable tools.
+ * body stored as resource content. The capability bundles resources, context,
+ * and tools under a single `uses: [artifactsCapability]` declaration.
  *
  * writeArtifact: upserts the resource then immediately summarizes the new content,
  * so the summary is always current without a separate background sweep.
  */
-import { handler, sequencer, utility } from "@flow-state-dev/core";
+import { defineCapability, defineResourceCollection, handler, sequencer, utility } from "@flow-state-dev/core";
+import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+import path from "node:path";
 import { z } from "zod";
-import { artifactResources } from "../schemas";
+
+// ---------------------------------------------------------------------------
+// Resource definition
+// ---------------------------------------------------------------------------
+
+// Per-instance state for an artifact resource. State tracks metadata only —
+// the document body is stored as resource content via writeContent/readContent.
+// The summary field is populated by a background .work() block after each update.
+export const artifactStateSchema = z.object({
+  title: z.string(),
+  summary: z.string().default(""),
+  extension: z.string().optional(),
+  updatedAt: z.number()
+});
+
+// Resource collection for artifacts. Each artifact is a separate resource
+// instance keyed by its ID (e.g., "artifacts/my-doc"). Metadata lives in
+// state, the document body lives in resource content.
+//
+// client.content declares that content is readable and updatable by clients.
+// client.data exposes title, summary, and updatedAt metadata in the snapshot
+// without eagerly loading document bodies.
+export const artifactsCollection = defineResourceCollection({
+  pattern: "artifacts/**",
+  stateSchema: artifactStateSchema,
+  client: {
+    content: { read: true, update: true },
+    data: (state) => ({
+      title: state.title ?? "Untitled",
+      summary: state.summary ?? "",
+      updatedAt: state.updatedAt,
+      extension: state.extension ?? null
+    }),
+  },
+});
+
+export const artifactResources = {
+  artifacts: artifactsCollection,
+};
+
+// ---------------------------------------------------------------------------
+// Capability
+// ---------------------------------------------------------------------------
+
+/**
+ * Context formatter that shows the artifact inventory (title + summary)
+ * so the LLM knows what artifacts exist without reading full content.
+ */
+const artifactListContext = (_input: unknown, ctx: any) => {
+  const artifacts = ctx.session.resources.artifacts as ResourceCollectionRef<{
+    title: string;
+    summary: string;
+    updatedAt: number;
+  }>;
+  const instances = artifacts.list();
+  if (instances.length === 0) {
+    return "No artifacts exist yet in this session.";
+  }
+  const list = instances
+    .map((ref: any) => {
+      const id = ref.name.replace("artifacts/", "");
+      const title = ref.state.title ?? "Untitled";
+      const summary = ref.state.summary ? ` — ${ref.state.summary}` : "";
+      return `- ${id}: ${title}${summary}`;
+    })
+    .join("\n");
+  return `Current artifacts:\n${list}`;
+};
 
 // ---------------------------------------------------------------------------
 // Read artifact
@@ -22,6 +92,9 @@ export const readArtifactInputSchema = z.object({
 export const readArtifactOutputSchema = z.object({
   id: z.string(),
   title: z.string(),
+  updatedAt: z.number(),
+  extension: z.string().optional(),
+  summary: z.string().optional(),
   content: z.string()
 });
 
@@ -36,12 +109,15 @@ export const readArtifact = handler({
     const ref = ctx.session.resources.artifacts.getOptional(input.artifactId);
 
     if (ref === undefined) {
-      return { id: input.artifactId, title: "Not Found", content: "" };
+      return { id: input.artifactId, title: "Not Found", updatedAt: 0, summary: "", content: "" };
     }
 
     return {
       id: input.artifactId,
       title: ref.state.title,
+      updatedAt: ref.state.updatedAt,
+      extension: ref.state.extension,
+      summary: ref.state.summary ?? "",
       content: await ref.readContent() ?? ""
     };
   }
@@ -74,7 +150,14 @@ const upsertArtifact = utility.upsertResource({
   sessionResources: artifactResources,
   collectionKey: "artifacts",
   key: (input) => input.id,
-  state: (input) => ({ title: input.title, updatedAt: Date.now() }),
+  state: (input) => {
+    const ext = path.extname(input.id).slice(1);
+    return {
+      title: input.title,
+      ...(ext ? { extension: ext } : {}),
+      updatedAt: Date.now(),
+    };
+  },
   content: (input) => input.content,
 });
 
@@ -110,3 +193,34 @@ export const writeArtifact = sequencer({
 
 // Keep updateArtifact as an alias so flow.ts and saveArtifact action don't break.
 export const updateArtifact = writeArtifact;
+
+// ---------------------------------------------------------------------------
+// Capability definition
+// ---------------------------------------------------------------------------
+
+/**
+ * Artifact capability — session resources + LLM context + tools.
+ *
+ * Required surface (always installed):
+ *   - `artifactsCollection` resource in session scope
+ *
+ * Presets (opt-in/opt-out):
+ *   - `inventory` (default: on) — context formatter showing artifact list
+ *   - `tools` (default: on) — readArtifact + writeArtifact as generator tools
+ */
+export const artifactsCapability = defineCapability({
+  name: "artifacts",
+  sessionResources: artifactResources,
+
+  presets: {
+    /** Context formatter: artifact title + summary inventory for the LLM. */
+    inventory: {
+      context: [artifactListContext],
+    },
+    /** Generator tools: read and write artifacts. */
+    tools: {
+      tools: [readArtifact, writeArtifact],
+    },
+    default: ["inventory", "tools"],
+  },
+});

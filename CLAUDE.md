@@ -13,6 +13,7 @@ You are not a sycophant. You don't tell the user they have a good idea until you
 3. `AGENTS.md` — Process protocol and code style rules
 
 **Read when relevant:**
+- `docs/architecture/items.md` — **Read before touching items, rendering, or the stream.** Complete item type registry, classification, and rendering contracts.
 - `docs/architecture/*.md` — Deep dives into blocks, flows, state, streaming, execution, etc.
 - `docs/contributing/best-practices.md` — Process and documentation standards (BP-001–BP-009)
 - `changelog.md` — What waves have shipped
@@ -30,6 +31,7 @@ You are not a sycophant. You don't tell the user they have a good idea until you
 | `@flow-state-dev/cli` | Terminal interface (`fsdev`) |
 | `@flow-state-dev/devtool` | Pre-built DevTool assets for `fsdev dev` |
 | `@flow-state-dev/store-sqlite` | SQLite-backed persistent store |
+| `@flow-state-dev/vercel` | Vercel deployment adapter (SSE shaping, heartbeats, runtime config) |
 | `@flow-state-dev/tools` | Reusable tool blocks |
 | `@flow-state-dev/patterns` | Higher-level composition patterns |
 | `@flow-state-dev/ui` | Component registry for flow UIs |
@@ -46,6 +48,40 @@ docs/
   internal/         Wave plans, journals, changelogs (process artifacts)
 ```
 
+## Skills Library
+
+Development task skills live in `.claude/skills/`. Use these when performing common development tasks:
+
+### Workflow skills
+| Skill | Purpose |
+|-------|---------|
+| `create-spec` | Research and write implementation specs for Linear issues |
+| `implement-issue` | Implement a Linear issue from its spec document |
+| `quick-fix` | Log a bug to Linear and fix it immediately |
+| `create-issue-and-commit` | Create a Linear issue for work already done, commit and PR |
+| `debug-flow` | Debug flow execution via CLI traces and NDJSON logs |
+| `linear-triage` | Review and prioritize Linear issues |
+| `plan-day` | Identify unblocked tasks and generate a daily work plan |
+
+### Development skills
+| Skill | Purpose |
+|-------|---------|
+| `create-block` | Create a new block (handler, generator, utility, router) with tests |
+| `create-pattern` | Create a multi-block composable pattern with tests and docs |
+| `add-flow` | Create a new flow definition with actions, scopes, resources, and capabilities |
+| `write-block-tests` | Write or update vitest tests for blocks and patterns |
+| `add-store-adapter` | Create a new persistence store adapter package |
+| `add-docs-page` | Add a page to the Docusaurus documentation site |
+
+## Capabilities
+
+- **Prefer capabilities over manual plumbing.** Use `defineCapability` + `uses: [cap]` instead of manually spreading `tools`, `context`, `sessionResources` into blocks. Capabilities are self-contained, portable, and composable.
+- **Factory pattern for configurable capabilities.** When a capability needs config (provider type, resource refs), export a factory: `createXCapability(options)` → `DefinedCapability`.
+- **Dynamic `uses` for conditional capabilities.** `uses` arrays accept `(ctx) => CapabilityRef[]` functions. Static entries install resources at build time; dynamic entries add context/tools at runtime. Resources must be declared statically somewhere.
+- **Presets for opt-in/opt-out.** Use presets to bundle context/tools that consumers can enable/disable: `cap.presets({ tools: false })`.
+- **`ToolsSlot` and `UsesSlot`** are framework types exported from `@flow-state-dev/core` for factory interfaces.
+- **Pattern factories accept `uses`.** `planAndExecute`, `supervisor`, `blackboard` all forward `uses` to their default internal generators.
+
 ## Key Architectural Constraints
 
 - Block kinds: exactly `handler`, `generator`, `sequencer`, `router`
@@ -56,6 +92,8 @@ docs/
 - Lifecycle hooks: past tense (`onStarted`, `onCompleted`, `onErrored`, `onFinished`)
 - Package boundary: `react` wraps `client` — no transport logic in react
 - Package boundary: `server` never depends on `client` or `react`
+- Collection key resolution: `collection.create("key")` auto-prepends the pattern prefix. `ref.name` returns the full storage key (e.g., `"artifacts/my-doc"`). Strip the prefix for bare keys.
+- Resource mutations emit `resource_change` SSE events via `onResourceChanged` in `createScopeResourceRegistry`. These are transient items — `useSession` checks for them before the transient filter.
 
 ## Authority Hierarchy
 

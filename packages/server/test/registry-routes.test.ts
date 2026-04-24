@@ -461,7 +461,11 @@ describe("createFlowApiRouter", () => {
 
     const stateResponse = await router.GET(
       new Request(
-        "http://localhost/api/flows/sessions/sess_page/state?include_items=true&offset=0&limit=1"
+        // FIX-391: `item_types=block_output` opts into this trace item type,
+        // which the snapshot route otherwise strips by default. The fixture's
+        // handler emits only a block_output, so we include it explicitly here
+        // to keep this pagination assertion intact.
+        "http://localhost/api/flows/sessions/sess_page/state?include_items=true&offset=0&limit=1&item_types=block_output"
       ),
       {
         params: {
@@ -559,11 +563,15 @@ describe("createFlowApiRouter", () => {
     });
   });
 
-  it("returns raw resources in session state response", async () => {
+  it("returns resource clientData in session state response", async () => {
     const registry = createFlowRegistry();
     const stores = createInMemoryStores();
     const counterResource = defineResource({
-      stateSchema: z.object({ count: z.number().default(0) })
+      stateSchema: z.object({ count: z.number().default(0) }),
+      client: {
+        content: { read: true },
+        data: (state) => ({ count: state.count }),
+      },
     });
 
     const flow = defineFlow({
@@ -608,14 +616,14 @@ describe("createFlowApiRouter", () => {
     expect(stateResponse.status).toBe(200);
     const body = (await stateResponse.json()) as {
       resources?: {
-        session?: Record<string, Record<string, unknown>>;
-        user?: Record<string, Record<string, unknown>>;
-        project?: Record<string, Record<string, unknown>>;
+        session?: Record<string, unknown>;
+        user?: Record<string, unknown>;
+        project?: Record<string, unknown>;
       };
     };
     expect(body.resources).toBeDefined();
     expect(body.resources!.session).toBeDefined();
-    expect(body.resources!.session!.counter).toEqual({ count: 0 });
+    expect(body.resources!.session!.counter).toEqual({ clientData: { count: 0 } });
   });
 
   it("returns 503 when active stream capacity is reached", async () => {

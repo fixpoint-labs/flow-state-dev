@@ -17,9 +17,8 @@ import {
   handler,
   sequencer,
   utility,
-  selectModel,
 } from "@flow-state-dev/core";
-import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
+
 import { system as memorySystem } from "@thought-fabric/core/memory";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
@@ -29,17 +28,17 @@ import {
   updateArtifactInputSchema,
   eventQueueDemo,
   eventQueueDemoInputSchema,
-  readArtifact,
   artifactListContext,
   voiceContext,
   createThinkingStyleRouter,
   autoClassifyStyle,
   thinkingStyleSchema,
   thinkingStyleSessionStateSchema,
-  artifactsCapability,
+  featuresCapability,
+  artifactResources,
 } from "./blocks";
-import { modeSchema, artifactResources } from "./schemas";
-import { CHAT_PROMPT, CREATE_PROMPT } from "./prompts";
+import { modeSchema, featuresSchema } from "./schemas";
+import { ASK_PROMPT, BUILD_PROMPT, INTERVIEW_PROMPT, DEBATE_PROMPT } from "./prompts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -63,12 +62,8 @@ const mem = memorySystem({
 // ---------------------------------------------------------------------------
 
 const thinkingStyleInputSchema = z
-  .enum(["auto", "default", "plan-and-execute", "supervisor", "blackboard"])
-  .default("auto");
-
-const featuresSchema = z.object({
-  biasCheck: z.boolean().default(false),
-});
+  .enum(["auto", "default", "plan-and-execute", "supervisor", "blackboard", "reactive-blackboard"])
+  .default("default");
 
 const inputSchema = z.object({
   message: z.string().min(1),
@@ -80,6 +75,7 @@ const inputSchema = z.object({
 const sessionStateSchema = z.object({
   mode: modeSchema,
   thinkingStyle: thinkingStyleSchema.optional(),
+  resolvedModel: z.string().optional(),
   requestCount: z.number().default(0),
   lastAction: z.string().optional(),
   features: featuresSchema.default({}),
@@ -97,41 +93,55 @@ const userStateSchema = z.object({
 const assistantGenerator = generator({
   name: "assistant-generator",
   userStateSchema: z.object({ preferredModel: z.string().default(MODEL_ID) }),
-  sessionStateSchema: z.object({ mode: modeSchema.default("chat"), thinkingStyle: z.string().optional() }),
+  sessionStateSchema: z.object({ mode: modeSchema.default("ask"), thinkingStyle: z.string().optional() }),
 
-  // Artifact capability: installs resources, context formatter, and tools
-  uses: [artifactsCapability],
+  // Capabilities: auto-install resources, context formatters, and tools.
+  // mem.capability includes a context preset that injects unified memory recall.
+  // artifactsCapability provides artifact resources + context + tools.
+  uses: [mem.capability, featuresCapability],
 
-  context: [mem.contextFormatter, voiceContext],
+  context: [voiceContext],
 
   inputSchema,
-  history: (_input, ctx) => ctx.session.items.llm({ limit: 8 }),
+  history: { limit: 8 },
   user: (input) => input.message,
-
   search: true,
-  maxIterations: 10,
+  maxIterations: 20,
   outputSchema: z.string(),
 
-  prompt: (_input, ctx) =>
-    ctx.session.state.mode === "create" ? CREATE_PROMPT : CHAT_PROMPT,
+  prompt: (_input, ctx) => {
+    switch (ctx.session.state.mode) {
+      case "build": return BUILD_PROMPT;
+      case "interview": return INTERVIEW_PROMPT;
+      case "debate": return DEBATE_PROMPT;
+      default: return ASK_PROMPT;
+    }
+  },
 
-  emit: { messages: true, reasoning: true },
-  model: selectModel(MODEL_ID, {
-    prefer: (_input, ctx) => ctx.user?.state.preferredModel,
-  }),
+  agentType: "primary",
+  model: (_input: any, ctx: any) => ctx.session.state.resolvedModel ?? MODEL_ID,
 });
 
 // ---------------------------------------------------------------------------
 // Thinking style router (via factory — see blocks/thinking-styles.ts)
 // ---------------------------------------------------------------------------
 
+const modeInstructions = (_input: any, ctx: any): string => {
+  switch (ctx.session.state.mode) {
+    case "build": return BUILD_PROMPT;
+    case "interview": return INTERVIEW_PROMPT;
+    case "debate": return DEBATE_PROMPT;
+    default: return ASK_PROMPT;
+  }
+};
+
 const { thinkingStyleRouter } = createThinkingStyleRouter({
   assistantGenerator,
-  modelId: MODEL_ID,
-  history: (_input: any, ctx: any) => ctx.session.items.llm({ limit: 8 }),
+  modelId: (_input: any, ctx: any) => ctx.session.state.resolvedModel ?? MODEL_ID,
+  history: { limit: 8 },
   context: [mem.contextFormatter, artifactListContext],
-  tools: [readArtifact, updateArtifact],
-  sessionResources: artifactResources,
+  uses: [featuresCapability],
+  instructions: modeInstructions,
 });
 
 export { thinkingStyleRouter };
@@ -143,7 +153,7 @@ export { thinkingStyleRouter };
 const applyRequestedMode = handler({
   name: "apply-requested-mode",
   inputSchema,
-  sessionStateSchema: z.object({ mode: modeSchema.default("chat") }),
+  sessionStateSchema: z.object({ mode: modeSchema.default("ask") }),
   execute: async (input, ctx) => {
     await ctx.session.patchState({ mode: input.mode });
   },
@@ -198,6 +208,22 @@ const applyFeatures = handler({
   sessionStateSchema: z.object({ features: featuresSchema.default({}) }),
   execute: async (input, ctx) => {
     await ctx.session.patchState({ features: input.features });
+  },
+});
+
+// Resolve the model once per request so downstream blocks and clientData can
+// Resolve the preset to its primary concrete model string (e.g.
+// "preset/medium" → "anthropic/claude-sonnet-4-6") so downstream blocks
+// and clientData can read ctx.session.state.resolvedModel.
+const resolveModel = handler({
+  name: "resolve-model",
+  inputSchema,
+  userStateSchema,
+  sessionStateSchema: z.object({ resolvedModel: z.string().optional() }),
+  execute: async (_input, ctx) => {
+    const preferred = ctx.user?.state.preferredModel ?? MODEL_ID;
+    const resolved = ctx.resolveModel.resolveId(preferred);
+    await ctx.session.patchState({ resolvedModel: resolved });
   },
 });
 
@@ -272,12 +298,10 @@ const biasCheck = sequencer({ name: "bias-check", inputSchema: z.string() })
         overallScore: number;
       };
       if (data.surfacedResults.length > 0) {
-        ctx
-          .emitComponent(
-            "audit-annotation",
-            data as unknown as Record<string, unknown>,
-          )
-          .done();
+        ctx.emitComponent(
+          "audit-annotation",
+          data as unknown as Record<string, unknown>,
+        );
       }
     }
   });
@@ -302,6 +326,7 @@ const setPreferredModelHandler = handler({
 const runSequencer = sequencer({ name: "run", inputSchema })
   .tap(applyRequestedMode)
   .tap(applyFeatures)
+  .tap(resolveModel)
   .tap(resolveThinkingStyle)
   .then(thinkingStyleRouter)
   .work(biasCheck)
@@ -349,32 +374,14 @@ const kitchenSinkFlow = defineFlow({
     stateSchema: sessionStateSchema,
     resources: { ...artifactResources, ...mem.sessionResources },
     clientData: {
-      artifacts: async (ctx) => {
-        const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<{
-          title: string;
-          summary: string;
-          updatedAt: number;
-        }>;
-        const instances = artifacts.list();
-        return Promise.all(
-          instances.map(async (ref) => {
-            const content = (await ref.readContent()) ?? "";
-            return {
-              id: ref.name.replace("artifacts/", ""),
-              title: ref.state.title ?? "Untitled",
-              summary: ref.state.summary ?? "",
-              content,
-              updatedAt: ref.state.updatedAt,
-            };
-          }),
-        );
-      },
       modeStatus: (ctx) => ({
-        currentMode: modeSchema.parse(ctx.state.mode ?? "chat"),
+        currentMode: modeSchema.parse(ctx.state.mode ?? "ask"),
         thinkingStyle:
           (ctx.state.thinkingStyle as string | undefined) ?? null,
+        resolvedModel:
+          (ctx.state.resolvedModel as string | undefined) ?? null,
         requestCount: Number(ctx.state.requestCount ?? 0),
-        features: ctx.state.features ?? { biasCheck: false },
+        features: ctx.state.features ?? { biasCheck: false, search: true, fetch: true, crawl: true },
       }),
     },
   },

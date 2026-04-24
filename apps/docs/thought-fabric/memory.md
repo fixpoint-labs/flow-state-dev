@@ -90,6 +90,10 @@ const mem = memorySystem({
 | `mem.working` | Object | Resource + helpers for direct manipulation |
 | `mem.episodic` | Object | Resource + helpers (if configured) |
 | `mem.semantic` | Object | Resource + helpers (if configured) |
+| `mem.capability` | Capability | Composed capability for `uses: [mem.capability]` (see below) |
+| `mem.workingMemoryCapability` | Capability | Working memory tier capability |
+| `mem.episodicMemoryCapability` | Capability | Episodic tier capability (if configured) |
+| `mem.semanticMemoryCapability` | Capability | Semantic tier capability (if configured) |
 
 Pass `true` for any tier to use defaults. Pass an object to customize:
 
@@ -107,6 +111,72 @@ const mem = memorySystem({
 ```
 
 Semantic requires episodic. You can't have semantic without episodic, because consolidation draws from the episodic store.
+
+## Capability Surface
+
+Every `memory.system()` instance exposes a `capability` field that wraps the memory system's resources, context formatting, and helper functions into a single `defineCapability()` surface. Declare it in `uses` and the framework installs everything automatically.
+
+```ts
+const mem = memorySystem({
+  model: 'preset/fast',
+  working: { capacity: 7 },
+  episodic: true,
+  semantic: true,
+})
+
+// Generators: resources + context formatter auto-installed
+const chat = generator({
+  name: 'chat',
+  model: 'preset/fast',
+  uses: [mem.capability],
+  user: (input) => input,
+})
+```
+
+The composed capability includes a `context` preset (on by default) that injects unified cross-store recall into the generator's prompt. For non-generator blocks, disable the preset:
+
+```ts
+const myHandler = handler({
+  name: 'remember',
+  uses: [mem.capability.presets({ context: false })],
+  execute: async (input, ctx) => {
+    // Typed helpers via ctx.cap
+    await ctx.cap.workingMemory.add({ content: 'User likes pizza', importance: 0.8 })
+    const entries = ctx.cap.workingMemory.items()
+    const results = ctx.cap.memory.recall('pizza')
+  },
+})
+```
+
+### Individual tier capabilities
+
+If you don't need the full system, individual tier capabilities are available as standalone exports:
+
+```ts
+import {
+  workingMemoryCapability,
+  episodicMemoryCapability,
+  semanticMemoryCapability,
+} from '@thought-fabric/core/memory'
+
+// Just working memory on a handler
+const block = handler({
+  name: 'wm-only',
+  uses: [workingMemoryCapability],
+  execute: async (input, ctx) => {
+    await ctx.cap.workingMemory.add({ content: 'fact', importance: 0.7 })
+  },
+})
+```
+
+Custom config via factory functions:
+
+```ts
+import { createWorkingMemoryCapability, createEpisodicMemoryCapability } from '@thought-fabric/core/memory'
+
+const wmCap = createWorkingMemoryCapability({ capacity: 10, decay: { strategy: 'exponential', rate: 0.3 } })
+const epCap = createEpisodicMemoryCapability({ scope: 'project', maxEpisodes: 500 })
+```
 
 ## The Capture Pipeline
 

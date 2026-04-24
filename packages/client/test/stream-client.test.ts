@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createSSEClient,
+  createSSEClientFromResponse,
   createUserSSEClient,
   type ClientFetch
 } from "../src";
@@ -277,6 +278,95 @@ describe("createSSEClient", () => {
     });
 
     handle.close();
+  });
+});
+
+describe("createSSEClientFromResponse", () => {
+  it("consumes SSE events from a Response body", async () => {
+    const onRequestCreated = vi.fn();
+    const onRequestStatus = vi.fn();
+
+    const streamBody = [
+      requestEventFrame({
+        id: "req_1:1",
+        event: "request.created",
+        data: {
+          stream: "request",
+          type: "request.created",
+          requestId: "req_1",
+          sequence_number: 1,
+          status: "in_progress",
+          ts: 1
+        }
+      }),
+      requestEventFrame({
+        id: "req_1:2",
+        event: "request.completed",
+        data: {
+          stream: "request",
+          type: "request.completed",
+          requestId: "req_1",
+          sequence_number: 2,
+          status: "completed",
+          ts: 2
+        }
+      })
+    ].join("");
+
+    const response = new Response(streamBody, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" }
+    });
+
+    const handle = createSSEClientFromResponse({
+      response,
+      onRequestCreated,
+      onRequestStatus
+    });
+
+    await flushSSE();
+
+    expect(onRequestCreated).toHaveBeenCalledTimes(1);
+    expect(onRequestStatus).toHaveBeenCalledTimes(1);
+    expect(handle.lastEventId).toBe("req_1:2");
+
+    handle.close();
+  });
+
+  it("calls onError for non-ok responses without consuming the body", async () => {
+    const onError = vi.fn();
+
+    const response = new Response("not found", {
+      status: 404,
+      statusText: "Not Found"
+    });
+
+    const handle = createSSEClientFromResponse({ response, onError });
+
+    await flushSSE();
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError.mock.calls[0][0].message).toContain("404");
+
+    handle.close();
+  });
+
+  it("closes cleanly when handle.close() is called", async () => {
+    const body = new ReadableStream({
+      start() {
+        // Never closes — simulates long-lived SSE
+      }
+    });
+
+    const response = new Response(body, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" }
+    });
+
+    const handle = createSSEClientFromResponse({ response });
+    handle.close();
+
+    // Should not throw
   });
 });
 

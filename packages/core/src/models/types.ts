@@ -49,7 +49,7 @@ export interface FSDProviderConfig {
    */
   keys?: Partial<Record<string, string>>;
   /** Gateway providers that can route to multiple backends. */
-  gateways?: Record<string, GatewayConfig>;
+  gateways?: Record<string, GatewayEntry>;
   /** Retry policy for failed model calls. */
   retryPolicy?: RetryPolicy;
 }
@@ -58,6 +58,13 @@ export interface GatewayConfig {
   type: GatewayType;
   apiKey?: string;
 }
+
+/**
+ * Gateway value: either a config object for auto-detection, or a pre-created
+ * gateway instance (e.g., `createGateway({ apiKey })`). Instances bypass
+ * dynamic package loading — essential for bundled environments like Next.js.
+ */
+export type GatewayEntry = GatewayConfig | unknown;
 
 export interface RetryPolicy {
   /** Max attempts per model before falling back. Default: 2. */

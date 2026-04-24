@@ -1,0 +1,149 @@
+# @flow-state-dev/vercel
+
+Vercel deployment adapter for flow-state-dev. Wraps a flow-state-dev router into Next.js App Router handlers with Vercel-specific SSE shaping, heartbeats, and runtime configuration.
+
+## Quick Start
+
+```bash
+pnpm add @flow-state-dev/vercel
+```
+
+Three files to deploy any FSD app to Vercel:
+
+**1. Server setup** (`lib/server.ts`) — same as local dev:
+
+```ts
+import { createModelResolver } from "@flow-state-dev/core/models";
+import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/server";
+import myFlow from "@/flows/my-flow/flow";
+
+const registry = createFlowRegistry();
+registry.register(myFlow);
+
+export const router = createFlowApiRouter({
+  registry,
+  modelResolver: createModelResolver(),
+});
+```
+
+**2. Catch-all route** (`app/api/flows/[...path]/route.ts`):
+
+```ts
+import { createVercelHandler } from "@flow-state-dev/vercel";
+import { router } from "@/lib/server";
+
+export const { GET, POST, PATCH, DELETE } = createVercelHandler(router);
+
+// Next.js reads these statically — must be literal declarations, not re-exports.
+export const runtime = "nodejs";
+export const maxDuration = 300;
+export const dynamic = "force-dynamic";
+```
+
+**3. Bare route** (`app/api/flows/route.ts`):
+
+Next.js `[...path]` catch-all requires at least one segment. This sibling route handles `/api/flows` with no trailing path.
+
+```ts
+import { createVercelBareHandler } from "@flow-state-dev/vercel";
+import { router } from "@/lib/server";
+
+export const { GET, POST } = createVercelBareHandler(router);
+```
+
+SSE streams get the right headers, heartbeats prevent proxy timeouts, and `maxDuration` is set to 300 seconds.
+
+## What it does
+
+- **Handles Next.js 15 async params** — unwraps `Promise<{ path }>` so you don't have to.
+- **SSE response shaping** — adds `Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no` to prevent Vercel's edge layer from buffering streamed tokens.
+- **Heartbeat keep-alive** — injects periodic `: ping` SSE comments (default every 15s) to defeat intermediate proxy idle timeouts.
+- **AbortSignal wiring** — request cancellation propagates into flow execution.
+
+## Lazy router initialization
+
+If your store setup is async (e.g. Postgres connection pool), pass a factory function instead of a pre-built router:
+
+```ts
+// [... path]/route.ts
+import { createVercelHandler } from "@flow-state-dev/vercel";
+import { getRouter } from "@/lib/server";
+
+// getRouter returns Promise<FlowApiRouter> — called once, cached internally.
+export const { GET, POST, PATCH, DELETE } = createVercelHandler(getRouter);
+// ...runtime config...
+```
+
+```ts
+// route.ts (bare)
+import { createVercelBareHandler } from "@flow-state-dev/vercel";
+import { getRouter } from "@/lib/server";
+
+export const { GET, POST } = createVercelBareHandler(getRouter);
+```
+
+## Configuration
+
+```ts
+createVercelHandler(router, {
+  heartbeatMs: 15_000,           // Heartbeat interval (default: 15s)
+  onAbort: (req) => { ... },     // Client disconnect callback
+  waitUntil: (p) => { ... },     // Keep function alive for background work
+});
+```
+
+### Route config values
+
+Next.js reads `runtime`, `maxDuration`, and `dynamic` via static analysis. They must be **literal `export const` declarations** in your route file — re-exports from another module won't work.
+
+| Field | Recommended value | Purpose |
+|--------|---------|---------|
+| `runtime` | `"nodejs"` | Vercel runtime (use `"edge"` only with edge-safe stores) |
+| `maxDuration` | `300` | Max function execution time in seconds |
+| `dynamic` | `"force-dynamic"` | Prevents Next.js from caching SSE routes |
+
+The `@flow-state-dev/vercel/config` module exports these same values for programmatic access (tests, non-Next.js adapters), but they cannot be re-exported into a Next.js route file.
+
+## API
+
+### `createVercelHandler(app, options?)`
+
+Creates Next.js App Router `GET`, `POST`, `PATCH`, `DELETE` handlers for `[...path]` catch-all routes.
+
+**`app`**: Either a `FlowApiRouter` (from `createFlowApiRouter`) or a `() => FlowApiRouter | Promise<FlowApiRouter>` factory. The factory is called at most once and cached.
+
+**Returns**: `{ GET, POST, PATCH, DELETE }` — export these directly from your route file.
+
+### `createVercelBareHandler(app, options?)`
+
+Creates handlers for the bare `/api/flows` route (no path segments). Same `app` input as above.
+
+**Returns**: `{ GET, POST }` — export from the sibling `route.ts`.
+
+## Postgres on Vercel
+
+Vercel keeps Node function instances warm across requests. Auto-suspending databases (Neon, Supabase direct-connect, RDS with auto-pause) drop TCP sockets after ~5 minutes idle. A default `pg.Pool` caches those dead sockets and emits "Connection terminated unexpectedly" on the next cold request.
+
+`@flow-state-dev/vercel/pg` exports `vercelPgPoolOptions`, a `pg.PoolConfig` that closes that race (short idle timeout, longer connection timeout, `max: 1`, `allowExitOnIdle`). Feed it through `@flow-state-dev/store-postgres`' `poolOptions` passthrough, gated on `process.env.VERCEL` so local dev is unaffected:
+
+```ts
+import { createPostgresStores } from "@flow-state-dev/store-postgres";
+import { vercelPgPoolOptions } from "@flow-state-dev/vercel/pg";
+
+export const stores = await createPostgresStores({
+  connectionString: process.env.DATABASE_URL,
+  poolOptions: process.env.VERCEL ? vercelPgPoolOptions : undefined
+});
+```
+
+The subpath is zero-runtime — it uses `import type` for `pg`, so importing it doesn't add `pg` to your bundle if you aren't using the Postgres adapter.
+
+For first-request cold-start latency (typical 1–3s after wake-up), swap in Neon's WebSocket `Client` using `pg.PoolConfig.Client`. See the `@flow-state-dev/store-postgres` README for the recipe.
+
+## Scripts
+
+```bash
+pnpm build       # Build the package
+pnpm typecheck   # Type-check
+pnpm test        # Run tests
+```

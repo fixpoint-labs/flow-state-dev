@@ -28,6 +28,12 @@ export type ExecutionMetadata = {
   blockKind?: BlockDefinition["kind"];
   blockInstanceId?: string;
   parentBlockInstanceId?: string;
+  /**
+   * Structural path of this block in the request's execution tree (e.g.
+   * `root/then[0]/iter[2]`). Combined with `requestId` and `attempt`, this
+   * uniquely and deterministically identifies the block instance.
+   */
+  blockPath?: string;
   scope?: FlowErrorScope;
   attempt?: number;
   stepIndex?: number;
@@ -109,6 +115,7 @@ export function createExecutionMetadata(
     blockKind: overrides.blockKind,
     blockInstanceId: overrides.blockInstanceId,
     parentBlockInstanceId: overrides.parentBlockInstanceId,
+    blockPath: overrides.blockPath,
     scope: overrides.scope,
     attempt: overrides.attempt,
     stepIndex: overrides.stepIndex,

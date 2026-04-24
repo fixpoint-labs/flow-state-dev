@@ -5,10 +5,54 @@
  * Regular outputs: "▸ blockName → completed" collapsed, full JSON on expand.
  */
 import { useState } from "react";
-import type { BlockOutputItem } from "@flow-state-dev/core/items";
-import { Braces, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import type { BlockOutputItem, BlockValue } from "@flow-state-dev/core/items";
+import { Braces, ChevronDown, ChevronRight, Link2, Loader2, Package } from "lucide-react";
 import { JsonViewer } from "@/components/shared/json-viewer";
 import { safeParseJson } from "@/lib/utils";
+
+/**
+ * Summary label for a BlockValue (FIX-413) — renders a compact indicator for
+ * refs and structures in addition to the underlying data. Inline values render
+ * with the normal JsonViewer; refs and structures get a distinguishing pill.
+ */
+function blockValueKind(value: BlockValue<unknown> | undefined): "inline" | "ref" | "structure" | "unknown" {
+  if (value === undefined || typeof value !== "object") return "unknown";
+  const kind = (value as { kind?: string }).kind;
+  if (kind === "inline" || kind === "ref" || kind === "structure") return kind;
+  return "unknown";
+}
+
+function BlockValueView({ value }: { value: BlockValue<unknown> | undefined }) {
+  if (value === undefined) return null;
+  const kind = blockValueKind(value);
+  if (kind === "ref") {
+    const sourceId = (value as { sourceItemId: string }).sourceItemId;
+    return (
+      <div className="flex items-center gap-1.5 text-[11px] text-sky-300 font-mono">
+        <Link2 className="h-3 w-3 shrink-0" />
+        <span className="text-slate-500">ref →</span>
+        <span className="truncate" title={sourceId}>{sourceId}</span>
+      </div>
+    );
+  }
+  if (kind === "structure") {
+    const shape = (value as { shape: { container: string } }).shape;
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center gap-1.5 text-[11px] text-amber-300 font-mono">
+          <Package className="h-3 w-3 shrink-0" />
+          <span>structure ({shape.container})</span>
+        </div>
+        <JsonViewer data={value} className="mt-0.5" />
+      </div>
+    );
+  }
+  if (kind === "inline") {
+    return <JsonViewer data={(value as { value: unknown }).value} className="mt-0.5" />;
+  }
+  // Unknown / legacy raw shape — render as-is for forward compat.
+  return <JsonViewer data={value} className="mt-0.5" />;
+}
 
 export function BlockOutputItemView({ item }: { item: BlockOutputItem }) {
   const [expanded, setExpanded] = useState(false);
@@ -48,7 +92,7 @@ export function BlockOutputItemView({ item }: { item: BlockOutputItem }) {
             {!isInProgress && item.output !== undefined && (
               <div>
                 <span className="text-[10px] uppercase text-slate-500 font-medium">Output</span>
-                <JsonViewer data={item.output} className="mt-0.5" />
+                <BlockValueView value={item.output} />
               </div>
             )}
             {item.modelUsage && (
@@ -103,7 +147,7 @@ export function BlockOutputItemView({ item }: { item: BlockOutputItem }) {
           {item.output !== undefined && (
             <div>
               <span className="text-[10px] uppercase text-slate-500 font-medium">Output</span>
-              <JsonViewer data={item.output} className="mt-0.5" />
+              <BlockValueView value={item.output} />
             </div>
           )}
           {item.modelUsage && (

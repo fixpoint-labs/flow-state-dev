@@ -25,6 +25,6 @@ export function connectRequestStream(
 ): RequestStreamHandle {
   return createSSEClient({
     ...callbacks,
-    url: `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/stream`,
+    url: `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/stream?unfiltered=true`,
   });
 }

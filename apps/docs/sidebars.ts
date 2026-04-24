@@ -45,6 +45,7 @@ const sidebars: SidebarsConfig = {
         "resources/overview",
         "resources/storage",
         "resources/collections",
+        "resources/client-access",
       ],
     },
     {
@@ -77,6 +78,7 @@ const sidebars: SidebarsConfig = {
       label: "Items",
       items: [
         "streaming/overview",
+        "streaming/emitting-items",
         "streaming/items",
       ],
     },
@@ -122,6 +124,15 @@ const sidebars: SidebarsConfig = {
         "tools/overview",
         "tools/fetch",
         "tools/crawl",
+        "tools/bash",
+      ],
+    },
+    {
+      type: "category",
+      label: "Skills",
+      items: [
+        "skills/overview",
+        "skills/authoring",
       ],
     },
     "roadmap",

@@ -13,7 +13,7 @@
  */
 import { sequencer, handler, generator } from "@flow-state-dev/core";
 import type { BlockDefinition, DefinedResource } from "@flow-state-dev/core/types";
-import type { GeneratorSlot } from "@flow-state-dev/core";
+import type { AgentType, GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
 import {
   blackboardControlSchema,
@@ -37,6 +37,9 @@ export { createCheckBlackboard } from "./blocks/check-blackboard";
 // Config
 // ---------------------------------------------------------------------------
 
+/** Resolvable string — static or computed at runtime from input and context. */
+type InstructionsSlot = string | ((input: any, ctx: any) => string | Promise<string>);
+
 export interface BlackboardConfig<
   TOutputSchema extends ZodTypeAny = ZodTypeAny
 > {
@@ -52,6 +55,16 @@ export interface BlackboardConfig<
    * read/write the blackboard resource internally.
    */
   specialists: Record<string, BlockDefinition<any, any>>;
+
+  /**
+   * Overall instructions for this blackboard — role, stance, rules, or goal framing.
+   *
+   * Digested by the default controller and synthesizer only. Specialists keep
+   * their domain roles and are not modified.
+   *
+   * Not injected when `controller` or `synthesizer` are overridden.
+   */
+  instructions?: InstructionsSlot;
 
   /**
    * Controller block — reads blackboard, returns `{ specialist, done, reasoning }`.
@@ -85,6 +98,15 @@ export interface BlackboardConfig<
   /** Context slot for the default controller and synthesizer generators. */
   context?: GeneratorSlot<any, any>;
 
+  /** Capabilities to install on default blocks (controller, synthesizer). */
+  uses?: UsesSlot;
+
+  /** Agent type for the default controller. Default: "sub". */
+  controllerAgentType?: AgentType;
+
+  /** Agent type for the default synthesizer. Default: "primary". */
+  synthesizerAgentType?: AgentType;
+
   /**
    * Final synthesis step — receives `{ blackboard, iterations, history }`.
    * Default: generator that reads the blackboard and produces a coherent result.
@@ -106,6 +128,9 @@ function buildDefaultController(config: {
   specialists: string[];
   model?: string;
   context?: GeneratorSlot<any, any>;
+  uses?: UsesSlot;
+  instructions?: InstructionsSlot;
+  agentType?: AgentType;
 }) {
   return generator({
     name: `${config.name}-controller`,
@@ -113,9 +138,20 @@ function buildDefaultController(config: {
     outputSchema: controllerOutputSchema,
     sessionResources: { blackboard: config.blackboardResource },
     sequencerStateSchema: blackboardControlSchema,
-    emit: { messages: false, reasoning: false },
+    agentType: config.agentType ?? "sub",
     ...(config.context !== undefined ? { context: config.context } : {}),
-    prompt: (_input, ctx) => {
+    ...(config.uses ? { uses: config.uses as any } : {}),
+    prompt: async (_input, ctx) => {
+      const resolved = config.instructions
+        ? typeof config.instructions === "function"
+          ? await config.instructions(_input, ctx)
+          : config.instructions
+        : null;
+
+      const instructionsBlock = resolved
+        ? `\n## Overall Instructions\n${resolved}\n`
+        : "";
+
       const state = ctx.sequencer?.state as BlackboardControlState | undefined;
       const iteration = state?.iteration ?? 0;
       const history = state?.history ?? [];
@@ -135,6 +171,7 @@ function buildDefaultController(config: {
         "",
         "Provide clear reasoning for your decision.",
         "Do not invoke the same specialist repeatedly unless their prior contribution was incomplete.",
+        instructionsBlock,
         historyBlock,
       ].filter(Boolean).join("\n");
     },
@@ -154,21 +191,27 @@ function buildDefaultSynthesizer(config: {
   blackboardResource: DefinedResource;
   model?: string;
   context?: GeneratorSlot<any, any>;
+  uses?: UsesSlot;
   outputSchema?: ZodTypeAny;
+  instructions?: InstructionsSlot;
+  agentType?: AgentType;
 }) {
+  const basePrompt = [
+    "You are a synthesis assistant.",
+    "The blackboard contains contributions from multiple specialist agents.",
+    "Synthesize the blackboard state into a coherent, unified result.",
+    "Include key findings from each specialist's contribution.",
+  ].join("\n");
+
   return generator({
     name: `${config.name}-synthesizer`,
     model: config.model ?? "openai/gpt-5.4-mini",
     sessionResources: { blackboard: config.blackboardResource },
-    emit: { messages: true, reasoning: false },
+    agentType: config.agentType ?? "primary",
     ...(config.outputSchema ? { outputSchema: config.outputSchema } : {}),
     ...(config.context !== undefined ? { context: config.context } : {}),
-    prompt: [
-      "You are a synthesis assistant.",
-      "The blackboard contains contributions from multiple specialist agents.",
-      "Synthesize the blackboard state into a coherent, unified result.",
-      "Include key findings from each specialist's contribution.",
-    ].join("\n"),
+    ...(config.uses ? { uses: config.uses as any } : {}),
+    prompt: [config.instructions, basePrompt],
     user: (input) => {
       const data = input as { blackboard: unknown; iterations: number; history: unknown[] };
       return [
@@ -229,6 +272,9 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       specialists: Object.keys(config.specialists),
       model: config.model,
       context: config.context,
+      uses: config.uses,
+      instructions: config.instructions,
+      agentType: config.controllerAgentType,
     });
 
   // 3. Record decision: stores controller output in sequencer state and
@@ -270,8 +316,25 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     },
   });
 
-  // 4. Dispatch: routes to the correct specialist
-  const dispatch = createDispatchSpecialist(name, config.specialists);
+  // 4. Dispatch: routes to the correct specialist, wrapped in rescue so a
+  //    failing specialist doesn't kill the entire blackboard loop.
+  const dispatchRouter = createDispatchSpecialist(name, config.specialists);
+  const dispatch = sequencer({
+    name: `${name}-dispatch-safe`,
+    inputSchema: z.any(),
+  })
+    .then(dispatchRouter)
+    .rescue([{
+      block: handler({
+        name: `${name}-dispatch-rescue`,
+        execute: (error, ctx) => {
+          ctx.emitStatus(
+            `[blackboard:${name}] specialist failed: ${(error as Error).message}`
+          );
+          return { __rescued: true };
+        },
+      }),
+    }]);
 
   // 5. Snapshot: emits the current blackboard state as a structured component
   //    after each specialist runs. Uses a stable key so clients replace
@@ -290,7 +353,7 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         iteration: controlState.iteration,
         specialist: controlState.currentSpecialist ?? null,
         done: controlState.done,
-      } as unknown as Record<string, unknown>, { key: name }).done();
+      } as unknown as Record<string, unknown>, { key: name });
       return input;
     },
   });
@@ -308,7 +371,10 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
           blackboardResource,
           model: config.model,
           context: config.context,
+          uses: config.uses,
           outputSchema: config.outputSchema,
+          instructions: config.instructions,
+          agentType: config.synthesizerAgentType,
         });
 
   // 8. Assemble pipeline

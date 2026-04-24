@@ -51,12 +51,13 @@ interface BlockContext {
     | { status: "failed"; error: Error };
 
   // Item emission
-  emitMessage(text: string): MessageHandle;
-  emitComponent(component: string, data: Record<string, unknown>): ComponentHandle;
-  emitLLMContext(text: string): void;
-  emitStatus(message: string): void;
+  emitMessage(text: string, options?: { agentType?: AgentType; agentName?: string }): void;
+  emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; agentType?: AgentType; agentName?: string }): void;
+  emitStatus(message: string, options?: { blocked?: boolean; backgroundTasks?: number }): void;
 }
 ```
+
+Each emitted item's visibility is derived from `(item.type, item.agentType)` via `resolveItemVisibility()`. Generators declare identity by setting `agentType` on their config; conversational items (message, reasoning, block_tool_output) inherit visibility from that identity, structural items have fixed per-type defaults. See the [item visibility](#item-visibility) section for the full model.
 
 Blocks are **silent by default** — if a block doesn't explicitly emit via `ctx` methods, it produces nothing visible to the client or LLM.
 
@@ -187,10 +188,10 @@ const chatGenerator = generator({
   prompt: "You are a helpful, concise assistant.",
   inputSchema: z.object({ message: z.string().min(1) }),
   // Default outputSchema is z.string() — enables text streaming
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: true,
   user: (input) => input.message,
   tools: [searchTool, calculatorTool],
-  emit: { reasoning: true },
+  agentType: "primary",
 });
 ```
 
@@ -204,6 +205,8 @@ Generators assemble model messages from four slots, resolved in order:
 4. **`user`** — Current user input
 
 Each slot can be a string, object, array, or async function `(input, ctx) => value`.
+
+The `history` slot supports additional shorthands: `true` auto-fetches session history with defaults, and an options object (e.g. `{ limit: 8 }`) passes those options to `items.history()`. A function still works for full control.
 
 ### Tool Loop
 
@@ -220,13 +223,13 @@ Each slot can be a string, object, array, or async function `(input, ctx) => val
 
 ### Automatic Emissions
 
-Generators auto-emit items based on model output:
+Generators auto-emit items based on model output — but only when `agentType` is set:
 - Reasoning/thinking → `reasoning` item
 - Text response → `message` item (role: "assistant"), streamed via `content.delta`
 - Tool invocation → `block_output` with `toolCall` (two-phase: in_progress → completed)
 - Final return value → `block_output` (internal/devtools only)
 
-Suppress with `emit: { reasoning: false, messages: false, toolCalls: false }`.
+To run a generator silently (no session items, only `block_output` via graph edges), omit `agentType`. See [Item Visibility](#item-visibility) for the identity model.
 
 ## Sequencer
 
@@ -240,25 +243,42 @@ const chatPipeline = sequencer({ name: "chat-pipeline", inputSchema: chatInputSc
   .then(incrementCounter);
 ```
 
-### DSL Methods (14 total)
+### DSL Methods (20 total)
 
-| Method | Purpose |
-|--------|---------|
-| `then(block)` | Execute block, pass output to next step |
-| `then(connector, block)` | Transform input before block execution |
-| `thenIf(condition, block)` | Conditional step execution |
-| `map(fn)` | Transform current value without a block |
-| `parallel(steps)` | Execute named steps concurrently |
-| `forEach(block)` | Execute block for each array element |
-| `doUntil(condition, block)` | Loop until condition is true |
-| `doWhile(condition, block)` | Loop while condition is true |
-| `loopBack(stepName, opts)` | Jump back to a named step (bounded) |
-| `work(block)` | Queue non-aborting side-chain execution |
-| `waitForWork(opts)` | Wait for queued work to complete |
-| `tap(block)` | Side effect without changing payload |
-| `tapIf(condition, block)` | Conditional side effect |
-| `rescue(handlers)` | Error recovery by error type |
-| `branch(branches)` | Conditional multi-path execution |
+Each method produces a `BlockValue<T>` of a specific kind on the emitted
+`block_output` item (FIX-413). Refs and structures avoid duplicating content
+across the execution tree; see `docs/architecture/items.md` for the union
+definition and resolution semantics.
+
+| Method | Purpose | `block_output` kind |
+|--------|---------|---------------------|
+| `then(block)` | Execute block, pass output to next step | `ref` → child's item |
+| `then(connector, block)` | Transform input before block execution | `ref` → child's item |
+| `thenIf(condition, block)` | Conditional step execution | `ref` if taken, carries prior descriptor if skipped |
+| `map(fn)` | Transform current value without a block | `inline` (novel content) |
+| `parallel(steps)` | Execute named steps concurrently | `structure` (object of refs) |
+| `forEach(block)` | Execute block for each array element | `structure` (array of refs) |
+| `forEachBackground(block)` | Fire-and-forget fan-out per element | passthrough (value unchanged) |
+| `doUntil(condition, block)` | Loop until condition is true | `ref` → final iteration's item |
+| `doWhile(condition, block)` | Loop while condition is true | `ref` → final iteration's item |
+| `loopBack(stepName, opts)` | Jump back to a named step (bounded) | passthrough |
+| `work(block)` | Queue non-aborting side-chain execution | passthrough |
+| `background(block)` | Alias for `.work()` | passthrough |
+| `waitForWork(opts)` | Wait for queued work to complete | passthrough |
+| `tap(block)` | Side effect without changing payload | passthrough |
+| `tapIf(condition, block)` | Conditional side effect | passthrough |
+| `rescue(handlers)` | Error recovery by error type | `ref` → rescue branch's item (when taken) |
+| `branch(branches)` | Conditional multi-path execution | `ref` → selected branch's item |
+| `thenAll(blocks)` | Run array of blocks concurrently, collect all results | `structure` (array of refs) |
+| `thenAny(blocks)` | Try blocks sequentially, first success wins | `ref` → winning branch's item |
+| `race(blocks)` | Run blocks concurrently, first success wins | `ref` → winning branch's item |
+| `exitIf(condition)` | Conditional early exit from chain | passthrough |
+
+"passthrough" means the op does not change the sequencer's running descriptor —
+the last op that emitted `ref`, `inline`, or `structure` stays in effect.
+
+Routers always emit `ref` to the selected route's item. Generators and
+handlers always emit `inline` (they are leaves).
 
 ### Work Semantics
 
@@ -331,18 +351,57 @@ pipeline.then((output, ctx) => ({ query: output.text }), searchBlock);
 - Ambiguous same-precedence collisions raise `AmbiguousBlockNameError`
 - Runtime identity uses `blockInstanceId`, not `name`
 
-## LLM Context Control
+## Item Visibility
 
-Blocks shape what the LLM sees through emission methods:
+Visibility is a pure function of `(item.type, item.agentType)` computed by `resolveItemVisibility()`. There are no per-item `client` / `history` overrides — identity is the lever.
 
-| Method | In LLM Context | In Client UI |
-|--------|----------------|--------------|
-| `ctx.emitMessage(text)` | Yes (conversation message) | Yes |
-| `ctx.emitLLMContext(text)` | Yes (replaces tool result when in tool context) | No |
-| `ctx.emitComponent(comp, data)` | No | Yes |
-| `ctx.emitStatus(msg)` | No | Yes (transient) |
+### Generator identity (`agentType`)
 
-No block-level configuration is needed — the emission API is the control mechanism.
+Every generator declares one of four stances:
+
+| `agentType` | Client stream | LLM history | DevTool |
+|-------------|:-------------:|:-----------:|:-------:|
+| `"primary"` | ✓ | ✓ | ✓ |
+| `"sub"`     | ✓ | — | ✓ |
+| `"trace"`   | — | — | ✓ |
+| *unset*     | *no auto-emission* — only `block_output` flows via graph edges |
+
+No position-inferred default. Every generator declares its own identity.
+
+```ts
+const researcher = generator({
+  name: "researcher",
+  agentType: "sub",           // visible to the user for observability,
+  agentName: "researcher",    // not inherited by the orchestrator's history.
+  prompt: "Analyze and summarize.",
+  model: "anthropic:claude-sonnet-4-6",
+});
+```
+
+Structural item types (`component`, `status`, `container`, `state_change`, `resource_change`, `error`, `step_error`, `block_output`, `router_decision`, `state_snapshot`, `block_debug`) have fixed per-type visibility. `agentType` on a structural item is metadata for filtering / rendering, not visibility — except `"trace"`, which always forces `{ client: false, history: false }` regardless of type.
+
+### `agentName`
+
+Stable name stamped on every emitted item. Defaults to the block's `name`. Generators that share an `agentName` represent one logical agent (collaborative parallel work); distinct names stay isolated.
+
+### Emission helpers
+
+- `ctx.emitMessage(text | content[], options?)` — the primary way to emit assistant-visible content. Accepts optional `{ key?, agentType?, agentName? }`. Without identity, a handler-emitted message defaults to agent-equivalent visibility (on client, in history).
+- `ctx.emitComponent(component, data, options?)` — UI components. Accepts optional `{ key?, agentType?, agentName? }`.
+- `ctx.emitStatus(message, options?)` — transient progress indicators. Structural; identity does not affect visibility.
+
+Examples:
+
+```ts
+ctx.emitMessage("Analysis complete.");
+// Agent-equivalent visibility (client + history).
+
+ctx.emitMessage("Debug: classifier chose route A", { agentType: "trace", agentName: "classifier" });
+// Devtool-only observation — hidden from user and LLM.
+
+ctx.emitMessage("Background audit complete.", { agentType: "sub", agentName: "auditor" });
+// Visible live but excluded from conversation history.
+```
 
 ## Canonical Authority
 

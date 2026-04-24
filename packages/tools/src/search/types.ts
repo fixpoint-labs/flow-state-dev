@@ -2,7 +2,7 @@ import { z } from "zod";
 
 // --- Provider enum ---
 
-export const searchProviders = ["tavily", "exa", "serper", "brave"] as const;
+export const searchProviders = ["tavily", "exa", "perplexity", "serper", "brave", "perplexity-sonar"] as const;
 export type SearchProviderName = (typeof searchProviders)[number];
 
 // --- Normalized output ---

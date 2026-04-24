@@ -116,12 +116,19 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 **Stores:**
 - `createInMemoryStores` — Fast, ephemeral stores for testing
 - `createFilesystemStores` — Persistent stores for development and production
+- `createInMemoryContentStore` / `createFilesystemContentStore` — Content store adapters
 - Scope store factories and CAS/state ops
 
 **Streaming:**
 - `createResponseEmitter` — Create an SSE emitter for a request
 - `encodeStreamEvent` / `serializeSSEFrame` — Low-level SSE encoding
 - `replayRequestEvents` — Replay events from a sequence cursor
+
+**Request abort:**
+- `abortRequest(requestId)` — Signal an in-progress request to stop via `AbortController`
+- `hasActiveAbortController(requestId)` — Check if a request can be aborted
+- Abort endpoint: `POST /api/flows/:flowKind/requests/:requestId/abort` — returns 204 on success, 404 if not in progress, 409 if already terminal
+- Aborted requests receive `status: "aborted"` with an `abortedAt` timestamp. The SSE stream emits `request.aborted` and closes.
 
 **Registry/routes:**
 - `createFlowRegistry` — Register flow instances
@@ -131,6 +138,37 @@ Use `summarizeForLog(value)` for the same bounded payload summaries in custom mi
 **Errors:**
 - `FlowError` and canonical subclasses
 - `normalizeError` — Wrap any thrown value into a typed FlowError
+
+## ContentStore
+
+`StoreRegistry` includes a required `content: ContentStore` field that separates resource content persistence from scope record persistence. Both `createInMemoryStores()` and `createFilesystemStores()` include a default `ContentStore`.
+
+```ts
+interface ContentStore {
+  get(scopeType, scopeId, resourceKey): Promise<string | undefined>;
+  set(scopeType, scopeId, resourceKey, content): Promise<void>;
+  delete(scopeType, scopeId, resourceKey): Promise<void>;
+  getAll(scopeType, scopeId): Promise<Record<string, string>>;
+  deleteAll(scopeType, scopeId): Promise<void>;
+}
+```
+
+For custom store registries, provide a `ContentStore` implementation. `createInMemoryContentStore()` is the simplest option:
+
+```ts
+import { createInMemoryContentStore } from "@flow-state-dev/server";
+
+const stores: StoreRegistry = {
+  session: mySessionStore,
+  request: myRequestStore,
+  user: myUserStore,
+  project: myProjectStore,
+  activeRequests: myActiveRequestRegistry,
+  content: createInMemoryContentStore(),
+};
+```
+
+Database adapters can implement `ContentStore` to route content to blob storage, S3, or a separate table while keeping scope metadata in the primary store.
 
 ## Notes
 

@@ -55,14 +55,15 @@ const myGenerator = generator({
   tools: [myTool],
   search: true,
   context: [myContextFn],
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: true,
   repair: { mode: "auto", maxAttempts: 3 },
 });
 ```
 
-**Emit config:**
+**Identity config:**
 
-- `emit?: false | { reasoning?: boolean; messages?: boolean | 'reasoning'; toolCalls?: boolean }` — Control which items the generator emits to the client stream. `false` suppresses everything. Individual flags default to `true`. Set `messages: 'reasoning'` to remap assistant text as reasoning items. When `messages` is `false` but tools are present, streaming is still used for tool call status events.
+- `agentType?: "primary" | "sub" | "trace"` — Declares the generator's identity. Governs visibility of auto-emitted conversational items (messages, reasoning, tool outputs). `"primary"` = user-facing (client + history). `"sub"` = task-executor (client, not history). `"trace"` = observability-only (neither). When **unset**, the generator performs no auto-emission — only its typed `block_output` flows via graph edges. No position-inferred default; every generator declares.
+- `agentName?: string` — Stable name stamped on every emitted item. Defaults to the block's `name` when `agentType` is set. Generators that share an `agentName` represent the same logical agent; distinct names stay isolated. Used by the client for per-agent rendering and by `items.selectForContext({ agentName })` for scoped context assembly.
 
 **Search config:**
 
@@ -99,7 +100,7 @@ const pipeline = sequencer({
 });
 ```
 
-**Methods:** `then`, `thenIf`, `map`, `parallel`, `forEach`, `doUntil`, `doWhile`, `loopBack`, `work`, `waitForWork`, `tap`, `tapIf`, `rescue`, `branch`
+**Methods:** `then`, `thenIf`, `map`, `parallel`, `forEach`, `forEachBackground`, `doUntil`, `doWhile`, `loopBack`, `work`, `workIf`, `background`, `waitForWork`, `tap`, `tapIf`, `rescue`, `branch`, `thenAll`, `thenAny`, `race`, `exitIf`
 
 ### `router(config)`
 

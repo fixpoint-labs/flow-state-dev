@@ -10,13 +10,14 @@ sidebar_position: 1
 
 Tools are handler blocks that give generators the ability to interact with the outside world. When you pass a tool to a generator, the LLM can decide when to call it during a conversation. The framework handles the tool-call loop, schema validation, and retry mechanics automatically.
 
-The `@flow-state-dev/tools` package ships three built-in tools:
+The `@flow-state-dev/tools` package ships four built-in tools:
 
 | Tool | What it does | Always works? |
 |------|-------------|---------------|
 | `tools.search()` | Web search via Tavily, Exa, Serper, or Brave | No — requires at least one search API key |
 | `tools.fetch()` | Fetch a single web page as markdown | Yes — built-in fallback always available |
 | `tools.crawl()` | Crawl a website (BFS), returning markdown for each page | Yes — built-in fallback always available |
+| `createBashTool()` | Execute bash commands in a sandboxed workspace with resource sync | Yes — in-memory fallback always available |
 
 ## Provider auto-selection
 
@@ -88,3 +89,4 @@ npm install @mendable/firecrawl-js  # only if using Firecrawl
 
 - [Fetch tool](/docs/tools/fetch) — single page fetching
 - [Crawl tool](/docs/tools/crawl) — multi-page site crawling
+- [Bash tool](/docs/tools/bash) — sandboxed command execution with resource sync

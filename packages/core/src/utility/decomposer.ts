@@ -1,5 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
-import type { GeneratorConfig, GeneratorSlot } from "../blocks";
+import type { GeneratorConfig, GeneratorHistoryConfig, GeneratorSlot } from "../blocks";
+import type { AgentType } from "../items/types";
 import { generator } from "../blocks";
 
 export const decomposerTaskSchema = z.object({
@@ -22,7 +23,13 @@ export interface DecomposerConfig<
   /** Additional context injected into the system prompt before decomposition. */
   context?: GeneratorSlot;
   /** History slot — provides conversation history so the decomposer can resolve references. */
-  history?: GeneratorSlot;
+  history?: GeneratorHistoryConfig;
+  /**
+   * Identity for emitted items. Unset by default — decomposed task lists flow
+   * via graph edges only. Set to `"primary"` to surface the plan to the user,
+   * or `"trace"` for observability-only runs.
+   */
+  agentType?: AgentType;
 }
 
 function toUserContent(input: unknown): string {
@@ -45,6 +52,7 @@ export function decomposer<
     name: config.name,
     model: config.model ?? "openai/gpt-5.4-mini",
     outputSchema,
+    agentType: config.agentType,
     context: config.context,
     history: config.history,
     search: true,

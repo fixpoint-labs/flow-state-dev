@@ -48,7 +48,7 @@ export function createMockModelResolver(options: {
 }): ModelResolver {
   const policy = options.policy ?? "error";
 
-  return (modelId: string, blockName?: string): GeneratorModel => {
+  const resolver = ((modelId: string, blockName?: string): GeneratorModel => {
     const byBlock = blockName === undefined ? undefined : options.generators?.[blockName];
     const byModel = options.models?.[modelId];
     const mock = byBlock ?? byModel;
@@ -92,7 +92,11 @@ export function createMockModelResolver(options: {
         };
       }
     };
-  };
+  }) as ModelResolver;
+
+  resolver.resolveId = (modelId: string): string => modelId;
+
+  return resolver;
 }
 
 /**

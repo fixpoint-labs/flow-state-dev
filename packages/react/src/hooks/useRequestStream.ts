@@ -93,7 +93,9 @@ export function useRequestStream(
         if (
           event.status === "completed" ||
           event.status === "failed" ||
-          event.status === "incomplete"
+          event.status === "incomplete" ||
+          event.status === "interrupted" ||
+          event.status === "aborted"
         ) {
           setIsStreaming(false);
           setIsFinishing(false);
@@ -102,8 +104,7 @@ export function useRequestStream(
       onItemAdded: (event) => {
         if (!passesTypeFilter(event.item, options.filter)) return;
 
-        // Detect the "finishing" signal from sequencer auto-await.
-        if (event.item.type === "status" && (event.item as StatusItem).message === "finishing") {
+        if (event.item.type === "status" && (event.item as StatusItem).blocked === false) {
           setIsFinishing(true);
         }
 
