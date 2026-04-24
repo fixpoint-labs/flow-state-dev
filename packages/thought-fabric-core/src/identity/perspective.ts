@@ -12,6 +12,7 @@
  * operate under different constitutions.
  */
 
+import { defineResource } from '@flow-state-dev/core'
 import { z } from 'zod'
 
 // ---------------------------------------------------------------------------
@@ -189,3 +190,204 @@ export function perspective(config: PerspectiveConfig): PerspectiveInstance {
   const parsed = perspectiveConfigSchema.parse(config)
   return Object.freeze(parsed)
 }
+
+// ===========================================================================
+// Phase B — Resource-backed runtime state
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Observations — things the perspective noticed
+// ---------------------------------------------------------------------------
+
+/**
+ * A single observation recorded by the perspective.
+ *
+ * Observations are atomic notice events — discrete things the perspective
+ * picked up while analyzing content. They accumulate over a session and
+ * can be queried, filtered, formatted, or summarized into positions.
+ */
+export const perspectiveObservationSchema = z.object({
+  /** Unique identifier for this observation. */
+  id: z.string(),
+  /** Concise statement of what the perspective noticed. */
+  content: z.string(),
+  /** Semantic category — e.g. 'risk', 'opportunity', 'pattern', 'concern', 'strength'. */
+  category: z.string(),
+  /** Confidence the observation is real and significant. Range [0, 1]. */
+  confidence: z.number().min(0).max(1),
+  /** Optional: what input or context triggered this observation. */
+  source: z.string().optional(),
+  /** Turn number when this observation was added. */
+  addedAt: z.number().int().min(0),
+})
+
+export type PerspectiveObservation = z.infer<typeof perspectiveObservationSchema>
+
+/** Observations resource state: the observation log + a turn counter. */
+export const perspectiveObservationsStateSchema = z.object({
+  /** All recorded observations, in insertion order. */
+  observations: z.array(perspectiveObservationSchema),
+  /** Monotonic turn counter — bumped via `advancePerspectiveObservations`. */
+  turnCounter: z.number().int().min(0),
+})
+
+export type PerspectiveObservationsState = z.infer<typeof perspectiveObservationsStateSchema>
+
+/**
+ * Session-scoped resource holding a perspective's observations.
+ *
+ * Always session-scoped: observations are inherently tied to the conversation
+ * they emerged from. Positions (which derive from observations) can persist
+ * to user/project scope via `createPerspectivePositionsResource`.
+ */
+export const perspectiveObservationsResource = defineResource({
+  stateSchema: perspectiveObservationsStateSchema,
+  default: { observations: [], turnCounter: 0 },
+  writable: true,
+})
+
+// ---------------------------------------------------------------------------
+// Positions — conclusions the perspective has reached
+// ---------------------------------------------------------------------------
+
+/**
+ * A counter-evidence record attached to a position.
+ *
+ * Positions can be challenged with new evidence that weakens (or contradicts)
+ * the original claim. Challenges are append-only — they don't remove the
+ * position, but they do reduce its effective confidence in formatters.
+ */
+export const perspectivePositionChallengeSchema = z.object({
+  /** The counter-evidence text. */
+  evidence: z.string(),
+  /** Turn number when the challenge was added. */
+  addedAt: z.number().int().min(0),
+})
+
+export type PerspectivePositionChallenge = z.infer<typeof perspectivePositionChallengeSchema>
+
+/**
+ * A position the perspective has taken — a synthesized conclusion drawn
+ * from one or more observations.
+ *
+ * Positions are more stable and declarative than observations. They link
+ * back to the supporting observation IDs and can carry challenges that
+ * weaken their effective confidence over time.
+ */
+export const perspectivePositionSchema = z.object({
+  /** Unique identifier for this position. */
+  id: z.string(),
+  /** The claim or conclusion. */
+  claim: z.string(),
+  /** Reasoning behind the position. */
+  reasoning: z.string(),
+  /** Initial confidence at the time of recording. Range [0, 1]. */
+  confidence: z.number().min(0).max(1),
+  /** IDs of observations that support this position. */
+  supportingObservations: z.array(z.string()),
+  /** Counter-evidence challenges accumulated over time. */
+  challenges: z.array(perspectivePositionChallengeSchema),
+  /** Turn number when the position was first recorded. */
+  addedAt: z.number().int().min(0),
+})
+
+export type PerspectivePosition = z.infer<typeof perspectivePositionSchema>
+
+/** Positions resource state: just the array of positions. */
+export const perspectivePositionsStateSchema = z.object({
+  /** All recorded positions, in insertion order. */
+  positions: z.array(perspectivePositionSchema),
+})
+
+export type PerspectivePositionsState = z.infer<typeof perspectivePositionsStateSchema>
+
+/**
+ * Session-scoped default positions resource.
+ *
+ * For positions that should persist beyond the session (e.g. user-scoped
+ * insights about a particular user), create a scoped variant via
+ * `createPerspectivePositionsResource('user' | 'project')`.
+ */
+export const perspectivePositionsResource = defineResource({
+  stateSchema: perspectivePositionsStateSchema,
+  default: { positions: [] },
+  writable: true,
+})
+
+/**
+ * Create a positions resource at user or project scope.
+ *
+ * Returns a fresh `defineResource` with the same schema but at the
+ * specified scope, suitable for capability declarations like
+ * `userResources: { perspectivePositions: createPerspectivePositionsResource('user') }`.
+ *
+ * (Resource scope is determined by where the resource is declared on the
+ * capability, not by the resource definition itself — but separate factory
+ * calls produce distinct references for diamond-dedup correctness.)
+ */
+export function createPerspectivePositionsResource(_scope: 'session' | 'user' | 'project') {
+  return defineResource({
+    stateSchema: perspectivePositionsStateSchema,
+    default: { positions: [] },
+    writable: true,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Block I/O schemas (Phase B)
+// ---------------------------------------------------------------------------
+
+/**
+ * Input to `perspectiveObserve` — accepts either a raw observation batch
+ * or a `PerspectiveAnalysis` whose `salienceNotes` will be promoted to
+ * observations.
+ */
+export const perspectiveObserveInputSchema = z.union([
+  perspectiveAnalysisSchema,
+  z.object({
+    /** Explicit observation entries to record. */
+    observations: z.array(z.object({
+      content: z.string().min(1),
+      category: z.string().min(1).default('observation'),
+      confidence: z.number().min(0).max(1).default(0.7),
+      source: z.string().optional(),
+    })).min(1),
+  }),
+])
+
+export type PerspectiveObserveInput = z.infer<typeof perspectiveObserveInputSchema>
+
+/** Output of `perspectiveObserve` — the IDs of newly recorded observations. */
+export const perspectiveObserveOutputSchema = z.object({
+  /** The observations that were recorded. */
+  observations: z.array(perspectiveObservationSchema),
+})
+
+export type PerspectiveObserveOutput = z.infer<typeof perspectiveObserveOutputSchema>
+
+/** Input to `perspectivePosition` — claim, reasoning, optional supporting refs. */
+export const perspectivePositionInputSchema = z.object({
+  claim: z.string().min(1),
+  reasoning: z.string().min(1),
+  confidence: z.number().min(0).max(1).default(0.7),
+  supportingObservations: z.array(z.string()).default([]),
+})
+
+export type PerspectivePositionInput = z.infer<typeof perspectivePositionInputSchema>
+
+/** Input to `perspectiveChallenge` — position id + counter-evidence. */
+export const perspectiveChallengeInputSchema = z.object({
+  positionId: z.string().min(1),
+  evidence: z.string().min(1),
+})
+
+export type PerspectiveChallengeInput = z.infer<typeof perspectiveChallengeInputSchema>
+
+/** Snapshot output: current observations and positions. */
+export const perspectiveSnapshotOutputSchema = z.object({
+  observations: z.array(perspectiveObservationSchema),
+  positions: z.array(perspectivePositionSchema),
+  turnCounter: z.number().int().min(0),
+})
+
+export type PerspectiveSnapshotOutput = z.infer<typeof perspectiveSnapshotOutputSchema>

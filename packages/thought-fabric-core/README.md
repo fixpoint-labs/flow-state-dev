@@ -12,7 +12,7 @@ This package is in Wave 1 foundation mode.
 |--------|-----------|--------|
 | Attention | `attention` | Salience scoring + relevance filtering implemented |
 | Memory | `memory` | Working memory implemented |
-| Identity | `identity` | Perspective implemented; Constitution scaffold |
+| Identity | `identity` | Perspective (static + resource-backed + capability); Constitution scaffold |
 | Perception | — | Wave 2+ |
 | Reasoning | — | Wave 2+ |
 | Metacognition | `metacognition` | Bias & sycophancy detection |
@@ -315,6 +315,104 @@ const result = await analysis.run(
 | `PerspectiveAnalysis` | type | Structured analysis output. |
 | `PerspectiveBlockConfig` | type | Config for handler-based blocks. |
 | `PerspectiveAnalyzeConfig` | type | Config for generator-based blocks (adds `model`). |
+
+#### Resource-backed state (capability + system factory)
+
+The static blocks above are stateless — useful as one-shot prompt shapers. For perspectives that accumulate over a session (observations recorded, positions reached, conclusions challenged), use the capability or the `system()` bundle factory. Both are additive on top of the static foundation: the frozen `PerspectiveInstance` remains the initial configuration, and two session/user/project-scoped resources hold evolving state.
+
+```ts
+import { perspective, system } from '@thought-fabric/core/identity'
+import { defineFlow, generator, handler, sequencer } from '@flow-state-dev/core'
+
+const securityEngineer = perspective({ ... })
+
+// Bundle: pre-configured blocks + capability + helpers
+const sec = system(securityEngineer, {
+  positionScope: 'user', // positions persist across sessions for the user
+  model: 'gpt-5',
+})
+
+// Declarative capability use: auto-installs resources, context, and helpers
+const chat = generator({
+  name: 'chat',
+  model: 'gpt-5',
+  uses: [sec.capability],
+  user: (input) => input,
+  // Gets static framing + accumulated observations/positions injected as context,
+  // and ctx.cap.perspective.* typed helpers.
+})
+
+// Handler that records observations — opt out of context presets
+const observe = handler({
+  name: 'capture-findings',
+  uses: [sec.capability.presets({ static: false, accumulated: false })],
+  execute: async (input, ctx) => {
+    await ctx.cap.perspective.observe({
+      content: 'Auth endpoint lacks rate limiting',
+      category: 'concern',
+      confidence: 0.9,
+    })
+  },
+})
+
+// Or use the bundled capture sequencer (analyze → observe)
+const pipeline = sequencer({ name: 'review' })
+  .work((input) => ({ content: input.proposal }), sec.capture)
+  .then(nextBlock)
+
+// Wire resources in the flow
+const flow = defineFlow({
+  // ...
+  session: { resources: { ...sec.sessionResources, ...otherSession } },
+  user: { resources: { ...sec.userResources, ...otherUser } },
+})
+```
+
+**Capability presets:**
+- `static` (default on) — initial perspective framing (role, salience, reasoning, expertise)
+- `accumulated` (default on) — observations + positions formatted from the resources
+
+Disable either via `cap.presets({ accumulated: false })` when token budget is tight.
+
+| Export | Kind | Description |
+|--------|------|-------------|
+| **Capability + system** | | |
+| `createPerspectiveCapability(instance, config?)` | factory | Returns a capability bound to a perspective instance with configurable position scope. |
+| `system(instance, config?)` | factory | Full bundle: pre-configured blocks, `capture` sequencer, capability, helpers, resource declarations. |
+| **Stateful blocks** | | |
+| `perspectiveObserve(config)` | handler | Records observations. Accepts a `PerspectiveAnalysis` (promotes `salienceNotes`) or an explicit batch. |
+| `perspectivePosition(config)` | handler | Records a position (claim + reasoning) tied to supporting observation IDs. |
+| `perspectiveChallenge(config)` | handler | Appends counter-evidence to an existing position. |
+| `perspectiveSnapshot(config)` | handler | Reads current observations + positions + turn counter. |
+| `perspectiveAdvance(config)` | handler | Bumps the observation turn counter. Designed for `.tap()`. |
+| **Resources** | | |
+| `perspectiveObservationsResource` | resource | Session-scoped singleton (observations always live here). |
+| `perspectivePositionsResource` | resource | Session-scoped default (used for standalone block use). |
+| `createPerspectivePositionsResource(scope)` | factory | Returns a positions resource for `'session' \| 'user' \| 'project'` scope. |
+| **Schemas (Phase B)** | | |
+| `perspectiveObservationSchema` | Zod schema | `{ id, content, category, confidence, source?, addedAt }` |
+| `perspectiveObservationsStateSchema` | Zod schema | `{ observations[], turnCounter }` |
+| `perspectivePositionSchema` | Zod schema | `{ id, claim, reasoning, confidence, supportingObservations[], challenges[], addedAt }` |
+| `perspectivePositionsStateSchema` | Zod schema | `{ positions[] }` |
+| `perspectivePositionChallengeSchema` | Zod schema | `{ evidence, addedAt }` |
+| **Helpers (Phase B)** | | |
+| `addPerspectiveObservation(ref, input)` | helper | Record an observation with auto-generated id + turn stamp. |
+| `removePerspectiveObservation(ref, id)` | helper | Remove by id. |
+| `perspectiveObservations(ref, category?)` | accessor | Read observations (optionally filtered by category). |
+| `advancePerspectiveObservations(ref)` | helper | Bump turn counter. |
+| `formatPerspectiveObservations(ref)` | helper | Format grouped by category. |
+| `addPerspectivePosition(ref, input, obsRef?)` | helper | Record a position. |
+| `challengePerspectivePosition(ref, id, evidence, obsRef?)` | helper | Append counter-evidence. |
+| `removePerspectivePosition(ref, id)` | helper | Remove by id. |
+| `perspectivePositions(ref)` | accessor | Read positions in insertion order. |
+| `formatPerspectivePositions(ref)` | helper | Numbered list with reasoning + challenges. |
+| `formatPerspectiveAccumulated(obsRef, posRef?)` | helper | Combined observations + positions. |
+| **Types (Phase B)** | | |
+| `PerspectiveObservation` | type | A single recorded observation. |
+| `PerspectivePosition` | type | A recorded position with challenges. |
+| `PositionScope` | type | `'session' \| 'user' \| 'project'` |
+| `PerspectiveSystem` | type | Return type of `system()`. |
+| `PerspectiveCapability` | type | Return type of `createPerspectiveCapability()`. |
 
 ### Constitution
 

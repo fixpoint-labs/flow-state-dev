@@ -13,13 +13,38 @@
  */
 
 import { generator, handler, sequencer } from '@flow-state-dev/core'
+import { z } from 'zod'
 import {
   perspectiveInputSchema,
   perspectiveApplyOutputSchema,
   perspectiveAnalysisSchema,
+  perspectiveObservationSchema,
+  perspectivePositionSchema,
+  perspectiveObservationsResource,
+  perspectivePositionsResource,
+  perspectiveObserveInputSchema,
+  perspectiveObserveOutputSchema,
+  perspectivePositionInputSchema,
+  perspectiveChallengeInputSchema,
+  perspectiveSnapshotOutputSchema,
 } from './perspective.js'
-import type { PerspectiveInstance } from './perspective.js'
-import { formatPerspective } from './perspective-helpers.js'
+import type {
+  PerspectiveInstance,
+  PerspectiveObservation,
+  PerspectivePosition,
+} from './perspective.js'
+import {
+  formatPerspective,
+  addPerspectiveObservation,
+  addPerspectivePosition,
+  challengePerspectivePosition,
+  perspectiveObservations,
+  perspectivePositions,
+  advancePerspectiveObservations,
+} from './perspective-helpers.js'
+
+/** Position scope — controls where positions are persisted. */
+export type PositionScope = 'session' | 'user' | 'project'
 
 // ---------------------------------------------------------------------------
 // Config
@@ -148,7 +173,7 @@ export function perspectiveAnalyze(config: PerspectiveAnalyzeConfig) {
       }
       return parts.join('\n')
     },
-    emit: { messages: false, reasoning: false, toolCalls: false },
+    agentType: 'trace',
   })
 }
 
@@ -189,4 +214,247 @@ export function perspectiveAuditor(config: PerspectiveAnalyzeConfig) {
   return sequencer({ name: blockName, inputSchema: perspectiveInputSchema })
     .then(applyBlock)
     .then(analyzeBlock)
+}
+
+// ===========================================================================
+// Phase B — Resource-backed blocks (observe, position, challenge, snapshot, advance)
+// ===========================================================================
+
+/** Type alias for the observations resource definition. */
+type ObservationsResource = typeof perspectiveObservationsResource
+
+/** Type alias for the positions resource definition. */
+type PositionsResource = typeof perspectivePositionsResource
+
+/** Shared config for resource-backed blocks. */
+export interface PerspectiveStatefulBlockConfig {
+  /** Override block name. Default: derived from perspective name. */
+  name?: string
+  /** The perspective instance this block operates on (used for default block naming). */
+  perspective: PerspectiveInstance
+  /**
+   * Override the observations resource — used by the system factory to
+   * share a single resource reference across all blocks.
+   */
+  _observationsResource?: ObservationsResource
+}
+
+/** Config for position-related blocks (adds scope handling). */
+export interface PerspectivePositionBlockConfig extends PerspectiveStatefulBlockConfig {
+  /** Where positions live. Default: 'session'. */
+  positionScope?: PositionScope
+  /**
+   * Override the positions resource — used by the system factory to
+   * share a single resource reference across all blocks.
+   */
+  _positionsResource?: PositionsResource
+}
+
+// ---------------------------------------------------------------------------
+// Block: perspectiveObserve
+// ---------------------------------------------------------------------------
+
+/**
+ * Handler that records observations into the observations resource.
+ *
+ * Accepts either:
+ * - A `PerspectiveAnalysis` output — the `salienceNotes` array is promoted
+ *   to observations, each tagged with category `'analysis'`.
+ * - An explicit batch — `{ observations: [{ content, category?, confidence?, source? }] }`.
+ *
+ * Returns the recorded observations with their generated IDs and turn stamps.
+ *
+ * Wire after `perspectiveAnalyze` in a sequencer to capture findings into the
+ * resource, or call standalone from any handler to record observations.
+ */
+export function perspectiveObserve(config: PerspectiveStatefulBlockConfig) {
+  const { perspective: instance } = config
+  const blockName = config.name ?? `${instance.name}/observe`
+  const resource = config._observationsResource ?? perspectiveObservationsResource
+
+  return handler({
+    name: blockName,
+    inputSchema: perspectiveObserveInputSchema,
+    outputSchema: perspectiveObserveOutputSchema,
+    sessionResources: { perspectiveObservations: resource },
+    execute: async (input, ctx) => {
+      const ref = ctx.session.resources.get('perspectiveObservations')
+      const recorded: PerspectiveObservation[] = []
+
+      // Discriminate input shape: PerspectiveAnalysis vs explicit batch.
+      // PerspectiveAnalysis has perspectiveName + salienceNotes; explicit has observations.
+      if ('observations' in input && Array.isArray((input as any).observations)) {
+        for (const obs of (input as { observations: Array<{
+          content: string; category?: string; confidence?: number; source?: string
+        }> }).observations) {
+          recorded.push(await addPerspectiveObservation(ref, obs))
+        }
+      } else {
+        const analysis = input as { perspectiveName: string; salienceNotes: string[]; confidence: number }
+        for (const note of analysis.salienceNotes) {
+          recorded.push(await addPerspectiveObservation(ref, {
+            content: note,
+            category: 'analysis',
+            confidence: analysis.confidence,
+            source: analysis.perspectiveName,
+          }))
+        }
+      }
+
+      return { observations: recorded }
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Block: perspectivePosition
+// ---------------------------------------------------------------------------
+
+/**
+ * Handler that records a position the perspective has reached.
+ *
+ * Positions are conclusions the perspective has reached — typically derived
+ * from accumulated observations. Use `supportingObservations` to reference
+ * observation IDs that back the claim. Position scope is configurable via
+ * `positionScope` (default 'session').
+ */
+export function perspectivePosition(config: PerspectivePositionBlockConfig) {
+  const { perspective: instance } = config
+  const blockName = config.name ?? `${instance.name}/position`
+  const scope = config.positionScope ?? 'session'
+  const resource = config._positionsResource ?? perspectivePositionsResource
+  const observationsResource = config._observationsResource ?? perspectiveObservationsResource
+
+  return handler({
+    name: blockName,
+    inputSchema: perspectivePositionInputSchema,
+    outputSchema: perspectivePositionSchema,
+    sessionResources: {
+      perspectiveObservations: observationsResource,
+      ...(scope === 'session' ? { perspectivePositions: resource } : {}),
+    },
+    ...(scope === 'user' ? { userResources: { perspectivePositions: resource } } : {}),
+    ...(scope === 'project' ? { projectResources: { perspectivePositions: resource } } : {}),
+    execute: async (input, ctx) => {
+      const obsRef = ctx.session.resources.get('perspectiveObservations')
+      const posRef = scope === 'session'
+        ? ctx.session.resources.get('perspectivePositions')
+        : scope === 'user'
+          ? (ctx as any).user.resources.get('perspectivePositions')
+          : (ctx as any).project.resources.get('perspectivePositions')
+
+      return addPerspectivePosition(posRef, input, obsRef)
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Block: perspectiveChallenge
+// ---------------------------------------------------------------------------
+
+/**
+ * Handler that appends counter-evidence to an existing position.
+ *
+ * Challenges accumulate on the position — they don't remove it. Returns
+ * `{ challenged: boolean }` indicating whether the position existed.
+ */
+export function perspectiveChallenge(config: PerspectivePositionBlockConfig) {
+  const { perspective: instance } = config
+  const blockName = config.name ?? `${instance.name}/challenge`
+  const scope = config.positionScope ?? 'session'
+  const resource = config._positionsResource ?? perspectivePositionsResource
+  const observationsResource = config._observationsResource ?? perspectiveObservationsResource
+
+  return handler({
+    name: blockName,
+    inputSchema: perspectiveChallengeInputSchema,
+    outputSchema: z.object({ challenged: z.boolean() }),
+    sessionResources: {
+      perspectiveObservations: observationsResource,
+      ...(scope === 'session' ? { perspectivePositions: resource } : {}),
+    },
+    ...(scope === 'user' ? { userResources: { perspectivePositions: resource } } : {}),
+    ...(scope === 'project' ? { projectResources: { perspectivePositions: resource } } : {}),
+    execute: async (input, ctx) => {
+      const obsRef = ctx.session.resources.get('perspectiveObservations')
+      const posRef = scope === 'session'
+        ? ctx.session.resources.get('perspectivePositions')
+        : scope === 'user'
+          ? (ctx as any).user.resources.get('perspectivePositions')
+          : (ctx as any).project.resources.get('perspectivePositions')
+
+      const challenged = await challengePerspectivePosition(posRef, input.positionId, input.evidence, obsRef)
+      return { challenged }
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Block: perspectiveSnapshot
+// ---------------------------------------------------------------------------
+
+/**
+ * Handler that returns the current observations and positions plus the
+ * observation turn counter. Useful as the leaf block of inspection or
+ * reporting pipelines.
+ */
+export function perspectiveSnapshot(config: PerspectivePositionBlockConfig) {
+  const { perspective: instance } = config
+  const blockName = config.name ?? `${instance.name}/snapshot`
+  const scope = config.positionScope ?? 'session'
+  const resource = config._positionsResource ?? perspectivePositionsResource
+  const observationsResource = config._observationsResource ?? perspectiveObservationsResource
+
+  return handler({
+    name: blockName,
+    inputSchema: z.any(),
+    outputSchema: perspectiveSnapshotOutputSchema,
+    sessionResources: {
+      perspectiveObservations: observationsResource,
+      ...(scope === 'session' ? { perspectivePositions: resource } : {}),
+    },
+    ...(scope === 'user' ? { userResources: { perspectivePositions: resource } } : {}),
+    ...(scope === 'project' ? { projectResources: { perspectivePositions: resource } } : {}),
+    execute: async (_input, ctx) => {
+      const obsRef = ctx.session.resources.get('perspectiveObservations')
+      const posRef = scope === 'session'
+        ? ctx.session.resources.get('perspectivePositions')
+        : scope === 'user'
+          ? (ctx as any).user.resources.get('perspectivePositions')
+          : (ctx as any).project.resources.get('perspectivePositions')
+
+      return {
+        observations: perspectiveObservations(obsRef),
+        positions: perspectivePositions(posRef),
+        turnCounter: obsRef.state.turnCounter,
+      }
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Block: perspectiveAdvance (.tap()-friendly)
+// ---------------------------------------------------------------------------
+
+/**
+ * Handler that bumps the observation turn counter by one.
+ *
+ * Designed for `.tap()` use in sequencers — has no meaningful output. Run
+ * this at session-turn boundaries (e.g. after each user message) so future
+ * observations get a higher `addedAt` stamp for recency-based formatting.
+ */
+export function perspectiveAdvance(config: PerspectiveStatefulBlockConfig) {
+  const { perspective: instance } = config
+  const blockName = config.name ?? `${instance.name}/advance`
+  const resource = config._observationsResource ?? perspectiveObservationsResource
+
+  return handler({
+    name: blockName,
+    inputSchema: z.any(),
+    sessionResources: { perspectiveObservations: resource },
+    execute: async (_input, ctx) => {
+      const ref = ctx.session.resources.get('perspectiveObservations')
+      await advancePerspectiveObservations(ref)
+    },
+  })
 }
