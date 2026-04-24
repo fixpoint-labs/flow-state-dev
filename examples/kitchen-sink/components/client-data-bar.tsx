@@ -2,9 +2,10 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Activity, User, Brain, Cpu } from "lucide-react";
+import { Activity, User, Brain, Cpu, Sparkles } from "lucide-react";
 import { getPresetOption } from "@/components/model-preset-selector";
 import { getStyleOption } from "@/components/thinking-style-selector";
+import { getProviderOption } from "@/components/provider-preference-selector";
 import { cn } from "@/lib/utils";
 
 interface ClientDataBarProps {
@@ -14,6 +15,8 @@ interface ClientDataBarProps {
   preferredModel?: string;
   /** Actual model string returned by the provider (e.g. "claude-sonnet-4-5"). */
   resolvedModel?: string;
+  /** Preferred provider brand — "" when no preference. */
+  preferredProvider?: string;
   /** The user's thinking style selection ("auto", "default", etc.). */
   thinkingStyleMode?: string;
   /** The resolved thinking style from the most recent request. */
@@ -25,6 +28,7 @@ export function ClientDataBar({
   requestCount,
   displayName,
   resolvedModel,
+  preferredProvider,
   thinkingStyleMode,
   thinkingStyle,
 }: ClientDataBarProps) {
@@ -32,6 +36,13 @@ export function ClientDataBar({
   const showThinkingStyle = thinkingStyleMode === "auto" && thinkingStyle;
   const styleOption = showThinkingStyle ? getStyleOption(thinkingStyle as any) : null;
   const StyleIcon = styleOption?.icon;
+
+  // Only badge the provider preference when it's non-empty ("" = no preference).
+  const showProviderPreference =
+    preferredProvider !== undefined && preferredProvider !== "";
+  const providerOption = showProviderPreference
+    ? getProviderOption(preferredProvider)
+    : null;
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 text-xs">
@@ -63,6 +74,15 @@ export function ClientDataBar({
           </div>
         </>
       ) }
+      {providerOption && (
+        <>
+          <Separator orientation="vertical" className="hidden h-4 md:block" />
+          <div className="hidden items-center gap-1.5 text-muted-foreground md:flex">
+            <Sparkles className={cn("h-3.5 w-3.5", providerOption.color)} />
+            <span>{providerOption.label}</span>
+          </div>
+        </>
+      )}
       {showThinkingStyle && StyleIcon && (
         <>
           <Separator orientation="vertical" className="hidden h-4 md:block" />

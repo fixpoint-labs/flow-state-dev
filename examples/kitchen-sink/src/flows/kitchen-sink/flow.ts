@@ -81,9 +81,16 @@ const sessionStateSchema = z.object({
   features: featuresSchema.default({}),
 });
 
+// Brand preference axis (FIX-425). Orthogonal to preferredModel (tier). Empty
+// string is "no preference" — stored as empty so the field is always present
+// in user state without forcing an initial choice on the user.
+const PROVIDER_PREFERENCE_VALUES = ["", "anthropic", "openai", "google"] as const;
+const providerPreferenceSchema = z.enum(PROVIDER_PREFERENCE_VALUES).default("");
+
 const userStateSchema = z.object({
   displayName: z.string().default("Developer"),
   preferredModel: z.string().default(MODEL_ID),
+  preferredProvider: providerPreferenceSchema,
 });
 
 // ---------------------------------------------------------------------------
@@ -222,7 +229,13 @@ const resolveModel = handler({
   sessionStateSchema: z.object({ resolvedModel: z.string().optional() }),
   execute: async (_input, ctx) => {
     const preferred = ctx.user?.state.preferredModel ?? MODEL_ID;
-    const resolved = ctx.resolveModel.resolveId(preferred);
+    // Empty preferredProvider ("") means "no preference" — resolveId leaves
+    // the preset's natural order intact. Otherwise the string reorders the
+    // preset's candidate list before the first-available walk.
+    const preferredProvider = ctx.user?.state.preferredProvider ?? "";
+    const resolved = ctx.resolveModel.resolveId(preferred, {
+      prefer: preferredProvider === "" ? undefined : preferredProvider,
+    });
     await ctx.session.patchState({ resolvedModel: resolved });
   },
 });
@@ -319,6 +332,19 @@ const setPreferredModelHandler = handler({
   },
 });
 
+const setPreferredProviderInputSchema = z.object({
+  preferredProvider: providerPreferenceSchema,
+});
+
+const setPreferredProviderHandler = handler({
+  name: "set-preferred-provider",
+  inputSchema: setPreferredProviderInputSchema,
+  userStateSchema,
+  execute: async (input, ctx) => {
+    await ctx.user!.patchState({ preferredProvider: input.preferredProvider });
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Run sequencer
 // ---------------------------------------------------------------------------
@@ -364,6 +390,10 @@ const kitchenSinkFlow = defineFlow({
       inputSchema: setPreferredModelInputSchema,
       block: setPreferredModelHandler,
     },
+    setPreferredProvider: {
+      inputSchema: setPreferredProviderInputSchema,
+      block: setPreferredProviderHandler,
+    },
     "event-queue": {
       inputSchema: eventQueueDemoInputSchema,
       block: eventQueueDemo,
@@ -393,6 +423,7 @@ const kitchenSinkFlow = defineFlow({
       preferences: (ctx) => ({
         displayName: String(ctx.state.displayName ?? "Developer"),
         preferredModel: String(ctx.state.preferredModel ?? MODEL_ID),
+        preferredProvider: String(ctx.state.preferredProvider ?? ""),
       }),
     },
   },
