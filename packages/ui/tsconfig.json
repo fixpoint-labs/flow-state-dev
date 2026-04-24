@@ -12,6 +12,5 @@
     "test/**/*",
     "registry/components/tool-grouping.ts"
   ],
-  "exclude": ["registry/**/*.tsx", "registry/**/*.test.*"],
-  "references": [{ "path": "../core" }]
+  "exclude": ["registry/**/*.tsx"]
 }

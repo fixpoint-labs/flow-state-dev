@@ -1,12 +1,12 @@
 /**
- * Pure helpers for tool-call grouping and summary-label composition.
+ * Pure helpers for tool-call summary-label composition.
  *
  * Kept free of DOM / component imports so it can be unit-tested directly
- * and reused from any UI layer (React, non-React, tests). Rendering lives
- * in tool.tsx.
+ * and reused from any UI layer. The grouping walk itself lives in
+ * `@flow-state-dev/react`'s ItemsRenderer so framework filters (dedup,
+ * sub-agent, container-owner suppression) run before grouping. This file
+ * is responsible for the verb-phrase vocabulary and label composition.
  */
-
-import type { BlockToolOutputItem, OutputItem } from "@flow-state-dev/core/items";
 
 /**
  * Verb-phrase entry for a tool. Two forms: a singular phrase used when a
@@ -117,41 +117,4 @@ export function composeToolGroupLabel(toolNames: string[]): string {
   });
 
   return capitalizeFirst(joinClauses(clauses));
-}
-
-/**
- * A segment in the rendered stream: either a single non-tool item, or a
- * consecutive batch of tool-call items to render as a ToolGroup.
- */
-export type ToolStreamSegment =
-  | { kind: "item"; item: OutputItem }
-  | { kind: "group"; items: BlockToolOutputItem[] };
-
-/**
- * Walks an ordered item list and returns segments where consecutive
- * `block_tool_output` items are collapsed into group segments.
- *
- * A non-tool item ends a group. Singletons still appear as `{ kind: "group" }`
- * to match the spec — consistency matters more than special-casing.
- */
-export function groupConsecutiveToolCalls(items: OutputItem[]): ToolStreamSegment[] {
-  const out: ToolStreamSegment[] = [];
-  let buf: BlockToolOutputItem[] = [];
-
-  const flush = () => {
-    if (buf.length === 0) return;
-    out.push({ kind: "group", items: buf });
-    buf = [];
-  };
-
-  for (const item of items) {
-    if (item.type === "block_tool_output") {
-      buf.push(item as BlockToolOutputItem);
-    } else {
-      flush();
-      out.push({ kind: "item", item });
-    }
-  }
-  flush();
-  return out;
 }

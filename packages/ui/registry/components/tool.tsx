@@ -40,10 +40,8 @@ import { composeToolGroupLabel } from "./tool-grouping";
 
 export {
   composeToolGroupLabel,
-  groupConsecutiveToolCalls,
   TOOL_GROUP_DISTINCT_CAP,
   TOOL_VERB_MAP,
-  type ToolStreamSegment,
   type ToolVerbs,
 } from "./tool-grouping";
 

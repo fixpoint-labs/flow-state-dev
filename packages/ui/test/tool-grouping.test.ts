@@ -1,49 +1,14 @@
 /**
- * Tests for the tool-call grouping helpers: label composition and consecutive
- * grouping. Pure functions — no DOM rendering required here.
+ * Tests for the tool-call label composition helper. The consecutive-group
+ * walk itself lives in @flow-state-dev/react's ItemsRenderer (covered by
+ * that package's tests) so the filters run before grouping.
  */
 
 import { describe, it, expect } from "vitest";
-import type { BlockToolOutputItem, MessageItem, OutputItem } from "@flow-state-dev/core/items";
 import {
   composeToolGroupLabel,
-  groupConsecutiveToolCalls,
   TOOL_GROUP_DISTINCT_CAP,
 } from "../registry/components/tool-grouping";
-
-function toolItem(id: string, toolName: string): BlockToolOutputItem {
-  return {
-    id,
-    type: "block_tool_output",
-    status: "completed",
-    requestId: "req",
-    itemIndex: 0,
-    ts: 0,
-    provenance: { blockName: "gen", blockInstanceId: "b1", phase: "main" },
-    blockName: "gen",
-    output: null,
-    toolCall: {
-      callId: `c-${id}`,
-      name: toolName,
-      arguments: "{}",
-      generatorBlock: "gen",
-    },
-  };
-}
-
-function messageItem(id: string): MessageItem {
-  return {
-    id,
-    type: "message",
-    status: "completed",
-    requestId: "req",
-    itemIndex: 0,
-    ts: 0,
-    provenance: { blockName: "gen", blockInstanceId: "b1", phase: "main" },
-    role: "assistant",
-    content: [{ type: "output_text", text: "hi" }],
-  };
-}
 
 describe("composeToolGroupLabel", () => {
   it("returns an empty string for no calls", () => {
@@ -103,68 +68,5 @@ describe("composeToolGroupLabel", () => {
     const label = composeToolGroupLabel(["web_search", "write_file"]);
     expect(label.charAt(0)).toBe(label.charAt(0).toUpperCase());
     expect(label).toBe("Ran a search and wrote a file");
-  });
-});
-
-describe("groupConsecutiveToolCalls", () => {
-  it("returns an empty array for no items", () => {
-    expect(groupConsecutiveToolCalls([])).toEqual([]);
-  });
-
-  it("wraps a singleton tool call in a group segment", () => {
-    const items: OutputItem[] = [toolItem("t1", "web_search")];
-    const segments = groupConsecutiveToolCalls(items);
-    expect(segments).toHaveLength(1);
-    expect(segments[0].kind).toBe("group");
-    if (segments[0].kind === "group") {
-      expect(segments[0].items.map((i) => i.id)).toEqual(["t1"]);
-    }
-  });
-
-  it("collapses consecutive tool calls into one group", () => {
-    const items: OutputItem[] = [
-      toolItem("t1", "web_search"),
-      toolItem("t2", "web_search"),
-      toolItem("t3", "write_file"),
-    ];
-    const segments = groupConsecutiveToolCalls(items);
-    expect(segments).toHaveLength(1);
-    expect(segments[0].kind).toBe("group");
-    if (segments[0].kind === "group") {
-      expect(segments[0].items.map((i) => i.id)).toEqual(["t1", "t2", "t3"]);
-    }
-  });
-
-  it("splits groups when a non-tool item is interleaved", () => {
-    const items: OutputItem[] = [
-      toolItem("t1", "web_search"),
-      toolItem("t2", "web_search"),
-      messageItem("m1"),
-      toolItem("t3", "write_file"),
-    ];
-    const segments = groupConsecutiveToolCalls(items);
-    expect(segments).toHaveLength(3);
-    expect(segments[0].kind).toBe("group");
-    expect(segments[1].kind).toBe("item");
-    expect(segments[2].kind).toBe("group");
-    if (segments[0].kind === "group") {
-      expect(segments[0].items.map((i) => i.id)).toEqual(["t1", "t2"]);
-    }
-    if (segments[1].kind === "item") {
-      expect(segments[1].item.id).toBe("m1");
-    }
-    if (segments[2].kind === "group") {
-      expect(segments[2].items.map((i) => i.id)).toEqual(["t3"]);
-    }
-  });
-
-  it("preserves non-tool items that straddle multiple groups", () => {
-    const items: OutputItem[] = [
-      messageItem("m1"),
-      toolItem("t1", "web_search"),
-      messageItem("m2"),
-    ];
-    const segments = groupConsecutiveToolCalls(items);
-    expect(segments.map((s) => s.kind)).toEqual(["item", "group", "item"]);
   });
 });
