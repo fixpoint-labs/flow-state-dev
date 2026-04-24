@@ -478,6 +478,46 @@ describe("adapters", () => {
       expect(sandbox.readFile).toBeDefined();
       expect(sandbox.writeFile).toBeDefined();
     });
+
+    it("rewrites destination-prefixed absolute paths in commands to the real cwd", async () => {
+      // Regression guard: writeFile was already translating `/workspace/...`
+      // to `<cwd>/...`, but executeCommand was running raw strings — so a
+      // command like `cat /workspace/foo.txt` looked for the literal path on
+      // the host and failed with "No such file or directory". Scripts bundled
+      // with a skill (e.g. python3 /workspace/skills/.../scripts/foo.py) hit
+      // this end-to-end.
+      const { createLocalFsSandbox } = await import("../src/bash/adapters/local-fs");
+      const { mkdtemp, rm } = await import("node:fs/promises");
+      const { tmpdir } = await import("node:os");
+      const { join } = await import("node:path");
+
+      const cwd = await mkdtemp(join(tmpdir(), "bash-translate-"));
+      try {
+        const sandbox = createLocalFsSandbox({
+          cwd,
+          destination: "/workspace",
+        });
+        await sandbox.writeFile("/workspace/hello.txt", "hi there");
+        const r1 = await sandbox.executeCommand("cat /workspace/hello.txt");
+        expect(r1.stderr).toBe("");
+        expect(r1.stdout).toBe("hi there");
+
+        // Nested path — the common shape for skill-bundled scripts.
+        await sandbox.writeFile("/workspace/skills/s/scripts/run.sh", "echo ok");
+        const r2 = await sandbox.executeCommand(
+          "bash /workspace/skills/s/scripts/run.sh",
+        );
+        expect(r2.stdout.trim()).toBe("ok");
+
+        // find /workspace should list the tree instead of erroring.
+        const r3 = await sandbox.executeCommand("find /workspace -type f | sort");
+        expect(r3.stderr).toBe("");
+        expect(r3.stdout).toContain("/hello.txt");
+        expect(r3.stdout).toContain("/skills/s/scripts/run.sh");
+      } finally {
+        await rm(cwd, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("upstash", () => {

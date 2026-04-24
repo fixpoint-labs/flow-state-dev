@@ -85,9 +85,26 @@ export function createLocalFsSandbox(
     return path.resolve(cwd, rel);
   }
 
+  /**
+   * Translate every `<destination>` or `<destination>/...` occurrence in a raw
+   * bash command to the real `cwd` so absolute virtual paths like
+   * `/workspace/skills/foo.py` resolve on disk. File I/O is already translated
+   * via `toLocalPath`; this closes the gap for direct shell execution.
+   *
+   * Matches `destination` only when followed by `/`, end-of-string, or a
+   * shell token boundary (whitespace or `;|&<>"'\``), so the prefix isn't
+   * substituted when it appears inside a longer unrelated identifier.
+   */
+  function translateCommand(command: string): string {
+    if (!destination) return command;
+    const escaped = destination.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`${escaped}(?=\\/|$|[\\s;|&<>"'\`])`, "g");
+    return command.replace(re, cwd);
+  }
+
   return {
     async executeCommand(command: string): Promise<CommandResult> {
-      // Validate command before execution
+      // Validate the command as written (model-facing paths) before we rewrite.
       if (strictPaths) {
         assertCommandWithinWorkspace(cwd, command, destination);
       }
@@ -95,9 +112,13 @@ export function createLocalFsSandbox(
       // Ensure cwd exists before running commands
       await mkdir(cwd, { recursive: true });
 
+      // Rewrite /workspace-style virtual paths to real absolute paths so
+      // `find /workspace`, `python3 /workspace/skills/...`, etc. actually run.
+      const runnable = translateCommand(command);
+
       return new Promise((resolve) => {
         exec(
-          command,
+          runnable,
           { cwd, shell: "/bin/bash", maxBuffer: 10 * 1024 * 1024 },
           (error, stdout, stderr) => {
             resolve({
