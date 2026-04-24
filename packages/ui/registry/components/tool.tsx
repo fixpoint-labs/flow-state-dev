@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Tool renderers for single tool calls and consecutive tool-call groups.
+ */
 import type { ComponentProps, ReactNode } from "react";
 import type { BlockOutputItem, BlockToolOutputItem } from "@flow-state-dev/core/items";
 
@@ -15,6 +18,7 @@ import {
   ChevronDownIcon,
   CircleIcon,
   ClockIcon,
+  ListTreeIcon,
   WrenchIcon,
   XCircleIcon,
 } from "lucide-react";
@@ -39,7 +43,7 @@ export type ToolProps = ComponentProps<typeof Collapsible>;
 
 export const ToolShell = ({ className, ...props }: ToolProps) => (
   <Collapsible
-    className={cn("group not-prose mb-2 w-full rounded-md border", className)}
+    className={cn("group/tool not-prose mb-2 w-full rounded-md border", className)}
     {...props}
   />
 );
@@ -97,7 +101,7 @@ export const ToolHeader = ({
       <span className="font-medium text-sm">{title ?? name}</span>
       {getStatusBadge(state)}
     </div>
-    <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+    <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]/tool:rotate-180" />
   </CollapsibleTrigger>
 );
 
@@ -173,9 +177,9 @@ export const ToolOutput = ({
   );
 };
 
-type ToolItem = BlockOutputItem | BlockToolOutputItem;
+export type ToolItem = BlockOutputItem | BlockToolOutputItem;
 
-function mapToolStatus(status: string): ToolState {
+export function mapToolStatus(status: string): ToolState {
   switch (status) {
     case "in_progress": return "running";
     case "completed": return "completed";
@@ -185,12 +189,12 @@ function mapToolStatus(status: string): ToolState {
   }
 }
 
-function getToolName(item: ToolItem): string {
+export function getToolName(item: ToolItem): string {
   if (item.type === "block_tool_output") return item.toolCall.name;
   return item.blockName;
 }
 
-function getToolArgs(item: ToolItem): unknown {
+export function getToolArgs(item: ToolItem): unknown {
   const raw = item.toolCall?.arguments;
   if (!raw) return undefined;
   try { return JSON.parse(raw); } catch { return raw; }
@@ -201,7 +205,7 @@ function getToolArgs(item: ToolItem): unknown {
  * `block_output.output` is a BlockValue discriminated union (FIX-413); for
  * tool-call items the generator is a leaf, so we only see the `inline` case.
  */
-function unwrapToolOutput(item: ToolItem): unknown {
+export function unwrapToolOutput(item: ToolItem): unknown {
   if (item.type === "block_tool_output") return item.output;
   const value = item.output;
   if (value !== undefined && typeof value === "object" && "kind" in value && value.kind === "inline") {
@@ -210,32 +214,162 @@ function unwrapToolOutput(item: ToolItem): unknown {
   return undefined;
 }
 
-function getToolOutput(item: ToolItem): unknown {
+export function getToolOutput(item: ToolItem): unknown {
   if (item.status === "failed") return undefined;
   return unwrapToolOutput(item);
 }
 
-function getToolErrorText(item: ToolItem): string | undefined {
+export function getToolErrorText(item: ToolItem): string | undefined {
   if (item.status !== "failed") return undefined;
   if (item.type === "block_tool_output" && item.error) return item.error.message;
   const raw = unwrapToolOutput(item);
   return raw === undefined ? undefined : String(raw);
 }
 
-export function Tool({ item }: { item: BlockOutputItem | BlockToolOutputItem }) {
+type ToolVerbPhrase = {
+  singular: string;
+  plural: string;
+};
+
+/**
+ * Past-tense summary phrases keyed by tool name.
+ * Add aliases here as new tool names should produce richer summaries.
+ */
+export const TOOL_VERB_PHRASES: Record<string, ToolVerbPhrase> = {
+  search: { singular: "ran a search", plural: "ran {count} searches" },
+  web_search: { singular: "ran a search", plural: "ran {count} searches" },
+  fetch: { singular: "fetched a page", plural: "fetched {count} pages" },
+  web_fetch: { singular: "fetched a page", plural: "fetched {count} pages" },
+  read_file: { singular: "read a file", plural: "read {count} files" },
+  write_file: { singular: "wrote a file", plural: "wrote {count} files" },
+  create_file: { singular: "created a file", plural: "created {count} files" },
+  update_file: { singular: "updated a file", plural: "updated {count} files" },
+  load_tools: { singular: "loaded tools", plural: "loaded tools" },
+  bash: { singular: "ran a command", plural: "ran {count} commands" },
+};
+
+function capitalizeLabel(label: string): string {
+  return label.length === 0 ? label : `${label[0].toUpperCase()}${label.slice(1)}`;
+}
+
+function formatVerbPhrase(name: string, count: number): string | null {
+  const phrase = TOOL_VERB_PHRASES[name];
+  if (phrase === undefined) return null;
+  return (count === 1 ? phrase.singular : phrase.plural).replace("{count}", String(count));
+}
+
+function joinPhrases(phrases: string[]): string {
+  if (phrases.length <= 1) return phrases[0] ?? "";
+  if (phrases.length === 2) return `${phrases[0]} and ${phrases[1]}`;
+  return `${phrases.slice(0, -1).join(", ")}, and ${phrases[phrases.length - 1]}`;
+}
+
+/**
+ * Builds the collapsed group label from a run of consecutive tool calls.
+ */
+export function getToolGroupSummaryLabel(items: ToolItem[]): string {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const name = getToolName(item);
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+
+  if (counts.size === 0) return "Ran 0 tools";
+  if (counts.size > 4) return `Ran ${items.length} tools`;
+
+  const phrases: string[] = [];
+  for (const [name, count] of counts) {
+    const phrase = formatVerbPhrase(name, count);
+    if (phrase === null) return `Ran ${items.length} tools`;
+    phrases.push(phrase);
+  }
+
+  return capitalizeLabel(joinPhrases(phrases));
+}
+
+function getGroupState(items: ToolItem[]): ToolState {
+  if (items.some((item) => item.status === "failed")) return "error";
+  if (items.some((item) => item.status === "in_progress")) return "running";
+  if (items.every((item) => item.status === "completed")) return "completed";
+  return "pending";
+}
+
+function getToolDuration(item: ToolItem): string {
+  const duration = "duration" in item ? item.duration : undefined;
+  return typeof duration === "number" ? `${duration}ms` : "Not recorded";
+}
+
+function ToolMetadata({ item }: { item: ToolItem }) {
+  return (
+    <div className="grid gap-1 rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground sm:grid-cols-2">
+      <div><span className="font-medium text-foreground">Duration:</span> {getToolDuration(item)}</div>
+      <div><span className="font-medium text-foreground">Block:</span> {item.blockName}</div>
+      <div><span className="font-medium text-foreground">Item ID:</span> {item.id}</div>
+      <div><span className="font-medium text-foreground">Call ID:</span> {item.toolCall?.callId ?? "Unknown"}</div>
+    </div>
+  );
+}
+
+export function ToolCallRow({ item }: { item: ToolItem }) {
   if (!item.toolCall) return null;
   const state = mapToolStatus(item.status);
   const name = getToolName(item);
   const args = getToolArgs(item);
+
   return (
-    <ToolShell>
-      <ToolHeader name={name} state={state} />
-      <ToolContent>
+    <Collapsible className="group/tool-row rounded-md border bg-background/60">
+      <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 p-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <WrenchIcon className="size-4 shrink-0 text-muted-foreground" />
+          <span className="truncate font-medium text-sm">{name}</span>
+          {getStatusBadge(state)}
+        </div>
+        <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/tool-row:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-4 border-t p-4">
         <ToolInput input={args} />
         {item.status !== "in_progress" && (
           <ToolOutput output={getToolOutput(item)} errorText={getToolErrorText(item)} />
         )}
-      </ToolContent>
-    </ToolShell>
+        <ToolMetadata item={item} />
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+export function ToolGroup({ items }: { items: ToolItem[] }) {
+  if (items.length === 0) return null;
+  const state = getGroupState(items);
+  const summary = getToolGroupSummaryLabel(items);
+
+  return (
+    <Collapsible
+      className="group/tool-group not-prose mb-2 w-full overflow-hidden rounded-lg border bg-card/70 shadow-sm"
+      defaultOpen={state === "running" || state === "error"}
+    >
+      <CollapsibleTrigger className="flex w-full items-center justify-between gap-4 p-3 hover:bg-muted/40">
+        <div className="flex min-w-0 items-center gap-2">
+          <ListTreeIcon className="size-4 shrink-0 text-muted-foreground" />
+          <span className="truncate font-medium text-sm">{summary}</span>
+          <Badge className="rounded-full text-xs" variant="outline">
+            {items.length} {items.length === 1 ? "tool" : "tools"}
+          </Badge>
+          {getStatusBadge(state)}
+        </div>
+        <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/tool-group:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-2 border-t bg-muted/20 p-2">
+        {items.map((item) => (
+          <ToolCallRow key={item.id} item={item} />
+        ))}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+export function Tool({ item }: { item: BlockOutputItem | BlockToolOutputItem }) {
+  if (!item.toolCall) return null;
+  return (
+    <ToolGroup items={[item]} />
   );
 }

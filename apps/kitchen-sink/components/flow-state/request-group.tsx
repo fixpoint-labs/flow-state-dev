@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import { Fragment, useMemo } from "react";
+import type { BlockToolOutputItem, OutputItem } from "@flow-state-dev/core/items";
 import { ItemsRenderer } from "@flow-state-dev/react";
 import { SourcesGroup } from "./sources";
 import { StreamingIndicator } from "./streaming-indicator";
+import { ToolGroup } from "./tool";
 
 type RequestGroup = {
   requestId: string;
@@ -27,6 +28,46 @@ function groupItemsByRequest(items: OutputItem[]): RequestGroup[] {
   }
 
   return groups;
+}
+
+type ToolGroupSegment =
+  | { kind: "items"; items: OutputItem[] }
+  | { kind: "tools"; items: BlockToolOutputItem[] };
+
+/**
+ * Splits request items into normal item runs and consecutive tool-call runs.
+ */
+export function segmentToolGroups(items: OutputItem[]): ToolGroupSegment[] {
+  const segments: ToolGroupSegment[] = [];
+  let currentItems: OutputItem[] = [];
+  let currentTools: BlockToolOutputItem[] = [];
+
+  const flushItems = () => {
+    if (currentItems.length === 0) return;
+    segments.push({ kind: "items", items: currentItems });
+    currentItems = [];
+  };
+
+  const flushTools = () => {
+    if (currentTools.length === 0) return;
+    segments.push({ kind: "tools", items: currentTools });
+    currentTools = [];
+  };
+
+  for (const item of items) {
+    if (item.type === "block_tool_output") {
+      flushItems();
+      currentTools.push(item);
+      continue;
+    }
+
+    flushTools();
+    currentItems.push(item);
+  }
+
+  flushItems();
+  flushTools();
+  return segments;
 }
 
 type RequestGroupRendererProps = {
@@ -57,7 +98,15 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage }: Requ
         className="flex flex-col gap-2"
         style={isLast ? { minHeight: "70dvh" } : undefined}
       >
-        <ItemsRenderer items={group.items} />
+        {segmentToolGroups(group.items).map((segment, segmentIndex) => (
+          <Fragment key={`${group.requestId}:${segment.kind}:${segmentIndex}`}>
+            {segment.kind === "tools" ? (
+              <ToolGroup items={segment.items} />
+            ) : (
+              <ItemsRenderer items={segment.items} />
+            )}
+          </Fragment>
+        ))}
         <SourcesGroup items={group.items} />
         {isLast && isStreaming && <StreamingIndicator message={statusMessage} />}
       </div>

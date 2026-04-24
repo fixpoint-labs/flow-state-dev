@@ -15,6 +15,7 @@ import {
   ChevronDownIcon,
   CircleIcon,
   ClockIcon,
+  ListTreeIcon,
   WrenchIcon,
   XCircleIcon,
 } from "lucide-react";
@@ -39,10 +40,14 @@ export type ToolProps = ComponentProps<typeof Collapsible>;
 
 export const ToolShell = ({ className, ...props }: ToolProps) => (
   <Collapsible
-    className={cn("group not-prose mb-2 w-full rounded-md border", className)}
+    className={cn("group/tool not-prose w-full rounded-md border", className)}
     {...props}
   />
 );
+
+export type ToolGroupProps = ComponentProps<typeof Collapsible> & {
+  items: BlockToolOutputItem[];
+};
 
 export type ToolHeaderProps = {
   name: string;
@@ -72,7 +77,15 @@ const statusIcons: Record<ToolState, ReactNode> = {
 };
 
 export const getStatusBadge = (state: ToolState) => (
-  <Badge className="gap-1.5 rounded-full text-xs" variant="secondary">
+  <Badge
+    className={cn(
+      "gap-1.5 rounded-full border text-xs",
+      state === "completed" && "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300",
+      state === "error" && "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
+      state === "running" && "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300"
+    )}
+    variant="secondary"
+  >
     {statusIcons[state]}
     {statusLabels[state]}
   </Badge>
@@ -97,7 +110,7 @@ export const ToolHeader = ({
       <span className="font-medium text-sm">{title ?? name}</span>
       {getStatusBadge(state)}
     </div>
-    <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+    <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]/tool:rotate-180" />
   </CollapsibleTrigger>
 );
 
@@ -175,6 +188,35 @@ export const ToolOutput = ({
 
 type ToolItem = BlockOutputItem | BlockToolOutputItem;
 
+type ToolVerbPhrase = {
+  singular: string;
+  plural: string;
+};
+
+const DEFAULT_TOOL_VERB_PHRASE: ToolVerbPhrase = {
+  singular: "ran a tool",
+  plural: "ran {count} tools",
+};
+
+/**
+ * Data-driven phrase registry used for group summary labels.
+ * Add aliases here when new tool names need a more specific phrase.
+ */
+export const TOOL_VERB_PHRASES: Record<string, ToolVerbPhrase> = {
+  web_search: { singular: "ran a search", plural: "ran {count} searches" },
+  search: { singular: "ran a search", plural: "ran {count} searches" },
+  fetch: { singular: "fetched a page", plural: "fetched {count} pages" },
+  web_fetch: { singular: "fetched a page", plural: "fetched {count} pages" },
+  read_file: { singular: "read a file", plural: "read {count} files" },
+  write_file: { singular: "wrote a file", plural: "wrote {count} files" },
+  create_file: { singular: "created a file", plural: "created {count} files" },
+  update_file: { singular: "updated a file", plural: "updated {count} files" },
+  edit_file: { singular: "edited a file", plural: "edited {count} files" },
+  load_tools: { singular: "loaded tools", plural: "loaded tools" },
+  bash: { singular: "ran a command", plural: "ran {count} commands" },
+  shell: { singular: "ran a command", plural: "ran {count} commands" },
+};
+
 function mapToolStatus(status: string): ToolState {
   switch (status) {
     case "in_progress": return "running";
@@ -222,6 +264,57 @@ function getToolErrorText(item: ToolItem): string | undefined {
   return raw === undefined ? undefined : String(raw);
 }
 
+function formatPhrase(phrase: ToolVerbPhrase, count: number): string {
+  return count === 1
+    ? phrase.singular
+    : phrase.plural.replace("{count}", String(count));
+}
+
+function formatList(parts: string[]): string {
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0];
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+}
+
+function capitalizeFirst(value: string): string {
+  return value.length === 0 ? value : `${value[0].toUpperCase()}${value.slice(1)}`;
+}
+
+function getGroupState(items: BlockToolOutputItem[]): ToolState {
+  if (items.some((item) => item.status === "in_progress")) return "running";
+  if (items.some((item) => item.status === "failed")) return "error";
+  return "completed";
+}
+
+/**
+ * Builds the natural-language summary for a consecutive tool-call group.
+ * Unknown tool names intentionally collapse to the generic phrase.
+ */
+export function getToolGroupSummary(items: BlockToolOutputItem[]): string {
+  const counts = new Map<string, number>();
+  let hasUnknown = false;
+
+  for (const item of items) {
+    const toolName = item.toolCall.name;
+    const phrase = TOOL_VERB_PHRASES[toolName];
+    if (phrase === undefined) {
+      hasUnknown = true;
+    }
+    counts.set(toolName, (counts.get(toolName) ?? 0) + 1);
+  }
+
+  if (hasUnknown || counts.size > 4) {
+    return capitalizeFirst(formatPhrase(DEFAULT_TOOL_VERB_PHRASE, items.length));
+  }
+
+  const phrases = [...counts].map(([toolName, count]) =>
+    formatPhrase(TOOL_VERB_PHRASES[toolName] ?? DEFAULT_TOOL_VERB_PHRASE, count)
+  );
+
+  return capitalizeFirst(formatList(phrases));
+}
+
 export function Tool({ item }: { item: BlockOutputItem | BlockToolOutputItem }) {
   if (!item.toolCall) return null;
   const state = mapToolStatus(item.status);
@@ -235,7 +328,66 @@ export function Tool({ item }: { item: BlockOutputItem | BlockToolOutputItem }) 
         {item.status !== "in_progress" && (
           <ToolOutput output={getToolOutput(item)} errorText={getToolErrorText(item)} />
         )}
+        <ToolMetadata item={item} />
       </ToolContent>
     </ToolShell>
+  );
+}
+
+function ToolMetadata({ item }: { item: ToolItem }) {
+  const metadata = [
+    ["Block", item.blockName],
+    ["Item ID", item.id],
+    ["Duration", "duration" in item && item.duration !== undefined ? `${item.duration}ms` : undefined],
+  ].filter((entry): entry is [string, string] => entry[1] !== undefined);
+
+  if (metadata.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+        Metadata
+      </h4>
+      <dl className="grid gap-1 rounded-md bg-muted/30 p-3 text-xs">
+        {metadata.map(([label, value]) => (
+          <div className="grid grid-cols-[5rem_1fr] gap-2" key={label}>
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className="break-all font-mono text-foreground">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+export function ToolGroup({ items, className, ...props }: ToolGroupProps) {
+  const state = getGroupState(items);
+  return (
+    <Collapsible
+      className={cn(
+        "group/tool-group not-prose w-full overflow-hidden rounded-xl border border-border/70 bg-card/70 shadow-sm",
+        className
+      )}
+      {...props}
+    >
+      <CollapsibleTrigger className="flex w-full items-center justify-between gap-4 p-3 text-left hover:bg-muted/40">
+        <div className="flex min-w-0 items-center gap-2">
+          <ListTreeIcon className="size-4 shrink-0 text-muted-foreground" />
+          <span className="truncate font-medium text-sm">{getToolGroupSummary(items)}</span>
+          <Badge className="rounded-full text-xs" variant="outline">
+            {items.length}
+          </Badge>
+          {getStatusBadge(state)}
+        </div>
+        <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/tool-group:rotate-180" />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="border-t bg-background/40 p-2">
+        <div className="space-y-2">
+          {items.map((item) => (
+            <Tool key={item.id} item={item} />
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

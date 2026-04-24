@@ -1,15 +1,20 @@
 "use client";
 
 import { useMemo } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
+import type { BlockToolOutputItem, OutputItem } from "@flow-state-dev/core/items";
 import { ItemsRenderer } from "@flow-state-dev/react";
 import { SourcesGroup } from "./sources";
 import { StreamingIndicator } from "./streaming-indicator";
+import { ToolGroup } from "./tool";
 
 type RequestGroup = {
   requestId: string;
   items: OutputItem[];
 };
+
+type RenderSegment =
+  | { type: "items"; key: string; items: OutputItem[] }
+  | { type: "tool-group"; key: string; items: BlockToolOutputItem[] };
 
 /**
  * Groups a flat items array into per-request segments, preserving order.
@@ -27,6 +32,50 @@ function groupItemsByRequest(items: OutputItem[]): RequestGroup[] {
   }
 
   return groups;
+}
+
+/**
+ * Splits request items into normal renderer runs and consecutive tool groups.
+ */
+export function segmentToolGroups(items: OutputItem[]): RenderSegment[] {
+  const segments: RenderSegment[] = [];
+  let normalItems: OutputItem[] = [];
+  let toolItems: BlockToolOutputItem[] = [];
+
+  const flushNormal = () => {
+    if (normalItems.length === 0) return;
+    segments.push({
+      type: "items",
+      key: `items-${normalItems[0].id}-${normalItems[normalItems.length - 1].id}`,
+      items: normalItems,
+    });
+    normalItems = [];
+  };
+
+  const flushTools = () => {
+    if (toolItems.length === 0) return;
+    segments.push({
+      type: "tool-group",
+      key: `tools-${toolItems[0].id}-${toolItems[toolItems.length - 1].id}`,
+      items: toolItems,
+    });
+    toolItems = [];
+  };
+
+  for (const item of items) {
+    if (item.type === "block_tool_output") {
+      flushNormal();
+      toolItems.push(item as BlockToolOutputItem);
+      continue;
+    }
+
+    flushTools();
+    normalItems.push(item);
+  }
+
+  flushNormal();
+  flushTools();
+  return segments;
 }
 
 type RequestGroupRendererProps = {
@@ -49,6 +98,7 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage }: Requ
 
   return groups.map((group, index) => {
     const isLast = index === groups.length - 1;
+    const segments = segmentToolGroups(group.items);
 
     return (
       <div
@@ -57,7 +107,13 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage }: Requ
         className="flex flex-col gap-2"
         style={isLast ? { minHeight: "70dvh" } : undefined}
       >
-        <ItemsRenderer items={group.items} />
+        {segments.map((segment) =>
+          segment.type === "tool-group" ? (
+            <ToolGroup key={segment.key} items={segment.items} />
+          ) : (
+            <ItemsRenderer key={segment.key} items={segment.items} />
+          )
+        )}
         <SourcesGroup items={group.items} />
         {isLast && isStreaming && <StreamingIndicator message={statusMessage} />}
       </div>
