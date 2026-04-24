@@ -166,6 +166,8 @@ Output item unions, content types, and stream event helpers. Item types: `messag
 
 **LLM content tools are explicit.** Use `readResourceContentTool()` / `writeResourceContentTool()` in a generator's `tools` array when you want LLM access. These are not auto-injected.
 
+**Prompt caching is on by default.** Generators accept a `caching` field; the default is `{ enabled: true, breakpoints: 'auto', ttl: '5m' }`. The AI SDK adapter stamps `providerOptions.anthropic.cacheControl` on the last system message for Anthropic-flavored providers (and opts the Vercel AI Gateway into `caching: 'auto'`); OpenAI / Google / DeepSeek cache implicitly and are left alone. Cache token counts land on `GeneratorModelUsage` as `cacheCreationInputTokens` and `cacheReadInputTokens`. See `docs/PROMPT_CACHING.md` for the full design, audit, and manual-mode guide.
+
 **Typed target state declarations.** Handler, generator, and router blocks can declare `targetStateSchemas` with Zod schemas. Declared names type `ctx.targets.<name>` as `StateRef<...> | undefined` for state coordination. Use `ctx.getBlockOutput(blockDef)` / `ctx.getBlockResult(blockDef)` for explicit output dependencies.
 
 **clientData as data policy.** `clientData` is how you expose derived state to clients. Internal state, resources, and intermediate values stay server-side unless you deliberately define a clientData compute function. Security by architecture, not by convention.

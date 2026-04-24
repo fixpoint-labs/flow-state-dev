@@ -343,21 +343,35 @@ async function executeBlock(
             ...scopedCtx._runtimeHooks,
             onGeneratorModelResult: (payload: {
               model: string;
-              usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+              usage?: {
+                promptTokens: number;
+                completionTokens: number;
+                totalTokens: number;
+                cacheReadInputTokens?: number;
+                cacheCreationInputTokens?: number;
+              };
               providerMetadata?: Record<string, Record<string, unknown>>;
             }) => {
               if (payload.usage) {
                 const anthropic = payload.providerMetadata?.anthropic ?? {};
+                // Prefer the adapter-normalised usage fields; fall back to
+                // provider metadata so older call paths keep working.
+                const cacheReadTokens =
+                  payload.usage.cacheReadInputTokens ??
+                  (typeof anthropic.cacheReadInputTokens === "number"
+                    ? anthropic.cacheReadInputTokens : undefined);
+                const cacheCreationTokens =
+                  payload.usage.cacheCreationInputTokens ??
+                  (typeof anthropic.cacheCreationInputTokens === "number"
+                    ? anthropic.cacheCreationInputTokens : undefined);
                 modelUsage = {
                   model: payload.model,
                   promptTokens: payload.usage.promptTokens,
                   completionTokens: payload.usage.completionTokens,
                   totalTokens: payload.usage.totalTokens,
                   providerMetadata: payload.providerMetadata,
-                  cacheReadTokens: typeof anthropic.cacheReadInputTokens === "number"
-                    ? anthropic.cacheReadInputTokens : undefined,
-                  cacheCreationTokens: typeof anthropic.cacheCreationInputTokens === "number"
-                    ? anthropic.cacheCreationInputTokens : undefined,
+                  cacheReadTokens,
+                  cacheCreationTokens,
                 };
               }
               // Chain to original hook

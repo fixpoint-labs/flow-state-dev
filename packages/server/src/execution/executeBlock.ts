@@ -184,13 +184,27 @@ async function executeByKind(
       ...ctx._runtimeHooks,
       onGeneratorModelResult: (payload: {
         model: string;
-        usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+        usage?: {
+          promptTokens: number;
+          completionTokens: number;
+          totalTokens: number;
+          cacheReadInputTokens?: number;
+          cacheCreationInputTokens?: number;
+        };
         providerMetadata?: Record<string, Record<string, unknown>>;
       }) => {
         if (payload.usage !== undefined) {
           const anthropic = payload.providerMetadata?.anthropic ?? {};
-          const readTokens = typeof anthropic.cacheReadInputTokens === "number" ? anthropic.cacheReadInputTokens : undefined;
-          const creationTokens = typeof anthropic.cacheCreationInputTokens === "number" ? anthropic.cacheCreationInputTokens : undefined;
+          // Prefer adapter-normalised cache fields; fall back to raw
+          // Anthropic provider metadata for older call paths.
+          const readTokens =
+            payload.usage.cacheReadInputTokens ??
+            (typeof anthropic.cacheReadInputTokens === "number"
+              ? anthropic.cacheReadInputTokens : undefined);
+          const creationTokens =
+            payload.usage.cacheCreationInputTokens ??
+            (typeof anthropic.cacheCreationInputTokens === "number"
+              ? anthropic.cacheCreationInputTokens : undefined);
           modelUsage = {
             model: payload.model,
             promptTokens: payload.usage.promptTokens,
