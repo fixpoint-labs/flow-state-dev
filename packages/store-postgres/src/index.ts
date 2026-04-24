@@ -5,6 +5,7 @@
  */
 
 import type { StoreRegistry } from "@flow-state-dev/server";
+import type { Pool, PoolConfig } from "pg";
 import type { PostgresStoreOptions, QueryExecutor } from "./types";
 import { initializeSchema, initializeSchemaWithDedicatedClient } from "./schema";
 import { createPostgresSessionStore } from "./session-store";
@@ -25,8 +26,10 @@ export type PostgresStoreRegistry = StoreRegistry & {
  *
  * Accepts one of:
  * - `{ pool }` — a pre-configured pg.Pool
- * - `{ connectionString?, max? }` — connection config (pool created internally).
+ * - `{ connectionString?, max?, poolOptions?, createPool? }` — connection config (pool created internally).
  *    When `connectionString` is omitted, reads from `FSD_DB_URL` then `DATABASE_URL`.
+ *    `poolOptions` is merged onto the adapter's defaults (caller wins). `createPool` overrides
+ *    the Pool constructor (defaults to `(cfg) => new pg.Pool(cfg)`).
  * - `{ executor }` — a QueryExecutor-compatible client (e.g. PGlite for testing)
  */
 export async function createPostgresStores(
@@ -52,22 +55,43 @@ export async function createPostgresStores(
       options.connectionString ??
       process.env.FSD_DB_URL ??
       process.env.DATABASE_URL;
-    if (!connStr) {
-      throw new Error(
-        "createPostgresStores: no connection string provided. " +
-        "Pass { connectionString } or set FSD_DB_URL / DATABASE_URL."
-      );
-    }
-    const { default: pg } = await import("pg");
-    const pool = new pg.Pool({
-      connectionString: connStr,
+
+    const defaults: PoolConfig = {
       max: options.max ?? 10,
       // Serverless-safe defaults: detect stale connections from frozen function
       // instances instead of hanging indefinitely on half-open TCP sockets.
       connectionTimeoutMillis: options.connectionTimeoutMillis ?? 10_000,
       idleTimeoutMillis: options.idleTimeoutMillis ?? 30_000,
       allowExitOnIdle: true
-    });
+    };
+    if (connStr) defaults.connectionString = connStr;
+
+    const poolConfig: PoolConfig = { ...defaults, ...options.poolOptions };
+
+    // Trust `pg` to validate connection info at connect time if caller supplied
+    // poolOptions; only reject the no-information case to preserve the prior
+    // actionable error message.
+    if (!poolConfig.connectionString && !poolConfig.host) {
+      throw new Error(
+        "createPostgresStores: no connection string provided. " +
+        "Pass { connectionString } or set FSD_DB_URL / DATABASE_URL."
+      );
+    }
+
+    let pool: Pool;
+    if (options.createPool) {
+      pool = options.createPool(poolConfig);
+    } else {
+      const { default: pg } = await import("pg");
+      pool = new pg.Pool(poolConfig);
+    }
+
+    // pg.Pool supports multiple 'error' listeners, but the process crashes if
+    // *none* are attached — a dead-socket event from an auto-suspended Neon/RDS
+    // endpoint would otherwise take the function down. Callers can still attach
+    // their own handlers on top of this.
+    pool.on("error", () => {});
+
     executor = {
       async query(text: string, values?: unknown[]) {
         const result = await pool.query(text, values);
@@ -118,4 +142,4 @@ export {
 };
 
 export { initializeSchema } from "./schema";
-export type { PostgresStoreOptions, QueryExecutor } from "./types";
+export type { PostgresStoreOptions, PoolConfig, QueryExecutor } from "./types";

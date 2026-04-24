@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./pg": {
+      "types": "./dist/pg.d.ts",
+      "default": "./dist/pg.js"
     }
   },
   "license": "MIT",
@@ -21,7 +25,8 @@
     "@flow-state-dev/server": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0"
   },
   "scripts": {
     "build": "pnpm --filter @flow-state-dev/core build && pnpm --filter @flow-state-dev/server build && tsc -p tsconfig.json",

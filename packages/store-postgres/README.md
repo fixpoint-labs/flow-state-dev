@@ -45,9 +45,65 @@ The `createPostgresStores` factory accepts one of three option shapes:
 
 | Option shape | Fields | Description |
 |--------------|--------|-------------|
-| Connection string | `connectionString: string`, `max?: number` | Creates a `pg.Pool` internally. `max` defaults to 10. |
+| Connection string | `connectionString?`, `max?`, `poolOptions?`, `createPool?` | Creates a `pg.Pool` internally. See "Configuring the pool" below. When `connectionString` is omitted, reads from env `FSD_DB_URL` then `DATABASE_URL`. |
 | Pre-configured pool | `pool: Pool` | Uses an existing `pg.Pool` instance. You manage pool lifecycle. |
 | Custom executor | `executor: QueryExecutor` | Any object with a `query(text, values?)` method. Useful for testing with PGlite. |
+
+## Configuring the pool
+
+`poolOptions` is a `pg.PoolConfig` merged into the adapter's internal `new pg.Pool(...)` call. Caller values win on overlap. Use it for pool tuning (sizing, timeouts, SSL, keep-alive), for swapping the underlying `Client` class, or for dropping in pre-baked defaults like `vercelPgPoolOptions`:
+
+```ts
+import { createPostgresStores } from "@flow-state-dev/store-postgres";
+import { vercelPgPoolOptions } from "@flow-state-dev/vercel/pg";
+
+const stores = await createPostgresStores({
+  connectionString: process.env.DATABASE_URL,
+  poolOptions: process.env.VERCEL ? vercelPgPoolOptions : undefined
+});
+```
+
+The adapter also attaches a default `pool.on('error', ...)` listener so unhandled pool-level errors (e.g. dead sockets from an auto-suspended database) don't crash the process. `pg.Pool` supports multiple listeners — you can still attach your own.
+
+### Neon serverless driver
+
+`pg.PoolConfig.Client` is `pg`'s documented seam for swapping the underlying client class. `@neondatabase/serverless` ships a drop-in `Client`:
+
+```ts
+import { createPostgresStores } from "@flow-state-dev/store-postgres";
+import { vercelPgPoolOptions } from "@flow-state-dev/vercel/pg";
+import { Client as NeonClient } from "@neondatabase/serverless";
+
+const stores = await createPostgresStores({
+  connectionString: process.env.DATABASE_URL,
+  poolOptions: {
+    ...vercelPgPoolOptions,
+    Client: NeonClient
+  }
+});
+```
+
+This uses Neon's WebSocket transport while keeping `pg.Pool` as the pool implementation. If you want Neon's own `Pool` class (which has additional WebSocket socket-reuse optimizations), use `createPool`:
+
+```ts
+import { Pool as NeonPool } from "@neondatabase/serverless";
+
+const stores = await createPostgresStores({
+  connectionString: process.env.DATABASE_URL,
+  poolOptions: vercelPgPoolOptions,
+  createPool: (cfg) => new NeonPool(cfg) as unknown as import("pg").Pool
+});
+```
+
+### Named convenience fields
+
+For simple cases you can pass the most common knobs directly. `poolOptions` wins if both are set.
+
+| Field | Default | Equivalent `poolOptions` key |
+|-------|---------|------------------------------|
+| `max` | `10` | `max` |
+| `connectionTimeoutMillis` | `10_000` | `connectionTimeoutMillis` |
+| `idleTimeoutMillis` | `30_000` | `idleTimeoutMillis` |
 
 ## Schema
 
