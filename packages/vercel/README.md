@@ -120,6 +120,26 @@ Creates handlers for the bare `/api/flows` route (no path segments). Same `app` 
 
 **Returns**: `{ GET, POST }` — export from the sibling `route.ts`.
 
+## Postgres on Vercel
+
+Vercel keeps Node function instances warm across requests. Auto-suspending databases (Neon, Supabase direct-connect, RDS with auto-pause) drop TCP sockets after ~5 minutes idle. A default `pg.Pool` caches those dead sockets and emits "Connection terminated unexpectedly" on the next cold request.
+
+`@flow-state-dev/vercel/pg` exports `vercelPgPoolOptions`, a `pg.PoolConfig` that closes that race (short idle timeout, longer connection timeout, `max: 1`, `allowExitOnIdle`). Feed it through `@flow-state-dev/store-postgres`' `poolOptions` passthrough, gated on `process.env.VERCEL` so local dev is unaffected:
+
+```ts
+import { createPostgresStores } from "@flow-state-dev/store-postgres";
+import { vercelPgPoolOptions } from "@flow-state-dev/vercel/pg";
+
+export const stores = await createPostgresStores({
+  connectionString: process.env.DATABASE_URL,
+  poolOptions: process.env.VERCEL ? vercelPgPoolOptions : undefined
+});
+```
+
+The subpath is zero-runtime — it uses `import type` for `pg`, so importing it doesn't add `pg` to your bundle if you aren't using the Postgres adapter.
+
+For first-request cold-start latency (typical 1–3s after wake-up), swap in Neon's WebSocket `Client` using `pg.PoolConfig.Client`. See the `@flow-state-dev/store-postgres` README for the recipe.
+
 ## Scripts
 
 ```bash

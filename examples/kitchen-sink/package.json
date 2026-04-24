@@ -25,6 +25,7 @@
     "@flow-state-dev/vercel": "workspace:*",
     "@flow-state-dev/store-postgres": "workspace:*",
     "@flow-state-dev/tools": "workspace:*",
+    "@neondatabase/serverless": "^0.10.4",
     "@radix-ui/react-use-controllable-state": "^1.2.2",
     "@rive-app/react-webgl2": "^4.27.0",
     "@streamdown/cjk": "^1.0.2",
