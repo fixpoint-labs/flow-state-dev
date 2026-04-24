@@ -20,6 +20,7 @@ import {
 } from "@flow-state-dev/core";
 
 import { system as memorySystem } from "@thought-fabric/core/memory";
+import { perspective, system as perspectiveSystem } from "@thought-fabric/core/identity";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
 import { z } from "zod";
@@ -56,6 +57,30 @@ const mem = memorySystem({
   episodic: true,
   semantic: true,
 });
+
+// ---------------------------------------------------------------------------
+// Perspective (ask mode only)
+// ---------------------------------------------------------------------------
+
+const analyst = perspective({
+  name: "analyst",
+  description: "Analytical reasoning partner who decomposes problems and evaluates tradeoffs",
+  salience: {
+    amplify: ["assumptions", "tradeoffs", "edge cases", "constraints", "contradictions"],
+    suppress: ["pleasantries", "filler", "hedging language"],
+  },
+  reasoning: {
+    priorities: ["identify unstated assumptions", "surface tradeoffs", "check for missing constraints"],
+    riskModel: "What could go wrong if we act on incomplete information?",
+  },
+  expertise: ["problem decomposition", "tradeoff analysis", "critical thinking"],
+  communicationStyle: {
+    tone: "direct and specific",
+    emphasis: "answer first, then reasoning",
+  },
+});
+
+const p = perspectiveSystem(analyst, { model: MODEL_ID });
 
 // ---------------------------------------------------------------------------
 // Flow-level schemas
@@ -104,8 +129,12 @@ const assistantGenerator = generator({
 
   // Capabilities: auto-install resources, context formatters, and tools.
   // mem.capability includes a context preset that injects unified memory recall.
-  // artifactsCapability provides artifact resources + context + tools.
-  uses: [mem.capability, featuresCapability],
+  // p.capability injects perspective framing + accumulated observations (ask mode only).
+  uses: [
+    mem.capability,
+    featuresCapability,
+    (ctx: any) => ctx.session?.state?.mode === "ask" ? [p.capability] : [],
+  ],
 
   context: [voiceContext],
 
@@ -346,6 +375,22 @@ const setPreferredProviderHandler = handler({
 });
 
 // ---------------------------------------------------------------------------
+// Perspective capture (ask mode only — analyze response through the
+// perspective's lens and record observations for future context)
+// ---------------------------------------------------------------------------
+
+const perspectiveCapture = sequencer({
+  name: "perspective-capture",
+  inputSchema: z.string(),
+})
+  .thenIf(
+    (_input: any, ctx: any) => (ctx.session?.state as any)?.mode === "ask",
+    sequencer({ name: "perspective-capture-bridge", inputSchema: z.string() })
+      .map((response: string) => ({ content: response }))
+      .then(p.capture),
+  );
+
+// ---------------------------------------------------------------------------
 // Run sequencer
 // ---------------------------------------------------------------------------
 
@@ -356,6 +401,7 @@ const runSequencer = sequencer({ name: "run", inputSchema })
   .tap(resolveThinkingStyle)
   .then(thinkingStyleRouter)
   .work(biasCheck)
+  .work(perspectiveCapture)
   .work(mem.captureFromItems)
   .work(autoTitle)
 
@@ -402,7 +448,7 @@ const chatAgentFlow = defineFlow({
 
   session: {
     stateSchema: sessionStateSchema,
-    resources: { ...artifactResources, ...mem.sessionResources },
+    resources: { ...artifactResources, ...mem.sessionResources, ...p.sessionResources },
     clientData: {
       modeStatus: (ctx) => ({
         currentMode: modeSchema.parse(ctx.state.mode ?? "ask"),
