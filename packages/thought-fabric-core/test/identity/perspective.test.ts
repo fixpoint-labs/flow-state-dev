@@ -1449,9 +1449,23 @@ describe('identity/perspective — system() factory', () => {
     expect(p.userResources).toHaveProperty('perspectivePositions')
   })
 
+  it('uses the same user-scoped position resource for blocks and capability', () => {
+    const p = system(makeInstance(), { positionScope: 'user' })
+    const blockResources = p.position.declaredResources?.user
+    expect(blockResources?.perspectivePositions).toBe(p.userResources.perspectivePositions)
+    expect(p.capability.userResources?.perspectivePositions).toBe(p.userResources.perspectivePositions)
+  })
+
   it('moves positions to projectResources when scope is project', () => {
     const p = system(makeInstance(), { positionScope: 'project' })
     expect(p.projectResources).toHaveProperty('perspectivePositions')
+  })
+
+  it('uses the same project-scoped position resource for blocks and capability', () => {
+    const p = system(makeInstance(), { positionScope: 'project' })
+    const blockResources = p.position.declaredResources?.project
+    expect(blockResources?.perspectivePositions).toBe(p.projectResources.perspectivePositions)
+    expect(p.capability.projectResources?.perspectivePositions).toBe(p.projectResources.perspectivePositions)
   })
 
   it('recall reads accumulated state from ctx', async () => {

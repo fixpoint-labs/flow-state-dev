@@ -222,15 +222,14 @@ export function system(
     .then(analyze)
     .tap(observe)
 
-  // Capability — same scope handling, same resource refs (defineCapability
-  // creates its own internal references via `createPerspectivePositionsResource`,
-  // which means a block declaring both `uses: [cap]` AND a system-bundle
-  // block will see the singleton observations resource and a duplicated
-  // positions resource at user/project scope. To avoid this conflict in the
-  // common case, prefer using EITHER the capability OR the bundled blocks
-  // with `_resource` overrides — not both for the same scope simultaneously.
-  // For session-scoped positions, both reference the same singleton.)
-  const capability = createPerspectiveCapability(instance, { positionScope })
+  // Capability — same scope handling, same resource refs. This keeps the
+  // bundled blocks and `uses: [sec.capability]` compatible in the same flow,
+  // including user/project-scoped positions.
+  const capability = createPerspectiveCapability(instance, {
+    positionScope,
+    _observationsResource: observationsResource,
+    _positionsResource: positionsResource,
+  })
 
   // Resource declarations for flow assembly
   const sessionResources: Record<string, unknown> = {

@@ -23,7 +23,7 @@ import type {
   ProviderTool
 } from "../types/model";
 import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
-import type { CapabilityRef, InferCapabilities } from "../capability/types";
+import type { CapabilityRef, InferCapabilities, UsesEntry } from "../capability/types";
 import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
 import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
@@ -265,7 +265,7 @@ export interface GeneratorConfig<
   TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   // Capability type inference
-  TUses extends readonly CapabilityRef[] = readonly [],
+  TUses extends readonly UsesEntry[] = readonly [],
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
@@ -1280,7 +1280,7 @@ export function generator<
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
-  TUses extends readonly CapabilityRef[] = readonly [],
+  TUses extends readonly UsesEntry[] = readonly [],
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   TCtx = BlockContext<
     TRequestState, TSessionState, TUserState, TProjectState,

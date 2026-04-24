@@ -10,7 +10,7 @@
 import { z } from "zod";
 import { defineCapability } from "../../capability/define-capability";
 import { defineResource } from "../resource";
-import type { InferCapabilities } from "../../capability/types";
+import type { InferCapabilities, UsesEntry } from "../../capability/types";
 import type { BlockContext } from "../block";
 
 // ── Resources for testing ────────────────────────────────────────────
@@ -52,6 +52,15 @@ type TwoCaps = InferCapabilities<readonly [typeof memoryCapability, typeof analy
 // Both namespaces are accessible
 const _twoMemory: TwoCaps["memory"]["remember"] = (fact: string) => { void fact; };
 const _twoAnalytics: TwoCaps["analytics"]["track"] = (event: string, _data: Record<string, unknown>) => { void event; };
+
+// ── InferCapabilities with dynamic uses entries ───────────────────────
+
+const dynamicMemory = (() => [memoryCapability] as const) satisfies UsesEntry;
+type DynamicOnlyCaps = InferCapabilities<readonly [typeof dynamicMemory]>;
+const _dynamicOnly: DynamicOnlyCaps = {};
+
+type MixedStaticDynamicCaps = InferCapabilities<readonly [typeof analyticsCapability, typeof dynamicMemory]>;
+const _mixedStatic: MixedStaticDynamicCaps["analytics"]["track"] = (event: string, _data: Record<string, unknown>) => { void event; };
 
 // ── InferCapabilities with empty array ───────────────────────────────
 
@@ -132,6 +141,19 @@ handler({
   },
 });
 
+// Dynamic entries are allowed in block uses arrays. They are resolved at
+// runtime, so only static entries contribute to ctx.cap's compile-time shape.
+handler({
+  name: "cap-dynamic",
+  uses: [analyticsCapability, dynamicMemory] as const,
+  inputSchema: z.any(),
+  outputSchema: z.any(),
+  execute: async (_input, ctx) => {
+    ctx.cap.analytics.track("event", { key: "value" });
+    return {};
+  },
+});
+
 // Handler without uses — ctx.cap should be empty
 handler({
   name: "no-cap-handler",
@@ -148,6 +170,8 @@ void _singleAccess;
 void _singleRecall;
 void _twoMemory;
 void _twoAnalytics;
+void _dynamicOnly;
+void _mixedStatic;
 void _configured1;
 void _configured2;
 void _configured3;

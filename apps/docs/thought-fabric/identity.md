@@ -360,24 +360,21 @@ const chat = generator({
 
 ## Multi-Perspective Flows
 
-Different perspectives can coexist in the same flow. Each `system()` call produces independent resources and blocks:
+Static perspective blocks can be composed freely because they close over their own `PerspectiveInstance` and do not declare resources:
+
+```ts
+const secAnalyze = perspectiveAnalyze({ perspective: securityEngineer, model: 'preset/fast' })
+const perfAnalyze = perspectiveAnalyze({ perspective: performanceEngineer, model: 'preset/fast' })
+
+const review = sequencer({ name: 'multi-perspective-review' })
+  .thenAll([secAnalyze, perfAnalyze])
+```
+
+Use one resource-backed `system()` capability per block or flow. The helpers are exposed as `ctx.cap.perspective`, and resources are declared under `perspectiveObservations` / `perspectivePositions`, so multiple resource-backed perspective systems would currently collide at the capability/resource namespace. If you need two sticky perspectives, run them in separate flows or keep one sticky and use static blocks for the others.
 
 ```ts
 const sec = system(securityEngineer, { model: 'preset/fast' })
-const perf = system(performanceEngineer, { model: 'preset/fast' })
-
-defineFlow({
-  session: {
-    resources: { ...sec.sessionResources, ...perf.sessionResources },
-  },
-})
-```
-
-Use separate capabilities on different generators, or compose analyses:
-
-```ts
-const secReview = generator({ uses: [sec.capability], /* ... */ })
-const perfReview = generator({ uses: [perf.capability], /* ... */ })
+const chat = generator({ uses: [sec.capability], /* ... */ })
 ```
 
 ## Naming Convention

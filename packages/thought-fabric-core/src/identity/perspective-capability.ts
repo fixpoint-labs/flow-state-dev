@@ -13,9 +13,10 @@
  * - Typed helpers via `ctx.cap.perspective.*` — `observe()`, `position()`,
  *   `challenge()`, `observations()`, `positions()`, `format()`, etc.
  *
- * For composing several perspectives in a single flow, create them with
- * distinct `name` fields — capability deduplication is by reference, so
- * separate `createPerspectiveCapability` calls produce separate capabilities.
+ * Use one resource-backed perspective capability per block/flow. Static
+ * perspective blocks can be composed freely, but capability helpers live at
+ * `ctx.cap.perspective`, so multiple resource-backed capabilities would share
+ * the same namespace.
  */
 
 import { defineCapability } from '@flow-state-dev/core'
@@ -66,6 +67,25 @@ export interface PerspectiveCapabilityConfig {
    * conversation they emerged from.
    */
   positionScope?: PositionScope
+  /**
+   * Override the observations resource reference.
+   *
+   * Internal hook used by `system()` so bundled blocks and the capability
+   * declare the same resource reference.
+   *
+   * @internal
+   */
+  _observationsResource?: typeof perspectiveObservationsResource
+  /**
+   * Override the positions resource reference.
+   *
+   * Internal hook used by `system()` so bundled blocks and the capability
+   * declare the same resource reference when positions live outside the
+   * default session singleton.
+   *
+   * @internal
+   */
+  _positionsResource?: typeof perspectivePositionsResource
 }
 
 // ---------------------------------------------------------------------------
@@ -139,14 +159,15 @@ export function createPerspectiveCapability(
   const positionScope: PositionScope = config?.positionScope ?? 'session'
 
   // Observations are always session-scoped (singleton resource).
-  const observationsResource = perspectiveObservationsResource
+  const observationsResource = config?._observationsResource ?? perspectiveObservationsResource
 
   // Positions resource: singleton for session, factory-created for user/project.
   // The factory call produces a distinct reference, which is what diamond-dedup
   // uses to detect "same capability declared twice" vs "different capability".
-  const positionsResource = positionScope === 'session'
-    ? perspectivePositionsResource
-    : createPerspectivePositionsResource(positionScope)
+  const positionsResource = config?._positionsResource
+    ?? (positionScope === 'session'
+      ? perspectivePositionsResource
+      : createPerspectivePositionsResource(positionScope))
 
   return defineCapability({
     name: 'perspective' as const,
