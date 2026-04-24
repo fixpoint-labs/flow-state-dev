@@ -10,9 +10,8 @@
  */
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { ZodTypeAny } from "zod";
-import { CrossFlowSchemaConflictError } from "./errors";
-import type { ConflictScope } from "./errors";
-import { compareZodSchemas, type CompatibilityResult } from "./schema-compat";
+import { CrossFlowSchemaConflictError, type ConflictScope } from "./errors";
+import { compareZodSchemas } from "./schema-compat";
 
 /**
  * Registry contract used by server routing/execution layers.
@@ -23,8 +22,8 @@ export interface FlowRegistry {
   get(kind: string, id?: string): FlowInstance | undefined;
   list(): FlowInstance[];
   /**
-   * Describes the merged cross-flow schema view. Useful for diagnostics and
-   * devtool surfaces. Returned maps are defensive copies.
+   * Merged cross-flow schema view (non-isolated flows only). Diagnostics and
+   * devtool surfaces consume this.
    */
   describeSharedSchemas(): SharedSchemasDescription;
 }
@@ -155,34 +154,32 @@ export class InMemoryFlowRegistry implements FlowRegistry {
   }
 
   private validateAndIndex(flow: FlowInstance): void {
-    const userDeclaration = flow.isolateUserState
-      ? undefined
-      : collectScopeDeclaration(flow, "user");
-    const projectDeclaration = flow.isolateProjectState
-      ? undefined
-      : collectScopeDeclaration(flow, "project");
+    this.validateAndIndexScope(
+      "user",
+      flow,
+      flow.isolateUserState ? undefined : collectScopeDeclaration(flow, "user")
+    );
+    this.validateAndIndexScope(
+      "project",
+      flow,
+      flow.isolateProjectState ? undefined : collectScopeDeclaration(flow, "project")
+    );
+  }
 
-    if (userDeclaration !== undefined) {
-      this.validateScope("user", flow.kind, userDeclaration);
-    }
-    if (projectDeclaration !== undefined) {
-      this.validateScope("project", flow.kind, projectDeclaration);
-    }
-
-    // Passed validation — index participants. Skip re-indexing when the same
-    // kind is already present (different `id`, same kind — same schema shape).
-    if (userDeclaration !== undefined && !this.participants.user.has(flow.kind)) {
-      this.participants.user.set(flow.kind, {
+  private validateAndIndexScope(
+    scope: ConflictScope,
+    flow: FlowInstance,
+    declaration: ScopeDeclaration | undefined
+  ): void {
+    if (declaration === undefined) return;
+    this.validateScope(scope, flow.kind, declaration);
+    // Index only the first instance of a given kind — later instances (same
+    // kind, different id) are assumed structurally equivalent.
+    if (!this.participants[scope].has(flow.kind)) {
+      this.participants[scope].set(flow.kind, {
         flowKind: flow.kind,
-        stateSchema: userDeclaration.stateSchema,
-        resourceSchemas: { ...userDeclaration.resourceSchemas },
-      });
-    }
-    if (projectDeclaration !== undefined && !this.participants.project.has(flow.kind)) {
-      this.participants.project.set(flow.kind, {
-        flowKind: flow.kind,
-        stateSchema: projectDeclaration.stateSchema,
-        resourceSchemas: { ...projectDeclaration.resourceSchemas },
+        stateSchema: declaration.stateSchema,
+        resourceSchemas: { ...declaration.resourceSchemas },
       });
     }
   }
@@ -193,38 +190,18 @@ export class InMemoryFlowRegistry implements FlowRegistry {
     incoming: ScopeDeclaration
   ): void {
     for (const existing of this.participants[scope].values()) {
-      if (existing.flowKind === flowKind) {
-        // Same kind re-registered: skip. defineFlow returns structurally
-        // equivalent instances for a given definition.
-        continue;
-      }
+      // Same kind re-registered: skip. defineFlow produces structurally
+      // equivalent instances for a given definition.
+      if (existing.flowKind === flowKind) continue;
 
       if (incoming.stateSchema !== undefined && existing.stateSchema !== undefined) {
-        reportIfIncompatible(
-          compareZodSchemas(existing.stateSchema, incoming.stateSchema),
-          {
-            scope,
-            field: "stateSchema",
-            flowA: existing.flowKind,
-            flowB: flowKind,
-          }
-        );
+        checkPair(scope, "stateSchema", existing.flowKind, flowKind, existing.stateSchema, incoming.stateSchema);
       }
 
       for (const [name, incomingSchema] of Object.entries(incoming.resourceSchemas)) {
         const existingSchema = existing.resourceSchemas[name];
-        if (existingSchema === undefined) {
-          continue;
-        }
-        reportIfIncompatible(
-          compareZodSchemas(existingSchema, incomingSchema),
-          {
-            scope,
-            field: `resources.${name}`,
-            flowA: existing.flowKind,
-            flowB: flowKind,
-          }
-        );
+        if (existingSchema === undefined) continue;
+        checkPair(scope, `resources.${name}`, existing.flowKind, flowKind, existingSchema, incomingSchema);
       }
     }
   }
@@ -266,45 +243,39 @@ function collectScopeDeclaration(
   return { stateSchema, resourceSchemas };
 }
 
-function reportIfIncompatible(
-  result: CompatibilityResult,
-  ctx: {
-    scope: ConflictScope;
-    field: string;
-    flowA: string;
-    flowB: string;
-  }
+function checkPair(
+  scope: ConflictScope,
+  field: string,
+  flowA: string,
+  flowB: string,
+  schemaA: ZodTypeAny,
+  schemaB: ZodTypeAny
 ): void {
+  const result = compareZodSchemas(schemaA, schemaB);
   if (result.kind === "incompatible") {
     throw new CrossFlowSchemaConflictError({
-      scope: ctx.scope,
-      field: ctx.field,
-      flowA: ctx.flowA,
-      flowB: ctx.flowB,
+      scope,
+      field,
+      flowA,
+      flowB,
       reason: result.reason,
       detail: result.detail,
     });
   }
   if (result.kind === "compatible" && result.warnings.length > 0) {
     console.warn(
-      `[flow-state] Flows "${ctx.flowA}" and "${ctx.flowB}" declare structurally compatible but non-identical ${ctx.scope}.${ctx.field} schemas: ${result.warnings.join("; ")}. This is allowed but may indicate a silent schema drift — consider reconciling.`
+      `[flow-state] Flows "${flowA}" and "${flowB}" declare structurally compatible but non-identical ${scope}.${field} schemas: ${result.warnings.join("; ")}`
     );
   }
 }
 
-function describeScope(
-  entries: Map<string, ScopeParticipant>
-): SharedScopeDescription {
+function describeScope(entries: Map<string, ScopeParticipant>): SharedScopeDescription {
   const resources: Record<string, ZodTypeAny> = {};
   let stateSchema: ZodTypeAny | undefined;
   for (const entry of entries.values()) {
-    if (stateSchema === undefined && entry.stateSchema !== undefined) {
-      stateSchema = entry.stateSchema;
-    }
+    stateSchema ??= entry.stateSchema;
     for (const [name, schema] of Object.entries(entry.resourceSchemas)) {
-      if (resources[name] === undefined) {
-        resources[name] = schema;
-      }
+      resources[name] ??= schema;
     }
   }
   return { stateSchema, resources };

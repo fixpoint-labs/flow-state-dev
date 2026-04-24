@@ -15,13 +15,11 @@ export interface CrossFlowSchemaConflictDetails {
 }
 
 /**
- * Thrown at `FlowRegistry.register` time when two flows declare schemas that
- * would destroy each other's data if stored under the same scope key.
- *
- * The error message names both flows, the scope (`user` or `project`), the
- * field path within the scope (`stateSchema` or `resources.<name>`), and
- * the reason the two declarations are incompatible. The suggested resolution
- * is printed at the end of the message.
+ * Thrown by `FlowRegistry.register` when two flows declare schemas that would
+ * destroy each other's data if stored under the same scope key. Names both
+ * flows, the scope, the field path (`stateSchema` or `resources.<name>`), and
+ * the reason; the message ends with the `isolate*State` flag to set for an
+ * escape hatch.
  */
 export class CrossFlowSchemaConflictError extends Error {
   readonly scope: ConflictScope;
@@ -32,8 +30,11 @@ export class CrossFlowSchemaConflictError extends Error {
   readonly detail: string;
 
   constructor(details: CrossFlowSchemaConflictDetails) {
-    const message = formatMessage(details);
-    super(message);
+    const flag = details.scope === "user" ? "isolateUserState" : "isolateProjectState";
+    super(
+      `Flows "${details.flowA}" and "${details.flowB}" declare incompatible ${details.scope}.${details.field} schemas (${details.reason}: ${details.detail}). ` +
+      `Set ${flag}: true on one of the flows to opt out of cross-flow sharing, or reconcile the schemas.`
+    );
     this.name = "CrossFlowSchemaConflictError";
     this.scope = details.scope;
     this.field = details.field;
@@ -42,15 +43,4 @@ export class CrossFlowSchemaConflictError extends Error {
     this.reason = details.reason;
     this.detail = details.detail;
   }
-}
-
-function formatMessage(details: CrossFlowSchemaConflictDetails): string {
-  const isolateFlag = details.scope === "user" ? "isolateUserState" : "isolateProjectState";
-  return [
-    `CrossFlowSchemaConflictError: Flows "${details.flowA}" and "${details.flowB}" declare incompatible`,
-    ` ${details.scope}.${details.field} schemas.`,
-    `\n  reason: ${details.reason} — ${details.detail}.`,
-    `\n  Set ${isolateFlag}: true on one of the flows to opt out of cross-flow sharing,`,
-    ` or reconcile the schemas so they are structurally compatible.`,
-  ].join("");
 }

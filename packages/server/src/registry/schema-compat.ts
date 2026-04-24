@@ -1,12 +1,10 @@
 /**
  * Cross-flow Zod schema compatibility checker.
  *
- * Determines whether two Zod schemas declared by different flows can coexist
- * when pointed at the same storage key. The checker walks schema structures
- * at the top level and recurses into object shapes. The philosophy is
- * conservative: when unsure, report an error. Wave 1 accepts false-positive
- * conflicts (user asked to reconcile or isolate) over false negatives (silent
- * data loss).
+ * Philosophy: conservative. When the checker cannot prove two schemas are
+ * safe to share a storage key, it reports incompatible — Wave 1 accepts
+ * false-positive conflicts (asks the developer to reconcile or isolate)
+ * over false negatives (silent data loss).
  */
 import type { ZodTypeAny } from "zod";
 
@@ -15,90 +13,70 @@ export type CompatibilityResult =
   | { kind: "compatible"; warnings: string[] }
   | { kind: "incompatible"; reason: CompatibilityReason; detail: string };
 
-export type CompatibilityReason =
-  | "incompatible-shape"
-  | "incompatible-types"
-  | "content-type-mismatch";
+export type CompatibilityReason = "incompatible-shape" | "incompatible-types";
+
+const WRAPPER_TYPE_NAMES = new Set([
+  "ZodOptional",
+  "ZodNullable",
+  "ZodDefault",
+  "ZodEffects",
+  "ZodBranded",
+  "ZodReadonly",
+]);
 
 /**
  * Compare two Zod schemas for cross-flow compatibility.
  *
- * - Same reference → identical (always safe to merge).
- * - Both object-shaped with overlapping keys that agree on types → compatible
- *   (overlapping-optional or extension; structurally safe).
- * - Any mismatch on a shared required field's type, or non-object schemas
- *   that differ in type → incompatible.
+ * - Same reference → identical (safe to merge).
+ * - Object shapes whose shared keys recursively agree → compatible, with a
+ *   warning when disjoint keys are present.
+ * - Otherwise → incompatible.
  */
-export function compareZodSchemas(
-  a: ZodTypeAny,
-  b: ZodTypeAny
-): CompatibilityResult {
+export function compareZodSchemas(a: ZodTypeAny, b: ZodTypeAny): CompatibilityResult {
   if (a === b) {
     return { kind: "identical" };
   }
 
-  const typeNameA = typeName(a);
-  const typeNameB = typeName(b);
-
-  // Handle optional / nullable / default wrappers: unwrap on both sides
-  // before comparing the inner shape.
+  // Unwrap optional/nullable/default wrappers on both sides first.
   const unwrappedA = unwrap(a);
   const unwrappedB = unwrap(b);
   if (unwrappedA !== a || unwrappedB !== b) {
     return compareZodSchemas(unwrappedA, unwrappedB);
   }
 
-  if (typeNameA !== typeNameB) {
-    return {
-      kind: "incompatible",
-      reason: "incompatible-types",
-      detail: `types differ: ${typeNameA} vs ${typeNameB}`,
-    };
+  const nameA = typeName(a);
+  const nameB = typeName(b);
+  if (nameA !== nameB) {
+    return { kind: "incompatible", reason: "incompatible-types", detail: `${nameA} vs ${nameB}` };
   }
 
-  if (typeNameA === "ZodObject") {
+  if (nameA === "ZodObject") {
     return compareObjectShapes(a, b);
   }
 
-  // Primitives of the same ZodType are treated as compatible. We can't
-  // easily tell apart two z.string() with different refinements; err on the
-  // side of allowing them.
+  // Primitives of the same ZodType — treat as compatible (can't easily
+  // distinguish two z.string() with different refinements).
   return { kind: "compatible", warnings: [] };
 }
 
 function typeName(schema: ZodTypeAny): string {
-  const def = (schema as { _def?: { typeName?: string } })._def;
-  return def?.typeName ?? "Unknown";
+  return (schema as { _def?: { typeName?: string } })._def?.typeName ?? "Unknown";
 }
 
 function unwrap(schema: ZodTypeAny): ZodTypeAny {
-  const wrapperNames = new Set([
-    "ZodOptional",
-    "ZodNullable",
-    "ZodDefault",
-    "ZodEffects",
-    "ZodBranded",
-    "ZodReadonly",
-  ]);
-  if (!wrapperNames.has(typeName(schema))) {
+  if (!WRAPPER_TYPE_NAMES.has(typeName(schema))) {
     return schema;
   }
   const def = (schema as { _def?: { innerType?: ZodTypeAny; schema?: ZodTypeAny } })._def;
   return def?.innerType ?? def?.schema ?? schema;
 }
 
-type ZodObjectLike = ZodTypeAny & {
-  shape?: Record<string, ZodTypeAny>;
-  _def?: {
-    shape?: () => Record<string, ZodTypeAny>;
-  };
-};
-
-function getShape(schema: ZodObjectLike): Record<string, ZodTypeAny> | undefined {
-  if (schema.shape && typeof schema.shape === "object") {
-    return schema.shape as Record<string, ZodTypeAny>;
+function getShape(schema: ZodTypeAny): Record<string, ZodTypeAny> | undefined {
+  const direct = (schema as { shape?: unknown }).shape;
+  if (direct && typeof direct === "object") {
+    return direct as Record<string, ZodTypeAny>;
   }
-  const shapeFn = schema._def?.shape;
+  const shapeFn = (schema as { _def?: { shape?: () => Record<string, ZodTypeAny> } })._def?.shape;
   if (typeof shapeFn === "function") {
     try {
       return shapeFn();
@@ -109,27 +87,19 @@ function getShape(schema: ZodObjectLike): Record<string, ZodTypeAny> | undefined
   return undefined;
 }
 
-function compareObjectShapes(
-  a: ZodTypeAny,
-  b: ZodTypeAny
-): CompatibilityResult {
-  const shapeA = getShape(a as ZodObjectLike);
-  const shapeB = getShape(b as ZodObjectLike);
-
+function compareObjectShapes(a: ZodTypeAny, b: ZodTypeAny): CompatibilityResult {
+  const shapeA = getShape(a);
+  const shapeB = getShape(b);
   if (shapeA === undefined || shapeB === undefined) {
-    // Couldn't inspect one of the shapes; be conservative and allow with a warning.
-    return {
-      kind: "compatible",
-      warnings: ["could not inspect one of the object shapes"],
-    };
+    return { kind: "compatible", warnings: ["object shape not inspectable"] };
   }
 
-  const keysA = new Set(Object.keys(shapeA));
-  const keysB = new Set(Object.keys(shapeB));
-  const sharedKeys = [...keysA].filter((k) => keysB.has(k));
-
   const warnings: string[] = [];
-  for (const key of sharedKeys) {
+  const keysA = Object.keys(shapeA);
+  const keysB = Object.keys(shapeB);
+
+  for (const key of keysA) {
+    if (!(key in shapeB)) continue;
     const result = compareZodSchemas(shapeA[key]!, shapeB[key]!);
     if (result.kind === "incompatible") {
       return {
@@ -143,20 +113,11 @@ function compareObjectShapes(
     }
   }
 
-  const onlyInA = [...keysA].filter((k) => !keysB.has(k));
-  const onlyInB = [...keysB].filter((k) => !keysA.has(k));
-
+  const onlyInA = keysA.filter((k) => !(k in shapeB));
+  const onlyInB = keysB.filter((k) => !(k in shapeA));
   if (onlyInA.length > 0 || onlyInB.length > 0) {
-    const parts: string[] = [];
-    if (onlyInA.length > 0) parts.push(`flow A-only keys: ${onlyInA.join(", ")}`);
-    if (onlyInB.length > 0) parts.push(`flow B-only keys: ${onlyInB.join(", ")}`);
-    warnings.push(`disjoint fields detected (${parts.join("; ")})`);
+    warnings.push(`disjoint fields: A-only [${onlyInA.join(", ")}] B-only [${onlyInB.join(", ")}]`);
   }
 
-  if (warnings.length === 0 && sharedKeys.length === keysA.size && sharedKeys.length === keysB.size) {
-    // All keys overlap and compared identical/compatible with no warnings.
-    return { kind: "identical" };
-  }
-
-  return { kind: "compatible", warnings };
+  return warnings.length === 0 ? { kind: "identical" } : { kind: "compatible", warnings };
 }

@@ -194,17 +194,13 @@ export type FlowDefinition<
   costEstimator?: CostEstimator;
 
   /**
-   * When true, user-scope storage is namespaced by `flowKind`. The store key
-   * becomes `${userId}:${flowKind}` and the flow does not participate in
-   * cross-flow schema registry checks for the user scope. Default: false.
+   * When true, this flow's user-scope storage is namespaced by `flowKind`
+   * (`${userId}:${flowKind}`) and it skips cross-flow schema checks for the
+   * user scope. Default: false (shared).
    */
   isolateUserState?: boolean;
 
-  /**
-   * When true, project-scope storage is namespaced by `flowKind`. The store
-   * key becomes `${projectId}:${flowKind}` and the flow does not participate
-   * in cross-flow schema registry checks for the project scope. Default: false.
-   */
+  /** Project-scope equivalent of `isolateUserState`. Default: false. */
   isolateProjectState?: boolean;
 
   defaultBlockRenderer?: unknown | false;
