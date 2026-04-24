@@ -14,8 +14,15 @@ import {
   createInMemoryStores,
   type StoreRegistry,
 } from "@flow-state-dev/server";
-import { createPostgresStores } from "@flow-state-dev/store-postgres";
+import { createPostgresStores, type PoolConfig } from "@flow-state-dev/store-postgres";
+import { vercelPgPoolOptions } from "@flow-state-dev/vercel/pg";
+import { Client as NeonClient } from "@neondatabase/serverless";
 import kitchenSinkFlow from "@/src/flows/kitchen-sink/flow";
+
+// Neon's Client is a runtime drop-in for pg's Client (that's pg.PoolConfig.Client's
+// documented purpose), but their connect() signature differs slightly so the types
+// don't line up. Cast once at the seam.
+const NeonClientForPg = NeonClient as unknown as PoolConfig["Client"];
 
 // Pass explicit provider/gateway instances. The model resolver's dynamic
 // require() path doesn't work in bundled Next.js — static imports do.
@@ -43,11 +50,24 @@ registry.register(kitchenSinkFlow);
  *   FSD_DB_URL / DATABASE_URL → Postgres (Neon on Vercel)
  *   STORE_TYPE=filesystem     → local filesystem (.fsdev/data/)
  *   otherwise                 → in-memory (ephemeral, default for local dev)
+ *
+ * On Vercel, cold-start requests against an auto-suspended database race the
+ * warm function's cached pg.Pool sockets. `vercelPgPoolOptions` closes that
+ * race with a short idle timeout + wake-up-friendly connection timeout. When
+ * the database is Neon, we also swap in their WebSocket Client to trim the
+ * 1–3s wake-up latency that the default pg driver pays on the first request.
  */
 async function createStores(): Promise<StoreRegistry> {
   const dbUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
   if (dbUrl) {
-    return createPostgresStores({ connectionString: dbUrl });
+    const onVercel = !!process.env.VERCEL;
+    const isNeon = dbUrl.includes(".neon.tech");
+    return createPostgresStores({
+      connectionString: dbUrl,
+      poolOptions: onVercel
+        ? { ...vercelPgPoolOptions, ...(isNeon ? { Client: NeonClientForPg } : {}) }
+        : undefined,
+    });
   }
   if (process.env.STORE_TYPE === "filesystem") {
     return createFilesystemStores({ rootDir: path.join(process.cwd(), ".fsdev", "data") });

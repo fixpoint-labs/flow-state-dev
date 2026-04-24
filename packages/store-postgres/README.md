@@ -70,15 +70,19 @@ The adapter also attaches a default `pool.on('error', ...)` listener so unhandle
 `pg.PoolConfig.Client` is `pg`'s documented seam for swapping the underlying client class. `@neondatabase/serverless` ships a drop-in `Client`:
 
 ```ts
-import { createPostgresStores } from "@flow-state-dev/store-postgres";
+import { createPostgresStores, type PoolConfig } from "@flow-state-dev/store-postgres";
 import { vercelPgPoolOptions } from "@flow-state-dev/vercel/pg";
 import { Client as NeonClient } from "@neondatabase/serverless";
+
+// Runtime drop-in, but Neon's connect() signature doesn't structurally match
+// pg's, so cast once at the seam.
+const NeonClientForPg = NeonClient as unknown as PoolConfig["Client"];
 
 const stores = await createPostgresStores({
   connectionString: process.env.DATABASE_URL,
   poolOptions: {
     ...vercelPgPoolOptions,
-    Client: NeonClient
+    Client: NeonClientForPg
   }
 });
 ```
