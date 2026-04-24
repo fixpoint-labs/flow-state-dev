@@ -56,7 +56,7 @@ const jobRunner = handler({
   inputSchema: jobSchema,
   outputSchema: z.any(),
   execute: async (job) => {
-    await doWork(job);
+    // ...do the work for this job...
     return null;
   },
 });
@@ -88,25 +88,56 @@ const flow = defineFlow({
 });
 ```
 
+`drainPool()` returns a handle with four fields:
+
+- `block` — the composed sequencer; plug it into a parent sequencer or a flow action.
+- `queue` — the `DefinedResourceCollection` used as the durable queue substrate. Auto-installed via block-level `sessionResources`, but you can register it explicitly for flow-level visibility.
+- `queueKey` — the resource key the collection lives under (derived from `name`).
+- `enqueue` — a factory that returns a handler block. Usually used inside a worker body (see next section); can also be used externally for pre-drain seeding.
+
 ## Mid-drain enqueue
 
-Workers can append follow-up items by tapping the `enqueue` helper into the body. Use the factory form of `block` so the helper is available before the pool handle exists:
+Workers can append follow-up items by tapping the `enqueue` helper into the body. The `block` field accepts a factory `(helpers) => BlockDefinition` so the helper is available at body-construction time — without this, there's a chicken-and-egg: `enqueue` is on the pool handle, but the body is passed into `drainPool()`.
 
 ```ts
 import { drainPool } from "@flow-state-dev/patterns/drain-pool";
 import { sequencer, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const linkSchema = z.object({ url: z.string(), depth: z.number() });
+
+const fetchPage = handler({
+  name: "fetch-page",
+  inputSchema: linkSchema,
+  outputSchema: z.object({
+    url: z.string(),
+    depth: z.number(),
+    links: z.array(z.string()),
+  }),
+  execute: async (link) => {
+    // ...fetch the page, extract its outbound links...
+    return { url: link.url, depth: link.depth, links: [] as string[] };
+  },
+});
 
 const pool = drainPool({
   name: "crawl",
   item: linkSchema,
   concurrency: 4,
-  initialItems: [seedLink],
+  initialItems: [{ url: "https://example.com", depth: 0 }],
+  // `enqueue` here is destructured from the helpers object passed to the
+  // factory. It takes a resolver function that receives (pipelineValue, ctx)
+  // and returns items to append to the queue. The result of `enqueue(...)` is
+  // itself a block; `.tap(...)` runs it as a side effect without changing the
+  // worker body's output.
   block: ({ enqueue }) =>
     sequencer({ name: "crawl-body" })
       .then(fetchPage)
       .tap(
-        enqueue((page, ctx) =>
-          extractLinks(page).filter(isNew),
+        enqueue((page) =>
+          page.depth < 3
+            ? page.links.map((url) => ({ url, depth: page.depth + 1 }))
+            : [],
         ),
       ),
 });
@@ -137,10 +168,24 @@ Drain Pool is **at-least-once**. A worker can:
 3. Crash before `markDone` commits.
 4. After `leaseDurationMs`, another worker reclaims the lease and re-runs the item.
 
-Side effects run more than once. Non-idempotent side effects must be deduped by the caller. Use `item.id` (a uuid v4 by default) as the idempotency key:
+Side effects run more than once. Non-idempotent side effects must be deduped by the caller. The worker body receives your payload as input (the drainPool's internal uuid wrapper isn't exposed), so put a stable key on the payload and short-circuit on re-delivery in a side-band collection:
 
 ```ts
+import { defineResourceCollection, handler } from "@flow-state-dev/core";
+import { z } from "zod";
+
+// Your payload carries a caller-stable key (`id`). The drainPool's own
+// internal uuid is the collection key used for lease coordination —
+// it is NOT passed to the worker body.
+const jobSchema = z.object({ id: z.string(), payload: z.string() });
+
+const idempotencyCollection = defineResourceCollection({
+  pattern: "idempotency/**",
+  stateSchema: z.object({ result: z.any() }),
+});
+
 const body = handler({
+  name: "run-job",
   inputSchema: jobSchema,
   outputSchema: z.any(),
   sessionResources: { idempotency: idempotencyCollection },
@@ -148,7 +193,7 @@ const body = handler({
     const seen = ctx.session.resources.idempotency.getOptional(job.id);
     if (seen !== undefined) return seen.state.result;
 
-    const result = await doSideEffectfulWork(job);
+    const result = await runExternalSideEffect(job);
     await ctx.session.resources.idempotency.create(job.id, { result });
     return result;
   },
@@ -205,10 +250,15 @@ drainPool<TItem>({
   /** Devtool container hint. Default: `{ component: "drain-pool" }`. */
   container?: ContainerConfig;
 }): {
-  block: SequencerDefinition;          // plug into a parent sequencer or flow
-  queue: DefinedResourceCollection;    // register on defineFlow (optional — auto-installed)
-  queueKey: string;                    // resource key
-  enqueue: (items) => BlockDefinition; // factory for mid-drain enqueue
+  block: SequencerDefinition;         // plug into a parent sequencer or flow
+  queue: DefinedResourceCollection;   // register on defineFlow (optional — auto-installed)
+  queueKey: string;                   // resource key
+  enqueue: (
+    items:
+      | TItem
+      | TItem[]
+      | ((input: unknown, ctx: BlockContext) => TItem | TItem[] | Promise<TItem | TItem[]>),
+  ) => BlockDefinition;
 };
 ```
 
