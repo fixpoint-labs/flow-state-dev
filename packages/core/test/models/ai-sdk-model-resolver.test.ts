@@ -98,6 +98,34 @@ describe("createAiSdkModelResolver — prompt caching", () => {
     expect(result.usage?.cacheCreationInputTokens).toBe(128);
   });
 
+  it("maps AI SDK v6 input token detail cache counts into framework usage", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 100, noCache: 60, cacheRead: 30, cacheWrite: 10 },
+          outputTokens: { total: 5, text: 5, reasoning: undefined },
+        },
+        warnings: [],
+      }),
+    });
+    (model as any).provider = "anthropic.messages";
+
+    const resolver = createAiSdkModelResolver(() => model);
+    const result = await resolver("anthropic/claude-sonnet-4-6", "gen").generate({
+      messages: [{ role: "user", content: "hi" }],
+    });
+
+    expect(result.usage).toEqual({
+      promptTokens: 100,
+      completionTokens: 5,
+      totalTokens: 105,
+      cacheReadInputTokens: 30,
+      cacheCreationInputTokens: 10,
+    });
+  });
+
   it("opts Vercel AI Gateway into providerOptions.gateway.caching: 'auto'", async () => {
     const model = new MockLanguageModelV3({
       doGenerate: async () => ({

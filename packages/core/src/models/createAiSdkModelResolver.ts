@@ -51,6 +51,19 @@ function resolveNestedNumber(
   return asNumber(nested.total);
 }
 
+function resolveNestedFieldNumber(
+  root: Record<string, unknown>,
+  key: string,
+  nestedKey: string
+): number | undefined {
+  const nested = asRecord(root[key]);
+  if (nested === undefined) {
+    return undefined;
+  }
+
+  return asNumber(nested[nestedKey]);
+}
+
 function normalizeUsage(
   value: unknown,
   providerMetadata?: unknown
@@ -82,11 +95,15 @@ function normalizeUsage(
     asNumber(anthropicMeta?.cacheReadInputTokens) ??
     asNumber(anthropicMeta?.cache_read_input_tokens) ??
     resolveNestedNumber(usage, "cacheReadInputTokens") ??
-    resolveNestedNumber(usage, "cachedInputTokens");
+    resolveNestedNumber(usage, "cachedInputTokens") ??
+    resolveNestedFieldNumber(usage, "inputTokenDetails", "cacheReadTokens") ??
+    resolveNestedFieldNumber(usage, "inputTokens", "cacheRead");
   const cacheCreationInputTokens =
     asNumber(anthropicMeta?.cacheCreationInputTokens) ??
     asNumber(anthropicMeta?.cache_creation_input_tokens) ??
-    resolveNestedNumber(usage, "cacheCreationInputTokens");
+    resolveNestedNumber(usage, "cacheCreationInputTokens") ??
+    resolveNestedFieldNumber(usage, "inputTokenDetails", "cacheWriteTokens") ??
+    resolveNestedFieldNumber(usage, "inputTokens", "cacheWrite");
 
   if (
     promptTokens === undefined &&
