@@ -96,6 +96,6 @@ This is a pnpm monorepo (pnpm@10.4.1, Node 22). No Docker, databases, or externa
 
 **Key commands** are documented in `CLAUDE.md` and `docs/contributing/development-setup.md`. Summary: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm --filter <pkg> test`.
 
-**Running example apps** (hello-chat, kitchen-sink) requires `OPENAI_API_KEY` for real LLM calls but works without it via the CLI: `pnpm fsdev run hello-chat chat -i '{"message": "Hello"}'` falls back to mock generation.
+**Running reference/example apps** (`apps/kitchen-sink`, `examples/hello-chat`) requires `OPENAI_API_KEY` for real LLM calls but works without it via the CLI: `pnpm fsdev run hello-chat chat -i '{"message": "Hello"}'` falls back to mock generation.
 
 **Docs site**: `cd apps/docs && npx docusaurus start --port 3000` (do not use `pnpm docs:dev` with extra `--` flags — argument forwarding breaks).

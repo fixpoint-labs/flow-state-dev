@@ -29,7 +29,7 @@ Before writing, read at least one existing flow:
 | Flow | What to learn from it |
 |------|----------------------|
 | `examples/hello-chat/src/flows/hello-chat/flow.ts` | Minimal single-action flow, session state, userMessage, history |
-| `examples/kitchen-sink/` | Multi-action flow, resources, clientData, capabilities, middleware |
+| `apps/kitchen-sink/flows/chat-agent/` | Multi-action flow, resources, clientData, capabilities, middleware |
 
 Also read:
 - `docs/architecture/flows-and-actions.md` — Flow definition contract

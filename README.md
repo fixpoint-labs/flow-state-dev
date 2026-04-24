@@ -151,11 +151,16 @@ pnpm typecheck
 pnpm test
 ```
 
-## Examples
+## Apps and Examples
 
-**[hello-chat](examples/hello-chat)** — Minimal chat flow. Generator + handler + sequencer in ~50 lines. Start here.
+Two directories, different purposes:
 
-**[kitchen-sink](examples/kitchen-sink)** — Everything the framework can do. Router-based dispatch, handler-backed tools, session resources with clientData, rescue boundaries, and a full Next.js UI.
+- `apps/*` — full reference applications we maintain, test against, and use for day-to-day feature work. Larger in scope; multiple flows; polished UI.
+- `examples/*` — minimal, focused, pedagogical. Each example fits in a single README section.
+
+**[apps/kitchen-sink](apps/kitchen-sink)** — Reference app. Hosts the `chat-agent` flow (handler + generator + router + sequencer, resources, clientData, capabilities, tool-use) and everything the framework can do in a full Next.js UI.
+
+**[examples/hello-chat](examples/hello-chat)** — Minimal chat flow. Generator + handler + sequencer in ~50 lines. Start here.
 
 ## Architecture
 

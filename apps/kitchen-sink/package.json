@@ -1,13 +1,13 @@
 {
-  "name": "@flow-state-dev/example-kitchen-sink",
+  "name": "@flow-state-dev/kitchen-sink",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "cd ../.. && pnpm install && pnpm -r --filter './packages/**' build && cd examples/kitchen-sink && next dev",
+    "dev": "cd ../.. && pnpm install && pnpm -r --filter './packages/**' build && cd apps/kitchen-sink && next dev",
     "dev:watch": "node scripts/dev-watch.mjs",
     "build": "next build",
-    "vercel-build": "cd ../.. && pnpm install && pnpm -r --filter './packages/**' build && cd examples/kitchen-sink && next build",
+    "vercel-build": "cd ../.. && pnpm install && pnpm -r --filter './packages/**' build && cd apps/kitchen-sink && next build",
     "start": "next start",
     "test": "pnpm --filter @flow-state-dev/testing build && vitest run --root .",
     "test:watch": "vitest --root ."

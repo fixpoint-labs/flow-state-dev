@@ -28,7 +28,7 @@ function StyleBadge({ style }: { style: ThinkingStyle }) {
   );
 }
 
-export function KitchenSinkMessage({ item }: { item: MessageItem }) {
+export function ChatAgentMessage({ item }: { item: MessageItem }) {
   const allItems = useSessionItems();
   const modelPreset = useModelPreset();
 

@@ -11,7 +11,7 @@
     { "path": "./packages/thought-fabric-core" },
     { "path": "./packages/skills" },
     { "path": "./examples/hello-chat" },
-    { "path": "./examples/kitchen-sink" },
+    { "path": "./apps/kitchen-sink" },
     { "path": "./packages/ui" }
   ]
 }

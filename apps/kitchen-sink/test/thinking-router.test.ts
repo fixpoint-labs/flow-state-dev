@@ -9,7 +9,7 @@ import {
   keywordHandler,
   autoClassifyStyle,
   thinkingStyleSchema,
-} from "../src/flows/kitchen-sink/blocks";
+} from "../flows/chat-agent/blocks";
 
 // Minimal flow instance for thinking router tests.
 const testFlow = defineFlow({

@@ -1,5 +1,5 @@
 /**
- * MCP (Model Context Protocol) shorthand for kitchen-sink.
+ * MCP (Model Context Protocol) shorthand for the kitchen-sink app.
  *
  * Reads `LINEAR_MCP_API_KEY` from the environment and builds an MCP capability
  * with curated metadata. Apps needing additional servers import them inline.

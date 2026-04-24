@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// Shared domain schemas for the kitchen-sink flow.
+// Shared domain schemas for the chat-agent flow.
 // Centralizing schemas avoids duplication — blocks import only the slices they need.
 
 export const modeSchema = z.enum(["ask", "build", "interview", "debate"]).default("ask");

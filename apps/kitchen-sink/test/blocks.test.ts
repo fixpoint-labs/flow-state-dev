@@ -5,8 +5,8 @@ import { createExecutionContext, createInMemoryStores, executeBlock } from "@flo
 import {
   readArtifact,
   updateArtifact
-} from "../src/flows/kitchen-sink/blocks";
-import { artifactsCollection } from "../src/flows/kitchen-sink/blocks/artifacts";
+} from "../flows/chat-agent/blocks";
+import { artifactsCollection } from "../flows/chat-agent/blocks/artifacts";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 
 type ArtifactState = { title: string; summary: string; updatedAt: number };
@@ -40,7 +40,7 @@ async function createCtx() {
   return { ctx, stores };
 }
 
-describe("kitchen-sink blocks", () => {
+describe("chat-agent blocks", () => {
   it("readArtifact returns not-found for missing artifact", async () => {
     const { ctx } = await createCtx();
 

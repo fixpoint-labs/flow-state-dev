@@ -305,4 +305,4 @@ test("message count accumulates across requests", async () => {
 - Add **[custom renderers](/docs/client/react)** to style messages, reasoning, and components
 - Add **tools** to the generator for [function calling](/docs/fundamentals/blocks#generator--the-ai-block) (search, create artifacts, etc.)
 - Use **[control flow patterns](/docs/sequencers/control-flow)** for conditional logic, parallelism, and error recovery
-- Add **resources and clientData** for richer state. See the [kitchen-sink example](https://github.com/fixpoint-labs/flow-state-dev) for a full demonstration
+- Add **resources and clientData** for richer state. See the [kitchen-sink reference app](https://github.com/fixpoint-labs/flow-state-dev) for a full demonstration

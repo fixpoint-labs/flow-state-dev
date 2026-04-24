@@ -17,7 +17,7 @@ import {
 import { createPostgresStores, type PoolConfig } from "@flow-state-dev/store-postgres";
 import { vercelPgPoolOptions } from "@flow-state-dev/vercel/pg";
 import { Client as NeonClient } from "@neondatabase/serverless";
-import kitchenSinkFlow from "@/src/flows/kitchen-sink/flow";
+import chatAgentFlow from "@/flows/chat-agent/flow";
 
 // Neon's Client is a runtime drop-in for pg's Client (that's pg.PoolConfig.Client's
 // documented purpose), but their connect() signature differs slightly so the types
@@ -43,7 +43,7 @@ const speechResolver = createAiSdkSpeechResolver((modelId) => openai.speech(mode
 const transcriptionResolver = createAiSdkTranscriptionResolver((modelId) => openai.transcription(modelId));
 
 const registry = createFlowRegistry();
-registry.register(kitchenSinkFlow);
+registry.register(chatAgentFlow);
 
 /**
  * Resolve persistence stores based on environment:

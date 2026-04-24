@@ -1,5 +1,5 @@
 /**
- * Shared context functions for kitchen-sink generators.
+ * Shared context functions for chat-agent generators.
  *
  * These are re-evaluated before each step of the tool loop (via prepareStep),
  * so generators always see fresh state — e.g. artifacts created mid-turn.
