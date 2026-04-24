@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import type { BlockToolOutputItem, OutputItem } from "@flow-state-dev/core/items";
-import { ItemsRenderer } from "@flow-state-dev/react";
+import type { BlockOutputItem, BlockToolOutputItem, ContainerItem, OutputItem } from "@flow-state-dev/core/items";
+import { ItemsRenderer, useFlowContext } from "@flow-state-dev/react";
 import { SourcesGroup } from "./sources";
 import { StreamingIndicator } from "./streaming-indicator";
 import { ToolGroup } from "./tool";
@@ -32,7 +32,53 @@ function groupItemsByRequest(items: OutputItem[]): RequestGroup[] {
 
 type RenderSegment =
   | { type: "items"; key: string; items: OutputItem[] }
-  | { type: "tool-group"; key: string; items: BlockToolOutputItem[] };
+  | { type: "tool-group"; key: string; items: ToolItem[] };
+
+type ToolItem = BlockOutputItem | BlockToolOutputItem;
+
+function isToolItem(item: OutputItem): item is ToolItem {
+  return item.type === "block_tool_output" || (item.type === "block_output" && item.toolCall !== undefined);
+}
+
+export function buildSuppressedOwners(
+  items: OutputItem[],
+  containerRenderers: Record<string, unknown> | undefined
+): Set<string> {
+  const suppressed = new Set<string>();
+  if (containerRenderers === undefined) return suppressed;
+
+  for (const item of items) {
+    if (item.type !== "container") continue;
+    const container = item as ContainerItem;
+    const component = container.component;
+    if (component === undefined) continue;
+    const renderer = containerRenderers[component];
+    if (renderer !== undefined && renderer !== false) {
+      suppressed.add(container.provenance.blockInstanceId);
+    }
+  }
+
+  return suppressed;
+}
+
+export function shouldRenderInRequestStream(
+  item: OutputItem,
+  suppressedOwners: Set<string>
+): boolean {
+  if (item.type !== "component" && !isToolItem(item)) return true;
+  const ownedBy = (item as OutputItem & { ownedBy?: string }).ownedBy;
+  return ownedBy === undefined || !suppressedOwners.has(ownedBy);
+}
+
+export function filterRequestStreamItems(
+  items: OutputItem[],
+  containerRenderers: Record<string, unknown> | undefined
+): OutputItem[] {
+  const suppressedOwners = buildSuppressedOwners(items, containerRenderers);
+  return items.filter((item) =>
+    shouldRenderInRequestStream(item, suppressedOwners)
+  );
+}
 
 /**
  * Splits request items into normal renderer runs and consecutive tool groups.
@@ -40,7 +86,7 @@ type RenderSegment =
 export function segmentToolGroups(items: OutputItem[]): RenderSegment[] {
   const segments: RenderSegment[] = [];
   let normalItems: OutputItem[] = [];
-  let toolItems: BlockToolOutputItem[] = [];
+  let toolItems: ToolItem[] = [];
 
   const flushNormal = () => {
     if (normalItems.length === 0) return;
@@ -63,9 +109,9 @@ export function segmentToolGroups(items: OutputItem[]): RenderSegment[] {
   };
 
   for (const item of items) {
-    if (item.type === "block_tool_output") {
+    if (isToolItem(item)) {
       flushNormal();
-      toolItems.push(item as BlockToolOutputItem);
+      toolItems.push(item);
       continue;
     }
 
@@ -94,11 +140,13 @@ type RequestGroupRendererProps = {
  * becomes irrelevant and scrolling works normally.
  */
 export function RequestGroupRenderer({ items, isStreaming, statusMessage }: RequestGroupRendererProps) {
+  const { renderers } = useFlowContext();
   const groups = useMemo(() => groupItemsByRequest(items), [items]);
 
   return groups.map((group, index) => {
     const isLast = index === groups.length - 1;
-    const segments = segmentToolGroups(group.items);
+    const streamItems = filterRequestStreamItems(group.items, renderers?.container);
+    const segments = segmentToolGroups(streamItems);
 
     return (
       <div

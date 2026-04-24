@@ -1,9 +1,10 @@
-import type { BlockToolOutputItem, MessageItem, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockOutputItem, BlockToolOutputItem, ComponentItem, ContainerItem, MessageItem, OutputItem } from "@flow-state-dev/core/items";
 import { describe, expect, it } from "vitest";
 import {
   getToolGroupSummary,
 } from "../components/flow-state/tool";
 import {
+  filterRequestStreamItems,
   segmentToolGroups,
 } from "../components/flow-state/request-group";
 
@@ -46,11 +47,59 @@ function messageItem(id: string, index: number): MessageItem {
   };
 }
 
+function legacyToolItem(id: string, name: string, index: number): BlockOutputItem {
+  return {
+    id,
+    type: "block_output",
+    blockName: name,
+    blockKind: "handler",
+    output: { kind: "inline", value: { ok: true } },
+    toolCall: {
+      callId: `call-${id}`,
+      arguments: "{}",
+      generatorBlock: "assistant",
+    },
+    status: "completed",
+    requestId: "req_1",
+    itemIndex: index,
+    provenance: { blockName: name, blockInstanceId: id, phase: "main" },
+    ts: index,
+  };
+}
+
+function containerItem(id: string, index: number): ContainerItem {
+  return {
+    id,
+    type: "container",
+    component: "plan",
+    status: "completed",
+    requestId: "req_1",
+    itemIndex: index,
+    provenance: { blockName: "plan", blockInstanceId: id, phase: "main" },
+    ts: index,
+  };
+}
+
+function componentItem(id: string, index: number, ownedBy: string): ComponentItem {
+  return {
+    id,
+    type: "component",
+    component: "plan-meta",
+    data: { status: "completed" },
+    status: "completed",
+    requestId: "req_1",
+    itemIndex: index,
+    provenance: { blockName: "plan", blockInstanceId: id, phase: "main" },
+    ownedBy,
+    ts: index,
+  };
+}
+
 describe("tool group rendering helpers", () => {
   it("groups consecutive tool output items and breaks on non-tool items", () => {
     const items: OutputItem[] = [
       toolItem("tool_1", "search", 1),
-      toolItem("tool_2", "search", 2),
+      legacyToolItem("tool_2", "search", 2),
       messageItem("msg_1", 3),
       toolItem("tool_3", "write_file", 4),
     ];
@@ -63,6 +112,31 @@ describe("tool group rendering helpers", () => {
     expect(segments[1]).toMatchObject({ type: "items" });
     expect(segments[2]).toMatchObject({ type: "tool-group" });
     expect(segments[2].items.map((item) => item.id)).toEqual(["tool_3"]);
+  });
+
+  it("suppresses component snapshots owned by rendered containers before segmenting", () => {
+    const items: OutputItem[] = [
+      containerItem("container_1", 1),
+      componentItem("component_1", 2, "container_1"),
+      toolItem("tool_1", "search", 3),
+    ];
+
+    const filtered = filterRequestStreamItems(items, { plan: () => null });
+
+    expect(filtered.map((item) => item.id)).toEqual(["container_1", "tool_1"]);
+  });
+
+  it("suppresses tool calls owned by rendered containers before segmenting", () => {
+    const items: OutputItem[] = [
+      containerItem("container_1", 1),
+      toolItem("tool_1", "search", 2),
+      toolItem("tool_2", "search", 3),
+    ];
+    items[1].ownedBy = "container_1";
+
+    const filtered = filterRequestStreamItems(items, { plan: () => null });
+
+    expect(filtered.map((item) => item.id)).toEqual(["container_1", "tool_2"]);
   });
 
   it("composes known tool names into natural summary labels", () => {

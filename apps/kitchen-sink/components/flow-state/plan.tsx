@@ -17,12 +17,12 @@ import {
   EyeIcon,
   Loader2Icon,
   MinusCircleIcon,
-  WrenchIcon,
   XCircleIcon,
 } from "lucide-react";
 import { useMemo } from "react";
 import Markdown from "react-markdown";
 import { useSessionItems } from "./session-items-context";
+import { ToolGroup } from "./tool";
 
 type PlanTaskStatus =
   | "pending"
@@ -286,11 +286,7 @@ function PlanTaskRow({
             </p>
           )}
           {toolCalls && toolCalls.length > 0 && (
-            <ul className="space-y-0.5">
-              {toolCalls.map((tc) => (
-                <ToolCallLine key={tc.id} item={tc} />
-              ))}
-            </ul>
+            <ToolGroup className="my-1" items={toolCalls} />
           )}
           {summary && (
             <TaskMarkdown text={summary} />
@@ -301,21 +297,3 @@ function PlanTaskRow({
   );
 }
 
-function ToolCallLine({ item }: { item: BlockToolOutputItem }) {
-  const name = item.toolCall.name;
-  const args = (() => {
-    try { return JSON.parse(item.toolCall.arguments) as Record<string, unknown>; } catch { return {}; }
-  })();
-  // Show the first string argument value as a brief label, if any.
-  const argPreview = Object.values(args).find((v) => typeof v === "string") as string | undefined;
-
-  return (
-    <li className="flex items-center gap-1.5 text-xs text-muted-foreground/70">
-      <WrenchIcon className="h-3 w-3 shrink-0" aria-hidden="true" />
-      <span className="font-mono">{name}</span>
-      {argPreview && (
-        <span className="truncate opacity-60">({argPreview})</span>
-      )}
-    </li>
-  );
-}

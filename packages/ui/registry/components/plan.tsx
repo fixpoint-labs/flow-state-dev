@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import type { ComponentItem, ContainerItem } from "@flow-state-dev/core/items";
+import type { BlockToolOutputItem, ComponentItem, ContainerItem, OutputItem } from "@flow-state-dev/core/items";
 import { useContainerItems } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
 import {
@@ -16,6 +16,7 @@ import {
   XCircleIcon,
 } from "lucide-react";
 import { useSessionItems } from "./session-items-context";
+import { ToolGroup } from "./tool";
 
 // ---------------------------------------------------------------------------
 // Types (inlined to keep the component registry-distributable without
@@ -119,6 +120,52 @@ function getResultSummary(result: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * Correlates tool calls with the task window that emitted them.
+ */
+function buildTaskToolMap(
+  ownedItems: OutputItem[]
+): Map<string, BlockToolOutputItem[]> {
+  const taskItems = ownedItems.filter(
+    (item) => item.type === "component" && (item as ComponentItem).component === "plan-task"
+  ) as ComponentItem[];
+  taskItems.sort((a, b) => a.itemIndex - b.itemIndex);
+
+  const tools = ownedItems.filter(
+    (item) => item.type === "block_tool_output"
+  ) as BlockToolOutputItem[];
+
+  const result = new Map<string, BlockToolOutputItem[]>();
+  const taskTimeline = new Map<string, { start?: number; end?: number }>();
+
+  for (const item of taskItems) {
+    const data = item.data as unknown as PlanTaskData;
+    const entry = taskTimeline.get(data.id) ?? {};
+    if (data.status === "in-progress" && entry.start === undefined) {
+      entry.start = item.itemIndex;
+    } else if (
+      (data.status === "completed" || data.status === "failed") &&
+      entry.end === undefined
+    ) {
+      entry.end = item.itemIndex;
+    }
+    taskTimeline.set(data.id, entry);
+  }
+
+  for (const [taskId, window] of taskTimeline) {
+    if (window.start === undefined) continue;
+    const endIdx = window.end ?? Infinity;
+    const taskTools = tools.filter(
+      (t) => t.itemIndex > window.start! && t.itemIndex < endIdx
+    );
+    if (taskTools.length > 0) {
+      result.set(taskId, taskTools);
+    }
+  }
+
+  return result;
+}
+
 // ---------------------------------------------------------------------------
 // Components
 // ---------------------------------------------------------------------------
@@ -135,7 +182,7 @@ function getResultSummary(result: unknown): string | undefined {
  */
 export function Plan({ item }: { item: ContainerItem }) {
   const allItems = useSessionItems();
-  const { componentsByKey } = useContainerItems(item, allItems);
+  const { items: ownedItems, componentsByKey } = useContainerItems(item, allItems);
 
   const { meta, tasks } = useMemo(() => {
     let planMeta: PlanMeta | undefined;
@@ -169,6 +216,11 @@ export function Plan({ item }: { item: ContainerItem }) {
     return { meta: planMeta, tasks: ordered };
   }, [componentsByKey]);
 
+  const taskToolMap = useMemo(
+    () => buildTaskToolMap(ownedItems),
+    [ownedItems]
+  );
+
   if (!meta) return null;
 
   const completedCount = tasks.filter(
@@ -195,14 +247,20 @@ export function Plan({ item }: { item: ContainerItem }) {
       </div>
       <ul className="space-y-1.5">
         {tasks.map((task) => (
-          <PlanTaskRow key={task.id} task={task} />
+          <PlanTaskRow key={task.id} task={task} toolCalls={taskToolMap.get(task.id)} />
         ))}
       </ul>
     </div>
   );
 }
 
-function PlanTaskRow({ task }: { task: PlanTaskData }) {
+function PlanTaskRow({
+  task,
+  toolCalls,
+}: {
+  task: PlanTaskData;
+  toolCalls?: BlockToolOutputItem[];
+}) {
   const config = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.pending;
   const Icon = config.icon;
   const summary = getResultSummary(task.result);
@@ -213,7 +271,7 @@ function PlanTaskRow({ task }: { task: PlanTaskData }) {
   ) : null;
   const showFeedback = task.feedback && (task.status === "needs-revision" || task.status === "escalated");
 
-  if (!summary && !showFeedback) {
+  if (!summary && !showFeedback && !(toolCalls && toolCalls.length > 0)) {
     return (
       <li className="flex items-start gap-2">
         <Icon
@@ -250,6 +308,11 @@ function PlanTaskRow({ task }: { task: PlanTaskData }) {
           <p className="mt-1 whitespace-pre-wrap pl-5 text-xs leading-snug text-amber-500/80">
             {task.feedback}
           </p>
+        )}
+        {toolCalls && toolCalls.length > 0 && (
+          <div className="mt-1.5 pl-5">
+            <ToolGroup items={toolCalls} />
+          </div>
         )}
         {summary && (
           <p className="mt-1 whitespace-pre-wrap pl-5 text-xs leading-snug text-muted-foreground">

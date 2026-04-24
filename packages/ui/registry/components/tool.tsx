@@ -241,16 +241,18 @@ const DEFAULT_TOOL_VERB_PHRASE: ToolVerbPhrase = {
  * Add aliases here as new tool names should produce richer summaries.
  */
 export const TOOL_VERB_PHRASES: Record<string, ToolVerbPhrase> = {
-  search: { singular: "ran a search", plural: "ran {count} searches" },
   web_search: { singular: "ran a search", plural: "ran {count} searches" },
+  search: { singular: "ran a search", plural: "ran {count} searches" },
   fetch: { singular: "fetched a page", plural: "fetched {count} pages" },
   web_fetch: { singular: "fetched a page", plural: "fetched {count} pages" },
   read_file: { singular: "read a file", plural: "read {count} files" },
   write_file: { singular: "wrote a file", plural: "wrote {count} files" },
   create_file: { singular: "created a file", plural: "created {count} files" },
   update_file: { singular: "updated a file", plural: "updated {count} files" },
+  edit_file: { singular: "edited a file", plural: "edited {count} files" },
   load_tools: { singular: "loaded tools", plural: "loaded tools" },
   bash: { singular: "ran a command", plural: "ran {count} commands" },
+  shell: { singular: "ran a command", plural: "ran {count} commands" },
 };
 
 function capitalizeLabel(label: string): string {
