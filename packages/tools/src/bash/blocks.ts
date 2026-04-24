@@ -5,21 +5,30 @@
  * that participate in the framework's block system (lifecycle hooks, middleware,
  * items log) rather than running as opaque AI SDK tools inside a generator.
  *
- * The blocks manage a per-session sandbox, hydrate files from a resource
- * collection on first access, and flush changes back after every mutation.
+ * The blocks manage a per-session sandbox. On first access the sandbox is
+ * auto-populated from the block's resource context: every
+ * `ResourceCollectionRef` present on `ctx.session.resources`,
+ * `ctx.user.resources`, and `ctx.project.resources` is mounted at its
+ * pattern prefix (e.g. `artifacts/**` at `/workspace/artifacts/`,
+ * `skills/**` at `/workspace/skills/`). Writes are routed back to the
+ * owning collection on flush based on longest path-prefix match.
+ *
+ * Files written outside any mount's prefix, except for the conventional
+ * scratch directory `./tmp/`, are dropped on flush with a console warning.
  *
  * @example
  * ```ts
  * import { createBashBlocks } from "@flow-state-dev/tools/bash";
  *
- * const { bashCommand, bashReadFile, bashWriteFile } = createBashBlocks({
- *   sessionResources: artifactResources,
- *   collectionKey: "artifacts",
+ * // Zero config — discovers whatever collections are installed on the block.
+ * const { bashCommand } = createBashBlocks({
  *   provider: { type: "local" },
- *   createState: (relativePath) => ({
- *     title: path.basename(relativePath),
- *     updatedAt: Date.now(),
- *   }),
+ * });
+ *
+ * // Or narrow explicitly:
+ * const { bashCommand } = createBashBlocks({
+ *   provider: { type: "local" },
+ *   collections: ["artifacts", { key: "skills", writable: false }],
  * });
  * ```
  */
@@ -28,7 +37,6 @@ import { handler } from "@flow-state-dev/core";
 import { getPatternPrefix } from "@flow-state-dev/core/types";
 import type {
   ResourceCollectionRef,
-  DeclaredResourceEntry,
   JsonObject,
 } from "@flow-state-dev/core/types";
 import { z } from "zod";
@@ -41,18 +49,29 @@ import path from "node:path";
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * A collection selection entry. A bare string is shorthand for `{ key, writable: true }`.
+ */
+export type BashCollectionSpec = string | { key: string; writable?: boolean };
+
 export interface CreateBashBlocksOptions {
   /**
-   * Session resource definitions. Each block declares these via `sessionResources`
-   * so the framework auto-installs them when the block runs.
+   * Explicit list of collections to mount. Each entry is either a key (string)
+   * or `{ key, writable }`. When provided, ONLY these collections are mounted
+   * and `exclude` is ignored.
+   *
+   * When omitted (the default), bash auto-discovers every collection present
+   * on the block's runtime resource context — any `ResourceCollectionRef` in
+   * `ctx.session.resources`, `ctx.user.resources`, or `ctx.project.resources`
+   * is mounted at its pattern prefix.
    */
-  sessionResources: Record<string, DeclaredResourceEntry>;
+  collections?: BashCollectionSpec[];
 
   /**
-   * Key in `sessionResources` for the file collection used to persist workspace
-   * files. The collection must support `readContent`/`writeContent` on its refs.
+   * Keys to skip during auto-discovery. Useful when you want "everything
+   * except X". Ignored when `collections` is set explicitly.
    */
-  collectionKey: string;
+  exclude?: string[];
 
   /** Sandbox provider. Default: `{ type: "local" }`. */
   provider?: SandboxProvider;
@@ -107,16 +126,30 @@ const bashWriteFileOutputSchema = z.object({
 // Per-scope sandbox registry
 // ---------------------------------------------------------------------------
 
+/** A single mounted collection inside the bash workspace. */
+interface Mount {
+  collection: ResourceCollectionRef<JsonObject>;
+  /** Registered key on ctx.*.resources. Used for logging/diagnostics. */
+  key: string;
+  /** Which scope this collection was found in. */
+  scope: "session" | "user" | "project";
+  /** Pattern prefix — the collection's natural path inside the workspace. */
+  prefix: string;
+  /** Flush behavior. Default true. */
+  writable: boolean;
+}
+
 interface SandboxEntry {
   sandbox: Sandbox;
   hydrated: boolean;
-  /** In-memory content hashes for diff-based flush. */
+  /** Content hashes keyed by sandbox-relative path (e.g. "artifacts/foo.md"). */
   contentHashes: Map<string, string>;
+  /** Mounts resolved at hydrate time, ordered longest-prefix-first. */
+  mounts: Mount[];
 }
 
 // Module-level registry keyed by scope+scopeId. Entries are lightweight and
-// cleaned up implicitly when the process ends. Long-lived deployments
-// should use the `persist` option on `createBashTool` instead.
+// cleaned up implicitly when the process ends.
 const registry = new Map<string, SandboxEntry>();
 
 /** Identity fields available on the block execution context. */
@@ -125,6 +158,9 @@ interface ScopeIdentity {
   userId: string;
   projectId?: string;
 }
+
+/** Reserved workspace subdirectory for agent scratch space. Never persisted. */
+const TMP_DIR = "tmp";
 
 /**
  * Resolve the workspace scope ID and registry key from context identity.
@@ -147,19 +183,92 @@ function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key:
 }
 
 // ---------------------------------------------------------------------------
+// Mount discovery
+// ---------------------------------------------------------------------------
+
+/** Duck-type check: is this entry on ctx.*.resources a collection ref? */
+function isCollectionRef(value: unknown): value is ResourceCollectionRef<JsonObject> {
+  if (value === null || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.pattern === "string" && typeof v.list === "function";
+}
+
+/**
+ * Discover every `ResourceCollectionRef` installed on the block context,
+ * optionally narrowed by an explicit `collections` spec or an `exclude` list.
+ *
+ * Ordering matters for longest-prefix-first matching at flush time: nested
+ * prefixes (e.g. `a/b/**`) must be checked before their parents (`a/**`).
+ * Sort descending by prefix length.
+ */
+function discoverMounts(
+  ctx: any,
+  explicit: BashCollectionSpec[] | undefined,
+  exclude: string[] | undefined,
+): Mount[] {
+  const excludeSet = new Set(exclude ?? []);
+  const specs = explicit?.map(normalizeSpec);
+  const wantByKey = specs ? new Map(specs.map((s) => [s.key, s])) : undefined;
+
+  const seen = new Set<string>();
+  const mounts: Mount[] = [];
+
+  for (const scope of ["session", "user", "project"] as const) {
+    const bag = ctx?.[scope]?.resources;
+    if (!bag || typeof bag !== "object") continue;
+    for (const [key, value] of Object.entries(bag)) {
+      if (wantByKey) {
+        if (!wantByKey.has(key)) continue;
+      } else if (excludeSet.has(key)) {
+        continue;
+      }
+      if (seen.has(key)) continue;
+      if (!isCollectionRef(value)) continue;
+      const prefix = getPatternPrefix(value.pattern);
+      // Collections without a meaningful prefix (e.g. pattern "*" at root)
+      // would collide with orphan writes — require a prefix to mount.
+      if (!prefix || prefix === TMP_DIR) continue;
+      const spec = wantByKey?.get(key);
+      mounts.push({
+        collection: value,
+        key,
+        scope,
+        prefix,
+        writable: spec?.writable ?? true,
+      });
+      seen.add(key);
+    }
+  }
+
+  if (wantByKey) {
+    // Warn on explicit keys that weren't found in ctx — usually a config mistake.
+    for (const [key] of wantByKey) {
+      if (!seen.has(key)) {
+        console.warn(
+          `[bash] collection "${key}" was requested but not found on ctx.*.resources — skipped`,
+        );
+      }
+    }
+  }
+
+  // Longest-prefix-first so nested mounts match before their parent.
+  mounts.sort((a, b) => b.prefix.length - a.prefix.length);
+  return mounts;
+}
+
+function normalizeSpec(spec: BashCollectionSpec): { key: string; writable?: boolean } {
+  return typeof spec === "string" ? { key: spec } : spec;
+}
+
+// ---------------------------------------------------------------------------
 // Sandbox lifecycle helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Create a sandbox for the given provider, resolving the workspace path
- * from the scope identity when no explicit cwd is set.
- */
 async function createScopedSandbox(
   provider: SandboxProvider,
   identity: ScopeIdentity,
   destination: string,
 ): Promise<Sandbox> {
-  // For local provider, resolve scoped cwd if not explicitly set
   let cwd: string | undefined;
   if (provider.type === "local" && !provider.cwd) {
     const scope = provider.scope ?? "session";
@@ -172,68 +281,98 @@ async function createScopedSandbox(
 }
 
 /**
- * Strip the collection pattern prefix from a storage key.
- *
- * `ref.name` returns the full storage key (e.g. `"artifacts/my-doc"`).
- * Collection API methods auto-prepend the prefix, so we need bare keys
- * (e.g. `"my-doc"`) for `get`/`create`/`delete` calls and for sandbox paths.
+ * Strip a mount's pattern prefix from a resource ref's full storage key.
+ * `ref.name` is `"artifacts/foo.md"`; stripping `"artifacts"` gives `"foo.md"`.
  */
-function stripPrefix(name: string, prefix: string): string {
+function stripMountPrefix(name: string, prefix: string): string {
   if (prefix && name.startsWith(prefix + "/")) {
     return name.slice(prefix.length + 1);
   }
   return name;
 }
 
+/** Match a sandbox-relative path to a mount via prefix. Mounts are pre-sorted longest-first. */
+function findMount(relativePath: string, mounts: Mount[]): Mount | undefined {
+  for (const mount of mounts) {
+    if (relativePath === mount.prefix) return mount;
+    if (relativePath.startsWith(mount.prefix + "/")) return mount;
+  }
+  return undefined;
+}
+
+function isUnderTmp(relativePath: string): boolean {
+  return relativePath === TMP_DIR || relativePath.startsWith(TMP_DIR + "/");
+}
+
+// ---------------------------------------------------------------------------
+// Hydrate / flush
+// ---------------------------------------------------------------------------
+
 /**
- * Hydrate: materialize all resource entries into the sandbox filesystem.
+ * Hydrate: materialize every mount's resource entries into the sandbox.
  *
- * Reads content from each resource ref and writes it to the sandbox under
- * the destination path. The collection pattern prefix is stripped so files
- * live at the workspace root (e.g. `"my-doc.md"` not `"artifacts/my-doc.md"`).
+ * Files are written at `<destination>/<mount.prefix>/<bare-key>`. Content
+ * hashes are recorded against the sandbox-relative path so flush can detect
+ * in-place edits later.
+ *
+ * Also seeds the scratch directory `<destination>/tmp/` with an empty marker
+ * so the agent has a well-known place to drop files it doesn't want persisted.
  */
-async function hydrate(
-  entry: SandboxEntry,
-  collection: ResourceCollectionRef<JsonObject>,
-  destination: string,
-): Promise<void> {
-  const prefix = getPatternPrefix(collection.pattern);
-  const refs = collection.list();
-  for (const ref of refs) {
-    const content = await ref.readContent();
-    if (content === null) continue;
-    const bareKey = stripPrefix(ref.name, prefix);
-    const fullPath = path.join(destination, bareKey);
-    await entry.sandbox.writeFile(fullPath, content);
-    entry.contentHashes.set(bareKey, hashContent(content));
+async function hydrate(entry: SandboxEntry, destination: string): Promise<void> {
+  // Seed the scratch directory. Empty marker file keeps the dir visible to
+  // `ls` and makes guidance text honest — `./tmp/` really exists.
+  const tmpMarker = path.join(destination, TMP_DIR, ".keep");
+  await entry.sandbox.writeFile(tmpMarker, "");
+
+  for (const mount of entry.mounts) {
+    const refs = mount.collection.list();
+    for (const ref of refs) {
+      const bareKey = stripMountPrefix(ref.name, mount.prefix);
+      // Skip collection-level metadata entries (e.g. _meta in skills).
+      if (bareKey.startsWith("_")) continue;
+      const content = await ref.readContent();
+      if (content === null) continue;
+      const mountedKey = path.posix.join(mount.prefix, bareKey);
+      const fullPath = path.join(destination, mountedKey);
+      await entry.sandbox.writeFile(fullPath, content);
+      if (mount.writable) {
+        entry.contentHashes.set(mountedKey, hashContent(content));
+      }
+    }
   }
 }
 
 /**
- * Flush: sync sandbox filesystem changes back to the resource collection.
+ * Flush: sync sandbox changes back to their owning collections.
  *
- * Walks the workspace via `find`, hashes each file's content, and compares
- * against the in-memory hash map. Changed or new files are upserted;
- * deleted files are removed from the collection.
+ * Routes each found file to the mount whose prefix it lives under:
+ *   - Matching writable mount → upsert with prefix stripped.
+ *   - Matching read-only mount → skip (edits stay local to the sandbox).
+ *   - `./tmp/...` → skip silently (scratch space).
+ *   - No matching mount → drop, collected and logged at the end.
+ *
+ * Per-mount deletion: refs whose bare key isn't in the current sandbox walk
+ * are removed from their collection.
  */
 async function flush(
   entry: SandboxEntry,
-  collection: ResourceCollectionRef<JsonObject>,
   destination: string,
   createState: (relativePath: string) => Partial<JsonObject>,
 ): Promise<void> {
-
-  // Use `find .` so the command works regardless of whether `destination`
-  // is a real path (just-bash, Vercel) or a virtual prefix (local-fs).
   const result = await entry.sandbox.executeCommand(
     `find . -type f -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null`,
   );
 
-  // If find fails, skip entirely — do NOT proceed to the deletion loop
-  // with an empty currentPaths set, as that would delete all resources.
+  // If find fails, skip entirely — NEVER proceed to the deletion loop with
+  // an empty set, which would drop everything.
   if (result.exitCode !== 0) return;
 
-  const currentPaths = new Set<string>();
+  // Track which sandbox-relative paths we saw, keyed by mount prefix for
+  // the per-mount deletion pass below.
+  const seenByMountKey = new Map<string, Set<string>>();
+  for (const mount of entry.mounts) seenByMountKey.set(mount.key, new Set());
+
+  const orphans: string[] = [];
 
   if (result.stdout.trim()) {
     const filePaths = result.stdout.trim().split("\n").filter(Boolean);
@@ -242,11 +381,19 @@ async function flush(
       const relativePath = foundPath.startsWith("./")
         ? foundPath.slice(2)
         : foundPath;
-
-      // Skip empty segments (e.g. find returns ".")
       if (!relativePath || relativePath === ".") continue;
+      if (isUnderTmp(relativePath)) continue;
 
-      currentPaths.add(relativePath);
+      const mount = findMount(relativePath, entry.mounts);
+      if (!mount) {
+        orphans.push(relativePath);
+        continue;
+      }
+
+      const bareKey = stripMountPrefix(relativePath, mount.prefix);
+      seenByMountKey.get(mount.key)!.add(bareKey);
+
+      if (!mount.writable) continue;
 
       try {
         const fullPath = path.join(destination, relativePath);
@@ -255,12 +402,12 @@ async function flush(
         const oldHash = entry.contentHashes.get(relativePath);
 
         if (newHash !== oldHash) {
-          const existing = collection.getOptional(relativePath);
+          const existing = mount.collection.getOptional(bareKey);
           if (existing) {
             await existing.writeContent(content);
           } else {
-            const ref = await collection.create(
-              relativePath,
+            const ref = await mount.collection.create(
+              bareKey,
               createState(relativePath),
             );
             await ref.writeContent(content);
@@ -268,21 +415,30 @@ async function flush(
           entry.contentHashes.set(relativePath, newHash);
         }
       } catch {
-        // File removed between walk and read — skip
+        // File removed between walk and read — skip.
       }
     }
   }
 
-  // Remove resources for files deleted from the sandbox.
-  // Strip prefix from ref.name to get the bare key for both the
-  // currentPaths lookup and the collection.delete() call.
-  const prefix = getPatternPrefix(collection.pattern);
-  for (const ref of collection.list()) {
-    const bareKey = stripPrefix(ref.name, prefix);
-    if (!currentPaths.has(bareKey)) {
-      await collection.delete(bareKey);
-      entry.contentHashes.delete(bareKey);
+  // Per-mount deletion pass.
+  for (const mount of entry.mounts) {
+    if (!mount.writable) continue;
+    const seen = seenByMountKey.get(mount.key)!;
+    for (const ref of mount.collection.list()) {
+      const bareKey = stripMountPrefix(ref.name, mount.prefix);
+      // Skip collection metadata — never deletable via bash sweep.
+      if (bareKey.startsWith("_")) continue;
+      if (!seen.has(bareKey)) {
+        await mount.collection.delete(bareKey);
+        entry.contentHashes.delete(path.posix.join(mount.prefix, bareKey));
+      }
     }
+  }
+
+  if (orphans.length > 0) {
+    console.warn(
+      `[bash] dropped ${orphans.length} orphan file(s) not under any mounted collection (or ./${TMP_DIR}/): ${orphans.join(", ")}`,
+    );
   }
 }
 
@@ -291,23 +447,23 @@ async function flush(
 // ---------------------------------------------------------------------------
 
 /**
- * Creates bash handler blocks backed by a sandbox and synced with a resource
- * collection. Returns three blocks: `bashCommand`, `bashReadFile`, `bashWriteFile`.
+ * Creates bash handler blocks backed by a sandbox and synced with collections
+ * auto-discovered from the block's resource context. Returns three blocks:
+ * `bashCommand`, `bashReadFile`, `bashWriteFile`.
  *
- * Each block declares the provided `sessionResources` so the framework
- * auto-installs them. The sandbox is created lazily per session and files
- * are hydrated from the collection on first access.
+ * The sandbox is created lazily per session and collections are mounted at
+ * their pattern prefixes on first access. See the module docstring for the
+ * full path layout and write-back rules.
  */
-export function createBashBlocks(options: CreateBashBlocksOptions) {
+export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
   const {
-    sessionResources,
-    collectionKey,
+    collections,
+    exclude,
     provider = { type: "local" },
     destination = "/workspace",
     createState = () => ({}) as Partial<JsonObject>,
   } = options;
 
-  /** Extract scope identity from the block execution context. */
   function getIdentity(ctx: any): ScopeIdentity {
     return {
       sessionId: ctx.session.identity.id,
@@ -316,36 +472,30 @@ export function createBashBlocks(options: CreateBashBlocksOptions) {
     };
   }
 
-  /**
-   * Lazily creates (or retrieves) the sandbox, hydrating resource files
-   * on first access. The registry key is scope-dependent (session/user/project).
-   */
-  async function getOrCreate(
-    identity: ScopeIdentity,
-    collection: ResourceCollectionRef<JsonObject>,
-  ): Promise<SandboxEntry> {
-    // Resolve the registry key first to avoid creating a sandbox we already have
+  async function getOrCreate(ctx: any): Promise<SandboxEntry> {
+    const identity = getIdentity(ctx);
     const scope = provider.type === "local" ? (provider.scope ?? "session") : "session";
     const { key: registryKey } = resolveScopeKey(scope, identity);
 
     let entry = registry.get(registryKey);
     if (!entry) {
       const sandbox = await createScopedSandbox(provider, identity, destination);
-      entry = { sandbox, hydrated: false, contentHashes: new Map() };
+      const mounts = discoverMounts(ctx, collections, exclude);
+      entry = {
+        sandbox,
+        hydrated: false,
+        contentHashes: new Map(),
+        mounts,
+      };
       registry.set(registryKey, entry);
     }
 
     if (!entry.hydrated) {
-      await hydrate(entry, collection, destination);
+      await hydrate(entry, destination);
       entry.hydrated = true;
     }
 
     return entry;
-  }
-
-  /** Resolves the file collection from the block's execution context. */
-  function getCollection(ctx: { session: { resources: Record<string, unknown> } }) {
-    return ctx.session.resources[collectionKey] as ResourceCollectionRef<JsonObject>;
   }
 
   const bashCommand = handler({
@@ -354,32 +504,28 @@ export function createBashBlocks(options: CreateBashBlocksOptions) {
       "Execute a bash command in the workspace.",
       "The workspace is a persistent filesystem scoped to this session.",
       "Use ls or find to explore files.",
-      "Files created or modified are automatically saved.",
+      "Files created or modified under a mounted collection's directory are automatically saved;",
+      `files under ./${TMP_DIR}/ are scratch space and are never saved.`,
     ].join(" "),
     inputSchema: bashCommandInputSchema,
     outputSchema: bashCommandOutputSchema,
-    sessionResources,
 
     execute: async (input: z.infer<typeof bashCommandInputSchema>, ctx: any) => {
-      const collection = getCollection(ctx);
-      const entry = await getOrCreate(getIdentity(ctx), collection);
+      const entry = await getOrCreate(ctx);
       const result = await entry.sandbox.executeCommand(input.command);
-      await flush(entry, collection, destination, createState);
+      await flush(entry, destination, createState);
       return result;
     },
   });
 
   const bashReadFile = handler({
     name: "bash-read-file",
-    description:
-      "Read the contents of a file from the workspace filesystem.",
+    description: "Read the contents of a file from the workspace filesystem.",
     inputSchema: bashReadFileInputSchema,
     outputSchema: bashReadFileOutputSchema,
-    sessionResources,
 
     execute: async (input: z.infer<typeof bashReadFileInputSchema>, ctx: any) => {
-      const collection = getCollection(ctx);
-      const entry = await getOrCreate(getIdentity(ctx), collection);
+      const entry = await getOrCreate(ctx);
       const fullPath = path.join(destination, input.path);
       const content = await entry.sandbox.readFile(fullPath);
       return { content };
@@ -388,18 +534,20 @@ export function createBashBlocks(options: CreateBashBlocksOptions) {
 
   const bashWriteFile = handler({
     name: "bash-write-file",
-    description:
-      "Write content to a file in the workspace. Creates parent directories if needed. The file is automatically saved.",
+    description: [
+      "Write content to a file in the workspace.",
+      "Creates parent directories if needed.",
+      "Files under a mounted collection's directory are saved automatically;",
+      `files under ./${TMP_DIR}/ are scratch; files anywhere else are dropped.`,
+    ].join(" "),
     inputSchema: bashWriteFileInputSchema,
     outputSchema: bashWriteFileOutputSchema,
-    sessionResources,
 
     execute: async (input: z.infer<typeof bashWriteFileInputSchema>, ctx: any) => {
-      const collection = getCollection(ctx);
-      const entry = await getOrCreate(getIdentity(ctx), collection);
+      const entry = await getOrCreate(ctx);
       const fullPath = path.join(destination, input.path);
       await entry.sandbox.writeFile(fullPath, input.content);
-      await flush(entry, collection, destination, createState);
+      await flush(entry, destination, createState);
       return { success: true };
     },
   });

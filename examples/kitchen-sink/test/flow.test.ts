@@ -60,7 +60,7 @@ const testFlow = defineFlow({
       thinkingStyle: z.enum(["plan-and-execute", "supervisor", "blackboard", "default"]).optional(),
       requestCount: z.number().default(0),
       lastAction: z.string().optional(),
-      features: z.object({ biasCheck: z.boolean().default(false), bashTool: z.boolean().default(true) }).default({}),
+      features: z.object({ biasCheck: z.boolean().default(false) }).default({}),
     }),
     resources: {
       artifacts: artifactsCollection,
@@ -96,7 +96,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Help me", mode: "ask", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "default", features: { biasCheck: false, bashTool: true } },
+        state: { thinkingStyle: "default", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
@@ -110,7 +110,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Build a report", mode: "ask", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "plan-and-execute", features: { biasCheck: false, bashTool: true } },
+        state: { thinkingStyle: "plan-and-execute", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       unmockedGeneratorPolicy: "warn",
@@ -124,7 +124,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Coordinate reviews", mode: "ask", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "supervisor", features: { biasCheck: false, bashTool: true } },
+        state: { thinkingStyle: "supervisor", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       unmockedGeneratorPolicy: "warn",
@@ -137,7 +137,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Analyze this from multiple perspectives", mode: "ask", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "blackboard", features: { biasCheck: false, bashTool: true } },
+        state: { thinkingStyle: "blackboard", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       unmockedGeneratorPolicy: "warn",
@@ -152,7 +152,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Hello", mode: "ask", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { features: { biasCheck: false, bashTool: true } },
+        state: { features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
@@ -168,7 +168,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Hello kitchen sink", mode: "ask", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "default", features: { biasCheck: false, bashTool: true } },
+        state: { thinkingStyle: "default", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
@@ -185,7 +185,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Test with custom model", mode: "ask", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "default", features: { biasCheck: false, bashTool: true } },
+        state: { thinkingStyle: "default", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       user: {
@@ -207,7 +207,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Check items", mode: "ask", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "default", features: { biasCheck: false, bashTool: true } },
+        state: { thinkingStyle: "default", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture }
@@ -224,7 +224,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Read artifact doc-1", mode: "ask", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { mode: "ask", thinkingStyle: "default", requestCount: 0, features: { biasCheck: false, bashTool: true } },
+        state: { mode: "ask", thinkingStyle: "default", requestCount: 0, features: { biasCheck: false } },
         resources: {
           "artifacts/doc-1": {
             title: "Test Document",
@@ -261,7 +261,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Tell me about your project", mode: "interview", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { mode: "interview", thinkingStyle: "default", features: { biasCheck: false, bashTool: false } },
+        state: { mode: "interview", thinkingStyle: "default", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
@@ -277,7 +277,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "I think React is better than Vue", mode: "debate", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { mode: "debate", thinkingStyle: "default", features: { biasCheck: false, bashTool: false } },
+        state: { mode: "debate", thinkingStyle: "default", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
@@ -293,7 +293,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Let's explore my project requirements", mode: "interview", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { mode: "interview", thinkingStyle: "default", features: { biasCheck: false, bashTool: false } },
+        state: { mode: "interview", thinkingStyle: "default", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },
@@ -309,7 +309,7 @@ describe("kitchen-sink flow", () => {
       input: { message: "Microservices are always better than monoliths", mode: "debate", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { mode: "debate", thinkingStyle: "default", features: { biasCheck: false, bashTool: false } },
+        state: { mode: "debate", thinkingStyle: "default", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       generators: { "assistant-generator": assistantFixture, "tf.memory/observe": observeFixture },

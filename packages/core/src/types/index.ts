@@ -152,6 +152,18 @@ export type { TokenCounter } from "./tokens";
 export type { CASOptions, ScopeStateOps, StateContainer } from "./state";
 
 export type {
+  InitialSkill,
+  RunSkillInput,
+  RunSkillOutput,
+  Skill,
+  SkillContextMode,
+  SkillFile,
+  SkillState,
+  SkillsCollectionMeta,
+  ToolCatalog,
+} from "./skill";
+
+export type {
   JsonObject,
   JsonPrimitive,
   JsonValue,

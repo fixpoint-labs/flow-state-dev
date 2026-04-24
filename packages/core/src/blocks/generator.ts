@@ -26,13 +26,14 @@ import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
 import type { CapabilityRef, InferCapabilities } from "../capability/types";
 import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
-import { resolveCapabilities } from "./internal/resolve-capabilities";
+import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
 import {
   blockPathTool,
   buildBlockInstanceId,
   extendBlockPath,
   ROOT_BLOCK_PATH
 } from "./internal/block-instance-id";
+
 import { toError, withTimeout } from "./internal/utils";
 
 const DEFAULT_MAX_ITERATIONS = 8;
@@ -321,7 +322,7 @@ export interface GeneratorConfig<
   history?: GeneratorHistoryConfig<NoInfer<TInput>, TCtx>;
   /** Typed user slot: accepts a function over TInput, a static string, or other non-function slot entries. */
   user?: TypedUserSlotFn<TInput, TCtx> | GeneratorSlotStatic | Array<GeneratorSlotStatic>;
-  tools?: GeneratorTool[] | ((ctx: TCtx) => MaybePromise<GeneratorTool[]>);
+  tools?: GeneratorTool[] | ((input: NoInfer<TInput>, ctx: TCtx) => MaybePromise<GeneratorTool[]>);
   /**
    * Enable provider-native web search. When `true`, uses defaults.
    * When an object, maps normalized config to the provider's native search tool.
@@ -521,15 +522,19 @@ async function resolveSlotValues<TInput, TCtx extends BlockContext>(
   return values;
 }
 
-async function resolveTools<TCtx extends BlockContext>(
-  tools: GeneratorTool[] | ((ctx: TCtx) => MaybePromise<GeneratorTool[]>) | undefined,
+async function resolveTools<TInput, TCtx extends BlockContext>(
+  tools:
+    | GeneratorTool[]
+    | ((input: TInput, ctx: TCtx) => MaybePromise<GeneratorTool[]>)
+    | undefined,
+  input: TInput,
   ctx: TCtx
 ): Promise<GeneratorTool[]> {
   if (tools === undefined) {
     return [];
   }
 
-  const resolved = typeof tools === "function" ? await tools(ctx) : tools;
+  const resolved = typeof tools === "function" ? await tools(input, ctx) : tools;
   return Array.isArray(resolved) ? resolved : [];
 }
 
@@ -1294,6 +1299,7 @@ export function generator<
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { declaredResources, resolvedCapabilities, mergedSurface, dynamicUses } = resolveCapabilities(config, "generator");
+  const blockAgentType = config.agentType;
 
   const outputSchema = (config.outputSchema ?? z.string()) as ZodTypeAny;
   const normalizedConfig: GeneratorConfig<TInputSchema, TOutputSchema, TInput, TOutput> = {
@@ -1331,6 +1337,7 @@ export function generator<
         const parts: string[] = [];
         for (const resolver of dynamicUses) {
           for (const cap of resolver(ctx)) {
+            if (!capabilityMatchesAgent(cap, blockAgentType)) continue;
             const surface = await resolveDynamicCapSurface(cap, ctx);
             for (const entry of surface.contextEntries) {
               const v = typeof entry === "function" ? entry(input, ctx) : entry;
@@ -1349,10 +1356,10 @@ export function generator<
   if (hasStaticTools || hasDynamic) {
     const userTools = normalizedConfig.tools;
 
-    (normalizedConfig as any).tools = async (ctx: BlockContext) => {
-      // 1. User-declared tools (static array or function)
+    (normalizedConfig as any).tools = async (input: unknown, ctx: BlockContext) => {
+      // 1. User-declared tools (static array or function of input+ctx)
       const base: GeneratorTool[] = userTools
-        ? Array.isArray(userTools) ? userTools : await userTools(ctx as any)
+        ? Array.isArray(userTools) ? userTools : await (userTools as any)(input, ctx)
         : [];
 
       // 2. Static capability preset tools
@@ -1367,6 +1374,7 @@ export function generator<
       if (hasDynamic) {
         for (const resolver of dynamicUses) {
           for (const cap of resolver(ctx)) {
+            if (!capabilityMatchesAgent(cap, blockAgentType)) continue;
             const surface = await resolveDynamicCapSurface(cap, ctx);
             dynTools.push(...surface.tools);
           }
@@ -1410,7 +1418,7 @@ export function generator<
       }
 
       const autoDescribe = normalizedConfig.describeTools !== false;
-      const toolBlocks = await resolveTools(normalizedConfig.tools, ctx);
+      const toolBlocks = await resolveTools(normalizedConfig.tools, input, ctx);
 
       const prompt = await resolvePrompt(normalizedConfig.prompt, input, ctx);
       const contextValues = await resolveSlotValues(normalizedConfig.context, input, ctx);
@@ -1463,7 +1471,7 @@ export function generator<
           let activeTools: string[] | undefined;
           let freshToolDescription: string | undefined;
           if (hasDynamicTools) {
-            const freshTools = await resolveTools(normalizedConfig.tools, ctx);
+            const freshTools = await resolveTools(normalizedConfig.tools, input, ctx);
             activeTools = freshTools.map((t) => t.name);
             if (autoDescribe) {
               freshToolDescription = buildToolDescriptionContext(freshTools);

@@ -7,7 +7,6 @@ export const modeSchema = z.enum(["ask", "build", "interview", "debate"]).defaul
 
 export const featuresSchema = z.object({
   biasCheck: z.boolean().default(false),
-  bashTool: z.boolean().default(true),
   search: z.boolean().default(true),
   fetch: z.boolean().default(true),
   crawl: z.boolean().default(false),

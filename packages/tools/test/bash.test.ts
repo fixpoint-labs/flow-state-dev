@@ -478,6 +478,46 @@ describe("adapters", () => {
       expect(sandbox.readFile).toBeDefined();
       expect(sandbox.writeFile).toBeDefined();
     });
+
+    it("rewrites destination-prefixed absolute paths in commands to the real cwd", async () => {
+      // Regression guard: writeFile was already translating `/workspace/...`
+      // to `<cwd>/...`, but executeCommand was running raw strings — so a
+      // command like `cat /workspace/foo.txt` looked for the literal path on
+      // the host and failed with "No such file or directory". Scripts bundled
+      // with a skill (e.g. python3 /workspace/skills/.../scripts/foo.py) hit
+      // this end-to-end.
+      const { createLocalFsSandbox } = await import("../src/bash/adapters/local-fs");
+      const { mkdtemp, rm } = await import("node:fs/promises");
+      const { tmpdir } = await import("node:os");
+      const { join } = await import("node:path");
+
+      const cwd = await mkdtemp(join(tmpdir(), "bash-translate-"));
+      try {
+        const sandbox = createLocalFsSandbox({
+          cwd,
+          destination: "/workspace",
+        });
+        await sandbox.writeFile("/workspace/hello.txt", "hi there");
+        const r1 = await sandbox.executeCommand("cat /workspace/hello.txt");
+        expect(r1.stderr).toBe("");
+        expect(r1.stdout).toBe("hi there");
+
+        // Nested path — the common shape for skill-bundled scripts.
+        await sandbox.writeFile("/workspace/skills/s/scripts/run.sh", "echo ok");
+        const r2 = await sandbox.executeCommand(
+          "bash /workspace/skills/s/scripts/run.sh",
+        );
+        expect(r2.stdout.trim()).toBe("ok");
+
+        // find /workspace should list the tree instead of erroring.
+        const r3 = await sandbox.executeCommand("find /workspace -type f | sort");
+        expect(r3.stderr).toBe("");
+        expect(r3.stdout).toContain("/hello.txt");
+        expect(r3.stdout).toContain("/skills/s/scripts/run.sh");
+      } finally {
+        await rm(cwd, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("upstash", () => {
@@ -763,5 +803,347 @@ describe("workspace guards", () => {
 
       warnSpy.mockRestore();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createBashBlocks — auto-discovery, multi-mount flush, scratch, orphans
+// ---------------------------------------------------------------------------
+//
+// The block-level tests construct a BlockContext-shaped object, a flush-aware
+// mock sandbox (see helper below), and one or more mock collections. Each
+// test uses a unique session id so the module-scoped sandbox registry
+// doesn't carry state between tests.
+
+describe("createBashBlocks", () => {
+  // Real `find .` from inside a workspace emits `./relative/path`. The
+  // shared `createMockSandbox` returns absolute keys, which the flush path
+  // does not strip — we need `./`-relative output for flush assertions.
+  function createFlushAwareSandbox(
+    destination: string,
+  ): Sandbox & { files: Map<string, string> } {
+    const files = new Map<string, string>();
+    const destPrefix = destination.endsWith("/") ? destination : destination + "/";
+    return {
+      files,
+      async executeCommand(command: string): Promise<CommandResult> {
+        if (command.startsWith("find ")) {
+          const out: string[] = [];
+          for (const key of files.keys()) {
+            if (!key.startsWith(destPrefix)) continue;
+            const rel = key.slice(destPrefix.length);
+            if (!rel) continue;
+            out.push("./" + rel);
+          }
+          return { stdout: out.join("\n"), stderr: "", exitCode: 0 };
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
+      },
+      async readFile(p: string): Promise<string> {
+        const content = files.get(p);
+        if (content === undefined) throw new Error(`File not found: ${p}`);
+        return content;
+      },
+      async writeFile(p: string, content: string): Promise<void> {
+        files.set(p, content);
+      },
+    };
+  }
+
+  // Build a BlockContext-shaped object with arbitrary collections per scope.
+  function buildCtx(
+    sessionId: string,
+    scopes: {
+      session?: Record<string, ResourceCollectionRef<FileEntryState>>;
+      user?: Record<string, ResourceCollectionRef<FileEntryState>>;
+      project?: Record<string, ResourceCollectionRef<FileEntryState>>;
+    } = {},
+  ) {
+    return {
+      session: {
+        identity: { id: sessionId, userId: "u1" },
+        resources: scopes.session ?? {},
+      },
+      user: {
+        identity: { id: "u1" },
+        resources: scopes.user ?? {},
+      },
+      project: {
+        identity: { id: "p1" },
+        resources: scopes.project ?? {},
+      },
+    } as any;
+  }
+
+  // Collection mock with a custom pattern (not the default `files/*`).
+  function createMockCollectionWithPattern(
+    pattern: string,
+    entries: MockResourceEntry[] = [],
+  ): ResourceCollectionRef<FileEntryState> {
+    const base = createMockCollection(entries);
+    return { ...base, pattern } as ResourceCollectionRef<FileEntryState>;
+  }
+
+  it("auto-discovers every collection on ctx and mounts each at its pattern prefix", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
+      {
+        name: "artifacts/notes.md",
+        state: { path: "artifacts/notes.md", hash: "", updatedAt: "2026-01-01" },
+        content: "existing note",
+      },
+    ]);
+    const skills = createMockCollectionWithPattern("skills/**", [
+      {
+        name: "skills/check-news/SKILL.md",
+        state: { path: "skills/check-news/SKILL.md", hash: "", updatedAt: "2026-01-01" },
+        content: "body",
+      },
+    ]);
+
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("auto-1", { session: { artifacts }, project: { skills } });
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    expect(sandbox.files.get("/workspace/artifacts/notes.md")).toBe("existing note");
+    expect(sandbox.files.get("/workspace/skills/check-news/SKILL.md")).toBe("body");
+    // Scratch directory marker is seeded.
+    expect(sandbox.files.has("/workspace/tmp/.keep")).toBe(true);
+  });
+
+  it("routes writes back to the owning collection by longest-prefix match", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const skills = createMockCollectionWithPattern("skills/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand, bashWriteFile } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("flush-route-1", {
+      session: { artifacts },
+      project: { skills },
+    });
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    await bashWriteFile.run({ path: "artifacts/new-doc.md", content: "artifact content" }, ctx);
+    await bashWriteFile.run({ path: "skills/draft/SKILL.md", content: "skill content" }, ctx);
+
+    expect(artifacts.count()).toBe(1);
+    expect(skills.count()).toBe(1);
+    expect(artifacts.getOptional("new-doc.md")?.state.path).toBe("new-doc.md");
+    expect(skills.getOptional("draft/SKILL.md")).toBeDefined();
+  });
+
+  it("honors writable: false — changes in the mount are not written back", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const skills = createMockCollectionWithPattern("skills/**", [
+      {
+        name: "foo/SKILL.md",
+        state: { path: "foo/SKILL.md", hash: "", updatedAt: "2026-01-01" },
+        content: "original",
+      },
+    ]);
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand, bashWriteFile } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+      collections: [{ key: "skills", writable: false }],
+    });
+
+    const ctx = buildCtx("ro-1", { project: { skills } });
+    await bashCommand.run({ command: "ls" }, ctx);
+    await bashWriteFile.run(
+      { path: "skills/foo/SKILL.md", content: "EDITED" },
+      ctx,
+    );
+
+    // Local edit visible in sandbox.
+    expect(sandbox.files.get("/workspace/skills/foo/SKILL.md")).toBe("EDITED");
+    // But the resource stays untouched.
+    expect(skills.getOptional("foo/SKILL.md")).toBeDefined();
+    expect(await skills.getOptional("foo/SKILL.md")!.readContent()).toBe("original");
+  });
+
+  it("drops orphan files with a console warning (not under any mount or ./tmp/)", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand, bashWriteFile } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("orphan-1", { session: { artifacts } });
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await bashWriteFile.run({ path: "random.txt", content: "uh oh" }, ctx);
+      // Orphan write stays in the sandbox for this session but is never
+      // persisted to any collection.
+      expect(sandbox.files.get("/workspace/random.txt")).toBe("uh oh");
+      expect(artifacts.count()).toBe(0);
+      // console.warn announces the drop.
+      expect(warn).toHaveBeenCalled();
+      const msg = warn.mock.calls.map((c) => c[0]).join(" ");
+      expect(msg).toMatch(/orphan/);
+      expect(msg).toMatch(/random\.txt/);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("does NOT drop or warn on files under ./tmp/ — scratch is silent", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**");
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand, bashWriteFile } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("scratch-1", { session: { artifacts } });
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await bashWriteFile.run({ path: "tmp/scratchpad.txt", content: "abc" }, ctx);
+      await bashWriteFile.run({ path: "tmp/nested/file.txt", content: "xyz" }, ctx);
+      expect(sandbox.files.get("/workspace/tmp/scratchpad.txt")).toBe("abc");
+      expect(sandbox.files.get("/workspace/tmp/nested/file.txt")).toBe("xyz");
+      expect(artifacts.count()).toBe(0);
+      // No warn for files under tmp/.
+      const orphanCalls = warn.mock.calls.filter((c) =>
+        (c[0] as string).includes("orphan"),
+      );
+      expect(orphanCalls).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("explicit `collections` narrows the mount set", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
+      {
+        name: "artifacts/foo.md",
+        state: { path: "artifacts/foo.md", hash: "", updatedAt: "2026-01-01" },
+        content: "a",
+      },
+    ]);
+    const skills = createMockCollectionWithPattern("skills/**", [
+      {
+        name: "skills/bar/SKILL.md",
+        state: { path: "skills/bar/SKILL.md", hash: "", updatedAt: "2026-01-01" },
+        content: "b",
+      },
+    ]);
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+      collections: ["artifacts"],
+    });
+
+    const ctx = buildCtx("narrow-1", {
+      session: { artifacts },
+      project: { skills },
+    });
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    expect(sandbox.files.get("/workspace/artifacts/foo.md")).toBe("a");
+    // Skills collection is NOT mounted despite being on ctx.
+    expect(sandbox.files.has("/workspace/skills/bar/SKILL.md")).toBe(false);
+  });
+
+  it("`exclude` skips named collections during auto-discovery", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
+      {
+        name: "artifacts/foo.md",
+        state: { path: "artifacts/foo.md", hash: "", updatedAt: "2026-01-01" },
+        content: "a",
+      },
+    ]);
+    const secrets = createMockCollectionWithPattern("secrets/**", [
+      {
+        name: "secrets/api-key.txt",
+        state: { path: "secrets/api-key.txt", hash: "", updatedAt: "2026-01-01" },
+        content: "sk-...",
+      },
+    ]);
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+      exclude: ["secrets"],
+    });
+
+    const ctx = buildCtx("exclude-1", {
+      session: { artifacts, secrets },
+    });
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    expect(sandbox.files.get("/workspace/artifacts/foo.md")).toBe("a");
+    expect(sandbox.files.has("/workspace/secrets/api-key.txt")).toBe(false);
+  });
+
+  it("per-mount deletion only removes entries from the owning collection", async () => {
+    const { createBashBlocks } = await import("../src/bash/blocks");
+
+    const artifacts = createMockCollectionWithPattern("artifacts/**", [
+      {
+        name: "keep.md",
+        state: { path: "keep.md", hash: "", updatedAt: "2026-01-01" },
+        content: "keep",
+      },
+      {
+        name: "drop.md",
+        state: { path: "drop.md", hash: "", updatedAt: "2026-01-01" },
+        content: "drop",
+      },
+    ]);
+    const skills = createMockCollectionWithPattern("skills/**", [
+      {
+        name: "stay/SKILL.md",
+        state: { path: "stay/SKILL.md", hash: "", updatedAt: "2026-01-01" },
+        content: "stay",
+      },
+    ]);
+    const sandbox = createFlushAwareSandbox("/workspace");
+    const { bashCommand } = createBashBlocks({
+      provider: { type: "custom", sandbox },
+      destination: "/workspace",
+    });
+
+    const ctx = buildCtx("delete-1", {
+      session: { artifacts },
+      project: { skills },
+    });
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    // Simulate the agent deleting an artifact via the sandbox directly.
+    sandbox.files.delete("/workspace/artifacts/drop.md");
+    await bashCommand.run({ command: "ls" }, ctx);
+
+    expect(artifacts.getOptional("keep.md")).toBeDefined();
+    expect(artifacts.getOptional("drop.md")).toBeUndefined();
+    // Skills collection is untouched — its delete loop runs against its own
+    // list and the file we deleted wasn't one of its entries.
+    expect(skills.getOptional("stay/SKILL.md")).toBeDefined();
   });
 });

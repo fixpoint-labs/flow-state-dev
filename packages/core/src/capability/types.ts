@@ -10,6 +10,7 @@
 import type { ZodTypeAny } from "zod";
 import type { BlockContext, DeclaredResourceEntry } from "../types/block";
 import type { GeneratorTool } from "../blocks/generator";
+import type { AgentType } from "../items/types";
 
 // ---------------------------------------------------------------------------
 // Preset definition
@@ -113,6 +114,22 @@ export interface CapabilityConfig<
     | ((ctx: CapabilityPresetCtx<InferSessionState<TSessionStateSchema>>) => readonly CapabilityRef[])
   )[];
 
+  /**
+   * Restrict this capability to blocks with a matching `agentType`.
+   *
+   * Omitted (default): the capability attaches to every block that declares
+   * it via `uses`. Set to an `AgentType` or array of `AgentType`s to filter
+   * to an allowlist — the capability only attaches when the consuming
+   * block's `agentType` is in the list. A block with no `agentType`
+   * (including handlers, sequencers, routers, and generators that don't
+   * set the field) is treated as `"primary"` for this check.
+   *
+   * Use `"primary"` on capabilities that should coordinate the main agent
+   * but not be replicated into workers (`agentType: "sub"`), e.g. large
+   * skill bodies or expensive system prompts in multi-agent patterns.
+   */
+  agentType?: AgentType | readonly AgentType[];
+
   // Helper function factory — produces ctx.cap.{name}
   fns?: (ctx: BlockContext) => TFns;
 
@@ -158,6 +175,9 @@ export interface DefinedCapability<
 
   // Capability composition — static refs and/or dynamic resolver functions
   uses?: UsesSlot;
+
+  /** Allowlist of block `agentType`s this capability attaches to. See CapabilityConfig.agentType. */
+  agentType?: AgentType | readonly AgentType[];
 
   // Helper function factory — produces ctx.cap.{name}
   fns?: (ctx: BlockContext) => TFns;

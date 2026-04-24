@@ -127,6 +127,14 @@ const sidebars: SidebarsConfig = {
         "tools/bash",
       ],
     },
+    {
+      type: "category",
+      label: "Skills",
+      items: [
+        "skills/overview",
+        "skills/authoring",
+      ],
+    },
     "roadmap",
     {
       type: "category",

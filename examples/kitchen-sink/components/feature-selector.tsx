@@ -14,7 +14,6 @@ import { cn } from "@/lib/utils";
 import {
   Settings2,
   ShieldCheck,
-  Terminal,
   Search,
   Globe,
   Network,
@@ -23,7 +22,6 @@ import {
 
 export interface Features {
   biasCheck: boolean;
-  bashTool: boolean;
   search: boolean;
   fetch: boolean;
   crawl: boolean;
@@ -31,7 +29,6 @@ export interface Features {
 
 export const DEFAULT_FEATURES: Features = {
   biasCheck: false,
-  bashTool: true,
   search: true,
   fetch: true,
   crawl: true,
@@ -46,13 +43,6 @@ interface FeatureOption {
 }
 
 const FEATURE_OPTIONS: FeatureOption[] = [
-  {
-    key: "bashTool",
-    label: "Bash Tool",
-    description: "Execute commands and manage files in a sandbox workspace",
-    icon: Terminal,
-    color: "text-emerald-500 dark:text-emerald-400",
-  },
   {
     key: "search",
     label: "Search",
@@ -87,26 +77,20 @@ interface FeatureSelectorProps {
   features: Features;
   onFeaturesChange: (features: Features) => void;
   disabled?: boolean;
-  /** Current mode — only Build mode allows bash. */
-  mode?: string;
 }
 
 export function FeatureSelector({
   features,
   onFeaturesChange,
   disabled,
-  mode,
 }: FeatureSelectorProps) {
   const activeCount = Object.values(features).filter(Boolean).length;
-  const isBuildMode = mode === "build";
 
   const handleToggle = useCallback(
     (key: keyof Features) => {
-      // Bash cannot be toggled outside Build mode — it is always disabled server-side.
-      if (key === "bashTool" && !isBuildMode) return;
       onFeaturesChange({ ...features, [key]: !features[key] });
     },
-    [features, onFeaturesChange, isBuildMode],
+    [features, onFeaturesChange],
   );
 
   return (
@@ -144,7 +128,6 @@ export function FeatureSelector({
         {FEATURE_OPTIONS.map((option) => {
           const Icon = option.icon;
           const isActive = features[option.key];
-          const isLocked = option.key === "bashTool" && !isBuildMode;
 
           return (
             <DropdownMenuItem
@@ -153,37 +136,25 @@ export function FeatureSelector({
                 e.preventDefault();
                 handleToggle(option.key);
               }}
-              className={cn(
-                "flex cursor-pointer items-start gap-3 rounded-md px-3 py-2.5",
-                isLocked && "cursor-not-allowed opacity-50",
-              )}
+              className="flex cursor-pointer items-start gap-3 rounded-md px-3 py-2.5"
             >
               <Icon
                 className={cn(
                   "mt-0.5 size-4 shrink-0 transition-colors",
-                  isLocked
-                    ? "text-muted-foreground/40"
-                    : isActive
-                      ? option.color
-                      : "text-muted-foreground/40",
+                  isActive ? option.color : "text-muted-foreground/40",
                 )}
               />
               <div className="flex flex-col gap-0.5">
                 <span
                   className={cn(
                     "text-sm font-medium leading-none transition-colors",
-                    isLocked
-                      ? "text-muted-foreground"
-                      : isActive
-                        ? "text-foreground"
-                        : "text-muted-foreground",
+                    isActive ? "text-foreground" : "text-muted-foreground",
                   )}
                 >
                   {option.label}
-                  {isLocked && " (Ask mode)"}
                 </span>
                 <span className="text-xs leading-snug text-muted-foreground">
-                  {isLocked ? "Disabled in Ask mode" : option.description}
+                  {option.description}
                 </span>
               </div>
             </DropdownMenuItem>
