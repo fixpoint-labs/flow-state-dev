@@ -11,7 +11,7 @@ import type { Middleware } from "./middleware";
 import type { ScopeStateOps } from "./state";
 import type { ModelResolver } from "./model";
 import type { Content } from "../items/content";
-import type { AgentType } from "../items/types";
+import type { AgentType, StructureShape } from "../items/types";
 import type { JsonObject } from "../schema/common";
 import type { GeneratorModelResult, GeneratorModelUsage } from "./model";
 
@@ -238,7 +238,37 @@ export interface BlockContext<
     parent: ExecutionParent,
     execute: (ctx: BlockContext) => Promise<TValue>
   ): Promise<TValue>;
+
+  /**
+   * @internal Hint written by a sequencer/router's execute right before
+   * returning to describe the BlockValue kind its block_output should carry
+   * (FIX-413). Emitters wrap the returned output as `inline` when no hint is
+   * set (the default for generators, handlers, and transforms).
+   */
+  _blockOutputHint?: BlockOutputHint;
+
+  /**
+   * @internal Shared mutable slot that tracks the id of the most recently
+   * emitted `block_output` item. Sequencer operations read this immediately
+   * after calling a child block so they can record a `ref` descriptor pointing
+   * at the child's item. Lives on a ref passed through every scope so child
+   * emissions are visible to the parent that spawned them.
+   */
+  _outputTracker?: { lastBlockOutputItemId?: string };
 }
+
+/**
+ * Hint communicated from a block's `execute` out to the block_output emitter
+ * (FIX-413). One of:
+ * - unset / `kind: "inline"` — wrap the returned output as `{ kind: "inline", value: output }`.
+ * - `kind: "ref"` — emit `{ kind: "ref", sourceItemId }`; executor flattens
+ *   one hop if the target is itself a ref.
+ * - `kind: "structure"` — emit `{ kind: "structure", shape }` directly.
+ */
+export type BlockOutputHint =
+  | { kind: "inline" }
+  | { kind: "ref"; sourceItemId: string }
+  | { kind: "structure"; shape: StructureShape };
 
 export type ConnectorFn<TFrom, TTo> = (
   input: TFrom,

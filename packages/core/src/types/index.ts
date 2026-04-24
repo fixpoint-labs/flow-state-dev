@@ -6,6 +6,7 @@ export type {
   BlockInput,
   BlockKind,
   BlockOutput,
+  BlockOutputHint,
   BlockResult,
   ChunkValidation,
   ConnectorFn,

@@ -36,6 +36,7 @@ import type {
   AgentType,
   BlockOutputItem,
   BlockToolOutputItem,
+  BlockValue,
   ComponentItem,
   ContainerItem,
   Content,
@@ -46,8 +47,8 @@ import type {
   StateChangeItem,
   StatusItem
 } from "@flow-state-dev/core/items";
-import { resolveItemVisibility } from "@flow-state-dev/core/items";
-import type { BlockContext, BlockResult, ExecutionParent, StateRef } from "@flow-state-dev/core/types";
+import { resolveBlockValue, resolveItemVisibility } from "@flow-state-dev/core/items";
+import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
 import type {
   ProjectRecord,
@@ -777,8 +778,11 @@ const CLIENT_AUDIENCE_TYPES = new Set([
  * Items with `history: false` (resolved via `resolveItemVisibility`) are
  * excluded. Returns an empty array for item types that don't map to
  * conversation messages (status, state_change, resource_change, etc.).
+ *
+ * `allItems` is used to resolve `block_output` BlockValue refs back to their
+ * source items (FIX-413); pass the same list you're iterating over.
  */
-function itemToLLMMessages(item: OutputItem): LLMMessage[] {
+function itemToLLMMessages(item: OutputItem, allItems: readonly OutputItem[]): LLMMessage[] {
   if (!resolveItemVisibility(item).history) {
     return [];
   }
@@ -819,9 +823,19 @@ function itemToLLMMessages(item: OutputItem): LLMMessage[] {
     // AI SDK v6 requires tool messages as Array<ToolResultPart> (not strings)
     // and each tool result must be preceded by an assistant message containing
     // the matching tool-call part. Emit both in order.
-    const resultText = typeof bo.output === "string"
-      ? bo.output
-      : JSON.stringify(bo.output);
+    // Resolve the BlockValue union to its typed payload before stringifying
+    // (FIX-413). Refs would otherwise serialize to `{kind:"ref",sourceItemId}`.
+    const resolvedOutput = resolveBlockValue(bo.output, (id) => {
+      for (let i = allItems.length - 1; i >= 0; i -= 1) {
+        if (allItems[i].id === id && allItems[i].type === "block_output") {
+          return allItems[i] as BlockOutputItem;
+        }
+      }
+      return undefined;
+    });
+    const resultText = typeof resolvedOutput === "string"
+      ? resolvedOutput
+      : JSON.stringify(resolvedOutput);
     let input: Record<string, unknown> = {};
     try { input = JSON.parse(bo.toolCall.arguments); } catch { /* use empty */ }
     return [
@@ -953,7 +967,7 @@ async function loadLLMHistory(
         continue;
       }
 
-      const llmMessages = itemToLLMMessages(item);
+      const llmMessages = itemToLLMMessages(item, sorted);
       for (const llmMessage of llmMessages) {
         if (allowedRoles !== undefined && !allowedRoles.has(llmMessage.role as "user" | "assistant" | "system" | "developer" | "tool")) {
           continue;
@@ -2182,6 +2196,11 @@ export async function createExecutionContext<
    * Fire-and-forget lifecycle trace item for nested blocks.
    * Single emission (completed or failed) with timing, avoiding two-phase overhead.
    * Uses void + catch to avoid blocking the execution hot path.
+   *
+   * `hint` controls the BlockValue kind stored in `output` (FIX-413):
+   * - unset / `inline` → `{ kind: "inline", value: blockOutput }`
+   * - `ref` → `{ kind: "ref", sourceItemId }` with flatten-at-emit
+   * - `structure` → `{ kind: "structure", shape }`
    */
   function emitNestedBlockTrace(
     parent: ExecutionParent,
@@ -2192,10 +2211,24 @@ export async function createExecutionContext<
     nextIndex: () => number,
     blockOutput?: unknown,
     blockError?: { message: string; code?: string },
-    ownedBy?: string
+    ownedBy?: string,
+    hint?: BlockOutputHint
   ): void {
     const completedAt = Date.now();
     const itemIndex = nextIndex();
+    const blockValue: BlockValue<unknown> =
+      status === "failed"
+        ? { kind: "inline", value: undefined }
+        : buildEmitterBlockValue(blockOutput, hint, (id) => {
+            const typed = responseRef.current as unknown as { getItems?: () => OutputItem[] };
+            if (typeof typed.getItems === "function") {
+              const items = typed.getItems();
+              for (let i = items.length - 1; i >= 0; i -= 1) {
+                if (items[i].id === id) return items[i] as BlockOutputItem;
+              }
+            }
+            return undefined;
+          });
     const item: BlockOutputItem = {
       id: `item_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "block_output",
@@ -2213,7 +2246,7 @@ export async function createExecutionContext<
       ownedBy,
       blockName: parent.name,
       blockKind: parent.kind,
-      output: blockOutput,
+      output: blockValue,
       error: blockError,
       startedAt,
       completedAt,
@@ -2222,6 +2255,39 @@ export async function createExecutionContext<
     void emitter.emitItemAdded(item)
       .then(() => emitter.emitItemDone(item))
       .catch(() => { /* trace emission is best-effort */ });
+  }
+
+  /**
+   * Translate a BlockOutputHint + raw output into a BlockValue, flattening
+   * refs one hop so every emitted ref points at a content-bearing item
+   * (FIX-413 flatten-at-emit invariant).
+   */
+  function buildEmitterBlockValue(
+    output: unknown,
+    hint: BlockOutputHint | undefined,
+    lookupItem: (id: string) => BlockOutputItem | undefined
+  ): BlockValue<unknown> {
+    if (hint === undefined || hint.kind === "inline") {
+      return { kind: "inline", value: output };
+    }
+    if (hint.kind === "structure") {
+      return { kind: "structure", shape: hint.shape };
+    }
+    // ref — flatten one hop if the target is itself a ref.
+    let sourceItemId = hint.sourceItemId;
+    const target = lookupItem(sourceItemId);
+    if (target !== undefined) {
+      const targetValue = target.output;
+      if (
+        targetValue !== undefined &&
+        typeof targetValue === "object" &&
+        "kind" in targetValue &&
+        targetValue.kind === "ref"
+      ) {
+        sourceItemId = targetValue.sourceItemId;
+      }
+    }
+    return { kind: "ref", sourceItemId };
   }
 
   type ExecutionParentNode = {
@@ -2702,6 +2768,14 @@ export async function createExecutionContext<
           siblingEntry.result.output = output;
           siblingEntry.result.error = undefined;
 
+          // Harvest the BlockValue hint set by the child's execute (if any)
+          // so the emitted block_output carries a ref/structure rather than
+          // duplicating content (FIX-413).
+          const capturedHint = (childContext as { _blockOutputHint?: BlockOutputHint })._blockOutputHint;
+          if (capturedHint !== undefined) {
+            (childContext as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = undefined;
+          }
+
           // Emit lifecycle trace item for nested blocks only.
           // Root blocks are traced by executeBlock's emitBlockOutputItem.
           // Suppressed for:
@@ -2719,8 +2793,14 @@ export async function createExecutionContext<
               emissionResponse, requestRef, () => emittedItemCount++,
               output,
               undefined,
-              childEmCtx.ownedBy
+              childEmCtx.ownedBy,
+              capturedHint
             );
+          } else if (parentChain === undefined && capturedHint !== undefined) {
+            // Root block case: server's executeBlock reads the hint off the
+            // outer (non-scoped) ctx. Forward the child's hint so the root's
+            // block_output can be emitted as ref/structure (FIX-413).
+            (context as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = capturedHint;
           }
 
           return output;

@@ -228,7 +228,8 @@ describe("buildTraceTree", () => {
         type: "block_output",
         blockName: "gen",
         provenance: makeProvenance("gen", "gen-inst"),
-        output: "hello",
+        // FIX-413: BlockOutputItem.output is now a BlockValue<T> union.
+        output: { kind: "inline", value: "hello" },
         toolCall: { callId: "tc-1", arguments: "{}", generatorBlock: "gen" },
       } as Partial<OutputItem> & { id: string; type: string }),
     ];

@@ -1,13 +1,23 @@
 import type { ReactElement } from "react";
-import type { BlockOutputItem } from "@flow-state-dev/core/items";
+import type { BlockOutputItem, BlockValue } from "@flow-state-dev/core/items";
 
 type AgentOutput = {
   reply: string;
   artifactsModified: string[];
 };
 
-export default function AgentResponseCard({ item }: { item: BlockOutputItem }): ReactElement {
-  const output = item.output as AgentOutput;
+/**
+ * The agent generator is a leaf; its block_output always carries
+ * `kind: "inline"` (FIX-413). Unwrap to the typed payload.
+ */
+function unwrap(value: BlockValue<unknown>): AgentOutput | undefined {
+  if (value.kind === "inline") return value.value as AgentOutput;
+  return undefined;
+}
+
+export default function AgentResponseCard({ item }: { item: BlockOutputItem }): ReactElement | null {
+  const output = unwrap(item.output);
+  if (output === undefined) return null;
 
   return (
     <div className={item.status === "in_progress" ? "animate-pulse" : ""}>
