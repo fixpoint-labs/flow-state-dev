@@ -386,9 +386,8 @@ Disable either via `cap.presets({ accumulated: false })` when token budget is ti
 | `perspectiveSnapshot(config)` | handler | Reads current observations + positions + turn counter. |
 | `perspectiveAdvance(config)` | handler | Bumps the observation turn counter. Designed for `.tap()`. |
 | **Resources** | | |
-| `perspectiveObservationsResource` | resource | Session-scoped singleton (observations always live here). |
-| `perspectivePositionsResource` | resource | Session-scoped default (used for standalone block use). |
-| `createPerspectivePositionsResource(scope)` | factory | Returns a positions resource for `'session' \| 'user' \| 'project'` scope. |
+| `perspectiveObservationsResource` | resource | Singleton; the capability and bundled blocks always declare it at session scope. |
+| `perspectivePositionsResource` | resource | Singleton; scope is decided by where the capability or block declares it (session/user/project). |
 | **Schemas (Phase B)** | | |
 | `perspectiveObservationSchema` | Zod schema | `{ id, content, category, confidence, source?, addedAt }` |
 | `perspectiveObservationsStateSchema` | Zod schema | `{ observations[], turnCounter }` |

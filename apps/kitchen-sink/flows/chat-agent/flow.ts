@@ -63,7 +63,7 @@ const mem = memorySystem({
 // ---------------------------------------------------------------------------
 
 const analyst = perspective({
-  name: "analyst",
+  name: "analyst-perspective",
   description: "Analytical reasoning partner who decomposes problems and evaluates tradeoffs",
   salience: {
     amplify: ["assumptions", "tradeoffs", "edge cases", "constraints", "contradictions"],
@@ -80,7 +80,7 @@ const analyst = perspective({
   },
 });
 
-const p = perspectiveSystem(analyst, { model: MODEL_ID });
+const analystPerspective = perspectiveSystem(analyst, { model: MODEL_ID });
 
 // ---------------------------------------------------------------------------
 // Flow-level schemas
@@ -132,7 +132,7 @@ const assistantGenerator = generator({
   // p.capability injects perspective framing (static + accumulated presets).
   // Perspective context appears in all modes but accumulated state only
   // grows in ask mode (capture is gated via workIf below).
-  uses: [mem.capability, featuresCapability, p.capability],
+  uses: [mem.capability, featuresCapability, analystPerspective.capability],
 
   context: [voiceContext],
 
@@ -311,7 +311,10 @@ const auditor = responseAuditor({
   threshold: 0.3,
 });
 
-const biasCheck = sequencer({ name: "bias-check", inputSchema: z.string() })
+const biasCheck = sequencer({ 
+  name: "bias-check", 
+  inputSchema: z.string()
+})
   .map((aiResponse: string, ctx) => ({
     userInput: String(
       (ctx.parent?.input as Record<string, unknown>)?.message ?? "",
@@ -319,14 +322,7 @@ const biasCheck = sequencer({ name: "bias-check", inputSchema: z.string() })
     response: aiResponse,
   }))
   .thenIf(
-    (_input, ctx) =>
-      Boolean(
-        (ctx.session?.state as Record<string, unknown>)?.features &&
-          (
-            (ctx.session?.state as Record<string, unknown>)
-              ?.features as Record<string, unknown>
-          )?.biasCheck,
-      ),
+    (_input, ctx) => !!(ctx.session.state.features as any).biasCheck,      
     auditor,
   )
   .tap((result: unknown, ctx) => {
@@ -384,9 +380,9 @@ const runSequencer = sequencer({ name: "run", inputSchema })
   .then(thinkingStyleRouter)
   .work(biasCheck)
   .workIf(
-    (ctx: any) => ctx.session?.state?.mode === "ask",
+    (ctx) => ctx.session.state.mode === "ask",
     (response: string) => ({ content: response }),
-    p.capture,
+    analystPerspective.capture,
   )
   .work(mem.captureFromItems)
   .work(autoTitle)
@@ -434,7 +430,6 @@ const chatAgentFlow = defineFlow({
 
   session: {
     stateSchema: sessionStateSchema,
-    resources: { ...artifactResources, ...mem.sessionResources, ...p.sessionResources },
     clientData: {
       modeStatus: (ctx) => ({
         currentMode: modeSchema.parse(ctx.state.mode ?? "ask"),

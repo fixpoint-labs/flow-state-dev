@@ -14,7 +14,6 @@ import {
   perspectivePositionsStateSchema,
   perspectiveObservationsResource,
   perspectivePositionsResource,
-  createPerspectivePositionsResource,
 } from '../../src/identity/perspective.js'
 import type {
   PerspectiveConfig,
@@ -820,21 +819,6 @@ describe('identity/perspective — Phase B resources', () => {
     expect(perspectivePositionsResource.writable).toBe(true)
   })
 
-  it('createPerspectivePositionsResource returns distinct refs per call', () => {
-    const a = createPerspectivePositionsResource('user')
-    const b = createPerspectivePositionsResource('user')
-    expect(a).not.toBe(b)
-    expect(a.default).toEqual(b.default)
-  })
-
-  it('createPerspectivePositionsResource handles all three scopes', () => {
-    const session = createPerspectivePositionsResource('session')
-    const user = createPerspectivePositionsResource('user')
-    const project = createPerspectivePositionsResource('project')
-    expect(session.writable).toBe(true)
-    expect(user.writable).toBe(true)
-    expect(project.writable).toBe(true)
-  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1156,7 +1140,6 @@ describe('identity/perspective — block execution', () => {
       const obsRef = createMockObservationsRef()
       const block = perspectiveObserve({
         perspective: makeInstance(),
-        _observationsResource: perspectiveObservationsResource,
       })
       const ctx = makeCtx({ observations: obsRef })
       const result = await block.run({
@@ -1176,7 +1159,6 @@ describe('identity/perspective — block execution', () => {
       const obsRef = createMockObservationsRef()
       const block = perspectiveObserve({
         perspective: makeInstance(),
-        _observationsResource: perspectiveObservationsResource,
       })
       const ctx = makeCtx({ observations: obsRef })
       const analysis = {
@@ -1202,8 +1184,6 @@ describe('identity/perspective — block execution', () => {
       const posRef = createMockPositionsRef()
       const block = perspectivePosition({
         perspective: makeInstance(),
-        _observationsResource: perspectiveObservationsResource,
-        _positionsResource: perspectivePositionsResource,
       })
       const ctx = makeCtx({ observations: obsRef, positions: posRef })
       const result = await block.run({
@@ -1228,8 +1208,6 @@ describe('identity/perspective — block execution', () => {
 
       const block = perspectiveChallenge({
         perspective: makeInstance(),
-        _observationsResource: perspectiveObservationsResource,
-        _positionsResource: perspectivePositionsResource,
       })
       const ctx = makeCtx({ observations: obsRef, positions: posRef })
       const result = await block.run({
@@ -1246,8 +1224,6 @@ describe('identity/perspective — block execution', () => {
       const posRef = createMockPositionsRef()
       const block = perspectiveChallenge({
         perspective: makeInstance(),
-        _observationsResource: perspectiveObservationsResource,
-        _positionsResource: perspectivePositionsResource,
       })
       const ctx = makeCtx({ observations: obsRef, positions: posRef })
       const result = await block.run({
@@ -1268,8 +1244,6 @@ describe('identity/perspective — block execution', () => {
 
       const block = perspectiveSnapshot({
         perspective: makeInstance(),
-        _observationsResource: perspectiveObservationsResource,
-        _positionsResource: perspectivePositionsResource,
       })
       const ctx = makeCtx({ observations: obsRef, positions: posRef })
       const result = await block.run(undefined as any, ctx)
@@ -1285,7 +1259,6 @@ describe('identity/perspective — block execution', () => {
       const obsRef = createMockObservationsRef({ turnCounter: 0 })
       const block = perspectiveAdvance({
         perspective: makeInstance(),
-        _observationsResource: perspectiveObservationsResource,
       })
       const ctx = makeCtx({ observations: obsRef })
       await block.run(undefined as any, ctx)

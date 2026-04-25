@@ -81,7 +81,6 @@ export {
   perspectiveSnapshotOutputSchema,
   perspectiveObservationsResource,
   perspectivePositionsResource,
-  createPerspectivePositionsResource,
 } from './perspective.js'
 export type {
   PerspectiveObservation,

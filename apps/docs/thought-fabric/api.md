@@ -229,8 +229,7 @@ Perspective — structured viewpoints that shape how agents interpret informatio
 | Export | Scope | Purpose |
 |--------|-------|---------|
 | `perspectiveObservationsResource` | session | Observation store (singleton) |
-| `perspectivePositionsResource` | session | Position store (default singleton) |
-| `createPerspectivePositionsResource(scope)` | user/project | Position store factory for non-session scopes |
+| `perspectivePositionsResource` | session/user/project | Position store; scope decided by where the capability or block declares it |
 
 ### Capability
 

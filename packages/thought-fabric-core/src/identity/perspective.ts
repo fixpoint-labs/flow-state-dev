@@ -234,11 +234,10 @@ export const perspectiveObservationsStateSchema = z.object({
 export type PerspectiveObservationsState = z.infer<typeof perspectiveObservationsStateSchema>
 
 /**
- * Session-scoped resource holding a perspective's observations.
+ * Resource holding a perspective's observations.
  *
- * Always session-scoped: observations are inherently tied to the conversation
- * they emerged from. Positions (which derive from observations) can persist
- * to user/project scope via `createPerspectivePositionsResource`.
+ * The capability and bundled blocks always declare this at session scope —
+ * observations are inherently tied to the conversation they emerged from.
  */
 export const perspectiveObservationsResource = defineResource({
   stateSchema: perspectiveObservationsStateSchema,
@@ -302,36 +301,18 @@ export const perspectivePositionsStateSchema = z.object({
 export type PerspectivePositionsState = z.infer<typeof perspectivePositionsStateSchema>
 
 /**
- * Session-scoped default positions resource.
+ * Resource holding a perspective's positions.
  *
- * For positions that should persist beyond the session (e.g. user-scoped
- * insights about a particular user), create a scoped variant via
- * `createPerspectivePositionsResource('user' | 'project')`.
+ * Scope is decided by where the capability or block declares this resource
+ * (`sessionResources` / `userResources` / `projectResources`), not by the
+ * resource definition itself. The bundled `system()` factory installs it at
+ * the configured `positionScope` (default `'session'`).
  */
 export const perspectivePositionsResource = defineResource({
   stateSchema: perspectivePositionsStateSchema,
   default: { positions: [] },
   writable: true,
 })
-
-/**
- * Create a positions resource at user or project scope.
- *
- * Returns a fresh `defineResource` with the same schema but at the
- * specified scope, suitable for capability declarations like
- * `userResources: { perspectivePositions: createPerspectivePositionsResource('user') }`.
- *
- * (Resource scope is determined by where the resource is declared on the
- * capability, not by the resource definition itself — but separate factory
- * calls produce distinct references for diamond-dedup correctness.)
- */
-export function createPerspectivePositionsResource(_scope: 'session' | 'user' | 'project') {
-  return defineResource({
-    stateSchema: perspectivePositionsStateSchema,
-    default: { positions: [] },
-    writable: true,
-  })
-}
 
 // ---------------------------------------------------------------------------
 // Block I/O schemas (Phase B)

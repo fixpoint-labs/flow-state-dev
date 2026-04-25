@@ -22,11 +22,6 @@
 import { defineCapability } from '@flow-state-dev/core'
 import type { ResourceContext } from '@flow-state-dev/core'
 
-import {
-  perspectiveObservationsResource,
-  perspectivePositionsResource,
-  createPerspectivePositionsResource,
-} from './perspective.js'
 import type {
   PerspectiveInstance,
   PerspectiveObservationsState,
@@ -48,6 +43,7 @@ import type {
   AddPerspectiveObservationInput,
   AddPerspectivePositionInput,
 } from './perspective-helpers.js'
+import { buildPerspectiveResources } from './perspective-blocks.js'
 import type { PositionScope } from './perspective-blocks.js'
 
 // ---------------------------------------------------------------------------
@@ -67,25 +63,6 @@ export interface PerspectiveCapabilityConfig {
    * conversation they emerged from.
    */
   positionScope?: PositionScope
-  /**
-   * Override the observations resource reference.
-   *
-   * Internal hook used by `system()` so bundled blocks and the capability
-   * declare the same resource reference.
-   *
-   * @internal
-   */
-  _observationsResource?: typeof perspectiveObservationsResource
-  /**
-   * Override the positions resource reference.
-   *
-   * Internal hook used by `system()` so bundled blocks and the capability
-   * declare the same resource reference when positions live outside the
-   * default session singleton.
-   *
-   * @internal
-   */
-  _positionsResource?: typeof perspectivePositionsResource
 }
 
 // ---------------------------------------------------------------------------
@@ -158,28 +135,9 @@ export function createPerspectiveCapability(
 ) {
   const positionScope: PositionScope = config?.positionScope ?? 'session'
 
-  // Observations are always session-scoped (singleton resource).
-  const observationsResource = config?._observationsResource ?? perspectiveObservationsResource
-
-  // Positions resource: use override from system() when provided so the
-  // capability and bundled blocks share the same underlying state.
-  const positionsResource = config?._positionsResource
-    ?? (positionScope === 'session'
-      ? perspectivePositionsResource
-      : createPerspectivePositionsResource(positionScope))
-
   return defineCapability({
     name: 'perspective' as const,
-    sessionResources: {
-      perspectiveObservations: observationsResource,
-      ...(positionScope === 'session' ? { perspectivePositions: positionsResource } : {}),
-    },
-    ...(positionScope === 'user'
-      ? { userResources: { perspectivePositions: positionsResource } }
-      : {}),
-    ...(positionScope === 'project'
-      ? { projectResources: { perspectivePositions: positionsResource } }
-      : {}),
+    ...buildPerspectiveResources(positionScope),
     fns: (ctx: any) => {
       const obsRef = getObservationsRef(ctx)
       const posRef = getPositionsRef(ctx, positionScope)
