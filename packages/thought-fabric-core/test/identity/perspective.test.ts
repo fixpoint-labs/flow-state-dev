@@ -1342,7 +1342,7 @@ describe('identity/perspective — createPerspectiveCapability', () => {
     const instance = makeInstance()
     const cap = createPerspectiveCapability(instance)
     const staticPreset = (cap as any).__presetDefs.static
-    const formatter = staticPreset.context[0]
+    const formatter = staticPreset.context.perspective
     const output = formatter({}, {})
     expect(output).toContain('# Perspective: security-engineer')
     expect(output).toContain('Salience Model')
@@ -1356,7 +1356,7 @@ describe('identity/perspective — createPerspectiveCapability', () => {
     const ctx = makeCtx({ observations: obsRef, positions: posRef })
 
     const accumulated = (cap as any).__presetDefs.accumulated
-    const formatter = accumulated.context[0]
+    const formatter = accumulated.context['perspective-history']
     const out = formatter({}, ctx)
     expect(out).toContain('Observations recorded')
     expect(out).toContain('gap')
@@ -1369,7 +1369,7 @@ describe('identity/perspective — createPerspectiveCapability', () => {
       positions: createMockPositionsRef(),
     })
     const accumulated = (cap as any).__presetDefs.accumulated
-    const formatter = accumulated.context[0]
+    const formatter = accumulated.context['perspective-history']
     expect(formatter({}, ctx)).toBe('')
   })
 })

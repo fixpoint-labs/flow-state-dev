@@ -134,7 +134,11 @@ const assistantGenerator = generator({
   // grows in ask mode (capture is gated via workIf below).
   uses: [mem.capability, featuresCapability, analystPerspective.capability],
 
-  context: [voiceContext],
+  // Object-form context: each entry becomes its own XML tag in the rendered
+  // system message. Capabilities (mem, perspective) contribute their own
+  // tags; same-key contributions across sources aggregate cleanly. See
+  // docs/fundamentals/generator-context.md for the full contract.
+  context: { voice: voiceContext },
 
   inputSchema,
   history: { limit: 8 },
@@ -173,7 +177,7 @@ const { thinkingStyleRouter } = createThinkingStyleRouter({
   assistantGenerator,
   modelId: (_input: any, ctx: any) => ctx.session.state.resolvedModel ?? MODEL_ID,
   history: { limit: 8 },
-  context: [mem.contextFormatter, artifactListContext],
+  context: { memory: mem.contextFormatter, artifacts: artifactListContext },
   uses: [featuresCapability],
   instructions: modeInstructions,
 });

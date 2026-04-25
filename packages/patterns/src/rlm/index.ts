@@ -57,10 +57,10 @@ export const subQueryGenerator = generator({
     "- If the context doesn't contain relevant information, say so and set confidence to 0"
   ].join("\n"),
 
-  context: [
-    (input) =>
-      `Context subset (${input.contextSubset.length} chars) has been loaded. Use tools to explore it.`
-  ],
+  context: {
+    'context-subset': (input) =>
+      `Context subset (${input.contextSubset.length} chars) has been loaded. Use tools to explore it.`,
+  },
   user: (input) => input.query,
   tools: [peek, grep, chunk],
   maxIterations: 5,
@@ -101,8 +101,8 @@ export const rootGenerator = generator({
     "Be thorough but efficient. Don't read the entire context if you can find what you need with grep."
   ].join("\n"),
 
-  context: [
-    (_input, ctx) => {
+  context: {
+    'source-document': (_input, ctx) => {
       const contextHandle = ctx.session.resources.get("context");
       const text = contextHandle?.state.text ?? "";
       const meta = contextHandle?.state.metadata;
@@ -111,8 +111,8 @@ export const rootGenerator = generator({
         meta?.tokenEstimate ? `(~${meta.tokenEstimate} tokens estimated)` : "",
         meta?.source ? `Source: ${meta.source}` : ""
       ].filter(Boolean).join(". ");
-    }
-  ],
+    },
+  },
   user: (input) => input.query,
   tools: [peek, grep, chunk, subQueryGenerator],
   maxIterations: 10,
