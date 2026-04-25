@@ -240,6 +240,35 @@ function ResourceScope({
 }
 
 /**
+ * Sum "records" across a single-resource state body. Arrays contribute their
+ * length (so an empty array is 0); scalars contribute 1 when non-zero / non-
+ * nullish, 0 otherwise; nested objects contribute 1 if they have any keys.
+ *
+ * The intent is "how much actual data lives here", not "how many top-level
+ * fields are declared" — useful for resources whose state is mostly a single
+ * collection field plus a couple of counters.
+ */
+function countRecords(data: Record<string, unknown>): number {
+  let total = 0;
+  for (const value of Object.values(data)) {
+    if (Array.isArray(value)) {
+      total += value.length;
+      continue;
+    }
+    if (value === null || value === undefined) continue;
+    if (typeof value === "number" && value === 0) continue;
+    if (typeof value === "boolean" && value === false) continue;
+    if (typeof value === "string" && value.length === 0) continue;
+    if (typeof value === "object") {
+      total += Object.keys(value as Record<string, unknown>).length > 0 ? 1 : 0;
+      continue;
+    }
+    total += 1;
+  }
+  return total;
+}
+
+/**
  * Snapshot entries arrive as wrappers, never raw state — single resources are
  * `{ clientData?, content?, internal? }`, collections are `{ items, internal? }`.
  * Unwrap so the displayed body and key count reflect actual data, not envelope.
@@ -282,20 +311,23 @@ function ResourceItem({
   const [open, setOpen] = useState(false);
   const { data, isCollection, hasContent, isInternal } = unwrapResourceEntry(entry);
 
-  // Show item count for collections, field count for single resources.
-  // Falls back to "—" when the resource has no client.data/items at all.
+  // For collections: count items in the map.
+  // For single resources: sum across top-level fields where arrays contribute
+  // their length and scalars contribute 1 if non-zero/non-null. This gives a
+  // "how much is actually in here" reading rather than just field count
+  // (e.g. { observations: [a,b,c], turnCounter: 5 } → 4 records, not 2 fields).
   const itemCount = isCollection && data && typeof data === "object"
     ? Object.keys(data as Record<string, unknown>).length
     : null;
-  const fieldCount = !isCollection && data && typeof data === "object"
-    ? Object.keys(data as Record<string, unknown>).length
+  const recordCount = !isCollection && data && typeof data === "object"
+    ? countRecords(data as Record<string, unknown>)
     : null;
   const countLabel = isCollection
     ? itemCount !== null
       ? `${itemCount} ${itemCount === 1 ? "item" : "items"}`
       : null
-    : fieldCount !== null
-      ? `${fieldCount} ${fieldCount === 1 ? "field" : "fields"}`
+    : recordCount !== null
+      ? `${recordCount} ${recordCount === 1 ? "record" : "records"}`
       : null;
 
   const handleCopy = (e: React.MouseEvent) => {
