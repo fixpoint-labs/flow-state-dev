@@ -11,6 +11,7 @@
  */
 
 import type { GeneratorTool } from "../blocks/generator";
+import type { ThinkingStyle } from "./thinking";
 
 /**
  * A bag of executable tools that skills may reference by string key.
@@ -58,6 +59,14 @@ export interface SkillState {
   /** Optional Claude `argument-hint`. Surfaced in tool description; not validated at runtime. */
   argumentHint?: string;
 
+  /**
+   * Optional `keywords` array (FIX-421). Lowercase tokens that the up-front
+   * intent classifier's tier-2 keyword scan matches against the user message.
+   * Skills without any keywords skip tier-2 and become eligible only via
+   * tier-3 LLM classification.
+   */
+  keywords?: string[];
+
   /** ISO timestamp set by the seeder when an `initialSkills` entry was first written. */
   _seededAt?: string;
 
@@ -86,6 +95,8 @@ export interface Skill {
   whenToUse?: string;
   /** From frontmatter `argument-hint`. */
   argumentHint?: string;
+  /** From frontmatter `keywords`. Lowercase tokens for tier-2 intent matching. */
+  keywords?: string[];
 }
 
 /** Input the agent passes when invoking the runSkill tool. */
@@ -132,4 +143,55 @@ export interface SkillsCollectionMeta {
    *  list are seeded on the next hydrate; deletions persist (a name stays in
    *  this list even after the user deletes the folder). */
   seededNames: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Intent classification (FIX-421)
+// ---------------------------------------------------------------------------
+
+/**
+ * Origin of an intent-selection match. Carried on `MatchedSkill` and on
+ * `IntentResult.intentSource` so downstream consumers (trace UI, telemetry,
+ * pattern dispatch) can branch on how the decision was reached.
+ */
+export type IntentSource =
+  | "slash"            // user typed `/skill-name`
+  | "keyword"          // local keyword scan matched
+  | "classifier"       // LLM classifier produced the match
+  | "manual-override"; // explicit user/UI selection bypassed classification
+
+/**
+ * One skill matched by an intent-classification pass. Multiple may be active
+ * per turn — the up-front intent selector activates all of them in inline
+ * mode by default.
+ */
+export interface MatchedSkill {
+  /** Skill name. Must exist in the skills collection at activation time. */
+  name: string;
+  /** Argument substituted for `$ARGUMENTS` in the skill body. Empty if none. */
+  input: string;
+  /** Which tier of `intentSelector` produced this match. */
+  source: IntentSource;
+  /** Classifier confidence (0..1). Only present when `source === "classifier"`. */
+  confidence?: number;
+}
+
+/**
+ * Result of one intent-classification pass. Written to request state (for
+ * the per-turn trace record) and projected onto session state (for downstream
+ * blocks like `thinkingStyleRouter` and the active-skill body formatter).
+ *
+ * `thinkingStyle` and `activeSkills` are independent dimensions: a turn may
+ * resolve a style with no skill match, a skill match with the default style,
+ * both, or neither.
+ */
+export interface IntentResult {
+  /** Resolved thinking style for this turn. */
+  thinkingStyle: ThinkingStyle;
+  /** Skills activated this turn. Empty array = no skill matched. */
+  activeSkills: MatchedSkill[];
+  /** Origin tier for `thinkingStyle`. Skill matches carry their own per-entry source. */
+  intentSource: IntentSource;
+  /** Aggregate classifier confidence. Only present when classifier ran. */
+  classifierConfidence?: number;
 }

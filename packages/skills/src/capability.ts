@@ -71,6 +71,22 @@ export interface SkillsCapabilityOptions {
    * context on every step. See CapabilityConfig.agentType.
    */
   agentType?: AgentType | readonly AgentType[];
+
+  /**
+   * Register the `runSkill` tool on the default `tools` preset and the
+   * skill catalog context formatter on the default `context` preset.
+   *
+   * Default `true` for backcompat. Set `false` in flows that use
+   * `createIntentSelector` (FIX-421) for up-front skill activation and
+   * don't want the redundant mid-flow tool-call path or the catalog
+   * prompt overhead. The active-skills body formatter remains registered
+   * regardless — it's still the only way activated skills get their body
+   * into the system prompt.
+   *
+   * `runSkillTool` remains exported and can be added manually by a flow
+   * that wants both the up-front and mid-flow paths to coexist.
+   */
+  bindRunSkillTool?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +106,7 @@ export function createSkillsCapability(
   const catalog: ToolCatalog = options.catalog ?? {};
   const scope: ScopeType = options.scope ?? "project";
   const initialSkills = options.initialSkills;
+  const bindRunSkill = options.bindRunSkillTool ?? true;
 
   // The collection's pattern prefix IS the workspace mount path: when the
   // bash capability auto-discovers collections, it mounts them at their
@@ -151,14 +168,26 @@ export function createSkillsCapability(
 
     presets: {
       tools: {
-        // Static-array form: the full catalog + runSkill. activeTools
-        // gating happens via the dynamic context messages — V1 leaves the
-        // schemas registered so fork-mode and inline-mode skills can both
-        // reference any catalog tool. (See FIX-378 spec, open question #3.)
-        tools: [runSkillTool, ...catalogTools],
+        // Static-array form: the full catalog + runSkill (when bound).
+        // activeTools gating happens via the dynamic context messages — V1
+        // leaves the schemas registered so fork-mode and inline-mode skills
+        // can both reference any catalog tool. (See FIX-378 spec, open
+        // question #3.)
+        tools: bindRunSkill
+          ? [runSkillTool, ...catalogTools]
+          : [...catalogTools],
       },
       context: {
-        context: { skills: [catalogContext, activeContext] },
+        // FIX-434 keyed form — both formatters aggregate under one
+        // `<skills>` XML tag in the system prompt. When runSkill is
+        // unbound (FIX-421 up-front path), drop the catalog listing but
+        // keep the active-skill body formatter — activated skills still
+        // need their body injected.
+        context: {
+          skills: bindRunSkill
+            ? [catalogContext, activeContext]
+            : [activeContext],
+        },
       },
       default: ["tools", "context"],
     },

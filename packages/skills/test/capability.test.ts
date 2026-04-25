@@ -69,4 +69,38 @@ describe("createSkillsCapability", () => {
     const arrayCap = createSkillsCapability({ agentType: ["primary", "trace"] });
     expect(arrayCap.agentType).toEqual(["primary", "trace"]);
   });
+
+  describe("bindRunSkillTool option (FIX-421)", () => {
+    it("binds runSkill and the catalog context by default", () => {
+      const cap = createSkillsCapability({ catalog: { stubTool } });
+      const tools = (cap.__presetDefs?.tools as { tools: { name: string }[] }).tools;
+      const contextEntries = (
+        cap.__presetDefs?.context as { context: unknown[] }
+      ).context;
+      expect(tools.map((t) => t.name)).toContain("runSkill");
+      expect(contextEntries).toHaveLength(2);
+    });
+
+    it("when bindRunSkillTool is false, runSkill is dropped from the tools preset", () => {
+      const cap = createSkillsCapability({
+        catalog: { stubTool },
+        bindRunSkillTool: false,
+      });
+      const tools = (cap.__presetDefs?.tools as { tools: { name: string }[] }).tools;
+      expect(tools.map((t) => t.name)).not.toContain("runSkill");
+      expect(tools.map((t) => t.name)).toContain("stubTool");
+    });
+
+    it("when bindRunSkillTool is false, the catalog context formatter is dropped but the active-skills formatter stays", () => {
+      const cap = createSkillsCapability({
+        catalog: { stubTool },
+        bindRunSkillTool: false,
+      });
+      const contextEntries = (
+        cap.__presetDefs?.context as { context: unknown[] }
+      ).context;
+      // Only the active-skills formatter remains.
+      expect(contextEntries).toHaveLength(1);
+    });
+  });
 });

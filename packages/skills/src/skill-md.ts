@@ -46,6 +46,7 @@ const KNOWN_KEYS = new Set([
   "output-schema",
   "when_to_use",
   "argument-hint",
+  "keywords",
   // Claude-Code-only fields we explicitly capture/warn about
   "user-invocable",
   "paths",
@@ -389,6 +390,23 @@ export function parseSkillMd(text: string): ParsedSkillMd {
     state.argumentHint = raw["argument-hint"] as string;
   }
 
+  if ("keywords" in raw) {
+    const v = raw["keywords"];
+    if (Array.isArray(v) && v.every((x) => typeof x === "string")) {
+      // Normalize to lowercase here so the tier-2 scan can do plain
+      // case-sensitive substring matches without per-call lowercasing.
+      state.keywords = (v as string[]).map((s) => s.toLowerCase());
+    } else if (typeof v === "string") {
+      // Comma-separated form for forward-compat with hand-written frontmatter
+      state.keywords = v
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+    } else if (v !== undefined && v !== null) {
+      warnings.push("`keywords` must be a list of strings — ignored");
+    }
+  }
+
   if ("output-schema" in raw) {
     state.outputSchema = raw["output-schema"];
   }
@@ -442,6 +460,9 @@ export function serializeSkillMd(state: SkillState, body: string): string {
   }
   if (state.argumentHint !== undefined) {
     lines.push(`argument-hint: ${yamlScalar(state.argumentHint)}`);
+  }
+  if (state.keywords && state.keywords.length > 0) {
+    lines.push(`keywords: [${state.keywords.map((k: string) => yamlScalar(k)).join(", ")}]`);
   }
 
   if (state._preservedFields) {
@@ -522,5 +543,6 @@ export function toSkill(name: string, state: SkillState, body: string): Skill {
     disableModelInvocation: state.disableModelInvocation,
     whenToUse: state.whenToUse,
     argumentHint: state.argumentHint,
+    keywords: state.keywords,
   };
 }

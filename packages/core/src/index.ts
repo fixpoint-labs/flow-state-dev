@@ -28,6 +28,9 @@ export { defineResource, resource } from "./types/resource";
 export { defineResourceCollection, isDefinedResourceCollection, defineResourceNamespace, isDefinedResourceNamespace } from "./types/resource-collection";
 export type {
   InitialSkill,
+  IntentResult,
+  IntentSource,
+  MatchedSkill,
   RunSkillInput,
   RunSkillOutput,
   Skill,
@@ -37,6 +40,8 @@ export type {
   SkillsCollectionMeta,
   ToolCatalog,
 } from "./types/skill";
+export type { ThinkingStyle } from "./types/thinking";
+export { thinkingStyleSchema, thinkingStyleValues } from "./types/thinking";
 export { defineCapability, getBaseCapability } from "./capability";
 export type {
   CapabilityPresetCtx,

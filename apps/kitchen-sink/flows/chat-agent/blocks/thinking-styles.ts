@@ -10,7 +10,8 @@
  */
 import { generator, handler, router, sequencer, utility } from "@flow-state-dev/core";
 import type { GeneratorHistoryConfig, GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockDefinition, ThinkingStyle } from "@flow-state-dev/core/types";
+import { thinkingStyleSchema } from "@flow-state-dev/core/types";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { supervisor } from "@flow-state-dev/patterns/supervisor";
 import { blackboard, createBlackboard } from "@flow-state-dev/patterns/blackboard";
@@ -25,15 +26,11 @@ import { z } from "zod";
 // Schemas
 // -------------------------------------------------------------------------
 
-export const thinkingStyleSchema = z.enum([
-  "plan-and-execute",
-  "supervisor",
-  "blackboard",
-  "reactive-blackboard",
-  "default",
-]);
-
-export type ThinkingStyle = z.infer<typeof thinkingStyleSchema>;
+// thinkingStyleSchema and ThinkingStyle were extracted to @flow-state-dev/core
+// in FIX-421 so the new intent classifier can refer to them without depending
+// on kitchen-sink. Re-exported here for back-compat with existing imports.
+export { thinkingStyleSchema };
+export type { ThinkingStyle };
 
 export const thinkingStyleSessionStateSchema = z.object({
   thinkingStyle: thinkingStyleSchema.optional(),

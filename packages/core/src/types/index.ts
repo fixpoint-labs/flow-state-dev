@@ -157,6 +157,9 @@ export type { CASOptions, ScopeStateOps, StateContainer } from "./state";
 
 export type {
   InitialSkill,
+  IntentResult,
+  IntentSource,
+  MatchedSkill,
   RunSkillInput,
   RunSkillOutput,
   Skill,
@@ -166,6 +169,9 @@ export type {
   SkillsCollectionMeta,
   ToolCatalog,
 } from "./skill";
+
+export type { ThinkingStyle } from "./thinking";
+export { thinkingStyleSchema, thinkingStyleValues } from "./thinking";
 
 export type {
   JsonObject,

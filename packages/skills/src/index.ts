@@ -55,6 +55,7 @@ export {
   buildRunSkillDescription,
   listEnabledSkills,
   type RunSkillToolOptions,
+  type BuildRunSkillDescriptionOptions,
 } from "./run-skill-tool";
 
 export {
@@ -88,6 +89,43 @@ export {
   inlineActivateOutputSchema,
 } from "./inline-activate";
 
+// Intent classification (FIX-421) — up-front skill + thinking-style routing.
+export {
+  createIntentSelector,
+  type IntentSelectorOptions,
+} from "./intent-selector";
+export {
+  createIntentSlashMatch,
+  type SlashMatchOptions,
+} from "./intent-slash-match";
+export {
+  createIntentKeywordMatch,
+  type KeywordMatchOptions,
+  type ThinkingStyleKeywordTable,
+} from "./intent-keyword-match";
+export {
+  createIntentClassifierGenerator,
+  createIntentClassifierSequencer,
+  createApplyClassifierResult,
+  intentClassifierOutputSchema,
+  DEFAULT_CONFIDENCE_THRESHOLD,
+  DEFAULT_MAX_SKILLS,
+  type IntentClassifierOptions,
+  type IntentClassifierOutput,
+} from "./intent-classifier-gen";
+export {
+  createApplyIntent,
+  type ApplyIntentOptions,
+} from "./apply-intent";
+export {
+  intentSourceSchema,
+  matchedSkillSchema,
+  intentResultSchema,
+  intentRequestStateSchema,
+  intentSessionStateSchema,
+  intentSequencerStateSchema,
+} from "./intent-types";
+
 export {
   readSkillsDirectory,
   type ReadSkillsDirectoryOptions,
@@ -102,6 +140,9 @@ export {
 // Re-export the canonical types from core.
 export type {
   InitialSkill,
+  IntentResult,
+  IntentSource,
+  MatchedSkill,
   RunSkillInput,
   RunSkillOutput,
   Skill,

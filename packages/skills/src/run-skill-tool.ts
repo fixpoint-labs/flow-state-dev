@@ -143,12 +143,26 @@ export function listEnabledSkills(
   return out;
 }
 
+/** Options for `buildRunSkillDescription`. */
+export interface BuildRunSkillDescriptionOptions {
+  /**
+   * Re-add the legacy slash-command instruction telling the model to
+   * dispatch `/<skill-name>` user messages through `runSkill`. Default
+   * `false` — slash commands are now handled server-side by
+   * `intentSelector`'s tier-1 (FIX-421). Set `true` only in flows that
+   * have NOT adopted `intentSelector` and still want the model to perform
+   * slash routing itself.
+   */
+  includeSlashHint?: boolean;
+}
+
 /**
  * Build the runSkill tool's dynamic description listing available skills.
  * Returns a stable string so the model sees the same enum on every step.
  */
 export function buildRunSkillDescription(
   enabled: Array<{ name: string; description: string }>,
+  options: BuildRunSkillDescriptionOptions = {},
 ): string {
   if (enabled.length === 0) {
     return "No skills are currently available — this tool will reject any invocation.";
@@ -164,9 +178,13 @@ export function buildRunSkillDescription(
   lines.push(
     "",
     "Pass the skill name in `name`. Pass any required argument string in `input` (substituted for $ARGUMENTS in the skill body).",
-    "",
-    "Users may also invoke a skill directly with a slash command: when the user's message begins with `/<skill-name>` followed by an optional argument (e.g. `/check-news quantum computing`), treat it as an explicit instruction to call `runSkill` with that name and the remainder of the message as `input`. Do this on the first step of your response, before any other tool call.",
   );
+  if (options.includeSlashHint) {
+    lines.push(
+      "",
+      "Users may also invoke a skill directly with a slash command: when the user's message begins with `/<skill-name>` followed by an optional argument (e.g. `/check-news quantum computing`), treat it as an explicit instruction to call `runSkill` with that name and the remainder of the message as `input`. Do this on the first step of your response, before any other tool call.",
+    );
+  }
   return lines.join("\n");
 }
 

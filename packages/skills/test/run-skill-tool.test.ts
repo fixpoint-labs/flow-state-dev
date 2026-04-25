@@ -114,10 +114,19 @@ describe("buildRunSkillDescription", () => {
     expect(out).toContain("- bar: bar desc");
   });
 
-  it("includes slash-command guidance so the model routes /<skill> directly to runSkill", () => {
+  it("omits slash-command guidance by default — slash routing is handled server-side by intentSelector (FIX-421)", () => {
     const out = buildRunSkillDescription([
       { name: "foo", description: "foo desc" },
     ]);
+    expect(out).not.toMatch(/slash command/i);
+    expect(out).not.toContain("/<skill-name>");
+  });
+
+  it("re-includes slash-command guidance when includeSlashHint: true is passed (escape hatch for non-adopting flows)", () => {
+    const out = buildRunSkillDescription(
+      [{ name: "foo", description: "foo desc" }],
+      { includeSlashHint: true },
+    );
     expect(out).toMatch(/slash command/i);
     expect(out).toContain("/<skill-name>");
   });
