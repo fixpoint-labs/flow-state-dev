@@ -9,7 +9,7 @@ import type {
 } from "../types/block";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
-import type { CapabilityRef, InferCapabilities } from "../capability/types";
+import type { InferCapabilities, UsesEntry } from "../capability/types";
 import { buildBlock, extractDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
 
@@ -46,7 +46,7 @@ export interface HandlerConfig<
   TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   // Capability type inference
-  TUses extends readonly CapabilityRef[] = readonly [],
+  TUses extends readonly UsesEntry[] = readonly [],
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
@@ -103,7 +103,7 @@ export function handler<
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
   TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
-  TUses extends readonly CapabilityRef[] = readonly [],
+  TUses extends readonly UsesEntry[] = readonly [],
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
 >(
   config: HandlerConfig<

@@ -266,10 +266,14 @@ export type UsesSlot = readonly UsesEntry[];
  * Infer the ctx.cap type from a `uses` array.
  * Maps each capability's name → fns return type, then intersects.
  */
-export type InferCapabilities<TUses extends readonly CapabilityRef[]> =
-  TUses extends readonly []
+export type InferCapabilities<TUses extends readonly UsesEntry[]> =
+  [Extract<TUses[number], CapabilityRef>] extends [never]
     ? {}
-    : Prettify<UnionToIntersection<InferCapabilityEntry<TUses[number]>>>;
+    : Prettify<UnionToIntersection<InferCapabilityEntry<Extract<TUses[number], CapabilityRef>>>> extends infer T
+      ? T extends Record<string, Record<string, (...args: any[]) => any>>
+        ? T
+        : {}
+      : {};
 
 type InferCapabilityEntry<T> =
   T extends DefinedCapability<infer N, infer F, any, any>

@@ -20,6 +20,7 @@ import {
 } from "@flow-state-dev/core";
 
 import { system as memorySystem } from "@thought-fabric/core/memory";
+import { perspective, system as perspectiveSystem } from "@thought-fabric/core/identity";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
 import { z } from "zod";
@@ -56,6 +57,30 @@ const mem = memorySystem({
   episodic: true,
   semantic: true,
 });
+
+// ---------------------------------------------------------------------------
+// Perspective (ask mode only)
+// ---------------------------------------------------------------------------
+
+const analyst = perspective({
+  name: "analyst-perspective",
+  description: "Analytical reasoning partner who decomposes problems and evaluates tradeoffs",
+  salience: {
+    amplify: ["assumptions", "tradeoffs", "edge cases", "constraints", "contradictions"],
+    suppress: ["pleasantries", "filler", "hedging language"],
+  },
+  reasoning: {
+    priorities: ["identify unstated assumptions", "surface tradeoffs", "check for missing constraints"],
+    riskModel: "What could go wrong if we act on incomplete information?",
+  },
+  expertise: ["problem decomposition", "tradeoff analysis", "critical thinking"],
+  communicationStyle: {
+    tone: "direct and specific",
+    emphasis: "answer first, then reasoning",
+  },
+});
+
+const analystPerspective = perspectiveSystem(analyst, { model: MODEL_ID });
 
 // ---------------------------------------------------------------------------
 // Flow-level schemas
@@ -103,9 +128,11 @@ const assistantGenerator = generator({
   sessionStateSchema: z.object({ mode: modeSchema.default("ask"), thinkingStyle: z.string().optional() }),
 
   // Capabilities: auto-install resources, context formatters, and tools.
-  // mem.capability includes a context preset that injects unified memory recall.
-  // artifactsCapability provides artifact resources + context + tools.
-  uses: [mem.capability, featuresCapability],
+  // mem.capability injects unified memory recall context.
+  // p.capability injects perspective framing (static + accumulated presets).
+  // Perspective context appears in all modes but accumulated state only
+  // grows in ask mode (capture is gated via workIf below).
+  uses: [mem.capability, featuresCapability, analystPerspective.capability],
 
   context: [voiceContext],
 
@@ -284,7 +311,10 @@ const auditor = responseAuditor({
   threshold: 0.3,
 });
 
-const biasCheck = sequencer({ name: "bias-check", inputSchema: z.string() })
+const biasCheck = sequencer({ 
+  name: "bias-check", 
+  inputSchema: z.string()
+})
   .map((aiResponse: string, ctx) => ({
     userInput: String(
       (ctx.parent?.input as Record<string, unknown>)?.message ?? "",
@@ -292,14 +322,7 @@ const biasCheck = sequencer({ name: "bias-check", inputSchema: z.string() })
     response: aiResponse,
   }))
   .thenIf(
-    (_input, ctx) =>
-      Boolean(
-        (ctx.session?.state as Record<string, unknown>)?.features &&
-          (
-            (ctx.session?.state as Record<string, unknown>)
-              ?.features as Record<string, unknown>
-          )?.biasCheck,
-      ),
+    (_input, ctx) => !!(ctx.session.state.features as any).biasCheck,      
     auditor,
   )
   .tap((result: unknown, ctx) => {
@@ -356,6 +379,11 @@ const runSequencer = sequencer({ name: "run", inputSchema })
   .tap(resolveThinkingStyle)
   .then(thinkingStyleRouter)
   .work(biasCheck)
+  .workIf(
+    (ctx) => ctx.session.state.mode === "ask",
+    (response: string) => ({ content: response }),
+    analystPerspective.capture,
+  )
   .work(mem.captureFromItems)
   .work(autoTitle)
 
@@ -402,7 +430,6 @@ const chatAgentFlow = defineFlow({
 
   session: {
     stateSchema: sessionStateSchema,
-    resources: { ...artifactResources, ...mem.sessionResources },
     clientData: {
       modeStatus: (ctx) => ({
         currentMode: modeSchema.parse(ctx.state.mode ?? "ask"),

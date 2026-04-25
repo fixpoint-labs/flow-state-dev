@@ -18,7 +18,7 @@ Thought Fabric maps cognitive science concepts onto composable building blocks. 
 |--------|---------------|--------|
 | **Attention** | What to focus on. Relevance filtering and salience scoring. | Shipped |
 | **Memory** | What to remember. Working memory, episodic memory, and semantic knowledge. | Shipped |
-| **Identity** | How to behave. Perspective (role/expertise) and constitution (values/constraints). | Coming soon |
+| **Identity** | How to interpret. Perspective (viewpoint/expertise) with evolving observations and positions. | Shipped (partial) |
 | **Perception** | How to interpret input. Sensory processing, context framing, signal extraction. | Coming soon |
 | **Reasoning** | How to think. Structured deliberation, chain-of-thought, planning strategies. | Coming soon |
 | **Metacognition** | How to self-monitor. Bias detection, sycophancy scoring, counter-argument generation. | Shipped (partial) |
@@ -34,7 +34,7 @@ The goal isn't to simulate human cognition. It's to give agent builders a struct
 
 **Attention** ships two blocks. `filterRelevance` does deterministic keyword-based relevance filtering: fast, no LLM, good for cutting noise before expensive operations. `scoreSalience` uses an LLM to score items along configurable dimensions (goal relevance, recency, novelty, emotional weight). Use them together: filter first, then score the survivors. See [Attention](./attention.md).
 
-**Identity** has placeholder types. `perspective()` and `constitution()` define the interfaces but throw "Not implemented" until the next wave. The design is set; the implementation is queued. See [Identity](./identity.md).
+**Identity** ships `perspective()` — a structured viewpoint model that shapes how an agent interprets information. Perspectives accumulate observations and positions over a session via resource-backed state. The `system()` factory bundles blocks, a capability, and a capture pipeline. A second primitive, `constitution()` (values and behavioral constraints), is planned. See [Identity](./identity.md).
 
 **Metacognition** ships bias and sycophancy detection. The `biasAnalyzer` sequencer takes a user input and AI response, detects agreement bias across four dimensions, classifies six cognitive bias types, computes a composite sycophancy score, and generates counter-arguments when the score warrants it. All five internal blocks are exported individually for custom pipelines. See [Metacognition](./metacognition.md).
 
@@ -45,7 +45,7 @@ Use subpath exports for tree-shaking:
 ```ts
 import { filterRelevance, scoreSalience } from '@thought-fabric/core/attention'
 import { workingMemoryCapture, workingMemoryContextFormatter } from '@thought-fabric/core/memory'
-import { perspective, constitution } from '@thought-fabric/core/identity'
+import { perspective, system } from '@thought-fabric/core/identity'
 import { biasAnalyzer } from '@thought-fabric/core/metacognition'
 ```
 

@@ -193,12 +193,110 @@ Bias detection, sycophancy scoring, and counter-argument generation.
 
 ---
 
-## identity (placeholders)
+## identity
 
-Wave 2 placeholders. Not yet implemented.
+Perspective — structured viewpoints that shape how agents interpret information, with resource-backed state that accumulates observations and positions over time.
 
-- `perspective(config)` — Perspective block.
-- `constitution(config)` — Constitution block.
+**Import:** `@thought-fabric/core/identity`
+
+### Factory + System
+
+| Function | Purpose |
+|----------|---------|
+| `perspective(config)` | Create a frozen perspective instance from config |
+| `system(instance, config?)` | Factory that wires blocks, capability, resources, and capture pipeline |
+
+### Static Blocks
+
+| Function | Kind | Purpose |
+|----------|------|---------|
+| `perspectiveApply(config)` | handler | Inject perspective framing into content |
+| `perspectiveAnalyze(config)` | generator | LLM analysis through the perspective's lens |
+| `perspectiveAuditor(config)` | sequencer | apply → analyze pipeline |
+
+### Stateful Blocks
+
+| Function | Kind | Purpose |
+|----------|------|---------|
+| `perspectiveObserve(config)` | handler | Record observations from analysis output or explicit batch |
+| `perspectivePosition(config)` | handler | Record a position with supporting observations |
+| `perspectiveChallenge(config)` | handler | Challenge a position with counter-evidence |
+| `perspectiveSnapshot(config)` | handler | Read current observations + positions |
+| `perspectiveAdvance(config)` | handler | Bump observation turn counter |
+
+### Resources
+
+| Export | Scope | Purpose |
+|--------|-------|---------|
+| `perspectiveObservationsResource` | session | Observation store (singleton) |
+| `perspectivePositionsResource` | session/user/project | Position store; scope decided by where the capability or block declares it |
+
+### Capability
+
+| Function | Purpose |
+|----------|---------|
+| `createPerspectiveCapability(instance, config?)` | Create a capability with resources, context presets, and typed helpers |
+
+Presets: `static` (perspective framing), `accumulated` (observations + positions). Both on by default.
+
+### Static Helpers
+
+| Function | Purpose |
+|----------|---------|
+| `formatPerspective(instance)` | Full formatted perspective for LLM context |
+| `formatPerspectiveSalience(salience)` | Format salience model |
+| `formatPerspectiveReasoning(reasoning)` | Format reasoning config |
+| `summarizePerspective(instance)` | One-line summary |
+| `perspectiveContextFormatter(instance)` | Context slot function for generators |
+
+### Observation Helpers
+
+| Function | Purpose |
+|----------|---------|
+| `addPerspectiveObservation(ref, input)` | Add an observation |
+| `removePerspectiveObservation(ref, id)` | Remove by ID |
+| `perspectiveObservations(ref, category?)` | Read observations, optionally filtered |
+| `advancePerspectiveObservations(ref)` | Bump turn counter |
+| `formatPerspectiveObservations(ref)` | Format for LLM context |
+
+### Position Helpers
+
+| Function | Purpose |
+|----------|---------|
+| `addPerspectivePosition(ref, input, obsRef?)` | Add a position |
+| `challengePerspectivePosition(ref, id, evidence, obsRef?)` | Add counter-evidence |
+| `removePerspectivePosition(ref, id)` | Remove by ID |
+| `perspectivePositions(ref)` | Read all positions |
+| `formatPerspectivePositions(ref)` | Format for LLM context |
+| `formatPerspectiveAccumulated(obsRef, posRef?)` | Combined observations + positions |
+
+### Schemas
+
+| Schema | Purpose |
+|--------|---------|
+| `perspectiveConfigSchema` | Full perspective configuration |
+| `perspectiveSalienceSchema` | Salience model (amplify/suppress) |
+| `perspectiveReasoningSchema` | Reasoning config (priorities, risk model) |
+| `perspectiveCommunicationSchema` | Communication style |
+| `perspectiveAnalysisSchema` | Analysis output |
+| `perspectiveInputSchema` | Analysis input (`{ content: string }`) |
+| `perspectiveApplyOutputSchema` | Apply block output |
+| `perspectiveObservationSchema` | Single observation |
+| `perspectiveObservationsStateSchema` | Observations resource state |
+| `perspectivePositionSchema` | Single position |
+| `perspectivePositionChallengeSchema` | Challenge entry |
+| `perspectivePositionsStateSchema` | Positions resource state |
+| `perspectiveObserveInputSchema` | Observe block input |
+| `perspectiveObserveOutputSchema` | Observe block output |
+| `perspectivePositionInputSchema` | Position block input |
+| `perspectiveChallengeInputSchema` | Challenge block input |
+| `perspectiveSnapshotOutputSchema` | Snapshot block output |
+
+### Placeholder
+
+| Function | Status |
+|----------|--------|
+| `constitution(config)` | Not yet implemented — planned |
 
 ---
 
@@ -206,18 +304,31 @@ Wave 2 placeholders. Not yet implemented.
 
 ```ts
 import { system as memorySystem } from "@thought-fabric/core/memory";
+import { perspective, system as perspectiveSystem } from "@thought-fabric/core/identity";
 import { filterRelevance, scoreSalience } from "@thought-fabric/core/attention";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 
 const mem = memorySystem({ model: "preset/fast", working: true, episodic: true, semantic: true });
 
+const sec = perspectiveSystem(
+  perspective({
+    name: "security-engineer",
+    description: "Security-focused code reviewer",
+    salience: { amplify: ["auth", "injection", "data exposure"] },
+    reasoning: { priorities: ["identify attack vectors", "assess blast radius"] },
+  }),
+  { model: "preset/fast" },
+);
+
+const chat = generator({
+  uses: [mem.capability, sec.capability],
+  // ...
+});
+
 const pipeline = sequencer({ name: "pipeline", inputSchema: chatInput })
   .then(chat)
-  .work(mem.captureFromItems);
-
-const filter = filterRelevance({ name: "filter" });
-const salience = scoreSalience({ name: "rank" });
-const audit = biasAnalyzer({ model: "preset/fast" });
+  .work(mem.captureFromItems)
+  .work((response) => ({ content: response }), sec.capture);
 ```
 
-See [Memory](/thought-fabric/memory) for a full guide.
+See [Memory](/thought-fabric/memory) and [Identity](/thought-fabric/identity) for full guides.

@@ -77,6 +77,7 @@ Development task skills live in `.claude/skills/`. Use these when performing com
 
 - **Prefer capabilities over manual plumbing.** Use `defineCapability` + `uses: [cap]` instead of manually spreading `tools`, `context`, `sessionResources` into blocks. Capabilities are self-contained, portable, and composable.
 - **Factory pattern for configurable capabilities.** When a capability needs config (provider type, resource refs), export a factory: `createXCapability(options)` → `DefinedCapability`.
+- **Prefer static capability entries over manual context functions.** If a capability already provides context presets, use the capability in `uses` rather than reimplementing its formatting in a `context` slot. Gate conditional behavior at the pipeline level (e.g., `workIf` on capture) instead of at the context injection level.
 - **Dynamic `uses` for conditional capabilities.** `uses` arrays accept `(ctx) => CapabilityRef[]` functions. Static entries install resources at build time; dynamic entries add context/tools at runtime. Resources must be declared statically somewhere.
 - **Presets for opt-in/opt-out.** Use presets to bundle context/tools that consumers can enable/disable: `cap.presets({ tools: false })`.
 - **`ToolsSlot` and `UsesSlot`** are framework types exported from `@flow-state-dev/core` for factory interfaces.
@@ -163,6 +164,12 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 
 **Use `.tap()` for state-mutation-only blocks** (BP-012)
 - Blocks that only mutate state: use `.tap()`, no `outputSchema`, no `return input`.
+
+**Use conditional step variants instead of wrapper sequencers** (BP-015)
+- `.workIf(condition, connector, block)` — not a wrapper sequencer with `.thenIf` inside `.work()`.
+- `.tapIf(condition, block)` — not a gating handler that conditionally calls a block.
+- `.thenIf(condition, block)` — not a wrapper sequencer with a `.map` + `.then`.
+- All conditional variants accept an inline connector as a second argument for input adaptation. Don't create an intermediate sequencer just to `.map()` before a block.
 
 **Input/output adaptation belongs inside the router** (BP-013)
 - Use `connectInput(() => ...)` and `connectOutput(...)` inside the router's `execute`, not at block definition time.

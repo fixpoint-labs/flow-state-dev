@@ -5,7 +5,7 @@ import type {
   ConnectorFn,
   RescueHandlerSpec
 } from "../types/block";
-import type { CapabilityRef } from "../capability/types";
+import type { UsesEntry } from "../capability/types";
 
 export type ParallelStep<TCurrent> =
   | BlockDefinition<any, any>
@@ -297,7 +297,7 @@ export type SequencerConfig<
   stateSchema?: ZodTypeAny;
   /** Capabilities to install. Merges resources, state schemas, targets,
    *  and any active preset surfaces into this sequencer's config. */
-  uses?: readonly CapabilityRef[];
+  uses?: readonly UsesEntry[];
   /**
    * Active status message for this sequencer — declarative sugar for
    * `ctx.emitStatus()` at sequencer start. A static string is emitted once
