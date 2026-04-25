@@ -68,6 +68,9 @@ export async function handleGetSessionState(
   const includeItems = getBooleanFlag(
     url.searchParams.get("include_items")
   );
+  const includeInternalResources = getBooleanFlag(
+    url.searchParams.get("include_internal_resources")
+  );
   const offset = getPositiveInteger(url.searchParams.get("offset")) ?? 0;
   const limit =
     getPositiveInteger(url.searchParams.get("limit")) ?? DEFAULT_STATE_ITEMS_LIMIT;
@@ -169,8 +172,10 @@ export async function handleGetSessionState(
     resources: projectResources
   });
 
-  // Build resource snapshot: includes only client-visible resources with clientData and optional prefetched content.
-  // Use the merged content (record field + ContentStore) so prefetch works correctly.
+  // Build resource snapshot: client-visible resources by default. When the
+  // caller passes include_internal_resources=true (the DevTool does), also
+  // include resources without a `client` config — they're flagged `internal`
+  // and surface their raw state under `clientData`.
   const [sessionResourceSnapshot, userResourceSnapshot, projectResourceSnapshot] = await Promise.all([
     buildResourceSnapshot({
       configs: flow.session?.resources as Record<string, unknown> | undefined,
@@ -179,6 +184,7 @@ export async function handleGetSessionState(
         ...(session.resourceContent as Record<string, string> | undefined),
         ...sessionContentFromStore,
       },
+      includeInternal: includeInternalResources,
     }),
     buildResourceSnapshot({
       configs: flow.user?.resources as Record<string, unknown> | undefined,
@@ -187,6 +193,7 @@ export async function handleGetSessionState(
         ...(user?.resourceContent as Record<string, string> | undefined),
         ...userContentFromStore,
       },
+      includeInternal: includeInternalResources,
     }),
     buildResourceSnapshot({
       configs: flow.project?.resources as Record<string, unknown> | undefined,
@@ -195,6 +202,7 @@ export async function handleGetSessionState(
         ...(project?.resourceContent as Record<string, string> | undefined),
         ...projectContentFromStore,
       },
+      includeInternal: includeInternalResources,
     }),
   ]);
 

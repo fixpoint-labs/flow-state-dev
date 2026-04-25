@@ -300,22 +300,32 @@ export async function computeClientData(options: {
 
 /**
  * Builds the client-visible `resources` snapshot for one scope.
- * For each resource with a `client` config, returns resource-level `clientData` and
- * optionally prefetched content. Resources without `client` config are excluded.
+ *
+ * For each resource with a `client` config, returns resource-level `clientData`
+ * and optionally prefetched content. Resources without a `client` config are
+ * excluded by default.
+ *
+ * When `includeInternal: true`, resources without a `client` config are also
+ * included with `internal: true` and the raw resource state surfaced in
+ * `clientData`. This is the DevTool's path — it lets developers see every
+ * installed resource, including ones that haven't opted into the client.
+ * Production clients should not pass this flag.
  */
 export async function buildResourceSnapshot(options: {
   configs: Record<string, unknown> | undefined;
   persisted: Record<string, unknown> | undefined;
   persistedContent?: Record<string, string> | undefined;
+  includeInternal?: boolean;
 }): Promise<Record<string, unknown> | undefined> {
   const out: Record<string, unknown> = {};
   const contentMap = options.persistedContent ?? {};
+  const includeInternal = options.includeInternal === true;
   let hasAny = false;
 
   for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
     if (isCollectionConfig(maybeConfig)) {
-      // Collection: only include if client config is present
-      if (maybeConfig.client === undefined) continue;
+      const hasClient = maybeConfig.client !== undefined;
+      if (!hasClient && !includeInternal) continue;
 
       const pattern = maybeConfig.pattern;
       const persisted = options.persisted ?? {};
@@ -332,6 +342,11 @@ export async function buildResourceSnapshot(options: {
         const entry: Record<string, unknown> = {};
         if (clientDataFn) {
           entry.clientData = await clientDataFn(state);
+        } else if (!hasClient) {
+          // Internal collection: surface raw state under clientData so the
+          // DevTool can inspect it. Production clients won't see this branch
+          // because they don't pass includeInternal.
+          entry.clientData = state;
         }
         if (prefetch && contentMap[key] !== undefined) {
           entry.content = contentMap[key];
@@ -339,31 +354,35 @@ export async function buildResourceSnapshot(options: {
         items[key] = entry;
       }
 
-      out[resourceName] = { items };
+      const collectionEntry: Record<string, unknown> = { items };
+      if (!hasClient) collectionEntry.internal = true;
+      out[resourceName] = collectionEntry;
       hasAny = true;
       continue;
     }
 
     if (!isResourceConfig(maybeConfig)) continue;
-    // Single resource: only include if client config is present
-    if ((maybeConfig as ResourceConfig).client === undefined) continue;
+    const config = maybeConfig as ResourceConfig;
+    const hasClient = config.client !== undefined;
+    if (!hasClient && !includeInternal) continue;
 
-    const state = normalizeResourceState(
-      maybeConfig,
-      options.persisted?.[resourceName]
-    );
-    const clientDataFn = typeof (maybeConfig as ResourceConfig).client?.data === "function"
-      ? (maybeConfig as ResourceConfig).client!.data as (state: unknown) => unknown
+    const state = normalizeResourceState(config, options.persisted?.[resourceName]);
+    const clientDataFn = typeof config.client?.data === "function"
+      ? config.client.data as (state: unknown) => unknown
       : undefined;
-    const prefetch = (maybeConfig as ResourceConfig).client?.content?.prefetch === true;
+    const prefetch = config.client?.content?.prefetch === true;
 
     const entry: Record<string, unknown> = {};
     if (clientDataFn) {
       entry.clientData = await clientDataFn(state);
+    } else if (!hasClient) {
+      // Internal resource: raw state under clientData (see collection branch).
+      entry.clientData = state;
     }
     if (prefetch && contentMap[resourceName] !== undefined) {
       entry.content = contentMap[resourceName];
     }
+    if (!hasClient) entry.internal = true;
     out[resourceName] = entry;
     hasAny = true;
   }

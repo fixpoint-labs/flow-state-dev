@@ -220,15 +220,15 @@ function ResourceScope({
     <div className="mb-2">
       <span className="text-[10px] text-slate-600 uppercase">{label}</span>
       <div className="mt-0.5 space-y-0.5">
-        {entries.map(([name, state]) => {
+        {entries.map(([name, entry]) => {
           const prev = prevResources?.[name];
-          const changed = prev !== undefined && !deepEqual(state, prev);
+          const changed = prev !== undefined && !deepEqual(entry, prev);
           const isNew = prev === undefined && prevResources !== undefined;
           return (
             <ResourceItem
               key={name}
               name={name}
-              state={state}
+              entry={entry ?? {}}
               changed={changed}
               isNew={isNew}
             />
@@ -239,23 +239,68 @@ function ResourceScope({
   );
 }
 
+/**
+ * Snapshot entries arrive as wrappers, never raw state — single resources are
+ * `{ clientData?, content?, internal? }`, collections are `{ items, internal? }`.
+ * Unwrap so the displayed body and key count reflect actual data, not envelope.
+ */
+function unwrapResourceEntry(entry: Record<string, unknown>): {
+  data: unknown;
+  isCollection: boolean;
+  hasContent: boolean;
+  isInternal: boolean;
+} {
+  const isInternal = entry.internal === true;
+  if ("items" in entry) {
+    const items = entry.items;
+    return {
+      data: items,
+      isCollection: true,
+      hasContent: false,
+      isInternal,
+    };
+  }
+  return {
+    data: entry.clientData,
+    isCollection: false,
+    hasContent: entry.content !== undefined,
+    isInternal,
+  };
+}
+
 function ResourceItem({
   name,
-  state,
+  entry,
   changed,
   isNew,
 }: {
   name: string;
-  state: Record<string, unknown>;
+  entry: Record<string, unknown>;
   changed: boolean;
   isNew: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const stateKeys = Object.keys(state);
+  const { data, isCollection, hasContent, isInternal } = unwrapResourceEntry(entry);
+
+  // Show item count for collections, field count for single resources.
+  // Falls back to "—" when the resource has no client.data/items at all.
+  const itemCount = isCollection && data && typeof data === "object"
+    ? Object.keys(data as Record<string, unknown>).length
+    : null;
+  const fieldCount = !isCollection && data && typeof data === "object"
+    ? Object.keys(data as Record<string, unknown>).length
+    : null;
+  const countLabel = isCollection
+    ? itemCount !== null
+      ? `${itemCount} ${itemCount === 1 ? "item" : "items"}`
+      : null
+    : fieldCount !== null
+      ? `${fieldCount} ${fieldCount === 1 ? "field" : "fields"}`
+      : null;
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
-    void navigator.clipboard.writeText(JSON.stringify(state, null, 2));
+    void navigator.clipboard.writeText(JSON.stringify(data ?? {}, null, 2));
   };
 
   return (
@@ -267,10 +312,28 @@ function ResourceItem({
         {open
           ? <ChevronDown className="h-2.5 w-2.5 text-slate-600 shrink-0" />
           : <ChevronRight className="h-2.5 w-2.5 text-slate-600 shrink-0" />}
-        <span className="text-[11px] font-mono text-slate-400 truncate">{name}</span>
-        <span className="text-[10px] font-mono text-slate-700">
-          {stateKeys.length} {stateKeys.length === 1 ? "key" : "keys"}
+        <span className={`text-[11px] font-mono truncate ${isInternal ? "text-slate-500 italic" : "text-slate-400"}`}>
+          {name}
         </span>
+        {countLabel !== null && (
+          <span className="text-[10px] font-mono text-slate-700">{countLabel}</span>
+        )}
+        {hasContent && (
+          <span
+            className="text-[9px] font-mono text-slate-500 bg-slate-800/40 px-1 rounded-full"
+            title="Resource also has prefetched content (not shown — see network response)"
+          >
+            +content
+          </span>
+        )}
+        {isInternal && (
+          <span
+            className="text-[9px] font-mono text-slate-500 bg-slate-800/40 px-1 rounded-full"
+            title="No client config — raw state shown for development. Production clients don't see this resource in the snapshot."
+          >
+            internal
+          </span>
+        )}
         {isNew && (
           <span className="text-[9px] font-mono text-green-500 bg-green-900/20 px-1 rounded-full">new</span>
         )}
@@ -278,13 +341,13 @@ function ResourceItem({
           <span className="text-[9px] font-mono text-amber-500 bg-amber-900/20 px-1 rounded-full">changed</span>
         )}
         <span className="flex-1" />
-        <Button variant="ghost" size="icon-xs" onClick={handleCopy} title="Copy resource state">
+        <Button variant="ghost" size="icon-xs" onClick={handleCopy} title="Copy resource data">
           <Copy className="h-2.5 w-2.5 text-slate-700" />
         </Button>
       </button>
       {open && (
         <div className="pl-4 mt-0.5">
-          <JsonViewer data={state} className="mt-0" />
+          <JsonViewer data={data ?? {}} className="mt-0" />
         </div>
       )}
     </div>
