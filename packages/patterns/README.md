@@ -73,6 +73,34 @@ const system = mesh({
 
 **Key exports:** `reactiveBlackboard`, `actor`, `mesh`, `matchTopic`, `compilePattern`, `createAppendEntry`, `createReactiveBlackboard`
 
+### Drain Pool
+
+Concurrent streaming dispatch over a dynamic, durable queue. N workers pull items from a shared session-resource collection, process them, and loop until drained. Workers can enqueue follow-up items mid-drain. The parent sequencer waits for full completion.
+
+At-least-once semantics (lease-based recovery); callers own idempotency.
+
+```typescript
+import { drainPool } from "@flow-state-dev/patterns/drain-pool";
+
+const pool = drainPool({
+  name: "jobs",
+  item: jobSchema,
+  concurrency: 8,
+  initialItems: seeds,
+  block: ({ enqueue }) =>
+    sequencer({ name: "job-body" })
+      .then(runJob)
+      .tap(enqueue((result) => result.followUps ?? [])),
+});
+
+// pool.block plugs into a flow; pool.queue is auto-installed
+// as a session resource. Use pool.enqueue externally only for
+// pre-drain seeding — mid-drain enqueue must happen inside a
+// worker body (see docs for the correctness constraint).
+```
+
+**Key exports:** `drainPool`, `createDrainPoolItemSchema`, `drainPoolProjectionSchema`, `drainPoolWorkerStateSchema`, `drainPoolItemMetaSchema`, `createSeedPool`, `createLeaseNext`, `createMarkDoneSuccess`, `createMarkDoneError`, `createCheckPool`, `createEnqueueHelper`
+
 ## Pattern-Level `instructions`
 
 All three coordination patterns (`planAndExecute`, `supervisor`, `blackboard`) accept an `instructions` prop — a top-level "team brief" that the pattern digests across its internal sub-blocks. This lets consumers apply a role, stance, or set of rules without rebuilding sub-blocks.
