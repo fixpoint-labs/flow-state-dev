@@ -135,6 +135,37 @@ Every generator-based utility above accepts an optional `agentType` (`"primary" 
 
 **Prompt formatters** (`@flow-state-dev/core/prompt`):
 - `section`, `list`, `keyValues`, `entries`, `codeBlock`, `join`, `when` — Composable text formatters for building clean LLM context
+- `xmlTag(name, content)`, `renderTaggedContext(tagged, order)` — XML tag rendering used by object-form generator context
+- `validateTagName(name)`, `RESERVED_TAG_NAMES` — Reserved-tag list and validator for object-form context keys
+
+**Object-form generator context:**
+
+`generator({ context: { ... } })` accepts an object whose keys become XML tag names. Multiple sources (the generator itself plus capabilities installed via `uses`) that contribute to the same key aggregate inside a single tag, instead of producing scattered sections.
+
+```ts
+generator({
+  prompt: "You are a research assistant.",
+  context: {
+    documents: [doc1, doc2],
+    userPreferences: () => loadPrefs(),
+    memory: { shortTerm: items, longTerm: () => loadLongTerm() },
+  },
+  uses: [capA, capB], // each may also contribute `documents`
+});
+// Renders as one combined system message:
+//   You are a research assistant.
+//
+//   <documents>
+//     ...all documents from the generator + capA + capB...
+//   </documents>
+//   <user-preferences>...</user-preferences>
+//   <memory>
+//     <short-term>...</short-term>
+//     <long-term>...</long-term>
+//   </memory>
+```
+
+Keys may be authored as `camelCase`, `snake_case`, or `kebab-case` (all normalize to kebab-case). Values may be strings, string arrays, nested objects (recursive — produces nested tags), functions resolved at render time, or `null` placeholders that reserve order but emit nothing if unfilled. String leaves are HTML-escaped so `<` / `>` / `&` in user data don't get read as tags. The original array form is unchanged. See `docs/architecture/blocks.md` for the full contract.
 
 **Type helpers:**
 - `StateOf<T>` — Extract state type from schema or resource

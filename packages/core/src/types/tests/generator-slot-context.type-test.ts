@@ -27,4 +27,42 @@ const generatorContextTypeSmoke = generator({
 });
 
 void generatorContextTypeSmoke;
+
+// --- Object-form context type smoke ---
+
+const objectFormContextSmoke = generator({
+  name: "object-form-context-smoke",
+  inputSchema: z.object({ message: z.string() }),
+  outputSchema: z.string(),
+  model: "demo-model",
+  prompt: "object-form smoke",
+  context: {
+    documents: ["doc-a", "doc-b"],
+    "user-preferences": (input) => `pref:${input.message}`,
+    memory: {
+      shortTerm: ["a"],
+      longTerm: () => Promise.resolve("b"),
+    },
+    placeholder: null,
+  },
+  user: (input) => input.message,
+});
+void objectFormContextSmoke;
+
+// Object entries also accepted alongside strings inside an array slot.
+const arrayWithObjectEntriesSmoke = generator({
+  name: "array-with-object-entries-smoke",
+  inputSchema: z.object({ message: z.string() }),
+  outputSchema: z.string(),
+  model: "demo-model",
+  prompt: "mixed array smoke",
+  context: [
+    "literal string entry",
+    { documents: "doc body" },
+    (input) => `dynamic:${input.message}`,
+  ],
+  user: (input) => input.message,
+});
+void arrayWithObjectEntriesSmoke;
+
 export const generatorSlotContextTypeSmoke = true;

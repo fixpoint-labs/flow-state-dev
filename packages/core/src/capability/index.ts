@@ -8,6 +8,7 @@ export type {
   ConfiguredCapability,
   DefinedCapability,
   InferCapabilities,
+  PresetContextEntry,
   PresetDef,
   PresetOverrideFn,
   PresetOverrides,
