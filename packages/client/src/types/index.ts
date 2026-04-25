@@ -173,6 +173,13 @@ export type ResourceSnapshotEntry = {
   clientData?: unknown;
   /** Only present when `client.content.prefetch: true` is declared on the resource. */
   content?: string;
+  /**
+   * True when the resource has no `client` config. Only present when the
+   * snapshot was requested with `includeInternal: true` (DevTool path);
+   * `clientData` then carries the resource's raw state instead of the
+   * developer-curated client view.
+   */
+  internal?: boolean;
 };
 
 /**
@@ -184,6 +191,10 @@ export type CollectionSnapshotEntry = {
     /** Only present when `client.content.prefetch: true` is declared on the collection. */
     content?: string;
   }>;
+  /**
+   * True when the collection has no `client` config. See `ResourceSnapshotEntry.internal`.
+   */
+  internal?: boolean;
 };
 
 /**
