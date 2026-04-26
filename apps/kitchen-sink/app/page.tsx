@@ -134,7 +134,7 @@ function KitchenSinkApp() {
   const clientData = useClientData(session, CLIENT_DATA_OPTIONS);
   const { items: artifactItems, actions: artifactActions } = useResourceCollection(session, "artifacts");
 
-  const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined; resolvedModel: string | null } | undefined;
+  const modeStatus = clientData.session?.modeStatus as { currentMode: string; requestCount: number; thinkingStyle: string | undefined; resolvedModel: string | null; activeSkills?: Array<{ name: string; source: string }> } | undefined;
   const userPrefs = clientData.user?.preferences as { displayName: string; preferredModel: string; preferredProvider: string } | undefined;
 
   // Derive resolved thinking style from the most recent request's items.
@@ -365,6 +365,7 @@ function KitchenSinkApp() {
           preferredProvider={userPrefs?.preferredProvider}
           thinkingStyleMode={thinkingStyle}
           thinkingStyle={resolvedThinkingStyle ?? modeStatus?.thinkingStyle}
+          activeSkills={modeStatus?.activeSkills}
         />
 
         <div className="flex min-h-0 flex-1 sm:hidden">

@@ -28,6 +28,7 @@ import { system as memorySystem } from "@thought-fabric/core/memory";
 import { perspective, system as perspectiveSystem } from "@thought-fabric/core/identity";
 import { biasAnalyzer } from "@thought-fabric/core/metacognition";
 import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
+import { matchedSkillSchema } from "@flow-state-dev/skills";
 import { z } from "zod";
 import {
   updateArtifact,
@@ -110,6 +111,11 @@ const sessionStateSchema = z.object({
   requestCount: z.number().default(0),
   lastAction: z.string().optional(),
   features: featuresSchema.default({}),
+  // Surface mirror of skills activated by intentSelector (FIX-421). The
+  // internal `__activeSkills` slot drives body injection; this surface
+  // field exists so clientData can project it into `modeStatus` for the
+  // top-bar UI without exposing the underscored internal slot.
+  activeSkills: z.array(matchedSkillSchema).optional(),
 });
 
 // Brand preference axis (FIX-425). Orthogonal to preferredModel (tier). Empty
@@ -453,6 +459,11 @@ const chatAgentFlow = defineFlow({
           (ctx.state.resolvedModel as string | undefined) ?? null,
         requestCount: Number(ctx.state.requestCount ?? 0),
         features: ctx.state.features ?? { biasCheck: false, search: true, fetch: true, crawl: true },
+        activeSkills: Array.isArray(ctx.state.activeSkills)
+          ? (ctx.state.activeSkills as Array<{ name: string; source: string }>).map(
+              (s) => ({ name: s.name, source: s.source }),
+            )
+          : [],
       }),
     },
   },
