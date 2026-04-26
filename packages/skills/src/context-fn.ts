@@ -5,7 +5,7 @@
  * The capability registers this as a preset `context` entry. Because the
  * function-form context is dynamic, the generator's `prepareStep`
  * machinery re-runs it before each tool-loop step — so the moment
- * `runSkill` mutates `session.state.__activeSkills`, the next step's
+ * `runSkill` mutates `session.state.activeSkills`, the next step's
  * system prefix carries the matched skill body.
  *
  * Two parallel context entries are returned:

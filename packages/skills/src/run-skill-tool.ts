@@ -4,7 +4,7 @@
  * Skills are NOT auto-matched. The model decides when a skill applies by
  * calling this tool with `name` (and optionally `input`). The tool resolves
  * the skill from the configured collection and dispatches to:
- *   - `inlineActivate` (handler) — patches `__activeSkills` so the next
+ *   - `inlineActivate` (handler) — patches `activeSkills` so the next
  *     generator step renders the substituted body in its system prompt.
  *   - `skillFork` (generator, `agentType: "sub"`) — runs the skill body as
  *     a subagent with a resolved subset of catalog tools.

@@ -40,7 +40,7 @@ const runSequencer = sequencer({ name: "run", inputSchema })
   .then(assistantGenerator);
 ```
 
-It reads `input.message`, decides what (if any) skills apply, and writes the result into both request and session state. The generator that runs after sees activated skills already in its system prompt.
+It reads `input.message`, decides what (if any) skills apply, and writes the matches to `session.state.activeSkills`. The generator that runs after sees activated skills already in its system prompt.
 
 ### Three tiers
 
@@ -96,13 +96,13 @@ The active-skill body formatter lives on a separate `context` preset that stays 
 
 ### Active-skill state
 
-`intentSelector`'s apply step writes the matched skills to `session.state.__activeSkills` — the same slot the active-skill body formatter reads on every generator step. Each entry carries `{ name, mode, input, activatedAt, source }`. The `source` field is what `intentSelector` sets to record which tier matched; entries pushed by mid-flow `runSkill` calls leave it undefined.
+`intentSelector`'s apply step writes the matched skills to `session.state.activeSkills` — the same slot the active-skill body formatter reads on every generator step. Each entry carries `{ name, mode, input, activatedAt, source }`. The `source` field is what `intentSelector` sets to record which tier matched; entries pushed by mid-flow `runSkill` calls leave it undefined.
 
-`__activeSkills` is **replaced** each turn by `intentSelector`, not appended. If a flow keeps the `runSkill` preset on and the agent calls `runSkill` mid-turn, that call appends on top of the up-front baseline using the existing dedup-by-name+mode logic.
+`activeSkills` is **replaced** each turn by `intentSelector`, not appended. If a flow keeps the `runSkill` preset on and the agent calls `runSkill` mid-turn, that call appends on top of the up-front baseline using the existing dedup-by-name+mode logic.
 
 ### Showing the active skill in your UI
 
-Project `__activeSkills` through your flow's `clientData` to the surface shape your UI wants:
+Project `activeSkills` through your flow's `clientData` to the surface shape your UI wants:
 
 ```ts
 session: {
@@ -110,8 +110,8 @@ session: {
   clientData: {
     modeStatus: (ctx) => {
       const active =
-        (ctx.state as { __activeSkills?: Array<{ name: string; source?: string }> })
-          .__activeSkills ?? [];
+        (ctx.state as { activeSkills?: Array<{ name: string; source?: string }> })
+          .activeSkills ?? [];
       return {
         // ... other fields
         activeSkills: active.map((s) => ({ name: s.name, source: s.source ?? "tool" })),
@@ -132,7 +132,7 @@ The skills capability registers two pieces:
 - A dynamic context formatter that lists every enabled skill in the system prompt as `Available skills: - name: description`.
 - The `runSkill` tool. The model calls it with `{ name, input? }`; the router resolves the skill from the collection and dispatches to inline or fork mode.
 
-The model decides activation. Inline-mode activation patches `__activeSkills`; fork-mode runs the skill body as a sub-agent and returns its result.
+The model decides activation. Inline-mode activation patches `activeSkills`; fork-mode runs the skill body as a sub-agent and returns its result.
 
 This path is appropriate when:
 
@@ -154,7 +154,7 @@ This is useful when most turns benefit from up-front classification but you also
 | Cheapest possible system prompt | Up-front with `presets({ runSkill: false })` |
 | Lowest latency on turns where no skill matches | Mid-flow (skip the classifier call) |
 | Activation only when the agent realizes mid-investigation | Mid-flow |
-| The pre-generator router needs to know the active skill | Up-front (`__activeSkills` is on session state before the generator runs) |
+| The pre-generator router needs to know the active skill | Up-front (`activeSkills` is on session state before the generator runs) |
 | Lowest moving parts | Mid-flow (it's just a tool) |
 
 The up-front path is the recommended default. The kitchen-sink chat-agent flow ships with it wired in.

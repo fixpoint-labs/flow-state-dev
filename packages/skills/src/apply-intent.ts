@@ -2,7 +2,7 @@
  * Final step of intentSelector — collapses the cross-tier sequencer state
  * into the active-skills session-state slot.
  *
- * `__activeSkills` is **replaced** (not appended) here for the up-front
+ * `activeSkills` is **replaced** (not appended) here for the up-front
  * path's per-turn semantics. Mid-flow `runSkill` calls within the same
  * turn still append on top via the existing `pushActiveSkill` path; the
  * dedup-by-name+mode logic there keeps the array clean.
@@ -46,7 +46,7 @@ export function createApplyIntent() {
         activatedAt: Date.now(),
         source: s.source,
       }));
-      await ctx.session.patchState({ __activeSkills: activeSkillEntries });
+      await ctx.session.patchState({ activeSkills: activeSkillEntries });
 
       return { skillCount: skills.length, intentSource };
     },

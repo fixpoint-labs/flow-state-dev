@@ -387,7 +387,7 @@ const runSequencer = sequencer({ name: "run", inputSchema })
   .tap(applyFeatures)
   .tap(resolveModel)
   // FIX-421: up-front skill router. Decides activeSkills before the
-  // generator runs; results land on `session.state.__activeSkills` for
+  // generator runs; results land on `session.state.activeSkills` for
   // the skills capability's active-skill formatter to render.
   .tap(intentSelectorBlock)
   .tap(resolveThinkingStyle)
@@ -446,13 +446,13 @@ const chatAgentFlow = defineFlow({
     stateSchema: sessionStateSchema,
     clientData: {
       modeStatus: (ctx) => {
-        // `__activeSkills` is contributed by the skills capability's
+        // `activeSkills` is contributed by the skills capability's
         // session-state schema (framework merges all schemas at flow
         // registration). Project to the surface shape the top-bar UI
         // wants — name + source tier, drop the rest.
         const activeSkills =
-          (ctx.state as { __activeSkills?: Array<{ name: string; source?: string }> })
-            .__activeSkills ?? [];
+          (ctx.state as { activeSkills?: Array<{ name: string; source?: string }> })
+            .activeSkills ?? [];
         return {
           currentMode: modeSchema.parse(ctx.state.mode ?? "ask"),
           thinkingStyle:

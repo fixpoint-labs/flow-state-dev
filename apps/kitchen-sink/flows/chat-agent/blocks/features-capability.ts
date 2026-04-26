@@ -93,7 +93,7 @@ const skillsCap = createSkillsCapability({
  * Runs once per turn before the main generator. Three tiers (slash prefix,
  * keyword scan over each skill's `keywords` frontmatter, LLM classifier)
  * decide which skills (if any) apply to the user message. Matched skills
- * are written into `session.state.__activeSkills`, which the active-skill
+ * are written into `session.state.activeSkills`, which the active-skill
  * body formatter on the skills capability reads to inject the substituted
  * body into the system prompt under the `<skills>` tag.
  *

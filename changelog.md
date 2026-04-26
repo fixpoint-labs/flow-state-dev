@@ -11,8 +11,8 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - New `keywords` frontmatter field on `SKILL.md` (parsed + serialized round-trip in `parseSkillMd` / `serializeSkillMd`, surfaced in the `skills` collection's client-data projection). Lowercase tokens that the tier-2 keyword scan matches against the user message.
 - `buildRunSkillDescription` no longer emits the slash-command instruction — slash routing is handled deterministically by `intentSelector`'s tier 1 instead of by the model.
 - New core types: `MatchedSkill` and `IntentSource` exported from `@flow-state-dev/core` and `@flow-state-dev/core/types`.
-- `ActiveSkillEntry` (the records in `session.state.__activeSkills`) gains an optional `source` field. `intentSelector` stamps it with the matching tier; mid-flow `runSkill` calls leave it undefined. Consumers that want a tier badge in their UI project from `__activeSkills` directly via clientData.
-- Apply-intent replaces (not appends) `__activeSkills` for the turn. Mid-flow `runSkill` calls within the same turn still append on top via the existing `pushActiveSkill` path.
+- `ActiveSkillEntry` (the records in `session.state.activeSkills`) gains an optional `source` field. `intentSelector` stamps it with the matching tier; mid-flow `runSkill` calls leave it undefined. Consumers that want a tier badge in their UI project from `activeSkills` directly via clientData.
+- Apply-intent replaces (not appends) `activeSkills` for the turn. Mid-flow `runSkill` calls within the same turn still append on top via the existing `pushActiveSkill` path.
 - Chat-agent flow wiring is intentionally NOT changed in this PR — that's a follow-up. This PR ships the primitive plus the capability option so they can land independently.
 
 ## 2026-04-24

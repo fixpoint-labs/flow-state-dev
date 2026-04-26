@@ -5,7 +5,7 @@
  * Returns a `DefinedCapability` exposing:
  *   - **Resources**: the skills collection, registered at the chosen scope
  *     (default `project`).
- *   - **Session state**: an `__activeSkills` array fragment used by the
+ *   - **Session state**: an `activeSkills` array fragment used by the
  *     dynamic context formatter to read which skills are currently active.
  *   - **Preset `tools`** (default-on): the catalog of skill-referenceable
  *     tools, registered for AI SDK schema awareness.
@@ -158,7 +158,7 @@ export function createSkillsCapability(
       // Active-skill body formatter — required for any matched skill to
       // appear in the system prompt. Both activation paths (up-front via
       // intentSelector, mid-flow via runSkill) feed it via
-      // session.state.__activeSkills. Aggregates under the `<skills>`
+      // session.state.activeSkills. Aggregates under the `<skills>`
       // tag with the runSkill catalog when both presets are on.
       context: { context: { skills: [activeContext] } },
 

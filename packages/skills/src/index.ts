@@ -95,7 +95,7 @@ export {
 } from "./intent-selector";
 // Public runtime shapes mirroring the IntentSource / MatchedSkill types
 // in @flow-state-dev/core. Useful for consumers writing their own apply
-// handlers or inspecting `__activeSkills` entries from clientData.
+// handlers or inspecting `activeSkills` entries from clientData.
 export {
   intentSourceSchema,
   matchedSkillSchema,

@@ -11,7 +11,7 @@
  *                       earlier tiers were inconclusive.
  *
  * After the tiers, an apply handler writes the matched skills to
- * `session.state.__activeSkills` — the same slot the active-skill body
+ * `session.state.activeSkills` — the same slot the active-skill body
  * formatter reads on every generator step.
  *
  * The returned block is a `.tap()`-able sequencer — it patches state and

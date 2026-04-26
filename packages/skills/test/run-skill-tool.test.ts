@@ -12,7 +12,7 @@ function buildCtx(collection: ReturnType<typeof createMockSkillsCollection>) {
   // Minimal BlockContext shape used by run-skill-tool — only the bits the
   // tool actually touches. Includes the fields the framework generator
   // needs when the fork branch fires (request.identity, response.emit).
-  const sessionState: Record<string, unknown> = { __activeSkills: [] };
+  const sessionState: Record<string, unknown> = { activeSkills: [] };
   return {
     request: {
       identity: { id: "r1", userId: "u1" },
@@ -140,7 +140,7 @@ describe("createRunSkillTool — inline mode", () => {
     const result = await tool.run({ name: "pptx", input: "Q2 deck" }, ctx);
     expect(result.skill).toBe("pptx");
     expect(result.mode).toBe("inline");
-    expect((ctx as { session: { state: { __activeSkills?: unknown[] } } }).session.state.__activeSkills).toHaveLength(1);
+    expect((ctx as { session: { state: { activeSkills?: unknown[] } } }).session.state.activeSkills).toHaveLength(1);
   });
 
   it("rejects unknown skill names with the available list", async () => {

@@ -142,7 +142,7 @@ That's the whole wiring. By default, the capability installs:
 - The `skills` resource collection
 - A dynamic context formatter listing the enabled skills by name + description
 - The `runSkill` tool as a router
-- A `__activeSkills` session-state slice used by the active-skill body formatter
+- A `activeSkills` session-state slice used by the active-skill body formatter
 
 In this default shape, the model decides activation: it reads the catalog in its system prompt and calls `runSkill` when one applies. That's the mid-flow path. Step 5 swaps it out for the up-front path.
 
@@ -356,7 +356,7 @@ Run the app. Open DevTool. Ask a question that should match a skill. What you sh
 **Up-front path (Step 5 wired in):**
 
 1. An `intent-classifier` block appears in the trace timeline as `agentType: "trace"` (visible in DevTool, not in the conversation history). It only fires on tier-3 turns; slash and keyword matches skip it.
-2. Session state's `__activeSkills` carries the matched skill for the duration of the turn.
+2. Session state's `activeSkills` carries the matched skill for the duration of the turn.
 3. The next generator step's system prompt contains the active-skill body inside a `<skills>` tag block — no separate catalog listing, no `runSkill` tool in the tool list.
 4. If you wired the active-skills clientData projection, your top bar should show one badge per active skill labeled with the matching tier (`slash` / `keyword` / `classifier`).
 

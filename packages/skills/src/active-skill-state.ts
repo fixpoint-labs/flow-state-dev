@@ -1,7 +1,7 @@
 /**
  * Helpers for reading and mutating the per-session "active skills" state.
  *
- * Active skills live in session state under the `__activeSkills` key (an
+ * Active skills live in session state under the `activeSkills` key (an
  * array of `ActiveSkillEntry` records) so dynamic context formatters can
  * read them without needing access to a sequencer scope. We intentionally
  * use session state — not request — so a multi-step request shares the
@@ -37,7 +37,7 @@ export interface ActiveSkillEntry {
 
 /** Zod schema for the session-state fragment the capability declares. */
 export const activeSkillStateSchema = z.object({
-  __activeSkills: z
+  activeSkills: z
     .array(
       z.object({
         name: z.string(),
@@ -54,7 +54,7 @@ export const activeSkillStateSchema = z.object({
 /** Read the active-skills array from a session-state-like object. */
 export function readActiveSkills(state: unknown): ActiveSkillEntry[] {
   if (state === null || typeof state !== "object") return [];
-  const entries = (state as { __activeSkills?: unknown }).__activeSkills;
+  const entries = (state as { activeSkills?: unknown }).activeSkills;
   if (!Array.isArray(entries)) return [];
   return entries as ActiveSkillEntry[];
 }
