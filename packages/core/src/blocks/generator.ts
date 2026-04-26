@@ -296,48 +296,48 @@ export interface GeneratorConfig<
   TRequestStateSchema extends ZodTypeAny | undefined = undefined,
   TSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
-  TProjectStateSchema extends ZodTypeAny | undefined = undefined,
+  TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   // Derive-once: evaluate z.infer exactly once per provided schema
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
   TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
-  TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
+  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
   TSequencerState extends object = InferStateFromSchema<TSequencerStateSchema>,
   // Resource schemas — optional, default to undefined (no typed resources)
   TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
-  TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TOrgResourceSchemas extends ZodTypeAny | undefined = undefined,
   // Resource definitions — optional, provide typing AND auto-installation
   TSessionResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TUserResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TProjectResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TOrgResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   // Derive-once: map resource schemas/definitions to typed ResourceRef records
   TSessionResources extends Record<string, AnyResourceRef> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
-  TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TOrgResources extends Record<string, AnyResourceRef> = InferBlockResources<TOrgResourceSchemas, TOrgResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   // Capability type inference
   TUses extends readonly UsesEntry[] = readonly [],
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   // Single typed context threaded into all callbacks
   TCtx = BlockContext<
-    TRequestState, TSessionState, TUserState, TProjectState,
-    TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas,
+    TRequestState, TSessionState, TUserState, TOrgState,
+    TSessionResources, TUserResources, TOrgResources, TSequencerState, unknown, TTargetSchemas,
     TCapabilities
   >,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
   userStateSchema?: TUserStateSchema;
-  projectStateSchema?: TProjectStateSchema;
+  orgStateSchema?: TOrgStateSchema;
   sequencerStateSchema?: TSequencerStateSchema;
   sessionResourceSchemas?: TSessionResourceSchemas;
   userResourceSchemas?: TUserResourceSchemas;
-  projectResourceSchemas?: TProjectResourceSchemas;
+  orgResourceSchemas?: TOrgResourceSchemas;
   sessionResources?: TSessionResourceDefs;
   userResources?: TUserResourceDefs;
-  projectResources?: TProjectResourceDefs;
+  orgResources?: TOrgResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
   targetStateSchemas?: TTargetSchemas;
   /** Capabilities to install. Merges resources, state schemas, targets,
@@ -1368,38 +1368,38 @@ export function generator<
   TRequestStateSchema extends ZodTypeAny | undefined = undefined,
   TSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
-  TProjectStateSchema extends ZodTypeAny | undefined = undefined,
+  TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
   TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
-  TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
+  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
   TSequencerState extends object = InferStateFromSchema<TSequencerStateSchema>,
   TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
-  TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TOrgResourceSchemas extends ZodTypeAny | undefined = undefined,
   TSessionResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TUserResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TProjectResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TOrgResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TSessionResources extends Record<string, AnyResourceRef> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
-  TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TOrgResources extends Record<string, AnyResourceRef> = InferBlockResources<TOrgResourceSchemas, TOrgResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   TUses extends readonly UsesEntry[] = readonly [],
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
   TCtx = BlockContext<
-    TRequestState, TSessionState, TUserState, TProjectState,
-    TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas,
+    TRequestState, TSessionState, TUserState, TOrgState,
+    TSessionResources, TUserResources, TOrgResources, TSequencerState, unknown, TTargetSchemas,
     TCapabilities
   >,
 >(
   config: GeneratorConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
-    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TProjectStateSchema, TSequencerStateSchema,
-    TRequestState, TSessionState, TUserState, TProjectState, TSequencerState,
-    TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
-    TSessionResourceDefs, TUserResourceDefs, TProjectResourceDefs,
-    TSessionResources, TUserResources, TProjectResources, TTargetSchemas,
+    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema,
+    TRequestState, TSessionState, TUserState, TOrgState, TSequencerState,
+    TSessionResourceSchemas, TUserResourceSchemas, TOrgResourceSchemas,
+    TSessionResourceDefs, TUserResourceDefs, TOrgResourceDefs,
+    TSessionResources, TUserResources, TOrgResources, TTargetSchemas,
     TUses, TCapabilities, TCtx
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {

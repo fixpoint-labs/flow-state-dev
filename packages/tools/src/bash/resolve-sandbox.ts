@@ -2,6 +2,11 @@
  * Shared sandbox resolution — dispatches to the correct adapter based on
  * the provider type. Used by both `createBashTool` (AI SDK tools) and
  * `createBashBlocks` (framework handler blocks).
+ *
+ * The `vercel` and `upstash` adapters take their third-party SDK via
+ * dependency injection on the provider config, so neither this file nor
+ * the adapter files import the SDK packages — bundlers and Vercel's
+ * file tracer follow the consumer's own static SDK import instead.
  */
 
 import type { Sandbox, SandboxProvider } from "./types";
@@ -49,15 +54,20 @@ export async function resolveSandbox(
     }
 
     case "vercel": {
-      const id = provider.sandboxId ?? options.existingId;
       const { resolveVercelSandbox } = await import("./adapters/vercel");
-      return resolveVercelSandbox(id);
+      return resolveVercelSandbox({
+        Sandbox: provider.Sandbox,
+        sandboxId: provider.sandboxId ?? options.existingId,
+        createOptions: provider.createOptions,
+      });
     }
 
     case "upstash": {
-      const id = provider.boxId ?? options.existingId;
       const { resolveUpstashBox } = await import("./adapters/upstash");
-      return resolveUpstashBox(id);
+      return resolveUpstashBox({
+        client: provider.client,
+        boxId: provider.boxId ?? options.existingId,
+      });
     }
 
     case "custom":

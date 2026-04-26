@@ -1,5 +1,6 @@
 ---
 description: Produce a competitor analysis for a product, company, or market. Use when the user asks "who competes with X", "how does X stack up against Y", "what's the landscape for Z", or wants a comparison matrix. Enforces a disciplined framing so the answer doesn't degenerate into a feature-checklist dump.
+keywords: [competitor, competitors, competition, compare, versus, landscape, market]
 ---
 
 # Competitor Analysis

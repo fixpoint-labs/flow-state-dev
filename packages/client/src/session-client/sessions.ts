@@ -63,7 +63,7 @@ export type CreateSessionOptions = {
   flowKind: string;
   userId: string;
   sessionId?: string;
-  projectId?: string;
+  orgId?: string;
   title?: string;
   description?: string;
   tags?: string[];
@@ -197,7 +197,7 @@ export function createSessionClient(options: CreateSessionClientOptions = {}): S
         body: JSON.stringify({
           userId,
           sessionId: createOptions.sessionId,
-          projectId: createOptions.projectId,
+          orgId: createOptions.orgId,
           title: createOptions.title,
           description: createOptions.description,
           tags: createOptions.tags,

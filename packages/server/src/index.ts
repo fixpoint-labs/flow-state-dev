@@ -20,7 +20,7 @@ export {
   createInMemoryUserStore,
   createScopeStateOps,
   createStateContainer,
-  resolveProjectStorageKey,
+  resolveOrgStorageKey,
   resolveUserStorageKey,
   runWithCAS
 } from "./stores";
@@ -30,9 +30,9 @@ export type {
   ContentScopeType,
   ContentStore,
   ExpectedVersion,
-  ProjectListOptions,
-  ProjectRecord,
-  ProjectStore,
+  OrgListOptions,
+  OrgRecord,
+  OrgStore,
   RequestListOptions,
   RequestRecord,
   RequestStatus,
@@ -101,6 +101,10 @@ export {
   AmbiguousBlockNameError
 } from "./errors/flow-error";
 export { normalizeError } from "./errors/normalize-error";
+export {
+  OrgBindingMismatchError,
+  UserBindingMismatchError
+} from "./context/binding-errors";
 
 export {
   createSentenceBuffer,

@@ -153,7 +153,7 @@ export type UserConfig<
   clientData?: Record<string, ClientDataComputeFn<JsonObject, InferResourceRefs<TResources>>>;
 };
 
-export type ProjectConfig<
+export type OrgConfig<
   TResources extends Record<string, ScopeResourceConfig> = Record<string, ScopeResourceConfig>
 > = {
   stateSchema?: ZodTypeAny;
@@ -173,7 +173,7 @@ export type FlowDefinition<
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
-  TProject extends ProjectConfig | undefined = ProjectConfig | undefined,
+  TOrg extends OrgConfig | undefined = OrgConfig | undefined,
   TWork extends WorkConfig | undefined = WorkConfig | undefined
 > = {
   kind: string;
@@ -184,7 +184,7 @@ export type FlowDefinition<
   session?: TSession;
   request?: TRequest;
   user?: TUser;
-  project?: TProject;
+  org?: TOrg;
   work?: TWork;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
@@ -200,8 +200,8 @@ export type FlowDefinition<
    */
   isolateUserState?: boolean;
 
-  /** Project-scope equivalent of `isolateUserState`. Default: false. */
-  isolateProjectState?: boolean;
+  /** Org-scope equivalent of `isolateUserState`. Default: false. */
+  isolateOrgState?: boolean;
 
   defaultBlockRenderer?: unknown | false;
 };
@@ -211,7 +211,7 @@ export type FlowInstanceOptions<
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
-  TProject extends ProjectConfig | undefined = ProjectConfig | undefined,
+  TOrg extends OrgConfig | undefined = OrgConfig | undefined,
   TWork extends WorkConfig | undefined = WorkConfig | undefined
 > = {
   id?: string;
@@ -221,7 +221,7 @@ export type FlowInstanceOptions<
   session?: TSession;
   request?: TRequest;
   user?: TUser;
-  project?: TProject;
+  org?: TOrg;
   work?: TWork;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
@@ -229,7 +229,7 @@ export type FlowInstanceOptions<
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
   isolateUserState?: boolean;
-  isolateProjectState?: boolean;
+  isolateOrgState?: boolean;
 };
 
 export type FlowInstance<
@@ -237,17 +237,23 @@ export type FlowInstance<
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
-  TProject extends ProjectConfig | undefined = ProjectConfig | undefined,
+  TOrg extends OrgConfig | undefined = OrgConfig | undefined,
   TWork extends WorkConfig | undefined = WorkConfig | undefined
 > = {
   id: string;
   kind: string;
   requireUser: boolean;
+  /**
+   * True when any block in any action declares `requireOrg: true`. The HTTP
+   * action route uses this to reject requests against unbound sessions before
+   * any execution begins.
+   */
+  requiresOrg: boolean;
   actions: TActions;
   session?: TSession;
   request?: TRequest;
   user?: TUser;
-  project?: TProject;
+  org?: TOrg;
   work?: TWork;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
@@ -255,7 +261,7 @@ export type FlowInstance<
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
   isolateUserState: boolean;
-  isolateProjectState: boolean;
+  isolateOrgState: boolean;
 };
 
 export type FlowType<
@@ -263,29 +269,31 @@ export type FlowType<
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
-  TProject extends ProjectConfig | undefined = ProjectConfig | undefined,
+  TOrg extends OrgConfig | undefined = OrgConfig | undefined,
   TWork extends WorkConfig | undefined = WorkConfig | undefined
 > = {
   kind: string;
   requireUser: boolean;
+  /** Mirror of `FlowInstance.requiresOrg`. */
+  requiresOrg: boolean;
   actions: TActions;
   session?: TSession;
   request?: TRequest;
   user?: TUser;
-  project?: TProject;
+  org?: TOrg;
   work?: TWork;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
   middleware?: Middleware[];
   isolateUserState: boolean;
-  isolateProjectState: boolean;
+  isolateOrgState: boolean;
 
-  (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TProject, TWork>): FlowInstance<
+  (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TOrg, TWork>): FlowInstance<
     TActions,
     TSession,
     TRequest,
     TUser,
-    TProject,
+    TOrg,
     TWork
   >;
 };
@@ -302,14 +310,14 @@ export type InferFlowStateMap<TDefinition extends FlowDefinition> = {
   request: InferScopeStateFromConfig<TDefinition["request"]>;
   session: InferScopeStateFromConfig<TDefinition["session"]>;
   user: InferScopeStateFromConfig<TDefinition["user"]>;
-  project: InferScopeStateFromConfig<TDefinition["project"]>;
+  org: InferScopeStateFromConfig<TDefinition["org"]>;
 };
 
 export type InferFlowBlockContext<TDefinition extends FlowDefinition> = BlockContext<
   InferFlowStateMap<TDefinition>["request"],
   InferFlowStateMap<TDefinition>["session"],
   InferFlowStateMap<TDefinition>["user"],
-  InferFlowStateMap<TDefinition>["project"]
+  InferFlowStateMap<TDefinition>["org"]
 >;
 
 export type FlowActionInput<TAction extends ActionConfig> = TAction["inputSchema"]["_output"];

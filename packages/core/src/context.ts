@@ -9,11 +9,11 @@ import type { JsonObject } from "./schema/common";
 export type ContextFnScopes<
   TSession extends JsonObject = JsonObject,
   TUser extends JsonObject = JsonObject,
-  TProject extends JsonObject = JsonObject
+  TOrg extends JsonObject = JsonObject
 > = {
   session: TSession;
   user?: TUser;
-  project?: TProject;
+  org?: TOrg;
 };
 
 /**
@@ -77,18 +77,18 @@ export function contextFn<TSession extends ZodTypeAny, TUser extends ZodTypeAny>
   ) => string
 ): ContextFunction;
 
-// Overload: session + user + project
+// Overload: session + user + org
 export function contextFn<
   TSession extends ZodTypeAny,
   TUser extends ZodTypeAny,
-  TProject extends ZodTypeAny
+  TOrg extends ZodTypeAny
 >(
-  schemas: { session: TSession; user: TUser; project: TProject },
+  schemas: { session: TSession; user: TUser; org: TOrg },
   fn: (
     scopes: {
       session: z.output<TSession>;
       user: z.output<TUser>;
-      project: z.output<TProject>;
+      org: z.output<TOrg>;
     },
     ctx: BlockContext
   ) => string
@@ -109,8 +109,8 @@ export function contextFn(
     if (ctx.user) {
       scopes.user = ctx.user.state;
     }
-    if (ctx.project) {
-      scopes.project = ctx.project.state;
+    if (ctx.org) {
+      scopes.org = ctx.org.state;
     }
 
     return fn(scopes, ctx);

@@ -74,7 +74,7 @@ export type ExecuteActionRequestBody = {
   userId: string;
   sessionId?: string;
   requestId?: string;
-  projectId?: string;
+  orgId?: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -133,7 +133,7 @@ export type SessionSummary = {
  * Session detail shape returned from session read/create endpoints.
  */
 export type SessionDetail = SessionSummary & {
-  projectId?: string;
+  orgId?: string;
   metadata?: Record<string, unknown>;
   state?: Record<string, unknown>;
   version?: number;
@@ -141,7 +141,7 @@ export type SessionDetail = SessionSummary & {
   stateSummary?: {
     session?: Record<string, unknown>;
     user?: Record<string, unknown>;
-    project?: Record<string, unknown>;
+    org?: Record<string, unknown>;
   };
 };
 
@@ -154,7 +154,7 @@ export type SessionRequestSummary = {
   actionName: string;
   userId: string;
   sessionId?: string;
-  projectId?: string;
+  orgId?: string;
   status: RequestStatus;
   startedAtMs?: number;
   completedAtMs?: number;
@@ -207,17 +207,17 @@ export type SessionStateSnapshotResponse = {
     request?: Record<string, unknown>;
     session?: Record<string, unknown>;
     user?: Record<string, unknown>;
-    project?: Record<string, unknown>;
+    org?: Record<string, unknown>;
   };
   clientData: {
     session?: Record<string, unknown>;
     user?: Record<string, unknown>;
-    project?: Record<string, unknown>;
+    org?: Record<string, unknown>;
   };
   resources?: {
     session?: Record<string, ResourceSnapshotEntry | CollectionSnapshotEntry>;
     user?: Record<string, ResourceSnapshotEntry | CollectionSnapshotEntry>;
-    project?: Record<string, ResourceSnapshotEntry | CollectionSnapshotEntry>;
+    org?: Record<string, ResourceSnapshotEntry | CollectionSnapshotEntry>;
   };
   items?: OutputItem[];
   pagination?: {
@@ -238,7 +238,7 @@ export type FlowLike = {
   request?: unknown;
   session?: unknown;
   user?: unknown;
-  project?: unknown;
+  org?: unknown;
 };
 
 /**
@@ -247,7 +247,7 @@ export type FlowLike = {
 export type SendActionOptions = {
   sessionId?: string;
   requestId?: string;
-  projectId?: string;
+  orgId?: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -265,7 +265,7 @@ type FlowStateMap<TFlow extends FlowLike> = {
   request: InferScopeStateFromConfig<TFlow["request"]>;
   session: InferScopeStateFromConfig<TFlow["session"]>;
   user: InferScopeStateFromConfig<TFlow["user"]>;
-  project: InferScopeStateFromConfig<TFlow["project"]>;
+  org: InferScopeStateFromConfig<TFlow["org"]>;
 };
 
 /**
@@ -290,9 +290,9 @@ export type FlowClient<TFlow extends FlowLike> = {
     getUserState: (
       sessionId: string
     ) => Promise<FlowStateMap<TFlow>["user"] | undefined>;
-    getProjectState: (
+    getOrgState: (
       sessionId: string
-    ) => Promise<FlowStateMap<TFlow>["project"] | undefined>;
+    ) => Promise<FlowStateMap<TFlow>["org"] | undefined>;
   };
 };
 

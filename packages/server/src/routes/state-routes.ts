@@ -6,7 +6,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {
-  resolveProjectStorageKey,
+  resolveOrgStorageKey,
   resolveUserStorageKey
 } from "../stores/scope-keys";
 import {
@@ -56,11 +56,11 @@ export async function handleGetSessionState(
     })
   )[0];
   const user = await ctx.stores.user.get(resolveUserStorageKey(session.userId, flow));
-  const project =
-    session.projectId === undefined
+  const org =
+    session.orgId === undefined
       ? undefined
-      : await ctx.stores.project.get(
-          resolveProjectStorageKey(session.projectId, flow)
+      : await ctx.stores.org.get(
+          resolveOrgStorageKey(session.orgId, flow)
         );
   const clientDataFilter = parseClientDataFilter(
     url.searchParams.get("clientData")
@@ -119,10 +119,10 @@ export async function handleGetSessionState(
   }
   // Load content from ContentStore, merging with any inline record content
   // for backward compatibility with records created before ContentStore existed.
-  const [sessionContentFromStore, userContentFromStore, projectContentFromStore] = await Promise.all([
+  const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
     ctx.stores.content.getAll("session", session.id),
     user !== undefined ? ctx.stores.content.getAll("user", user.id) : Promise.resolve({}),
-    project !== undefined ? ctx.stores.content.getAll("project", project.id) : Promise.resolve({})
+    org !== undefined ? ctx.stores.content.getAll("org", org.id) : Promise.resolve({})
   ]);
 
   const sessionResources = createScopeResources({
@@ -141,12 +141,12 @@ export async function handleGetSessionState(
       ...userContentFromStore
     }
   });
-  const projectResources = createScopeResources({
-    configs: flow.project?.resources as Record<string, unknown> | undefined,
-    persisted: project?.resources as Record<string, unknown> | undefined,
+  const orgResources = createScopeResources({
+    configs: flow.org?.resources as Record<string, unknown> | undefined,
+    persisted: org?.resources as Record<string, unknown> | undefined,
     persistedContent: {
-      ...(project?.resourceContent as Record<string, string> | undefined),
-      ...projectContentFromStore
+      ...(org?.resourceContent as Record<string, string> | undefined),
+      ...orgContentFromStore
     }
   });
 
@@ -164,19 +164,19 @@ export async function handleGetSessionState(
     state: (user?.state ?? {}) as JsonObject,
     resources: userResources
   });
-  const projectClientData = await computeClientData({
-    definitions: flow.project?.clientData as Record<string, unknown> | undefined,
-    scope: "project",
+  const orgClientData = await computeClientData({
+    definitions: flow.org?.clientData as Record<string, unknown> | undefined,
+    scope: "org",
     filter: clientDataFilter,
-    state: (project?.state ?? {}) as JsonObject,
-    resources: projectResources
+    state: (org?.state ?? {}) as JsonObject,
+    resources: orgResources
   });
 
   // Build resource snapshot: client-visible resources by default. When the
   // caller passes include_internal_resources=true (the DevTool does), also
   // include resources without a `client` config — they're flagged `internal`
   // and surface their raw state under `clientData`.
-  const [sessionResourceSnapshot, userResourceSnapshot, projectResourceSnapshot] = await Promise.all([
+  const [sessionResourceSnapshot, userResourceSnapshot, orgResourceSnapshot] = await Promise.all([
     buildResourceSnapshot({
       configs: flow.session?.resources as Record<string, unknown> | undefined,
       persisted: session.resources as Record<string, unknown> | undefined,
@@ -196,11 +196,11 @@ export async function handleGetSessionState(
       includeInternal: includeInternalResources,
     }),
     buildResourceSnapshot({
-      configs: flow.project?.resources as Record<string, unknown> | undefined,
-      persisted: project?.resources as Record<string, unknown> | undefined,
+      configs: flow.org?.resources as Record<string, unknown> | undefined,
+      persisted: org?.resources as Record<string, unknown> | undefined,
       persistedContent: {
-        ...(project?.resourceContent as Record<string, string> | undefined),
-        ...projectContentFromStore,
+        ...(org?.resourceContent as Record<string, string> | undefined),
+        ...orgContentFromStore,
       },
       includeInternal: includeInternalResources,
     }),
@@ -209,7 +209,7 @@ export async function handleGetSessionState(
   const hasResources =
     sessionResourceSnapshot !== undefined ||
     userResourceSnapshot !== undefined ||
-    projectResourceSnapshot !== undefined;
+    orgResourceSnapshot !== undefined;
 
   return jsonResponse(200, {
     sessionId: session.id,
@@ -218,7 +218,7 @@ export async function handleGetSessionState(
       request: latestRequest?.state,
       session: session.state,
       user: user?.state,
-      project: project?.state
+      org: org?.state
     },
     clientData: {
       session:
@@ -229,16 +229,16 @@ export async function handleGetSessionState(
         Object.keys(userClientData).length > 0
           ? userClientData
           : undefined,
-      project:
-        Object.keys(projectClientData).length > 0
-          ? projectClientData
+      org:
+        Object.keys(orgClientData).length > 0
+          ? orgClientData
           : undefined
     },
     resources: hasResources
       ? {
           session: sessionResourceSnapshot,
           user: userResourceSnapshot,
-          project: projectResourceSnapshot,
+          org: orgResourceSnapshot,
         }
       : undefined,
     items: includeItems

@@ -34,7 +34,7 @@ type ActionRunInput = {
   userId: string;
   sessionId?: string;
   requestId: string;
-  projectId?: string;
+  orgId?: string;
   metadata?: Record<string, unknown>;
   signal?: AbortSignal;
 };
@@ -81,7 +81,7 @@ export async function handleExecuteAction(
     userId,
     sessionId,
     requestId: getString(body.requestId) ?? generateId("req"),
-    projectId: getString(body.projectId),
+    orgId: getString(body.orgId),
     metadata: {
       ...ctx.bootstrapMetadata,
       ...(metadata ?? {})
@@ -104,6 +104,23 @@ export async function handleExecuteAction(
     }
   };
 
+  // Block flows that opted into `requireOrg` from running against unbound
+  // sessions. The body's orgId binds a new session; for existing sessions we
+  // consult the stored orgId because that's the immutable source of truth.
+  if (flow.requiresOrg) {
+    let hasOrg = resolvedActionInput.orgId !== undefined;
+    if (!hasOrg && resolvedActionInput.sessionId !== undefined) {
+      const existing = await ctx.stores.session.get(resolvedActionInput.sessionId);
+      hasOrg = existing?.orgId !== undefined;
+    }
+    if (!hasOrg) {
+      return jsonResponse(400, {
+        error: "OrgRequired",
+        message: `Flow "${flow.kind}" requires an org-bound session. Create a new session with orgId.`
+      });
+    }
+  }
+
   const liveStream = createLiveRequestStream({
     requestId: resolvedActionInput.requestId,
     maxBufferSize: ctx.maxResponseBufferSize
@@ -124,7 +141,7 @@ export async function handleExecuteAction(
     userId: resolvedActionInput.userId,
     sessionId: resolvedActionInput.sessionId,
     requestId: resolvedActionInput.requestId,
-    projectId: resolvedActionInput.projectId,
+    orgId: resolvedActionInput.orgId,
     metadata: resolvedActionInput.metadata,
     signal: resolvedActionInput.signal,
     modelResolver: ctx.modelResolver,

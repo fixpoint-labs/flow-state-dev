@@ -343,16 +343,16 @@ describe("mergeSurfaceInto", () => {
     expect(acc.userResources).toEqual({ data: testResource });
   });
 
-  it("merges project resources", () => {
+  it("merges org resources", () => {
     const acc = makeSurface();
     mergeSurfaceInto(
       acc,
-      { projectResources: { data: testResource } },
+      { orgResources: { data: testResource } },
       "handler",
       "test-cap",
       "preset-a"
     );
-    expect(acc.projectResources).toEqual({ data: testResource });
+    expect(acc.orgResources).toEqual({ data: testResource });
   });
 
   it("deduplicates same resource reference", () => {
@@ -806,12 +806,12 @@ describe("extractMergedResources", () => {
     const surface = createEmptyMergedSurface();
     surface.sessionResources = { data: testResource };
     surface.userResources = { other: otherResource };
-    surface.projectResources = { data: testResource };
+    surface.orgResources = { data: testResource };
     const result = extractMergedResources(surface);
     expect(result).toEqual({
       session: { data: testResource },
       user: { other: otherResource },
-      project: { data: testResource },
+      org: { data: testResource },
     });
   });
 });

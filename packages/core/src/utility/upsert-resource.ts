@@ -10,7 +10,7 @@ export interface UpsertResourceConfig<TInputSchema extends ZodTypeAny> {
   description?: string;
   inputSchema: TInputSchema;
   /** Resources this block needs registered on its scope. */
-  projectResources?: Record<string, any>;
+  orgResources?: Record<string, any>;
   /** Resources this block needs registered on its scope. */
   userResources?: Record<string, any>;
   /** Resources this block needs registered on its scope. */
@@ -42,7 +42,7 @@ export function upsertResource<TInputSchema extends ZodTypeAny>(
     name: config.name,
     description: config.description,
     inputSchema: config.inputSchema,
-    projectResources: config.projectResources,
+    orgResources: config.orgResources,
     userResources: config.userResources,
     sessionResources: config.sessionResources,
     sequencerStateSchema: config.sequencerStateSchema,

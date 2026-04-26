@@ -41,12 +41,12 @@ describe("extractDeclaredResources", () => {
     });
   });
 
-  it("extracts projectResources", () => {
+  it("extracts orgResources", () => {
     const result = extractDeclaredResources({
-      projectResources: { artifacts: artifactsResource }
+      orgResources: { artifacts: artifactsResource }
     });
     expect(result).toEqual({
-      project: { artifacts: artifactsResource }
+      org: { artifacts: artifactsResource }
     });
   });
 
@@ -54,12 +54,12 @@ describe("extractDeclaredResources", () => {
     const result = extractDeclaredResources({
       sessionResources: { observations: observationsResource },
       userResources: { artifacts: artifactsResource },
-      projectResources: { artifacts: artifactsResource }
+      orgResources: { artifacts: artifactsResource }
     });
     expect(result).toEqual({
       session: { observations: observationsResource },
       user: { artifacts: artifactsResource },
-      project: { artifacts: artifactsResource }
+      org: { artifacts: artifactsResource }
     });
   });
 });

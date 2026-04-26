@@ -1,25 +1,25 @@
 import type {
   ExpectedVersion,
-  ProjectListOptions,
-  ProjectRecord,
-  ProjectStore,
+  OrgListOptions,
+  OrgRecord,
+  OrgStore,
   SetResult
 } from "../types";
 import { applyOffsetLimit, casWriteToMap, cloneValue } from "./shared";
 
-export class InMemoryProjectStore implements ProjectStore {
-  private readonly records = new Map<string, ProjectRecord>();
+export class InMemoryProjectStore implements OrgStore {
+  private readonly records = new Map<string, OrgRecord>();
 
-  async get(id: string): Promise<ProjectRecord | undefined> {
+  async get(id: string): Promise<OrgRecord | undefined> {
     const record = this.records.get(id);
     return record === undefined ? undefined : cloneValue(record);
   }
 
   async set(
     id: string,
-    value: ProjectRecord,
+    value: OrgRecord,
     expectedVersion: ExpectedVersion
-  ): Promise<SetResult<ProjectRecord>> {
+  ): Promise<SetResult<OrgRecord>> {
     return casWriteToMap(this.records, id, value, expectedVersion);
   }
 
@@ -27,7 +27,7 @@ export class InMemoryProjectStore implements ProjectStore {
     this.records.delete(id);
   }
 
-  async list(options?: ProjectListOptions): Promise<ProjectRecord[]> {
+  async list(options?: OrgListOptions): Promise<OrgRecord[]> {
     const filtered = Array.from(this.records.values()).filter((record) => {
       if (options?.userId !== undefined && record.userId !== options.userId) {
         return false;
@@ -43,6 +43,6 @@ export class InMemoryProjectStore implements ProjectStore {
   }
 }
 
-export function createInMemoryProjectStore(): ProjectStore {
+export function createInMemoryProjectStore(): OrgStore {
   return new InMemoryProjectStore();
 }

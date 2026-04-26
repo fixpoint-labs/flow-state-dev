@@ -16,7 +16,7 @@ function serializeEntry(entry: ActiveRequestEntry): unknown[] {
     entry.actionName,
     entry.sessionId ?? null,
     entry.userId,
-    entry.projectId ?? null,
+    entry.orgId ?? null,
     entry.input !== undefined ? JSON.stringify(entry.input) : null,
     entry.metadata !== undefined ? JSON.stringify(entry.metadata) : null,
     entry.startedAt,
@@ -37,8 +37,8 @@ function deserializeRow(row: Record<string, unknown>): ActiveRequestEntry {
   if (row.session_id !== null) {
     entry.sessionId = row.session_id as string;
   }
-  if (row.project_id !== null) {
-    entry.projectId = row.project_id as string;
+  if (row.org_id !== null) {
+    entry.orgId = row.org_id as string;
   }
   if (row.input !== null) {
     entry.input = JSON.parse(row.input as string);
@@ -58,7 +58,7 @@ export function createPostgresActiveRequestRegistry(
       const values = serializeEntry(entry);
       await executor.query(
         `INSERT INTO active_requests
-          (request_id, flow_kind, action_name, session_id, user_id, project_id,
+          (request_id, flow_kind, action_name, session_id, user_id, org_id,
            input, metadata, started_at, last_heartbeat_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT(request_id) DO UPDATE SET
@@ -66,7 +66,7 @@ export function createPostgresActiveRequestRegistry(
           action_name = EXCLUDED.action_name,
           session_id = EXCLUDED.session_id,
           user_id = EXCLUDED.user_id,
-          project_id = EXCLUDED.project_id,
+          org_id = EXCLUDED.org_id,
           input = EXCLUDED.input,
           metadata = EXCLUDED.metadata,
           started_at = EXCLUDED.started_at,

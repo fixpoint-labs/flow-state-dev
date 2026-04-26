@@ -304,7 +304,7 @@ export type PerspectivePositionsState = z.infer<typeof perspectivePositionsState
  * Resource holding a perspective's positions.
  *
  * Scope is decided by where the capability or block declares this resource
- * (`sessionResources` / `userResources` / `projectResources`), not by the
+ * (`sessionResources` / `userResources` / `orgResources`), not by the
  * resource definition itself. The bundled `system()` factory installs it at
  * the configured `positionScope` (default `'session'`).
  */

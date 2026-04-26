@@ -17,7 +17,7 @@ export type ScopeRecordBase<TState extends JsonObject = JsonObject> = {
 export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
   flowKind: string;
   userId: string;
-  projectId?: string;
+  orgId?: string;
   title?: string;
   description?: string;
   tags?: string[];
@@ -33,7 +33,7 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   actionName: string;
   userId: string;
   sessionId?: string;
-  projectId?: string;
+  orgId?: string;
   status: RequestStatus;
   startedAtMs: number;
   completedAtMs?: number;
@@ -52,8 +52,8 @@ export type UserRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase
   resourceContent?: Record<string, string>;
 };
 
-export type ProjectRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
-  projectId: string;
+export type OrgRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
+  orgId: string;
   userId?: string;
   resources?: Record<string, JsonObject>;
   resourceContent?: Record<string, string>;
@@ -80,7 +80,7 @@ export type UserListOptions = {
   offset?: number;
 };
 
-export type ProjectListOptions = {
+export type OrgListOptions = {
   userId?: string;
   limit?: number;
   offset?: number;
@@ -180,16 +180,16 @@ export interface UserStore {
   list(options?: UserListOptions): Promise<UserRecord[]>;
 }
 
-export interface ProjectStore {
-  get(id: string): Promise<ProjectRecord | undefined>;
+export interface OrgStore {
+  get(id: string): Promise<OrgRecord | undefined>;
   /** See `SessionStore.set` for CAS semantics. */
   set(
     id: string,
-    value: ProjectRecord,
+    value: OrgRecord,
     expectedVersion: ExpectedVersion
-  ): Promise<SetResult<ProjectRecord>>;
+  ): Promise<SetResult<OrgRecord>>;
   delete(id: string): Promise<void>;
-  list(options?: ProjectListOptions): Promise<ProjectRecord[]>;
+  list(options?: OrgListOptions): Promise<OrgRecord[]>;
 }
 
 export type ActiveRequestEntry = {
@@ -198,7 +198,7 @@ export type ActiveRequestEntry = {
   actionName: string;
   sessionId?: string;
   userId: string;
-  projectId?: string;
+  orgId?: string;
   input?: unknown;
   metadata?: Record<string, unknown>;
   startedAt: number;
@@ -229,7 +229,7 @@ export interface ActiveRequestRegistry {
  * Scope discriminator for content storage.
  * Excludes "request" since request-scoped resources are not supported.
  */
-export type ContentScopeType = "session" | "user" | "project";
+export type ContentScopeType = "session" | "user" | "org";
 
 /**
  * Separates resource content persistence from scope record persistence.
@@ -259,7 +259,7 @@ export type StoreRegistry = {
   session: SessionStore;
   request: RequestStore;
   user: UserStore;
-  project: ProjectStore;
+  org: OrgStore;
   activeRequests: ActiveRequestRegistry;
   content: ContentStore;
 };

@@ -58,6 +58,14 @@ export interface SkillState {
   /** Optional Claude `argument-hint`. Surfaced in tool description; not validated at runtime. */
   argumentHint?: string;
 
+  /**
+   * Optional `keywords` array (FIX-421). Lowercase tokens that the up-front
+   * intent classifier's tier-2 keyword scan matches against the user message.
+   * Skills without any keywords skip tier-2 and become eligible only via
+   * tier-3 LLM classification.
+   */
+  keywords?: string[];
+
   /** ISO timestamp set by the seeder when an `initialSkills` entry was first written. */
   _seededAt?: string;
 
@@ -86,6 +94,8 @@ export interface Skill {
   whenToUse?: string;
   /** From frontmatter `argument-hint`. */
   argumentHint?: string;
+  /** From frontmatter `keywords`. Lowercase tokens for tier-2 intent matching. */
+  keywords?: string[];
 }
 
 /** Input the agent passes when invoking the runSkill tool. */
@@ -116,7 +126,7 @@ export interface SkillFile {
   content: string;
 }
 
-/** A code-authored skill, seeded into the project-scoped collection on startup. */
+/** A code-authored skill, seeded into the org-scoped collection on startup. */
 export interface InitialSkill {
   /** Skill name. Must match `[a-z0-9-]+`. */
   name: string;
@@ -132,4 +142,34 @@ export interface SkillsCollectionMeta {
    *  list are seeded on the next hydrate; deletions persist (a name stays in
    *  this list even after the user deletes the folder). */
   seededNames: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Intent classification (FIX-421)
+// ---------------------------------------------------------------------------
+
+/**
+ * Origin of a skill-activation match. Carried on `MatchedSkill` so downstream
+ * consumers (trace UI, telemetry) can branch on how the decision was reached.
+ */
+export type IntentSource =
+  | "slash"            // user typed `/skill-name`
+  | "keyword"          // local keyword scan matched
+  | "classifier"       // LLM classifier produced the match
+  | "manual-override"; // explicit user/UI selection bypassed classification
+
+/**
+ * One skill matched by an intent-classification pass. Multiple may be active
+ * per turn — the up-front intent selector activates all of them in inline
+ * mode by default.
+ */
+export interface MatchedSkill {
+  /** Skill name. Must exist in the skills collection at activation time. */
+  name: string;
+  /** Argument substituted for `$ARGUMENTS` in the skill body. Empty if none. */
+  input: string;
+  /** Which tier of `intentSelector` produced this match. */
+  source: IntentSource;
+  /** Classifier confidence (0..1). Only present when `source === "classifier"`. */
+  confidence?: number;
 }

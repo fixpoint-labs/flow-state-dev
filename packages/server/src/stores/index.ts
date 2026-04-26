@@ -12,7 +12,7 @@ import {
 import {
   createFilesystemProjectStore,
   FilesystemProjectStore
-} from "./filesystem/project-store";
+} from "./filesystem/org-store";
 import {
   createFilesystemRequestStore,
   FilesystemRequestStore
@@ -36,7 +36,7 @@ import {
 import {
   createInMemoryProjectStore,
   InMemoryProjectStore
-} from "./memory/project-store";
+} from "./memory/org-store";
 import {
   createInMemoryRequestStore,
   InMemoryRequestStore
@@ -62,9 +62,9 @@ export type {
   ContentScopeType,
   ContentStore,
   ExpectedVersion,
-  ProjectListOptions,
-  ProjectRecord,
-  ProjectStore,
+  OrgListOptions,
+  OrgRecord,
+  OrgStore,
   RequestListOptions,
   RequestRecord,
   RequestStatus,
@@ -82,7 +82,7 @@ export type {
 
 export {
   resolveUserStorageKey,
-  resolveProjectStorageKey
+  resolveOrgStorageKey
 } from "./scope-keys";
 export type { IsolationFlow } from "./scope-keys";
 
@@ -131,7 +131,7 @@ export function createInMemoryStores(): StoreRegistry {
     session: createInMemorySessionStore(),
     request: createInMemoryRequestStore(),
     user: createInMemoryUserStore(),
-    project: createInMemoryProjectStore(),
+    org: createInMemoryProjectStore(),
     activeRequests: createInMemoryActiveRequestRegistry(),
     content: createInMemoryContentStore()
   };
@@ -150,7 +150,7 @@ export function createFilesystemStores(
     user: createFilesystemUserStore({
       rootDir: path.join(options.rootDir, "users")
     }),
-    project: createFilesystemProjectStore({
+    org: createFilesystemProjectStore({
       rootDir: path.join(options.rootDir, "projects")
     }),
     activeRequests: createFilesystemActiveRequestRegistry({

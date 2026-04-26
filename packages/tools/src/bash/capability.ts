@@ -3,7 +3,7 @@
  * and an auto-discovered view of installed resource collections.
  *
  * Collections to mount are discovered at runtime from the block's resource
- * context (`ctx.session.resources`, `ctx.user.resources`, `ctx.project.resources`).
+ * context (`ctx.session.resources`, `ctx.user.resources`, `ctx.org.resources`).
  * Any entry that is a `ResourceCollectionRef` is mounted at its pattern
  * prefix. Consumers that want to narrow (or exclude) can do so via the
  * `collections` / `exclude` options.
@@ -67,7 +67,7 @@ export interface CreateBashCapabilityOptions {
 // ---------------------------------------------------------------------------
 
 function buildWorkspaceBoundary(destination: string): string {
-  return `Your workspace directory is ${destination}. You must only read, write, and operate on files within this directory. Do not access, list, or traverse files or directories outside of ${destination} — including home directories, other projects, or system paths. This applies to all commands, scripts, and embedded code (Python, Node, etc.).`;
+  return `Your workspace directory is ${destination}. You must only read, write, and operate on files within this directory. Do not access, list, or traverse files or directories outside of ${destination} — including home directories, other orgs, or system paths. This applies to all commands, scripts, and embedded code (Python, Node, etc.).`;
 }
 
 /**
@@ -161,7 +161,7 @@ interface MountInfo {
 function collectMounts(ctx: any): MountInfo[] {
   const seen = new Set<string>();
   const out: MountInfo[] = [];
-  for (const scope of ["session", "user", "project"] as const) {
+  for (const scope of ["session", "user", "org"] as const) {
     const bag = ctx?.[scope]?.resources;
     if (!bag || typeof bag !== "object") continue;
     for (const [key, value] of Object.entries(bag)) {

@@ -2,7 +2,7 @@
  * Inline-mode skill activation — a `handler` block.
  *
  * Inline mode is a pure session-state mutation: append the activated skill
- * to `__activeSkills` so the next generator step's dynamic context
+ * to `activeSkills` so the next generator step's dynamic context
  * formatter renders the substituted skill body into the system prompt.
  * Extracted from `run-skill-tool.ts` as part of the router-based rewrite.
  */
@@ -39,7 +39,7 @@ export const inlineActivate = handler({
       activatedAt: Date.now(),
     };
     await ctx.session.patchState({
-      __activeSkills: pushActiveSkill(current, entry),
+      activeSkills: pushActiveSkill(current, entry),
     } as never);
     return {
       skill: input.skillName,

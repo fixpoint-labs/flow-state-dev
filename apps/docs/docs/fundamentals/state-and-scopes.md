@@ -15,7 +15,7 @@ State is organized into four hierarchical scopes:
 | **Request** | What does this single action execution need right now? | One action execution |
 | **Session** | What does this conversation need to remember? | Across requests in a conversation |
 | **User** | What does this person need across all their conversations? | Across sessions for a user |
-| **Project** | What does the team need to share? | Across sessions in a project |
+| **Org** | What does the team need to share? | Across sessions in an org |
 
 Each scope has its own state, resources, and client data. Most of your state lives at the session level.
 
@@ -162,7 +162,7 @@ For shared blocks used across codebases, the recommended practice is to namespac
 
 ### Resource declarations bubble too
 
-The same bubbling model applies to resources. Blocks can declare resource dependencies with `sessionResources`, `userResources`, and `projectResources` (using `defineResource()` values). Sequencers collect these from child blocks, and `defineFlow` merges them into the flow's scope configs. Flow-level declarations take priority — blocks bring defaults, flows can override. See [Blocks](/docs/fundamentals/blocks#blocks-declare-their-resources) for examples.
+The same bubbling model applies to resources. Blocks can declare resource dependencies with `sessionResources`, `userResources`, and `orgResources` (using `defineResource()` values). Sequencers collect these from child blocks, and `defineFlow` merges them into the flow's scope configs. Flow-level declarations take priority — blocks bring defaults, flows can override. See [Blocks](/docs/fundamentals/blocks#blocks-declare-their-resources) for examples.
 
 ## Resources — hybrid memory and filesystem
 
@@ -213,7 +213,7 @@ await artifacts.patchState({
 });
 ```
 
-Resources are scoped — session-level resources persist across requests in a conversation, user-level resources persist across sessions, project-level resources are shared across sessions in a project. This gives you a natural hierarchy: scratch artifacts in a session, personal notes per user, shared knowledge bases per project.
+Resources are scoped — session-level resources persist across requests in a conversation, user-level resources persist across sessions, org-level resources are shared across sessions in an org. This gives you a natural hierarchy: scratch artifacts in a session, personal notes per user, shared knowledge bases per org.
 
 ## Client Data
 
@@ -333,7 +333,7 @@ The four scopes map to real isolation needs:
 - **Request** exists because blocks need scratch space that doesn't pollute the conversation. Intermediate processing results, temporary flags, retry counters — data that's useful during execution but meaningless afterward.
 - **Session** exists because conversations have memory. Chat history, the current operating mode, a plan being assembled step-by-step — data that builds up across multiple request/response cycles but belongs to one conversation.
 - **User** exists because people come back. Their preferences, accumulated knowledge, personal resource collections — data that should follow them across sessions, not reset every time they start a new conversation.
-- **Project** exists because teams share context. Configuration, knowledge bases, shared settings — data that multiple sessions need access to, not tied to any individual conversation.
+- **Org** exists because teams share context. Configuration, knowledge bases, shared settings — data that multiple sessions need access to, not tied to any individual conversation.
 
 Two scopes would force you to choose between "per-request" and "everything else." Six scopes would create unnecessary ceremony. Four maps cleanly to the real boundaries in AI applications.
 
@@ -343,17 +343,17 @@ Every scope instance has an identity — a `ScopeIdentity` that uniquely identif
 
 ```ts
 type ScopeIdentity = {
-  type: "request" | "session" | "user" | "project";
+  type: "request" | "session" | "user" | "org";
   id: string;
   userId?: string;
-  projectId?: string;
+  orgId?: string;
 };
 ```
 
 - `type` — which level in the hierarchy
-- `id` — the actual identifier (a request ID, session ID, user ID, or project ID depending on type)
-- `userId` — the owning user (present on all scopes except project, where it records who created it)
-- `projectId` — the associated project (present when a project is active)
+- `id` — the actual identifier (a request ID, session ID, user ID, or org ID depending on type)
+- `userId` — the owning user (present on all scopes except org, where it records who created it)
+- `orgId` — the associated org (present when an org is active)
 
 Access the identity from any scope handle:
 
@@ -361,7 +361,7 @@ Access the identity from any scope handle:
 execute: async (input, ctx) => {
   const sessionId = ctx.session.identity.id;
   const userId = ctx.user.identity.id;
-  const projectId = ctx.project?.identity.id;
+  const orgId = ctx.org?.identity.id;
 }
 ```
 
@@ -374,14 +374,14 @@ When a flow action is executed, the caller provides identity values:
 await client.executeAction("my-flow", "chat", {
   userId: "user_abc",           // Required — who is executing
   sessionId: "sess_123",       // Optional — which conversation
-  projectId: "proj_team-a",   // Optional — which project
+  orgId: "proj_team-a",   // Optional — which org
   input: { message: "Hello" },
 });
 ```
 
 - **`userId`** is always required. Every flow execution is associated with a user.
 - **`sessionId`** is optional. If omitted, an ephemeral session is auto-created (more on this below).
-- **`projectId`** is optional. If omitted, the project scope is not available (`ctx.project` is `undefined`).
+- **`orgId`** is optional. If omitted, the org scope is not available (`ctx.org` is `undefined`).
 
 ## Sessions in depth
 
@@ -514,7 +514,7 @@ const doc = artifacts.state.byId["design-doc"];
 
 ### Multiple sessions per user
 
-A single user can have many active sessions. This is the expected pattern — one session per conversation thread, per workflow instance, or per task. A coding assistant might have separate sessions for different projects. A support agent might have one session per ticket.
+A single user can have many active sessions. This is the expected pattern — one session per conversation thread, per workflow instance, or per task. A coding assistant might have separate sessions for different orgs. A support agent might have one session per ticket.
 
 The user scope (covered below) is what ties them together — preferences and accumulated knowledge that follow the user across all their sessions.
 
@@ -663,43 +663,43 @@ await snippets.patchState({
 });
 ```
 
-## Project scope
+## Org scope
 
-Project scope groups sessions together — the team-level boundary for configuration, knowledge, and shared resources.
+Org scope groups sessions together — the team-level boundary for configuration, knowledge, and shared resources.
 
-### Providing project identity
+### Providing org identity
 
-The `projectId` is optional. When provided, the framework creates or loads the project record and makes `ctx.project` available:
+The `orgId` is optional. When provided, the framework creates or loads the org record and makes `ctx.org` available:
 
 ```ts
 await client.executeAction("my-flow", "chat", {
   userId: "user_abc",
-  projectId: "proj_team-a",   // Optional — enables project scope
+  orgId: "proj_team-a",   // Optional — enables org scope
   input: { message: "Hello" },
 });
 ```
 
-When `projectId` is omitted, `ctx.project` is `undefined`. Blocks that depend on project state should handle this:
+When `orgId` is omitted, `ctx.org` is `undefined`. Blocks that depend on org state should handle this:
 
 ```ts
 execute: async (input, ctx) => {
-  const teamConfig = ctx.project?.state.config;
+  const teamConfig = ctx.org?.state.config;
   if (!teamConfig) {
     // Fall back to user-level or default configuration
   }
 }
 ```
 
-Like user scope, project scope is shared across flows by default and validated at registration time by `FlowRegistry`. Set `isolateProjectState: true` on `defineFlow` when a flow's project state should not be shared with other flows. See [Flow Isolation](/docs/fundamentals/flow-isolation).
+Like user scope, org scope is shared across flows by default and validated at registration time by `FlowRegistry`. Set `isolateOrgState: true` on `defineFlow` when a flow's org state should not be shared with other flows. See [Flow Isolation](/docs/fundamentals/flow-isolation).
 
-### Real patterns for project scope
+### Real patterns for org scope
 
 **Shared configuration:**
 
 ```ts
 const myFlow = defineFlow({
   kind: "team-assistant",
-  project: {
+  org: {
     stateSchema: z.object({
       config: z.object({
         allowedModels: z.array(z.string()).default(["preset/fast"]),
@@ -714,17 +714,17 @@ const myFlow = defineFlow({
   },
 });
 
-// Any user in the project sees the same configuration:
+// Any user in the org sees the same configuration:
 execute: async (input, ctx) => {
-  const budget = ctx.project?.state.config.maxTokenBudget ?? 100_000;
-  const instructions = ctx.project?.state.config.customInstructions ?? "";
+  const budget = ctx.org?.state.config.maxTokenBudget ?? 100_000;
+  const instructions = ctx.org?.state.config.customInstructions ?? "";
 }
 ```
 
 **Team knowledge base:**
 
 ```ts
-project: {
+org: {
   resources: {
     knowledgeBase: {
       stateSchema: z.object({
@@ -743,7 +743,7 @@ project: {
 }
 
 // Any team member can contribute to and read from the knowledge base:
-const kb = ctx.project?.resources?.get("knowledgeBase");
+const kb = ctx.org?.resources?.get("knowledgeBase");
 if (kb) {
   await kb.patchState({
     articles: {
@@ -761,26 +761,26 @@ if (kb) {
 }
 ```
 
-**Project-wide settings that override user defaults:**
+**Org-wide settings that override user defaults:**
 
 ```ts
 execute: async (input, ctx) => {
-  // Project config takes precedence over user preferences
-  const model = ctx.project?.state.config.allowedModels?.[0]
+  // Org config takes precedence over user preferences
+  const model = ctx.org?.state.config.allowedModels?.[0]
     ?? ctx.user.state.preferences.preferredModel
     ?? "preset/fast";
 }
 ```
 
-### When to use project scope vs user scope
+### When to use org scope vs user scope
 
-Use **project scope** when multiple sessions need to read or write the same data — configuration that applies to the whole team, shared knowledge that anyone can contribute to, settings that an admin controls for everyone.
+Use **org scope** when multiple sessions need to read or write the same data — configuration that applies to the whole team, shared knowledge that anyone can contribute to, settings that an admin controls for everyone.
 
 Use **user scope** when the data belongs to one person — their preferences, their saved items, their accumulated context. Even if it *looks* shared (like "preferred model"), if each user should have their own value, it's user scope.
 
 ## Sequencer scope
 
-The four persistence scopes above (request, session, user, project) are tied to identity — who's calling, which conversation, which project. Sequencer scope is different: it's tied to **execution structure**. When blocks run inside a sequencer, they can share state scoped to that sequencer instance.
+The four persistence scopes above (request, session, user, org) are tied to identity — who's calling, which conversation, which org. Sequencer scope is different: it's tied to **execution structure**. When blocks run inside a sequencer, they can share state scoped to that sequencer instance.
 
 ### Why sequencer scope exists
 
@@ -849,7 +849,7 @@ const researchPipeline = pipeline
   .then(executor);
 ```
 
-The `sequencerStateSchema` on each block declares what state shape it expects from its enclosing sequencer. Like session/user/project state schemas, these bubble up and merge — the framework catches conflicts at build time.
+The `sequencerStateSchema` on each block declares what state shape it expects from its enclosing sequencer. Like session/user/org state schemas, these bubble up and merge — the framework catches conflicts at build time.
 
 `ctx.sequencer` resolves to the **nearest enclosing sequencer** that declares a `stateSchema`. If the block isn't inside a sequencer (or the sequencer has no state schema), `ctx.sequencer` is `undefined`.
 
@@ -884,11 +884,11 @@ A `TargetRef` provides the same state operations as other scopes (`patchState`, 
 The persistence scopes form a hierarchy based on lifetime and sharing:
 
 ```
-request → session → user → project
+request → session → user → org
   (narrowest)                (broadest)
 ```
 
-"Higher" means broader lifetime and wider sharing. Request is the narrowest — one execution, one user, gone when done. Project is the broadest — persists indefinitely, shared across sessions.
+"Higher" means broader lifetime and wider sharing. Request is the narrowest — one execution, one user, gone when done. Org is the broadest — persists indefinitely, shared across sessions.
 
 Sequencer scope is orthogonal to this hierarchy — it's scoped to execution structure rather than identity, and exists only for the duration of a sequencer's execution.
 
@@ -901,20 +901,20 @@ execute: async (input, ctx) => {
   ctx.request    // Always available — RequestScopeHandle
   ctx.session    // Always available — SessionScopeHandle
   ctx.user       // Always available — UserScopeHandle
-  ctx.project    // Optional — ProjectScopeHandle | undefined
+  ctx.org    // Optional — OrgScopeHandle | undefined
   ctx.sequencer  // Optional — TargetRef | undefined (when inside a sequencer with stateSchema)
 
   ctx.getTarget("block-name")  // Find sibling/ancestor by name — TargetRef | undefined
 }
 ```
 
-Request, session, and user are always present (userId is required, sessions auto-create). Project is present only when a `projectId` was provided. Sequencer is present only when the block is executing inside a sequencer that declares state.
+Request, session, and user are always present (userId is required, sessions auto-create). Org is present only when a `orgId` was provided. Sequencer is present only when the block is executing inside a sequencer that declares state.
 
 ### Scope capability differences
 
 Not all scopes are equal in what they offer:
 
-| Capability | Request | Session | User | Project | Sequencer |
+| Capability | Request | Session | User | Org | Sequencer |
 |-----------|---------|---------|------|---------|-----------|
 | State (read/write) | Yes | Yes | Yes | Yes | Yes |
 | Resources | — | Yes | Yes | Optional | — |
@@ -932,17 +932,17 @@ A common pattern is resolving values by walking up the scope hierarchy — check
 
 ```ts
 execute: async (input, ctx) => {
-  // Request override → session setting → user preference → project default
+  // Request override → session setting → user preference → org default
   const model =
     ctx.request.state.modelOverride ??
     ctx.session.state.currentModel ??
     ctx.user.state.preferences.preferredModel ??
-    ctx.project?.state.config.defaultModel ??
+    ctx.org?.state.config.defaultModel ??
     "preset/fast";
 }
 ```
 
-This lets you set sensible defaults at the project level, let users override with their preferences, let sessions customize further, and let individual requests override everything.
+This lets you set sensible defaults at the org level, let users override with their preferences, let sessions customize further, and let individual requests override everything.
 
 ## Putting it together
 
@@ -970,7 +970,7 @@ const teamAssistant = defineFlow({
       recentTopics: z.array(z.string()).default([]),
     }),
   },
-  project: {
+  org: {
     stateSchema: z.object({
       config: z.object({
         systemPrompt: z.string().default("You are a helpful assistant."),
@@ -991,11 +991,11 @@ Each scope carries exactly the data appropriate for its lifetime:
 - **Request**: `processingStage` — scratch data for this execution, gone when it completes
 - **Session**: `mode`, `messageCount` — conversational state that persists across turns
 - **User**: `preferences`, `recentTopics` — personal data that follows the user to new sessions
-- **Project**: `config` — team settings shared by everyone
+- **Org**: `config` — team settings shared by everyone
 
 ## Resource propagation
 
-Sequencers automatically collect `declaredResources` from all child blocks. When a block declares `sessionResources`, `userResources`, or `projectResources`, those declarations bubble up through the sequencer chain to the flow — you don't need to re-declare resources at every level.
+Sequencers automatically collect `declaredResources` from all child blocks. When a block declares `sessionResources`, `userResources`, or `orgResources`, those declarations bubble up through the sequencer chain to the flow — you don't need to re-declare resources at every level.
 
 ```ts
 const planResource = defineResource({

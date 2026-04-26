@@ -3,7 +3,7 @@
  */
 import type { CompatibilityReason } from "./schema-compat";
 
-export type ConflictScope = "user" | "project";
+export type ConflictScope = "user" | "org";
 
 export interface CrossFlowSchemaConflictDetails {
   scope: ConflictScope;
@@ -30,7 +30,7 @@ export class CrossFlowSchemaConflictError extends Error {
   readonly detail: string;
 
   constructor(details: CrossFlowSchemaConflictDetails) {
-    const flag = details.scope === "user" ? "isolateUserState" : "isolateProjectState";
+    const flag = details.scope === "user" ? "isolateUserState" : "isolateOrgState";
     super(
       `Flows "${details.flowA}" and "${details.flowB}" declare incompatible ${details.scope}.${details.field} schemas (${details.reason}: ${details.detail}). ` +
       `Set ${flag}: true on one of the flows to opt out of cross-flow sharing, or reconcile the schemas.`

@@ -111,7 +111,7 @@ export async function retryRequest(
   const actionName = entry?.actionName ?? originalRecord?.actionName;
   const sessionId = entry?.sessionId ?? originalRecord?.sessionId;
   const userId = entry?.userId ?? originalRecord?.userId;
-  const projectId = entry?.projectId ?? originalRecord?.projectId;
+  const orgId = entry?.orgId ?? originalRecord?.orgId;
   const input = entry?.input ?? originalRecord?.input;
   const originalMetadata = entry?.metadata ?? originalRecord?.metadata;
 
@@ -142,7 +142,7 @@ export async function retryRequest(
     userId,
     sessionId,
     requestId: newRequestId,
-    projectId,
+    orgId,
     metadata: {
       ...(originalMetadata ?? {}),
       retryOf: options.originalRequestId

@@ -105,7 +105,7 @@ function mockCtx(opts: {
         semanticMemory: opts.sem ?? createMockSemRef(),
       },
     },
-    project: { resources: {} },
+    org: { resources: {} },
   }
 }
 
@@ -259,10 +259,10 @@ describe('memory/capabilities', () => {
       expect(episodicMemoryCapability.userResources!.episodicMemory).toBeDefined()
     })
 
-    it('project scope puts resource in projectResources', () => {
-      const cap = createEpisodicMemoryCapability({ scope: 'project' })
-      expect(cap.projectResources).toBeDefined()
-      expect(cap.projectResources!.episodicMemory).toBeDefined()
+    it('org scope puts resource in orgResources', () => {
+      const cap = createEpisodicMemoryCapability({ scope: 'org' })
+      expect(cap.orgResources).toBeDefined()
+      expect(cap.orgResources!.episodicMemory).toBeDefined()
       expect(cap.userResources).toBeUndefined()
     })
 
@@ -354,10 +354,10 @@ describe('memory/capabilities', () => {
       expect(semanticMemoryCapability.userResources!.semanticMemory).toBeDefined()
     })
 
-    it('project scope puts resource in projectResources', () => {
-      const cap = createSemanticMemoryCapability({ scope: 'project' })
-      expect(cap.projectResources).toBeDefined()
-      expect(cap.projectResources!.semanticMemory).toBeDefined()
+    it('org scope puts resource in orgResources', () => {
+      const cap = createSemanticMemoryCapability({ scope: 'org' })
+      expect(cap.orgResources).toBeDefined()
+      expect(cap.orgResources!.semanticMemory).toBeDefined()
       expect(cap.userResources).toBeUndefined()
     })
 
@@ -603,16 +603,16 @@ describe('memory/capabilities', () => {
 
     it('createEpisodicMemoryCapability respects scope and maxEpisodes', async () => {
       const cap = createEpisodicMemoryCapability({
-        scope: 'project',
+        scope: 'org',
         maxEpisodes: 2,
       })
 
-      expect(cap.projectResources).toBeDefined()
+      expect(cap.orgResources).toBeDefined()
       expect(cap.userResources).toBeUndefined()
 
       // Verify maxEpisodes by encoding 3 episodes
       const epRef = createMockEpRef()
-      const ctx = { ...mockCtx({}), project: { resources: { episodicMemory: epRef } } }
+      const ctx = { ...mockCtx({}), org: { resources: { episodicMemory: epRef } } }
       const fns = cap.fns!(ctx as any)
 
       await fns.encode({
@@ -633,10 +633,10 @@ describe('memory/capabilities', () => {
       expect(epRef.state.episodes.map((e) => e.content)).not.toContain('E1')
     })
 
-    it('createSemanticMemoryCapability respects project scope', () => {
-      const cap = createSemanticMemoryCapability({ scope: 'project' })
-      expect(cap.projectResources).toBeDefined()
-      expect(cap.projectResources!.semanticMemory).toBeDefined()
+    it('createSemanticMemoryCapability respects org scope', () => {
+      const cap = createSemanticMemoryCapability({ scope: 'org' })
+      expect(cap.orgResources).toBeDefined()
+      expect(cap.orgResources!.semanticMemory).toBeDefined()
       expect(cap.userResources).toBeUndefined()
     })
   })

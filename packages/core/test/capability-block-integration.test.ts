@@ -526,7 +526,7 @@ describe("capability composition", () => {
     const capC = defineCapability({
       name: "capC",
       uses: [capB],
-      projectResources: { res3 },
+      orgResources: { res3 },
     });
 
     const block = handler({
@@ -540,13 +540,13 @@ describe("capability composition", () => {
     expect(Object.keys(block.declaredResources!.session!)).toHaveLength(1);
     // A's and C's resources should also be present
     expect(block.declaredResources?.user?.res2).toBe(res2);
-    expect(block.declaredResources?.project?.res3).toBe(res3);
+    expect(block.declaredResources?.org?.res3).toBe(res3);
   });
 
   it("three-level: A uses B, B uses C — block using A gets C + B + A resources", () => {
     const capC = defineCapability({
       name: "level-C",
-      projectResources: { res3 },
+      orgResources: { res3 },
     });
 
     const capB = defineCapability({
@@ -569,15 +569,15 @@ describe("capability composition", () => {
 
     expect(block.declaredResources?.session?.res1).toBe(res1);
     expect(block.declaredResources?.user?.res2).toBe(res2);
-    expect(block.declaredResources?.project?.res3).toBe(res3);
+    expect(block.declaredResources?.org?.res3).toBe(res3);
   });
 
   it("factory capability: capFactory({ scope: 'session' }) works", () => {
-    function capFactory(opts: { scope: "session" | "user" | "project" }) {
+    function capFactory(opts: { scope: "session" | "user" | "org" }) {
       const resources: Record<string, Record<string, typeof res1>> = {
         session: {},
         user: {},
-        project: {},
+        org: {},
       };
       resources[opts.scope] = { res1 };
 
@@ -585,7 +585,7 @@ describe("capability composition", () => {
         name: `factory-${opts.scope}`,
         sessionResources: opts.scope === "session" ? { res1 } : undefined,
         userResources: opts.scope === "user" ? { res1 } : undefined,
-        projectResources: opts.scope === "project" ? { res1 } : undefined,
+        orgResources: opts.scope === "org" ? { res1 } : undefined,
       });
     }
 
@@ -598,7 +598,7 @@ describe("capability composition", () => {
 
     expect(block.declaredResources?.session?.res1).toBe(res1);
     expect(block.declaredResources?.user).toBeUndefined();
-    expect(block.declaredResources?.project).toBeUndefined();
+    expect(block.declaredResources?.org).toBeUndefined();
   });
 });
 

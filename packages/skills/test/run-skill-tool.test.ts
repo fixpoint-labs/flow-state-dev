@@ -12,7 +12,7 @@ function buildCtx(collection: ReturnType<typeof createMockSkillsCollection>) {
   // Minimal BlockContext shape used by run-skill-tool — only the bits the
   // tool actually touches. Includes the fields the framework generator
   // needs when the fork branch fires (request.identity, response.emit).
-  const sessionState: Record<string, unknown> = { __activeSkills: [] };
+  const sessionState: Record<string, unknown> = { activeSkills: [] };
   return {
     request: {
       identity: { id: "r1", userId: "u1" },
@@ -29,8 +29,8 @@ function buildCtx(collection: ReturnType<typeof createMockSkillsCollection>) {
         Object.assign(sessionState, updates);
       },
     },
-    project: {
-      identity: { type: "project" as const, id: "p1" },
+    org: {
+      identity: { type: "org" as const, id: "p1" },
       resources: {
         get: (k: string) => (k === "skills" ? collection : undefined),
         list: () => [collection],
@@ -114,12 +114,12 @@ describe("buildRunSkillDescription", () => {
     expect(out).toContain("- bar: bar desc");
   });
 
-  it("includes slash-command guidance so the model routes /<skill> directly to runSkill", () => {
+  it("omits slash-command guidance — slash routing is handled server-side by createIntentSelector", () => {
     const out = buildRunSkillDescription([
       { name: "foo", description: "foo desc" },
     ]);
-    expect(out).toMatch(/slash command/i);
-    expect(out).toContain("/<skill-name>");
+    expect(out).not.toMatch(/slash command/i);
+    expect(out).not.toContain("/<skill-name>");
   });
 });
 
@@ -133,14 +133,14 @@ describe("createRunSkillTool — inline mode", () => {
     });
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      scope: "project",
+      scope: "org",
       catalog: {},
     });
     const ctx = buildCtx(c);
     const result = await tool.run({ name: "pptx", input: "Q2 deck" }, ctx);
     expect(result.skill).toBe("pptx");
     expect(result.mode).toBe("inline");
-    expect((ctx as { session: { state: { __activeSkills?: unknown[] } } }).session.state.__activeSkills).toHaveLength(1);
+    expect((ctx as { session: { state: { activeSkills?: unknown[] } } }).session.state.activeSkills).toHaveLength(1);
   });
 
   it("rejects unknown skill names with the available list", async () => {
@@ -152,7 +152,7 @@ describe("createRunSkillTool — inline mode", () => {
     });
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      scope: "project",
+      scope: "org",
       catalog: {},
     });
     await expect(tool.run({ name: "missing" }, buildCtx(c))).rejects.toThrow(
@@ -169,7 +169,7 @@ describe("createRunSkillTool — inline mode", () => {
     });
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      scope: "project",
+      scope: "org",
       catalog: {},
     });
     await expect(tool.run({ name: "private" }, buildCtx(c))).rejects.toThrow(
@@ -208,7 +208,7 @@ describe("createRunSkillTool — fork mode", () => {
 
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      scope: "project",
+      scope: "org",
       catalog: { webSearch },
     });
 
@@ -252,7 +252,7 @@ describe("createRunSkillTool — fork mode", () => {
     try {
       const tool = createRunSkillTool({
         collectionKey: "skills",
-        scope: "project",
+        scope: "org",
         catalog: {},
       });
       const ctx = buildCtx(c);

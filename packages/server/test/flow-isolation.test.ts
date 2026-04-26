@@ -11,14 +11,14 @@ import {
   createExecutionContext,
   createFlowRegistry,
   createInMemoryStores,
-  resolveProjectStorageKey,
+  resolveOrgStorageKey,
   resolveUserStorageKey
 } from "../src";
 
 function makeFlow(options: {
   kind: string;
   isolateUserState?: boolean;
-  isolateProjectState?: boolean;
+  isolateOrgState?: boolean;
   userSchema?: z.ZodTypeAny;
   projectSchema?: z.ZodTypeAny;
   userResources?: Record<string, z.ZodTypeAny>;
@@ -44,12 +44,12 @@ function makeFlow(options: {
   return defineFlow({
     kind: options.kind,
     isolateUserState: options.isolateUserState,
-    isolateProjectState: options.isolateProjectState,
+    isolateOrgState: options.isolateOrgState,
     actions: {
       run: { inputSchema: z.object({ value: z.string() }), block },
     },
     user,
-    project: options.projectSchema ? { stateSchema: options.projectSchema } : undefined,
+    org: options.projectSchema ? { stateSchema: options.projectSchema } : undefined,
   })();
 }
 
@@ -63,23 +63,23 @@ function captureConflict(fn: () => void): CrossFlowSchemaConflictError {
   throw new Error("expected CrossFlowSchemaConflictError");
 }
 
-describe("resolveUserStorageKey / resolveProjectStorageKey", () => {
+describe("resolveUserStorageKey / resolveOrgStorageKey", () => {
   it("returns the bare id when isolation is off", () => {
     const flow = makeFlow({ kind: "flow-a" });
     expect(resolveUserStorageKey("user_1", flow)).toBe("user_1");
-    expect(resolveProjectStorageKey("proj_1", flow)).toBe("proj_1");
+    expect(resolveOrgStorageKey("proj_1", flow)).toBe("proj_1");
   });
 
   it("namespaces the key by flowKind when isolation is on", () => {
-    const flow = makeFlow({ kind: "flow-a", isolateUserState: true, isolateProjectState: true });
+    const flow = makeFlow({ kind: "flow-a", isolateUserState: true, isolateOrgState: true });
     expect(resolveUserStorageKey("user_1", flow)).toBe("user_1:flow-a");
-    expect(resolveProjectStorageKey("proj_1", flow)).toBe("proj_1:flow-a");
+    expect(resolveOrgStorageKey("proj_1", flow)).toBe("proj_1:flow-a");
   });
 
-  it("isolates user and project independently", () => {
+  it("isolates user and org independently", () => {
     const flow = makeFlow({ kind: "flow-a", isolateUserState: true });
     expect(resolveUserStorageKey("user_1", flow)).toBe("user_1:flow-a");
-    expect(resolveProjectStorageKey("proj_1", flow)).toBe("proj_1");
+    expect(resolveOrgStorageKey("proj_1", flow)).toBe("proj_1");
   });
 });
 
@@ -136,15 +136,15 @@ describe("FlowRegistry cross-flow schema validation", () => {
     ).not.toThrow();
   });
 
-  it("reports project-scope conflicts with the correct scope label", () => {
+  it("reports org-scope conflicts with the correct scope label", () => {
     const registry = createFlowRegistry();
     registry.register(makeFlow({ kind: "flow-a", projectSchema: z.object({ title: z.string() }) }));
 
     const error = captureConflict(() =>
       registry.register(makeFlow({ kind: "flow-b", projectSchema: z.object({ title: z.number() }) }))
     );
-    expect(error.scope).toBe("project");
-    expect(error.message).toContain("isolateProjectState");
+    expect(error.scope).toBe("org");
+    expect(error.message).toContain("isolateOrgState");
   });
 
   it("leaves registry state unchanged when registration fails", () => {
@@ -156,8 +156,8 @@ describe("FlowRegistry cross-flow schema validation", () => {
     expect(registry.list().map((f) => f.kind)).toEqual(["flow-a"]);
   });
 
-  it("rolls back user-scope indexing when the project-scope check fails", () => {
-    // Regression: if user validates but project throws, the user participant
+  it("rolls back user-scope indexing when the org-scope check fails", () => {
+    // Regression: if user validates but org throws, the user participant
     // must not linger — otherwise describeSharedSchemas misreports, and a
     // retry of the same kind would self-match and skip validation.
     const registry = createFlowRegistry();
@@ -172,7 +172,7 @@ describe("FlowRegistry cross-flow schema validation", () => {
       registry.register(
         makeFlow({
           kind: "flow-b",
-          // Compatible user, incompatible project.
+          // Compatible user, incompatible org.
           userSchema: z.object({ theme: z.string() }),
           projectSchema: z.object({ title: z.number() }),
         })
@@ -181,7 +181,7 @@ describe("FlowRegistry cross-flow schema validation", () => {
 
     const desc = registry.describeSharedSchemas();
     expect(desc.participants.user).toEqual(["flow-a"]);
-    expect(desc.participants.project).toEqual(["flow-a"]);
+    expect(desc.participants.org).toEqual(["flow-a"]);
     expect(registry.list().map((f) => f.kind)).toEqual(["flow-a"]);
   });
 
@@ -192,7 +192,7 @@ describe("FlowRegistry cross-flow schema validation", () => {
 
     const desc = registry.describeSharedSchemas();
     expect(desc.participants.user).toEqual(["flow-a"]);
-    expect(desc.participants.project).toEqual([]);
+    expect(desc.participants.org).toEqual([]);
   });
 });
 
@@ -244,22 +244,22 @@ describe("end-to-end: shared vs isolated state", () => {
     expect(isolated?.userId).toBe("user_1");
   });
 
-  it("uses namespaced key for project scope when isolated", async () => {
+  it("uses namespaced key for org scope when isolated", async () => {
     const flow = makeFlow({
       kind: "flow-iso-proj",
-      isolateProjectState: true,
+      isolateOrgState: true,
       projectSchema: z.object({ title: z.string().optional() }),
     });
     const stores = createInMemoryStores();
 
     const ctx = await createExecutionContext({
-      flow, actionName: "run", requestId: "req_1", sessionId: "sess_1", userId: "user_1", projectId: "proj_1", stores,
+      flow, actionName: "run", requestId: "req_1", sessionId: "sess_1", userId: "user_1", orgId: "proj_1", stores,
     });
-    await ctx.project?.patchState({ title: "My Project" });
+    await ctx.org?.patchState({ title: "My Project" });
 
-    const namespaced = await stores.project.get("proj_1:flow-iso-proj");
+    const namespaced = await stores.org.get("proj_1:flow-iso-proj");
     expect(namespaced?.state).toMatchObject({ title: "My Project" });
-    expect(namespaced?.projectId).toBe("proj_1");
-    expect(await stores.project.get("proj_1")).toBeUndefined();
+    expect(namespaced?.orgId).toBe("proj_1");
+    expect(await stores.org.get("proj_1")).toBeUndefined();
   });
 });

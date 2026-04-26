@@ -11,7 +11,7 @@ import { initializeSchema, initializeSchemaWithDedicatedClient } from "./schema"
 import { createPostgresSessionStore } from "./session-store";
 import { createPostgresRequestStore } from "./request-store";
 import { createPostgresUserStore } from "./user-store";
-import { createPostgresProjectStore } from "./project-store";
+import { createPostgresOrgStore } from "./org-store";
 import { createPostgresActiveRequestRegistry } from "./active-request-registry";
 import { createPostgresContentStore } from "./content-store";
 
@@ -108,7 +108,7 @@ export async function createPostgresStores(
       session: createPostgresSessionStore(executor),
       request: createPostgresRequestStore(executor),
       user: createPostgresUserStore(executor),
-      project: createPostgresProjectStore(executor),
+      org: createPostgresOrgStore(executor),
       activeRequests: createPostgresActiveRequestRegistry(executor),
       content: createPostgresContentStore(executor),
       async close() {
@@ -123,7 +123,7 @@ export async function createPostgresStores(
     session: createPostgresSessionStore(executor),
     request: createPostgresRequestStore(executor),
     user: createPostgresUserStore(executor),
-    project: createPostgresProjectStore(executor),
+    org: createPostgresOrgStore(executor),
     activeRequests: createPostgresActiveRequestRegistry(executor),
     content: createPostgresContentStore(executor),
     async close() {
@@ -136,7 +136,7 @@ export {
   createPostgresSessionStore,
   createPostgresRequestStore,
   createPostgresUserStore,
-  createPostgresProjectStore,
+  createPostgresOrgStore,
   createPostgresActiveRequestRegistry,
   createPostgresContentStore
 };

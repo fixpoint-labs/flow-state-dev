@@ -94,8 +94,8 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
           {snapshot.state.user && Object.keys(snapshot.state.user).length > 0 && (
             <ScopeBlock label="User" data={snapshot.state.user} />
           )}
-          {snapshot.state.project && Object.keys(snapshot.state.project).length > 0 && (
-            <ScopeBlock label="Project" data={snapshot.state.project} />
+          {snapshot.state.org && Object.keys(snapshot.state.org).length > 0 && (
+            <ScopeBlock label="Org" data={snapshot.state.org} />
           )}
           {snapshot.state.request && Object.keys(snapshot.state.request).length > 0 && (
             <ScopeBlock label="Request" data={snapshot.state.request} />
@@ -111,8 +111,8 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
           {snapshot.clientData.user && Object.keys(snapshot.clientData.user).length > 0 && (
             <ScopeBlock label="User" data={snapshot.clientData.user} />
           )}
-          {snapshot.clientData.project && Object.keys(snapshot.clientData.project).length > 0 && (
-            <ScopeBlock label="Project" data={snapshot.clientData.project} />
+          {snapshot.clientData.org && Object.keys(snapshot.clientData.org).length > 0 && (
+            <ScopeBlock label="Org" data={snapshot.clientData.org} />
           )}
         </CollapsibleSection>
       )}
@@ -125,8 +125,8 @@ export function SessionContextPanel({ sessionId, refreshKey }: SessionContextPan
           {snapshot.resources!.user && Object.keys(snapshot.resources!.user).length > 0 && (
             <ResourceScope label="User" resources={snapshot.resources!.user} prevResources={prevSnapshot?.resources?.user} />
           )}
-          {snapshot.resources!.project && Object.keys(snapshot.resources!.project).length > 0 && (
-            <ResourceScope label="Project" resources={snapshot.resources!.project} prevResources={prevSnapshot?.resources?.project} />
+          {snapshot.resources!.org && Object.keys(snapshot.resources!.org).length > 0 && (
+            <ResourceScope label="Org" resources={snapshot.resources!.org} prevResources={prevSnapshot?.resources?.org} />
           )}
         </CollapsibleSection>
       )}

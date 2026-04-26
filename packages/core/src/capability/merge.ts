@@ -194,11 +194,11 @@ export function resolveActivePresets(
 export type MergedCapabilitySurface = {
   sessionResources: Record<string, DeclaredResourceEntry> | undefined;
   userResources: Record<string, DeclaredResourceEntry> | undefined;
-  projectResources: Record<string, DeclaredResourceEntry> | undefined;
+  orgResources: Record<string, DeclaredResourceEntry> | undefined;
   sessionStateSchema: ZodTypeAny | undefined;
   requestStateSchema: ZodTypeAny | undefined;
   userStateSchema: ZodTypeAny | undefined;
-  projectStateSchema: ZodTypeAny | undefined;
+  orgStateSchema: ZodTypeAny | undefined;
   sequencerStateSchema: ZodTypeAny | undefined;
   targetStateSchemas: Record<string, ZodTypeAny> | undefined;
   contextEntries: Array<PresetContextEntry>;
@@ -209,11 +209,11 @@ export function createEmptyMergedSurface(): MergedCapabilitySurface {
   return {
     sessionResources: undefined,
     userResources: undefined,
-    projectResources: undefined,
+    orgResources: undefined,
     sessionStateSchema: undefined,
     requestStateSchema: undefined,
     userStateSchema: undefined,
-    projectStateSchema: undefined,
+    orgStateSchema: undefined,
     sequencerStateSchema: undefined,
     targetStateSchemas: undefined,
     contextEntries: [],
@@ -323,9 +323,9 @@ export function mergeSurfaceInto(
       acc.userResources, surface.userResources, "user", capName, presetName
     );
   }
-  if (surface.projectResources) {
-    acc.projectResources = mergeResourcesInto(
-      acc.projectResources, surface.projectResources, "project", capName, presetName
+  if (surface.orgResources) {
+    acc.orgResources = mergeResourcesInto(
+      acc.orgResources, surface.orgResources, "org", capName, presetName
     );
   }
 
@@ -339,8 +339,8 @@ export function mergeSurfaceInto(
   if (surface.userStateSchema) {
     acc.userStateSchema = extendSchema(acc.userStateSchema, surface.userStateSchema);
   }
-  if (surface.projectStateSchema) {
-    acc.projectStateSchema = extendSchema(acc.projectStateSchema, surface.projectStateSchema);
+  if (surface.orgStateSchema) {
+    acc.orgStateSchema = extendSchema(acc.orgStateSchema, surface.orgStateSchema);
   }
 
   // Sequencer state — sequencer only
@@ -418,7 +418,7 @@ export function mergeCapabilities(
 }
 
 // ---------------------------------------------------------------------------
-// Project merged surface into block config fields
+// Org merged surface into block config fields
 // ---------------------------------------------------------------------------
 
 /**
@@ -431,7 +431,7 @@ export function extractMergedResources(
   const result: DeclaredResources = {};
   if (merged.sessionResources) result.session = merged.sessionResources;
   if (merged.userResources) result.user = merged.userResources;
-  if (merged.projectResources) result.project = merged.projectResources;
+  if (merged.orgResources) result.org = merged.orgResources;
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
@@ -448,7 +448,7 @@ export function mergeWithBlockResources(
 
   // Block resources merge on top (reference-equality dedup)
   const merged = { ...capResources };
-  const scopes = ["session", "user", "project"] as const;
+  const scopes = ["session", "user", "org"] as const;
   for (const scope of scopes) {
     const blockScope = blockResources[scope];
     if (blockScope === undefined) continue;

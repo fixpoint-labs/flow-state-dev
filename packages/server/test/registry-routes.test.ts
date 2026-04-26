@@ -55,7 +55,7 @@ function makeClientDataFlow(kind: string, id = kind): FlowInstance {
         userInfo: () => ({ active: true })
       }
     },
-    project: {
+    org: {
       clientData: {
         projectInfo: () => ({ configured: true })
       }
@@ -178,6 +178,7 @@ describe("createFlowApiRouter", () => {
           id: "demo",
           kind: "demo",
           requireUser: true,
+          requiresOrg: false,
           actions: ["run"],
           actionSchemas: {
             run: {
@@ -371,7 +372,7 @@ describe("createFlowApiRouter", () => {
         method: "POST",
         body: JSON.stringify({
           userId: "user_proj",
-          projectId: "proj_1",
+          orgId: "proj_1",
           input: { value: "ok" }
         })
       }),
@@ -403,7 +404,7 @@ describe("createFlowApiRouter", () => {
             active: true
           }
         },
-        project: {
+        org: {
           projectInfo: {
             configured: true
           }
@@ -438,13 +439,13 @@ describe("createFlowApiRouter", () => {
     });
   });
 
-  it("loads isolated user and project scopes in the session state route", async () => {
+  it("loads isolated user and org scopes in the session state route", async () => {
     const registry = createFlowRegistry();
     const stores = createInMemoryStores();
     const flow = defineFlow({
       kind: "isolated-state-route",
       isolateUserState: true,
-      isolateProjectState: true,
+      isolateOrgState: true,
       actions: {
         run: {
           inputSchema: z.object({ value: z.string() }),
@@ -454,7 +455,7 @@ describe("createFlowApiRouter", () => {
             outputSchema: z.object({ ok: z.boolean() }),
             execute: async (input, ctx) => {
               await ctx.user.patchState({ nickname: input.value });
-              await ctx.project?.patchState({ title: `Project ${input.value}` });
+              await ctx.org?.patchState({ title: `Project ${input.value}` });
               return { ok: true };
             }
           })
@@ -466,7 +467,7 @@ describe("createFlowApiRouter", () => {
           userLabel: (ctx) => ({ nickname: ctx.state.nickname })
         }
       },
-      project: {
+      org: {
         stateSchema: z.object({ title: z.string().optional() }),
         clientData: {
           projectLabel: (ctx) => ({ title: ctx.state.title })
@@ -482,7 +483,7 @@ describe("createFlowApiRouter", () => {
         method: "POST",
         body: JSON.stringify({
           userId: "user_iso_state",
-          projectId: "proj_iso_state",
+          orgId: "proj_iso_state",
           input: { value: "Ada" }
         })
       }),
@@ -504,21 +505,21 @@ describe("createFlowApiRouter", () => {
     const body = (await stateResponse.json()) as {
       state: {
         user?: Record<string, unknown>;
-        project?: Record<string, unknown>;
+        org?: Record<string, unknown>;
       };
       clientData: Record<string, Record<string, unknown>>;
     };
     expect(body.state.user).toMatchObject({ nickname: "Ada" });
-    expect(body.state.project).toMatchObject({ title: "Project Ada" });
+    expect(body.state.org).toMatchObject({ title: "Project Ada" });
     expect(body.clientData).toMatchObject({
       user: { userLabel: { nickname: "Ada" } },
-      project: { projectLabel: { title: "Project Ada" } }
+      org: { projectLabel: { title: "Project Ada" } }
     });
     expect(await stores.user.get("user_iso_state")).toBeUndefined();
-    expect(await stores.project.get("proj_iso_state")).toBeUndefined();
+    expect(await stores.org.get("proj_iso_state")).toBeUndefined();
 
     const request = (await stores.request.list({ sessionId: "sess_iso_state", limit: 1 }))[0];
-    expect(request?.projectId).toBe("proj_iso_state");
+    expect(request?.orgId).toBe("proj_iso_state");
   });
 
   it("loads isolated user resources in resource content routes", async () => {
@@ -773,7 +774,7 @@ describe("createFlowApiRouter", () => {
       resources?: {
         session?: Record<string, unknown>;
         user?: Record<string, unknown>;
-        project?: Record<string, unknown>;
+        org?: Record<string, unknown>;
       };
     };
     expect(body.resources).toBeDefined();

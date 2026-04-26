@@ -2,8 +2,8 @@
  * Flow registry primitives for server-side flow lookup by kind/id.
  *
  * The registry also enforces cross-flow schema compatibility: at registration
- * time, every non-isolated flow's `user.stateSchema`, `project.stateSchema`,
- * and user/project resource schemas are validated against every other
+ * time, every non-isolated flow's `user.stateSchema`, `org.stateSchema`,
+ * and user/org resource schemas are validated against every other
  * already-registered flow's declarations. Incompatible pairs throw a
  * `CrossFlowSchemaConflictError` — see `registry/errors.ts` and the
  * `state-and-scopes` architecture doc.
@@ -30,8 +30,8 @@ export interface FlowRegistry {
 
 export interface SharedSchemasDescription {
   user: SharedScopeDescription;
-  project: SharedScopeDescription;
-  participants: { user: string[]; project: string[] };
+  org: SharedScopeDescription;
+  participants: { user: string[]; org: string[] };
 }
 
 export interface SharedScopeDescription {
@@ -59,7 +59,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
    */
   private readonly participants: Record<ConflictScope, Map<string, ScopeParticipant>> = {
     user: new Map(),
-    project: new Map(),
+    org: new Map(),
   };
 
   /**
@@ -76,18 +76,18 @@ export class InMemoryFlowRegistry implements FlowRegistry {
       );
     }
 
-    // Validate both scopes before mutating any state. If the project-scope
+    // Validate both scopes before mutating any state. If the org-scope
     // check throws after the user-scope check passes, no participant entry
     // should linger for the user scope.
     const userDecl = flow.isolateUserState
       ? undefined
       : collectScopeDeclaration(flow, "user");
-    const projectDecl = flow.isolateProjectState
+    const orgDecl = flow.isolateOrgState
       ? undefined
-      : collectScopeDeclaration(flow, "project");
+      : collectScopeDeclaration(flow, "org");
 
     if (userDecl) this.validateScope("user", flow.kind, userDecl);
-    if (projectDecl) this.validateScope("project", flow.kind, projectDecl);
+    if (orgDecl) this.validateScope("org", flow.kind, orgDecl);
 
     // All validation passed — commit.
     const byId = existingByKind ?? new Map<string, FlowInstance>();
@@ -96,7 +96,7 @@ export class InMemoryFlowRegistry implements FlowRegistry {
     }
     byId.set(flow.id, flow);
     this.indexParticipant("user", flow.kind, userDecl);
-    this.indexParticipant("project", flow.kind, projectDecl);
+    this.indexParticipant("org", flow.kind, orgDecl);
   }
 
   /**
@@ -157,10 +157,10 @@ export class InMemoryFlowRegistry implements FlowRegistry {
   describeSharedSchemas(): SharedSchemasDescription {
     return {
       user: describeScope(this.participants.user),
-      project: describeScope(this.participants.project),
+      org: describeScope(this.participants.org),
       participants: {
         user: [...this.participants.user.keys()].sort(),
-        project: [...this.participants.project.keys()].sort(),
+        org: [...this.participants.org.keys()].sort(),
       },
     };
   }
@@ -213,7 +213,7 @@ function collectScopeDeclaration(
   flow: FlowInstance,
   scope: ConflictScope
 ): ScopeDeclaration | undefined {
-  const scopeConfig = scope === "user" ? flow.user : flow.project;
+  const scopeConfig = scope === "user" ? flow.user : flow.org;
   if (scopeConfig === undefined) {
     return undefined;
   }

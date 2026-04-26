@@ -90,7 +90,7 @@ export async function handleCreateSession(
     id: sessionId,
     flowKind: flow.kind,
     userId,
-    projectId: getString(body.projectId),
+    orgId: getString(body.orgId),
     title: getString(body.title),
     description: getString(body.description),
     tags: asStringArray(body.tags),

@@ -91,7 +91,7 @@ export function registerRunCommand(program: Command): void {
     .option("-s, --session <id>", "Session ID for reuse across invocations")
     .option("--seed-session <json>", "Seed session-level state (JSON or file path)")
     .option("--seed-user <json>", "Seed user-level state (JSON or file path)")
-    .option("--seed-project <json>", "Seed project-level state (JSON or file path)")
+    .option("--seed-org <json>", "Seed org-level state (JSON or file path)")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--format <format>", "Output format", "json")
     .action(async (flowKind: string, action: string, options: RunCommandOptions) => {
@@ -118,7 +118,7 @@ export interface RunCommandOptions {
   session?: string;
   seedSession?: string;
   seedUser?: string;
-  seedProject?: string;
+  seedOrg?: string;
   flowDir?: string[];
   format?: string;
 }

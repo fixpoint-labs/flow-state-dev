@@ -55,7 +55,7 @@ export interface PerspectiveSystemConfig {
    *
    * - `'session'`: positions reset each session.
    * - `'user'`: positions persist for the user across sessions.
-   * - `'project'`: positions persist within a project across users.
+   * - `'org'`: positions persist within an org across users.
    */
   positionScope?: PositionScope
   /** Model ID for generator blocks. Default: 'preset/fast'. */
@@ -109,8 +109,8 @@ export interface PerspectiveSystem {
   sessionResources: Record<string, unknown>
   /** Spread into `defineFlow`'s `user.resources` (empty when positionScope ≠ 'user'). */
   userResources: Record<string, unknown>
-  /** Spread into `defineFlow`'s `project.resources` (empty when positionScope ≠ 'project'). */
-  projectResources: Record<string, unknown>
+  /** Spread into `defineFlow`'s `project.resources` (empty when positionScope ≠ 'org'). */
+  orgResources: Record<string, unknown>
 
   // -- Helpers exposed for advanced/manual use --
   /** Read accumulated observations + positions from a runtime context. */
@@ -208,14 +208,14 @@ export function system(
 
   const sessionResources = capability.sessionResources ?? {}
   const userResources = capability.userResources ?? {}
-  const projectResources = capability.projectResources ?? {}
+  const orgResources = capability.orgResources ?? {}
 
   const posReference = (ctx: any) => {
     return positionScope === 'session'
       ? ctx.session.resources.perspectivePositions
       : positionScope === 'user'
         ? ctx.user?.resources?.perspectivePositions
-        : ctx.project?.resources?.perspectivePositions
+        : ctx.org?.resources?.perspectivePositions
   }
 
   // Recall helper — reads accumulated state from a runtime ctx
@@ -250,7 +250,7 @@ export function system(
     instance,
     sessionResources,
     userResources,
-    projectResources,
+    orgResources,
     recall,
     contextFormatter,
   }

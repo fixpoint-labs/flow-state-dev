@@ -4,13 +4,13 @@ import type { AnyResourceRef, ResourceRegistry } from "./resource";
 import type { CostEstimate, TokenLedger } from "./flow";
 import type { ScopeStateOps } from "./state";
 
-export type ScopeType = "request" | "session" | "user" | "project";
+export type ScopeType = "request" | "session" | "user" | "org";
 
 export type ScopeIdentity = {
   type: ScopeType;
   id: string;
   userId?: string;
-  projectId?: string;
+  orgId?: string;
 };
 
 export type SessionItem = {
@@ -140,7 +140,7 @@ export type UserScopeHandle<
   resources: ResourceRegistry<TResources>;
 } & ScopeStateOps<TState>;
 
-export type ProjectScopeHandle<
+export type OrgScopeHandle<
   TState extends object = Record<string, unknown>,
   TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>
 > = {

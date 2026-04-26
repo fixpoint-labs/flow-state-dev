@@ -38,7 +38,7 @@ export type {
   CostEstimate,
   InferFlowStateMap,
   InferScopeStateFromConfig,
-  ProjectConfig,
+  OrgConfig,
   RequestConfig,
   RetentionPolicy,
   ScopeResourceConfig,
@@ -135,7 +135,7 @@ export type {
   MessageLimit,
   MessageQuery,
   MessageViews,
-  ProjectScopeHandle,
+  OrgScopeHandle,
   RequestScopeHandle,
   ScopeIdentity,
   ScopeType,
@@ -157,6 +157,8 @@ export type { CASOptions, ScopeStateOps, StateContainer } from "./state";
 
 export type {
   InitialSkill,
+  IntentSource,
+  MatchedSkill,
   RunSkillInput,
   RunSkillOutput,
   Skill,

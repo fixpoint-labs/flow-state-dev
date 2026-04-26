@@ -23,7 +23,7 @@ export function createMockSkillsCollection(
 
   const makeRef = (entry: MockEntry): ResourceRef => ({
     name: entry.name,
-    scope: "project" as const,
+    scope: "org" as const,
     state: entry.state as never,
     patchState: vi.fn(async (updates: Record<string, unknown>) => {
       entry.state = { ...entry.state, ...updates };
@@ -44,7 +44,7 @@ export function createMockSkillsCollection(
 
   const ref: ResourceCollectionRef & { _store: Map<string, MockEntry> } = {
     pattern,
-    scope: "project" as const,
+    scope: "org" as const,
     get(key) {
       const k = typeof key === "string" ? key : "";
       const entry = store.get(prefixed(pattern, k));
