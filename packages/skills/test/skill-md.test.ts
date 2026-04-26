@@ -154,7 +154,14 @@ describe("substitute", () => {
     );
   });
 
-  it("replaces ${CLAUDE_SKILL_DIR} with the mount path", () => {
+  it("replaces ${SKILL_DIR} with the mount path", () => {
+    const out = substitute("cd ${SKILL_DIR}", {
+      skillDir: "/workspace/.fsdev/skills/pptx",
+    });
+    expect(out).toBe("cd /workspace/.fsdev/skills/pptx");
+  });
+
+  it("preserves ${CLAUDE_SKILL_DIR} as an alias for compatibility with Claude Code skill bodies", () => {
     const out = substitute("cd ${CLAUDE_SKILL_DIR}", {
       skillDir: "/workspace/.fsdev/skills/pptx",
     });

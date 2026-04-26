@@ -54,7 +54,7 @@ export interface SkillsCapabilityOptions {
   scope?: ScopeType;
   /**
    * Optional collection sizing overrides. The `prefix` here doubles as the
-   * skills workspace mount path: `${CLAUDE_SKILL_DIR}` resolves to
+   * skills workspace mount path: `${SKILL_DIR}` resolves to
    * `/workspace/<prefix>/<skill-name>/` when the skills collection is
    * mounted via the bash capability (the default mount setup).
    */
@@ -94,7 +94,7 @@ export function createSkillsCapability(
 
   // The collection's pattern prefix IS the workspace mount path: when the
   // bash capability auto-discovers collections, it mounts them at their
-  // pattern prefix, and `${CLAUDE_SKILL_DIR}` has to point there.
+  // pattern prefix, and `${SKILL_DIR}` has to point there.
   const collectionPrefix = options.collectionConfig?.prefix ?? collectionKey;
   const mountPath = collectionPrefix;
 

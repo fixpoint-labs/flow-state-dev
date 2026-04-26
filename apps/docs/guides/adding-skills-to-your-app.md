@@ -276,7 +276,7 @@ export const bashCap = createBashCapability({
 });
 ```
 
-That's the whole config. Bash auto-discovers every collection installed on the block and mounts each at its pattern prefix — so `skills/**` becomes `/workspace/skills/<skill-name>/<relpath>` with no additional wiring. `${CLAUDE_SKILL_DIR}` in skill bodies resolves to that path.
+That's the whole config. Bash auto-discovers every collection installed on the block and mounts each at its pattern prefix — so `skills/**` becomes `/workspace/skills/<skill-name>/<relpath>` with no additional wiring. `${SKILL_DIR}` in skill bodies resolves to that path.
 
 Attach both to your generator:
 
@@ -293,14 +293,14 @@ With the two caps together, the kitchen-sink's `check-news` skill can run a bund
 ```markdown
 Before searching, compute today's date window:
 
-python3 ${CLAUDE_SKILL_DIR}/scripts/date-window.py recent
+python3 ${SKILL_DIR}/scripts/date-window.py recent
 ```
 
 And load topic-specific guidance from reference files:
 
 ```markdown
-For AI questions, open: ${CLAUDE_SKILL_DIR}/reference/ai-news.md
-For world events, open: ${CLAUDE_SKILL_DIR}/reference/world-events.md
+For AI questions, open: ${SKILL_DIR}/reference/ai-news.md
+For world events, open: ${SKILL_DIR}/reference/world-events.md
 ```
 
 By default, writes inside `/workspace/skills/` flush back to the skills collection — which means an agent CAN add or edit skills mid-run. If you want to lock that down, mount skills read-only:

@@ -22,7 +22,7 @@ skills/
 
 The skill name is the folder name. It must match `^[a-z0-9][a-z0-9-]*$` — lowercase, hyphens allowed, no leading digits in most use cases (the regex allows a leading digit, but avoid it).
 
-Files inside the folder are bundled with the skill when it's seeded into the resource collection. They're addressable from the body via the `${CLAUDE_SKILL_DIR}` substitution (see below), so your body can say "open `${CLAUDE_SKILL_DIR}/reference/rubric.md`" and the agent knows where to find it.
+Files inside the folder are bundled with the skill when it's seeded into the resource collection. They're addressable from the body via the `${SKILL_DIR}` substitution (see below), so your body can say "open `${SKILL_DIR}/reference/rubric.md`" and the agent knows where to find it.
 
 Symlinks are rejected at read time for safety.
 
@@ -93,9 +93,11 @@ Treat the body as an imperative playbook, not a conversation. Short sections. Bu
 Two variables are substituted into the body at runtime:
 
 - `$ARGUMENTS` — the `input` string passed to `runSkill`, if any. Lets the model pass a topic or target through to the playbook.
-- `${CLAUDE_SKILL_DIR}` — the filesystem path where the skill's bundled files live when the bash capability is mounted. Derived from the skills collection's pattern prefix: for the default `skills/**` collection, it resolves to `/workspace/skills/<skill-name>/`. If you configure a custom collection prefix (`collectionConfig: { prefix: "playbooks" }`), the path follows automatically.
+- `${SKILL_DIR}` — the filesystem path where the skill's bundled files live when the bash capability is mounted. Derived from the skills collection's pattern prefix: for the default `skills/**` collection, it resolves to `/workspace/skills/<skill-name>/`. If you configure a custom collection prefix (`collectionConfig: { prefix: "playbooks" }`), the path follows automatically.
 
 Both substitutions run on the body after frontmatter is stripped. If a variable isn't used, nothing changes.
+
+`${CLAUDE_SKILL_DIR}` is preserved as an alias for `${SKILL_DIR}`. It exists so skill folders authored against [Claude Code's skill format](https://docs.claude.com/en/docs/claude-code/skills) drop in here without edits — the two systems share the same SKILL.md shape and the same substitution token under a different name. New skills should use `${SKILL_DIR}`; the alias is documented for the import case.
 
 Example:
 
@@ -108,11 +110,11 @@ description: Research a topic using the method in reference/method.md
 
 The user asked about: $ARGUMENTS
 
-Open ${CLAUDE_SKILL_DIR}/reference/method.md for the step-by-step process,
+Open ${SKILL_DIR}/reference/method.md for the step-by-step process,
 then follow it exactly.
 ```
 
-Called via `runSkill({ name: "research", input: "quantum computing" })`, the body renders with `$ARGUMENTS` replaced by `"quantum computing"` and `${CLAUDE_SKILL_DIR}` replaced by `/workspace/skills/research`.
+Called via `runSkill({ name: "research", input: "quantum computing" })`, the body renders with `$ARGUMENTS` replaced by `"quantum computing"` and `${SKILL_DIR}` replaced by `/workspace/skills/research`.
 
 ## Inline vs fork in practice
 
@@ -153,8 +155,8 @@ description: Competitor analysis. Use for landscape, comparison, or "who compete
 # Competitor Analysis
 
 Before drafting, open:
-- `${CLAUDE_SKILL_DIR}/reference/dimensions.md` — the evaluation axes
-- `${CLAUDE_SKILL_DIR}/reference/scoring-rubric.md` — how to rate each axis
+- `${SKILL_DIR}/reference/dimensions.md` — the evaluation axes
+- `${SKILL_DIR}/reference/scoring-rubric.md` — how to rate each axis
 
 Follow the sections in order.
 ```
@@ -169,7 +171,7 @@ const bashCap = createBashCapability({
 });
 ```
 
-With bash on, `${CLAUDE_SKILL_DIR}` resolves to `/workspace/skills/<skill-name>/` and reference files are reachable via `cat`, `python3`, or any other bash-side tool. Writes to files in the skills mount flush back to the skills collection — which means the agent CAN edit skills mid-run if you want that. To disable, mount it read-only:
+With bash on, `${SKILL_DIR}` resolves to `/workspace/skills/<skill-name>/` and reference files are reachable via `cat`, `python3`, or any other bash-side tool. Writes to files in the skills mount flush back to the skills collection — which means the agent CAN edit skills mid-run if you want that. To disable, mount it read-only:
 
 ```ts
 createBashCapability({
@@ -203,7 +205,7 @@ The body invokes it directly:
 ```markdown
 Before searching, compute today's date window:
 
-python3 ${CLAUDE_SKILL_DIR}/scripts/date-window.py recent
+python3 ${SKILL_DIR}/scripts/date-window.py recent
 
 The script prints JSON like `{"since": "...", "until": "...", "days": 7}` —
 use `since` in your search query's recency filter.

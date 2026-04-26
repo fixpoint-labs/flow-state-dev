@@ -83,7 +83,7 @@ export interface RunSkillToolOptions {
   catalog: ToolCatalog;
   /** Default-on initial skills, lazily seeded on first invocation. */
   initialSkills?: InitialSkill[];
-  /** Mount root for `${CLAUDE_SKILL_DIR}` substitution. Default `.fsdev/skills`. */
+  /** Mount root for `${SKILL_DIR}` substitution. Default `.fsdev/skills`. */
   mountPath?: string;
   /** Optional override of the default model used by fork-mode subagents. */
   forkModelId?: string;

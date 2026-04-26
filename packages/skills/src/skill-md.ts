@@ -8,7 +8,7 @@
  * `state._preservedFields` so user data survives a parse/serialize cycle.
  *
  * Substitution is intentionally separated from parsing — the body is stored
- * verbatim, and `$ARGUMENTS` / `${CLAUDE_SKILL_DIR}` are resolved per-invocation
+ * verbatim, and `$ARGUMENTS` / `${SKILL_DIR}` are resolved per-invocation
  * inside `substitute()`.
  */
 
@@ -507,15 +507,19 @@ export interface SubstitutionContext {
 }
 
 /**
- * Apply Claude-skill body substitutions: `$ARGUMENTS`, `$1..$9`, and
- * `${CLAUDE_SKILL_DIR}`. Unset substitutions resolve to empty strings —
- * matches Claude Code's documented behavior.
+ * Apply skill body substitutions: `$ARGUMENTS`, `$1..$9`, and `${SKILL_DIR}`.
+ * Unset substitutions resolve to empty strings.
+ *
+ * `${CLAUDE_SKILL_DIR}` is preserved as a working alias for `${SKILL_DIR}`
+ * so skill folders authored against Claude Code's skills format drop in
+ * unchanged. New skills should use `${SKILL_DIR}`.
  */
 export function substitute(body: string, ctx: SubstitutionContext): string {
   const args = ctx.arguments ?? "";
   const skillDir = ctx.skillDir ?? "";
 
   let out = body;
+  out = out.replace(/\$\{SKILL_DIR\}/g, skillDir);
   out = out.replace(/\$\{CLAUDE_SKILL_DIR\}/g, skillDir);
   out = out.replace(/\$ARGUMENTS\b/g, args);
 

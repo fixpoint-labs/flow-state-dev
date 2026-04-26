@@ -22,7 +22,7 @@ skills/
       methodology.md
 ```
 
-The `SKILL.md` has YAML frontmatter (a description, plus optional settings like `keywords`, `context`, `allowed-tools`) and a Markdown body with the playbook. Supporting files in the folder ride along and are reachable from the body via the `${CLAUDE_SKILL_DIR}` substitution.
+The `SKILL.md` has YAML frontmatter (a description, plus optional settings like `keywords`, `context`, `allowed-tools`) and a Markdown body with the playbook. Supporting files in the folder ride along and are reachable from the body via the `${SKILL_DIR}` substitution.
 
 ## When to use a skill vs a capability
 
