@@ -11,26 +11,19 @@
  * so the same code path works in local dev, on Vercel, and in
  * preview/sandbox environments without a real shell.
  */
+// Static side-effect import so Vercel's file tracer (nft) ships
+// `@vercel/sandbox` and its transitive deps to /var/task. The framework's
+// vercel adapter dynamic-imports the package with a webpackIgnore magic
+// comment for portability — that's correct for consumers who don't use
+// vercel, but it also hides the dep from nft. A real `import` statement
+// here gives nft something to follow. nft only walks static imports; a
+// dynamic `import()` (or the same call inside a conditional) doesn't
+// count regardless of how the value is referenced.
+import "@vercel/sandbox";
+
 import { createBashBlocks } from "@flow-state-dev/tools/bash";
 import type { SandboxProvider } from "@flow-state-dev/tools/bash";
 import path from "node:path";
-
-/**
- * Force Vercel's file tracer (nft) to include `@vercel/sandbox` and its
- * transitive deps in the deployment. The framework's vercel adapter
- * loads the package via a dynamic import marked with the webpackIgnore
- * magic comment, for portability (so consumers without the dep don't
- * get a build error). That comment also hides the dependency from nft,
- * so the package files don't end up in `/var/task/node_modules`.
- *
- * The static `import()` here gives nft a syntactic anchor it can walk;
- * the runtime guard keeps the import from actually firing off-Vercel.
- * `void` + `.catch` means a missing package never crashes the process.
- */
-const _vercelSandboxTracer = process.env.VERCEL
-  ? import("@vercel/sandbox").catch(() => null)
-  : null;
-void _vercelSandboxTracer;
 
 /**
  * Pick the bash sandbox provider based on the runtime environment:
