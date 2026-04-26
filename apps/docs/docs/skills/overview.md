@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Skills
 
-`@flow-state-dev/skills` — A tool-invoked playbook system. Skills are Markdown files that the agent can load on demand, giving the model specialized instructions and an optional subset of tools for one kind of task.
+`@flow-state-dev/skills` — Markdown playbooks the agent loads on demand. Each skill is a folder with a `SKILL.md` and (optionally) supporting files. When a skill activates, its body is rendered into the generator's system prompt as specialized instructions for one kind of task.
 
 ## What a skill is
 
@@ -22,31 +22,38 @@ skills/
       methodology.md
 ```
 
-The `SKILL.md` has YAML frontmatter (a description, plus optional settings) and a Markdown body with the playbook. Supporting files in the same folder (like `reference/methodology.md`) are bundled with the skill and can be referenced from the body.
-
-Skills are not auto-matched. The model chooses when a skill applies by calling a tool — `runSkill` — with the skill's name. This is the key contract: you pay the context cost of a skill's body only when the model decides it's relevant.
+The `SKILL.md` has YAML frontmatter (a description, plus optional settings like `keywords`, `context`, `allowed-tools`) and a Markdown body with the playbook. Supporting files in the folder ride along and are reachable from the body via the `${CLAUDE_SKILL_DIR}` substitution.
 
 ## When to use a skill vs a capability
 
-Both skills and capabilities extend what a generator can do. They solve different problems.
+Both extend what a generator can do. They solve different problems.
 
-- **Capability.** Code that ships with the app. Bundles resources, tools, context formatters, and helper functions. Every turn, the capability's context and tools flow into the generator whether the user's question needs them or not.
-- **Skill.** Markdown authored by anyone, editable at runtime. Loaded into the generator's system prompt only when the model invokes `runSkill`.
+- **Capability.** Code that ships with the app. Bundles resources, tools, context formatters, and helper functions. Always on.
+- **Skill.** Markdown authored by anyone, editable at runtime. Active only when matched.
 
-Reach for a capability when the behavior is always on and needs structured code (e.g. a memory store). Reach for a skill when the behavior is sometimes on, is mostly natural-language guidance, and benefits from being editable without a deploy. The two compose — the Skills package is itself shipped as a capability.
+Reach for a capability when the behavior is structural and always present (a memory store, an artifact system). Reach for a skill when the behavior is sometimes-on guidance that benefits from being editable without a deploy. The two compose — the Skills package itself is shipped as a capability.
+
+## Two ways a skill activates
+
+Skills are not always-on. Something has to decide a skill applies before its body lands in the system prompt.
+
+- **Up-front (default in this package).** A small pre-generator router — `createIntentSelector` — classifies the user message and writes any matched skills into session state. The main generator runs once with the body already in context. Three tiers, in order: literal `/<skill-name>` slash match, local keyword scan, then a fast LLM classifier when the earlier tiers don't decide.
+- **Mid-flow.** The agent sees a catalog of skills in its system prompt and calls a `runSkill` tool when one applies. Two provider hits per skill-active turn (decide, then run with skill in context).
+
+Both paths can coexist. See [Activation paths](./activation) for the full breakdown — when to use which, the tier behavior, the `bindRunSkillTool` option, and how to compose them.
 
 ## Two activation modes
 
-Every skill runs in one of two modes, declared in its frontmatter:
+A skill that has been matched runs in one of two modes, declared in its frontmatter:
 
-- **Inline** (default). Activation patches session state. The next turn's generator renders the substituted skill body into its system prompt and proceeds in the parent context with the parent's tools. Inline is the right default for guidance-style skills.
-- **Fork.** Activation spawns a subagent — a framework `generator` with `agentType: "sub"` — running the skill body as its system prompt, with a resolved subset of the catalog tools. The subagent's tool calls and output stream to the client for live observability but are excluded from the parent's conversation history. Fork is right for one-shot tasks where you want isolation and a clean return value.
+- **Inline** (default). The substituted skill body is injected into the parent generator's system prompt on the next step. The conversation continues in the parent context with the parent's tools.
+- **Fork.** Activation spawns a sub-agent — a framework `generator` with `agentType: "sub"` — running the skill body with a resolved subset of catalog tools. The sub-agent's tool calls and output stream to the client for live observability but are excluded from the parent's conversation history.
 
-Choose fork when the skill is a self-contained investigation that shouldn't bias the rest of the conversation. Choose inline when the user is continuing to collaborate with the agent and wants the skill's guidance to shape ongoing responses.
+Choose fork when the skill is a self-contained investigation that shouldn't bias the rest of the conversation. Choose inline when the user is collaborating with the agent and wants the guidance to persist.
 
 ## Wiring it up
 
-Add the capability to a generator via `uses:`. The capability installs a skills resource collection, a dynamic context formatter listing available skills, the `runSkill` tool, and a session-state slice for active skills.
+Add the capability to a generator via `uses:`. The capability installs a skills resource collection, the active-skill body formatter, and (when `bindRunSkillTool` is left at its default) the catalog context formatter and the `runSkill` tool.
 
 ```ts
 import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/skills";
@@ -63,8 +70,9 @@ const { skills: initialSkills } = await readSkillsDirectory(skillsDir);
 export const skillsCap = createSkillsCapability({
   catalog: { search: search(), fetch: fetch(), crawl: crawl() },
   initialSkills,
-  scope: "project",
+  scope: "user",
   agentType: "primary", // optional — see below
+  bindRunSkillTool: false, // optional — see Activation paths
 });
 ```
 
@@ -77,16 +85,16 @@ export const assistant = generator({
   name: "assistant",
   agentType: "primary",
   model: "preset/medium",
-  prompt: "You are a helpful assistant. When a skill matches the request, call runSkill.",
+  prompt: "You are a helpful assistant. Active skills override defaults.",
   uses: [skillsCap],
 });
 ```
 
-The first time `runSkill` executes, the initial skills from `readSkillsDirectory()` are seeded into the collection. Later edits to skill bodies (via DevTool, a CLI command, or an admin UI) take effect on the next turn. There's no redeploy.
+The first time the collection is read (whether by `intentSelector` or by the catalog context formatter), the initial skills are seeded. Later edits to skill bodies — via DevTool, a CLI, or an admin UI — take effect on the next turn. There's no redeploy.
 
 ## Main-agent scoping with `agentType`
 
-In multi-agent patterns like `planAndExecute`, `supervisor`, and `blackboard`, a coordinator delegates steps to workers. If the skills capability rides along into every worker, every step pays the token cost of skill catalog context, and workers redundantly "know" about skills the main agent is the one coordinating.
+In multi-agent patterns like `planAndExecute`, `supervisor`, and `blackboard`, a coordinator delegates steps to workers. If the skills capability rides along into every worker, every step pays for skill context, and workers redundantly know about skills the coordinator is the one matching.
 
 The `agentType` option on `createSkillsCapability` is an allowlist:
 
@@ -94,7 +102,7 @@ The `agentType` option on `createSkillsCapability` is an allowlist:
 createSkillsCapability({ /* ... */, agentType: "primary" });
 ```
 
-Set this way, the capability attaches only to generators with `agentType: "primary"` (or no `agentType` set, which is treated as primary). Workers tagged `agentType: "sub"` skip it. The default is undefined — the capability attaches everywhere, matching existing behavior.
+Set this way, the capability attaches only to generators with `agentType: "primary"` (or no `agentType` set, treated as primary). Workers tagged `agentType: "sub"` skip it. The default is undefined — the capability attaches everywhere.
 
 ## Feature-flag gating
 
@@ -121,25 +129,17 @@ export const featuresCapability = defineCapability({
 
 See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 
-## How a turn plays out
-
-1. The generator renders its system prompt. The skills capability adds a catalog listing — the names and descriptions of every enabled skill.
-2. The model decides the user's request matches one of those descriptions and calls `runSkill` with the skill's name (and optionally an argument string).
-3. The `runSkill` router reads the skill from the resource collection, substitutes `$ARGUMENTS` and `${CLAUDE_SKILL_DIR}` in the body, then dispatches to inline or fork mode.
-4. Inline mode patches session state; the next generator step's dynamic context formatter renders the substituted body into the system prompt. Fork mode runs the skill body as a sub-agent generator and returns its final text.
-5. The model continues with the playbook now in context.
-
-The trigger is the skill's `description`. Write it well.
-
 ## What ships in the package
 
 | Export | Purpose |
 |--------|---------|
-| `createSkillsCapability(options)` | The one-line wiring path. Returns a defined capability. |
+| `createSkillsCapability(options)` | The one-line wiring path. Returns a defined capability. Accepts `bindRunSkillTool: boolean` to gate the tool-call path. |
+| `createIntentSelector(options)` | The up-front skill router. Returns a `.tap`-able sequencer. See [Activation paths](./activation). |
 | `readSkillsDirectory(root)` | Walk a filesystem tree and return `InitialSkill[]` for `initialSkills`. Node only. |
 | `createRunSkillTool(options)` | The `runSkill` router as a standalone tool, for custom wiring outside the capability. |
 | `createSkillForkGenerator(options)` | The fork-mode generator, for custom wiring. |
 | `inlineActivate` | The inline-mode handler, for custom wiring. |
 | `parseSkillMd`, `serializeSkillMd` | Frontmatter + body parsing, for tools that build skills programmatically. |
+| `intentSourceSchema`, `matchedSkillSchema`, `intentResultSchema` | Runtime Zod schemas mirroring the `IntentSource` / `MatchedSkill` / `IntentResult` types from `@flow-state-dev/core`. |
 
-Continue to [Authoring skills](./authoring) for the SKILL.md format reference.
+Continue to [Activation paths](./activation) for up-front vs. mid-flow, or [Authoring skills](./authoring) for the SKILL.md format reference.

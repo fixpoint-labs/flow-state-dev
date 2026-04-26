@@ -1,5 +1,5 @@
 ---
-sidebar_position: 2
+sidebar_position: 3
 ---
 
 # Authoring Skills
@@ -46,11 +46,12 @@ Body goes here.
 
 | Key | Required | Type | Purpose |
 |-----|----------|------|---------|
-| `description` | yes | string (≤ 1024 chars) | What the model sees in the skill catalog. This is the trigger — write it well. |
+| `description` | yes | string (≤ 1024 chars) | What the up-front classifier and the `runSkill` catalog listing both see. The trigger for both activation paths — write it well. |
+| `keywords` | no | string[] | Lowercased tokens for the up-front router's tier-2 keyword scan. Plain substring matches against the user message. Ignored on the `runSkill` path. See below. |
 | `context` | no | `inline` \| `fork` | Activation mode. Default `inline`. |
 | `allowed-tools` | no | string[] | Catalog keys the skill can invoke in fork mode. Ignored in inline mode (tools come from the parent). |
-| `when-to-use` | no | string | Extra guidance appended to the description in the catalog listing. Keep it short. |
-| `disable-model-invocation` | no | boolean | When `true`, the skill can still exist in the collection but `runSkill` will reject calls for it. Useful for drafts or skills only invokable by admins. |
+| `when-to-use` | no | string | Extra guidance appended to the description for the classifier and the `runSkill` catalog. Keep it short. |
+| `disable-model-invocation` | no | boolean | When `true`, the skill stays in the collection but every activation path skips it (no slash, no keyword match, hidden from the classifier and the `runSkill` catalog). Useful for drafts or admin-only skills. |
 
 Unknown frontmatter keys are preserved but not interpreted. The parser validates the shape up front — a malformed skill won't poison the seeding pass.
 
@@ -62,6 +63,24 @@ The description is the only thing the model sees in the catalog. It decides whet
 - **Front-load the match phrase.** The model scans descriptions quickly. Putting the matching intent in the first clause beats burying it.
 
 A description that never triggers is a skill that never runs. A description that triggers on every question is a skill that pollutes every turn. Write carefully, then check the DevTool's tool-calls panel to see whether the model is activating as intended.
+
+### Writing keywords
+
+`keywords` is consumed by `createIntentSelector`'s tier-2 scan (see [Activation paths](./activation)). The scan lowercases the user message and matches each keyword as a plain substring. A match activates the skill without an LLM call.
+
+```yaml
+---
+description: Answer questions about current events…
+keywords: [news, latest, breaking, today, current, happening, recent]
+---
+```
+
+Two guidelines:
+
+- **Pick high-precision tokens.** Each keyword is a substring match — `news` matches `newscast`, `news anchor`, but also `newsletter`. Words that read as the trigger phrase in normal speech are usually fine; jargon and unusual punctuation are not.
+- **Keep the list short.** Five to ten tokens covers the obvious matches. Anything subtler should fall through to the classifier — that's what it's for.
+
+Skipping `keywords` is fine. The classifier still picks up the skill from its description; you just pay the LLM call when nothing else matched. Adding them is a cost optimization on common phrasings, not a correctness requirement.
 
 ## Body
 

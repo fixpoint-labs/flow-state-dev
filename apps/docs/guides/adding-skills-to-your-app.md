@@ -33,6 +33,7 @@ Create a `skills/` directory next to your flow definition and drop two folders i
 ```markdown
 ---
 description: Answer questions about current events or breaking news. Use when freshness matters. Enforces recency discipline and cites publication dates.
+keywords: [news, latest, breaking, today, current, happening, recent]
 ---
 
 # Check News
@@ -52,6 +53,7 @@ If the freshest source you could find is stale, open the answer with that caveat
 ```markdown
 ---
 description: Produce a competitor analysis. Use for landscape, comparison, or "who competes with X" questions. Enforces structure and source hygiene.
+keywords: [competitor, competitors, competition, compare, versus, landscape, market]
 ---
 
 # Competitor Analysis
@@ -68,6 +70,8 @@ Distinguish observable facts, reported facts, and your inferences. Mark inferenc
 ```
 
 Both are inline-mode skills. They don't set `context:` in frontmatter, so activation just patches session state and the next generator step renders the body into its system prompt.
+
+The `keywords` field is consumed by the up-front router we wire in Step 5. Each token is a plain lowercased substring match against the user message — when one hits, the skill activates without an LLM call. Picking a few obvious tokens per skill cuts a fast-model classifier call on common phrasings. Leaving them out is fine; the classifier still picks up the skill from its description.
 
 ## Step 3: Load the skills at startup
 
@@ -133,16 +137,73 @@ export const assistant = generator({
 });
 ```
 
-That's the whole wiring. The capability installs:
+That's the whole wiring. By default, the capability installs:
 
-- The `skills` resource collection (project-scoped)
+- The `skills` resource collection
 - A dynamic context formatter listing the enabled skills by name + description
 - The `runSkill` tool as a router
-- A `__activeSkills` session-state slice used by the inline-mode context formatter
+- A `__activeSkills` session-state slice used by the active-skill body formatter
 
-Run the app and ask "what's the latest on OpenAI?" The model should see `check-news` in the catalog, call `runSkill({ name: "check-news" })`, and the next turn should enforce the recency rules.
+In this default shape, the model decides activation: it reads the catalog in its system prompt and calls `runSkill` when one applies. That's the mid-flow path. Step 5 swaps it out for the up-front path.
 
-## Step 5: Scope to the main agent
+## Step 5: Activate skills up-front (recommended)
+
+The mid-flow path costs one extra provider call per skill-active turn (decide, then run with the skill in context) and pays for the catalog listing on every turn. `createIntentSelector` runs a small router before the main generator that does the activation decision once, then the generator runs once with the skill body already in its system prompt.
+
+Three tiers, each gated by whether an earlier tier resolved:
+
+1. **Slash match.** `/check-news how is OpenAI doing?` activates `check-news` deterministically. No LLM call.
+2. **Keyword scan.** Each skill's `keywords` frontmatter is matched as plain substrings of the lowercased message. No LLM call.
+3. **LLM classifier.** A `preset/fast` generator with structured output decides when the earlier tiers don't. Confidence-gated and validated against the catalog so it can't hallucinate skill names.
+
+Add `bindRunSkillTool: false` to your skills capability and build an `intentSelector`:
+
+```ts
+// lib/capabilities.ts
+import {
+  createIntentSelector,
+  createSkillsCapability,
+  readSkillsDirectory,
+} from "@flow-state-dev/skills";
+
+// ... readSkillsDirectory + tools as before ...
+
+export const skillsCap = createSkillsCapability({
+  catalog: { search: searchTool, fetch: fetchTool, crawl: crawlTool },
+  initialSkills,
+  scope: "user",
+  agentType: "primary",
+  bindRunSkillTool: false, // drop runSkill + the catalog listing
+});
+
+export const intentSelector = createIntentSelector({
+  scope: "user", // must match the skills capability
+});
+```
+
+`bindRunSkillTool: false` removes the `runSkill` tool and the skill-catalog context formatter from the capability's default presets. The active-skill body formatter stays — that's how matched skills get their substituted body into the system prompt.
+
+`intentSelector` returns a `.tap`-able sequencer. Add it to your run-sequencer ahead of the assistant generator:
+
+```ts
+// flow.ts
+import { intentSelector } from "./lib/capabilities";
+
+const runSequencer = sequencer({ name: "run", inputSchema })
+  .tap(applyRequestedMode)
+  .tap(intentSelector) // <-- new
+  .then(assistantGenerator);
+```
+
+That's it. Run the app and try the three tiers:
+
+- `/check-news what happened today?` → tier 1 hits, no LLM classifier call.
+- `What's the latest in AI?` → tier 2 matches `latest`, no LLM call.
+- `Summarize the report I uploaded.` → no slash, no keyword match, tier 3 fires the classifier and decides nothing applies.
+
+For a deeper breakdown of when to keep the mid-flow path or compose both, see [Activation paths](/docs/skills/activation).
+
+## Step 6: Scope to the main agent
 
 If you compose your assistant with multi-agent patterns (`planAndExecute`, `supervisor`, `blackboard`), the pattern factory wires a coordinator and workers. Without scoping, skills attach to both — every worker carries the skill catalog even though only the coordinator needs it to decide on activation.
 
@@ -157,7 +218,7 @@ export const skillsCap = createSkillsCapability({
 
 If you don't use multi-agent patterns, leave this off. The capability defaults to attaching everywhere.
 
-## Step 6: Gate behind a feature flag
+## Step 7: Gate behind a feature flag
 
 Users sometimes want a plain chat with no playbook coloring the response. Put skills behind a feature flag users can toggle:
 
@@ -189,7 +250,7 @@ Then `uses: [appCap]` on your generator instead of `uses: [skillsCap]`. When `fe
 
 Dynamic `uses:` entries re-run each turn, so the feature flag takes effect immediately without a new session.
 
-## Step 7: Make skill bundle files reachable from bash
+## Step 8: Make skill bundle files reachable from bash
 
 Skills can bundle more than `SKILL.md` — reference docs, Python scripts, anything you want the agent to open at activation time. For those files to actually be readable inside the agent's workspace, put the bash capability on the generator alongside skills:
 
@@ -239,7 +300,7 @@ createBashCapability({
 
 If you don't use the bash capability, skip this step — reference files remain in the skills resource collection, just not on any filesystem path the agent can reach.
 
-## Step 8: Let users edit skills at runtime
+## Step 9: Let users edit skills at runtime
 
 This is where the Markdown-as-resource design earns its keep. Skills live in the project-scoped `skills` collection. Any surface that can write to a resource can edit them:
 
@@ -251,7 +312,7 @@ The seeding step runs once per collection lifetime — after the initial seed, b
 
 If you want to ship skill updates alongside code, the pattern most apps use is: edit the source file, bump a version, and run a migration that overwrites the resource content. The Skills package doesn't prescribe this; it just persists what's in the collection.
 
-## Step 9 (optional): Fork mode for isolated tasks
+## Step 10 (optional): Fork mode for isolated tasks
 
 Some skills are better as one-shot investigations than as guidance the agent carries forward. Add `context: fork` to the frontmatter:
 
@@ -276,11 +337,20 @@ The parent sees only a single `runSkill` tool call with the sub-agent's final te
 
 ## Verifying it works
 
-Run the app. Open DevTool. Ask a question that should match a skill. You should see:
+Run the app. Open DevTool. Ask a question that should match a skill. What you should see depends on which path you wired:
 
-1. The generator's tool list includes `runSkill` (and the three catalog tools: `search`, `fetch`, `crawl`).
+**Up-front path (Step 5 wired in):**
+
+1. An `intent-classifier` block appears in the trace timeline as `agentType: "trace"` (visible in DevTool, not in the conversation history). It only fires on tier-3 turns; slash and keyword matches skip it.
+2. Session state's `__activeSkills` carries the matched skill for the duration of the turn.
+3. The next generator step's system prompt contains the active-skill body inside a `<skills>` tag block — no separate catalog listing, no `runSkill` tool in the tool list.
+4. If you wired the active-skills clientData projection, your top bar should show one badge per active skill labeled with the matching tier (`slash` / `keyword` / `classifier`).
+
+**Mid-flow path (Step 5 skipped):**
+
+1. The generator's tool list includes `runSkill` plus the catalog tools.
 2. The system prompt includes the skills catalog — look for "Available skills: - check-news: ..." in the rendered system message.
 3. When the model invokes `runSkill`, a new `tool_call_progress` item appears, and the next generator step's system prompt contains the activated skill's body.
 4. Toggling `features.skills` off and asking again: `runSkill` is gone from the tool list, and the catalog section vanishes from the system prompt.
 
-If the skill never activates, check the description first. That's the trigger the model scans.
+If a skill never activates on either path, the trigger is the description. The up-front path uses it for tier-3 classification; the mid-flow path puts it in the catalog the model scans. `keywords` cuts a classifier call but won't help a poorly-described skill activate at all.
