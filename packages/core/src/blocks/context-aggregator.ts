@@ -243,7 +243,10 @@ async function mergeValueIntoKey<TInput, TCtx extends BlockContext>(
 
   if (isContextObject(value)) {
     let target: TagAccumulator;
-    if (existing === undefined) {
+    // Treat an empty array as a still-unfilled placeholder (see the null
+    // branch in mergeObjectInto): it reserved order but committed to no
+    // leaf shape yet, so an object contributor can claim it.
+    if (existing === undefined || (Array.isArray(existing) && existing.length === 0)) {
       target = {};
       tagged[key] = target;
     } else if (Array.isArray(existing)) {

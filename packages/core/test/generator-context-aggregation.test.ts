@@ -116,6 +116,22 @@ describe("aggregateContextEntries", () => {
     expect(result.tagged.documents).toEqual(["d"]);
   });
 
+  it("placeholder remains type-neutral until a contributor commits a leaf shape", async () => {
+    const result = await aggregateContextEntries(
+      [
+        { documents: null, memory: "m" },
+        { documents: { recent: "a" } },
+      ],
+      {},
+      fakeCtx
+    );
+    expect(result.taggedOrder).toEqual(["documents", "memory"]);
+    expect(result.tagged).toEqual({
+      documents: { recent: ["a"] },
+      memory: ["m"],
+    });
+  });
+
   it("resolves a function value and re-enters the algorithm", async () => {
     const result = await aggregateContextEntries(
       [{ documents: () => "lazy doc" }],
