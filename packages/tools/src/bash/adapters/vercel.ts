@@ -65,6 +65,9 @@ export function createVercelAdapter(sandbox: VercelSandboxInstance): Sandbox {
  * Resolve a Vercel sandbox — reconnect to an existing one via `sandboxId`
  * or provision a new one via `Sandbox.create(createOptions)`.
  *
+ * Wraps `APIError`s from the SDK with the response body so deploy logs
+ * carry the actionable detail instead of just `Status code 400 is not ok`.
+ *
  * @returns The adapter sandbox and the resolved sandbox ID for persistence.
  */
 export async function resolveVercelSandbox(opts: {
@@ -72,11 +75,53 @@ export async function resolveVercelSandbox(opts: {
   sandboxId?: string;
   createOptions?: unknown;
 }): Promise<{ sandbox: Sandbox; sandboxId: string }> {
-  if (opts.sandboxId) {
-    const raw = await opts.Sandbox.get({ sandboxId: opts.sandboxId });
-    return { sandbox: createVercelAdapter(raw), sandboxId: opts.sandboxId };
-  }
+  try {
+    if (opts.sandboxId) {
+      const raw = await opts.Sandbox.get({ sandboxId: opts.sandboxId });
+      return { sandbox: createVercelAdapter(raw), sandboxId: opts.sandboxId };
+    }
 
-  const raw = await opts.Sandbox.create(opts.createOptions);
-  return { sandbox: createVercelAdapter(raw), sandboxId: raw.sandboxId };
+    const raw = await opts.Sandbox.create(opts.createOptions);
+    return { sandbox: createVercelAdapter(raw), sandboxId: raw.sandboxId };
+  } catch (err) {
+    throw enrichVercelError(err, opts.sandboxId);
+  }
+}
+
+/**
+ * The SDK's `APIError` ships the upstream response body on `.json` / `.text`
+ * but its `.message` is just `response.statusText` (e.g. `Status code 400 is
+ * not ok`), which is useless in deploy logs. Re-throw with the body inlined
+ * and a diagnostic hint when the failure looks like a credentials problem.
+ *
+ * Detection is structural — we don't import APIError to avoid taking a
+ * peer dep on @vercel/sandbox at the framework level.
+ */
+function enrichVercelError(err: unknown, sandboxId?: string): Error {
+  if (!(err instanceof Error)) return new Error(String(err));
+
+  const sdkErr = err as Error & {
+    response?: { status?: number; statusText?: string };
+    json?: unknown;
+    text?: string;
+  };
+  const status = sdkErr.response?.status;
+  if (status === undefined) return err;
+
+  const detail =
+    (sdkErr.json && JSON.stringify(sdkErr.json)) ||
+    sdkErr.text ||
+    sdkErr.response?.statusText ||
+    "(no response body)";
+
+  const hint =
+    status === 400 || status === 401 || status === 403
+      ? " — likely an OIDC / credentials problem. Confirm OIDC is enabled on the Vercel project (Project Settings → OIDC) and that the team has Vercel Sandbox enabled."
+      : "";
+
+  const action = sandboxId ? `get(sandboxId="${sandboxId}")` : "create()";
+  return new Error(
+    `Vercel Sandbox.${action} failed with status ${status}: ${detail}${hint}`,
+    { cause: err },
+  );
 }
