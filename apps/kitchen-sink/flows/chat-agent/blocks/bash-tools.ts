@@ -16,6 +16,23 @@ import type { SandboxProvider } from "@flow-state-dev/tools/bash";
 import path from "node:path";
 
 /**
+ * Force Vercel's file tracer (nft) to include `@vercel/sandbox` and its
+ * transitive deps in the deployment. The framework's vercel adapter
+ * loads the package via a dynamic import marked with the webpackIgnore
+ * magic comment, for portability (so consumers without the dep don't
+ * get a build error). That comment also hides the dependency from nft,
+ * so the package files don't end up in `/var/task/node_modules`.
+ *
+ * The static `import()` here gives nft a syntactic anchor it can walk;
+ * the runtime guard keeps the import from actually firing off-Vercel.
+ * `void` + `.catch` means a missing package never crashes the process.
+ */
+const _vercelSandboxTracer = process.env.VERCEL
+  ? import("@vercel/sandbox").catch(() => null)
+  : null;
+void _vercelSandboxTracer;
+
+/**
  * Pick the bash sandbox provider based on the runtime environment:
  *
  *   - `VERCEL` set            → Vercel Sandbox (requires `@vercel/sandbox`)

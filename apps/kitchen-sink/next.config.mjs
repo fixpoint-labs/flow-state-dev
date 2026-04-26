@@ -8,18 +8,10 @@ const nextConfig = {
   outputFileTracingRoot: resolve(__dirname, "../../"),
   // Packages bundled by the framework's adapters via dynamic `import()` —
   // mark as external so Next.js leaves the require alone and Vercel
-  // deploys them to node_modules instead of inlining into a chunk.
+  // deploys them to node_modules instead of inlining into a chunk. The
+  // tracer in bash-tools.ts adds a static `import("@vercel/sandbox")`
+  // so nft follows the package and its transitive deps to the deploy.
   serverExternalPackages: ["pg", "@vercel/sandbox"],
-  // `serverExternalPackages` solves bundling, but the framework's
-  // `import(/* webpackIgnore: true */ "@vercel/sandbox")` hides the
-  // dependency from Vercel's file tracer (nft). Force-include it for
-  // every server route so the package files reach the deployment.
-  outputFileTracingIncludes: {
-    "/**/*": [
-      "../../node_modules/.pnpm/@vercel+sandbox@*/node_modules/@vercel/sandbox/**",
-      "./node_modules/@vercel/sandbox/**",
-    ],
-  },
   transpilePackages: [
     "@flow-state-dev/core",
     "@flow-state-dev/client",
