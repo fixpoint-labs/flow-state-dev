@@ -158,7 +158,7 @@ export function createSkillsCapability(
         tools: [runSkillTool, ...catalogTools],
       },
       context: {
-        context: [catalogContext, activeContext],
+        context: { skills: [catalogContext, activeContext] },
       },
       default: ["tools", "context"],
     },

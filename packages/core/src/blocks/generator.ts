@@ -137,9 +137,10 @@ export type GeneratorSlotReference<TInput = unknown, TCtx = BlockContext> = (
 
 /**
  * Object-form context: keys become XML tag names. Values may be strings,
- * string arrays, nested `ContextObject`s (recursive), functions resolved at
- * render time, or `null`/`undefined` placeholders that reserve insertion order
- * but emit nothing if no contributor fills them.
+ * nested `ContextObject`s (recursive), functions resolved at render time,
+ * heterogeneous arrays of those (strings, functions, nested objects mixed),
+ * or `null`/`undefined` placeholders that reserve insertion order but emit
+ * nothing if no contributor fills them.
  *
  * Authored keys may be `camelCase`, `snake_case`, or `kebab-case` — all
  * normalize to kebab-case before aggregation, so contributions to the same
@@ -152,19 +153,31 @@ export type GeneratorSlotReference<TInput = unknown, TCtx = BlockContext> = (
  *     documents: [docA, docB],
  *     userPreferences: () => loadPrefs(),
  *     memory: { shortTerm: items, longTerm: () => loadLongTerm() },
+ *     skills: [catalogContext, activeContext],
  *   },
  * })
  */
 export type ContextObject<TInput = unknown, TCtx = BlockContext> = {
   [tagName: string]:
     | string
-    | string[]
     | ContextObject<TInput, TCtx>
-    | ((input: TInput, ctx: TCtx) =>
-        MaybePromise<string | string[] | ContextObject<TInput, TCtx> | null | undefined>)
+    | ContextValueFn<TInput, TCtx>
+    | Array<
+        | string
+        | ContextObject<TInput, TCtx>
+        | ContextValueFn<TInput, TCtx>
+        | null
+        | undefined
+      >
     | null
     | undefined;
 };
+
+/** Function value within a `ContextObject` — resolved at render time. */
+export type ContextValueFn<TInput = unknown, TCtx = BlockContext> = (
+  input: TInput,
+  ctx: TCtx
+) => unknown | Promise<unknown>;
 
 export type GeneratorSlotEntry<TInput = unknown, TCtx = BlockContext> =
   | string

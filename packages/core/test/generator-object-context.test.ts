@@ -236,6 +236,47 @@ describe("generator object-form context (FIX-434)", () => {
     );
   });
 
+  it("aggregates a heterogeneous array of strings + functions under one tag", async () => {
+    const captured: CapturedCall[] = [];
+    const catalogFn = async () => "catalog block";
+    const activeFn = async () => "active skill body";
+    const block = generator({
+      name: "fn-array",
+      model: "mock-model",
+      prompt: "P",
+      context: { skills: ["preamble", catalogFn, activeFn] },
+    });
+    const ctx = createMockContext({
+      resolveModel: () => makeCapturingModel(captured),
+    });
+    await block.run({ value: 1 }, ctx);
+    const sys = systemMessages(captured[0]).map((m) => m.content).join("\n");
+    expect(sys).toContain("<skills>");
+    expect(sys).toContain("preamble");
+    expect(sys).toContain("catalog block");
+    expect(sys).toContain("active skill body");
+    expect(sys).toContain("</skills>");
+  });
+
+  it("skips null/undefined entries inside a function array", async () => {
+    const captured: CapturedCall[] = [];
+    const inactiveFn = async () => null;
+    const activeFn = async () => "rendered";
+    const block = generator({
+      name: "fn-array-null",
+      model: "mock-model",
+      prompt: "P",
+      context: { skills: [inactiveFn, activeFn] },
+    });
+    const ctx = createMockContext({
+      resolveModel: () => makeCapturingModel(captured),
+    });
+    await block.run({ value: 1 }, ctx);
+    const sys = systemMessages(captured[0]).map((m) => m.content).join("\n");
+    expect(sys).toContain("<skills>");
+    expect(sys).toContain("rendered");
+  });
+
   it("rejects type mismatches between contributors", async () => {
     const captured: CapturedCall[] = [];
     const block = generator({

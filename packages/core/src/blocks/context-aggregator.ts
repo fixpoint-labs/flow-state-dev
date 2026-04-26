@@ -24,16 +24,38 @@ import type { BlockContext } from "../types/block";
 /**
  * A value authored under a tag key in object-form context.
  *
- * String, string array, nested object, function, and null/undefined are all
- * permitted. Function values are resolved at render time and may return any
- * of the other shapes (or another function — though one level of resolution
- * is the supported pattern).
+ * String, nested object, function, heterogeneous array (strings, functions,
+ * and nested objects mixed together), and null/undefined are all permitted.
+ * Function values are resolved at render time and may return any of the
+ * non-array shapes (or `null`/`undefined`).
+ *
+ * Heterogeneous arrays let multiple contributors aggregate under the same
+ * tag — e.g. `{ skills: [catalogFn, activeFn] }` resolves both functions and
+ * concatenates their string output inside one `<skills>` block.
  */
 export type ContextValue<TInput = unknown, TCtx = BlockContext> =
   | string
-  | string[]
   | ContextObject<TInput, TCtx>
-  | ((input: TInput, ctx: TCtx) => unknown | Promise<unknown>)
+  | ContextValueFn<TInput, TCtx>
+  | Array<ContextValueLeaf<TInput, TCtx>>
+  | null
+  | undefined;
+
+/** Function value within a `ContextObject` — resolved at render time. */
+export type ContextValueFn<TInput = unknown, TCtx = BlockContext> = (
+  input: TInput,
+  ctx: TCtx
+) => unknown | Promise<unknown>;
+
+/**
+ * Element type for arrays inside a `ContextValue`. Excludes nested arrays —
+ * arrays of arrays aren't authored directly; if you need to compose multiple
+ * contributors, list them as siblings in the same array.
+ */
+export type ContextValueLeaf<TInput = unknown, TCtx = BlockContext> =
+  | string
+  | ContextObject<TInput, TCtx>
+  | ContextValueFn<TInput, TCtx>
   | null
   | undefined;
 
@@ -208,19 +230,15 @@ async function mergeValueIntoKey<TInput, TCtx extends BlockContext>(
   }
 
   if (Array.isArray(value)) {
-    const strValues = value.filter((v): v is string => typeof v === "string");
-    if (existing === undefined) {
-      tagged[key] = [...strValues];
-      return;
+    for (const item of value) {
+      let resolved: unknown = item;
+      if (typeof resolved === "function") {
+        resolved = await (resolved as (i: TInput, c: TCtx) => unknown)(input, ctx);
+      }
+      if (resolved == null) continue;
+      await mergeValueIntoKey(tagged, key, resolved, input, ctx, source);
     }
-    if (Array.isArray(existing)) {
-      existing.push(...strValues);
-      return;
-    }
-    throw new Error(
-      `Context key "${key}" type mismatch: a string array was contributed ` +
-      `after a nested-object contribution.`
-    );
+    return;
   }
 
   if (isContextObject(value)) {
@@ -273,13 +291,14 @@ async function mergeValueIntoKey<TInput, TCtx extends BlockContext>(
  * for nested function values inside `ContextObject`s.
  */
 export function objectFormHasNestedFunction(value: unknown): boolean {
-  if (value == null || typeof value !== "object") return false;
+  if (value == null) return false;
+  if (typeof value === "function") return true;
+  if (typeof value !== "object") return false;
   if (Array.isArray(value)) {
     return value.some(objectFormHasNestedFunction);
   }
   if (!isContextObject(value)) return false;
   for (const v of Object.values(value as Record<string, unknown>)) {
-    if (typeof v === "function") return true;
     if (objectFormHasNestedFunction(v)) return true;
   }
   return false;
