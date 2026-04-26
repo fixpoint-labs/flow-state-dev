@@ -65,15 +65,15 @@ export interface RouterConfig<
   // Resource schemas — optional, default to undefined (no typed resources)
   TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
-  TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TOrgResourceSchemas extends ZodTypeAny | undefined = undefined,
   // Resource definitions — optional, provide typing AND auto-installation
   TSessionResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TUserResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TProjectResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TOrgResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   // Derive-once: map resource schemas/definitions to typed ResourceRef records
   TSessionResources extends Record<string, AnyResourceRef> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
-  TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TOrgResources extends Record<string, AnyResourceRef> = InferBlockResources<TOrgResourceSchemas, TOrgResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   // Capability type inference
   TUses extends readonly UsesEntry[] = readonly [],
@@ -86,10 +86,10 @@ export interface RouterConfig<
   sequencerStateSchema?: TSequencerStateSchema;
   sessionResourceSchemas?: TSessionResourceSchemas;
   userResourceSchemas?: TUserResourceSchemas;
-  orgResourceSchemas?: TProjectResourceSchemas;
+  orgResourceSchemas?: TOrgResourceSchemas;
   sessionResources?: TSessionResourceDefs;
   userResources?: TUserResourceDefs;
-  orgResources?: TProjectResourceDefs;
+  orgResources?: TOrgResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
   targetStateSchemas?: TTargetSchemas;
   /** Capabilities to install. Merges resources, state schemas, targets,
@@ -100,7 +100,7 @@ export interface RouterConfig<
     input: TInput,
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TOrgState,
-      TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas,
+      TSessionResources, TUserResources, TOrgResources, TSequencerState, unknown, TTargetSchemas,
       TCapabilities
     >
   ) => Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>;
@@ -110,7 +110,7 @@ export interface RouterConfig<
     input: TInput,
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TOrgState,
-      TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas,
+      TSessionResources, TUserResources, TOrgResources, TSequencerState, unknown, TTargetSchemas,
       TCapabilities
     >
   ) => Promise<boolean> | boolean;
@@ -138,13 +138,13 @@ export function router<
   TSequencerState extends object = InferStateFromSchema<TSequencerStateSchema>,
   TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
-  TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TOrgResourceSchemas extends ZodTypeAny | undefined = undefined,
   TSessionResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TUserResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TProjectResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TOrgResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TSessionResources extends Record<string, AnyResourceRef> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
-  TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TOrgResources extends Record<string, AnyResourceRef> = InferBlockResources<TOrgResourceSchemas, TOrgResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   TUses extends readonly UsesEntry[] = readonly [],
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
@@ -153,9 +153,9 @@ export function router<
     TInputSchema, TOutputSchema, TInput, TOutput,
     TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema,
     TRequestState, TSessionState, TUserState, TOrgState, TSequencerState,
-    TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
-    TSessionResourceDefs, TUserResourceDefs, TProjectResourceDefs,
-    TSessionResources, TUserResources, TProjectResources, TTargetSchemas,
+    TSessionResourceSchemas, TUserResourceSchemas, TOrgResourceSchemas,
+    TSessionResourceDefs, TUserResourceDefs, TOrgResourceDefs,
+    TSessionResources, TUserResources, TOrgResources, TTargetSchemas,
     TUses, TCapabilities
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
@@ -172,11 +172,19 @@ export function router<
       )
     : routerResources;
 
+  // Bubble `requireOrg` up from any route block. Without this, a route
+  // declaring `requireOrg: true` would be silently lost — the router's
+  // requiresOrg would stay `false`, and the flow's HTTP layer wouldn't
+  // reject requests against unbound sessions as intended.
+  const routesRequireOrg = config.routes !== undefined
+    && config.routes.some((route) => route.requiresOrg);
+
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "router",
     config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     declaredResources,
     resolvedCapabilities,
+    requiresOrg: routesRequireOrg,
     execute: async (input, ctx) => {
       const candidate = (config.execute as (input: TInput, ctx: BlockContext) =>
         Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>

@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, handler, sequencer } from "../src";
+import { defineFlow, handler, router, sequencer } from "../src";
 
 const noopSchema = z.object({ value: z.string() });
 
@@ -134,5 +134,63 @@ describe("requireOrg bubbling", () => {
     })();
 
     expect(flow.requiresOrg).toBe(true);
+  });
+
+  it("a router bubbles requireOrg from any of its route blocks", () => {
+    const orgRoute = handler({
+      name: "org-route",
+      inputSchema: noopSchema,
+      outputSchema: noopSchema,
+      requireOrg: true,
+      execute: (input) => input,
+    });
+
+    const plainRoute = handler({
+      name: "plain-route",
+      inputSchema: noopSchema,
+      outputSchema: noopSchema,
+      execute: (input) => input,
+    });
+
+    const r = router({
+      name: "org-router",
+      inputSchema: noopSchema,
+      outputSchema: noopSchema,
+      routes: [plainRoute, orgRoute],
+      execute: () => orgRoute,
+    });
+
+    expect(r.requiresOrg).toBe(true);
+
+    const flow = defineFlow({
+      kind: "router-flow",
+      actions: { run: { inputSchema: noopSchema, block: r } },
+    })();
+    expect(flow.requiresOrg).toBe(true);
+  });
+
+  it("a router with no route requiring org reports requiresOrg=false", () => {
+    const a = handler({
+      name: "a",
+      inputSchema: noopSchema,
+      outputSchema: noopSchema,
+      execute: (input) => input,
+    });
+    const b = handler({
+      name: "b",
+      inputSchema: noopSchema,
+      outputSchema: noopSchema,
+      execute: (input) => input,
+    });
+
+    const r = router({
+      name: "plain-router",
+      inputSchema: noopSchema,
+      outputSchema: noopSchema,
+      routes: [a, b],
+      execute: () => a,
+    });
+
+    expect(r.requiresOrg).toBe(false);
   });
 });

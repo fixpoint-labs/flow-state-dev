@@ -35,15 +35,15 @@ export interface HandlerConfig<
   // Resource schemas — optional, default to undefined (no typed resources)
   TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
-  TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TOrgResourceSchemas extends ZodTypeAny | undefined = undefined,
   // Resource definitions — optional, provide typing AND auto-installation
   TSessionResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TUserResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TProjectResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TOrgResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   // Derive-once: map resource schemas/definitions to typed ResourceRef records
   TSessionResources extends Record<string, AnyResourceRef> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
-  TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TOrgResources extends Record<string, AnyResourceRef> = InferBlockResources<TOrgResourceSchemas, TOrgResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   // Capability type inference
   TUses extends readonly UsesEntry[] = readonly [],
@@ -57,10 +57,10 @@ export interface HandlerConfig<
   parentInputSchema?: TParentInputSchema;
   sessionResourceSchemas?: TSessionResourceSchemas;
   userResourceSchemas?: TUserResourceSchemas;
-  orgResourceSchemas?: TProjectResourceSchemas;
+  orgResourceSchemas?: TOrgResourceSchemas;
   sessionResources?: TSessionResourceDefs;
   userResources?: TUserResourceDefs;
-  orgResources?: TProjectResourceDefs;
+  orgResources?: TOrgResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
   targetStateSchemas?: TTargetSchemas;
   /** Capabilities to install. Merges resources, state schemas, targets,
@@ -70,7 +70,7 @@ export interface HandlerConfig<
     input: TInput,
     ctx: BlockContext<
       TRequestState, TSessionState, TUserState, TOrgState,
-      TSessionResources, TUserResources, TProjectResources, TSequencerState, TParentInput, TTargetSchemas,
+      TSessionResources, TUserResources, TOrgResources, TSequencerState, TParentInput, TTargetSchemas,
       TCapabilities
     >
   ) => Promise<TOutput> | TOutput;
@@ -95,13 +95,13 @@ export function handler<
   TParentInput = TParentInputSchema extends ZodTypeAny ? z.infer<TParentInputSchema> : unknown,
   TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
   TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
-  TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
+  TOrgResourceSchemas extends ZodTypeAny | undefined = undefined,
   TSessionResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TUserResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TProjectResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TOrgResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
   TSessionResources extends Record<string, AnyResourceRef> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
   TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
-  TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TOrgResources extends Record<string, AnyResourceRef> = InferBlockResources<TOrgResourceSchemas, TOrgResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   TUses extends readonly UsesEntry[] = readonly [],
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
@@ -110,9 +110,9 @@ export function handler<
     TInputSchema, TOutputSchema, TInput, TOutput,
     TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema, TParentInputSchema,
     TRequestState, TSessionState, TUserState, TOrgState, TSequencerState, TParentInput,
-    TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
-    TSessionResourceDefs, TUserResourceDefs, TProjectResourceDefs,
-    TSessionResources, TUserResources, TProjectResources, TTargetSchemas,
+    TSessionResourceSchemas, TUserResourceSchemas, TOrgResourceSchemas,
+    TSessionResourceDefs, TUserResourceDefs, TOrgResourceDefs,
+    TSessionResources, TUserResources, TOrgResources, TTargetSchemas,
     TUses, TCapabilities
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
