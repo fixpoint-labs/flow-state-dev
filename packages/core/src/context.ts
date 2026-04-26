@@ -30,17 +30,27 @@ export type ContextFunction = (input: unknown, ctx: BlockContext) => string;
  * any runtime schema validation. The actual state values are read from
  * `BlockContext` scope handles at execution time.
  *
+ * The returned function fits anywhere a `GeneratorSlotEntry` does. Two
+ * common shapes:
+ *
+ * - **Array form:** `context: [researchCtx]` — the function's string return
+ *   becomes a system message of its own.
+ * - **Object form:** `context: { research: researchCtx }` — the function's
+ *   return is wrapped in `<research>...</research>` and aggregates with any
+ *   other contributions to the `research` key from capabilities or other
+ *   slots. See `ContextObject` for the full object-form contract.
+ *
  * @example
  * ```ts
  * import { contextFn } from "@flow-state-dev/core";
- * import { section, list } from "@flow-state-dev/core/prompt";
+ * import { list } from "@flow-state-dev/core/prompt";
  *
  * const researchCtx = contextFn(
  *   { session: sessionStateSchema },
- *   ({ session }) => section("Research", list(session.coveredTopics))
+ *   ({ session }) => list(session.coveredTopics)
  * );
  *
- * // Use in a generator block:
+ * // Object form — wrapped under <research> and aggregated cross-source.
  * generator({
  *   name: "researcher",
  *   context: { research: researchCtx },

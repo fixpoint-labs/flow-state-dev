@@ -208,6 +208,57 @@ Each slot can be a string, object, array, or async function `(input, ctx) => val
 
 The `history` slot supports additional shorthands: `true` auto-fetches session history with defaults, and an options object (e.g. `{ limit: 8 }`) passes those options to `items.history()`. A function still works for full control.
 
+#### Object-form `context` (XML tag aggregation)
+
+`context` can be authored as an object whose keys become XML tag names in the rendered system message. When several sources (the generator's own config plus capabilities installed via `uses`) contribute to the same key, their values aggregate inside one tag rather than scattering across separate sections.
+
+```ts
+generator({
+  prompt: "You are a research assistant.",
+  context: {
+    documents: [doc1, doc2],
+    userPreferences: () => loadPrefs(),
+    memory: {
+      shortTerm: shortTermItems,
+      longTerm: () => loadLongTerm(),
+    },
+    placeholder: null, // reserves order; omitted from output if nobody fills it
+  },
+  uses: [capA, capB], // both may contribute additional `documents` entries
+});
+```
+
+Renders to one combined system message of the form:
+
+```
+You are a research assistant.
+
+<documents>
+  ...doc1...
+  ...doc2...
+  ...capA documents...
+  ...capB documents...
+</documents>
+<user-preferences>
+  ...
+</user-preferences>
+<memory>
+  <short-term>...</short-term>
+  <long-term>...</long-term>
+</memory>
+```
+
+Rules:
+
+- **Key normalization.** Keys may be authored as `camelCase`, `snake_case`, or `kebab-case` — all normalize to kebab-case before aggregation, so contributions to the same logical name from different sources collapse into one tag.
+- **Value types.** String, string array, nested object (recursive), function returning any of those, and `null`/`undefined` (placeholder) are all permitted. Object values produce nested tags — wrap in `JSON.stringify(...)` if you want JSON content inside a tag.
+- **Aggregation.** Same-key string contributions concatenate inside the tag in author order. Same-key nested-object contributions deep-merge. Mixing scalar and nested-object contributions on the same key throws.
+- **Ordering.** Top-level tag positions follow first-insertion order across user config → static capability presets → dynamic capability resolvers. `null` placeholders reserve a slot up front for documentation-style ordering.
+- **String leaves are escaped.** `<`, `>`, and `&` in user data are HTML-escaped so they aren't read by the model as tags. Nested-tag emission is unaffected.
+- **Reserved tag names.** Names that collide with framework-emitted tags or model-conditioned protocol names (e.g., `tool_use`, `thinking`, `system`) error at render time. See `RESERVED_TAG_NAMES` in `@flow-state-dev/core/prompt`.
+
+The original array form continues to work unchanged. String entries in an array slot still emit as their own additional system messages, in author order, after the combined prompt+tagged-context message.
+
 ### Tool Loop
 
 - Generator owns the tool loop internally — bounded by `maxIterations` (or runtime default)

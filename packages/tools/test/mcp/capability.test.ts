@@ -72,10 +72,9 @@ describe("createMcpCapability", () => {
     const contextEntries = (cap as any).__presetDefs.guidance.context;
     const ctx = { request: { state: {} }, session: { state: {} } };
     const first = contextEntries[0](null, ctx);
-    expect(first).toContain("## MCP Tools");
-    expect(first).toContain("linear");
-    expect(first).toContain("Project management");
-    expect(first).toContain("linear");
+    expect(first.mcp).toContain("## MCP Tools");
+    expect(first.mcp).toContain("linear");
+    expect(first.mcp).toContain("Project management");
   });
 
   it("honors a custom formatGuidance", async () => {
@@ -85,7 +84,7 @@ describe("createMcpCapability", () => {
     });
     const ctx = { request: { state: {} }, session: { state: {} } };
     const out = (cap as any).__presetDefs.guidance.context[0](null, ctx);
-    expect(out).toBe("custom guidance");
+    expect(out).toEqual({ mcp: "custom guidance" });
   });
 
   it("honors enrichDescriptions: false by passing the original description through", async () => {

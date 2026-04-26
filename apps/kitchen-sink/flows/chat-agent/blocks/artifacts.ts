@@ -213,9 +213,14 @@ export const artifactsCapability = defineCapability({
   sessionResources: artifactResources,
 
   presets: {
-    /** Context formatter: artifact title + summary inventory for the LLM. */
+    /**
+     * Context formatter: artifact title + summary inventory for the LLM.
+     *
+     * Object-form so the inventory lands inside an `<artifacts>` tag and
+     * any other capability contributing to `artifacts` aggregates with it.
+     */
     inventory: {
-      context: [artifactListContext],
+      context: { artifacts: artifactListContext },
     },
     /** Generator tools: read and write artifacts. */
     tools: {

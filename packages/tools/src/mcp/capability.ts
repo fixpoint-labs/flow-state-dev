@@ -72,7 +72,7 @@ export function createMcpCapability(
         },
       },
       guidance: {
-        context: [(_input, _ctx) => formatGuidance(manager.getCatalog())],
+        context: [(_input, _ctx) => ({ mcp: formatGuidance(manager.getCatalog()) })],
       },
       default: ["tools", "guidance"],
     },

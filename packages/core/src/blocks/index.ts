@@ -11,6 +11,7 @@ export type {
   GeneratorLoopState,
   GeneratorRepairConfig,
   GeneratorRepairMode,
+  ContextObject,
   GeneratorSlot,
   GeneratorSlotEntry,
   GeneratorSlotRefOptions,

@@ -14,6 +14,7 @@ import type {
   CapabilityRef,
   ConfiguredCapability,
   DefinedCapability,
+  PresetContextEntry,
   PresetDef,
 } from "./types";
 
@@ -200,7 +201,7 @@ export type MergedCapabilitySurface = {
   projectStateSchema: ZodTypeAny | undefined;
   sequencerStateSchema: ZodTypeAny | undefined;
   targetStateSchemas: Record<string, ZodTypeAny> | undefined;
-  contextEntries: Array<(input: any, ctx: any) => any>;
+  contextEntries: Array<PresetContextEntry>;
   toolEntries: Array<GeneratorTool[] | ((ctx: BlockContext) => GeneratorTool[] | Promise<GeneratorTool[]>)>;
 };
 

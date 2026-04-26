@@ -29,6 +29,11 @@ import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
 import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
 import {
+  aggregateContextEntries,
+  objectFormHasNestedFunction,
+} from "./context-aggregator";
+import { renderTaggedContext } from "../prompt";
+import {
   blockPathTool,
   buildBlockInstanceId,
   extendBlockPath,
@@ -45,7 +50,7 @@ const DEFAULT_REPAIR_ATTEMPTS = 1;
 // ---------------------------------------------------------------------------
 
 interface DynamicCapSurface {
-  contextEntries: Array<(input: any, ctx: any) => any>;
+  contextEntries: Array<unknown>;
   tools: GeneratorTool[];
 }
 
@@ -57,7 +62,7 @@ async function resolveDynamicCapSurface(
   cap: CapabilityRef,
   ctx: BlockContext,
 ): Promise<DynamicCapSurface> {
-  const contextEntries: Array<(input: any, ctx: any) => any> = [];
+  const contextEntries: Array<unknown> = [];
   const tools: GeneratorTool[] = [];
 
   // Walk nested static uses
@@ -130,10 +135,54 @@ export type GeneratorSlotReference<TInput = unknown, TCtx = BlockContext> = (
   ctx: TCtx
 ) => unknown | Promise<unknown>;
 
+/**
+ * Object-form context: keys become XML tag names. Values may be strings,
+ * nested `ContextObject`s (recursive), functions resolved at render time,
+ * heterogeneous arrays of those (strings, functions, nested objects mixed),
+ * or `null`/`undefined` placeholders that reserve insertion order but emit
+ * nothing if no contributor fills them.
+ *
+ * Authored keys may be `camelCase`, `snake_case`, or `kebab-case` — all
+ * normalize to kebab-case before aggregation, so contributions to the same
+ * key from different sources collapse into a single tag.
+ *
+ * @example
+ * generator({
+ *   prompt: "You are a research assistant.",
+ *   context: {
+ *     documents: [docA, docB],
+ *     userPreferences: () => loadPrefs(),
+ *     memory: { shortTerm: items, longTerm: () => loadLongTerm() },
+ *     skills: [catalogContext, activeContext],
+ *   },
+ * })
+ */
+export type ContextObject<TInput = unknown, TCtx = BlockContext> = {
+  [tagName: string]:
+    | string
+    | ContextObject<TInput, TCtx>
+    | ContextValueFn<TInput, TCtx>
+    | Array<
+        | string
+        | ContextObject<TInput, TCtx>
+        | ContextValueFn<TInput, TCtx>
+        | null
+        | undefined
+      >
+    | null
+    | undefined;
+};
+
+/** Function value within a `ContextObject` — resolved at render time. */
+export type ContextValueFn<TInput = unknown, TCtx = BlockContext> = (
+  input: TInput,
+  ctx: TCtx
+) => unknown | Promise<unknown>;
+
 export type GeneratorSlotEntry<TInput = unknown, TCtx = BlockContext> =
   | string
-  | Record<string, unknown>
-  | Array<Record<string, unknown>>
+  | ContextObject<TInput, TCtx>
+  | Array<ContextObject<TInput, TCtx>>
   | GeneratorSlotReference<TInput, TCtx>;
 
 export type GeneratorSlot<TInput = unknown, TCtx = BlockContext> =
@@ -224,8 +273,8 @@ export function providerTool(name: string, tool: unknown): ProviderTool {
  */
 export type GeneratorSlotStatic =
   | string
-  | Record<string, unknown>
-  | Array<Record<string, unknown>>
+  | ContextObject
+  | Array<ContextObject>
   | Array<GeneratorSlotStatic>;
 
 /**
@@ -515,6 +564,42 @@ function asSystemMessage(value: unknown): unknown {
   }
 
   return value;
+}
+
+/**
+ * Build the system-message prefix from a resolved prompt and a list of
+ * already-resolved context entries.
+ *
+ * Aggregates object-form entries under their normalized tag keys, renders
+ * the result as a single XML block, and prepends it (with a blank-line
+ * separator) to the prompt to form one combined system message. String
+ * entries and pre-built `{role, content}` messages are emitted as their
+ * own additional system messages, in author order, after the combined one.
+ *
+ * Returns an empty array when both prompt and context are empty.
+ */
+async function buildSystemPrefix<TInput, TCtx extends BlockContext>(
+  promptStr: string,
+  contextValues: unknown[],
+  input: TInput,
+  ctx: TCtx
+): Promise<unknown[]> {
+  const aggregated = await aggregateContextEntries(contextValues, input, ctx);
+  const xmlBlock = renderTaggedContext(aggregated.tagged, aggregated.taggedOrder);
+
+  const combinedParts: string[] = [];
+  if (promptStr.length > 0) combinedParts.push(promptStr);
+  if (xmlBlock.length > 0) combinedParts.push(xmlBlock);
+  const combinedContent = combinedParts.join("\n\n");
+
+  const messages: unknown[] = [];
+  if (combinedContent.length > 0) {
+    messages.push({ role: "system", content: combinedContent });
+  }
+  for (const pt of aggregated.passThrough) {
+    messages.push(asSystemMessage(pt));
+  }
+  return messages;
 }
 
 function asUserMessage(value: unknown): unknown {
@@ -1351,21 +1436,26 @@ export function generator<
     const additions: unknown[] = [...staticContextEntries];
 
     // Dynamic context: a single entry that resolves all dynamic capabilities.
-    // Uses resolveDynamicCapSurface for a single-pass traversal.
+    // Uses resolveDynamicCapSurface for a single-pass traversal. Returns an
+    // array of resolved values (strings + object-form entries) so the
+    // aggregator can fold object contributions into shared XML tags rather
+    // than collapsing them to flat strings.
     if (hasDynamic) {
       additions.push(async (input: unknown, ctx: BlockContext) => {
-        const parts: string[] = [];
+        const resolved: unknown[] = [];
         for (const resolver of dynamicUses) {
           for (const cap of resolver(ctx)) {
             if (!capabilityMatchesAgent(cap, blockAgentType)) continue;
             const surface = await resolveDynamicCapSurface(cap, ctx);
             for (const entry of surface.contextEntries) {
-              const v = typeof entry === "function" ? entry(input, ctx) : entry;
-              if (v != null && v !== "") parts.push(String(v));
+              const v = typeof entry === "function"
+                ? await (entry as (i: unknown, c: BlockContext) => unknown)(input, ctx)
+                : entry;
+              if (v != null && v !== "") resolved.push(v);
             }
           }
         }
-        return parts.length > 0 ? parts.join("\n\n") : null;
+        return resolved.length > 0 ? resolved : null;
       });
     }
 
@@ -1463,10 +1553,15 @@ export function generator<
 
       // Build initial system prefix (prompt + context + tool descriptions)
       // separately so prepareStep can replace it with freshly resolved values.
-      const systemPrefix: unknown[] = [
-        { role: "system", content: prompt },
-        ...contextValues.map(asSystemMessage)
-      ];
+      // Object-form context entries are aggregated under shared XML tag keys
+      // and rendered into a single combined system message alongside the
+      // prompt; string entries follow as their own messages.
+      const systemPrefix: unknown[] = await buildSystemPrefix(
+        prompt,
+        contextValues,
+        input,
+        ctx
+      );
       const systemPrefixCount = systemPrefix.length;
       const messages: unknown[] = [
         ...systemPrefix,
@@ -1481,7 +1576,7 @@ export function generator<
       const hasDynamicPrompt = typeof normalizedConfig.prompt === "function"
         || (Array.isArray(normalizedConfig.prompt) && normalizedConfig.prompt.some((e) => typeof e === "function"));
       const hasDynamicContext = normalizeSlotEntries(normalizedConfig.context).some(
-        (entry) => typeof entry === "function"
+        (entry) => typeof entry === "function" || objectFormHasNestedFunction(entry)
       );
       const hasDynamicTools = typeof normalizedConfig.tools === "function";
 
@@ -1512,10 +1607,12 @@ export function generator<
             freshContext.push(freshToolDescription);
           }
 
-          const freshSystemPrefix: unknown[] = [
-            { role: "system", content: freshPrompt },
-            ...freshContext.map(asSystemMessage)
-          ];
+          const freshSystemPrefix: unknown[] = await buildSystemPrefix(
+            freshPrompt,
+            freshContext,
+            input,
+            ctx
+          );
 
           // Replace the system prefix with fresh values; keep conversation
           // messages (history, user, accumulated tool calls/results).
@@ -1555,11 +1652,19 @@ export function generator<
       const hasTools = compiledTools.length > 0 || resolvedProviderTools.length > 0;
       const canStream = (agentType !== undefined || hasTools) && isTextOutputSchema(outputSchema) && model.stream !== undefined;
 
-      // Emit debug capture for devtool inspection before the LLM call.
+      // Emit debug capture for devtool inspection before the LLM call. Use
+      // the same combined-system-message assembly the model sees so the
+      // devtool view matches the real prompt rather than a flat join.
+      const debugPrompt = systemPrefix
+        .map((m) => (m && typeof m === "object" && "content" in m
+          ? String((m as { content: unknown }).content ?? "")
+          : ""))
+        .filter((s) => s.length > 0)
+        .join("\n\n");
       ctx._runtimeHooks?.onBlockDebugCapture?.(
         {
           model: modelId,
-          prompt: [prompt, ...contextValues].filter(Boolean).join("\n\n"),
+          prompt: debugPrompt,
           tools: toolBlocks.map((t) => t.name),
         },
         ctx

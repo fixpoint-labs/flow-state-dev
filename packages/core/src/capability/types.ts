@@ -9,8 +9,10 @@
  */
 import type { ZodTypeAny } from "zod";
 import type { BlockContext, DeclaredResourceEntry } from "../types/block";
-import type { GeneratorTool } from "../blocks/generator";
+import type { ContextObject, GeneratorTool } from "../blocks/generator";
 import type { AgentType } from "../items/types";
+
+type MaybePromise<T> = T | Promise<T>;
 
 // ---------------------------------------------------------------------------
 // Preset definition
@@ -72,11 +74,24 @@ export type PresetDef<TSessionState = any> = {
     | ((ctx: CapabilityPresetCtx<TSessionState>) => GeneratorTool[] | Promise<GeneratorTool[]>);
 };
 
-/** Context entry function within a preset. */
-type PresetContextEntry<TSessionState = any> = (
-  input: any,
-  ctx: CapabilityPresetCtx<TSessionState>,
-) => any;
+/**
+ * Context entry within a preset. Capabilities may contribute static strings,
+ * static object-form context (keys become XML tag names — see `ContextObject`
+ * in `@flow-state-dev/core`), or a function that receives `(input, ctx)` and
+ * resolves to one of those shapes (or `null`/`undefined` to contribute nothing).
+ */
+export type PresetContextEntry<TSessionState = any> =
+  | string
+  | ContextObject<any, CapabilityPresetCtx<TSessionState>>
+  | ((
+      input: any,
+      ctx: CapabilityPresetCtx<TSessionState>,
+    ) => MaybePromise<
+      | string
+      | ContextObject<any, CapabilityPresetCtx<TSessionState>>
+      | null
+      | undefined
+    >);
 
 // ---------------------------------------------------------------------------
 // Capability config (input to defineCapability)

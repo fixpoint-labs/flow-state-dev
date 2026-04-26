@@ -173,21 +173,28 @@ export function createPerspectiveCapability(
     presets: {
       /**
        * Static perspective framing — role, salience, reasoning, expertise,
-       * communication style. On by default for generators.
+       * communication style. On by default for generators. Rendered under
+       * a `<perspective>` tag; multiple perspectives stack in author order.
        */
       static: {
-        context: [(_input: any, _ctx: any) => formatPerspective(instance)],
+        context: {
+          perspective: (_input: any, _ctx: any) => formatPerspective(instance),
+        },
       },
       /**
        * Accumulated observations + positions from the resources. On by
        * default for generators. Empty string when both resources are empty.
+       * Rendered as `<perspective-history>` so it sits alongside (not on
+       * top of) the static perspective framing.
        */
       accumulated: {
-        context: [(_input: any, ctx: any) => {
-          const obsRef = getObservationsRef(ctx)
-          const posRef = getPositionsRef(ctx, positionScope)
-          return formatPerspectiveAccumulated(obsRef, posRef)
-        }],
+        context: {
+          'perspective-history': (_input: any, ctx: any) => {
+            const obsRef = getObservationsRef(ctx)
+            const posRef = getPositionsRef(ctx, positionScope)
+            return formatPerspectiveAccumulated(obsRef, posRef)
+          },
+        },
       },
       default: ['static', 'accumulated'],
     },

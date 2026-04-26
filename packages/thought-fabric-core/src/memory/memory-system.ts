@@ -725,9 +725,13 @@ export function system(config: MemorySystemConfig): MemorySystem {
       recall: (cue?: string) => recallFn(ctx, cue),
     }),
     presets: {
-      /** Unified context formatter for generators — injects recall output into prompt. */
+      /**
+       * Unified context formatter for generators — injects recall output
+       * under a `<memory>` tag. Object-form so multiple memory contributors
+       * (e.g. layered memory systems) aggregate into one section.
+       */
       context: {
-        context: [contextFormatterFn],
+        context: { memory: contextFormatterFn },
       },
       default: ['context'],
     },

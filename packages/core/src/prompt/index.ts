@@ -186,6 +186,18 @@ export function when(
   return typeof content === "function" ? content() : content;
 }
 
+// --- XML rendering for object-form context ---
+
+export {
+  xmlTag,
+  renderTaggedContext,
+  type TagAccumulator,
+  type TagAccumulatorValue,
+  type RenderTaggedContextOptions,
+} from "./xml";
+
+export { RESERVED_TAG_NAMES, validateTagName } from "./reserved-tags";
+
 // --- Internal ---
 
 function isTruthy(value: MaybeString): value is string {
