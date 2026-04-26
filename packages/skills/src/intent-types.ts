@@ -1,11 +1,10 @@
 /**
- * Internal Zod schemas mirroring the public `MatchedSkill` / `IntentResult`
+ * Internal Zod schemas mirroring the public `MatchedSkill` / `IntentSource`
  * type contracts (declared in `@flow-state-dev/core/types/skill`).
  *
  * Co-located here so every block in the intentSelector pipeline references
  * a single source of truth for the runtime shape — the cross-tier sequencer
- * state, the classifier `outputSchema`, and the request-state schema all
- * read from these.
+ * state and the classifier `outputSchema` both read from these.
  *
  * Intent classification in this package is **skill-only** — what skill (if
  * any) does this turn need? Other classification dimensions (e.g. the
@@ -29,31 +28,6 @@ export const matchedSkillSchema = z.object({
   input: z.string().default(""),
   source: intentSourceSchema,
   confidence: z.number().min(0).max(1).optional(),
-});
-
-/** Runtime shape of `IntentResult` (core type). */
-export const intentResultSchema = z.object({
-  activeSkills: z.array(matchedSkillSchema),
-  intentSource: intentSourceSchema,
-  classifierConfidence: z.number().min(0).max(1).optional(),
-});
-
-/**
- * Request-state fragment the apply-intent handler writes. Used to type
- * `ctx.request.patchState({ intent })` calls and to give downstream blocks
- * (trace UI) a typed read surface via `requestStateSchema: intentRequestStateSchema`.
- */
-export const intentRequestStateSchema = z.object({
-  intent: intentResultSchema.optional(),
-});
-
-/**
- * Session-state fragment intent results are projected into. `activeSkills`
- * is a surface-level mirror used by client-data projections so the trace UI
- * doesn't have to read the internal `__activeSkills` slot.
- */
-export const intentSessionStateSchema = z.object({
-  activeSkills: z.array(matchedSkillSchema).optional(),
 });
 
 /**

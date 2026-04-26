@@ -10,8 +10,9 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - `createSkillsCapability` now ships three named presets — `tools` (catalog tool schemas), `context` (the active-skill body formatter), and `runSkill` (the `runSkill` tool plus the skill-catalog context listing) — all on by default. Flows using up-front activation drop the tool-call path with the standard preset override: `cap.presets({ runSkill: false })`. The `tools`/`context` presets stay on so the active-skill body formatter still injects matched skills under the FIX-434 keyed `<skills>` context tag.
 - New `keywords` frontmatter field on `SKILL.md` (parsed + serialized round-trip in `parseSkillMd` / `serializeSkillMd`, surfaced in the `skills` collection's client-data projection). Lowercase tokens that the tier-2 keyword scan matches against the user message.
 - `buildRunSkillDescription` no longer emits the slash-command instruction — slash routing is handled deterministically by `intentSelector`'s tier 1 instead of by the model.
-- New core types: `MatchedSkill`, `IntentSource`, `IntentResult` exported from `@flow-state-dev/core` and `@flow-state-dev/core/types`.
-- Apply-intent handler writes results in canonical order — request state first, then session state — and replaces (not appends) `__activeSkills` for the turn. Mid-flow `runSkill` calls within the same turn still append on top via the existing `pushActiveSkill` path.
+- New core types: `MatchedSkill` and `IntentSource` exported from `@flow-state-dev/core` and `@flow-state-dev/core/types`.
+- `ActiveSkillEntry` (the records in `session.state.__activeSkills`) gains an optional `source` field. `intentSelector` stamps it with the matching tier; mid-flow `runSkill` calls leave it undefined. Consumers that want a tier badge in their UI project from `__activeSkills` directly via clientData.
+- Apply-intent replaces (not appends) `__activeSkills` for the turn. Mid-flow `runSkill` calls within the same turn still append on top via the existing `pushActiveSkill` path.
 - Chat-agent flow wiring is intentionally NOT changed in this PR — that's a follow-up. This PR ships the primitive plus the capability option so they can land independently.
 
 ## 2026-04-24

@@ -28,7 +28,6 @@ export { defineResource, resource } from "./types/resource";
 export { defineResourceCollection, isDefinedResourceCollection, defineResourceNamespace, isDefinedResourceNamespace } from "./types/resource-collection";
 export type {
   InitialSkill,
-  IntentResult,
   IntentSource,
   MatchedSkill,
   RunSkillInput,

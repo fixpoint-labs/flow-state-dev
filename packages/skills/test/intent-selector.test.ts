@@ -3,7 +3,6 @@ import {
   createIntentSelector,
   intentSourceSchema,
   matchedSkillSchema,
-  intentResultSchema,
 } from "../src";
 
 describe("intentSelector — public schemas", () => {
@@ -23,15 +22,6 @@ describe("intentSelector — public schemas", () => {
     });
     expect(matched.input).toBe("");
     expect(matched.confidence).toBeUndefined();
-  });
-
-  it("intentResultSchema requires activeSkills + intentSource", () => {
-    const intent = intentResultSchema.parse({
-      activeSkills: [],
-      intentSource: "classifier",
-    });
-    expect(intent.activeSkills).toEqual([]);
-    expect(intent.intentSource).toBe("classifier");
   });
 });
 

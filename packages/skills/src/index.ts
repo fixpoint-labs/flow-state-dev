@@ -93,13 +93,12 @@ export {
   createIntentSelector,
   type IntentSelectorOptions,
 } from "./intent-selector";
-// Public runtime shapes mirroring the IntentSource / MatchedSkill /
-// IntentResult types in @flow-state-dev/core. Useful for consumers writing
-// their own apply handlers or inspecting the request-state record.
+// Public runtime shapes mirroring the IntentSource / MatchedSkill types
+// in @flow-state-dev/core. Useful for consumers writing their own apply
+// handlers or inspecting `__activeSkills` entries from clientData.
 export {
   intentSourceSchema,
   matchedSkillSchema,
-  intentResultSchema,
 } from "./intent-types";
 
 export {
@@ -116,7 +115,6 @@ export {
 // Re-export the canonical types from core.
 export type {
   InitialSkill,
-  IntentResult,
   IntentSource,
   MatchedSkill,
   RunSkillInput,

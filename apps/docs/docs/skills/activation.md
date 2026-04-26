@@ -96,33 +96,32 @@ The active-skill body formatter lives on a separate `context` preset that stays 
 
 ### Active-skill state
 
-`intentSelector`'s apply step writes results in this order:
-
-1. `ctx.request.patchState({ intent })` — a per-turn `IntentResult` for trace UI.
-2. `ctx.session.patchState({ activeSkills, __activeSkills })` — the persistent surface read by the active-skill body formatter.
+`intentSelector`'s apply step writes the matched skills to `session.state.__activeSkills` — the same slot the active-skill body formatter reads on every generator step. Each entry carries `{ name, mode, input, activatedAt, source }`. The `source` field is what `intentSelector` sets to record which tier matched; entries pushed by mid-flow `runSkill` calls leave it undefined.
 
 `__activeSkills` is **replaced** each turn by `intentSelector`, not appended. If a flow keeps the `runSkill` preset on and the agent calls `runSkill` mid-turn, that call appends on top of the up-front baseline using the existing dedup-by-name+mode logic.
 
 ### Showing the active skill in your UI
 
-Project `activeSkills` through your flow's `clientData` and read it in the client:
+Project `__activeSkills` through your flow's `clientData` to the surface shape your UI wants:
 
 ```ts
 session: {
   stateSchema: sessionStateSchema,
   clientData: {
-    modeStatus: (ctx) => ({
-      // ... other fields
-      activeSkills: Array.isArray(ctx.state.activeSkills)
-        ? (ctx.state.activeSkills as Array<{ name: string; source: string }>)
-            .map((s) => ({ name: s.name, source: s.source }))
-        : [],
-    }),
+    modeStatus: (ctx) => {
+      const active =
+        (ctx.state as { __activeSkills?: Array<{ name: string; source?: string }> })
+          .__activeSkills ?? [];
+      return {
+        // ... other fields
+        activeSkills: active.map((s) => ({ name: s.name, source: s.source ?? "tool" })),
+      };
+    },
   },
 },
 ```
 
-The kitchen-sink renders one badge per active skill in its top bar with the skill name and the matching tier (`slash` / `keyword` / `classifier`).
+The kitchen-sink renders one badge per active skill in its top bar with the skill name and the matching tier (`slash` / `keyword` / `classifier`, or `tool` for runSkill-driven activations).
 
 ## Mid-flow: `runSkill`
 
@@ -155,7 +154,7 @@ This is useful when most turns benefit from up-front classification but you also
 | Cheapest possible system prompt | Up-front with `presets({ runSkill: false })` |
 | Lowest latency on turns where no skill matches | Mid-flow (skip the classifier call) |
 | Activation only when the agent realizes mid-investigation | Mid-flow |
-| The pre-generator router needs to know the active skill | Up-front (`activeSkills` is on request state before the generator runs) |
+| The pre-generator router needs to know the active skill | Up-front (`__activeSkills` is on session state before the generator runs) |
 | Lowest moving parts | Mid-flow (it's just a tool) |
 
 The up-front path is the recommended default. The kitchen-sink chat-agent flow ships with it wired in.

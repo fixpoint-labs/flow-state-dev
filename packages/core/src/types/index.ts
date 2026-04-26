@@ -157,7 +157,6 @@ export type { CASOptions, ScopeStateOps, StateContainer } from "./state";
 
 export type {
   InitialSkill,
-  IntentResult,
   IntentSource,
   MatchedSkill,
   RunSkillInput,

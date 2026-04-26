@@ -173,23 +173,3 @@ export interface MatchedSkill {
   /** Classifier confidence (0..1). Only present when `source === "classifier"`. */
   confidence?: number;
 }
-
-/**
- * Result of one skill intent-classification pass. Written to request state
- * (for the per-turn trace record) and projected onto session state (for the
- * active-skill body formatter to render). A turn may resolve any number of
- * skills, including zero.
- */
-export interface IntentResult {
-  /** Skills activated this turn. Empty array = no skill matched. */
-  activeSkills: MatchedSkill[];
-  /**
-   * Top-level origin tier. When a slash-sourced skill matched it's `"slash"`;
-   * otherwise it reflects the highest tier that produced any match
-   * (`"keyword"` over `"classifier"`). When no skill matched at all it falls
-   * through to `"classifier"` because that's the tier that gave up last.
-   */
-  intentSource: IntentSource;
-  /** Aggregate classifier confidence. Only present when classifier ran. */
-  classifierConfidence?: number;
-}

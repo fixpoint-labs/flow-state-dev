@@ -10,9 +10,9 @@
  *   3. LLM classifier — a structured-output generator call, runs only when
  *                       earlier tiers were inconclusive.
  *
- * After the tiers, an apply handler collapses the accumulated cross-tier
- * state into an `IntentResult` and writes it to both request and session
- * state in canonical order (request first, session second).
+ * After the tiers, an apply handler writes the matched skills to
+ * `session.state.__activeSkills` — the same slot the active-skill body
+ * formatter reads on every generator step.
  *
  * The returned block is a `.tap()`-able sequencer — it patches state and
  * returns its input unchanged, so a flow can insert it anywhere in an

@@ -13,7 +13,8 @@
  */
 
 import { z } from "zod";
-import type { SkillContextMode } from "@flow-state-dev/core";
+import type { IntentSource, SkillContextMode } from "@flow-state-dev/core";
+import { intentSourceSchema } from "./intent-types";
 
 /** A single active-skill record stored in session state. */
 export interface ActiveSkillEntry {
@@ -25,6 +26,13 @@ export interface ActiveSkillEntry {
   input?: string;
   /** ms-since-epoch the skill was activated. */
   activatedAt: number;
+  /**
+   * Which path activated this skill. Set by `intentSelector` (slash /
+   * keyword / classifier / manual-override). `runSkill`-driven activations
+   * leave this undefined since the model decided mid-flow rather than the
+   * up-front router.
+   */
+  source?: IntentSource;
 }
 
 /** Zod schema for the session-state fragment the capability declares. */
@@ -36,6 +44,7 @@ export const activeSkillStateSchema = z.object({
         mode: z.enum(["inline", "fork"]),
         input: z.string().optional(),
         activatedAt: z.number(),
+        source: intentSourceSchema.optional(),
       }),
     )
     .optional()
