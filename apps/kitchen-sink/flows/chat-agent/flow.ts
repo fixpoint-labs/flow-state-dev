@@ -6,10 +6,15 @@
  * resources, clientData, and tool-use.
  *
  * Pipeline:
- *   applyRequestedMode → resolveThinkingStyle → thinkingStyleRouter
+ *   applyRequestedMode → intentSelector → resolveThinkingStyle → thinkingStyleRouter
  *     ├─ default (or auto-classified default) → assistantGenerator (direct generation)
  *     ├─ plan-and-execute   → planAndExecute wrapping the assistant
  *     └─ supervisor         → supervisor wrapping the assistant
+ *
+ * `intentSelector` (FIX-421) decides which skills (if any) apply to the
+ * turn before the main generator runs; matched skills are activated into
+ * session state and injected into the system prompt by the skills
+ * capability's active-skill body formatter.
  */
 import {
   defineFlow,
@@ -36,6 +41,7 @@ import {
   thinkingStyleSchema,
   thinkingStyleSessionStateSchema,
   featuresCapability,
+  intentSelectorBlock,
   artifactResources,
 } from "./blocks";
 import { modeSchema, featuresSchema } from "./schemas";
@@ -380,6 +386,10 @@ const runSequencer = sequencer({ name: "run", inputSchema })
   .tap(applyRequestedMode)
   .tap(applyFeatures)
   .tap(resolveModel)
+  // FIX-421: up-front skill router. Decides activeSkills before the
+  // generator runs; results land on `session.state.__activeSkills` for
+  // the skills capability's active-skill formatter to render.
+  .tap(intentSelectorBlock)
   .tap(resolveThinkingStyle)
   .then(thinkingStyleRouter)
   .work(biasCheck)

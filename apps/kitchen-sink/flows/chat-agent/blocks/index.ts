@@ -17,5 +17,5 @@ export {
   type ThinkingStyle,
 } from "./thinking-styles";
 export { bashCommand, bashReadFile, bashWriteFile } from "./bash-tools";
-export { featuresCapability, bashCap } from "./features-capability";
+export { featuresCapability, bashCap, intentSelectorBlock } from "./features-capability";
 export { mcpCapability } from "../../../lib/mcp";

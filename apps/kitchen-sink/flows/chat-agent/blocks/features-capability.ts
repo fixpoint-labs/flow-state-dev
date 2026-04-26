@@ -22,7 +22,11 @@ import { createBashCapability } from "@flow-state-dev/tools/bash";
 import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
 import { crawl } from "@flow-state-dev/tools/crawl";
-import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/skills";
+import {
+  createIntentSelector,
+  createSkillsCapability,
+  readSkillsDirectory,
+} from "@flow-state-dev/skills";
 import { z } from "zod";
 import { modeSchema, featuresSchema } from "../schemas";
 import { artifactsCapability } from "./artifacts";
@@ -70,6 +74,29 @@ const skillsCap = createSkillsCapability({
   // Main-agent only: in plan-and-execute / supervisor / blackboard, the
   // synthesizer carries skills while step-executors and workers don't.
   agentType: "primary",
+  // FIX-421: skill activation is decided up-front by `intentSelectorBlock`
+  // below. Drop the runSkill tool + the catalog-listing context formatter
+  // from the default presets — the active-skill body formatter stays so
+  // activated skills still get their body injected. Saves the per-step
+  // catalog prompt cost and avoids the redundant tool-call round trip.
+  bindRunSkillTool: false,
+});
+
+/**
+ * intentSelectorBlock — the up-front skill-activation router (FIX-421).
+ *
+ * Runs once per turn before the main generator. Three tiers (slash prefix,
+ * keyword scan over each skill's `keywords` frontmatter, LLM classifier)
+ * decide which skills (if any) apply to the user message. Matched skills
+ * are written into `session.state.__activeSkills`, which the active-skill
+ * body formatter on the skills capability reads to inject the substituted
+ * body into the system prompt under the `<skills>` tag.
+ *
+ * Scope must match the skills capability above (`"user"`) so the tiers
+ * read from the same collection that gets seeded.
+ */
+export const intentSelectorBlock = createIntentSelector({
+  scope: "user",
 });
 
 // Bash capability — tools, guidance, and runtime auto-discovery of mounted
