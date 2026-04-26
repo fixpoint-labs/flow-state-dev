@@ -1,5 +1,6 @@
 ---
 description: Answer questions about current events, breaking news, or "what's happening with X". Use when the user asks about recent news, a developing story, someone's current status, or anything where freshness matters. Enforces recency discipline and source hygiene so answers don't quietly rely on stale material.
+keywords: [news, latest, breaking, today, current, happening, recent]
 ---
 
 # Check News
@@ -11,7 +12,7 @@ News answers rot faster than any other kind. A confident-sounding summary built 
 Before running any search, get a concrete date range using the bundled helper. From bash:
 
 ```
-python3 ${CLAUDE_SKILL_DIR}/scripts/date-window.py <kind>
+python3 ${SKILL_DIR}/scripts/date-window.py <kind>
 ```
 
 Pick the `<kind>` that matches the question:
@@ -29,9 +30,9 @@ The script prints JSON like `{"kind": "recent", "days": 7, "since": "2026-04-16"
 
 Different kinds of news have different source hierarchies and different traps. Pick the reference that fits the question and read it before drafting an answer:
 
-- **AI, ML, models, labs, benchmarks** → open `${CLAUDE_SKILL_DIR}/reference/ai-news.md`
-- **Geopolitics, elections, conflict, disasters, legal proceedings** → open `${CLAUDE_SKILL_DIR}/reference/world-events.md`
-- **Earnings, markets, M&A, filings, corporate moves** → open `${CLAUDE_SKILL_DIR}/reference/business-markets.md`
+- **AI, ML, models, labs, benchmarks** → open `${SKILL_DIR}/reference/ai-news.md`
+- **Geopolitics, elections, conflict, disasters, legal proceedings** → open `${SKILL_DIR}/reference/world-events.md`
+- **Earnings, markets, M&A, filings, corporate moves** → open `${SKILL_DIR}/reference/business-markets.md`
 
 If the question spans multiple categories, load more than one. If it doesn't fit any, proceed with the core rules below.
 

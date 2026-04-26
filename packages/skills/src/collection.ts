@@ -28,6 +28,7 @@ export const skillStateSchema = z.object({
   outputSchema: z.unknown().optional(),
   whenToUse: z.string().optional(),
   argumentHint: z.string().optional(),
+  keywords: z.array(z.string()).optional(),
   _seededAt: z.string().optional(),
   _preservedFields: z.record(z.unknown()).optional(),
   seededNames: z.array(z.string()).optional(),
@@ -77,6 +78,7 @@ export function defineSkillsCollection(
         };
         if (Array.isArray(s.allowedTools)) out.allowedTools = s.allowedTools;
         if (typeof s.contextMode === "string") out.contextMode = s.contextMode;
+        if (Array.isArray(s.keywords)) out.keywords = s.keywords;
         if (typeof s._seededAt === "string") out.seededAt = s._seededAt;
         return out as never;
       },

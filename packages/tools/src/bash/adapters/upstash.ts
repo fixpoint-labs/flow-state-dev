@@ -1,23 +1,20 @@
 /**
  * Upstash Box adapter — placeholder.
  *
- * Blocked on Upstash Box API stabilization. See FIX-314 / FIX-315 for the
- * real implementation. This file provides the adapter factory so the type
- * system stays consistent.
+ * Blocked on Upstash Box API stabilization. The real implementation will
+ * call methods on the injected client. The variant shape and adapter
+ * factory are wired now (DI: consumer passes the client via the provider
+ * config) so when the SDK ships there's no API churn — the framework's
+ * invariant is that adapters wrapping third-party SDKs receive the SDK
+ * from the consumer rather than dynamically importing it.
  */
 
-import type { Sandbox, CommandResult } from "../types";
+import type { Sandbox, UpstashBoxClientLike } from "../types";
 
-/** Shape expected from the Upstash Box client once the API stabilizes. */
-export interface UpstashBoxClient {
-  id: string;
-  exec(command: string): Promise<{ stdout: string; stderr: string; exitCode: number }>;
-  read(path: string): Promise<string>;
-  write(path: string, content: string): Promise<void>;
-  destroy(): Promise<void>;
-}
+/** Public-facing alias for the structural client shape declared in `../types`. */
+export type UpstashBoxClient = UpstashBoxClientLike;
 
-/** Wraps an Upstash Box client into the Sandbox interface. */
+/** Wrap an Upstash Box client into the framework's `Sandbox` interface. */
 export function createUpstashAdapter(client: UpstashBoxClient): Sandbox {
   return {
     executeCommand: (cmd) => client.exec(cmd),
@@ -28,12 +25,12 @@ export function createUpstashAdapter(client: UpstashBoxClient): Sandbox {
 }
 
 /**
- * Resolves an Upstash Box — placeholder that throws until FIX-315 ships.
+ * Resolve an Upstash Box from the injected client. Currently throws —
+ * the production code path arrives once the Upstash Box SDK is GA.
  */
-export async function resolveUpstashBox(
-  _boxId?: string,
-): Promise<{ sandbox: Sandbox; sandboxId: string }> {
-  throw new Error(
-    "Upstash Box adapter is not yet implemented. See FIX-314 / FIX-315.",
-  );
+export async function resolveUpstashBox(_opts: {
+  client: UpstashBoxClient;
+  boxId?: string;
+}): Promise<{ sandbox: Sandbox; sandboxId: string }> {
+  throw new Error("Upstash Box adapter is not yet implemented.");
 }

@@ -101,11 +101,24 @@ Each provider implements the same `Sandbox` interface. Swapping providers change
 |----------|--------|----------|-------------------|
 | Local FS | `{ type: "local", cwd?: string }` | Development, local agents | Yes |
 | just-bash | `{ type: "just-bash", python?: true, ... }` | Testing, lightweight analysis | No (in-memory) |
-| Vercel | `{ type: "vercel" }` | Production, cloud execution | Yes (remote) |
-| Upstash | `{ type: "upstash" }` | Remote sandbox | Yes (remote) |
+| Vercel | `{ type: "vercel", Sandbox, sandboxId? }` | Production, cloud execution | Yes (remote) |
+| Upstash | `{ type: "upstash", client, boxId? }` | Remote sandbox | Yes (remote) |
 | Custom | `{ type: "custom", sandbox: Sandbox }` | Anything else | You decide |
 
-`just-bash` takes a `python: true` toggle to expose `python3` in the sandbox, and a `network` config to gate external HTTP access. See the type definitions for the full shape.
+`just-bash` takes a `python: true` toggle to expose `python3` in the sandbox, and a `network` config to gate external HTTP access.
+
+Adapters that wrap third-party SDKs (`vercel`, `upstash`) take the SDK from the consumer rather than dynamically importing it. Pass the `Sandbox` class for Vercel:
+
+```ts
+import { Sandbox } from "@vercel/sandbox";
+import { createBashCapability } from "@flow-state-dev/tools/bash";
+
+createBashCapability({
+  provider: { type: "vercel", Sandbox },
+});
+```
+
+This keeps `@flow-state-dev/tools` free of a peer dep on the SDK and gives bundlers (webpack, Vercel's `nft` file tracer) a real static import to follow when building for deployment. See `apps/kitchen-sink/flows/chat-agent/blocks/bash-tools.ts` for the canonical environment-aware pattern.
 
 ## Sync lifecycle
 

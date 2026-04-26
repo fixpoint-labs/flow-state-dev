@@ -21,10 +21,10 @@ describe("readActiveSkills", () => {
   it("returns [] for missing/invalid state", () => {
     expect(readActiveSkills(null)).toEqual([]);
     expect(readActiveSkills({})).toEqual([]);
-    expect(readActiveSkills({ __activeSkills: "not an array" })).toEqual([]);
+    expect(readActiveSkills({ activeSkills: "not an array" })).toEqual([]);
   });
   it("returns the array when present", () => {
-    expect(readActiveSkills({ __activeSkills: [entry("foo")] })).toEqual([
+    expect(readActiveSkills({ activeSkills: [entry("foo")] })).toEqual([
       entry("foo"),
     ]);
   });

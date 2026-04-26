@@ -48,6 +48,26 @@ describe("parseSkillMd", () => {
     expect(state.disableModelInvocation).toBe(true);
   });
 
+  it("parses keywords as a lowercased array", () => {
+    const text = `---\ndescription: x\nkeywords: [Linear, Issue, BUG]\n---\n\nbody`;
+    const { state, warnings } = parseSkillMd(text);
+    expect(state.keywords).toEqual(["linear", "issue", "bug"]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("accepts keywords in comma-separated form", () => {
+    const text = `---\ndescription: x\nkeywords: Foo, Bar, Baz\n---\n\nbody`;
+    const { state } = parseSkillMd(text);
+    expect(state.keywords).toEqual(["foo", "bar", "baz"]);
+  });
+
+  it("warns when keywords is not an array of strings", () => {
+    const text = `---\ndescription: x\nkeywords: 42\n---\n\nbody`;
+    const { state, warnings } = parseSkillMd(text);
+    expect(state.keywords).toBeUndefined();
+    expect(warnings.some((w) => w.includes("keywords"))).toBe(true);
+  });
+
   it("preserves unknown frontmatter under _preservedFields (camelCase)", () => {
     const text = `---\ndescription: x\nlicense: MIT\nmy-custom-field: hello\n---\n\nbody`;
     const { state } = parseSkillMd(text);
@@ -117,6 +137,14 @@ describe("serializeSkillMd", () => {
     const reparsed = parseSkillMd(out);
     expect(reparsed.state._preservedFields?.license).toBe("MIT");
   });
+
+  it("round-trips the keywords field", () => {
+    const text = `---\ndescription: x\nkeywords: [tag1, tag2]\n---\n\nbody`;
+    const parsed = parseSkillMd(text);
+    const out = serializeSkillMd(parsed.state, parsed.body);
+    const reparsed = parseSkillMd(out);
+    expect(reparsed.state.keywords).toEqual(["tag1", "tag2"]);
+  });
 });
 
 describe("substitute", () => {
@@ -126,7 +154,14 @@ describe("substitute", () => {
     );
   });
 
-  it("replaces ${CLAUDE_SKILL_DIR} with the mount path", () => {
+  it("replaces ${SKILL_DIR} with the mount path", () => {
+    const out = substitute("cd ${SKILL_DIR}", {
+      skillDir: "/workspace/.fsdev/skills/pptx",
+    });
+    expect(out).toBe("cd /workspace/.fsdev/skills/pptx");
+  });
+
+  it("preserves ${CLAUDE_SKILL_DIR} as an alias for compatibility with Claude Code skill bodies", () => {
     const out = substitute("cd ${CLAUDE_SKILL_DIR}", {
       skillDir: "/workspace/.fsdev/skills/pptx",
     });

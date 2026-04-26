@@ -22,10 +22,15 @@ import { createBashCapability } from "@flow-state-dev/tools/bash";
 import { search } from "@flow-state-dev/tools/search";
 import { fetch } from "@flow-state-dev/tools/fetch";
 import { crawl } from "@flow-state-dev/tools/crawl";
-import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/skills";
+import {
+  createIntentSelector,
+  createSkillsCapability,
+  readSkillsDirectory,
+} from "@flow-state-dev/skills";
 import { z } from "zod";
 import { modeSchema, featuresSchema } from "../schemas";
 import { artifactsCapability } from "./artifacts";
+import { selectBashProvider } from "./bash-tools";
 import { mcpCapability } from "../../../lib/mcp";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -72,16 +77,37 @@ const skillsCap = createSkillsCapability({
   agentType: "primary",
 });
 
+/**
+ * intentSelectorBlock — the up-front skill-activation router.
+ *
+ * Runs once per turn before the main generator. Three tiers (slash prefix,
+ * keyword scan over each skill's `keywords` frontmatter, LLM classifier)
+ * decide which skills (if any) apply to the user message. Matched skills
+ * are written into `session.state.activeSkills`, which the active-skill
+ * body formatter on the skills capability reads to inject the substituted
+ * body into the system prompt under the `<skills>` tag.
+ *
+ * Scope must match the skills capability above (`"user"`) so the tiers
+ * read from the same collection that gets seeded.
+ */
+export const intentSelectorBlock = createIntentSelector({
+  scope: "user",
+});
+
 // Bash capability — tools, guidance, and runtime auto-discovery of mounted
 // collections. No resource declarations here: bash inherits whatever
 // collections are installed on the block (artifacts from artifactsCapability,
 // skills from skillsCap) and mounts each at its pattern prefix. Writes
 // under a mount's directory route back to that collection; files under
 // /workspace/tmp/ are scratch; anything else is dropped with a warning.
+//
+// Provider is environment-selected (VERCEL → vercel sandbox,
+// STORE_TYPE=filesystem → local shell, else → just-bash WASM with
+// python + javascript). The just-bash default keeps preview environments
+// self-contained so skills that exercise bash are testable without
+// touching the host filesystem.
 export const bashCap = createBashCapability({
-  provider: {
-    type: "local"
-  },
+  provider: selectBashProvider(),
   createState: (relativePath) => ({
     title: path.basename(relativePath),
     updatedAt: Date.now(),
@@ -113,7 +139,12 @@ export const featuresCapability = defineCapability({
     // build time (dynamic uses callbacks can't contribute resources). Scoped
     // to primary agents by the capability's own `agentType` so worker
     // generators in plan-and-execute / supervisor / blackboard skip it.
-    skillsCap,
+    //
+    // Skill activation is decided up-front by `intentSelectorBlock` above,
+    // so we drop the `runSkill` preset — its tool and catalog-listing
+    // context become dead weight on every turn. The active-skill body
+    // formatter (in the `context` preset) still injects matched skills.
+    skillsCap.presets({ runSkill: false }),
 
     // Static: artifacts — inventory context only. Bash is the write path,
     // so readArtifact/updateArtifact tools are disabled here.
