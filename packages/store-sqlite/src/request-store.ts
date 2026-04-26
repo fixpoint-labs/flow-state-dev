@@ -10,12 +10,12 @@ import { createSQLiteRecordStore } from "./sqlite-store";
 export function createSQLiteRequestStore(db: Database.Database): RequestStore {
   const base = createSQLiteRecordStore<RequestRecord, RequestListOptions>(db, {
     tableName: "requests",
-    columns: ["flow_kind", "user_id", "session_id", "project_id", "status"],
+    columns: ["flow_kind", "user_id", "session_id", "org_id", "status"],
     toRow: (record) => [
       record.flowKind,
       record.userId,
       record.sessionId ?? null,
-      record.projectId ?? null,
+      record.orgId ?? null,
       record.status
     ],
     toWhere: (options) => {

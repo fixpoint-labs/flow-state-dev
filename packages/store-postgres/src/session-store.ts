@@ -14,8 +14,8 @@ import { createPgRecordStore } from "./pg-store";
 export function createPostgresSessionStore(executor: QueryExecutor): SessionStore {
   return createPgRecordStore<SessionRecord, SessionListOptions>(executor, {
     tableName: "sessions",
-    columns: ["flow_kind", "user_id", "project_id"],
-    toRow: (record) => [record.flowKind, record.userId, record.projectId ?? null],
+    columns: ["flow_kind", "user_id", "org_id"],
+    toRow: (record) => [record.flowKind, record.userId, record.orgId ?? null],
     toWhere: (options, nextParam = 1) => {
       const parts: string[] = [];
       const params: unknown[] = [];

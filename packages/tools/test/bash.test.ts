@@ -856,7 +856,7 @@ describe("createBashBlocks", () => {
     scopes: {
       session?: Record<string, ResourceCollectionRef<FileEntryState>>;
       user?: Record<string, ResourceCollectionRef<FileEntryState>>;
-      project?: Record<string, ResourceCollectionRef<FileEntryState>>;
+      org?: Record<string, ResourceCollectionRef<FileEntryState>>;
     } = {},
   ) {
     return {
@@ -868,9 +868,9 @@ describe("createBashBlocks", () => {
         identity: { id: "u1" },
         resources: scopes.user ?? {},
       },
-      project: {
+      org: {
         identity: { id: "p1" },
-        resources: scopes.project ?? {},
+        resources: scopes.org ?? {},
       },
     } as any;
   }
@@ -908,7 +908,7 @@ describe("createBashBlocks", () => {
       destination: "/workspace",
     });
 
-    const ctx = buildCtx("auto-1", { session: { artifacts }, project: { skills } });
+    const ctx = buildCtx("auto-1", { session: { artifacts }, org: { skills } });
     await bashCommand.run({ command: "ls" }, ctx);
 
     expect(sandbox.files.get("/workspace/artifacts/notes.md")).toBe("existing note");
@@ -930,7 +930,7 @@ describe("createBashBlocks", () => {
 
     const ctx = buildCtx("flush-route-1", {
       session: { artifacts },
-      project: { skills },
+      org: { skills },
     });
     await bashCommand.run({ command: "ls" }, ctx);
 
@@ -960,7 +960,7 @@ describe("createBashBlocks", () => {
       collections: [{ key: "skills", writable: false }],
     });
 
-    const ctx = buildCtx("ro-1", { project: { skills } });
+    const ctx = buildCtx("ro-1", { org: { skills } });
     await bashCommand.run({ command: "ls" }, ctx);
     await bashWriteFile.run(
       { path: "skills/foo/SKILL.md", content: "EDITED" },
@@ -1060,7 +1060,7 @@ describe("createBashBlocks", () => {
 
     const ctx = buildCtx("narrow-1", {
       session: { artifacts },
-      project: { skills },
+      org: { skills },
     });
     await bashCommand.run({ command: "ls" }, ctx);
 
@@ -1132,7 +1132,7 @@ describe("createBashBlocks", () => {
 
     const ctx = buildCtx("delete-1", {
       session: { artifacts },
-      project: { skills },
+      org: { skills },
     });
     await bashCommand.run({ command: "ls" }, ctx);
 

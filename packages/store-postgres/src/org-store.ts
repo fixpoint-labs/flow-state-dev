@@ -1,19 +1,19 @@
 /**
- * PostgreSQL ProjectStore implementation.
+ * PostgreSQL OrgStore implementation.
  * Delegates CRUD and list to the generic pg record store with userId filter support.
  */
 
 import type {
-  ProjectListOptions,
-  ProjectRecord,
-  ProjectStore
+  OrgListOptions,
+  OrgRecord,
+  OrgStore
 } from "@flow-state-dev/server";
 import type { QueryExecutor } from "./types";
 import { createPgRecordStore } from "./pg-store";
 
-export function createPostgresProjectStore(executor: QueryExecutor): ProjectStore {
-  return createPgRecordStore<ProjectRecord, ProjectListOptions>(executor, {
-    tableName: "projects",
+export function createPostgresOrgStore(executor: QueryExecutor): OrgStore {
+  return createPgRecordStore<OrgRecord, OrgListOptions>(executor, {
+    tableName: "orgs",
     columns: ["user_id"],
     toRow: (record) => [record.userId ?? null],
     toWhere: (options, nextParam = 1) => {

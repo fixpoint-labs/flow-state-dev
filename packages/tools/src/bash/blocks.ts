@@ -8,7 +8,7 @@
  * The blocks manage a per-session sandbox. On first access the sandbox is
  * auto-populated from the block's resource context: every
  * `ResourceCollectionRef` present on `ctx.session.resources`,
- * `ctx.user.resources`, and `ctx.project.resources` is mounted at its
+ * `ctx.user.resources`, and `ctx.org.resources` is mounted at its
  * pattern prefix (e.g. `artifacts/**` at `/workspace/artifacts/`,
  * `skills/**` at `/workspace/skills/`). Writes are routed back to the
  * owning collection on flush based on longest path-prefix match.
@@ -62,7 +62,7 @@ export interface CreateBashBlocksOptions {
    *
    * When omitted (the default), bash auto-discovers every collection present
    * on the block's runtime resource context — any `ResourceCollectionRef` in
-   * `ctx.session.resources`, `ctx.user.resources`, or `ctx.project.resources`
+   * `ctx.session.resources`, `ctx.user.resources`, or `ctx.org.resources`
    * is mounted at its pattern prefix.
    */
   collections?: BashCollectionSpec[];
@@ -132,7 +132,7 @@ interface Mount {
   /** Registered key on ctx.*.resources. Used for logging/diagnostics. */
   key: string;
   /** Which scope this collection was found in. */
-  scope: "session" | "user" | "project";
+  scope: "session" | "user" | "org";
   /** Pattern prefix — the collection's natural path inside the workspace. */
   prefix: string;
   /** Flush behavior. Default true. */
@@ -156,7 +156,7 @@ const registry = new Map<string, SandboxEntry>();
 interface ScopeIdentity {
   sessionId: string;
   userId: string;
-  projectId?: string;
+  orgId?: string;
 }
 
 /** Reserved workspace subdirectory for agent scratch space. Never persisted. */
@@ -172,9 +172,9 @@ function resolveScopeKey(scope: WorkspaceScope, identity: ScopeIdentity): { key:
   switch (scope) {
     case "user":
       return { key: `user:${identity.userId}`, scopeId: identity.userId };
-    case "project": {
-      const id = identity.projectId ?? identity.sessionId;
-      return { key: `project:${id}`, scopeId: id };
+    case "org": {
+      const id = identity.orgId ?? identity.sessionId;
+      return { key: `org:${id}`, scopeId: id };
     }
     case "session":
     default:
@@ -213,7 +213,7 @@ function discoverMounts(
   const seen = new Set<string>();
   const mounts: Mount[] = [];
 
-  for (const scope of ["session", "user", "project"] as const) {
+  for (const scope of ["session", "user", "org"] as const) {
     const bag = ctx?.[scope]?.resources;
     if (!bag || typeof bag !== "object") continue;
     for (const [key, value] of Object.entries(bag)) {
@@ -468,7 +468,7 @@ export function createBashBlocks(options: CreateBashBlocksOptions = {}) {
     return {
       sessionId: ctx.session.identity.id,
       userId: ctx.session.identity.userId,
-      projectId: ctx.session.identity.projectId,
+      orgId: ctx.session.identity.orgId,
     };
   }
 

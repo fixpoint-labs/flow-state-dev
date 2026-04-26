@@ -22,9 +22,9 @@ describe("createSkillsCapability", () => {
     expect(cap.__presetDefs?.runSkill).toBeDefined();
   });
 
-  it("registers the skills collection at the project scope by default", () => {
+  it("registers the skills collection at the org scope by default", () => {
     const cap = createSkillsCapability();
-    expect(cap.projectResources?.skills).toBeDefined();
+    expect(cap.orgResources?.skills).toBeDefined();
     expect(cap.sessionResources).toBeUndefined();
     expect(cap.userResources).toBeUndefined();
   });

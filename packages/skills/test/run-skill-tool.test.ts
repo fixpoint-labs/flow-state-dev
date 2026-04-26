@@ -29,8 +29,8 @@ function buildCtx(collection: ReturnType<typeof createMockSkillsCollection>) {
         Object.assign(sessionState, updates);
       },
     },
-    project: {
-      identity: { type: "project" as const, id: "p1" },
+    org: {
+      identity: { type: "org" as const, id: "p1" },
       resources: {
         get: (k: string) => (k === "skills" ? collection : undefined),
         list: () => [collection],
@@ -133,7 +133,7 @@ describe("createRunSkillTool — inline mode", () => {
     });
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      scope: "project",
+      scope: "org",
       catalog: {},
     });
     const ctx = buildCtx(c);
@@ -152,7 +152,7 @@ describe("createRunSkillTool — inline mode", () => {
     });
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      scope: "project",
+      scope: "org",
       catalog: {},
     });
     await expect(tool.run({ name: "missing" }, buildCtx(c))).rejects.toThrow(
@@ -169,7 +169,7 @@ describe("createRunSkillTool — inline mode", () => {
     });
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      scope: "project",
+      scope: "org",
       catalog: {},
     });
     await expect(tool.run({ name: "private" }, buildCtx(c))).rejects.toThrow(
@@ -208,7 +208,7 @@ describe("createRunSkillTool — fork mode", () => {
 
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      scope: "project",
+      scope: "org",
       catalog: { webSearch },
     });
 
@@ -252,7 +252,7 @@ describe("createRunSkillTool — fork mode", () => {
     try {
       const tool = createRunSkillTool({
         collectionKey: "skills",
-        scope: "project",
+        scope: "org",
         catalog: {},
       });
       const ctx = buildCtx(c);

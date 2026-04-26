@@ -5,14 +5,14 @@ Flow State Dev manages state across four hierarchical scopes, each with typed at
 ## Scope Hierarchy
 
 ```
-request → session → user → project
+request → session → user → org
   (per request)  (per session)  (per user)  (shared)
 ```
 
 - **Request**: Ephemeral, exists for one action execution
 - **Session**: Persisted, user-bound, carries conversation history
 - **User**: Persisted, spans sessions, holds user preferences/resources
-- **Project**: Persisted, shared across users
+- **Org**: Persisted, shared across users
 
 **Phase 1 policy:** User context is required for all flow execution. Sessions are always available — ephemeral sessions auto-create when no `sessionId` is provided.
 
@@ -99,9 +99,9 @@ ctx.session.setMetadata()
 ctx.user.state             // Readonly<TUserState>
 ctx.user.resources         // ResourceRegistry
 
-// Project scope (optional)
-ctx.project?.state         // Readonly<TProjectState>
-ctx.project?.resources     // ResourceRegistry
+// Org scope (optional)
+ctx.org?.state         // Readonly<TOrgState>
+ctx.org?.resources     // ResourceRegistry
 ```
 
 ### Partial State Schemas
@@ -245,17 +245,17 @@ Block-level state declarations bubble upward for compatibility checking. This en
 
 ## Resource Declaration Bubbling
 
-Similar to state schemas, block-level resource declarations (`sessionResources`, `userResources`, `projectResources`) bubble upward through the composition hierarchy. Sequencers collect declared resources from all child blocks, and `defineFlow` merges them into the flow's scope configs automatically. Flow-level resource declarations take priority over block-declared ones. See [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
+Similar to state schemas, block-level resource declarations (`sessionResources`, `userResources`, `orgResources`) bubble upward through the composition hierarchy. Sequencers collect declared resources from all child blocks, and `defineFlow` merges them into the flow's scope configs automatically. Flow-level resource declarations take priority over block-declared ones. See [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
 
 ## Cross-Flow State: Shared vs Isolated
 
-User- and project-scope records are not session-like — by default they are shared across every flow registered on a server, keyed by bare `userId` / `projectId`. A user has one `UserRecord`; every flow operating for that user reads and writes the same record. That is desirable when two flows genuinely share an identity concept (preferences, profile, quotas). It is a data-loss bug when two flows declare incompatible schemas over the same key.
+User- and org-scope records are not session-like — by default they are shared across every flow registered on a server, keyed by bare `userId` / `orgId`. A user has one `UserRecord`; every flow operating for that user reads and writes the same record. That is desirable when two flows genuinely share an identity concept (preferences, profile, quotas). It is a data-loss bug when two flows declare incompatible schemas over the same key.
 
 Wave 1 (FIX-431) introduces two coexisting mechanisms.
 
 ### Cross-flow schema registry (default)
 
-`FlowRegistry.register` collects `user.stateSchema`, `project.stateSchema`, and user/project resource schemas from every non-isolated registered flow. At registration time, each new flow's schemas are compared against every other flow's schemas using a conservative Zod structural check:
+`FlowRegistry.register` collects `user.stateSchema`, `org.stateSchema`, and user/org resource schemas from every non-isolated registered flow. At registration time, each new flow's schemas are compared against every other flow's schemas using a conservative Zod structural check:
 
 | Scenario | Outcome |
 |----------|---------|
@@ -263,17 +263,17 @@ Wave 1 (FIX-431) introduces two coexisting mechanisms.
 | Object shapes with overlapping keys whose types agree | Merge. Disjoint fields or compatible extensions emit a `console.warn`. |
 | Shared required field whose types disagree | Throw `CrossFlowSchemaConflictError`. |
 | Non-object schemas of different kinds | Throw `CrossFlowSchemaConflictError`. |
-| Same-named user/project resource with incompatible `stateSchema` | Throw `CrossFlowSchemaConflictError`. |
+| Same-named user/org resource with incompatible `stateSchema` | Throw `CrossFlowSchemaConflictError`. |
 
-The error names both flow kinds, the scope (`user` or `project`), the field path (`stateSchema` or `resources.<name>`), and a reason. Resolution is either reconciling the schemas or opting into isolation.
+The error names both flow kinds, the scope (`user` or `org`), the field path (`stateSchema` or `resources.<name>`), and a reason. Resolution is either reconciling the schemas or opting into isolation.
 
 The checker is coarse by design — Wave 1 accepts false-positive conflicts (ask the developer to reconcile or isolate) over false negatives (silent data loss).
 
 ### Per-flow isolation (opt-in)
 
-A flow declares `isolateUserState: true` and/or `isolateProjectState: true` on its `FlowDefinition`. The storage key for that flow's scope becomes `${userId}:${flowKind}` (or `${projectId}:${flowKind}`). The flow does not participate in the registry schema merge for the isolated scope — other flows cannot conflict with it, and it cannot read data written by other flows. Use this for internal-only flows, background jobs, or flows with domain-specific user state that should not leak into shared surfaces.
+A flow declares `isolateUserState: true` and/or `isolateOrgState: true` on its `FlowDefinition`. The storage key for that flow's scope becomes `${userId}:${flowKind}` (or `${orgId}:${flowKind}`). The flow does not participate in the registry schema merge for the isolated scope — other flows cannot conflict with it, and it cannot read data written by other flows. Use this for internal-only flows, background jobs, or flows with domain-specific user state that should not leak into shared surfaces.
 
-The `UserRecord.id` / `ProjectRecord.id` field holds the namespaced key so lookups by record id are consistent. The `userId` / `projectId` fields remain the bare identity — list APIs that filter by `userId` continue to return both shared and isolated records for a given user, which is useful for admin and devtool views.
+The `UserRecord.id` / `OrgRecord.id` field holds the namespaced key so lookups by record id are consistent. The `userId` / `orgId` fields remain the bare identity — list APIs that filter by `userId` continue to return both shared and isolated records for a given user, which is useful for admin and devtool views.
 
 ### Storage-key derivation
 
@@ -285,7 +285,7 @@ export function resolveUserStorageKey(userId: string, flow: IsolationFlow): stri
 }
 ```
 
-`createExecutionContext` uses these helpers for every `user` / `project` read and write, including `ContentStore` operations. Session and request scopes are unaffected — sessions already carry `flowKind` on the record and are effectively flow-isolated already.
+`createExecutionContext` uses these helpers for every `user` / `org` read and write, including `ContentStore` operations. Session and request scopes are unaffected — sessions already carry `flowKind` on the record and are effectively flow-isolated already.
 
 ### Non-goals in Wave 1
 

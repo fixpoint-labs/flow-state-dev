@@ -57,7 +57,7 @@ export interface PerspectiveCapabilityConfig {
    *
    * - `'session'` (default): positions reset each session, aligned with observations.
    * - `'user'`: positions persist across sessions for the same user.
-   * - `'project'`: positions persist across users within a project.
+   * - `'org'`: positions persist across users within an org.
    *
    * Observations are always session-scoped — they're inherently tied to the
    * conversation they emerged from.
@@ -75,7 +75,7 @@ function getPositionsRef(
 ): ResourceContext<PerspectivePositionsState> {
   if (scope === 'session') return ctx.session.resources.perspectivePositions
   if (scope === 'user') return ctx.user?.resources?.perspectivePositions
-  return ctx.project?.resources?.perspectivePositions
+  return ctx.org?.resources?.perspectivePositions
 }
 
 function getObservationsRef(ctx: any): ResourceContext<PerspectiveObservationsState> {

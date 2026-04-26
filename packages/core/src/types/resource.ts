@@ -1,6 +1,6 @@
 import type { ZodTypeAny } from "zod";
 import type {
-  ProjectScopeHandle,
+  OrgScopeHandle,
   RequestScopeHandle,
   ScopeType,
   SessionScopeHandle,
@@ -137,7 +137,7 @@ type AsStateObject<T> = T extends JsonObject ? T : JsonObject;
 
 export type ContextOf<
   T,
-  TKind extends "resource" | "request" | "session" | "user" | "project" = "resource",
+  TKind extends "resource" | "request" | "session" | "user" | "org" = "resource",
   TSessionResources extends Record<string, ResourceRef<any>> = Record<string, ResourceRef<any>>
 > = TKind extends "resource"
   ? ResourceContext<AsStateObject<StateOf<T>>>
@@ -149,7 +149,7 @@ export type ContextOf<
       ? RequestScopeHandle<AsStateObject<StateOf<T>>>
       : TKind extends "user"
         ? UserScopeHandle<AsStateObject<StateOf<T>>>
-        : ProjectScopeHandle<AsStateObject<StateOf<T>>>;
+        : OrgScopeHandle<AsStateObject<StateOf<T>>>;
 
 export type ResourceRefOptions = {
   optional?: boolean;

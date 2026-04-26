@@ -1,8 +1,8 @@
 import type {
   ExpectedVersion,
-  ProjectListOptions,
-  ProjectRecord,
-  ProjectStore,
+  OrgListOptions,
+  OrgRecord,
+  OrgStore,
   SetResult
 } from "../types";
 import {
@@ -14,14 +14,14 @@ export type FilesystemProjectStoreOptions = {
   rootDir: string;
 };
 
-export class FilesystemProjectStore implements ProjectStore {
+export class FilesystemProjectStore implements OrgStore {
   private readonly store: FilesystemRecordStore<
-    ProjectRecord,
-    ProjectListOptions
+    OrgRecord,
+    OrgListOptions
   >;
 
   constructor(options: FilesystemProjectStoreOptions) {
-    this.store = createFilesystemRecordStore<ProjectRecord, ProjectListOptions>({
+    this.store = createFilesystemRecordStore<OrgRecord, OrgListOptions>({
       rootDir: options.rootDir,
       filter: (record, listOptions): boolean => {
         if (
@@ -36,15 +36,15 @@ export class FilesystemProjectStore implements ProjectStore {
     });
   }
 
-  async get(id: string): Promise<ProjectRecord | undefined> {
+  async get(id: string): Promise<OrgRecord | undefined> {
     return this.store.get(id);
   }
 
   async set(
     id: string,
-    value: ProjectRecord,
+    value: OrgRecord,
     expectedVersion: ExpectedVersion
-  ): Promise<SetResult<ProjectRecord>> {
+  ): Promise<SetResult<OrgRecord>> {
     return this.store.set(id, value, expectedVersion);
   }
 
@@ -52,13 +52,13 @@ export class FilesystemProjectStore implements ProjectStore {
     await this.store.delete(id);
   }
 
-  async list(options?: ProjectListOptions): Promise<ProjectRecord[]> {
+  async list(options?: OrgListOptions): Promise<OrgRecord[]> {
     return this.store.list(options);
   }
 }
 
 export function createFilesystemProjectStore(
   options: FilesystemProjectStoreOptions
-): ProjectStore {
+): OrgStore {
   return new FilesystemProjectStore(options);
 }

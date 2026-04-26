@@ -5,7 +5,7 @@ import { initializeSchema } from "./schema";
 import { createSQLiteSessionStore } from "./session-store";
 import { createSQLiteRequestStore } from "./request-store";
 import { createSQLiteUserStore } from "./user-store";
-import { createSQLiteProjectStore } from "./project-store";
+import { createSQLiteOrgStore } from "./org-store";
 import { createSQLiteActiveRequestRegistry } from "./active-request-registry";
 
 export type SQLiteStoreOptions = {
@@ -30,7 +30,7 @@ export function createSQLiteStores(options: SQLiteStoreOptions): SQLiteStoreRegi
     session: createSQLiteSessionStore(db),
     request: createSQLiteRequestStore(db),
     user: createSQLiteUserStore(db),
-    project: createSQLiteProjectStore(db),
+    org: createSQLiteOrgStore(db),
     activeRequests: createSQLiteActiveRequestRegistry(db),
     content: new InMemoryContentStore(),
     close() {
@@ -43,7 +43,7 @@ export {
   createSQLiteSessionStore,
   createSQLiteRequestStore,
   createSQLiteUserStore,
-  createSQLiteProjectStore,
+  createSQLiteOrgStore,
   createSQLiteActiveRequestRegistry
 };
 

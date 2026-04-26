@@ -42,12 +42,12 @@ export type EpisodicMemoryState = z.infer<typeof episodicMemoryStateSchema>
  * Create an episodic memory resource definition with the given scope.
  *
  * - `scope: 'user'` → declared via `userResources`, accessed via `ctx.user.resources.get('episodicMemory')`
- * - `scope: 'project'` → declared via `projectResources`, accessed via `ctx.project.resources.get('episodicMemory')`
+ * - `scope: 'org'` → declared via `orgResources`, accessed via `ctx.org.resources.get('episodicMemory')`
  *
  * The scope is a logical marker for the factory — the actual scope enforcement
- * happens when blocks declare the resource in `userResources` vs `projectResources`.
+ * happens when blocks declare the resource in `userResources` vs `orgResources`.
  */
-export function createEpisodicMemoryResource(_scope: 'user' | 'project') {
+export function createEpisodicMemoryResource(_scope: 'user' | 'org') {
   return defineResource({
     stateSchema: episodicMemoryStateSchema,
     default: { episodes: [], totalEncoded: 0 },

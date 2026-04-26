@@ -1,17 +1,17 @@
 /**
- * Storage key derivation for user- and project-scope records.
+ * Storage key derivation for user- and org-scope records.
  *
- * When a flow sets `isolateUserState` or `isolateProjectState`, its scope
+ * When a flow sets `isolateUserState` or `isolateOrgState`, its scope
  * record is namespaced by `flowKind` so distinct flows never share storage
  * for that scope. Default: bare identity id — multiple flows share one
- * record per user/project.
+ * record per user/org.
  */
 
 /** Minimal flow shape carrying isolation flags plus its own `kind`. */
 export interface IsolationFlow {
   kind: string;
   isolateUserState: boolean;
-  isolateProjectState: boolean;
+  isolateOrgState: boolean;
 }
 
 /** Bare `userId` unless the flow isolates user state; then `${userId}:${flowKind}`. */
@@ -19,7 +19,7 @@ export function resolveUserStorageKey(userId: string, flow: IsolationFlow): stri
   return flow.isolateUserState ? `${userId}:${flow.kind}` : userId;
 }
 
-/** Bare `projectId` unless the flow isolates project state; then `${projectId}:${flowKind}`. */
-export function resolveProjectStorageKey(projectId: string, flow: IsolationFlow): string {
-  return flow.isolateProjectState ? `${projectId}:${flow.kind}` : projectId;
+/** Bare `orgId` unless the flow isolates org state; then `${orgId}:${flowKind}`. */
+export function resolveOrgStorageKey(orgId: string, flow: IsolationFlow): string {
+  return flow.isolateOrgState ? `${orgId}:${flow.kind}` : orgId;
 }

@@ -161,8 +161,8 @@ export interface PlanAndExecuteConfig<
   /** User resources to declare on the outer sequencer. */
   userResources?: Record<string, any>;
 
-  /** Project resources to declare on the outer sequencer. */
-  projectResources?: Record<string, any>;
+  /** Org resources to declare on the outer sequencer. */
+  orgResources?: Record<string, any>;
 
 }
 
@@ -481,7 +481,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
     ...(config.search !== undefined ? { search: config.search } : {}),
     ...(config.sessionResources !== undefined ? { sessionResources: config.sessionResources } : {}),
     ...(config.userResources !== undefined ? { userResources: config.userResources } : {}),
-    ...(config.projectResources !== undefined ? { projectResources: config.projectResources } : {}),
+    ...(config.orgResources !== undefined ? { orgResources: config.orgResources } : {}),
     prompt: [config.instructions, basePrompt, config.executionInstructions],
     user: (input: { goal: string; dependencyResults?: Record<string, unknown> }) => {
       const parts = [`Task: ${input.goal}`];
@@ -845,7 +845,7 @@ export function planAndExecute<
     container: { component: "plan" },
     ...(config.sessionResources ? { sessionResources: config.sessionResources } : {}),
     ...(config.userResources ? { userResources: config.userResources } : {}),
-    ...(config.projectResources ? { projectResources: config.projectResources } : {}),
+    ...(config.orgResources ? { orgResources: config.orgResources } : {}),
   })
     // 1. Capture goal, run planner, store tasks
     .then(captureAndPlan)

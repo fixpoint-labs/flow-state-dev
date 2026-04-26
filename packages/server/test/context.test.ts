@@ -73,7 +73,7 @@ describe("createExecutionContext", () => {
     expect(ctx.request.identity.type).toBe("request");
     expect(ctx.user.identity.type).toBe("user");
     expect(ctx.session.identity.type).toBe("session");
-    expect(ctx.project).toBeUndefined();
+    expect(ctx.org).toBeUndefined();
 
     await ctx.request.patchState({ count: 2 });
     await ctx.user.patchState({ role: "admin" });

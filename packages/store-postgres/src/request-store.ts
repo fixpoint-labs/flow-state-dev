@@ -16,12 +16,12 @@ import { createPgRecordStore } from "./pg-store";
 export function createPostgresRequestStore(executor: QueryExecutor): RequestStore {
   const base = createPgRecordStore<RequestRecord, RequestListOptions>(executor, {
     tableName: "requests",
-    columns: ["flow_kind", "user_id", "session_id", "project_id", "status"],
+    columns: ["flow_kind", "user_id", "session_id", "org_id", "status"],
     toRow: (record) => [
       record.flowKind,
       record.userId,
       record.sessionId ?? null,
-      record.projectId ?? null,
+      record.orgId ?? null,
       record.status
     ],
     toWhere: (options, nextParam = 1) => {

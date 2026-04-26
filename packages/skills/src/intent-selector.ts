@@ -73,7 +73,7 @@ export function createIntentSelector(
   options: IntentSelectorOptions = {},
 ): BlockDefinition<typeof intentInputSchema, typeof intentInputSchema> {
   const collectionKey = options.collectionKey ?? "skills";
-  const scope: ScopeType = options.scope ?? "project";
+  const scope: ScopeType = options.scope ?? "org";
   const enableLlm = options.enableLlmClassifier ?? true;
 
   const slashTier = createIntentSlashMatch({ collectionKey, scope });

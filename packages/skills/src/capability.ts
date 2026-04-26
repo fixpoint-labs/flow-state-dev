@@ -4,7 +4,7 @@
  *
  * Returns a `DefinedCapability` exposing:
  *   - **Resources**: the skills collection, registered at the chosen scope
- *     (default `project`).
+ *     (default `org`).
  *   - **Session state**: an `activeSkills` array fragment used by the
  *     dynamic context formatter to read which skills are currently active.
  *   - **Preset `tools`** (default-on): the catalog of skill-referenceable
@@ -47,7 +47,7 @@ export interface SkillsCapabilityOptions {
   /** Bundled defaults — seeded into the collection on first runSkill call. */
   initialSkills?: InitialSkill[];
   /**
-   * Scope to register the skills collection at. Default `"project"` so
+   * Scope to register the skills collection at. Default `"org"` so
    * seeded skills are shared across users. Use `"user"` for personal
    * skill libraries; `"session"` is mainly for tests.
    */
@@ -89,7 +89,7 @@ export function createSkillsCapability(
 ): DefinedCapability {
   const collectionKey = options.collection ?? "skills";
   const catalog: ToolCatalog = options.catalog ?? {};
-  const scope: ScopeType = options.scope ?? "project";
+  const scope: ScopeType = options.scope ?? "org";
   const initialSkills = options.initialSkills;
 
   // The collection's pattern prefix IS the workspace mount path: when the
@@ -137,7 +137,7 @@ export function createSkillsCapability(
   // framework auto-installs them.
   const sessionResources = scope === "session" ? resources : undefined;
   const userResources = scope === "user" ? resources : undefined;
-  const projectResources = scope === "project" ? resources : undefined;
+  const orgResources = scope === "org" ? resources : undefined;
 
   return defineCapability({
     name: "skills",
@@ -147,7 +147,7 @@ export function createSkillsCapability(
     // active-skills writes into.
     sessionResources,
     userResources,
-    projectResources,
+    orgResources,
     sessionStateSchema: activeSkillStateSchema,
 
     presets: {

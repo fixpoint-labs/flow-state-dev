@@ -16,7 +16,7 @@ function collectCollections(ctx: BlockContext): CollectionEntry[] {
   const registries = [
     { scope: "session", registry: ctx.session?.resources },
     { scope: "user", registry: ctx.user?.resources },
-    { scope: "project", registry: ctx.project?.resources },
+    { scope: "org", registry: ctx.org?.resources },
   ];
 
   for (const { scope, registry } of registries) {
@@ -39,7 +39,7 @@ function collectCollections(ctx: BlockContext): CollectionEntry[] {
 }
 
 function collectStaticResources(ctx: BlockContext): ResourceRef<any>[] {
-  const registries = [ctx.session?.resources, ctx.user?.resources, ctx.project?.resources];
+  const registries = [ctx.session?.resources, ctx.user?.resources, ctx.org?.resources];
   return registries.flatMap((registry) => {
     if (registry === undefined) return [];
     return registry.list().filter((entry): entry is ResourceRef<any> => !("pattern" in entry && "create" in entry));

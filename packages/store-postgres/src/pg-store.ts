@@ -1,6 +1,6 @@
 /**
  * Generic PostgreSQL record store abstraction.
- * All 4 record stores (session, request, user, project) use this base
+ * All 4 record stores (session, request, user, org) use this base
  * with store-specific column mappings and filter builders.
  */
 

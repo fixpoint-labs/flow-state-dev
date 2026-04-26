@@ -34,7 +34,7 @@ export function getCollection(
       ? ctx.session?.resources
       : scope === "user"
         ? ctx.user?.resources
-        : ctx.project?.resources;
+        : ctx.org?.resources;
   if (!registry) return undefined;
 
   const get = (registry as { get?: (k: string) => unknown }).get;

@@ -106,11 +106,11 @@ function runContentStoreTests(
       const s = await setup();
       await s.set("session", "id1", "key", "session-value");
       await s.set("user", "id1", "key", "user-value");
-      await s.set("project", "id1", "key", "project-value");
+      await s.set("org", "id1", "key", "project-value");
 
       expect(await s.get("session", "id1", "key")).toBe("session-value");
       expect(await s.get("user", "id1", "key")).toBe("user-value");
-      expect(await s.get("project", "id1", "key")).toBe("project-value");
+      expect(await s.get("org", "id1", "key")).toBe("project-value");
     });
 
     it("isolates content between different scope IDs", async () => {

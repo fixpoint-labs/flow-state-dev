@@ -281,10 +281,10 @@ describe("defineFlow", () => {
       });
     });
 
-    it("merges block-declared project resources into flow project config", () => {
+    it("merges block-declared org resources into flow org config", () => {
       const block = handler({
         name: "with-proj-res",
-        projectResources: { artifacts: artifactsResource },
+        orgResources: { artifacts: artifactsResource },
         execute: (v) => v
       });
 
@@ -295,7 +295,7 @@ describe("defineFlow", () => {
         }
       });
 
-      expect(flow.project?.resources).toEqual({
+      expect(flow.org?.resources).toEqual({
         artifacts: artifactsResource
       });
     });
@@ -430,7 +430,7 @@ describe("defineFlow", () => {
 
       expect(flow.session).toBeUndefined();
       expect(flow.user).toBeUndefined();
-      expect(flow.project).toBeUndefined();
+      expect(flow.org).toBeUndefined();
     });
 
     it("merges block resources into flow instances created via factory", () => {

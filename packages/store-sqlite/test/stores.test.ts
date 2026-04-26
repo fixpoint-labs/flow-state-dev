@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type {
-  ProjectRecord,
+  OrgRecord,
   RequestRecord,
   SessionRecord,
   UserRecord
@@ -68,11 +68,11 @@ function makeUserRecord(id: string): UserRecord {
   };
 }
 
-function makeProjectRecord(id: string, userId: string): ProjectRecord {
+function makeOrgRecord(id: string, userId: string): OrgRecord {
   const ts = now();
   return {
     id,
-    projectId: id,
+    orgId: id,
     userId,
     state: {},
     version: 0,
@@ -102,7 +102,7 @@ describe("SQLite store adapter", () => {
     expect(s.session).toBeDefined();
     expect(s.request).toBeDefined();
     expect(s.user).toBeDefined();
-    expect(s.project).toBeDefined();
+    expect(s.org).toBeDefined();
     expect(s.activeRequests).toBeDefined();
   });
 
@@ -324,28 +324,28 @@ describe("SQLite store adapter", () => {
     });
   });
 
-  // --- Project Store ---
+  // --- Org Store ---
 
-  describe("project store", () => {
+  describe("org store", () => {
     it("CRUD operations", async () => {
       const s = freshStores();
-      await s.project.set("proj_1", makeProjectRecord("proj_1", "user_1"), "any");
+      await s.org.set("proj_1", makeOrgRecord("proj_1", "user_1"), "any");
 
-      const result = await s.project.get("proj_1");
+      const result = await s.org.get("proj_1");
       expect(result).toBeDefined();
-      expect(result!.projectId).toBe("proj_1");
+      expect(result!.orgId).toBe("proj_1");
       expect(result!.userId).toBe("user_1");
 
-      await s.project.delete("proj_1");
-      expect(await s.project.get("proj_1")).toBeUndefined();
+      await s.org.delete("proj_1");
+      expect(await s.org.get("proj_1")).toBeUndefined();
     });
 
     it("list filters by userId", async () => {
       const s = freshStores();
-      await s.project.set("proj_1", makeProjectRecord("proj_1", "user_1"), "any");
-      await s.project.set("proj_2", makeProjectRecord("proj_2", "user_2"), "any");
+      await s.org.set("proj_1", makeOrgRecord("proj_1", "user_1"), "any");
+      await s.org.set("proj_2", makeOrgRecord("proj_2", "user_2"), "any");
 
-      const result = await s.project.list({ userId: "user_1" });
+      const result = await s.org.list({ userId: "user_1" });
       expect(result).toHaveLength(1);
       expect(result[0]!.id).toBe("proj_1");
     });
@@ -472,7 +472,7 @@ describe("SQLite store adapter", () => {
         actionName: "run",
         sessionId: "sess_1",
         userId: "user_1",
-        projectId: "proj_1",
+        orgId: "proj_1",
         input: { message: "hello" },
         metadata: { source: "test" },
         startedAt: Date.now(),
@@ -481,7 +481,7 @@ describe("SQLite store adapter", () => {
 
       const result = await s.activeRequests.get("req_1");
       expect(result!.sessionId).toBe("sess_1");
-      expect(result!.projectId).toBe("proj_1");
+      expect(result!.orgId).toBe("proj_1");
       expect(result!.input).toEqual({ message: "hello" });
       expect(result!.metadata).toEqual({ source: "test" });
     });
@@ -516,17 +516,17 @@ describe("SQLite store adapter", () => {
     await s.session.set("sess_b", makeSessionRecord("sess_b", "flow-b", "user_2"), "any");
     await s.request.set("req_a", makeRequestRecord("req_a", "flow-a", "run", "user_1", "sess_a"), "any");
     await s.user.set("user_1", makeUserRecord("user_1"), "any");
-    await s.project.set("proj_1", makeProjectRecord("proj_1", "user_1"), "any");
+    await s.org.set("proj_1", makeOrgRecord("proj_1", "user_1"), "any");
 
     const flowASessions = await s.session.list({ flowKind: "flow-a" });
     const user1Requests = await s.request.list({ userId: "user_1" });
-    const userProjects = await s.project.list({ userId: "user_1" });
+    const userOrgs = await s.org.list({ userId: "user_1" });
 
     expect(flowASessions).toHaveLength(1);
     expect(flowASessions[0]!.id).toBe("sess_a");
     expect(user1Requests).toHaveLength(1);
     expect(user1Requests[0]!.id).toBe("req_a");
-    expect(userProjects).toHaveLength(1);
+    expect(userOrgs).toHaveLength(1);
     expect((await s.user.get("user_1"))?.userId).toBe("user_1");
 
     await s.session.delete("sess_b");

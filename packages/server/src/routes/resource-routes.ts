@@ -14,7 +14,7 @@ import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {
-  resolveProjectStorageKey,
+  resolveOrgStorageKey,
   resolveUserStorageKey
 } from "../stores/scope-keys";
 import {
@@ -45,13 +45,13 @@ function isCollectionConfig(value: unknown): value is ResourceCollectionConfig {
 }
 
 function findResourceConfig(
-  flow: { session?: { resources?: unknown }; user?: { resources?: unknown }; project?: { resources?: unknown } },
+  flow: { session?: { resources?: unknown }; user?: { resources?: unknown }; org?: { resources?: unknown } },
   ref: string
-): { config: ResourceConfig | ResourceCollectionConfig; scope: "session" | "user" | "project" } | undefined {
+): { config: ResourceConfig | ResourceCollectionConfig; scope: "session" | "user" | "org" } | undefined {
   const scopes = [
     { key: "session" as const, resources: (flow.session as Record<string, unknown> | undefined)?.resources },
     { key: "user" as const, resources: (flow.user as Record<string, unknown> | undefined)?.resources },
-    { key: "project" as const, resources: (flow.project as Record<string, unknown> | undefined)?.resources },
+    { key: "org" as const, resources: (flow.org as Record<string, unknown> | undefined)?.resources },
   ];
 
   for (const { key, resources } of scopes) {
@@ -71,10 +71,10 @@ async function getPersistedData(
   flow: {
     kind: string;
     isolateUserState: boolean;
-    isolateProjectState: boolean;
+    isolateOrgState: boolean;
   },
   sessionId: string,
-  scope: "session" | "user" | "project"
+  scope: "session" | "user" | "org"
 ): Promise<{ resources: Record<string, JsonObject>; content: Record<string, string> } | undefined> {
   // Content is stored in the ContentStore during execution, not on the record's
   // resourceContent field. Merge both sources for backward compatibility.
@@ -108,18 +108,18 @@ async function getPersistedData(
     };
   }
 
-  // project
+  // org
   const session = await ctx.stores.session.get(sessionId);
-  if (!session || !session.projectId) return undefined;
-  const project = await ctx.stores.project.get(
-    resolveProjectStorageKey(session.projectId, flow)
+  if (!session || !session.orgId) return undefined;
+  const org = await ctx.stores.org.get(
+    resolveOrgStorageKey(session.orgId, flow)
   );
-  if (!project) return undefined;
-  const contentFromStore = await ctx.stores.content.getAll("project", project.id);
+  if (!org) return undefined;
+  const contentFromStore = await ctx.stores.content.getAll("org", org.id);
   return {
-    resources: (project.resources ?? {}) as Record<string, JsonObject>,
+    resources: (org.resources ?? {}) as Record<string, JsonObject>,
     content: {
-      ...(project.resourceContent ?? {}) as Record<string, string>,
+      ...(org.resourceContent ?? {}) as Record<string, string>,
       ...contentFromStore,
     },
   };
