@@ -30,6 +30,7 @@ import {
 import { z } from "zod";
 import { modeSchema, featuresSchema } from "../schemas";
 import { artifactsCapability } from "./artifacts";
+import { selectBashProvider } from "./bash-tools";
 import { mcpCapability } from "../../../lib/mcp";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -99,10 +100,14 @@ export const intentSelectorBlock = createIntentSelector({
 // skills from skillsCap) and mounts each at its pattern prefix. Writes
 // under a mount's directory route back to that collection; files under
 // /workspace/tmp/ are scratch; anything else is dropped with a warning.
+//
+// Provider is environment-selected (VERCEL → vercel sandbox,
+// STORE_TYPE=filesystem → local shell, else → just-bash WASM with
+// python + javascript). The just-bash default keeps preview environments
+// self-contained so skills that exercise bash are testable without
+// touching the host filesystem.
 export const bashCap = createBashCapability({
-  provider: {
-    type: "local"
-  },
+  provider: selectBashProvider(),
   createState: (relativePath) => ({
     title: path.basename(relativePath),
     updatedAt: Date.now(),
