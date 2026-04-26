@@ -1,72 +1,82 @@
 /**
  * Vercel Sandbox adapter.
  *
- * Wraps `@vercel/sandbox` behind the `Sandbox` interface. Supports both
- * ephemeral and persistent sandboxes — pass an existing `sandboxId` to
- * reconnect to a prior sandbox.
+ * Wraps a `@vercel/sandbox` `Sandbox` class behind the framework's
+ * `Sandbox` interface. The class is passed in via the provider config
+ * (`{ type: "vercel", Sandbox: ... }`) — the framework intentionally does
+ * not take a peer dependency on `@vercel/sandbox` itself. The consumer's
+ * own static `import` of the SDK is what bundlers and Vercel's file
+ * tracer follow to ship the package and its transitive deps to the
+ * deployment.
  *
- * `@vercel/sandbox` is a peer dependency and only loaded when this adapter
- * is explicitly selected.
+ * Supports both ephemeral and persistent sandboxes — pass an existing
+ * `sandboxId` to reconnect.
  */
 
-import type { Sandbox, CommandResult } from "../types";
+import type {
+  Sandbox,
+  CommandResult,
+  VercelSandboxClassLike,
+  VercelSandboxInstance,
+} from "../types";
 
 /**
- * Wraps an already-resolved Vercel sandbox instance into our Sandbox interface.
- * The `rawSandbox` parameter is typed as `unknown` to avoid requiring
- * `@vercel/sandbox` at import time — it's loaded dynamically in `resolveVercelSandbox`.
+ * Wrap a Vercel sandbox instance into the framework's `Sandbox` interface.
+ *
+ * Bash command lines are run through `sh -c "..."` so shell features
+ * (pipes, redirects, env-var expansion) work the same way they do on
+ * other adapters. `readFile`/`writeFile` map to `readFileToBuffer`/
+ * `writeFiles` since those are the byte-oriented methods on the SDK.
  */
-export function createVercelAdapter(rawSandbox: unknown): Sandbox {
-  // Cast at usage — the caller guarantees this is a Vercel Sandbox instance.
-  const sandbox = rawSandbox as {
-    shells: Array<{
-      exec(cmd: string): Promise<{ stdout?: string; stderr?: string; exitCode?: number }>;
-    }>;
-    readFile(path: string): Promise<string>;
-    writeFile(path: string, content: string): Promise<void>;
-    kill(): Promise<void>;
-  };
-
+export function createVercelAdapter(sandbox: VercelSandboxInstance): Sandbox {
   return {
     async executeCommand(command: string): Promise<CommandResult> {
-      const result = await sandbox.shells[0].exec(command);
+      const result = await sandbox.runCommand("sh", ["-c", command]);
+      const [stdout, stderr] = await Promise.all([
+        result.stdout(),
+        result.stderr(),
+      ]);
       return {
-        stdout: result.stdout ?? "",
-        stderr: result.stderr ?? "",
+        stdout,
+        stderr,
         exitCode: result.exitCode ?? 0,
       };
     },
 
     async readFile(filePath: string): Promise<string> {
-      return sandbox.readFile(filePath);
+      const buf = await sandbox.readFileToBuffer({ path: filePath });
+      if (buf === null) {
+        throw new Error(`File not found: ${filePath}`);
+      }
+      return buf.toString("utf-8");
     },
 
     async writeFile(filePath: string, content: string): Promise<void> {
-      await sandbox.writeFile(filePath, content);
+      await sandbox.writeFiles([{ path: filePath, content }]);
     },
 
     async stop(): Promise<void> {
-      await sandbox.kill();
+      await sandbox.stop();
     },
   };
 }
 
 /**
- * Resolves a Vercel sandbox — reconnects to an existing one via `sandboxId`
- * or creates a new one.
+ * Resolve a Vercel sandbox — reconnect to an existing one via `sandboxId`
+ * or provision a new one via `Sandbox.create(createOptions)`.
  *
  * @returns The adapter sandbox and the resolved sandbox ID for persistence.
  */
-export async function resolveVercelSandbox(
-  sandboxId?: string,
-): Promise<{ sandbox: Sandbox; sandboxId: string }> {
-  const { Sandbox: VercelSandboxClass } = await import(/* webpackIgnore: true */ "@vercel/sandbox");
-
-  if (sandboxId) {
-    const raw = await VercelSandboxClass.get({ sandboxId });
-    return { sandbox: createVercelAdapter(raw), sandboxId };
+export async function resolveVercelSandbox(opts: {
+  Sandbox: VercelSandboxClassLike;
+  sandboxId?: string;
+  createOptions?: unknown;
+}): Promise<{ sandbox: Sandbox; sandboxId: string }> {
+  if (opts.sandboxId) {
+    const raw = await opts.Sandbox.get({ sandboxId: opts.sandboxId });
+    return { sandbox: createVercelAdapter(raw), sandboxId: opts.sandboxId };
   }
 
-  const raw = await VercelSandboxClass.create();
+  const raw = await opts.Sandbox.create(opts.createOptions);
   return { sandbox: createVercelAdapter(raw), sandboxId: raw.sandboxId };
 }

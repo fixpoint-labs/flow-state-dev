@@ -6,12 +6,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   outputFileTracingRoot: resolve(__dirname, "../../"),
-  // Packages bundled by the framework's adapters via dynamic `import()` —
-  // mark as external so Next.js leaves the require alone and Vercel
-  // deploys them to node_modules instead of inlining into a chunk. The
-  // tracer in bash-tools.ts adds a static `import("@vercel/sandbox")`
-  // so nft follows the package and its transitive deps to the deploy.
-  serverExternalPackages: ["pg", "@vercel/sandbox"],
+  // `pg` ships native bindings; mark external so webpack doesn't try to
+  // bundle it. `@vercel/sandbox` doesn't need this entry — the bash
+  // adapter takes the SDK class via DI from the consumer (see
+  // `flows/chat-agent/blocks/bash-tools.ts`), so the static import is
+  // visible to nft like any other dependency.
+  serverExternalPackages: ["pg"],
   transpilePackages: [
     "@flow-state-dev/core",
     "@flow-state-dev/client",

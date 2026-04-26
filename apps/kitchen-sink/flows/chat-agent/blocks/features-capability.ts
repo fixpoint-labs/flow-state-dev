@@ -17,16 +17,6 @@
  * so the framework installs the skills collection resource at build time —
  * dynamic `uses` callbacks only contribute tools and context, not resources.
  */
-// Force Vercel's file tracer (nft) to ship @vercel/sandbox + transitive
-// deps to /var/task. The framework's vercel adapter loads the package
-// via a webpackIgnore'd dynamic import for portability — that hides the
-// dep from nft, so we have to reference it statically somewhere that's
-// definitely in the route bundle. Binding to a const stops webpack
-// production builds from tree-shaking the side-effect import away.
-import * as VercelSandboxTrace from "@vercel/sandbox";
-const _vercelSandboxTrace: typeof VercelSandboxTrace = VercelSandboxTrace;
-export const __vercelSandboxTrace = _vercelSandboxTrace;
-
 import { defineCapability } from "@flow-state-dev/core";
 import { createBashCapability } from "@flow-state-dev/tools/bash";
 import { search } from "@flow-state-dev/tools/search";

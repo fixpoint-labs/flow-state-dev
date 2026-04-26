@@ -85,6 +85,53 @@ export type ExecutionLimits = {
 /** Workspace scope for the local provider. Determines the workspace directory. */
 export type WorkspaceScope = "session" | "user" | "project";
 
+// ---------------------------------------------------------------------------
+// Third-party SDK shapes
+//
+// Adapters that wrap third-party SDKs receive the SDK from the consumer
+// (DI). The framework declares a structural type that matches what the
+// adapter actually uses, so we don't take a peer dep on the SDK package
+// itself. This keeps the framework portable, and — equally important —
+// gives bundlers (webpack, nft) a real static import in the consumer's
+// own code to follow when building for Vercel.
+// ---------------------------------------------------------------------------
+
+/**
+ * Structural shape of a Vercel Sandbox `runCommand` result. Mirrors the
+ * SDK's `CommandFinished`: synchronous `exitCode` plus async `stdout()`/
+ * `stderr()` getters.
+ */
+export interface VercelCommandFinishedLike {
+  exitCode: number | null;
+  stdout(): Promise<string>;
+  stderr(): Promise<string>;
+}
+
+/** Structural shape of a Vercel Sandbox instance — only the methods the adapter calls. */
+export interface VercelSandboxInstance {
+  readonly sandboxId: string;
+  runCommand(
+    command: string,
+    args?: string[],
+    opts?: { signal?: AbortSignal },
+  ): Promise<VercelCommandFinishedLike>;
+  readFileToBuffer(
+    file: { path: string; cwd?: string },
+    opts?: { signal?: AbortSignal },
+  ): Promise<Buffer | null>;
+  writeFiles(
+    files: Array<{ path: string; content: string | Uint8Array; mode?: number }>,
+    opts?: { signal?: AbortSignal },
+  ): Promise<void>;
+  stop(opts?: unknown): Promise<unknown>;
+}
+
+/** Structural shape of the Vercel `Sandbox` class — the class consumers pass via config. */
+export interface VercelSandboxClassLike {
+  create(options?: unknown): Promise<VercelSandboxInstance>;
+  get(options: { sandboxId: string }): Promise<VercelSandboxInstance>;
+}
+
 /** Discriminated union of sandbox provider configurations. */
 export type SandboxProvider =
   | {
@@ -112,8 +159,43 @@ export type SandboxProvider =
        */
       strictPaths?: boolean;
     }
-  | { type: "vercel"; sandboxId?: string }
-  | { type: "upstash"; boxId?: string }
+  | {
+      type: "vercel";
+      /**
+       * The `Sandbox` class from `@vercel/sandbox`. The consumer imports
+       * the SDK directly and passes the class in. Keeps `@flow-state-dev/tools`
+       * free of a peer dep on the SDK and gives bundlers a real static
+       * import to trace — Vercel's nft can't follow magic-comment'd
+       * dynamic imports through framework chunks reliably.
+       *
+       * Usage:
+       * ```ts
+       * import { Sandbox } from "@vercel/sandbox";
+       * createBashCapability({ provider: { type: "vercel", Sandbox } });
+       * ```
+       */
+      Sandbox: VercelSandboxClassLike;
+      /**
+       * Reconnect to an existing sandbox by ID. Omit to create a fresh one.
+       * The framework returns the resolved ID alongside the sandbox so a
+       * `bashSession` resource can persist it for the next request.
+       */
+      sandboxId?: string;
+      /** Forwarded to `Sandbox.create()` when a new sandbox is provisioned. */
+      createOptions?: unknown;
+    }
+  | {
+      type: "upstash";
+      /**
+       * The Upstash Box client instance. As with the Vercel provider, the
+       * consumer constructs the client (which knows its own auth/region)
+       * and passes it in. Structural typing — see `UpstashBoxClient` in
+       * `./adapters/upstash`.
+       */
+      client: UpstashBoxClientLike;
+      /** Reconnect to an existing box by ID. Omit to provision a fresh one. */
+      boxId?: string;
+    }
   | {
       type: "just-bash";
       /** Environment variables available inside the sandbox. */
@@ -128,6 +210,19 @@ export type SandboxProvider =
       executionLimits?: ExecutionLimits;
     }
   | { type: "custom"; sandbox: Sandbox };
+
+/**
+ * Structural shape of the Upstash Box client — only the methods the adapter
+ * calls. Same DI rationale as `VercelSandboxClassLike`. Re-exported from
+ * `./adapters/upstash` as `UpstashBoxClient` for the public-facing name.
+ */
+export interface UpstashBoxClientLike {
+  id: string;
+  exec(command: string): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+  read(path: string): Promise<string>;
+  write(path: string, content: string): Promise<void>;
+  destroy(): Promise<void>;
+}
 
 // ---------------------------------------------------------------------------
 // Bash session state (singleton resource)
