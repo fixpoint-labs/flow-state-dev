@@ -56,12 +56,10 @@ export function createApplyIntent() {
     execute: async (_input, ctx) => {
       const seq = ctx.sequencer?.state;
       const skills = seq?.skills ?? [];
-      // Top-level intentSource: prefer slash when any slash-sourced skill
-      // matched, else the tier that finalized resolution.
-      const intentSource =
-        skills.find((s) => s.source === "slash") !== undefined
-          ? "slash"
-          : (seq?.source ?? "classifier");
+      // Each tier produces uniformly-sourced matches, so the top-level
+      // intent source is whichever tier produced the first skill match.
+      // No matches → classifier was the last tier to run.
+      const intentSource = skills[0]?.source ?? "classifier";
 
       const intent = {
         activeSkills: skills,

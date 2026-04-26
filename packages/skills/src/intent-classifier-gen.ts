@@ -3,22 +3,22 @@
  *
  * One generator call decides whether any skill in the catalog applies to
  * the user message. Returns zero-or-more matches with per-match confidence;
- * the apply handler filters out skills not in the catalog (a hallucination
+ * an apply handler filters out skills not in the catalog (a hallucination
  * guard) and applies the confidence threshold.
  *
  * `agentType: "trace"` hides emissions from both the client stream and the
- * LLM history (resolve-visibility.ts) — the classification is observability-
- * only, never visible to the main generator's chat history.
+ * LLM history — the classification is observability-only, never visible to
+ * the main generator's chat history.
  */
 
 import { z } from "zod";
 import { generator, handler, sequencer } from "@flow-state-dev/core";
 import type {
-  BlockContext,
   ResourceCollectionRef,
   ScopeType,
 } from "@flow-state-dev/core/types";
 import type { SkillState } from "@flow-state-dev/core";
+import { getCollection } from "./internal/get-collection";
 import {
   intentSequencerStateSchema,
   matchedSkillSchema,
@@ -32,9 +32,9 @@ export const DEFAULT_MAX_SKILLS = 20;
 
 const inputSchema = z.object({ message: z.string() }).passthrough();
 
-/** Public — exported so consumers/tests can mock against it. */
+/** Public so consumers can mock against this shape if they ever need to. */
 export const intentClassifierOutputSchema = z.object({
-  /** Per anchoring mitigation: ask the model to think before labeling. */
+  /** Anchoring mitigation: ask the model to think before labeling. */
   reasoning: z.string(),
   activeSkills: z.array(
     z.object({
@@ -48,8 +48,6 @@ export const intentClassifierOutputSchema = z.object({
 export type IntentClassifierOutput = z.infer<typeof intentClassifierOutputSchema>;
 
 export interface IntentClassifierOptions {
-  /** Block name. Default `"intent-classifier"`. */
-  name?: string;
   collectionKey: string;
   scope: ScopeType;
   /** Model to drive the classifier with. Default `"preset/fast"`. */
@@ -58,43 +56,6 @@ export interface IntentClassifierOptions {
   confidenceThreshold?: number;
   /** Maximum number of skills described in the classifier prompt. */
   maxSkillsInClassifier?: number;
-}
-
-/** Resolve the skills collection ref from the appropriate scope registry. */
-function getCollection(
-  ctx: BlockContext,
-  scope: ScopeType,
-  key: string,
-): ResourceCollectionRef | undefined {
-  const registry =
-    scope === "session"
-      ? ctx.session?.resources
-      : scope === "user"
-        ? ctx.user?.resources
-        : ctx.project?.resources;
-  if (!registry) return undefined;
-  const get = (registry as { get?: (k: string) => unknown }).get;
-  if (typeof get === "function") {
-    const ref = get.call(registry, key);
-    if (ref && typeof ref === "object" && "pattern" in ref) {
-      return ref as ResourceCollectionRef;
-    }
-  }
-  const list = (registry as { list?: () => unknown[] }).list;
-  if (typeof list === "function") {
-    for (const entry of list.call(registry)) {
-      if (
-        entry &&
-        typeof entry === "object" &&
-        "pattern" in (entry as object) &&
-        "create" in (entry as object)
-      ) {
-        const ref = entry as ResourceCollectionRef;
-        if (ref.pattern.startsWith(`${key}/`)) return ref;
-      }
-    }
-  }
-  return undefined;
 }
 
 /** List enabled skills (capped) with their description for the prompt. */
@@ -123,14 +84,15 @@ function listSkillsForPrompt(
 }
 
 /**
- * Build the classifier generator. Output is the structured-object form per
- * `intentClassifierOutputSchema`.
+ * Build the tier-3 classifier — generator call + apply handler wrapped in
+ * a sequencer. The sequencer is what `intentSelector`'s `tapIf` targets.
  */
-export function createIntentClassifierGenerator(opts: IntentClassifierOptions) {
+export function createIntentClassifierSequencer(opts: IntentClassifierOptions) {
   const cap = opts.maxSkillsInClassifier ?? DEFAULT_MAX_SKILLS;
+  const threshold = opts.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
 
-  return generator({
-    name: opts.name ?? "intent-classifier",
+  const classifier = generator({
+    name: "intent-classifier",
     model: opts.classifierModel ?? "preset/fast",
     inputSchema,
     outputSchema: intentClassifierOutputSchema,
@@ -159,21 +121,11 @@ export function createIntentClassifierGenerator(opts: IntentClassifierOptions) {
     },
     user: (input) => (input as { message: string }).message,
   });
-}
 
-const applySchema = z.object({ accepted: z.boolean() });
-
-/**
- * Apply the classifier output to the cross-tier sequencer state. Filters out
- * skills not present in the catalog and gates on the confidence threshold.
- */
-export function createApplyClassifierResult(opts: IntentClassifierOptions) {
-  const threshold = opts.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
-
-  return handler({
+  const apply = handler({
     name: "apply-classifier-result",
     inputSchema: intentClassifierOutputSchema,
-    outputSchema: applySchema,
+    outputSchema: z.object({ accepted: z.boolean() }),
     sequencerStateSchema: intentSequencerStateSchema,
     execute: async (input, ctx) => {
       const collection = getCollection(ctx, opts.scope, opts.collectionKey);
@@ -191,8 +143,7 @@ export function createApplyClassifierResult(opts: IntentClassifierOptions) {
       }
 
       const filteredSkills = input.activeSkills
-        .filter((s) => validNames.has(s.name))
-        .filter((s) => s.confidence >= threshold)
+        .filter((s) => validNames.has(s.name) && s.confidence >= threshold)
         .map((s) =>
           matchedSkillSchema.parse({
             name: s.name,
@@ -213,24 +164,12 @@ export function createApplyClassifierResult(opts: IntentClassifierOptions) {
         resolved: true,
         skills: [...existingSkills, ...filteredSkills],
         classifierConfidence: aggregateConfidence,
-        source: "classifier" as const,
       });
       return { accepted: true };
     },
   });
-}
 
-/**
- * Convenience: build the classifier generator + apply handler wrapped in a
- * sequencer. This is what intentSelector's tier-3 `tapIf` actually targets.
- */
-export function createIntentClassifierSequencer(opts: IntentClassifierOptions) {
-  const classifier = createIntentClassifierGenerator(opts);
-  const apply = createApplyClassifierResult(opts);
-  return sequencer({
-    name: "intent-classifier-tier",
-    inputSchema,
-  })
+  return sequencer({ name: "intent-classifier-tier", inputSchema })
     .then((input) => ({ message: (input as { message: string }).message }), classifier)
     .tap(apply);
 }

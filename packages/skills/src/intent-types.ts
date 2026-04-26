@@ -62,10 +62,9 @@ export const intentSessionStateSchema = z.object({
  * reads the accumulated state at the end of the pipeline.
  *
  * `resolved` gates tier-3 (the LLM classifier) — a tier sets it to `true`
- * once the skill dimension has been answered. Tier 1 (slash) sets `resolved`
- * immediately because the user opted in to a specific skill. Tier 2
- * (keyword) sets `resolved` when it found at least one skill match OR there
- * are no candidate skills with keywords to scan against.
+ * once the skill dimension has been answered. Top-level `intentSource` is
+ * derived in apply-intent from the first matched skill's per-entry source
+ * (uniform per tier), so we don't carry it as a separate field here.
  */
 export const intentSequencerStateSchema = z.object({
   resolved: z.boolean().default(false),
@@ -73,6 +72,4 @@ export const intentSequencerStateSchema = z.object({
   skills: z.array(matchedSkillSchema).default([]),
   /** Classifier-tier aggregate confidence, when classifier ran. */
   classifierConfidence: z.number().min(0).max(1).nullable().default(null),
-  /** Tier that produced the final result. Read by apply-intent. */
-  source: intentSourceSchema.nullable().default(null),
 });

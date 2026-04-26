@@ -3,9 +3,9 @@
  *
  * Scans the user message for a leading `/<skill-name>` token. If the named
  * skill exists in the configured collection and is not
- * `disable-model-invocation: true`, marks the sequencer as resolved with
- * `source: "slash"`. Tiers 2 (keyword) and 3 (classifier) are gated off the
- * same `resolved` flag and skip when slash matched.
+ * `disable-model-invocation: true`, marks the sequencer as resolved.
+ * Tiers 2 (keyword) and 3 (classifier) are gated off the same `resolved`
+ * flag and skip when slash matched.
  *
  * Non-match cases (unknown skill, disabled skill, no slash, slash with no
  * name) all fall through silently — tier 2 picks up from there with the
@@ -14,13 +14,10 @@
 
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import type {
-  BlockContext,
-  ResourceCollectionRef,
-  ScopeType,
-} from "@flow-state-dev/core/types";
+import type { ScopeType } from "@flow-state-dev/core/types";
 import type { SkillState } from "@flow-state-dev/core";
 import { skillManifestKey } from "./collection";
+import { getCollection } from "./internal/get-collection";
 import { intentSequencerStateSchema } from "./intent-types";
 
 /** Pattern: `/skill-name` at the start of the message, optional argument tail. */
@@ -32,44 +29,6 @@ const outputSchema = z.object({ matched: z.boolean() });
 export interface SlashMatchOptions {
   collectionKey: string;
   scope: ScopeType;
-}
-
-/** Resolve the skills collection ref from the appropriate scope registry. */
-function getCollection(
-  ctx: BlockContext,
-  scope: ScopeType,
-  key: string,
-): ResourceCollectionRef | undefined {
-  const registry =
-    scope === "session"
-      ? ctx.session?.resources
-      : scope === "user"
-        ? ctx.user?.resources
-        : ctx.project?.resources;
-  if (!registry) return undefined;
-  const get = (registry as { get?: (k: string) => unknown }).get;
-  if (typeof get === "function") {
-    const ref = get.call(registry, key);
-    if (ref && typeof ref === "object" && "pattern" in ref) {
-      return ref as ResourceCollectionRef;
-    }
-  }
-  // Fallback: scan list() for a ref whose pattern matches our key prefix.
-  const list = (registry as { list?: () => unknown[] }).list;
-  if (typeof list === "function") {
-    for (const entry of list.call(registry)) {
-      if (
-        entry &&
-        typeof entry === "object" &&
-        "pattern" in (entry as object) &&
-        "create" in (entry as object)
-      ) {
-        const ref = entry as ResourceCollectionRef;
-        if (ref.pattern.startsWith(`${key}/`)) return ref;
-      }
-    }
-  }
-  return undefined;
 }
 
 /**
@@ -104,7 +63,6 @@ export function createIntentSlashMatch(opts: SlashMatchOptions) {
 
       await ctx.sequencer!.patchState({
         resolved: true,
-        source: "slash" as const,
         skills: [
           {
             name: skillName,

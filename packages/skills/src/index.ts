@@ -94,32 +94,13 @@ export {
   createIntentSelector,
   type IntentSelectorOptions,
 } from "./intent-selector";
-export {
-  createIntentSlashMatch,
-  type SlashMatchOptions,
-} from "./intent-slash-match";
-export {
-  createIntentKeywordMatch,
-  type KeywordMatchOptions,
-} from "./intent-keyword-match";
-export {
-  createIntentClassifierGenerator,
-  createIntentClassifierSequencer,
-  createApplyClassifierResult,
-  intentClassifierOutputSchema,
-  DEFAULT_CONFIDENCE_THRESHOLD,
-  DEFAULT_MAX_SKILLS,
-  type IntentClassifierOptions,
-  type IntentClassifierOutput,
-} from "./intent-classifier-gen";
-export { createApplyIntent } from "./apply-intent";
+// Public runtime shapes mirroring the IntentSource / MatchedSkill /
+// IntentResult types in @flow-state-dev/core. Useful for consumers writing
+// their own apply handlers or inspecting the request-state record.
 export {
   intentSourceSchema,
   matchedSkillSchema,
   intentResultSchema,
-  intentRequestStateSchema,
-  intentSessionStateSchema,
-  intentSequencerStateSchema,
 } from "./intent-types";
 
 export {
