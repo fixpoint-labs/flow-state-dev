@@ -358,11 +358,8 @@ function KitchenSinkApp() {
         </div>
 
         <ClientDataBar
-          currentMode={modeStatus?.currentMode}
-          requestCount={modeStatus?.requestCount}
           displayName={userPrefs?.displayName}
           resolvedModel={modeStatus?.resolvedModel ?? undefined}
-          preferredProvider={userPrefs?.preferredProvider}
           thinkingStyleMode={thinkingStyle}
           thinkingStyle={resolvedThinkingStyle ?? modeStatus?.thinkingStyle}
           activeSkills={modeStatus?.activeSkills}
