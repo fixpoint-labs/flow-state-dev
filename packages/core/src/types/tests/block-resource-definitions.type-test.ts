@@ -50,7 +50,7 @@ const persistObs = handler({
 type PersistObsOutput = typeof persistObs extends { outputSchema: { _output: infer O } } ? O : never;
 type _PersistObsCheck = Assert<Equals<PersistObsOutput, { ok: boolean }>>;
 
-// ── Handler: userResources + projectResources ─────────────────────────
+// ── Handler: userResources + orgResources ─────────────────────────
 
 const multiScopeBlock = handler({
   name: "multi-scope",

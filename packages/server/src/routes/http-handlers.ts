@@ -69,7 +69,7 @@ export type InternalRouteSeams = {
       userId: string;
       sessionId?: string;
       requestId: string;
-      projectId?: string;
+      orgId?: string;
       metadata?: Record<string, unknown>;
       signal?: AbortSignal;
     },
@@ -81,7 +81,7 @@ export type InternalRouteSeams = {
     userId: string;
     sessionId?: string;
     requestId: string;
-    projectId?: string;
+    orgId?: string;
     metadata?: Record<string, unknown>;
     signal?: AbortSignal;
   }> | void> | Partial<{
@@ -91,7 +91,7 @@ export type InternalRouteSeams = {
     userId: string;
     sessionId?: string;
     requestId: string;
-    projectId?: string;
+    orgId?: string;
     metadata?: Record<string, unknown>;
     signal?: AbortSignal;
   }> | void;
@@ -143,7 +143,7 @@ function resolveStores(partial: Partial<StoreRegistry> | undefined): StoreRegist
     session: partial?.session ?? fallback.session,
     request: partial?.request ?? fallback.request,
     user: partial?.user ?? fallback.user,
-    project: partial?.project ?? fallback.project,
+    org: partial?.org ?? fallback.org,
     activeRequests: partial?.activeRequests ?? fallback.activeRequests,
     content: partial?.content ?? fallback.content
   };
@@ -210,6 +210,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
             id: flow.id,
             kind: flow.kind,
             requireUser: flow.requireUser,
+            requiresOrg: flow.requiresOrg,
             actions: Object.keys(flow.actions),
             actionSchemas: Object.fromEntries(
               Object.entries(flow.actions).map(([name, config]) => [

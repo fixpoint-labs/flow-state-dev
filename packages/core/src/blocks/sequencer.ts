@@ -624,7 +624,8 @@ function createSequencer<TInput, TOutput>(
   lastOutputSchema?: ZodTypeAny,
   resolvedInputSchema?: ZodTypeAny,
   accumulatedResources?: DeclaredResources,
-  capabilityRefs?: import("../capability/types").CapabilityRef[]
+  capabilityRefs?: import("../capability/types").CapabilityRef[],
+  accumulatedRequiresOrg?: boolean
 ): SequencerDefinition<TInput, TOutput> {
   // The tracked output schema reflects the chain's last step (informational for devtools/composition).
   // We pass undefined to buildBlock's outputSchema so the sequencer itself doesn't validate output —
@@ -649,6 +650,7 @@ function createSequencer<TInput, TOutput>(
     ) => Promise<unknown>,
     declaredResources: accumulatedResources,
     resolvedCapabilities: capabilityRefs,
+    requiresOrg: accumulatedRequiresOrg,
   });
 
   // Override the informational schema on the block definition so devtools and consumers
@@ -669,13 +671,23 @@ function createSequencer<TInput, TOutput>(
     return merged;
   };
 
+  /** OR child blocks' `requiresOrg` flags into the sequencer's accumulator. */
+  const mergeRequiresOrgFrom = (...blocks: Array<BlockDefinition<any, any> | undefined>): boolean => {
+    let merged = accumulatedRequiresOrg ?? false;
+    for (const block of blocks) {
+      if (block?.requiresOrg) merged = true;
+    }
+    return merged;
+  };
+
   const extend = <TNext>(
     operation: SequencerOperation,
     newOutputSchema?: ZodTypeAny,
     newInputSchema?: ZodTypeAny,
-    newResources?: DeclaredResources
+    newResources?: DeclaredResources,
+    newRequiresOrg?: boolean
   ): SequencerDefinition<TInput, TNext> =>
-    createSequencer<TInput, TNext>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs);
+    createSequencer<TInput, TNext>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs, newRequiresOrg ?? accumulatedRequiresOrg);
 
   /**
    * On the first step (no operations yet) when neither config nor resolved input
@@ -709,7 +721,8 @@ function createSequencer<TInput, TOutput>(
           },
           block.config.outputSchema,
           capturedInput,
-          mergeFrom(block)
+          mergeFrom(block),
+        mergeRequiresOrgFrom(block)
         );
       }
 
@@ -731,7 +744,8 @@ function createSequencer<TInput, TOutput>(
         },
         block.config.outputSchema,
         capturedInput,
-        mergeFrom(block)
+        mergeFrom(block),
+        mergeRequiresOrgFrom(block)
       );
     },
 
@@ -765,7 +779,9 @@ function createSequencer<TInput, TOutput>(
           rescueHandlers,
           block.config.outputSchema,
           resolvedInputSchema,
-          mergeFrom(block)
+          mergeFrom(block),
+          capabilityRefs,
+          mergeRequiresOrgFrom(block)
         );
       }
 
@@ -796,7 +812,9 @@ function createSequencer<TInput, TOutput>(
         rescueHandlers,
         block.config.outputSchema,
         resolvedInputSchema,
-        mergeFrom(block)
+        mergeFrom(block),
+        capabilityRefs,
+        mergeRequiresOrgFrom(block)
       );
     },
 
@@ -879,7 +897,8 @@ function createSequencer<TInput, TOutput>(
         },
         compositeSchema,
         undefined,
-        mergeFrom(...stepBlocks)
+        mergeFrom(...stepBlocks),
+        mergeRequiresOrgFrom(...stepBlocks)
       );
     },
 
@@ -951,7 +970,8 @@ function createSequencer<TInput, TOutput>(
         },
         arraySchema,
         undefined,
-        mergeFrom(elementBlock)
+        mergeFrom(elementBlock),
+        mergeRequiresOrgFrom(elementBlock)
       );
     },
 
@@ -1047,7 +1067,8 @@ function createSequencer<TInput, TOutput>(
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(elementBlock)
+        mergeFrom(elementBlock),
+        mergeRequiresOrgFrom(elementBlock)
       );
     },
 
@@ -1089,7 +1110,8 @@ function createSequencer<TInput, TOutput>(
         },
         block.config.outputSchema,
         undefined,
-        mergeFrom(block)
+        mergeFrom(block),
+        mergeRequiresOrgFrom(block)
       );
     },
 
@@ -1130,7 +1152,8 @@ function createSequencer<TInput, TOutput>(
         },
         block.config.outputSchema,
         undefined,
-        mergeFrom(block)
+        mergeFrom(block),
+        mergeRequiresOrgFrom(block)
       );
     },
 
@@ -1205,7 +1228,8 @@ function createSequencer<TInput, TOutput>(
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(block)
+        mergeFrom(block),
+        mergeRequiresOrgFrom(block)
       );
     },
 
@@ -1265,7 +1289,8 @@ function createSequencer<TInput, TOutput>(
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(block)
+        mergeFrom(block),
+        mergeRequiresOrgFrom(block)
       );
     },
 
@@ -1321,7 +1346,8 @@ function createSequencer<TInput, TOutput>(
           },
           lastOutputSchema,
           undefined,
-          mergeFrom(block)
+          mergeFrom(block),
+        mergeRequiresOrgFrom(block)
         );
       }
 
@@ -1359,7 +1385,8 @@ function createSequencer<TInput, TOutput>(
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(tapBlock)
+        mergeFrom(tapBlock),
+        mergeRequiresOrgFrom(tapBlock)
       );
     },
 
@@ -1407,7 +1434,8 @@ function createSequencer<TInput, TOutput>(
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(tapIfBlock)
+        mergeFrom(tapIfBlock),
+        mergeRequiresOrgFrom(tapIfBlock)
       );
     },
 
@@ -1417,7 +1445,12 @@ function createSequencer<TInput, TOutput>(
         (acc, h) => mergeDeclaredResources(acc, h.block.declaredResources),
         accumulatedResources
       );
-      return createSequencer<TInput, TOutput>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs);
+      // Bubble: a rescue handler block requiring org makes the whole sequencer require it.
+      const rescueRequiresOrg = handlers.reduce(
+        (acc, h) => acc || Boolean(h.block.requiresOrg),
+        accumulatedRequiresOrg ?? false
+      );
+      return createSequencer<TInput, TOutput>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg);
     },
 
     branch<TBranches extends Record<string, BranchStep<TOutput>>>(
@@ -1457,7 +1490,8 @@ function createSequencer<TInput, TOutput>(
         },
         firstBranchSchema,
         undefined,
-        mergeFrom(...branchBlocks)
+        mergeFrom(...branchBlocks),
+        mergeRequiresOrgFrom(...branchBlocks)
       );
     },
 
@@ -1507,7 +1541,8 @@ function createSequencer<TInput, TOutput>(
         },
         undefined,
         undefined,
-        mergeFrom(...stepBlocks)
+        mergeFrom(...stepBlocks),
+        mergeRequiresOrgFrom(...stepBlocks)
       );
     },
 
@@ -1542,7 +1577,8 @@ function createSequencer<TInput, TOutput>(
         },
         undefined,
         undefined,
-        mergeFrom(...blocks)
+        mergeFrom(...blocks),
+        mergeRequiresOrgFrom(...blocks)
       );
     },
 
@@ -1652,7 +1688,8 @@ function createSequencer<TInput, TOutput>(
         },
         undefined,
         undefined,
-        mergeFrom(...blocks)
+        mergeFrom(...blocks),
+        mergeRequiresOrgFrom(...blocks)
       );
     },
 

@@ -256,7 +256,7 @@ describe('memory/memorySystem', () => {
         model: 'gpt-5-mini',
         working: true,
         episodic: {
-          scope: 'project',
+          scope: 'org',
           significanceThreshold: 0.7,
           maxEpisodes: 100,
         },
@@ -321,12 +321,12 @@ describe('memory/memorySystem', () => {
         expect(block.declaredResources?.user).toHaveProperty('episodicMemory')
       })
 
-      it('declares project resources when episodic scope is project', () => {
+      it('declares org resources when episodic scope is org', () => {
         const block = memorySystemObserve({
           ...baseConfig,
-          episodic: { scope: 'project', significanceThreshold: 0.6, maxEpisodes: 200 },
+          episodic: { scope: 'org', significanceThreshold: 0.6, maxEpisodes: 200 },
         })
-        expect(block.declaredResources?.project).toHaveProperty('episodicMemory')
+        expect(block.declaredResources?.org).toHaveProperty('episodicMemory')
       })
     })
 
@@ -845,7 +845,7 @@ describe('memory/memorySystem', () => {
         working: true,
         episodic: true,
         semantic: {
-          scope: 'project',
+          scope: 'org',
           consolidation: {
             episodicThreshold: 10,
             onEviction: false,

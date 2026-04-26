@@ -85,7 +85,7 @@ export function getBooleanFlag(value: string | null): boolean {
   return normalized === "true" || normalized === "1";
 }
 
-export type ClientDataScope = "session" | "user" | "project";
+export type ClientDataScope = "session" | "user" | "org";
 export type ClientDataFilter = Partial<Record<ClientDataScope, Set<string>>>;
 
 export function parseClientDataFilter(value: string | null): ClientDataFilter | undefined {
@@ -104,7 +104,7 @@ export function parseClientDataFilter(value: string | null): ClientDataFilter | 
     const isScoped =
       scopeCandidate === "session" ||
       scopeCandidate === "user" ||
-      scopeCandidate === "project";
+      scopeCandidate === "org";
     const scope: ClientDataScope = isScoped ? scopeCandidate : "session";
     const name = isScoped ? dataName : scopeCandidate;
 

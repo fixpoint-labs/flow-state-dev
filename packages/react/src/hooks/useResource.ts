@@ -37,8 +37,8 @@ export function useResource(
     const resources = session.snapshot?.resources;
     if (!resources) return undefined;
 
-    // Search across scopes — session first, then user, then project
-    for (const scope of ["session", "user", "project"] as const) {
+    // Search across scopes — session first, then user, then org
+    for (const scope of ["session", "user", "org"] as const) {
       const scopeResources = resources[scope];
       if (scopeResources && ref in scopeResources) {
         const candidate = scopeResources[ref] as ResourceSnapshotEntry;

@@ -210,7 +210,7 @@ export type ContextItem = OutputItemBase & {
 
 export type StateChangeItem = OutputItemBase & {
   type: "state_change";
-  scope: "request" | "session" | "user" | "project" | "block_instance";
+  scope: "request" | "session" | "user" | "org" | "block_instance";
   blockInstanceId?: string;
   operation: "patch" | "set" | "increment" | "push" | "delete_key" | "atomic";
   path?: string;
@@ -220,7 +220,7 @@ export type StateChangeItem = OutputItemBase & {
 
 export type ResourceChangeItem = OutputItemBase & {
   type: "resource_change";
-  scope: "request" | "session" | "user" | "project";
+  scope: "request" | "session" | "user" | "org";
   resourcePath: string;
   changeType: "created" | "updated" | "deleted";
   delta?: unknown;

@@ -44,7 +44,7 @@ import {
 } from './perspective-helpers.js'
 
 /** Position scope — controls where positions are persisted. */
-export type PositionScope = 'session' | 'user' | 'project'
+export type PositionScope = 'session' | 'user' | 'org'
 
 // ---------------------------------------------------------------------------
 // Internal: positions ref lookup
@@ -54,11 +54,11 @@ export type PositionScope = 'session' | 'user' | 'project'
 export function getPerspectivePositionsRef(ctx: any, scope: PositionScope) {
   if (scope === 'session') return ctx.session.resources.get('perspectivePositions')
   if (scope === 'user') return ctx.user.resources.get('perspectivePositions')
-  return ctx.project.resources.get('perspectivePositions')
+  return ctx.org.resources.get('perspectivePositions')
 }
 
 /**
- * Build the `sessionResources` / `userResources` / `projectResources` shape
+ * Build the `sessionResources` / `userResources` / `orgResources` shape
  * that installs the observations + positions resources at the right scopes
  * for a given `positionScope`. Observations are always session-scoped.
  *
@@ -71,7 +71,7 @@ export function getPerspectivePositionsRef(ctx: any, scope: PositionScope) {
 export function buildPerspectiveResources(scope: PositionScope): {
   sessionResources: Record<string, typeof perspectiveObservationsResource | typeof perspectivePositionsResource>
   userResources?: Record<string, typeof perspectivePositionsResource>
-  projectResources?: Record<string, typeof perspectivePositionsResource>
+  orgResources?: Record<string, typeof perspectivePositionsResource>
 } {
   if (scope === 'session') {
     return {
@@ -89,7 +89,7 @@ export function buildPerspectiveResources(scope: PositionScope): {
   }
   return {
     sessionResources: { perspectiveObservations: perspectiveObservationsResource },
-    projectResources: { perspectivePositions: perspectivePositionsResource },
+    orgResources: { perspectivePositions: perspectivePositionsResource },
   }
 }
 
@@ -362,7 +362,7 @@ export function perspectivePosition(config: PerspectivePositionBlockConfig) {
       ...(scope === 'session' ? { perspectivePositions: perspectivePositionsResource } : {}),
     },
     ...(scope === 'user' ? { userResources: { perspectivePositions: perspectivePositionsResource } } : {}),
-    ...(scope === 'project' ? { projectResources: { perspectivePositions: perspectivePositionsResource } } : {}),
+    ...(scope === 'org' ? { orgResources: { perspectivePositions: perspectivePositionsResource } } : {}),
     execute: async (input, ctx) => {
       const obsRef = ctx.session.resources.get('perspectiveObservations')
       const posRef = getPerspectivePositionsRef(ctx, scope)
@@ -395,7 +395,7 @@ export function perspectiveChallenge(config: PerspectivePositionBlockConfig) {
       ...(scope === 'session' ? { perspectivePositions: perspectivePositionsResource } : {}),
     },
     ...(scope === 'user' ? { userResources: { perspectivePositions: perspectivePositionsResource } } : {}),
-    ...(scope === 'project' ? { projectResources: { perspectivePositions: perspectivePositionsResource } } : {}),
+    ...(scope === 'org' ? { orgResources: { perspectivePositions: perspectivePositionsResource } } : {}),
     execute: async (input, ctx) => {
       const obsRef = ctx.session.resources.get('perspectiveObservations')
       const posRef = getPerspectivePositionsRef(ctx, scope)
@@ -428,7 +428,7 @@ export function perspectiveSnapshot(config: PerspectivePositionBlockConfig) {
       ...(scope === 'session' ? { perspectivePositions: perspectivePositionsResource } : {}),
     },
     ...(scope === 'user' ? { userResources: { perspectivePositions: perspectivePositionsResource } } : {}),
-    ...(scope === 'project' ? { projectResources: { perspectivePositions: perspectivePositionsResource } } : {}),
+    ...(scope === 'org' ? { orgResources: { perspectivePositions: perspectivePositionsResource } } : {}),
     execute: async (_input, ctx) => {
       const obsRef = ctx.session.resources.get('perspectiveObservations')
       const posRef = getPerspectivePositionsRef(ctx, scope)

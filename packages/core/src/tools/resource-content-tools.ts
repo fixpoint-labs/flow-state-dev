@@ -8,7 +8,7 @@ function toResourcePath(resource: ResourceRef<any>): string {
 }
 
 function listResources(ctx: BlockContext): ResourceRef<any>[] {
-  const registries = [ctx.session?.resources, ctx.user?.resources, ctx.project?.resources];
+  const registries = [ctx.session?.resources, ctx.user?.resources, ctx.org?.resources];
 
   return registries.flatMap((registry) => {
     if (registry === undefined) {

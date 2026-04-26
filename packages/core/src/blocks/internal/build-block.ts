@@ -19,16 +19,16 @@ import { toError } from "./utils";
 export function extractDeclaredResources(config: {
   sessionResources?: Record<string, DefinedResource | DefinedResourceCollection>;
   userResources?: Record<string, DefinedResource | DefinedResourceCollection>;
-  projectResources?: Record<string, DefinedResource | DefinedResourceCollection>;
+  orgResources?: Record<string, DefinedResource | DefinedResourceCollection>;
 }): DeclaredResources | undefined {
   const result: DeclaredResources = {};
   if (config.sessionResources) result.session = config.sessionResources;
   if (config.userResources) result.user = config.userResources;
-  if (config.projectResources) result.project = config.projectResources;
+  if (config.orgResources) result.org = config.orgResources;
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
-type ResourceScope = "session" | "user" | "project";
+type ResourceScope = "session" | "user" | "org";
 type ResourceEntry = DefinedResource | DefinedResourceCollection;
 
 /**
@@ -70,7 +70,7 @@ export function mergeDeclaredResources(
   if (source === undefined) return target;
   if (target === undefined) return { ...source };
 
-  const scopes: ResourceScope[] = ["session", "user", "project"];
+  const scopes: ResourceScope[] = ["session", "user", "org"];
   for (const scope of scopes) {
     const sourceScope = source[scope];
     if (sourceScope === undefined) continue;
@@ -106,6 +106,11 @@ export type BuildBlockOptions<
   declaredResources?: DeclaredResources;
   /** Resolved capabilities from `uses`, stored for ctx.cap construction at runtime. */
   resolvedCapabilities?: CapabilityRef[];
+  /**
+   * Pre-computed `requiresOrg` derived from child blocks. Sequencer/router
+   * builders OR this with their own `config.requireOrg`. Leaves omit it.
+   */
+  requiresOrg?: boolean;
 };
 
 function validateSchema<TValue>(
@@ -163,6 +168,11 @@ export function buildBlock<
 
   const transient = config.transient === true;
 
+  // Bubble: a block requires org if it declares `requireOrg: true` or any
+  // descendant requires it (sequencer/router builders pass children's
+  // aggregate as `options.requiresOrg`).
+  const requiresOrg = Boolean(config.requireOrg) || Boolean(options.requiresOrg);
+
   const definition: BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> = {
     kind,
     name: runtimeConfig.name,
@@ -172,6 +182,7 @@ export function buildBlock<
     outputSchema: resolvedOutputSchema,
     config: runtimeConfig,
     declaredResources: options.declaredResources,
+    requiresOrg,
     async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       try {
         const connectedInput = runtimeConfig.connectInput
@@ -221,6 +232,7 @@ export function buildBlock<
         config: nextConfig,
         execute: internalExecute as unknown as ExecuteFn<ZodTypeAny, TOutputSchema, unknown, TOutput>,
         declaredResources: definition.declaredResources,
+        requiresOrg: definition.requiresOrg,
       });
     },
     connectOutput<TTo>(
@@ -242,6 +254,7 @@ export function buildBlock<
         config: nextConfig,
         execute: mappedExecute,
         declaredResources: definition.declaredResources,
+        requiresOrg: definition.requiresOrg,
       });
     }
   };

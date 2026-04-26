@@ -95,7 +95,7 @@ export const workingMemoryCapability = createWorkingMemoryCapability()
 /** Config for episodic memory capability. */
 export interface EpisodicMemoryCapabilityConfig {
   /** Resource scope. Default: 'user'. */
-  scope?: 'user' | 'project'
+  scope?: 'user' | 'org'
   /** Max episodes to retain. Default: 200. */
   maxEpisodes?: number
 }
@@ -116,9 +116,9 @@ export function createEpisodicMemoryCapability(config?: EpisodicMemoryCapability
     name: 'episodicMemory' as const,
     ...(scope === 'user'
       ? { userResources: { episodicMemory: resource } }
-      : { projectResources: { episodicMemory: resource } }),
+      : { orgResources: { episodicMemory: resource } }),
     fns: (ctx: any) => {
-      const scopeCtx = scope === 'user' ? ctx.user : ctx.project
+      const scopeCtx = scope === 'user' ? ctx.user : ctx.org
       const ref = scopeCtx?.resources?.episodicMemory as ResourceContext<EpisodicMemoryState>
       return {
         /** Encode a new episode. Auto-evicts oldest when over capacity. */
@@ -142,7 +142,7 @@ export const episodicMemoryCapability = createEpisodicMemoryCapability()
 /** Config for semantic memory capability. */
 export interface SemanticMemoryCapabilityConfig {
   /** Resource scope. Default: 'user'. */
-  scope?: 'user' | 'project'
+  scope?: 'user' | 'org'
 }
 
 /** Input type for adding a new semantic fact via capability helpers. */
@@ -166,9 +166,9 @@ export function createSemanticMemoryCapability(config?: SemanticMemoryCapability
     name: 'semanticMemory' as const,
     ...(scope === 'user'
       ? { userResources: { semanticMemory: resource } }
-      : { projectResources: { semanticMemory: resource } }),
+      : { orgResources: { semanticMemory: resource } }),
     fns: (ctx: any) => {
-      const scopeCtx = scope === 'user' ? ctx.user : ctx.project
+      const scopeCtx = scope === 'user' ? ctx.user : ctx.org
       const ref = scopeCtx?.resources?.semanticMemory as ResourceContext<SemanticMemoryState>
       return {
         /** Add a new semantic fact. */

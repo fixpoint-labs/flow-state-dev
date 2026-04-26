@@ -1,6 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type {
-  ProjectScopeHandle,
+  OrgScopeHandle,
   RequestScopeHandle,
   SessionScopeHandle,
   UserScopeHandle
@@ -100,10 +100,10 @@ export interface BlockContext<
   TRequestState extends object = Record<string, unknown>,
   TSessionState extends object = Record<string, unknown>,
   TUserState extends object = Record<string, unknown>,
-  TProjectState extends object = Record<string, unknown>,
+  TOrgState extends object = Record<string, unknown>,
   TSessionResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>,
   TUserResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>,
-  TProjectResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>,
+  TOrgResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>,
   TSequencerState extends object = Record<string, unknown>,
   TParentInput = unknown,
   TTargets extends Record<string, ZodTypeAny> | undefined = undefined,
@@ -113,7 +113,7 @@ export interface BlockContext<
   request: RequestScopeHandle<TRequestState>;
   session: SessionScopeHandle<TSessionState, TSessionResources>;
   user: UserScopeHandle<TUserState, TUserResources>;
-  project?: ProjectScopeHandle<TProjectState, TProjectResources>;
+  org?: OrgScopeHandle<TOrgState, TOrgResources>;
   sequencer?: StateRef<TSequencerState>;
 
   /**
@@ -322,6 +322,14 @@ export interface BlockConfig<
 
   retry?: RetryPolicy;
   middleware?: Middleware[];
+
+  /**
+   * Opt-in flag declaring this block requires the session to be bound to an
+   * org. Bubbles up via `mergeDeclaredResources` so a flow rejects requests
+   * without `orgId` when any block in any action declares it. Per-block
+   * (not flow-wide) — block authors opt in deliberately.
+   */
+  requireOrg?: boolean;
 }
 
 export type DeclaredResourceEntry = DefinedResource | DefinedResourceCollection;
@@ -329,7 +337,7 @@ export type DeclaredResourceEntry = DefinedResource | DefinedResourceCollection;
 export type DeclaredResources = {
   session?: Record<string, DeclaredResourceEntry>;
   user?: Record<string, DeclaredResourceEntry>;
-  project?: Record<string, DeclaredResourceEntry>;
+  org?: Record<string, DeclaredResourceEntry>;
 };
 
 export interface BlockDefinition<
@@ -346,6 +354,13 @@ export interface BlockDefinition<
   outputSchema: TOutputSchema;
   config: BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>;
   declaredResources?: DeclaredResources;
+  /**
+   * Computed at build time: true when this block declares `requireOrg: true`,
+   * or — for sequencers — when any child block requires it. Bubbled by
+   * `mergeDeclaredResources` and surfaced on the flow as `flow.requiresOrg`
+   * for HTTP-layer enforcement.
+   */
+  requiresOrg: boolean;
   run(input: TInput, ctx: BlockContext): Promise<TOutput>;
 
   connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<ZodTypeAny, TOutputSchema>;

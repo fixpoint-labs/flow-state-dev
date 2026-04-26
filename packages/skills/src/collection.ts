@@ -47,7 +47,7 @@ export interface DefineSkillsCollectionOptions {
  * registered under any scope's `resources` map.
  *
  * @example
- *   project: {
+ *   org: {
  *     resources: { skills: defineSkillsCollection() }
  *   }
  */

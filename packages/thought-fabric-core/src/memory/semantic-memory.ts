@@ -54,7 +54,7 @@ export type SemanticMemoryState = z.infer<typeof semanticMemoryStateSchema>
  * Create a semantic memory resource definition with the given scope.
  * Follows the same factory pattern as `createEpisodicMemoryResource`.
  */
-export function createSemanticMemoryResource(_scope: 'user' | 'project') {
+export function createSemanticMemoryResource(_scope: 'user' | 'org') {
   return defineResource({
     stateSchema: semanticMemoryStateSchema,
     default: { facts: [], totalExtracted: 0, totalConsolidations: 0 },

@@ -61,7 +61,7 @@ export function useResourceCollection(
     const resources = session.snapshot?.resources;
     if (!resources) return undefined;
 
-    for (const scope of ["session", "user", "project"] as const) {
+    for (const scope of ["session", "user", "org"] as const) {
       const scopeResources = resources[scope];
       if (scopeResources && ref in scopeResources) {
         const candidate = scopeResources[ref];

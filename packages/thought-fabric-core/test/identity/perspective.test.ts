@@ -696,7 +696,7 @@ function createMockPositionsRef(
 function makeCtx(opts: {
   observations?: PerspectiveObservationsRef
   positions?: PerspectivePositionsRef
-  positionScope?: 'session' | 'user' | 'project'
+  positionScope?: 'session' | 'user' | 'org'
 }) {
   const scope = opts.positionScope ?? 'session'
   const sessionResources: Record<string, unknown> = {}
@@ -705,7 +705,7 @@ function makeCtx(opts: {
 
   const userResources: Record<string, unknown> = scope === 'user' && opts.positions
     ? { perspectivePositions: opts.positions } : {}
-  const projectResources: Record<string, unknown> = scope === 'project' && opts.positions
+  const orgResources: Record<string, unknown> = scope === 'org' && opts.positions
     ? { perspectivePositions: opts.positions } : {}
 
   const makeScope = (res: Record<string, unknown>) => ({
@@ -720,7 +720,7 @@ function makeCtx(opts: {
   return {
     session: makeScope(sessionResources),
     user: makeScope(userResources),
-    project: makeScope(projectResources),
+    org: makeScope(orgResources),
     response: { emit: async () => {} },
   } as any
 }
@@ -1283,7 +1283,7 @@ describe('identity/perspective — createPerspectiveCapability', () => {
     expect(cap.sessionResources).toHaveProperty('perspectiveObservations')
     expect(cap.sessionResources).toHaveProperty('perspectivePositions')
     expect(cap.userResources).toBeUndefined()
-    expect(cap.projectResources).toBeUndefined()
+    expect(cap.orgResources).toBeUndefined()
   })
 
   it('moves positions to user resources when positionScope is user', () => {
@@ -1291,15 +1291,15 @@ describe('identity/perspective — createPerspectiveCapability', () => {
     expect(cap.sessionResources).toHaveProperty('perspectiveObservations')
     expect(cap.sessionResources).not.toHaveProperty('perspectivePositions')
     expect(cap.userResources).toHaveProperty('perspectivePositions')
-    expect(cap.projectResources).toBeUndefined()
+    expect(cap.orgResources).toBeUndefined()
   })
 
-  it('moves positions to project resources when positionScope is project', () => {
-    const cap = createPerspectiveCapability(makeInstance(), { positionScope: 'project' })
+  it('moves positions to org resources when positionScope is org', () => {
+    const cap = createPerspectiveCapability(makeInstance(), { positionScope: 'org' })
     expect(cap.sessionResources).toHaveProperty('perspectiveObservations')
     expect(cap.sessionResources).not.toHaveProperty('perspectivePositions')
     expect(cap.userResources).toBeUndefined()
-    expect(cap.projectResources).toHaveProperty('perspectivePositions')
+    expect(cap.orgResources).toHaveProperty('perspectivePositions')
   })
 
   it('declares static and accumulated presets with default enabled', () => {
@@ -1412,7 +1412,7 @@ describe('identity/perspective — system() factory', () => {
     expect(p.sessionResources).toHaveProperty('perspectiveObservations')
     expect(p.sessionResources).toHaveProperty('perspectivePositions')
     expect(p.userResources).toEqual({})
-    expect(p.projectResources).toEqual({})
+    expect(p.orgResources).toEqual({})
   })
 
   it('moves positions to userResources when scope is user', () => {
@@ -1429,16 +1429,16 @@ describe('identity/perspective — system() factory', () => {
     expect(p.capability.userResources?.perspectivePositions).toBe(p.userResources.perspectivePositions)
   })
 
-  it('moves positions to projectResources when scope is project', () => {
-    const p = system(makeInstance(), { positionScope: 'project' })
-    expect(p.projectResources).toHaveProperty('perspectivePositions')
+  it('moves positions to orgResources when scope is org', () => {
+    const p = system(makeInstance(), { positionScope: 'org' })
+    expect(p.orgResources).toHaveProperty('perspectivePositions')
   })
 
-  it('uses the same project-scoped position resource for blocks and capability', () => {
-    const p = system(makeInstance(), { positionScope: 'project' })
-    const blockResources = p.position.declaredResources?.project
-    expect(blockResources?.perspectivePositions).toBe(p.projectResources.perspectivePositions)
-    expect(p.capability.projectResources?.perspectivePositions).toBe(p.projectResources.perspectivePositions)
+  it('uses the same org-scoped position resource for blocks and capability', () => {
+    const p = system(makeInstance(), { positionScope: 'org' })
+    const blockResources = p.position.declaredResources?.org
+    expect(blockResources?.perspectivePositions).toBe(p.orgResources.perspectivePositions)
+    expect(p.capability.orgResources?.perspectivePositions).toBe(p.orgResources.perspectivePositions)
   })
 
   it('recall reads accumulated state from ctx', async () => {
@@ -1457,7 +1457,7 @@ describe('identity/perspective — system() factory', () => {
 
   it('recall returns empty state when resources are missing', () => {
     const p = system(makeInstance())
-    const ctx = { session: { resources: {} }, user: { resources: {} }, project: { resources: {} } } as any
+    const ctx = { session: { resources: {} }, user: { resources: {} }, org: { resources: {} } } as any
     const state = p.recall(ctx)
     expect(state.observations).toEqual([])
     expect(state.positions).toEqual([])

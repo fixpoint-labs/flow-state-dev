@@ -31,7 +31,7 @@ export interface MemorySystemBlocksConfig {
   model: string
   working: WorkingMemoryHelperConfig
   episodic?: {
-    scope: 'user' | 'project'
+    scope: 'user' | 'org'
     significanceThreshold: number
     maxEpisodes: number
   }
@@ -39,7 +39,7 @@ export interface MemorySystemBlocksConfig {
   _episodicResource?: ReturnType<typeof createEpisodicMemoryResource>
   /** Semantic memory config. */
   semantic?: {
-    scope: 'user' | 'project'
+    scope: 'user' | 'org'
     consolidation: {
       episodicThreshold: number
       onEviction: boolean
@@ -213,14 +213,14 @@ export function memorySystemObserve(config: MemorySystemBlocksConfig) {
     })
   }
 
-  if (config.episodic?.scope === 'project' && episodicResource) {
+  if (config.episodic?.scope === 'org' && episodicResource) {
     return generator({
       name: config.name ? `${config.name}/observe` : 'tf.memory/observe',
       model: config.model,
       inputSchema: z.any(),
       outputSchema: unifiedObservationsSchema,
       sessionResources,
-      projectResources: { episodicMemory: episodicResource },
+      orgResources: { episodicMemory: episodicResource },
       prompt: observePrompt,
       context: buildContext,
       user: (_input: unknown) => 'Analyze the items in context and extract memories.',
@@ -279,7 +279,7 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
     try {
       epRef = config.episodic?.scope === 'user'
         ? ctx.user?.resources?.episodicMemory
-        : ctx.project?.resources?.episodicMemory
+        : ctx.org?.resources?.episodicMemory
     } catch { /* not installed */ }
 
     // Get semantic ref if available
@@ -287,7 +287,7 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
     try {
       semRef = config.semantic?.scope === 'user'
         ? ctx.user?.resources?.semanticMemory
-        : ctx.project?.resources?.semanticMemory
+        : ctx.org?.resources?.semanticMemory
     } catch { /* not installed */ }
 
     let episodicWrites = 0
@@ -413,17 +413,17 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
   const epScope = config.episodic?.scope
   const semScope = config.semantic?.scope
 
-  // Combine user/project resources for both episodic and semantic
+  // Combine user/org resources for both episodic and semantic
   const userResources: Record<string, any> = {}
-  const projectResources: Record<string, any> = {}
+  const orgResources: Record<string, any> = {}
 
   if (epScope === 'user' && episodicResource) userResources.episodicMemory = episodicResource
-  if (epScope === 'project' && episodicResource) projectResources.episodicMemory = episodicResource
+  if (epScope === 'org' && episodicResource) orgResources.episodicMemory = episodicResource
   if (semScope === 'user' && semanticResource) userResources.semanticMemory = semanticResource
-  if (semScope === 'project' && semanticResource) projectResources.semanticMemory = semanticResource
+  if (semScope === 'org' && semanticResource) orgResources.semanticMemory = semanticResource
 
   const hasUser = Object.keys(userResources).length > 0
-  const hasProject = Object.keys(projectResources).length > 0
+  const hasProject = Object.keys(orgResources).length > 0
 
   if (hasUser && hasProject) {
     return handler({
@@ -432,7 +432,7 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
       outputSchema: z.any(),
       sessionResources,
       userResources,
-      projectResources,
+      orgResources,
       execute: executeReflect,
     })
   }
@@ -454,7 +454,7 @@ export function memorySystemReflect(config: MemorySystemBlocksConfig) {
       inputSchema: unifiedObservationsSchema,
       outputSchema: z.any(),
       sessionResources,
-      projectResources,
+      orgResources,
       execute: executeReflect,
     })
   }
@@ -572,7 +572,7 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
     try {
       epRef = config.episodic?.scope === 'user'
         ? ctx.user?.resources?.episodicMemory
-        : ctx.project?.resources?.episodicMemory
+        : ctx.org?.resources?.episodicMemory
     } catch { /* not installed */ }
 
     const unconsolidated = epRef
@@ -584,7 +584,7 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
     try {
       semRef = config.semantic?.scope === 'user'
         ? ctx.user?.resources?.semanticMemory
-        : ctx.project?.resources?.semanticMemory
+        : ctx.org?.resources?.semanticMemory
     } catch { /* not installed */ }
 
     const existingFacts = semRef ? allFacts(semRef) : []
@@ -596,15 +596,15 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
   const epScope = config.episodic?.scope
   const semScope = config.semantic?.scope
   const userResources: Record<string, any> = {}
-  const projectResources: Record<string, any> = {}
+  const orgResources: Record<string, any> = {}
 
   if (epScope === 'user' && episodicResource) userResources.episodicMemory = episodicResource
-  if (epScope === 'project' && episodicResource) projectResources.episodicMemory = episodicResource
+  if (epScope === 'org' && episodicResource) orgResources.episodicMemory = episodicResource
   if (semScope === 'user' && semanticResource) userResources.semanticMemory = semanticResource
-  if (semScope === 'project' && semanticResource) projectResources.semanticMemory = semanticResource
+  if (semScope === 'org' && semanticResource) orgResources.semanticMemory = semanticResource
 
   const hasUser = Object.keys(userResources).length > 0
-  const hasProject = Object.keys(projectResources).length > 0
+  const hasProject = Object.keys(orgResources).length > 0
 
   const base = {
     name: config.name ? `${config?.name ?? 'tf.memory'}/consolidate/guard` : 'tf.memory/consolidate/guard',
@@ -614,9 +614,9 @@ export function consolidationGuard(config: MemorySystemBlocksConfig) {
     execute: executeGuard,
   }
 
-  if (hasUser && hasProject) return handler({ ...base, userResources, projectResources })
+  if (hasUser && hasProject) return handler({ ...base, userResources, orgResources })
   if (hasUser) return handler({ ...base, userResources })
-  if (hasProject) return handler({ ...base, projectResources })
+  if (hasProject) return handler({ ...base, orgResources })
   return handler(base)
 }
 
@@ -633,7 +633,7 @@ export function consolidationGenerate(config: MemorySystemBlocksConfig) {
     'Semantic memory stores STABLE KNOWLEDGE that is useful across sessions:',
     '- Who the user is (name, role, location, background)',
     '- What the user likes or dislikes (preferences, opinions, style)',
-    '- Relationships between people, projects, or concepts the user cares about',
+    '- Relationships between people, orgs, or concepts the user cares about',
     '- Recurring patterns in how the user works or communicates',
     '',
     'Semantic memory does NOT store:',
@@ -758,7 +758,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
     try {
       semRef = config.semantic?.scope === 'user'
         ? ctx.user?.resources?.semanticMemory
-        : ctx.project?.resources?.semanticMemory
+        : ctx.org?.resources?.semanticMemory
     } catch { /* not installed */ }
 
     if (!semRef) return { added: 0, reinforced: 0, updated: 0, invalidated: 0 }
@@ -768,7 +768,7 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
     try {
       epRef = config.episodic?.scope === 'user'
         ? ctx.user?.resources?.episodicMemory
-        : ctx.project?.resources?.episodicMemory
+        : ctx.org?.resources?.episodicMemory
     } catch { /* not installed */ }
 
     const sysRef = ctx.session.resources.memorySystem
@@ -868,15 +868,15 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
   const epScope = config.episodic?.scope
   const semScope = config.semantic?.scope
   const userResources: Record<string, any> = {}
-  const projectResources: Record<string, any> = {}
+  const orgResources: Record<string, any> = {}
 
   if (epScope === 'user' && episodicResource) userResources.episodicMemory = episodicResource
-  if (epScope === 'project' && episodicResource) projectResources.episodicMemory = episodicResource
+  if (epScope === 'org' && episodicResource) orgResources.episodicMemory = episodicResource
   if (semScope === 'user' && semanticResource) userResources.semanticMemory = semanticResource
-  if (semScope === 'project' && semanticResource) projectResources.semanticMemory = semanticResource
+  if (semScope === 'org' && semanticResource) orgResources.semanticMemory = semanticResource
 
   const hasUser = Object.keys(userResources).length > 0
-  const hasProject = Object.keys(projectResources).length > 0
+  const hasProject = Object.keys(orgResources).length > 0
 
   const base = {
     name: config.name ? `${config.name}/consolidate/persist` : 'tf.memory/consolidate/persist',
@@ -886,9 +886,9 @@ export function consolidationPersist(config: MemorySystemBlocksConfig) {
     execute: executePersist,
   }
 
-  if (hasUser && hasProject) return handler({ ...base, userResources, projectResources })
+  if (hasUser && hasProject) return handler({ ...base, userResources, orgResources })
   if (hasUser) return handler({ ...base, userResources })
-  if (hasProject) return handler({ ...base, projectResources })
+  if (hasProject) return handler({ ...base, orgResources })
   return handler(base)
 }
 
@@ -958,7 +958,7 @@ export function pruneGuard(config: MemorySystemBlocksConfig) {
     try {
       semRef = config.semantic?.scope === 'user'
         ? ctx.user?.resources?.semanticMemory
-        : ctx.project?.resources?.semanticMemory
+        : ctx.org?.resources?.semanticMemory
     } catch { /* not installed */ }
 
     if (!semRef) return { triggered: false, facts: [] }
@@ -972,13 +972,13 @@ export function pruneGuard(config: MemorySystemBlocksConfig) {
 
   const semScope = config.semantic?.scope
   const userResources: Record<string, any> = {}
-  const projectResources: Record<string, any> = {}
+  const orgResources: Record<string, any> = {}
 
   if (semScope === 'user' && semanticResource) userResources.semanticMemory = semanticResource
-  if (semScope === 'project' && semanticResource) projectResources.semanticMemory = semanticResource
+  if (semScope === 'org' && semanticResource) orgResources.semanticMemory = semanticResource
 
   const hasUser = Object.keys(userResources).length > 0
-  const hasProject = Object.keys(projectResources).length > 0
+  const hasProject = Object.keys(orgResources).length > 0
 
   const base = {
     name: config.name ? `${config.name}/prune/guard` : 'tf.memory/prune/guard',
@@ -987,9 +987,9 @@ export function pruneGuard(config: MemorySystemBlocksConfig) {
     execute: executeGuard,
   }
 
-  if (hasUser && hasProject) return handler({ ...base, userResources, projectResources })
+  if (hasUser && hasProject) return handler({ ...base, userResources, orgResources })
   if (hasUser) return handler({ ...base, userResources })
-  if (hasProject) return handler({ ...base, projectResources })
+  if (hasProject) return handler({ ...base, orgResources })
   return handler(base)
 }
 
@@ -1076,7 +1076,7 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
     try {
       semRef = config.semantic?.scope === 'user'
         ? ctx.user?.resources?.semanticMemory
-        : ctx.project?.resources?.semanticMemory
+        : ctx.org?.resources?.semanticMemory
     } catch { /* not installed */ }
 
     if (!semRef) return { removed: 0, merged: 0 }
@@ -1130,13 +1130,13 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
 
   const semScope = config.semantic?.scope
   const userResources: Record<string, any> = {}
-  const projectResources: Record<string, any> = {}
+  const orgResources: Record<string, any> = {}
 
   if (semScope === 'user' && semanticResource) userResources.semanticMemory = semanticResource
-  if (semScope === 'project' && semanticResource) projectResources.semanticMemory = semanticResource
+  if (semScope === 'org' && semanticResource) orgResources.semanticMemory = semanticResource
 
   const hasUser = Object.keys(userResources).length > 0
-  const hasProject = Object.keys(projectResources).length > 0
+  const hasProject = Object.keys(orgResources).length > 0
 
   const base = {
     name: config.name ? `${config.name}/prune/persist` : 'tf.memory/prune/persist',
@@ -1145,9 +1145,9 @@ export function prunePersist(config: MemorySystemBlocksConfig) {
     execute: executePersist,
   }
 
-  if (hasUser && hasProject) return handler({ ...base, userResources, projectResources })
+  if (hasUser && hasProject) return handler({ ...base, userResources, orgResources })
   if (hasUser) return handler({ ...base, userResources })
-  if (hasProject) return handler({ ...base, projectResources })
+  if (hasProject) return handler({ ...base, orgResources })
   return handler(base)
 }
 

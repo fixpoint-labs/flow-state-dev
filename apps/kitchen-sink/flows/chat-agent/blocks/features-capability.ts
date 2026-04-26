@@ -63,9 +63,9 @@ const skillsCap = createSkillsCapability({
   },
   initialSkills,
   // User scope: skills are a per-user library that persists across sessions.
-  // Project scope would be nicer for team-shared skills, but the chat-agent
-  // flow has no project wiring yet — "project" falls through to an ambient
-  // project with no persistence identity, which is why nothing seeds.
+  // Org scope would be nicer for team-shared skills, but the chat-agent
+  // flow has no project wiring yet — "org" falls through to an ambient
+  // org with no persistence identity, which is why nothing seeds.
   scope: "user",
   // Main-agent only: in plan-and-execute / supervisor / blackboard, the
   // synthesizer carries skills while step-executors and workers don't.

@@ -23,7 +23,7 @@ export type ExecutionMetadata = {
   flowKind: string;
   userId: string;
   sessionId?: string;
-  projectId?: string;
+  orgId?: string;
   blockName?: string;
   blockKind?: BlockDefinition["kind"];
   blockInstanceId?: string;
@@ -71,7 +71,7 @@ export type RunActionOptions<
   input: unknown;
   userId: string;
   sessionId?: string;
-  projectId?: string;
+  orgId?: string;
   requestId?: string;
   metadata?: Record<string, unknown>;
   signal?: AbortSignal;
@@ -110,7 +110,7 @@ export function createExecutionMetadata(
       ctx.request.identity.userId ??
       "unknown_user",
     sessionId: overrides.sessionId ?? ctx.session.identity.id,
-    projectId: overrides.projectId ?? ctx.request.identity.projectId,
+    orgId: overrides.orgId ?? ctx.request.identity.orgId,
     blockName: overrides.blockName,
     blockKind: overrides.blockKind,
     blockInstanceId: overrides.blockInstanceId,

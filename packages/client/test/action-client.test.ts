@@ -29,7 +29,7 @@ const SNAPSHOT_RESPONSE: SessionStateSnapshotResponse = {
     request: { progress: 1 },
     session: { count: 2 },
     user: { name: "test" },
-    project: { mode: "dev" }
+    org: { mode: "dev" }
   },
   clientData: {}
 };
@@ -130,7 +130,7 @@ describe("createTypedClient", () => {
           name: z.string()
         })
       },
-      project: {
+      org: {
         stateSchema: z.object({
           mode: z.string()
         })
@@ -172,8 +172,8 @@ describe("createTypedClient", () => {
     const userState = await client.state.getUserState("sess_1");
     expect(userState).toEqual({ name: "test" });
 
-    const projectState = await client.state.getProjectState("sess_1");
-    expect(projectState).toEqual({ mode: "dev" });
+    const orgState = await client.state.getOrgState("sess_1");
+    expect(orgState).toEqual({ mode: "dev" });
   });
 
   it("creates typed action helpers with compile-time flow typing", async () => {

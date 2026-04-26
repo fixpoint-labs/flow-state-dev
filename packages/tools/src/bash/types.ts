@@ -83,7 +83,7 @@ export type ExecutionLimits = {
 };
 
 /** Workspace scope for the local provider. Determines the workspace directory. */
-export type WorkspaceScope = "session" | "user" | "project";
+export type WorkspaceScope = "session" | "user" | "org";
 
 /** Discriminated union of sandbox provider configurations. */
 export type SandboxProvider =
@@ -99,7 +99,7 @@ export type SandboxProvider =
        * Scope for the auto-created workspace directory. Default: `"session"`.
        * - `"session"` — one workspace per session (isolated, ephemeral)
        * - `"user"` — shared across all sessions for a user
-       * - `"project"` — shared across all sessions in a project
+       * - `"org"` — shared across all sessions in an org
        */
       scope?: WorkspaceScope;
       /**

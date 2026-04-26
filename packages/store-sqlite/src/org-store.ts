@@ -1,14 +1,14 @@
 import type Database from "better-sqlite3";
 import type {
-  ProjectListOptions,
-  ProjectRecord,
-  ProjectStore
+  OrgListOptions,
+  OrgRecord,
+  OrgStore
 } from "@flow-state-dev/server";
 import { createSQLiteRecordStore } from "./sqlite-store";
 
-export function createSQLiteProjectStore(db: Database.Database): ProjectStore {
-  return createSQLiteRecordStore<ProjectRecord, ProjectListOptions>(db, {
-    tableName: "projects",
+export function createSQLiteOrgStore(db: Database.Database): OrgStore {
+  return createSQLiteRecordStore<OrgRecord, OrgListOptions>(db, {
+    tableName: "orgs",
     columns: ["user_id"],
     toRow: (record) => [record.userId ?? null],
     toWhere: (options) => {

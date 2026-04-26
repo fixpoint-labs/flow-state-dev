@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   id          TEXT PRIMARY KEY,
   flow_kind   TEXT NOT NULL,
   user_id     TEXT NOT NULL,
-  project_id  TEXT,
+  org_id  TEXT,
   version     INTEGER NOT NULL,
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS requests (
   flow_kind   TEXT NOT NULL,
   user_id     TEXT NOT NULL,
   session_id  TEXT,
-  project_id  TEXT,
+  org_id  TEXT,
   status      TEXT NOT NULL,
   version     INTEGER NOT NULL,
   created_at  INTEGER NOT NULL,
@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS requests (
 CREATE INDEX IF NOT EXISTS idx_requests_flow_kind       ON requests(flow_kind);
 CREATE INDEX IF NOT EXISTS idx_requests_session_id      ON requests(session_id);
 CREATE INDEX IF NOT EXISTS idx_requests_user_id         ON requests(user_id);
-CREATE INDEX IF NOT EXISTS idx_requests_project_id      ON requests(project_id);
+CREATE INDEX IF NOT EXISTS idx_requests_org_id      ON requests(org_id);
 CREATE INDEX IF NOT EXISTS idx_requests_status          ON requests(status);
 CREATE INDEX IF NOT EXISTS idx_requests_session_status  ON requests(session_id, status);
 CREATE INDEX IF NOT EXISTS idx_requests_flow_user       ON requests(flow_kind, user_id);
@@ -60,8 +60,8 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_updated_at ON users(updated_at);
 `;
 
-const PROJECTS_TABLE = `
-CREATE TABLE IF NOT EXISTS projects (
+const ORGS_TABLE = `
+CREATE TABLE IF NOT EXISTS orgs (
   id          TEXT PRIMARY KEY,
   user_id     TEXT,
   version     INTEGER NOT NULL,
@@ -69,8 +69,8 @@ CREATE TABLE IF NOT EXISTS projects (
   updated_at  INTEGER NOT NULL,
   data        TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_projects_user_id    ON projects(user_id);
-CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects(updated_at);
+CREATE INDEX IF NOT EXISTS idx_orgs_user_id    ON orgs(user_id);
+CREATE INDEX IF NOT EXISTS idx_orgs_updated_at ON orgs(updated_at);
 `;
 
 const ACTIVE_REQUESTS_TABLE = `
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS active_requests (
   action_name       TEXT NOT NULL,
   session_id        TEXT,
   user_id           TEXT NOT NULL,
-  project_id        TEXT,
+  org_id        TEXT,
   input             TEXT,
   metadata          TEXT,
   started_at        INTEGER NOT NULL,
@@ -114,7 +114,7 @@ export function initializeSchema(db: Database.Database): void {
   db.exec(SESSIONS_TABLE);
   db.exec(REQUESTS_TABLE);
   db.exec(USERS_TABLE);
-  db.exec(PROJECTS_TABLE);
+  db.exec(ORGS_TABLE);
   db.exec(ACTIVE_REQUESTS_TABLE);
   db.exec(REQUEST_EVENTS_TABLE);
 }

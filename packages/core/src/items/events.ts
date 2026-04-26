@@ -69,7 +69,7 @@ export type RequestResourceChangedEvent = RequestEventBase & {
 
 export type UserResourceChangedEvent = UserEventBase & {
   type: "resource.changed";
-  scope: "session" | "user" | "project";
+  scope: "session" | "user" | "org";
   resourcePath: string;
   changeType: "created" | "updated" | "deleted";
 };
@@ -82,7 +82,7 @@ export type ResourceChangedEvent = RequestResourceChangedEvent | UserResourceCha
  */
 export type ResourceContentUpdatedEvent = UserEventBase & {
   type: "resource.content.updated";
-  scope: "session" | "user" | "project";
+  scope: "session" | "user" | "org";
   ref: string;
   topic?: string;
   content: string;
@@ -94,7 +94,7 @@ export type ResourceContentUpdatedEvent = UserEventBase & {
  */
 export type ResourceContentCreatedEvent = UserEventBase & {
   type: "resource.content.created";
-  scope: "session" | "user" | "project";
+  scope: "session" | "user" | "org";
   ref: string;
   topic: string;
 };
@@ -104,14 +104,14 @@ export type ResourceContentCreatedEvent = UserEventBase & {
  */
 export type ResourceContentDeletedEvent = UserEventBase & {
   type: "resource.content.deleted";
-  scope: "session" | "user" | "project";
+  scope: "session" | "user" | "org";
   ref: string;
   topic: string;
 };
 
 export type ScopeStateChangedEvent = UserEventBase & {
   type: "scope.state.changed";
-  scope: "session" | "user" | "project";
+  scope: "session" | "user" | "org";
   scopeId: string;
   changeType: "updated" | "deleted";
 };

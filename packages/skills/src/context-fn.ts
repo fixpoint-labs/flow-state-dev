@@ -56,7 +56,7 @@ function getCollection(
       ? ctx.session?.resources
       : scope === "user"
         ? ctx.user?.resources
-        : ctx.project?.resources;
+        : ctx.org?.resources;
   if (!registry) return undefined;
   const list = (registry as { list: () => unknown[] }).list();
   for (const entry of list) {

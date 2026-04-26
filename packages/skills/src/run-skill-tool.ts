@@ -77,7 +77,7 @@ type RunSkillOutput = z.infer<typeof outputSchema>;
 export interface RunSkillToolOptions {
   /** Resource registry key for the skills collection. */
   collectionKey: string;
-  /** Scope to look the collection up under (`session`/`user`/`project`). */
+  /** Scope to look the collection up under (`session`/`user`/`org`). */
   scope: ScopeType;
   /** Tool catalog used by fork-mode subagents to resolve `allowed-tools`. */
   catalog: ToolCatalog;
@@ -103,7 +103,7 @@ function getCollection(
       ? ctx.session?.resources
       : scope === "user"
         ? ctx.user?.resources
-        : ctx.project?.resources;
+        : ctx.org?.resources;
   if (!registry) {
     throw new Error(
       `Skills collection requires the ${scope} scope to be configured`,

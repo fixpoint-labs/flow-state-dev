@@ -24,7 +24,7 @@ function buildCtx(collection: ReturnType<typeof createMockSkillsCollection>) {
         list: () => [collection],
       },
     },
-    project: {
+    org: {
       identity: { id: "p1" },
       resources: {
         get: (k: string) => (k === "skills" ? collection : undefined),
@@ -49,7 +49,7 @@ describe("buildSkillsCatalogContext", () => {
     ];
     const formatter = buildSkillsCatalogContext({
       collectionKey: "skills",
-      scope: "project",
+      scope: "org",
       mountPath: "skills",
       initialSkills,
     });
@@ -75,7 +75,7 @@ describe("buildSkillsCatalogContext", () => {
     ];
     const formatter = buildSkillsCatalogContext({
       collectionKey: "skills",
-      scope: "project",
+      scope: "org",
       mountPath: "skills",
       initialSkills,
     });
@@ -99,7 +99,7 @@ describe("buildSkillsCatalogContext", () => {
 
     const formatter = buildSkillsCatalogContext({
       collectionKey: "skills",
-      scope: "project",
+      scope: "org",
       mountPath: "skills",
     });
 
@@ -113,7 +113,7 @@ describe("buildActiveSkillsContext", () => {
     const collection = createMockSkillsCollection();
     const formatter = buildActiveSkillsContext({
       collectionKey: "skills",
-      scope: "project",
+      scope: "org",
       mountPath: "skills",
     });
     const out = await formatter(undefined, buildCtx(collection));

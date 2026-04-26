@@ -23,7 +23,7 @@ const SESSION: SessionDetail = {
   userId: "devuser",
   createdAt: 1,
   updatedAt: 2,
-  projectId: "proj_1"
+  orgId: "proj_1"
 };
 
 const REQUESTS: SessionRequestSummary[] = [
@@ -123,7 +123,7 @@ describe("createSessionClient", () => {
     const client = createSessionClient({ fetcher });
 
     const session = await client.getSession("sess_1");
-    expect(session.projectId).toBe("proj_1");
+    expect(session.orgId).toBe("proj_1");
 
     const requests = await client.listSessionRequests("sess_1", {
       status: "completed",

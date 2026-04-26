@@ -9,8 +9,8 @@ import { createSQLiteRecordStore } from "./sqlite-store";
 export function createSQLiteSessionStore(db: Database.Database): SessionStore {
   return createSQLiteRecordStore<SessionRecord, SessionListOptions>(db, {
     tableName: "sessions",
-    columns: ["flow_kind", "user_id", "project_id"],
-    toRow: (record) => [record.flowKind, record.userId, record.projectId ?? null],
+    columns: ["flow_kind", "user_id", "org_id"],
+    toRow: (record) => [record.flowKind, record.userId, record.orgId ?? null],
     toWhere: (options) => {
       const parts: string[] = [];
       const params: unknown[] = [];

@@ -116,7 +116,7 @@ export interface SkillFile {
   content: string;
 }
 
-/** A code-authored skill, seeded into the project-scoped collection on startup. */
+/** A code-authored skill, seeded into the org-scoped collection on startup. */
 export interface InitialSkill {
   /** Skill name. Must match `[a-z0-9-]+`. */
   name: string;

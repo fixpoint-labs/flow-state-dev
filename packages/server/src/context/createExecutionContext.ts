@@ -9,7 +9,7 @@ import type {
   LLMMessage,
   MessageLimit,
   CollectionHookContext,
-  ProjectScopeHandle,
+  OrgScopeHandle,
   RequestScopeHandle,
   ResourceConfig,
   ResourceRef,
@@ -53,7 +53,7 @@ import { createScopeStateOps, createStateContainer } from "../stores/state-conta
 import type { CASPersist } from "../stores/cas";
 import type { SetResult } from "../stores/types";
 import type {
-  ProjectRecord,
+  OrgRecord,
   RequestRecord,
   SessionRecord,
   UserRecord
@@ -73,9 +73,10 @@ import { cloneValue } from "../utils/clone";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
 import {
   resolveUserStorageKey,
-  resolveProjectStorageKey
+  resolveOrgStorageKey
 } from "../stores/scope-keys";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
+import { OrgBindingMismatchError, UserBindingMismatchError } from "./binding-errors";
 
 /**
  * Builds a CAS persist callback for a scope record. `buildNext` constructs
@@ -1554,16 +1555,16 @@ export async function createExecutionContext<
   TRequestState extends JsonObject = JsonObject,
   TSessionState extends JsonObject = JsonObject,
   TUserState extends JsonObject = JsonObject,
-  TProjectState extends JsonObject = JsonObject
+  TOrgState extends JsonObject = JsonObject
 >(
   options: CreateExecutionContextOptions<
     TRequestState,
     TSessionState,
     TUserState,
-    TProjectState
+    TOrgState
   >
 ): Promise<
-  ExecutionContext<TRequestState, TSessionState, TUserState, TProjectState>
+  ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState>
 > {
   const now = Date.now();
   const {
@@ -1577,7 +1578,7 @@ export async function createExecutionContext<
   const userResourceConfigs = flow.user?.resources as
     | Record<string, ResourceConfig | ResourceCollectionConfig>
     | undefined;
-  const projectResourceConfigs = flow.project?.resources as
+  const orgResourceConfigs = flow.org?.resources as
     | Record<string, ResourceConfig | ResourceCollectionConfig>
     | undefined;
 
@@ -1590,21 +1591,21 @@ export async function createExecutionContext<
   const requestId = options.requestId;
 
   // Storage keys — namespaced by flowKind when the flow opts into per-flow
-  // isolation for user/project scope. Bare identity ids otherwise. See
+  // isolation for user/org scope. Bare identity ids otherwise. See
   // `packages/server/src/stores/scope-keys.ts` and FIX-431.
   const userKey = resolveUserStorageKey(userId, flow);
-  const optionsProjectId = options.projectId;
-  const optionsProjectKey =
-    optionsProjectId !== undefined
-      ? resolveProjectStorageKey(optionsProjectId, flow)
+  const optionsOrgId = options.orgId;
+  const optionsOrgKey =
+    optionsOrgId !== undefined
+      ? resolveOrgStorageKey(optionsOrgId, flow)
       : undefined;
 
-  // Parallelize independent store lookups — user, session, project, and request
+  // Parallelize independent store lookups — user, session, org, and request
   // records don't depend on each other for the initial load.
-  const [loadedUser, loadedSession, loadedProject, loadedRequest, priorRequests] = await Promise.all([
+  const [loadedUser, loadedSession, loadedOrg, loadedRequest, priorRequests] = await Promise.all([
     stores.user.get(userKey),
     stores.session.get(sessionId),
-    optionsProjectKey !== undefined ? stores.project.get(optionsProjectKey) : undefined,
+    optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
     stores.request.get(requestId),
     stores.request.list({ sessionId })
   ]);
@@ -1655,7 +1656,7 @@ export async function createExecutionContext<
       id: sessionId,
       flowKind: flow.kind,
       userId,
-      projectId: options.projectId,
+      orgId: options.orgId,
       state: (options.sessionState ?? {}) as TSessionState,
       resources: normalizeScopeResources(sessionResourceConfigs, undefined),
       version: 0,
@@ -1666,36 +1667,51 @@ export async function createExecutionContext<
     await stores.session.set(sessionRecord.id, sessionRecord, "any");
   } else {
     ensureJournalDefaults(sessionRecord);
+
+    // userId mismatch — closes a long-standing gap. The loaded session record's
+    // userId is authoritative; a request claiming a different identity would
+    // route this user's actions against another user's data.
+    if (sessionRecord.userId !== userId) {
+      throw new UserBindingMismatchError(sessionId, sessionRecord.userId, userId);
+    }
   }
 
-  // Resolve projectId: prefer options, fall back to session record.
-  // If session had a projectId we didn't know about at parallel-load time,
-  // we need a separate fetch.
-  const resolvedProjectId = optionsProjectId ?? sessionRecord?.projectId;
-  const resolvedProjectKey =
-    resolvedProjectId !== undefined
-      ? resolveProjectStorageKey(resolvedProjectId, flow)
-      : undefined;
-  let projectRecord: ProjectRecord | undefined = loadedProject;
-  if (
-    projectRecord === undefined &&
-    resolvedProjectKey !== undefined &&
-    resolvedProjectKey !== optionsProjectKey
-  ) {
-    projectRecord = await stores.project.get(resolvedProjectKey);
+  // orgId immutability. Org binding is fixed for the lifetime of a session;
+  // a request that claims a different orgId — including binding an
+  // unbound session — is rejected. Apps that need to "move" a session
+  // create a new one. The previous code (`optionsOrgId ?? sessionRecord?.orgId`)
+  // silently let the request override the session's stored value, vacating
+  // the immutability guarantee FIX-428 promises.
+  const sessionOrgId = sessionRecord.orgId;
+  if (optionsOrgId !== undefined && optionsOrgId !== sessionOrgId) {
+    throw new OrgBindingMismatchError(sessionId, sessionOrgId ?? "<unbound>", optionsOrgId);
   }
-  if (resolvedProjectId !== undefined && resolvedProjectKey !== undefined && projectRecord === undefined) {
-    projectRecord = {
-      id: resolvedProjectKey,
-      projectId: resolvedProjectId,
+
+  const resolvedOrgId = sessionOrgId;
+  const resolvedOrgKey =
+    resolvedOrgId !== undefined
+      ? resolveOrgStorageKey(resolvedOrgId, flow)
+      : undefined;
+  let orgRecord: OrgRecord | undefined = loadedOrg;
+  if (
+    orgRecord === undefined &&
+    resolvedOrgKey !== undefined &&
+    resolvedOrgKey !== optionsOrgKey
+  ) {
+    orgRecord = await stores.org.get(resolvedOrgKey);
+  }
+  if (resolvedOrgId !== undefined && resolvedOrgKey !== undefined && orgRecord === undefined) {
+    orgRecord = {
+      id: resolvedOrgKey,
+      orgId: resolvedOrgId,
       userId,
-      state: (options.projectState ?? {}) as TProjectState,
-      resources: normalizeScopeResources(projectResourceConfigs, undefined),
+      state: (options.orgState ?? {}) as TOrgState,
+      resources: normalizeScopeResources(orgResourceConfigs, undefined),
       version: 0,
       createdAt: now,
       updatedAt: now
     };
-    await stores.project.set(projectRecord.id, projectRecord, "any");
+    await stores.org.set(orgRecord.id, orgRecord, "any");
   }
 
   // Load content from ContentStore, merging with any inline record content
@@ -1706,7 +1722,7 @@ export async function createExecutionContext<
   const [sessionContentFromStore, userContentFromStore, projectContentFromStore] = await Promise.all([
     stores.content.getAll("session", sessionId),
     stores.content.getAll("user", userKey),
-    resolvedProjectKey !== undefined ? stores.content.getAll("project", resolvedProjectKey) : Promise.resolve({})
+    resolvedOrgKey !== undefined ? stores.content.getAll("org", resolvedOrgKey) : Promise.resolve({})
   ]);
 
   const initialSessionContent = normalizeScopeResourceContent(
@@ -1718,9 +1734,9 @@ export async function createExecutionContext<
     { ...(userRecord.resourceContent ?? {}), ...userContentFromStore }
   );
   const initialProjectContent = normalizeScopeResourceContent(
-    projectResourceConfigs,
-    resolvedProjectId !== undefined
-      ? { ...(projectRecord?.resourceContent ?? {}), ...projectContentFromStore }
+    orgResourceConfigs,
+    resolvedOrgId !== undefined
+      ? { ...(orgRecord?.resourceContent ?? {}), ...projectContentFromStore }
       : undefined
   );
 
@@ -1732,7 +1748,7 @@ export async function createExecutionContext<
       actionName: options.actionName,
       userId,
       sessionId: sessionRecord?.id,
-      projectId: projectRecord?.projectId,
+      orgId: orgRecord?.orgId,
       status: "in_progress",
       startedAtMs: now,
       metadata: options.metadata,
@@ -1758,8 +1774,8 @@ export async function createExecutionContext<
   const sessionRef: { current: SessionRecord } = {
     current: sessionRecord
   };
-  const projectRef: { current: ProjectRecord | undefined } = {
-    current: projectRecord
+  const orgRef: { current: OrgRecord | undefined } = {
+    current: orgRecord
   };
 
   const readSessionResources = (): Record<string, JsonObject> =>
@@ -1789,8 +1805,8 @@ export async function createExecutionContext<
 
   const readProjectResources = (): Record<string, JsonObject> =>
     normalizeScopeResources(
-      projectResourceConfigs,
-      projectRef.current?.resources as Record<string, unknown> | undefined
+      orgResourceConfigs,
+      orgRef.current?.resources as Record<string, unknown> | undefined
     );
 
   const readProjectResourceContent = (): Record<string, string> =>
@@ -1866,38 +1882,38 @@ export async function createExecutionContext<
   const persistProjectResources = async (
     next: Record<string, JsonObject>
   ): Promise<void> => {
-    const current = projectRef.current;
+    const current = orgRef.current;
     if (current === undefined) {
       return;
     }
 
-    projectRef.current = {
+    orgRef.current = {
       ...current,
-      resources: normalizeScopeResources(projectResourceConfigs, next),
+      resources: normalizeScopeResources(orgResourceConfigs, next),
       updatedAt: Date.now()
     };
     // Last-write-wins for resources; see persistSessionResources comment.
-    await stores.project.set(projectRef.current.id, projectRef.current, "any");
+    await stores.org.set(orgRef.current.id, orgRef.current, "any");
   };
 
   const persistProjectResourceContent = async (
     next: Record<string, string>
   ): Promise<void> => {
-    if (resolvedProjectKey === undefined) {
+    if (resolvedOrgKey === undefined) {
       return;
     }
 
-    const normalized = normalizeScopeResourceContent(projectResourceConfigs, next);
+    const normalized = normalizeScopeResourceContent(orgResourceConfigs, next);
     const previous = projectContentRef.current;
 
     for (const [key, value] of Object.entries(normalized)) {
       if (previous[key] !== value) {
-        await stores.content.set("project", resolvedProjectKey, key, value);
+        await stores.content.set("org", resolvedOrgKey, key, value);
       }
     }
     for (const key of Object.keys(previous)) {
       if (!(key in normalized)) {
-        await stores.content.delete("project", resolvedProjectKey, key);
+        await stores.content.delete("org", resolvedOrgKey, key);
       }
     }
 
@@ -1917,11 +1933,11 @@ export async function createExecutionContext<
     sessionRef.current.version
   );
   const projectContainer =
-    projectRef.current === undefined
+    orgRef.current === undefined
       ? undefined
-      : createStateContainer<TProjectState>(
-          projectRef.current.state as TProjectState,
-          projectRef.current.version
+      : createStateContainer<TOrgState>(
+          orgRef.current.state as TOrgState,
+          orgRef.current.version
         );
 
   const onStateSizeWarning = (detail: {
@@ -1977,38 +1993,38 @@ export async function createExecutionContext<
   });
 
   const projectOps =
-    projectRef.current === undefined || projectContainer === undefined
+    orgRef.current === undefined || projectContainer === undefined
       ? undefined
       : createScopeStateOps(projectContainer, {
           onStateSizeWarning,
           persist: async (state, expectedVersion) => {
-            const current = projectRef.current;
+            const current = orgRef.current;
             if (current === undefined) {
-              // Project removed mid-execution; short-circuit so the retry loop exits.
+              // Org removed mid-execution; short-circuit so the retry loop exits.
               return { ok: true, version: expectedVersion + 1 };
             }
-            const nextRecord: ProjectRecord = {
+            const nextRecord: OrgRecord = {
               ...current,
-              state: state as TProjectState,
+              state: state as TOrgState,
               version: expectedVersion + 1,
               updatedAt: Date.now()
             };
-            const result = await stores.project.set(
+            const result = await stores.org.set(
               nextRecord.id,
               nextRecord,
               expectedVersion
             );
             if (result.ok) {
-              projectRef.current = nextRecord;
+              orgRef.current = nextRecord;
               return { ok: true, version: result.version };
             }
             const stored = result.conflict.currentValue;
             if (stored !== undefined) {
-              projectRef.current = stored;
+              orgRef.current = stored;
             }
             return {
               ok: false,
-              currentState: stored?.state as TProjectState | undefined,
+              currentState: stored?.state as TOrgState | undefined,
               currentVersion: result.conflict.currentVersion
             };
           }
@@ -2021,7 +2037,7 @@ export async function createExecutionContext<
     ? (rawResponse as unknown as { emitResourceChange: (opts: { scope: string; resourcePath: string; changeType: string; transient?: boolean }) => Promise<unknown> })
     : undefined;
 
-  function makeResourceChangeHandler(scope: "session" | "user" | "project") {
+  function makeResourceChangeHandler(scope: "session" | "user" | "org") {
     if (!emitter) return undefined;
     return (resourcePath: string, changeType: "created" | "updated" | "deleted") => {
       void emitter.emitResourceChange({ scope, resourcePath, changeType, transient: true });
@@ -2048,17 +2064,17 @@ export async function createExecutionContext<
     onResourceChanged: makeResourceChangeHandler("session"),
   });
 
-  const projectResources =
-    projectRef.current === undefined
+  const orgResources =
+    orgRef.current === undefined
       ? undefined
       : createScopeResourceRegistry({
-          scope: "project",
-          configs: projectResourceConfigs,
+          scope: "org",
+          configs: orgResourceConfigs,
           readResources: readProjectResources,
           persistResources: persistProjectResources,
           readResourceContent: readProjectResourceContent,
           persistResourceContent: persistProjectResourceContent,
-          onResourceChanged: makeResourceChangeHandler("project"),
+          onResourceChanged: makeResourceChangeHandler("org"),
         });
 
 
@@ -2142,7 +2158,7 @@ export async function createExecutionContext<
         type: "request" as const,
         id: requestRef.current.id,
         userId,
-        projectId: projectRef.current?.projectId
+        orgId: orgRef.current?.orgId
       },
       get tokenUsage() {
         return computeTokenUsage();
@@ -2174,7 +2190,7 @@ export async function createExecutionContext<
         type: "session" as const,
         id: sessionRef.current.id,
         userId: sessionRef.current.userId,
-        projectId: sessionRef.current.projectId
+        orgId: sessionRef.current.orgId
       },
       get metadata() {
         const s = sessionRef.current;
@@ -2267,21 +2283,21 @@ export async function createExecutionContext<
   ) as SessionScopeHandle<TSessionState>;
 
   const projectHandle =
-    projectRef.current === undefined || projectOps === undefined || projectContainer === undefined
+    orgRef.current === undefined || projectOps === undefined || projectContainer === undefined
       ? undefined
       : (defineStateProperty(
           {
             identity: {
-              type: "project" as const,
-              id: projectRef.current.id,
-              userId: projectRef.current.userId,
-              projectId: projectRef.current.projectId
+              type: "org" as const,
+              id: orgRef.current.id,
+              userId: orgRef.current.userId,
+              orgId: orgRef.current.orgId
             },
-            resources: projectResources,
+            resources: orgResources,
             ...projectOps
           },
           () => projectContainer.read()
-        ) as ProjectScopeHandle<TProjectState>);
+        ) as OrgScopeHandle<TOrgState>);
 
   /**
    * Fire-and-forget lifecycle trace item for nested blocks.
@@ -2571,10 +2587,10 @@ export async function createExecutionContext<
     siblingRegistry: SiblingRegistryEntry[] | undefined,
     siblingSearchLimit: number | undefined,
     scopeEmCtx?: EmissionContext
-  ): ExecutionContext<TRequestState, TSessionState, TUserState, TProjectState> => {
+  ): ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> => {
     const activeEmCtx = scopeEmCtx ?? emCtx;
     const childSiblingRegistry: SiblingRegistryEntry[] = [];
-    const context: ExecutionContext<TRequestState, TSessionState, TUserState, TProjectState> = {
+    const context: ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> = {
       flow,
       actionName: options.actionName,
       requestRuntime: {
@@ -2590,7 +2606,7 @@ export async function createExecutionContext<
       request: requestHandle,
       session: sessionHandle,
       user: userHandle,
-      project: projectHandle,
+      org: projectHandle,
       response: responseRef.current as ExecutionContext["response"],
       signal: options.signal ?? new AbortController().signal,
       resolveModel,

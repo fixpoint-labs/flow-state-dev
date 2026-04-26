@@ -7,7 +7,7 @@ import type {
   FlowInstance,
   FlowInstanceOptions,
   FlowType,
-  ProjectConfig,
+  OrgConfig,
   RequestConfig,
   SessionConfig,
   ToolsConfig,
@@ -23,11 +23,11 @@ type AnyActions = Record<string, ActionConfig>;
 type AnySession = SessionConfig | undefined;
 type AnyRequest = RequestConfig | undefined;
 type AnyUser = UserConfig | undefined;
-type AnyProject = ProjectConfig | undefined;
+type AnyOrg = OrgConfig | undefined;
 type AnyWork = WorkConfig | undefined;
 
-type AnyFlowDefinition = FlowDefinition<AnyActions, AnySession, AnyRequest, AnyUser, AnyProject, AnyWork>;
-type AnyFlowInstanceOptions = FlowInstanceOptions<AnyActions, AnySession, AnyRequest, AnyUser, AnyProject, AnyWork>;
+type AnyFlowDefinition = FlowDefinition<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork>;
+type AnyFlowInstanceOptions = FlowInstanceOptions<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork>;
 
 function mergeToolsConfig(base: ToolsConfig | undefined, override: ToolsConfig | undefined): ToolsConfig | undefined {
   if (base === undefined && override === undefined) {
@@ -133,6 +133,14 @@ function collectBlockResources(actions: AnyActions): DeclaredResources | undefin
   return collected;
 }
 
+/** True when any action's root block (or any of its descendants) opted into `requireOrg`. */
+function collectRequiresOrg(actions: AnyActions): boolean {
+  for (const action of Object.values(actions)) {
+    if (action.block.requiresOrg) return true;
+  }
+  return false;
+}
+
 /**
  * Merge block-declared resources into a flow's scope config resources.
  * Flow-level declarations take priority over block-declared resources.
@@ -155,11 +163,11 @@ function mergeBlockResourcesIntoScope(
 function mergeFlowResources(
   session: AnySession,
   user: AnyUser,
-  project: AnyProject,
+  org: AnyOrg,
   blockResources: DeclaredResources | undefined
-): { session: AnySession; user: AnyUser; project: AnyProject } {
+): { session: AnySession; user: AnyUser; org: AnyOrg } {
   if (blockResources === undefined) {
-    return { session, user, project };
+    return { session, user, org };
   }
 
   const mergedSession = blockResources.session !== undefined
@@ -170,21 +178,21 @@ function mergeFlowResources(
     ? { ...user, resources: mergeBlockResourcesIntoScope(user?.resources, blockResources.user) }
     : user;
 
-  const mergedProject = blockResources.project !== undefined
-    ? { ...project, resources: mergeBlockResourcesIntoScope(project?.resources, blockResources.project) }
-    : project;
+  const mergedOrg = blockResources.org !== undefined
+    ? { ...org, resources: mergeBlockResourcesIntoScope(org?.resources, blockResources.org) }
+    : org;
 
   return {
     session: mergedSession as AnySession,
     user: mergedUser as AnyUser,
-    project: mergedProject as AnyProject
+    org: mergedOrg as AnyOrg
   };
 }
 
 function createFlowInstance(
   definition: AnyFlowDefinition,
   options: AnyFlowInstanceOptions | undefined
-): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyProject, AnyWork> {
+): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork> {
   const requireUser = options?.requireUser ?? definition.requireUser ?? true;
   if (!requireUser) {
     throw new Error(`Flow "${definition.kind}" must set requireUser=true in Phase 1`);
@@ -197,22 +205,23 @@ function createFlowInstance(
   // Merge scope configs from definition + options first
   const session = mergeConfig(definition.session, options?.session);
   const user = mergeConfig(definition.user, options?.user);
-  const project = mergeConfig(definition.project, options?.project);
+  const org = mergeConfig(definition.org, options?.org);
 
   // Collect block-declared resources and merge into scope configs
   // Flow-level declarations take priority over block-declared ones
   const blockResources = collectBlockResources(actions);
-  const merged = mergeFlowResources(session, user, project, blockResources);
+  const merged = mergeFlowResources(session, user, org, blockResources);
 
   return {
     id: options?.id ?? kind,
     kind,
     requireUser,
+    requiresOrg: collectRequiresOrg(actions),
     actions,
     session: merged.session,
     request: mergeConfig(definition.request, options?.request),
     user: merged.user,
-    project: merged.project,
+    org: merged.org,
     work: mergeConfig(definition.work, options?.work),
     tools,
     voice: options?.voice ?? definition.voice,
@@ -220,7 +229,7 @@ function createFlowInstance(
     tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
     costEstimator: options?.costEstimator ?? definition.costEstimator,
     isolateUserState: options?.isolateUserState ?? definition.isolateUserState ?? false,
-    isolateProjectState: options?.isolateProjectState ?? definition.isolateProjectState ?? false
+    isolateOrgState: options?.isolateOrgState ?? definition.isolateOrgState ?? false
   };
 }
 
@@ -229,11 +238,11 @@ export function defineFlow<
   const TSession extends SessionConfig | undefined = SessionConfig | undefined,
   const TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   const TUser extends UserConfig | undefined = UserConfig | undefined,
-  const TProject extends ProjectConfig | undefined = ProjectConfig | undefined,
+  const TOrg extends OrgConfig | undefined = OrgConfig | undefined,
   const TWork extends WorkConfig | undefined = WorkConfig | undefined
 >(
-  definition: FlowDefinition<TActions, TSession, TRequest, TUser, TProject, TWork>
-): FlowType<TActions, TSession, TRequest, TUser, TProject, TWork> {
+  definition: FlowDefinition<TActions, TSession, TRequest, TUser, TOrg, TWork>
+): FlowType<TActions, TSession, TRequest, TUser, TOrg, TWork> {
   const normalizedDefinition: AnyFlowDefinition = {
     ...definition,
     requireUser: definition.requireUser ?? true
@@ -249,7 +258,7 @@ export function defineFlow<
     TSession,
     TRequest,
     TUser,
-    TProject,
+    TOrg,
     TWork
   >;
 
@@ -257,11 +266,12 @@ export function defineFlow<
   return Object.assign(flowFactory, {
     kind: normalizedDefinition.kind,
     requireUser: baseInstance.requireUser,
+    requiresOrg: baseInstance.requiresOrg,
     actions: baseInstance.actions as TActions,
     session: baseInstance.session as TSession,
     request: baseInstance.request as TRequest,
     user: baseInstance.user as TUser,
-    project: baseInstance.project as TProject,
+    org: baseInstance.org as TOrg,
     work: baseInstance.work as TWork,
     tools: baseInstance.tools,
     voice: baseInstance.voice,
@@ -269,6 +279,6 @@ export function defineFlow<
     tokenCounter: baseInstance.tokenCounter,
     costEstimator: baseInstance.costEstimator,
     isolateUserState: baseInstance.isolateUserState,
-    isolateProjectState: baseInstance.isolateProjectState
+    isolateOrgState: baseInstance.isolateOrgState
   });
 }

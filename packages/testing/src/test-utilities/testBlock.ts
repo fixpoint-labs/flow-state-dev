@@ -74,7 +74,7 @@ export async function testBlock<TBlock extends BlockDefinition<any, any>>(
     request: options.request,
     session: options.session,
     user: options.user,
-    project: options.project,
+    org: options.org,
     targets: options.targets,
     tools: options.tools,
     generators: options.generators,
@@ -111,7 +111,7 @@ export async function testBlock<TBlock extends BlockDefinition<any, any>>(
       request: asRecord(runtime.ctx.request.state),
       session: asRecord(runtime.ctx.session.state),
       user: asRecord(runtime.ctx.user.state),
-      project: asRecord(runtime.ctx.project?.state),
+      org: asRecord(runtime.ctx.org?.state),
       sequencer:
         options.sequencer === undefined
           ? asRecord(runtime.ctx.sequencer?.state)

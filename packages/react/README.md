@@ -118,7 +118,7 @@ Read client data values from the session snapshot:
 const data = useClientData(session, {
   session: ["artifactsList", "modeStatus"],
   user: ["preferences"],
-  project: ["sharedConfig"],
+  org: ["sharedConfig"],
 });
 
 // Or with schemas for type inference:

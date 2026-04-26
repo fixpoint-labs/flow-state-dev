@@ -46,6 +46,13 @@ export type SessionItemsOptions =
 export type UseSessionHookOptions = {
   flowKind?: string;
   userId?: string;
+  /**
+   * Org binding to forward on every action request. Servers validate this
+   * against the session's stored `orgId` (set at session creation) and reject
+   * mismatches with a 400. Pass it when the app's routing or auth context
+   * carries an org identity that should accompany every request.
+   */
+  orgId?: string;
   baseUrl?: string;
   items?: SessionItemsOptions;
   /**
@@ -63,6 +70,11 @@ export type SessionView = {
   readonly flowKind: string;
   readonly sessionId?: string;
   readonly userId: string;
+  /**
+   * Org id the session is bound to, mirrored from `detail.orgId` once the
+   * session record has loaded. `undefined` for unbound sessions.
+   */
+  readonly orgId?: string;
   readonly isLoading: boolean;
   readonly isStreaming: boolean;
   /** True when the main execution chain has completed but background work tasks are still running. */
@@ -296,6 +308,7 @@ export function useSession(
   const context = useFlowContext();
   const resolvedFlowKind = normalizeFlowKind(options?.flowKind ?? context.flowKind ?? "");
   const userId = options?.userId ?? context.userId ?? "devuser";
+  const orgId = options?.orgId;
   const baseUrl = options?.baseUrl ?? context.baseUrl;
   const autoResume = options?.autoResume === true;
 
@@ -943,6 +956,7 @@ export function useSession(
         const postResponse = await client.sendActionStream(action, input, {
           sessionId,
           requestId,
+          orgId,
           metadata: actionOptions?.metadata
         });
 
@@ -1075,6 +1089,7 @@ export function useSession(
     flowKind: resolvedFlowKind,
     sessionId,
     userId,
+    orgId: detail?.orgId ?? orgId,
     isLoading,
     isStreaming,
     isFinishing,

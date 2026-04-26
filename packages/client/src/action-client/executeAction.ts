@@ -106,7 +106,7 @@ export function createClient(options: CreateClientOptions): Client {
       userId,
       sessionId: sendOptions?.sessionId,
       requestId: sendOptions?.requestId,
-      projectId: sendOptions?.projectId,
+      orgId: sendOptions?.orgId,
       metadata: sendOptions?.metadata
     };
 
@@ -142,7 +142,7 @@ export function createClient(options: CreateClientOptions): Client {
       userId,
       sessionId: sendOptions?.sessionId,
       requestId: sendOptions?.requestId,
-      projectId: sendOptions?.projectId,
+      orgId: sendOptions?.orgId,
       metadata: sendOptions?.metadata
     };
 
@@ -242,10 +242,10 @@ export function createTypedClient<TFlow extends FlowLike>(
           | Awaited<ReturnType<FlowClient<TFlow>["state"]["getUserState"]>>
           | undefined;
       },
-      getProjectState: async (sessionId: string) => {
+      getOrgState: async (sessionId: string) => {
         const snapshot = await sessions.getSessionState(sessionId);
-        return snapshot.state.project as
-          | Awaited<ReturnType<FlowClient<TFlow>["state"]["getProjectState"]>>
+        return snapshot.state.org as
+          | Awaited<ReturnType<FlowClient<TFlow>["state"]["getOrgState"]>>
           | undefined;
       }
     }

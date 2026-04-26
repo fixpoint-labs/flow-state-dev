@@ -27,7 +27,7 @@ export type EvictionPolicy = "none" | "lru" | "oldest";
 export type CollectionHookContext = {
   /** Log a message associated with this hook invocation. */
   log: (message: string) => void;
-  /** The scope type this collection belongs to (session, user, project). */
+  /** The scope type this collection belongs to (session, user, org). */
   scopeType: ScopeType;
 };
 

@@ -36,7 +36,7 @@ type MaybePromise<T> = T | Promise<T>;
 export type CapabilityPresetCtx<TSessionState = any> = {
   session: {
     state: Readonly<TSessionState>;
-    identity: { id: string; userId?: string; projectId?: string };
+    identity: { id: string; userId?: string; orgId?: string };
     resources: Record<string, any>;
     [key: string]: any;
   };
@@ -51,13 +51,13 @@ export type PresetDef<TSessionState = any> = {
   // Resources (any block kind)
   sessionResources?: Record<string, DeclaredResourceEntry>;
   userResources?: Record<string, DeclaredResourceEntry>;
-  projectResources?: Record<string, DeclaredResourceEntry>;
+  orgResources?: Record<string, DeclaredResourceEntry>;
 
   // State schemas (any block kind for the corresponding scope)
   sessionStateSchema?: ZodTypeAny;
   requestStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
-  projectStateSchema?: ZodTypeAny;
+  orgStateSchema?: ZodTypeAny;
 
   // Sequencer-only
   sequencerStateSchema?: ZodTypeAny;
@@ -114,11 +114,11 @@ export interface CapabilityConfig<
   // Required surface — always installed when the capability is used
   sessionResources?: Record<string, DeclaredResourceEntry>;
   userResources?: Record<string, DeclaredResourceEntry>;
-  projectResources?: Record<string, DeclaredResourceEntry>;
+  orgResources?: Record<string, DeclaredResourceEntry>;
   sessionStateSchema?: TSessionStateSchema;
   requestStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
-  projectStateSchema?: ZodTypeAny;
+  orgStateSchema?: ZodTypeAny;
   sequencerStateSchema?: ZodTypeAny;
   targetStateSchemas?: Record<string, ZodTypeAny>;
 
@@ -180,11 +180,11 @@ export interface DefinedCapability<
   // Required surface — always installed when the capability is used
   sessionResources?: Record<string, DeclaredResourceEntry>;
   userResources?: Record<string, DeclaredResourceEntry>;
-  projectResources?: Record<string, DeclaredResourceEntry>;
+  orgResources?: Record<string, DeclaredResourceEntry>;
   sessionStateSchema?: ZodTypeAny;
   requestStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
-  projectStateSchema?: ZodTypeAny;
+  orgStateSchema?: ZodTypeAny;
   sequencerStateSchema?: ZodTypeAny;
   targetStateSchemas?: Record<string, ZodTypeAny>;
 

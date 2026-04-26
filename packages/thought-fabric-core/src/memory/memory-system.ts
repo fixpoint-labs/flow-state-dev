@@ -127,7 +127,7 @@ export interface WorkingMemorySystemConfig {
 /** Configuration for the episodic memory module within memory.system(). */
 export interface EpisodicMemoryConfig {
   /** Scope for episodic storage. Default: 'user'. */
-  scope?: 'user' | 'project'
+  scope?: 'user' | 'org'
   /** Minimum importance for an item to be encoded as an episode. Default: 0.6. */
   significanceThreshold?: number
   /** Maximum episodes to retain. Default: 200. */
@@ -137,7 +137,7 @@ export interface EpisodicMemoryConfig {
 /** Configuration for the semantic memory module within memory.system(). */
 export interface SemanticMemoryConfig {
   /** Scope for semantic storage. Default: same as episodic, or 'user'. */
-  scope?: 'user' | 'project'
+  scope?: 'user' | 'org'
   consolidation?: {
     /** Consolidate after this many new episodic entries. Default: 5. */
     episodicThreshold?: number
@@ -310,8 +310,8 @@ export interface MemorySystem {
  * Returns ranked by relevance descending.
  */
 function createRecall(
-  episodicConfig?: { scope: 'user' | 'project' },
-  semanticConfig?: { scope: 'user' | 'project' },
+  episodicConfig?: { scope: 'user' | 'org' },
+  semanticConfig?: { scope: 'user' | 'org' },
 ) {
   return function recall(ctx: any, cue?: string): RankedMemoryItem[] {
     const results: RankedMemoryItem[] = []
@@ -321,7 +321,7 @@ function createRecall(
       try {
         const semRef = semanticConfig.scope === 'user'
           ? ctx.user?.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
-          : ctx.project?.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
+          : ctx.org?.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
 
         if (semRef) {
           const facts = allFacts(semRef)
@@ -381,7 +381,7 @@ function createRecall(
       try {
         const epRef = episodicConfig.scope === 'user'
           ? ctx.user?.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
-          : ctx.project?.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
+          : ctx.org?.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
 
         if (epRef) {
           const episodes = recent(epRef)
@@ -633,7 +633,7 @@ export function system(config: MemorySystemConfig): MemorySystem {
     ? {
         scope: ((config.semantic === true
           ? (episodicConfig?.scope ?? DEFAULT_EPISODIC_CONFIG.scope)
-          : config.semantic.scope) ?? (episodicConfig?.scope ?? DEFAULT_EPISODIC_CONFIG.scope)) as 'user' | 'project',
+          : config.semantic.scope) ?? (episodicConfig?.scope ?? DEFAULT_EPISODIC_CONFIG.scope)) as 'user' | 'org',
         consolidation: {
           episodicThreshold: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold : (config.semantic.consolidation?.episodicThreshold ?? DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold),
           onEviction: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.onEviction : (config.semantic.consolidation?.onEviction ?? DEFAULT_CONSOLIDATION_CONFIG.onEviction),
@@ -667,13 +667,13 @@ export function system(config: MemorySystemConfig): MemorySystem {
   const episodicResource = epCapability
     ? (episodicConfig!.scope === 'user'
         ? epCapability.userResources!.episodicMemory
-        : epCapability.projectResources!.episodicMemory) as ReturnType<typeof createEpisodicMemoryResource>
+        : epCapability.orgResources!.episodicMemory) as ReturnType<typeof createEpisodicMemoryResource>
     : undefined
 
   const semanticResource = semCapability
     ? (semanticConfig!.scope === 'user'
         ? semCapability.userResources!.semanticMemory
-        : semCapability.projectResources!.semanticMemory) as ReturnType<typeof createSemanticMemoryResource>
+        : semCapability.orgResources!.semanticMemory) as ReturnType<typeof createSemanticMemoryResource>
     : undefined
 
   // Build blocks config — pass shared resources to avoid resource conflicts

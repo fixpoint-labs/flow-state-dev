@@ -31,6 +31,13 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
+      label: "Guides",
+      items: [
+        "guides/projects-on-org-scope",
+      ],
+    },
+    {
+      type: "category",
       label: "Block Sequencing",
       items: [
         "sequencers/overview",
