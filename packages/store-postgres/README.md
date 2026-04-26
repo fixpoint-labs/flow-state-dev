@@ -111,7 +111,9 @@ For simple cases you can pass the most common knobs directly. `poolOptions` wins
 
 ## Schema
 
-Tables are created automatically on first connection (idempotent `CREATE TABLE IF NOT EXISTS`). The schema uses:
+Tables are created automatically on first call to `createPostgresStores` (idempotent `CREATE TABLE IF NOT EXISTS`). On serverless platforms this runs on every cold start — see [Skipping runtime schema init](#skipping-runtime-schema-init) below if that latency matters.
+
+The schema uses:
 
 - **JSONB** for the full record `data` column (enables future query-time JSON operators)
 - **BIGINT** for timestamp columns (millisecond epoch values)
@@ -127,6 +129,28 @@ Tables are created automatically on first connection (idempotent `CREATE TABLE I
 | `projects` | `id` | Project-scoped state and resources |
 | `active_requests` | `request_id` | In-flight request registry for interrupted request recovery |
 | `request_events` | `(request_id, sequence_number)` | Stream event replay for completed requests |
+
+### Skipping runtime schema init
+
+Schema init runs ~30 idempotent DDL statements plus a Postgres advisory-lock acquisition every time `createPostgresStores` is called. On serverless platforms (Vercel, Lambda) that's once per cold start, adding noticeable latency to the first request after a function spins up.
+
+To skip it at runtime, run migrations as a separate deploy step and pass `skipSchemaInit: true`:
+
+```ts title="Deploy step (e.g. vercel-build, CI, or a one-shot script)"
+import { createPostgresStores } from "@flow-state-dev/store-postgres";
+
+const stores = await createPostgresStores({ connectionString: process.env.DATABASE_URL });
+await stores.close();
+```
+
+```ts title="Runtime"
+const stores = await createPostgresStores({
+  connectionString: process.env.DATABASE_URL,
+  skipSchemaInit: true,
+});
+```
+
+Migrations are still idempotent if you forget — `skipSchemaInit` is a performance optimization, not a correctness requirement. See `apps/kitchen-sink/scripts/migrate.mjs` in the flow-state-dev repo for a full example.
 
 ## Interrupted Request Recovery
 

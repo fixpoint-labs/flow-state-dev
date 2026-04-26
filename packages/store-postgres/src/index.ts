@@ -22,7 +22,7 @@ export type PostgresStoreRegistry = StoreRegistry & {
 
 /**
  * Create a StoreRegistry backed by PostgreSQL.
- * Schema auto-initializes on first call (idempotent).
+ * Schema auto-initializes on first call (idempotent), unless `skipSchemaInit: true`.
  *
  * Accepts one of:
  * - `{ pool }` — a pre-configured pg.Pool
@@ -31,10 +31,15 @@ export type PostgresStoreRegistry = StoreRegistry & {
  *    `poolOptions` is merged onto the adapter's defaults (caller wins). `createPool` overrides
  *    the Pool constructor (defaults to `(cfg) => new pg.Pool(cfg)`).
  * - `{ executor }` — a QueryExecutor-compatible client (e.g. PGlite for testing)
+ *
+ * Pass `skipSchemaInit: true` (along with any of the above shapes) when migrations
+ * run out-of-band — e.g. a deploy-time script that calls `createPostgresStores` once
+ * with `skipSchemaInit` unset and then `await stores.close()`.
  */
 export async function createPostgresStores(
   options: PostgresStoreOptions
 ): Promise<PostgresStoreRegistry> {
+  const skipSchemaInit = options.skipSchemaInit === true;
   let executor: QueryExecutor;
   let closePool: () => Promise<void>;
 
@@ -102,7 +107,9 @@ export async function createPostgresStores(
 
     // Schema init needs session-scoped advisory locks — lock and unlock MUST
     // run on the same pg connection. Use a dedicated client, not the pool.
-    await initializeSchemaWithDedicatedClient(pool);
+    if (!skipSchemaInit) {
+      await initializeSchemaWithDedicatedClient(pool);
+    }
 
     return {
       session: createPostgresSessionStore(executor),
@@ -117,7 +124,9 @@ export async function createPostgresStores(
     };
   }
 
-  await initializeSchema(executor);
+  if (!skipSchemaInit) {
+    await initializeSchema(executor);
+  }
 
   return {
     session: createPostgresSessionStore(executor),

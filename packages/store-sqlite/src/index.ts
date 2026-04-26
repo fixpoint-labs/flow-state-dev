@@ -11,6 +11,9 @@ import { createSQLiteActiveRequestRegistry } from "./active-request-registry";
 export type SQLiteStoreOptions = {
   /** File path to the SQLite database, or ":memory:" for in-memory */
   filename: string;
+  /** Skip schema initialization on construction. Default `false`.
+   *  Set to `true` when migrations are run out-of-band (e.g. as a deploy step). */
+  skipSchemaInit?: boolean;
 };
 
 export type SQLiteStoreRegistry = StoreRegistry & {
@@ -20,11 +23,13 @@ export type SQLiteStoreRegistry = StoreRegistry & {
 
 /**
  * Create a StoreRegistry backed by SQLite.
- * Schema auto-initializes on first call.
+ * Schema auto-initializes on first call unless `skipSchemaInit: true`.
  */
 export function createSQLiteStores(options: SQLiteStoreOptions): SQLiteStoreRegistry {
   const db = new Database(options.filename);
-  initializeSchema(db);
+  if (options.skipSchemaInit !== true) {
+    initializeSchema(db);
+  }
 
   return {
     session: createSQLiteSessionStore(db),
