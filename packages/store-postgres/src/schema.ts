@@ -130,6 +130,53 @@ const REQUEST_EVENTS_INDEXES = [
 ];
 
 /**
+ * One-shot rename migrations for deployments that ran the pre-FIX-428 schema
+ * (project scope). Idempotent: each statement no-ops once the new name is in
+ * place, so subsequent boots are cheap. Must run BEFORE the CREATE TABLE / INDEX
+ * DDL so the create steps see the renamed columns and don't try to add an
+ * `org_id` index to a table that still has `project_id`.
+ */
+const PROJECT_TO_ORG_MIGRATIONS = [
+  // Rename the `projects` table to `orgs` only when `projects` exists and
+  // `orgs` does not — a fresh database skips both branches.
+  `DO $$
+  BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'projects')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'orgs') THEN
+      EXECUTE 'ALTER TABLE projects RENAME TO orgs';
+    END IF;
+  END $$;`,
+
+  // Rename `project_id` columns on each table that carries one. Wrapped in a
+  // DO block so the absence of the old column on a fresh database is a no-op
+  // rather than a hard error.
+  `DO $$
+  DECLARE
+    t TEXT;
+  BEGIN
+    FOREACH t IN ARRAY ARRAY['sessions', 'requests', 'active_requests']
+    LOOP
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = t AND column_name = 'project_id'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = t AND column_name = 'org_id'
+      ) THEN
+        EXECUTE format('ALTER TABLE %I RENAME COLUMN project_id TO org_id', t);
+      END IF;
+    END LOOP;
+  END $$;`,
+
+  // Rename indexes whose names referenced the old column. `ALTER INDEX IF
+  // EXISTS` is a no-op on a fresh database (where the new name is created
+  // directly by the CREATE INDEX block below).
+  "ALTER INDEX IF EXISTS idx_requests_project_id RENAME TO idx_requests_org_id",
+  "ALTER INDEX IF EXISTS idx_projects_user_id RENAME TO idx_orgs_user_id",
+  "ALTER INDEX IF EXISTS idx_projects_updated_at RENAME TO idx_orgs_updated_at"
+];
+
+/**
  * Stable advisory lock key for schema initialization.
  * Prevents concurrent `CREATE TABLE IF NOT EXISTS` races in serverless
  * environments where multiple cold starts hit initializeSchema simultaneously.
@@ -139,8 +186,9 @@ const REQUEST_EVENTS_INDEXES = [
  */
 const SCHEMA_LOCK_KEY = 819297; // arbitrary stable integer
 
-function getSchemaDDL(): { tables: string[]; indexes: string[] } {
+function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: string[] } {
   return {
+    migrations: PROJECT_TO_ORG_MIGRATIONS,
     tables: [
       SESSIONS_TABLE,
       REQUESTS_TABLE,
@@ -169,10 +217,13 @@ function getSchemaDDL(): { tables: string[]; indexes: string[] } {
  * you have direct pg.Pool access.
  */
 export async function initializeSchema(executor: QueryExecutor): Promise<void> {
-  const { tables, indexes } = getSchemaDDL();
+  const { migrations, tables, indexes } = getSchemaDDL();
 
   await executor.query("SELECT pg_advisory_lock($1)", [SCHEMA_LOCK_KEY]);
   try {
+    for (const ddl of migrations) {
+      await executor.query(ddl);
+    }
     for (const ddl of tables) {
       await executor.query(ddl);
     }
@@ -197,7 +248,7 @@ export async function initializeSchema(executor: QueryExecutor): Promise<void> {
 export async function initializeSchemaWithDedicatedClient(
   pool: import("pg").Pool
 ): Promise<void> {
-  const { tables, indexes } = getSchemaDDL();
+  const { migrations, tables, indexes } = getSchemaDDL();
   const client = await pool.connect();
 
   try {
@@ -227,6 +278,9 @@ export async function initializeSchemaWithDedicatedClient(
     }
 
     try {
+      for (const ddl of migrations) {
+        await client.query(ddl);
+      }
       for (const ddl of tables) {
         await client.query(ddl);
       }

@@ -101,6 +101,53 @@ CREATE TABLE IF NOT EXISTS request_events (
 CREATE INDEX IF NOT EXISTS idx_request_events_request_id ON request_events(request_id);
 `;
 
+/**
+ * One-shot rename migrations for databases initialised under the pre-FIX-428
+ * `project` scope. SQLite (3.25+) supports `ALTER TABLE ... RENAME COLUMN`
+ * and `ALTER TABLE ... RENAME TO`, but neither has an `IF EXISTS` form on the
+ * column case — so we probe pragma_table_info / sqlite_master first and only
+ * issue the ALTER when the old name is present. Idempotent and cheap on
+ * subsequent boots.
+ */
+function migrateProjectToOrg(db: Database.Database): void {
+  const projectsTable = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'projects'")
+    .get();
+  const orgsTable = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'orgs'")
+    .get();
+  if (projectsTable !== undefined && orgsTable === undefined) {
+    db.exec("ALTER TABLE projects RENAME TO orgs");
+  }
+
+  for (const tableName of ["sessions", "requests", "active_requests"]) {
+    const tableExists = db
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`)
+      .get(tableName);
+    if (tableExists === undefined) continue;
+
+    const cols = db
+      .prepare(`SELECT name FROM pragma_table_info(?)`)
+      .all(tableName) as Array<{ name: string }>;
+    const colNames = new Set(cols.map((c) => c.name));
+    if (colNames.has("project_id") && !colNames.has("org_id")) {
+      db.exec(`ALTER TABLE ${tableName} RENAME COLUMN project_id TO org_id`);
+    }
+  }
+
+  // Index renames are best-effort; older deployments may have already dropped
+  // them. SQLite has no `ALTER INDEX RENAME`, so we drop+recreate via the
+  // standard `CREATE INDEX IF NOT EXISTS` path below. Leftover indexes with
+  // the old names are harmless.
+  for (const oldName of [
+    "idx_requests_project_id",
+    "idx_projects_user_id",
+    "idx_projects_updated_at"
+  ]) {
+    db.exec(`DROP INDEX IF EXISTS ${oldName}`);
+  }
+}
+
 export function initializeSchema(db: Database.Database): void {
   // Apply pragmas (each must be a separate statement)
   for (const line of PRAGMAS.trim().split("\n")) {
@@ -109,6 +156,11 @@ export function initializeSchema(db: Database.Database): void {
       db.pragma(trimmed.replace("PRAGMA ", "").replace(";", ""));
     }
   }
+
+  // Run rename migrations BEFORE create-table-if-not-exists so the create
+  // sees the renamed columns and the create-index-if-not-exists step finds
+  // its target columns.
+  migrateProjectToOrg(db);
 
   // Create tables and indexes
   db.exec(SESSIONS_TABLE);
