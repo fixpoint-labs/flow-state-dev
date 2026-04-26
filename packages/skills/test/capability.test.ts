@@ -74,11 +74,12 @@ describe("createSkillsCapability", () => {
     it("binds runSkill and the catalog context by default", () => {
       const cap = createSkillsCapability({ catalog: { stubTool } });
       const tools = (cap.__presetDefs?.tools as { tools: { name: string }[] }).tools;
-      const contextEntries = (
-        cap.__presetDefs?.context as { context: unknown[] }
+      const contextValue = (
+        cap.__presetDefs?.context as { context: { skills: unknown[] } }
       ).context;
       expect(tools.map((t) => t.name)).toContain("runSkill");
-      expect(contextEntries).toHaveLength(2);
+      // FIX-434 keyed form — both catalog + active formatters under <skills>.
+      expect(contextValue.skills).toHaveLength(2);
     });
 
     it("when bindRunSkillTool is false, runSkill is dropped from the tools preset", () => {
@@ -96,11 +97,11 @@ describe("createSkillsCapability", () => {
         catalog: { stubTool },
         bindRunSkillTool: false,
       });
-      const contextEntries = (
-        cap.__presetDefs?.context as { context: unknown[] }
+      const contextValue = (
+        cap.__presetDefs?.context as { context: { skills: unknown[] } }
       ).context;
-      // Only the active-skills formatter remains.
-      expect(contextEntries).toHaveLength(1);
+      // Only the active-skills formatter remains under <skills>.
+      expect(contextValue.skills).toHaveLength(1);
     });
   });
 });

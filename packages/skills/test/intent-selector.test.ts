@@ -19,7 +19,6 @@ import {
 
 describe("intentSelector — public API surface", () => {
   it("exports schemas with the documented shape", () => {
-    // intentSourceSchema is a four-value enum.
     expect(intentSourceSchema.options).toEqual([
       "slash",
       "keyword",
@@ -27,7 +26,6 @@ describe("intentSelector — public API surface", () => {
       "manual-override",
     ]);
 
-    // matchedSkillSchema requires at least name + source.
     const matched = matchedSkillSchema.parse({
       name: "linear",
       source: "slash",
@@ -35,14 +33,12 @@ describe("intentSelector — public API surface", () => {
     expect(matched.input).toBe("");
     expect(matched.confidence).toBeUndefined();
 
-    // intentResultSchema requires thinkingStyle + activeSkills + intentSource.
     const intent = intentResultSchema.parse({
-      thinkingStyle: "default",
       activeSkills: [],
       intentSource: "classifier",
     });
-    expect(intent.thinkingStyle).toBe("default");
     expect(intent.activeSkills).toEqual([]);
+    expect(intent.intentSource).toBe("classifier");
   });
 
   it("exports the documented default thresholds", () => {
@@ -53,28 +49,22 @@ describe("intentSelector — public API surface", () => {
   it("intentSequencerStateSchema defaults are wired correctly", () => {
     const initial = intentSequencerStateSchema.parse({});
     expect(initial.resolved).toBe(false);
-    expect(initial.thinkingStyle).toBeNull();
-    expect(initial.thinkingStyleSource).toBeNull();
     expect(initial.skills).toEqual([]);
     expect(initial.classifierConfidence).toBeNull();
+    expect(initial.source).toBeNull();
   });
 
   it("intentRequestStateSchema accepts a shape with optional intent", () => {
     expect(intentRequestStateSchema.parse({}).intent).toBeUndefined();
     const populated = intentRequestStateSchema.parse({
-      intent: {
-        thinkingStyle: "supervisor",
-        activeSkills: [],
-        intentSource: "classifier",
-      },
+      intent: { activeSkills: [], intentSource: "classifier" },
     });
-    expect(populated.intent?.thinkingStyle).toBe("supervisor");
+    expect(populated.intent?.intentSource).toBe("classifier");
   });
 
   it("intentSessionStateSchema accepts a partial projection", () => {
-    expect(intentSessionStateSchema.parse({}).thinkingStyle).toBeUndefined();
+    expect(intentSessionStateSchema.parse({}).activeSkills).toBeUndefined();
     const populated = intentSessionStateSchema.parse({
-      thinkingStyle: "blackboard",
       activeSkills: [{ name: "x", input: "", source: "keyword" }],
     });
     expect(populated.activeSkills).toHaveLength(1);
@@ -94,9 +84,6 @@ describe("intentSelector — block construction", () => {
   });
 
   it("creates the LLM tier by default", () => {
-    // No straightforward inspection of the inner pipeline shape, but the
-    // block must construct without throwing — which means the classifier
-    // factory wired up cleanly.
     expect(() => createIntentSelector({ enableLlmClassifier: true })).not.toThrow();
   });
 
@@ -119,9 +106,6 @@ describe("intentSelector — block construction", () => {
     const block = createIntentKeywordMatch({
       collectionKey: "skills",
       scope: "project",
-      thinkingStyleKeywords: [
-        { style: "supervisor", keywords: ["coordinate"] },
-      ],
     });
     expect(block.kind).toBe("handler");
     expect(block.name).toBe("intent-keyword-match");
@@ -134,7 +118,6 @@ describe("intentSelector — block construction", () => {
     });
     expect(block.kind).toBe("generator");
     expect(block.name).toBe("intent-classifier");
-    // agentType lives on the underlying config; surface it for visibility.
     expect((block.config as { agentType?: string }).agentType).toBe("trace");
   });
 

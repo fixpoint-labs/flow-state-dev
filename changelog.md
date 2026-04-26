@@ -4,15 +4,15 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-04-25
 
-### Up-front intent routing primitive (FIX-421)
+### Up-front skill activation router (FIX-421)
 
-- New `createIntentSelector()` factory in `@flow-state-dev/skills` — a three-tier sequencer that classifies an incoming user message into a thinking style and zero-or-more skill matches before the main generator runs. Tiers: (1) literal `/<skill-name>` slash match, (2) local keyword scan over per-skill `keywords` frontmatter and a thinking-style keyword table, (3) multi-dimensional LLM classifier (`agentType: "trace"`) that fills whichever dimension tier 1–2 left unresolved.
-- New `bindRunSkillTool?: boolean` option on `createSkillsCapability` (default `true`). When `false`, both the `runSkill` tool and the catalog context formatter are dropped from the default presets — used by flows that adopt `intentSelector` for up-front activation and want to drop the redundant mid-flow tool-call path. The active-skill body formatter remains registered.
+- New `createIntentSelector()` factory in `@flow-state-dev/skills` — a three-tier sequencer that decides which skills (if any) apply to a user message before the main generator runs. Tiers: (1) literal `/<skill-name>` slash match, (2) local keyword scan over per-skill `keywords` frontmatter, (3) structured-output LLM classifier (`agentType: "trace"`) that runs only when tiers 1–2 are inconclusive. Skill-only — thinking-style classification stays in its existing kitchen-sink pipeline.
+- New `bindRunSkillTool?: boolean` option on `createSkillsCapability` (default `true`). When `false`, both the `runSkill` tool and the catalog context formatter are dropped from the default presets — for flows that adopt `intentSelector` and don't want the redundant mid-flow tool-call path or the catalog prompt overhead. The active-skill body formatter remains registered (it's how activated skills get their body into the system prompt under the FIX-434 keyed `<skills>` context tag).
 - New `keywords` frontmatter field on `SKILL.md` (parsed + serialized round-trip in `parseSkillMd` / `serializeSkillMd`, surfaced in the `skills` collection's client-data projection). Lowercase tokens that the tier-2 keyword scan matches against the user message.
 - New `buildRunSkillDescription(skills, { includeSlashHint? })` option. The slash-command instruction in the runSkill tool description is now opt-in (default `false`); slash routing is handled deterministically by `intentSelector`'s tier 1 instead of by the model.
-- New core types: `MatchedSkill`, `IntentSource`, `IntentResult` exported from `@flow-state-dev/core` and `@flow-state-dev/core/types`. `ThinkingStyle` and `thinkingStyleSchema` extracted from kitchen-sink to `@flow-state-dev/core/types/thinking` so cross-package consumers can reference them without the kitchen-sink dependency. Kitchen-sink re-exports for back-compat.
+- New core types: `MatchedSkill`, `IntentSource`, `IntentResult` exported from `@flow-state-dev/core` and `@flow-state-dev/core/types`.
 - Apply-intent handler writes results in canonical order — request state first, then session state — and replaces (not appends) `__activeSkills` for the turn. Mid-flow `runSkill` calls within the same turn still append on top via the existing `pushActiveSkill` path.
-- Chat-agent flow wiring is intentionally NOT changed in this PR — that's the next FIX-421 step. This PR ships the primitive plus the capability option so they can land independently.
+- Chat-agent flow wiring is intentionally NOT changed in this PR — that's a follow-up. This PR ships the primitive plus the capability option so they can land independently.
 
 ## 2026-04-24
 

@@ -4,12 +4,8 @@
  * Scans the user message for a leading `/<skill-name>` token. If the named
  * skill exists in the configured collection and is not
  * `disable-model-invocation: true`, marks the sequencer as resolved with
- * `intentSource: "slash"`. Tiers 2 (keyword) and 3 (classifier) are gated
- * off the same `resolved` flag and skip when slash matched.
- *
- * Slash matching is deliberate user input — we do not also try to classify
- * the message for a thinking style. Style for that turn is left to whatever
- * the apply handler resolves from session state or input override.
+ * `source: "slash"`. Tiers 2 (keyword) and 3 (classifier) are gated off the
+ * same `resolved` flag and skip when slash matched.
  *
  * Non-match cases (unknown skill, disabled skill, no slash, slash with no
  * name) all fall through silently — tier 2 picks up from there with the
@@ -108,6 +104,7 @@ export function createIntentSlashMatch(opts: SlashMatchOptions) {
 
       await ctx.sequencer!.patchState({
         resolved: true,
+        source: "slash" as const,
         skills: [
           {
             name: skillName,

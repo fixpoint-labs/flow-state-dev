@@ -170,9 +170,6 @@ export type {
   ToolCatalog,
 } from "./skill";
 
-export type { ThinkingStyle } from "./thinking";
-export { thinkingStyleSchema, thinkingStyleValues } from "./thinking";
-
 export type {
   JsonObject,
   JsonPrimitive,

@@ -6,10 +6,14 @@
  * a single source of truth for the runtime shape — the cross-tier sequencer
  * state, the classifier `outputSchema`, and the request-state schema all
  * read from these.
+ *
+ * Intent classification in this package is **skill-only** — what skill (if
+ * any) does this turn need? Other classification dimensions (e.g. the
+ * kitchen-sink thinking-style auto-router) live in their own pipelines and
+ * compose alongside intentSelector if a flow wants both.
  */
 
 import { z } from "zod";
-import { thinkingStyleSchema } from "@flow-state-dev/core/types";
 
 /** Origin of an intent-selection match — mirrors `IntentSource` in core. */
 export const intentSourceSchema = z.enum([
@@ -29,7 +33,6 @@ export const matchedSkillSchema = z.object({
 
 /** Runtime shape of `IntentResult` (core type). */
 export const intentResultSchema = z.object({
-  thinkingStyle: thinkingStyleSchema,
   activeSkills: z.array(matchedSkillSchema),
   intentSource: intentSourceSchema,
   classifierConfidence: z.number().min(0).max(1).optional(),
@@ -38,22 +41,18 @@ export const intentResultSchema = z.object({
 /**
  * Request-state fragment the apply-intent handler writes. Used to type
  * `ctx.request.patchState({ intent })` calls and to give downstream blocks
- * (trace UI, pattern dispatch) a typed read surface via
- * `requestStateSchema: intentRequestStateSchema`.
+ * (trace UI) a typed read surface via `requestStateSchema: intentRequestStateSchema`.
  */
 export const intentRequestStateSchema = z.object({
   intent: intentResultSchema.optional(),
 });
 
 /**
- * Session-state fragment intent results are projected into. This is a
- * superset of the existing `__activeSkills` schema — `thinkingStyle` is
- * the resolved style read by the kitchen-sink `thinkingStyleRouter`, and
- * `activeSkills` is the surface-level mirror used by client-data
- * projections so the trace UI doesn't have to read the internal slot.
+ * Session-state fragment intent results are projected into. `activeSkills`
+ * is a surface-level mirror used by client-data projections so the trace UI
+ * doesn't have to read the internal `__activeSkills` slot.
  */
 export const intentSessionStateSchema = z.object({
-  thinkingStyle: thinkingStyleSchema.optional(),
   activeSkills: z.array(matchedSkillSchema).optional(),
 });
 
@@ -63,18 +62,17 @@ export const intentSessionStateSchema = z.object({
  * reads the accumulated state at the end of the pipeline.
  *
  * `resolved` gates tier-3 (the LLM classifier) — a tier sets it to `true`
- * once both dimensions (thinking style + skill match) have been covered.
- * Tier 1 (slash) sets `resolved` immediately because the user opted out
- * of further classification by typing the explicit skill prefix.
+ * once the skill dimension has been answered. Tier 1 (slash) sets `resolved`
+ * immediately because the user opted in to a specific skill. Tier 2
+ * (keyword) sets `resolved` when it found at least one skill match OR there
+ * are no candidate skills with keywords to scan against.
  */
 export const intentSequencerStateSchema = z.object({
   resolved: z.boolean().default(false),
-  /** Resolved thinking style (any tier). `null` means "no tier produced one". */
-  thinkingStyle: thinkingStyleSchema.nullable().default(null),
-  /** Origin of the resolved style. Apply-intent prefers this over the per-tier default. */
-  thinkingStyleSource: intentSourceSchema.nullable().default(null),
   /** Accumulated skill matches across tiers. */
   skills: z.array(matchedSkillSchema).default([]),
   /** Classifier-tier aggregate confidence, when classifier ran. */
   classifierConfidence: z.number().min(0).max(1).nullable().default(null),
+  /** Tier that produced the final result. Read by apply-intent. */
+  source: intentSourceSchema.nullable().default(null),
 });

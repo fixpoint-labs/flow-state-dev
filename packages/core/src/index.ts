@@ -40,8 +40,6 @@ export type {
   SkillsCollectionMeta,
   ToolCatalog,
 } from "./types/skill";
-export type { ThinkingStyle } from "./types/thinking";
-export { thinkingStyleSchema, thinkingStyleValues } from "./types/thinking";
 export { defineCapability, getBaseCapability } from "./capability";
 export type {
   CapabilityPresetCtx,

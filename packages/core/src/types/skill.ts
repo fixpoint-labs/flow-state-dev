@@ -11,7 +11,6 @@
  */
 
 import type { GeneratorTool } from "../blocks/generator";
-import type { ThinkingStyle } from "./thinking";
 
 /**
  * A bag of executable tools that skills may reference by string key.
@@ -150,9 +149,8 @@ export interface SkillsCollectionMeta {
 // ---------------------------------------------------------------------------
 
 /**
- * Origin of an intent-selection match. Carried on `MatchedSkill` and on
- * `IntentResult.intentSource` so downstream consumers (trace UI, telemetry,
- * pattern dispatch) can branch on how the decision was reached.
+ * Origin of a skill-activation match. Carried on `MatchedSkill` so downstream
+ * consumers (trace UI, telemetry) can branch on how the decision was reached.
  */
 export type IntentSource =
   | "slash"            // user typed `/skill-name`
@@ -177,20 +175,20 @@ export interface MatchedSkill {
 }
 
 /**
- * Result of one intent-classification pass. Written to request state (for
- * the per-turn trace record) and projected onto session state (for downstream
- * blocks like `thinkingStyleRouter` and the active-skill body formatter).
- *
- * `thinkingStyle` and `activeSkills` are independent dimensions: a turn may
- * resolve a style with no skill match, a skill match with the default style,
- * both, or neither.
+ * Result of one skill intent-classification pass. Written to request state
+ * (for the per-turn trace record) and projected onto session state (for the
+ * active-skill body formatter to render). A turn may resolve any number of
+ * skills, including zero.
  */
 export interface IntentResult {
-  /** Resolved thinking style for this turn. */
-  thinkingStyle: ThinkingStyle;
   /** Skills activated this turn. Empty array = no skill matched. */
   activeSkills: MatchedSkill[];
-  /** Origin tier for `thinkingStyle`. Skill matches carry their own per-entry source. */
+  /**
+   * Top-level origin tier. When a slash-sourced skill matched it's `"slash"`;
+   * otherwise it reflects the highest tier that produced any match
+   * (`"keyword"` over `"classifier"`). When no skill matched at all it falls
+   * through to `"classifier"` because that's the tier that gave up last.
+   */
   intentSource: IntentSource;
   /** Aggregate classifier confidence. Only present when classifier ran. */
   classifierConfidence?: number;

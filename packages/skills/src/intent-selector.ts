@@ -1,25 +1,29 @@
 /**
- * `createIntentSelector` — the public factory for FIX-421's up-front intent
- * routing pipeline.
+ * `createIntentSelector` — the public factory for FIX-421's up-front
+ * skill-activation router.
  *
- * Composes a three-tier sequencer:
+ * Composes a three-tier sequencer that decides which skills (if any) apply
+ * to a user message before the main generator runs:
+ *
  *   1. Slash matcher  — literal `/<skill-name>` prefix, no LLM call.
- *   2. Keyword scan   — local heuristics on thinking-style + skill keywords.
- *   3. LLM classifier — multi-dim generator call, fills whatever tiers 1–2
- *                       left unresolved.
+ *   2. Keyword scan   — local heuristics on per-skill `keywords` frontmatter.
+ *   3. LLM classifier — a structured-output generator call, runs only when
+ *                       earlier tiers were inconclusive.
  *
  * After the tiers, an apply handler collapses the accumulated cross-tier
  * state into an `IntentResult` and writes it to both request and session
- * state in canonical order (request first, session second — see
- * `apply-intent.ts` and FIX-421 spec §3.3).
+ * state in canonical order (request first, session second).
  *
  * The returned block is a `.tap()`-able sequencer — it patches state and
- * returns its input unchanged, so it can be inserted into a flow's existing
- * `.tap(applyRequestedMode).tap(...).tap(intentSelector)` chain without
- * disturbing downstream input shapes.
+ * returns its input unchanged, so a flow can insert it anywhere in an
+ * existing chain without disturbing downstream input shapes.
+ *
+ * Scope: skill activation only. Other classification dimensions (e.g. the
+ * kitchen-sink thinking-style auto-router) live in their own pipelines and
+ * compose alongside this one if a flow wants both.
  *
  * Tier-3 LLM classification is opt-out via `enableLlmClassifier: false` —
- * useful in tests and in flows that only want the deterministic tiers.
+ * useful in tests and in deployments that only want deterministic tiers.
  */
 
 import { z } from "zod";
@@ -30,12 +34,8 @@ import {
   createIntentClassifierSequencer,
   DEFAULT_CONFIDENCE_THRESHOLD,
   DEFAULT_MAX_SKILLS,
-  type IntentClassifierOptions,
 } from "./intent-classifier-gen";
-import {
-  createIntentKeywordMatch,
-  type ThinkingStyleKeywordTable,
-} from "./intent-keyword-match";
+import { createIntentKeywordMatch } from "./intent-keyword-match";
 import { createIntentSlashMatch } from "./intent-slash-match";
 import { intentSequencerStateSchema } from "./intent-types";
 
@@ -50,31 +50,21 @@ export interface IntentSelectorOptions {
   scope?: ScopeType;
   /** Model the tier-3 classifier uses. Default `"preset/fast"`. */
   classifierModel?: string;
-  /** Per-dimension confidence threshold. Default 0.65. */
+  /** Confidence threshold for accepting a classifier match. Default 0.65. */
   confidenceThreshold?: number;
   /** Cap on skills described in the classifier prompt. Default 20. */
   maxSkillsInClassifier?: number;
-  /** Style keyword tables for tier 2. Empty disables the style-keyword scan. */
-  thinkingStyleKeywords?: ThinkingStyleKeywordTable;
-  /** Style category descriptions for tier 3 classifier prompt. */
-  thinkingStyleCategories?: IntentClassifierOptions["thinkingStyleCategories"];
   /**
-   * When `false`, intentSelector skips the auto-classification of thinking
-   * style and leaves `session.state.thinkingStyle` untouched. Skill matching
-   * still runs across all three tiers. Default `true`.
-   */
-  resolveThinkingStyle?: boolean;
-  /**
-   * When `false`, intentSelector skips tier 3 entirely (no LLM call) and
-   * the apply handler runs against whatever tiers 1–2 produced. Default
-   * `true`. Set `false` in tests that should not rely on a mocked classifier
-   * and in deployments that want only deterministic tiers.
+   * When `false`, intentSelector skips tier 3 entirely (no LLM call). The
+   * apply handler runs against whatever tiers 1–2 produced. Default `true`.
+   * Set `false` in tests that should not rely on a mocked classifier and in
+   * deployments that want only deterministic tiers.
    */
   enableLlmClassifier?: boolean;
 }
 
 /**
- * Build the up-front intent selector sequencer.
+ * Build the up-front skill intent selector sequencer.
  *
  * Returns a `.tap`-able block — it returns its input unchanged so it can
  * be chained ahead of downstream consumers without input-shape coupling.
@@ -87,14 +77,8 @@ export function createIntentSelector(
   const enableLlm = options.enableLlmClassifier ?? true;
 
   const slashTier = createIntentSlashMatch({ collectionKey, scope });
-  const keywordTier = createIntentKeywordMatch({
-    collectionKey,
-    scope,
-    thinkingStyleKeywords: options.thinkingStyleKeywords,
-  });
-  const apply = createApplyIntent({
-    resolveThinkingStyle: options.resolveThinkingStyle,
-  });
+  const keywordTier = createIntentKeywordMatch({ collectionKey, scope });
+  const apply = createApplyIntent();
 
   let pipeline = sequencer({
     name: options.name ?? "intent-selector",
@@ -113,7 +97,6 @@ export function createIntentSelector(
         options.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD,
       maxSkillsInClassifier:
         options.maxSkillsInClassifier ?? DEFAULT_MAX_SKILLS,
-      thinkingStyleCategories: options.thinkingStyleCategories,
     });
     pipeline = pipeline.tapIf(
       (_input, ctx) => !ctx.sequencer?.state.resolved,

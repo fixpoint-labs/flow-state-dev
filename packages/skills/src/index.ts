@@ -89,7 +89,7 @@ export {
   inlineActivateOutputSchema,
 } from "./inline-activate";
 
-// Intent classification (FIX-421) — up-front skill + thinking-style routing.
+// Intent classification (FIX-421) — up-front skill activation router.
 export {
   createIntentSelector,
   type IntentSelectorOptions,
@@ -101,7 +101,6 @@ export {
 export {
   createIntentKeywordMatch,
   type KeywordMatchOptions,
-  type ThinkingStyleKeywordTable,
 } from "./intent-keyword-match";
 export {
   createIntentClassifierGenerator,
@@ -113,10 +112,7 @@ export {
   type IntentClassifierOptions,
   type IntentClassifierOutput,
 } from "./intent-classifier-gen";
-export {
-  createApplyIntent,
-  type ApplyIntentOptions,
-} from "./apply-intent";
+export { createApplyIntent } from "./apply-intent";
 export {
   intentSourceSchema,
   matchedSkillSchema,

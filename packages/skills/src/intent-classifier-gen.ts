@@ -1,21 +1,14 @@
 /**
- * Tier 3 of intentSelector — multi-dimensional LLM classifier.
+ * Tier 3 of intentSelector — LLM skill classifier.
  *
- * One generator call covers two classification dimensions at once: thinking
- * style and active-skill selection. Two parallel single-dim classifier
- * calls would double latency on the fall-through path; a unified prompt
- * pays it once.
+ * One generator call decides whether any skill in the catalog applies to
+ * the user message. Returns zero-or-more matches with per-match confidence;
+ * the apply handler filters out skills not in the catalog (a hallucination
+ * guard) and applies the confidence threshold.
  *
- * The prompt asks the model to emit `reasoning` first (anchoring
- * mitigation), then per-dimension labels with per-dimension confidence.
- * `agentType: "trace"` hides emissions from both the client stream and
- * the LLM history (resolve-visibility.ts) — the classification is
- * observability-only, never visible to the main generator's chat history.
- *
- * The classifier is wrapped in a tiny sequencer with an apply handler so
- * its output writes into the cross-tier sequencer state. The handler also
- * filters out skill names not present in the catalog (a hallucination
- * guard) and applies the per-dimension confidence threshold.
+ * `agentType: "trace"` hides emissions from both the client stream and the
+ * LLM history (resolve-visibility.ts) — the classification is observability-
+ * only, never visible to the main generator's chat history.
  */
 
 import { z } from "zod";
@@ -25,7 +18,6 @@ import type {
   ResourceCollectionRef,
   ScopeType,
 } from "@flow-state-dev/core/types";
-import { thinkingStyleSchema } from "@flow-state-dev/core/types";
 import type { SkillState } from "@flow-state-dev/core";
 import {
   intentSequencerStateSchema,
@@ -44,8 +36,6 @@ const inputSchema = z.object({ message: z.string() }).passthrough();
 export const intentClassifierOutputSchema = z.object({
   /** Per anchoring mitigation: ask the model to think before labeling. */
   reasoning: z.string(),
-  thinkingStyle: thinkingStyleSchema,
-  thinkingStyleConfidence: z.number().min(0).max(1),
   activeSkills: z.array(
     z.object({
       name: z.string(),
@@ -64,19 +54,10 @@ export interface IntentClassifierOptions {
   scope: ScopeType;
   /** Model to drive the classifier with. Default `"preset/fast"`. */
   classifierModel?: string;
-  /** Per-dimension confidence threshold for accepting a label. */
+  /** Confidence threshold for accepting a match. */
   confidenceThreshold?: number;
   /** Maximum number of skills described in the classifier prompt. */
   maxSkillsInClassifier?: number;
-  /**
-   * Map of thinking-style identifier → category description sent to the
-   * classifier. The model picks one. `"default"` is implied when no other
-   * style fits.
-   */
-  thinkingStyleCategories?: Partial<Record<
-    z.infer<typeof thinkingStyleSchema>,
-    string
-  >>;
 }
 
 /** Resolve the skills collection ref from the appropriate scope registry. */
@@ -141,29 +122,12 @@ function listSkillsForPrompt(
   return out;
 }
 
-const DEFAULT_THINKING_STYLE_CATEGORIES: Record<string, string> = {
-  "plan-and-execute":
-    "The message asks for a multi-step task that benefits from explicit decomposition before execution.",
-  supervisor:
-    "The message describes work spanning multiple specialized concerns that benefit from independent sub-agent treatment.",
-  blackboard:
-    "The message asks for analysis where multiple expert perspectives contribute incrementally to a shared workspace under a controller.",
-  "reactive-blackboard":
-    "The message asks for parallel analysis from multiple independent perspectives, synthesized at the end.",
-  default:
-    "The message is a direct question or single-shot reasoning task with no need for decomposition or multi-agent coordination.",
-};
-
 /**
  * Build the classifier generator. Output is the structured-object form per
  * `intentClassifierOutputSchema`.
  */
 export function createIntentClassifierGenerator(opts: IntentClassifierOptions) {
   const cap = opts.maxSkillsInClassifier ?? DEFAULT_MAX_SKILLS;
-  const styleCategories = {
-    ...DEFAULT_THINKING_STYLE_CATEGORIES,
-    ...opts.thinkingStyleCategories,
-  };
 
   return generator({
     name: opts.name ?? "intent-classifier",
@@ -174,26 +138,21 @@ export function createIntentClassifierGenerator(opts: IntentClassifierOptions) {
     prompt: async (_input, ctx) => {
       const collection = getCollection(ctx, opts.scope, opts.collectionKey);
       const skills = listSkillsForPrompt(collection, cap);
-      const skillSection =
-        skills.length === 0
-          ? "No skills are currently registered. Always return `activeSkills: []`."
-          : [
-              "Available skills (you may activate zero or more):",
-              ...skills.map((s) => `- ${s.name}: ${s.description}`),
-            ].join("\n");
-      const styleSection = [
-        "Thinking-style categories (pick exactly one):",
-        ...Object.entries(styleCategories).map(
-          ([style, desc]) => `- ${style}: ${desc}`,
-        ),
+      if (skills.length === 0) {
+        return [
+          "You classify a single user message: which (if any) of the available skills applies?",
+          "No skills are currently registered. Always return `activeSkills: []`.",
+          "Return your reasoning first (one short sentence).",
+        ].join("\n");
+      }
+      const skillSection = [
+        "Available skills (you may activate zero or more — only when the message clearly matches):",
+        ...skills.map((s) => `- ${s.name}: ${s.description}`),
       ].join("\n");
       return [
-        "You classify a single user message along two independent dimensions: a thinking style and zero-or-more skill matches.",
-        "Return your reasoning first (one short paragraph), then the labels with per-dimension confidence in the range 0..1.",
+        "You classify a single user message: which (if any) of the available skills applies?",
+        "Return your reasoning first (one short sentence), then zero-or-more skill matches with per-match confidence in 0..1.",
         "If no skill clearly applies, return an empty `activeSkills` array. Do not invent skill names not in the catalog.",
-        "If no specialized thinking style fits, pick `default`.",
-        "",
-        styleSection,
         "",
         skillSection,
       ].join("\n");
@@ -202,18 +161,11 @@ export function createIntentClassifierGenerator(opts: IntentClassifierOptions) {
   });
 }
 
-const applySchema = z.object({
-  /** The accepted output (already filtered against the catalog). */
-  accepted: z.boolean(),
-});
+const applySchema = z.object({ accepted: z.boolean() });
 
 /**
  * Apply the classifier output to the cross-tier sequencer state. Filters out
- * skills not present in the catalog and gates per-dimension on the
- * confidence threshold. On any failure (parse, model error), the apply
- * handler is simply not reached — the sequencer's outer state stays at its
- * defaults and the apply-intent step at the end of intentSelector reads
- * `thinkingStyle: null`, falling through to its default behavior.
+ * skills not present in the catalog and gates on the confidence threshold.
  */
 export function createApplyClassifierResult(opts: IntentClassifierOptions) {
   const threshold = opts.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD;
@@ -250,17 +202,18 @@ export function createApplyClassifierResult(opts: IntentClassifierOptions) {
           }),
         );
 
-      const styleAccepted =
-        input.thinkingStyleConfidence >= threshold ? input.thinkingStyle : "default";
+      const aggregateConfidence =
+        filteredSkills.length === 0
+          ? 0
+          : filteredSkills.reduce((acc, s) => acc + (s.confidence ?? 0), 0) /
+            filteredSkills.length;
 
       const existingSkills = ctx.sequencer?.state.skills ?? [];
       await ctx.sequencer!.patchState({
         resolved: true,
-        thinkingStyle: styleAccepted,
-        thinkingStyleSource:
-          ctx.sequencer?.state.thinkingStyleSource ?? "classifier",
         skills: [...existingSkills, ...filteredSkills],
-        classifierConfidence: input.thinkingStyleConfidence,
+        classifierConfidence: aggregateConfidence,
+        source: "classifier" as const,
       });
       return { accepted: true };
     },
