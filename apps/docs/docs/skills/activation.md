@@ -75,7 +75,7 @@ Set `enableLlmClassifier: false` in tests that shouldn't depend on a mocked clas
 
 ### Drop the tool-call path
 
-When a flow uses `intentSelector`, the `runSkill` tool and the catalog context formatter are redundant — the up-front path activates skills before the model has anything to call. Pass `bindRunSkillTool: false` to drop them:
+When a flow uses `intentSelector`, the `runSkill` tool and the catalog context formatter are redundant — the up-front path activates skills before the model has anything to call. The capability ships them in a `runSkill` preset that you opt out of with the standard preset overrides:
 
 ```ts
 import { createSkillsCapability, createIntentSelector } from "@flow-state-dev/skills";
@@ -84,13 +84,15 @@ export const skillsCap = createSkillsCapability({
   catalog: { /* ... */ },
   initialSkills,
   scope: "user",
-  bindRunSkillTool: false,
 });
 
 export const intentSelector = createIntentSelector({ scope: "user" });
+
+// At the use site:
+//   uses: [skillsCap.presets({ runSkill: false }), intentSelector, ...]
 ```
 
-The active-skill body formatter stays — that's how matched skills get their substituted body into the system prompt. Only the catalog listing and the `runSkill` tool drop out.
+The active-skill body formatter lives on a separate `context` preset that stays on by default — that's how matched skills get their substituted body into the system prompt. Dropping `runSkill` only removes the catalog listing and the tool itself.
 
 ### Active-skill state
 
@@ -99,7 +101,7 @@ The active-skill body formatter stays — that's how matched skills get their su
 1. `ctx.request.patchState({ intent })` — a per-turn `IntentResult` for trace UI.
 2. `ctx.session.patchState({ activeSkills, __activeSkills })` — the persistent surface read by the active-skill body formatter.
 
-`__activeSkills` is **replaced** each turn by `intentSelector`, not appended. If a flow keeps `bindRunSkillTool: true` and the agent calls `runSkill` mid-turn, that call appends on top of the up-front baseline using the existing dedup-by-name+mode logic.
+`__activeSkills` is **replaced** each turn by `intentSelector`, not appended. If a flow keeps the `runSkill` preset on and the agent calls `runSkill` mid-turn, that call appends on top of the up-front baseline using the existing dedup-by-name+mode logic.
 
 ### Showing the active skill in your UI
 
@@ -124,7 +126,7 @@ The kitchen-sink renders one badge per active skill in its top bar with the skil
 
 ## Mid-flow: `runSkill`
 
-The original tool-call path, and the default when `bindRunSkillTool` is unset.
+The original tool-call path. The capability's `runSkill` preset is on by default, so the only thing you need to do to use it is attach the capability.
 
 The skills capability registers two pieces:
 
@@ -150,7 +152,7 @@ This is useful when most turns benefit from up-front classification but you also
 | You want… | Use |
 |-----------|-----|
 | Slash commands work deterministically | Up-front (only path that handles slash) |
-| Cheapest possible system prompt | Up-front with `bindRunSkillTool: false` |
+| Cheapest possible system prompt | Up-front with `presets({ runSkill: false })` |
 | Lowest latency on turns where no skill matches | Mid-flow (skip the classifier call) |
 | Activation only when the agent realizes mid-investigation | Mid-flow |
 | The pre-generator router needs to know the active skill | Up-front (`activeSkills` is on request state before the generator runs) |

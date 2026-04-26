@@ -55,7 +55,6 @@ export {
   buildRunSkillDescription,
   listEnabledSkills,
   type RunSkillToolOptions,
-  type BuildRunSkillDescriptionOptions,
 } from "./run-skill-tool";
 
 export {

@@ -7,14 +7,15 @@
  *     (default `project`).
  *   - **Session state**: an `__activeSkills` array fragment used by the
  *     dynamic context formatter to read which skills are currently active.
- *   - **Preset `tools`** (default-on): the full tool catalog plus the
- *     `runSkill` handler. Catalog tools are pre-registered so the AI SDK
- *     knows their schemas; `runSkill` is the model's intended entry point.
- *   - **Preset `context`** (default-on): two dynamic context entries — a
- *     catalog listing of available skills and the active-skill body block.
- *
- * Consumers attach the capability via `uses: [skillsCap]`. To customize,
- * use the standard preset overrides (`skillsCap.presets({ tools: false })`).
+ *   - **Preset `tools`** (default-on): the catalog of skill-referenceable
+ *     tools, registered for AI SDK schema awareness.
+ *   - **Preset `context`** (default-on): the active-skill body formatter —
+ *     required for any matched skill to actually appear in the system
+ *     prompt, regardless of which activation path matched it.
+ *   - **Preset `runSkill`** (default-on): the mid-flow activation path —
+ *     the `runSkill` tool plus the catalog listing the model reads to
+ *     decide when to call it. Drop with `cap.presets({ runSkill: false })`
+ *     when using up-front activation via `createIntentSelector`.
  */
 
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
@@ -71,22 +72,6 @@ export interface SkillsCapabilityOptions {
    * context on every step. See CapabilityConfig.agentType.
    */
   agentType?: AgentType | readonly AgentType[];
-
-  /**
-   * Register the `runSkill` tool on the default `tools` preset and the
-   * skill catalog context formatter on the default `context` preset.
-   *
-   * Default `true` for backcompat. Set `false` in flows that use
-   * `createIntentSelector` (FIX-421) for up-front skill activation and
-   * don't want the redundant mid-flow tool-call path or the catalog
-   * prompt overhead. The active-skills body formatter remains registered
-   * regardless — it's still the only way activated skills get their body
-   * into the system prompt.
-   *
-   * `runSkillTool` remains exported and can be added manually by a flow
-   * that wants both the up-front and mid-flow paths to coexist.
-   */
-  bindRunSkillTool?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +91,6 @@ export function createSkillsCapability(
   const catalog: ToolCatalog = options.catalog ?? {};
   const scope: ScopeType = options.scope ?? "project";
   const initialSkills = options.initialSkills;
-  const bindRunSkill = options.bindRunSkillTool ?? true;
 
   // The collection's pattern prefix IS the workspace mount path: when the
   // bash capability auto-discovers collections, it mounts them at their
@@ -167,29 +151,28 @@ export function createSkillsCapability(
     sessionStateSchema: activeSkillStateSchema,
 
     presets: {
-      tools: {
-        // Static-array form: the full catalog + runSkill (when bound).
-        // activeTools gating happens via the dynamic context messages — V1
-        // leaves the schemas registered so fork-mode and inline-mode skills
-        // can both reference any catalog tool. (See FIX-378 spec, open
-        // question #3.)
-        tools: bindRunSkill
-          ? [runSkillTool, ...catalogTools]
-          : [...catalogTools],
+      // Catalog tools — registered for AI SDK schema awareness so any
+      // skill (inline or fork mode) can reference them via allowed-tools.
+      tools: { tools: [...catalogTools] },
+
+      // Active-skill body formatter — required for any matched skill to
+      // appear in the system prompt. Both activation paths (up-front via
+      // intentSelector, mid-flow via runSkill) feed it via
+      // session.state.__activeSkills. Aggregates under the `<skills>`
+      // tag with the runSkill catalog when both presets are on.
+      context: { context: { skills: [activeContext] } },
+
+      // Mid-flow activation: the runSkill tool + the catalog listing the
+      // model reads to decide when to call it. Drop with
+      // `cap.presets({ runSkill: false })` when using up-front activation
+      // via createIntentSelector — the active-skills formatter above
+      // still injects the matched skill's body.
+      runSkill: {
+        tools: [runSkillTool],
+        context: { skills: [catalogContext] },
       },
-      context: {
-        // FIX-434 keyed form — both formatters aggregate under one
-        // `<skills>` XML tag in the system prompt. When runSkill is
-        // unbound (FIX-421 up-front path), drop the catalog listing but
-        // keep the active-skill body formatter — activated skills still
-        // need their body injected.
-        context: {
-          skills: bindRunSkill
-            ? [catalogContext, activeContext]
-            : [activeContext],
-        },
-      },
-      default: ["tools", "context"],
+
+      default: ["tools", "context", "runSkill"],
     },
   });
 }

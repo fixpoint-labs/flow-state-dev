@@ -74,16 +74,10 @@ const skillsCap = createSkillsCapability({
   // Main-agent only: in plan-and-execute / supervisor / blackboard, the
   // synthesizer carries skills while step-executors and workers don't.
   agentType: "primary",
-  // FIX-421: skill activation is decided up-front by `intentSelectorBlock`
-  // below. Drop the runSkill tool + the catalog-listing context formatter
-  // from the default presets — the active-skill body formatter stays so
-  // activated skills still get their body injected. Saves the per-step
-  // catalog prompt cost and avoids the redundant tool-call round trip.
-  bindRunSkillTool: false,
 });
 
 /**
- * intentSelectorBlock — the up-front skill-activation router (FIX-421).
+ * intentSelectorBlock — the up-front skill-activation router.
  *
  * Runs once per turn before the main generator. Three tiers (slash prefix,
  * keyword scan over each skill's `keywords` frontmatter, LLM classifier)
@@ -140,7 +134,12 @@ export const featuresCapability = defineCapability({
     // build time (dynamic uses callbacks can't contribute resources). Scoped
     // to primary agents by the capability's own `agentType` so worker
     // generators in plan-and-execute / supervisor / blackboard skip it.
-    skillsCap,
+    //
+    // Skill activation is decided up-front by `intentSelectorBlock` above,
+    // so we drop the `runSkill` preset — its tool and catalog-listing
+    // context become dead weight on every turn. The active-skill body
+    // formatter (in the `context` preset) still injects matched skills.
+    skillsCap.presets({ runSkill: false }),
 
     // Static: artifacts — inventory context only. Bash is the write path,
     // so readArtifact/updateArtifact tools are disabled here.

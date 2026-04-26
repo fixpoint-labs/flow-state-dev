@@ -40,7 +40,7 @@ Skills are not always-on. Something has to decide a skill applies before its bod
 - **Up-front (default in this package).** A small pre-generator router — `createIntentSelector` — classifies the user message and writes any matched skills into session state. The main generator runs once with the body already in context. Three tiers, in order: literal `/<skill-name>` slash match, local keyword scan, then a fast LLM classifier when the earlier tiers don't decide.
 - **Mid-flow.** The agent sees a catalog of skills in its system prompt and calls a `runSkill` tool when one applies. Two provider hits per skill-active turn (decide, then run with skill in context).
 
-Both paths can coexist. See [Activation paths](./activation) for the full breakdown — when to use which, the tier behavior, the `bindRunSkillTool` option, and how to compose them.
+Both paths can coexist. See [Activation paths](./activation) for the full breakdown — when to use which, the tier behavior, the preset toggles, and how to compose them.
 
 ## Two activation modes
 
@@ -53,7 +53,7 @@ Choose fork when the skill is a self-contained investigation that shouldn't bias
 
 ## Wiring it up
 
-Add the capability to a generator via `uses:`. The capability installs a skills resource collection, the active-skill body formatter, and (when `bindRunSkillTool` is left at its default) the catalog context formatter and the `runSkill` tool.
+Add the capability to a generator via `uses:`. The capability installs a skills resource collection plus three presets (all on by default): `tools` (catalog tool schemas), `context` (the active-skill body formatter), and `runSkill` (the `runSkill` tool plus the catalog listing the model reads).
 
 ```ts
 import { createSkillsCapability, readSkillsDirectory } from "@flow-state-dev/skills";
@@ -72,8 +72,13 @@ export const skillsCap = createSkillsCapability({
   initialSkills,
   scope: "user",
   agentType: "primary", // optional — see below
-  bindRunSkillTool: false, // optional — see Activation paths
 });
+```
+
+When you adopt up-front activation via `createIntentSelector`, drop the `runSkill` preset at the use site to skip the redundant tool-call path:
+
+```ts
+uses: [skillsCap.presets({ runSkill: false }), intentSelector, /* ... */]
 ```
 
 Then attach it to any generator:
@@ -133,7 +138,7 @@ See the [guide](/guides/adding-skills-to-your-app) for a complete walkthrough.
 
 | Export | Purpose |
 |--------|---------|
-| `createSkillsCapability(options)` | The one-line wiring path. Returns a defined capability. Accepts `bindRunSkillTool: boolean` to gate the tool-call path. |
+| `createSkillsCapability(options)` | The one-line wiring path. Returns a capability with three presets — `tools`, `context`, `runSkill` — all on by default. Drop the tool-call path at the use site with `cap.presets({ runSkill: false })`. |
 | `createIntentSelector(options)` | The up-front skill router. Returns a `.tap`-able sequencer. See [Activation paths](./activation). |
 | `readSkillsDirectory(root)` | Walk a filesystem tree and return `InitialSkill[]` for `initialSkills`. Node only. |
 | `createRunSkillTool(options)` | The `runSkill` router as a standalone tool, for custom wiring outside the capability. |

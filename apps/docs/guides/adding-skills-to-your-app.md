@@ -156,7 +156,7 @@ Three tiers, each gated by whether an earlier tier resolved:
 2. **Keyword scan.** Each skill's `keywords` frontmatter is matched as plain substrings of the lowercased message. No LLM call.
 3. **LLM classifier.** A `preset/fast` generator with structured output decides when the earlier tiers don't. Confidence-gated and validated against the catalog so it can't hallucinate skill names.
 
-Add `bindRunSkillTool: false` to your skills capability and build an `intentSelector`:
+Build an `intentSelector` next to your skills capability and opt out of the `runSkill` preset at the use site:
 
 ```ts
 // lib/capabilities.ts
@@ -173,7 +173,6 @@ export const skillsCap = createSkillsCapability({
   initialSkills,
   scope: "user",
   agentType: "primary",
-  bindRunSkillTool: false, // drop runSkill + the catalog listing
 });
 
 export const intentSelector = createIntentSelector({
@@ -181,7 +180,22 @@ export const intentSelector = createIntentSelector({
 });
 ```
 
-`bindRunSkillTool: false` removes the `runSkill` tool and the skill-catalog context formatter from the capability's default presets. The active-skill body formatter stays — that's how matched skills get their substituted body into the system prompt.
+The capability ships three presets — `tools`, `context`, `runSkill` — all on by default. The `runSkill` preset bundles the `runSkill` tool and the catalog listing the model reads. When activation is decided up-front, both become dead weight on every turn. Drop them at the use site:
+
+```ts
+// flow.ts
+import { intentSelector, skillsCap } from "./lib/capabilities";
+
+export const assistant = generator({
+  name: "assistant",
+  agentType: "primary",
+  model: "preset/medium",
+  prompt: "You are a helpful assistant. Active skills override defaults.",
+  // The active-skill body formatter (in the `context` preset) stays on,
+  // so matched skills still get their body injected.
+  uses: [skillsCap.presets({ runSkill: false })],
+});
+```
 
 `intentSelector` returns a `.tap`-able sequencer. Add it to your run-sequencer ahead of the assistant generator:
 
@@ -192,7 +206,7 @@ import { intentSelector } from "./lib/capabilities";
 const runSequencer = sequencer({ name: "run", inputSchema })
   .tap(applyRequestedMode)
   .tap(intentSelector) // <-- new
-  .then(assistantGenerator);
+  .then(assistant);
 ```
 
 That's it. Run the app and try the three tiers:
