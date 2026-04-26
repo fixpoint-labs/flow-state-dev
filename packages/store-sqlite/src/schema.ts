@@ -148,15 +148,30 @@ function migrateProjectToOrg(db: Database.Database): void {
   }
 }
 
-export function initializeSchema(db: Database.Database): void {
-  // Apply pragmas (each must be a separate statement)
+/**
+ * Apply per-connection PRAGMAs (busy_timeout, synchronous, cache_size,
+ * temp_store, foreign_keys) plus journal_mode (persisted on the database
+ * file but cheap to re-issue). Every new better-sqlite3 connection starts
+ * with SQLite defaults — notably `busy_timeout = 0`, which fails concurrent
+ * writes immediately with SQLITE_BUSY instead of waiting. This MUST run
+ * on every fresh connection, including ones constructed with
+ * `skipSchemaInit: true`.
+ */
+export function applyConnectionPragmas(db: Database.Database): void {
   for (const line of PRAGMAS.trim().split("\n")) {
     const trimmed = line.trim();
     if (trimmed.length > 0) {
       db.pragma(trimmed.replace("PRAGMA ", "").replace(";", ""));
     }
   }
+}
 
+/**
+ * Run schema DDL: rename migrations + create-table-if-not-exists +
+ * create-index-if-not-exists. Idempotent. Does NOT apply per-connection
+ * pragmas — call `applyConnectionPragmas` for that.
+ */
+export function initializeSchemaDDL(db: Database.Database): void {
   // Run rename migrations BEFORE create-table-if-not-exists so the create
   // sees the renamed columns and the create-index-if-not-exists step finds
   // its target columns.
@@ -169,4 +184,19 @@ export function initializeSchema(db: Database.Database): void {
   db.exec(ORGS_TABLE);
   db.exec(ACTIVE_REQUESTS_TABLE);
   db.exec(REQUEST_EVENTS_TABLE);
+}
+
+/**
+ * Apply per-connection pragmas and run schema DDL. Convenience wrapper for
+ * standalone callers that own their own `Database` instance and want both
+ * in one call.
+ *
+ * `createSQLiteStores` does not use this — it calls `applyConnectionPragmas`
+ * unconditionally and `initializeSchemaDDL` only when `skipSchemaInit` is
+ * not set, so a runtime registry constructed with `skipSchemaInit: true`
+ * still gets the pragmas required for safe concurrent access.
+ */
+export function initializeSchema(db: Database.Database): void {
+  applyConnectionPragmas(db);
+  initializeSchemaDDL(db);
 }
