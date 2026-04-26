@@ -173,7 +173,7 @@ Bias detection, sycophancy scoring, and counter-argument generation.
 | `sycophancyScoreSchema` | Composite score with label and four-dimension breakdown |
 | `sycophancyBreakdownSchema` | Four dimension scores |
 | `sycophancyLabelSchema` | Enum: balanced, mild_bias, moderate_bias, sycophantic |
-| `analyzerResultSchema` | Generic AnalyzerResult contract (FIX-307 forward declaration) |
+| `analyzerResultSchema` | Generic AnalyzerResult contract |
 
 ### Helpers
 

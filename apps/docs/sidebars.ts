@@ -142,6 +142,7 @@ const sidebars: SidebarsConfig = {
       label: "Skills",
       items: [
         "skills/overview",
+        "skills/activation",
         "skills/authoring",
       ],
     },

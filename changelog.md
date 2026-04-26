@@ -18,6 +18,19 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - **Tests:** 6 new tests in `packages/core/test/require-org.test.ts` covering `requiresOrg` bubbling through handlers, sequencers, multi-action flows. 7 new tests in `packages/server/test/binding-immutability.test.ts` covering both userId and orgId mismatch, late-bind rejection, and check ordering.
 - **Migration:** No data migration. Pre-1.0 dev/test data on disk under `project-store/` is no longer read; document and recreate. The Linear `blockedBy: FIX-427` relation was removed (verified the lazy-collections surface is not touched by this issue).
 
+## 2026-04-25
+
+### Up-front skill activation router (FIX-421)
+
+- New `createIntentSelector()` factory in `@flow-state-dev/skills` — a three-tier sequencer that decides which skills (if any) apply to a user message before the main generator runs. Tiers: (1) literal `/<skill-name>` slash match, (2) local keyword scan over per-skill `keywords` frontmatter, (3) structured-output LLM classifier (`agentType: "trace"`) that runs only when tiers 1–2 are inconclusive. Skill-only — thinking-style classification stays in its existing kitchen-sink pipeline.
+- `createSkillsCapability` now ships three named presets — `tools` (catalog tool schemas), `context` (the active-skill body formatter), and `runSkill` (the `runSkill` tool plus the skill-catalog context listing) — all on by default. Flows using up-front activation drop the tool-call path with the standard preset override: `cap.presets({ runSkill: false })`. The `tools`/`context` presets stay on so the active-skill body formatter still injects matched skills under the FIX-434 keyed `<skills>` context tag.
+- New `keywords` frontmatter field on `SKILL.md` (parsed + serialized round-trip in `parseSkillMd` / `serializeSkillMd`, surfaced in the `skills` collection's client-data projection). Lowercase tokens that the tier-2 keyword scan matches against the user message.
+- `buildRunSkillDescription` no longer emits the slash-command instruction — slash routing is handled deterministically by `intentSelector`'s tier 1 instead of by the model.
+- New core types: `MatchedSkill` and `IntentSource` exported from `@flow-state-dev/core` and `@flow-state-dev/core/types`.
+- `ActiveSkillEntry` (the records in `session.state.activeSkills`) gains an optional `source` field. `intentSelector` stamps it with the matching tier; mid-flow `runSkill` calls leave it undefined. Consumers that want a tier badge in their UI project from `activeSkills` directly via clientData.
+- Apply-intent replaces (not appends) `activeSkills` for the turn. Mid-flow `runSkill` calls within the same turn still append on top via the existing `pushActiveSkill` path.
+- Chat-agent flow wiring is intentionally NOT changed in this PR — that's a follow-up. This PR ships the primitive plus the capability option so they can land independently.
+
 ## 2026-04-24
 
 ### Cross-flow schema registry + per-flow isolation (FIX-431)

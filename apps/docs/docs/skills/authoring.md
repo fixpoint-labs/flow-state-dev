@@ -1,5 +1,5 @@
 ---
-sidebar_position: 2
+sidebar_position: 3
 ---
 
 # Authoring Skills
@@ -22,7 +22,7 @@ skills/
 
 The skill name is the folder name. It must match `^[a-z0-9][a-z0-9-]*$` — lowercase, hyphens allowed, no leading digits in most use cases (the regex allows a leading digit, but avoid it).
 
-Files inside the folder are bundled with the skill when it's seeded into the resource collection. They're addressable from the body via the `${CLAUDE_SKILL_DIR}` substitution (see below), so your body can say "open `${CLAUDE_SKILL_DIR}/reference/rubric.md`" and the agent knows where to find it.
+Files inside the folder are bundled with the skill when it's seeded into the resource collection. They're addressable from the body via the `${SKILL_DIR}` substitution (see below), so your body can say "open `${SKILL_DIR}/reference/rubric.md`" and the agent knows where to find it.
 
 Symlinks are rejected at read time for safety.
 
@@ -46,11 +46,12 @@ Body goes here.
 
 | Key | Required | Type | Purpose |
 |-----|----------|------|---------|
-| `description` | yes | string (≤ 1024 chars) | What the model sees in the skill catalog. This is the trigger — write it well. |
+| `description` | yes | string (≤ 1024 chars) | What the up-front classifier and the `runSkill` catalog listing both see. The trigger for both activation paths — write it well. |
+| `keywords` | no | string[] | Lowercased tokens for the up-front router's tier-2 keyword scan. Plain substring matches against the user message. Ignored on the `runSkill` path. See below. |
 | `context` | no | `inline` \| `fork` | Activation mode. Default `inline`. |
 | `allowed-tools` | no | string[] | Catalog keys the skill can invoke in fork mode. Ignored in inline mode (tools come from the parent). |
-| `when-to-use` | no | string | Extra guidance appended to the description in the catalog listing. Keep it short. |
-| `disable-model-invocation` | no | boolean | When `true`, the skill can still exist in the collection but `runSkill` will reject calls for it. Useful for drafts or skills only invokable by admins. |
+| `when-to-use` | no | string | Extra guidance appended to the description for the classifier and the `runSkill` catalog. Keep it short. |
+| `disable-model-invocation` | no | boolean | When `true`, the skill stays in the collection but every activation path skips it (no slash, no keyword match, hidden from the classifier and the `runSkill` catalog). Useful for drafts or admin-only skills. |
 
 Unknown frontmatter keys are preserved but not interpreted. The parser validates the shape up front — a malformed skill won't poison the seeding pass.
 
@@ -63,6 +64,24 @@ The description is the only thing the model sees in the catalog. It decides whet
 
 A description that never triggers is a skill that never runs. A description that triggers on every question is a skill that pollutes every turn. Write carefully, then check the DevTool's tool-calls panel to see whether the model is activating as intended.
 
+### Writing keywords
+
+`keywords` is consumed by `createIntentSelector`'s tier-2 scan (see [Activation paths](./activation)). The scan lowercases the user message and matches each keyword as a plain substring. A match activates the skill without an LLM call.
+
+```yaml
+---
+description: Answer questions about current events…
+keywords: [news, latest, breaking, today, current, happening, recent]
+---
+```
+
+Two guidelines:
+
+- **Pick high-precision tokens.** Each keyword is a substring match — `news` matches `newscast`, `news anchor`, but also `newsletter`. Words that read as the trigger phrase in normal speech are usually fine; jargon and unusual punctuation are not.
+- **Keep the list short.** Five to ten tokens covers the obvious matches. Anything subtler should fall through to the classifier — that's what it's for.
+
+Skipping `keywords` is fine. The classifier still picks up the skill from its description; you just pay the LLM call when nothing else matched. Adding them is a cost optimization on common phrasings, not a correctness requirement.
+
 ## Body
 
 The body is plain Markdown. It becomes either the substituted system prompt (fork mode) or is spliced into the parent generator's system prompt after the skill is activated (inline mode).
@@ -74,9 +93,11 @@ Treat the body as an imperative playbook, not a conversation. Short sections. Bu
 Two variables are substituted into the body at runtime:
 
 - `$ARGUMENTS` — the `input` string passed to `runSkill`, if any. Lets the model pass a topic or target through to the playbook.
-- `${CLAUDE_SKILL_DIR}` — the filesystem path where the skill's bundled files live when the bash capability is mounted. Derived from the skills collection's pattern prefix: for the default `skills/**` collection, it resolves to `/workspace/skills/<skill-name>/`. If you configure a custom collection prefix (`collectionConfig: { prefix: "playbooks" }`), the path follows automatically.
+- `${SKILL_DIR}` — the filesystem path where the skill's bundled files live when the bash capability is mounted. Derived from the skills collection's pattern prefix: for the default `skills/**` collection, it resolves to `/workspace/skills/<skill-name>/`. If you configure a custom collection prefix (`collectionConfig: { prefix: "playbooks" }`), the path follows automatically.
 
 Both substitutions run on the body after frontmatter is stripped. If a variable isn't used, nothing changes.
+
+`${CLAUDE_SKILL_DIR}` is preserved as an alias for `${SKILL_DIR}`. It exists so skill folders authored against [Claude Code's skill format](https://docs.claude.com/en/docs/claude-code/skills) drop in here without edits — the two systems share the same SKILL.md shape and the same substitution token under a different name. New skills should use `${SKILL_DIR}`; the alias is documented for the import case.
 
 Example:
 
@@ -89,11 +110,11 @@ description: Research a topic using the method in reference/method.md
 
 The user asked about: $ARGUMENTS
 
-Open ${CLAUDE_SKILL_DIR}/reference/method.md for the step-by-step process,
+Open ${SKILL_DIR}/reference/method.md for the step-by-step process,
 then follow it exactly.
 ```
 
-Called via `runSkill({ name: "research", input: "quantum computing" })`, the body renders with `$ARGUMENTS` replaced by `"quantum computing"` and `${CLAUDE_SKILL_DIR}` replaced by `/workspace/skills/research`.
+Called via `runSkill({ name: "research", input: "quantum computing" })`, the body renders with `$ARGUMENTS` replaced by `"quantum computing"` and `${SKILL_DIR}` replaced by `/workspace/skills/research`.
 
 ## Inline vs fork in practice
 
@@ -134,8 +155,8 @@ description: Competitor analysis. Use for landscape, comparison, or "who compete
 # Competitor Analysis
 
 Before drafting, open:
-- `${CLAUDE_SKILL_DIR}/reference/dimensions.md` — the evaluation axes
-- `${CLAUDE_SKILL_DIR}/reference/scoring-rubric.md` — how to rate each axis
+- `${SKILL_DIR}/reference/dimensions.md` — the evaluation axes
+- `${SKILL_DIR}/reference/scoring-rubric.md` — how to rate each axis
 
 Follow the sections in order.
 ```
@@ -150,7 +171,7 @@ const bashCap = createBashCapability({
 });
 ```
 
-With bash on, `${CLAUDE_SKILL_DIR}` resolves to `/workspace/skills/<skill-name>/` and reference files are reachable via `cat`, `python3`, or any other bash-side tool. Writes to files in the skills mount flush back to the skills collection — which means the agent CAN edit skills mid-run if you want that. To disable, mount it read-only:
+With bash on, `${SKILL_DIR}` resolves to `/workspace/skills/<skill-name>/` and reference files are reachable via `cat`, `python3`, or any other bash-side tool. Writes to files in the skills mount flush back to the skills collection — which means the agent CAN edit skills mid-run if you want that. To disable, mount it read-only:
 
 ```ts
 createBashCapability({
@@ -184,7 +205,7 @@ The body invokes it directly:
 ```markdown
 Before searching, compute today's date window:
 
-python3 ${CLAUDE_SKILL_DIR}/scripts/date-window.py recent
+python3 ${SKILL_DIR}/scripts/date-window.py recent
 
 The script prints JSON like `{"since": "...", "until": "...", "days": 7}` —
 use `since` in your search query's recency filter.

@@ -18,7 +18,7 @@ function buildCtx(collection: ReturnType<typeof createMockSkillsCollection>) {
   return {
     session: {
       identity: { id: "s1", userId: "u1" },
-      state: { __activeSkills: [] },
+      state: { activeSkills: [] },
       resources: {
         get: (k: string) => (k === "skills" ? collection : undefined),
         list: () => [collection],

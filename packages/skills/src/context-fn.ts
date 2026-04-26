@@ -5,7 +5,7 @@
  * The capability registers this as a preset `context` entry. Because the
  * function-form context is dynamic, the generator's `prepareStep`
  * machinery re-runs it before each tool-loop step — so the moment
- * `runSkill` mutates `session.state.__activeSkills`, the next step's
+ * `runSkill` mutates `session.state.activeSkills`, the next step's
  * system prefix carries the matched skill body.
  *
  * Two parallel context entries are returned:
@@ -17,13 +17,13 @@
 
 import type {
   BlockContext,
-  ResourceCollectionRef,
   ScopeType,
 } from "@flow-state-dev/core/types";
 import type { InitialSkill, SkillState } from "@flow-state-dev/core";
 import path from "node:path";
 import { readActiveSkills } from "./active-skill-state";
 import { skillManifestKey } from "./collection";
+import { getCollection } from "./internal/get-collection";
 import {
   buildRunSkillDescription,
   listEnabledSkills,
@@ -43,46 +43,6 @@ export interface SkillsContextOptions {
    * the model would never see any skills to invoke in the first place.
    */
   initialSkills?: InitialSkill[];
-}
-
-/** Resolve the skills collection ref from the appropriate scope registry. */
-function getCollection(
-  ctx: BlockContext,
-  scope: ScopeType,
-  key: string,
-): ResourceCollectionRef | undefined {
-  const registry =
-    scope === "session"
-      ? ctx.session?.resources
-      : scope === "user"
-        ? ctx.user?.resources
-        : ctx.org?.resources;
-  if (!registry) return undefined;
-  const list = (registry as { list: () => unknown[] }).list();
-  for (const entry of list) {
-    if (
-      entry &&
-      typeof entry === "object" &&
-      "pattern" in (entry as object) &&
-      "create" in (entry as object) &&
-      // Match by either pattern prefix or registry key — both are stable.
-      true
-    ) {
-      // The registry's `get` uses the key; we resolve by name to keep this
-      // robust against scope-handle types that don't expose a typed get.
-      const ref = entry as ResourceCollectionRef;
-      if (ref.pattern.startsWith(`${key}/`)) return ref;
-    }
-  }
-  // Fallback: try the typed get if the registry exposes it.
-  const get = (registry as { get?: (k: string) => unknown }).get;
-  if (typeof get === "function") {
-    const ref = get.call(registry, key);
-    if (ref && typeof ref === "object" && "pattern" in ref) {
-      return ref as ResourceCollectionRef;
-    }
-  }
-  return undefined;
 }
 
 /**

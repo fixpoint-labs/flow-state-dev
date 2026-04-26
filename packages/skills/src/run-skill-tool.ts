@@ -4,7 +4,7 @@
  * Skills are NOT auto-matched. The model decides when a skill applies by
  * calling this tool with `name` (and optionally `input`). The tool resolves
  * the skill from the configured collection and dispatches to:
- *   - `inlineActivate` (handler) — patches `__activeSkills` so the next
+ *   - `inlineActivate` (handler) — patches `activeSkills` so the next
  *     generator step renders the substituted body in its system prompt.
  *   - `skillFork` (generator, `agentType: "sub"`) — runs the skill body as
  *     a subagent with a resolved subset of catalog tools.
@@ -83,7 +83,7 @@ export interface RunSkillToolOptions {
   catalog: ToolCatalog;
   /** Default-on initial skills, lazily seeded on first invocation. */
   initialSkills?: InitialSkill[];
-  /** Mount root for `${CLAUDE_SKILL_DIR}` substitution. Default `.fsdev/skills`. */
+  /** Mount root for `${SKILL_DIR}` substitution. Default `.fsdev/skills`. */
   mountPath?: string;
   /** Optional override of the default model used by fork-mode subagents. */
   forkModelId?: string;
@@ -164,8 +164,6 @@ export function buildRunSkillDescription(
   lines.push(
     "",
     "Pass the skill name in `name`. Pass any required argument string in `input` (substituted for $ARGUMENTS in the skill body).",
-    "",
-    "Users may also invoke a skill directly with a slash command: when the user's message begins with `/<skill-name>` followed by an optional argument (e.g. `/check-news quantum computing`), treat it as an explicit instruction to call `runSkill` with that name and the remainder of the message as `input`. Do this on the first step of your response, before any other tool call.",
   );
   return lines.join("\n");
 }

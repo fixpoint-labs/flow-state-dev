@@ -207,10 +207,10 @@ Exactly-once is explicitly out of scope. That's a different abstraction (two-pha
 The queue is a session resource collection. Durability follows the session store adapter:
 
 - **In-memory store** — ephemeral. Queue lost on process restart. Fine for local dev and test.
-- **Filesystem store** — survives restart. On retry via FIX-294's request heartbeat, the new execution re-enters the drainPool, sees the populated collection, and resumes. Items that were `leased` under the previous (dead) request are reset to `pending` on re-entry; their new workers pick them up.
+- **Filesystem store** — survives restart. On retry via the framework's request heartbeat, the new execution re-enters the drainPool, sees the populated collection, and resumes. Items that were `leased` under the previous (dead) request are reset to `pending` on re-entry; their new workers pick them up.
 - **Postgres / other durable stores** — single-process durable. Multi-process concurrent workers are out of scope for Phase 1 (requires an adapter-level atomic primitive like `SELECT FOR UPDATE SKIP LOCKED`).
 
-Mid-block checkpoint resume is FIX-141 territory; drainPool composes with it cleanly when it lands but does not depend on it.
+Mid-block checkpoint resume is a separate concern; drainPool composes with it cleanly when it lands but does not depend on it.
 
 ## Config reference
 
