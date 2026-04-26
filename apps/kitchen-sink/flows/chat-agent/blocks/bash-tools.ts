@@ -11,16 +11,6 @@
  * so the same code path works in local dev, on Vercel, and in
  * preview/sandbox environments without a real shell.
  */
-// Static side-effect import so Vercel's file tracer (nft) ships
-// `@vercel/sandbox` and its transitive deps to /var/task. The framework's
-// vercel adapter dynamic-imports the package with a webpackIgnore magic
-// comment for portability — that's correct for consumers who don't use
-// vercel, but it also hides the dep from nft. A real `import` statement
-// here gives nft something to follow. nft only walks static imports; a
-// dynamic `import()` (or the same call inside a conditional) doesn't
-// count regardless of how the value is referenced.
-import "@vercel/sandbox";
-
 import { createBashBlocks } from "@flow-state-dev/tools/bash";
 import type { SandboxProvider } from "@flow-state-dev/tools/bash";
 import path from "node:path";
