@@ -6,7 +6,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   outputFileTracingRoot: resolve(__dirname, "../../"),
-  serverExternalPackages: ["pg"],
+  // Packages bundled by the framework's adapters via dynamic `import()` —
+  // mark as external so Next.js leaves the require alone and Vercel
+  // deploys them to node_modules instead of inlining into a chunk.
+  serverExternalPackages: ["pg", "@vercel/sandbox"],
   transpilePackages: [
     "@flow-state-dev/core",
     "@flow-state-dev/client",
