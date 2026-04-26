@@ -10,6 +10,16 @@ const nextConfig = {
   // mark as external so Next.js leaves the require alone and Vercel
   // deploys them to node_modules instead of inlining into a chunk.
   serverExternalPackages: ["pg", "@vercel/sandbox"],
+  // `serverExternalPackages` solves bundling, but the framework's
+  // `import(/* webpackIgnore: true */ "@vercel/sandbox")` hides the
+  // dependency from Vercel's file tracer (nft). Force-include it for
+  // every server route so the package files reach the deployment.
+  outputFileTracingIncludes: {
+    "/**/*": [
+      "../../node_modules/.pnpm/@vercel+sandbox@*/node_modules/@vercel/sandbox/**",
+      "./node_modules/@vercel/sandbox/**",
+    ],
+  },
   transpilePackages: [
     "@flow-state-dev/core",
     "@flow-state-dev/client",
