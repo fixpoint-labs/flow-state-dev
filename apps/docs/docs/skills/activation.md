@@ -13,7 +13,7 @@ Most apps want the up-front path as the default and `runSkill` as an escape hatc
 
 ## Why two paths
 
-The up-front path was added in FIX-421 to address three downsides of tool-call activation:
+The up-front path addresses three downsides of tool-call activation:
 
 1. **Catalog cost on every turn.** The skill catalog listing has to live in the system prompt for the model to know what's available, even when no skill applies. Prompt caching mitigates this; the up-front path eliminates it.
 2. **Two provider hits per skill-active turn.** The first call decides on a skill and emits the tool call; the second runs with the skill in context.
@@ -84,7 +84,7 @@ export const skillsCap = createSkillsCapability({
   catalog: { /* ... */ },
   initialSkills,
   scope: "user",
-  bindRunSkillTool: false, // FIX-421
+  bindRunSkillTool: false,
 });
 
 export const intentSelector = createIntentSelector({ scope: "user" });
@@ -124,7 +124,7 @@ The kitchen-sink renders one badge per active skill in its top bar with the skil
 
 ## Mid-flow: `runSkill`
 
-This is the original FIX-378 path and the default when `bindRunSkillTool` is unset.
+The original tool-call path, and the default when `bindRunSkillTool` is unset.
 
 The skills capability registers two pieces:
 
