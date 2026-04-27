@@ -24,7 +24,7 @@ export function useSessionState(sessionId: string | null) {
     setError(null);
     try {
       const [result, sessionDetail] = await Promise.all([
-        sessionClient.getSessionState(sessionId),
+        sessionClient.getSessionState(sessionId, { includeInternal: true }),
         sessionClient.getSession(sessionId)
       ]);
       setSnapshot((current) => {

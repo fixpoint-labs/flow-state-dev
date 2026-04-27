@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineFlow, defineResourceCollection, defineResourceCollection, handler } from "@flow-state-dev/core";
+import { defineFlow, defineResourceCollection, handler } from "@flow-state-dev/core";
 import { createExecutionContext, createInMemoryStores } from "../src";
 import type { ResourceCollectionRef } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
@@ -15,6 +15,7 @@ const fileSchema = z.object({
 });
 
 const filesCollection = defineResourceCollection({
+  scope: "session",
   pattern: "files/**",
   stateSchema: fileSchema,
   maxInstances: 5,
@@ -22,6 +23,7 @@ const filesCollection = defineResourceCollection({
 });
 
 const lruFilesCollection = defineResourceCollection({
+  scope: "session",
   pattern: "lrufiles/**",
   stateSchema: fileSchema,
   maxInstances: 3,
@@ -29,6 +31,7 @@ const lruFilesCollection = defineResourceCollection({
 });
 
 const oldestFilesCollection = defineResourceCollection({
+  scope: "session",
   pattern: "oldestfiles/**",
   stateSchema: fileSchema,
   maxInstances: 2,
@@ -36,6 +39,7 @@ const oldestFilesCollection = defineResourceCollection({
 });
 
 const topicObsCollection = defineResourceCollection({
+  scope: "session",
   pattern: "[topic]/observations",
   stateSchema: z.object({ entries: z.array(z.string()).default([]) }),
 });
@@ -43,7 +47,7 @@ const topicObsCollection = defineResourceCollection({
 function makeFlow(collections: Record<string, ReturnType<typeof defineResourceCollection>>) {
   const block = handler({
     name: "noop",
-    sessionResources: collections,
+    resources: collections,
     execute: () => "ok",
   });
 
@@ -68,7 +72,7 @@ async function createCtx(collections: Record<string, ReturnType<typeof defineRes
 }
 
 function getFilesNs(ctx: any): ResourceCollectionRef<{ language: string; metadata?: Record<string, unknown> }> {
-  return ctx.session.resources.files as any;
+  return ctx.resources.files as any;
 }
 
 // ---------------------------------------------------------------------------
@@ -311,7 +315,7 @@ describe("collection list() prefix filtering", () => {
 describe("parameterized collection", () => {
   it("create and get with object key", async () => {
     const { ctx } = await createCtx({ topicObs: topicObsCollection });
-    const ns = ctx.session.resources.topicObs as any as ResourceCollectionRef<{ entries: string[] }>;
+    const ns = ctx.resources.topicObs as any as ResourceCollectionRef<{ entries: string[] }>;
 
     await ns.create({ topic: "react" }, { entries: ["first"] });
     const ref = ns.get({ topic: "react" });
@@ -321,7 +325,7 @@ describe("parameterized collection", () => {
 
   it("list returns all parameterized instances", async () => {
     const { ctx } = await createCtx({ topicObs: topicObsCollection });
-    const ns = ctx.session.resources.topicObs as any as ResourceCollectionRef<{ entries: string[] }>;
+    const ns = ctx.resources.topicObs as any as ResourceCollectionRef<{ entries: string[] }>;
 
     await ns.create({ topic: "react" }, {});
     await ns.create({ topic: "rust" }, {});
@@ -352,7 +356,7 @@ describe("maxInstances with eviction: none", () => {
 describe("maxInstances with eviction: lru", () => {
   it("evicts LRU instance and persists the deletion", async () => {
     const { ctx, stores } = await createCtx({ lrufiles: lruFilesCollection });
-    const ns = ctx.session.resources.lrufiles as any as ResourceCollectionRef<{ language: string }>;
+    const ns = ctx.resources.lrufiles as any as ResourceCollectionRef<{ language: string }>;
 
     // Fill to capacity
     await ns.create("a.ts", { language: "a" });
@@ -382,7 +386,7 @@ describe("maxInstances with eviction: lru", () => {
 describe("maxInstances with eviction: oldest", () => {
   it("evicts oldest (first inserted) instance", async () => {
     const { ctx } = await createCtx({ oldestfiles: oldestFilesCollection });
-    const ns = ctx.session.resources.oldestfiles as any as ResourceCollectionRef<{ language: string }>;
+    const ns = ctx.resources.oldestfiles as any as ResourceCollectionRef<{ language: string }>;
 
     await ns.create("first.ts", { language: "first" });
     await ns.create("second.ts", { language: "second" });
@@ -416,12 +420,13 @@ describe("schema validation on create", () => {
       required: z.string(),
     });
     const strictNs = defineResourceCollection({
+      scope: "session",
       pattern: "strict/**",
       stateSchema: strictSchema,
     });
 
     const { ctx } = await createCtx({ strict: strictNs });
-    const ns = ctx.session.resources.strict as any as ResourceCollectionRef<{ required: string }>;
+    const ns = ctx.resources.strict as any as ResourceCollectionRef<{ required: string }>;
 
     // Missing required field should throw, not create with {}
     await expect(ns.create("bad.ts", {})).rejects.toThrow("validation failed");
@@ -438,6 +443,7 @@ describe("lifecycle hooks with context", () => {
     let receivedKey = "";
 
     const hookNs = defineResourceCollection({
+      scope: "session",
       pattern: "hookfiles/**",
       stateSchema: fileSchema,
       onInstanceCreated: (key, _state, ctx) => {
@@ -447,7 +453,7 @@ describe("lifecycle hooks with context", () => {
     });
 
     const { ctx } = await createCtx({ hookfiles: hookNs });
-    const ns = ctx.session.resources.hookfiles as any as ResourceCollectionRef<any>;
+    const ns = ctx.resources.hookfiles as any as ResourceCollectionRef<any>;
 
     await ns.create("test.ts", { language: "typescript" });
 
@@ -462,6 +468,7 @@ describe("lifecycle hooks with context", () => {
     let updatedPrev: any = null;
 
     const hookNs = defineResourceCollection({
+      scope: "session",
       pattern: "hookfiles/**",
       stateSchema: fileSchema,
       onInstanceUpdated: (_key, _state, prevState, _ctx) => {
@@ -471,7 +478,7 @@ describe("lifecycle hooks with context", () => {
     });
 
     const { ctx } = await createCtx({ hookfiles: hookNs });
-    const ns = ctx.session.resources.hookfiles as any as ResourceCollectionRef<any>;
+    const ns = ctx.resources.hookfiles as any as ResourceCollectionRef<any>;
 
     await ns.create("test.ts", { language: "typescript" });
     const ref = ns.get("test.ts");
@@ -485,6 +492,7 @@ describe("lifecycle hooks with context", () => {
     const deletedKeys: string[] = [];
 
     const hookNs = defineResourceCollection({
+      scope: "session",
       pattern: "hookevict/**",
       stateSchema: fileSchema,
       maxInstances: 2,
@@ -495,7 +503,7 @@ describe("lifecycle hooks with context", () => {
     });
 
     const { ctx } = await createCtx({ hookevict: hookNs });
-    const ns = ctx.session.resources.hookevict as any as ResourceCollectionRef<any>;
+    const ns = ctx.resources.hookevict as any as ResourceCollectionRef<any>;
 
     await ns.create("a.ts", { language: "a" });
     await ns.create("b.ts", { language: "b" });

@@ -1,10 +1,14 @@
 export { defineCapability } from "./define-capability";
 export type {
   CapabilityConfig,
+  CapabilityPresetCtx,
   CapabilityRef,
+  UsesEntry,
+  UsesSlot,
   ConfiguredCapability,
   DefinedCapability,
   InferCapabilities,
+  PresetContextEntry,
   PresetDef,
   PresetOverrideFn,
   PresetOverrides,
@@ -18,4 +22,4 @@ export {
   mergeSurfaceInto,
   resolveActivePresets,
 } from "./merge";
-export type { MergedCapabilitySurface } from "./merge";
+export type { MergedCapabilitySurface, DynamicUsesResolver, FlattenResult } from "./merge";

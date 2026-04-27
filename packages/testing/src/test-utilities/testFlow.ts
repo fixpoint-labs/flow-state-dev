@@ -45,9 +45,9 @@ function toJsonObjectRecord(
 }
 
 function normalizeStatus(
-  value: "in_progress" | "completed" | "failed" | "incomplete" | "interrupted" | undefined
-): "completed" | "failed" | "incomplete" | "interrupted" {
-  if (value === "completed" || value === "failed" || value === "incomplete" || value === "interrupted") {
+  value: "in_progress" | "completed" | "failed" | "incomplete" | "interrupted" | "aborted" | undefined
+): "completed" | "failed" | "incomplete" | "interrupted" | "aborted" {
+  if (value === "completed" || value === "failed" || value === "incomplete" || value === "interrupted" || value === "aborted") {
     return value;
   }
 
@@ -60,13 +60,13 @@ async function seedFlowStores(options: {
   action: string;
   requestId: string;
   sessionId?: string;
-  projectId?: string;
+  orgId?: string;
   userId: string;
   seed?: {
     request?: { state?: Record<string, unknown> };
     session?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
     user?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
-    project?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
+    org?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
   };
 }): Promise<void> {
   const now = Date.now();
@@ -83,23 +83,23 @@ async function seedFlowStores(options: {
       version: 0,
       createdAt: now,
       updatedAt: now
-    });
+    }, "any");
   }
 
-  if (options.projectId !== undefined) {
-    await options.stores.project.set(options.projectId, {
-      id: options.projectId,
-      projectId: options.projectId,
+  if (options.orgId !== undefined) {
+    await options.stores.org.set(options.orgId, {
+      id: options.orgId,
+      orgId: options.orgId,
       userId: options.userId,
-      state: toJsonObject(cloneRecord(options.seed?.project?.state ?? {})),
+      state: toJsonObject(cloneRecord(options.seed?.org?.state ?? {})),
       resources:
-        options.seed?.project?.resources === undefined
+        options.seed?.org?.resources === undefined
           ? undefined
-          : toJsonObjectRecord(cloneRecord(options.seed.project.resources)),
+          : toJsonObjectRecord(cloneRecord(options.seed.org.resources)),
       version: 0,
       createdAt: now,
       updatedAt: now
-    });
+    }, "any");
   }
 
   if (options.sessionId !== undefined) {
@@ -107,7 +107,7 @@ async function seedFlowStores(options: {
       id: options.sessionId,
       flowKind: options.flow.kind,
       userId: options.userId,
-      projectId: options.projectId,
+      orgId: options.orgId,
       metadata: undefined,
       latestRequestId: undefined,
       state: toJsonObject(cloneRecord(options.seed?.session?.state ?? {})),
@@ -119,7 +119,7 @@ async function seedFlowStores(options: {
       createdAt: now,
       updatedAt: now,
       journal: []
-    });
+    }, "any");
   }
 
   if (options.seed?.request !== undefined) {
@@ -129,7 +129,7 @@ async function seedFlowStores(options: {
       actionName: options.action,
       userId: options.userId,
       sessionId: options.sessionId,
-      projectId: options.projectId,
+      orgId: options.orgId,
       status: "in_progress",
       startedAtMs: now,
       state: toJsonObject(cloneRecord(options.seed.request.state ?? {})),
@@ -137,7 +137,7 @@ async function seedFlowStores(options: {
       version: 0,
       createdAt: now,
       updatedAt: now
-    });
+    }, "any");
   }
 }
 
@@ -150,7 +150,7 @@ export async function testFlow<TInput = unknown>(
   const stores = createInMemoryStores();
   const requestId = generateId("test_flow_req");
   const sessionId = options.sessionId ?? "test-session";
-  const projectId = options.seed?.project === undefined ? undefined : "test-project";
+  const orgId = options.seed?.org === undefined ? undefined : "test-org";
 
   await seedFlowStores({
     stores,
@@ -158,7 +158,7 @@ export async function testFlow<TInput = unknown>(
     action: options.action,
     requestId,
     sessionId,
-    projectId,
+    orgId,
     userId: options.userId,
     seed: options.seed
   });
@@ -168,7 +168,7 @@ export async function testFlow<TInput = unknown>(
     actionName: options.action as keyof typeof options.flow.actions & string,
     input: options.input,
     sessionId,
-    projectId,
+    orgId,
     userId: options.userId,
     requestId,
     modelResolver: createMockModelResolver({

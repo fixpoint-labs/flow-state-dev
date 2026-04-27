@@ -63,13 +63,18 @@ Here, a handler validates, a generator produces text, a `.map()` extracts the te
 | `then` | Run a block, pass output to next step |
 | `thenIf` | Run a block only when a condition holds |
 | `map` | Inline transform (no block) |
-| `parallel` | Run multiple blocks concurrently, merge outputs |
+| `parallel` | Run multiple blocks concurrently, merge named outputs |
+| `thenAll` | Run blocks concurrently, collect results as ordered array |
+| `thenAny` | Try blocks sequentially, return first success |
+| `race` | Run blocks concurrently, return first success |
+| `exitIf` | Exit the chain early when a condition is true |
 | `forEach` | Process array items with a block (blocking) |
 | `forEachBackground` | Fire-and-forget fan-out over array items (non-blocking) |
 | `doUntil` | Loop until a condition is true |
 | `doWhile` | Loop while a condition is true |
 | `loopBack` | Jump back to a named step |
 | `work` / `background` | Fire-and-forget side work (doesn't block) |
+| `workIf` | Conditional variant of `work` — dispatches only when condition is truthy |
 | `waitForWork` | Wait for `.work()` tasks, optional `failOnError` |
 | `tap` | Run a block or function without changing the payload |
 | `tapIf` | Conditional tap |

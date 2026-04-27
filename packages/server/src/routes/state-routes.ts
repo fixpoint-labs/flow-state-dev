@@ -6,6 +6,11 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {
+  resolveOrgStorageKey,
+  resolveUserStorageKey
+} from "../stores/scope-keys";
+import {
+  buildResourceSnapshot,
   computeClientData,
   createScopeResources,
   getBooleanFlag,
@@ -50,16 +55,21 @@ export async function handleGetSessionState(
       limit: 1
     })
   )[0];
-  const user = await ctx.stores.user.get(session.userId);
-  const project =
-    session.projectId === undefined
+  const user = await ctx.stores.user.get(resolveUserStorageKey(session.userId, flow));
+  const org =
+    session.orgId === undefined
       ? undefined
-      : await ctx.stores.project.get(session.projectId);
+      : await ctx.stores.org.get(
+          resolveOrgStorageKey(session.orgId, flow)
+        );
   const clientDataFilter = parseClientDataFilter(
     url.searchParams.get("clientData")
   );
   const includeItems = getBooleanFlag(
     url.searchParams.get("include_items")
+  );
+  const includeInternalResources = getBooleanFlag(
+    url.searchParams.get("include_internal_resources")
   );
   const offset = getPositiveInteger(url.searchParams.get("offset")) ?? 0;
   const limit =
@@ -68,6 +78,19 @@ export async function handleGetSessionState(
   const itemTypeFilter = itemTypesParam
     ? new Set(itemTypesParam.split(",").map((t) => t.trim()).filter(Boolean))
     : undefined;
+
+  // FIX-391: type-based strip of known trace items on reload. The SSE
+  // transport filters by `resolveItemVisibility(item).client`, but we can't
+  // do the same here without also stripping container items from older
+  // sessions (which were persisted with the now-fixed `client: false`).
+  // Until the visibility model is redesigned, hardcode the known-trace type
+  // list — these types resolve to `client: false` via resolveItemVisibility
+  // and should never reach the UI as raw JSON.
+  const TRACE_ITEM_TYPES = new Set([
+    "block_output",
+    "router_decision",
+    "state_snapshot",
+  ]);
 
   let aggregatedItems: OutputItem[] | undefined;
   let totalItems = 0;
@@ -79,9 +102,13 @@ export async function handleGetSessionState(
     for (const req of requests) {
       if (req.items !== undefined) {
         for (const item of req.items) {
-          if (itemTypeFilter === undefined || itemTypeFilter.has(item.type)) {
-            aggregatedItems.push(item);
+          if (itemTypeFilter !== undefined && !itemTypeFilter.has(item.type)) {
+            continue;
           }
+          if (itemTypeFilter === undefined && TRACE_ITEM_TYPES.has(item.type)) {
+            continue;
+          }
+          aggregatedItems.push(item);
         }
       }
     }
@@ -90,20 +117,50 @@ export async function handleGetSessionState(
     totalItems = aggregatedItems.length;
     aggregatedItems = aggregatedItems.slice(offset, offset + limit);
   }
+  // Load content from ContentStore, merging with any inline record content
+  // for backward compatibility with records created before ContentStore existed.
+  const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
+    ctx.stores.content.getAll("session", session.id),
+    user !== undefined ? ctx.stores.content.getAll("user", user.id) : Promise.resolve({}),
+    org !== undefined ? ctx.stores.content.getAll("org", org.id) : Promise.resolve({})
+  ]);
+
+  // FIX-435: partition the flat flow.resources map back into per-scope
+  // buckets so the existing per-scope storage helpers and snapshot builders
+  // continue to work. Each entry's `scope` is intrinsic to its definition.
+  const flatFlowResources = (flow.resources ?? {}) as Record<string, { scope?: string }>;
+  const sessionConfigs: Record<string, unknown> = {};
+  const userConfigs: Record<string, unknown> = {};
+  const orgConfigs: Record<string, unknown> = {};
+  for (const [accessor, def] of Object.entries(flatFlowResources)) {
+    if (def.scope === "session") sessionConfigs[accessor] = def;
+    else if (def.scope === "user") userConfigs[accessor] = def;
+    else if (def.scope === "org") orgConfigs[accessor] = def;
+  }
+
   const sessionResources = createScopeResources({
-    configs: flow.session?.resources as Record<string, unknown> | undefined,
+    configs: sessionConfigs,
     persisted: session.resources as Record<string, unknown> | undefined,
-    persistedContent: session.resourceContent as Record<string, string> | undefined
+    persistedContent: {
+      ...(session.resourceContent as Record<string, string> | undefined),
+      ...sessionContentFromStore
+    }
   });
   const userResources = createScopeResources({
-    configs: flow.user?.resources as Record<string, unknown> | undefined,
+    configs: userConfigs,
     persisted: user?.resources as Record<string, unknown> | undefined,
-    persistedContent: user?.resourceContent as Record<string, string> | undefined
+    persistedContent: {
+      ...(user?.resourceContent as Record<string, string> | undefined),
+      ...userContentFromStore
+    }
   });
-  const projectResources = createScopeResources({
-    configs: flow.project?.resources as Record<string, unknown> | undefined,
-    persisted: project?.resources as Record<string, unknown> | undefined,
-    persistedContent: project?.resourceContent as Record<string, string> | undefined
+  const orgResources = createScopeResources({
+    configs: orgConfigs,
+    persisted: org?.resources as Record<string, unknown> | undefined,
+    persistedContent: {
+      ...(org?.resourceContent as Record<string, string> | undefined),
+      ...orgContentFromStore
+    }
   });
 
   const sessionClientData = await computeClientData({
@@ -120,22 +177,52 @@ export async function handleGetSessionState(
     state: (user?.state ?? {}) as JsonObject,
     resources: userResources
   });
-  const projectClientData = await computeClientData({
-    definitions: flow.project?.clientData as Record<string, unknown> | undefined,
-    scope: "project",
+  const orgClientData = await computeClientData({
+    definitions: flow.org?.clientData as Record<string, unknown> | undefined,
+    scope: "org",
     filter: clientDataFilter,
-    state: (project?.state ?? {}) as JsonObject,
-    resources: projectResources
+    state: (org?.state ?? {}) as JsonObject,
+    resources: orgResources
   });
 
-  const rawResources = {
-    session: session.resources,
-    user: user?.resources,
-    project: project?.resources
-  };
-  const hasResources = Object.values(rawResources).some(
-    (v) => v !== undefined && Object.keys(v).length > 0
-  );
+  // Build resource snapshot: client-visible resources by default. When the
+  // caller passes include_internal_resources=true (the DevTool does), also
+  // include resources without a `client` config — they're flagged `internal`
+  // and surface their raw state under `clientData`.
+  const [sessionResourceSnapshot, userResourceSnapshot, orgResourceSnapshot] = await Promise.all([
+    buildResourceSnapshot({
+      configs: sessionConfigs,
+      persisted: session.resources as Record<string, unknown> | undefined,
+      persistedContent: {
+        ...(session.resourceContent as Record<string, string> | undefined),
+        ...sessionContentFromStore,
+      },
+      includeInternal: includeInternalResources,
+    }),
+    buildResourceSnapshot({
+      configs: userConfigs,
+      persisted: user?.resources as Record<string, unknown> | undefined,
+      persistedContent: {
+        ...(user?.resourceContent as Record<string, string> | undefined),
+        ...userContentFromStore,
+      },
+      includeInternal: includeInternalResources,
+    }),
+    buildResourceSnapshot({
+      configs: orgConfigs,
+      persisted: org?.resources as Record<string, unknown> | undefined,
+      persistedContent: {
+        ...(org?.resourceContent as Record<string, string> | undefined),
+        ...orgContentFromStore,
+      },
+      includeInternal: includeInternalResources,
+    }),
+  ]);
+
+  const hasResources =
+    sessionResourceSnapshot !== undefined ||
+    userResourceSnapshot !== undefined ||
+    orgResourceSnapshot !== undefined;
 
   return jsonResponse(200, {
     sessionId: session.id,
@@ -144,7 +231,7 @@ export async function handleGetSessionState(
       request: latestRequest?.state,
       session: session.state,
       user: user?.state,
-      project: project?.state
+      org: org?.state
     },
     clientData: {
       session:
@@ -155,12 +242,18 @@ export async function handleGetSessionState(
         Object.keys(userClientData).length > 0
           ? userClientData
           : undefined,
-      project:
-        Object.keys(projectClientData).length > 0
-          ? projectClientData
+      org:
+        Object.keys(orgClientData).length > 0
+          ? orgClientData
           : undefined
     },
-    resources: hasResources ? rawResources : undefined,
+    resources: hasResources
+      ? {
+          session: sessionResourceSnapshot,
+          user: userResourceSnapshot,
+          org: orgResourceSnapshot,
+        }
+      : undefined,
     items: includeItems
       ? aggregatedItems
       : undefined,

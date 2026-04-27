@@ -13,6 +13,9 @@ import type {
   RequestStatus,
   RequestStatusEvent,
   RequestStreamEvent,
+  ResourceContentCreatedEvent,
+  ResourceContentDeletedEvent,
+  ResourceContentUpdatedEvent,
   ScopeStateChangedEvent,
   SessionMetadataChangedEvent,
   UserDebugEvent,
@@ -71,7 +74,7 @@ export type ExecuteActionRequestBody = {
   userId: string;
   sessionId?: string;
   requestId?: string;
-  projectId?: string;
+  orgId?: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -130,7 +133,7 @@ export type SessionSummary = {
  * Session detail shape returned from session read/create endpoints.
  */
 export type SessionDetail = SessionSummary & {
-  projectId?: string;
+  orgId?: string;
   metadata?: Record<string, unknown>;
   state?: Record<string, unknown>;
   version?: number;
@@ -138,7 +141,7 @@ export type SessionDetail = SessionSummary & {
   stateSummary?: {
     session?: Record<string, unknown>;
     user?: Record<string, unknown>;
-    project?: Record<string, unknown>;
+    org?: Record<string, unknown>;
   };
 };
 
@@ -151,7 +154,7 @@ export type SessionRequestSummary = {
   actionName: string;
   userId: string;
   sessionId?: string;
-  projectId?: string;
+  orgId?: string;
   status: RequestStatus;
   startedAtMs?: number;
   completedAtMs?: number;
@@ -164,6 +167,37 @@ export type SessionRequestSummary = {
 };
 
 /**
+ * Client-visible metadata for a single resource in the snapshot.
+ */
+export type ResourceSnapshotEntry = {
+  clientData?: unknown;
+  /** Only present when `client.content.prefetch: true` is declared on the resource. */
+  content?: string;
+  /**
+   * True when the resource has no `client` config. Only present when the
+   * snapshot was requested with `includeInternal: true` (DevTool path);
+   * `clientData` then carries the resource's raw state instead of the
+   * developer-curated client view.
+   */
+  internal?: boolean;
+};
+
+/**
+ * Client-visible metadata for a collection resource in the snapshot.
+ */
+export type CollectionSnapshotEntry = {
+  items: Record<string, {
+    clientData?: unknown;
+    /** Only present when `client.content.prefetch: true` is declared on the collection. */
+    content?: string;
+  }>;
+  /**
+   * True when the collection has no `client` config. See `ResourceSnapshotEntry.internal`.
+   */
+  internal?: boolean;
+};
+
+/**
  * Canonical session state snapshot response shape.
  */
 export type SessionStateSnapshotResponse = {
@@ -173,17 +207,17 @@ export type SessionStateSnapshotResponse = {
     request?: Record<string, unknown>;
     session?: Record<string, unknown>;
     user?: Record<string, unknown>;
-    project?: Record<string, unknown>;
+    org?: Record<string, unknown>;
   };
   clientData: {
     session?: Record<string, unknown>;
     user?: Record<string, unknown>;
-    project?: Record<string, unknown>;
+    org?: Record<string, unknown>;
   };
   resources?: {
-    session?: Record<string, Record<string, unknown>>;
-    user?: Record<string, Record<string, unknown>>;
-    project?: Record<string, Record<string, unknown>>;
+    session?: Record<string, ResourceSnapshotEntry | CollectionSnapshotEntry>;
+    user?: Record<string, ResourceSnapshotEntry | CollectionSnapshotEntry>;
+    org?: Record<string, ResourceSnapshotEntry | CollectionSnapshotEntry>;
   };
   items?: OutputItem[];
   pagination?: {
@@ -204,7 +238,7 @@ export type FlowLike = {
   request?: unknown;
   session?: unknown;
   user?: unknown;
-  project?: unknown;
+  org?: unknown;
 };
 
 /**
@@ -213,7 +247,7 @@ export type FlowLike = {
 export type SendActionOptions = {
   sessionId?: string;
   requestId?: string;
-  projectId?: string;
+  orgId?: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -231,7 +265,7 @@ type FlowStateMap<TFlow extends FlowLike> = {
   request: InferScopeStateFromConfig<TFlow["request"]>;
   session: InferScopeStateFromConfig<TFlow["session"]>;
   user: InferScopeStateFromConfig<TFlow["user"]>;
-  project: InferScopeStateFromConfig<TFlow["project"]>;
+  org: InferScopeStateFromConfig<TFlow["org"]>;
 };
 
 /**
@@ -245,6 +279,8 @@ export type FlowClient<TFlow extends FlowLike> = {
     input: unknown,
     options?: SendActionOptions
   ) => Promise<ExecuteActionResponse>;
+  /** Signal the server to abort an in-progress request. */
+  abortRequest: (requestId: string) => Promise<void>;
   actions: TypedActionMethods<TFlow>;
   state: {
     getSnapshot: (sessionId: string) => Promise<SessionStateSnapshotResponse>;
@@ -254,9 +290,9 @@ export type FlowClient<TFlow extends FlowLike> = {
     getUserState: (
       sessionId: string
     ) => Promise<FlowStateMap<TFlow>["user"] | undefined>;
-    getProjectState: (
+    getOrgState: (
       sessionId: string
-    ) => Promise<FlowStateMap<TFlow>["project"] | undefined>;
+    ) => Promise<FlowStateMap<TFlow>["org"] | undefined>;
   };
 };
 
@@ -299,6 +335,9 @@ export type RequestSSECallbacks = {
  */
 export type UserSSECallbacks = {
   onResourceChanged?: (event: UserResourceChangedEvent) => void;
+  onResourceContentUpdated?: (event: ResourceContentUpdatedEvent) => void;
+  onResourceContentCreated?: (event: ResourceContentCreatedEvent) => void;
+  onResourceContentDeleted?: (event: ResourceContentDeletedEvent) => void;
   onScopeStateChanged?: (event: ScopeStateChangedEvent) => void;
   onDebug?: (event: UserDebugEvent) => void;
   onEvent?: (event: UserStreamEvent) => void;

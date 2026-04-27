@@ -106,7 +106,7 @@ When a block lists a capability in `uses`, the framework merges the capability's
 | `sessionStateSchema`, `requestStateSchema`, etc. | Merged into block-level state schemas via Zod `.extend()` |
 | `targetStateSchemas` | Merged into block's target declarations |
 | `fns` | Available at `ctx.cap.{name}` during execution |
-| Preset `context` entries | Concatenated into generator's context array |
+| Preset `context` entries | Concatenated into generator's context array (string, object-form, or function — see [Generator context](./generator-context)) |
 | Preset `tools` | Merged into generator's tools |
 | Preset `sequencerStateSchema` | Merged into sequencer's state schema |
 
@@ -140,6 +140,29 @@ const memoryCapability = defineCapability({
 ```
 
 By default, all listed presets are active. If you omit the `default` array, every preset is on.
+
+### Cross-capability context aggregation
+
+Preset `context` entries can be authored as object-form values, where the keys become XML tag names. When two capabilities both contribute under the same key — for example, two `recentContext` presets each adding to `documents` — the runtime aggregates their values inside a single `<documents>` block in author order. This stops the model from seeing fragmented sections like `<documents>...</documents>` from cap A then unrelated content then a second `<documents>` from cap B.
+
+```ts
+const sourceA = defineCapability({
+  name: "source-a",
+  presets: { defaults: { context: () => ({ documents: "from A" }) } },
+});
+
+const sourceB = defineCapability({
+  name: "source-b",
+  presets: { defaults: { context: () => ({ documents: "from B" }) } },
+});
+
+generator({
+  uses: [sourceA, sourceB],
+  // Renders: <documents>\n  from A\n  from B\n</documents>
+});
+```
+
+If two contributors collide on the same key with incompatible shapes (a string from one and a nested object from another), the render throws. See [Generator context — object form](./generator-context) for the full contract.
 
 ### Configuring presets
 

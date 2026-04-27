@@ -90,7 +90,7 @@ export async function handleCreateSession(
     id: sessionId,
     flowKind: flow.kind,
     userId,
-    projectId: getString(body.projectId),
+    orgId: getString(body.orgId),
     title: getString(body.title),
     description: getString(body.description),
     tags: asStringArray(body.tags),
@@ -102,7 +102,7 @@ export async function handleCreateSession(
     journal: []
   };
 
-  await ctx.stores.session.set(record.id, record);
+  await ctx.stores.session.set(record.id, record, "any");
   return jsonResponse(201, {
     session: record
   });
@@ -120,6 +120,9 @@ export async function handleDeleteSession(
     });
   }
 
+  // Delete content first — if this fails, the session record still exists
+  // and the operation can be retried. The reverse (orphaned content) is a leak.
+  await ctx.stores.content.deleteAll("session", route.sessionId);
   await ctx.stores.session.delete(route.sessionId);
   return emptyResponse(204);
 }
@@ -150,7 +153,7 @@ export async function handlePatchSessionMetadata(
     updatedAt: now
   };
 
-  await ctx.stores.session.set(updated.id, updated);
+  await ctx.stores.session.set(updated.id, updated, "any");
 
   return jsonResponse(200, {
     session: updated
@@ -173,7 +176,7 @@ export async function handleListSessionRequests(
   const requests = await ctx.stores.request.list({
     sessionId: route.sessionId,
     status: getString(url.searchParams.get("status")) as
-      | "in_progress" | "completed" | "failed" | "incomplete"
+      | "in_progress" | "completed" | "failed" | "incomplete" | "aborted"
       | undefined,
     limit: getPositiveInteger(url.searchParams.get("limit")),
     offset: getPositiveInteger(url.searchParams.get("offset"))

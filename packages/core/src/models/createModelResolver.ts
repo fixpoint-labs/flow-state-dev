@@ -1,11 +1,12 @@
 import { createRequire } from "node:module";
 import type { GeneratorModel, ModelResolver } from "../types/model";
-import type { RetryPolicy, GatewayConfig, ModelGroupDefaults } from "./types";
+import type { RetryPolicy, GatewayConfig, GatewayEntry, ModelGroupDefaults, ProviderPreference } from "./types";
 import type { ProviderAvailability } from "./providerDetection";
 import { detectAvailableProviders, parseModelString } from "./providerDetection";
 import { createFallbackModel } from "./fallbackModel";
 import { wrapAiSdkModel } from "./createAiSdkModelResolver";
 import { DEFAULT_PRESETS, type PresetConfig } from "./presets";
+import { reorderByPreference } from "./reorderByPreference";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -14,8 +15,14 @@ import { DEFAULT_PRESETS, type PresetConfig } from "./presets";
 export interface CreateModelResolverOptions {
   /** Explicit API keys. Overrides env var detection. */
   keys?: Partial<Record<string, string>>;
-  /** Gateway configurations. */
-  gateways?: Record<string, GatewayConfig>;
+  /**
+   * Gateway instances or configurations. Keys are gateway names (e.g., "vercel", "openrouter").
+   * Pass a pre-created instance for bundled environments (Next.js):
+   *   `gateways: { vercel: createGateway({ apiKey }) }`
+   * Or a config object for auto-detection:
+   *   `gateways: { vercel: { type: "vercel", apiKey: "..." } }`
+   */
+  gateways?: Record<string, GatewayEntry>;
   /** Custom preset definitions. Merged with built-in presets. */
   presets?: Record<string, PresetConfig>;
   /** Retry policy for fallback arrays and presets. */
@@ -25,6 +32,14 @@ export interface CreateModelResolverOptions {
    * If omitted, auto-creates providers from env vars.
    */
   providers?: Record<string, unknown>;
+  /**
+   * Default provider preference applied to preset resolution. See
+   * {@link ProviderPreference}. Stable-reorders each preset's model list by
+   * provider bucket before availability filtering — preferred providers first
+   * (in the order given), remaining models after in their original order.
+   * Omit to preserve the preset author's ordering.
+   */
+  providerPreference?: ProviderPreference;
 }
 
 // ---------------------------------------------------------------------------
@@ -117,6 +132,15 @@ function loadGatewaySync(
   };
 }
 
+function isGatewayConfig(value: unknown): value is GatewayConfig {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    typeof (value as GatewayConfig).type === "string"
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Internal: resolve explicit provider instances
 // ---------------------------------------------------------------------------
@@ -190,6 +214,25 @@ export function createModelResolver(
   // Cache for auto-loaded gateway resolvers (by gateway type)
   const gatewayCache = new Map<string, { gateway: Record<string, unknown>; type: string }>();
 
+  // Seed gateway cache with explicit instances from options.gateways.
+  // Accepts either a GatewayConfig (has `type` property) or a raw instance
+  // (has `languageModel` or `chat` method). Raw instances bypass dynamic
+  // loading via createRequire, which fails in bundled Next.js environments.
+  if (options?.gateways) {
+    for (const [name, entry] of Object.entries(options.gateways)) {
+      if (isGatewayConfig(entry)) {
+        // Old-style config object — only seed if it has a pre-created instance
+        // (backwards compat). Otherwise, auto-detection handles it later.
+      } else if (entry !== null && entry !== undefined) {
+        // Raw gateway instance — seed directly
+        gatewayCache.set(name, {
+          gateway: entry as Record<string, unknown>,
+          type: name
+        });
+      }
+    }
+  }
+
   function getProviderResolver(providerName: string): ProviderResolver | undefined {
     // Check explicit providers first
     if (explicitProviders?.has(providerName)) {
@@ -217,14 +260,14 @@ export function createModelResolver(
 
   function resolveViaGateway(
     gatewayType: string,
-    apiKey: string,
     providerName: string,
     modelId: string
   ): unknown {
-    if (!gatewayCache.has(gatewayType)) {
-      gatewayCache.set(gatewayType, loadGatewaySync(gatewayType, apiKey));
+    const cached = gatewayCache.get(gatewayType);
+    if (cached === undefined) {
+      throw new Error(`Gateway "${gatewayType}" is not configured.`);
     }
-    const { gateway, type } = gatewayCache.get(gatewayType)!;
+    const { gateway, type } = cached;
     const gatewayModelId = `${providerName}/${modelId}`;
 
     if (type === "openrouter") {
@@ -260,26 +303,32 @@ export function createModelResolver(
         );
       }
 
-      // Look up API key for the gateway
-      const gwEnvVars: Record<string, string> = {
-        vercel: "AI_GATEWAY_API_KEY",
-        openrouter: "OPENROUTER_API_KEY",
-      };
-      const apiKey =
-        options?.gateways?.[gwType]?.apiKey ??
-        process.env[gwEnvVars[gwType] ?? ""] ??
-        undefined;
+      // If the gateway instance was already seeded (via explicit instance in
+      // options.gateways), resolveViaGateway will find it in the cache and
+      // the API key is unnecessary. Otherwise, look it up from config/env.
+      if (!gatewayCache.has(gwType)) {
+        const gwEnvVars: Record<string, string> = {
+          vercel: "AI_GATEWAY_API_KEY",
+          openrouter: "OPENROUTER_API_KEY",
+        };
+        const gwEntry = options?.gateways?.[gwType];
+        const apiKey =
+          (isGatewayConfig(gwEntry) ? gwEntry.apiKey : undefined) ??
+          process.env[gwEnvVars[gwType] ?? ""] ??
+          undefined;
 
-      if (!apiKey) {
-        throw new Error(
-          `No API key found for gateway "${gwType}". ` +
-            `Set ${gwEnvVars[gwType] ?? `the ${gwType} gateway API key`} environment variable.`
-        );
+        if (!apiKey) {
+          throw new Error(
+            `No API key found for gateway "${gwType}". ` +
+              `Set ${gwEnvVars[gwType] ?? `the ${gwType} gateway API key`} environment variable.`
+          );
+        }
+
+        gatewayCache.set(gwType, loadGatewaySync(gwType, apiKey));
       }
 
       const languageModel = resolveViaGateway(
         gwType,
-        apiKey,
         parsed.provider!,
         parsed.modelId!
       );
@@ -297,14 +346,24 @@ export function createModelResolver(
       } else {
         // Try gateway fallback
         const info = availability.get(providerName);
-        if (info?.source === "gateway" && info.gatewayType && info.apiKey) {
-          const languageModel = resolveViaGateway(
-            info.gatewayType,
-            info.apiKey,
-            providerName,
-            modelId
-          );
-          model = wrapAiSdkModel(languageModel, modelString);
+        if (info?.source === "gateway" && info.gatewayType) {
+          // Ensure the gateway is loaded (may already be cached from explicit instance)
+          if (!gatewayCache.has(info.gatewayType) && info.apiKey) {
+            gatewayCache.set(info.gatewayType, loadGatewaySync(info.gatewayType, info.apiKey));
+          }
+          if (gatewayCache.has(info.gatewayType)) {
+            const languageModel = resolveViaGateway(
+              info.gatewayType,
+              providerName,
+              modelId
+            );
+            model = wrapAiSdkModel(languageModel, modelString);
+          } else {
+            throw new Error(
+              `No provider available for "${providerName}". ` +
+                `Set the appropriate API key or install the provider package.`
+            );
+          }
         } else {
           throw new Error(
             `No provider available for "${providerName}". ` +
@@ -322,13 +381,30 @@ export function createModelResolver(
     presetName: string,
     preset: PresetConfig
   ): GeneratorModel {
-    const entries = preset.models
-      .map((modelString) => {
+    // Tag every preset model with its provider before any resolution attempt,
+    // so the reorder pass can see the full preference landscape (including
+    // models that will fail to resolve).
+    const tagged = preset.models.map((modelString) => {
+      let providerName = "unknown";
+      try {
+        providerName = parseModelString(modelString).provider ?? "unknown";
+      } catch {
+        // malformed model strings stay tagged as 'unknown'
+      }
+      return { modelString, providerName };
+    });
+
+    const ordered = reorderByPreference(tagged, options?.providerPreference);
+
+    const entries = ordered
+      .map((t) => {
         try {
-          const parsed = parseModelString(modelString);
-          const providerName = parsed.provider ?? "unknown";
-          const model = resolveSingleModel(modelString);
-          return { modelId: modelString, providerName, model };
+          const model = resolveSingleModel(t.modelString);
+          return {
+            modelId: t.modelString,
+            providerName: t.providerName,
+            model,
+          };
         } catch {
           // Model not available — skip
           return null;
@@ -344,7 +420,49 @@ export function createModelResolver(
     });
   }
 
-  return (modelId: string, _blockName?: string): GeneratorModel => {
+  const resolver = ((modelId: string, _blockName?: string): GeneratorModel => {
     return resolveSingleModel(modelId);
+  }) as ModelResolver;
+
+  resolver.resolveId = (
+    modelId: string,
+    callOptions?: { prefer?: ProviderPreference }
+  ): string => {
+    const parsed = parseModelString(modelId);
+    if (parsed.type !== "preset") return modelId;
+
+    const preset = allPresets[parsed.presetName!];
+    if (!preset) return modelId;
+
+    // Call-site `prefer` overrides resolver-level `providerPreference`.
+    const preference =
+      callOptions?.prefer !== undefined
+        ? callOptions.prefer
+        : options?.providerPreference;
+
+    // Reorder by provider preference (if any), then walk for the first
+    // available model. Keeps resolveId consistent with the fallback chain.
+    const tagged = preset.models.map((modelString) => {
+      let providerName = "unknown";
+      try {
+        providerName = parseModelString(modelString).provider ?? "unknown";
+      } catch {
+        // malformed — leave as 'unknown'
+      }
+      return { modelString, providerName };
+    });
+    const ordered = reorderByPreference(tagged, preference);
+
+    for (const t of ordered) {
+      try {
+        resolveSingleModel(t.modelString);
+        return t.modelString;
+      } catch {
+        // Model not available — try next
+      }
+    }
+    return modelId;
   };
+
+  return resolver;
 }

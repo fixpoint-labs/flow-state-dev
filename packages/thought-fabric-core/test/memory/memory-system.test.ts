@@ -109,7 +109,7 @@ function createMockEpRef(
 
 /**
  * Create a mock resource registry that supports both property access
- * (ctx.session.resources.workingMemory) and .get() method.
+ * (ctx.resources.workingMemory) and .get() method.
  */
 function createMockResources(refs: Record<string, any>) {
   return {
@@ -117,6 +117,18 @@ function createMockResources(refs: Record<string, any>) {
     get: (name: string) => refs[name],
     list: () => Object.values(refs),
   }
+}
+
+/**
+ * Build a flat ctx.resources registry by merging multiple ref groups.
+ * Under FIX-435 all resources live on a single flat ctx.resources map.
+ */
+function mergeResources(...groups: Array<Record<string, any> | undefined>) {
+  const refs: Record<string, any> = {}
+  for (const g of groups) {
+    if (g) Object.assign(refs, g)
+  }
+  return createMockResources(refs)
 }
 
 function createMockSemRef(
@@ -256,7 +268,7 @@ describe('memory/memorySystem', () => {
         model: 'gpt-5-mini',
         working: true,
         episodic: {
-          scope: 'project',
+          scope: 'org',
           significanceThreshold: 0.7,
           maxEpisodes: 100,
         },
@@ -309,8 +321,8 @@ describe('memory/memorySystem', () => {
 
       it('declares session resources', () => {
         const block = memorySystemObserve(baseConfig)
-        expect(block.declaredResources?.session).toHaveProperty('workingMemory')
-        expect(block.declaredResources?.session).toHaveProperty('memorySystem')
+        expect(block.declaredResources).toHaveProperty('workingMemory')
+        expect(block.declaredResources).toHaveProperty('memorySystem')
       })
 
       it('declares user resources when episodic scope is user', () => {
@@ -318,15 +330,15 @@ describe('memory/memorySystem', () => {
           ...baseConfig,
           episodic: { scope: 'user', significanceThreshold: 0.6, maxEpisodes: 200 },
         })
-        expect(block.declaredResources?.user).toHaveProperty('episodicMemory')
+        expect(block.declaredResources).toHaveProperty('episodicMemory')
       })
 
-      it('declares project resources when episodic scope is project', () => {
+      it('declares org resources when episodic scope is org', () => {
         const block = memorySystemObserve({
           ...baseConfig,
-          episodic: { scope: 'project', significanceThreshold: 0.6, maxEpisodes: 200 },
+          episodic: { scope: 'org', significanceThreshold: 0.6, maxEpisodes: 200 },
         })
-        expect(block.declaredResources?.project).toHaveProperty('episodicMemory')
+        expect(block.declaredResources).toHaveProperty('episodicMemory')
       })
     })
 
@@ -343,8 +355,8 @@ describe('memory/memorySystem', () => {
 
       it('declares session resources', () => {
         const block = memorySystemReflect(baseConfig)
-        expect(block.declaredResources?.session).toHaveProperty('workingMemory')
-        expect(block.declaredResources?.session).toHaveProperty('memorySystem')
+        expect(block.declaredResources).toHaveProperty('workingMemory')
+        expect(block.declaredResources).toHaveProperty('memorySystem')
       })
     })
 
@@ -361,8 +373,8 @@ describe('memory/memorySystem', () => {
 
       it('declares session resources', () => {
         const block = memorySystemTick(baseConfig)
-        expect(block.declaredResources?.session).toHaveProperty('workingMemory')
-        expect(block.declaredResources?.session).toHaveProperty('memorySystem')
+        expect(block.declaredResources).toHaveProperty('workingMemory')
+        expect(block.declaredResources).toHaveProperty('memorySystem')
       })
     })
 
@@ -384,8 +396,8 @@ describe('memory/memorySystem', () => {
 
       it('inherits session resources from child blocks', () => {
         const block = memorySystemCapture(baseConfig)
-        expect(block.declaredResources?.session).toHaveProperty('workingMemory')
-        expect(block.declaredResources?.session).toHaveProperty('memorySystem')
+        expect(block.declaredResources).toHaveProperty('workingMemory')
+        expect(block.declaredResources).toHaveProperty('memorySystem')
       })
     })
   })
@@ -405,7 +417,7 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true })
       const ctx = {
-        session: { resources: createMockResources({ workingMemory: wmRef }) },
+        resources: createMockResources({ workingMemory: wmRef }),
       }
 
       const result = mem.recall(ctx)
@@ -419,7 +431,7 @@ describe('memory/memorySystem', () => {
       const wmRef = createMockWmRef()
       const mem = system({ model: 'gpt-5-mini', working: true })
       const ctx = {
-        session: { resources: createMockResources({ workingMemory: wmRef }) },
+        resources: createMockResources({ workingMemory: wmRef }),
       }
 
       const result = mem.recall(ctx)
@@ -436,8 +448,7 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true, episodic: true })
       const ctx = {
-        session: { resources: createMockResources({ workingMemory: wmRef }) },
-        user: { resources: createMockResources({ episodicMemory: epRef }) },
+        resources: createMockResources({ workingMemory: wmRef, episodicMemory: epRef }),
       }
 
       const result = mem.recall(ctx)
@@ -460,8 +471,7 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true, episodic: true })
       const ctx = {
-        session: { resources: createMockResources({ workingMemory: wmRef }) },
-        user: { resources: createMockResources({ episodicMemory: epRef }) },
+        resources: createMockResources({ workingMemory: wmRef, episodicMemory: epRef }),
       }
 
       const result = mem.recall(ctx)
@@ -480,7 +490,7 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true })
       const ctx = {
-        session: { resources: createMockResources({ workingMemory: wmRef }) },
+        resources: createMockResources({ workingMemory: wmRef }),
       }
 
       const withCue = mem.recall(ctx, 'React')
@@ -505,7 +515,7 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true })
       const ctx = {
-        session: { resources: createMockResources({ workingMemory: wmRef }) },
+        resources: createMockResources({ workingMemory: wmRef }),
       }
 
       const result = mem.contextFormatter(undefined, ctx)
@@ -522,7 +532,7 @@ describe('memory/memorySystem', () => {
       const wmRef = createMockWmRef()
       const mem = system({ model: 'gpt-5-mini', working: true })
       const ctx = {
-        session: { resources: createMockResources({ workingMemory: wmRef }) },
+        resources: createMockResources({ workingMemory: wmRef }),
       }
 
       const result = mem.contextFormatter(undefined, ctx)
@@ -538,7 +548,7 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true })
       const ctx = {
-        session: { resources: createMockResources({ workingMemory: wmRef }) },
+        resources: createMockResources({ workingMemory: wmRef }),
       }
 
       const result = mem.contextFormatter(undefined, ctx)
@@ -567,12 +577,14 @@ describe('memory/memorySystem', () => {
     ) {
       const block = memorySystemReflect(config ?? baseConfig)
       const ctx = {
+        resources: mergeResources(
+          { workingMemory: wmRef, memorySystem: sysRef },
+          epRef ? { episodicMemory: epRef } : undefined,
+        ),
         session: {
-          resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
           items: { all: () => [] },
           instanceId: 'test-session',
         },
-        user: epRef ? { resources: createMockResources({ episodicMemory: epRef }) } : undefined,
         response: { emit: async () => {} },
       } as any
       return block.run({ items } as any, ctx)
@@ -725,9 +737,7 @@ describe('memory/memorySystem', () => {
     ) {
       const block = memorySystemTick(baseConfig)
       const ctx = {
-        session: {
-          resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
-        },
+        resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
         response: { emit: async () => {} },
       } as any
       return block.run(undefined as any, ctx)
@@ -845,7 +855,7 @@ describe('memory/memorySystem', () => {
         working: true,
         episodic: true,
         semantic: {
-          scope: 'project',
+          scope: 'org',
           consolidation: {
             episodicThreshold: 10,
             onEviction: false,
@@ -1108,7 +1118,7 @@ describe('memory/memorySystem', () => {
     describe('memorySystemReflect (with semantic)', () => {
       it('declares semantic resource on user scope', () => {
         const block = memorySystemReflect(semanticConfig)
-        expect(block.declaredResources?.user).toHaveProperty('semanticMemory')
+        expect(block.declaredResources).toHaveProperty('semanticMemory')
       })
     })
   })
@@ -1133,15 +1143,12 @@ describe('memory/memorySystem', () => {
     ) {
       const block = consolidationGuard(semanticConfig)
       const ctx = {
-        session: {
-          resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
-        },
-        user: {
-          resources: createMockResources({
-            ...(epRef ? { episodicMemory: epRef } : {}),
-            ...(semRef ? { semanticMemory: semRef } : {}),
-          }),
-        },
+        resources: createMockResources({
+          workingMemory: wmRef,
+          memorySystem: sysRef,
+          ...(epRef ? { episodicMemory: epRef } : {}),
+          ...(semRef ? { semanticMemory: semRef } : {}),
+        }),
         response: { emit: async () => {} },
       } as any
       return block.run(undefined as any, ctx)
@@ -1259,12 +1266,12 @@ describe('memory/memorySystem', () => {
     ) {
       const block = consolidationPersist(semanticConfig)
       const ctx = {
-        session: {
-          resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
-        },
-        user: {
-          resources: createMockResources({ semanticMemory: semRef, episodicMemory: epRef }),
-        },
+        resources: createMockResources({
+          workingMemory: wmRef,
+          memorySystem: sysRef,
+          semanticMemory: semRef,
+          episodicMemory: epRef,
+        }),
         response: { emit: async () => {} },
       } as any
       return block.run(input as any, ctx)
@@ -1493,13 +1500,15 @@ describe('memory/memorySystem', () => {
     ) {
       const block = memorySystemReflect(semanticConfig)
       const ctx = {
+        resources: createMockResources({
+          workingMemory: wmRef,
+          memorySystem: sysRef,
+          episodicMemory: epRef,
+          semanticMemory: semRef,
+        }),
         session: {
-          resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
           items: { all: () => [] },
           instanceId: 'test-session',
-        },
-        user: {
-          resources: createMockResources({ episodicMemory: epRef, semanticMemory: semRef }),
         },
         response: { emit: async () => {} },
       } as any
@@ -1667,9 +1676,7 @@ describe('memory/memorySystem', () => {
     ) {
       const block = memorySystemTick(semanticConfig)
       const ctx = {
-        session: {
-          resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
-        },
+        resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
         response: { emit: async () => {} },
       } as any
       return block.run(undefined as any, ctx)
@@ -1714,8 +1721,11 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
       const ctx = {
-        session: { resources: createMockResources({ workingMemory: wmRef }) },
-        user: { resources: createMockResources({ semanticMemory: semRef, episodicMemory: createMockEpRef() }) },
+        resources: createMockResources({
+          workingMemory: wmRef,
+          semanticMemory: semRef,
+          episodicMemory: createMockEpRef(),
+        }),
       }
 
       const result = mem.recall(ctx)
@@ -1736,8 +1746,11 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
       const ctx = {
-        session: { resources: createMockResources({ workingMemory: wmRef }) },
-        user: { resources: createMockResources({ semanticMemory: semRef, episodicMemory: createMockEpRef() }) },
+        resources: createMockResources({
+          workingMemory: wmRef,
+          semanticMemory: semRef,
+          episodicMemory: createMockEpRef(),
+        }),
       }
 
       const result = mem.recall(ctx)
@@ -1759,8 +1772,11 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
       const ctx = {
-        session: { resources: createMockResources({ workingMemory: wmRef }) },
-        user: { resources: createMockResources({ semanticMemory: semRef, episodicMemory: createMockEpRef() }) },
+        resources: createMockResources({
+          workingMemory: wmRef,
+          semanticMemory: semRef,
+          episodicMemory: createMockEpRef(),
+        }),
       }
 
       const result = mem.recall(ctx, 'Stripe')
@@ -1783,8 +1799,11 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
       const ctx = {
-        session: { resources: createMockResources({ workingMemory: wmRef }) },
-        user: { resources: createMockResources({ semanticMemory: semRef, episodicMemory: createMockEpRef() }) },
+        resources: createMockResources({
+          workingMemory: wmRef,
+          semanticMemory: semRef,
+          episodicMemory: createMockEpRef(),
+        }),
       }
 
       const result = mem.contextFormatter(undefined, ctx)
@@ -1803,8 +1822,11 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
       const ctx = {
-        session: { resources: createMockResources({ workingMemory: wmRef }) },
-        user: { resources: createMockResources({ semanticMemory: semRef, episodicMemory: createMockEpRef() }) },
+        resources: createMockResources({
+          workingMemory: wmRef,
+          semanticMemory: semRef,
+          episodicMemory: createMockEpRef(),
+        }),
       }
 
       const result = mem.contextFormatter(undefined, ctx)
@@ -1822,8 +1844,11 @@ describe('memory/memorySystem', () => {
 
       const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
       const ctx = {
-        session: { resources: createMockResources({ workingMemory: wmRef }) },
-        user: { resources: createMockResources({ semanticMemory: semRef, episodicMemory: createMockEpRef() }) },
+        resources: createMockResources({
+          workingMemory: wmRef,
+          semanticMemory: semRef,
+          episodicMemory: createMockEpRef(),
+        }),
       }
 
       const result = mem.contextFormatter(undefined, ctx)
@@ -1877,7 +1902,7 @@ describe('memory/memorySystem', () => {
 
       it('declares semantic resource on user scope', () => {
         const block = pruneGuard(semanticConfig)
-        expect(block.declaredResources?.user).toHaveProperty('semanticMemory')
+        expect(block.declaredResources).toHaveProperty('semanticMemory')
       })
     })
 
@@ -1906,7 +1931,7 @@ describe('memory/memorySystem', () => {
 
       it('declares semantic resource on user scope', () => {
         const block = prunePersist(semanticConfig)
-        expect(block.declaredResources?.user).toHaveProperty('semanticMemory')
+        expect(block.declaredResources).toHaveProperty('semanticMemory')
       })
     })
 
@@ -1938,14 +1963,9 @@ describe('memory/memorySystem', () => {
     async function runPruneGuard(semRef?: ResourceHandle<SemanticMemoryState>) {
       const block = pruneGuard(semanticConfig)
       const ctx = {
-        session: {
-          resources: createMockResources({}),
-        },
-        user: {
-          resources: createMockResources({
-            ...(semRef ? { semanticMemory: semRef } : {}),
-          }),
-        },
+        resources: createMockResources({
+          ...(semRef ? { semanticMemory: semRef } : {}),
+        }),
         response: { emit: async () => {} },
       } as any
       return block.run(undefined as any, ctx)
@@ -1988,8 +2008,7 @@ describe('memory/memorySystem', () => {
         facts: Array.from({ length: 5 }, (_, i) => makeFact({ id: `sf_${i}` })),
       })
       const ctx = {
-        session: { resources: createMockResources({}) },
-        user: { resources: createMockResources({ semanticMemory: semRef }) },
+        resources: createMockResources({ semanticMemory: semRef }),
         response: { emit: async () => {} },
       } as any
       const result = await block.run(undefined as any, ctx) as any
@@ -2006,8 +2025,7 @@ describe('memory/memorySystem', () => {
         facts: Array.from({ length: 100 }, (_, i) => makeFact({ id: `sf_${i}` })),
       })
       const ctx = {
-        session: { resources: createMockResources({}) },
-        user: { resources: createMockResources({ semanticMemory: semRef }) },
+        resources: createMockResources({ semanticMemory: semRef }),
         response: { emit: async () => {} },
       } as any
       const result = await block.run(undefined as any, ctx) as any
@@ -2038,8 +2056,7 @@ describe('memory/memorySystem', () => {
     ) {
       const block = prunePersist(semanticConfig)
       const ctx = {
-        session: { resources: createMockResources({}) },
-        user: { resources: createMockResources({ semanticMemory: semRef }) },
+        resources: createMockResources({ semanticMemory: semRef }),
         response: { emit: async () => {} },
       } as any
       return block.run(input as any, ctx)
@@ -2177,8 +2194,7 @@ describe('memory/memorySystem', () => {
     it('returns { removed: 0, merged: 0 } when semantic resource is missing', async () => {
       const block = prunePersist(semanticConfig)
       const ctx = {
-        session: { resources: createMockResources({}) },
-        user: { resources: createMockResources({}) },
+        resources: createMockResources({}),
         response: { emit: async () => {} },
       } as any
 

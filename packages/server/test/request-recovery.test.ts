@@ -42,7 +42,7 @@ describe("detectInterruptedRequests", () => {
     });
 
     // Create corresponding request record
-    await stores.request.set("req_stale", makeRequestRecord("req_stale"));
+    await stores.request.set("req_stale", makeRequestRecord("req_stale"), "any");
 
     const interrupted = await detectInterruptedRequests({
       stores,
@@ -75,7 +75,7 @@ describe("detectInterruptedRequests", () => {
     await stores.request.set(
       "req_done",
       makeRequestRecord("req_done", { status: "completed" })
-    );
+    , "any");
 
     const interrupted = await detectInterruptedRequests({
       stores,
@@ -107,7 +107,7 @@ describe("detectInterruptedRequests", () => {
       lastHeartbeatAt: Date.now()
     });
 
-    await stores.request.set("req_fresh", makeRequestRecord("req_fresh"));
+    await stores.request.set("req_fresh", makeRequestRecord("req_fresh"), "any");
 
     const interrupted = await detectInterruptedRequests({
       stores,

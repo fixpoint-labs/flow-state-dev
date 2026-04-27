@@ -4,27 +4,37 @@ Resources are **concrete persisted data** attached to a scope. Client data entri
 
 ## Resources
 
-A resource is a named, schema-typed data container associated with a scope (session, user, or project).
+A resource carries an intrinsic `scope` (`"session"`, `"user"`, or `"org"`) and lives in a single flat `resources` map on a flow, block, or capability. The resource's scope routes its storage to the right layer; consumers reach for it via `ctx.resources.<accessor>` regardless of where it lives.
 
 ```ts
-// Inline in flow definition
-session: {
-  resources: {
-    plan: {
-      stateSchema: z.object({
-        steps: z.array(z.string()).default([]),
-        status: z.enum(["draft", "active", "complete"]).default("draft"),
-      }),
-      writable: true,
-    },
-  },
-}
+import { defineResource } from "@flow-state-dev/core";
+
+const planResource = defineResource({
+  ref: "plan",
+  scope: "session",
+  stateSchema: z.object({
+    steps: z.array(z.string()).default([]),
+    status: z.enum(["draft", "active", "complete"]).default("draft"),
+  }),
+  writable: true,
+});
+
+defineFlow({
+  kind: "my-app",
+  resources: { plan: planResource },
+  // session.stateSchema, user.stateSchema, etc. unchanged
+});
 ```
+
+The accessor key (`plan`) is independent of the resource's internal `ref`. Two resources at different scopes can share an internal `ref` as long as their accessor keys differ.
 
 ### Resource Config
 
 ```ts
 type ResourceConfig = {
+  ref?: string;                 // Storage namespace identifier (combined with scope/flowIsolation)
+  scope: "session" | "user" | "org"; // Required — intrinsic to the definition
+  flowIsolation?: boolean;      // Default false. When true at user/org, namespaces by flowKind
   stateSchema: ZodTypeAny;     // Required: defines the data shape
   default?: JsonValue;          // Default initial value
   content?: string;             // Optional definition-time content body
@@ -38,6 +48,20 @@ type ResourceConfig = {
   metadata?: Record<string, unknown>;
 };
 ```
+
+### `flowIsolation`
+
+User- and org-scoped resources default to **shared** storage across every flow that touches the same `userId` / `orgId`. Set `flowIsolation: true` on a definition that should be flow-private — its data lives at `(scopeId, flowKind, ref)` instead of `(scopeId, ref)`.
+
+`flowIsolation: true` on a session-scoped resource is a build-time error: sessions are intrinsically flow-bound, so the field has no semantic meaning there. The flow-level `isolateUserState` / `isolateOrgState` flags from FIX-431 remain as defaults for resources at the relevant scope that don't declare `flowIsolation` themselves; resource-level declarations always win.
+
+| `scope` | `flowIsolation` | Storage key |
+| -- | -- | -- |
+| `session` | (n/a) | `(sessionId, ref)` |
+| `user` | `false` (default) | `(userId, ref)` |
+| `user` | `true` | `(userId, flowKind, ref)` |
+| `org` | `false` (default) | `(orgId, ref)` |
+| `org` | `true` | `(orgId, flowKind, ref)` |
 
 
 ### Resource Content
@@ -60,13 +84,29 @@ const soul = defineResource({
 });
 ```
 
+### Content Storage
+
+Resource content is persisted separately from scope record metadata via `ContentStore`. This separation lets adapters use different backends for content and metadata — SQL for scope records, blob storage for content, for example.
+
+**Two read paths:**
+1. **Execution context** — content is eagerly loaded from `ContentStore` into an in-memory cache at context creation. All reads during block execution are synchronous from this cache.
+2. **State routes** — `handleGetSessionState` loads content fresh from `ContentStore` before building the response.
+
+**Migration from inline content:** Existing scope records may have content stored inline in `resourceContent`. Both read paths merge inline record content with `ContentStore` content, with `ContentStore` values taking precedence. New content writes go exclusively to `ContentStore` — the inline `resourceContent` field on scope records is no longer updated.
+
+**Content writes do not bump scope record version.** Content is separate from state. The scope record's `version` and `updatedAt` reflect state/metadata changes only. Content writes persist per-key to `ContentStore` without touching the scope record.
+
+**Scope deletion cascades:** When a session (or other scope) is deleted, `ContentStore.deleteAll()` is called before the scope record is removed. This prevents orphaned content.
+
+See the [server README](../../packages/server/README.md) for `ContentStore` interface details and custom adapter instructions.
+
 ### Accessing Resources
 
-Resources are accessed through scope handles in `BlockContext`:
+Resources are accessed through the flat `ctx.resources` registry — the resource's intrinsic `scope` routes reads and writes to the right storage layer.
 
 ```ts
-// Read resource state
-const plan = ctx.session.resources.plan;
+// Read resource state — same shape regardless of scope
+const plan = ctx.resources.plan;
 const steps = plan.state.steps;
 
 // Mutate resource state
@@ -78,14 +118,18 @@ await plan.updateState((current) => ({
 }));
 ```
 
+`ctx.session.state`, `ctx.user.state`, and `ctx.org.state` survive — state slices are namespaces that multiple unrelated blocks contribute keys into and need scope tagging at the install site. Resources have identity, so they carry their scope with them.
+
 ### Portable Resource Definitions
 
-For resources shared across flows, use `defineResource`:
+`defineResource` returns a definition stamped with `(scope, ref, flowIsolation)`:
 
 ```ts
 import { defineResource } from "@flow-state-dev/core";
 
 export const planResource = defineResource({
+  ref: "plan",
+  scope: "session",
   stateSchema: z.object({
     steps: z.array(z.string()).default([]),
     status: z.enum(["draft", "active", "complete"]).default("draft"),
@@ -93,10 +137,10 @@ export const planResource = defineResource({
   writable: true,
 });
 
-// Use in flow
-session: {
+// Use in flow — single flat resources map
+defineFlow({
   resources: { plan: planResource },
-}
+});
 ```
 
 `defineResource` exposes `StateType` and `ContextType` helpers for typing shared helper functions:
@@ -121,64 +165,48 @@ See [Resource Collections](./resource-collections.md) for the full reference: pa
 
 ### Block-Level Resource Declarations
 
-Blocks can declare their resource dependencies directly using `sessionResources`, `userResources`, and `projectResources` properties. These accept `defineResource()` values:
+Blocks declare resource dependencies via a single `resources` field:
 
 ```ts
 const planManager = handler({
   name: "plan-manager",
-  sessionResources: { plan: planResource },
+  resources: { plan: planResource },
   execute: async (input, ctx) => {
-    await ctx.session.resources.plan.patchState({ status: "active" });
+    await ctx.resources.plan.patchState({ status: "active" });
     return input;
   },
 });
 ```
 
-Declared resources surface on `BlockDefinition.declaredResources` as metadata. This enables automatic resource collection — blocks declare what they need, and the framework ensures those resources are available at runtime.
+Declared resources surface on `BlockDefinition.declaredResources` as a flat `Record<string, DefinedResource | DefinedResourceCollection>`. Sequencers, routers, and capability-merge utilities walk this metadata to bubble resource declarations up to the flow level.
 
 #### Sequencer Resource Collection
 
-Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain (`.then()`, `.parallel()`, `.rescue()`, etc.). Nested sequencers bubble their collected resources upward:
-
-```ts
-const pipeline = sequencer({ name: "pipeline" })
-  .then(planManager)      // declares session.plan
-  .then(analyticsBlock)   // declares user.analytics
-  .rescue([{ block: recoveryBlock }]);  // declares session.errorLog
-
-// pipeline.declaredResources contains all three resources
-```
+Sequencers automatically collect `declaredResources` from all child blocks added through the DSL chain (`.then()`, `.parallel()`, `.rescue()`, etc.). Nested sequencers bubble their collected resources upward into the same flat map.
 
 #### Flow-Level Resource Merge
 
-`defineFlow` collects `declaredResources` from all action blocks and merges them into the flow's scope configs automatically. Flow-level resource declarations take priority over block-declared resources:
+`defineFlow` collects `declaredResources` from every action block and merges them into the flow's flat `resources` map. Flow-level declarations take priority on dedup; the merge errors at build time when two definitions share an accessor key but are different references:
 
 ```ts
 const myFlow = defineFlow({
   kind: "my-app",
   actions: { chat: { block: pipeline } },
-  session: {
-    // Flow-level plan overrides block-declared plan (same key)
-    resources: { plan: customPlanResource },
+  resources: {
+    // Flow-level plan overrides block-declared plan (same accessor key)
+    plan: customPlanResource,
   },
 });
-// Block-declared analyticsBlock.userResources and errorLog are still merged in
 ```
 
-#### Conflict Detection
+#### Collision Detection
 
-When two blocks declare different `defineResource()` references for the same resource name in the same scope, the framework throws a build-time error:
+Two collision modes are checked at flow-build time:
 
-```ts
-const blockA = handler({ sessionResources: { plan: planResourceV1 } });
-const blockB = handler({ sessionResources: { plan: planResourceV2 } });
+1. **Same accessor key, different references** — same as before. Use the same `defineResource()` reference everywhere or pick distinct accessor keys.
+2. **Different accessor keys, same effective storage key** — two definitions that resolve to the same `(scope, ref, flowIsolation, flowKind?)` tuple would silently share storage. Hard error.
 
-// Error: Resource conflict: "plan" in session scope is declared
-// with different defineResource() references.
-sequencer({ name: "pipeline" }).then(blockA).then(blockB);
-```
-
-If both blocks reference the **same** `defineResource()` instance, there is no conflict — the merge succeeds silently.
+Identity-equal re-registration is always safe (diamond dependencies through capabilities).
 
 ## Client Data
 
@@ -269,7 +297,7 @@ const chatGenerator = generator({
   model: "preset/fast",
   prompt: "You are a helpful assistant.",
   context: [myContext],
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: true,
   user: (input) => input.message,
 });
 ```
@@ -307,24 +335,118 @@ type PlanCtx = ContextOf<typeof planResource, "resource">;
 
 ## Client Visibility
 
-**Important:** Raw state never reaches the client. Client-facing values are exposed **only** through `clientData` entries.
+Client-facing data is exposed through two complementary mechanisms:
 
-The client reads client data via the state snapshot endpoint:
+1. **Scope-level `clientData`** — derived views computed from scope state and resources. Best for cross-resource projections and non-resource data.
+2. **Resource-level `client`** — per-resource visibility, data projection, and content access. `client.content` controls content endpoints. `client.data` derives metadata for the snapshot. Best for exposing resource data directly to clients without manual projection.
+
+### Scope-Level Client Data
+
+Scope-level `clientData` remains unchanged — it computes derived values from state and resources within a single scope:
 
 ```
 GET /api/flows/sessions/:sessionId/state
 ```
 
-Returns client data grouped by scope:
+Returns scope-level client data grouped by scope:
 
 ```json
 {
   "clientData": {
-    "session": { "activePlan": [...], "messageCount": 5 },
-    "user": { "preferences": { "displayName": "User", "preferredModel": "preset/fast" } },
-    "project": {}
+    "session": { "modeStatus": { "currentMode": "chat" } },
+    "user": { "preferences": { "displayName": "User" } }
   }
 }
+```
+
+### Resource-Level Client Exposure
+
+Resources declare a `client` config to control what's visible to clients. `client.content` controls content endpoint access. `client.data` derives metadata for the snapshot.
+
+```ts
+// Single resource — content readable, data exposes derived state
+defineResource({
+  ref: 'soul',
+  stateSchema: z.object({ values: z.array(z.string()), tone: z.string() }),
+  content: `## Values\n{{#each values}}- {{this}}\n{{/each}}`,
+  client: {
+    content: { read: true },              // lazy by default
+    // content: { read: true, prefetch: true },  // opt-in eager load
+    data: (state) => ({ displayTone: state.tone }),
+  },
+})
+
+// Collection — content readable and mutable
+defineResourceCollection({
+  ref: 'files',
+  stateSchema: z.object({ mimeType: z.string(), size: z.number() }),
+  client: {
+    content: { read: true, create: true, update: true, delete: false },
+    data: (state) => ({ size: state.size, mimeType: state.mimeType }),
+  },
+})
+```
+
+**Key rules:**
+- `client.content` governs access to the rendered content body
+- `client.data` derives metadata visible in the snapshot
+- `create`, `update`, `delete` are collection-only — declaring them on a single resource is a type error
+- Omitting `client` entirely means the resource is invisible to clients (no change from current behavior)
+
+### Snapshot Response with Resources
+
+The snapshot includes a `resources` key with metadata and `clientData` only — no content (except `prefetch: true` resources):
+
+```json
+{
+  "clientData": { "session": { "modeStatus": {...} } },
+  "resources": {
+    "session": {
+      "soul": { "clientData": { "displayTone": "Direct" } },
+      "files": {
+        "items": {
+          "readme.md": { "clientData": { "size": 1240, "mimeType": "text/markdown" } },
+          "notes.md": { "clientData": { "size": 430 } }
+        }
+      }
+    }
+  }
+}
+```
+
+### Content Fetch Endpoints
+
+Content is lazy-loaded via dedicated endpoints, gated by `client.content.read`:
+
+```
+GET /api/flows/sessions/:sessionId/resources/:ref/content          → single resource
+GET /api/flows/sessions/:sessionId/resources/:ref/:topic/content   → collection item
+```
+
+### Mutation Endpoints (Collections Only)
+
+```
+POST   /api/flows/sessions/:sessionId/resources/:ref               → create item
+PATCH  /api/flows/sessions/:sessionId/resources/:ref/:topic/content → update content
+DELETE /api/flows/sessions/:sessionId/resources/:ref/:topic         → delete item
+```
+
+Server enforces declared permissions and rejects operations that exceed them.
+
+### React Hooks
+
+```ts
+// Single resource — metadata from snapshot, content on demand
+const { clientData, fetchContent } = useResource(session, 'soul')
+
+// Convenience hook — fetches content immediately
+const { clientData, content, isLoading } = useResourceContent(session, 'soul')
+
+// Collection — metadata from snapshot, per-item content + CRUD actions
+const { items, actions } = useResourceCollection(session, 'files')
+await items['readme.md'].fetchContent()
+await actions.create({ topic: 'spec.md', content: '# New Spec' })
+await actions.update({ topic: 'readme.md', content: '# Updated' })
 ```
 
 Mid-request, `state_change` and `resource_change` stream items signal invalidation — clients should refetch the snapshot on `request.completed`.

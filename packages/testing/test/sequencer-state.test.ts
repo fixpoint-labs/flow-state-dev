@@ -108,7 +108,8 @@ describe("sequencer state testing utilities", () => {
 
     expect(stateChange).toBeDefined();
     expect(stateChange?.targetName).toBe("emit-seq");
-    expect(stateChange?.targetInstanceId).toMatch(/^emit-seq_/);
+    // Deterministic IDs have the shape `${requestId}:${path}:${attempt}`.
+    expect(stateChange?.targetInstanceId).toMatch(/^[^:]+:[^:]+:\d+$/);
     expect(result.stateChanges.some((change) => change.scope === "block_instance")).toBe(true);
   });
 

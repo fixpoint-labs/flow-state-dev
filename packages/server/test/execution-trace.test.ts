@@ -9,6 +9,7 @@ import {
   sequencer
 } from "@flow-state-dev/core";
 import type { BlockOutputItem, RouterDecisionItem } from "@flow-state-dev/core/items";
+import { resolveItemVisibility } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
@@ -136,7 +137,9 @@ describe("execution trace system", () => {
       const rootItem = blockOutputItems.find((i) => i.blockName === "simple-handler");
       expect(rootItem).toBeDefined();
       expect(rootItem!.blockKind).toBe("handler");
-      expect(rootItem!.trace).toBe(true);
+      const rootVis = resolveItemVisibility(rootItem!);
+      expect(rootVis.client).toBe(false);
+      expect(rootVis.history).toBe(false);
       expect(rootItem!.startedAt).toBeDefined();
       expect(rootItem!.completedAt).toBeDefined();
       expect(rootItem!.duration).toBeGreaterThanOrEqual(0);
@@ -165,7 +168,7 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const traceItems = items.filter(
-        (i) => i.type === "block_output" && i.trace === true
+        (i) => i.type === "block_output" && !resolveItemVisibility(i).client
       ) as BlockOutputItem[];
 
       // At least the root pipeline + nested handlers should produce trace items.
@@ -229,7 +232,7 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const traceItems = items.filter(
-        (i) => i.type === "block_output" && i.trace === true
+        (i) => i.type === "block_output" && !resolveItemVisibility(i).client
       ) as BlockOutputItem[];
 
       expect(traceItems.length).toBeGreaterThanOrEqual(1);
@@ -277,7 +280,9 @@ describe("execution trace system", () => {
       const decision = routerDecisions[0]!;
       expect(decision.routerName).toBe("test-router");
       expect(decision.selectedRoute).toBe("handler-a");
-      expect(decision.trace).toBe(true);
+      const decisionVis = resolveItemVisibility(decision);
+      expect(decisionVis.client).toBe(false);
+      expect(decisionVis.history).toBe(false);
     });
 
     it("selects the correct route based on input", async () => {
@@ -308,7 +313,7 @@ describe("execution trace system", () => {
   });
 
   describe("trace flag filtering", () => {
-    it("marks all lifecycle block_output items with trace: true", async () => {
+    it("resolves all lifecycle block_output items as devtool-only", async () => {
       const flow = createSequencerFlow();
       const stores = createInMemoryStores();
       const response = createResponseEmitter({ requestId: "req_filter", now: () => Date.now() });
@@ -328,13 +333,14 @@ describe("execution trace system", () => {
         (i) => i.type === "block_output"
       ) as BlockOutputItem[];
 
-      // All block_output items from lifecycle tracing should have trace: true.
       for (const item of blockOutputItems) {
-        expect(item.trace).toBe(true);
+        const vis = resolveItemVisibility(item);
+        expect(vis.client).toBe(false);
+        expect(vis.history).toBe(false);
       }
     });
 
-    it("marks all router_decision items with trace: true", async () => {
+    it("resolves all router_decision items as devtool-only", async () => {
       const flow = createRouterFlow();
       const stores = createInMemoryStores();
       const response = createResponseEmitter({ requestId: "req_rd_filter", now: () => Date.now() });
@@ -354,7 +360,9 @@ describe("execution trace system", () => {
       const items = response.getItems();
       const routerDecisions = items.filter((i) => i.type === "router_decision");
       for (const item of routerDecisions) {
-        expect(item.trace).toBe(true);
+        const vis = resolveItemVisibility(item);
+        expect(vis.client).toBe(false);
+        expect(vis.history).toBe(false);
       }
     });
 
@@ -410,12 +418,11 @@ describe("execution trace system", () => {
             content: [{ type: "output_text", text: "world" }],
             provenance: prov
           },
-          // Trace block_output — should be EXCLUDED from LLM history
+          // block_output — EXCLUDED from LLM history via STRUCTURAL_TYPE_DEFAULTS
           {
             id: "bo_trace",
             type: "block_output",
             status: "completed",
-            trace: true,
             requestId: "req_prev_llm",
             itemIndex: 2,
             ts: 3,
@@ -427,12 +434,11 @@ describe("execution trace system", () => {
             duration: 2,
             provenance: prov
           },
-          // Router decision — should be EXCLUDED from LLM history
+          // Router decision — EXCLUDED from LLM history via STRUCTURAL_TYPE_DEFAULTS
           {
             id: "rd_1",
             type: "router_decision",
             status: "completed",
-            trace: true,
             requestId: "req_prev_llm",
             itemIndex: 3,
             ts: 4,
@@ -459,7 +465,7 @@ describe("execution trace system", () => {
             provenance: prov
           }
         ]
-      } as any);
+      } as any, "any");
 
       const ctx = await createExecutionContext({
         flow,
@@ -470,7 +476,7 @@ describe("execution trace system", () => {
         stores
       });
 
-      const llmMessages = await ctx.session.items.llm();
+      const llmMessages = await ctx.session.items.history();
 
       // Should contain the two messages, plus the tool-call/tool-result pair.
       // AI SDK v6 requires tool results to be preceded by an assistant message
@@ -545,7 +551,7 @@ describe("execution trace system", () => {
 
       const items = response.getItems();
       const traceItems = items.filter(
-        (i) => i.type === "block_output" && i.trace === true
+        (i) => i.type === "block_output" && !resolveItemVisibility(i).client
       ) as BlockOutputItem[];
 
       // Nested handler trace items should have parentBlockInstanceId set.
@@ -588,9 +594,12 @@ describe("execution trace system", () => {
       expect(routerDecisions.length).toBeGreaterThanOrEqual(1);
 
       const decision = routerDecisions[0]!;
-      // Should use the router's actual blockInstanceId (dynamic, contains timestamp)
-      // not a synthetic fallback like "test-router_<requestId>".
-      expect(decision.provenance.blockInstanceId).toContain("test-router_");
+      // The router's actual blockInstanceId is now deterministic:
+      // `${requestId}:${path}:${attempt}` — verify the decision uses it
+      // rather than a synthetic fallback.
+      expect(decision.provenance.blockInstanceId).toMatch(
+        new RegExp(`^${decision.requestId}:[^:]+:\\d+$`)
+      );
       expect(decision.provenance.blockInstanceId).not.toBe(`test-router_${decision.requestId}`);
     });
   });

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   createFilesystemStores,
   createInMemoryStores,
-  type ProjectRecord,
+  type OrgRecord,
   type RequestRecord,
   type SessionRecord,
   type UserRecord
@@ -68,11 +68,11 @@ function makeUserRecord(id: string): UserRecord {
   };
 }
 
-function makeProjectRecord(id: string, userId: string): ProjectRecord {
+function makeOrgRecord(id: string, userId: string): OrgRecord {
   const ts = now();
   return {
     id,
-    projectId: id,
+    orgId: id,
     userId,
     state: {},
     version: 0,
@@ -88,28 +88,28 @@ describe("store adapters", () => {
     await stores.session.set(
       "sess_a",
       makeSessionRecord("sess_a", "flow-a", "user_1")
-    );
+    , "any");
     await stores.session.set(
       "sess_b",
       makeSessionRecord("sess_b", "flow-b", "user_2")
-    );
+    , "any");
 
     await stores.request.set(
       "req_a",
       makeRequestRecord("req_a", "flow-a", "run", "user_1", "sess_a")
-    );
-    await stores.user.set("user_1", makeUserRecord("user_1"));
-    await stores.project.set("proj_1", makeProjectRecord("proj_1", "user_1"));
+    , "any");
+    await stores.user.set("user_1", makeUserRecord("user_1"), "any");
+    await stores.org.set("proj_1", makeOrgRecord("proj_1", "user_1"), "any");
 
     const flowASessions = await stores.session.list({ flowKind: "flow-a" });
     const user1Requests = await stores.request.list({ userId: "user_1" });
-    const userProjects = await stores.project.list({ userId: "user_1" });
+    const userOrgs = await stores.org.list({ userId: "user_1" });
 
     expect(flowASessions).toHaveLength(1);
     expect(flowASessions[0]?.id).toBe("sess_a");
     expect(user1Requests).toHaveLength(1);
     expect(user1Requests[0]?.id).toBe("req_a");
-    expect(userProjects).toHaveLength(1);
+    expect(userOrgs).toHaveLength(1);
     expect((await stores.user.get("user_1"))?.userId).toBe("user_1");
 
     await stores.session.delete("sess_b");
@@ -125,25 +125,25 @@ describe("store adapters", () => {
       await stores.session.set(
         "sess_fs",
         makeSessionRecord("sess_fs", "flow-fs", "user_fs")
-      );
+      , "any");
       await stores.request.set(
         "req_fs",
         makeRequestRecord("req_fs", "flow-fs", "run", "user_fs", "sess_fs")
-      );
-      await stores.user.set("user_fs", makeUserRecord("user_fs"));
-      await stores.project.set(
+      , "any");
+      await stores.user.set("user_fs", makeUserRecord("user_fs"), "any");
+      await stores.org.set(
         "proj_fs",
-        makeProjectRecord("proj_fs", "user_fs")
-      );
+        makeOrgRecord("proj_fs", "user_fs")
+      , "any");
 
       expect((await stores.session.get("sess_fs"))?.id).toBe("sess_fs");
       expect((await stores.request.get("req_fs"))?.id).toBe("req_fs");
       expect((await stores.user.get("user_fs"))?.id).toBe("user_fs");
-      expect((await stores.project.get("proj_fs"))?.id).toBe("proj_fs");
+      expect((await stores.org.get("proj_fs"))?.id).toBe("proj_fs");
 
       expect(await stores.session.list({ flowKind: "flow-fs" })).toHaveLength(1);
       expect(await stores.request.list({ sessionId: "sess_fs" })).toHaveLength(1);
-      expect(await stores.project.list({ userId: "user_fs" })).toHaveLength(1);
+      expect(await stores.org.list({ userId: "user_fs" })).toHaveLength(1);
 
       await stores.request.delete("req_fs");
       expect(await stores.request.get("req_fs")).toBeUndefined();

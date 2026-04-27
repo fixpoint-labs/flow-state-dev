@@ -32,14 +32,29 @@ export type {
   ModelGroupConfig,
   ModelGroupDefaults,
   GatewayConfig,
+  GatewayEntry,
   RetryPolicy,
   GatewayType,
-  ProviderName
+  ProviderName,
+  ProviderPreference,
+  ResolveOptions,
+  ExplainCandidate,
+  ExplainResult
 } from "./types";
+
+// Reorder-by-preference (FIX-425)
+export {
+  reorderByPreference,
+  normalizePreference,
+  hasPreferredProvider
+} from "./reorderByPreference";
 
 // Model selection utility
 export { selectModel } from "./selectModel";
 export type { ModelRule, PreferRule, WhenRule } from "./selectModel";
+
+// Prompt caching (provider-specific cacheControl translation)
+export { applyCaching, DEFAULT_CACHING_CONFIG } from "./caching";
 
 // Internal utility (not re-exported from main index — used by model resolver)
 export { makeSchemaStrict } from "./makeSchemaStrict";

@@ -24,10 +24,12 @@ import { defineResource } from "../src/types/resource";
 // ---------------------------------------------------------------------------
 
 const testResource = defineResource({
+  scope: "session",
   stateSchema: z.object({ value: z.string() }),
 });
 
 const otherResource = defineResource({
+  scope: "user",
   stateSchema: z.object({ count: z.number() }),
 });
 
@@ -58,12 +60,12 @@ describe("defineCapability", () => {
     );
   });
 
-  it("preserves sessionResources", () => {
+  it("preserves flat resources map", () => {
     const cap = defineCapability({
       name: "res-cap",
-      sessionResources: { data: testResource },
+      resources: { data: testResource },
     });
-    expect(cap.sessionResources).toEqual({ data: testResource });
+    expect(cap.resources).toEqual({ data: testResource });
   });
 
   it("preserves fns factory", () => {
@@ -79,7 +81,7 @@ describe("defineCapability", () => {
     const cap = defineCapability({
       name: "preset-cap",
       presets: {
-        alpha: { sessionResources: { data: testResource } },
+        alpha: { resources: { data: testResource } },
       },
     });
 
@@ -94,7 +96,7 @@ describe("defineCapability", () => {
     const cap = defineCapability({
       name: "base-test",
       presets: {
-        beta: { sessionResources: { data: testResource } },
+        beta: { resources: { data: testResource } },
       },
     });
 
@@ -109,7 +111,7 @@ describe("defineCapability", () => {
   });
 
   it("stores raw presets in __presetDefs", () => {
-    const presetDef = { sessionResources: { data: testResource } };
+    const presetDef = { resources: { data: testResource } };
     const cap = defineCapability({
       name: "preset-store",
       presets: { alpha: presetDef },
@@ -182,7 +184,7 @@ describe("flattenCapabilities", () => {
   it("allows the same configured capability in multiple spots (diamond with .presets())", () => {
     const shared = defineCapability({
       name: "shared",
-      presets: { x: { sessionResources: { data: testResource } } },
+      presets: { x: { resources: { data: testResource } } },
     });
     const configuredShared = shared.presets({ x: true });
     const a = defineCapability({ name: "a", uses: [configuredShared] });
@@ -209,8 +211,8 @@ describe("resolveActivePresets", () => {
     const cap = defineCapability({
       name: "all-default",
       presets: {
-        alpha: { sessionResources: { a: testResource } },
-        beta: { sessionResources: { b: otherResource } },
+        alpha: { resources: { a: testResource } },
+        beta: { resources: { b: otherResource } },
       },
     });
 
@@ -224,8 +226,8 @@ describe("resolveActivePresets", () => {
     const cap = defineCapability({
       name: "explicit-default",
       presets: {
-        alpha: { sessionResources: { a: testResource } },
-        beta: { sessionResources: { b: otherResource } },
+        alpha: { resources: { a: testResource } },
+        beta: { resources: { b: otherResource } },
         default: ["alpha"],
       },
     });
@@ -240,8 +242,8 @@ describe("resolveActivePresets", () => {
     const cap = defineCapability({
       name: "bool-off",
       presets: {
-        alpha: { sessionResources: { a: testResource } },
-        beta: { sessionResources: { b: otherResource } },
+        alpha: { resources: { a: testResource } },
+        beta: { resources: { b: otherResource } },
       },
     });
 
@@ -256,8 +258,8 @@ describe("resolveActivePresets", () => {
     const cap = defineCapability({
       name: "bool-on",
       presets: {
-        alpha: { sessionResources: { a: testResource } },
-        beta: { sessionResources: { b: otherResource } },
+        alpha: { resources: { a: testResource } },
+        beta: { resources: { b: otherResource } },
         default: ["alpha"],
       },
     });
@@ -271,35 +273,36 @@ describe("resolveActivePresets", () => {
 
   it("function-form override transforms preset", () => {
     const extraResource = defineResource({
+      scope: "session",
       stateSchema: z.object({ extra: z.boolean() }),
     });
 
     const cap = defineCapability({
       name: "fn-override",
       presets: {
-        alpha: { sessionResources: { a: testResource } },
+        alpha: { resources: { a: testResource } },
       },
     });
 
     const configured = cap.presets({
       alpha: (preset) => ({
         ...preset,
-        sessionResources: { ...preset.sessionResources, extra: extraResource },
+        resources: { ...preset.resources, extra: extraResource },
       }),
     });
 
     const active = resolveActivePresets(configured);
     expect(active).toHaveLength(1);
-    expect(active[0].preset.sessionResources).toHaveProperty("a");
-    expect(active[0].preset.sessionResources).toHaveProperty("extra");
-    expect(active[0].preset.sessionResources!.extra).toBe(extraResource);
+    expect(active[0].preset.resources).toHaveProperty("a");
+    expect(active[0].preset.resources).toHaveProperty("extra");
+    expect(active[0].preset.resources!.extra).toBe(extraResource);
   });
 
   it("throws on unknown preset name in overrides", () => {
     const cap = defineCapability({
       name: "unknown-preset",
       presets: {
-        alpha: { sessionResources: { a: testResource } },
+        alpha: { resources: { a: testResource } },
       },
     });
 
@@ -319,47 +322,45 @@ describe("mergeSurfaceInto", () => {
     return createEmptyMergedSurface();
   }
 
-  it("merges session resources", () => {
+  it("merges resources from a flat resources map", () => {
     const acc = makeSurface();
     mergeSurfaceInto(
       acc,
-      { sessionResources: { data: testResource } },
+      { resources: { data: testResource } },
       "handler",
       "test-cap",
       "preset-a"
     );
-    expect(acc.sessionResources).toEqual({ data: testResource });
+    expect(acc.resources).toEqual({ data: testResource });
   });
 
-  it("merges user resources", () => {
+  it("merges multiple disjoint accessor keys", () => {
     const acc = makeSurface();
     mergeSurfaceInto(
       acc,
-      { userResources: { data: testResource } },
+      { resources: { data: testResource } },
       "handler",
-      "test-cap",
-      "preset-a"
+      "cap",
+      "p1"
     );
-    expect(acc.userResources).toEqual({ data: testResource });
-  });
-
-  it("merges project resources", () => {
-    const acc = makeSurface();
     mergeSurfaceInto(
       acc,
-      { projectResources: { data: testResource } },
+      { resources: { other: otherResource } },
       "handler",
-      "test-cap",
-      "preset-a"
+      "cap",
+      "p2"
     );
-    expect(acc.projectResources).toEqual({ data: testResource });
+    expect(acc.resources).toEqual({
+      data: testResource,
+      other: otherResource,
+    });
   });
 
   it("deduplicates same resource reference", () => {
     const acc = makeSurface();
     mergeSurfaceInto(
       acc,
-      { sessionResources: { data: testResource } },
+      { resources: { data: testResource } },
       "handler",
       "cap",
       "p1"
@@ -367,19 +368,19 @@ describe("mergeSurfaceInto", () => {
     // Same name, same reference — should not throw
     mergeSurfaceInto(
       acc,
-      { sessionResources: { data: testResource } },
+      { resources: { data: testResource } },
       "handler",
       "cap",
       "p2"
     );
-    expect(acc.sessionResources!.data).toBe(testResource);
+    expect(acc.resources!.data).toBe(testResource);
   });
 
-  it("throws on different resource references with same name", () => {
+  it("throws on different resource references with same accessor key", () => {
     const acc = makeSurface();
     mergeSurfaceInto(
       acc,
-      { sessionResources: { data: testResource } },
+      { resources: { data: testResource } },
       "handler",
       "cap",
       "p1"
@@ -387,7 +388,7 @@ describe("mergeSurfaceInto", () => {
     expect(() =>
       mergeSurfaceInto(
         acc,
-        { sessionResources: { data: otherResource } },
+        { resources: { data: otherResource } },
         "handler",
         "cap",
         "p2"
@@ -605,19 +606,19 @@ describe("mergeSurfaceInto", () => {
 
   // --- block-kind-agnostic fields work on every kind ---
 
-  it("sessionResources work on every block kind", () => {
+  it("resources work on every block kind", () => {
     for (const kind of ["handler", "generator", "sequencer", "router"] as BlockKind[]) {
       const acc = makeSurface();
       expect(() =>
         mergeSurfaceInto(
           acc,
-          { sessionResources: { data: testResource } },
+          { resources: { data: testResource } },
           kind,
           "cap",
           "p1"
         )
       ).not.toThrow();
-      expect(acc.sessionResources).toEqual({ data: testResource });
+      expect(acc.resources).toEqual({ data: testResource });
     }
   });
 
@@ -707,51 +708,53 @@ describe("mergeCapabilities", () => {
   it("merges required surface from a capability", () => {
     const cap = defineCapability({
       name: "res-cap",
-      sessionResources: { data: testResource },
+      resources: { data: testResource },
     });
 
     const surface = mergeCapabilities([cap], "handler");
-    expect(surface.sessionResources).toEqual({ data: testResource });
+    expect(surface.resources).toEqual({ data: testResource });
   });
 
   it("merges active preset surfaces", () => {
     const cap = defineCapability({
       name: "preset-cap",
       presets: {
-        alpha: { userResources: { other: otherResource } },
+        alpha: { resources: { other: otherResource } },
       },
     });
 
     const surface = mergeCapabilities([cap], "handler");
-    expect(surface.userResources).toEqual({ other: otherResource });
+    expect(surface.resources).toEqual({ other: otherResource });
   });
 
   it("skips disabled preset surfaces", () => {
     const cap = defineCapability({
       name: "skip-cap",
       presets: {
-        alpha: { userResources: { other: otherResource } },
+        alpha: { resources: { other: otherResource } },
       },
     });
 
     const configured = cap.presets({ alpha: false });
     const surface = mergeCapabilities([configured], "handler");
-    expect(surface.userResources).toBeUndefined();
+    expect(surface.resources).toBeUndefined();
   });
 
   it("merges multiple capabilities together", () => {
     const cap1 = defineCapability({
       name: "cap1",
-      sessionResources: { data: testResource },
+      resources: { data: testResource },
     });
     const cap2 = defineCapability({
       name: "cap2",
-      userResources: { other: otherResource },
+      resources: { other: otherResource },
     });
 
     const surface = mergeCapabilities([cap1, cap2], "handler");
-    expect(surface.sessionResources).toEqual({ data: testResource });
-    expect(surface.userResources).toEqual({ other: otherResource });
+    expect(surface.resources).toEqual({
+      data: testResource,
+      other: otherResource,
+    });
   });
 
   it("merges state schemas from required surface and presets", () => {
@@ -795,23 +798,23 @@ describe("extractMergedResources", () => {
     expect(extractMergedResources(surface)).toBeUndefined();
   });
 
-  it("extracts session resources", () => {
+  it("extracts the flat resources map", () => {
     const surface = createEmptyMergedSurface();
-    surface.sessionResources = { data: testResource };
+    surface.resources = { data: testResource };
     const result = extractMergedResources(surface);
-    expect(result).toEqual({ session: { data: testResource } });
+    expect(result).toEqual({ data: testResource });
   });
 
-  it("extracts all three resource scopes", () => {
+  it("extracts a multi-scope flat resources map", () => {
     const surface = createEmptyMergedSurface();
-    surface.sessionResources = { data: testResource };
-    surface.userResources = { other: otherResource };
-    surface.projectResources = { data: testResource };
+    surface.resources = {
+      data: testResource,
+      other: otherResource,
+    };
     const result = extractMergedResources(surface);
     expect(result).toEqual({
-      session: { data: testResource },
-      user: { other: otherResource },
-      project: { data: testResource },
+      data: testResource,
+      other: otherResource,
     });
   });
 });
@@ -822,12 +825,12 @@ describe("extractMergedResources", () => {
 
 describe("mergeWithBlockResources", () => {
   it("returns blockResources when capResources is undefined", () => {
-    const block = { session: { data: testResource } };
+    const block = { data: testResource };
     expect(mergeWithBlockResources(undefined, block)).toBe(block);
   });
 
   it("returns capResources when blockResources is undefined", () => {
-    const cap = { session: { data: testResource } };
+    const cap = { data: testResource };
     expect(mergeWithBlockResources(cap, undefined)).toBe(cap);
   });
 
@@ -835,45 +838,35 @@ describe("mergeWithBlockResources", () => {
     expect(mergeWithBlockResources(undefined, undefined)).toBeUndefined();
   });
 
-  it("merges disjoint scopes", () => {
-    const cap = { session: { data: testResource } };
-    const block = { user: { other: otherResource } };
+  it("merges disjoint accessor keys across scopes", () => {
+    const cap = { data: testResource };
+    const block = { other: otherResource };
     const result = mergeWithBlockResources(cap, block);
     expect(result).toEqual({
-      session: { data: testResource },
-      user: { other: otherResource },
-    });
-  });
-
-  it("merges disjoint resources within the same scope", () => {
-    const cap = { session: { data: testResource } };
-    const block = { session: { other: otherResource } };
-    const result = mergeWithBlockResources(cap, block);
-    expect(result!.session).toEqual({
       data: testResource,
       other: otherResource,
     });
   });
 
-  it("allows same resource reference in same scope (dedup)", () => {
-    const cap = { session: { data: testResource } };
-    const block = { session: { data: testResource } };
+  it("allows same resource reference under the same accessor (dedup)", () => {
+    const cap = { data: testResource };
+    const block = { data: testResource };
     expect(() => mergeWithBlockResources(cap, block)).not.toThrow();
     const result = mergeWithBlockResources(cap, block);
-    expect(result!.session!.data).toBe(testResource);
+    expect(result!.data).toBe(testResource);
   });
 
-  it("throws on different resource references with same name", () => {
-    const cap = { session: { data: testResource } };
-    const block = { session: { data: otherResource } };
+  it("throws on different resource references with same accessor", () => {
+    const cap = { data: testResource };
+    const block = { data: otherResource };
     expect(() => mergeWithBlockResources(cap, block)).toThrow(
       "Resource conflict"
     );
   });
 
   it("throws with descriptive error on reference mismatch", () => {
-    const cap = { session: { data: testResource } };
-    const block = { session: { data: otherResource } };
+    const cap = { data: testResource };
+    const block = { data: otherResource };
     expect(() => mergeWithBlockResources(cap, block)).toThrow(
       'different defineResource() references'
     );

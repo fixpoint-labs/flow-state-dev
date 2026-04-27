@@ -1,9 +1,11 @@
 import type {
+  ExpectedVersion,
   UserListOptions,
   UserRecord,
-  UserStore
+  UserStore,
+  SetResult
 } from "../types";
-import { applyOffsetLimit, cloneValue } from "./shared";
+import { applyOffsetLimit, casWriteToMap, cloneValue } from "./shared";
 
 export class InMemoryUserStore implements UserStore {
   private readonly records = new Map<string, UserRecord>();
@@ -13,8 +15,12 @@ export class InMemoryUserStore implements UserStore {
     return record === undefined ? undefined : cloneValue(record);
   }
 
-  async set(id: string, value: UserRecord): Promise<void> {
-    this.records.set(id, cloneValue(value));
+  async set(
+    id: string,
+    value: UserRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<UserRecord>> {
+    return casWriteToMap(this.records, id, value, expectedVersion);
   }
 
   async delete(id: string): Promise<void> {

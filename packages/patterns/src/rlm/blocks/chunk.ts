@@ -1,6 +1,6 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { contextResourceStateSchema } from "../schemas";
+import { contextResource } from "../schemas";
 
 export const chunkInputSchema = z.object({
   chunkIndex: z.number().describe("Zero-based chunk index"),
@@ -25,11 +25,10 @@ export const chunk = handler({
     "Context is divided into equal-sized chunks. Use to systematically process large contexts.",
   inputSchema: chunkInputSchema,
   outputSchema: chunkOutputSchema,
-  sessionResourceSchemas: z.object({ context: contextResourceStateSchema }),
+  resources: { context: contextResource },
 
   execute: async (input, ctx) => {
-    const contextHandle = ctx.session.resources.get("context");
-    const text = contextHandle?.state.text ?? "";
+    const text = ctx.resources.context?.state.text ?? "";
     const totalChunks = Math.max(1, Math.ceil(text.length / input.chunkSize));
     const start = input.chunkIndex * input.chunkSize;
     const end = Math.min(text.length, start + input.chunkSize);

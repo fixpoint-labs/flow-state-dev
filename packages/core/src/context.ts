@@ -9,11 +9,11 @@ import type { JsonObject } from "./schema/common";
 export type ContextFnScopes<
   TSession extends JsonObject = JsonObject,
   TUser extends JsonObject = JsonObject,
-  TProject extends JsonObject = JsonObject
+  TOrg extends JsonObject = JsonObject
 > = {
   session: TSession;
   user?: TUser;
-  project?: TProject;
+  org?: TOrg;
 };
 
 /**
@@ -30,17 +30,27 @@ export type ContextFunction = (input: unknown, ctx: BlockContext) => string;
  * any runtime schema validation. The actual state values are read from
  * `BlockContext` scope handles at execution time.
  *
+ * The returned function fits anywhere a `GeneratorSlotEntry` does. Two
+ * common shapes:
+ *
+ * - **Array form:** `context: [researchCtx]` — the function's string return
+ *   becomes a system message of its own.
+ * - **Object form:** `context: { research: researchCtx }` — the function's
+ *   return is wrapped in `<research>...</research>` and aggregates with any
+ *   other contributions to the `research` key from capabilities or other
+ *   slots. See `ContextObject` for the full object-form contract.
+ *
  * @example
  * ```ts
  * import { contextFn } from "@flow-state-dev/core";
- * import { section, list } from "@flow-state-dev/core/prompt";
+ * import { list } from "@flow-state-dev/core/prompt";
  *
  * const researchCtx = contextFn(
  *   { session: sessionStateSchema },
- *   ({ session }) => section("Research", list(session.coveredTopics))
+ *   ({ session }) => list(session.coveredTopics)
  * );
  *
- * // Use in a generator block:
+ * // Object form — wrapped under <research> and aggregated cross-source.
  * generator({
  *   name: "researcher",
  *   context: { research: researchCtx },
@@ -67,18 +77,18 @@ export function contextFn<TSession extends ZodTypeAny, TUser extends ZodTypeAny>
   ) => string
 ): ContextFunction;
 
-// Overload: session + user + project
+// Overload: session + user + org
 export function contextFn<
   TSession extends ZodTypeAny,
   TUser extends ZodTypeAny,
-  TProject extends ZodTypeAny
+  TOrg extends ZodTypeAny
 >(
-  schemas: { session: TSession; user: TUser; project: TProject },
+  schemas: { session: TSession; user: TUser; org: TOrg },
   fn: (
     scopes: {
       session: z.output<TSession>;
       user: z.output<TUser>;
-      project: z.output<TProject>;
+      org: z.output<TOrg>;
     },
     ctx: BlockContext
   ) => string
@@ -99,8 +109,8 @@ export function contextFn(
     if (ctx.user) {
       scopes.user = ctx.user.state;
     }
-    if (ctx.project) {
-      scopes.project = ctx.project.state;
+    if (ctx.org) {
+      scopes.org = ctx.org.state;
     }
 
     return fn(scopes, ctx);

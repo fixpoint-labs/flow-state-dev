@@ -4,7 +4,7 @@
 import type {
   JsonObject,
   ResourceConfig,
-  ResourceCollectionConfig
+  ResourceCollectionConfig,
 } from "@flow-state-dev/core/types";
 import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
 import type { OutputItem, RequestStatusEvent, RequestStreamEvent } from "@flow-state-dev/core/items";
@@ -85,7 +85,7 @@ export function getBooleanFlag(value: string | null): boolean {
   return normalized === "true" || normalized === "1";
 }
 
-export type ClientDataScope = "session" | "user" | "project";
+export type ClientDataScope = "session" | "user" | "org";
 export type ClientDataFilter = Partial<Record<ClientDataScope, Set<string>>>;
 
 export function parseClientDataFilter(value: string | null): ClientDataFilter | undefined {
@@ -104,7 +104,7 @@ export function parseClientDataFilter(value: string | null): ClientDataFilter | 
     const isScoped =
       scopeCandidate === "session" ||
       scopeCandidate === "user" ||
-      scopeCandidate === "project";
+      scopeCandidate === "org";
     const scope: ClientDataScope = isScoped ? scopeCandidate : "session";
     const name = isScoped ? dataName : scopeCandidate;
 
@@ -296,6 +296,98 @@ export async function computeClientData(options: {
   }
 
   return out;
+}
+
+/**
+ * Builds the client-visible `resources` snapshot for one scope.
+ *
+ * For each resource with a `client` config, returns resource-level `clientData`
+ * and optionally prefetched content. Resources without a `client` config are
+ * excluded by default.
+ *
+ * When `includeInternal: true`, resources without a `client` config are also
+ * included with `internal: true` and the raw resource state surfaced in
+ * `clientData`. This is the DevTool's path — it lets developers see every
+ * installed resource, including ones that haven't opted into the client.
+ * Production clients should not pass this flag.
+ */
+export async function buildResourceSnapshot(options: {
+  configs: Record<string, unknown> | undefined;
+  persisted: Record<string, unknown> | undefined;
+  persistedContent?: Record<string, string> | undefined;
+  includeInternal?: boolean;
+}): Promise<Record<string, unknown> | undefined> {
+  const out: Record<string, unknown> = {};
+  const contentMap = options.persistedContent ?? {};
+  const includeInternal = options.includeInternal === true;
+  let hasAny = false;
+
+  for (const [resourceName, maybeConfig] of Object.entries(options.configs ?? {})) {
+    if (isCollectionConfig(maybeConfig)) {
+      const hasClient = maybeConfig.client !== undefined;
+      if (!hasClient && !includeInternal) continue;
+
+      const pattern = maybeConfig.pattern;
+      const persisted = options.persisted ?? {};
+      const clientDataFn = typeof maybeConfig.client?.data === "function"
+        ? maybeConfig.client.data as (state: unknown) => unknown
+        : undefined;
+      const prefetch = maybeConfig.client?.content?.prefetch === true;
+
+      const items: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(persisted)) {
+        if (!matchesPattern(pattern, key)) continue;
+
+        const state = isJsonObject(value) ? value : {};
+        const entry: Record<string, unknown> = {};
+        if (clientDataFn) {
+          entry.clientData = await clientDataFn(state);
+        } else if (!hasClient) {
+          // Internal collection: surface raw state under clientData so the
+          // DevTool can inspect it. Production clients won't see this branch
+          // because they don't pass includeInternal.
+          entry.clientData = state;
+        }
+        if (prefetch && contentMap[key] !== undefined) {
+          entry.content = contentMap[key];
+        }
+        items[key] = entry;
+      }
+
+      const collectionEntry: Record<string, unknown> = { items };
+      if (!hasClient) collectionEntry.internal = true;
+      out[resourceName] = collectionEntry;
+      hasAny = true;
+      continue;
+    }
+
+    if (!isResourceConfig(maybeConfig)) continue;
+    const config = maybeConfig as ResourceConfig;
+    const hasClient = config.client !== undefined;
+    if (!hasClient && !includeInternal) continue;
+
+    const state = normalizeResourceState(config, options.persisted?.[resourceName]);
+    const clientDataFn = typeof config.client?.data === "function"
+      ? config.client.data as (state: unknown) => unknown
+      : undefined;
+    const prefetch = config.client?.content?.prefetch === true;
+
+    const entry: Record<string, unknown> = {};
+    if (clientDataFn) {
+      entry.clientData = await clientDataFn(state);
+    } else if (!hasClient) {
+      // Internal resource: raw state under clientData (see collection branch).
+      entry.clientData = state;
+    }
+    if (prefetch && contentMap[resourceName] !== undefined) {
+      entry.content = contentMap[resourceName];
+    }
+    if (!hasClient) entry.internal = true;
+    out[resourceName] = entry;
+    hasAny = true;
+  }
+
+  return hasAny ? out : undefined;
 }
 
 export function sortItems(items: OutputItem[] | undefined): OutputItem[] {

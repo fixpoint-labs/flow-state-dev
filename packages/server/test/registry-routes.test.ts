@@ -55,7 +55,7 @@ function makeClientDataFlow(kind: string, id = kind): FlowInstance {
         userInfo: () => ({ active: true })
       }
     },
-    project: {
+    org: {
       clientData: {
         projectInfo: () => ({ configured: true })
       }
@@ -178,6 +178,7 @@ describe("createFlowApiRouter", () => {
           id: "demo",
           kind: "demo",
           requireUser: true,
+          requiresOrg: false,
           actions: ["run"],
           actionSchemas: {
             run: {
@@ -371,7 +372,7 @@ describe("createFlowApiRouter", () => {
         method: "POST",
         body: JSON.stringify({
           userId: "user_proj",
-          projectId: "proj_1",
+          orgId: "proj_1",
           input: { value: "ok" }
         })
       }),
@@ -403,7 +404,7 @@ describe("createFlowApiRouter", () => {
             active: true
           }
         },
-        project: {
+        org: {
           projectInfo: {
             configured: true
           }
@@ -438,6 +439,160 @@ describe("createFlowApiRouter", () => {
     });
   });
 
+  it("loads isolated user and org scopes in the session state route", async () => {
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    const flow = defineFlow({
+      kind: "isolated-state-route",
+      isolateUserState: true,
+      isolateOrgState: true,
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: handler({
+            name: "isolated-state-route-run",
+            inputSchema: z.object({ value: z.string() }),
+            outputSchema: z.object({ ok: z.boolean() }),
+            execute: async (input, ctx) => {
+              await ctx.user.patchState({ nickname: input.value });
+              await ctx.org?.patchState({ title: `Project ${input.value}` });
+              return { ok: true };
+            }
+          })
+        }
+      },
+      user: {
+        stateSchema: z.object({ nickname: z.string().optional() }),
+        clientData: {
+          userLabel: (ctx) => ({ nickname: ctx.state.nickname })
+        }
+      },
+      org: {
+        stateSchema: z.object({ title: z.string().optional() }),
+        clientData: {
+          projectLabel: (ctx) => ({ title: ctx.state.title })
+        }
+      }
+    })({ id: "isolated-state-route" });
+
+    registry.register(flow);
+    const router = createFlowApiRouter({ registry, stores });
+
+    const executeResponse = await router.POST(
+      new Request("http://localhost/api/flows/isolated-state-route/sess_iso_state/actions/run", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: "user_iso_state",
+          orgId: "proj_iso_state",
+          input: { value: "Ada" }
+        })
+      }),
+      {
+        params: {
+          path: ["isolated-state-route", "sess_iso_state", "actions", "run"]
+        }
+      }
+    );
+    expect(executeResponse.status).toBe(202);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const stateResponse = await router.GET(
+      new Request("http://localhost/api/flows/sessions/sess_iso_state/state"),
+      { params: { path: ["sessions", "sess_iso_state", "state"] } }
+    );
+
+    expect(stateResponse.status).toBe(200);
+    const body = (await stateResponse.json()) as {
+      state: {
+        user?: Record<string, unknown>;
+        org?: Record<string, unknown>;
+      };
+      clientData: Record<string, Record<string, unknown>>;
+    };
+    expect(body.state.user).toMatchObject({ nickname: "Ada" });
+    expect(body.state.org).toMatchObject({ title: "Project Ada" });
+    expect(body.clientData).toMatchObject({
+      user: { userLabel: { nickname: "Ada" } },
+      org: { projectLabel: { title: "Project Ada" } }
+    });
+    expect(await stores.user.get("user_iso_state")).toBeUndefined();
+    expect(await stores.org.get("proj_iso_state")).toBeUndefined();
+
+    const request = (await stores.request.list({ sessionId: "sess_iso_state", limit: 1 }))[0];
+    expect(request?.orgId).toBe("proj_iso_state");
+  });
+
+  it("loads isolated user resources in resource content routes", async () => {
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    const profile = defineResource({
+      scope: "user",
+      stateSchema: z.object({ label: z.string().default("") }),
+      writable: true,
+      client: {
+        content: { read: true }
+      }
+    });
+    const flow = defineFlow({
+      kind: "isolated-resource-route",
+      isolateUserState: true,
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: handler({
+            name: "isolated-resource-route-run",
+            inputSchema: z.object({ value: z.string() }),
+            outputSchema: z.object({ ok: z.boolean() }),
+            execute: async (input, ctx) => {
+              await ctx.resources.profile.patchState({ label: input.value });
+              await ctx.resources.profile.writeContent(`Profile ${input.value}`);
+              return { ok: true };
+            }
+          })
+        }
+      },
+      resources: {
+        profile
+      }
+    })({ id: "isolated-resource-route" });
+
+    registry.register(flow);
+    const router = createFlowApiRouter({ registry, stores });
+
+    const executeResponse = await router.POST(
+      new Request("http://localhost/api/flows/isolated-resource-route/sess_iso_resource/actions/run", {
+        method: "POST",
+        body: JSON.stringify({
+          userId: "user_iso_resource",
+          input: { value: "Ada" }
+        })
+      }),
+      {
+        params: {
+          path: ["isolated-resource-route", "sess_iso_resource", "actions", "run"]
+        }
+      }
+    );
+    expect(executeResponse.status).toBe(202);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const contentResponse = await router.GET(
+      new Request("http://localhost/api/flows/sessions/sess_iso_resource/resources/profile/content"),
+      {
+        params: {
+          path: ["sessions", "sess_iso_resource", "resources", "profile", "content"]
+        }
+      }
+    );
+
+    expect(contentResponse.status).toBe(200);
+    expect(await contentResponse.json()).toEqual({
+      ref: "profile",
+      content: "Profile Ada"
+    });
+    expect(await stores.user.get("user_iso_resource")).toBeUndefined();
+  });
+
   it("paginates session items with metadata", async () => {
     const registry = createFlowRegistry();
     const stores = createInMemoryStores();
@@ -461,7 +616,11 @@ describe("createFlowApiRouter", () => {
 
     const stateResponse = await router.GET(
       new Request(
-        "http://localhost/api/flows/sessions/sess_page/state?include_items=true&offset=0&limit=1"
+        // FIX-391: `item_types=block_output` opts into this trace item type,
+        // which the snapshot route otherwise strips by default. The fixture's
+        // handler emits only a block_output, so we include it explicitly here
+        // to keep this pagination assertion intact.
+        "http://localhost/api/flows/sessions/sess_page/state?include_items=true&offset=0&limit=1&item_types=block_output"
       ),
       {
         params: {
@@ -559,11 +718,16 @@ describe("createFlowApiRouter", () => {
     });
   });
 
-  it("returns raw resources in session state response", async () => {
+  it("returns resource clientData in session state response", async () => {
     const registry = createFlowRegistry();
     const stores = createInMemoryStores();
     const counterResource = defineResource({
-      stateSchema: z.object({ count: z.number().default(0) })
+      scope: "session",
+      stateSchema: z.object({ count: z.number().default(0) }),
+      client: {
+        content: { read: true },
+        data: (state) => ({ count: state.count }),
+      },
     });
 
     const flow = defineFlow({
@@ -582,10 +746,8 @@ describe("createFlowApiRouter", () => {
           })
         }
       },
-      session: {
-        resources: {
-          counter: counterResource
-        }
+      resources: {
+        counter: counterResource
       }
     })({ id: "res-flow" });
 
@@ -608,14 +770,14 @@ describe("createFlowApiRouter", () => {
     expect(stateResponse.status).toBe(200);
     const body = (await stateResponse.json()) as {
       resources?: {
-        session?: Record<string, Record<string, unknown>>;
-        user?: Record<string, Record<string, unknown>>;
-        project?: Record<string, Record<string, unknown>>;
+        session?: Record<string, unknown>;
+        user?: Record<string, unknown>;
+        org?: Record<string, unknown>;
       };
     };
     expect(body.resources).toBeDefined();
     expect(body.resources!.session).toBeDefined();
-    expect(body.resources!.session!.counter).toEqual({ count: 0 });
+    expect(body.resources!.session!.counter).toEqual({ clientData: { count: 0 } });
   });
 
   it("returns 503 when active stream capacity is reached", async () => {

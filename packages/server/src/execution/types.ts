@@ -23,11 +23,17 @@ export type ExecutionMetadata = {
   flowKind: string;
   userId: string;
   sessionId?: string;
-  projectId?: string;
+  orgId?: string;
   blockName?: string;
   blockKind?: BlockDefinition["kind"];
   blockInstanceId?: string;
   parentBlockInstanceId?: string;
+  /**
+   * Structural path of this block in the request's execution tree (e.g.
+   * `root/then[0]/iter[2]`). Combined with `requestId` and `attempt`, this
+   * uniquely and deterministically identifies the block instance.
+   */
+  blockPath?: string;
   scope?: FlowErrorScope;
   attempt?: number;
   stepIndex?: number;
@@ -65,7 +71,7 @@ export type RunActionOptions<
   input: unknown;
   userId: string;
   sessionId?: string;
-  projectId?: string;
+  orgId?: string;
   requestId?: string;
   metadata?: Record<string, unknown>;
   signal?: AbortSignal;
@@ -104,11 +110,12 @@ export function createExecutionMetadata(
       ctx.request.identity.userId ??
       "unknown_user",
     sessionId: overrides.sessionId ?? ctx.session.identity.id,
-    projectId: overrides.projectId ?? ctx.request.identity.projectId,
+    orgId: overrides.orgId ?? ctx.request.identity.orgId,
     blockName: overrides.blockName,
     blockKind: overrides.blockKind,
     blockInstanceId: overrides.blockInstanceId,
     parentBlockInstanceId: overrides.parentBlockInstanceId,
+    blockPath: overrides.blockPath,
     scope: overrides.scope,
     attempt: overrides.attempt,
     stepIndex: overrides.stepIndex,

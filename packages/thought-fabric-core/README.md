@@ -12,13 +12,69 @@ This package is in Wave 1 foundation mode.
 |--------|-----------|--------|
 | Attention | `attention` | Salience scoring + relevance filtering implemented |
 | Memory | `memory` | Working memory implemented |
-| Identity | `identity` | Constitution implemented, perspective scaffold |
+| Identity | `identity` | Constitution + Perspective (static + resource-backed + capability) |
 | Perception | — | Wave 2+ |
 | Reasoning | — | Wave 2+ |
 | Metacognition | `metacognition` | Bias & sycophancy detection |
 | Learning | — | Wave 4+ |
 
 ## Usage
+
+### Capability-based (recommended)
+
+The memory system exposes `defineCapability()`-based surfaces. Declare `uses: [...]` on a block to auto-install resources and gain typed helpers via `ctx.cap.*`.
+
+```ts
+import { system as memorySystem, workingMemoryCapability } from '@thought-fabric/core/memory'
+import { handler, generator, sequencer } from '@flow-state-dev/core'
+
+// Full system — working + episodic + semantic
+const mem = memorySystem({
+  model: 'preset/fast',
+  working: { capacity: 7 },
+  episodic: true,
+  semantic: true,
+})
+
+// Generator: auto-installs resources, context formatter, and typed helpers
+const chat = generator({
+  name: 'chat',
+  model: 'preset/fast',
+  uses: [mem.capability],
+  user: (input) => input,
+})
+
+// Handler: disable context preset (generator-only), use helpers via ctx.cap
+const myHandler = handler({
+  name: 'remember',
+  uses: [mem.capability.presets({ context: false })],
+  execute: async (input, ctx) => {
+    await ctx.cap.workingMemory.add({ content: 'User likes TypeScript', importance: 0.8 })
+    const items = ctx.cap.memory.recall()
+  },
+})
+
+// Pipeline with background capture
+const pipeline = sequencer({ name: 'chat', inputSchema })
+  .then(chat)
+  .work(mem.captureFromItems)
+```
+
+Individual tier capabilities can also be used standalone:
+
+```ts
+// Just working memory — no episodic or semantic
+const myBlock = handler({
+  name: 'wm-only',
+  uses: [workingMemoryCapability],
+  execute: async (input, ctx) => {
+    await ctx.cap.workingMemory.add({ content: 'fact', importance: 0.7 })
+    const entries = ctx.cap.workingMemory.items()
+  },
+})
+```
+
+### Imperative usage (low-level)
 
 ```ts
 import {
@@ -136,6 +192,48 @@ All exports from `@thought-fabric/core/memory` related to working memory:
 | `WorkingMemoryCaptureConfig` | type | Config for the capture sequencer. |
 | `WorkingMemoryObserveConfig` | type | Config for the observe generator. |
 
+## Memory Capability Exports
+
+Capability-based surfaces for the memory subsystems.
+
+| Export | Kind | Description |
+|--------|------|-------------|
+| **Capabilities** | | |
+| `workingMemoryCapability` | capability | Default working memory capability (capacity 7, power-law decay). |
+| `createWorkingMemoryCapability(config?)` | factory | Custom working memory capability. |
+| `episodicMemoryCapability` | capability | Default episodic memory capability (user-scoped, 200 max). |
+| `createEpisodicMemoryCapability(config?)` | factory | Custom episodic memory capability. |
+| `semanticMemoryCapability` | capability | Default semantic memory capability (user-scoped). |
+| `createSemanticMemoryCapability(config?)` | factory | Custom semantic memory capability. |
+| **Via `memory.system()`** | | |
+| `mem.capability` | capability | Composed capability (all configured tiers). Context preset for generators. |
+| `mem.workingMemoryCapability` | capability | Working memory tier from this system instance. |
+| `mem.episodicMemoryCapability?` | capability | Episodic tier (if configured). |
+| `mem.semanticMemoryCapability?` | capability | Semantic tier (if configured). |
+| **Capability helpers (`ctx.cap.*`)** | | |
+| `ctx.cap.workingMemory.add(entry)` | helper | Add entry with auto-eviction. |
+| `ctx.cap.workingMemory.evict(id)` | helper | Remove entry by ID. |
+| `ctx.cap.workingMemory.pin(id)` | helper | Pin entry. |
+| `ctx.cap.workingMemory.unpin(id)` | helper | Unpin entry. |
+| `ctx.cap.workingMemory.refresh(id)` | helper | Refresh access time. |
+| `ctx.cap.workingMemory.tick()` | helper | Advance turn counter. |
+| `ctx.cap.workingMemory.items()` | helper | Get entries sorted by salience. |
+| `ctx.cap.workingMemory.format()` | helper | Format for LLM context. |
+| `ctx.cap.episodicMemory.encode(episode)` | helper | Encode a new episode. |
+| `ctx.cap.episodicMemory.recent(limit?)` | helper | Get recent episodes. |
+| `ctx.cap.episodicMemory.markConsolidated(ids)` | helper | Mark as consolidated. |
+| `ctx.cap.semanticMemory.addFact(fact)` | helper | Add semantic fact. |
+| `ctx.cap.semanticMemory.updateFact(...)` | helper | Update fact content. |
+| `ctx.cap.semanticMemory.reinforce(...)` | helper | Reinforce a fact. |
+| `ctx.cap.semanticMemory.removeFact(id)` | helper | Remove a fact. |
+| `ctx.cap.semanticMemory.allFacts(subject?)` | helper | Get all facts. |
+| `ctx.cap.semanticMemory.query(q, limit?, subject?)` | helper | Query by keyword. |
+| `ctx.cap.memory.recall(cue?)` | helper | Cross-store recall (composed capability only). |
+| **Types** | | |
+| `EpisodicMemoryCapabilityConfig` | type | Config for episodic capability factory. |
+| `SemanticMemoryCapabilityConfig` | type | Config for semantic capability factory. |
+| `AddSemanticFactInput` | type | Input for adding a semantic fact via capability. |
+
 ## Attention Exports
 
 - `scoreSalience(config)` → generator `BlockDefinition`
@@ -222,7 +320,166 @@ Three conflict resolution modes:
 
 ### Perspective
 
-- `perspective(config)` — Placeholder (FIX-201, not implemented)
+Adoptable viewpoint models that give AI systems the ability to reason from genuinely different analytical positions. A perspective encodes what to amplify and suppress (salience), how to reason (priorities, risk model), domain expertise, and communication style.
+
+```ts
+import { perspective, perspectiveAnalyze } from '@thought-fabric/core/identity'
+
+const securityEngineer = perspective({
+  name: 'security-engineer',
+  description: 'Evaluates through the lens of system security and threat modeling',
+  salience: {
+    amplify: ['authentication concerns', 'data exposure risks'],
+    suppress: ['UI/UX considerations', 'marketing positioning'],
+  },
+  reasoning: {
+    priorities: ['threat surface minimization', 'defense in depth'],
+    riskModel: 'Assumes adversarial actors. Evaluates worst-case scenarios.',
+  },
+  expertise: ['OWASP Top 10', 'Zero-trust architecture'],
+})
+
+// Analyze content through the perspective's lens
+const analysis = perspectiveAnalyze({
+  perspective: securityEngineer,
+  model: 'gpt-5',
+})
+
+const result = await analysis.run(
+  { content: 'Feature proposal: add public file sharing...' },
+  ctx,
+)
+// result.analysis, result.salienceNotes, result.recommendations
+```
+
+| Export | Kind | Description |
+|--------|------|-------------|
+| **Factory** | | |
+| `perspective(config)` | factory | Creates a frozen, validated perspective instance. |
+| **Block factories** | | |
+| `perspectiveAuditor(config)` | sequencer | Bundled pipeline: apply → analyze. |
+| `perspectiveAnalyze(config)` | generator | LLM-based analysis through the perspective's lens. |
+| `perspectiveApply(config)` | handler | Wraps content with perspective framing for downstream generators. |
+| **Schemas** | | |
+| `perspectiveConfigSchema` | Zod schema | Full perspective configuration. |
+| `perspectiveSalienceSchema` | Zod schema | `{ amplify: string[], suppress: string[] }` |
+| `perspectiveReasoningSchema` | Zod schema | `{ priorities: string[], riskModel?: string, successCriteria?: string }` |
+| `perspectiveCommunicationSchema` | Zod schema | `{ tone?, emphasis?, evidencePreference? }` |
+| `perspectiveAnalysisSchema` | Zod schema | Output: perspectiveName, analysis, salienceNotes, recommendations, confidence. |
+| `perspectiveInputSchema` | Zod schema | `{ content: string, context?: string }` |
+| `perspectiveApplyOutputSchema` | Zod schema | `{ content, perspectiveFrame, perspectiveName }` |
+| **Helpers** | | |
+| `formatPerspective(instance)` | pure function | Full perspective formatted for LLM system prompt. |
+| `formatPerspectiveSalience(salience)` | pure function | Salience section only. |
+| `formatPerspectiveReasoning(reasoning)` | pure function | Reasoning section only. |
+| `summarizePerspective(instance)` | pure function | One-line summary for logging and trace labels. |
+| `perspectiveContextFormatter(instance)` | factory | Returns a `context:` slot formatter bound to a perspective. |
+| **Types** | | |
+| `PerspectiveConfig` | type | Input to the `perspective()` factory. |
+| `PerspectiveInstance` | type | Frozen, validated perspective (returned by factory). |
+| `PerspectiveSalience` | type | Salience model: amplify + suppress. |
+| `PerspectiveReasoning` | type | Reasoning config: priorities, risk model, success criteria. |
+| `PerspectiveCommunication` | type | Communication style preferences. |
+| `PerspectiveAnalysis` | type | Structured analysis output. |
+| `PerspectiveBlockConfig` | type | Config for handler-based blocks. |
+| `PerspectiveAnalyzeConfig` | type | Config for generator-based blocks (adds `model`). |
+
+#### Resource-backed state (capability + system factory)
+
+The static blocks above are stateless — useful as one-shot prompt shapers. For perspectives that accumulate over a session (observations recorded, positions reached, conclusions challenged), use the capability or the `system()` bundle factory. Both are additive on top of the static foundation: the frozen `PerspectiveInstance` remains the initial configuration, and two session/user/project-scoped resources hold evolving state.
+
+```ts
+import { perspective, system } from '@thought-fabric/core/identity'
+import { defineFlow, generator, handler, sequencer } from '@flow-state-dev/core'
+
+const securityEngineer = perspective({ ... })
+
+// Bundle: pre-configured blocks + capability + helpers
+const sec = system(securityEngineer, {
+  positionScope: 'user', // positions persist across sessions for the user
+  model: 'gpt-5',
+})
+
+// Declarative capability use: auto-installs resources, context, and helpers
+const chat = generator({
+  name: 'chat',
+  model: 'gpt-5',
+  uses: [sec.capability],
+  user: (input) => input,
+  // Gets static framing + accumulated observations/positions injected as context,
+  // and ctx.cap.perspective.* typed helpers.
+})
+
+// Handler that records observations — opt out of context presets
+const observe = handler({
+  name: 'capture-findings',
+  uses: [sec.capability.presets({ static: false, accumulated: false })],
+  execute: async (input, ctx) => {
+    await ctx.cap.perspective.observe({
+      content: 'Auth endpoint lacks rate limiting',
+      category: 'concern',
+      confidence: 0.9,
+    })
+  },
+})
+
+// Or use the bundled capture sequencer (analyze → observe)
+const pipeline = sequencer({ name: 'review' })
+  .work((input) => ({ content: input.proposal }), sec.capture)
+  .then(nextBlock)
+
+// Wire resources in the flow
+const flow = defineFlow({
+  // ...
+  session: { resources: { ...sec.sessionResources, ...otherSession } },
+  user: { resources: { ...sec.userResources, ...otherUser } },
+})
+```
+
+**Capability presets:**
+- `static` (default on) — initial perspective framing (role, salience, reasoning, expertise)
+- `accumulated` (default on) — observations + positions formatted from the resources
+
+Disable either via `cap.presets({ accumulated: false })` when token budget is tight.
+
+| Export | Kind | Description |
+|--------|------|-------------|
+| **Capability + system** | | |
+| `createPerspectiveCapability(instance, config?)` | factory | Returns a capability bound to a perspective instance with configurable position scope. |
+| `system(instance, config?)` | factory | Full bundle: pre-configured blocks, `capture` sequencer, capability, helpers, resource declarations. |
+| **Stateful blocks** | | |
+| `perspectiveObserve(config)` | handler | Records observations. Accepts a `PerspectiveAnalysis` (promotes `salienceNotes`) or an explicit batch. |
+| `perspectivePosition(config)` | handler | Records a position (claim + reasoning) tied to supporting observation IDs. |
+| `perspectiveChallenge(config)` | handler | Appends counter-evidence to an existing position. |
+| `perspectiveSnapshot(config)` | handler | Reads current observations + positions + turn counter. |
+| `perspectiveAdvance(config)` | handler | Bumps the observation turn counter. Designed for `.tap()`. |
+| **Resources** | | |
+| `perspectiveObservationsResource` | resource | Singleton; the capability and bundled blocks always declare it at session scope. |
+| `perspectivePositionsResource` | resource | Singleton; scope is decided by where the capability or block declares it (session/user/project). |
+| **Schemas (Phase B)** | | |
+| `perspectiveObservationSchema` | Zod schema | `{ id, content, category, confidence, source?, addedAt }` |
+| `perspectiveObservationsStateSchema` | Zod schema | `{ observations[], turnCounter }` |
+| `perspectivePositionSchema` | Zod schema | `{ id, claim, reasoning, confidence, supportingObservations[], challenges[], addedAt }` |
+| `perspectivePositionsStateSchema` | Zod schema | `{ positions[] }` |
+| `perspectivePositionChallengeSchema` | Zod schema | `{ evidence, addedAt }` |
+| **Helpers (Phase B)** | | |
+| `addPerspectiveObservation(ref, input)` | helper | Record an observation with auto-generated id + turn stamp. |
+| `removePerspectiveObservation(ref, id)` | helper | Remove by id. |
+| `perspectiveObservations(ref, category?)` | accessor | Read observations (optionally filtered by category). |
+| `advancePerspectiveObservations(ref)` | helper | Bump turn counter. |
+| `formatPerspectiveObservations(ref)` | helper | Format grouped by category. |
+| `addPerspectivePosition(ref, input, obsRef?)` | helper | Record a position. |
+| `challengePerspectivePosition(ref, id, evidence, obsRef?)` | helper | Append counter-evidence. |
+| `removePerspectivePosition(ref, id)` | helper | Remove by id. |
+| `perspectivePositions(ref)` | accessor | Read positions in insertion order. |
+| `formatPerspectivePositions(ref)` | helper | Numbered list with reasoning + challenges. |
+| `formatPerspectiveAccumulated(obsRef, posRef?)` | helper | Combined observations + positions. |
+| **Types (Phase B)** | | |
+| `PerspectiveObservation` | type | A single recorded observation. |
+| `PerspectivePosition` | type | A recorded position with challenges. |
+| `PositionScope` | type | `'session' \| 'user' \| 'project'` |
+| `PerspectiveSystem` | type | Return type of `system()`. |
+| `PerspectiveCapability` | type | Return type of `createPerspectiveCapability()`. |
 
 ## Metacognition Exports
 

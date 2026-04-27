@@ -3,15 +3,24 @@ import type {
   BlockConfig,
   BlockContext,
   BlockDefinition,
+  BlockOutputHint,
   ConnectorFn,
   InferBlockResources,
   InferStateFromSchema
 } from "../types/block";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
-import type { CapabilityRef, InferCapabilities } from "../capability/types";
+import type { OutputItem } from "../items/types";
+import type { InferCapabilities, UsesEntry } from "../capability/types";
 import { buildBlock, extractDeclaredResources, mergeDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
+import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
+import {
+  blockPathBranch,
+  buildBlockInstanceId,
+  extendBlockPath,
+  ROOT_BLOCK_PATH
+} from "./internal/block-instance-id";
 import { isBlockDefinition } from "./internal/utils";
 
 /**
@@ -19,7 +28,7 @@ import { isBlockDefinition } from "./internal/utils";
  * This ensures resources declared deep in route pipelines bubble up through the
  * router to the flow level.
  */
-function mergeRouterResources(config: { routes?: BlockDefinition<any, any>[]; sessionResources?: Record<string, DeclaredResourceEntry>; userResources?: Record<string, DeclaredResourceEntry>; projectResources?: Record<string, DeclaredResourceEntry> }) {
+function mergeRouterResources(config: { routes?: BlockDefinition<any, any>[]; resources?: Record<string, DeclaredResourceEntry> }) {
   let merged = extractDeclaredResources(config);
   if (config.routes) {
     for (const route of config.routes) {
@@ -45,42 +54,28 @@ export interface RouterConfig<
   TRequestStateSchema extends ZodTypeAny | undefined = undefined,
   TSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
-  TProjectStateSchema extends ZodTypeAny | undefined = undefined,
+  TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   // Derive-once: evaluate z.infer exactly once per provided schema
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
   TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
-  TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
+  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
   TSequencerState extends object = InferStateFromSchema<TSequencerStateSchema>,
-  // Resource schemas — optional, default to undefined (no typed resources)
-  TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
-  TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
-  TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
-  // Resource definitions — optional, provide typing AND auto-installation
-  TSessionResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TUserResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TProjectResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  // Derive-once: map resource schemas/definitions to typed ResourceRef records
-  TSessionResources extends Record<string, AnyResourceRef> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
-  TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
-  TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TResources extends Record<string, AnyResourceRef> = InferBlockResources<undefined, TResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
   // Capability type inference
-  TUses extends readonly CapabilityRef[] = readonly [],
+  TUses extends readonly UsesEntry[] = readonly [],
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
 > extends Omit<BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>, "execute"> {
   requestStateSchema?: TRequestStateSchema;
   sessionStateSchema?: TSessionStateSchema;
   userStateSchema?: TUserStateSchema;
-  projectStateSchema?: TProjectStateSchema;
+  orgStateSchema?: TOrgStateSchema;
   sequencerStateSchema?: TSequencerStateSchema;
-  sessionResourceSchemas?: TSessionResourceSchemas;
-  userResourceSchemas?: TUserResourceSchemas;
-  projectResourceSchemas?: TProjectResourceSchemas;
-  sessionResources?: TSessionResourceDefs;
-  userResources?: TUserResourceDefs;
-  projectResources?: TProjectResourceDefs;
+  /** Flat resource declaration. See `HandlerConfig.resources` (FIX-435). */
+  resources?: TResourceDefs;
   connectInput?: ConnectorFn<unknown, TInput>;
   targetStateSchemas?: TTargetSchemas;
   /** Capabilities to install. Merges resources, state schemas, targets,
@@ -90,8 +85,8 @@ export interface RouterConfig<
   execute: (
     input: TInput,
     ctx: BlockContext<
-      TRequestState, TSessionState, TUserState, TProjectState,
-      TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas,
+      TRequestState, TSessionState, TUserState, TOrgState,
+      TResources, TSequencerState, unknown, TTargetSchemas,
       TCapabilities
     >
   ) => Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>;
@@ -100,8 +95,8 @@ export interface RouterConfig<
     routes: BlockDefinition<TInputSchema, TOutputSchema>[],
     input: TInput,
     ctx: BlockContext<
-      TRequestState, TSessionState, TUserState, TProjectState,
-      TSessionResources, TUserResources, TProjectResources, TSequencerState, unknown, TTargetSchemas,
+      TRequestState, TSessionState, TUserState, TOrgState,
+      TResources, TSequencerState, unknown, TTargetSchemas,
       TCapabilities
     >
   ) => Promise<boolean> | boolean;
@@ -120,33 +115,24 @@ export function router<
   TRequestStateSchema extends ZodTypeAny | undefined = undefined,
   TSessionStateSchema extends ZodTypeAny | undefined = undefined,
   TUserStateSchema extends ZodTypeAny | undefined = undefined,
-  TProjectStateSchema extends ZodTypeAny | undefined = undefined,
+  TOrgStateSchema extends ZodTypeAny | undefined = undefined,
   TSequencerStateSchema extends ZodTypeAny | undefined = undefined,
   TRequestState extends object = InferStateFromSchema<TRequestStateSchema>,
   TSessionState extends object = InferStateFromSchema<TSessionStateSchema>,
   TUserState extends object = InferStateFromSchema<TUserStateSchema>,
-  TProjectState extends object = InferStateFromSchema<TProjectStateSchema>,
+  TOrgState extends object = InferStateFromSchema<TOrgStateSchema>,
   TSequencerState extends object = InferStateFromSchema<TSequencerStateSchema>,
-  TSessionResourceSchemas extends ZodTypeAny | undefined = undefined,
-  TUserResourceSchemas extends ZodTypeAny | undefined = undefined,
-  TProjectResourceSchemas extends ZodTypeAny | undefined = undefined,
-  TSessionResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TUserResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TProjectResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
-  TSessionResources extends Record<string, AnyResourceRef> = InferBlockResources<TSessionResourceSchemas, TSessionResourceDefs>,
-  TUserResources extends Record<string, AnyResourceRef> = InferBlockResources<TUserResourceSchemas, TUserResourceDefs>,
-  TProjectResources extends Record<string, AnyResourceRef> = InferBlockResources<TProjectResourceSchemas, TProjectResourceDefs>,
+  TResourceDefs extends Record<string, DeclaredResourceEntry> | undefined = undefined,
+  TResources extends Record<string, AnyResourceRef> = InferBlockResources<undefined, TResourceDefs>,
   TTargetSchemas extends Record<string, ZodTypeAny> | undefined = undefined,
-  TUses extends readonly CapabilityRef[] = readonly [],
+  TUses extends readonly UsesEntry[] = readonly [],
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = InferCapabilities<TUses>,
 >(
   config: RouterConfig<
     TInputSchema, TOutputSchema, TInput, TOutput,
-    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TProjectStateSchema, TSequencerStateSchema,
-    TRequestState, TSessionState, TUserState, TProjectState, TSequencerState,
-    TSessionResourceSchemas, TUserResourceSchemas, TProjectResourceSchemas,
-    TSessionResourceDefs, TUserResourceDefs, TProjectResourceDefs,
-    TSessionResources, TUserResources, TProjectResources, TTargetSchemas,
+    TRequestStateSchema, TSessionStateSchema, TUserStateSchema, TOrgStateSchema, TSequencerStateSchema,
+    TRequestState, TSessionState, TUserState, TOrgState, TSequencerState,
+    TResourceDefs, TResources, TTargetSchemas,
     TUses, TCapabilities
   >
 ): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
@@ -163,11 +149,19 @@ export function router<
       )
     : routerResources;
 
+  // Bubble `requireOrg` up from any route block. Without this, a route
+  // declaring `requireOrg: true` would be silently lost — the router's
+  // requiresOrg would stay `false`, and the flow's HTTP layer wouldn't
+  // reject requests against unbound sessions as intended.
+  const routesRequireOrg = config.routes !== undefined
+    && config.routes.some((route) => route.requiresOrg);
+
   return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
     kind: "router",
     config: config as unknown as BlockConfig<TInputSchema, TOutputSchema, TInput, TOutput>,
     declaredResources,
     resolvedCapabilities,
+    requiresOrg: routesRequireOrg,
     execute: async (input, ctx) => {
       const candidate = (config.execute as (input: TInput, ctx: BlockContext) =>
         Promise<BlockDefinition<TInputSchema, TOutputSchema>> | BlockDefinition<TInputSchema, TOutputSchema>
@@ -199,6 +193,7 @@ export function router<
       const startedAt = Date.now();
       const runSelected = async (scopedCtx: BlockContext): Promise<TOutput> => {
         scopedCtx._runtimeHooks?.onBlockStart?.(selected.name, selected.kind, input);
+        resolveActiveStatusMessage(selected, input, scopedCtx);
         try {
           const output = await selected.run(input, scopedCtx);
           scopedCtx._runtimeHooks?.onBlockComplete?.(selected.name, selected.kind, output, Date.now() - startedAt);
@@ -209,8 +204,32 @@ export function router<
         }
       };
 
+      // Router output is always pass-through from the selected route (FIX-413).
+      // After the selected block emits its block_output, record a `ref`
+      // descriptor on the outer ctx so the router's own block_output carries
+      // the ref instead of duplicating content. Set AFTER runSelected below.
+      const installRouterHint = (selectedInstanceId: string): void => {
+        const response = ctx.response as unknown as { getItems?: () => OutputItem[] } | undefined;
+        if (response === undefined || typeof response.getItems !== "function") return;
+        const items = response.getItems();
+        for (let i = items.length - 1; i >= 0; i -= 1) {
+          const item = items[i];
+          if (item.type === "block_output" && item.provenance?.blockInstanceId === selectedInstanceId) {
+            (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = {
+              kind: "ref",
+              sourceItemId: item.id
+            };
+            return;
+          }
+        }
+      };
+
       if (ctx._withExecutionScope === undefined) {
-        return runSelected(ctx);
+        const out = await runSelected(ctx);
+        // Standalone path: selected block's blockInstanceId comes from the
+        // outer scope's identity. Route by name match (fallback).
+        installRouterHint(ctx._blockIdentity?.blockInstanceId ?? "");
+        return out;
       }
 
       const containerConfig =
@@ -218,11 +237,20 @@ export function router<
           ? (selected.config as { container?: { component?: string; label?: string | ((input: unknown) => string); metadata?: Record<string, unknown> | ((input: unknown) => Record<string, unknown>); } }).container
           : undefined;
 
-      return ctx._withExecutionScope(
+      const parentPath = ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
+      const selectedPath = extendBlockPath(parentPath, blockPathBranch(selected.name));
+      const selectedInstanceId = buildBlockInstanceId(
+        ctx.request.identity.id,
+        selectedPath,
+        0
+      );
+
+      const out = await ctx._withExecutionScope(
         {
           name: selected.name,
           kind: selected.kind,
-          instanceId: `${selected.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          instanceId: selectedInstanceId,
+          path: selectedPath,
           stateSchema: selected.kind === "sequencer" ? selected.config.stateSchema : undefined,
           input,
           container:
@@ -242,6 +270,12 @@ export function router<
         },
         runSelected
       );
+
+      // After the selected block has emitted its block_output, record the
+      // router's own ref descriptor so its outer emitter carries a ref, not
+      // a duplicate of the selected block's content (FIX-413).
+      installRouterHint(selectedInstanceId);
+      return out;
     }
   });
 }

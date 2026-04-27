@@ -11,7 +11,7 @@ import type { StoreRegistry } from "../stores/types";
 export type RequestRuntime = {
   requestId: string;
   actionName: string;
-  status: "in_progress" | "completed" | "incomplete" | "failed" | "interrupted";
+  status: "in_progress" | "completed" | "incomplete" | "failed" | "interrupted" | "aborted";
   startedAtMs: number;
   completedAtMs?: number;
   failedAtMs?: number;
@@ -22,8 +22,8 @@ export type ExecutionContext<
   TRequestState extends JsonObject = JsonObject,
   TSessionState extends JsonObject = JsonObject,
   TUserState extends JsonObject = JsonObject,
-  TProjectState extends JsonObject = JsonObject
-> = BlockContext<TRequestState, TSessionState, TUserState, TProjectState> & {
+  TOrgState extends JsonObject = JsonObject
+> = BlockContext<TRequestState, TSessionState, TUserState, TOrgState> & {
   flow: FlowInstance;
   actionName: string;
   requestRuntime: RequestRuntime;
@@ -34,18 +34,18 @@ export type CreateExecutionContextOptions<
   TRequestState extends JsonObject = JsonObject,
   TSessionState extends JsonObject = JsonObject,
   TUserState extends JsonObject = JsonObject,
-  TProjectState extends JsonObject = JsonObject
+  TOrgState extends JsonObject = JsonObject
 > = {
   flow: FlowInstance;
   actionName: string;
   requestId: string;
   userId?: string;
   sessionId?: string;
-  projectId?: string;
+  orgId?: string;
   requestState?: TRequestState;
   sessionState?: TSessionState;
   userState?: TUserState;
-  projectState?: TProjectState;
+  orgState?: TOrgState;
   metadata?: Record<string, unknown>;
   input?: unknown;
   signal?: AbortSignal;

@@ -8,7 +8,7 @@
  * tools to explore, search, and recursively sub-query over large contexts.
  *
  * This module exports reusable blocks and a pipeline builder. Consumers wire
- * these into their own flows — see kitchen-sink for an integration example.
+ * these into their own flows — see apps/kitchen-sink for an integration example.
  *
  * Patterns validated:
  *   - generator-as-tool (recursive AI composition)
@@ -20,6 +20,7 @@ import { generator, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { peek, grep, chunk } from "./blocks";
 import {
+  contextResource,
   contextResourceStateSchema,
   rlmQueryInputSchema,
   subQueryOutputSchema,
@@ -39,7 +40,7 @@ export const subQueryGenerator = generator({
     "Process a sub-query on a context subset. " +
     "Use when you need to analyze a specific portion of the context in detail.",
   model: (_input, ctx) =>
-    ctx.session.resources.get("context")?.state.metadata?.model ?? "gpt-4o-mini",
+    ctx.resources.context?.state.metadata?.model ?? "gpt-4o-mini",
 
   inputSchema: z.object({
     query: z.string().describe("The specific sub-question to answer"),
@@ -57,16 +58,16 @@ export const subQueryGenerator = generator({
     "- If the context doesn't contain relevant information, say so and set confidence to 0"
   ].join("\n"),
 
-  context: [
-    (input) =>
-      `Context subset (${input.contextSubset.length} chars) has been loaded. Use tools to explore it.`
-  ],
+  context: {
+    'context-subset': (input) =>
+      `Context subset (${input.contextSubset.length} chars) has been loaded. Use tools to explore it.`,
+  },
   user: (input) => input.query,
   tools: [peek, grep, chunk],
   maxIterations: 5,
   outputSchema: subQueryOutputSchema,
-  sessionResourceSchemas: z.object({ context: contextResourceStateSchema }),
-  emit: { messages: true }
+  resources: { context: contextResource },
+  agentType: "sub",
 });
 
 // ---------------------------------------------------------------------------
@@ -78,7 +79,7 @@ export const subQueryGenerator = generator({
 export const rootGenerator = generator({
   name: "rlm-root",
   model: (_input, ctx) =>
-    ctx.session.resources.get("context")?.state.metadata?.model ?? "gpt-4o-mini",
+    ctx.resources.context?.state.metadata?.model ?? "gpt-4o-mini",
 
   inputSchema: z.object({
     query: z.string()
@@ -101,9 +102,9 @@ export const rootGenerator = generator({
     "Be thorough but efficient. Don't read the entire context if you can find what you need with grep."
   ].join("\n"),
 
-  context: [
-    (_input, ctx) => {
-      const contextHandle = ctx.session.resources.get("context");
+  context: {
+    'source-document': (_input, ctx) => {
+      const contextHandle = ctx.resources.context;
       const text = contextHandle?.state.text ?? "";
       const meta = contextHandle?.state.metadata;
       return [
@@ -111,17 +112,14 @@ export const rootGenerator = generator({
         meta?.tokenEstimate ? `(~${meta.tokenEstimate} tokens estimated)` : "",
         meta?.source ? `Source: ${meta.source}` : ""
       ].filter(Boolean).join(". ");
-    }
-  ],
+    },
+  },
   user: (input) => input.query,
   tools: [peek, grep, chunk, subQueryGenerator],
   maxIterations: 10,
   outputSchema: rlmOutputSchema,
-  sessionResourceSchemas: z.object({ context: contextResourceStateSchema }),
-  emit: {
-    messages: true,
-    reasoning: true
-  }
+  resources: { context: contextResource },
+  agentType: "primary",
 });
 
 // ---------------------------------------------------------------------------
@@ -134,10 +132,10 @@ export const storeContext = handler({
   name: "rlm-store-context",
   inputSchema: rlmQueryInputSchema,
   outputSchema: z.object({ query: z.string() }),
-  sessionResourceSchemas: z.object({ context: contextResourceStateSchema }),
+  resources: { context: contextResource },
 
   execute: async (input, ctx) => {
-    const contextHandle = ctx.session.resources.get("context");
+    const contextHandle = ctx.resources.context;
     if (contextHandle) {
       await contextHandle.updateState(async () => ({
         text: input.context,
@@ -165,6 +163,7 @@ export const rlmPipeline = sequencer({ name: "rlm-pipeline", inputSchema: rlmQue
 
 // Re-export schemas and blocks for consumers that need finer-grained access.
 export {
+  contextResource,
   contextResourceStateSchema,
   rlmQueryInputSchema,
   subQueryOutputSchema,

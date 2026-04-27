@@ -6,11 +6,13 @@ export type {
 } from "./context/types";
 export {
   ConcurrentModificationError,
+  createFilesystemContentStore,
   createFilesystemProjectStore,
   createFilesystemRequestStore,
   createFilesystemSessionStore,
   createFilesystemStores,
   createFilesystemUserStore,
+  createInMemoryContentStore,
   createInMemoryProjectStore,
   createInMemoryRequestStore,
   createInMemorySessionStore,
@@ -18,14 +20,19 @@ export {
   createInMemoryUserStore,
   createScopeStateOps,
   createStateContainer,
+  resolveOrgStorageKey,
+  resolveUserStorageKey,
   runWithCAS
 } from "./stores";
 export type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
-  ProjectListOptions,
-  ProjectRecord,
-  ProjectStore,
+  ContentScopeType,
+  ContentStore,
+  ExpectedVersion,
+  OrgListOptions,
+  OrgRecord,
+  OrgStore,
   RequestListOptions,
   RequestRecord,
   RequestStatus,
@@ -33,6 +40,7 @@ export type {
   SessionListOptions,
   SessionRecord,
   SessionStore,
+  SetResult,
   StoreRegistry,
   UserListOptions,
   UserRecord,
@@ -76,7 +84,11 @@ export type {
   PresetConfig,
   FallbackModelEntry,
   ResolveAiSdkSpeechModel,
-  ResolveAiSdkTranscriptionModel
+  ResolveAiSdkTranscriptionModel,
+  ProviderPreference,
+  ResolveOptions,
+  ExplainCandidate,
+  ExplainResult
 } from "@flow-state-dev/core/models";
 export {
   FlowError,
@@ -89,6 +101,10 @@ export {
   AmbiguousBlockNameError
 } from "./errors/flow-error";
 export { normalizeError } from "./errors/normalize-error";
+export {
+  OrgBindingMismatchError,
+  UserBindingMismatchError
+} from "./context/binding-errors";
 
 export {
   createSentenceBuffer,

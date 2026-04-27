@@ -3,6 +3,153 @@ import { z } from "zod";
 import { MockLanguageModelV3 } from "ai/test";
 import { createAiSdkModelResolver, wrapAiSdkModel } from "../../src/models";
 
+function makeLargeSystemContent(): string {
+  return "x".repeat(4400);
+}
+
+describe("createAiSdkModelResolver — prompt caching", () => {
+  it("stamps Anthropic cacheControl on the last system message by default", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 100, noCache: 90, cacheRead: 10, cacheWrite: undefined },
+          outputTokens: { total: 5, text: 5, reasoning: undefined },
+        },
+        warnings: [],
+      }),
+    });
+    // The provider string is what drives adapter flavor selection.
+    (model as any).provider = "anthropic.messages";
+
+    const resolver = createAiSdkModelResolver(() => model);
+    await resolver("anthropic/claude-sonnet-4-6", "gen").generate({
+      messages: [
+        { role: "system", content: makeLargeSystemContent() },
+        { role: "user", content: "hi" },
+      ],
+    });
+
+    const request = model.doGenerateCalls[0]!;
+    const prompt = request.prompt as any[];
+    const systemMsg = prompt.find((m) => m.role === "system");
+    expect(systemMsg?.providerOptions?.anthropic?.cacheControl).toEqual({
+      type: "ephemeral",
+      ttl: "5m",
+    });
+  });
+
+  it("passes caching: { enabled: false } through without markers", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 50, noCache: 50, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 5, text: 5, reasoning: undefined },
+        },
+        warnings: [],
+      }),
+    });
+    (model as any).provider = "anthropic.messages";
+
+    const resolver = createAiSdkModelResolver(() => model);
+    await resolver("anthropic/claude-sonnet-4-6", "gen").generate({
+      messages: [
+        { role: "system", content: makeLargeSystemContent() },
+        { role: "user", content: "hi" },
+      ],
+      caching: { enabled: false },
+    });
+
+    const request = model.doGenerateCalls[0]!;
+    const prompt = request.prompt as any[];
+    const systemMsg = prompt.find((m) => m.role === "system");
+    expect(systemMsg?.providerOptions).toBeUndefined();
+  });
+
+  it("propagates Anthropic cache token counts through the normalised usage", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 100, noCache: 100, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 5, text: 5, reasoning: undefined },
+        },
+        providerMetadata: {
+          anthropic: {
+            cacheReadInputTokens: 2048,
+            cacheCreationInputTokens: 128,
+          },
+        },
+        warnings: [],
+      }),
+    });
+    (model as any).provider = "anthropic.messages";
+
+    const resolver = createAiSdkModelResolver(() => model);
+    const result = await resolver("anthropic/claude-sonnet-4-6", "gen").generate({
+      messages: [{ role: "user", content: "hi" }],
+    });
+
+    expect(result.usage?.cacheReadInputTokens).toBe(2048);
+    expect(result.usage?.cacheCreationInputTokens).toBe(128);
+  });
+
+  it("maps AI SDK v6 input token detail cache counts into framework usage", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 100, noCache: 60, cacheRead: 30, cacheWrite: 10 },
+          outputTokens: { total: 5, text: 5, reasoning: undefined },
+        },
+        warnings: [],
+      }),
+    });
+    (model as any).provider = "anthropic.messages";
+
+    const resolver = createAiSdkModelResolver(() => model);
+    const result = await resolver("anthropic/claude-sonnet-4-6", "gen").generate({
+      messages: [{ role: "user", content: "hi" }],
+    });
+
+    expect(result.usage).toEqual({
+      promptTokens: 100,
+      completionTokens: 5,
+      totalTokens: 105,
+      cacheReadInputTokens: 30,
+      cacheCreationInputTokens: 10,
+    });
+  });
+
+  it("opts Vercel AI Gateway into providerOptions.gateway.caching: 'auto'", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 20, noCache: 20, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 2, text: 2, reasoning: undefined },
+        },
+        warnings: [],
+      }),
+    });
+    (model as any).provider = "gateway.chat";
+
+    const resolver = createAiSdkModelResolver(() => model);
+    await resolver("vercel/anthropic/claude-sonnet-4-6", "gen").generate({
+      messages: [{ role: "user", content: "hi" }],
+    });
+
+    const request = model.doGenerateCalls[0]!;
+    expect((request.providerOptions as any)?.gateway?.caching).toBe("auto");
+  });
+});
+
 describe("createAiSdkModelResolver", () => {
   it("maps text, finish reason, and usage into GeneratorModelResult", async () => {
     const resolver = createAiSdkModelResolver((modelId) => {
@@ -254,5 +401,96 @@ describe("createAiSdkModelResolver", () => {
         cacheReadInputTokens: 9
       }
     });
+  });
+
+  it("resolves modelId from prepareStep to switch models between generate steps", async () => {
+    const resolvedModelIds: string[] = [];
+
+    // Primary model: returns a tool call to trigger multi-step
+    const primaryModel = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [
+          { type: "tool-call", toolCallId: "call_1", toolName: "lookup", input: { q: "test" } }
+        ],
+        finishReason: { unified: "tool-calls", raw: undefined },
+        usage: {
+          inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 3, text: undefined, reasoning: undefined }
+        },
+        warnings: []
+      })
+    });
+
+    // Switched model: returns final text
+    const switchedModel = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "from switched model" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 8, noCache: 8, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 4, text: 4, reasoning: undefined }
+        },
+        warnings: []
+      })
+    });
+
+    const resolver = createAiSdkModelResolver((modelId) => {
+      resolvedModelIds.push(modelId);
+      return modelId === "fast-model" ? switchedModel : primaryModel;
+    });
+
+    const model = resolver("primary-model", "gen");
+    const result = await model.generate({
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{
+        name: "lookup",
+        description: "Lookup data",
+        parameters: z.object({ q: z.string() }),
+        execute: async () => ({ answer: "42" })
+      }],
+      maxSteps: 3,
+      prepareStep: async ({ stepNumber }) => {
+        if (stepNumber === 1) {
+          return { modelId: "fast-model" };
+        }
+        return undefined;
+      }
+    });
+
+    // Resolver called for initial model and for the switched model
+    expect(resolvedModelIds).toContain("primary-model");
+    expect(resolvedModelIds).toContain("fast-model");
+
+    // The switched model was actually invoked
+    expect(switchedModel.doGenerateCalls.length).toBeGreaterThanOrEqual(1);
+
+    // Final result reflects the switched model's output
+    expect(result.text).toBe("from switched model");
+  });
+
+  it("ignores modelId in prepareStep when using wrapAiSdkModel (no resolver)", async () => {
+    // wrapAiSdkModel does not have a resolver, so modelId should be silently ignored
+    const model = wrapAiSdkModel(new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "original model" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 3, text: 3, reasoning: undefined }
+        },
+        warnings: []
+      })
+    }));
+
+    // Should not throw even when prepareStep returns modelId
+    const result = await model.generate({
+      messages: [{ role: "user", content: "hi" }],
+      maxSteps: 2,
+      prepareStep: async () => {
+        return { modelId: "nonexistent-model" };
+      }
+    });
+
+    expect(result.text).toBe("original model");
   });
 });

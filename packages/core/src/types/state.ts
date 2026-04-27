@@ -3,10 +3,24 @@ export type CASOptions = {
   baseDelayMs?: number;
 };
 
+/**
+ * In-request state cache used by the CAS retry loop.
+ *
+ * The container holds the last-known state and version for a scope within a
+ * single request so repeated reads don't re-hit the underlying store. It no
+ * longer enforces CAS — the store's `set(expectedVersion)` contract does that.
+ * The container is refreshed on both successful writes and write conflicts so
+ * its view stays consistent with the store.
+ */
 export interface StateContainer<TState = unknown> {
   read(): Readonly<TState>;
   getVersion(): number;
-  persist(nextState: TState, expectedVersion?: number): Promise<Readonly<TState> | null>;
+  /**
+   * Replace the cached state and version. Called after a successful CAS write
+   * (with the new version) and after a conflict (with the store's current
+   * value/version so the next retry starts from the true current state).
+   */
+  commit(nextState: TState, version: number): Readonly<TState>;
 }
 
 export interface ScopeStateOps<TState extends object> {

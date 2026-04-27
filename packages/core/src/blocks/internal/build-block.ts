@@ -15,53 +15,28 @@ import { toError } from "./utils";
 /**
  * Extract resource declarations from a block config into a `DeclaredResources`
  * metadata object. Returns `undefined` when no resources are declared.
+ *
+ * The flat `resources` field is the canonical source under FIX-435; each
+ * resource's intrinsic `scope` is what routes it to a storage layer at
+ * registry-construction time.
  */
 export function extractDeclaredResources(config: {
-  sessionResources?: Record<string, DefinedResource | DefinedResourceCollection>;
-  userResources?: Record<string, DefinedResource | DefinedResourceCollection>;
-  projectResources?: Record<string, DefinedResource | DefinedResourceCollection>;
+  resources?: Record<string, DefinedResource | DefinedResourceCollection>;
 }): DeclaredResources | undefined {
-  const result: DeclaredResources = {};
-  if (config.sessionResources) result.session = config.sessionResources;
-  if (config.userResources) result.user = config.userResources;
-  if (config.projectResources) result.project = config.projectResources;
-  return Object.keys(result).length > 0 ? result : undefined;
-}
-
-type ResourceScope = "session" | "user" | "project";
-type ResourceEntry = DefinedResource | DefinedResourceCollection;
-
-/**
- * Merge a scope-level resource map from `source` into `target`.
- * Same reference → no conflict.
- * Different references → build-time error.
- */
-function mergeScopeResources(
-  target: Record<string, ResourceEntry>,
-  source: Record<string, ResourceEntry>,
-  scope: ResourceScope
-): void {
-  for (const [name, resource] of Object.entries(source)) {
-    const existing = target[name];
-    if (existing === undefined) {
-      target[name] = resource;
-      continue;
-    }
-
-    // Same reference — no conflict
-    if (existing === resource) {
-      continue;
-    }
-
-    throw new Error(
-      `Resource conflict: "${name}" in ${scope} scope is declared with different defineResource() references. Use the same reference across blocks.`
-    );
+  if (config.resources === undefined || Object.keys(config.resources).length === 0) {
+    return undefined;
   }
+  return { ...config.resources };
 }
 
 /**
- * Merge two `DeclaredResources` objects. Mutates `target` in place and returns it.
- * Returns `undefined` when both inputs are undefined.
+ * Merge two flat `DeclaredResources` objects. Same accessor key + same
+ * `defineResource()` reference deduplicates; same accessor key with a
+ * different reference is a build-time error.
+ *
+ * Effective-storage-key collisions (different accessor keys pointing at the
+ * same `(scope, ref, flowIsolation)`) are detected at flow-build time, not
+ * here — this layer only merges the bubble-up sets.
  */
 export function mergeDeclaredResources(
   target: DeclaredResources | undefined,
@@ -70,15 +45,16 @@ export function mergeDeclaredResources(
   if (source === undefined) return target;
   if (target === undefined) return { ...source };
 
-  const scopes: ResourceScope[] = ["session", "user", "project"];
-  for (const scope of scopes) {
-    const sourceScope = source[scope];
-    if (sourceScope === undefined) continue;
-    if (target[scope] === undefined) {
-      target[scope] = { ...sourceScope };
-    } else {
-      mergeScopeResources(target[scope]!, sourceScope, scope);
+  for (const [name, resource] of Object.entries(source)) {
+    const existing = target[name];
+    if (existing === undefined) {
+      target[name] = resource;
+      continue;
     }
+    if (existing === resource) continue;
+    throw new Error(
+      `Resource conflict: "${name}" is declared with different defineResource() references. Use the same reference across blocks, or pick distinct accessor keys.`
+    );
   }
 
   return target;
@@ -106,6 +82,11 @@ export type BuildBlockOptions<
   declaredResources?: DeclaredResources;
   /** Resolved capabilities from `uses`, stored for ctx.cap construction at runtime. */
   resolvedCapabilities?: CapabilityRef[];
+  /**
+   * Pre-computed `requiresOrg` derived from child blocks. Sequencer/router
+   * builders OR this with their own `config.requireOrg`. Leaves omit it.
+   */
+  requiresOrg?: boolean;
 };
 
 function validateSchema<TValue>(
@@ -163,6 +144,11 @@ export function buildBlock<
 
   const transient = config.transient === true;
 
+  // Bubble: a block requires org if it declares `requireOrg: true` or any
+  // descendant requires it (sequencer/router builders pass children's
+  // aggregate as `options.requiresOrg`).
+  const requiresOrg = Boolean(config.requireOrg) || Boolean(options.requiresOrg);
+
   const definition: BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> = {
     kind,
     name: runtimeConfig.name,
@@ -172,11 +158,18 @@ export function buildBlock<
     outputSchema: resolvedOutputSchema,
     config: runtimeConfig,
     declaredResources: options.declaredResources,
+    requiresOrg,
     async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       try {
         const connectedInput = runtimeConfig.connectInput
           ? await runtimeConfig.connectInput(rawInput, ctx)
           : rawInput;
+        // Fire the runtime hook only when the connector actually transformed
+        // the value. Identity check avoids spurious debug items when the
+        // connector is a no-op passthrough.
+        if (runtimeConfig.connectInput && connectedInput !== rawInput) {
+          ctx._runtimeHooks?.onConnectedInput?.(connectedInput, ctx);
+        }
         const validatedInput = validateSchema<TInput>(runtimeConfig.inputSchema, connectedInput, "input", runtimeConfig.name);
         const output = await internalExecute(validatedInput, ctx);
         const validatedOutput = validateSchema<TOutput>(
@@ -215,6 +208,7 @@ export function buildBlock<
         config: nextConfig,
         execute: internalExecute as unknown as ExecuteFn<ZodTypeAny, TOutputSchema, unknown, TOutput>,
         declaredResources: definition.declaredResources,
+        requiresOrg: definition.requiresOrg,
       });
     },
     connectOutput<TTo>(
@@ -236,6 +230,7 @@ export function buildBlock<
         config: nextConfig,
         execute: mappedExecute,
         declaredResources: definition.declaredResources,
+        requiresOrg: definition.requiresOrg,
       });
     }
   };

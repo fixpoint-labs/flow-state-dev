@@ -1,12 +1,14 @@
 import type { ZodTypeAny } from "zod";
-import type { BlockContext, BlockDefinition, RetryPolicy } from "./block";
+import type { BlockContext, BlockDefinition, DeclaredResourceEntry, RetryPolicy } from "./block";
 import type { Middleware } from "./middleware";
 import type {
+  DefinedResource,
   ResourceConfig,
   ResourceRef,
   StateOf
 } from "./resource";
 import type {
+  DefinedResourceCollection,
   ResourceCollectionConfig,
   ResourceCollectionRef
 } from "./resource-collection";
@@ -14,12 +16,15 @@ import type { TokenCounter } from "./tokens";
 import type { JsonObject, JsonValue } from "../schema/common";
 import type { VoiceConfig } from "./speech";
 
+/** Legacy scope-keyed config alias preserved for type-internal usage. */
 export type ScopeResourceConfig = ResourceConfig | ResourceCollectionConfig;
 
-type InferResourceRefs<TResources extends Record<string, ScopeResourceConfig>> = {
-  [K in keyof TResources]: TResources[K] extends ResourceCollectionConfig
-    ? ResourceCollectionRef<StateOf<TResources[K]> extends import("../schema/common").JsonObject ? StateOf<TResources[K]> : import("../schema/common").JsonObject>
-    : ResourceRef<StateOf<TResources[K]>>;
+type InferResourceRefs<TResources extends Record<string, DeclaredResourceEntry>> = {
+  [K in keyof TResources]: TResources[K] extends DefinedResourceCollection<infer S>
+    ? ResourceCollectionRef<S>
+    : TResources[K] extends DefinedResource<infer S>
+      ? ResourceRef<S>
+      : ResourceRef<StateOf<TResources[K]>>;
 };
 
 /** Union of handle types that can appear in a resource registry. */
@@ -120,13 +125,19 @@ export type RetentionPolicy = {
   maxAge?: number | string;
 };
 
-export type SessionConfig<
-  TResources extends Record<string, ScopeResourceConfig> = Record<string, ScopeResourceConfig>
-> = {
+/**
+ * Per-scope configs (`session`, `user`, `org`) carry only state and
+ * client-data hooks. Resources live in the flow-level `resources` field
+ * (FIX-435) — the resource's intrinsic `scope` decides where it persists.
+ */
+export type SessionConfig = {
   metadata?: ZodTypeAny;
   stateSchema?: ZodTypeAny;
-  resources?: TResources;
-  clientData?: Record<string, ClientDataComputeFn<JsonObject, InferResourceRefs<TResources>>>;
+  /**
+   * Client-visible derivations of session state (and optionally session-scoped
+   * resources reachable through the flow's flat `resources` map).
+   */
+  clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
   /** Retention policy that bounds session item log size. */
   retention?: RetentionPolicy;
 };
@@ -145,20 +156,14 @@ export type RequestConfig = {
   heartbeatIntervalMs?: number;
 };
 
-export type UserConfig<
-  TResources extends Record<string, ScopeResourceConfig> = Record<string, ScopeResourceConfig>
-> = {
+export type UserConfig = {
   stateSchema?: ZodTypeAny;
-  resources?: TResources;
-  clientData?: Record<string, ClientDataComputeFn<JsonObject, InferResourceRefs<TResources>>>;
+  clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
 };
 
-export type ProjectConfig<
-  TResources extends Record<string, ScopeResourceConfig> = Record<string, ScopeResourceConfig>
-> = {
+export type OrgConfig = {
   stateSchema?: ZodTypeAny;
-  resources?: TResources;
-  clientData?: Record<string, ClientDataComputeFn<JsonObject, InferResourceRefs<TResources>>>;
+  clientData?: Record<string, ClientDataComputeFn<JsonObject>>;
 };
 
 export type WorkConfig = {
@@ -173,8 +178,9 @@ export type FlowDefinition<
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
-  TProject extends ProjectConfig | undefined = ProjectConfig | undefined,
-  TWork extends WorkConfig | undefined = WorkConfig | undefined
+  TOrg extends OrgConfig | undefined = OrgConfig | undefined,
+  TWork extends WorkConfig | undefined = WorkConfig | undefined,
+  TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
   kind: string;
   requireUser?: boolean;
@@ -184,14 +190,33 @@ export type FlowDefinition<
   session?: TSession;
   request?: TRequest;
   user?: TUser;
-  project?: TProject;
+  org?: TOrg;
   work?: TWork;
+  /**
+   * Flow-level resource declarations. Single flat map, accessor key →
+   * resource definition. Resources are routed to the right storage layer
+   * via their intrinsic `scope` (set on `defineResource`); cross-flow
+   * sharing is controlled by `flowIsolation` on the resource. Replaces
+   * the legacy `session.resources` / `user.resources` / `org.resources`
+   * (FIX-435).
+   */
+  resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
   middleware?: Middleware[];
 
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
+
+  /**
+   * Default flow-isolation for user-scoped resources whose `flowIsolation`
+   * is unset. Resource-level declarations always win (FIX-435).
+   * Default: false (resources are shared across flows under the same userId).
+   */
+  isolateUserState?: boolean;
+
+  /** Org-scope equivalent of `isolateUserState`. Default: false. */
+  isolateOrgState?: boolean;
 
   defaultBlockRenderer?: unknown | false;
 };
@@ -201,8 +226,9 @@ export type FlowInstanceOptions<
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
-  TProject extends ProjectConfig | undefined = ProjectConfig | undefined,
-  TWork extends WorkConfig | undefined = WorkConfig | undefined
+  TOrg extends OrgConfig | undefined = OrgConfig | undefined,
+  TWork extends WorkConfig | undefined = WorkConfig | undefined,
+  TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
   id?: string;
   kind?: string;
@@ -211,13 +237,16 @@ export type FlowInstanceOptions<
   session?: TSession;
   request?: TRequest;
   user?: TUser;
-  project?: TProject;
+  org?: TOrg;
   work?: TWork;
+  resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
   middleware?: Middleware[];
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
+  isolateUserState?: boolean;
+  isolateOrgState?: boolean;
 };
 
 export type FlowInstance<
@@ -225,23 +254,33 @@ export type FlowInstance<
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
-  TProject extends ProjectConfig | undefined = ProjectConfig | undefined,
-  TWork extends WorkConfig | undefined = WorkConfig | undefined
+  TOrg extends OrgConfig | undefined = OrgConfig | undefined,
+  TWork extends WorkConfig | undefined = WorkConfig | undefined,
+  TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
   id: string;
   kind: string;
   requireUser: boolean;
+  /**
+   * True when any block in any action declares `requireOrg: true`. The HTTP
+   * action route uses this to reject requests against unbound sessions before
+   * any execution begins.
+   */
+  requiresOrg: boolean;
   actions: TActions;
   session?: TSession;
   request?: TRequest;
   user?: TUser;
-  project?: TProject;
+  org?: TOrg;
   work?: TWork;
+  resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
   middleware?: Middleware[];
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
+  isolateUserState: boolean;
+  isolateOrgState: boolean;
 };
 
 export type FlowType<
@@ -249,28 +288,35 @@ export type FlowType<
   TSession extends SessionConfig | undefined = SessionConfig | undefined,
   TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   TUser extends UserConfig | undefined = UserConfig | undefined,
-  TProject extends ProjectConfig | undefined = ProjectConfig | undefined,
-  TWork extends WorkConfig | undefined = WorkConfig | undefined
+  TOrg extends OrgConfig | undefined = OrgConfig | undefined,
+  TWork extends WorkConfig | undefined = WorkConfig | undefined,
+  TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
   kind: string;
   requireUser: boolean;
+  /** Mirror of `FlowInstance.requiresOrg`. */
+  requiresOrg: boolean;
   actions: TActions;
   session?: TSession;
   request?: TRequest;
   user?: TUser;
-  project?: TProject;
+  org?: TOrg;
   work?: TWork;
+  resources?: TResources;
   tools?: ToolsConfig;
   voice?: VoiceConfig;
   middleware?: Middleware[];
+  isolateUserState: boolean;
+  isolateOrgState: boolean;
 
-  (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TProject, TWork>): FlowInstance<
+  (options?: FlowInstanceOptions<TActions, TSession, TRequest, TUser, TOrg, TWork, TResources>): FlowInstance<
     TActions,
     TSession,
     TRequest,
     TUser,
-    TProject,
-    TWork
+    TOrg,
+    TWork,
+    TResources
   >;
 };
 
@@ -286,14 +332,14 @@ export type InferFlowStateMap<TDefinition extends FlowDefinition> = {
   request: InferScopeStateFromConfig<TDefinition["request"]>;
   session: InferScopeStateFromConfig<TDefinition["session"]>;
   user: InferScopeStateFromConfig<TDefinition["user"]>;
-  project: InferScopeStateFromConfig<TDefinition["project"]>;
+  org: InferScopeStateFromConfig<TDefinition["org"]>;
 };
 
 export type InferFlowBlockContext<TDefinition extends FlowDefinition> = BlockContext<
   InferFlowStateMap<TDefinition>["request"],
   InferFlowStateMap<TDefinition>["session"],
   InferFlowStateMap<TDefinition>["user"],
-  InferFlowStateMap<TDefinition>["project"]
+  InferFlowStateMap<TDefinition>["org"]
 >;
 
 export type FlowActionInput<TAction extends ActionConfig> = TAction["inputSchema"]["_output"];

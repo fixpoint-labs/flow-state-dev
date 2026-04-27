@@ -13,6 +13,7 @@ You are not a sycophant. You don't tell the user they have a good idea until you
 3. `AGENTS.md` — Process protocol and code style rules
 
 **Read when relevant:**
+- `docs/architecture/items.md` — **Read before touching items, rendering, or the stream.** Complete item type registry, classification, and rendering contracts.
 - `docs/architecture/*.md` — Deep dives into blocks, flows, state, streaming, execution, etc.
 - `docs/contributing/best-practices.md` — Process and documentation standards (BP-001–BP-009)
 - `changelog.md` — What waves have shipped
@@ -30,6 +31,7 @@ You are not a sycophant. You don't tell the user they have a good idea until you
 | `@flow-state-dev/cli` | Terminal interface (`fsdev`) |
 | `@flow-state-dev/devtool` | Pre-built DevTool assets for `fsdev dev` |
 | `@flow-state-dev/store-sqlite` | SQLite-backed persistent store |
+| `@flow-state-dev/vercel` | Vercel deployment adapter (SSE shaping, heartbeats, runtime config) |
 | `@flow-state-dev/tools` | Reusable tool blocks |
 | `@flow-state-dev/patterns` | Higher-level composition patterns |
 | `@flow-state-dev/ui` | Component registry for flow UIs |
@@ -46,6 +48,41 @@ docs/
   internal/         Wave plans, journals, changelogs (process artifacts)
 ```
 
+## Skills Library
+
+Development task skills live in `.claude/skills/`. Use these when performing common development tasks:
+
+### Workflow skills
+| Skill | Purpose |
+|-------|---------|
+| `create-spec` | Research and write implementation specs for Linear issues |
+| `implement-issue` | Implement a Linear issue from its spec document |
+| `quick-fix` | Log a bug to Linear and fix it immediately |
+| `create-issue-and-commit` | Create a Linear issue for work already done, commit and PR |
+| `debug-flow` | Debug flow execution via CLI traces and NDJSON logs |
+| `linear-triage` | Review and prioritize Linear issues |
+| `plan-day` | Identify unblocked tasks and generate a daily work plan |
+
+### Development skills
+| Skill | Purpose |
+|-------|---------|
+| `create-block` | Create a new block (handler, generator, utility, router) with tests |
+| `create-pattern` | Create a multi-block composable pattern with tests and docs |
+| `add-flow` | Create a new flow definition with actions, scopes, resources, and capabilities |
+| `write-block-tests` | Write or update vitest tests for blocks and patterns |
+| `add-store-adapter` | Create a new persistence store adapter package |
+| `add-docs-page` | Add a page to the Docusaurus documentation site |
+
+## Capabilities
+
+- **Prefer capabilities over manual plumbing.** Use `defineCapability` + `uses: [cap]` instead of manually spreading `tools`, `context`, `sessionResources` into blocks. Capabilities are self-contained, portable, and composable.
+- **Factory pattern for configurable capabilities.** When a capability needs config (provider type, resource refs), export a factory: `createXCapability(options)` → `DefinedCapability`.
+- **Prefer static capability entries over manual context functions.** If a capability already provides context presets, use the capability in `uses` rather than reimplementing its formatting in a `context` slot. Gate conditional behavior at the pipeline level (e.g., `workIf` on capture) instead of at the context injection level.
+- **Dynamic `uses` for conditional capabilities.** `uses` arrays accept `(ctx) => CapabilityRef[]` functions. Static entries install resources at build time; dynamic entries add context/tools at runtime. Resources must be declared statically somewhere.
+- **Presets for opt-in/opt-out.** Use presets to bundle context/tools that consumers can enable/disable: `cap.presets({ tools: false })`.
+- **`ToolsSlot` and `UsesSlot`** are framework types exported from `@flow-state-dev/core` for factory interfaces.
+- **Pattern factories accept `uses`.** `planAndExecute`, `supervisor`, `blackboard` all forward `uses` to their default internal generators.
+
 ## Key Architectural Constraints
 
 - Block kinds: exactly `handler`, `generator`, `sequencer`, `router`
@@ -56,13 +93,14 @@ docs/
 - Lifecycle hooks: past tense (`onStarted`, `onCompleted`, `onErrored`, `onFinished`)
 - Package boundary: `react` wraps `client` — no transport logic in react
 - Package boundary: `server` never depends on `client` or `react`
+- Collection key resolution: `collection.create("key")` auto-prepends the pattern prefix. `ref.name` returns the full storage key (e.g., `"artifacts/my-doc"`). Strip the prefix for bare keys.
+- Resource mutations emit `resource_change` SSE events via `onResourceChanged` in `createScopeResourceRegistry`. These are transient items — `useSession` checks for them before the transient filter.
 
 ## Authority Hierarchy
 
-1. `../preperation/architecture/*` — Canonical specs (highest authority)
-2. `docs/architecture/*` — Adapted reference docs
-3. `docs/contributing/best-practices.md` — Implementation standards
-4. `AGENTS.md` — Process protocol
+1. `docs/architecture/*` — Adapted reference docs
+2. `docs/contributing/best-practices.md` — Implementation standards
+3. `AGENTS.md` — Process protocol
 
 If docs conflict, `preperation/architecture/*` wins.
 
@@ -89,6 +127,7 @@ When writing blog posts, landing copy, or any prose for `apps/docs`, use this vo
 - **Introduce concepts for newcomers.** Don't assume the reader knows framework terms. When first mentioning something specific (a block kind, an API), briefly say what it does in plain terms.
 - **Be direct about tradeoffs.** It's fine to say "this works for demos, not for production" or "we made a deliberate call here." Honest is better than polished.
 - **Conclusions earn their place.** Don't end every section with a triumphant one-liner. If a point lands, it lands. If it needs a closer, keep it short and specific.
+- **No internal issue or PR numbers.** Anything under `apps/docs/` is published documentation. Refer to features by what they are, not by their tracking ID. `FIX-421`, `PR #182`, Linear ticket links — none of these belong in user-facing prose. They go in commits, the repo-root `changelog.md`, and internal artifacts under `docs/internal/`.
 
 The philosophy blog post (`apps/docs/blog/2026-03-06-philosophy.md`) is the reference example for this voice.
 
@@ -125,6 +164,12 @@ Phase 1 (Foundation): Waves 1.a–1.l complete. 1.m (devtool: `fsdev dev` + `@fl
 
 **Use `.tap()` for state-mutation-only blocks** (BP-012)
 - Blocks that only mutate state: use `.tap()`, no `outputSchema`, no `return input`.
+
+**Use conditional step variants instead of wrapper sequencers** (BP-015)
+- `.workIf(condition, connector, block)` — not a wrapper sequencer with `.thenIf` inside `.work()`.
+- `.tapIf(condition, block)` — not a gating handler that conditionally calls a block.
+- `.thenIf(condition, block)` — not a wrapper sequencer with a `.map` + `.then`.
+- All conditional variants accept an inline connector as a second argument for input adaptation. Don't create an intermediate sequencer just to `.map()` before a block.
 
 **Input/output adaptation belongs inside the router** (BP-013)
 - Use `connectInput(() => ...)` and `connectOutput(...)` inside the router's `execute`, not at block definition time.

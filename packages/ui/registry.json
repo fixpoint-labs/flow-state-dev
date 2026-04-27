@@ -49,14 +49,21 @@
       "name": "tool",
       "title": "Tool",
       "type": "registry:component",
-      "description": "Rich tool invocation display with args, result, timing, and status.",
+      "description": "Rich tool invocation display with args, result, status, and Claude-Code-style grouping for consecutive calls.",
       "dependencies": ["@flow-state-dev/core", "lucide-react"],
       "registryDependencies": ["collapsible", "badge", "code-block"],
-      "files": [{
-        "type": "registry:component",
-        "path": "registry/components/tool.tsx",
-        "target": "components/flow-state/tool.tsx"
-      }],
+      "files": [
+        {
+          "type": "registry:component",
+          "path": "registry/components/tool.tsx",
+          "target": "components/flow-state/tool.tsx"
+        },
+        {
+          "type": "registry:lib",
+          "path": "registry/components/tool-grouping.ts",
+          "target": "components/flow-state/tool-grouping.ts"
+        }
+      ],
       "categories": ["ai", "tools"]
     },
     {
@@ -203,9 +210,9 @@
       "name": "request-group",
       "title": "Request Group",
       "type": "registry:component",
-      "description": "Groups items by request ID with streaming indicator and source display.",
+      "description": "Groups items by request ID with streaming indicator, source display, and collapsible tool-call summaries for consecutive calls.",
       "dependencies": ["@flow-state-dev/core", "@flow-state-dev/react"],
-      "registryDependencies": ["sources", "streaming-indicator"],
+      "registryDependencies": ["sources", "streaming-indicator", "tool"],
       "files": [{
         "type": "registry:component",
         "path": "registry/components/request-group.tsx",
@@ -226,6 +233,62 @@
         "target": "components/flow-state/session-items-context.tsx"
       }],
       "categories": ["ai", "framework"]
+    },
+    {
+      "name": "artifact",
+      "title": "Artifact",
+      "type": "registry:component",
+      "description": "Composable artifact viewer shell with header, actions, and content areas.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": ["button", "tooltip"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/artifact.tsx",
+        "target": "components/flow-state/artifact.tsx"
+      }],
+      "categories": ["ai", "framework"]
+    },
+    {
+      "name": "file-tree",
+      "title": "File Tree",
+      "type": "registry:component",
+      "description": "Tree-structured file and folder display with expand/collapse and selection.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": ["collapsible"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/file-tree.tsx",
+        "target": "components/flow-state/file-tree.tsx"
+      }],
+      "categories": ["ai", "code"]
+    },
+    {
+      "name": "jsx-preview",
+      "title": "JSX Preview",
+      "type": "registry:component",
+      "description": "Live JSX/TSX renderer with streaming support and error fallback.",
+      "dependencies": ["react-jsx-parser", "lucide-react"],
+      "registryDependencies": [],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/jsx-preview.tsx",
+        "target": "components/flow-state/jsx-preview.tsx"
+      }],
+      "categories": ["ai", "code"]
+    },
+    {
+      "name": "sandbox",
+      "title": "Sandbox",
+      "type": "registry:component",
+      "description": "Source/preview tab wrapper for JSX artifacts using JSXPreview and CodeBlock.",
+      "dependencies": ["lucide-react"],
+      "registryDependencies": ["jsx-preview", "code-block"],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/sandbox.tsx",
+        "target": "components/flow-state/sandbox.tsx"
+      }],
+      "categories": ["ai", "code"]
     }
   ]
 }

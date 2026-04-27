@@ -19,6 +19,16 @@ This is a living document. Thought Fabric builds on top of flow-state-dev, so it
 - Helpers: add, evict, pin, unpin, refresh, advance, items, formatForContext
 - `workingMemoryContextFormatter` — ready-made context slot for generators
 
+### Identity (partial)
+- `perspective()` — structured viewpoint model with config validation and frozen instances
+- `system()` — factory that bundles blocks, capability, resources, and capture pipeline
+- Static blocks: `perspectiveApply`, `perspectiveAnalyze`, `perspectiveAuditor`
+- Stateful blocks: `perspectiveObserve`, `perspectivePosition`, `perspectiveChallenge`, `perspectiveSnapshot`, `perspectiveAdvance`
+- Resource-backed observations (session-scoped) and positions (configurable scope)
+- `createPerspectiveCapability` — capability with `static` and `accumulated` context presets
+- Helpers: add/remove/challenge/read/format for observations and positions
+- Static formatters: `formatPerspective`, `summarizePerspective`, `perspectiveContextFormatter`
+
 ### Metacognition (partial)
 - `biasAnalyzer` — bundled sequencer: detect → classify → score → counterpoint → format
 - Sycophancy detection with 4-dimension scoring (agreement, validating language, omitted counterpoints, framing adoption)
@@ -30,10 +40,9 @@ This is a living document. Thought Fabric builds on top of flow-state-dev, so it
 
 ## Coming Soon
 
-### Identity
-- `perspective()` — role and expertise that shape how an agent interprets information
+### Identity (remaining)
 - `constitution()` — values and constraints that guide agent behavior
-- Types and interfaces are defined; implementation is queued
+- Salience drift — perspective weights evolve with observation frequency
 
 ### Perception
 - Sensory processing and context framing

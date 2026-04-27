@@ -1,9 +1,11 @@
 import type {
+  ExpectedVersion,
   SessionListOptions,
   SessionRecord,
-  SessionStore
+  SessionStore,
+  SetResult
 } from "../types";
-import { applyOffsetLimit, cloneValue } from "./shared";
+import { applyOffsetLimit, casWriteToMap, cloneValue } from "./shared";
 
 export class InMemorySessionStore implements SessionStore {
   private readonly records = new Map<string, SessionRecord>();
@@ -13,8 +15,12 @@ export class InMemorySessionStore implements SessionStore {
     return record === undefined ? undefined : cloneValue(record);
   }
 
-  async set(id: string, value: SessionRecord): Promise<void> {
-    this.records.set(id, cloneValue(value));
+  async set(
+    id: string,
+    value: SessionRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<SessionRecord>> {
+    return casWriteToMap(this.records, id, value, expectedVersion);
   }
 
   async delete(id: string): Promise<void> {

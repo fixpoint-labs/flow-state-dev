@@ -5,14 +5,14 @@ Flow State Dev manages state across four hierarchical scopes, each with typed at
 ## Scope Hierarchy
 
 ```
-request → session → user → project
+request → session → user → org
   (per request)  (per session)  (per user)  (shared)
 ```
 
 - **Request**: Ephemeral, exists for one action execution
 - **Session**: Persisted, user-bound, carries conversation history
 - **User**: Persisted, spans sessions, holds user preferences/resources
-- **Project**: Persisted, shared across users
+- **Org**: Persisted, shared across users
 
 **Phase 1 policy:** User context is required for all flow execution. Sessions are always available — ephemeral sessions auto-create when no `sessionId` is provided.
 
@@ -76,6 +76,8 @@ On retry exhaustion, a `ConcurrentModificationError` is thrown.
 - Prefer `incState`, `pushState`, `setStateRecord` for concurrent writes
 - Use `maxConcurrency` on `parallel`/`forEach` when shared state writes are unavoidable
 
+**Resource content writes do not bump scope record version.** Resource content is persisted via `ContentStore`, separate from the scope record. Content writes do not update the scope record's `version` or `updatedAt` fields. The scope record version reflects state and metadata changes only.
+
 ## Scope Handles
 
 Each scope is accessed through a typed handle on `BlockContext`:
@@ -97,9 +99,9 @@ ctx.session.setMetadata()
 ctx.user.state             // Readonly<TUserState>
 ctx.user.resources         // ResourceRegistry
 
-// Project scope (optional)
-ctx.project?.state         // Readonly<TProjectState>
-ctx.project?.resources     // ResourceRegistry
+// Org scope (optional)
+ctx.org?.state         // Readonly<TOrgState>
+ctx.org?.resources     // ResourceRegistry
 ```
 
 ### Partial State Schemas
@@ -130,12 +132,12 @@ ctx.session.items.client()
 ctx.session.items.client({ limit: 50 })
 
 // LLM view: messages suitable for model context (async)
-await ctx.session.items.llm()
-await ctx.session.items.llm({ limit: 20 })
-await ctx.session.items.llm({ limit: { tokens: 20_000 } })
+await ctx.session.items.history()
+await ctx.session.items.history({ limit: 20 })
+await ctx.session.items.history({ limit: { tokens: 20_000 } })
 ```
 
-The LLM view converts completed request items with `llm` or `both` visibility into `{ role, content }` message pairs for model context assembly.
+The history view converts completed request items with `history: true` into `{ role, content }` message pairs for model context assembly.
 
 ## Session Journal
 
@@ -221,7 +223,7 @@ const pipeline = sequencer({ name: "chat", inputSchema })
 
 Internally it is a sequencer with two steps: a generator that produces the title, and a handler that calls `setMetadata` only if the title has changed. The whole block is marked `transient: true` so it produces no visible items in the stream.
 
-`ctx.session.items.llm()` includes items from the current in-flight request, so the title generator sees the just-completed generator output even on the first message of a session.
+`ctx.session.items.history()` includes items from the current in-flight request, so the title generator sees the just-completed generator output even on the first message of a session.
 
 ## Persistence Adapters
 
@@ -243,7 +245,59 @@ Block-level state declarations bubble upward for compatibility checking. This en
 
 ## Resource Declaration Bubbling
 
-Similar to state schemas, block-level resource declarations (`sessionResources`, `userResources`, `projectResources`) bubble upward through the composition hierarchy. Sequencers collect declared resources from all child blocks, and `defineFlow` merges them into the flow's scope configs automatically. Flow-level resource declarations take priority over block-declared ones. See [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
+Block-level resource declarations live in a single flat `resources` map (FIX-435). Each resource carries its intrinsic `scope` and `flowIsolation`, so the framework routes its storage automatically. Sequencers collect `declaredResources` from all child blocks, and `defineFlow` merges them into the flow's flat `resources` map at the top level. Flow-level declarations take priority on dedup; effective-storage-key collisions across distinct accessor keys are caught at flow-build time. See [Resources and Client Data](./resources-and-client-data.md) for the full collection, merge, and storage-key model.
+
+## Cross-Flow State: Shared vs Isolated
+
+User- and org-scope records are not session-like — by default they are shared across every flow registered on a server, keyed by bare `userId` / `orgId`. A user has one `UserRecord`; every flow operating for that user reads and writes the same record. That is desirable when two flows genuinely share an identity concept (preferences, profile, quotas). It is a data-loss bug when two flows declare incompatible schemas over the same key.
+
+Wave 1 (FIX-431) introduces two coexisting mechanisms.
+
+### Cross-flow schema registry (default)
+
+`FlowRegistry.register` collects `user.stateSchema`, `org.stateSchema`, and user/org resource schemas from every non-isolated registered flow. At registration time, each new flow's schemas are compared against every other flow's schemas using a conservative Zod structural check:
+
+| Scenario | Outcome |
+|----------|---------|
+| Same Zod reference | Merge (identical). |
+| Object shapes with overlapping keys whose types agree | Merge. Disjoint fields or compatible extensions emit a `console.warn`. |
+| Shared required field whose types disagree | Throw `CrossFlowSchemaConflictError`. |
+| Non-object schemas of different kinds | Throw `CrossFlowSchemaConflictError`. |
+| Same-named user/org resource with incompatible `stateSchema` | Throw `CrossFlowSchemaConflictError`. |
+
+The error names both flow kinds, the scope (`user` or `org`), the field path (`stateSchema` or `resources.<name>`), and a reason. Resolution is either reconciling the schemas or opting into isolation.
+
+The checker is coarse by design — Wave 1 accepts false-positive conflicts (ask the developer to reconcile or isolate) over false negatives (silent data loss).
+
+### Per-flow isolation (opt-in)
+
+Two layers can promote a user/org-scope record to flow-isolated storage:
+
+- **Flow-level**: `isolateUserState: true` / `isolateOrgState: true` on the `FlowDefinition`. Acts as the default for resources at the relevant scope that don't declare `flowIsolation` themselves. The flow does not participate in the registry schema merge for the isolated scope.
+- **Resource-level** (FIX-435): `defineResource({ scope: "user", flowIsolation: true })`. Always wins. A library can ship a flow-private user-scoped resource, and consumers don't need to flip the flow flag.
+
+When either layer marks a user/org-scope storage cell as isolated, its key becomes `${id}:${flowKind}`. Other flows cannot conflict with it, and it cannot read data written by other flows.
+
+Use isolation for internal-only flows, background jobs, library-private state, or flows with domain-specific data that should not leak into shared surfaces.
+
+The `UserRecord.id` / `OrgRecord.id` field holds the namespaced key so lookups by record id are consistent. The `userId` / `orgId` fields remain the bare identity — list APIs that filter by `userId` continue to return both shared and isolated records for a given user, which is useful for admin and devtool views.
+
+### Storage-key derivation
+
+Key resolution is centralized in `packages/server/src/stores/scope-keys.ts`:
+
+```ts
+export function resolveUserStorageKey(userId: string, flow: IsolationFlow): string {
+  return flow.isolateUserState ? `${userId}:${flow.kind}` : userId;
+}
+```
+
+`createExecutionContext` uses these helpers for every `user` / `org` read and write, including `ContentStore` operations. Session and request scopes are unaffected — sessions already carry `flowKind` on the record and are effectively flow-isolated already.
+
+### Non-goals
+
+- **Schema versioning / migration.** Flipping `isolateUserState` (or a resource's `flowIsolation`) on an existing flow/resource is a data-affecting change — existing shared records become invisible; new isolated records start fresh. No automatic migration.
+- **Cross-flow read validation.** The registry prevents incompatible writes; it does not re-parse stored state on every read.
 
 ## Streaming Integration
 
@@ -251,9 +305,11 @@ State and resource mutations emit streaming events:
 
 - `state_change` items track each scope operation
 - `resource_change` items track resource mutations
-- These are **invalidation signals** — clients should refetch snapshots for source-of-truth reads
+- `state_snapshot` items capture the full sequencer state at each step boundary (initial + after every step)
+- `state_change` and `resource_change` items are **invalidation signals** — clients should refetch snapshots for source-of-truth reads
 - In production mode, these items are transient (stream-only, not persisted)
 - Set `persistStateChanges: true` on the flow to persist them (useful for devtools state timeline)
+- Sequencer state snapshots are always trace-only and transient. The DevTool uses them to show state evolution across steps and loopBack iterations
 
 ## Canonical Authority
 
@@ -262,5 +318,5 @@ For full type signatures, resource/clientData details, and edge cases, see `../p
 
 ### Token-aware MessageLimit
 
-`session.items.llm({ limit: { tokens: N } })` now performs token-aware packing from newest to oldest using the configured flow `tokenCounter` and the active resolved model ID from generator execution.
+`session.items.history({ limit: { tokens: N } })` now performs token-aware packing from newest to oldest using the configured flow `tokenCounter` and the active resolved model ID from generator execution.
 

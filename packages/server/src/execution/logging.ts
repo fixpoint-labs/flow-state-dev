@@ -79,7 +79,7 @@ export function createExecutionLogContext(
     flowKind: metadata.flowKind,
     userId: metadata.userId,
     sessionId: metadata.sessionId,
-    projectId: metadata.projectId,
+    orgId: metadata.orgId,
     blockName: metadata.blockName,
     blockKind: metadata.blockKind,
     blockInstanceId: metadata.blockInstanceId,

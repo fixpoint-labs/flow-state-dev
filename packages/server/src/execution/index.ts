@@ -12,6 +12,12 @@ export { applyRetentionPolicy, resolveRetentionPolicy } from "./retention";
 export type { ResolvedRetentionPolicy } from "./retention";
 export { runAction } from "./runAction";
 export {
+  abortRequest,
+  hasActiveAbortController,
+  registerAbortController,
+  deregisterAbortController
+} from "./abort-registry";
+export {
   detectInterruptedRequests,
   retryRequest
 } from "./request-recovery";

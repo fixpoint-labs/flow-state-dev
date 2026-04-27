@@ -1,5 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type { GeneratorConfig } from "../blocks";
+import type { AgentType } from "../items/types";
 import { generator } from "../blocks";
 
 export const contextReducerDistillOutputSchema = z.object({
@@ -48,6 +49,12 @@ export interface ContextReducerConfig<
   mode?: ContextReducerMode;
   model?: GeneratorConfig["model"];
   outputSchema?: TOutputSchema;
+  /**
+   * Identity for emitted items. Unset by default — reducer output flows via
+   * graph edges only. Set to `"primary"` to surface the reduction to the user,
+   * or `"trace"` for observability-only runs.
+   */
+  agentType?: AgentType;
 }
 
 function toUserContent(input: unknown): string {
@@ -83,6 +90,7 @@ export function contextReducer<
     name: config.name,
     model: config.model ?? "preset/fast",
     outputSchema,
+    agentType: config.agentType,
     prompt: [
       ...CONTEXT_REDUCER_INSTRUCTIONS[mode],
       "Return output that exactly matches the required schema."

@@ -227,12 +227,22 @@ describe("defineFlow", () => {
 
   describe("resource merging", () => {
     const observationsResource = defineResource({
+      scope: "session",
       stateSchema: z.object({
         entries: z.array(z.object({ text: z.string(), score: z.number() }))
       })
     });
 
     const artifactsResource = defineResource({
+      scope: "user",
+      stateSchema: z.object({
+        order: z.array(z.string()),
+        byId: z.record(z.object({ title: z.string() }))
+      })
+    });
+
+    const orgArtifactsResource = defineResource({
+      scope: "org",
       stateSchema: z.object({
         order: z.array(z.string()),
         byId: z.record(z.object({ title: z.string() }))
@@ -240,13 +250,15 @@ describe("defineFlow", () => {
     });
 
     const flowLevelResource = defineResource({
+      scope: "session",
+      ref: "flow-counter",
       stateSchema: z.object({ count: z.number() })
     });
 
-    it("merges block-declared session resources into flow session config", () => {
+    it("bubbles block-declared session resources into the flat flow.resources map", () => {
       const block = handler({
         name: "with-resources",
-        sessionResources: { observations: observationsResource },
+        resources: { observations: observationsResource },
         execute: (v) => v
       });
 
@@ -257,15 +269,15 @@ describe("defineFlow", () => {
         }
       });
 
-      expect(flow.session?.resources).toEqual({
+      expect(flow.resources).toEqual({
         observations: observationsResource
       });
     });
 
-    it("merges block-declared user resources into flow user config", () => {
+    it("bubbles block-declared user resources into the flat flow.resources map", () => {
       const block = handler({
         name: "with-user-res",
-        userResources: { artifacts: artifactsResource },
+        resources: { artifacts: artifactsResource },
         execute: (v) => v
       });
 
@@ -276,15 +288,15 @@ describe("defineFlow", () => {
         }
       });
 
-      expect(flow.user?.resources).toEqual({
+      expect(flow.resources).toEqual({
         artifacts: artifactsResource
       });
     });
 
-    it("merges block-declared project resources into flow project config", () => {
+    it("bubbles block-declared org resources into the flat flow.resources map", () => {
       const block = handler({
         name: "with-proj-res",
-        projectResources: { artifacts: artifactsResource },
+        resources: { orgArtifacts: orgArtifactsResource },
         execute: (v) => v
       });
 
@@ -295,15 +307,15 @@ describe("defineFlow", () => {
         }
       });
 
-      expect(flow.project?.resources).toEqual({
-        artifacts: artifactsResource
+      expect(flow.resources).toEqual({
+        orgArtifacts: orgArtifactsResource
       });
     });
 
-    it("flow-level resources take priority over block-declared resources", () => {
+    it("flow-level resources take priority over block-declared resources at the same accessor", () => {
       const block = handler({
         name: "block-obs",
-        sessionResources: { observations: observationsResource },
+        resources: { observations: observationsResource },
         execute: (v) => v
       });
 
@@ -312,19 +324,17 @@ describe("defineFlow", () => {
         actions: {
           run: { inputSchema: z.any(), block }
         },
-        session: {
-          resources: { observations: flowLevelResource }
-        }
+        resources: { observations: flowLevelResource }
       });
 
       // Flow-level wins — should be the flowLevelResource, not observationsResource
-      expect(flow.session?.resources?.observations).toBe(flowLevelResource);
+      expect(flow.resources?.observations).toBe(flowLevelResource);
     });
 
-    it("merges disjoint flow-level and block-declared resources", () => {
+    it("merges disjoint flow-level and block-declared resources into the flat map", () => {
       const block = handler({
         name: "block-obs",
-        sessionResources: { observations: observationsResource },
+        resources: { observations: observationsResource },
         execute: (v) => v
       });
 
@@ -333,26 +343,24 @@ describe("defineFlow", () => {
         actions: {
           run: { inputSchema: z.any(), block }
         },
-        session: {
-          resources: { counter: flowLevelResource }
-        }
+        resources: { counter: flowLevelResource }
       });
 
-      expect(flow.session?.resources).toEqual({
+      expect(flow.resources).toEqual({
         observations: observationsResource,
         counter: flowLevelResource
       });
     });
 
-    it("merges resources from multiple actions", () => {
+    it("merges resources from multiple actions into the flat map", () => {
       const blockA = handler({
         name: "a",
-        sessionResources: { observations: observationsResource },
+        resources: { observations: observationsResource },
         execute: (v) => v
       });
       const blockB = handler({
         name: "b",
-        userResources: { artifacts: artifactsResource },
+        resources: { artifacts: artifactsResource },
         execute: (v) => v
       });
 
@@ -364,10 +372,8 @@ describe("defineFlow", () => {
         }
       });
 
-      expect(flow.session?.resources).toEqual({
-        observations: observationsResource
-      });
-      expect(flow.user?.resources).toEqual({
+      expect(flow.resources).toEqual({
+        observations: observationsResource,
         artifacts: artifactsResource
       });
     });
@@ -375,7 +381,7 @@ describe("defineFlow", () => {
     it("collects resources from sequencer blocks (nested collection)", () => {
       const innerBlock = handler({
         name: "inner",
-        sessionResources: { observations: observationsResource },
+        resources: { observations: observationsResource },
         execute: (v) => v
       });
       const seq = sequencer({ name: "pipeline" }).then(innerBlock);
@@ -387,15 +393,15 @@ describe("defineFlow", () => {
         }
       });
 
-      expect(flow.session?.resources).toEqual({
+      expect(flow.resources).toEqual({
         observations: observationsResource
       });
     });
 
-    it("preserves existing flow scope config when merging block resources", () => {
+    it("preserves existing flow scope config when bubbling block resources", () => {
       const block = handler({
         name: "with-res",
-        sessionResources: { observations: observationsResource },
+        resources: { observations: observationsResource },
         execute: (v) => v
       });
 
@@ -410,12 +416,12 @@ describe("defineFlow", () => {
       });
 
       expect(flow.session?.stateSchema).toBeDefined();
-      expect(flow.session?.resources).toEqual({
+      expect(flow.resources).toEqual({
         observations: observationsResource
       });
     });
 
-    it("does not modify scope configs when no block resources are declared", () => {
+    it("leaves flow.resources undefined when no resources are declared anywhere", () => {
       const block = handler({
         name: "no-res",
         execute: (v) => v
@@ -428,15 +434,16 @@ describe("defineFlow", () => {
         }
       });
 
+      expect(flow.resources).toBeUndefined();
       expect(flow.session).toBeUndefined();
       expect(flow.user).toBeUndefined();
-      expect(flow.project).toBeUndefined();
+      expect(flow.org).toBeUndefined();
     });
 
-    it("merges block resources into flow instances created via factory", () => {
+    it("bubbles block resources into flow instances created via the factory", () => {
       const block = handler({
         name: "with-res",
-        sessionResources: { observations: observationsResource },
+        resources: { observations: observationsResource },
         execute: (v) => v
       });
 
@@ -448,9 +455,38 @@ describe("defineFlow", () => {
       });
 
       const instance = flow({ id: "test" });
-      expect(instance.session?.resources).toEqual({
+      expect(instance.resources).toEqual({
         observations: observationsResource
       });
+    });
+
+    // Regression: the effective-storage-key tuple is JSON-encoded so adjacent
+    // string fields can't ambiguously concatenate. Resources whose `ref` and
+    // `flowKind` would have aliased to the same naive concatenation must
+    // resolve to distinct tuples.
+    it("does not falsely collide resources whose fields would naively concat to the same string", () => {
+      const resA = defineResource({
+        ref: "x",
+        scope: "user",
+        flowIsolation: true,
+        stateSchema: z.object({})
+      });
+      const resB = defineResource({
+        ref: "x1y0",
+        scope: "user",
+        flowIsolation: false,
+        stateSchema: z.object({})
+      });
+
+      // Pre-fix this would have rejected the build because both tuples
+      // concatenated to "userx1y0" under the previous tupleKey impl.
+      expect(() =>
+        defineFlow({
+          kind: "y",
+          actions: {},
+          resources: { a: resA, b: resB }
+        })({ id: "y" })
+      ).not.toThrow();
     });
   });
 });

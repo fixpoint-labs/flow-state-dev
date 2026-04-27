@@ -1,4 +1,5 @@
 export type { BlockInput, BlockOutput, DeclaredResources } from "./types/block";
+export type { AgentType, ItemVisibility } from "./items/types";
 export type { ContextOf, DefinedResource, ResourceContext, StateOf } from "./types/resource";
 export type {
   CollectionHookContext,
@@ -25,17 +26,47 @@ export type {
 
 export { defineResource, resource } from "./types/resource";
 export { defineResourceCollection, isDefinedResourceCollection, defineResourceNamespace, isDefinedResourceNamespace } from "./types/resource-collection";
+export type {
+  InitialSkill,
+  IntentSource,
+  MatchedSkill,
+  RunSkillInput,
+  RunSkillOutput,
+  Skill,
+  SkillContextMode,
+  SkillFile,
+  SkillState,
+  SkillsCollectionMeta,
+  ToolCatalog,
+} from "./types/skill";
 export { defineCapability, getBaseCapability } from "./capability";
 export type {
+  CapabilityPresetCtx,
   CapabilityRef,
   ConfiguredCapability,
   DefinedCapability,
   InferCapabilities,
+  PresetContextEntry,
   PresetDef,
   PresetOverrides,
+  UsesEntry,
+  UsesSlot,
 } from "./capability";
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
+export { isTraceObservabilityEnabled } from "./utils/trace-observability";
+export {
+  buildBlockInstanceId,
+  blockPathBranch,
+  blockPathIteration,
+  blockPathRescue,
+  blockPathSegment,
+  blockPathTool,
+  extendBlockPath,
+  parseBlockInstanceId,
+  ROOT_BLOCK_PATH
+} from "./blocks/internal/block-instance-id";
+export { resolveActiveStatusMessage } from "./blocks/internal/resolve-active-status-message";
 export {
   generator,
   handler,
@@ -60,6 +91,7 @@ export type {
   BranchStepOutput,
   FactoryConfig,
   GeneratorConfig,
+  GeneratorHistoryConfig,
   GeneratorLoopConfig,
   GeneratorLoopState,
   GeneratorRepairConfig,
@@ -68,8 +100,11 @@ export type {
   GeneratorSlotEntry,
   GeneratorSlotRefOptions,
   GeneratorSlotReference,
+  ContextObject,
   GeneratorTool,
   GeneratorToolResult,
+  ToolsSlot,
+  PromptSlot,
   HandlerConfig,
   InlineBlockFactory,
   InlineConfig,
@@ -99,6 +134,9 @@ export type {
   TokenCounter,
 } from "./types/tokens";
 export type {
+  CachingBreakpointMode,
+  CachingConfig,
+  CachingTtl,
   GeneratorModel,
   GeneratorModelResult,
   GeneratorModelSource,
@@ -108,6 +146,7 @@ export type {
   GeneratorSearchConfig,
   ModelResolver,
   PrepareStepFn,
+  PrepareStepResult,
   ProviderTool
 } from "./types/model";
 
@@ -140,7 +179,9 @@ export {
   detectAvailableProviders,
   parseModelString,
   DEFAULT_PRESETS,
-  selectModel
+  selectModel,
+  applyCaching,
+  DEFAULT_CACHING_CONFIG
 } from "./models";
 export type {
   ResolveAiSdkLanguageModel,
@@ -160,5 +201,9 @@ export type {
   FallbackModelEntry,
   ModelRule,
   PreferRule,
-  WhenRule
+  WhenRule,
+  ProviderPreference,
+  ResolveOptions,
+  ExplainCandidate,
+  ExplainResult
 } from "./models";

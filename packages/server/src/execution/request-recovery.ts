@@ -45,12 +45,16 @@ export async function detectInterruptedRequests(options: {
     const requestRecord = await stores.request.get(entry.requestId);
 
     if (requestRecord !== undefined && requestRecord.status === "in_progress") {
-      await stores.request.set(entry.requestId, {
-        ...requestRecord,
-        status: "interrupted",
-        interruptedAt: Date.now(),
-        updatedAt: Date.now()
-      });
+      await stores.request.set(
+        entry.requestId,
+        {
+          ...requestRecord,
+          status: "interrupted",
+          interruptedAt: Date.now(),
+          updatedAt: Date.now()
+        },
+        "any"
+      );
 
       logRuntimeEvent(logger, "warn", "[flow-state] detected interrupted request", {
         requestId: entry.requestId,
@@ -107,7 +111,7 @@ export async function retryRequest(
   const actionName = entry?.actionName ?? originalRecord?.actionName;
   const sessionId = entry?.sessionId ?? originalRecord?.sessionId;
   const userId = entry?.userId ?? originalRecord?.userId;
-  const projectId = entry?.projectId ?? originalRecord?.projectId;
+  const orgId = entry?.orgId ?? originalRecord?.orgId;
   const input = entry?.input ?? originalRecord?.input;
   const originalMetadata = entry?.metadata ?? originalRecord?.metadata;
 
@@ -138,7 +142,7 @@ export async function retryRequest(
     userId,
     sessionId,
     requestId: newRequestId,
-    projectId,
+    orgId,
     metadata: {
       ...(originalMetadata ?? {}),
       retryOf: options.originalRequestId

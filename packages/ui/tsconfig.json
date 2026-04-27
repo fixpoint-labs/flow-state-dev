@@ -7,6 +7,10 @@
     "jsx": "react-jsx",
     "noEmit": true
   },
-  "include": ["scripts/**/*", "test/**/*"],
-  "exclude": ["registry/**/*"]
+  "include": [
+    "scripts/**/*",
+    "test/**/*",
+    "registry/components/tool-grouping.ts"
+  ],
+  "exclude": ["registry/**/*.tsx"]
 }

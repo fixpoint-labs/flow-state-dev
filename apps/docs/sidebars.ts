@@ -21,11 +21,19 @@ const sidebars: SidebarsConfig = {
         "fundamentals/flows",
         "fundamentals/actions",
         "fundamentals/state-and-scopes",
+        "fundamentals/flow-isolation",
         "fundamentals/capabilities",
         "fundamentals/type-system",
         "fundamentals/utility-blocks",
         "fundamentals/models",
         "fundamentals/voice",
+      ],
+    },
+    {
+      type: "category",
+      label: "Guides",
+      items: [
+        "guides/projects-on-org-scope",
       ],
     },
     {
@@ -45,6 +53,7 @@ const sidebars: SidebarsConfig = {
         "resources/overview",
         "resources/storage",
         "resources/collections",
+        "resources/client-access",
       ],
     },
     {
@@ -68,6 +77,8 @@ const sidebars: SidebarsConfig = {
             "patterns/supervisor",
             "patterns/plan-and-execute",
             "patterns/response-auditor",
+            "patterns/reactive-blackboard",
+            "patterns/drain-pool",
           ],
         },
       ],
@@ -77,6 +88,7 @@ const sidebars: SidebarsConfig = {
       label: "Items",
       items: [
         "streaming/overview",
+        "streaming/emitting-items",
         "streaming/items",
       ],
     },
@@ -122,6 +134,16 @@ const sidebars: SidebarsConfig = {
         "tools/overview",
         "tools/fetch",
         "tools/crawl",
+        "tools/bash",
+      ],
+    },
+    {
+      type: "category",
+      label: "Skills",
+      items: [
+        "skills/overview",
+        "skills/activation",
+        "skills/authoring",
       ],
     },
     "roadmap",

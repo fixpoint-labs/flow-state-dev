@@ -124,6 +124,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
     setSessions(updated);
   }, [flowKind, userId, sessionClient]);
 
+  // Fetch flows + sessions on mount, auto-create if requested and none exist.
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
@@ -144,39 +145,10 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
 
         setFlows(nextFlows);
         setSessions(nextSessions);
-        if (activeSessionId === undefined && nextSessions.length > 0) {
-          setActiveSessionId(nextSessions[0]!.id);
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [client, sessionClient, flowKind, userId, activeSessionId]);
-
-  // Auto-create session on mount when requested
-  useEffect(() => {
-    if (!options.autoCreateSession || !flowKind?.trim()) return;
-
-    let cancelled = false;
-    setIsLoading(true);
-
-    void (async () => {
-      try {
-        const existing = await sessionClient.listSessions({
-          flowKind,
-          userId
-        });
-        if (cancelled) return;
-
-        setSessions(existing);
-
-        if (existing.length > 0) {
-          setActiveSessionId(existing[0]!.id);
-        } else {
+        if (nextSessions.length > 0) {
+          setActiveSessionId((prev) => prev ?? nextSessions[0]!.id);
+        } else if (options.autoCreateSession && flowKind?.trim()) {
           const created = await sessionClient.createSession({
             flowKind,
             userId
@@ -201,7 +173,7 @@ export function useFlow(options: UseFlowOptions = {}): UseFlowResult {
     return () => {
       cancelled = true;
     };
-  }, [options.autoCreateSession, flowKind, userId, sessionClient]);
+  }, [client, sessionClient, flowKind, userId, options.autoCreateSession]);
 
   return {
     flowKind,

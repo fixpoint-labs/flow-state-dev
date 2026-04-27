@@ -66,7 +66,46 @@ export type GeneratorModelUsage = {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  /**
+   * Tokens billed at the cache write rate (~1.25x input). Populated when
+   * a prompt-cache-enabled request creates a new cache entry.
+   */
+  cacheCreationInputTokens?: number;
+  /**
+   * Tokens billed at the cache read rate (~0.1x input). Populated when
+   * a prompt-cache-enabled request hits an existing cache entry.
+   */
+  cacheReadInputTokens?: number;
 };
+
+// ---------------------------------------------------------------------------
+// Prompt caching
+// ---------------------------------------------------------------------------
+
+/** Cache tier. Anthropic currently exposes `5m` and `1h` ephemeral tiers. */
+export type CachingTtl = "5m" | "1h";
+
+/** Where the adapter places cache breakpoints on Anthropic-flavored calls. */
+export type CachingBreakpointMode = "auto" | "manual";
+
+/**
+ * Normalized caching config carried on a generator block and passed through
+ * the `ModelCallOptions` to the AI SDK adapter. Every field is optional so
+ * users can override just the axis they care about; defaults are documented
+ * in `@flow-state-dev/core` `DEFAULT_CACHING_CONFIG`.
+ */
+export interface CachingConfig {
+  /** Emit cache markers at all. Default `true`. */
+  enabled?: boolean;
+  /**
+   * `auto` — adapter decides breakpoint placement.
+   * `manual` — adapter passes user-supplied `cacheControl` through untouched.
+   * Default `auto`.
+   */
+  breakpoints?: CachingBreakpointMode;
+  /** Ephemeral tier for Anthropic markers. Default `5m`. */
+  ttl?: CachingTtl;
+}
 
 export type GeneratorStepResult = {
   text?: string;
@@ -117,6 +156,13 @@ export type GeneratorModelStreamChunk = {
  * keep defaults.
  */
 export type PrepareStepResult = {
+  /**
+   * Switch to a different model for this step. The model ID string is
+   * re-resolved through the model resolver at the AI SDK adapter layer.
+   * Only effective when the GeneratorModel was created via
+   * `createAiSdkModelResolver` (not `wrapAiSdkModel`).
+   */
+  modelId?: string;
   system?: unknown;
   messages?: unknown[];
   /** Tool names to enable for this step (filters the compiled tool set). */
@@ -141,6 +187,13 @@ export interface GeneratorModel {
     maxSteps?: number;
     providerOptions?: Record<string, unknown>;
     prepareStep?: PrepareStepFn;
+    /**
+     * Prompt-cache config. When set, the AI SDK adapter stamps provider-
+     * specific cache markers (e.g. Anthropic `cacheControl`) on the
+     * request before dispatch. Omitted or `undefined` uses framework
+     * defaults (auto breakpoints, 5m TTL, enabled).
+     */
+    caching?: CachingConfig;
   }): Promise<GeneratorModelResult>;
   stream?(options: {
     messages: unknown[];
@@ -152,6 +205,7 @@ export interface GeneratorModel {
     maxSteps?: number;
     providerOptions?: Record<string, unknown>;
     prepareStep?: PrepareStepFn;
+    caching?: CachingConfig;
   }): AsyncIterable<GeneratorModelStreamChunk>;
   /**
    * Resolves a provider-native search tool from normalized config.
@@ -161,7 +215,26 @@ export interface GeneratorModel {
   resolveSearchTool?(config: GeneratorSearchConfig): { name: string; tool: unknown } | undefined;
 }
 
-export type ModelResolver = (
+export type ModelResolver = ((
   modelId: string,
   blockName?: string
-) => GeneratorModel;
+) => GeneratorModel) & {
+  /**
+   * Returns the primary underlying model string for any model reference.
+   * For presets, returns the first available provider/model string (applying
+   * the resolver's provider preference and any call-site override).
+   * For direct model strings, returns the input as-is.
+   *
+   * @example
+   * resolver.resolveId("preset/medium")
+   *   // → "anthropic/claude-sonnet-4-6"
+   * resolver.resolveId("preset/medium", { prefer: "openai" })
+   *   // → "openai/gpt-5.4" (reorders the preset before walking it)
+   * resolver.resolveId("anthropic/claude-sonnet-4-6")
+   *   // → "anthropic/claude-sonnet-4-6"
+   */
+  resolveId(
+    modelId: string,
+    options?: { prefer?: string | string[] }
+  ): string;
+};

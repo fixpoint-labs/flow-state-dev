@@ -5,6 +5,9 @@ import type {
   FSDProvider,
   ModelGroupConfig,
   RetryPolicy,
+  ResolveOptions,
+  ExplainResult,
+  ExplainCandidate,
 } from "./types";
 import type { ProviderAvailability } from "./providerDetection";
 import {
@@ -13,6 +16,11 @@ import {
 } from "./providerDetection";
 import { createFallbackModel } from "./fallbackModel";
 import { wrapAiSdkModel } from "./createAiSdkModelResolver";
+import {
+  hasPreferredProvider,
+  normalizePreference,
+  reorderByPreference,
+} from "./reorderByPreference";
 
 // ---------------------------------------------------------------------------
 // Defaults
@@ -72,6 +80,19 @@ type ProviderResolver = (
   modelId: string
 ) => unknown;
 
+/** Internal shape used for reorder + resolution, distinct from public types. */
+interface ResolvedCandidate {
+  modelId: string;
+  providerName: string;
+  /** Available means we can construct a working GeneratorModel. */
+  available: boolean;
+  source?: "key" | "gateway";
+  gateway?: string;
+  reason?: string;
+  /** Populated only when `available === true`. */
+  model?: GeneratorModel;
+}
+
 // ---------------------------------------------------------------------------
 // Provider factory
 // ---------------------------------------------------------------------------
@@ -83,6 +104,8 @@ type ProviderResolver = (
  * ```ts
  * const provider = createFSDProvider({ groups: defaultGroups });
  * const gen = generator({ model: provider('fast') });
+ * // brand preference — orthogonal to the group/preset tier:
+ * const gen2 = generator({ model: provider('fast', { prefer: 'anthropic' }) });
  * ```
  */
 export function createFSDProvider(config: FSDProviderConfig): FSDProvider {
@@ -91,83 +114,197 @@ export function createFSDProvider(config: FSDProviderConfig): FSDProvider {
     ...config.retryPolicy,
   };
 
-  // Detect available providers (direct keys + gateways)
   const availability = detectAvailableProviders({
     keys: config.keys,
     gateways: config.gateways,
   });
 
-  // Resolve AI SDK provider instances
-  const aiSdkProviders = resolveAiSdkProviders(
-    config.providers,
-    availability
-  );
+  const aiSdkProviders = resolveAiSdkProviders(config.providers, availability);
 
-  // Build group cache (lazy — resolved on first access)
+  // Cache keyed by (groupName + serialized resolve options). Calls with the
+  // same preference reuse the same fallback model.
   const groupCache = new Map<string, GeneratorModel>();
 
-  function resolveGroup(groupName: string): GeneratorModel {
-    const cached = groupCache.get(groupName);
+  function effectivePreference(options: ResolveOptions | undefined): string[] {
+    // Call-site overrides provider-level default (FIX-425 precedence).
+    const raw =
+      options?.prefer !== undefined ? options.prefer : config.providerPreference;
+    return normalizePreference(raw) ?? [];
+  }
+
+  function cacheKey(groupName: string, options: ResolveOptions | undefined): string {
+    const prefer = effectivePreference(options);
+    const strict = options?.strict === true;
+    return `${groupName}::${prefer.join("|")}::${strict ? "s" : ""}`;
+  }
+
+  /**
+   * Build the candidate list for a group, tagged with availability. Pure
+   * enough to feed both `resolveGroup` and `explain`; does not throw for
+   * unknown groups (caller decides).
+   */
+  function buildCandidates(groupName: string): {
+    group: ModelGroupConfig;
+    candidates: ResolvedCandidate[];
+  } | null {
+    const group = config.groups[groupName];
+    if (!group) return null;
+
+    const candidates: ResolvedCandidate[] = group.models.map((modelString) => {
+      const parsed = parseModelString(modelString);
+      const providerName = parsed.provider ?? "unknown";
+      const modelId = parsed.modelId;
+      const resolver = aiSdkProviders.get(providerName);
+      const availabilityInfo = availability.get(providerName);
+
+      if (!resolver || !modelId) {
+        return {
+          modelId: modelString,
+          providerName,
+          available: false,
+          reason: resolver
+            ? "invalid-model-string"
+            : availabilityInfo
+              ? "provider-package-missing"
+              : "no-key-no-gateway",
+        };
+      }
+
+      try {
+        const languageModel = resolver(providerName, modelId);
+        return {
+          modelId: modelString,
+          providerName,
+          available: true,
+          source: availabilityInfo?.source,
+          gateway:
+            availabilityInfo?.source === "gateway"
+              ? availabilityInfo.gatewayName ?? availabilityInfo.gatewayType
+              : undefined,
+          model: wrapAiSdkModel(languageModel, modelString),
+        };
+      } catch {
+        return {
+          modelId: modelString,
+          providerName,
+          available: false,
+          reason: "provider-load-failed",
+        };
+      }
+    });
+
+    return { group, candidates };
+  }
+
+  function resolveGroup(
+    groupName: string,
+    options?: ResolveOptions
+  ): GeneratorModel {
+    const key = cacheKey(groupName, options);
+    const cached = groupCache.get(key);
     if (cached) return cached;
 
-    const group = config.groups[groupName];
-    if (!group) {
-      const available = Object.keys(config.groups).join(", ");
+    const built = buildCandidates(groupName);
+    if (!built) {
+      const avail = Object.keys(config.groups).join(", ");
       throw new Error(
-        `Unknown model group "${groupName}". Available groups: ${available}`
+        `Unknown model group "${groupName}". Available groups: ${avail}`
       );
     }
 
-    // Filter to available models and wrap as GeneratorModel
-    const availableModels = group.models
-      .map((modelString) => {
-        const parsed = parseModelString(modelString);
-        const providerName = parsed.provider!;
-        const modelId = parsed.modelId!;
-        const resolver = aiSdkProviders.get(providerName);
-        if (!resolver) return null;
+    const prefer = effectivePreference(options);
+    const strict = options?.strict === true;
 
-        try {
-          const languageModel = resolver(providerName, modelId);
-          return {
-            modelId: modelString,
-            providerName,
-            model: wrapAiSdkModel(languageModel, modelString),
-          };
-        } catch {
-          // Provider package not installed or model creation failed — skip
-          return null;
-        }
-      })
-      .filter((m): m is NonNullable<typeof m> => m !== null);
+    if (strict && prefer.length > 0) {
+      if (!hasPreferredProvider(built.candidates, prefer)) {
+        throw new Error(
+          `Preset "${groupName}" contains no models from preferred provider(s) [${prefer.join(
+            ", "
+          )}]. Add a model from one of those providers to the preset or disable strict mode.`
+        );
+      }
+    }
+
+    // Reorder (stable) by preference, then filter to only available models.
+    const reordered = reorderByPreference(built.candidates, prefer);
+    const availableEntries = reordered.filter((c) => c.available);
+
+    if (strict && prefer.length > 0) {
+      const anyPreferredAvailable = availableEntries.some((c) =>
+        prefer.includes(c.providerName)
+      );
+      if (!anyPreferredAvailable) {
+        throw new Error(
+          `Preset "${groupName}" has no available models from preferred provider(s) [${prefer.join(
+            ", "
+          )}]. Configure an API key or gateway for one of those providers, or disable strict mode.`
+        );
+      }
+    }
 
     const fallbackModel = createFallbackModel({
       groupName,
-      models: availableModels,
-      defaults: group.defaults,
+      models: availableEntries.map((c) => ({
+        modelId: c.modelId,
+        providerName: c.providerName,
+        model: c.model!,
+      })),
+      defaults: built.group.defaults,
       retryPolicy,
     });
 
-    groupCache.set(groupName, fallbackModel);
+    groupCache.set(key, fallbackModel);
     return fallbackModel;
   }
 
-  // Create the callable provider
-  const provider = function (groupName: string): GeneratorModel {
-    return resolveGroup(groupName);
+  const provider = function (
+    groupName: string,
+    options?: ResolveOptions
+  ): GeneratorModel {
+    return resolveGroup(groupName, options);
   } as FSDProvider;
 
   provider.languageModel = resolveGroup;
 
   provider.groups = () => Object.keys(config.groups);
 
-  provider.available = (groupName: string) => {
-    const group = config.groups[groupName];
-    if (!group) return [];
-    return group.models.filter((modelString) => {
-      const parsed = parseModelString(modelString);
-      return parsed.provider ? aiSdkProviders.has(parsed.provider) : false;
+  provider.available = (groupName: string, options?: ResolveOptions) => {
+    const built = buildCandidates(groupName);
+    if (!built) return [];
+    const prefer = effectivePreference(options);
+    return reorderByPreference(built.candidates, prefer)
+      .filter((c) => c.available)
+      .map((c) => c.modelId);
+  };
+
+  provider.explain = (groupName: string, options?: ResolveOptions): ExplainResult => {
+    const built = buildCandidates(groupName);
+    if (!built) {
+      return { preset: groupName, prefer: [], candidates: [], willUse: null };
+    }
+    const prefer = effectivePreference(options);
+    const reordered = reorderByPreference(built.candidates, prefer);
+    const firstAvailable = reordered.find((c) => c.available);
+    const candidates: ExplainCandidate[] = reordered.map((c) => {
+      const row: ExplainCandidate = {
+        modelId: c.modelId,
+        providerName: c.providerName,
+        available: c.available,
+      };
+      if (c.available) {
+        if (c.source) row.source = c.source;
+        if (c.gateway) row.gateway = c.gateway;
+      } else if (c.reason) {
+        row.reason = c.reason;
+      }
+      return row;
     });
+    return {
+      preset: groupName,
+      prefer,
+      candidates,
+      willUse: firstAvailable?.modelId ?? null,
+    };
   };
 
   return provider;

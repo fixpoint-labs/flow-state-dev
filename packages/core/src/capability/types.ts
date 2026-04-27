@@ -9,7 +9,10 @@
  */
 import type { ZodTypeAny } from "zod";
 import type { BlockContext, DeclaredResourceEntry } from "../types/block";
-import type { GeneratorTool } from "../blocks/generator";
+import type { ContextObject, GeneratorTool } from "../blocks/generator";
+import type { AgentType } from "../items/types";
+
+type MaybePromise<T> = T | Promise<T>;
 
 // ---------------------------------------------------------------------------
 // Preset definition
@@ -25,17 +28,38 @@ import type { GeneratorTool } from "../blocks/generator";
  * compatibility is enforced by the type system at the `uses` site and by
  * a runtime backstop in the block factories.
  */
-export type PresetDef = {
-  // Resources (any block kind)
-  sessionResources?: Record<string, DeclaredResourceEntry>;
-  userResources?: Record<string, DeclaredResourceEntry>;
-  projectResources?: Record<string, DeclaredResourceEntry>;
+/**
+ * Lightweight context shape for preset callbacks. Inferred from the
+ * capability's sessionStateSchema so `(ctx) =>` is typed automatically.
+ * Defaults to `any` for backwards compatibility.
+ *
+ * Resources live at `ctx.resources` (FIX-435); they're a flat namespace
+ * routed by each resource's intrinsic `scope`.
+ */
+export type CapabilityPresetCtx<TSessionState = any> = {
+  session: {
+    state: Readonly<TSessionState>;
+    identity: { id: string; userId?: string; orgId?: string };
+    [key: string]: any;
+  };
+  resources: Record<string, any>;
+  [key: string]: any;
+};
+
+/**
+ * A preset definition — a partial block config. TSessionState flows from
+ * the capability's sessionStateSchema so preset callbacks get typed ctx.
+ */
+export type PresetDef<TSessionState = any> = {
+  // Resources (any block kind) — flat map; scope is intrinsic to each
+  // resource via `defineResource({ scope })` (FIX-435).
+  resources?: Record<string, DeclaredResourceEntry>;
 
   // State schemas (any block kind for the corresponding scope)
   sessionStateSchema?: ZodTypeAny;
   requestStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
-  projectStateSchema?: ZodTypeAny;
+  orgStateSchema?: ZodTypeAny;
 
   // Sequencer-only
   sequencerStateSchema?: ZodTypeAny;
@@ -43,19 +67,33 @@ export type PresetDef = {
   // Targets (any block kind)
   targetStateSchemas?: Record<string, ZodTypeAny>;
 
-  // Generator-specific
-  context?: GeneratorContextEntryAny | GeneratorContextEntryAny[];
+  // Generator-specific — ctx type inferred from capability's sessionStateSchema
+  context?:
+    | PresetContextEntry<TSessionState>
+    | PresetContextEntry<TSessionState>[];
   tools?:
     | GeneratorTool[]
-    | ((ctx: BlockContext) => GeneratorTool[] | Promise<GeneratorTool[]>);
+    | ((ctx: CapabilityPresetCtx<TSessionState>) => GeneratorTool[] | Promise<GeneratorTool[]>);
 };
 
 /**
- * Generator context entry type — matches the GeneratorSlotEntry function form.
- * We use a loose function signature here to avoid coupling the capability
- * types to the full GeneratorSlot type hierarchy.
+ * Context entry within a preset. Capabilities may contribute static strings,
+ * static object-form context (keys become XML tag names — see `ContextObject`
+ * in `@flow-state-dev/core`), or a function that receives `(input, ctx)` and
+ * resolves to one of those shapes (or `null`/`undefined` to contribute nothing).
  */
-type GeneratorContextEntryAny = (input: any, ctx: any) => any;
+export type PresetContextEntry<TSessionState = any> =
+  | string
+  | ContextObject<any, CapabilityPresetCtx<TSessionState>>
+  | ((
+      input: any,
+      ctx: CapabilityPresetCtx<TSessionState>,
+    ) => MaybePromise<
+      | string
+      | ContextObject<any, CapabilityPresetCtx<TSessionState>>
+      | null
+      | undefined
+    >);
 
 // ---------------------------------------------------------------------------
 // Capability config (input to defineCapability)
@@ -65,34 +103,56 @@ type GeneratorContextEntryAny = (input: any, ctx: any) => any;
  * Configuration for defineCapability(). Declares the surface a capability
  * contributes to any block that lists it in `uses`.
  */
+/** Infer state type from a ZodTypeAny, falling back to `any`. */
+export type InferSessionState<T> = T extends ZodTypeAny ? import("zod").infer<T> : any;
+
 export interface CapabilityConfig<
   TName extends string = string,
   TFns extends Record<string, (...args: any[]) => any> = Record<string, (...args: any[]) => any>,
-  TPresets extends Record<string, PresetDef | string[]> = Record<string, PresetDef>,
-  TUses extends readonly DefinedCapability[] = readonly DefinedCapability[],
+  TSessionStateSchema extends ZodTypeAny | undefined = undefined,
 > {
   name: TName;
 
   // Required surface — always installed when the capability is used
-  sessionResources?: Record<string, DeclaredResourceEntry>;
-  userResources?: Record<string, DeclaredResourceEntry>;
-  projectResources?: Record<string, DeclaredResourceEntry>;
-  sessionStateSchema?: ZodTypeAny;
+  /** Flat resource map — accessor key → resource definition (FIX-435). */
+  resources?: Record<string, DeclaredResourceEntry>;
+  sessionStateSchema?: TSessionStateSchema;
   requestStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
-  projectStateSchema?: ZodTypeAny;
+  orgStateSchema?: ZodTypeAny;
   sequencerStateSchema?: ZodTypeAny;
   targetStateSchemas?: Record<string, ZodTypeAny>;
 
-  // Capability composition
-  uses?: TUses;
+  // Capability composition — static refs and/or dynamic resolver functions.
+  // Dynamic entries (functions) receive typed ctx from sessionStateSchema.
+  uses?: readonly (
+    | CapabilityRef
+    | ((ctx: CapabilityPresetCtx<InferSessionState<TSessionStateSchema>>) => readonly CapabilityRef[])
+  )[];
+
+  /**
+   * Restrict this capability to blocks with a matching `agentType`.
+   *
+   * Omitted (default): the capability attaches to every block that declares
+   * it via `uses`. Set to an `AgentType` or array of `AgentType`s to filter
+   * to an allowlist — the capability only attaches when the consuming
+   * block's `agentType` is in the list. A block with no `agentType`
+   * (including handlers, sequencers, routers, and generators that don't
+   * set the field) is treated as `"primary"` for this check.
+   *
+   * Use `"primary"` on capabilities that should coordinate the main agent
+   * but not be replicated into workers (`agentType: "sub"`), e.g. large
+   * skill bodies or expensive system prompts in multi-agent patterns.
+   */
+  agentType?: AgentType | readonly AgentType[];
 
   // Helper function factory — produces ctx.cap.{name}
   fns?: (ctx: BlockContext) => TFns;
 
   // Optional surface — named bundles of block config fields.
   // `default` is a reserved key listing which presets are on by default.
-  presets?: TPresets & { default?: string[] };
+  // Preset callbacks (tools, context) are typed via sessionStateSchema.
+  presets?: Record<string, PresetDef<InferSessionState<TSessionStateSchema>> | string[]> & { default?: string[] };
 }
 
 // ---------------------------------------------------------------------------
@@ -119,18 +179,19 @@ export interface DefinedCapability<
   readonly name: TName;
 
   // Required surface — always installed when the capability is used
-  sessionResources?: Record<string, DeclaredResourceEntry>;
-  userResources?: Record<string, DeclaredResourceEntry>;
-  projectResources?: Record<string, DeclaredResourceEntry>;
+  resources?: Record<string, DeclaredResourceEntry>;
   sessionStateSchema?: ZodTypeAny;
   requestStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
-  projectStateSchema?: ZodTypeAny;
+  orgStateSchema?: ZodTypeAny;
   sequencerStateSchema?: ZodTypeAny;
   targetStateSchemas?: Record<string, ZodTypeAny>;
 
-  // Capability composition
-  uses?: readonly DefinedCapability[];
+  // Capability composition — static refs and/or dynamic resolver functions
+  uses?: UsesSlot;
+
+  /** Allowlist of block `agentType`s this capability attaches to. See CapabilityConfig.agentType. */
+  agentType?: AgentType | readonly AgentType[];
 
   // Helper function factory — produces ctx.cap.{name}
   fns?: (ctx: BlockContext) => TFns;
@@ -195,6 +256,22 @@ export interface ConfiguredCapability<
  */
 export type CapabilityRef = DefinedCapability<any, any, any, any>;
 
+/**
+ * A single entry in a `uses` array — either a static capability reference
+ * or a function that resolves capabilities at runtime based on context.
+ *
+ * Dynamic entries contribute context and tools only. Resources must be
+ * declared statically (on the capability's required surface or elsewhere)
+ * because they need to exist before block execution.
+ */
+export type UsesEntry = CapabilityRef | ((ctx: BlockContext) => readonly CapabilityRef[]);
+
+/**
+ * The `uses` slot on blocks and capabilities. Accepts a readonly array of
+ * static capability refs and/or dynamic resolver functions.
+ */
+export type UsesSlot = readonly UsesEntry[];
+
 // ---------------------------------------------------------------------------
 // Type inference utilities
 // ---------------------------------------------------------------------------
@@ -203,10 +280,14 @@ export type CapabilityRef = DefinedCapability<any, any, any, any>;
  * Infer the ctx.cap type from a `uses` array.
  * Maps each capability's name → fns return type, then intersects.
  */
-export type InferCapabilities<TUses extends readonly CapabilityRef[]> =
-  TUses extends readonly []
+export type InferCapabilities<TUses extends readonly UsesEntry[]> =
+  [Extract<TUses[number], CapabilityRef>] extends [never]
     ? {}
-    : Prettify<UnionToIntersection<InferCapabilityEntry<TUses[number]>>>;
+    : Prettify<UnionToIntersection<InferCapabilityEntry<Extract<TUses[number], CapabilityRef>>>> extends infer T
+      ? T extends Record<string, Record<string, (...args: any[]) => any>>
+        ? T
+        : {}
+      : {};
 
 type InferCapabilityEntry<T> =
   T extends DefinedCapability<infer N, infer F, any, any>

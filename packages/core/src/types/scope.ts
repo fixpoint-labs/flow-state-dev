@@ -1,16 +1,15 @@
-import type { ItemStatus } from "../items/types";
+import type { AgentType, ItemStatus } from "../items/types";
 import type { JsonObject } from "../schema/common";
-import type { AnyResourceRef, ResourceRegistry } from "./resource";
 import type { CostEstimate, TokenLedger } from "./flow";
 import type { ScopeStateOps } from "./state";
 
-export type ScopeType = "request" | "session" | "user" | "project";
+export type ScopeType = "request" | "session" | "user" | "org";
 
 export type ScopeIdentity = {
   type: ScopeType;
   id: string;
   userId?: string;
-  projectId?: string;
+  orgId?: string;
 };
 
 export type SessionItem = {
@@ -22,6 +21,9 @@ export type SessionItem = {
   itemIndex: number;
   payload: unknown;
   ts?: number;
+  /** Identity of the producing agent (post-FIX-391). */
+  agentType?: AgentType;
+  agentName?: string;
 };
 
 export type MessageLimit = number | { tokens: number };
@@ -31,12 +33,33 @@ export type ItemQuery = {
   includeTransient?: boolean;
   itemTypes?: string[];
   roles?: Array<"user" | "assistant" | "system" | "developer" | "tool">;
+  /** Filter by producing agent type. Scalar or array form. */
+  agentType?: AgentType | AgentType[];
+  /** Filter by producing agent name. Scalar or array form. */
+  agentName?: string | string[];
 };
 
 export type SessionItemViews = {
+  /** Every session item. Respects `includeTransient`. No visibility filter. */
   all: (query?: ItemQuery) => SessionItem[];
+  /** Items where `resolveItemVisibility(item).client === true`. Excludes trace items. */
   client: (query?: ItemQuery) => SessionItem[];
-  llm: (query?: ItemQuery) => Promise<LLMMessage[]>;
+  /**
+   * LLM-ready conversation history. Applies the transient filter, the type
+   * allowlist, `resolveItemVisibility(item).history`, role filtering, and
+   * limiting. Effectively returns only items whose resolved visibility
+   * includes them in history (agent-typed conversational items + user
+   * messages).
+   */
+  history: (query?: ItemQuery) => Promise<LLMMessage[]>;
+  /**
+   * Raw-query view for custom context assembly. Returns `SessionItem[]`
+   * unfiltered by visibility. Respects `includeTransient` per query, and
+   * honors the `agentType` / `agentName` filters. Use this to build
+   * custom prompt context that reaches beyond the conversation-history
+   * default (e.g., a long-running sub-agent pulling its own prior outputs).
+   */
+  selectForContext: (query?: ItemQuery) => SessionItem[];
 };
 
 export type Message = {
@@ -57,7 +80,7 @@ export type MessageQuery = {
 
 export type MessageViews = {
   ui: (query?: MessageQuery) => Message[];
-  llm: (query?: MessageQuery) => LLMMessage[];
+  history: (query?: MessageQuery) => LLMMessage[];
 };
 
 export type JournalEntry = {
@@ -93,14 +116,18 @@ export type SessionMetadataInput = SessionMetadata & {
   metadata?: Record<string, unknown>;
 };
 
+/**
+ * Session scope handle — exposes per-session state and metadata. Resources
+ * have been lifted to the flat `ctx.resources` registry (FIX-435); a
+ * resource's intrinsic `scope` routes its storage to the session record
+ * for session-scoped definitions.
+ */
 export type SessionScopeHandle<
-  TState extends object = Record<string, unknown>,
-  TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>
+  TState extends object = Record<string, unknown>
 > = {
   identity: ScopeIdentity;
   state: Readonly<TState>;
   metadata: Readonly<SessionMetadata>;
-  resources: ResourceRegistry<TResources>;
   items: SessionItemViews;
   appendJournal(entry: JournalEntryInput): Promise<void>;
   getJournal(options?: { limit?: number; offset?: number }): Promise<JournalEntry[]>;
@@ -108,19 +135,15 @@ export type SessionScopeHandle<
 } & ScopeStateOps<TState>;
 
 export type UserScopeHandle<
-  TState extends object = Record<string, unknown>,
-  TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>
+  TState extends object = Record<string, unknown>
 > = {
   identity: ScopeIdentity;
   state: Readonly<TState>;
-  resources: ResourceRegistry<TResources>;
 } & ScopeStateOps<TState>;
 
-export type ProjectScopeHandle<
-  TState extends object = Record<string, unknown>,
-  TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>
+export type OrgScopeHandle<
+  TState extends object = Record<string, unknown>
 > = {
   identity: ScopeIdentity;
   state: Readonly<TState>;
-  resources?: ResourceRegistry<TResources>;
 } & ScopeStateOps<TState>;

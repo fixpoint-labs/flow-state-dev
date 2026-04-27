@@ -11,14 +11,20 @@ export type {
 export { isEphemeralContent } from "./content";
 
 export type {
+  AgentType,
+  BlockDebugItem,
+  BlockDebugPayload,
   BlockOutputItem,
   BlockToolOutputItem,
+  BlockValue,
   ComponentItem,
   ContainerItem,
+  /** @deprecated The `context` item type has been removed from the OutputItem union. */
   ContextItem,
   ErrorItem,
   ItemProvenance,
   ItemStatus,
+  ItemVisibility,
   MessageItem,
   OutputItem,
   OutputItemBase,
@@ -26,10 +32,24 @@ export type {
   ResourceChangeItem,
   RouterDecisionItem,
   StateChangeItem,
+  StateSnapshotItem,
   SourceItem,
   StatusItem,
-  StepErrorItem
+  StepErrorItem,
+  StructureShape
 } from "./types";
+
+export { resolveItemVisibility } from "./resolve-visibility";
+
+export {
+  buildBlockOutputLookup,
+  inlineBlockValue,
+  isBlockValue,
+  refBlockValue,
+  resolveBlockValue,
+  structureBlockValue
+} from "./resolve-value";
+export type { BlockOutputLookup } from "./resolve-value";
 
 export type {
   ContentPartAddedEvent,
@@ -51,6 +71,9 @@ export type {
   ScopeStateChangedEvent,
   SessionMetadataChangedEvent,
   ResourceChangedEvent,
+  ResourceContentCreatedEvent,
+  ResourceContentDeletedEvent,
+  ResourceContentUpdatedEvent,
   StreamEvent,
   UserDebugEvent,
   UserEventBase,

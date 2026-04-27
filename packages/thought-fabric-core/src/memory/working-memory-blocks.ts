@@ -78,7 +78,7 @@ export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
     model: config?.model ?? 'gpt-5-mini',
     inputSchema: z.string(),
     outputSchema: observationsSchema,
-    sessionResources: { workingMemory: workingMemoryResource },
+    resources: { workingMemory: workingMemoryResource },
     prompt: [
       'You are a working memory manager for a cognitive AI system.',
       'Review the following text and determine if any new information should be stored in working memory.',
@@ -88,8 +88,8 @@ export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
       `Extract 0-${maxExtract} items. For each:`,
       '- content: what to remember (be concise)',
       '- importance: 0-1 (goals/constraints: 0.8-1.0, key facts: 0.5-0.8, context: 0.3-0.5)',
-      '- pinned: true only for explicit user goals or critical constraints, false otherwise',
-      '- replaces: the exact ID of an existing entry this supersedes (e.g. "wm_abc1"), or empty string "" if not replacing anything',
+      '- pinned: true only for explicit user goals or critical constraints (default: false)',
+      '- replaces: the exact ID of an existing entry this supersedes (e.g. "wm_abc1"), or omit if not replacing',
       '',
       'Rules:',
       '- Don\'t duplicate what\'s already in working memory',
@@ -98,14 +98,12 @@ export function workingMemoryObserve(config?: WorkingMemoryObserveConfig) {
       '- Return empty observations array if nothing new is worth storing',
     ].join('\n'),
     context: (_input: string, ctx) => {
-      const ref = ctx.session.resources.get('workingMemory')
+      const ref = ctx.resources.get('workingMemory')
       const formatted = formatForObserveContext(ref)
       return formatted || 'Working memory is empty.'
     },
     user: (input: string) => input,
-    // Suppress all item emission — this is an internal extraction step,
-    // not a conversational response visible to the end user.
-    emit: { messages: false, reasoning: false, toolCalls: false },
+    agentType: "trace",
   })
 }
 
@@ -133,9 +131,9 @@ export function workingMemoryRemember(config?: WorkingMemoryBlockConfig) {
     name: 'workingMemory/remember',
     inputSchema: observationsSchema,
     outputSchema: z.array(workingMemoryEntrySchema),
-    sessionResources: { workingMemory: workingMemoryResource },
+    resources: { workingMemory: workingMemoryResource },
     execute: async (input, ctx) => {
-      const ref = ctx.session.resources.get('workingMemory')
+      const ref = ctx.resources.get('workingMemory')
       const added: z.infer<typeof workingMemoryEntrySchema>[] = []
 
       for (const obs of input.observations) {
@@ -179,9 +177,9 @@ export function workingMemoryTick(config?: WorkingMemoryBlockConfig) {
   return handler({
     name: 'workingMemory/tick',
     inputSchema: z.any(),
-    sessionResources: { workingMemory: workingMemoryResource },
+    resources: { workingMemory: workingMemoryResource },
     execute: async (_input, ctx) => {
-      const ref = ctx.session.resources.get('workingMemory')
+      const ref = ctx.resources.get('workingMemory')
       await advance(ref, helperConfig)
     },
   })
@@ -199,9 +197,9 @@ export function workingMemorySnapshot() {
       entries: z.array(workingMemoryEntrySchema),
       currentTurn: z.number(),
     }),
-    sessionResources: { workingMemory: workingMemoryResource },
+    resources: { workingMemory: workingMemoryResource },
     execute: (_input, ctx) => {
-      const ref = ctx.session.resources.get('workingMemory')
+      const ref = ctx.resources.get('workingMemory')
       return {
         entries: items(ref),
         currentTurn: ref.state.currentTurn,
@@ -231,9 +229,9 @@ export function workingMemoryAdd(config?: WorkingMemoryBlockConfig) {
       metadata: z.record(z.any()).optional(),
     }),
     outputSchema: workingMemoryEntrySchema,
-    sessionResources: { workingMemory: workingMemoryResource },
+    resources: { workingMemory: workingMemoryResource },
     execute: async (input, ctx) => {
-      const ref = ctx.session.resources.get('workingMemory')
+      const ref = ctx.resources.get('workingMemory')
       return add(ref, {
         content: input.content,
         importance: input.importance,

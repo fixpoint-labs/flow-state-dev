@@ -1,7 +1,9 @@
 import type {
+  ExpectedVersion,
   SessionListOptions,
   SessionRecord,
-  SessionStore
+  SessionStore,
+  SetResult
 } from "../types";
 import {
   createFilesystemRecordStore,
@@ -45,8 +47,12 @@ export class FilesystemSessionStore implements SessionStore {
     return this.store.get(id);
   }
 
-  async set(id: string, value: SessionRecord): Promise<void> {
-    await this.store.set(id, value);
+  async set(
+    id: string,
+    value: SessionRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<SessionRecord>> {
+    return this.store.set(id, value, expectedVersion);
   }
 
   async delete(id: string): Promise<void> {

@@ -2,7 +2,69 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-04-26
+
+### Org scope — rename + immutable session binding + `requireOrg` opt-in (FIX-428)
+
+- **Renamed `project` scope to `org` scope** across core, server, client, react, devtool, stores, tools, patterns, skills, thought-fabric, and tests. `ScopeType` is now `'request' | 'session' | 'user' | 'org'`. `ScopeIdentity.projectId` → `orgId`. `ProjectScopeHandle` → `OrgScopeHandle`. Block configs use `orgResources` / `orgStateSchema` / `orgClientData`. `FlowDefinition.org`, `isolateOrgState`, `ctx.org` everywhere. SQLite/Postgres tables renamed (`projects` → `orgs`, `project_id` → `org_id`).
+- **Session orgId is now immutable.** `createExecutionContext` enforces it: a request that supplies an `orgId` different from the session's stored value (or that tries to late-bind an unbound session) throws `OrgBindingMismatchError` and surfaces as 400. The previous code (`optionsProjectId ?? sessionRecord.projectId`) silently let any caller-supplied id override the stored value, vacating the immutability claim. Apps that need to "move" a session create a new one.
+- **userId mismatch is also caught now.** Same enforcement site, parallel guard: if the loaded session's `userId` differs from `options.userId`, throws `UserBindingMismatchError`. Closes a long-standing gap where a caller could pass `userId=alice` for a session created with `userId=bob` and silently route bob's data into alice's response. The userId check fires before the orgId check.
+- **`requireOrg: true` block flag.** Opt-in per block; bubbles through sequencers/routers so a flow's `requiresOrg` is true when any block in any action declares it. The HTTP action route consults `flow.requiresOrg` and rejects requests against unbound sessions with `400 OrgRequired`. `list_flows` exposes `requiresOrg` alongside the existing `requireUser`.
+- **Dynamic resource routing is deferred to FIX-435** per its explicit supersession statement. This wave ships rename + binding + `requireOrg` only — `scope: (bind) => ...` and `ctx.dynamic.resources.*` come later. The projects-as-org-scoped-collection pattern (for app-level project structures) works without dynamic routing.
+- **Surfaces:**
+  - `useSession` accepts `orgId` and exposes it on the returned `SessionView`.
+  - DevTool session-context panel labels org state/clientData/resources as "Org" (not "Project").
+  - Server exports `OrgBindingMismatchError`, `UserBindingMismatchError`, `OrgRecord`, `OrgStore`, `OrgListOptions`, `resolveOrgStorageKey`.
+- **Tests:** 6 new tests in `packages/core/test/require-org.test.ts` covering `requiresOrg` bubbling through handlers, sequencers, multi-action flows. 7 new tests in `packages/server/test/binding-immutability.test.ts` covering both userId and orgId mismatch, late-bind rejection, and check ordering.
+- **Migration:** No data migration. Pre-1.0 dev/test data on disk under `project-store/` is no longer read; document and recreate. The Linear `blockedBy: FIX-427` relation was removed (verified the lazy-collections surface is not touched by this issue).
+
+## 2026-04-25
+
+### Up-front skill activation router (FIX-421)
+
+- New `createIntentSelector()` factory in `@flow-state-dev/skills` — a three-tier sequencer that decides which skills (if any) apply to a user message before the main generator runs. Tiers: (1) literal `/<skill-name>` slash match, (2) local keyword scan over per-skill `keywords` frontmatter, (3) structured-output LLM classifier (`agentType: "trace"`) that runs only when tiers 1–2 are inconclusive. Skill-only — thinking-style classification stays in its existing kitchen-sink pipeline.
+- `createSkillsCapability` now ships three named presets — `tools` (catalog tool schemas), `context` (the active-skill body formatter), and `runSkill` (the `runSkill` tool plus the skill-catalog context listing) — all on by default. Flows using up-front activation drop the tool-call path with the standard preset override: `cap.presets({ runSkill: false })`. The `tools`/`context` presets stay on so the active-skill body formatter still injects matched skills under the FIX-434 keyed `<skills>` context tag.
+- New `keywords` frontmatter field on `SKILL.md` (parsed + serialized round-trip in `parseSkillMd` / `serializeSkillMd`, surfaced in the `skills` collection's client-data projection). Lowercase tokens that the tier-2 keyword scan matches against the user message.
+- `buildRunSkillDescription` no longer emits the slash-command instruction — slash routing is handled deterministically by `intentSelector`'s tier 1 instead of by the model.
+- New core types: `MatchedSkill` and `IntentSource` exported from `@flow-state-dev/core` and `@flow-state-dev/core/types`.
+- `ActiveSkillEntry` (the records in `session.state.activeSkills`) gains an optional `source` field. `intentSelector` stamps it with the matching tier; mid-flow `runSkill` calls leave it undefined. Consumers that want a tier badge in their UI project from `activeSkills` directly via clientData.
+- Apply-intent replaces (not appends) `activeSkills` for the turn. Mid-flow `runSkill` calls within the same turn still append on top via the existing `pushActiveSkill` path.
+- Chat-agent flow wiring is intentionally NOT changed in this PR — that's a follow-up. This PR ships the primitive plus the capability option so they can land independently.
+
+## 2026-04-24
+
+### Cross-flow schema registry + per-flow isolation (FIX-431)
+
+- Added `isolateUserState` and `isolateProjectState` flags to `defineFlow`. When set, the flow's user- or project-scope storage key is namespaced by `flowKind` (`${userId}:${flowKind}` / `${projectId}:${flowKind}`), and the flow skips cross-flow schema checks for that scope.
+- `FlowRegistry.register` now collects every non-isolated flow's `user.stateSchema`, `project.stateSchema`, and user/project resource schemas. Incompatible declarations throw `CrossFlowSchemaConflictError` at registration time — no silent data loss when a second flow's write would clobber the first flow's fields.
+- Structural compatibility check is conservative and Zod-aware: same-reference merges; compatible object extensions merge with a `console.warn`; type mismatches on a shared field throw.
+- New storage-key helpers `resolveUserStorageKey` / `resolveProjectStorageKey` exported from `@flow-state-dev/server`; `createExecutionContext` uses them for every user/project read, write, and content operation.
+- New `FlowRegistry.describeSharedSchemas()` for diagnostics.
+- Docs: new `docs/fundamentals/flow-isolation.md` guide and extended `docs/architecture/state-and-scopes.md` with a cross-flow section.
+
+### Prompt caching: audit and default-enable (FIX-423)
+
+- Added a `caching` field to the `generator()` block config. Default: `{ enabled: true, breakpoints: 'auto', ttl: '5m' }`. Accepts a static object or a `(input, ctx)` resolver.
+- New `packages/core/src/models/caching.ts` applies provider-specific cache markers in `buildAiSdkRequest` right before AI SDK dispatch:
+  - Anthropic / OpenRouter — stamps `providerOptions.anthropic.cacheControl` on the last system message when the cacheable system+tools prefix is large enough to activate (~1024 tokens).
+  - Vercel AI Gateway — sets `providerOptions.gateway.caching: 'auto'` and lets the gateway decide placement.
+  - OpenAI / Google / DeepSeek / unknown — no-op (those providers cache implicitly).
+  - Caller-supplied `cacheControl` markers are never overwritten (auto mode) and are left entirely untouched in `manual` mode.
+- Extended `GeneratorModelUsage` with optional `cacheReadInputTokens` and `cacheCreationInputTokens`. The AI SDK adapter normalises them from either Anthropic `providerMetadata` or the AI SDK v6 `usage.cachedInputTokens` aggregate. Sequencer and server cache-token extractors now prefer the adapter-normalised fields and fall back to provider metadata so older call paths keep working.
+- Exported `CachingConfig`, `CachingBreakpointMode`, `CachingTtl`, `applyCaching`, and `DEFAULT_CACHING_CONFIG` from `@flow-state-dev/core`.
+- Added 17 unit tests (`packages/core/test/models/caching.test.ts`) covering provider detection, threshold check, user-marker preservation, gateway delegation, manual-mode passthrough, and disabled mode; 4 integration tests in the AI SDK resolver suite verifying cache markers land on the outbound request and cache tokens round-trip into normalized usage; 2 generator-level tests verifying static + dynamic `caching` config forwarding.
+- New audit & design doc at `docs/PROMPT_CACHING.md`. User-facing prompt-caching section added to `apps/docs/docs/fundamentals/models.md`. Core package README updated.
+
 ## 2026-04-11
+
+### DevTool: View Sequencer State (FIX-348)
+
+- Added `SequencerStateSnapshotItem` to `@flow-state-dev/core` — a new trace-only item type that captures the full state of a sequencer at each step boundary.
+- Sequencers now emit state snapshots automatically: an initial snapshot before execution begins and one after each step completes. This includes loopBack iterations.
+- DevTool trace tree collects snapshots per sequencer block and displays a state indicator badge ("S") on blocks with state.
+- Clicking a sequencer block in the trace view shows a new **Sequencer State** inspector panel in the detail sidebar. The panel provides a step timeline for navigating state evolution, a diff mode for comparing adjacent steps, and full JSON rendering of each snapshot.
+- Nested sequencers each maintain their own snapshot timeline, navigable independently.
+- Works for both live-streaming runs and completed runs loaded from trace history.
 
 ### defineCapability() — Reusable Capability Bundles (FIX-351)
 

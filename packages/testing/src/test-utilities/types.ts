@@ -18,7 +18,7 @@ export type TestStateSeed = {
   request?: TestRequestSeed;
   session?: TestScopeSeed;
   user?: TestScopeSeed;
-  project?: TestScopeSeed;
+  org?: TestScopeSeed;
 };
 
 export type TestTargetSeed = {
@@ -37,7 +37,7 @@ export type TestBlockOptions<TInput> = {
   request?: TestRequestSeed;
   session?: TestScopeSeed;
   user?: TestScopeSeed;
-  project?: TestScopeSeed;
+  org?: TestScopeSeed;
   sequencer?: TestSequencerSeed;
   targets?: Record<string, TestTargetSeed>;
   tools?: Record<string, (...args: any[]) => Promise<any> | any>;
@@ -47,7 +47,7 @@ export type TestBlockOptions<TInput> = {
 };
 
 export type StateChange = {
-  scope: "request" | "session" | "user" | "project" | "block_instance";
+  scope: "request" | "session" | "user" | "org" | "block_instance";
   operation:
     | "patchState"
     | "setState"
@@ -70,7 +70,7 @@ export type TestBlockResult<TOutput> = {
     request: Record<string, unknown>;
     session: Record<string, unknown>;
     user: Record<string, unknown>;
-    project: Record<string, unknown>;
+    org: Record<string, unknown>;
     sequencer: Record<string, unknown>;
   };
   stateChanges: StateChange[];
@@ -123,7 +123,7 @@ export type TestFlowOptions<TInput = unknown> = {
 };
 
 export type TestFlowResult = {
-  status: "completed" | "failed" | "incomplete" | "interrupted";
+  status: "completed" | "failed" | "incomplete" | "interrupted" | "aborted";
   requestId: string;
   output?: unknown;
   error?: Error;

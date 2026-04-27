@@ -10,12 +10,12 @@ import { createSQLiteRecordStore } from "./sqlite-store";
 export function createSQLiteRequestStore(db: Database.Database): RequestStore {
   const base = createSQLiteRecordStore<RequestRecord, RequestListOptions>(db, {
     tableName: "requests",
-    columns: ["flow_kind", "user_id", "session_id", "project_id", "status"],
+    columns: ["flow_kind", "user_id", "session_id", "org_id", "status"],
     toRow: (record) => [
       record.flowKind,
       record.userId,
       record.sessionId ?? null,
-      record.projectId ?? null,
+      record.orgId ?? null,
       record.status
     ],
     toWhere: (options) => {
@@ -44,6 +44,8 @@ export function createSQLiteRequestStore(db: Database.Database): RequestStore {
   });
 
   const pendingItemWrites = new Set<string>();
+  /** Holds the most recent items so the queued write always uses the latest data. */
+  const latestItemSnapshots = new Map<string, OutputItem[]>();
   const pendingEventWrites = new Set<string>();
 
   const getStmt = db.prepare("SELECT data FROM requests WHERE id = ?");
@@ -57,13 +59,11 @@ export function createSQLiteRequestStore(db: Database.Database): RequestStore {
   const selectEventsStmt = db.prepare(
     "SELECT event_data FROM request_events WHERE request_id = ? ORDER BY sequence_number ASC"
   );
-  const deleteEventsStmt = db.prepare(
-    "DELETE FROM request_events WHERE request_id = ?"
-  );
+  /** Accumulates new events between coalesced writes for incremental persistence. */
+  const pendingNewEvents = new Map<string, RequestStreamEvent[]>();
 
   const insertEventsBatch = db.transaction(
-    (requestId: string, events: RequestStreamEvent[]) => {
-      deleteEventsStmt.run(requestId);
+    (events: RequestStreamEvent[], requestId: string) => {
       for (const event of events) {
         insertEventStmt.run(
           requestId,
@@ -81,16 +81,24 @@ export function createSQLiteRequestStore(db: Database.Database): RequestStore {
     list: base.list,
 
     persistItems(requestId: string, items: OutputItem[]): void {
+      // Always capture the latest snapshot so the queued write uses the most
+      // recent items, even when subsequent calls are coalesced away.
+      latestItemSnapshots.set(requestId, [...items]);
+
       if (pendingItemWrites.has(requestId)) return;
       pendingItemWrites.add(requestId);
 
       queueMicrotask(() => {
         pendingItemWrites.delete(requestId);
+        const snapshot = latestItemSnapshots.get(requestId);
+        latestItemSnapshots.delete(requestId);
+        if (snapshot === undefined) return;
+
         const row = getStmt.get(requestId) as { data: string } | undefined;
         if (row !== undefined) {
           const current = JSON.parse(row.data) as RequestRecord;
           const updatedAt = Date.now();
-          const updated = { ...current, items, updatedAt };
+          const updated = { ...current, items: snapshot, updatedAt };
           updateItemsStmt.run(JSON.stringify(updated), updatedAt, requestId);
         }
       });
@@ -101,13 +109,24 @@ export function createSQLiteRequestStore(db: Database.Database): RequestStore {
     },
 
     persistEvents(requestId: string, events: RequestStreamEvent[]): void {
+      // Accumulate new events — the emitter now sends only incremental events.
+      let pending = pendingNewEvents.get(requestId);
+      if (pending === undefined) {
+        pending = [];
+        pendingNewEvents.set(requestId, pending);
+      }
+      pending.push(...events);
+
       if (pendingEventWrites.has(requestId)) return;
       pendingEventWrites.add(requestId);
 
-      const snapshot = [...events];
       queueMicrotask(() => {
         pendingEventWrites.delete(requestId);
-        insertEventsBatch(requestId, snapshot);
+        const newEvents = pendingNewEvents.get(requestId) ?? [];
+        pendingNewEvents.delete(requestId);
+        if (newEvents.length === 0) return;
+        // INSERT OR REPLACE handles duplicates by sequence_number.
+        insertEventsBatch(newEvents, requestId);
       });
     },
 

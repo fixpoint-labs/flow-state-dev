@@ -12,6 +12,7 @@ import {
   ResponseEmitter
 } from "./response-emitter";
 import type { InternalStreamingSeams } from "./internal/seams";
+import { createClientEventFilter } from "./client-filter";
 
 export type LiveRequestStream = {
   readonly requestId: string;
@@ -51,16 +52,24 @@ export function createLiveRequestStream(
     }
   });
 
+  const shouldForward = createClientEventFilter();
+
   const onEvent = (event: RequestStreamEventWithId): void => {
     if (closed || controller === undefined) {
       return;
     }
 
-    // RequestStreamEventWithId is RequestStreamEvent & { id }, which is a valid
-    // StreamEvent (the union includes RequestStreamEvent). The extra `id` field
-    // is harmless — encodeStreamEvent only reads the StreamEvent fields.
-    const sseFrame = encodeStreamEvent(event);
-    controller.enqueue(encoder.encode(sseFrame));
+    if (!shouldForward(event)) {
+      return;
+    }
+
+    try {
+      const sseFrame = encodeStreamEvent(event);
+      controller.enqueue(encoder.encode(sseFrame));
+    } catch (err) {
+      console.warn("[flow-state] LiveStream event delivery failed:", err);
+      closed = true;
+    }
   };
 
   const emitter = createInternalResponseEmitter({

@@ -8,18 +8,13 @@ function toResourcePath(resource: ResourceRef<any>): string {
 }
 
 function listResources(ctx: BlockContext): ResourceRef<any>[] {
-  const registries = [ctx.session?.resources, ctx.user?.resources, ctx.project?.resources];
+  const registry = ctx.resources;
+  if (registry === undefined) return [];
 
-  return registries.flatMap((registry) => {
-    if (registry === undefined) {
-      return [];
-    }
-
-    // Filter out collection refs — only static ResourceRefs have content
-    return registry.list().filter((entry): entry is ResourceRef<any> =>
-      !("pattern" in entry && "create" in entry)
-    );
-  });
+  // Filter out collection refs — only static ResourceRefs have content
+  return registry.list().filter((entry: any): entry is ResourceRef<any> =>
+    !("pattern" in entry && "create" in entry)
+  );
 }
 
 /**

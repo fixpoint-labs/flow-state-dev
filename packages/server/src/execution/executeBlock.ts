@@ -1,12 +1,13 @@
 /**
  * Central block execution entrypoint: dispatch, seam interception, retry, and error normalization.
  */
-import type { BlockOutputItem, ItemProvenance } from "@flow-state-dev/core/items";
-import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockOutputItem, BlockValue, ItemProvenance, OutputItem } from "@flow-state-dev/core/items";
+import type { BlockContext, BlockDefinition, BlockOutputHint } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
-import { getBaseCapability } from "@flow-state-dev/core";
+import { getBaseCapability, resolveActiveStatusMessage } from "@flow-state-dev/core";
 import { composeMiddleware, mergeMiddlewareStacks } from "../middleware/compose";
 import type { BlockMiddlewareContext } from "../middleware/types";
+import { buildBlockInstanceId, ROOT_BLOCK_PATH } from "@flow-state-dev/core";
 import { normalizeError } from "../errors/normalize-error";
 import { getResponseItems } from "./internal/response";
 import {
@@ -76,6 +77,38 @@ function createBlockOutputProvenance(
 
 
 
+/**
+ * Builds a BlockValue from the raw output and a caller-supplied hint (FIX-413).
+ * Performs flatten-at-emit for refs: if the target item's own output is also
+ * a ref, takes that inner sourceItemId instead so every emitted ref is one hop
+ * from a content-bearing item.
+ */
+function buildBlockValueForEmit(
+  output: unknown,
+  hint: BlockOutputHint | undefined,
+  items: OutputItem[]
+): BlockValue<unknown> {
+  if (hint === undefined || hint.kind === "inline") {
+    return { kind: "inline", value: output };
+  }
+  if (hint.kind === "structure") {
+    return { kind: "structure", shape: hint.shape };
+  }
+  // ref — flatten one hop if the target's own output is itself a ref.
+  let sourceItemId = hint.sourceItemId;
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i];
+    if (item.type === "block_output" && item.id === sourceItemId) {
+      const targetValue = (item as BlockOutputItem).output;
+      if (targetValue !== undefined && typeof targetValue === "object" && "kind" in targetValue && targetValue.kind === "ref") {
+        sourceItemId = targetValue.sourceItemId;
+      }
+      break;
+    }
+  }
+  return { kind: "ref", sourceItemId };
+}
+
 async function emitBlockOutputItem(
   options: {
     block: BlockDefinition<any, any>;
@@ -86,6 +119,7 @@ async function emitBlockOutputItem(
     modelUsage?: GeneratorModelUsageMeta;
     status?: "completed" | "failed";
     error?: { message: string; code?: string };
+    hint?: BlockOutputHint;
   }
 ): Promise<void> {
   if (!hasItemEmitter(options.ctx.response)) {
@@ -93,15 +127,18 @@ async function emitBlockOutputItem(
   }
 
   const completedAt = Date.now();
-  const itemIndex = getResponseItems(options.ctx.response).length;
-  // Root block_output items carry lifecycle timing and are marked trace: true.
+  const items = getResponseItems(options.ctx.response);
+  const itemIndex = items.length;
+  const blockValue = options.status === "failed"
+    ? ({ kind: "inline", value: undefined } as BlockValue<unknown>)
+    : buildBlockValueForEmit(options.output, options.hint, items);
+  // Root block_output items carry lifecycle timing and are marked for trace.
   // Items with toolCall (generator tool results) are emitted separately and
   // do NOT pass through this function — they retain their existing LLM audience.
   const item: BlockOutputItem = {
     id: `item_block_output_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     type: "block_output",
     status: options.status ?? "completed",
-    trace: true,
     transient: options.block.transient || undefined,
     requestId: options.metadata.requestId,
     itemIndex,
@@ -109,7 +146,7 @@ async function emitBlockOutputItem(
     ts: completedAt,
     blockName: options.block.name,
     blockKind: options.block.kind,
-    output: options.output,
+    output: blockValue,
     error: options.error,
     startedAt: options.startedAt,
     completedAt,
@@ -123,6 +160,11 @@ async function emitBlockOutputItem(
 
 /**
  * Dispatches block execution to the runtime for each supported block kind.
+ *
+ * Note: observability hooks (`onBlockDebugCapture`, `onConnectedInput`) are
+ * installed on the shared `_runtimeHooks` inside `createExecutionContext`.
+ * They're visible to every context (root and nested) via the same shared
+ * reference, so this function no longer wires them per-block.
  */
 async function executeByKind(
   block: BlockDefinition,
@@ -130,6 +172,11 @@ async function executeByKind(
   ctx: ExecuteBlockContext,
   options: ExecuteDispatcherOptions
 ): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta }> {
+  // Declarative activeStatusMessage → emitStatus. Fires before the block
+  // actually runs so the in-flight indicator updates as soon as each block
+  // enters execution. Nested sequencer/router children trigger their own
+  // resolution via the core sequencer/router code paths.
+  resolveActiveStatusMessage(block, input, ctx);
   if (block.kind === "generator") {
     const seams = options.internalSeams;
     let modelUsage: GeneratorModelUsageMeta | undefined;
@@ -137,13 +184,27 @@ async function executeByKind(
       ...ctx._runtimeHooks,
       onGeneratorModelResult: (payload: {
         model: string;
-        usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+        usage?: {
+          promptTokens: number;
+          completionTokens: number;
+          totalTokens: number;
+          cacheReadInputTokens?: number;
+          cacheCreationInputTokens?: number;
+        };
         providerMetadata?: Record<string, Record<string, unknown>>;
       }) => {
         if (payload.usage !== undefined) {
           const anthropic = payload.providerMetadata?.anthropic ?? {};
-          const readTokens = typeof anthropic.cacheReadInputTokens === "number" ? anthropic.cacheReadInputTokens : undefined;
-          const creationTokens = typeof anthropic.cacheCreationInputTokens === "number" ? anthropic.cacheCreationInputTokens : undefined;
+          // Prefer adapter-normalised cache fields; fall back to raw
+          // Anthropic provider metadata for older call paths.
+          const readTokens =
+            payload.usage.cacheReadInputTokens ??
+            (typeof anthropic.cacheReadInputTokens === "number"
+              ? anthropic.cacheReadInputTokens : undefined);
+          const creationTokens =
+            payload.usage.cacheCreationInputTokens ??
+            (typeof anthropic.cacheCreationInputTokens === "number"
+              ? anthropic.cacheCreationInputTokens : undefined);
           modelUsage = {
             model: payload.model,
             promptTokens: payload.usage.promptTokens,
@@ -155,7 +216,7 @@ async function executeByKind(
           };
         }
         ctx._runtimeHooks?.onGeneratorModelResult?.(payload);
-      }
+      },
     };
     const generatorCtx = {
       ...ctx,
@@ -219,26 +280,39 @@ export async function executeBlock(
 ): Promise<ExecuteBlockResult> {
   const startedAt = Date.now();
   const seams = options.internalSeams ?? NOOP_INTERNAL_EXECUTION_SEAMS;
-  const blockInstanceId =
-    options.metadata?.blockInstanceId ??
-    `${options.block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  // Resolve the request and structural path. For the root block this falls
+  // back to ROOT_BLOCK_PATH; nested blocks inherit their parent's path via
+  // `_blockIdentity.blockPath`.
+  const identity = (options.ctx as { _blockIdentity?: { blockPath?: string } })._blockIdentity;
+  const requestId =
+    options.metadata?.requestId ?? options.ctx.requestRuntime.requestId;
+  const blockPath =
+    options.metadata?.blockPath ?? identity?.blockPath ?? ROOT_BLOCK_PATH;
   const metadata = createExecutionMetadata(options.ctx, {
     ...options.metadata,
     blockName: options.block.name,
     blockKind: options.block.kind,
-    blockInstanceId,
+    blockPath,
     scope: options.metadata?.scope ?? "block"
   });
   const logger = options.logger ?? DEFAULT_RUNTIME_LOGGER;
-  let attempt = 0;
+  // 0-indexed attempt counter. Initial execution is attempt 0; each retry
+  // increments it. buildBlockInstanceId(requestId, blockPath, attempt) gives
+  // a deterministic ID per (request, path, attempt) tuple.
+  let attempt = -1;
 
   try {
     const run = async (): Promise<{ output: unknown; modelUsage?: GeneratorModelUsageMeta }> => {
       attempt += 1;
+      const currentInstanceId = buildBlockInstanceId(requestId, blockPath, attempt);
       const attemptMetadata = {
         ...metadata,
-        attempt
+        attempt,
+        blockInstanceId: currentInstanceId
       };
+      // Expose attempt counter on ctx so handlers (e.g. FIX-402 runOnce) can
+      // read it without reaching into `_blockIdentity`.
+      (options.ctx as { attempt?: number }).attempt = attempt;
 
       logRuntimeEvent(
         logger,
@@ -299,7 +373,7 @@ export async function executeBlock(
             options.ctx,
             {
               internalSeams: seams,
-              metadata: attemptMetadata
+              metadata: attemptMetadata,
             }
           );
         }
@@ -307,10 +381,12 @@ export async function executeBlock(
           {
             name: options.block.name,
             kind: options.block.kind,
-            instanceId: attemptMetadata.blockInstanceId ?? blockInstanceId,
+            instanceId: currentInstanceId,
             transient: options.block.transient || undefined,
             stateSchema: options.block.kind === "sequencer" ? options.block.config.stateSchema : undefined,
             parentInstanceId: attemptMetadata.parentBlockInstanceId,
+            path: blockPath,
+            phase: attemptMetadata.scope === "work" ? "work" : "main",
             container:
               containerConfig === undefined
                 ? undefined
@@ -326,16 +402,25 @@ export async function executeBlock(
                         : containerConfig.metadata
                   }
           },
-          async (scopedCtx) =>
-            executeByKind(
+          async (scopedCtx) => {
+            // Mirror the attempt counter onto the scoped context so
+            // handler code reading `ctx.attempt` sees the current retry.
+            (scopedCtx as { attempt?: number }).attempt = attempt;
+            const childIdentity = (scopedCtx as { _blockIdentity?: { attempt?: number } })
+              ._blockIdentity;
+            if (childIdentity !== undefined) {
+              childIdentity.attempt = attempt;
+            }
+            return executeByKind(
               options.block,
               interceptedInput,
               scopedCtx as ExecuteBlockContext,
               {
                 internalSeams: seams,
-                metadata: attemptMetadata
+                metadata: attemptMetadata,
               }
-            )
+            );
+          }
         );
       };
 
@@ -383,6 +468,9 @@ export async function executeBlock(
         : await retryWithPolicy(run, retryPolicy, {
             signal: options.ctx.signal,
             onRetry: (retryAttempt, error) => {
+              // retry.ts's onRetry fires with a 1-indexed "attempt that just
+              // failed"; report it 0-indexed to stay consistent with the
+              // deterministic-ID attempt suffix.
               logRuntimeEvent(
                 logger,
                 "warn",
@@ -390,7 +478,7 @@ export async function executeBlock(
                 {
                   ...createExecutionLogContext({
                     ...metadata,
-                    attempt: retryAttempt
+                    attempt: retryAttempt - 1
                   }),
                   maxAttempts: retryPolicy.maxAttempts,
                   delayMs: Math.min(
@@ -403,16 +491,26 @@ export async function executeBlock(
             }
           });
 
+    // Sequencer / router execute functions set `_blockOutputHint` on ctx
+    // before returning (FIX-413). Pick it up, then clear so a retry or
+    // re-entry starts fresh.
+    const capturedHint = (options.ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint;
+    if (capturedHint !== undefined) {
+      (options.ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = undefined;
+    }
+
     await emitBlockOutputItem({
       block: options.block,
       output: executionResult.output,
       ctx: options.ctx,
       metadata: {
         ...metadata,
-        attempt
+        attempt,
+        blockInstanceId: buildBlockInstanceId(requestId, blockPath, attempt)
       },
       startedAt,
-      modelUsage: executionResult.modelUsage
+      modelUsage: executionResult.modelUsage,
+      hint: capturedHint
     });
 
     return {
@@ -426,6 +524,12 @@ export async function executeBlock(
       scope: "block"
     });
 
+    // `attempt` may be -1 if we never entered `run()` (e.g. ctx setup threw
+    // before the retry loop started). Fall back to the incoming metadata's
+    // attempt in that case.
+    const terminalAttempt = attempt >= 0 ? attempt : metadata.attempt ?? 0;
+    const terminalInstanceId = buildBlockInstanceId(requestId, blockPath, terminalAttempt);
+
     logRuntimeEvent(
       logger,
       "error",
@@ -433,7 +537,8 @@ export async function executeBlock(
       {
         ...createExecutionLogContext({
           ...metadata,
-          attempt: attempt > 0 ? attempt : metadata.attempt
+          attempt: terminalAttempt,
+          blockInstanceId: terminalInstanceId
         }),
         durationMs: Date.now() - startedAt,
         error: summarizeForLog(normalized)
@@ -446,7 +551,8 @@ export async function executeBlock(
       ctx: options.ctx,
       metadata: {
         ...metadata,
-        attempt: attempt > 0 ? attempt : metadata.attempt
+        attempt: terminalAttempt,
+        blockInstanceId: terminalInstanceId
       },
       startedAt,
       status: "failed",

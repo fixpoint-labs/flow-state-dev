@@ -4,7 +4,7 @@ import type {
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 
-export type RequestStatus = "in_progress" | "completed" | "incomplete" | "failed" | "interrupted";
+export type RequestStatus = "in_progress" | "completed" | "incomplete" | "failed" | "interrupted" | "aborted";
 
 export type ScopeRecordBase<TState extends JsonObject = JsonObject> = {
   id: string;
@@ -17,7 +17,7 @@ export type ScopeRecordBase<TState extends JsonObject = JsonObject> = {
 export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
   flowKind: string;
   userId: string;
-  projectId?: string;
+  orgId?: string;
   title?: string;
   description?: string;
   tags?: string[];
@@ -33,7 +33,7 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   actionName: string;
   userId: string;
   sessionId?: string;
-  projectId?: string;
+  orgId?: string;
   status: RequestStatus;
   startedAtMs: number;
   completedAtMs?: number;
@@ -42,6 +42,8 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   input?: unknown;
   items?: OutputItem[];
   interruptedAt?: number;
+  abortRequested?: boolean;
+  abortedAt?: number;
 };
 
 export type UserRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
@@ -50,8 +52,8 @@ export type UserRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase
   resourceContent?: Record<string, string>;
 };
 
-export type ProjectRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
-  projectId: string;
+export type OrgRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
+  orgId: string;
   userId?: string;
   resources?: Record<string, JsonObject>;
   resourceContent?: Record<string, string>;
@@ -78,22 +80,57 @@ export type UserListOptions = {
   offset?: number;
 };
 
-export type ProjectListOptions = {
+export type OrgListOptions = {
   userId?: string;
   limit?: number;
   offset?: number;
 };
 
+/**
+ * Indicates the expected pre-update version for a CAS write.
+ * - A number means "only write if the current stored version equals this"
+ * - "any" means "write unconditionally" (used for creates, migrations, and
+ *   system writes that fall outside the CAS retry loop)
+ */
+export type ExpectedVersion = number | "any";
+
+/**
+ * Outcome of a CAS-aware `Store.set`. Encodes conflict as data rather than
+ * throwing so retry loops stay on the hot path. On conflict the store returns
+ * the current value and version so the caller can refresh its cache and
+ * re-apply the mutator.
+ */
+export type SetResult<TRecord> =
+  | { ok: true; version: number }
+  | {
+      ok: false;
+      conflict: { currentValue: TRecord | undefined; currentVersion: number };
+    };
+
 export interface SessionStore {
   get(id: string): Promise<SessionRecord | undefined>;
-  set(id: string, value: SessionRecord): Promise<void>;
+  /**
+   * Write `value` when the stored record's version matches `expectedVersion`.
+   * Returns the new version on success or the current stored value/version on
+   * conflict. The `version` field on `value` is the NEW version to persist.
+   */
+  set(
+    id: string,
+    value: SessionRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<SessionRecord>>;
   delete(id: string): Promise<void>;
   list(options?: SessionListOptions): Promise<SessionRecord[]>;
 }
 
 export interface RequestStore {
   get(id: string): Promise<RequestRecord | undefined>;
-  set(id: string, value: RequestRecord): Promise<void>;
+  /** See `SessionStore.set` for CAS semantics. */
+  set(
+    id: string,
+    value: RequestRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<RequestRecord>>;
   delete(id: string): Promise<void>;
   list(options?: RequestListOptions): Promise<RequestRecord[]>;
 
@@ -133,16 +170,26 @@ export interface RequestStore {
 
 export interface UserStore {
   get(id: string): Promise<UserRecord | undefined>;
-  set(id: string, value: UserRecord): Promise<void>;
+  /** See `SessionStore.set` for CAS semantics. */
+  set(
+    id: string,
+    value: UserRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<UserRecord>>;
   delete(id: string): Promise<void>;
   list(options?: UserListOptions): Promise<UserRecord[]>;
 }
 
-export interface ProjectStore {
-  get(id: string): Promise<ProjectRecord | undefined>;
-  set(id: string, value: ProjectRecord): Promise<void>;
+export interface OrgStore {
+  get(id: string): Promise<OrgRecord | undefined>;
+  /** See `SessionStore.set` for CAS semantics. */
+  set(
+    id: string,
+    value: OrgRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<OrgRecord>>;
   delete(id: string): Promise<void>;
-  list(options?: ProjectListOptions): Promise<ProjectRecord[]>;
+  list(options?: OrgListOptions): Promise<OrgRecord[]>;
 }
 
 export type ActiveRequestEntry = {
@@ -151,7 +198,7 @@ export type ActiveRequestEntry = {
   actionName: string;
   sessionId?: string;
   userId: string;
-  projectId?: string;
+  orgId?: string;
   input?: unknown;
   metadata?: Record<string, unknown>;
   startedAt: number;
@@ -178,10 +225,41 @@ export interface ActiveRequestRegistry {
   get(requestId: string): Promise<ActiveRequestEntry | undefined>;
 }
 
+/**
+ * Scope discriminator for content storage.
+ * Excludes "request" since request-scoped resources are not supported.
+ */
+export type ContentScopeType = "session" | "user" | "org";
+
+/**
+ * Separates resource content persistence from scope record persistence.
+ *
+ * Content is addressed by (scopeType, scopeId, resourceKey). This allows
+ * adapters to store content independently of metadata — e.g., SQL metadata
+ * with blob storage for content, or individual files on the filesystem.
+ */
+export interface ContentStore {
+  /** Read a single resource's content. */
+  get(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<string | undefined>;
+
+  /** Write a single resource's content. Creates or overwrites. */
+  set(scopeType: ContentScopeType, scopeId: string, resourceKey: string, content: string): Promise<void>;
+
+  /** Delete a single resource's content. */
+  delete(scopeType: ContentScopeType, scopeId: string, resourceKey: string): Promise<void>;
+
+  /** Read all content for a scope instance. Used during context initialization and state route reads. */
+  getAll(scopeType: ContentScopeType, scopeId: string): Promise<Record<string, string>>;
+
+  /** Delete all content for a scope instance. Used during scope record deletion. */
+  deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void>;
+}
+
 export type StoreRegistry = {
   session: SessionStore;
   request: RequestStore;
   user: UserStore;
-  project: ProjectStore;
+  org: OrgStore;
   activeRequests: ActiveRequestRegistry;
+  content: ContentStore;
 };

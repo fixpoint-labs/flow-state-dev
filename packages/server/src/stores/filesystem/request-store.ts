@@ -1,8 +1,10 @@
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 import type {
+  ExpectedVersion,
   RequestListOptions,
   RequestRecord,
-  RequestStore
+  RequestStore,
+  SetResult
 } from "../types";
 import {
   createFilesystemRecordStore,
@@ -31,8 +33,18 @@ export class FilesystemRequestStore implements RequestStore {
   private readonly rootDir: string;
   private readonly itemWriteQueues = new Map<string, SerializedWriteQueue>();
   private readonly itemWriteQueued = new Set<string>();
+  /** Holds the most recent items snapshot so the queued write always uses the latest data. */
+  private readonly latestItemSnapshots = new Map<string, OutputItem[]>();
   private readonly eventWriteQueues = new Map<string, SerializedWriteQueue>();
   private readonly eventWriteQueued = new Set<string>();
+  /** Accumulates new events between coalesced writes for incremental persistence. */
+  private readonly pendingNewEvents = new Map<string, RequestStreamEvent[]>();
+  /**
+   * Tracks the most recent persistence error per request. flushEvents drains
+   * the queue then throws (and clears) any captured error so callers can
+   * propagate persist failures instead of silently swallowing them (FIX-399).
+   */
+  private readonly lastEventError = new Map<string, Error>();
 
   constructor(options: FilesystemRequestStoreOptions) {
     this.rootDir = options.rootDir;
@@ -76,8 +88,12 @@ export class FilesystemRequestStore implements RequestStore {
     return this.store.get(id);
   }
 
-  async set(id: string, value: RequestRecord): Promise<void> {
-    await this.store.set(id, value);
+  async set(
+    id: string,
+    value: RequestRecord,
+    expectedVersion: ExpectedVersion
+  ): Promise<SetResult<RequestRecord>> {
+    return this.store.set(id, value, expectedVersion);
   }
 
   async delete(id: string): Promise<void> {
@@ -89,25 +105,30 @@ export class FilesystemRequestStore implements RequestStore {
   }
 
   persistItems(requestId: string, items: OutputItem[]): void {
-    // Coalesce: skip if a write is already queued for this request.
-    // The queued write will snapshot the latest items when it executes.
+    // Always capture the latest snapshot so the queued write uses the most
+    // recent items, even when subsequent calls are coalesced away.
+    this.latestItemSnapshots.set(requestId, [...items]);
+
     if (this.itemWriteQueued.has(requestId)) return;
     this.itemWriteQueued.add(requestId);
 
     const queue = this.getOrCreateWriteQueue(requestId);
-    // Capture items snapshot at enqueue time for coalesce correctness.
-    // The next call to persistItems will be skipped while this is queued,
-    // and the one after that will capture the then-current items.
-    const snapshot = [...items];
     queue.enqueue(async () => {
       this.itemWriteQueued.delete(requestId);
+      // Read the snapshot at execution time — not enqueue time — so items
+      // added between the first persistItems call and this write are included.
+      const snapshot = this.latestItemSnapshots.get(requestId);
+      this.latestItemSnapshots.delete(requestId);
+      if (snapshot === undefined) return;
+
       const current = await this.store.get(requestId);
       if (current !== undefined) {
-        await this.store.set(requestId, {
-          ...current,
-          items: snapshot,
-          updatedAt: Date.now()
-        });
+        // Items are append-only and coalesced — last write wins intentionally.
+        await this.store.set(
+          requestId,
+          { ...current, items: snapshot, updatedAt: Date.now() },
+          "any"
+        );
       }
     });
   }
@@ -120,21 +141,42 @@ export class FilesystemRequestStore implements RequestStore {
   }
 
   persistEvents(requestId: string, events: RequestStreamEvent[]): void {
+    // Accumulate new events — the emitter now sends only incremental events.
+    let pending = this.pendingNewEvents.get(requestId);
+    if (pending === undefined) {
+      pending = [];
+      this.pendingNewEvents.set(requestId, pending);
+    }
+    pending.push(...events);
+
     if (this.eventWriteQueued.has(requestId)) return;
     this.eventWriteQueued.add(requestId);
 
     const queue = this.getOrCreateEventWriteQueue(requestId);
-    const snapshot = [...events];
     queue.enqueue(async () => {
       this.eventWriteQueued.delete(requestId);
-      await ensureDirectory(this.rootDir);
+      const newEvents = this.pendingNewEvents.get(requestId) ?? [];
+      this.pendingNewEvents.delete(requestId);
+      if (newEvents.length === 0) return;
 
+      await ensureDirectory(this.rootDir);
       const targetPath = toEventsPath(this.rootDir, requestId);
+
+      // Read existing events and append the new ones.
+      let existing: RequestStreamEvent[] = [];
+      try {
+        const raw = await readFile(targetPath, "utf8");
+        existing = JSON.parse(raw) as RequestStreamEvent[];
+      } catch {
+        // File may not exist yet on first write.
+      }
+
+      const merged = [...existing, ...newEvents];
       const tempPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${Math.random()
         .toString(16)
         .slice(2)}`;
 
-      const serialized = JSON.stringify(snapshot);
+      const serialized = JSON.stringify(merged);
       await writeFile(tempPath, serialized, "utf8");
       await rename(tempPath, targetPath);
     });
@@ -144,6 +186,11 @@ export class FilesystemRequestStore implements RequestStore {
     const queue = this.eventWriteQueues.get(requestId);
     if (queue !== undefined) {
       await queue.drain();
+    }
+    const lastError = this.lastEventError.get(requestId);
+    if (lastError !== undefined) {
+      this.lastEventError.delete(requestId);
+      throw lastError;
     }
   }
 
@@ -167,6 +214,11 @@ export class FilesystemRequestStore implements RequestStore {
       queue = createSerializedWriteQueue({
         label: `request-events:${requestId}`,
         onError: (err) => {
+          // Capture so flushEvents can re-throw to the emitter (FIX-399).
+          // Still log here for ops visibility — the emitter's onPersistError
+          // hook is the structured propagation channel; this is the safety net
+          // for callers that haven't wired the hook.
+          this.lastEventError.set(requestId, err);
           console.error(
             `[flow-state] event persistence failed for ${requestId}`,
             err

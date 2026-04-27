@@ -1,4 +1,4 @@
-import { defineFlow, handler } from "@flow-state-dev/core";
+import { defineFlow, defineResource, handler } from "@flow-state-dev/core";
 import type { ModelResolver, GeneratorModel } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -8,14 +8,16 @@ import {
 } from "../src";
 
 function createStubModelResolver(): ModelResolver {
-  return (modelId: string): GeneratorModel => ({
+  const resolver = ((modelId: string): GeneratorModel => ({
     modelId,
     generate: async () => ({
       text: `stub response from ${modelId}`,
       finishReason: "stop",
       usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
     }),
-  });
+  })) as ModelResolver;
+  resolver.resolveId = (modelId: string) => modelId;
+  return resolver;
 }
 
 function createFlow() {
@@ -71,7 +73,7 @@ describe("createExecutionContext", () => {
     expect(ctx.request.identity.type).toBe("request");
     expect(ctx.user.identity.type).toBe("user");
     expect(ctx.session.identity.type).toBe("session");
-    expect(ctx.project).toBeUndefined();
+    expect(ctx.org).toBeUndefined();
 
     await ctx.request.patchState({ count: 2 });
     await ctx.user.patchState({ role: "admin" });
@@ -168,7 +170,7 @@ describe("createExecutionContext", () => {
           provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" }
         } as any
       ]
-    } as any);
+    } as any, "any");
 
     const ctx = await createExecutionContext({
       flow,
@@ -179,7 +181,7 @@ describe("createExecutionContext", () => {
       stores
     });
 
-    const messages = await ctx.session.items.llm({ limit: { tokens: 28 } });
+    const messages = await ctx.session.items.history({ limit: { tokens: 28 } });
     expect(messages).toHaveLength(1);
   });
 
@@ -197,18 +199,17 @@ describe("createExecutionContext", () => {
           })
         }
       },
-      session: {
-        resources: {
-          soul: {
-            stateSchema: z.object({ values: z.array(z.string()).default([]), tone: z.string().default("Direct") }),
-            content: "## Values\n{{#each values}}- {{this}}\n{{/each}}Tone: {{tone}}",
-            render: (content, state) => content
-              .replace("{{#each values}}", "")
-              .replace("{{/each}}", "")
-              .replace("{{this}}", (state.values as string[])[0] ?? "")
-              .replace("{{tone}}", String(state.tone ?? ""))
-          }
-        }
+      resources: {
+        soul: defineResource({
+          scope: "session",
+          stateSchema: z.object({ values: z.array(z.string()).default([]), tone: z.string().default("Direct") }),
+          content: "## Values\n{{#each values}}- {{this}}\n{{/each}}Tone: {{tone}}",
+          render: (content, state) => content
+            .replace("{{#each values}}", "")
+            .replace("{{/each}}", "")
+            .replace("{{this}}", (state.values as string[])[0] ?? "")
+            .replace("{{tone}}", String(state.tone ?? ""))
+        })
       }
     })();
 
@@ -222,9 +223,9 @@ describe("createExecutionContext", () => {
       stores
     });
 
-    await ctx.session.resources.soul.patchState({ values: ["Honesty"], tone: "Calm" });
-    await expect(ctx.session.resources.soul.readContent()).resolves.toContain("Tone: Calm");
-    await expect(ctx.session.resources.soul.readContentRaw()).resolves.toContain("{{tone}}");
+    await ctx.resources.soul.patchState({ values: ["Honesty"], tone: "Calm" });
+    await expect(ctx.resources.soul.readContent()).resolves.toContain("Tone: Calm");
+    await expect(ctx.resources.soul.readContentRaw()).resolves.toContain("{{tone}}");
   });
 
   it("returns null from readContent when no resource content is defined", async () => {
@@ -236,12 +237,11 @@ describe("createExecutionContext", () => {
           block: handler({ name: "noop", execute: () => ({ ok: true }) })
         }
       },
-      session: {
-        resources: {
-          notes: {
-            stateSchema: z.object({ value: z.string().default("") })
-          }
-        }
+      resources: {
+        notes: defineResource({
+          scope: "session",
+          stateSchema: z.object({ value: z.string().default("") })
+        })
       }
     })();
 
@@ -255,8 +255,8 @@ describe("createExecutionContext", () => {
       stores
     });
 
-    await expect(ctx.session.resources.notes.readContent()).resolves.toBeNull();
-    await expect(ctx.session.resources.notes.readContentRaw()).resolves.toBeNull();
+    await expect(ctx.resources.notes.readContent()).resolves.toBeNull();
+    await expect(ctx.resources.notes.readContentRaw()).resolves.toBeNull();
   });
 
   it("throws when writeContent is called on a read-only resource", async () => {
@@ -274,14 +274,15 @@ describe("createExecutionContext", () => {
         }
       },
       session: {
-        stateSchema: z.object({}),
-        resources: {
-          readme: {
-            stateSchema: z.object({}),
-            content: "original content",
-            writable: false
-          }
-        }
+        stateSchema: z.object({})
+      },
+      resources: {
+        readme: defineResource({
+          scope: "session",
+          stateSchema: z.object({}),
+          content: "original content",
+          writable: false
+        })
       }
     })();
 
@@ -296,7 +297,7 @@ describe("createExecutionContext", () => {
     });
 
     await expect(
-      ctx.session.resources.readme.writeContent("new content")
+      ctx.resources.readme.writeContent("new content")
     ).rejects.toThrow("read-only");
   });
 

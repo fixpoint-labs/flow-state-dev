@@ -29,6 +29,10 @@
       "types": "./dist/event-queue/index.d.ts",
       "default": "./dist/event-queue/index.js"
     },
+    "./drain-pool": {
+      "types": "./dist/drain-pool/index.d.ts",
+      "default": "./dist/drain-pool/index.js"
+    },
     "./blackboard": {
       "types": "./dist/blackboard/index.d.ts",
       "default": "./dist/blackboard/index.js"
@@ -36,6 +40,10 @@
     "./response-auditor": {
       "types": "./dist/response-auditor/index.d.ts",
       "default": "./dist/response-auditor/index.js"
+    },
+    "./reactive-blackboard": {
+      "types": "./dist/reactive-blackboard/index.d.ts",
+      "default": "./dist/reactive-blackboard/index.js"
     }
   },
   "license": "MIT",

@@ -1,8 +1,8 @@
 ---
-sidebar_position: 2
+sidebar_position: 3
 ---
 
-# Streaming
+# SSE Protocol
 
 Items stream to clients over SSE as blocks execute. Every event has a sequence number, so clients can disconnect and resume without losing anything. This page covers the SSE protocol, event format, resume semantics, and client integration.
 
@@ -66,6 +66,68 @@ GET /api/flows/:kind/requests/:requestId/stream?starting_after=42
 ```
 
 Both approaches produce the same result. `Last-Event-ID` is the standard SSE header. `starting_after` is a query parameter alternative for environments where setting headers isn't convenient.
+
+## Generator identity
+
+Every auto-emitted item from a generator is stamped with the producing generator's `agentType` and `agentName`. Identity governs conversational-item visibility and gives the client and downstream tooling enough information to route and render each item appropriately.
+
+### The three identities
+
+| `agentType` | On client stream | In conversation history | In devtool |
+|-------------|:---:|:---:|:---:|
+| `"primary"` | ✓ | ✓ | ✓ |
+| `"sub"` | ✓ | — | ✓ |
+| `"trace"` | — | — | ✓ |
+| *unset* | no auto-emission at all — only `block_output` flows via graph edges |
+
+A generator with no `agentType` is a pure transformer: it runs the model, returns typed `block_output`, and produces no session items. Useful for structured-output generators that feed downstream blocks silently.
+
+### Multi-peer agents
+
+Two generators with `agentType: "primary"` and distinct `agentName`s can coexist in the same session. Both see the user's messages and each other's messages via `history: true`:
+
+```ts
+const planner = generator({ name: "planner", agentType: "primary", agentName: "planner", /* ... */ });
+const executor = generator({ name: "executor", agentType: "primary", agentName: "executor", /* ... */ });
+```
+
+### Parallel sub-agents — collaborative vs. isolated
+
+`agentName` chooses whether parallel workers collaborate or stay isolated:
+
+```ts
+// Collaborative: all instances share one identity.
+generator({ agentType: "sub", agentName: "researcher", /* ... */ });
+
+// Isolated: each instance unique. selectForContext can address them individually.
+(id) => generator({ agentType: "sub", agentName: `researcher-${id}`, /* ... */ });
+```
+
+### Custom context via `selectForContext`
+
+`session.items.history()` is the ambient conversation-history view — user messages + `"primary"`-typed conversational items. For anything else (long-running sub-agents pulling their own prior outputs, coordinators aggregating peer outputs, debugging flows that want trace items), use `selectForContext`:
+
+```ts
+const researcher = generator({
+  name: "researcher",
+  agentType: "sub",
+  agentName: "researcher",
+  context: (input, ctx) => {
+    const priorFindings = ctx.session.items.selectForContext({
+      agentName: "researcher",
+      itemTypes: ["message"],
+      limit: 10,
+    });
+    return `<past-findings>${formatAsText(priorFindings)}</past-findings>`;
+  },
+});
+```
+
+`selectForContext` returns raw `SessionItem[]` with no conversation-history filtering. It respects `includeTransient`, `itemTypes`, and the `agentType`/`agentName` query fields.
+
+### React renderer behavior
+
+The default `<ItemsRenderer>` filters `agentType: "sub"` items from the rendered list. Opt in via the `showSubAgents` prop to surface them inline, or use `session.getItemsByAgent(name)` for per-agent side panels. Trace items are filtered at the SSE transport layer and never reach the client.
 
 ## React integration
 

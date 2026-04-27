@@ -6,33 +6,55 @@ import {
   createStateContainer,
   runWithCAS
 } from "../src";
+import type { CASPersist } from "../src/stores/cas";
 
 describe("state container and CAS", () => {
-  it("supports versioned persist operations", async () => {
+  it("commits state and version unconditionally", () => {
     const container = createStateContainer({ count: 1 }, 0);
-    const mismatch = await container.persist({ count: 2 }, 5);
-    expect(mismatch).toBeNull();
 
-    const success = await container.persist({ count: 3 }, 0);
-    expect(success).toEqual({ count: 3 });
+    const first = container.commit({ count: 2 }, 1);
+    expect(first).toEqual({ count: 2 });
     expect(container.getVersion()).toBe(1);
+
+    // Refresh to a store-reported current value (simulates conflict recovery).
+    const refreshed = container.commit({ count: 99 }, 5);
+    expect(refreshed).toEqual({ count: 99 });
+    expect(container.getVersion()).toBe(5);
   });
 
-  it("retries CAS updates on version conflicts", async () => {
-    const container = createStateContainer({ count: 0 }, 0);
-    let injectedConflict = false;
+  it("retries CAS updates on persist conflicts", async () => {
+    type State = { count: number };
+    const container = createStateContainer<State>({ count: 0 }, 0);
+
+    // Simulate a store where the first write fails with a conflict (the store
+    // already holds version=1, value={count: 99}), then succeeds.
+    let storeValue: State = { count: 0 };
+    let storeVersion = 0;
+    let conflictInjected = false;
+
+    const persist: CASPersist<State> = async (state, expectedVersion) => {
+      if (!conflictInjected) {
+        conflictInjected = true;
+        // Simulate an out-of-band write landing before ours.
+        storeValue = { count: 99 };
+        storeVersion = 1;
+      }
+      if (expectedVersion !== storeVersion) {
+        return {
+          ok: false,
+          currentState: storeValue,
+          currentVersion: storeVersion
+        };
+      }
+      storeVersion += 1;
+      storeValue = state as State;
+      return { ok: true, version: storeVersion };
+    };
 
     const result = await runWithCAS({
       container,
-      mutator: async (state) => {
-        if (!injectedConflict) {
-          injectedConflict = true;
-          const currentVersion = container.getVersion();
-          await container.persist({ count: 99 }, currentVersion);
-        }
-
-        return { count: state.count + 1 };
-      },
+      mutator: async (state) => ({ count: state.count + 1 }),
+      persist,
       options: { maxRetries: 3, baseDelayMs: 0 }
     });
 
@@ -41,16 +63,18 @@ describe("state container and CAS", () => {
   });
 
   it("throws ConcurrentModificationError when CAS retries are exhausted", async () => {
-    const failingContainer: StateContainer<{ value: number }> = {
-      read: () => ({ value: 1 }),
-      getVersion: () => 0,
-      persist: async () => null
-    };
+    const container = createStateContainer({ value: 1 }, 0);
+    const alwaysConflict: CASPersist<{ value: number }> = async () => ({
+      ok: false,
+      currentState: { value: 1 },
+      currentVersion: 0
+    });
 
     await expect(
       runWithCAS({
-        container: failingContainer,
+        container,
         mutator: async (state) => ({ value: state.value + 1 }),
+        persist: alwaysConflict,
         options: { maxRetries: 1, baseDelayMs: 0 }
       })
     ).rejects.toBeInstanceOf(ConcurrentModificationError);
@@ -65,16 +89,20 @@ describe("state container and CAS", () => {
       score?: number;
     };
 
-    const container = createStateContainer<DemoState>({
+    const container: StateContainer<DemoState> = createStateContainer<DemoState>({
       count: 0,
       list: [],
       bag: { a: 1 },
       mode: "idle"
     });
 
-    const onPersist = vi.fn();
-    const ops = createScopeStateOps(container, {
-      onPersist
+    const persist = vi.fn<CASPersist<DemoState>>(async (_state, expectedVersion) => ({
+      ok: true,
+      version: expectedVersion + 1
+    }));
+
+    const ops = createScopeStateOps<DemoState>(container, {
+      persist
     });
 
     await ops.patchState({ mode: "running" });
@@ -92,6 +120,7 @@ describe("state container and CAS", () => {
       mode: "running",
       score: 1
     });
-    expect(onPersist).toHaveBeenCalledTimes(7);
+    expect(persist).toHaveBeenCalledTimes(7);
+    expect(container.getVersion()).toBe(7);
   });
 });

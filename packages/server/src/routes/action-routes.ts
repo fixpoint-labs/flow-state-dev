@@ -21,7 +21,8 @@ import {
   asObject,
   getString,
   jsonResponse,
-  parseJsonBody
+  parseJsonBody,
+  SSE_HEADERS
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { InternalRouteSeams, RequestContext } from "./http-handlers";
@@ -33,7 +34,7 @@ type ActionRunInput = {
   userId: string;
   sessionId?: string;
   requestId: string;
-  projectId?: string;
+  orgId?: string;
   metadata?: Record<string, unknown>;
   signal?: AbortSignal;
 };
@@ -45,6 +46,7 @@ type ActionRouteContext = {
   speechResolver?: SpeechResolver;
   middleware?: Middleware[];
   maxResponseBufferSize?: number;
+  onBackgroundWork?: (promise: Promise<unknown>) => void;
   seams: InternalRouteSeams;
   bootstrapMetadata: Record<string, unknown>;
   requestContext: RequestContext;
@@ -79,7 +81,7 @@ export async function handleExecuteAction(
     userId,
     sessionId,
     requestId: getString(body.requestId) ?? generateId("req"),
-    projectId: getString(body.projectId),
+    orgId: getString(body.orgId),
     metadata: {
       ...ctx.bootstrapMetadata,
       ...(metadata ?? {})
@@ -102,6 +104,23 @@ export async function handleExecuteAction(
     }
   };
 
+  // Block flows that opted into `requireOrg` from running against unbound
+  // sessions. The body's orgId binds a new session; for existing sessions we
+  // consult the stored orgId because that's the immutable source of truth.
+  if (flow.requiresOrg) {
+    let hasOrg = resolvedActionInput.orgId !== undefined;
+    if (!hasOrg && resolvedActionInput.sessionId !== undefined) {
+      const existing = await ctx.stores.session.get(resolvedActionInput.sessionId);
+      hasOrg = existing?.orgId !== undefined;
+    }
+    if (!hasOrg) {
+      return jsonResponse(400, {
+        error: "OrgRequired",
+        message: `Flow "${flow.kind}" requires an org-bound session. Create a new session with orgId.`
+      });
+    }
+  }
+
   const liveStream = createLiveRequestStream({
     requestId: resolvedActionInput.requestId,
     maxBufferSize: ctx.maxResponseBufferSize
@@ -115,14 +134,14 @@ export async function handleExecuteAction(
 
   registerStream(resolvedActionInput.requestId, liveStream);
 
-  void runAction({
+  const runPromise = runAction({
     flow,
     actionName: resolvedActionInput.actionName as keyof typeof flow.actions & string,
     input: resolvedActionInput.input,
     userId: resolvedActionInput.userId,
     sessionId: resolvedActionInput.sessionId,
     requestId: resolvedActionInput.requestId,
-    projectId: resolvedActionInput.projectId,
+    orgId: resolvedActionInput.orgId,
     metadata: resolvedActionInput.metadata,
     signal: resolvedActionInput.signal,
     modelResolver: ctx.modelResolver,
@@ -136,6 +155,33 @@ export async function handleExecuteAction(
     // Safety net: deregister if runAction didn't (e.g., truly catastrophic failure)
     ctx.stores.activeRequests.deregister(resolvedActionInput.requestId).catch(() => {});
   });
+
+  // Notify the platform that background work must complete. On serverless
+  // platforms this is critical: without it the function instance is killed
+  // after the 202 response is sent, before runAction persists anything.
+  if (ctx.onBackgroundWork !== undefined) {
+    ctx.onBackgroundWork(runPromise);
+  }
+
+  // Inline streaming: when the client sends Accept: text/event-stream, return
+  // the SSE stream directly from the POST response. This keeps the action
+  // execution and stream delivery on the same function instance — essential
+  // for serverless platforms where POST and GET may hit different instances.
+  const accept = request.headers.get("accept") ?? "";
+  if (accept.includes("text/event-stream")) {
+    return new Response(liveStream.readable, {
+      status: 200,
+      headers: {
+        ...SSE_HEADERS,
+        // Vercel/Nginx proxy anti-buffering headers — needed here because
+        // the Vercel adapter skips heartbeat wrapping for POST responses.
+        "cache-control": "no-cache, no-transform",
+        "x-accel-buffering": "no",
+        "x-request-id": resolvedActionInput.requestId,
+        "x-session-id": resolvedActionInput.sessionId ?? ""
+      }
+    });
+  }
 
   return jsonResponse(202, {
     status: "in_progress",

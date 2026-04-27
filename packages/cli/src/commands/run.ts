@@ -91,7 +91,7 @@ export function registerRunCommand(program: Command): void {
     .option("-s, --session <id>", "Session ID for reuse across invocations")
     .option("--seed-session <json>", "Seed session-level state (JSON or file path)")
     .option("--seed-user <json>", "Seed user-level state (JSON or file path)")
-    .option("--seed-project <json>", "Seed project-level state (JSON or file path)")
+    .option("--seed-org <json>", "Seed org-level state (JSON or file path)")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--format <format>", "Output format", "json")
     .action(async (flowKind: string, action: string, options: RunCommandOptions) => {
@@ -118,7 +118,7 @@ export interface RunCommandOptions {
   session?: string;
   seedSession?: string;
   seedUser?: string;
-  seedProject?: string;
+  seedOrg?: string;
   flowDir?: string[];
   format?: string;
 }
@@ -186,7 +186,7 @@ export async function executeRunCommand(
         ...existing,
         state: { ...existing.state, ...seedData },
         updatedAt: Date.now(),
-      });
+      }, "any");
     } else {
       await stores.session.set(sessionId, {
         id: sessionId,
@@ -197,7 +197,7 @@ export async function executeRunCommand(
         createdAt: Date.now(),
         updatedAt: Date.now(),
         journal: [],
-      });
+      }, "any");
     }
   }
 
@@ -205,9 +205,11 @@ export async function executeRunCommand(
   let modelResolver: ModelResolver | undefined;
   if (options.model !== undefined) {
     const defaultResolver = createModelResolver();
-    modelResolver = (_modelId: string, blockName?: string) => {
+    const override = ((_modelId: string, blockName?: string) => {
       return defaultResolver(options.model!, blockName);
-    };
+    }) as ModelResolver;
+    override.resolveId = (modelId: string) => defaultResolver.resolveId(modelId);
+    modelResolver = override;
   }
 
   // 6. Create response emitter with NDJSON streaming

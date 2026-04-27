@@ -1,5 +1,5 @@
-import { defineResource } from '@flow-state-dev/core'
-import type { ResourceContext } from '@flow-state-dev/core'
+import { defineResource, defineCapability } from '@flow-state-dev/core'
+import type { ResourceContext, CapabilityRef } from '@flow-state-dev/core'
 import { z } from 'zod'
 import type { ZodTypeAny } from 'zod'
 import { tokenOverlap } from '../helpers.js'
@@ -46,6 +46,11 @@ import {
   query,
 } from './semantic-memory-helpers.js'
 import { memorySystemCapture, memorySystemConsolidate, memorySystemPrune } from './memory-system-blocks.js'
+import {
+  createWorkingMemoryCapability,
+  createEpisodicMemoryCapability,
+  createSemanticMemoryCapability,
+} from './capabilities.js'
 
 // ---------------------------------------------------------------------------
 // Memory system tracking resource
@@ -70,6 +75,8 @@ export type MemorySystemState = z.infer<typeof memorySystemStateSchema>
  * Session-scoped resource for memory system tracking (watermark + consolidation counters).
  */
 export const memorySystemResource = defineResource({
+  ref: 'memorySystem',
+  scope: 'session',
   stateSchema: memorySystemStateSchema,
   default: {
     lastProcessedIndex: -1,
@@ -122,7 +129,7 @@ export interface WorkingMemorySystemConfig {
 /** Configuration for the episodic memory module within memory.system(). */
 export interface EpisodicMemoryConfig {
   /** Scope for episodic storage. Default: 'user'. */
-  scope?: 'user' | 'project'
+  scope?: 'user' | 'org'
   /** Minimum importance for an item to be encoded as an episode. Default: 0.6. */
   significanceThreshold?: number
   /** Maximum episodes to retain. Default: 200. */
@@ -132,7 +139,7 @@ export interface EpisodicMemoryConfig {
 /** Configuration for the semantic memory module within memory.system(). */
 export interface SemanticMemoryConfig {
   /** Scope for semantic storage. Default: same as episodic, or 'user'. */
-  scope?: 'user' | 'project'
+  scope?: 'user' | 'org'
   consolidation?: {
     /** Consolidate after this many new episodic entries. Default: 5. */
     episodicThreshold?: number
@@ -231,10 +238,10 @@ export interface MemorySystem {
     }
   }
   /**
-   * Session-scoped resources for this memory system.
-   * Spread into `defineFlow`'s `session.resources`:
+   * Session-scoped resources for this memory system. Spread into `defineFlow`'s
+   * single flat `resources` map (FIX-435):
    * ```ts
-   * session: { resources: { ...mem.sessionResources, ...otherResources } }
+   * resources: { ...mem.sessionResources, ...mem.userResources }
    * ```
    * Always includes `workingMemory` and `memorySystem`.
    */
@@ -243,18 +250,51 @@ export interface MemorySystem {
     memorySystem: typeof memorySystemResource
   }
   /**
-   * User-scoped resources for this memory system.
-   * Spread into `defineFlow`'s `user.resources`:
-   * ```ts
-   * user: { resources: { ...mem.userResources } }
-   * ```
-   * Populated based on which memory tiers are configured:
-   * `episodicMemory` (if episodic enabled), `semanticMemory` (if semantic enabled).
+   * User-scoped resources for this memory system. Spread into `defineFlow`'s
+   * single flat `resources` map alongside `sessionResources`. Populated based
+   * on which memory tiers are configured: `episodicMemory` (if episodic
+   * enabled), `semanticMemory` (if semantic enabled).
    */
   userResources: {
     episodicMemory?: ReturnType<typeof createEpisodicMemoryResource>
     semanticMemory?: ReturnType<typeof createSemanticMemoryResource>
   }
+
+  /**
+   * Composed memory capability for all configured tiers.
+   *
+   * Use on generators to auto-install resources, context formatting, and
+   * typed helpers. Includes a `context` preset (on by default) that injects
+   * unified recall output into the generator prompt.
+   *
+   * ```ts
+   * const gen = generator({
+   *   uses: [mem.capability],
+   *   // resources, context, and ctx.cap.memory.* auto-available
+   * })
+   * ```
+   *
+   * For handlers, disable the context preset:
+   * ```ts
+   * handler({
+   *   uses: [mem.capability.presets({ context: false })],
+   *   execute: async (input, ctx) => {
+   *     const items = ctx.cap.memory.recall()
+   *     await ctx.cap.workingMemory.add({ content: '...', importance: 0.8 })
+   *   },
+   * })
+   * ```
+   */
+  capability: CapabilityRef
+
+  /** Working memory capability. Available on all block kinds. */
+  workingMemoryCapability: CapabilityRef
+
+  /** Episodic memory capability (when episodic configured). */
+  episodicMemoryCapability?: CapabilityRef
+
+  /** Semantic memory capability (when semantic configured). */
+  semanticMemoryCapability?: CapabilityRef
 }
 
 // ---------------------------------------------------------------------------
@@ -269,8 +309,8 @@ export interface MemorySystem {
  * Returns ranked by relevance descending.
  */
 function createRecall(
-  episodicConfig?: { scope: 'user' | 'project' },
-  semanticConfig?: { scope: 'user' | 'project' },
+  episodicConfig?: { scope: 'user' | 'org' },
+  semanticConfig?: { scope: 'user' | 'org' },
 ) {
   return function recall(ctx: any, cue?: string): RankedMemoryItem[] {
     const results: RankedMemoryItem[] = []
@@ -279,8 +319,8 @@ function createRecall(
     if (semanticConfig) {
       try {
         const semRef = semanticConfig.scope === 'user'
-          ? ctx.user?.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
-          : ctx.project?.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
+          ? ctx.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
+          : ctx.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
 
         if (semRef) {
           const facts = allFacts(semRef)
@@ -309,7 +349,7 @@ function createRecall(
 
     // 2. Read working memory
     try {
-      const wmRef = ctx.session?.resources?.workingMemory as ResourceContext<WorkingMemoryState> | undefined
+      const wmRef = ctx.resources?.workingMemory as ResourceContext<WorkingMemoryState> | undefined
       if (wmRef) {
         const entries = wmItems(wmRef)
         for (const entry of entries) {
@@ -339,8 +379,8 @@ function createRecall(
     if (episodicConfig) {
       try {
         const epRef = episodicConfig.scope === 'user'
-          ? ctx.user?.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
-          : ctx.project?.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
+          ? ctx.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
+          : ctx.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
 
         if (epRef) {
           const episodes = recent(epRef)
@@ -592,7 +632,7 @@ export function system(config: MemorySystemConfig): MemorySystem {
     ? {
         scope: ((config.semantic === true
           ? (episodicConfig?.scope ?? DEFAULT_EPISODIC_CONFIG.scope)
-          : config.semantic.scope) ?? (episodicConfig?.scope ?? DEFAULT_EPISODIC_CONFIG.scope)) as 'user' | 'project',
+          : config.semantic.scope) ?? (episodicConfig?.scope ?? DEFAULT_EPISODIC_CONFIG.scope)) as 'user' | 'org',
         consolidation: {
           episodicThreshold: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold : (config.semantic.consolidation?.episodicThreshold ?? DEFAULT_CONSOLIDATION_CONFIG.episodicThreshold),
           onEviction: config.semantic === true ? DEFAULT_CONSOLIDATION_CONFIG.onEviction : (config.semantic.consolidation?.onEviction ?? DEFAULT_CONSOLIDATION_CONFIG.onEviction),
@@ -602,13 +642,35 @@ export function system(config: MemorySystemConfig): MemorySystem {
       }
     : undefined
 
-  // Create resources if configured (shared instances across blocks)
-  const episodicResource = episodicConfig
-    ? createEpisodicMemoryResource(episodicConfig.scope)
+  // Create tier capabilities FIRST — these own the resource references.
+  // Blocks and the system both derive resources from capabilities to avoid
+  // resource conflicts (same defineResource() reference everywhere).
+  const wmCapability = createWorkingMemoryCapability(resolvedWorking)
+
+  const epCapability = episodicConfig
+    ? createEpisodicMemoryCapability({
+        scope: episodicConfig.scope,
+        maxEpisodes: episodicConfig.maxEpisodes,
+      })
     : undefined
 
-  const semanticResource = semanticConfig
-    ? createSemanticMemoryResource(semanticConfig.scope)
+  const semCapability = semanticConfig
+    ? createSemanticMemoryCapability({
+        scope: semanticConfig.scope,
+      })
+    : undefined
+
+  // Extract resource references from capabilities for shared use by blocks.
+  // Cast required: capability types store resources as DeclaredResourceEntry
+  // (broad), but the MemorySystem interface uses specific resource types.
+  // Resources live on the flat `resources` map (FIX-435); the resource's
+  // intrinsic scope determines storage placement.
+  const episodicResource = epCapability
+    ? epCapability.resources!.episodicMemory as ReturnType<typeof createEpisodicMemoryResource>
+    : undefined
+
+  const semanticResource = semCapability
+    ? semCapability.resources!.semanticMemory as ReturnType<typeof createSemanticMemoryResource>
     : undefined
 
   // Build blocks config — pass shared resources to avoid resource conflicts
@@ -646,6 +708,32 @@ export function system(config: MemorySystemConfig): MemorySystem {
   const maxAssistantChars = config.maxAssistantChars ?? DEFAULT_OBSERVER_CONFIG.maxAssistantChars
   const captureFromItems = capture.connectInput(buildItemsConnector(maxAssistantChars))
 
+  // Compose the unified memory capability
+  const capUses: CapabilityRef[] = [wmCapability]
+  if (epCapability) capUses.push(epCapability)
+  if (semCapability) capUses.push(semCapability)
+
+  const composedCapability = defineCapability({
+    name: 'memory' as const,
+    uses: capUses,
+    resources: { memorySystem: memorySystemResource },
+    fns: (ctx: any) => ({
+      /** Cross-store recall — queries all configured stores, deduplicates, ranks by relevance. */
+      recall: (cue?: string) => recallFn(ctx, cue),
+    }),
+    presets: {
+      /**
+       * Unified context formatter for generators — injects recall output
+       * under a `<memory>` tag. Object-form so multiple memory contributors
+       * (e.g. layered memory systems) aggregate into one section.
+       */
+      context: {
+        context: { memory: contextFormatterFn },
+      },
+      default: ['context'],
+    },
+  })
+
   // Assemble the system
   const result: MemorySystem = {
     capture,
@@ -674,6 +762,8 @@ export function system(config: MemorySystemConfig): MemorySystem {
       ...(episodicResource ? { episodicMemory: episodicResource } : {}),
       ...(semanticResource ? { semanticMemory: semanticResource } : {}),
     },
+    capability: composedCapability,
+    workingMemoryCapability: wmCapability,
   }
 
   if (consolidate) {
@@ -695,6 +785,10 @@ export function system(config: MemorySystemConfig): MemorySystem {
     }
   }
 
+  if (epCapability) {
+    result.episodicMemoryCapability = epCapability
+  }
+
   if (semanticConfig && semanticResource) {
     result.semantic = {
       resource: semanticResource,
@@ -707,6 +801,10 @@ export function system(config: MemorySystemConfig): MemorySystem {
         query,
       },
     }
+  }
+
+  if (semCapability) {
+    result.semanticMemoryCapability = semCapability
   }
 
   return result

@@ -1,33 +1,44 @@
+/**
+ * defineFlow — assembles a flow definition into a callable factory.
+ *
+ * FIX-435: resources are intrinsic to their definition (`scope`,
+ * `flowIsolation`) and live in a single flat `flow.resources` map. Block
+ * declarations bubble up via `declaredResources` and are merged into that
+ * flat map; `(scope, ref, flowIsolation)` collisions are surfaced at
+ * build time. Conflict detection across flows still lives in the cross-flow
+ * schema registry path (FIX-431).
+ */
 import { generator, type GeneratorConfig } from "../blocks/generator";
 import { mergeDeclaredResources } from "../blocks/internal/build-block";
-import type { BlockDefinition, DeclaredResources } from "../types/block";
+import type { BlockDefinition, DeclaredResourceEntry, DeclaredResources } from "../types/block";
 import type {
   ActionConfig,
   FlowDefinition,
   FlowInstance,
   FlowInstanceOptions,
   FlowType,
-  ProjectConfig,
+  OrgConfig,
   RequestConfig,
   SessionConfig,
   ToolsConfig,
   UserConfig,
   WorkConfig
 } from "../types/flow";
-import type { ResourceConfig } from "../types/resource";
-import type { ResourceCollectionConfig } from "../types/resource-collection";
-import type { ScopeResourceConfig } from "../types/flow";
+import type { ResourceScope } from "../types/resource";
+import { isDefinedResourceCollection } from "../types/resource-collection";
 
 type AnyActions = Record<string, ActionConfig>;
 
 type AnySession = SessionConfig | undefined;
 type AnyRequest = RequestConfig | undefined;
 type AnyUser = UserConfig | undefined;
-type AnyProject = ProjectConfig | undefined;
+type AnyOrg = OrgConfig | undefined;
 type AnyWork = WorkConfig | undefined;
 
-type AnyFlowDefinition = FlowDefinition<AnyActions, AnySession, AnyRequest, AnyUser, AnyProject, AnyWork>;
-type AnyFlowInstanceOptions = FlowInstanceOptions<AnyActions, AnySession, AnyRequest, AnyUser, AnyProject, AnyWork>;
+type AnyResources = Record<string, DeclaredResourceEntry> | undefined;
+
+type AnyFlowDefinition = FlowDefinition<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork>;
+type AnyFlowInstanceOptions = FlowInstanceOptions<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork>;
 
 function mergeToolsConfig(base: ToolsConfig | undefined, override: ToolsConfig | undefined): ToolsConfig | undefined {
   if (base === undefined && override === undefined) {
@@ -119,11 +130,11 @@ function mergeActions(
   return merged;
 }
 
-type ScopeResources = Record<string, ScopeResourceConfig>;
-
 /**
  * Collect declaredResources from all action blocks in the flow and merge
  * them together. Returns the union of all block-declared resources.
+ * Same accessor key + same `defineResource()` reference deduplicates;
+ * different references at the same accessor key throw at this layer.
  */
 function collectBlockResources(actions: AnyActions): DeclaredResources | undefined {
   let collected: DeclaredResources | undefined;
@@ -133,58 +144,134 @@ function collectBlockResources(actions: AnyActions): DeclaredResources | undefin
   return collected;
 }
 
-/**
- * Merge block-declared resources into a flow's scope config resources.
- * Flow-level declarations take priority over block-declared resources.
- */
-function mergeBlockResourcesIntoScope(
-  flowResources: ScopeResources | undefined,
-  blockResources: Record<string, ScopeResourceConfig> | undefined
-): ScopeResources | undefined {
-  if (blockResources === undefined) return flowResources;
-  if (flowResources === undefined) return { ...blockResources };
-
-  // Block resources form the base; flow resources override
-  return { ...blockResources, ...flowResources };
+/** True when any action's root block (or any of its descendants) opted into `requireOrg`. */
+function collectRequiresOrg(actions: AnyActions): boolean {
+  for (const action of Object.values(actions)) {
+    if (action.block.requiresOrg) return true;
+  }
+  return false;
 }
 
 /**
- * Merge block-declared resources from all actions into the flow's scope configs.
- * Flow-level resource declarations always win over block-declared ones.
+ * Effective storage tuple for a resource installed in a given flow.
+ *
+ * - `scope` and `ref` come from the resource definition.
+ * - `flowIsolation` defaults to `false`; flow-level `isolateUserState` /
+ *   `isolateOrgState` flags promote unset user/org-scoped resources to
+ *   isolated. Resource-level declarations always win.
+ * - `flowKind` participates only when the effective `flowIsolation` is true.
  */
-function mergeFlowResources(
-  session: AnySession,
-  user: AnyUser,
-  project: AnyProject,
-  blockResources: DeclaredResources | undefined
-): { session: AnySession; user: AnyUser; project: AnyProject } {
-  if (blockResources === undefined) {
-    return { session, user, project };
+function effectiveStorageTuple(
+  entry: DeclaredResourceEntry,
+  accessorKey: string,
+  flowKind: string,
+  flowIsolateUserState: boolean,
+  flowIsolateOrgState: boolean
+): { scope: ResourceScope; ref: string; flowIsolation: boolean; flowKind?: string } {
+  const scope = entry.scope as ResourceScope;
+  const ref = (entry as { ref?: string; pattern?: string }).ref
+    ?? (isDefinedResourceCollection(entry) ? entry.pattern : accessorKey);
+
+  let flowIsolation = entry.flowIsolation === true;
+  if (entry.flowIsolation === undefined) {
+    if (scope === "user" && flowIsolateUserState) flowIsolation = true;
+    if (scope === "org" && flowIsolateOrgState) flowIsolation = true;
   }
 
-  const mergedSession = blockResources.session !== undefined
-    ? { ...session, resources: mergeBlockResourcesIntoScope(session?.resources, blockResources.session) }
-    : session;
-
-  const mergedUser = blockResources.user !== undefined
-    ? { ...user, resources: mergeBlockResourcesIntoScope(user?.resources, blockResources.user) }
-    : user;
-
-  const mergedProject = blockResources.project !== undefined
-    ? { ...project, resources: mergeBlockResourcesIntoScope(project?.resources, blockResources.project) }
-    : project;
-
   return {
-    session: mergedSession as AnySession,
-    user: mergedUser as AnyUser,
-    project: mergedProject as AnyProject
+    scope,
+    ref,
+    flowIsolation,
+    flowKind: flowIsolation ? flowKind : undefined
   };
+}
+
+function tupleKey(t: { scope: ResourceScope; ref: string; flowIsolation: boolean; flowKind?: string }): string {
+  // JSON-encoded tuple avoids false collisions where adjacent fields could
+  // otherwise concatenate ambiguously (e.g. ref="x" + flowIsolation=true +
+  // flowKind="y0" colliding with ref="x1y" + flowIsolation=false).
+  return JSON.stringify([t.scope, t.ref, t.flowIsolation, t.flowKind ?? null]);
+}
+
+/**
+ * Validate the flat resource set on a flow at build time. Detects:
+ *   - Distinct accessor keys pointing at the same effective storage key
+ *     (always a hard error — would silently share storage).
+ *   - `flowIsolation: true` on a session-scoped resource (semantically
+ *     meaningless; almost certainly a confused author).
+ *
+ * Same-accessor-key collisions are caught at the `mergeDeclaredResources`
+ * layer; this layer only inspects effective tuples.
+ */
+function validateFlowResources(
+  resources: DeclaredResources,
+  flowKind: string,
+  flowIsolateUserState: boolean,
+  flowIsolateOrgState: boolean
+): void {
+  const seen = new Map<string, { accessor: string; entry: DeclaredResourceEntry }>();
+
+  for (const [accessor, entry] of Object.entries(resources)) {
+    if (entry.scope === undefined) {
+      throw new Error(
+        `Resource "${accessor}" declared in flow "${flowKind}" has no intrinsic scope. ` +
+        `Set scope: "session" | "user" | "org" via defineResource().`
+      );
+    }
+
+    if (entry.flowIsolation === true && entry.scope === "session") {
+      throw new Error(
+        `Resource "${accessor}" in flow "${flowKind}" sets flowIsolation: true on a ` +
+        `session-scoped resource. Sessions are intrinsically flow-bound — drop the flag.`
+      );
+    }
+
+    const tuple = effectiveStorageTuple(
+      entry,
+      accessor,
+      flowKind,
+      flowIsolateUserState,
+      flowIsolateOrgState
+    );
+    const key = tupleKey(tuple);
+    const prior = seen.get(key);
+    if (prior !== undefined && prior.entry !== entry) {
+      throw new Error(
+        `Resource collision in flow "${flowKind}": accessor keys "${prior.accessor}" and ` +
+        `"${accessor}" resolve to the same effective storage key (` +
+        `scope=${tuple.scope}, ref=${tuple.ref}, flowIsolation=${tuple.flowIsolation}` +
+        (tuple.flowKind === undefined ? "" : `, flowKind=${tuple.flowKind}`) +
+        `). Pick distinct refs or flowIsolation settings.`
+      );
+    }
+    seen.set(key, { accessor, entry });
+  }
+}
+
+/**
+ * Merge block-declared resources with the flow's own `resources` map.
+ *
+ * Flow-level declarations always win on accessor-key dedup — the consumer
+ * explicitly picked a definition for that name, so a block's declaration
+ * for the same name is overridden silently. Across the *block* layer
+ * itself, a same-accessor conflict between two different definitions still
+ * errors via `mergeDeclaredResources`.
+ */
+function mergeFlowResourceMap(
+  flowResources: AnyResources,
+  blockResources: DeclaredResources | undefined
+): DeclaredResources | undefined {
+  if (flowResources === undefined && blockResources === undefined) return undefined;
+  if (flowResources === undefined) return { ...blockResources };
+  if (blockResources === undefined) return { ...flowResources };
+  // Block resources first, flow overrides on top.
+  return { ...blockResources, ...flowResources };
 }
 
 function createFlowInstance(
   definition: AnyFlowDefinition,
   options: AnyFlowInstanceOptions | undefined
-): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyProject, AnyWork> {
+): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork> {
   const requireUser = options?.requireUser ?? definition.requireUser ?? true;
   if (!requireUser) {
     throw new Error(`Flow "${definition.kind}" must set requireUser=true in Phase 1`);
@@ -194,31 +281,40 @@ function createFlowInstance(
   const kind = options?.kind ?? definition.kind;
   const actions = mergeActions(definition.actions, options?.actions, tools);
 
-  // Merge scope configs from definition + options first
   const session = mergeConfig(definition.session, options?.session);
   const user = mergeConfig(definition.user, options?.user);
-  const project = mergeConfig(definition.project, options?.project);
+  const org = mergeConfig(definition.org, options?.org);
 
-  // Collect block-declared resources and merge into scope configs
-  // Flow-level declarations take priority over block-declared ones
+  const isolateUserState = options?.isolateUserState ?? definition.isolateUserState ?? false;
+  const isolateOrgState = options?.isolateOrgState ?? definition.isolateOrgState ?? false;
+
   const blockResources = collectBlockResources(actions);
-  const merged = mergeFlowResources(session, user, project, blockResources);
+  const flowOwnResources = options?.resources ?? definition.resources;
+  const mergedResources = mergeFlowResourceMap(flowOwnResources, blockResources);
+
+  if (mergedResources !== undefined) {
+    validateFlowResources(mergedResources, kind, isolateUserState, isolateOrgState);
+  }
 
   return {
     id: options?.id ?? kind,
     kind,
     requireUser,
+    requiresOrg: collectRequiresOrg(actions),
     actions,
-    session: merged.session,
+    session,
     request: mergeConfig(definition.request, options?.request),
-    user: merged.user,
-    project: merged.project,
+    user,
+    org,
     work: mergeConfig(definition.work, options?.work),
+    resources: mergedResources,
     tools,
     voice: options?.voice ?? definition.voice,
     middleware: options?.middleware ?? definition.middleware,
     tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
-    costEstimator: options?.costEstimator ?? definition.costEstimator
+    costEstimator: options?.costEstimator ?? definition.costEstimator,
+    isolateUserState,
+    isolateOrgState
   };
 }
 
@@ -227,11 +323,12 @@ export function defineFlow<
   const TSession extends SessionConfig | undefined = SessionConfig | undefined,
   const TRequest extends RequestConfig | undefined = RequestConfig | undefined,
   const TUser extends UserConfig | undefined = UserConfig | undefined,
-  const TProject extends ProjectConfig | undefined = ProjectConfig | undefined,
-  const TWork extends WorkConfig | undefined = WorkConfig | undefined
+  const TOrg extends OrgConfig | undefined = OrgConfig | undefined,
+  const TWork extends WorkConfig | undefined = WorkConfig | undefined,
+  const TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 >(
-  definition: FlowDefinition<TActions, TSession, TRequest, TUser, TProject, TWork>
-): FlowType<TActions, TSession, TRequest, TUser, TProject, TWork> {
+  definition: FlowDefinition<TActions, TSession, TRequest, TUser, TOrg, TWork, TResources>
+): FlowType<TActions, TSession, TRequest, TUser, TOrg, TWork, TResources> {
   const normalizedDefinition: AnyFlowDefinition = {
     ...definition,
     requireUser: definition.requireUser ?? true
@@ -247,24 +344,29 @@ export function defineFlow<
     TSession,
     TRequest,
     TUser,
-    TProject,
-    TWork
+    TOrg,
+    TWork,
+    TResources
   >;
 
   const baseInstance = createFlowInstance(normalizedDefinition, undefined);
   return Object.assign(flowFactory, {
     kind: normalizedDefinition.kind,
     requireUser: baseInstance.requireUser,
+    requiresOrg: baseInstance.requiresOrg,
     actions: baseInstance.actions as TActions,
     session: baseInstance.session as TSession,
     request: baseInstance.request as TRequest,
     user: baseInstance.user as TUser,
-    project: baseInstance.project as TProject,
+    org: baseInstance.org as TOrg,
     work: baseInstance.work as TWork,
+    resources: baseInstance.resources as TResources | undefined,
     tools: baseInstance.tools,
     voice: baseInstance.voice,
     middleware: baseInstance.middleware,
     tokenCounter: baseInstance.tokenCounter,
-    costEstimator: baseInstance.costEstimator
+    costEstimator: baseInstance.costEstimator,
+    isolateUserState: baseInstance.isolateUserState,
+    isolateOrgState: baseInstance.isolateOrgState
   });
 }

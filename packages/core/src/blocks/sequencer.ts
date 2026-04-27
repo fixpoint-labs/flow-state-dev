@@ -1,5 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
-import type { BlockContext, BlockDefinition, ConnectorFn, RescueHandlerSpec } from "../types/block";
+import type { BlockContext, BlockDefinition, BlockOutputHint, ConnectorFn, RescueHandlerSpec } from "../types/block";
+import type { BlockValue, OutputItem, StructureShape } from "../items/types";
 import type {
   BranchStep,
   BranchStepOutput,
@@ -13,8 +14,19 @@ import type {
 } from "./sequencer-methods";
 import { buildBlock, mergeDeclaredResources } from "./internal/build-block";
 import { resolveCapabilities } from "./internal/resolve-capabilities";
+import { resolveActiveStatusMessage } from "./internal/resolve-active-status-message";
 import type { DeclaredResources } from "../types/block";
 import { isBlockDefinition, toError, withTimeout } from "./internal/utils";
+import {
+  blockPathBranch,
+  blockPathIteration,
+  blockPathRescue,
+  blockPathSegment,
+  buildBlockInstanceId,
+  extendBlockPath,
+  ROOT_BLOCK_PATH
+} from "./internal/block-instance-id";
+import { isTraceObservabilityEnabled } from "../utils/trace-observability";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
 
@@ -69,6 +81,21 @@ function buildInlineBlock(
   });
 }
 
+type SequencerOpResult = {
+  value: unknown;
+  jumpTo?: string;
+  exit?: boolean;
+  /**
+   * BlockValue hint for the sequencer's output after this op runs (FIX-413).
+   * - Unset: op did not change the sequencer's output kind. The running
+   *   descriptor from prior ops carries over (e.g., `.tap`, `.work`, no-op
+   *   `.thenIf`).
+   * - Set: replaces the running descriptor. `.then` produces a ref to the
+   *   child item, `.map` produces inline, `.thenAll` produces structure.
+   */
+  descriptor?: BlockOutputHint;
+};
+
 type SequencerOperation = {
   name: string;
   run: (
@@ -76,8 +103,47 @@ type SequencerOperation = {
     ctx: BlockContext,
     runtime: SequencerRuntimeState,
     stepIndex: number
-  ) => Promise<{ value: unknown; jumpTo?: string }>;
+  ) => Promise<SequencerOpResult>;
 };
+
+/**
+ * Looks up the id of the most recently emitted `block_output` item whose
+ * provenance matches a given block instance. Used by sequencer ops to build
+ * `ref` descriptors pointing at their child's emitted item (FIX-413).
+ *
+ * Returns undefined if no item emitter is installed (unit tests, non-tracing
+ * harnesses) or no matching item was found. Callers fall back to `inline`.
+ *
+ * Safe under concurrency because each parallel branch is invoked at a unique
+ * path and therefore has a unique `blockInstanceId`.
+ */
+function findEmittedBlockOutputId(
+  ctx: BlockContext,
+  childInstanceId: string
+): string | undefined {
+  const response = ctx.response as unknown as { getItems?: () => OutputItem[] } | undefined;
+  if (response === undefined || typeof response.getItems !== "function") return undefined;
+  const items = response.getItems();
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i];
+    if (item.type === "block_output" && item.provenance?.blockInstanceId === childInstanceId) {
+      return item.id;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Build a `ref` descriptor pointing at the child invoked at a given path. Falls
+ * back to `{ kind: "inline" }` if the child did not emit a trace (e.g., when a
+ * sequencer runs without a response emitter in a unit test).
+ */
+function refDescriptorForPath(ctx: BlockContext, path: string): BlockOutputHint {
+  const instanceId = buildBlockInstanceId(ctx.request.identity.id, path, 0);
+  const itemId = findEmittedBlockOutputId(ctx, instanceId);
+  if (itemId === undefined) return { kind: "inline" };
+  return { kind: "ref", sourceItemId: itemId };
+}
 
 type WorkOptions = {
   name?: string;
@@ -125,33 +191,99 @@ function getSequencerEmitterItemCount(response: unknown): number {
   return 0;
 }
 
-/** Emit a block_output item with optional modelUsage for generator blocks run inside a sequencer. */
+/**
+ * Emits a state_snapshot item at step boundaries so the devtool can display
+ * the full state of a sequencer at each point in its execution.
+ *
+ * Only emits when state has actually changed since the last snapshot,
+ * avoiding redundant snapshots for steps that don't mutate state.
+ * When multiple steps run without changing state, the emitted snapshot
+ * records which step actually caused the change.
+ */
+async function emitStateSnapshot(
+  ctx: BlockContext,
+  stepName: string,
+  stepIndex: number,
+  lastStateJson: string | undefined
+): Promise<string | undefined> {
+  // Gate on the shared trace-observability flag. Off in production unless the
+  // operator opts in; on in dev/test by default.
+  if (!isTraceObservabilityEnabled()) return lastStateJson;
+
+  const seqRef = ctx.sequencer;
+  if (seqRef === undefined) return lastStateJson;
+
+  const currentStateJson = JSON.stringify(seqRef.state);
+
+  // Skip emission if state hasn't changed since the last snapshot.
+  if (lastStateJson !== undefined && currentStateJson === lastStateJson) {
+    return lastStateJson;
+  }
+
+  const item = {
+    id: `item_state_snap_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+    type: "state_snapshot" as const,
+    status: "completed" as const,
+    transient: true,
+    requestId: ctx.request.identity.id,
+    itemIndex: getSequencerEmitterItemCount(ctx.response),
+    provenance: {
+      blockName: seqRef.name,
+      blockInstanceId: seqRef.instanceId,
+      phase: "main" as const,
+      stepIndex,
+    },
+    ts: Date.now(),
+    stepName,
+    stepIndex,
+    state: structuredClone(seqRef.state),
+    version: 0
+  };
+
+  await ctx.response.emit({ type: "item.added", item });
+  await ctx.response.emit({ type: "item.done", item });
+
+  return currentStateJson;
+}
+
+/**
+ * Emit a block_output item for a generator block. Owns the trace for
+ * generators so `_withExecutionScope` can skip its default emission and
+ * avoid duplicates. `modelUsage` and `error` are optional — the caller
+ * passes whichever matches the success/failure path.
+ */
 async function emitGeneratorBlockOutput(
   block: BlockDefinition<any, any>,
   output: unknown,
   ctx: BlockContext,
   startedAt: number,
   instanceId: string,
-  modelUsage: GeneratorModelUsageMeta
+  modelUsage?: GeneratorModelUsageMeta,
+  error?: { message: string; code?: string }
 ): Promise<void> {
   const completedAt = Date.now();
+  // Generators are leaves — their output is always novel content (FIX-413).
+  const blockValue: BlockValue<unknown> = error
+    ? { kind: "inline", value: undefined }
+    : { kind: "inline", value: output };
   const item = {
     id: `item_block_output_${completedAt}_${Math.random().toString(16).slice(2)}`,
     type: "block_output" as const,
-    status: "completed" as const,
-    trace: true,
+    status: (error ? "failed" : "completed") as "completed" | "failed",
     transient: block.transient || undefined,
     requestId: ctx.request.identity.id,
     itemIndex: getSequencerEmitterItemCount(ctx.response),
     provenance: {
       blockName: block.name,
       blockInstanceId: instanceId,
+      parentBlockInstanceId: ctx._blockIdentity?.parentBlockInstanceId,
       phase: "main" as const,
     },
     ts: completedAt,
     blockName: block.name,
     blockKind: block.kind,
-    output,
+    output: blockValue,
+    error,
     startedAt,
     completedAt,
     duration: completedAt - startedAt,
@@ -162,14 +294,45 @@ async function emitGeneratorBlockOutput(
   await ctx.response.emit({ type: "item.done", item });
 }
 
+/**
+ * Returns the current sequencer's path from ctx. Defaults to the root path
+ * for standalone invocations where no execution scope is active.
+ */
+function currentPath(ctx: BlockContext): string {
+  return ctx._blockIdentity?.blockPath ?? ROOT_BLOCK_PATH;
+}
+
+/**
+ * Builds the child path for a block invoked by a sequencer operation.
+ * The op segment identifies the structural position; an optional iteration
+ * segment distinguishes individual iterations of an iterative op.
+ */
+function childBlockPath(
+  ctx: BlockContext,
+  op: string,
+  stepIndex: number,
+  iteration?: number
+): string {
+  let path = extendBlockPath(currentPath(ctx), blockPathSegment(op, stepIndex));
+  if (iteration !== undefined) {
+    path = extendBlockPath(path, blockPathIteration(iteration));
+  }
+  return path;
+}
+
 async function executeBlock(
   block: BlockDefinition<any, any>,
   input: unknown,
-  ctx: BlockContext
+  ctx: BlockContext,
+  path: string,
+  options?: { phase?: "main" | "work" }
 ): Promise<unknown> {
   const startedAt = Date.now();
+  const requestId = ctx.request.identity.id;
+  const instanceId = buildBlockInstanceId(requestId, path, 0);
   const run = async (scopedCtx: BlockContext): Promise<unknown> => {
     scopedCtx._runtimeHooks?.onBlockStart?.(block.name, block.kind, input);
+    resolveActiveStatusMessage(block, input, scopedCtx);
 
     // For generator blocks, intercept onGeneratorModelResult to capture token usage.
     let modelUsage: GeneratorModelUsageMeta | undefined;
@@ -180,21 +343,35 @@ async function executeBlock(
             ...scopedCtx._runtimeHooks,
             onGeneratorModelResult: (payload: {
               model: string;
-              usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+              usage?: {
+                promptTokens: number;
+                completionTokens: number;
+                totalTokens: number;
+                cacheReadInputTokens?: number;
+                cacheCreationInputTokens?: number;
+              };
               providerMetadata?: Record<string, Record<string, unknown>>;
             }) => {
               if (payload.usage) {
                 const anthropic = payload.providerMetadata?.anthropic ?? {};
+                // Prefer the adapter-normalised usage fields; fall back to
+                // provider metadata so older call paths keep working.
+                const cacheReadTokens =
+                  payload.usage.cacheReadInputTokens ??
+                  (typeof anthropic.cacheReadInputTokens === "number"
+                    ? anthropic.cacheReadInputTokens : undefined);
+                const cacheCreationTokens =
+                  payload.usage.cacheCreationInputTokens ??
+                  (typeof anthropic.cacheCreationInputTokens === "number"
+                    ? anthropic.cacheCreationInputTokens : undefined);
                 modelUsage = {
                   model: payload.model,
                   promptTokens: payload.usage.promptTokens,
                   completionTokens: payload.usage.completionTokens,
                   totalTokens: payload.usage.totalTokens,
                   providerMetadata: payload.providerMetadata,
-                  cacheReadTokens: typeof anthropic.cacheReadInputTokens === "number"
-                    ? anthropic.cacheReadInputTokens : undefined,
-                  cacheCreationTokens: typeof anthropic.cacheCreationInputTokens === "number"
-                    ? anthropic.cacheCreationInputTokens : undefined,
+                  cacheReadTokens,
+                  cacheCreationTokens,
                 };
               }
               // Chain to original hook
@@ -204,19 +381,52 @@ async function executeBlock(
         } as BlockContext
       : scopedCtx;
 
+    // Fire the nested-block debug hook so the devtool sees a block_debug row
+    // for every block, not just the root. No-op when debug is disabled.
+    if (scopedCtx._runtimeHooks?.emitNestedBlockDebug !== undefined) {
+      try {
+        await scopedCtx._runtimeHooks.emitNestedBlockDebug(block, scopedCtx);
+      } catch {
+        // Debug emission is best-effort; never fail a block because of it.
+      }
+    }
+
     try {
       const output = await block.run(input, execCtx);
       scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt);
 
-      // Emit block_output with modelUsage for nested generator blocks.
-      if (modelUsage) {
-        const instanceId = `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-        await emitGeneratorBlockOutput(block, output, scopedCtx, startedAt, instanceId, modelUsage);
+      // Generator blocks own their own block_output trace (carries modelUsage
+      // and shares the scope's instanceId with streaming items). We emit it
+      // here unconditionally so `_withExecutionScope` can skip its nested
+      // trace for generators — otherwise each generator produced two
+      // block_output items in the devtool.
+      if (block.kind === "generator") {
+        const identity = scopedCtx._blockIdentity;
+        const generatorInstanceId = identity?.blockInstanceId ?? instanceId;
+        await emitGeneratorBlockOutput(block, output, scopedCtx, startedAt, generatorInstanceId, modelUsage);
       }
 
       return output;
     } catch (error) {
       scopedCtx._runtimeHooks?.onBlockError?.(block.name, block.kind, error, Date.now() - startedAt);
+
+      // Mirror the success path: emit the generator's failure trace here so
+      // `_withExecutionScope` can skip its nested failure trace.
+      if (block.kind === "generator") {
+        const identity = scopedCtx._blockIdentity;
+        const generatorInstanceId = identity?.blockInstanceId ?? instanceId;
+        const err = error instanceof Error ? error : new Error(String(error));
+        await emitGeneratorBlockOutput(
+          block,
+          undefined,
+          scopedCtx,
+          startedAt,
+          generatorInstanceId,
+          modelUsage,
+          { message: err.message, code: (err as { code?: string }).code }
+        );
+      }
+
       throw error;
     }
   };
@@ -234,10 +444,12 @@ async function executeBlock(
     {
       name: block.name,
       kind: block.kind,
-      instanceId: `${block.name}_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      instanceId,
+      path,
       transient: block.transient || undefined,
       stateSchema: block.kind === "sequencer" ? block.config.stateSchema : undefined,
       input,
+      phase: options?.phase ?? ctx._blockIdentity?.phase,
       container:
         containerConfig === undefined
           ? undefined
@@ -317,6 +529,13 @@ function runSequencerOperations(
   return async (input: unknown, ctx: BlockContext): Promise<unknown> => {
     const runtime = createRuntimeState();
     let currentValue: unknown = input;
+    // Running BlockValue descriptor for the sequencer's output (FIX-413).
+    // Starts as inline because the sequencer's initial value is its input,
+    // which is not itself a persisted item to ref. Each op can override this.
+    let lastDescriptor: BlockOutputHint = { kind: "inline" };
+
+    // Emit initial state snapshot before any steps execute.
+    let lastStateJson = await emitStateSnapshot(ctx, "__initial__", -1, undefined);
 
     try {
       for (let index = 0; index < operations.length; index += 1) {
@@ -324,6 +543,16 @@ function runSequencerOperations(
         runtime.stepHistory.push(operation.name);
         const result = await operation.run(currentValue, ctx, runtime, index);
         currentValue = result.value;
+        if (result.descriptor !== undefined) {
+          lastDescriptor = result.descriptor;
+        }
+
+        // Emit state snapshot only if state changed since last snapshot.
+        lastStateJson = await emitStateSnapshot(ctx, operation.name, index, lastStateJson);
+
+        if (result.exit === true) {
+          break;
+        }
 
         if (result.jumpTo !== undefined) {
           const jumpIndex = operations.findIndex((candidate) => candidate.name === result.jumpTo);
@@ -338,26 +567,49 @@ function runSequencerOperations(
       // Auto-await any outstanding .work() tasks so the block (and its
       // parent stream) stays alive until background work finishes.
       if (runtime.workTasks.length > 0) {
-        ctx.emitStatus("finishing");
         const pending = runtime.workTasks.splice(0, runtime.workTasks.length);
-        const settled = await Promise.allSettled(pending.map((t) => t.promise));
-        for (const result of settled) {
-          if (result.status === "fulfilled" && result.value.status === "rejected") {
-            const { name: taskName, reason } = result.value;
-            console.error(`[sequencer] Background work "${taskName}" failed:`, reason?.message ?? reason);
-          }
-        }
+        let remaining = pending.length;
+        // Signal-only updates: undefined preserves the current status message
+        // while refreshing blocked/backgroundTasks so the client can unblock
+        // sendAction without the in-flight indicator flickering to blank.
+        ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
+
+        await Promise.all(pending.map((t) =>
+          t.promise.then((result) => {
+            remaining--;
+            if (result.status === "rejected") {
+              console.error(`[sequencer] Background work "${result.name}" failed:`, result.reason?.message ?? result.reason);
+            }
+            ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
+          })
+        ));
+      }
+
+      // Expose the running descriptor to the outer emitter so the sequencer's
+      // own block_output carries a ref/structure instead of duplicating the
+      // child's content (FIX-413). `inline` is the emitter default and needs
+      // no hint — leaves it carried as the raw value.
+      if (lastDescriptor.kind !== "inline") {
+        (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = lastDescriptor;
       }
 
       return currentValue;
     } catch (error) {
       const normalizedError = toError(error);
-      for (const handler of rescueHandlers) {
+      for (let i = 0; i < rescueHandlers.length; i += 1) {
+        const handler = rescueHandlers[i];
         if (!matchesRescueHandler(normalizedError, handler)) {
           continue;
         }
 
-        return executeBlock(handler.block, normalizedError, ctx);
+        const rescuePath = extendBlockPath(currentPath(ctx), blockPathRescue(i));
+        const rescued = await executeBlock(handler.block, normalizedError, ctx, rescuePath);
+        // A rescue branch passes through to the handler block's output.
+        const rescueDescriptor = refDescriptorForPath(ctx, rescuePath);
+        if (rescueDescriptor.kind !== "inline") {
+          (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = rescueDescriptor;
+        }
+        return rescued;
       }
 
       throw normalizedError;
@@ -372,7 +624,8 @@ function createSequencer<TInput, TOutput>(
   lastOutputSchema?: ZodTypeAny,
   resolvedInputSchema?: ZodTypeAny,
   accumulatedResources?: DeclaredResources,
-  capabilityRefs?: import("../capability/types").CapabilityRef[]
+  capabilityRefs?: import("../capability/types").CapabilityRef[],
+  accumulatedRequiresOrg?: boolean
 ): SequencerDefinition<TInput, TOutput> {
   // The tracked output schema reflects the chain's last step (informational for devtools/composition).
   // We pass undefined to buildBlock's outputSchema so the sequencer itself doesn't validate output —
@@ -388,7 +641,8 @@ function createSequencer<TInput, TOutput>(
       inputSchema: resolvedInputSchema ?? config.inputSchema,
       outputSchema: undefined,
       stateSchema: config.stateSchema,
-      container: config.container
+      container: config.container,
+      activeStatusMessage: config.activeStatusMessage
     },
     execute: runSequencerOperations(operations, rescueHandlers) as (
       input: unknown,
@@ -396,6 +650,7 @@ function createSequencer<TInput, TOutput>(
     ) => Promise<unknown>,
     declaredResources: accumulatedResources,
     resolvedCapabilities: capabilityRefs,
+    requiresOrg: accumulatedRequiresOrg,
   });
 
   // Override the informational schema on the block definition so devtools and consumers
@@ -416,13 +671,23 @@ function createSequencer<TInput, TOutput>(
     return merged;
   };
 
+  /** OR child blocks' `requiresOrg` flags into the sequencer's accumulator. */
+  const mergeRequiresOrgFrom = (...blocks: Array<BlockDefinition<any, any> | undefined>): boolean => {
+    let merged = accumulatedRequiresOrg ?? false;
+    for (const block of blocks) {
+      if (block?.requiresOrg) merged = true;
+    }
+    return merged;
+  };
+
   const extend = <TNext>(
     operation: SequencerOperation,
     newOutputSchema?: ZodTypeAny,
     newInputSchema?: ZodTypeAny,
-    newResources?: DeclaredResources
+    newResources?: DeclaredResources,
+    newRequiresOrg?: boolean
   ): SequencerDefinition<TInput, TNext> =>
-    createSequencer<TInput, TNext>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs);
+    createSequencer<TInput, TNext>(config, [...operations, operation], rescueHandlers, newOutputSchema, newInputSchema ?? resolvedInputSchema, newResources ?? accumulatedResources, capabilityRefs, newRequiresOrg ?? accumulatedRequiresOrg);
 
   /**
    * On the first step (no operations yet) when neither config nor resolved input
@@ -448,14 +713,16 @@ function createSequencer<TInput, TOutput>(
         return extend<TNext>(
           {
             name: block.name,
-            run: async (value, ctx) => {
-              const output = await executeBlock(block, value, ctx);
-              return { value: output };
+            run: async (value, ctx, _runtime, stepIndex) => {
+              const path = childBlockPath(ctx, "then", stepIndex);
+              const output = await executeBlock(block, value, ctx, path);
+              return { value: output, descriptor: refDescriptorForPath(ctx, path) };
             }
           },
           block.config.outputSchema,
           capturedInput,
-          mergeFrom(block)
+          mergeFrom(block),
+        mergeRequiresOrgFrom(block)
         );
       }
 
@@ -468,15 +735,17 @@ function createSequencer<TInput, TOutput>(
       return extend<TNext>(
         {
           name: block.name,
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
             const nextInput = connector === undefined ? value : await connector(value as TOutput, ctx);
-            const output = await executeBlock(block, nextInput, ctx);
-            return { value: output };
+            const path = childBlockPath(ctx, "then", stepIndex);
+            const output = await executeBlock(block, nextInput, ctx, path);
+            return { value: output, descriptor: refDescriptorForPath(ctx, path) };
           }
         },
         block.config.outputSchema,
         capturedInput,
-        mergeFrom(block)
+        mergeFrom(block),
+        mergeRequiresOrgFrom(block)
       );
     },
 
@@ -494,21 +763,25 @@ function createSequencer<TInput, TOutput>(
             ...operations,
             {
               name: `if:${block.name}`,
-              run: async (value, ctx) => {
+              run: async (value, ctx, _runtime, stepIndex) => {
                 const matches = await condition(value as TOutput, ctx);
                 if (!matches) {
+                  // Condition not matched: carry running descriptor forward.
                   return { value };
                 }
 
-                const output = await executeBlock(block, value, ctx);
-                return { value: output };
+                const path = childBlockPath(ctx, "thenIf", stepIndex);
+                const output = await executeBlock(block, value, ctx, path);
+                return { value: output, descriptor: refDescriptorForPath(ctx, path) };
               }
             }
           ],
           rescueHandlers,
           block.config.outputSchema,
           resolvedInputSchema,
-          mergeFrom(block)
+          mergeFrom(block),
+          capabilityRefs,
+          mergeRequiresOrgFrom(block)
         );
       }
 
@@ -523,22 +796,25 @@ function createSequencer<TInput, TOutput>(
           ...operations,
           {
             name: `if:${block.name}`,
-            run: async (value, ctx) => {
+            run: async (value, ctx, _runtime, stepIndex) => {
               const matches = await condition(value as TOutput, ctx);
               if (!matches) {
                 return { value };
               }
 
               const nextInput = connector === undefined ? value : await connector(value as TOutput, ctx);
-              const output = await executeBlock(block, nextInput, ctx);
-              return { value: output };
+              const path = childBlockPath(ctx, "thenIf", stepIndex);
+              const output = await executeBlock(block, nextInput, ctx, path);
+              return { value: output, descriptor: refDescriptorForPath(ctx, path) };
             }
           }
         ],
         rescueHandlers,
         block.config.outputSchema,
         resolvedInputSchema,
-        mergeFrom(block)
+        mergeFrom(block),
+        capabilityRefs,
+        mergeRequiresOrgFrom(block)
       );
     },
 
@@ -546,7 +822,11 @@ function createSequencer<TInput, TOutput>(
       return extend<TNext>(
         {
           name: "map",
-          run: async (value, ctx) => ({ value: await mapper(value as TOutput, ctx) })
+          // `.map` produces novel content — always inline (FIX-413).
+          run: async (value, ctx) => ({
+            value: await mapper(value as TOutput, ctx),
+            descriptor: { kind: "inline" }
+          })
         },
         undefined
       );
@@ -571,18 +851,22 @@ function createSequencer<TInput, TOutput>(
       return extend<{ [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>(
         {
           name: "parallel",
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
             const entries = Object.entries(steps) as Array<[keyof TSteps, TSteps[keyof TSteps]]>;
+            const parallelPath = childBlockPath(ctx, "parallel", stepIndex);
+            const branchPaths: string[] = [];
             const outputs = await mapWithConcurrency(
               entries,
               options?.maxConcurrency,
-              async ([, step]): Promise<unknown> => {
+              async ([, step], branchIndex): Promise<unknown> => {
+                const branchPath = extendBlockPath(parallelPath, blockPathSegment("branch", branchIndex));
+                branchPaths[branchIndex] = branchPath;
                 if (isBlockDefinition(step)) {
-                  return executeBlock(step as BlockDefinition<any, any>, value, ctx);
+                  return executeBlock(step as BlockDefinition<any, any>, value, ctx, branchPath);
                 }
 
                 const connected = await step.connector(value as TOutput, ctx);
-                return executeBlock(step.block, connected, ctx);
+                return executeBlock(step.block, connected, ctx, branchPath);
               }
             );
 
@@ -591,12 +875,30 @@ function createSequencer<TInput, TOutput>(
               result[key] = outputs[index] as ParallelStepOutput<TSteps[typeof key]>;
             });
 
-            return { value: result };
+            // `.parallel` composes an object of existing branch outputs.
+            // Emit a structure BlockValue whose entries point at each branch's
+            // item (FIX-413). Branches whose item id can't be found fall back
+            // to inline using the branch output itself.
+            const shapeEntries: Record<string, BlockValue<unknown>> = {};
+            entries.forEach(([key], index) => {
+              const branchPath = branchPaths[index];
+              const ref = branchPath !== undefined ? refDescriptorForPath(ctx, branchPath) : { kind: "inline" as const };
+              shapeEntries[String(key)] =
+                ref.kind === "ref"
+                  ? { kind: "ref", sourceItemId: ref.sourceItemId }
+                  : { kind: "inline", value: outputs[index] };
+            });
+
+            return {
+              value: result,
+              descriptor: { kind: "structure", shape: { container: "object", entries: shapeEntries } }
+            };
           }
         },
         compositeSchema,
         undefined,
-        mergeFrom(...stepBlocks)
+        mergeFrom(...stepBlocks),
+        mergeRequiresOrgFrom(...stepBlocks)
       );
     },
 
@@ -630,7 +932,7 @@ function createSequencer<TInput, TOutput>(
       return extend<TStepOut[]>(
         {
           name: "forEach",
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
             const items = (
               connector === undefined ? (value as unknown as TStepIn[]) : await connector(value as TOutput, ctx)
             ) ?? [];
@@ -639,21 +941,37 @@ function createSequencer<TInput, TOutput>(
               throw new Error("forEach expected an array input");
             }
 
+            const iterationPaths: string[] = [];
             const outputs = await mapWithConcurrency(items, options?.maxConcurrency, async (item, index) => {
               const block =
                 typeof blockOrFactory === "function" && !isBlockDefinition(blockOrFactory)
                   ? blockOrFactory(item, index, ctx)
                   : (blockOrFactory as BlockDefinition<any, any>);
 
-              return executeBlock(block, item, ctx);
+              const path = childBlockPath(ctx, "forEach", stepIndex, index);
+              iterationPaths[index] = path;
+              return executeBlock(block, item, ctx, path);
             });
 
-            return { value: outputs };
+            // `.forEach` aggregates an array of existing iteration outputs.
+            // Emit a structure BlockValue whose entries ref each iteration.
+            const entries: BlockValue<unknown>[] = iterationPaths.map((path, i) => {
+              const ref = refDescriptorForPath(ctx, path);
+              return ref.kind === "ref"
+                ? { kind: "ref", sourceItemId: ref.sourceItemId }
+                : { kind: "inline", value: outputs[i] };
+            });
+
+            return {
+              value: outputs,
+              descriptor: { kind: "structure", shape: { container: "array", entries } }
+            };
           }
         },
         arraySchema,
         undefined,
-        mergeFrom(elementBlock)
+        mergeFrom(elementBlock),
+        mergeRequiresOrgFrom(elementBlock)
       );
     },
 
@@ -685,7 +1003,7 @@ function createSequencer<TInput, TOutput>(
       return extend<TOutput>(
         {
           name: "forEachBackground",
-          run: async (value, ctx, runtime) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             const items = (
               connector === undefined ? (value as unknown as TStepIn[]) : await connector(value as TOutput, ctx)
             ) ?? [];
@@ -714,8 +1032,12 @@ function createSequencer<TInput, TOutput>(
                     : (blockOrFactory as BlockDefinition<any, any>);
 
                 const iterName = `${block.name}[${currentIndex}]`;
+                const path = childBlockPath(ctx, "forEachBackground", stepIndex, currentIndex);
                 try {
-                  const result = await executeBlock(block, item, ctx);
+                  // Background iterations run in the "work" phase; this flows
+                  // into _blockIdentity.phase and drives the generator's
+                  // position-based default role (work → "trace").
+                  const result = await executeBlock(block, item, ctx, path, { phase: "work" });
                   iterationResults.push({ name: iterName, status: "fulfilled", value: result });
                 } catch (error) {
                   iterationResults.push({ name: iterName, status: "rejected", reason: toError(error) });
@@ -745,7 +1067,8 @@ function createSequencer<TInput, TOutput>(
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(elementBlock)
+        mergeFrom(elementBlock),
+        mergeRequiresOrgFrom(elementBlock)
       );
     },
 
@@ -760,16 +1083,19 @@ function createSequencer<TInput, TOutput>(
       return extend<TNext>(
         {
           name: `doUntil:${block.name}`,
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
             let nextInput =
               connector === undefined ? value : await connector(value as TOutput, ctx);
             let guard = 0;
+            let iteration = 0;
 
             while (true) {
-              const output = await executeBlock(block, nextInput, ctx);
+              const path = childBlockPath(ctx, "doUntil", stepIndex, iteration);
+              const output = await executeBlock(block, nextInput, ctx, path);
               const done = await condition(output as TNext, ctx);
               if (done) {
-                return { value: output };
+                // Pass-through to the final iteration's item.
+                return { value: output, descriptor: refDescriptorForPath(ctx, path) };
               }
 
               guard += 1;
@@ -778,12 +1104,14 @@ function createSequencer<TInput, TOutput>(
               }
 
               nextInput = output;
+              iteration += 1;
             }
           }
         },
         block.config.outputSchema,
         undefined,
-        mergeFrom(block)
+        mergeFrom(block),
+        mergeRequiresOrgFrom(block)
       );
     },
 
@@ -798,10 +1126,12 @@ function createSequencer<TInput, TOutput>(
       return extend<TNext>(
         {
           name: `doWhile:${block.name}`,
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
             let nextInput =
               connector === undefined ? value : await connector(value as TOutput, ctx);
-            let output = await executeBlock(block, nextInput, ctx);
+            let iteration = 0;
+            let lastPath = childBlockPath(ctx, "doWhile", stepIndex, iteration);
+            let output = await executeBlock(block, nextInput, ctx, lastPath);
             let guard = 0;
 
             while (await condition(output as TNext, ctx)) {
@@ -810,16 +1140,20 @@ function createSequencer<TInput, TOutput>(
                 throw new Error(`doWhile exceeded max loop guard (${DEFAULT_MAX_LOOP_GUARD})`);
               }
 
+              iteration += 1;
               nextInput = output;
-              output = await executeBlock(block, nextInput, ctx);
+              lastPath = childBlockPath(ctx, "doWhile", stepIndex, iteration);
+              output = await executeBlock(block, nextInput, ctx, lastPath);
             }
 
-            return { value: output };
+            // Pass-through to the final iteration's item.
+            return { value: output, descriptor: refDescriptorForPath(ctx, lastPath) };
           }
         },
         block.config.outputSchema,
         undefined,
-        mergeFrom(block)
+        mergeFrom(block),
+        mergeRequiresOrgFrom(block)
       );
     },
 
@@ -866,12 +1200,15 @@ function createSequencer<TInput, TOutput>(
       return extend<TOutput>(
         {
           name: options?.name ?? `work:${block.name}`,
-          run: async (value, ctx, runtime) => {
+          run: async (value, ctx, runtime, stepIndex) => {
             const name = options?.name ?? block.name;
             const input =
               connector === undefined ? value : await connector(value as TOutput, ctx);
 
-            const promise = executeBlock(block, input, ctx)
+            const path = childBlockPath(ctx, "work", stepIndex);
+            // work() dispatches run in the "work" phase so nested generators
+            // see phase === "work" and apply the trace default for emissions.
+            const promise = executeBlock(block, input, ctx, path, { phase: "work" })
               .then(
                 (result): WorkResult => ({
                   name,
@@ -891,7 +1228,8 @@ function createSequencer<TInput, TOutput>(
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(block)
+        mergeFrom(block),
+        mergeRequiresOrgFrom(block)
       );
     },
 
@@ -901,6 +1239,59 @@ function createSequencer<TInput, TOutput>(
       arg3?: WorkOptions
     ): SequencerDefinition<TInput, TOutput> {
       return definition.work(arg1 as any, arg2 as any, arg3 as any);
+    },
+
+    workIf<TStepIn>(
+      condition: boolean | ((ctx: BlockContext) => boolean | Promise<boolean>),
+      arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
+      arg3?: BlockDefinition<any, any> | WorkOptions,
+      arg4?: WorkOptions
+    ): SequencerDefinition<TInput, TOutput> {
+      const hasConnector = isBlockDefinition(arg3);
+      const connector = hasConnector ? (arg2 as ConnectorFn<TOutput, TStepIn>) : undefined;
+      const block = (hasConnector ? arg3 : arg2) as BlockDefinition<any, any>;
+      const options = (hasConnector ? arg4 : arg3) as WorkOptions | undefined;
+
+      return extend<TOutput>(
+        {
+          name: options?.name ?? `workIf:${block.name}`,
+          run: async (value, ctx, runtime, stepIndex) => {
+            const shouldDispatch =
+              typeof condition === "function" ? await condition(ctx) : condition;
+
+            if (!shouldDispatch) {
+              return { value };
+            }
+
+            const name = options?.name ?? block.name;
+            const input =
+              connector === undefined ? value : await connector(value as TOutput, ctx);
+
+            const path = childBlockPath(ctx, "workIf", stepIndex);
+            // workIf() dispatches run in the "work" phase, matching work().
+            const promise = executeBlock(block, input, ctx, path, { phase: "work" })
+              .then(
+                (result): WorkResult => ({
+                  name,
+                  status: "fulfilled",
+                  value: result
+                })
+              )
+              .catch((error): WorkResult => ({
+                name,
+                status: "rejected",
+                reason: toError(error)
+              }));
+
+            runtime.workTasks.push({ name, promise });
+            return { value };
+          }
+        },
+        lastOutputSchema,
+        undefined,
+        mergeFrom(block),
+        mergeRequiresOrgFrom(block)
+      );
     },
 
     waitForWork(options?: WaitForWorkOptions): SequencerDefinition<TInput, TOutput> {
@@ -947,14 +1338,16 @@ function createSequencer<TInput, TOutput>(
         return extend<TOutput>(
           {
             name: `tap:${block.name}`,
-            run: async (value, ctx) => {
-              await executeBlock(block, value, ctx);
+            run: async (value, ctx, _runtime, stepIndex) => {
+              const path = childBlockPath(ctx, "tap", stepIndex);
+              await executeBlock(block, value, ctx, path);
               return { value };
             }
           },
           lastOutputSchema,
           undefined,
-          mergeFrom(block)
+          mergeFrom(block),
+        mergeRequiresOrgFrom(block)
         );
       }
 
@@ -971,10 +1364,11 @@ function createSequencer<TInput, TOutput>(
       return extend<TOutput>(
         {
           name: "tap",
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
+            const path = childBlockPath(ctx, "tap", stepIndex);
             if (connector === undefined) {
               if (isBlockDefinition(tapTarget)) {
-                await executeBlock(tapTarget as BlockDefinition<any, any>, value, ctx);
+                await executeBlock(tapTarget as BlockDefinition<any, any>, value, ctx, path);
               } else {
                 await (tapTarget as (value: TOutput, ctx: BlockContext) => void | Promise<void>)(
                   value as TOutput,
@@ -983,7 +1377,7 @@ function createSequencer<TInput, TOutput>(
               }
             } else {
               const connectedInput = await connector(value as TOutput, ctx);
-              await executeBlock(tapTarget as BlockDefinition<any, any>, connectedInput, ctx);
+              await executeBlock(tapTarget as BlockDefinition<any, any>, connectedInput, ctx, path);
             }
 
             return { value };
@@ -991,7 +1385,8 @@ function createSequencer<TInput, TOutput>(
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(tapBlock)
+        mergeFrom(tapBlock),
+        mergeRequiresOrgFrom(tapBlock)
       );
     },
 
@@ -1013,15 +1408,16 @@ function createSequencer<TInput, TOutput>(
       return extend<TOutput>(
         {
           name: "tapIf",
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
             const matches = await condition(value as TOutput, ctx);
             if (!matches) {
               return { value };
             }
 
+            const path = childBlockPath(ctx, "tapIf", stepIndex);
             if (connector === undefined) {
               if (isBlockDefinition(tapTarget)) {
-                await executeBlock(tapTarget as BlockDefinition<any, any>, value, ctx);
+                await executeBlock(tapTarget as BlockDefinition<any, any>, value, ctx, path);
               } else {
                 await (tapTarget as (value: TOutput, ctx: BlockContext) => void | Promise<void>)(
                   value as TOutput,
@@ -1030,7 +1426,7 @@ function createSequencer<TInput, TOutput>(
               }
             } else {
               const connectedInput = await connector(value as TOutput, ctx);
-              await executeBlock(tapTarget as BlockDefinition<any, any>, connectedInput, ctx);
+              await executeBlock(tapTarget as BlockDefinition<any, any>, connectedInput, ctx, path);
             }
 
             return { value };
@@ -1038,7 +1434,8 @@ function createSequencer<TInput, TOutput>(
         },
         lastOutputSchema,
         undefined,
-        mergeFrom(tapIfBlock)
+        mergeFrom(tapIfBlock),
+        mergeRequiresOrgFrom(tapIfBlock)
       );
     },
 
@@ -1048,7 +1445,12 @@ function createSequencer<TInput, TOutput>(
         (acc, h) => mergeDeclaredResources(acc, h.block.declaredResources),
         accumulatedResources
       );
-      return createSequencer<TInput, TOutput>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs);
+      // Bubble: a rescue handler block requiring org makes the whole sequencer require it.
+      const rescueRequiresOrg = handlers.reduce(
+        (acc, h) => acc || Boolean(h.block.requiresOrg),
+        accumulatedRequiresOrg ?? false
+      );
+      return createSequencer<TInput, TOutput>(config, operations, handlers, lastOutputSchema, resolvedInputSchema, rescueResources, capabilityRefs, rescueRequiresOrg);
     },
 
     branch<TBranches extends Record<string, BranchStep<TOutput>>>(
@@ -1067,7 +1469,8 @@ function createSequencer<TInput, TOutput>(
       return extend<BranchStepOutput<TBranches[keyof TBranches]>>(
         {
           name: "branch",
-          run: async (value, ctx) => {
+          run: async (value, ctx, _runtime, stepIndex) => {
+            const basePath = childBlockPath(ctx, "branch", stepIndex);
             for (const key of Object.keys(branches) as Array<keyof TBranches>) {
               const [connector, condition, block] = branches[key];
               const connectedInput = await connector(value as TOutput, ctx);
@@ -1076,8 +1479,10 @@ function createSequencer<TInput, TOutput>(
                 continue;
               }
 
-              const output = await executeBlock(block, connectedInput, ctx);
-              return { value: output };
+              const branchPath = extendBlockPath(basePath, blockPathBranch(String(key)));
+              const output = await executeBlock(block, connectedInput, ctx, branchPath);
+              // Pass-through from the selected branch's item.
+              return { value: output, descriptor: refDescriptorForPath(ctx, branchPath) };
             }
 
             throw new Error("branch had no matching route");
@@ -1085,7 +1490,224 @@ function createSequencer<TInput, TOutput>(
         },
         firstBranchSchema,
         undefined,
-        mergeFrom(...branchBlocks)
+        mergeFrom(...branchBlocks),
+        mergeRequiresOrgFrom(...branchBlocks)
+      );
+    },
+
+    thenAll<TSteps extends Array<ParallelStep<TOutput>>>(
+      steps: [...TSteps],
+      options?: { maxConcurrency?: number }
+    ): SequencerDefinition<TInput, { [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }> {
+      const stepBlocks: BlockDefinition<any, any>[] = steps.map((step) =>
+        isBlockDefinition(step) ? (step as BlockDefinition<any, any>) : (step as { block: BlockDefinition<any, any> }).block
+      );
+
+      return extend<{ [K in keyof TSteps]: ParallelStepOutput<TSteps[K]> }>(
+        {
+          name: "thenAll",
+          run: async (value, ctx, _runtime, stepIndex) => {
+            const basePath = childBlockPath(ctx, "thenAll", stepIndex);
+            const branchPaths: string[] = [];
+            const outputs = await mapWithConcurrency(
+              steps,
+              options?.maxConcurrency,
+              async (step, branchIndex): Promise<unknown> => {
+                const branchPath = extendBlockPath(basePath, blockPathSegment("branch", branchIndex));
+                branchPaths[branchIndex] = branchPath;
+                if (isBlockDefinition(step)) {
+                  return executeBlock(step as BlockDefinition<any, any>, value, ctx, branchPath);
+                }
+
+                const connected = await step.connector(value as TOutput, ctx);
+                return executeBlock(step.block, connected, ctx, branchPath);
+              }
+            );
+
+            // `.thenAll` aggregates an array of existing branch outputs.
+            // Emit a structure BlockValue whose entries ref each branch's item.
+            const entries: BlockValue<unknown>[] = branchPaths.map((path, i) => {
+              const ref = refDescriptorForPath(ctx, path);
+              return ref.kind === "ref"
+                ? { kind: "ref", sourceItemId: ref.sourceItemId }
+                : { kind: "inline", value: outputs[i] };
+            });
+
+            return {
+              value: outputs,
+              descriptor: { kind: "structure", shape: { container: "array", entries } }
+            };
+          }
+        },
+        undefined,
+        undefined,
+        mergeFrom(...stepBlocks),
+        mergeRequiresOrgFrom(...stepBlocks)
+      );
+    },
+
+    thenAny(
+      blocks: BlockDefinition<any, any>[]
+    ): SequencerDefinition<TInput, unknown> {
+      return extend<unknown>(
+        {
+          name: "thenAny",
+          run: async (value, ctx, _runtime, stepIndex) => {
+            if (blocks.length === 0) {
+              throw new AggregateError([], "thenAny called with no blocks");
+            }
+
+            // Try each block sequentially; return the first that succeeds.
+            const basePath = childBlockPath(ctx, "thenAny", stepIndex);
+            const errors: Error[] = [];
+
+            for (let branchIndex = 0; branchIndex < blocks.length; branchIndex += 1) {
+              const block = blocks[branchIndex];
+              try {
+                const branchPath = extendBlockPath(basePath, blockPathSegment("branch", branchIndex));
+                const output = await executeBlock(block, value, ctx, branchPath);
+                return { value: output, descriptor: refDescriptorForPath(ctx, branchPath) };
+              } catch (error) {
+                errors.push(toError(error));
+              }
+            }
+
+            throw new AggregateError(errors, "All blocks in thenAny failed");
+          }
+        },
+        undefined,
+        undefined,
+        mergeFrom(...blocks),
+        mergeRequiresOrgFrom(...blocks)
+      );
+    },
+
+    race(
+      blocks: BlockDefinition<any, any>[],
+      options?: { maxConcurrency?: number }
+    ): SequencerDefinition<TInput, unknown> {
+      return extend<unknown>(
+        {
+          name: "race",
+          run: async (value, ctx, _runtime, stepIndex) => {
+            if (blocks.length === 0) {
+              throw new Error("race called with no blocks");
+            }
+
+            const basePath = childBlockPath(ctx, "race", stepIndex);
+
+            if (blocks.length === 1) {
+              const singlePath = extendBlockPath(basePath, blockPathSegment("branch", 0));
+              const output = await executeBlock(blocks[0], value, ctx, singlePath);
+              return { value: output, descriptor: refDescriptorForPath(ctx, singlePath) };
+            }
+
+            // Create a derived abort controller to cancel losers once a winner is found.
+            const controller = new AbortController();
+            const onParentAbort = (): void => { controller.abort(); };
+            ctx.signal?.addEventListener("abort", onParentAbort);
+
+            const derivedCtx = { ...ctx, signal: controller.signal } as BlockContext;
+
+            const errors: Error[] = [];
+            let resolved = false;
+            let resolvedValue: unknown;
+            let winnerPath: string | undefined;
+
+            try {
+              if (options?.maxConcurrency !== undefined) {
+                // Worker-pool approach: concurrency-limited, first success wins.
+                const limit = Math.max(1, options.maxConcurrency);
+                let nextIndex = 0;
+
+                const worker = async (): Promise<void> => {
+                  while (nextIndex < blocks.length && !resolved) {
+                    const currentIndex = nextIndex;
+                    nextIndex += 1;
+                    try {
+                      const branchPath = extendBlockPath(basePath, blockPathSegment("branch", currentIndex));
+                      const output = await executeBlock(blocks[currentIndex], value, derivedCtx, branchPath);
+                      if (!resolved) {
+                        resolved = true;
+                        resolvedValue = output;
+                        winnerPath = branchPath;
+                        controller.abort();
+                      }
+                    } catch (error) {
+                      errors.push(toError(error));
+                    }
+                  }
+                };
+
+                const workers: Promise<void>[] = [];
+                for (let i = 0; i < Math.min(limit, blocks.length); i += 1) {
+                  workers.push(worker());
+                }
+                await Promise.all(workers);
+              } else {
+                // Full parallelism — fire all, first success wins.
+                await new Promise<void>((resolve) => {
+                  let remaining = blocks.length;
+
+                  for (let i = 0; i < blocks.length; i += 1) {
+                    const block = blocks[i];
+                    const branchPath = extendBlockPath(basePath, blockPathSegment("branch", i));
+                    executeBlock(block, value, derivedCtx, branchPath).then(
+                      (output) => {
+                        if (!resolved) {
+                          resolved = true;
+                          resolvedValue = output;
+                          winnerPath = branchPath;
+                          controller.abort();
+                        }
+                        remaining -= 1;
+                        if (remaining === 0) resolve();
+                      },
+                      (error) => {
+                        errors.push(toError(error));
+                        remaining -= 1;
+                        if (remaining === 0) resolve();
+                      }
+                    );
+                  }
+                });
+              }
+            } finally {
+              ctx.signal?.removeEventListener("abort", onParentAbort);
+            }
+
+            if (!resolved) {
+              throw new AggregateError(errors, "All blocks in race failed");
+            }
+
+            return {
+              value: resolvedValue,
+              descriptor: winnerPath !== undefined ? refDescriptorForPath(ctx, winnerPath) : { kind: "inline" }
+            };
+          }
+        },
+        undefined,
+        undefined,
+        mergeFrom(...blocks),
+        mergeRequiresOrgFrom(...blocks)
+      );
+    },
+
+    exitIf(
+      condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>
+    ): SequencerDefinition<TInput, TOutput> {
+      return extend<TOutput>(
+        {
+          name: "exitIf",
+          run: async (value, ctx) => {
+            const shouldExit = await condition(value as TOutput, ctx);
+            if (shouldExit) {
+              return { value, exit: true };
+            }
+            return { value };
+          }
+        },
+        lastOutputSchema
       );
     },
 
@@ -1125,6 +1747,9 @@ function createSequencer<TInput, TOutput>(
       const connectOp: SequencerOperation = {
         name: `${config.name}/connect-input`,
         run: async (value, ctx) => {
+          // `connectInput` transforms input; the transform itself is not a
+          // content-bearing item. Leave descriptor unset — downstream ops
+          // emit the sequencer's real descriptor.
           const mapped = await mapper(value as TFrom, ctx);
           return { value: mapped };
         }

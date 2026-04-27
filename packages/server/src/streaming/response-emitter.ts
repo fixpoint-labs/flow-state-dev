@@ -62,6 +62,19 @@ export type ResponseEmitterItemHooks = {
 
 export type ResponseEmitterEventHooks = {
   onEvent?: (events: RequestStreamEventWithId[]) => void;
+  /**
+   * Awaitable durability barrier. When provided, the emitter awaits this
+   * after `onEvent` and before publishing to the wire so the client never
+   * observes an event that isn't yet durable (FIX-399). Without this hook,
+   * persistence remains fire-and-forget (legacy behavior, useful for tests).
+   */
+  flushEvents?: () => Promise<void>;
+  /**
+   * Invoked when `flushEvents` rejects. Lets operators surface persistence
+   * failures instead of silently swallowing them. The error is also re-thrown
+   * from `appendEvent` so the producing block fails loud.
+   */
+  onPersistError?: (error: Error) => void;
 };
 
 const DEFAULT_MAX_BUFFER_SIZE = 10_000;
@@ -145,8 +158,8 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   }
 
   /**
-   * Registers hooks for event persistence.
-   * Called after each event is appended to the buffer, passing the full event list.
+   * Registers hooks for incremental event persistence.
+   * Called after each replayable event with only the newly emitted event(s).
    */
   setEventHooks(hooks: ResponseEmitterEventHooks): void {
     this.eventHooks = hooks;
@@ -243,6 +256,46 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     });
     this.itemHooks?.onItemDone?.(interceptedItem);
     return event;
+  }
+
+  /**
+   * Emits item.added + item.done events for a single transient item without
+   * tracking it in `itemsById`. The events reach connected clients via the
+   * SSE stream and are persisted to the events log (the durable source for
+   * replay). The item is NOT returned from `getItems()` and therefore never
+   * enters the request-record items array — useful for large observability
+   * payloads (e.g. full LLM prompts in block_debug) that would otherwise
+   * balloon in-memory request state.
+   *
+   * Tradeoff: one-shot items cannot be replayed from the in-memory response
+   * buffer after a reconnect — only from the events log store. For
+   * block_debug this is acceptable because a reconnecting client sees the
+   * next emission when the block re-resolves, and devtool replay reads from
+   * the events log anyway.
+   */
+  async emitItemOneShot(item: OutputItem): Promise<{
+    addedEvent: RequestStreamEventWithId;
+    doneEvent: RequestStreamEventWithId;
+  }> {
+    const interceptedAdded = applyItemSeam(
+      this.internalSeams,
+      item,
+      "item.added"
+    );
+    const addedEvent = await this.appendEvent<ItemAddedEvent>({
+      type: "item.added",
+      item: interceptedAdded
+    });
+    const interceptedDone = applyItemSeam(
+      this.internalSeams,
+      interceptedAdded,
+      "item.done"
+    );
+    const doneEvent = await this.appendEvent<ItemDoneEvent>({
+      type: "item.done",
+      item: interceptedDone
+    });
+    return { addedEvent, doneEvent };
   }
 
   /**
@@ -463,20 +516,45 @@ export class ResponseEmitter implements ResponseEmitterHandle {
 
     this.events.push(withId);
     this.enforceBufferLimit();
+
+    // Persist replayable events BEFORE publishing to the wire (FIX-399).
+    // Without this barrier the client could observe `seq=N`, the process
+    // could die, and the persisted log would still cap at `seq < N` —
+    // a silent gap on reconnect. Ping/debug aren't replayable so they
+    // don't need durability and skip the barrier entirely.
+    //
+    // FIX-361's incremental batching is preserved: persistEvents accumulates
+    // events that arrive while a write is in flight, so concurrent emissions
+    // (Promise.all of content deltas, etc.) coalesce into a single write.
+    // Backpressure also comes for free — slow persistence throttles the
+    // producer instead of growing an unbounded RAM buffer.
+    const isReplayable = withId.type !== "ping" && withId.type !== "debug";
+    if (isReplayable && this.eventHooks?.onEvent !== undefined) {
+      this.eventHooks.onEvent([withId]);
+      if (this.eventHooks.flushEvents !== undefined) {
+        try {
+          await this.eventHooks.flushEvents();
+        } catch (err) {
+          const error = err instanceof Error ? err : new Error(String(err));
+          this.eventHooks.onPersistError?.(error);
+          throw error;
+        }
+      }
+    }
+
     if (this.onEvent !== undefined) {
-      await this.onEvent(withId);
+      // Only await if the callback returns a Promise. Sync callbacks (e.g.
+      // LiveRequestStream's controller.enqueue) should not yield to the
+      // microtask queue — doing so serializes every content delta and
+      // creates a visible streaming bottleneck.
+      const result = this.onEvent(withId);
+      if (result instanceof Promise) {
+        await result;
+      }
     }
 
     for (const observer of this.eventObservers) {
       observer(withId);
-    }
-
-    // Fire event persistence hook with replayable events (exclude ping/debug).
-    if (this.eventHooks?.onEvent !== undefined) {
-      const eventType = withId.type;
-      if (eventType !== "ping" && eventType !== "debug") {
-        this.eventHooks.onEvent(this.getReplayableEvents());
-      }
     }
 
     return withId;

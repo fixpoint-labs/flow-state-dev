@@ -26,7 +26,7 @@ const STATE_OPERATIONS = [
   "atomicState"
 ] as const;
 
-type ScopeName = "request" | "session" | "user" | "project" | "block_instance";
+type ScopeName = "request" | "session" | "user" | "org" | "block_instance";
 
 type ScopeOperation = (typeof STATE_OPERATIONS)[number];
 
@@ -46,7 +46,7 @@ export type CreateTestContextOptions<TInput = unknown> = Omit<
   requestId?: string;
   sessionId?: string;
   userId?: string;
-  projectId?: string;
+  orgId?: string;
   sequencerName?: string;
 };
 
@@ -58,7 +58,7 @@ export type TestContextRuntime = {
   requestId: string;
   sessionId: string;
   userId: string;
-  projectId?: string;
+  orgId?: string;
   flow: FlowInstance;
   getItems: () => OutputItem[];
 };
@@ -109,24 +109,21 @@ function generateId(prefix: string): string {
   return `${prefix}_${nowMs()}_${Math.random().toString(16).slice(2)}`;
 }
 
-function createResourceConfig(
-  resources: Record<string, unknown> | undefined
-): Record<string, { stateSchema: z.ZodTypeAny; writable: true }> | undefined {
+function buildFlatResourceMap(
+  resources: Record<string, unknown> | undefined,
+  scope: "session" | "user" | "org"
+): Record<string, { stateSchema: z.ZodTypeAny; writable: true; scope: "session" | "user" | "org" }> {
   if (resources === undefined) {
-    return undefined;
-  }
-
-  const names = Object.keys(resources);
-  if (names.length === 0) {
-    return undefined;
+    return {};
   }
 
   return Object.fromEntries(
-    names.map((name) => [
+    Object.keys(resources).map((name) => [
       name,
       {
         stateSchema: z.record(z.string(), z.unknown()),
-        writable: true
+        writable: true,
+        scope
       }
     ])
   );
@@ -137,30 +134,33 @@ function createTestFlow(options: {
   sessionId?: string;
   sessionResources?: Record<string, unknown>;
   userResources?: Record<string, unknown>;
-  projectResources?: Record<string, unknown>;
+  orgResources?: Record<string, unknown>;
 }): FlowInstance {
   if (options.flow !== undefined) {
     return options.flow;
   }
 
+  // FIX-435: every resource is intrinsically scoped; the test harness now
+  // emits a single flat `flow.resources` map covering all three buckets.
+  const resources: Record<string, unknown> = {
+    ...buildFlatResourceMap(options.sessionResources, "session"),
+    ...buildFlatResourceMap(options.userResources, "user"),
+    ...buildFlatResourceMap(options.orgResources, "org")
+  };
+
   return {
     id: "testing-flow",
     kind: "testing-flow",
     requireUser: true,
+    requiresOrg: false,
     actions: {},
-    session: {
-      resources: createResourceConfig(options.sessionResources)
-    },
-    user: {
-      resources: createResourceConfig(options.userResources)
-    },
-    project:
-      options.projectResources === undefined
-        ? undefined
-        : {
-            resources: createResourceConfig(options.projectResources)
-          }
-  } as FlowInstance;
+    isolateUserState: false,
+    isolateOrgState: false,
+    resources: Object.keys(resources).length > 0 ? resources : undefined,
+    session: {},
+    user: {},
+    org: options.orgResources === undefined ? undefined : {}
+  } as unknown as FlowInstance;
 }
 
 async function seedStores(options: {
@@ -170,12 +170,12 @@ async function seedStores(options: {
   requestId: string;
   sessionId?: string;
   userId: string;
-  projectId?: string;
+  orgId?: string;
   seed: {
     request?: { state?: Record<string, unknown> };
     session?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
     user?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
-    project?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
+    org?: { state?: Record<string, unknown>; resources?: Record<string, unknown> };
   };
 }): Promise<void> {
   const now = nowMs();
@@ -192,23 +192,23 @@ async function seedStores(options: {
       version: 0,
       createdAt: now,
       updatedAt: now
-    });
+    }, "any");
   }
 
-  if (options.projectId !== undefined) {
-    await options.stores.project.set(options.projectId, {
-      id: options.projectId,
-      projectId: options.projectId,
+  if (options.orgId !== undefined) {
+    await options.stores.org.set(options.orgId, {
+      id: options.orgId,
+      orgId: options.orgId,
       userId: options.userId,
-      state: toJsonObject(cloneRecord(options.seed.project?.state ?? {})),
+      state: toJsonObject(cloneRecord(options.seed.org?.state ?? {})),
       resources:
-        options.seed.project?.resources === undefined
+        options.seed.org?.resources === undefined
           ? undefined
-          : toJsonObjectRecord(cloneRecord(options.seed.project.resources)),
+          : toJsonObjectRecord(cloneRecord(options.seed.org.resources)),
       version: 0,
       createdAt: now,
       updatedAt: now
-    });
+    }, "any");
   }
 
   if (options.sessionId !== undefined) {
@@ -216,7 +216,7 @@ async function seedStores(options: {
       id: options.sessionId,
       flowKind: options.flow.kind,
       userId: options.userId,
-      projectId: options.projectId,
+      orgId: options.orgId,
       metadata: undefined,
       latestRequestId: undefined,
       state: toJsonObject(cloneRecord(options.seed.session?.state ?? {})),
@@ -228,7 +228,7 @@ async function seedStores(options: {
       createdAt: now,
       updatedAt: now,
       journal: []
-    });
+    }, "any");
   }
 
   if (options.seed.request !== undefined) {
@@ -238,7 +238,7 @@ async function seedStores(options: {
       actionName: options.actionName,
       userId: options.userId,
       sessionId: options.sessionId,
-      projectId: options.projectId,
+      orgId: options.orgId,
       status: "in_progress",
       startedAtMs: now,
       state: toJsonObject(cloneRecord(options.seed.request.state ?? {})),
@@ -246,7 +246,7 @@ async function seedStores(options: {
       version: 0,
       createdAt: now,
       updatedAt: now
-    });
+    }, "any");
   }
 }
 
@@ -413,13 +413,13 @@ export async function createTestContext<TInput = unknown>(
     sessionId: options.sessionId,
     sessionResources: options.session?.resources,
     userResources: options.user?.resources,
-    projectResources: options.project?.resources
+    orgResources: options.org?.resources
   });
   const actionName = options.actionName ?? "test-action";
   const requestId = options.requestId ?? generateId("test_req");
   const sessionId = options.sessionId ?? generateId("test_session");
   const userId = options.userId ?? "test-user";
-  const projectId = options.projectId;
+  const orgId = options.orgId;
 
   const stores = createInMemoryStores();
   const response = createResponseEmitter({ requestId });
@@ -432,7 +432,7 @@ export async function createTestContext<TInput = unknown>(
     requestId,
     sessionId,
     userId,
-    projectId,
+    orgId,
     seed: {
       request:
         options.request === undefined
@@ -454,12 +454,12 @@ export async function createTestContext<TInput = unknown>(
               state: options.user.state,
               resources: options.user.resources
             },
-      project:
-        options.project === undefined
+      org:
+        options.org === undefined
           ? undefined
           : {
-              state: options.project.state,
-              resources: options.project.resources
+              state: options.org.state,
+              resources: options.org.resources
             }
     }
   });
@@ -476,7 +476,7 @@ export async function createTestContext<TInput = unknown>(
     requestId,
     sessionId,
     userId,
-    projectId,
+    orgId,
     response,
     stores,
     modelResolver
@@ -485,7 +485,7 @@ export async function createTestContext<TInput = unknown>(
   wrapScopeStateOps("request", ctx.request as unknown as Record<string, unknown>, stateChanges);
   wrapScopeStateOps("session", ctx.session as unknown as Record<string, unknown>, stateChanges);
   wrapScopeStateOps("user", ctx.user as unknown as Record<string, unknown>, stateChanges);
-  wrapScopeStateOps("project", ctx.project as unknown as Record<string, unknown>, stateChanges);
+  wrapScopeStateOps("org", ctx.org as unknown as Record<string, unknown>, stateChanges);
 
   const targetStateByName = new Map<string, MutableTargetState>();
 
@@ -559,7 +559,7 @@ export async function createTestContext<TInput = unknown>(
     requestId,
     sessionId,
     userId,
-    projectId,
+    orgId,
     flow,
     getItems: () => response.getItems()
   };

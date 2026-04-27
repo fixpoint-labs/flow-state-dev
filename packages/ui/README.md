@@ -29,7 +29,7 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `conversation` | Container for message threads with auto-scroll |
 | `message` | Individual message display with streaming markdown |
 | `reasoning` | Expandable reasoning/thinking display with streaming |
-| `tool` | Rich tool invocation display with args, result, status |
+| `tool` | Rich tool invocation display with args, result, status, plus `ToolGroup` for Claude-Code-style grouping of consecutive calls |
 | `code-block` | Syntax-highlighted code with copy action and dual-theme |
 | `prompt-input` | Smart input with file upload, suggestions, submit |
 | `sources` | Citation and source display with collapsible list |
@@ -39,6 +39,10 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `request-group` | Groups items by request ID with streaming and sources |
 | `session-items-context` | React context for passing session items to nested components |
 | `plan` | Task list display for plan snapshots from planning patterns |
+| `artifact` | Composable artifact viewer shell with header, actions, and content areas |
+| `file-tree` | Tree-structured file and folder display with expand/collapse and selection |
+| `jsx-preview` | Live JSX/TSX renderer with streaming support and error fallback |
+| `sandbox` | Source/preview tab wrapper for JSX artifacts using JSXPreview and CodeBlock |
 
 ## Framework Integration
 

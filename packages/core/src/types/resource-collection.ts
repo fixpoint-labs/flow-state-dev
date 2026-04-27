@@ -1,7 +1,7 @@
 import type { ZodTypeAny } from "zod";
 import type { JsonObject } from "../schema/common";
 import type { ScopeType } from "./scope";
-import type { ResourceRef } from "./resource";
+import type { ResourceRef, CollectionClientConfig } from "./resource";
 
 // Re-export pattern utilities for consumers
 export {
@@ -27,16 +27,29 @@ export type EvictionPolicy = "none" | "lru" | "oldest";
 export type CollectionHookContext = {
   /** Log a message associated with this hook invocation. */
   log: (message: string) => void;
-  /** The scope type this collection belongs to (session, user, project). */
+  /** The scope type this collection belongs to (session, user, org). */
   scopeType: ScopeType;
 };
 
 export type ResourceCollectionConfig = {
   /** Glob-style pattern: `files/*`, `files/**`, or `[topic]/observations`. */
   pattern: string;
+  /**
+   * Intrinsic scope this collection lives in. Required for new collections —
+   * mirrors `defineResource({ scope })`.
+   */
+  scope: ScopeType;
+  /**
+   * Cross-flow sharing intent. Default `false`. Same semantics as
+   * `ResourceConfig.flowIsolation`. Rejected at session scope.
+   */
+  flowIsolation?: boolean;
   stateSchema: ZodTypeAny;
   maxInstances?: number;
   eviction?: EvictionPolicy;
+
+  /** Client visibility configuration. Omit to keep the collection invisible to clients. */
+  client?: CollectionClientConfig;
 
   /** Fires when a specific instance is created (e.g., files/utils.ts). */
   onInstanceCreated?: (key: string, state: JsonObject, ctx: CollectionHookContext) => void | Promise<void>;
@@ -118,6 +131,18 @@ export function defineResourceCollection<
   config: TConfig
 ): TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>> {
   validatePattern(config.pattern);
+
+  if (config.scope !== "session" && config.scope !== "user" && config.scope !== "org") {
+    throw new Error(
+      `defineResourceCollection() requires an explicit scope of "session", "user", or "org" (got ${JSON.stringify(config.scope)})`
+    );
+  }
+
+  if (config.flowIsolation === true && config.scope === "session") {
+    throw new Error(
+      `defineResourceCollection() rejects flowIsolation:true on session-scoped collections — sessions are intrinsically flow-bound`
+    );
+  }
 
   if (config.maxInstances !== undefined && config.maxInstances < 1) {
     throw new Error("defineResourceCollection() maxInstances must be >= 1");

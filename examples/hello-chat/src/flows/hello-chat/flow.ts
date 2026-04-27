@@ -5,7 +5,7 @@
  * user messages to an LLM and streams the response back token-by-token.
  *
  * This is a good starting point for understanding the framework's core
- * concepts before moving on to the kitchen-sink example:
+ * concepts before moving on to the kitchen-sink reference app:
  *   - generator() — wraps an LLM call (defaults to z.string() text output)
  *   - handler()   — synchronous logic (here: incrementing a counter)
  *   - sequencer() — composes blocks into a linear pipeline
@@ -40,13 +40,9 @@ const chatGenerator = generator({
   prompt: "You are a helpful, concise assistant.",
   inputSchema: chatInputSchema,
   // history slot: load prior conversation from persisted request items.
-  // session.items.llm() aggregates completed requests, filters to LLM-visible
-  // message items, and returns them as {role, content} pairs chronologically.
-  history: (_input, ctx) => ctx.session.items.llm(),
+  history: true,
   user: (input) => input.message,
-  emit: {
-    reasoning: true
-  },
+  agentType: "primary",
   providerOptions: {
     openai: {
       reasoningSummary: "detailed"

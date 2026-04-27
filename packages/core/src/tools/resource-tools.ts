@@ -13,25 +13,18 @@ type CollectionEntry = {
 
 function collectCollections(ctx: BlockContext): CollectionEntry[] {
   const entries: CollectionEntry[] = [];
-  const registries = [
-    { scope: "session", registry: ctx.session?.resources },
-    { scope: "user", registry: ctx.user?.resources },
-    { scope: "project", registry: ctx.project?.resources },
-  ];
+  const registry = ctx.resources;
+  if (registry === undefined) return entries;
 
-  for (const { scope, registry } of registries) {
-    if (registry === undefined) continue;
-    const list = registry.list();
-    for (const entry of list) {
-      // ResourceCollectionRef has a `pattern` property that ResourceRef does not
-      if ("pattern" in entry && "create" in entry) {
-        const nsRef = entry as unknown as ResourceCollectionRef<any>;
-        entries.push({
-          name: nsRef.pattern,
-          scope,
-          ref: nsRef,
-        });
-      }
+  for (const entry of registry.list()) {
+    // ResourceCollectionRef has a `pattern` property that ResourceRef does not
+    if ("pattern" in entry && "create" in entry) {
+      const nsRef = entry as unknown as ResourceCollectionRef<any>;
+      entries.push({
+        name: nsRef.pattern,
+        scope: nsRef.scope,
+        ref: nsRef,
+      });
     }
   }
 
@@ -39,11 +32,11 @@ function collectCollections(ctx: BlockContext): CollectionEntry[] {
 }
 
 function collectStaticResources(ctx: BlockContext): ResourceRef<any>[] {
-  const registries = [ctx.session?.resources, ctx.user?.resources, ctx.project?.resources];
-  return registries.flatMap((registry) => {
-    if (registry === undefined) return [];
-    return registry.list().filter((entry): entry is ResourceRef<any> => !("pattern" in entry && "create" in entry));
-  });
+  const registry = ctx.resources;
+  if (registry === undefined) return [];
+  return registry
+    .list()
+    .filter((entry: any): entry is ResourceRef<any> => !("pattern" in entry && "create" in entry));
 }
 
 function buildCollectionDescription(collections: CollectionEntry[]): string {

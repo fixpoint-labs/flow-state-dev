@@ -29,6 +29,23 @@ export {
 } from "./hooks/useClientData";
 
 export {
+  useResource,
+  type UseResourceResult
+} from "./hooks/useResource";
+
+export {
+  useResourceContent,
+  type UseResourceContentResult
+} from "./hooks/useResourceContent";
+
+export {
+  useResourceCollection,
+  type CollectionActions,
+  type CollectionItem,
+  type UseResourceCollectionResult
+} from "./hooks/useResourceCollection";
+
+export {
   useAction,
   type UseActionOptions,
   type UseActionResult
@@ -53,6 +70,9 @@ export {
 
 export {
   ItemsRenderer,
+  buildItemRenderStream,
+  type BuildItemRenderStreamOptions,
+  type ItemRenderSegment,
   type ItemsRendererProps
 } from "./components/ItemsRenderer";
 

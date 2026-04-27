@@ -61,24 +61,111 @@ export const BasePlanSchema = z.object({
 export type BasePlan = z.infer<typeof BasePlanSchema>;
 
 // ---------------------------------------------------------------------------
-// Emit helper
+// Granular emission types
+// ---------------------------------------------------------------------------
+
+/** Data shape for the plan-meta ComponentItem. */
+export type PlanMeta = {
+  goal: string;
+  taskOrder: string[];
+  taskGoals: Record<string, string>;
+  status?: string;
+  iteration?: number;
+};
+
+/** Data shape for a plan-task ComponentItem. */
+export type PlanTaskUpdate = {
+  id: string;
+  goal: string;
+  status: string;
+  result?: unknown;
+  error?: string;
+  feedback?: string;
+  assignee?: string;
+};
+
+// Minimal context type accepted by emission helpers.
+type EmitCtx = {
+  emitComponent: (
+    component: string,
+    data: Record<string, unknown>,
+    options?: { key?: string },
+  ) => void;
+};
+
+// ---------------------------------------------------------------------------
+// Granular emit helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Emit plan-level metadata (goal, task ordering, status) as a keyed
+ * ComponentItem. The `taskOrder` array is the authoritative render order
+ * and `taskGoals` lets the UI show labels before individual task items
+ * arrive.
+ */
+export function emitPlanMeta(
+  ctx: EmitCtx,
+  meta: PlanMeta,
+  options?: { key?: string },
+): void {
+  const key = options?.key ? `${options.key}:plan-meta` : "plan-meta";
+  ctx.emitComponent(
+    "plan-meta",
+    meta as unknown as Record<string, unknown>,
+    { key },
+  );
+}
+
+/**
+ * Emit a single task update as a keyed ComponentItem. The key is derived
+ * from the task ID so each task's item is deduplicated independently.
+ */
+export function emitTaskUpdate(
+  ctx: EmitCtx,
+  task: PlanTaskUpdate,
+  options?: { key?: string },
+): void {
+  const prefix = options?.key ? `${options.key}:` : "";
+  const key = `${prefix}plan-task:${task.id}`;
+  ctx.emitComponent(
+    "plan-task",
+    task as unknown as Record<string, unknown>,
+    { key },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Legacy emit helper (deprecated)
 // ---------------------------------------------------------------------------
 
 /**
  * Emit a point-in-time plan snapshot into the chat stream as a ComponentItem.
- * Renderers can register a "plan" component to display it; if none is registered
- * the item is silently ignored.
  *
- * Pass `key` to enable client-side deduplication: clients should display only
- * the latest snapshot with a given key, replacing earlier ones in-place.
- * Use a stable value such as the plan ID or sequencer ID.
- *
- * Call this at key lifecycle moments (plan created, task completed, review applied).
+ * @deprecated Use {@link emitPlanMeta} + {@link emitTaskUpdate} instead.
+ * This function now delegates to the granular helpers. Kept as a migration
+ * bridge — will be removed in a future release.
  */
 export function emitPlanSnapshot(
-  ctx: { emitComponent: (component: string, data: Record<string, unknown>, options?: { key?: string }) => { done(): void } },
+  ctx: EmitCtx,
   plan: BasePlan,
-  options?: { key?: string }
+  options?: { key?: string },
 ): void {
-  ctx.emitComponent("plan", plan as unknown as Record<string, unknown>, options).done();
+  emitPlanMeta(ctx, {
+    goal: plan.goal,
+    taskOrder: plan.tasks.map((t) => t.id),
+    taskGoals: Object.fromEntries(plan.tasks.map((t) => [t.id, t.goal])),
+    status: plan.status,
+    iteration: plan.iteration,
+  }, options);
+
+  for (const task of plan.tasks) {
+    emitTaskUpdate(ctx, {
+      id: task.id,
+      goal: task.goal,
+      status: task.status,
+      result: task.result,
+      error: task.error,
+      assignee: task.assignee,
+    }, options);
+  }
 }

@@ -1,5 +1,6 @@
 import { generateText, streamText, Output, stepCountIs } from "ai";
 import type {
+  CachingConfig,
   GeneratorModel,
   GeneratorModelResult,
   GeneratorModelSource,
@@ -13,6 +14,7 @@ import type {
   ProviderTool
 } from "../types";
 import { makeSchemaStrict } from "./makeSchemaStrict";
+import { applyCaching } from "./caching";
 
 export type ResolveAiSdkLanguageModel = (modelId: string) => unknown;
 
@@ -49,7 +51,23 @@ function resolveNestedNumber(
   return asNumber(nested.total);
 }
 
-function normalizeUsage(value: unknown): GeneratorModelResult["usage"] | undefined {
+function resolveNestedFieldNumber(
+  root: Record<string, unknown>,
+  key: string,
+  nestedKey: string
+): number | undefined {
+  const nested = asRecord(root[key]);
+  if (nested === undefined) {
+    return undefined;
+  }
+
+  return asNumber(nested[nestedKey]);
+}
+
+function normalizeUsage(
+  value: unknown,
+  providerMetadata?: unknown
+): GeneratorModelResult["usage"] | undefined {
   const usage = asRecord(value);
   if (usage === undefined) {
     return undefined;
@@ -67,20 +85,51 @@ function normalizeUsage(value: unknown): GeneratorModelResult["usage"] | undefin
       ? undefined
       : promptTokens + completionTokens);
 
+  // Cache tokens: AI SDK v6 exposes `cachedInputTokens` in a few shapes
+  // depending on provider. Anthropic also sets them on
+  // `providerMetadata.anthropic.cacheReadInputTokens` /
+  // `cacheCreationInputTokens`. Prefer provider metadata (more accurate
+  // split between creation vs read) and fall back to the SDK aggregate.
+  const anthropicMeta = asRecord(asRecord(providerMetadata)?.anthropic);
+  const cacheReadInputTokens =
+    asNumber(anthropicMeta?.cacheReadInputTokens) ??
+    asNumber(anthropicMeta?.cache_read_input_tokens) ??
+    resolveNestedNumber(usage, "cacheReadInputTokens") ??
+    resolveNestedNumber(usage, "cachedInputTokens") ??
+    resolveNestedFieldNumber(usage, "inputTokenDetails", "cacheReadTokens") ??
+    resolveNestedFieldNumber(usage, "inputTokens", "cacheRead");
+  const cacheCreationInputTokens =
+    asNumber(anthropicMeta?.cacheCreationInputTokens) ??
+    asNumber(anthropicMeta?.cache_creation_input_tokens) ??
+    resolveNestedNumber(usage, "cacheCreationInputTokens") ??
+    resolveNestedFieldNumber(usage, "inputTokenDetails", "cacheWriteTokens") ??
+    resolveNestedFieldNumber(usage, "inputTokens", "cacheWrite");
+
   if (
     promptTokens === undefined &&
     completionTokens === undefined &&
-    totalTokens === undefined
+    totalTokens === undefined &&
+    cacheReadInputTokens === undefined &&
+    cacheCreationInputTokens === undefined
   ) {
     return undefined;
   }
 
-  return {
+  const result: GeneratorModelResult["usage"] = {
     promptTokens: promptTokens ?? 0,
     completionTokens: completionTokens ?? 0,
     totalTokens:
       totalTokens ?? (promptTokens ?? 0) + (completionTokens ?? 0)
   };
+
+  if (cacheReadInputTokens !== undefined) {
+    result.cacheReadInputTokens = cacheReadInputTokens;
+  }
+  if (cacheCreationInputTokens !== undefined) {
+    result.cacheCreationInputTokens = cacheCreationInputTokens;
+  }
+
+  return result;
 }
 
 function normalizeToolCalls(value: unknown): GeneratorModelToolCall[] | undefined {
@@ -195,7 +244,9 @@ function buildAiSdkRequest(
     maxSteps?: number;
     providerOptions?: Record<string, unknown>;
     prepareStep?: PrepareStepFn;
-  }
+    caching?: CachingConfig;
+  },
+  resolveLanguageModel?: ResolveAiSdkLanguageModel
 ): Record<string, unknown> {
   const request: Record<string, unknown> = {
     model: languageModel,
@@ -257,11 +308,20 @@ function buildAiSdkRequest(
       steps: unknown[];
       model: unknown;
     }) => {
-      return fn({
+      const result = await fn({
         stepNumber: stepInfo.stepNumber,
         messages: stepInfo.messages,
         steps: normalizeSteps(stepInfo.steps) ?? []
       });
+
+      // When the callback returns a modelId and a resolver is available,
+      // re-resolve the model ID to an AI SDK LanguageModel for this step.
+      if (result?.modelId !== undefined && resolveLanguageModel !== undefined) {
+        const { modelId: _modelId, ...rest } = result;
+        return { ...rest, model: resolveLanguageModel(result.modelId) };
+      }
+
+      return result;
     };
   }
 
@@ -285,6 +345,11 @@ function buildAiSdkRequest(
   if (options.providerOptions !== undefined) {
     request.providerOptions = options.providerOptions;
   }
+
+  // Apply prompt-cache markers (Anthropic cacheControl / gateway auto)
+  // after the request is otherwise finalised. User-set markers from
+  // `providerOptions` are never overwritten.
+  applyCaching(request, options.caching, languageModel);
 
   return request;
 }
@@ -364,7 +429,10 @@ function normalizeSteps(value: unknown): GeneratorStepResult[] | undefined {
       toolCalls: normalizeToolCalls(record.toolCalls),
       toolResults: normalizeToolResults(record.toolResults),
       finishReason: normalizeFinishReason(record.finishReason),
-      usage: normalizeUsage(record.usage)
+      usage: normalizeUsage(
+        record.usage,
+        record.providerMetadata ?? record.experimental_providerMetadata
+      )
     });
   }
 
@@ -379,15 +447,14 @@ function normalizeGenerateResult(
     normalizeStructuredOutput(result) ??
     parseStructuredOutputFromText(text);
 
+  const rawProviderMeta = result.providerMetadata ?? result.experimental_providerMetadata;
   return {
     text,
     structuredOutput,
     toolCalls: normalizeToolCalls(result.toolCalls),
     finishReason: normalizeFinishReason(result.finishReason),
-    usage: normalizeUsage(result.usage),
-    providerMetadata: asProviderMetadata(
-      result.providerMetadata ?? result.experimental_providerMetadata
-    ),
+    usage: normalizeUsage(result.usage, rawProviderMeta),
+    providerMetadata: asProviderMetadata(rawProviderMeta),
     steps: normalizeSteps(result.steps),
     sources: normalizeSources(result.sources)
   };
@@ -397,17 +464,16 @@ function normalizeFinishChunk(
   result: Record<string, unknown>
 ): Omit<GeneratorModelStreamChunk, "type"> {
   const text = typeof result.text === "string" ? result.text : undefined;
+  const rawProviderMeta = result.providerMetadata ?? result.experimental_providerMetadata;
   return {
     finishReason: normalizeFinishReason(result.finishReason),
-    usage: normalizeUsage(result.usage),
+    usage: normalizeUsage(result.usage, rawProviderMeta),
     fullResult: {
       text,
       toolCalls: normalizeToolCalls(result.toolCalls),
       finishReason: normalizeFinishReason(result.finishReason),
-      usage: normalizeUsage(result.usage),
-      providerMetadata: asProviderMetadata(
-        result.providerMetadata ?? result.experimental_providerMetadata
-      ),
+      usage: normalizeUsage(result.usage, rawProviderMeta),
+      providerMetadata: asProviderMetadata(rawProviderMeta),
       sources: normalizeSources(result.sources)
     }
   };
@@ -540,13 +606,14 @@ export function wrapAiSdkModel(
 function createGeneratorModelFromAiSdk(
   modelId: string,
   languageModel: unknown,
-  providerWithTools: unknown | undefined
+  providerWithTools: unknown | undefined,
+  resolveLanguageModel?: ResolveAiSdkLanguageModel
 ): GeneratorModel {
   return {
     modelId,
 
     async generate(options): Promise<GeneratorModelResult> {
-      const request = buildAiSdkRequest(languageModel, options);
+      const request = buildAiSdkRequest(languageModel, options, resolveLanguageModel);
       try {
         const result = (await generateText(
           request as any
@@ -575,7 +642,7 @@ function createGeneratorModelFromAiSdk(
     },
 
     async *stream(options): AsyncGenerator<GeneratorModelStreamChunk> {
-      const request = buildAiSdkRequest(languageModel, options);
+      const request = buildAiSdkRequest(languageModel, options, resolveLanguageModel);
 
       // onError: AI SDK v6 callback for streaming errors. Captures errors
       // inline rather than letting them surface as unhandled rejections.
@@ -739,10 +806,16 @@ export function createAiSdkModelResolver(
     ? resolveLanguageModel
     : undefined;
 
-  return (modelId: string) =>
+  const resolver = ((modelId: string) =>
     createGeneratorModelFromAiSdk(
       modelId,
       resolveLanguageModel(modelId),
-      providerWithTools
-    );
+      providerWithTools,
+      resolveLanguageModel
+    )) as ModelResolver;
+
+  // Direct AI SDK resolver — no presets, so model strings are already concrete.
+  resolver.resolveId = (modelId: string): string => modelId;
+
+  return resolver;
 }

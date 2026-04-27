@@ -35,6 +35,27 @@ const block = utility.summarizer({ name: "my-summarizer", granularity: "brief" }
 
 Every generator-based utility defaults to `"gpt-5-mini"` and accepts a `model` override. All utilities accept an optional `outputSchema` to replace the default output shape with full type inference.
 
+### `agentType` — control output visibility
+
+Every generator-based utility accepts an optional `agentType` (`"primary"` | `"sub"` | `"trace"`) that controls how the block's output is surfaced. This maps to the [generator identity model](/docs/streaming/emitting-items).
+
+- `synthesizer` defaults to `agentType: "primary"` — its output is user-facing by convention.
+- All other utilities leave `agentType` unset by default — their output flows to the next block via graph edges but is not auto-emitted to the client or history. This matches the typical use case: internal pipeline steps that feed downstream blocks.
+- Set `agentType: "primary"` on any utility when its output should be visible to the user (e.g. using `analyzer` as a user-facing critic).
+- Set `agentType: "trace"` when the output is observability-only — visible in the devtool, not to the client or in history.
+
+```ts
+// Default: silent, flows only via graph edges
+const classify = utility.intentClassifier({ name: "classify", categories });
+
+// Opt in to user visibility
+const critic = utility.analyzer({
+  name: "critic",
+  agentType: "primary",
+  criteria: ["clarity", "accuracy"],
+});
+```
+
 ---
 
 ## Context & Memory
@@ -1250,7 +1271,7 @@ The block is designed for `.work()`. It fires after the main generator completes
 
 It's a sequencer with two steps:
 
-1. A **generator** reads `ctx.session.items.llm({ limit: messageLimit })` — which includes the current request's output — builds a prompt with the current title for reference, and produces a title candidate.
+1. A **generator** reads `ctx.session.items.history({ limit: messageLimit })` — which includes the current request's output — builds a prompt with the current title for reference, and produces a title candidate.
 2. A **handler** compares the candidate against `ctx.session.metadata.title`. If the title changed, it calls `ctx.session.setMetadata({ title })`, which persists the change and emits a `session.metadata.changed` SSE event. If the title is identical, nothing happens.
 
 The whole block is `transient: true`, so it produces no visible items in the stream.

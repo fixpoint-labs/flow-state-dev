@@ -6,9 +6,13 @@ import {
   FilesystemActiveRequestRegistry
 } from "./filesystem/active-request-registry";
 import {
+  createFilesystemContentStore,
+  FilesystemContentStore
+} from "./filesystem/content-store";
+import {
   createFilesystemProjectStore,
   FilesystemProjectStore
-} from "./filesystem/project-store";
+} from "./filesystem/org-store";
 import {
   createFilesystemRequestStore,
   FilesystemRequestStore
@@ -26,9 +30,13 @@ import {
   InMemoryActiveRequestRegistry
 } from "./memory/active-request-registry";
 import {
+  createInMemoryContentStore,
+  InMemoryContentStore
+} from "./memory/content-store";
+import {
   createInMemoryProjectStore,
   InMemoryProjectStore
-} from "./memory/project-store";
+} from "./memory/org-store";
 import {
   createInMemoryRequestStore,
   InMemoryRequestStore
@@ -51,9 +59,12 @@ import type { StoreRegistry } from "./types";
 export type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
-  ProjectListOptions,
-  ProjectRecord,
-  ProjectStore,
+  ContentScopeType,
+  ContentStore,
+  ExpectedVersion,
+  OrgListOptions,
+  OrgRecord,
+  OrgStore,
   RequestListOptions,
   RequestRecord,
   RequestStatus,
@@ -62,6 +73,7 @@ export type {
   SessionListOptions,
   SessionRecord,
   SessionStore,
+  SetResult,
   StoreRegistry,
   UserListOptions,
   UserRecord,
@@ -69,25 +81,35 @@ export type {
 } from "./types";
 
 export {
+  resolveUserStorageKey,
+  resolveOrgStorageKey
+} from "./scope-keys";
+export type { IsolationFlow } from "./scope-keys";
+
+export {
   ConcurrentModificationError,
   createScopeStateOps,
   createStateContainer,
   createFilesystemActiveRequestRegistry,
+  createFilesystemContentStore,
   createFilesystemProjectStore,
   createFilesystemRequestStore,
   createFilesystemSessionStore,
   createFilesystemUserStore,
   createInMemoryActiveRequestRegistry,
+  createInMemoryContentStore,
   createInMemoryProjectStore,
   createInMemoryRequestStore,
   createInMemorySessionStore,
   createInMemoryUserStore,
   FilesystemActiveRequestRegistry,
+  FilesystemContentStore,
   FilesystemProjectStore,
   FilesystemRequestStore,
   FilesystemSessionStore,
   FilesystemUserStore,
   InMemoryActiveRequestRegistry,
+  InMemoryContentStore,
   InMemoryProjectStore,
   InMemoryRequestStore,
   InMemorySessionStore,
@@ -109,8 +131,9 @@ export function createInMemoryStores(): StoreRegistry {
     session: createInMemorySessionStore(),
     request: createInMemoryRequestStore(),
     user: createInMemoryUserStore(),
-    project: createInMemoryProjectStore(),
-    activeRequests: createInMemoryActiveRequestRegistry()
+    org: createInMemoryProjectStore(),
+    activeRequests: createInMemoryActiveRequestRegistry(),
+    content: createInMemoryContentStore()
   };
 }
 
@@ -127,11 +150,12 @@ export function createFilesystemStores(
     user: createFilesystemUserStore({
       rootDir: path.join(options.rootDir, "users")
     }),
-    project: createFilesystemProjectStore({
+    org: createFilesystemProjectStore({
       rootDir: path.join(options.rootDir, "projects")
     }),
     activeRequests: createFilesystemActiveRequestRegistry({
       directory: options.rootDir
-    })
+    }),
+    content: createFilesystemContentStore(options.rootDir)
   };
 }

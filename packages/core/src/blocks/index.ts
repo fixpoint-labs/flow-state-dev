@@ -6,16 +6,20 @@ export { router } from "./router";
 export type { HandlerConfig } from "./handler";
 export type {
   GeneratorConfig,
+  GeneratorHistoryConfig,
   GeneratorLoopConfig,
   GeneratorLoopState,
   GeneratorRepairConfig,
   GeneratorRepairMode,
+  ContextObject,
   GeneratorSlot,
   GeneratorSlotEntry,
   GeneratorSlotRefOptions,
   GeneratorSlotReference,
   GeneratorTool,
-  GeneratorToolResult
+  GeneratorToolResult,
+  ToolsSlot,
+  PromptSlot,
 } from "./generator";
 export type {
   BranchStep,

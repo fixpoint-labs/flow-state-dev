@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { readFileSync } from "node:fs";
 import type {
+  AnyResourceRef,
   ItemQuery,
   JournalEntry,
   JournalEntryInput,
@@ -9,7 +10,7 @@ import type {
   LLMMessage,
   MessageLimit,
   CollectionHookContext,
-  ProjectScopeHandle,
+  OrgScopeHandle,
   RequestScopeHandle,
   ResourceConfig,
   ResourceRef,
@@ -33,12 +34,13 @@ import {
   getPatternPrefix,
 } from "@flow-state-dev/core/types";
 import type {
+  AgentType,
   BlockOutputItem,
   BlockToolOutputItem,
+  BlockValue,
   ComponentItem,
   ContainerItem,
   Content,
-  ContextItem,
   ItemProvenance,
   MessageItem,
   OutputItem,
@@ -46,21 +48,69 @@ import type {
   StateChangeItem,
   StatusItem
 } from "@flow-state-dev/core/items";
-import type { BlockContext, BlockResult, ComponentHandle, ExecutionParent, MessageHandle, StateRef } from "@flow-state-dev/core/types";
+import { resolveBlockValue, resolveItemVisibility } from "@flow-state-dev/core/items";
+import type { BlockContext, BlockOutputHint, BlockResult, ExecutionParent, StateRef } from "@flow-state-dev/core/types";
 import { createScopeStateOps, createStateContainer } from "../stores/state-container";
+import type { CASPersist } from "../stores/cas";
+import type { SetResult } from "../stores/types";
 import type {
-  ProjectRecord,
+  OrgRecord,
   RequestRecord,
   SessionRecord,
   UserRecord
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
+import type { ModelResolver } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
+import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import {
+  buildConnectedInputDebugPayload,
+  buildGeneratorDebugPayload,
+  emitBlockDebugItem,
+} from "../execution/internal/debug-items";
 import { AmbiguousBlockNameError } from "../errors/flow-error";
 import { normalizeError } from "../errors/normalize-error";
 import { cloneValue } from "../utils/clone";
 import { isJsonObject, asJsonObject } from "../utils/json-helpers";
+import {
+  resolveUserStorageKey,
+  resolveOrgStorageKey
+} from "../stores/scope-keys";
 import type { CreateExecutionContextOptions, ExecutionContext } from "./types";
+import { OrgBindingMismatchError, UserBindingMismatchError } from "./binding-errors";
+
+/**
+ * Builds a CAS persist callback for a scope record. `buildNext` constructs
+ * the record to write (stamped with version/updatedAt); `write` performs the
+ * actual CAS store call. On success `ref.current` is advanced to the new
+ * record; on conflict it's refreshed to the store's current record.
+ */
+function createScopePersist<
+  TState,
+  TRecord extends { state: unknown; version: number }
+>(
+  ref: { current: TRecord },
+  buildNext: (expectedVersion: number, state: Readonly<TState>) => TRecord,
+  write: (nextRecord: TRecord, expectedVersion: number) => Promise<SetResult<TRecord>>
+): CASPersist<TState> {
+  return async (state, expectedVersion) => {
+    const nextRecord = buildNext(expectedVersion, state);
+    const result = await write(nextRecord, expectedVersion);
+    if (result.ok) {
+      ref.current = nextRecord;
+      return { ok: true, version: result.version };
+    }
+    const current = result.conflict.currentValue;
+    if (current !== undefined) {
+      ref.current = current;
+    }
+    return {
+      ok: false,
+      currentState: current?.state as TState | undefined,
+      currentVersion: result.conflict.currentVersion
+    };
+  };
+}
 
 function normalizeLimit(
   valuesLength: number,
@@ -278,6 +328,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
     persistResources: (next: Record<string, JsonObject>) => Promise<void>;
     readResourceContent: () => Record<string, string>;
     persistResourceContent: (next: Record<string, string>) => Promise<void>;
+    /** Called after any resource mutation so the streaming layer can push change events to clients. */
+    onResourceChanged?: (resourcePath: string, changeType: "created" | "updated" | "deleted") => void;
   }
 ): ResourceRegistry<TResources> {
   const handles = {} as Record<string, ResourceRef<JsonObject> | ResourceCollectionRef<JsonObject>>;
@@ -385,6 +437,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             nsHookCtx
           );
         }
+        options.onResourceChanged?.(storageKey, "updated");
       },
       async setState(nextState: JsonObject): Promise<void> {
         const prev = readState();
@@ -397,6 +450,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             nsHookCtx
           );
         }
+        options.onResourceChanged?.(storageKey, "updated");
       },
       async updateState(
         updater: (state: JsonObject) => JsonObject | Promise<JsonObject>
@@ -412,6 +466,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             nsHookCtx
           );
         }
+        options.onResourceChanged?.(storageKey, "updated");
       },
       async readContentRaw(): Promise<string | null> {
         const content = options.readResourceContent()[storageKey];
@@ -427,6 +482,7 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           [storageKey]: content
         };
         await options.persistResourceContent(nextContent);
+        options.onResourceChanged?.(storageKey, "updated");
       }
     };
   }
@@ -526,6 +582,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
             await nsConfig.onInstanceCreated(storageKey, state, hookCtx);
           }
 
+          options.onResourceChanged?.(storageKey, "created");
+
           return createNamespaceInstanceRef(storageKey, nsConfig, hookCtx);
         },
 
@@ -573,6 +631,8 @@ function createScopeResourceRegistry<TResources extends Record<string, ResourceR
           if (nsConfig.onInstanceDeleted) {
             await nsConfig.onInstanceDeleted(storageKey, hookCtx);
           }
+
+          options.onResourceChanged?.(storageKey, "deleted");
         },
 
         count(): number {
@@ -731,7 +791,6 @@ function defineStateProperty<THandle extends object, TState extends object>(
 const LLM_AUDIENCE_TYPES = new Set([
   "message",
   "reasoning",
-  "context",
   "block_output",
   "block_tool_output"
 ]);
@@ -756,15 +815,16 @@ const CLIENT_AUDIENCE_TYPES = new Set([
 
 /**
  * Converts a persisted OutputItem into an LLM-ready message.
- * Uses type-based audience routing: message, reasoning, context, and
- * block_output (with toolCall) enter LLM context.
- * Structural trace items (trace: true) are always excluded — they carry
- * lifecycle metadata for debugging, not conversational content.
- * Returns null for item types that don't map to conversation messages.
+ *
+ * Items with `history: false` (resolved via `resolveItemVisibility`) are
+ * excluded. Returns an empty array for item types that don't map to
+ * conversation messages (status, state_change, resource_change, etc.).
+ *
+ * `allItems` is used to resolve `block_output` BlockValue refs back to their
+ * source items (FIX-413); pass the same list you're iterating over.
  */
-function itemToLLMMessages(item: OutputItem): LLMMessage[] {
-  // Fast path: structural trace items never enter LLM context.
-  if (item.trace === true) {
+function itemToLLMMessages(item: OutputItem, allItems: readonly OutputItem[]): LLMMessage[] {
+  if (!resolveItemVisibility(item).history) {
     return [];
   }
 
@@ -794,13 +854,6 @@ function itemToLLMMessages(item: OutputItem): LLMMessage[] {
       : [];
   }
 
-  if (item.type === "context") {
-    const ctx = item as ContextItem;
-    return ctx.text.length > 0
-      ? [{ role: "system", content: ctx.text }]
-      : [];
-  }
-
   if (item.type === "block_output") {
     const bo = item as BlockOutputItem;
     // Only enters LLM context when invoked as a tool by a generator (legacy path).
@@ -811,9 +864,19 @@ function itemToLLMMessages(item: OutputItem): LLMMessage[] {
     // AI SDK v6 requires tool messages as Array<ToolResultPart> (not strings)
     // and each tool result must be preceded by an assistant message containing
     // the matching tool-call part. Emit both in order.
-    const resultText = typeof bo.output === "string"
-      ? bo.output
-      : JSON.stringify(bo.output);
+    // Resolve the BlockValue union to its typed payload before stringifying
+    // (FIX-413). Refs would otherwise serialize to `{kind:"ref",sourceItemId}`.
+    const resolvedOutput = resolveBlockValue(bo.output, (id) => {
+      for (let i = allItems.length - 1; i >= 0; i -= 1) {
+        if (allItems[i].id === id && allItems[i].type === "block_output") {
+          return allItems[i] as BlockOutputItem;
+        }
+      }
+      return undefined;
+    });
+    const resultText = typeof resolvedOutput === "string"
+      ? resolvedOutput
+      : JSON.stringify(resolvedOutput);
     let input: Record<string, unknown> = {};
     try { input = JSON.parse(bo.toolCall.arguments); } catch { /* use empty */ }
     return [
@@ -945,7 +1008,7 @@ async function loadLLMHistory(
         continue;
       }
 
-      const llmMessages = itemToLLMMessages(item);
+      const llmMessages = itemToLLMMessages(item, sorted);
       for (const llmMessage of llmMessages) {
         if (allowedRoles !== undefined && !allowedRoles.has(llmMessage.role as "user" | "assistant" | "system" | "developer" | "tool")) {
           continue;
@@ -1030,7 +1093,37 @@ function outputItemToSessionItem(item: OutputItem): SessionItem {
     itemIndex: item.itemIndex,
     payload,
     ts: item.ts,
+    agentType: item.agentType,
+    agentName: item.agentName,
   };
+}
+
+/**
+ * Applies `agentType` / `agentName` filters from a SessionItem query.
+ * Both accept scalar or array form; scalar treated as single-element set.
+ * Returns true if the item passes the filter (or no filter applies).
+ */
+function matchesIdentityFilter(
+  item: SessionItem,
+  query: ItemQuery | undefined,
+): boolean {
+  if (query?.agentType !== undefined) {
+    const allowed = Array.isArray(query.agentType)
+      ? new Set(query.agentType)
+      : new Set([query.agentType]);
+    if (item.agentType === undefined || !allowed.has(item.agentType)) {
+      return false;
+    }
+  }
+  if (query?.agentName !== undefined) {
+    const allowed = Array.isArray(query.agentName)
+      ? new Set(query.agentName)
+      : new Set([query.agentName]);
+    if (item.agentName === undefined || !allowed.has(item.agentName)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function createSessionItemViews(
@@ -1047,7 +1140,8 @@ function createSessionItemViews(
 
   const select = (
     query: ItemQuery | undefined,
-    audienceTypes?: Set<string>
+    audienceTypes?: Set<string>,
+    clientOnly?: boolean
   ): SessionItem[] => {
     const includeTransient = query?.includeTransient === true;
     const itemTypeFilter = query?.itemTypes
@@ -1066,13 +1160,23 @@ function createSessionItemViews(
         return false;
       }
 
-      // Type-based audience filtering when provided.
+      // Visibility-based audience filtering: client view uses resolveItemVisibility.
+      if (clientOnly && !resolveItemVisibility(item as unknown as OutputItem).client) {
+        return false;
+      }
+
+      // Type-based audience filtering when provided (for LLM audience).
       if (audienceTypes !== undefined && !audienceTypes.has(item.type)) {
         return false;
       }
 
       // Explicit item type filter from query.
       if (itemTypeFilter !== undefined && !itemTypeFilter.has(item.type)) {
+        return false;
+      }
+
+      // Identity filters (agentType, agentName) — honored by all views.
+      if (!matchesIdentityFilter(item, query)) {
         return false;
       }
 
@@ -1084,15 +1188,16 @@ function createSessionItemViews(
 
   return {
     all: (query) => select(query),
-    client: (query) => select(query, CLIENT_AUDIENCE_TYPES),
-    llm: (query) =>
+    client: (query) => select(query, undefined, true),
+    history: (query) =>
       loadLLMHistory(
         priorRequests,
         options.tokenCounter,
         options.resolveModelId,
         query,
         options.readLiveItems
-      )
+      ),
+    selectForContext: (query) => select(query),
   };
 }
 
@@ -1118,15 +1223,22 @@ type EmissionContext = {
   nextItemIndex: () => number;
   /** Container ownership tag — set when emitting inside a container scope. */
   ownedBy?: string;
+  /**
+   * Agent identity that scope-emitted items inherit. Set by the owning
+   * generator; undefined at the root (runtime-level emissions carry no
+   * identity). Callers may override per-emission via options.
+   */
+  agentType?: AgentType;
+  agentName?: string;
 };
 
 function createEmitMessage(
   emCtx: EmissionContext
 ): {
-  (text: string): MessageHandle;
-  (content: Content[]): MessageHandle;
+  (text: string, options?: { agentType?: AgentType; agentName?: string }): void;
+  (content: Content[], options?: { agentType?: AgentType; agentName?: string }): void;
 } {
-  return function emitMessage(textOrContent: string | Content[]): MessageHandle {
+  return function emitMessage(textOrContent: string | Content[], options?: { agentType?: AgentType; agentName?: string }): void {
     const content: Content[] =
       typeof textOrContent === "string"
         ? [{ type: "output_text", text: textOrContent }]
@@ -1136,100 +1248,6 @@ function createEmitMessage(
     const item: MessageItem = {
       id: `item_message_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "message",
-      status: "in_progress",
-      transient: emCtx.blockTransient || undefined,
-      requestId: emCtx.requestId,
-      itemIndex,
-      provenance: emCtx.provenance(),
-      ts: Date.now(),
-      ownedBy: emCtx.ownedBy,
-      role: "assistant",
-      content
-    };
-
-    // Fire-and-forget the added event; streaming content follows via handle.
-    void emCtx.response.emitItemAdded(item);
-
-    let contentIndex = content.length;
-
-    const handle: MessageHandle = {
-      addContent(newContent: Content): void {
-        const idx = contentIndex;
-        contentIndex += 1;
-        item.content.push(newContent);
-        if (emCtx.response.emitContentAdded) {
-          void emCtx.response.emitContentAdded(item.id, idx, newContent);
-        }
-      },
-      appendDelta(delta: string): void {
-        // Append delta to last output_text content part or create new one.
-        const lastIdx = item.content.length - 1;
-        const last = item.content[lastIdx];
-        if (last !== undefined && last.type === "output_text") {
-          (last as { text: string }).text += delta;
-          if (emCtx.response.emitContentDelta) {
-            void emCtx.response.emitContentDelta(item.id, lastIdx, delta);
-          }
-        } else {
-          handle.addContent({ type: "output_text", text: delta });
-        }
-      },
-      done(): void {
-        item.status = "completed";
-        void emCtx.response.emitItemDone(item);
-      }
-    };
-
-    return handle;
-  };
-}
-
-function createEmitComponent(
-  emCtx: EmissionContext
-): (component: string, data: Record<string, unknown>, options?: { key?: string }) => ComponentHandle {
-  return function emitComponent(
-    component: string,
-    data: Record<string, unknown>,
-    options?: { key?: string }
-  ): ComponentHandle {
-    const itemIndex = emCtx.nextItemIndex();
-    const item: ComponentItem = {
-      id: `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
-      type: "component",
-      status: "in_progress",
-      transient: emCtx.blockTransient || undefined,
-      requestId: emCtx.requestId,
-      itemIndex,
-      provenance: emCtx.provenance(),
-      ts: Date.now(),
-      ownedBy: emCtx.ownedBy,
-      component,
-      data,
-      ...(options?.key !== undefined ? { key: options.key } : {}),
-    };
-
-    void emCtx.response.emitItemAdded(item);
-
-    return {
-      update(newData: Record<string, unknown>): void {
-        Object.assign(item.data, newData);
-      },
-      done(): void {
-        item.status = "completed";
-        void emCtx.response.emitItemDone(item);
-      }
-    };
-  };
-}
-
-function createEmitLLMContext(
-  emCtx: EmissionContext
-): (text: string) => void {
-  return function emitLLMContext(text: string): void {
-    const itemIndex = emCtx.nextItemIndex();
-    const item: ContextItem = {
-      id: `item_context_${itemIndex}_${Math.random().toString(16).slice(2)}`,
-      type: "context",
       status: "completed",
       transient: emCtx.blockTransient || undefined,
       requestId: emCtx.requestId,
@@ -1237,7 +1255,10 @@ function createEmitLLMContext(
       provenance: emCtx.provenance(),
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
-      text
+      agentType: options?.agentType ?? emCtx.agentType,
+      agentName: options?.agentName ?? emCtx.agentName,
+      role: "assistant",
+      content
     };
 
     void emCtx.response.emitItemAdded(item);
@@ -1245,7 +1266,36 @@ function createEmitLLMContext(
   };
 }
 
+function createEmitComponent(
+  emCtx: EmissionContext
+): (component: string, data: Record<string, unknown>, options?: { key?: string; agentType?: AgentType; agentName?: string }) => void {
+  return function emitComponent(
+    component: string,
+    data: Record<string, unknown>,
+    options?: { key?: string; agentType?: AgentType; agentName?: string }
+  ): void {
+    const itemIndex = emCtx.nextItemIndex();
+    const item: ComponentItem = {
+      id: `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+      type: "component",
+      status: "completed",
+      transient: emCtx.blockTransient || undefined,
+      requestId: emCtx.requestId,
+      itemIndex,
+      provenance: emCtx.provenance(),
+      ts: Date.now(),
+      ownedBy: emCtx.ownedBy,
+      agentType: options?.agentType ?? emCtx.agentType,
+      agentName: options?.agentName ?? emCtx.agentName,
+      component,
+      data,
+      ...(options?.key !== undefined ? { key: options.key } : {}),
+    };
 
+    void emCtx.response.emitItemAdded(item);
+    void emCtx.response.emitItemDone(item);
+  };
+}
 
 type StateChangeScope = StateChangeItem["scope"];
 type StateChangeOperation = StateChangeItem["operation"];
@@ -1311,7 +1361,6 @@ async function emitStateChangeItem(options: {
 
 function createTargetStateOps<TState extends JsonObject>(options: {
   container: ReturnType<typeof createStateContainer<TState>>;
-  persist: (state: Readonly<TState>, version: number) => Promise<void> | void;
   response: unknown;
   requestId: string;
   nextItemIndex: () => number;
@@ -1319,9 +1368,10 @@ function createTargetStateOps<TState extends JsonObject>(options: {
   blockInstanceId: string;
   transientStateChanges: boolean;
 }): Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> {
-  const baseOps = createScopeStateOps<TState>(options.container, {
-    onPersist: options.persist
-  });
+  // Target state has no backing store. `createScopeStateOps` supplies a
+  // container-based CAS fallback when no `persist` is provided — that's what
+  // we want here, so concurrent mutators serialize through the container.
+  const baseOps = createScopeStateOps<TState>(options.container);
 
   return {
     async patchState(
@@ -1457,10 +1507,30 @@ function createTargetStateOps<TState extends JsonObject>(options: {
     }
   };
 }
+/**
+ * Request-scoped status slot. Shared across every `createEmitStatus` call
+ * within a single request so nested scopes see the same "current message"
+ * value — implements the single-slot semantics from FIX-387.
+ */
+type StatusSlot = { message: string };
+
 function createEmitStatus(
-  emCtx: EmissionContext
-): (message: string) => void {
-  return function emitStatus(message: string): void {
+  emCtx: EmissionContext,
+  slot: StatusSlot
+): (message: string | undefined, options?: { blocked?: boolean; backgroundTasks?: number }) => void {
+  return function emitStatus(
+    message: string | undefined,
+    options?: { blocked?: boolean; backgroundTasks?: number }
+  ): void {
+    if (message !== undefined) {
+      // Dedupe: skip when the proposed message matches the slot. `undefined`
+      // callers fall through — they update signals only and always emit.
+      if (message === slot.message) {
+        return;
+      }
+      slot.message = message;
+    }
+
     const itemIndex = emCtx.nextItemIndex();
     const item: StatusItem = {
       id: `item_status_${itemIndex}_${Math.random().toString(16).slice(2)}`,
@@ -1472,7 +1542,9 @@ function createEmitStatus(
       provenance: emCtx.provenance(),
       ts: Date.now(),
       ownedBy: emCtx.ownedBy,
-      message
+      message: slot.message,
+      blocked: options?.blocked,
+      backgroundTasks: options?.backgroundTasks
     };
 
     void emCtx.response.emitItemAdded(item);
@@ -1484,16 +1556,16 @@ export async function createExecutionContext<
   TRequestState extends JsonObject = JsonObject,
   TSessionState extends JsonObject = JsonObject,
   TUserState extends JsonObject = JsonObject,
-  TProjectState extends JsonObject = JsonObject
+  TOrgState extends JsonObject = JsonObject
 >(
   options: CreateExecutionContextOptions<
     TRequestState,
     TSessionState,
     TUserState,
-    TProjectState
+    TOrgState
   >
 ): Promise<
-  ExecutionContext<TRequestState, TSessionState, TUserState, TProjectState>
+  ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState>
 > {
   const now = Date.now();
   const {
@@ -1501,15 +1573,31 @@ export async function createExecutionContext<
     stores
   } = options;
   const transientStateChanges = !shouldPersistScopeChange(flow);
-  const sessionResourceConfigs = flow.session?.resources as
-    | Record<string, ResourceConfig | ResourceCollectionConfig>
-    | undefined;
-  const userResourceConfigs = flow.user?.resources as
-    | Record<string, ResourceConfig | ResourceCollectionConfig>
-    | undefined;
-  const projectResourceConfigs = flow.project?.resources as
-    | Record<string, ResourceConfig | ResourceCollectionConfig>
-    | undefined;
+  // FIX-435: resources live in a single flat `flow.resources` map. Each
+  // entry is routed to the appropriate scope storage via its intrinsic
+  // `scope`. Partition the flat map back into per-scope buckets so the
+  // existing per-scope storage helpers can keep doing their job.
+  const flatFlowResources = (flow.resources ?? {}) as Record<
+    string,
+    (ResourceConfig | ResourceCollectionConfig) & { scope: "session" | "user" | "org" }
+  >;
+  const sessionResourceConfigs: Record<string, ResourceConfig | ResourceCollectionConfig> = {};
+  const userResourceConfigs: Record<string, ResourceConfig | ResourceCollectionConfig> = {};
+  const orgResourceConfigs: Record<string, ResourceConfig | ResourceCollectionConfig> = {};
+  /**
+   * accessor → scope mapping so the flat ctx.resources registry can route
+   * gets/lists across all three per-scope registries below.
+   */
+  const accessorScope: Record<string, "session" | "user" | "org"> = {};
+
+  for (const [accessor, def] of Object.entries(flatFlowResources)) {
+    const scope = def.scope;
+    if (scope === "session") sessionResourceConfigs[accessor] = def;
+    else if (scope === "user") userResourceConfigs[accessor] = def;
+    else if (scope === "org") orgResourceConfigs[accessor] = def;
+    else throw new Error(`Resource "${accessor}" has unknown scope ${JSON.stringify(scope)}`);
+    accessorScope[accessor] = scope;
+  }
 
   if (!options.userId || options.userId.trim().length === 0) {
     throw new Error(`Flow "${flow.kind}" requires a userId`);
@@ -1519,19 +1607,28 @@ export async function createExecutionContext<
   const sessionId = options.sessionId ?? `ephemeral_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const requestId = options.requestId;
 
-  // Parallelize independent store lookups — user, session, project, and request
+  // Storage keys — namespaced by flowKind when the flow opts into per-flow
+  // isolation for user/org scope. Bare identity ids otherwise. See
+  // `packages/server/src/stores/scope-keys.ts` and FIX-431.
+  const userKey = resolveUserStorageKey(userId, flow);
+  const optionsOrgId = options.orgId;
+  const optionsOrgKey =
+    optionsOrgId !== undefined
+      ? resolveOrgStorageKey(optionsOrgId, flow)
+      : undefined;
+
+  // Parallelize independent store lookups — user, session, org, and request
   // records don't depend on each other for the initial load.
-  const optionsProjectId = options.projectId;
-  const [loadedUser, loadedSession, loadedProject, loadedRequest, priorRequests] = await Promise.all([
-    stores.user.get(userId),
+  const [loadedUser, loadedSession, loadedOrg, loadedRequest, priorRequests] = await Promise.all([
+    stores.user.get(userKey),
     stores.session.get(sessionId),
-    optionsProjectId !== undefined ? stores.project.get(optionsProjectId) : undefined,
+    optionsOrgKey !== undefined ? stores.org.get(optionsOrgKey) : undefined,
     stores.request.get(requestId),
     stores.request.list({ sessionId })
   ]);
 
   // Filter to completed prior requests once — reused by both all()/client()
-  // (via priorItems) and llm() (via loadLLMHistory).
+  // (via priorItems) and history() (via loadLLMHistory).
   const completedPriorRequests = priorRequests
     .filter((r) => r.id !== requestId && r.status === "completed")
     .sort((a, b) => a.startedAtMs - b.startedAtMs);
@@ -1555,17 +1652,19 @@ export async function createExecutionContext<
 
   let userRecord = loadedUser;
   if (userRecord === undefined) {
+    // `id` is the storage key (namespaced when isolated); `userId` stays as
+    // the bare identity so listing and cross-reference by userId work across
+    // isolated and shared records alike.
     userRecord = {
-      id: userId,
+      id: userKey,
       userId,
       state: (options.userState ?? {}) as TUserState,
       resources: normalizeScopeResources(userResourceConfigs, undefined),
-      resourceContent: normalizeScopeResourceContent(userResourceConfigs, undefined),
       version: 0,
       createdAt: now,
       updatedAt: now
     };
-    await stores.user.set(userRecord.id, userRecord);
+    await stores.user.set(userRecord.id, userRecord, "any");
   }
 
   let sessionRecord = loadedSession;
@@ -1574,42 +1673,89 @@ export async function createExecutionContext<
       id: sessionId,
       flowKind: flow.kind,
       userId,
-      projectId: options.projectId,
+      orgId: options.orgId,
       state: (options.sessionState ?? {}) as TSessionState,
       resources: normalizeScopeResources(sessionResourceConfigs, undefined),
-      resourceContent: normalizeScopeResourceContent(sessionResourceConfigs, undefined),
       version: 0,
       createdAt: now,
       updatedAt: now,
       journal: []
     };
-    await stores.session.set(sessionRecord.id, sessionRecord);
+    await stores.session.set(sessionRecord.id, sessionRecord, "any");
   } else {
     ensureJournalDefaults(sessionRecord);
+
+    // userId mismatch — closes a long-standing gap. The loaded session record's
+    // userId is authoritative; a request claiming a different identity would
+    // route this user's actions against another user's data.
+    if (sessionRecord.userId !== userId) {
+      throw new UserBindingMismatchError(sessionId, sessionRecord.userId, userId);
+    }
   }
 
-  // Resolve projectId: prefer options, fall back to session record.
-  // If session had a projectId we didn't know about at parallel-load time,
-  // we need a separate fetch.
-  const resolvedProjectId = optionsProjectId ?? sessionRecord?.projectId;
-  let projectRecord: ProjectRecord | undefined = loadedProject;
-  if (projectRecord === undefined && resolvedProjectId !== undefined && resolvedProjectId !== optionsProjectId) {
-    projectRecord = await stores.project.get(resolvedProjectId);
+  // orgId immutability. Org binding is fixed for the lifetime of a session;
+  // a request that claims a different orgId — including binding an
+  // unbound session — is rejected. Apps that need to "move" a session
+  // create a new one. The previous code (`optionsOrgId ?? sessionRecord?.orgId`)
+  // silently let the request override the session's stored value, vacating
+  // the immutability guarantee FIX-428 promises.
+  const sessionOrgId = sessionRecord.orgId;
+  if (optionsOrgId !== undefined && optionsOrgId !== sessionOrgId) {
+    throw new OrgBindingMismatchError(sessionId, sessionOrgId ?? "<unbound>", optionsOrgId);
   }
-  if (resolvedProjectId !== undefined && projectRecord === undefined) {
-    projectRecord = {
-      id: resolvedProjectId,
-      projectId: resolvedProjectId,
+
+  const resolvedOrgId = sessionOrgId;
+  const resolvedOrgKey =
+    resolvedOrgId !== undefined
+      ? resolveOrgStorageKey(resolvedOrgId, flow)
+      : undefined;
+  let orgRecord: OrgRecord | undefined = loadedOrg;
+  if (
+    orgRecord === undefined &&
+    resolvedOrgKey !== undefined &&
+    resolvedOrgKey !== optionsOrgKey
+  ) {
+    orgRecord = await stores.org.get(resolvedOrgKey);
+  }
+  if (resolvedOrgId !== undefined && resolvedOrgKey !== undefined && orgRecord === undefined) {
+    orgRecord = {
+      id: resolvedOrgKey,
+      orgId: resolvedOrgId,
       userId,
-      state: (options.projectState ?? {}) as TProjectState,
-      resources: normalizeScopeResources(projectResourceConfigs, undefined),
-      resourceContent: normalizeScopeResourceContent(projectResourceConfigs, undefined),
+      state: (options.orgState ?? {}) as TOrgState,
+      resources: normalizeScopeResources(orgResourceConfigs, undefined),
       version: 0,
       createdAt: now,
       updatedAt: now
     };
-    await stores.project.set(projectRecord.id, projectRecord);
+    await stores.org.set(orgRecord.id, orgRecord, "any");
   }
+
+  // Load content from ContentStore, merging with any inline record content
+  // for backward compatibility with records created before ContentStore existed.
+  // ContentStore values take precedence over inline record values.
+  // Content scope keys mirror the scope record keys — namespaced when the
+  // flow isolates that scope.
+  const [sessionContentFromStore, userContentFromStore, projectContentFromStore] = await Promise.all([
+    stores.content.getAll("session", sessionId),
+    stores.content.getAll("user", userKey),
+    resolvedOrgKey !== undefined ? stores.content.getAll("org", resolvedOrgKey) : Promise.resolve({})
+  ]);
+
+  const initialSessionContent = normalizeScopeResourceContent(
+    sessionResourceConfigs,
+    { ...(sessionRecord.resourceContent ?? {}), ...sessionContentFromStore }
+  );
+  const initialUserContent = normalizeScopeResourceContent(
+    userResourceConfigs,
+    { ...(userRecord.resourceContent ?? {}), ...userContentFromStore }
+  );
+  const initialProjectContent = normalizeScopeResourceContent(
+    orgResourceConfigs,
+    resolvedOrgId !== undefined
+      ? { ...(orgRecord?.resourceContent ?? {}), ...projectContentFromStore }
+      : undefined
+  );
 
   let requestRecord = loadedRequest;
   if (requestRecord === undefined) {
@@ -1619,7 +1765,7 @@ export async function createExecutionContext<
       actionName: options.actionName,
       userId,
       sessionId: sessionRecord?.id,
-      projectId: projectRecord?.id,
+      orgId: orgRecord?.orgId,
       status: "in_progress",
       startedAtMs: now,
       metadata: options.metadata,
@@ -1629,7 +1775,7 @@ export async function createExecutionContext<
       createdAt: now,
       updatedAt: now
     };
-    await stores.request.set(requestRecord.id, requestRecord);
+    await stores.request.set(requestRecord.id, requestRecord, "any");
   }
 
   if (requestRecord === undefined) {
@@ -1645,8 +1791,8 @@ export async function createExecutionContext<
   const sessionRef: { current: SessionRecord } = {
     current: sessionRecord
   };
-  const projectRef: { current: ProjectRecord | undefined } = {
-    current: projectRecord
+  const orgRef: { current: OrgRecord | undefined } = {
+    current: orgRecord
   };
 
   const readSessionResources = (): Record<string, JsonObject> =>
@@ -1655,11 +1801,15 @@ export async function createExecutionContext<
       sessionRef.current.resources as Record<string, unknown> | undefined
     );
 
+  // Content refs: eagerly loaded from ContentStore at initialization.
+  // All reads during execution use the in-memory cache (synchronous).
+  // Writes update the cache and persist to ContentStore (async, per-key).
+  const sessionContentRef = { current: initialSessionContent };
+  const userContentRef = { current: initialUserContent };
+  const projectContentRef = { current: initialProjectContent };
+
   const readSessionResourceContent = (): Record<string, string> =>
-    normalizeScopeResourceContent(
-      sessionResourceConfigs,
-      sessionRef.current.resourceContent as Record<string, unknown> | undefined
-    );
+    sessionContentRef.current;
 
   const readUserResources = (): Record<string, JsonObject> =>
     normalizeScopeResources(
@@ -1668,22 +1818,16 @@ export async function createExecutionContext<
     );
 
   const readUserResourceContent = (): Record<string, string> =>
-    normalizeScopeResourceContent(
-      userResourceConfigs,
-      userRef.current.resourceContent as Record<string, unknown> | undefined
-    );
+    userContentRef.current;
 
   const readProjectResources = (): Record<string, JsonObject> =>
     normalizeScopeResources(
-      projectResourceConfigs,
-      projectRef.current?.resources as Record<string, unknown> | undefined
+      orgResourceConfigs,
+      orgRef.current?.resources as Record<string, unknown> | undefined
     );
 
   const readProjectResourceContent = (): Record<string, string> =>
-    normalizeScopeResourceContent(
-      projectResourceConfigs,
-      projectRef.current?.resourceContent as Record<string, unknown> | undefined
-    );
+    projectContentRef.current;
 
   const persistSessionResources = async (
     next: Record<string, JsonObject>
@@ -1693,18 +1837,31 @@ export async function createExecutionContext<
       resources: normalizeScopeResources(sessionResourceConfigs, next),
       updatedAt: Date.now()
     };
-    await stores.session.set(sessionRef.current.id, sessionRef.current);
+    // Resource metadata writes are outside the state CAS path today
+    // (see FIX-347 for splitting resources from scope records). Use "any"
+    // to preserve current last-write-wins behavior for the resources field
+    // until that split lands.
+    await stores.session.set(sessionRef.current.id, sessionRef.current, "any");
   };
 
   const persistSessionResourceContent = async (
     next: Record<string, string>
   ): Promise<void> => {
-    sessionRef.current = {
-      ...sessionRef.current,
-      resourceContent: normalizeScopeResourceContent(sessionResourceConfigs, next),
-      updatedAt: Date.now()
-    };
-    await stores.session.set(sessionRef.current.id, sessionRef.current);
+    const normalized = normalizeScopeResourceContent(sessionResourceConfigs, next);
+    const previous = sessionContentRef.current;
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (previous[key] !== value) {
+        await stores.content.set("session", sessionId, key, value);
+      }
+    }
+    for (const key of Object.keys(previous)) {
+      if (!(key in normalized)) {
+        await stores.content.delete("session", sessionId, key);
+      }
+    }
+
+    sessionContentRef.current = normalized;
   };
 
   const persistUserResources = async (
@@ -1715,50 +1872,69 @@ export async function createExecutionContext<
       resources: normalizeScopeResources(userResourceConfigs, next),
       updatedAt: Date.now()
     };
-    await stores.user.set(userRef.current.id, userRef.current);
+    // Last-write-wins for resources; see persistSessionResources comment.
+    await stores.user.set(userRef.current.id, userRef.current, "any");
   };
 
   const persistUserResourceContent = async (
     next: Record<string, string>
   ): Promise<void> => {
-    userRef.current = {
-      ...userRef.current,
-      resourceContent: normalizeScopeResourceContent(userResourceConfigs, next),
-      updatedAt: Date.now()
-    };
-    await stores.user.set(userRef.current.id, userRef.current);
+    const normalized = normalizeScopeResourceContent(userResourceConfigs, next);
+    const previous = userContentRef.current;
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (previous[key] !== value) {
+        await stores.content.set("user", userKey, key, value);
+      }
+    }
+    for (const key of Object.keys(previous)) {
+      if (!(key in normalized)) {
+        await stores.content.delete("user", userKey, key);
+      }
+    }
+
+    userContentRef.current = normalized;
   };
 
   const persistProjectResources = async (
     next: Record<string, JsonObject>
   ): Promise<void> => {
-    const current = projectRef.current;
+    const current = orgRef.current;
     if (current === undefined) {
       return;
     }
 
-    projectRef.current = {
+    orgRef.current = {
       ...current,
-      resources: normalizeScopeResources(projectResourceConfigs, next),
+      resources: normalizeScopeResources(orgResourceConfigs, next),
       updatedAt: Date.now()
     };
-    await stores.project.set(projectRef.current.id, projectRef.current);
+    // Last-write-wins for resources; see persistSessionResources comment.
+    await stores.org.set(orgRef.current.id, orgRef.current, "any");
   };
 
   const persistProjectResourceContent = async (
     next: Record<string, string>
   ): Promise<void> => {
-    const current = projectRef.current;
-    if (current === undefined) {
+    if (resolvedOrgKey === undefined) {
       return;
     }
 
-    projectRef.current = {
-      ...current,
-      resourceContent: normalizeScopeResourceContent(projectResourceConfigs, next),
-      updatedAt: Date.now()
-    };
-    await stores.project.set(projectRef.current.id, projectRef.current);
+    const normalized = normalizeScopeResourceContent(orgResourceConfigs, next);
+    const previous = projectContentRef.current;
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (previous[key] !== value) {
+        await stores.content.set("org", resolvedOrgKey, key, value);
+      }
+    }
+    for (const key of Object.keys(previous)) {
+      if (!(key in normalized)) {
+        await stores.content.delete("org", resolvedOrgKey, key);
+      }
+    }
+
+    projectContentRef.current = normalized;
   };
 
   const requestContainer = createStateContainer<TRequestState>(
@@ -1774,11 +1950,11 @@ export async function createExecutionContext<
     sessionRef.current.version
   );
   const projectContainer =
-    projectRef.current === undefined
+    orgRef.current === undefined
       ? undefined
-      : createStateContainer<TProjectState>(
-          projectRef.current.state as TProjectState,
-          projectRef.current.version
+      : createStateContainer<TOrgState>(
+          orgRef.current.state as TOrgState,
+          orgRef.current.version
         );
 
   const onStateSizeWarning = (detail: {
@@ -1790,69 +1966,100 @@ export async function createExecutionContext<
 
   const requestOps = createScopeStateOps(requestContainer, {
     onStateSizeWarning,
-    onPersist: async (state, version) => {
-      requestRef.current = {
+    persist: createScopePersist<TRequestState, RequestRecord>(
+      requestRef,
+      (expectedVersion, state) => ({
         ...requestRef.current,
         state: state as TRequestState,
-        version,
+        version: expectedVersion + 1,
         updatedAt: Date.now()
-      };
-      await stores.request.set(requestRef.current.id, requestRef.current);
-    }
+      }),
+      (nextRecord, expectedVersion) =>
+        stores.request.set(nextRecord.id, nextRecord, expectedVersion)
+    )
   });
 
   const userOps = createScopeStateOps(userContainer, {
     onStateSizeWarning,
-    onPersist: async (state, version) => {
-      userRef.current = {
+    persist: createScopePersist<TUserState, UserRecord>(
+      userRef,
+      (expectedVersion, state) => ({
         ...userRef.current,
         state: state as TUserState,
-        version,
+        version: expectedVersion + 1,
         updatedAt: Date.now()
-      };
-      await stores.user.set(userRef.current.id, userRef.current);
-    }
+      }),
+      (nextRecord, expectedVersion) =>
+        stores.user.set(nextRecord.id, nextRecord, expectedVersion)
+    )
   });
 
   const sessionOps = createScopeStateOps(sessionContainer, {
     onStateSizeWarning,
-    onPersist: async (state, version) => {
-      sessionRef.current = {
+    persist: createScopePersist<TSessionState, SessionRecord>(
+      sessionRef,
+      (expectedVersion, state) => ({
         ...sessionRef.current,
         state: state as TSessionState,
-        version,
+        version: expectedVersion + 1,
         updatedAt: Date.now()
-      };
-      await stores.session.set(
-        sessionRef.current.id,
-        sessionRef.current
-      );
-    }
+      }),
+      (nextRecord, expectedVersion) =>
+        stores.session.set(nextRecord.id, nextRecord, expectedVersion)
+    )
   });
 
   const projectOps =
-    projectRef.current === undefined || projectContainer === undefined
+    orgRef.current === undefined || projectContainer === undefined
       ? undefined
       : createScopeStateOps(projectContainer, {
           onStateSizeWarning,
-          onPersist: async (state, version) => {
-            const current = projectRef.current;
+          persist: async (state, expectedVersion) => {
+            const current = orgRef.current;
             if (current === undefined) {
-              return;
+              // Org removed mid-execution; short-circuit so the retry loop exits.
+              return { ok: true, version: expectedVersion + 1 };
             }
-
-            projectRef.current = {
+            const nextRecord: OrgRecord = {
               ...current,
-              state: state as TProjectState,
-              version,
+              state: state as TOrgState,
+              version: expectedVersion + 1,
               updatedAt: Date.now()
             };
-            await stores.project.set(
-              projectRef.current.id,
-              projectRef.current
+            const result = await stores.org.set(
+              nextRecord.id,
+              nextRecord,
+              expectedVersion
             );
+            if (result.ok) {
+              orgRef.current = nextRecord;
+              return { ok: true, version: result.version };
+            }
+            const stored = result.conflict.currentValue;
+            if (stored !== undefined) {
+              orgRef.current = stored;
+            }
+            return {
+              ok: false,
+              currentState: stored?.state as TOrgState | undefined,
+              currentVersion: result.conflict.currentVersion
+            };
           }
         });
+
+  // Resource change emitter — pushes transient resource_change items via SSE
+  // so clients can refresh clientData without waiting for request completion.
+  const rawResponse = options.response as unknown as Record<string, unknown> | undefined;
+  const emitter = rawResponse && typeof rawResponse.emitResourceChange === "function"
+    ? (rawResponse as unknown as { emitResourceChange: (opts: { scope: string; resourcePath: string; changeType: string; transient?: boolean }) => Promise<unknown> })
+    : undefined;
+
+  function makeResourceChangeHandler(scope: "session" | "user" | "org") {
+    if (!emitter) return undefined;
+    return (resourcePath: string, changeType: "created" | "updated" | "deleted") => {
+      void emitter.emitResourceChange({ scope, resourcePath, changeType, transient: true });
+    };
+  }
 
   const userResources = createScopeResourceRegistry({
     scope: "user",
@@ -1860,7 +2067,8 @@ export async function createExecutionContext<
     readResources: readUserResources,
     persistResources: persistUserResources,
     readResourceContent: readUserResourceContent,
-    persistResourceContent: persistUserResourceContent
+    persistResourceContent: persistUserResourceContent,
+    onResourceChanged: makeResourceChangeHandler("user"),
   });
 
   const sessionResources = createScopeResourceRegistry({
@@ -1869,19 +2077,21 @@ export async function createExecutionContext<
     readResources: readSessionResources,
     persistResources: persistSessionResources,
     readResourceContent: readSessionResourceContent,
-    persistResourceContent: persistSessionResourceContent
+    persistResourceContent: persistSessionResourceContent,
+    onResourceChanged: makeResourceChangeHandler("session"),
   });
 
-  const projectResources =
-    projectRef.current === undefined
+  const orgResources =
+    orgRef.current === undefined
       ? undefined
       : createScopeResourceRegistry({
-          scope: "project",
-          configs: projectResourceConfigs,
+          scope: "org",
+          configs: orgResourceConfigs,
           readResources: readProjectResources,
           persistResources: persistProjectResources,
           readResourceContent: readProjectResourceContent,
-          persistResourceContent: persistProjectResourceContent
+          persistResourceContent: persistProjectResourceContent,
+          onResourceChanged: makeResourceChangeHandler("org"),
         });
 
 
@@ -1897,10 +2107,11 @@ export async function createExecutionContext<
     }
   };
   const resolvedModelStorage = new AsyncLocalStorage<string>();
-  const resolveModel = (modelId: string, blockName?: string) => {
+  const resolveModel = ((modelId: string, blockName?: string) => {
     resolvedModelStorage.enterWith(modelId);
     return modelResolver(modelId, blockName);
-  };
+  }) as ModelResolver;
+  resolveModel.resolveId = (modelId: string) => modelResolver.resolveId(modelId);
 
   const readLiveItems = (): OutputItem[] => {
     const typedResponse = responseRef.current as { getItems?: () => OutputItem[] };
@@ -1964,7 +2175,7 @@ export async function createExecutionContext<
         type: "request" as const,
         id: requestRef.current.id,
         userId,
-        projectId: projectRef.current?.id
+        orgId: orgRef.current?.orgId
       },
       get tokenUsage() {
         return computeTokenUsage();
@@ -1984,7 +2195,6 @@ export async function createExecutionContext<
         id: userRef.current.id,
         userId: userRef.current.userId
       },
-      resources: userResources,
       ...userOps
     },
     () => userContainer.read()
@@ -1996,7 +2206,7 @@ export async function createExecutionContext<
         type: "session" as const,
         id: sessionRef.current.id,
         userId: sessionRef.current.userId,
-        projectId: sessionRef.current.projectId
+        orgId: sessionRef.current.orgId
       },
       get metadata() {
         const s = sessionRef.current;
@@ -2006,7 +2216,6 @@ export async function createExecutionContext<
           ...(s.tags !== undefined ? { tags: s.tags } : {})
         };
       },
-      resources: sessionResources,
       items: createSessionItemViews(priorItems, completedPriorRequests, {
         tokenCounter,
         readLiveItems,
@@ -2034,9 +2243,11 @@ export async function createExecutionContext<
           journal: [...sessionRef.current.journal, journalEntry],
           updatedAt: Date.now()
         };
+        // Journal is append-only and not part of the state CAS path.
         await stores.session.set(
           sessionRef.current.id,
-          sessionRef.current
+          sessionRef.current,
+          "any"
         );
       },
       getJournal: async (query?: {
@@ -2065,7 +2276,12 @@ export async function createExecutionContext<
             : {}),
           updatedAt: now
         };
-        await stores.session.set(sessionRef.current.id, sessionRef.current);
+        // Session metadata (title/description/tags/metadata) is non-CAS today.
+        await stores.session.set(
+          sessionRef.current.id,
+          sessionRef.current,
+          "any"
+        );
 
         await response.emit({
           type: "session.metadata.changed",
@@ -2082,26 +2298,57 @@ export async function createExecutionContext<
   ) as SessionScopeHandle<TSessionState>;
 
   const projectHandle =
-    projectRef.current === undefined || projectOps === undefined || projectContainer === undefined
+    orgRef.current === undefined || projectOps === undefined || projectContainer === undefined
       ? undefined
       : (defineStateProperty(
           {
             identity: {
-              type: "project" as const,
-              id: projectRef.current.id,
-              userId: projectRef.current.userId,
-              projectId: projectRef.current.projectId
+              type: "org" as const,
+              id: orgRef.current.id,
+              userId: orgRef.current.userId,
+              orgId: orgRef.current.orgId
             },
-            resources: projectResources,
             ...projectOps
           },
           () => projectContainer.read()
-        ) as ProjectScopeHandle<TProjectState>);
+        ) as OrgScopeHandle<TOrgState>);
+
+  // FIX-435: build the flat ctx.resources registry by merging the per-scope
+  // registries. A resource's accessor key routes to the registry that owns
+  // its intrinsic scope. `get()` and `list()` mirror the merged surface.
+  const flatResourcesHandles: Record<string, AnyResourceRef> = {};
+  for (const [accessor, scope] of Object.entries(accessorScope)) {
+    let registry: ResourceRegistry<Record<string, AnyResourceRef>> | undefined;
+    if (scope === "session") registry = sessionResources as ResourceRegistry<Record<string, AnyResourceRef>>;
+    else if (scope === "user") registry = userResources as ResourceRegistry<Record<string, AnyResourceRef>>;
+    else registry = orgResources as ResourceRegistry<Record<string, AnyResourceRef>> | undefined;
+    if (registry === undefined) continue;
+    const handle = (registry as Record<string, AnyResourceRef>)[accessor];
+    if (handle !== undefined) flatResourcesHandles[accessor] = handle;
+  }
+  const flatResourcesRegistry: ResourceRegistry<Record<string, AnyResourceRef>> = {
+    ...flatResourcesHandles,
+    get(name: string) {
+      const handle = flatResourcesHandles[String(name)];
+      if (handle === undefined) {
+        throw new Error(`Resource "${String(name)}" is not registered`);
+      }
+      return handle;
+    },
+    list() {
+      return Object.values(flatResourcesHandles);
+    }
+  } as ResourceRegistry<Record<string, AnyResourceRef>>;
 
   /**
    * Fire-and-forget lifecycle trace item for nested blocks.
    * Single emission (completed or failed) with timing, avoiding two-phase overhead.
    * Uses void + catch to avoid blocking the execution hot path.
+   *
+   * `hint` controls the BlockValue kind stored in `output` (FIX-413):
+   * - unset / `inline` → `{ kind: "inline", value: blockOutput }`
+   * - `ref` → `{ kind: "ref", sourceItemId }` with flatten-at-emit
+   * - `structure` → `{ kind: "structure", shape }`
    */
   function emitNestedBlockTrace(
     parent: ExecutionParent,
@@ -2112,15 +2359,28 @@ export async function createExecutionContext<
     nextIndex: () => number,
     blockOutput?: unknown,
     blockError?: { message: string; code?: string },
-    ownedBy?: string
+    ownedBy?: string,
+    hint?: BlockOutputHint
   ): void {
     const completedAt = Date.now();
     const itemIndex = nextIndex();
+    const blockValue: BlockValue<unknown> =
+      status === "failed"
+        ? { kind: "inline", value: undefined }
+        : buildEmitterBlockValue(blockOutput, hint, (id) => {
+            const typed = responseRef.current as unknown as { getItems?: () => OutputItem[] };
+            if (typeof typed.getItems === "function") {
+              const items = typed.getItems();
+              for (let i = items.length - 1; i >= 0; i -= 1) {
+                if (items[i].id === id) return items[i] as BlockOutputItem;
+              }
+            }
+            return undefined;
+          });
     const item: BlockOutputItem = {
       id: `item_trace_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "block_output",
       status,
-      trace: true,
       transient: parent.transient || undefined,
       requestId: reqRef.current.id,
       itemIndex,
@@ -2134,7 +2394,7 @@ export async function createExecutionContext<
       ownedBy,
       blockName: parent.name,
       blockKind: parent.kind,
-      output: blockOutput,
+      output: blockValue,
       error: blockError,
       startedAt,
       completedAt,
@@ -2143,6 +2403,39 @@ export async function createExecutionContext<
     void emitter.emitItemAdded(item)
       .then(() => emitter.emitItemDone(item))
       .catch(() => { /* trace emission is best-effort */ });
+  }
+
+  /**
+   * Translate a BlockOutputHint + raw output into a BlockValue, flattening
+   * refs one hop so every emitted ref points at a content-bearing item
+   * (FIX-413 flatten-at-emit invariant).
+   */
+  function buildEmitterBlockValue(
+    output: unknown,
+    hint: BlockOutputHint | undefined,
+    lookupItem: (id: string) => BlockOutputItem | undefined
+  ): BlockValue<unknown> {
+    if (hint === undefined || hint.kind === "inline") {
+      return { kind: "inline", value: output };
+    }
+    if (hint.kind === "structure") {
+      return { kind: "structure", shape: hint.shape };
+    }
+    // ref — flatten one hop if the target is itself a ref.
+    let sourceItemId = hint.sourceItemId;
+    const target = lookupItem(sourceItemId);
+    if (target !== undefined) {
+      const targetValue = target.output;
+      if (
+        targetValue !== undefined &&
+        typeof targetValue === "object" &&
+        "kind" in targetValue &&
+        targetValue.kind === "ref"
+      ) {
+        sourceItemId = targetValue.sourceItemId;
+      }
+    }
+    return { kind: "ref", sourceItemId };
   }
 
   type ExecutionParentNode = {
@@ -2163,10 +2456,14 @@ export async function createExecutionContext<
     current: response
   };
 
-  // Emission context used by emitMessage/emitComponent/emitLLMContext/emitStatus.
+  // Emission context used by emitMessage/emitComponent/emitStatus.
   // Duck-type the response: if it has emitItemAdded/emitItemDone, use those;
   // otherwise fall back to the generic emit() method via a thin adapter.
   let emittedItemCount = 0;
+
+  // Request-scoped status slot — shared across every scope's createEmitStatus.
+  // Terminates naturally when this context is discarded at request end.
+  const statusSlot: StatusSlot = { message: "" };
   const typedResponse = response as unknown as Record<string, unknown>;
   const hasTypedEmitter =
     typeof typedResponse.emitItemAdded === "function" &&
@@ -2192,7 +2489,7 @@ export async function createExecutionContext<
       blockInstanceId: `runtime_${requestRef.current.id}`,
       phase: "main" as const
     }),
-    nextItemIndex: () => emittedItemCount++
+    nextItemIndex: () => emittedItemCount++,
   };
 
   const logger = options.logger;
@@ -2250,7 +2547,6 @@ export async function createExecutionContext<
         id: `item_router_${itemIndex}_${Math.random().toString(16).slice(2)}`,
         type: "router_decision",
         status: "completed",
-        trace: true,
         requestId: requestRef.current.id,
         itemIndex,
         provenance: {
@@ -2265,7 +2561,66 @@ export async function createExecutionContext<
       void emissionResponse.emitItemAdded(decisionItem)
         .then(() => emissionResponse.emitItemDone(decisionItem))
         .catch(() => { /* trace emission is best-effort */ });
-    }
+    },
+    // Debug observability hooks — installed on the shared _runtimeHooks so
+    // every context (root and nested) fires them. The hooks read the firing
+    // ctx's `_blockIdentity` at invocation time to emit against the correct
+    // block instance, avoiding closure capture of any specific block.
+    onBlockDebugCapture: isTraceObservabilityEnabled()
+      ? (capture, firingCtx) => {
+          const identity = firingCtx._blockIdentity;
+          if (identity === undefined) return;
+          const metadata = {
+            requestId: requestRef.current.id,
+            userId: userRef.current.id,
+            flowKind: baseLogContext.flowKind,
+            actionName: baseLogContext.actionName,
+            blockName: identity.blockName,
+            blockKind: (identity.blockKind ?? "generator") as "handler" | "generator" | "sequencer" | "router",
+            blockInstanceId: identity.blockInstanceId,
+            parentBlockInstanceId: identity.parentBlockInstanceId,
+            scope: identity.phase === "work" ? "work" : "block",
+          } as Parameters<typeof emitBlockDebugItem>[2];
+          const blockShim = {
+            name: identity.blockName,
+            kind: identity.blockKind ?? "generator",
+          } as Parameters<typeof emitBlockDebugItem>[1];
+          void emitBlockDebugItem(
+            emissionResponse,
+            blockShim,
+            metadata,
+            buildGeneratorDebugPayload(capture)
+          ).catch(() => { /* best-effort */ });
+        }
+      : undefined,
+    onConnectedInput: isTraceObservabilityEnabled()
+      ? (value, firingCtx) => {
+          const identity = firingCtx._blockIdentity;
+          if (identity === undefined) return;
+          const metadata = {
+            requestId: requestRef.current.id,
+            userId: userRef.current.id,
+            flowKind: baseLogContext.flowKind,
+            actionName: baseLogContext.actionName,
+            blockName: identity.blockName,
+            blockKind: (identity.blockKind ?? "handler") as "handler" | "generator" | "sequencer" | "router",
+            blockInstanceId: identity.blockInstanceId,
+            parentBlockInstanceId: identity.parentBlockInstanceId,
+            scope: identity.phase === "work" ? "work" : "block",
+          } as Parameters<typeof emitBlockDebugItem>[2];
+          const blockShim = {
+            name: identity.blockName,
+            kind: identity.blockKind ?? "handler",
+          } as Parameters<typeof emitBlockDebugItem>[1];
+          void emitBlockDebugItem(
+            emissionResponse,
+            blockShim,
+            metadata,
+            buildConnectedInputDebugPayload(value)
+          ).catch(() => { /* best-effort */ });
+        }
+      : undefined,
+    emitNestedBlockDebug: undefined,
   };
 
   const createContext = (
@@ -2273,10 +2628,10 @@ export async function createExecutionContext<
     siblingRegistry: SiblingRegistryEntry[] | undefined,
     siblingSearchLimit: number | undefined,
     scopeEmCtx?: EmissionContext
-  ): ExecutionContext<TRequestState, TSessionState, TUserState, TProjectState> => {
+  ): ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> => {
     const activeEmCtx = scopeEmCtx ?? emCtx;
     const childSiblingRegistry: SiblingRegistryEntry[] = [];
-    const context: ExecutionContext<TRequestState, TSessionState, TUserState, TProjectState> = {
+    const context: ExecutionContext<TRequestState, TSessionState, TUserState, TOrgState> = {
       flow,
       actionName: options.actionName,
       requestRuntime: {
@@ -2292,7 +2647,8 @@ export async function createExecutionContext<
       request: requestHandle,
       session: sessionHandle,
       user: userHandle,
-      project: projectHandle,
+      org: projectHandle,
+      resources: flatResourcesRegistry,
       response: responseRef.current as ExecutionContext["response"],
       signal: options.signal ?? new AbortController().signal,
       resolveModel,
@@ -2334,7 +2690,6 @@ export async function createExecutionContext<
                 }
               : (createTargetStateOps({
                   container,
-                  persist: async () => undefined,
                   response: responseRef.current,
                   requestId: requestRef.current.id,
                   nextItemIndex: () => emittedItemCount++,
@@ -2444,8 +2799,7 @@ export async function createExecutionContext<
       },
       emitMessage: createEmitMessage(activeEmCtx),
       emitComponent: createEmitComponent(activeEmCtx),
-      emitLLMContext: createEmitLLMContext(activeEmCtx),
-      emitStatus: createEmitStatus(activeEmCtx),
+      emitStatus: createEmitStatus(activeEmCtx, statusSlot),
       // ctx.cap is populated per-block in executeBlock (see buildCapObject below).
       cap: {} as any,
       // Defined below via Object.defineProperty to close over parentChain.
@@ -2454,7 +2808,9 @@ export async function createExecutionContext<
       _withExecutionScope: async <TValue>(parent: ExecutionParent, execute: (ctx: BlockContext) => Promise<TValue>) => {
         const resolvedParent: ExecutionParent = {
           ...parent,
-          parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId
+          parentInstanceId: parent.parentInstanceId ?? parentChain?.parent.instanceId,
+          phase: parent.phase ?? parentChain?.parent.phase,
+          path: parent.path ?? parentChain?.parent.path
         };
 
         const parentStateContainer =
@@ -2512,6 +2868,12 @@ export async function createExecutionContext<
           result: siblingEntry.result,
           previous: parentChain
         };
+        const childPhase = resolvedParent.phase ?? "main";
+        // Each scope starts with no identity. Generators that declare an
+        // `agentType` stamp it directly on the items they emit; other
+        // blocks inherit nothing — they emit structural items (status,
+        // component, container) whose visibility comes from the type
+        // defaults in `resolveItemVisibility()`.
         const childEmCtx: EmissionContext = {
           requestId: requestRef.current.id,
           blockTransient: resolvedParent.transient === true,
@@ -2520,12 +2882,12 @@ export async function createExecutionContext<
             blockName: resolvedParent.name,
             blockInstanceId: resolvedParent.instanceId,
             parentBlockInstanceId: resolvedParent.parentInstanceId,
-            phase: "main" as const
+            phase: childPhase
           }),
           nextItemIndex: () => emittedItemCount++,
           ownedBy: resolvedParent.container !== undefined
             ? resolvedParent.instanceId
-            : activeEmCtx.ownedBy
+            : activeEmCtx.ownedBy,
         };
         const childContext = createContext(
           childChain,
@@ -2534,14 +2896,14 @@ export async function createExecutionContext<
           childEmCtx
         );
 
-        // Expose the block's identity so nested code (e.g. generator tool
-        // output emission) can construct provenance without reaching into
-        // server-internal structures.
         (childContext as { _blockIdentity?: unknown })._blockIdentity = {
           blockName: resolvedParent.name,
+          blockKind: resolvedParent.kind,
           blockInstanceId: resolvedParent.instanceId,
           parentBlockInstanceId: resolvedParent.parentInstanceId,
-          ownedBy: childEmCtx.ownedBy
+          ownedBy: childEmCtx.ownedBy,
+          phase: resolvedParent.phase ?? "main",
+          blockPath: resolvedParent.path
         };
 
         // Capture start time before execution — this is the only trace cost paid
@@ -2554,16 +2916,39 @@ export async function createExecutionContext<
           siblingEntry.result.output = output;
           siblingEntry.result.error = undefined;
 
+          // Harvest the BlockValue hint set by the child's execute (if any)
+          // so the emitted block_output carries a ref/structure rather than
+          // duplicating content (FIX-413).
+          const capturedHint = (childContext as { _blockOutputHint?: BlockOutputHint })._blockOutputHint;
+          if (capturedHint !== undefined) {
+            (childContext as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = undefined;
+          }
+
           // Emit lifecycle trace item for nested blocks only.
           // Root blocks are traced by executeBlock's emitBlockOutputItem.
-          if (parentChain !== undefined) {
+          // Suppressed for:
+          //  - tool calls — the generator's tool wrapper emits a richer
+          //    `block_tool_output` that supersedes this trace.
+          //  - generator blocks — sequencer.ts owns the generator trace so
+          //    modelUsage can ride on a single block_output item without
+          //    producing a duplicate here.
+          const suppressTrace =
+            resolvedParent.isToolCall === true ||
+            resolvedParent.kind === "generator";
+          if (parentChain !== undefined && !suppressTrace) {
             emitNestedBlockTrace(
               resolvedParent, traceStartedAt, "completed",
               emissionResponse, requestRef, () => emittedItemCount++,
               output,
               undefined,
-              childEmCtx.ownedBy
+              childEmCtx.ownedBy,
+              capturedHint
             );
+          } else if (parentChain === undefined && capturedHint !== undefined) {
+            // Root block case: server's executeBlock reads the hint off the
+            // outer (non-scoped) ctx. Forward the child's hint so the root's
+            // block_output can be emitted as ref/structure (FIX-413).
+            (context as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = capturedHint;
           }
 
           return output;
@@ -2576,7 +2961,10 @@ export async function createExecutionContext<
             scope: "block"
           });
 
-          if (parentChain !== undefined) {
+          const suppressFailureTrace =
+            resolvedParent.isToolCall === true ||
+            resolvedParent.kind === "generator";
+          if (parentChain !== undefined && !suppressFailureTrace) {
             emitNestedBlockTrace(
               resolvedParent, traceStartedAt, "failed",
               emissionResponse, requestRef, () => emittedItemCount++,

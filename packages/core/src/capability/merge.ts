@@ -14,6 +14,7 @@ import type {
   CapabilityRef,
   ConfiguredCapability,
   DefinedCapability,
+  PresetContextEntry,
   PresetDef,
 } from "./types";
 
@@ -36,17 +37,41 @@ export function getBaseCapability(ref: CapabilityRef): DefinedCapability {
 // Flatten capabilities (transitive, deduplicated, dependency-ordered)
 // ---------------------------------------------------------------------------
 
+/** Dynamic uses entry — a function that resolves capabilities at runtime. */
+export type DynamicUsesResolver = (ctx: any) => readonly CapabilityRef[];
+
+/** Result of flattening capabilities — static refs + collected dynamic resolvers. */
+export interface FlattenResult {
+  /** Deduplicated, dependency-ordered static capability refs. */
+  staticRefs: CapabilityRef[];
+  /** Dynamic uses entries collected from all traversed capabilities. */
+  dynamicResolvers: DynamicUsesResolver[];
+}
+
 /**
  * Flatten a list of CapabilityRef entries into a deduplicated, transitively
  * resolved list. Detects cycles. Returns capabilities in dependency order
  * (dependencies before dependents).
+ *
+ * Dynamic entries (functions) encountered during traversal — either at the
+ * top level or nested inside a capability's `uses` — are collected separately.
+ * They contribute context and tools at runtime, not resources at build time.
  */
 export function flattenCapabilities(
   refs: readonly CapabilityRef[]
-): CapabilityRef[] {
+): CapabilityRef[];
+export function flattenCapabilities(
+  refs: readonly CapabilityRef[],
+  options: { collectDynamic: true }
+): FlattenResult;
+export function flattenCapabilities(
+  refs: readonly CapabilityRef[],
+  options?: { collectDynamic: boolean }
+): CapabilityRef[] | FlattenResult {
   const seen = new Map<string, CapabilityRef>();
   const visiting = new Set<string>();
   const result: CapabilityRef[] = [];
+  const dynamicResolvers: DynamicUsesResolver[] = [];
 
   function visit(ref: CapabilityRef): void {
     const base = getBaseCapability(ref);
@@ -71,10 +96,15 @@ export function flattenCapabilities(
 
     visiting.add(name);
 
-    // Visit transitive dependencies first (depth-first)
+    // Visit transitive dependencies first (depth-first).
+    // Dynamic uses (functions) are collected for runtime resolution.
     if (base.uses) {
       for (const dep of base.uses) {
-        visit(dep);
+        if (typeof dep === "function") {
+          dynamicResolvers.push(dep);
+        } else {
+          visit(dep);
+        }
       }
     }
 
@@ -87,6 +117,9 @@ export function flattenCapabilities(
     visit(ref);
   }
 
+  if (options?.collectDynamic) {
+    return { staticRefs: result, dynamicResolvers };
+  }
   return result;
 }
 
@@ -159,28 +192,24 @@ export function resolveActivePresets(
 
 /** Accumulator for merged capability surfaces. */
 export type MergedCapabilitySurface = {
-  sessionResources: Record<string, DeclaredResourceEntry> | undefined;
-  userResources: Record<string, DeclaredResourceEntry> | undefined;
-  projectResources: Record<string, DeclaredResourceEntry> | undefined;
+  resources: Record<string, DeclaredResourceEntry> | undefined;
   sessionStateSchema: ZodTypeAny | undefined;
   requestStateSchema: ZodTypeAny | undefined;
   userStateSchema: ZodTypeAny | undefined;
-  projectStateSchema: ZodTypeAny | undefined;
+  orgStateSchema: ZodTypeAny | undefined;
   sequencerStateSchema: ZodTypeAny | undefined;
   targetStateSchemas: Record<string, ZodTypeAny> | undefined;
-  contextEntries: Array<(input: any, ctx: any) => any>;
+  contextEntries: Array<PresetContextEntry>;
   toolEntries: Array<GeneratorTool[] | ((ctx: BlockContext) => GeneratorTool[] | Promise<GeneratorTool[]>)>;
 };
 
 export function createEmptyMergedSurface(): MergedCapabilitySurface {
   return {
-    sessionResources: undefined,
-    userResources: undefined,
-    projectResources: undefined,
+    resources: undefined,
     sessionStateSchema: undefined,
     requestStateSchema: undefined,
     userStateSchema: undefined,
-    projectStateSchema: undefined,
+    orgStateSchema: undefined,
     sequencerStateSchema: undefined,
     targetStateSchemas: undefined,
     contextEntries: [],
@@ -194,12 +223,11 @@ export function createEmptyMergedSurface(): MergedCapabilitySurface {
 
 /**
  * Merge resource declarations from a surface into the accumulator.
- * Same reference → dedupe. Different reference, same name → error.
+ * Same reference → dedupe. Different reference, same accessor name → error.
  */
 function mergeResourcesInto(
   target: Record<string, DeclaredResourceEntry> | undefined,
   source: Record<string, DeclaredResourceEntry>,
-  scope: string,
   capName: string,
   presetName: string
 ): Record<string, DeclaredResourceEntry> {
@@ -213,7 +241,7 @@ function mergeResourcesInto(
     if (existing === resource) continue;
     throw new Error(
       `Resource conflict in capability "${capName}" (preset "${presetName}"): ` +
-      `"${name}" in ${scope} scope is declared with different defineResource() references`
+      `accessor "${name}" is declared with different defineResource() references`
     );
   }
   return merged;
@@ -279,20 +307,11 @@ export function mergeSurfaceInto(
   capName: string,
   presetName: string
 ): void {
-  // Resources — valid on all block kinds
-  if (surface.sessionResources) {
-    acc.sessionResources = mergeResourcesInto(
-      acc.sessionResources, surface.sessionResources, "session", capName, presetName
-    );
-  }
-  if (surface.userResources) {
-    acc.userResources = mergeResourcesInto(
-      acc.userResources, surface.userResources, "user", capName, presetName
-    );
-  }
-  if (surface.projectResources) {
-    acc.projectResources = mergeResourcesInto(
-      acc.projectResources, surface.projectResources, "project", capName, presetName
+  // Resources — valid on all block kinds. Flat map; resource scope is
+  // intrinsic via `defineResource({ scope })` (FIX-435).
+  if (surface.resources) {
+    acc.resources = mergeResourcesInto(
+      acc.resources, surface.resources, capName, presetName
     );
   }
 
@@ -306,8 +325,8 @@ export function mergeSurfaceInto(
   if (surface.userStateSchema) {
     acc.userStateSchema = extendSchema(acc.userStateSchema, surface.userStateSchema);
   }
-  if (surface.projectStateSchema) {
-    acc.projectStateSchema = extendSchema(acc.projectStateSchema, surface.projectStateSchema);
+  if (surface.orgStateSchema) {
+    acc.orgStateSchema = extendSchema(acc.orgStateSchema, surface.orgStateSchema);
   }
 
   // Sequencer state — sequencer only
@@ -385,7 +404,7 @@ export function mergeCapabilities(
 }
 
 // ---------------------------------------------------------------------------
-// Project merged surface into block config fields
+// Org merged surface into block config fields
 // ---------------------------------------------------------------------------
 
 /**
@@ -395,11 +414,10 @@ export function mergeCapabilities(
 export function extractMergedResources(
   merged: MergedCapabilitySurface
 ): DeclaredResources | undefined {
-  const result: DeclaredResources = {};
-  if (merged.sessionResources) result.session = merged.sessionResources;
-  if (merged.userResources) result.user = merged.userResources;
-  if (merged.projectResources) result.project = merged.projectResources;
-  return Object.keys(result).length > 0 ? result : undefined;
+  if (merged.resources === undefined || Object.keys(merged.resources).length === 0) {
+    return undefined;
+  }
+  return { ...merged.resources };
 }
 
 /**
@@ -413,27 +431,17 @@ export function mergeWithBlockResources(
   if (capResources === undefined) return blockResources;
   if (blockResources === undefined) return capResources;
 
-  // Block resources merge on top (reference-equality dedup)
-  const merged = { ...capResources };
-  const scopes = ["session", "user", "project"] as const;
-  for (const scope of scopes) {
-    const blockScope = blockResources[scope];
-    if (blockScope === undefined) continue;
-    if (merged[scope] === undefined) {
-      merged[scope] = { ...blockScope };
-    } else {
-      for (const [name, resource] of Object.entries(blockScope)) {
-        const existing = merged[scope]![name];
-        if (existing === undefined || existing === resource) {
-          merged[scope]![name] = resource;
-        } else {
-          throw new Error(
-            `Resource conflict: "${name}" in ${scope} scope is declared with different ` +
-            `defineResource() references. Use the same reference across blocks.`
-          );
-        }
-      }
+  const merged: DeclaredResources = { ...capResources };
+  for (const [name, resource] of Object.entries(blockResources)) {
+    const existing = merged[name];
+    if (existing === undefined || existing === resource) {
+      merged[name] = resource;
+      continue;
     }
+    throw new Error(
+      `Resource conflict: accessor "${name}" is declared with different ` +
+      `defineResource() references. Use the same reference across blocks.`
+    );
   }
   return merged;
 }

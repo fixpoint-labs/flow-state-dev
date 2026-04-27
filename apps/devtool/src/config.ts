@@ -35,3 +35,15 @@ export function writeLastAction(flowKind: string, action: string): void {
 export function readDebugMode(): boolean {
   return window.localStorage.getItem("fsd.devtool.debugMode") === "true";
 }
+
+const TRACE_ITEMS_VISIBLE_KEY = "fsd.devtool.traceItemsVisible";
+
+export function readTraceItemsVisible(): boolean {
+  // Default off — block-level detail sidebar is the primary surface for
+  // trace data. Users can flip this on to show raw trace item rows.
+  return window.localStorage.getItem(TRACE_ITEMS_VISIBLE_KEY) === "true";
+}
+
+export function writeTraceItemsVisible(visible: boolean): void {
+  window.localStorage.setItem(TRACE_ITEMS_VISIBLE_KEY, String(visible));
+}
