@@ -41,7 +41,7 @@ import { FeatureSelector, type Features, DEFAULT_FEATURES } from "@/components/f
 import { ClientDataBar } from "@/components/client-data-bar";
 import { inferThinkingStyle } from "@/lib/item-inference";
 import { ArtifactPanel } from "@/components/artifact-panel";
-import { ArtifactViewer } from "@/components/artifact-viewer";
+import { ArtifactDialog } from "@/components/artifact-dialog";
 import { ResizeHandle } from "@/components/resize-handle";
 import { SuggestionRow } from "@/components/suggestion-row";
 import { VoiceToggle } from "@/components/voice-toggle";
@@ -392,26 +392,12 @@ function KitchenSinkApp() {
 
           {mobilePanel === "artifacts" && mode === "build" && (
             <div className="flex min-w-0 flex-1">
-              {selectedArtifact ? (
-                <ArtifactViewer
-                  artifact={selectedArtifact}
-                  isSaving={session.isStreaming}
-                  onSaveArtifact={handleSaveArtifact}
-                  onClose={() => {
-                    setSelectedArtifactId(null);
-                    setMobilePanel("chat");
-                  }}
-                  onBack={() => setSelectedArtifactId(null)}
-                  className="w-full border-l-0"
-                />
-              ) : (
-                <ArtifactPanel
-                  artifacts={artifacts}
-                  selectedId={selectedArtifactId}
-                  onSelect={setSelectedArtifactId}
-                  className="w-full border-l-0"
-                />
-              )}
+              <ArtifactPanel
+                artifacts={artifacts}
+                selectedId={selectedArtifactId}
+                onSelect={setSelectedArtifactId}
+                className="w-full border-l-0"
+              />
             </div>
           )}
         </div>
@@ -442,28 +428,23 @@ function KitchenSinkApp() {
           {mode === "build" && (
             <>
               <ResizeHandle onResize={handleSidebarResize} />
-
-              {selectedArtifact ? (
-                <ArtifactViewer
-                  artifact={selectedArtifact}
-                  isSaving={session.isStreaming}
-                  onSaveArtifact={handleSaveArtifact}
-                  onClose={() => setSelectedArtifactId(null)}
-                  onBack={() => setSelectedArtifactId(null)}
-                  style={sidebarStyle}
-                />
-              ) : (
-                <ArtifactPanel
-                  artifacts={artifacts}
-                  selectedId={selectedArtifactId}
-                  onSelect={setSelectedArtifactId}
-                  style={sidebarStyle}
-                />
-              )}
+              <ArtifactPanel
+                artifacts={artifacts}
+                selectedId={selectedArtifactId}
+                onSelect={setSelectedArtifactId}
+                style={sidebarStyle}
+              />
             </>
           )}
         </div>
       </main>
+
+      <ArtifactDialog
+        artifact={selectedArtifact}
+        isSaving={session.isStreaming}
+        onSaveArtifact={handleSaveArtifact}
+        onClose={() => setSelectedArtifactId(null)}
+      />
     </div>
   );
 }
