@@ -18,6 +18,7 @@ import { createPostgresStores, type PoolConfig } from "@flow-state-dev/store-pos
 import { vercelPgPoolOptions } from "@flow-state-dev/vercel/pg";
 import { Client as NeonClient } from "@neondatabase/serverless";
 import chatAgentFlow from "@/flows/chat-agent/flow";
+import richTextComponentFlow from "@/flows/rich-text-component/flow";
 
 // Neon's Client is a runtime drop-in for pg's Client (that's pg.PoolConfig.Client's
 // documented purpose), but their connect() signature differs slightly so the types
@@ -44,6 +45,7 @@ const transcriptionResolver = createAiSdkTranscriptionResolver((modelId) => open
 
 const registry = createFlowRegistry();
 registry.register(chatAgentFlow);
+registry.register(richTextComponentFlow);
 
 /**
  * Resolve persistence stores based on environment:

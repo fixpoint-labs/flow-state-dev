@@ -24,6 +24,21 @@ A multi-modal AI assistant — the flagship flow. Showcases:
 
 Exported as `chatAgentFlow` (`kind: "chat-agent"`). Mounted at `/`.
 
+### `rich-text-component` (`flows/rich-text-component/`)
+
+Non-agentic flow demonstrating component-level AI features: 7 discrete single-shot text transformations. Shows that `defineFlow` scales down to the simplest case — input → single generator → streamed text.
+
+Actions:
+- `copyedit` — fix grammar/spelling/punctuation; preserve voice
+- `improve` — clarity/flow/impact; preserve meaning
+- `changeTone` — rewrite in a specified tone
+- `translate` — translate into a target language (preserves code fences)
+- `summarize` — condense at `short` | `medium` | `long` length
+- `expand` — elaborate, optionally guided by context
+- `fixCode` — fix syntax/logic in code (with optional language hint)
+
+Exported as `richTextComponentFlow` (`kind: "rich-text-component"`). Consumed by the artifact editor UI. Not mounted at a dedicated route.
+
 ## Web Application (`app/`)
 
 - Three-column layout: session sidebar, conversation, artifact panel

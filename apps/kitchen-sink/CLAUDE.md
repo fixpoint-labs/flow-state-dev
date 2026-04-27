@@ -17,6 +17,7 @@ pnpm test:watch   # Watch mode
 ## Layout
 
 - `flows/chat-agent/` — flow-specific code (flow.ts, blocks, schemas, prompts). Exports `chatAgentFlow` (`kind: "chat-agent"`).
+- `flows/rich-text-component/` — flow-specific code (flow.ts, generators, schemas, prompts). Exports `richTextComponentFlow` (`kind: "rich-text-component"`). Non-agentic: 7 discrete text-transform actions.
 - `components/flow-state/` — shared item-renderer UI (installed from `@flow-state-dev/ui`).
 - `components/chat-agent/` — chat-agent-specific renderers (e.g. `ChatAgentMessage`).
 - `components/` (top level) — shared app UI (sidebar, mode selector, etc.).
