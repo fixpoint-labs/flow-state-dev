@@ -35,12 +35,15 @@ const CODE_EXTS = new Set([
 ]);
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"]);
 
-/** Infer extension from filename when stored extension is missing. */
+/** Infer extension from filename, falling back to the stored extension. */
 function inferExtension(title: string, storedExtension?: string | null): string | null {
-  if (storedExtension) return storedExtension;
+  // Title takes priority over the stored extension so renames (e.g. `.txt`
+  // → `.md`) are reflected in the file-tree icon immediately.
   const dot = title.lastIndexOf(".");
-  if (dot === -1 || dot === title.length - 1) return null;
-  return title.slice(dot + 1).toLowerCase();
+  if (dot !== -1 && dot !== title.length - 1) {
+    return title.slice(dot + 1).toLowerCase();
+  }
+  return storedExtension ? storedExtension.toLowerCase() : null;
 }
 
 function getFileIcon(extension: string | null | undefined) {

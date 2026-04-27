@@ -88,10 +88,13 @@ const CODE_EXTS = new Set([
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"]);
 
 function inferExtension(title: string, storedExtension: string | null | undefined): string | null {
-  if (storedExtension) return storedExtension;
+  // Title takes priority — users rename `.txt` → `.md` to switch renderers,
+  // and the stored extension can lag behind the most recent rename.
   const dot = title.lastIndexOf(".");
-  if (dot === -1 || dot === title.length - 1) return null;
-  return title.slice(dot + 1).toLowerCase();
+  if (dot !== -1 && dot !== title.length - 1) {
+    return title.slice(dot + 1).toLowerCase();
+  }
+  return storedExtension ? storedExtension.toLowerCase() : null;
 }
 
 function getRendererType(extension: string | null): RendererType {

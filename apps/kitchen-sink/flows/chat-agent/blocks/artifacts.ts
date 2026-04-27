@@ -152,7 +152,11 @@ const upsertArtifact = utility.upsertResource({
   collectionKey: "artifacts",
   key: (input) => input.id,
   state: (input) => {
-    const ext = path.extname(input.id).slice(1);
+    // Derive the extension from the title rather than the storage id so
+    // user renames (e.g. `.txt` → `.md`) update the metadata that drives
+    // the viewer's renderer pick.
+    const ext =
+      path.extname(input.title).slice(1) || path.extname(input.id).slice(1);
     return {
       title: input.title,
       ...(ext ? { extension: ext } : {}),
