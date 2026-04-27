@@ -7,7 +7,7 @@
  * Usage inside a handler's `execute`:
  * ```ts
  * const { tools, sandbox } = await createBashTool({
- *   collections: { files: ctx.session.resources.files },
+ *   collections: { files: ctx.resources.files },
  *   provider: { type: "local", cwd: "./workspace" },
  * });
  * ```

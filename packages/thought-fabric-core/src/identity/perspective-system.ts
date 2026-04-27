@@ -18,7 +18,13 @@
  */
 
 import { sequencer } from '@flow-state-dev/core'
-import { perspectiveInputSchema } from './perspective.js'
+import type { DefinedResource } from '@flow-state-dev/core'
+import {
+  perspectiveInputSchema,
+  perspectiveObservationsResource,
+  createPerspectivePositionsResource,
+  perspectivePositionsResource,
+} from './perspective.js'
 import type {
   PerspectiveInstance,
   PerspectiveObservation,
@@ -38,7 +44,6 @@ import {
   perspectiveChallenge,
   perspectiveSnapshot,
   perspectiveAdvance,
-  buildPerspectiveResources,
 } from './perspective-blocks.js'
 import type { PositionScope } from './perspective-blocks.js'
 import { createPerspectiveCapability } from './perspective-capability.js'
@@ -105,12 +110,13 @@ export interface PerspectiveSystem {
   instance: PerspectiveInstance
 
   // -- Resource declarations for defineFlow --
-  /** Spread into `defineFlow`'s `session.resources`. */
-  sessionResources: Record<string, unknown>
-  /** Spread into `defineFlow`'s `user.resources` (empty when positionScope ≠ 'user'). */
-  userResources: Record<string, unknown>
-  /** Spread into `defineFlow`'s `project.resources` (empty when positionScope ≠ 'org'). */
-  orgResources: Record<string, unknown>
+  /**
+   * Flat resource map for this system — accessor key → DefinedResource.
+   * Spread into a flow's `resources` declaration; each entry's intrinsic
+   * `scope` (set on `defineResource`) routes it to the right storage layer
+   * under FIX-435.
+   */
+  resources: Record<string, DefinedResource>
 
   // -- Helpers exposed for advanced/manual use --
   /** Read accumulated observations + positions from a runtime context. */
@@ -152,6 +158,14 @@ export function system(
   const model = config?.model
   const namePrefix = config?.name ?? instance.name
 
+  // Create a single positions resource at the configured scope and share it
+  // across the bundled blocks and capability so they all reference the same
+  // `defineResource()` instance — required for FIX-435's same-reference rule
+  // and for tests that compare resource identity across the bundle.
+  const positionsResource: DefinedResource = positionScope === 'session'
+    ? perspectivePositionsResource
+    : createPerspectivePositionsResource(positionScope)
+
   // Pre-configured static blocks
   const apply = perspectiveApply({
     name: `${namePrefix}/apply`,
@@ -168,8 +182,9 @@ export function system(
     ...(model ? { model } : {}),
   })
 
-  // Pre-configured stateful blocks. They import the singleton resources
-  // directly, so the bundle and capability automatically agree on refs.
+  // Pre-configured stateful blocks. Pass the shared positions resource so
+  // every block declares the same `defineResource()` instance under the
+  // unified `resources` map.
   const observe = perspectiveObserve({
     name: `${namePrefix}/observe`,
     perspective: instance,
@@ -178,16 +193,19 @@ export function system(
     name: `${namePrefix}/position`,
     perspective: instance,
     positionScope,
+    positionsResource,
   })
   const challenge = perspectiveChallenge({
     name: `${namePrefix}/challenge`,
     perspective: instance,
     positionScope,
+    positionsResource,
   })
   const snapshot = perspectiveSnapshot({
     name: `${namePrefix}/snapshot`,
     perspective: instance,
     positionScope,
+    positionsResource,
   })
   const advance = perspectiveAdvance({
     name: `${namePrefix}/advance`,
@@ -204,24 +222,17 @@ export function system(
     .then(analyze)
     .tap(observe)
 
-  const capability = createPerspectiveCapability(instance, { positionScope })
+  const capability = createPerspectiveCapability(instance, { positionScope, positionsResource })
 
-  const sessionResources = capability.sessionResources ?? {}
-  const userResources = capability.userResources ?? {}
-  const orgResources = capability.orgResources ?? {}
-
-  const posReference = (ctx: any) => {
-    return positionScope === 'session'
-      ? ctx.session.resources.perspectivePositions
-      : positionScope === 'user'
-        ? ctx.user?.resources?.perspectivePositions
-        : ctx.org?.resources?.perspectivePositions
+  const resources: Record<string, DefinedResource> = {
+    perspectiveObservations: perspectiveObservationsResource,
+    perspectivePositions: positionsResource,
   }
 
   // Recall helper — reads accumulated state from a runtime ctx
   function recall(ctx: any): PerspectiveAccumulated {
-    const obsRef = ctx.session.resources.perspectiveObservations
-    const posRef = posReference(ctx)
+    const obsRef = ctx.resources?.perspectiveObservations ?? ctx.resources?.get?.('perspectiveObservations')
+    const posRef = ctx.resources?.perspectivePositions ?? ctx.resources?.get?.('perspectivePositions')
     return {
       observations: obsRef ? perspectiveObservations(obsRef) : [],
       positions: posRef ? perspectivePositions(posRef) : [],
@@ -231,8 +242,8 @@ export function system(
 
   // Context formatter — equivalent to the capability's `accumulated` preset
   function contextFormatter(_input: any, ctx: any): string {
-    const obsRef = ctx.session.resources.perspectiveObservations
-    const posRef = posReference(ctx)
+    const obsRef = ctx.resources?.perspectiveObservations ?? ctx.resources?.get?.('perspectiveObservations')
+    const posRef = ctx.resources?.perspectivePositions ?? ctx.resources?.get?.('perspectivePositions')
     return formatPerspectiveAccumulated(obsRef, posRef)
   }
 
@@ -248,9 +259,7 @@ export function system(
     capture,
     capability,
     instance,
-    sessionResources,
-    userResources,
-    orgResources,
+    resources,
     recall,
     contextFormatter,
   }

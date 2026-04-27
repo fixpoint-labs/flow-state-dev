@@ -332,7 +332,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       name: `${specConfig.name}-gen`,
       model: modelId,
       outputSchema: z.string(),
-      sessionResources: { blackboard: bbBoard },
+      resources: { blackboard: bbBoard },
       ...(uses ? { uses: uses as any } : {}),
       context,
       history: config.history,
@@ -340,7 +340,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       agentType: "sub",
       prompt: specConfig.prompt,
       user: (_input: any, ctx: any) => {
-        const state = ctx.session.resources.blackboard.state;
+        const state = ctx.resources.blackboard.state;
         return `Current blackboard state:\n${JSON.stringify(state, null, 2)}`;
       },
     });
@@ -349,9 +349,9 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       name: `${specConfig.name}-write`,
       inputSchema: z.string(),
       outputSchema: z.any(),
-      sessionResources: { blackboard: bbBoard },
+      resources: { blackboard: bbBoard },
       execute: async (output: string, ctx) => {
-        await ctx.session.resources.blackboard.patchState({
+        await ctx.resources.blackboard.patchState({
           [specConfig.field]: output,
         });
         return { specialist: specConfig.name, contributed: true };
@@ -448,7 +448,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
 
   // Helper: build the user prompt from the triggering entry + blackboard context.
   function rbUserPrompt(input: any, ctx: any): string {
-    const state = ctx.session.resources.reactiveBlackboard.state as {
+    const state = ctx.resources.reactiveBlackboard.state as {
       entries: Array<{ type: string; topic: string; body: string }>;
     };
     const entries = state?.entries ?? [];
@@ -474,7 +474,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       name: "rb-explorer-gen",
       model: modelId,
       outputSchema: entryOutputSchema,
-      sessionResources: { reactiveBlackboard: rb.blackboard },
+      resources: { reactiveBlackboard: rb.blackboard },
       ...(uses ? { uses: uses as any } : {}),
       context,
       history: config.history,
@@ -508,7 +508,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       name: "rb-analyst-gen",
       model: modelId,
       outputSchema: entryOutputSchema,
-      sessionResources: { reactiveBlackboard: rb.blackboard },
+      resources: { reactiveBlackboard: rb.blackboard },
       ...(uses ? { uses: uses as any } : {}),
       context,
       history: config.history,
@@ -541,7 +541,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       name: "rb-challenger-gen",
       model: modelId,
       outputSchema: entryOutputSchema,
-      sessionResources: { reactiveBlackboard: rb.blackboard },
+      resources: { reactiveBlackboard: rb.blackboard },
       ...(uses ? { uses: uses as any } : {}),
       context,
       history: config.history,
@@ -589,7 +589,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     name: "rb-synthesizer",
     model: modelId,
     outputSchema: z.string(),
-    sessionResources: { reactiveBlackboard: rb.blackboard },
+    resources: { reactiveBlackboard: rb.blackboard },
     ...(uses ? { uses: uses as any } : {}),
     context,
     history: config.history,
@@ -598,7 +598,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     agentType: "primary",
     activeStatusMessage: "Synthesizing all of the findings...",
     user: (_input: any, ctx: any) => {
-      const state = ctx.session.resources.reactiveBlackboard.state as {
+      const state = ctx.resources.reactiveBlackboard.state as {
         entries: Array<{ type: string; topic: string; body: string }>;
       };
       const entries = state?.entries ?? [];

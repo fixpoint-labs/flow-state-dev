@@ -19,7 +19,7 @@
  * enqueue + markDone are both committed.
  *
  * Throws a descriptive error at runtime if invoked outside a pool context
- * (detected via absence of the queue collection in `ctx.session.resources`).
+ * (detected via absence of the queue collection in `ctx.resources`).
  */
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext, DefinedResourceCollection, ResourceCollectionRef } from "@flow-state-dev/core/types";
@@ -56,7 +56,7 @@ export function createEnqueueHelper<TItem>(
       name: `${poolName}-enqueue`,
       inputSchema: z.any(),
       outputSchema: z.any(),
-      sessionResources: { [queueKey]: queueCollection },
+      resources: { [queueKey]: queueCollection },
       execute: async (input, ctx) => {
         const resolved = typeof items === "function"
           ? await (items as (
@@ -69,11 +69,11 @@ export function createEnqueueHelper<TItem>(
           return input;
         }
 
-        const resources = ctx.session.resources as unknown as Record<string, ResourceCollectionRef<any> | undefined>;
+        const resources = ctx.resources as unknown as Record<string, ResourceCollectionRef<any> | undefined>;
         const collection = resources[queueKey];
         if (collection === undefined) {
           throw new Error(
-            `[drain-pool] enqueue called outside worker context — queue collection "${queueKey}" not found in session.resources`
+            `[drain-pool] enqueue called outside worker context — queue collection "${queueKey}" not found in ctx.resources`
           );
         }
 

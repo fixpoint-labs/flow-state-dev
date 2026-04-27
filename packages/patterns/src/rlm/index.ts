@@ -20,6 +20,7 @@ import { generator, handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 import { peek, grep, chunk } from "./blocks";
 import {
+  contextResource,
   contextResourceStateSchema,
   rlmQueryInputSchema,
   subQueryOutputSchema,
@@ -39,7 +40,7 @@ export const subQueryGenerator = generator({
     "Process a sub-query on a context subset. " +
     "Use when you need to analyze a specific portion of the context in detail.",
   model: (_input, ctx) =>
-    ctx.session.resources.get("context")?.state.metadata?.model ?? "gpt-4o-mini",
+    ctx.resources.context?.state.metadata?.model ?? "gpt-4o-mini",
 
   inputSchema: z.object({
     query: z.string().describe("The specific sub-question to answer"),
@@ -65,7 +66,7 @@ export const subQueryGenerator = generator({
   tools: [peek, grep, chunk],
   maxIterations: 5,
   outputSchema: subQueryOutputSchema,
-  sessionResourceSchemas: z.object({ context: contextResourceStateSchema }),
+  resources: { context: contextResource },
   agentType: "sub",
 });
 
@@ -78,7 +79,7 @@ export const subQueryGenerator = generator({
 export const rootGenerator = generator({
   name: "rlm-root",
   model: (_input, ctx) =>
-    ctx.session.resources.get("context")?.state.metadata?.model ?? "gpt-4o-mini",
+    ctx.resources.context?.state.metadata?.model ?? "gpt-4o-mini",
 
   inputSchema: z.object({
     query: z.string()
@@ -103,7 +104,7 @@ export const rootGenerator = generator({
 
   context: {
     'source-document': (_input, ctx) => {
-      const contextHandle = ctx.session.resources.get("context");
+      const contextHandle = ctx.resources.context;
       const text = contextHandle?.state.text ?? "";
       const meta = contextHandle?.state.metadata;
       return [
@@ -117,7 +118,7 @@ export const rootGenerator = generator({
   tools: [peek, grep, chunk, subQueryGenerator],
   maxIterations: 10,
   outputSchema: rlmOutputSchema,
-  sessionResourceSchemas: z.object({ context: contextResourceStateSchema }),
+  resources: { context: contextResource },
   agentType: "primary",
 });
 
@@ -131,10 +132,10 @@ export const storeContext = handler({
   name: "rlm-store-context",
   inputSchema: rlmQueryInputSchema,
   outputSchema: z.object({ query: z.string() }),
-  sessionResourceSchemas: z.object({ context: contextResourceStateSchema }),
+  resources: { context: contextResource },
 
   execute: async (input, ctx) => {
-    const contextHandle = ctx.session.resources.get("context");
+    const contextHandle = ctx.resources.context;
     if (contextHandle) {
       await contextHandle.updateState(async () => ({
         text: input.context,
@@ -162,6 +163,7 @@ export const rlmPipeline = sequencer({ name: "rlm-pipeline", inputSchema: rlmQue
 
 // Re-export schemas and blocks for consumers that need finer-grained access.
 export {
+  contextResource,
   contextResourceStateSchema,
   rlmQueryInputSchema,
   subQueryOutputSchema,

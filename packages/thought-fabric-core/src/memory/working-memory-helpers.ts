@@ -338,16 +338,18 @@ export function formatForObserveContext(ref: WmRef): string {
 /**
  * Ready-made `context:` slot for generators that need working memory.
  *
- * Reads the `workingMemory` session resource and formats it as a bullet
- * list. Assign to the generator's `context` array. The generator must
- * declare `sessionResources: { workingMemory: workingMemoryResource }`.
+ * Reads the `workingMemory` resource (session-scoped via its intrinsic
+ * `defineResource({ scope: 'session' })` declaration) and formats it as a
+ * bullet list. Assign to the generator's `context` array. The generator
+ * must declare `resources: { workingMemory: workingMemoryResource }` under
+ * the unified resource map (FIX-435).
  *
  * ```ts
  * const chat = generator({
  *   name: 'chat',
  *   model: 'gpt-5',
  *   inputSchema: z.string(),
- *   sessionResources: { workingMemory: workingMemoryResource },
+ *   resources: { workingMemory: workingMemoryResource },
  *   context: [workingMemoryContextFormatter],
  *   user: (input) => input,
  * })
@@ -358,8 +360,8 @@ export function formatForObserveContext(ref: WmRef): string {
  * `@flow-state-dev/core`'s public API. The structural type matches the
  * subset of BlockContext that this function actually uses.
  */
-export function workingMemoryContextFormatter(_input: unknown, ctx: { session: { resources: { get(name: 'workingMemory'): WmRef } } }): string {
-  const ref = ctx.session.resources.get('workingMemory')
+export function workingMemoryContextFormatter(_input: unknown, ctx: { resources: { get(name: 'workingMemory'): WmRef } }): string {
+  const ref = ctx.resources.get('workingMemory')
   const formatted = formatForContext(ref)
   return formatted ? `Active memories:\n${formatted}` : ''
 }

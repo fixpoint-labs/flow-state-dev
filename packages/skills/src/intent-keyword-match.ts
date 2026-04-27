@@ -16,7 +16,6 @@
 
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import type { ScopeType } from "@flow-state-dev/core/types";
 import type { SkillState } from "@flow-state-dev/core";
 import { getCollection } from "./internal/get-collection";
 import { intentSequencerStateSchema } from "./intent-types";
@@ -26,7 +25,6 @@ const outputSchema = z.object({ skillsMatched: z.number() });
 
 export interface KeywordMatchOptions {
   collectionKey: string;
-  scope: ScopeType;
 }
 
 /**
@@ -50,7 +48,7 @@ export function createIntentKeywordMatch(opts: KeywordMatchOptions) {
       const lowered = message.toLowerCase();
 
       const matchedSkills: Array<{ name: string }> = [];
-      const collection = getCollection(ctx, opts.scope, opts.collectionKey);
+      const collection = getCollection(ctx, opts.collectionKey);
       if (collection) {
         const seen = new Set<string>();
         for (const ref of collection.list()) {

@@ -192,9 +192,7 @@ export function resolveActivePresets(
 
 /** Accumulator for merged capability surfaces. */
 export type MergedCapabilitySurface = {
-  sessionResources: Record<string, DeclaredResourceEntry> | undefined;
-  userResources: Record<string, DeclaredResourceEntry> | undefined;
-  orgResources: Record<string, DeclaredResourceEntry> | undefined;
+  resources: Record<string, DeclaredResourceEntry> | undefined;
   sessionStateSchema: ZodTypeAny | undefined;
   requestStateSchema: ZodTypeAny | undefined;
   userStateSchema: ZodTypeAny | undefined;
@@ -207,9 +205,7 @@ export type MergedCapabilitySurface = {
 
 export function createEmptyMergedSurface(): MergedCapabilitySurface {
   return {
-    sessionResources: undefined,
-    userResources: undefined,
-    orgResources: undefined,
+    resources: undefined,
     sessionStateSchema: undefined,
     requestStateSchema: undefined,
     userStateSchema: undefined,
@@ -227,12 +223,11 @@ export function createEmptyMergedSurface(): MergedCapabilitySurface {
 
 /**
  * Merge resource declarations from a surface into the accumulator.
- * Same reference → dedupe. Different reference, same name → error.
+ * Same reference → dedupe. Different reference, same accessor name → error.
  */
 function mergeResourcesInto(
   target: Record<string, DeclaredResourceEntry> | undefined,
   source: Record<string, DeclaredResourceEntry>,
-  scope: string,
   capName: string,
   presetName: string
 ): Record<string, DeclaredResourceEntry> {
@@ -246,7 +241,7 @@ function mergeResourcesInto(
     if (existing === resource) continue;
     throw new Error(
       `Resource conflict in capability "${capName}" (preset "${presetName}"): ` +
-      `"${name}" in ${scope} scope is declared with different defineResource() references`
+      `accessor "${name}" is declared with different defineResource() references`
     );
   }
   return merged;
@@ -312,20 +307,11 @@ export function mergeSurfaceInto(
   capName: string,
   presetName: string
 ): void {
-  // Resources — valid on all block kinds
-  if (surface.sessionResources) {
-    acc.sessionResources = mergeResourcesInto(
-      acc.sessionResources, surface.sessionResources, "session", capName, presetName
-    );
-  }
-  if (surface.userResources) {
-    acc.userResources = mergeResourcesInto(
-      acc.userResources, surface.userResources, "user", capName, presetName
-    );
-  }
-  if (surface.orgResources) {
-    acc.orgResources = mergeResourcesInto(
-      acc.orgResources, surface.orgResources, "org", capName, presetName
+  // Resources — valid on all block kinds. Flat map; resource scope is
+  // intrinsic via `defineResource({ scope })` (FIX-435).
+  if (surface.resources) {
+    acc.resources = mergeResourcesInto(
+      acc.resources, surface.resources, capName, presetName
     );
   }
 
@@ -428,11 +414,10 @@ export function mergeCapabilities(
 export function extractMergedResources(
   merged: MergedCapabilitySurface
 ): DeclaredResources | undefined {
-  const result: DeclaredResources = {};
-  if (merged.sessionResources) result.session = merged.sessionResources;
-  if (merged.userResources) result.user = merged.userResources;
-  if (merged.orgResources) result.org = merged.orgResources;
-  return Object.keys(result).length > 0 ? result : undefined;
+  if (merged.resources === undefined || Object.keys(merged.resources).length === 0) {
+    return undefined;
+  }
+  return { ...merged.resources };
 }
 
 /**
@@ -446,27 +431,17 @@ export function mergeWithBlockResources(
   if (capResources === undefined) return blockResources;
   if (blockResources === undefined) return capResources;
 
-  // Block resources merge on top (reference-equality dedup)
-  const merged = { ...capResources };
-  const scopes = ["session", "user", "org"] as const;
-  for (const scope of scopes) {
-    const blockScope = blockResources[scope];
-    if (blockScope === undefined) continue;
-    if (merged[scope] === undefined) {
-      merged[scope] = { ...blockScope };
-    } else {
-      for (const [name, resource] of Object.entries(blockScope)) {
-        const existing = merged[scope]![name];
-        if (existing === undefined || existing === resource) {
-          merged[scope]![name] = resource;
-        } else {
-          throw new Error(
-            `Resource conflict: "${name}" in ${scope} scope is declared with different ` +
-            `defineResource() references. Use the same reference across blocks.`
-          );
-        }
-      }
+  const merged: DeclaredResources = { ...capResources };
+  for (const [name, resource] of Object.entries(blockResources)) {
+    const existing = merged[name];
+    if (existing === undefined || existing === resource) {
+      merged[name] = resource;
+      continue;
     }
+    throw new Error(
+      `Resource conflict: accessor "${name}" is declared with different ` +
+      `defineResource() references. Use the same reference across blocks.`
+    );
   }
   return merged;
 }

@@ -17,6 +17,7 @@
  */
 
 import { defineResourceCollection } from "@flow-state-dev/core";
+import type { ResourceScope } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
 /** The Zod schema for a SKILL.md resource's state. */
@@ -40,17 +41,22 @@ export interface DefineSkillsCollectionOptions {
   prefix?: string;
   /** Maximum number of resources (SKILL.md + supporting files combined). */
   maxInstances?: number;
+  /**
+   * Intrinsic scope the collection lives in. Default `"org"` — seeded skills
+   * are shared across users. Use `"user"` for personal libraries; `"session"`
+   * is mainly for tests.
+   */
+  scope?: ResourceScope;
 }
 
 /**
  * Helper that returns a `defineResourceCollection` instance configured for
- * the skills layout. The returned value is a normal collection — it can be
- * registered under any scope's `resources` map.
+ * the skills layout. The returned value is a normal collection — install it
+ * under any block's `resources` map; the framework routes reads/writes to
+ * the storage layer matching its intrinsic `scope`.
  *
  * @example
- *   org: {
- *     resources: { skills: defineSkillsCollection() }
- *   }
+ *   resources: { skills: defineSkillsCollection({ scope: "org" }) }
  */
 export function defineSkillsCollection(
   options: DefineSkillsCollectionOptions = {},
@@ -58,6 +64,7 @@ export function defineSkillsCollection(
   const prefix = options.prefix ?? "skills";
   return defineResourceCollection({
     pattern: `${prefix}/**`,
+    scope: options.scope ?? "org",
     stateSchema: skillStateSchema,
     maxInstances: options.maxInstances,
     client: {

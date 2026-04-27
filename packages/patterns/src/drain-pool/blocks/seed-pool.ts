@@ -43,10 +43,10 @@ export function createSeedPool<TItem>(
     name: `${poolName}-seed`,
     inputSchema: z.any(),
     outputSchema: z.any(),
-    sessionResources: { [queueKey]: queueCollection },
+    resources: { [queueKey]: queueCollection },
     sequencerStateSchema: drainPoolProjectionSchema,
     execute: async (input, ctx) => {
-      const collection = (ctx.session.resources as unknown as Record<string, QueueRef<TItem>>)[queueKey];
+      const collection = (ctx.resources as unknown as Record<string, QueueRef<TItem>>)[queueKey];
       const pool = ctx.sequencer as StateRef<DrainPoolProjection>;
 
       const existing = collection.list();

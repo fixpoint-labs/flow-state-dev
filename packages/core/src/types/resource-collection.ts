@@ -34,6 +34,16 @@ export type CollectionHookContext = {
 export type ResourceCollectionConfig = {
   /** Glob-style pattern: `files/*`, `files/**`, or `[topic]/observations`. */
   pattern: string;
+  /**
+   * Intrinsic scope this collection lives in. Required for new collections —
+   * mirrors `defineResource({ scope })`.
+   */
+  scope: ScopeType;
+  /**
+   * Cross-flow sharing intent. Default `false`. Same semantics as
+   * `ResourceConfig.flowIsolation`. Rejected at session scope.
+   */
+  flowIsolation?: boolean;
   stateSchema: ZodTypeAny;
   maxInstances?: number;
   eviction?: EvictionPolicy;
@@ -121,6 +131,18 @@ export function defineResourceCollection<
   config: TConfig
 ): TConfig & DefinedResourceCollection<AsStateObject<TStateSchema["_output"]>> {
   validatePattern(config.pattern);
+
+  if (config.scope !== "session" && config.scope !== "user" && config.scope !== "org") {
+    throw new Error(
+      `defineResourceCollection() requires an explicit scope of "session", "user", or "org" (got ${JSON.stringify(config.scope)})`
+    );
+  }
+
+  if (config.flowIsolation === true && config.scope === "session") {
+    throw new Error(
+      `defineResourceCollection() rejects flowIsolation:true on session-scoped collections — sessions are intrinsically flow-bound`
+    );
+  }
 
   if (config.maxInstances !== undefined && config.maxInstances < 1) {
     throw new Error("defineResourceCollection() maxInstances must be >= 1");

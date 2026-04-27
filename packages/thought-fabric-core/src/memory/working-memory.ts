@@ -44,10 +44,14 @@ export type WorkingMemoryState = z.infer<typeof workingMemoryStateSchema>
 
 /**
  * Session-scoped resource definition for working memory.
- * Blocks declare this via `sessionResources: { workingMemory: workingMemoryResource }`
- * and access it via `ctx.session.resources.get('workingMemory')`.
+ *
+ * Working memory is intrinsically session-bound: it tracks what's currently
+ * in mind for the active conversation. Blocks declare it via the unified
+ * `resources: { workingMemory: workingMemoryResource }` map (FIX-435) and
+ * access it via `ctx.resources.get('workingMemory')` regardless of scope.
  */
 export const workingMemoryResource = defineResource({
+  scope: 'session',
   stateSchema: workingMemoryStateSchema,
   default: { entries: [], currentTurn: 0 },
   writable: true,
@@ -56,12 +60,13 @@ export const workingMemoryResource = defineResource({
 /**
  * Pre-keyed resource declaration for working memory.
  *
- * Use this in `sessionResources` to avoid hard-coding the resource key:
+ * Use this in a block or capability's `resources` to avoid hard-coding the
+ * resource key:
  *
  * ```ts
- * sessionResources: workingMemoryResources
+ * resources: workingMemoryResources
  * // or compose with other resources:
- * sessionResources: { ...workingMemoryResources, myResource }
+ * resources: { ...workingMemoryResources, myResource }
  * ```
  */
 export const workingMemoryResources = {

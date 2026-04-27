@@ -1,3 +1,8 @@
+/**
+ * Type-level smoke test for the FIX-435 unified resource installation surface.
+ * Resources are declared with an intrinsic `scope`, blocks accept a single
+ * `resources` map, and `ctx.resources.<key>` is the only accessor.
+ */
 import { z } from "zod";
 import { handler } from "../../blocks/handler";
 import { generator } from "../../blocks/generator";
@@ -11,33 +16,36 @@ type Equals<A, B> =
     : false;
 type Assert<T extends true> = T;
 
-// ── Define portable resources ─────────────────────────────────────────
+// ── Define portable resources with intrinsic scope ────────────────────
 
 const observationsResource = defineResource({
+  ref: "observations",
+  scope: "session",
   stateSchema: z.object({
     entries: z.array(z.object({ text: z.string(), score: z.number() }))
   })
 });
 
 const artifactsResource = defineResource({
+  ref: "artifacts",
+  scope: "user",
   stateSchema: z.object({
     order: z.array(z.string()),
     byId: z.record(z.object({ title: z.string() }))
   })
 });
 
-// ── Handler: sessionResources provides typed ctx ──────────────────────
+// ── Handler: flat `resources` map yields typed `ctx.resources.<key>` ──
 
 const persistObs = handler({
   name: "persist-obs",
   inputSchema: z.object({ text: z.string() }),
   outputSchema: z.object({ ok: z.boolean() }),
-  sessionResources: {
+  resources: {
     observations: observationsResource
   },
   execute: async (input, ctx) => {
-    // ctx.session.resources.observations should be typed
-    const entries = ctx.session.resources.observations.state.entries;
+    const entries = ctx.resources.observations.state.entries;
     const first = entries[0];
     void first?.text;
     void first?.score;
@@ -46,29 +54,24 @@ const persistObs = handler({
   }
 });
 
-// Verify BlockDefinition is returned correctly
 type PersistObsOutput = typeof persistObs extends { outputSchema: { _output: infer O } } ? O : never;
 type _PersistObsCheck = Assert<Equals<PersistObsOutput, { ok: boolean }>>;
 
-// ── Handler: userResources + orgResources ─────────────────────────
+// ── Handler: resources at multiple scopes share the same flat namespace
 
 const multiScopeBlock = handler({
   name: "multi-scope",
   inputSchema: z.string(),
   outputSchema: z.string(),
-  sessionResources: {
-    observations: observationsResource
-  },
-  userResources: {
+  resources: {
+    observations: observationsResource,
     artifacts: artifactsResource
   },
   execute: async (_input, ctx) => {
-    // Session resources typed
-    const obs = ctx.session.resources.observations.state.entries;
+    const obs = ctx.resources.observations.state.entries;
     void obs;
 
-    // User resources typed
-    const arts = ctx.user.resources.artifacts.state;
+    const arts = ctx.resources.artifacts.state;
     const firstId = arts.order[0];
     void firstId;
 
@@ -77,24 +80,23 @@ const multiScopeBlock = handler({
 });
 void multiScopeBlock;
 
-// ── Generator: sessionResources provides typed ctx for all callbacks ──
+// ── Generator: typed ctx.resources reaches every callback ─────────────
 
 const gen = generator({
   name: "gen-with-resources",
   inputSchema: z.object({ prompt: z.string() }),
   outputSchema: z.string(),
-  sessionResources: {
+  resources: {
     observations: observationsResource
   },
   model: "demo-model",
   prompt: (_input, ctx) => {
-    // ctx should have typed observations
-    const entries = ctx.session.resources.observations.state.entries;
+    const entries = ctx.resources.observations.state.entries;
     return `You have ${entries.length} observations`;
   },
   context: [
     (_input, ctx) => {
-      const entries = ctx.session.resources.observations.state.entries;
+      const entries = ctx.resources.observations.state.entries;
       return entries.map((e: { text: string; score: number }) => e.text).join(", ");
     }
   ],
@@ -102,7 +104,7 @@ const gen = generator({
 });
 void gen;
 
-// ── Router: sessionResources provides typed ctx ───────────────────────
+// ── Router: flat resources field ──────────────────────────────────────
 
 const routeA = handler({
   name: "route-a",
@@ -122,37 +124,16 @@ const routerWithResources = router({
   name: "router-with-resources",
   inputSchema: z.string(),
   outputSchema: z.string(),
-  sessionResources: {
+  resources: {
     observations: observationsResource
   },
   routes: [routeA, routeB],
   execute: (_input, ctx) => {
-    const count = ctx.session.resources.observations.state.entries.length;
+    const count = ctx.resources.observations.state.entries.length;
     return count > 0 ? routeA : routeB;
   }
 });
 void routerWithResources;
-
-// ── Backwards compatibility: sessionResourceSchemas still works ───────
-
-const legacyHandler = handler({
-  name: "legacy",
-  inputSchema: z.string(),
-  outputSchema: z.string(),
-  sessionResourceSchemas: z.object({
-    artifacts: z.object({
-      order: z.array(z.string()),
-      byId: z.record(z.object({ title: z.string().optional() }))
-    })
-  }),
-  execute: (_input, ctx) => {
-    const artifacts = ctx.session.resources.artifacts.state;
-    void artifacts.order;
-    void artifacts.byId;
-    return "ok";
-  }
-});
-void legacyHandler;
 
 // ── BlockDefinition.declaredResources type check ──────────────────────
 
@@ -174,8 +155,7 @@ const noResources = handler({
   inputSchema: z.string(),
   outputSchema: z.string(),
   execute: (_input, ctx) => {
-    // Should still have untyped resource access
-    void ctx.session.resources;
+    void ctx.resources;
     return "ok";
   }
 });

@@ -14,6 +14,7 @@ export function createBlackboard<TStateSchema extends ZodTypeAny>(
   stateSchema: TStateSchema
 ) {
   return defineResource({
+    scope: "session",
     stateSchema,
     writable: true,
   });

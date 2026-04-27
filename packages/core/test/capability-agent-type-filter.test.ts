@@ -13,14 +13,14 @@ import { defineResource } from "../src/types/resource";
 import { generator } from "../src/blocks/generator";
 import { handler } from "../src/blocks/handler";
 
-const resourceA = defineResource({ stateSchema: z.object({ a: z.string() }) });
-const resourceB = defineResource({ stateSchema: z.object({ b: z.string() }) });
+const resourceA = defineResource({ scope: "session", stateSchema: z.object({ a: z.string() }) });
+const resourceB = defineResource({ scope: "session", stateSchema: z.object({ b: z.string() }) });
 
 describe("capability agentType filter", () => {
   it("unscoped capability (no agentType) attaches to any block identity", () => {
     const cap = defineCapability({
       name: "shared",
-      sessionResources: { resourceA },
+      resources: { resourceA },
     });
 
     const primary = generator({
@@ -44,15 +44,15 @@ describe("capability agentType filter", () => {
       prompt: "x",
     });
 
-    expect(primary.declaredResources?.session?.resourceA).toBe(resourceA);
-    expect(sub.declaredResources?.session?.resourceA).toBe(resourceA);
-    expect(untagged.declaredResources?.session?.resourceA).toBe(resourceA);
+    expect(primary.declaredResources?.resourceA).toBe(resourceA);
+    expect(sub.declaredResources?.resourceA).toBe(resourceA);
+    expect(untagged.declaredResources?.resourceA).toBe(resourceA);
   });
 
   it("agentType: 'primary' excludes sub-agent generators", () => {
     const cap = defineCapability({
       name: "main-only",
-      sessionResources: { resourceA },
+      resources: { resourceA },
       agentType: "primary",
     });
 
@@ -71,14 +71,14 @@ describe("capability agentType filter", () => {
       prompt: "x",
     });
 
-    expect(primary.declaredResources?.session?.resourceA).toBe(resourceA);
-    expect(sub.declaredResources?.session?.resourceA).toBeUndefined();
+    expect(primary.declaredResources?.resourceA).toBe(resourceA);
+    expect(sub.declaredResources?.resourceA).toBeUndefined();
   });
 
   it("unset block agentType is treated as 'primary' for filter purposes", () => {
     const cap = defineCapability({
       name: "main-only",
-      sessionResources: { resourceA },
+      resources: { resourceA },
       agentType: "primary",
     });
 
@@ -89,13 +89,13 @@ describe("capability agentType filter", () => {
       prompt: "x",
     });
 
-    expect(gen.declaredResources?.session?.resourceA).toBe(resourceA);
+    expect(gen.declaredResources?.resourceA).toBe(resourceA);
   });
 
   it("allowlist array matches any listed agentType", () => {
     const cap = defineCapability({
       name: "primary-or-trace",
-      sessionResources: { resourceA },
+      resources: { resourceA },
       agentType: ["primary", "trace"],
     });
 
@@ -121,9 +121,9 @@ describe("capability agentType filter", () => {
       prompt: "x",
     });
 
-    expect(primary.declaredResources?.session?.resourceA).toBe(resourceA);
-    expect(trace.declaredResources?.session?.resourceA).toBe(resourceA);
-    expect(sub.declaredResources?.session?.resourceA).toBeUndefined();
+    expect(primary.declaredResources?.resourceA).toBe(resourceA);
+    expect(trace.declaredResources?.resourceA).toBe(resourceA);
+    expect(sub.declaredResources?.resourceA).toBeUndefined();
   });
 
   it("scoped capability's tools preset is excluded from sub-agents", () => {
@@ -169,12 +169,12 @@ describe("capability agentType filter", () => {
   it("filter applies independently to sibling caps — unscoped cap still attaches", () => {
     const mainCap = defineCapability({
       name: "main-only",
-      sessionResources: { resourceA },
+      resources: { resourceA },
       agentType: "primary",
     });
     const sharedCap = defineCapability({
       name: "shared",
-      sessionResources: { resourceB },
+      resources: { resourceB },
     });
 
     const sub = generator({
@@ -185,15 +185,15 @@ describe("capability agentType filter", () => {
       prompt: "x",
     });
 
-    expect(sub.declaredResources?.session?.resourceA).toBeUndefined();
-    expect(sub.declaredResources?.session?.resourceB).toBe(resourceB);
+    expect(sub.declaredResources?.resourceA).toBeUndefined();
+    expect(sub.declaredResources?.resourceB).toBe(resourceB);
   });
 
   it("handler treats unset block agentType as primary — scoped cap still attaches", () => {
     // Handlers don't have agentType. The filter treats this as "primary".
     const cap = defineCapability({
       name: "main-only",
-      sessionResources: { resourceA },
+      resources: { resourceA },
       agentType: "primary",
     });
 
@@ -205,6 +205,6 @@ describe("capability agentType filter", () => {
       execute: async () => ({}),
     });
 
-    expect(h.declaredResources?.session?.resourceA).toBe(resourceA);
+    expect(h.declaredResources?.resourceA).toBe(resourceA);
   });
 });

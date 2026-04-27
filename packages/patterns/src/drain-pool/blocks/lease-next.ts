@@ -61,7 +61,7 @@ export function createLeaseNext<TItem>(
     name: `${poolName}-worker-lease-next`,
     inputSchema: z.any(),
     outputSchema: z.any(),
-    sessionResources: { [queueKey]: queueCollection },
+    resources: { [queueKey]: queueCollection },
     sequencerStateSchema: drainPoolWorkerStateSchema,
     execute: async (_input, ctx): Promise<LeaseNextOutput<TItem>> => {
       const pool = ctx.getTarget<DrainPoolProjection>(poolName);
@@ -142,7 +142,7 @@ export function createLeaseNext<TItem>(
 
       // Mirror the lease onto the collection for durability / client-
       // side observability. Best-effort — not authoritative.
-      const collection = (ctx.session.resources as unknown as Record<string, QueueRef<TItem>>)[queueKey];
+      const collection = (ctx.resources as unknown as Record<string, QueueRef<TItem>>)[queueKey];
       const ref = collection.get(wonItemId) as ResourceRef<any>;
       const payload = ref.state.payload as TItem;
       await ref.updateState((current: any) => ({

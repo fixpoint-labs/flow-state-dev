@@ -21,7 +21,7 @@
 import { defineCapability, type DefinedCapability } from "@flow-state-dev/core";
 import type {
   DeclaredResourceEntry,
-  ScopeType,
+  ResourceScope,
 } from "@flow-state-dev/core/types";
 import type { AgentType, InitialSkill, ToolCatalog } from "@flow-state-dev/core";
 import {
@@ -51,7 +51,7 @@ export interface SkillsCapabilityOptions {
    * seeded skills are shared across users. Use `"user"` for personal
    * skill libraries; `"session"` is mainly for tests.
    */
-  scope?: ScopeType;
+  scope?: ResourceScope;
   /**
    * Optional collection sizing overrides. The `prefix` here doubles as the
    * skills workspace mount path: `${SKILL_DIR}` resolves to
@@ -89,7 +89,7 @@ export function createSkillsCapability(
 ): DefinedCapability {
   const collectionKey = options.collection ?? "skills";
   const catalog: ToolCatalog = options.catalog ?? {};
-  const scope: ScopeType = options.scope ?? "org";
+  const scope: ResourceScope = options.scope ?? "org";
   const initialSkills = options.initialSkills;
 
   // The collection's pattern prefix IS the workspace mount path: when the
@@ -101,6 +101,7 @@ export function createSkillsCapability(
   const skillsCollection = defineSkillsCollection({
     prefix: collectionPrefix,
     maxInstances: options.collectionConfig?.maxInstances,
+    scope,
   });
 
   const resources: Record<string, DeclaredResourceEntry> = {
@@ -109,7 +110,6 @@ export function createSkillsCapability(
 
   const runSkillTool = createRunSkillTool({
     collectionKey,
-    scope,
     catalog,
     initialSkills,
     mountPath,
@@ -120,7 +120,6 @@ export function createSkillsCapability(
 
   const catalogContext = buildSkillsCatalogContext({
     collectionKey,
-    scope,
     mountPath,
     // Pass initialSkills so the catalog formatter can seed on its first
     // render — otherwise the catalog shows empty on turn 1 and the model
@@ -129,25 +128,18 @@ export function createSkillsCapability(
   });
   const activeContext = buildActiveSkillsContext({
     collectionKey,
-    scope,
     mountPath,
   });
-
-  // Resources are declared on the appropriate scope-specific field so the
-  // framework auto-installs them.
-  const sessionResources = scope === "session" ? resources : undefined;
-  const userResources = scope === "user" ? resources : undefined;
-  const orgResources = scope === "org" ? resources : undefined;
 
   return defineCapability({
     name: "skills",
     agentType: options.agentType,
 
     // Always-on surface: the resource collection and the session-state slice
-    // active-skills writes into.
-    sessionResources,
-    userResources,
-    orgResources,
+    // active-skills writes into. The collection's intrinsic `scope` (set via
+    // `defineSkillsCollection({ scope })`) determines which storage layer
+    // holds its state — consumers reach for it via `ctx.resources[collectionKey]`.
+    resources,
     sessionStateSchema: activeSkillStateSchema,
 
     presets: {

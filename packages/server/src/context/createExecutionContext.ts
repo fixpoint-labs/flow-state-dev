@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { readFileSync } from "node:fs";
 import type {
+  AnyResourceRef,
   ItemQuery,
   JournalEntry,
   JournalEntryInput,
@@ -1572,15 +1573,31 @@ export async function createExecutionContext<
     stores
   } = options;
   const transientStateChanges = !shouldPersistScopeChange(flow);
-  const sessionResourceConfigs = flow.session?.resources as
-    | Record<string, ResourceConfig | ResourceCollectionConfig>
-    | undefined;
-  const userResourceConfigs = flow.user?.resources as
-    | Record<string, ResourceConfig | ResourceCollectionConfig>
-    | undefined;
-  const orgResourceConfigs = flow.org?.resources as
-    | Record<string, ResourceConfig | ResourceCollectionConfig>
-    | undefined;
+  // FIX-435: resources live in a single flat `flow.resources` map. Each
+  // entry is routed to the appropriate scope storage via its intrinsic
+  // `scope`. Partition the flat map back into per-scope buckets so the
+  // existing per-scope storage helpers can keep doing their job.
+  const flatFlowResources = (flow.resources ?? {}) as Record<
+    string,
+    (ResourceConfig | ResourceCollectionConfig) & { scope: "session" | "user" | "org" }
+  >;
+  const sessionResourceConfigs: Record<string, ResourceConfig | ResourceCollectionConfig> = {};
+  const userResourceConfigs: Record<string, ResourceConfig | ResourceCollectionConfig> = {};
+  const orgResourceConfigs: Record<string, ResourceConfig | ResourceCollectionConfig> = {};
+  /**
+   * accessor → scope mapping so the flat ctx.resources registry can route
+   * gets/lists across all three per-scope registries below.
+   */
+  const accessorScope: Record<string, "session" | "user" | "org"> = {};
+
+  for (const [accessor, def] of Object.entries(flatFlowResources)) {
+    const scope = def.scope;
+    if (scope === "session") sessionResourceConfigs[accessor] = def;
+    else if (scope === "user") userResourceConfigs[accessor] = def;
+    else if (scope === "org") orgResourceConfigs[accessor] = def;
+    else throw new Error(`Resource "${accessor}" has unknown scope ${JSON.stringify(scope)}`);
+    accessorScope[accessor] = scope;
+  }
 
   if (!options.userId || options.userId.trim().length === 0) {
     throw new Error(`Flow "${flow.kind}" requires a userId`);
@@ -2178,7 +2195,6 @@ export async function createExecutionContext<
         id: userRef.current.id,
         userId: userRef.current.userId
       },
-      resources: userResources,
       ...userOps
     },
     () => userContainer.read()
@@ -2200,7 +2216,6 @@ export async function createExecutionContext<
           ...(s.tags !== undefined ? { tags: s.tags } : {})
         };
       },
-      resources: sessionResources,
       items: createSessionItemViews(priorItems, completedPriorRequests, {
         tokenCounter,
         readLiveItems,
@@ -2293,11 +2308,37 @@ export async function createExecutionContext<
               userId: orgRef.current.userId,
               orgId: orgRef.current.orgId
             },
-            resources: orgResources,
             ...projectOps
           },
           () => projectContainer.read()
         ) as OrgScopeHandle<TOrgState>);
+
+  // FIX-435: build the flat ctx.resources registry by merging the per-scope
+  // registries. A resource's accessor key routes to the registry that owns
+  // its intrinsic scope. `get()` and `list()` mirror the merged surface.
+  const flatResourcesHandles: Record<string, AnyResourceRef> = {};
+  for (const [accessor, scope] of Object.entries(accessorScope)) {
+    let registry: ResourceRegistry<Record<string, AnyResourceRef>> | undefined;
+    if (scope === "session") registry = sessionResources as ResourceRegistry<Record<string, AnyResourceRef>>;
+    else if (scope === "user") registry = userResources as ResourceRegistry<Record<string, AnyResourceRef>>;
+    else registry = orgResources as ResourceRegistry<Record<string, AnyResourceRef>> | undefined;
+    if (registry === undefined) continue;
+    const handle = (registry as Record<string, AnyResourceRef>)[accessor];
+    if (handle !== undefined) flatResourcesHandles[accessor] = handle;
+  }
+  const flatResourcesRegistry: ResourceRegistry<Record<string, AnyResourceRef>> = {
+    ...flatResourcesHandles,
+    get(name: string) {
+      const handle = flatResourcesHandles[String(name)];
+      if (handle === undefined) {
+        throw new Error(`Resource "${String(name)}" is not registered`);
+      }
+      return handle;
+    },
+    list() {
+      return Object.values(flatResourcesHandles);
+    }
+  } as ResourceRegistry<Record<string, AnyResourceRef>>;
 
   /**
    * Fire-and-forget lifecycle trace item for nested blocks.
@@ -2607,6 +2648,7 @@ export async function createExecutionContext<
       session: sessionHandle,
       user: userHandle,
       org: projectHandle,
+      resources: flatResourcesRegistry,
       response: responseRef.current as ExecutionContext["response"],
       signal: options.signal ?? new AbortController().signal,
       resolveModel,

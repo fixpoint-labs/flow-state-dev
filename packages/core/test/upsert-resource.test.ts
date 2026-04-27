@@ -66,16 +66,13 @@ function makeRef(
 }
 
 function makeCtx(collection: ResourceCollectionRef<NoteState>): BlockContext {
+  // FIX-435: ctx.resources is the flat registry — resources at any scope live
+  // here, routed by their intrinsic scope.
   return createMockContext({
     session: {
       identity: { type: "session", id: "sess_1", sessionId: "sess_1", userId: "user_1" },
       state: {},
       items: { llm: () => [] } as any,
-      resources: {
-        notes: collection,
-        get: () => { throw new Error("not used"); },
-        list: () => [collection as any],
-      } as any,
       patchState: async () => undefined,
       setState: async () => undefined,
       incState: async () => undefined,
@@ -86,7 +83,12 @@ function makeCtx(collection: ResourceCollectionRef<NoteState>): BlockContext {
       setMetadata: async () => undefined,
       emitComponent: () => ({ done: () => undefined }),
     },
-  });
+    resources: {
+      notes: collection,
+      get: () => { throw new Error("not used"); },
+      list: () => [collection as any],
+    } as any,
+  } as any);
 }
 
 const noteInputSchema = z.object({
@@ -104,7 +106,7 @@ describe("utility.upsertResource", () => {
     const block = utility.upsertResource({
       name: "upsert-note",
       inputSchema: noteInputSchema,
-      sessionResources: {},
+      resources: {},
       collectionKey: "notes",
       key: (input) => input.id,
       state: (input) => ({ title: input.title, updatedAt: 0 }),
@@ -119,7 +121,7 @@ describe("utility.upsertResource", () => {
     const block = utility.upsertResource({
       name: "upsert-note",
       inputSchema: noteInputSchema,
-      sessionResources: {},
+      resources: {},
       collectionKey: "notes",
       key: (input) => input.id,
       state: (input) => ({ title: input.title, updatedAt: 1000 }),
@@ -137,7 +139,7 @@ describe("utility.upsertResource", () => {
     const block = utility.upsertResource({
       name: "upsert-note",
       inputSchema: noteInputSchema,
-      sessionResources: {},
+      resources: {},
       collectionKey: "notes",
       key: (input) => input.id,
       state: (input) => ({ title: input.title, updatedAt: 2000 }),
@@ -155,7 +157,7 @@ describe("utility.upsertResource", () => {
     const block = utility.upsertResource({
       name: "upsert-note",
       inputSchema: noteInputSchema,
-      sessionResources: {},
+      resources: {},
       collectionKey: "notes",
       key: (input) => input.id,
       state: (input) => ({ title: input.title, updatedAt: 0 }),
@@ -173,7 +175,7 @@ describe("utility.upsertResource", () => {
     const block = utility.upsertResource({
       name: "upsert-note",
       inputSchema: noteInputSchema,
-      sessionResources: {},
+      resources: {},
       collectionKey: "notes",
       key: (input) => input.id,
       state: (input) => ({ title: input.title, updatedAt: 0 }),
@@ -192,7 +194,7 @@ describe("utility.upsertResource", () => {
     const block = utility.upsertResource({
       name: "upsert-note",
       inputSchema: noteInputSchema,
-      sessionResources: {},
+      resources: {},
       collectionKey: "notes",
       key: (input) => input.id,
       state: (input) => ({ title: input.title, updatedAt: 0 }),
@@ -213,36 +215,28 @@ describe("utility.upsertResource", () => {
     expect(collection.getOptional("note-4")).toBeDefined();
   });
 
-  it("uses user scope when scope is set to 'user'", async () => {
+  it("routes through ctx.resources regardless of the resource's intrinsic scope", async () => {
+    // FIX-435: scope no longer threads through `upsertResource` config — it's
+    // intrinsic to the resource definition. This test ensures the utility
+    // reads from the flat `ctx.resources` registry whether the underlying
+    // collection is session, user, or org-scoped.
     const collection = makeCollectionRef();
     const block = utility.upsertResource({
       name: "upsert-note-user",
       inputSchema: noteInputSchema,
-      userResources: {},
+      resources: {},
       collectionKey: "notes",
-      scope: "user",
       key: (input) => input.id,
       state: (input) => ({ title: input.title, updatedAt: 0 }),
     });
 
     const ctx = createMockContext({
-      user: {
-        identity: { type: "user", id: "user_1", userId: "user_1" },
-        state: {},
-        resources: {
-          notes: collection,
-          get: () => { throw new Error("not used"); },
-          list: () => [collection as any],
-        } as any,
-        patchState: async () => undefined,
-        setState: async () => undefined,
-        incState: async () => undefined,
-        pushState: async () => undefined,
-        setStateRecord: async () => undefined,
-        deleteStateRecord: async () => undefined,
-        atomicState: async () => undefined,
-      },
-    });
+      resources: {
+        notes: collection,
+        get: () => { throw new Error("not used"); },
+        list: () => [collection as any],
+      } as any,
+    } as any);
 
     await block.run({ id: "u-note-1", title: "User note", body: "" }, ctx);
 

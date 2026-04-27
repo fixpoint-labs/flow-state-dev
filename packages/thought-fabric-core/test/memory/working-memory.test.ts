@@ -596,7 +596,7 @@ describe('memory/workingMemory', () => {
           makeEntry({ id: 'e1', salience: 0.85, content: 'User prefers TypeScript' }),
         ],
       })
-      const ctx = { session: { resources: { get: () => ref } } } as any
+      const ctx = { resources: { get: () => ref } } as any
 
       const result = workingMemoryContextFormatter(undefined, ctx)
       expect(result).toContain('Active memories:')
@@ -606,7 +606,7 @@ describe('memory/workingMemory', () => {
 
     it('returns empty string when no entries', () => {
       const ref = createMockRef()
-      const ctx = { session: { resources: { get: () => ref } } } as any
+      const ctx = { resources: { get: () => ref } } as any
 
       const result = workingMemoryContextFormatter(undefined, ctx)
       expect(result).toBe('')
@@ -642,9 +642,9 @@ describe('memory/workingMemory', () => {
         expect(block.name).toBe('workingMemory/tick')
       })
 
-      it('declares workingMemory sessionResource', () => {
+      it('declares workingMemory resource', () => {
         const block = workingMemoryTick()
-        expect(block.declaredResources?.session).toHaveProperty('workingMemory')
+        expect(block.declaredResources).toHaveProperty('workingMemory')
       })
     })
 
@@ -661,7 +661,7 @@ describe('memory/workingMemory', () => {
 
       it('declares workingMemory sessionResource', () => {
         const block = workingMemorySnapshot()
-        expect(block.declaredResources?.session).toHaveProperty('workingMemory')
+        expect(block.declaredResources).toHaveProperty('workingMemory')
       })
     })
 
@@ -678,7 +678,7 @@ describe('memory/workingMemory', () => {
 
       it('declares workingMemory sessionResource', () => {
         const block = workingMemoryAdd()
-        expect(block.declaredResources?.session).toHaveProperty('workingMemory')
+        expect(block.declaredResources).toHaveProperty('workingMemory')
       })
     })
 
@@ -695,7 +695,7 @@ describe('memory/workingMemory', () => {
 
       it('declares workingMemory sessionResource', () => {
         const block = workingMemoryRemember()
-        expect(block.declaredResources?.session).toHaveProperty('workingMemory')
+        expect(block.declaredResources).toHaveProperty('workingMemory')
       })
     })
 
@@ -717,7 +717,7 @@ describe('memory/workingMemory', () => {
 
       it('declares workingMemory sessionResource', () => {
         const block = workingMemoryObserve()
-        expect(block.declaredResources?.session).toHaveProperty('workingMemory')
+        expect(block.declaredResources).toHaveProperty('workingMemory')
       })
 
       it('has no onCompleted hook (persistence moved to remember block)', () => {
@@ -744,7 +744,7 @@ describe('memory/workingMemory', () => {
 
       it('inherits sessionResources from child blocks', () => {
         const block = workingMemoryCapture()
-        expect(block.declaredResources?.session).toHaveProperty('workingMemory')
+        expect(block.declaredResources).toHaveProperty('workingMemory')
       })
     })
   })
@@ -765,7 +765,7 @@ describe('memory/workingMemory', () => {
     ) {
       const block = workingMemoryRemember(config)
       const ctx = {
-        session: { resources: { get: () => ref } },
+        resources: { get: () => ref },
         response: { emit: async () => {} },
       } as any
       // The schema uses .default() for pinned and replaces, so Zod applies

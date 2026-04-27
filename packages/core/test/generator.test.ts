@@ -497,10 +497,6 @@ it("supports manually adding unified resource content tools", async () => {
     session: {
       identity: { type: "session", id: "s1", userId: "u1" },
       state: {},
-      resources: {
-        get: () => readableResource,
-        list: () => [readableResource, writableResource]
-      },
       patchState: async () => undefined,
       setState: async () => undefined,
       incState: async () => undefined,
@@ -510,6 +506,10 @@ it("supports manually adding unified resource content tools", async () => {
       atomicState: async () => undefined,
       appendJournal: async () => undefined,
       getJournal: async () => []
+    } as any,
+    resources: {
+      get: () => readableResource,
+      list: () => [readableResource, writableResource]
     } as any,
     resolveModel: () => ({
       modelId: "m",

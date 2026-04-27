@@ -258,7 +258,7 @@ export interface CreateBashToolOptions {
 
   /**
    * Optional singleton resource ref for persisting sandbox state across sessions.
-   * Pass `ctx.session.resources.bashSession` (or equivalent) to enable persistence.
+   * Pass `ctx.resources.bashSession` (or equivalent) to enable persistence.
    */
   bashSession?: ResourceRef<BashSessionState>;
 

@@ -14,7 +14,6 @@
 
 import { z } from "zod";
 import { handler } from "@flow-state-dev/core";
-import type { ScopeType } from "@flow-state-dev/core/types";
 import type { SkillState } from "@flow-state-dev/core";
 import { skillManifestKey } from "./collection";
 import { getCollection } from "./internal/get-collection";
@@ -28,7 +27,6 @@ const outputSchema = z.object({ matched: z.boolean() });
 
 export interface SlashMatchOptions {
   collectionKey: string;
-  scope: ScopeType;
 }
 
 /**
@@ -52,7 +50,7 @@ export function createIntentSlashMatch(opts: SlashMatchOptions) {
       const skillName = match[1]!;
       const argument = (match[2] ?? "").trim();
 
-      const collection = getCollection(ctx, opts.scope, opts.collectionKey);
+      const collection = getCollection(ctx, opts.collectionKey);
       if (!collection) return { matched: false };
 
       const manifest = collection.getOptional(skillManifestKey(skillName));

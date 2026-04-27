@@ -28,7 +28,7 @@
 
 import { z } from "zod";
 import { sequencer } from "@flow-state-dev/core";
-import type { BlockDefinition, ScopeType } from "@flow-state-dev/core/types";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { createApplyIntent } from "./apply-intent";
 import {
   createIntentClassifierSequencer,
@@ -46,8 +46,6 @@ export interface IntentSelectorOptions {
   name?: string;
   /** Resource registry key for the skills collection. Default `"skills"`. */
   collectionKey?: string;
-  /** Scope the skills collection is registered at. Default `"project"`. */
-  scope?: ScopeType;
   /** Model the tier-3 classifier uses. Default `"preset/fast"`. */
   classifierModel?: string;
   /** Confidence threshold for accepting a classifier match. Default 0.65. */
@@ -73,11 +71,10 @@ export function createIntentSelector(
   options: IntentSelectorOptions = {},
 ): BlockDefinition<typeof intentInputSchema, typeof intentInputSchema> {
   const collectionKey = options.collectionKey ?? "skills";
-  const scope: ScopeType = options.scope ?? "org";
   const enableLlm = options.enableLlmClassifier ?? true;
 
-  const slashTier = createIntentSlashMatch({ collectionKey, scope });
-  const keywordTier = createIntentKeywordMatch({ collectionKey, scope });
+  const slashTier = createIntentSlashMatch({ collectionKey });
+  const keywordTier = createIntentKeywordMatch({ collectionKey });
   const apply = createApplyIntent();
 
   let pipeline = sequencer({
@@ -91,7 +88,6 @@ export function createIntentSelector(
   if (enableLlm) {
     const classifier = createIntentClassifierSequencer({
       collectionKey,
-      scope,
       classifierModel: options.classifierModel,
       confidenceThreshold:
         options.confidenceThreshold ?? DEFAULT_CONFIDENCE_THRESHOLD,

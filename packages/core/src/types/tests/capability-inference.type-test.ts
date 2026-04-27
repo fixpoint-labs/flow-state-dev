@@ -16,6 +16,8 @@ import type { BlockContext } from "../block";
 // ── Resources for testing ────────────────────────────────────────────
 
 const memoryResource = defineResource({
+  ref: "memory",
+  scope: "session",
   stateSchema: z.object({ entries: z.array(z.string()) })
 });
 
@@ -23,7 +25,7 @@ const memoryResource = defineResource({
 
 const memoryCapability = defineCapability({
   name: "memory",
-  sessionResources: { memories: memoryResource },
+  resources: { memories: memoryResource },
   fns: (ctx: BlockContext) => ({
     remember: (fact: string) => { void fact; void ctx; },
     recall: (query: string): string[] => { void query; return []; },
@@ -75,7 +77,7 @@ const capWithPresets = defineCapability({
   name: "test",
   presets: {
     alpha: {
-      sessionResources: { memories: memoryResource },
+      resources: { memories: memoryResource },
     },
     beta: {
       sessionStateSchema: z.object({ flag: z.boolean() }),
@@ -92,7 +94,7 @@ const _configured3 = capWithPresets.presets({ alpha: true, beta: true });
 // Function-form override should accept the preset's shape
 const _configured4 = capWithPresets.presets({
   alpha: (preset) => {
-    void preset.sessionResources;
+    void preset.resources;
     return {};
   },
 });
@@ -101,7 +103,7 @@ const _configured4 = capWithPresets.presets({
 
 const capNoFns = defineCapability({
   name: "noFns",
-  sessionResources: { memories: memoryResource },
+  resources: { memories: memoryResource },
 });
 
 type NoFnsCap = InferCapabilities<readonly [typeof capNoFns]>;

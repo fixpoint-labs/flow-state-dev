@@ -1,6 +1,5 @@
 import type { AgentType, ItemStatus } from "../items/types";
 import type { JsonObject } from "../schema/common";
-import type { AnyResourceRef, ResourceRegistry } from "./resource";
 import type { CostEstimate, TokenLedger } from "./flow";
 import type { ScopeStateOps } from "./state";
 
@@ -117,14 +116,18 @@ export type SessionMetadataInput = SessionMetadata & {
   metadata?: Record<string, unknown>;
 };
 
+/**
+ * Session scope handle — exposes per-session state and metadata. Resources
+ * have been lifted to the flat `ctx.resources` registry (FIX-435); a
+ * resource's intrinsic `scope` routes its storage to the session record
+ * for session-scoped definitions.
+ */
 export type SessionScopeHandle<
-  TState extends object = Record<string, unknown>,
-  TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>
+  TState extends object = Record<string, unknown>
 > = {
   identity: ScopeIdentity;
   state: Readonly<TState>;
   metadata: Readonly<SessionMetadata>;
-  resources: ResourceRegistry<TResources>;
   items: SessionItemViews;
   appendJournal(entry: JournalEntryInput): Promise<void>;
   getJournal(options?: { limit?: number; offset?: number }): Promise<JournalEntry[]>;
@@ -132,19 +135,15 @@ export type SessionScopeHandle<
 } & ScopeStateOps<TState>;
 
 export type UserScopeHandle<
-  TState extends object = Record<string, unknown>,
-  TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>
+  TState extends object = Record<string, unknown>
 > = {
   identity: ScopeIdentity;
   state: Readonly<TState>;
-  resources: ResourceRegistry<TResources>;
 } & ScopeStateOps<TState>;
 
 export type OrgScopeHandle<
-  TState extends object = Record<string, unknown>,
-  TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>
+  TState extends object = Record<string, unknown>
 > = {
   identity: ScopeIdentity;
   state: Readonly<TState>;
-  resources?: ResourceRegistry<TResources>;
 } & ScopeStateOps<TState>;

@@ -850,7 +850,13 @@ describe("createBashBlocks", () => {
     };
   }
 
-  // Build a BlockContext-shaped object with arbitrary collections per scope.
+  // Build a BlockContext-shaped object with arbitrary collections.
+  //
+  // The `scopes` parameter is preserved as a convenience — callers can still
+  // describe which logical scope a collection "comes from" — but at runtime
+  // they're all flattened into the unified `ctx.resources` registry. The
+  // collection's intrinsic `scope` (set on `defineResourceCollection`) is
+  // what routes reads/writes to the right storage layer.
   function buildCtx(
     sessionId: string,
     scopes: {
@@ -859,19 +865,22 @@ describe("createBashBlocks", () => {
       org?: Record<string, ResourceCollectionRef<FileEntryState>>;
     } = {},
   ) {
+    const resources: Record<string, ResourceCollectionRef<FileEntryState>> = {
+      ...(scopes.session ?? {}),
+      ...(scopes.user ?? {}),
+      ...(scopes.org ?? {}),
+    };
     return {
       session: {
         identity: { id: sessionId, userId: "u1" },
-        resources: scopes.session ?? {},
       },
       user: {
         identity: { id: "u1" },
-        resources: scopes.user ?? {},
       },
       org: {
         identity: { id: "p1" },
-        resources: scopes.org ?? {},
       },
+      resources,
     } as any;
   }
 

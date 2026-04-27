@@ -51,7 +51,7 @@ export interface BlackboardConfig<
 
   /**
    * Specialist blocks keyed by name. Required. Must have at least 1 entry.
-   * Each specialist should declare `sessionResources: { blackboard }` and
+   * Each specialist should declare `resources: { blackboard }` and
    * read/write the blackboard resource internally.
    */
   specialists: Record<string, BlockDefinition<any, any>>;
@@ -69,7 +69,7 @@ export interface BlackboardConfig<
   /**
    * Controller block — reads blackboard, returns `{ specialist, done, reasoning }`.
    * Must output `controllerOutputSchema`. Should declare
-   * `sessionResources: { blackboard }` for typed access.
+   * `resources: { blackboard }` for typed access.
    * Default: LLM generator that reads blackboard state and specialist names.
    */
   controller?: BlockDefinition<any, any>;
@@ -136,7 +136,7 @@ function buildDefaultController(config: {
     name: `${config.name}-controller`,
     model: config.model ?? "openai/gpt-5.4-mini",
     outputSchema: controllerOutputSchema,
-    sessionResources: { blackboard: config.blackboardResource },
+    resources: { blackboard: config.blackboardResource },
     sequencerStateSchema: blackboardControlSchema,
     agentType: config.agentType ?? "sub",
     ...(config.context !== undefined ? { context: config.context } : {}),
@@ -176,7 +176,7 @@ function buildDefaultController(config: {
       ].filter(Boolean).join("\n");
     },
     user: (_input, ctx) => {
-      const boardState = ctx.session.resources.blackboard?.state;
+      const boardState = ctx.resources.blackboard?.state;
       return `Current blackboard state:\n${JSON.stringify(boardState, null, 2)}`;
     },
   });
@@ -206,7 +206,7 @@ function buildDefaultSynthesizer(config: {
   return generator({
     name: `${config.name}-synthesizer`,
     model: config.model ?? "openai/gpt-5.4-mini",
-    sessionResources: { blackboard: config.blackboardResource },
+    resources: { blackboard: config.blackboardResource },
     agentType: config.agentType ?? "primary",
     ...(config.outputSchema ? { outputSchema: config.outputSchema } : {}),
     ...(config.context !== undefined ? { context: config.context } : {}),
@@ -248,15 +248,15 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     name: `${name}-init`,
     inputSchema: z.any(),
     outputSchema: z.any(),
-    sessionResources: { blackboard: blackboardResource },
+    resources: { blackboard: blackboardResource },
     execute: async (input, ctx) => {
       if (config.initialState) {
         const initial =
           typeof config.initialState === "function"
             ? await config.initialState(input)
             : config.initialState;
-        await ctx.session.resources.blackboard.setState(
-          initial as Parameters<typeof ctx.session.resources.blackboard.setState>[0]
+        await ctx.resources.blackboard.setState(
+          initial as Parameters<typeof ctx.resources.blackboard.setState>[0]
         );
       }
       return input;
@@ -343,10 +343,10 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     name: `${name}-snapshot`,
     inputSchema: z.any(),
     outputSchema: z.any(),
-    sessionResources: { blackboard: blackboardResource },
+    resources: { blackboard: blackboardResource },
     sequencerStateSchema: blackboardControlSchema,
     execute: async (input, ctx) => {
-      const boardState = ctx.session.resources.blackboard.state;
+      const boardState = ctx.resources.blackboard.state;
       const controlState = ctx.sequencer!.state;
       ctx.emitComponent("blackboard", {
         state: boardState,
@@ -397,7 +397,7 @@ export function blackboard<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       maxIterations,
     })
     .map((_value: unknown, ctx: any) => {
-      const boardState = ctx.session.resources.blackboard.state;
+      const boardState = ctx.resources.blackboard.state;
       const controlState = ctx.sequencer!.state as BlackboardControlState;
       return {
         blackboard: boardState,

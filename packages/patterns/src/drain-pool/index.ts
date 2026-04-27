@@ -19,7 +19,7 @@
  *     maxAttempts: 3,
  *   });
  *
- *   defineFlow({ sessionResources: { [queue key]: queue }, ... })
+ *   defineFlow({ resources: { [queue key]: queue }, ... })
  *
  * The returned `block` is a sequencer composed of:
  *   - `seedPool` — writes initialItems to the collection
@@ -207,21 +207,21 @@ export interface DrainPoolHandle<TItem> {
   /**
    * The composed sequencer block. Plug into a parent flow or sequencer.
    * Auto-installs the queue collection via its block-level
-   * `sessionResources` declaration — callers don't need to register the
+   * `resources` declaration — callers don't need to register the
    * collection manually on `defineFlow`.
    */
   block: SequencerDefinition<any, any>;
 
   /**
    * The queue collection. Exposed so callers can inspect config or
-   * register it explicitly on `defineFlow({ sessionResources })` when
+   * register it explicitly on `defineFlow({ resources })` when
    * they prefer explicit-over-implicit flow wiring.
    */
   queue: DefinedResourceCollection;
 
   /**
    * The resource key under which the queue collection is installed.
-   * Caller-code can read it via `ctx.session.resources[queueKey]`.
+   * Caller-code can read it via `ctx.resources[queueKey]`.
    */
   queueKey: string;
 
@@ -277,6 +277,7 @@ export function drainPool<TItem>(
   const queueItemSchema = createDrainPoolItemSchema(itemSchema);
   const queueCollection = defineResourceCollection({
     pattern: `${queueKey}/**`,
+    scope: "session",
     stateSchema: queueItemSchema,
   });
 

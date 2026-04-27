@@ -60,9 +60,9 @@ export function createWorkingMemoryCapability(config?: WorkingMemoryHelperConfig
 
   return defineCapability({
     name: 'workingMemory' as const,
-    sessionResources: { workingMemory: workingMemoryResource },
+    resources: { workingMemory: workingMemoryResource },
     fns: (ctx: any) => {
-      const ref = ctx.session.resources.workingMemory as ResourceContext<WorkingMemoryState>
+      const ref = ctx.resources.workingMemory as ResourceContext<WorkingMemoryState>
       return {
         /** Add an entry. Lowest-salience non-pinned entry is evicted if at capacity. */
         add: (entry: AddEntryInput) => add(ref, entry, resolved),
@@ -114,12 +114,9 @@ export function createEpisodicMemoryCapability(config?: EpisodicMemoryCapability
 
   return defineCapability({
     name: 'episodicMemory' as const,
-    ...(scope === 'user'
-      ? { userResources: { episodicMemory: resource } }
-      : { orgResources: { episodicMemory: resource } }),
+    resources: { episodicMemory: resource },
     fns: (ctx: any) => {
-      const scopeCtx = scope === 'user' ? ctx.user : ctx.org
-      const ref = scopeCtx?.resources?.episodicMemory as ResourceContext<EpisodicMemoryState>
+      const ref = ctx.resources.episodicMemory as ResourceContext<EpisodicMemoryState>
       return {
         /** Encode a new episode. Auto-evicts oldest when over capacity. */
         encode: (episode: EncodeEpisodeInput) => encode(ref, episode, maxEpisodes),
@@ -164,12 +161,9 @@ export function createSemanticMemoryCapability(config?: SemanticMemoryCapability
 
   return defineCapability({
     name: 'semanticMemory' as const,
-    ...(scope === 'user'
-      ? { userResources: { semanticMemory: resource } }
-      : { orgResources: { semanticMemory: resource } }),
+    resources: { semanticMemory: resource },
     fns: (ctx: any) => {
-      const scopeCtx = scope === 'user' ? ctx.user : ctx.org
-      const ref = scopeCtx?.resources?.semanticMemory as ResourceContext<SemanticMemoryState>
+      const ref = ctx.resources.semanticMemory as ResourceContext<SemanticMemoryState>
       return {
         /** Add a new semantic fact. */
         addFact: (fact: AddSemanticFactInput) => addFact(ref, fact),

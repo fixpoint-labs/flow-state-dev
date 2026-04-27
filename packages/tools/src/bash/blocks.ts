@@ -7,11 +7,11 @@
  *
  * The blocks manage a per-session sandbox. On first access the sandbox is
  * auto-populated from the block's resource context: every
- * `ResourceCollectionRef` present on `ctx.session.resources`,
- * `ctx.user.resources`, and `ctx.org.resources` is mounted at its
- * pattern prefix (e.g. `artifacts/**` at `/workspace/artifacts/`,
- * `skills/**` at `/workspace/skills/`). Writes are routed back to the
- * owning collection on flush based on longest path-prefix match.
+ * `ResourceCollectionRef` present on the unified `ctx.resources` registry
+ * is mounted at its pattern prefix (e.g. `artifacts/**` at
+ * `/workspace/artifacts/`, `skills/**` at `/workspace/skills/`). Writes
+ * are routed back to the owning collection on flush based on longest
+ * path-prefix match.
  *
  * Files written outside any mount's prefix, except for the conventional
  * scratch directory `./tmp/`, are dropped on flush with a console warning.
@@ -61,9 +61,8 @@ export interface CreateBashBlocksOptions {
    * and `exclude` is ignored.
    *
    * When omitted (the default), bash auto-discovers every collection present
-   * on the block's runtime resource context — any `ResourceCollectionRef` in
-   * `ctx.session.resources`, `ctx.user.resources`, or `ctx.org.resources`
-   * is mounted at its pattern prefix.
+   * on the block's runtime resource context — any `ResourceCollectionRef` on
+   * `ctx.resources` is mounted at its pattern prefix.
    */
   collections?: BashCollectionSpec[];
 
@@ -129,10 +128,8 @@ const bashWriteFileOutputSchema = z.object({
 /** A single mounted collection inside the bash workspace. */
 interface Mount {
   collection: ResourceCollectionRef<JsonObject>;
-  /** Registered key on ctx.*.resources. Used for logging/diagnostics. */
+  /** Registered accessor key on ctx.resources. Used for logging/diagnostics. */
   key: string;
-  /** Which scope this collection was found in. */
-  scope: "session" | "user" | "org";
   /** Pattern prefix — the collection's natural path inside the workspace. */
   prefix: string;
   /** Flush behavior. Default true. */
@@ -213,10 +210,11 @@ function discoverMounts(
   const seen = new Set<string>();
   const mounts: Mount[] = [];
 
-  for (const scope of ["session", "user", "org"] as const) {
-    const bag = ctx?.[scope]?.resources;
-    if (!bag || typeof bag !== "object") continue;
+  const bag = ctx?.resources;
+  if (bag && typeof bag === "object") {
     for (const [key, value] of Object.entries(bag)) {
+      // Skip the registry's own helper functions (`get`, `list`).
+      if (typeof value === "function") continue;
       if (wantByKey) {
         if (!wantByKey.has(key)) continue;
       } else if (excludeSet.has(key)) {
@@ -232,7 +230,6 @@ function discoverMounts(
       mounts.push({
         collection: value,
         key,
-        scope,
         prefix,
         writable: spec?.writable ?? true,
       });
@@ -245,7 +242,7 @@ function discoverMounts(
     for (const [key] of wantByKey) {
       if (!seen.has(key)) {
         console.warn(
-          `[bash] collection "${key}" was requested but not found on ctx.*.resources — skipped`,
+          `[bash] collection "${key}" was requested but not found on ctx.resources — skipped`,
         );
       }
     }

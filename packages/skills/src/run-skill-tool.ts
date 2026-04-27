@@ -22,10 +22,8 @@
 import { z } from "zod";
 import { router } from "@flow-state-dev/core";
 import type {
-  BlockContext,
   BlockDefinition,
   ResourceCollectionRef,
-  ScopeType,
 } from "@flow-state-dev/core/types";
 import type {
   InitialSkill,
@@ -33,6 +31,7 @@ import type {
   ToolCatalog,
 } from "@flow-state-dev/core";
 import { skillManifestKey } from "./collection";
+import { getCollection as resolveCollection } from "./internal/get-collection";
 import { ensureSeeded } from "./seeding";
 import {
   createSkillForkGenerator,
@@ -77,8 +76,6 @@ type RunSkillOutput = z.infer<typeof outputSchema>;
 export interface RunSkillToolOptions {
   /** Resource registry key for the skills collection. */
   collectionKey: string;
-  /** Scope to look the collection up under (`session`/`user`/`org`). */
-  scope: ScopeType;
   /** Tool catalog used by fork-mode subagents to resolve `allowed-tools`. */
   catalog: ToolCatalog;
   /** Default-on initial skills, lazily seeded on first invocation. */
@@ -93,29 +90,17 @@ export interface RunSkillToolOptions {
 // Helpers — retained for re-export and test use
 // ---------------------------------------------------------------------------
 
-function getCollection(
-  ctx: BlockContext,
-  scope: ScopeType,
+function getRequiredCollection(
+  ctx: import("@flow-state-dev/core/types").BlockContext,
   key: string,
 ): ResourceCollectionRef {
-  const registry =
-    scope === "session"
-      ? ctx.session?.resources
-      : scope === "user"
-        ? ctx.user?.resources
-        : ctx.org?.resources;
-  if (!registry) {
+  const collection = resolveCollection(ctx, key);
+  if (!collection) {
     throw new Error(
-      `Skills collection requires the ${scope} scope to be configured`,
+      `Skills collection "${key}" is not registered on ctx.resources`,
     );
   }
-  const ref = (registry as { get: (k: string) => unknown }).get(key);
-  if (!ref) {
-    throw new Error(
-      `Skills collection "${key}" is not registered in the ${scope} scope`,
-    );
-  }
-  return ref as ResourceCollectionRef;
+  return collection;
 }
 
 /** List enabled (non-disabled) skill names + descriptions for the tool surface. */
@@ -180,7 +165,6 @@ export function buildRunSkillDescription(
 export function createRunSkillTool(opts: RunSkillToolOptions) {
   const {
     collectionKey,
-    scope,
     catalog,
     initialSkills,
     mountPath = ".fsdev/skills",
@@ -204,7 +188,7 @@ export function createRunSkillTool(opts: RunSkillToolOptions) {
     execute: async (input: RunSkillInput, ctx) => {
       validateSkillName(input.name);
 
-      const collection = getCollection(ctx, scope, collectionKey);
+      const collection = getRequiredCollection(ctx, collectionKey);
       // Lazy seed on first invocation per process. ensureSeeded is memoized
       // via WeakMap on the collection ref, so this is a no-op after the
       // initial pass.
