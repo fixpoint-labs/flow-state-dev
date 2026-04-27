@@ -187,7 +187,10 @@ function effectiveStorageTuple(
 }
 
 function tupleKey(t: { scope: ResourceScope; ref: string; flowIsolation: boolean; flowKind?: string }): string {
-  return `${t.scope}${t.ref}${t.flowIsolation ? "1" : "0"}${t.flowKind ?? ""}`;
+  // JSON-encoded tuple avoids false collisions where adjacent fields could
+  // otherwise concatenate ambiguously (e.g. ref="x" + flowIsolation=true +
+  // flowKind="y0" colliding with ref="x1y" + flowIsolation=false).
+  return JSON.stringify([t.scope, t.ref, t.flowIsolation, t.flowKind ?? null]);
 }
 
 /**

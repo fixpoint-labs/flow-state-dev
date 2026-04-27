@@ -87,12 +87,12 @@ const skillsCap = createSkillsCapability({
  * body formatter on the skills capability reads to inject the substituted
  * body into the system prompt under the `<skills>` tag.
  *
- * Scope must match the skills capability above (`"user"`) so the tiers
- * read from the same collection that gets seeded.
+ * Reads from the unified `ctx.resources.skills` registry — the skills
+ * capability above declares `scope: "user"`, which routes the collection's
+ * storage to the user record. The intent-selector follows whatever scope
+ * the capability picked (FIX-435).
  */
-export const intentSelectorBlock = createIntentSelector({
-  scope: "user",
-});
+export const intentSelectorBlock = createIntentSelector({});
 
 // Bash capability — tools, guidance, and runtime auto-discovery of mounted
 // collections. No resource declarations here: bash inherits whatever

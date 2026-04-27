@@ -459,5 +459,34 @@ describe("defineFlow", () => {
         observations: observationsResource
       });
     });
+
+    // Regression: the effective-storage-key tuple is JSON-encoded so adjacent
+    // string fields can't ambiguously concatenate. Resources whose `ref` and
+    // `flowKind` would have aliased to the same naive concatenation must
+    // resolve to distinct tuples.
+    it("does not falsely collide resources whose fields would naively concat to the same string", () => {
+      const resA = defineResource({
+        ref: "x",
+        scope: "user",
+        flowIsolation: true,
+        stateSchema: z.object({})
+      });
+      const resB = defineResource({
+        ref: "x1y0",
+        scope: "user",
+        flowIsolation: false,
+        stateSchema: z.object({})
+      });
+
+      // Pre-fix this would have rejected the build because both tuples
+      // concatenated to "userx1y0" under the previous tupleKey impl.
+      expect(() =>
+        defineFlow({
+          kind: "y",
+          actions: {},
+          resources: { a: resA, b: resB }
+        })({ id: "y" })
+      ).not.toThrow();
+    });
   });
 });
