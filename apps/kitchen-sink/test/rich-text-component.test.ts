@@ -10,6 +10,7 @@ import {
   summarizeGenerator,
   expandGenerator,
   fixCodeGenerator,
+  personalizeGenerator,
 } from "../flows/rich-text-component/generators";
 import {
   copyeditInputSchema,
@@ -19,19 +20,33 @@ import {
   summarizeInputSchema,
   expandInputSchema,
   fixCodeInputSchema,
+  personalizeInputSchema,
 } from "../flows/rich-text-component/schemas";
+import { mem } from "../flows/rich-text-component/memory";
+
+const emptyWorkingMemory = { entries: [], currentTurn: 0 };
+const emptyMemorySystem = {
+  lastProcessedIndex: -1,
+  episodicWritesSinceLastConsolidation: 0,
+  evictedPersistentSinceLastConsolidation: 0,
+  lastConsolidationTurn: 0,
+};
+const emptyEpisodicMemory = { episodes: [], totalEncoded: 0 };
+const emptySemanticMemory = { facts: [] };
 
 const testFlow = defineFlow({
   kind: "rich-text-component-test",
   actions: {
-    copyedit:   { inputSchema: copyeditInputSchema,   block: copyeditGenerator   },
-    improve:    { inputSchema: improveInputSchema,    block: improveGenerator    },
-    changeTone: { inputSchema: changeToneInputSchema, block: changeToneGenerator },
-    translate:  { inputSchema: translateInputSchema,  block: translateGenerator  },
-    summarize:  { inputSchema: summarizeInputSchema,  block: summarizeGenerator  },
-    expand:     { inputSchema: expandInputSchema,     block: expandGenerator     },
-    fixCode:    { inputSchema: fixCodeInputSchema,    block: fixCodeGenerator    },
+    copyedit:    { inputSchema: copyeditInputSchema,    block: copyeditGenerator    },
+    improve:     { inputSchema: improveInputSchema,     block: improveGenerator     },
+    changeTone:  { inputSchema: changeToneInputSchema,  block: changeToneGenerator  },
+    translate:   { inputSchema: translateInputSchema,   block: translateGenerator   },
+    summarize:   { inputSchema: summarizeInputSchema,   block: summarizeGenerator   },
+    expand:      { inputSchema: expandInputSchema,      block: expandGenerator      },
+    fixCode:     { inputSchema: fixCodeInputSchema,     block: fixCodeGenerator     },
+    personalize: { inputSchema: personalizeInputSchema, block: personalizeGenerator },
   },
+  resources: { ...(mem.userResources ?? {}) },
 })({ id: "test" });
 
 describe("rich-text-component flow", () => {
@@ -177,6 +192,83 @@ describe("rich-text-component flow", () => {
     });
     expect(result.error).toBeNull();
     expect(result.output).toBeDefined();
+  });
+
+  it("personalize streams text without errors when memories are empty", async () => {
+    const fixture = mockGenerator({
+      name: "personalize-generator",
+      script: [{ text: "Welcome." }],
+    });
+    const result = await testBlock(personalizeGenerator, {
+      input: { text: "Welcome." },
+      flow: testFlow,
+      session: {
+        resources: {
+          workingMemory: emptyWorkingMemory,
+          memorySystem: emptyMemorySystem,
+        },
+      },
+      user: {
+        resources: {
+          episodicMemory: emptyEpisodicMemory,
+          semanticMemory: emptySemanticMemory,
+        },
+      },
+      generators: { "personalize-generator": fixture },
+    });
+    expect(result.error).toBeNull();
+    expect(result.output).toBeDefined();
+  });
+
+  it("personalize runs with seeded user-scoped semantic memories", async () => {
+    const fixture = mockGenerator({
+      name: "personalize-generator",
+      script: [{ text: "Welcome, Alex — hope your work in Berlin is going well." }],
+    });
+    const result = await testBlock(personalizeGenerator, {
+      input: { text: "Welcome." },
+      flow: testFlow,
+      session: {
+        resources: {
+          workingMemory: emptyWorkingMemory,
+          memorySystem: emptyMemorySystem,
+        },
+      },
+      user: {
+        resources: {
+          episodicMemory: emptyEpisodicMemory,
+          semanticMemory: {
+            facts: [
+              {
+                id: "f1",
+                subject: "user",
+                content: "User's name is Alex.",
+                category: "identity",
+                confidence: 0.9,
+                reinforcementCount: 3,
+                createdAtTurn: 1,
+                lastReinforcedAtTurn: 1,
+              },
+              {
+                id: "f2",
+                subject: "user",
+                content: "User lives in Berlin.",
+                category: "location",
+                confidence: 0.8,
+                reinforcementCount: 1,
+                createdAtTurn: 2,
+                lastReinforcedAtTurn: 2,
+              },
+            ],
+          },
+        },
+      },
+      generators: { "personalize-generator": fixture },
+    });
+    expect(result.error).toBeNull();
+    expect(result.output).toBeDefined();
+    const message = result.items.find((i) => i.type === "message");
+    expect(message).toBeDefined();
   });
 
   it("rejects empty text via Zod", () => {

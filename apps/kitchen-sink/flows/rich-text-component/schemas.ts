@@ -39,3 +39,6 @@ export const expandInputSchema = textBase.extend({
 export const fixCodeInputSchema = textBase.extend({
   language: z.string().optional(),
 });
+
+/** Single-shot personalize: rewrite the text using user-scoped memories. */
+export const personalizeInputSchema = textBase;

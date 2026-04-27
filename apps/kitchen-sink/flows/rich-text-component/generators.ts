@@ -21,6 +21,7 @@ import {
   summarizeInputSchema,
   expandInputSchema,
   fixCodeInputSchema,
+  personalizeInputSchema,
 } from "./schemas";
 import {
   COPYEDIT_PROMPT,
@@ -28,11 +29,11 @@ import {
   CHANGE_TONE_PROMPT,
   TRANSLATE_PROMPT,
   EXPAND_PROMPT,
+  PERSONALIZE_PROMPT,
   summarizePrompt,
   fixCodePrompt,
 } from "./prompts";
-
-const MODEL_ID = "preset/small";
+import { mem, MODEL_ID } from "./memory";
 
 /** Fix grammar, spelling, and punctuation. Does not rephrase. */
 export const copyeditGenerator = generator({
@@ -113,6 +114,28 @@ export const fixCodeGenerator = generator({
   agentType: "primary",
   inputSchema: fixCodeInputSchema,
   prompt: (input) => fixCodePrompt(input.language),
+  user: (input) => input.text,
+  outputSchema: z.string(),
+});
+
+/**
+ * Personalize the text using user-scoped memories captured by chat-agent.
+ *
+ * `mem.capability` auto-installs the working/episodic/semantic memory
+ * resources and (via its default `context` preset) injects unified recall
+ * output under a `<memory>` tag in the system context. The prompt instructs
+ * the model to weave those facts in only where they naturally fit.
+ *
+ * Memories are user-scoped with no flow-isolation, so this reads the same
+ * episodic + semantic store that chat-agent writes via `mem.captureFromItems`.
+ */
+export const personalizeGenerator = generator({
+  name: "personalize-generator",
+  model: MODEL_ID,
+  agentType: "primary",
+  uses: [mem.capability],
+  inputSchema: personalizeInputSchema,
+  prompt: PERSONALIZE_PROMPT,
   user: (input) => input.text,
   outputSchema: z.string(),
 });
