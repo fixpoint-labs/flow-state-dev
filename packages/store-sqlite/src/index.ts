@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import type { StoreRegistry } from "@flow-state-dev/server";
 import { InMemoryContentStore } from "./content-store";
-import { initializeSchema } from "./schema";
+import { applyConnectionPragmas, initializeSchemaDDL } from "./schema";
 import { createSQLiteSessionStore } from "./session-store";
 import { createSQLiteRequestStore } from "./request-store";
 import { createSQLiteUserStore } from "./user-store";
@@ -11,6 +11,12 @@ import { createSQLiteActiveRequestRegistry } from "./active-request-registry";
 export type SQLiteStoreOptions = {
   /** File path to the SQLite database, or ":memory:" for in-memory */
   filename: string;
+  /** Skip schema DDL (CREATE TABLE/INDEX + project→org rename migrations) on
+   *  construction. Default `false`. Set to `true` when migrations are run
+   *  out-of-band (e.g. as a deploy step). Per-connection PRAGMAs (busy_timeout,
+   *  synchronous, foreign_keys, etc.) are always applied — they are required
+   *  for safe concurrent access on every fresh better-sqlite3 connection. */
+  skipSchemaInit?: boolean;
 };
 
 export type SQLiteStoreRegistry = StoreRegistry & {
@@ -19,12 +25,18 @@ export type SQLiteStoreRegistry = StoreRegistry & {
 };
 
 /**
- * Create a StoreRegistry backed by SQLite.
- * Schema auto-initializes on first call.
+ * Create a StoreRegistry backed by SQLite. Per-connection PRAGMAs are
+ * always applied. Schema DDL auto-initializes on first call unless
+ * `skipSchemaInit: true`.
  */
 export function createSQLiteStores(options: SQLiteStoreOptions): SQLiteStoreRegistry {
   const db = new Database(options.filename);
-  initializeSchema(db);
+  // PRAGMAs are per-connection; SQLite defaults (busy_timeout = 0, etc.) are
+  // unsafe for concurrent writes. Always apply, even when skipping DDL.
+  applyConnectionPragmas(db);
+  if (options.skipSchemaInit !== true) {
+    initializeSchemaDDL(db);
+  }
 
   return {
     session: createSQLiteSessionStore(db),
@@ -47,4 +59,4 @@ export {
   createSQLiteActiveRequestRegistry
 };
 
-export { initializeSchema } from "./schema";
+export { initializeSchema, initializeSchemaDDL, applyConnectionPragmas } from "./schema";

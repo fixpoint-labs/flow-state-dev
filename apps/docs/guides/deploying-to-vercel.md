@@ -140,7 +140,11 @@ registry.register(myFlow);
 async function createStores(): Promise<StoreRegistry> {
   const dbUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
   if (dbUrl) {
-    return createPostgresStores({ connectionString: dbUrl });
+    return createPostgresStores({
+      connectionString: dbUrl,
+      // Schema is initialized at build time (see step 6); skip it on cold starts.
+      skipSchemaInit: !!process.env.VERCEL,
+    });
   }
   return createInMemoryStores();
 }
@@ -167,6 +171,7 @@ export function getRouter() {
 - **Explicit provider/gateway instances**: Next.js bundles server code, breaking the model resolver's dynamic `require()` path. Pass providers and gateways as static imports instead.
 - **`detectInterruptedOnStartup: false`**: Disables a background Postgres query on startup that can exhaust the pool during serverless cold starts.
 - **`onBackgroundWork` + `after()`**: Keeps the serverless function alive for fire-and-forget action execution. Without this, Vercel kills the function after the response is sent.
+- **`skipSchemaInit: !!process.env.VERCEL`**: By default `createPostgresStores` runs ~30 idempotent `CREATE TABLE/INDEX IF NOT EXISTS` statements plus an advisory-lock acquisition every time it's called — once per cold start on Vercel. Skipping it requires running migrations as a build step instead (see step 6).
 
 ---
 
@@ -191,7 +196,47 @@ OPENAI_API_KEY=sk-...
 
 ---
 
-## 6. Deploy
+## 6. Run schema migration as a build step
+
+`createPostgresStores` initializes the schema (~30 idempotent `CREATE TABLE/INDEX IF NOT EXISTS` statements + an advisory-lock acquisition) every time it's called — once per cold start on Vercel. Move that work into the build instead, then pass `skipSchemaInit: true` at runtime (already done in step 4).
+
+Add a one-shot migration script to your app:
+
+```ts title="scripts/migrate.ts"
+import { createPostgresStores } from "@flow-state-dev/store-postgres";
+
+const dbUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
+if (!dbUrl) {
+  console.log("[migrate] No FSD_DB_URL/DATABASE_URL set — skipping.");
+  process.exit(0);
+}
+
+console.log("[migrate] Initializing Postgres schema…");
+const stores = await createPostgresStores({ connectionString: dbUrl });
+await stores.close();
+console.log("[migrate] Done.");
+```
+
+Wire it into your build via `package.json`. The script needs to run via `tsx` (or another bundler-aware runner) — `@flow-state-dev/store-postgres` uses TypeScript's bundler module resolution and emits extensionless relative imports, which raw Node ESM can't resolve:
+
+```json
+{
+  "scripts": {
+    "vercel-build": "next build && tsx scripts/migrate.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
+}
+```
+
+The script exits 0 when no DB URL is set, so preview deployments without a database wired up don't fail the build. On a real DB, migration failures fail the build — better to know at deploy time than at first request.
+
+**Make `FSD_DB_URL` available to builds:** in Vercel project settings, env vars are visibility-scoped per environment (production / preview / development) and per process (build / runtime). The migration script needs `FSD_DB_URL` available to **build**, not just runtime. Check the "Build" checkbox when adding the variable.
+
+---
+
+## 7. Deploy
 
 **From the CLI:**
 
@@ -202,12 +247,12 @@ vercel --prod
 **From Git:** Push to your connected repository. Vercel builds and deploys automatically.
 
 **Monorepo?** Set the root directory in your Vercel project settings to your app's subdirectory (e.g., `apps/my-app` or `examples/hello-chat`). Also set:
-- **Build Command:** `cd ../.. && pnpm install && pnpm --filter @flow-state-dev/example-hello-chat build` (adjust the filter to your package name)
+- **Build Command:** `cd ../.. && pnpm install && pnpm --filter @flow-state-dev/example-hello-chat build && cd apps/my-app && tsx scripts/migrate.ts` (adjust the filter to your package name)
 - **Output Directory:** `.next`
 
 ---
 
-## 7. Verify
+## 8. Verify
 
 ```bash
 # 1. Check the API responds

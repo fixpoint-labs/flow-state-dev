@@ -56,6 +56,12 @@ registry.register(chatAgentFlow);
  * race with a short idle timeout + wake-up-friendly connection timeout. When
  * the database is Neon, we also swap in their WebSocket Client to trim the
  * 1–3s wake-up latency that the default pg driver pays on the first request.
+ *
+ * `skipSchemaInit` on Vercel: schema init runs out-of-band via `scripts/migrate.mjs`
+ * during `vercel-build`, so the runtime pool can skip ~30 idempotent DDL
+ * roundtrips and the advisory-lock dance on every cold start. Off-Vercel
+ * (local dev, self-hosted, Docker), keep auto-init so devs and other
+ * deployments don't have to remember a separate migrate step.
  */
 async function createStores(): Promise<StoreRegistry> {
   const dbUrl = process.env.FSD_DB_URL ?? process.env.DATABASE_URL;
@@ -64,6 +70,7 @@ async function createStores(): Promise<StoreRegistry> {
     const isNeon = dbUrl.includes(".neon.tech");
     return createPostgresStores({
       connectionString: dbUrl,
+      skipSchemaInit: onVercel,
       poolOptions: onVercel
         ? { ...vercelPgPoolOptions, ...(isNeon ? { Client: NeonClientForPg } : {}) }
         : undefined,
