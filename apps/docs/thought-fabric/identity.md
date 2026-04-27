@@ -4,11 +4,13 @@ sidebar_position: 4
 
 # Identity
 
-The identity domain (`@thought-fabric/core/identity`) defines how an agent sees the world. A **perspective** encodes a viewpoint — what to pay attention to, how to reason, what expertise to draw on. Two agents looking at the same code review will notice different things if one has a security perspective and the other has a performance perspective.
+The identity domain (`@thought-fabric/core/identity`) defines how an agent sees the world and what it stands for.
 
-Perspectives aren't static prompt templates. They accumulate **observations** (things noticed during analysis) and **positions** (conclusions reached from evidence). Over the course of a session, a perspective develops an evolving understanding that feeds back into subsequent analyses.
+Two primitives:
 
-The domain currently ships `perspective`. A second primitive, `constitution` (values and behavioral constraints), is planned.
+- **Perspective** encodes a viewpoint — what to pay attention to, how to reason, what expertise to draw on. Two agents looking at the same code review will notice different things if one has a security perspective and the other has a performance perspective. Perspectives accumulate **observations** and **positions** over the course of a session, developing an evolving understanding that feeds back into subsequent analyses.
+
+- **Constitution** encodes values — ranked principles with conflict resolution. When principles conflict ("be helpful" vs. "be cautious"), the constitution provides a structured resolution strategy. The system can reason about *why* its principles are ordered and articulate tradeoffs explicitly.
 
 ## Quick Start
 
@@ -385,6 +387,300 @@ Word order encodes the category, following the same pattern as memory:
 |---------|----------|---------|
 | `perspective[Verb]` | Block | `perspectiveApply`, `perspectiveAnalyze`, `perspectiveObserve` |
 | `[verb]Perspective[Noun]` | Helper | `addPerspectiveObservation`, `formatPerspectivePositions` |
+| `constitution[Verb]` | Block | `constitutionReview`, `constitutionEnforce`, `constitutionAuditor` |
+| `[verb]Constitution[Noun]` | Helper | `rankConstitutionPrinciples`, `formatConstitution` |
+
+---
+
+# Constitution
+
+A constitution defines what an AI system stands for. It's a ranked set of principles with a conflict resolution strategy. When principles compete ("be helpful" vs. "be cautious"), the constitution specifies how to resolve the tension.
+
+Constitutions don't execute on their own. They're configuration objects. You pass them to block factories that evaluate content against the principles and produce compliance verdicts.
+
+## Quick Start
+
+```ts
+import {
+  constitution,
+  constitutionAuditor,
+} from '@thought-fabric/core/identity'
+
+const values = constitution({
+  name: 'advisor-values',
+  principles: [
+    { id: 'accuracy', statement: 'Provide accurate information', priority: 1 },
+    { id: 'safety', statement: 'Avoid recommending harmful actions', priority: 2 },
+    { id: 'helpfulness', statement: 'Be genuinely helpful', priority: 3 },
+  ],
+  conflictResolution: 'priority',
+})
+
+const auditor = constitutionAuditor({
+  constitution: values,
+  model: 'preset/fast',
+})
+
+const result = await auditor.run({
+  content: 'Here is my response to the user...',
+}, ctx)
+
+// result.compliant → true/false
+// result.score → 0.85
+// result.violations → [{ principleId: 'safety', severity: 'moderate', ... }]
+```
+
+The `constitutionAuditor` is a sequencer: it runs an LLM review step, then a deterministic enforce step. The review evaluates each principle individually. The enforce step computes an aggregate compliance score and renders a pass/fail verdict.
+
+## Defining a Constitution
+
+The `constitution()` factory validates your config and returns a frozen definition:
+
+```ts
+const values = constitution({
+  name: 'advisor-values',
+  principles: [
+    {
+      id: 'accuracy',
+      statement: 'Provide accurate, evidence-based information',
+      priority: 1,
+      rationale: 'Trust depends on factual correctness',
+    },
+    {
+      id: 'safety',
+      statement: 'Avoid recommending harmful actions',
+      priority: 2,
+      rationale: 'Harm prevention outweighs most helpfulness gains',
+    },
+    {
+      id: 'helpfulness',
+      statement: 'Be genuinely helpful to the user',
+      priority: 3,
+    },
+  ],
+  conflictResolution: 'priority',
+  version: '1.0',
+})
+```
+
+**Config fields:**
+
+| Field | Required | Purpose |
+|-------|----------|---------|
+| `name` | Yes | Identifies this constitution in logs and formatted output |
+| `principles` | Yes | At least one principle. Each has `id`, `statement`, `priority`. |
+| `principles[].id` | Yes | Unique identifier referenced in overrides and review results |
+| `principles[].statement` | Yes | Human-readable principle the LLM evaluates against |
+| `principles[].priority` | Yes | Integer rank. Lower number = higher priority. |
+| `principles[].rationale` | No | Why this principle matters. Helps the LLM reason about tradeoffs. |
+| `principles[].weight` | No | Numeric weight for `weighted` mode. Range [0, 1]. |
+| `conflictResolution` | No | `'priority'` (default), `'weighted'`, or `'contextual'` |
+| `contextualOverrides` | No | Override rules for `contextual` mode |
+| `version` | No | Version string for tracking constitution evolution |
+
+The factory validates:
+- All principle IDs are unique
+- `weighted` mode requires every principle to have a `weight`
+- `contextual` mode requires at least one override, and override principle IDs must reference existing principles
+
+The returned object is deeply frozen. Pass it to block factories.
+
+## Conflict Resolution Modes
+
+When principles compete, the conflict resolution mode determines which one wins.
+
+### Priority (default)
+
+Strict ordering by `priority` number. Priority 1 beats priority 2, always. The compliance score uses inverse-priority weighting: higher-priority principles have more influence on the aggregate score.
+
+```ts
+const values = constitution({
+  name: 'strict-values',
+  principles: [
+    { id: 'safety', statement: '...', priority: 1 },
+    { id: 'helpfulness', statement: '...', priority: 2 },
+  ],
+  conflictResolution: 'priority',
+})
+```
+
+### Weighted
+
+Principles carry numeric weights instead of strict ordering. The compliance score is a weighted average of per-principle scores. Good for cases where principles overlap and no single one dominates.
+
+```ts
+const values = constitution({
+  name: 'balanced-values',
+  principles: [
+    { id: 'accuracy', statement: '...', priority: 1, weight: 0.4 },
+    { id: 'clarity', statement: '...', priority: 2, weight: 0.35 },
+    { id: 'brevity', statement: '...', priority: 3, weight: 0.25 },
+  ],
+  conflictResolution: 'weighted',
+})
+```
+
+### Contextual
+
+Rules-based overrides that re-rank principles depending on the situation. Each override specifies a `when` condition, a principle to `promote`, and a principle to `demote`. The override activates when the review context has sufficient keyword overlap with the `when` description (40% threshold).
+
+```ts
+const values = constitution({
+  name: 'adaptive-values',
+  principles: [
+    { id: 'accuracy', statement: '...', priority: 1 },
+    { id: 'speed', statement: '...', priority: 2 },
+    { id: 'safety', statement: '...', priority: 3 },
+  ],
+  conflictResolution: 'contextual',
+  contextualOverrides: [
+    {
+      when: 'medical or health-related query',
+      promote: 'safety',
+      demote: 'speed',
+      reasoning: 'Health contexts demand caution over response time',
+    },
+  ],
+})
+```
+
+## The Auditor Pipeline
+
+`constitutionAuditor` is the primary entry point. It bundles two steps:
+
+```
+constitutionReview → constitutionEnforce
+   (generator)         (handler)
+```
+
+The generator calls an LLM to evaluate content against each principle. The handler is deterministic: it computes the aggregate score and renders compliance.
+
+```ts
+import { constitutionAuditor } from '@thought-fabric/core/identity'
+
+const auditor = constitutionAuditor({
+  constitution: values,
+  model: 'preset/fast',
+  complianceThreshold: 0.7,  // default
+})
+```
+
+**Config options:**
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `name` | `'constitution'` | Block name prefix |
+| `constitution` | — | The constitution to audit against (required) |
+| `model` | `'preset/fast'` | Model for the LLM review step |
+| `complianceThreshold` | `0.7` | Score below which a principle is considered violated |
+
+### Review output
+
+The full `ConstitutionReviewOutput`:
+
+```ts
+{
+  compliant: boolean,       // Overall pass/fail
+  score: number,            // 0-1 aggregate compliance
+  principleResults: Array<{
+    principleId: string,
+    score: number,          // 0-1 per-principle
+    satisfied: boolean,
+    evidence: string,
+    reasoning: string,
+  }>,
+  violations: Array<{
+    principleId: string,
+    severity: 'minor' | 'moderate' | 'severe',
+    description: string,
+    evidence: string,
+  }>,
+  tradeoffs: Array<{
+    promoted: string,       // Principle that was favored
+    demoted: string,        // Principle that was sacrificed
+    reasoning: string,
+  }>,
+  reasoning: string,        // Overall assessment
+}
+```
+
+A review is non-compliant when the aggregate score falls below the threshold OR any violation has `severe` severity.
+
+### Using it in a flow
+
+Run the auditor as a sidechain after your generator:
+
+```ts
+import { sequencer, generator } from '@flow-state-dev/core'
+import { constitutionAuditor } from '@thought-fabric/core/identity'
+
+const chat = generator({ name: 'chat', model: 'preset/default', prompt: '...' })
+const auditor = constitutionAuditor({ constitution: values, model: 'preset/fast' })
+
+const pipeline = sequencer({ name: 'chat-with-audit', inputSchema: chatInput })
+  .then(chat)
+  .tap(auditor)
+```
+
+## Individual Blocks
+
+Every block from the auditor is exported individually for custom pipelines.
+
+### constitutionReview
+
+Generator. LLM-evaluates content against the constitution's principles. Scores each principle, identifies violations and tradeoffs, and provides overall reasoning.
+
+```ts
+import { constitutionReview } from '@thought-fabric/core/identity'
+
+const review = constitutionReview({
+  constitution: values,
+  model: 'preset/fast',
+})
+```
+
+Input: `{ content: string, context?: string }`
+Output: `{ principleResults, violations, tradeoffs, reasoning }`
+
+The optional `context` field is used for contextual conflict resolution. It's also included in the LLM prompt as situational context.
+
+### constitutionEnforce
+
+Handler. Deterministic. Computes the final compliance verdict from the review output. No LLM call.
+
+```ts
+import { constitutionEnforce } from '@thought-fabric/core/identity'
+
+const enforce = constitutionEnforce({
+  constitution: values,
+  complianceThreshold: 0.8,
+})
+```
+
+Input: review step output.
+Output: full `ConstitutionReviewOutput` with compliance verdict.
+
+## Helpers
+
+Pure functions for working with constitutions outside of blocks:
+
+```ts
+import {
+  rankConstitutionPrinciples,
+  computeConstitutionCompliance,
+  formatConstitution,
+  summarizeConstitutionReview,
+} from '@thought-fabric/core/identity'
+```
+
+| Function | Purpose |
+|----------|---------|
+| `rankConstitutionPrinciples(constitution, context?)` | Sort principles by effective priority, applying contextual overrides |
+| `computeConstitutionCompliance(results, constitution)` | Aggregate compliance score from per-principle results |
+| `formatConstitution(constitution)` | Human-readable string for LLM prompt injection |
+| `summarizeConstitutionReview(review)` | One-line summary with violation counts and severity |
+
+`DEFAULT_CONSTITUTION_CONFIG` exposes the default `complianceThreshold` (0.7).
 
 ## Further Reading
 

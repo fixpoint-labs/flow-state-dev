@@ -195,11 +195,11 @@ Bias detection, sycophancy scoring, and counter-argument generation.
 
 ## identity
 
-Perspective — structured viewpoints that shape how agents interpret information, with resource-backed state that accumulates observations and positions over time.
+Perspective and constitution — structured viewpoints and ranked value systems that shape how agents interpret and evaluate information.
 
 **Import:** `@thought-fabric/core/identity`
 
-### Factory + System
+### Perspective Factory + System
 
 | Function | Purpose |
 |----------|---------|
@@ -292,11 +292,48 @@ Presets: `static` (perspective framing), `accumulated` (observations + positions
 | `perspectiveChallengeInputSchema` | Challenge block input |
 | `perspectiveSnapshotOutputSchema` | Snapshot block output |
 
-### Placeholder
+### Constitution Factory
 
-| Function | Status |
-|----------|--------|
-| `constitution(config)` | Not yet implemented — planned |
+| Function | Purpose |
+|----------|---------|
+| `constitution(config)` | Create a frozen constitution definition from config |
+
+### Constitution Blocks
+
+| Function | Kind | Purpose |
+|----------|------|---------|
+| `constitutionAuditor(config)` | sequencer | Bundled pipeline: review → enforce |
+| `constitutionReview(config)` | generator | LLM-evaluates content against principles |
+| `constitutionEnforce(config)` | handler | Computes aggregate compliance and pass/fail verdict |
+
+### Constitution Helpers
+
+| Function | Purpose |
+|----------|---------|
+| `rankConstitutionPrinciples(constitution, context?)` | Sort principles by effective priority, applying contextual overrides |
+| `computeConstitutionCompliance(results, constitution)` | Aggregate compliance score from per-principle results |
+| `formatConstitution(constitution)` | Human-readable string for LLM prompt injection |
+| `summarizeConstitutionReview(review)` | One-line summary with violation counts and severity |
+
+### Constitution Schemas
+
+| Schema | Purpose |
+|--------|---------|
+| `constitutionConfigSchema` | Full constitution configuration |
+| `constitutionPrincipleSchema` | Single principle (id, statement, priority, rationale, weight) |
+| `constitutionContextualOverrideSchema` | Override rule (when, promote, demote, reasoning) |
+| `constitutionConflictResolutionSchema` | Enum: priority, weighted, contextual |
+| `constitutionReviewInputSchema` | Input: `{ content: string, context?: string }` |
+| `constitutionReviewOutputSchema` | Full review output with compliance verdict |
+| `constitutionPrincipleResultSchema` | Per-principle evaluation result |
+| `constitutionViolationSchema` | Violation entry (principleId, severity, description, evidence) |
+| `constitutionTradeoffSchema` | Tradeoff between two principles |
+
+### Constitution Config
+
+| Constant | Contents |
+|----------|----------|
+| `DEFAULT_CONSTITUTION_CONFIG` | `complianceThreshold` (0.7) |
 
 ---
 

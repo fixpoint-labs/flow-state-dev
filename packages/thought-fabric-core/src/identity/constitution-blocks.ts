@@ -153,7 +153,6 @@ export function constitutionReview(config: ConstitutionReviewBlockConfig) {
       }
       return parts.join('\n')
     },
-    emit: { messages: false, reasoning: false, toolCalls: false },
   })
 }
 
