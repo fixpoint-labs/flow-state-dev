@@ -41,9 +41,7 @@ function makeFlow(poolHandle: { queue: unknown; queueKey: string }) {
         }),
       },
     },
-    session: {
-      resources: { [poolHandle.queueKey]: poolHandle.queue as any },
-    },
+    resources: { [poolHandle.queueKey]: poolHandle.queue as any },
   })();
 }
 

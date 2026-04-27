@@ -526,6 +526,7 @@ describe("createFlowApiRouter", () => {
     const registry = createFlowRegistry();
     const stores = createInMemoryStores();
     const profile = defineResource({
+      scope: "user",
       stateSchema: z.object({ label: z.string().default("") }),
       writable: true,
       client: {
@@ -543,17 +544,15 @@ describe("createFlowApiRouter", () => {
             inputSchema: z.object({ value: z.string() }),
             outputSchema: z.object({ ok: z.boolean() }),
             execute: async (input, ctx) => {
-              await ctx.user.resources.profile.patchState({ label: input.value });
-              await ctx.user.resources.profile.writeContent(`Profile ${input.value}`);
+              await ctx.resources.profile.patchState({ label: input.value });
+              await ctx.resources.profile.writeContent(`Profile ${input.value}`);
               return { ok: true };
             }
           })
         }
       },
-      user: {
-        resources: {
-          profile
-        }
+      resources: {
+        profile
       }
     })({ id: "isolated-resource-route" });
 
@@ -723,6 +722,7 @@ describe("createFlowApiRouter", () => {
     const registry = createFlowRegistry();
     const stores = createInMemoryStores();
     const counterResource = defineResource({
+      scope: "session",
       stateSchema: z.object({ count: z.number().default(0) }),
       client: {
         content: { read: true },
@@ -746,10 +746,8 @@ describe("createFlowApiRouter", () => {
           })
         }
       },
-      session: {
-        resources: {
-          counter: counterResource
-        }
+      resources: {
+        counter: counterResource
       }
     })({ id: "res-flow" });
 

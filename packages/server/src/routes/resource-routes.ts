@@ -45,25 +45,22 @@ function isCollectionConfig(value: unknown): value is ResourceCollectionConfig {
 }
 
 function findResourceConfig(
-  flow: { session?: { resources?: unknown }; user?: { resources?: unknown }; org?: { resources?: unknown } },
+  flow: { resources?: unknown },
   ref: string
 ): { config: ResourceConfig | ResourceCollectionConfig; scope: "session" | "user" | "org" } | undefined {
-  const scopes = [
-    { key: "session" as const, resources: (flow.session as Record<string, unknown> | undefined)?.resources },
-    { key: "user" as const, resources: (flow.user as Record<string, unknown> | undefined)?.resources },
-    { key: "org" as const, resources: (flow.org as Record<string, unknown> | undefined)?.resources },
-  ];
-
-  for (const { key, resources } of scopes) {
-    if (resources === undefined || typeof resources !== "object" || resources === null) continue;
-    const config = (resources as Record<string, unknown>)[ref];
-    if (config === undefined) continue;
-    if (isResourceConfig(config) || isCollectionConfig(config)) {
-      return { config, scope: key };
-    }
+  // FIX-435: resources live in the flat `flow.resources` map; scope is
+  // intrinsic to each definition. Look up by accessor key, then read the
+  // resource's `scope` to know which storage layer holds its data.
+  const resources = flow.resources;
+  if (resources === undefined || typeof resources !== "object" || resources === null) {
+    return undefined;
   }
-
-  return undefined;
+  const config = (resources as Record<string, unknown>)[ref];
+  if (config === undefined) return undefined;
+  if (!isResourceConfig(config) && !isCollectionConfig(config)) return undefined;
+  const scope = (config as { scope?: string }).scope;
+  if (scope !== "session" && scope !== "user" && scope !== "org") return undefined;
+  return { config, scope };
 }
 
 async function getPersistedData(

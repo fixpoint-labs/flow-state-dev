@@ -109,24 +109,21 @@ function generateId(prefix: string): string {
   return `${prefix}_${nowMs()}_${Math.random().toString(16).slice(2)}`;
 }
 
-function createResourceConfig(
-  resources: Record<string, unknown> | undefined
-): Record<string, { stateSchema: z.ZodTypeAny; writable: true }> | undefined {
+function buildFlatResourceMap(
+  resources: Record<string, unknown> | undefined,
+  scope: "session" | "user" | "org"
+): Record<string, { stateSchema: z.ZodTypeAny; writable: true; scope: "session" | "user" | "org" }> {
   if (resources === undefined) {
-    return undefined;
-  }
-
-  const names = Object.keys(resources);
-  if (names.length === 0) {
-    return undefined;
+    return {};
   }
 
   return Object.fromEntries(
-    names.map((name) => [
+    Object.keys(resources).map((name) => [
       name,
       {
         stateSchema: z.record(z.string(), z.unknown()),
-        writable: true
+        writable: true,
+        scope
       }
     ])
   );
@@ -143,24 +140,27 @@ function createTestFlow(options: {
     return options.flow;
   }
 
+  // FIX-435: every resource is intrinsically scoped; the test harness now
+  // emits a single flat `flow.resources` map covering all three buckets.
+  const resources: Record<string, unknown> = {
+    ...buildFlatResourceMap(options.sessionResources, "session"),
+    ...buildFlatResourceMap(options.userResources, "user"),
+    ...buildFlatResourceMap(options.orgResources, "org")
+  };
+
   return {
     id: "testing-flow",
     kind: "testing-flow",
     requireUser: true,
+    requiresOrg: false,
     actions: {},
-    session: {
-      resources: createResourceConfig(options.sessionResources)
-    },
-    user: {
-      resources: createResourceConfig(options.userResources)
-    },
-    org:
-      options.orgResources === undefined
-        ? undefined
-        : {
-            resources: createResourceConfig(options.orgResources)
-          }
-  } as FlowInstance;
+    isolateUserState: false,
+    isolateOrgState: false,
+    resources: Object.keys(resources).length > 0 ? resources : undefined,
+    session: {},
+    user: {},
+    org: options.orgResources === undefined ? undefined : {}
+  } as unknown as FlowInstance;
 }
 
 async function seedStores(options: {

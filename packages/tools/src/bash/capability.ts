@@ -2,18 +2,17 @@
  * Bash capability factory — bundles bash tool blocks, context guidance,
  * and an auto-discovered view of installed resource collections.
  *
- * Collections to mount are discovered at runtime from the block's resource
- * context (`ctx.session.resources`, `ctx.user.resources`, `ctx.org.resources`).
- * Any entry that is a `ResourceCollectionRef` is mounted at its pattern
- * prefix. Consumers that want to narrow (or exclude) can do so via the
- * `collections` / `exclude` options.
+ * Collections to mount are discovered at runtime from the unified
+ * `ctx.resources` registry. Any entry that is a `ResourceCollectionRef`
+ * is mounted at its pattern prefix. Consumers that want to narrow (or
+ * exclude) can do so via the `collections` / `exclude` options.
  *
- * No `sessionResources` option: the bash capability does not install
- * resources itself. Collections are installed by their owning capabilities
- * (e.g. an artifacts capability declares the `artifacts` collection, a
- * skills capability declares `skills`). Attaching the bash capability to a
+ * No `resources` option: the bash capability does not install resources
+ * itself. Collections are installed by their owning capabilities (e.g. an
+ * artifacts capability declares the `artifacts` collection, a skills
+ * capability declares `skills`). Attaching the bash capability to a
  * generator that also has those capabilities installed is enough — bash
- * inherits the collections from the shared resource context.
+ * inherits the collections from the shared resource registry.
  *
  * @example
  * ```ts
@@ -161,10 +160,11 @@ interface MountInfo {
 function collectMounts(ctx: any): MountInfo[] {
   const seen = new Set<string>();
   const out: MountInfo[] = [];
-  for (const scope of ["session", "user", "org"] as const) {
-    const bag = ctx?.[scope]?.resources;
-    if (!bag || typeof bag !== "object") continue;
+  const bag = ctx?.resources;
+  if (bag && typeof bag === "object") {
     for (const [key, value] of Object.entries(bag)) {
+      // Skip helper functions like `get` / `list` exposed by the registry.
+      if (typeof value === "function") continue;
       if (seen.has(key)) continue;
       if (!isCollectionLike(value)) continue;
       const prefix = patternPrefix((value as { pattern: string }).pattern);

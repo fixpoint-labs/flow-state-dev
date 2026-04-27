@@ -33,9 +33,7 @@ export function defineCapability<
   const capability: any = {
     __brand: "Capability" as const,
     name: config.name,
-    sessionResources: config.sessionResources,
-    userResources: config.userResources,
-    orgResources: config.orgResources,
+    resources: config.resources,
     sessionStateSchema: config.sessionStateSchema,
     requestStateSchema: config.requestStateSchema,
     userStateSchema: config.userStateSchema,

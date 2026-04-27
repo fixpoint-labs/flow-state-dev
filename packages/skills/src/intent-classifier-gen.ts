@@ -15,7 +15,6 @@ import { z } from "zod";
 import { generator, handler, sequencer } from "@flow-state-dev/core";
 import type {
   ResourceCollectionRef,
-  ScopeType,
 } from "@flow-state-dev/core/types";
 import type { SkillState } from "@flow-state-dev/core";
 import { getCollection } from "./internal/get-collection";
@@ -49,7 +48,6 @@ export type IntentClassifierOutput = z.infer<typeof intentClassifierOutputSchema
 
 export interface IntentClassifierOptions {
   collectionKey: string;
-  scope: ScopeType;
   /** Model to drive the classifier with. Default `"preset/fast"`. */
   classifierModel?: string;
   /** Confidence threshold for accepting a match. */
@@ -98,7 +96,7 @@ export function createIntentClassifierSequencer(opts: IntentClassifierOptions) {
     outputSchema: intentClassifierOutputSchema,
     agentType: "trace",
     prompt: async (_input, ctx) => {
-      const collection = getCollection(ctx, opts.scope, opts.collectionKey);
+      const collection = getCollection(ctx, opts.collectionKey);
       const skills = listSkillsForPrompt(collection, cap);
       if (skills.length === 0) {
         return [
@@ -128,7 +126,7 @@ export function createIntentClassifierSequencer(opts: IntentClassifierOptions) {
     outputSchema: z.object({ accepted: z.boolean() }),
     sequencerStateSchema: intentSequencerStateSchema,
     execute: async (input, ctx) => {
-      const collection = getCollection(ctx, opts.scope, opts.collectionKey);
+      const collection = getCollection(ctx, opts.collectionKey);
       const validNames = new Set<string>();
       if (collection) {
         for (const ref of collection.list()) {

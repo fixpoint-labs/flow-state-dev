@@ -6,12 +6,22 @@ import { extractDeclaredResources, mergeDeclaredResources } from "../src/blocks/
 import { createMockContext } from "./helpers";
 
 const observationsResource = defineResource({
+  scope: "session",
   stateSchema: z.object({
     entries: z.array(z.object({ text: z.string(), score: z.number() }))
   })
 });
 
 const artifactsResource = defineResource({
+  scope: "user",
+  stateSchema: z.object({
+    order: z.array(z.string()),
+    byId: z.record(z.object({ title: z.string() }))
+  })
+});
+
+const orgArtifactsResource = defineResource({
+  scope: "org",
   stateSchema: z.object({
     order: z.array(z.string()),
     byId: z.record(z.object({ title: z.string() }))
@@ -23,75 +33,71 @@ describe("extractDeclaredResources", () => {
     expect(extractDeclaredResources({})).toBeUndefined();
   });
 
-  it("extracts sessionResources", () => {
+  it("extracts session-scoped resources from flat resources map", () => {
     const result = extractDeclaredResources({
-      sessionResources: { observations: observationsResource }
+      resources: { observations: observationsResource }
     });
-    expect(result).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(result).toEqual({ observations: observationsResource });
   });
 
-  it("extracts userResources", () => {
+  it("extracts user-scoped resources from flat resources map", () => {
     const result = extractDeclaredResources({
-      userResources: { artifacts: artifactsResource }
+      resources: { artifacts: artifactsResource }
     });
-    expect(result).toEqual({
-      user: { artifacts: artifactsResource }
-    });
+    expect(result).toEqual({ artifacts: artifactsResource });
   });
 
-  it("extracts orgResources", () => {
+  it("extracts org-scoped resources from flat resources map", () => {
     const result = extractDeclaredResources({
-      orgResources: { artifacts: artifactsResource }
+      resources: { orgArtifacts: orgArtifactsResource }
     });
-    expect(result).toEqual({
-      org: { artifacts: artifactsResource }
-    });
+    expect(result).toEqual({ orgArtifacts: orgArtifactsResource });
   });
 
-  it("extracts multiple scopes", () => {
+  it("extracts a mix of scopes from a single flat map", () => {
     const result = extractDeclaredResources({
-      sessionResources: { observations: observationsResource },
-      userResources: { artifacts: artifactsResource },
-      orgResources: { artifacts: artifactsResource }
+      resources: {
+        observations: observationsResource,
+        artifacts: artifactsResource,
+        orgArtifacts: orgArtifactsResource
+      }
     });
     expect(result).toEqual({
-      session: { observations: observationsResource },
-      user: { artifacts: artifactsResource },
-      org: { artifacts: artifactsResource }
+      observations: observationsResource,
+      artifacts: artifactsResource,
+      orgArtifacts: orgArtifactsResource
     });
   });
 });
 
 describe("handler declaredResources", () => {
-  it("surfaces declaredResources from sessionResources", () => {
+  it("surfaces declaredResources from flat resources map", () => {
     const block = handler({
       name: "with-resources",
       inputSchema: z.string(),
       outputSchema: z.string(),
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (input) => input
     });
 
-    expect(block.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(block.declaredResources).toEqual({ observations: observationsResource });
   });
 
-  it("surfaces declaredResources from multiple scopes", () => {
+  it("surfaces declaredResources from a multi-scope flat map", () => {
     const block = handler({
       name: "multi-scope",
       inputSchema: z.string(),
       outputSchema: z.string(),
-      sessionResources: { observations: observationsResource },
-      userResources: { artifacts: artifactsResource },
+      resources: {
+        observations: observationsResource,
+        artifacts: artifactsResource
+      },
       execute: (input) => input
     });
 
     expect(block.declaredResources).toEqual({
-      session: { observations: observationsResource },
-      user: { artifacts: artifactsResource }
+      observations: observationsResource,
+      artifacts: artifactsResource
     });
   });
 
@@ -111,7 +117,7 @@ describe("handler declaredResources", () => {
       name: "exec-with-resources",
       inputSchema: z.string(),
       outputSchema: z.string(),
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (input) => `processed:${input}`
     });
 
@@ -121,19 +127,17 @@ describe("handler declaredResources", () => {
 });
 
 describe("generator declaredResources", () => {
-  it("surfaces declaredResources from sessionResources", () => {
+  it("surfaces declaredResources from flat resources map", () => {
     const block = generator({
       name: "gen-with-resources",
       inputSchema: z.string(),
       outputSchema: z.string(),
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       model: "demo-model",
       prompt: "test"
     });
 
-    expect(block.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(block.declaredResources).toEqual({ observations: observationsResource });
   });
 
   it("has undefined declaredResources when none are declared", () => {
@@ -150,7 +154,7 @@ describe("generator declaredResources", () => {
 });
 
 describe("router declaredResources", () => {
-  it("surfaces declaredResources from sessionResources", () => {
+  it("surfaces declaredResources from flat resources map", () => {
     const routeA = handler({
       name: "route-a",
       execute: () => "a"
@@ -158,14 +162,12 @@ describe("router declaredResources", () => {
 
     const block = router({
       name: "router-with-resources",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       routes: [routeA],
       execute: () => routeA
     });
 
-    expect(block.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(block.declaredResources).toEqual({ observations: observationsResource });
   });
 
   it("has undefined declaredResources when none are declared", () => {
@@ -192,52 +194,56 @@ describe("mergeDeclaredResources", () => {
   });
 
   it("returns target when source is undefined", () => {
-    const target = { session: { observations: observationsResource } };
+    const target = { observations: observationsResource };
     expect(mergeDeclaredResources(target, undefined)).toBe(target);
   });
 
   it("returns copy of source when target is undefined", () => {
-    const source = { session: { observations: observationsResource } };
+    const source = { observations: observationsResource };
     const result = mergeDeclaredResources(undefined, source);
     expect(result).toEqual(source);
     expect(result).not.toBe(source);
   });
 
-  it("merges disjoint scopes", () => {
-    const target = { session: { observations: observationsResource } };
-    const source = { user: { artifacts: artifactsResource } };
+  it("merges disjoint accessor keys across scopes", () => {
+    const target = { observations: observationsResource };
+    const source = { artifacts: artifactsResource };
     const result = mergeDeclaredResources(target, source);
     expect(result).toEqual({
-      session: { observations: observationsResource },
-      user: { artifacts: artifactsResource }
+      observations: observationsResource,
+      artifacts: artifactsResource
     });
   });
 
-  it("merges disjoint resources in the same scope", () => {
-    const target = { session: { observations: observationsResource } };
-    const source = { session: { artifacts: artifactsResource } };
-    const result = mergeDeclaredResources(target, source);
-    expect(result).toEqual({
-      session: { observations: observationsResource, artifacts: artifactsResource }
-    });
-  });
-
-  it("allows same resource reference in same scope (no conflict)", () => {
-    const target = { session: { observations: observationsResource } };
-    const source = { session: { observations: observationsResource } };
-    expect(() => mergeDeclaredResources(target, source)).not.toThrow();
-    const result = mergeDeclaredResources(target, source);
-    expect(result).toEqual({
-      session: { observations: observationsResource }
-    });
-  });
-
-  it("throws on different resource references with same name", () => {
-    const otherObservations = defineResource({
+  it("merges disjoint accessor keys within the same scope", () => {
+    const notesResource = defineResource({
+      scope: "session",
       stateSchema: z.object({ items: z.array(z.string()) })
     });
-    const target = { session: { observations: observationsResource } };
-    const source = { session: { observations: otherObservations } };
+    const target = { observations: observationsResource };
+    const source = { notes: notesResource };
+    const result = mergeDeclaredResources(target, source);
+    expect(result).toEqual({
+      observations: observationsResource,
+      notes: notesResource
+    });
+  });
+
+  it("allows same resource reference under the same accessor (no conflict)", () => {
+    const target = { observations: observationsResource };
+    const source = { observations: observationsResource };
+    expect(() => mergeDeclaredResources(target, source)).not.toThrow();
+    const result = mergeDeclaredResources(target, source);
+    expect(result).toEqual({ observations: observationsResource });
+  });
+
+  it("throws on different resource references with same accessor", () => {
+    const otherObservations = defineResource({
+      scope: "session",
+      stateSchema: z.object({ items: z.array(z.string()) })
+    });
+    const target = { observations: observationsResource };
+    const source = { observations: otherObservations };
     expect(() => mergeDeclaredResources(target, source)).toThrow("Resource conflict");
   });
 });
@@ -245,6 +251,7 @@ describe("mergeDeclaredResources", () => {
 // --- Sequencer resource collection ---
 
 const notesResource = defineResource({
+  scope: "session",
   stateSchema: z.object({ items: z.array(z.string()) })
 });
 
@@ -258,79 +265,77 @@ describe("sequencer resource collection", () => {
   it("collects resources from a single .then() block", () => {
     const block = handler({
       name: "step",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const seq = sequencer({ name: "single-then" }).then(block);
-    expect(seq.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 
   it("merges resources from multiple .then() blocks", () => {
     const blockA = handler({
       name: "a",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const blockB = handler({
       name: "b",
-      userResources: { artifacts: artifactsResource },
+      resources: { artifacts: artifactsResource },
       execute: (v) => v
     });
     const seq = sequencer({ name: "multi-then" }).then(blockA).then(blockB);
     expect(seq.declaredResources).toEqual({
-      session: { observations: observationsResource },
-      user: { artifacts: artifactsResource }
+      observations: observationsResource,
+      artifacts: artifactsResource
     });
   });
 
-  it("merges resources within the same scope across blocks", () => {
+  it("merges disjoint session-scoped resources across blocks", () => {
     const blockA = handler({
       name: "a",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const blockB = handler({
       name: "b",
-      sessionResources: { notes: notesResource },
+      resources: { notes: notesResource },
       execute: (v) => v
     });
     const seq = sequencer({ name: "same-scope" }).then(blockA).then(blockB);
     expect(seq.declaredResources).toEqual({
-      session: { observations: observationsResource, notes: notesResource }
+      observations: observationsResource,
+      notes: notesResource
     });
   });
 
   it("allows duplicate same-reference resources across blocks", () => {
     const blockA = handler({
       name: "a",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const blockB = handler({
       name: "b",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const seq = sequencer({ name: "dup-ok" }).then(blockA).then(blockB);
-    expect(seq.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 
   it("throws on conflicting resource references", () => {
     const otherObservations = defineResource({
+      scope: "session",
       stateSchema: z.object({ items: z.array(z.string()) })
     });
     const blockA = handler({
       name: "a",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const blockB = handler({
       name: "b",
-      sessionResources: { observations: otherObservations },
+      resources: { observations: otherObservations },
       execute: (v) => v
     });
     expect(() => sequencer({ name: "conflict" }).then(blockA).then(blockB)).toThrow("Resource conflict");
@@ -339,159 +344,137 @@ describe("sequencer resource collection", () => {
   it("collects resources from .thenIf()", () => {
     const block = handler({
       name: "cond",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const seq = sequencer({ name: "then-if" }).thenIf(() => true, block);
-    expect(seq.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 
   it("collects resources from .parallel() steps", () => {
     const blockA = handler({
       name: "a",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       outputSchema: z.string(),
       execute: () => "a"
     });
     const blockB = handler({
       name: "b",
-      userResources: { artifacts: artifactsResource },
+      resources: { artifacts: artifactsResource },
       outputSchema: z.number(),
       execute: () => 1
     });
     const seq = sequencer({ name: "par" }).parallel({ a: blockA, b: blockB });
     expect(seq.declaredResources).toEqual({
-      session: { observations: observationsResource },
-      user: { artifacts: artifactsResource }
+      observations: observationsResource,
+      artifacts: artifactsResource
     });
   });
 
   it("collects resources from .forEach()", () => {
     const block = handler({
       name: "each",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const seq = sequencer({ name: "for-each", inputSchema: z.array(z.string()) }).forEach(block);
-    expect(seq.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 
   it("collects resources from .doUntil()", () => {
     const block = handler({
       name: "loop",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const seq = sequencer({ name: "do-until" }).doUntil(() => true, block);
-    expect(seq.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 
   it("collects resources from .doWhile()", () => {
     const block = handler({
       name: "loop",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const seq = sequencer({ name: "do-while" }).doWhile(() => false, block);
-    expect(seq.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 
   it("collects resources from .work()", () => {
     const block = handler({
       name: "bg",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const seq = sequencer({ name: "work" }).work(block);
-    expect(seq.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 
   it("collects resources from .tap() with a block", () => {
     const block = handler({
       name: "side",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const seq = sequencer({ name: "tap" }).tap(block);
-    expect(seq.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 
   it("collects resources from .tapIf() with a block", () => {
     const block = handler({
       name: "cond-side",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const seq = sequencer({ name: "tap-if" }).tapIf(() => true, block);
-    expect(seq.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 
   it("collects resources from .rescue() handler blocks", () => {
     const rescueBlock = handler({
       name: "rescue",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: () => "recovered"
     });
     const seq = sequencer({ name: "rescue-seq" }).rescue([{ block: rescueBlock }]);
-    expect(seq.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 
   it("collects resources from .branch() blocks", () => {
     const branchBlock = handler({
       name: "route",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const seq = sequencer({ name: "branch-seq" }).branch({
       a: [(v) => v, () => true, branchBlock]
     });
-    expect(seq.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(seq.declaredResources).toEqual({ observations: observationsResource });
   });
 
   it("bubbles resources from nested sequencers", () => {
     const block = handler({
       name: "inner-step",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const inner = sequencer({ name: "inner" }).then(block);
-    expect(inner.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(inner.declaredResources).toEqual({ observations: observationsResource });
 
     const outer = sequencer({ name: "outer" }).then(inner);
-    expect(outer.declaredResources).toEqual({
-      session: { observations: observationsResource }
-    });
+    expect(outer.declaredResources).toEqual({ observations: observationsResource });
   });
 
   it("bubbles and merges resources from deeply nested sequencers", () => {
     const blockA = handler({
       name: "a",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v
     });
     const blockB = handler({
       name: "b",
-      userResources: { artifacts: artifactsResource },
+      resources: { artifacts: artifactsResource },
       execute: (v) => v
     });
 
@@ -499,20 +482,20 @@ describe("sequencer resource collection", () => {
     const outer = sequencer({ name: "outer" }).then(inner).then(blockB);
 
     expect(outer.declaredResources).toEqual({
-      session: { observations: observationsResource },
-      user: { artifacts: artifactsResource }
+      observations: observationsResource,
+      artifacts: artifactsResource
     });
   });
 
   it("still executes correctly with resource collection", async () => {
     const blockA = handler({
       name: "a",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v: number) => v + 1
     });
     const blockB = handler({
       name: "b",
-      userResources: { artifacts: artifactsResource },
+      resources: { artifacts: artifactsResource },
       execute: (v: number) => v * 2
     });
 
@@ -523,8 +506,8 @@ describe("sequencer resource collection", () => {
     const ctx = createMockContext();
     await expect(seq.run(5, ctx)).resolves.toBe(12);
     expect(seq.declaredResources).toEqual({
-      session: { observations: observationsResource },
-      user: { artifacts: artifactsResource }
+      observations: observationsResource,
+      artifacts: artifactsResource
     });
   });
 });

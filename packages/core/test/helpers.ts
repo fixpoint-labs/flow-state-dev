@@ -30,14 +30,14 @@ export function createMockContext(overrides?: Partial<BlockContext>): BlockConte
     user: {
       identity: { type: "user", id: "user_1", userId: "user_1" },
       state: {},
-      resources: {
-        get: () => {
-          throw new Error("mock resource registry has no resources");
-        },
-        list: () => []
-      } as any,
       ...stateOps
-    },
+    } as any,
+    resources: {
+      get: () => {
+        throw new Error("mock resource registry has no resources");
+      },
+      list: () => []
+    } as any,
     response: {
       emit: () => undefined
     },

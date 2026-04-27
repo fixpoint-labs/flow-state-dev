@@ -24,16 +24,17 @@ describe("createSkillsCapability", () => {
 
   it("registers the skills collection at the org scope by default", () => {
     const cap = createSkillsCapability();
-    expect(cap.orgResources?.skills).toBeDefined();
-    expect(cap.sessionResources).toBeUndefined();
-    expect(cap.userResources).toBeUndefined();
+    const skillsRef = cap.resources?.skills;
+    expect(skillsRef).toBeDefined();
+    // Collection's intrinsic scope reflects where the resource state lives.
+    expect((skillsRef as { scope?: string }).scope).toBe("org");
   });
 
   it("supports session and user scope override", () => {
     const sCap = createSkillsCapability({ scope: "session" });
-    expect(sCap.sessionResources?.skills).toBeDefined();
+    expect((sCap.resources?.skills as { scope?: string }).scope).toBe("session");
     const uCap = createSkillsCapability({ scope: "user" });
-    expect(uCap.userResources?.skills).toBeDefined();
+    expect((uCap.resources?.skills as { scope?: string }).scope).toBe("user");
   });
 
   it("`tools` preset carries only catalog tools — runSkill lives in its own preset", () => {

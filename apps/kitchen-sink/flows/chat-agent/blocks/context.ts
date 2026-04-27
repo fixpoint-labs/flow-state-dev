@@ -28,7 +28,7 @@ export interface GeneratorMemory {
 // without reading full content. Summary is populated by summarize-artifacts.
 
 export const artifactListContext = (_input: unknown, ctx: BlockContext) => {
-  const artifacts = ctx.session.resources.artifacts as ResourceCollectionRef<{
+  const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<{
     title: string;
     summary: string;
     updatedAt: number;

@@ -1,3 +1,4 @@
+import { defineResource } from "@flow-state-dev/core";
 import { z } from "zod";
 
 // Resource state schema for the "context" session resource.
@@ -9,6 +10,17 @@ export const contextResourceStateSchema = z.object({
     tokenEstimate: z.number().optional(),
     model: z.string().optional()
   }).default({})
+});
+
+/**
+ * Session-scoped resource holding the RLM context document. Shared across the
+ * root generator, sub-query generator, and exploration tools (peek/grep/chunk)
+ * so they all read and write the same `(text, metadata)` slot.
+ */
+export const contextResource = defineResource({
+  scope: "session",
+  stateSchema: contextResourceStateSchema,
+  writable: true,
 });
 
 export const rlmQueryInputSchema = z.object({

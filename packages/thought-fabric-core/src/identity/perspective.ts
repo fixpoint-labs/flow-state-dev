@@ -236,10 +236,12 @@ export type PerspectiveObservationsState = z.infer<typeof perspectiveObservation
 /**
  * Resource holding a perspective's observations.
  *
- * The capability and bundled blocks always declare this at session scope —
- * observations are inherently tied to the conversation they emerged from.
+ * Observations are always session-scoped — they're inherently tied to the
+ * conversation they emerged from. Scope is intrinsic to the resource under
+ * the unified resource installation surface (FIX-435).
  */
 export const perspectiveObservationsResource = defineResource({
+  scope: 'session',
   stateSchema: perspectiveObservationsStateSchema,
   default: { observations: [], turnCounter: 0 },
   writable: true,
@@ -301,18 +303,30 @@ export const perspectivePositionsStateSchema = z.object({
 export type PerspectivePositionsState = z.infer<typeof perspectivePositionsStateSchema>
 
 /**
- * Resource holding a perspective's positions.
+ * Create a positions resource definition at the given scope.
  *
- * Scope is decided by where the capability or block declares this resource
- * (`sessionResources` / `userResources` / `orgResources`), not by the
- * resource definition itself. The bundled `system()` factory installs it at
- * the configured `positionScope` (default `'session'`).
+ * Under FIX-435 each resource carries its scope intrinsically, so positions
+ * — which can live at session, user, or org scope depending on the
+ * capability/system configuration — must be created via this factory at the
+ * scope the consumer intends.
  */
-export const perspectivePositionsResource = defineResource({
-  stateSchema: perspectivePositionsStateSchema,
-  default: { positions: [] },
-  writable: true,
-})
+export function createPerspectivePositionsResource(scope: 'session' | 'user' | 'org') {
+  return defineResource({
+    scope,
+    stateSchema: perspectivePositionsStateSchema,
+    default: { positions: [] },
+    writable: true,
+  })
+}
+
+/**
+ * Default session-scoped positions resource.
+ *
+ * Re-exported for back-compat with existing call sites that referenced the
+ * resource directly. Use `createPerspectivePositionsResource(scope)` when
+ * you need a non-default scope.
+ */
+export const perspectivePositionsResource = createPerspectivePositionsResource('session')
 
 // ---------------------------------------------------------------------------
 // Block I/O schemas (Phase B)

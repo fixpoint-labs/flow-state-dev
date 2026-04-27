@@ -1,6 +1,6 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { contextResourceStateSchema } from "../schemas";
+import { contextResource } from "../schemas";
 
 export const peekInputSchema = z.object({
   start: z.number().default(0).describe("Start character offset"),
@@ -24,11 +24,10 @@ export const peek = handler({
     "Use to understand context structure — start with offset 0 to see the beginning.",
   inputSchema: peekInputSchema,
   outputSchema: peekOutputSchema,
-  sessionResourceSchemas: z.object({ context: contextResourceStateSchema }),
+  resources: { context: contextResource },
 
   execute: async (input, ctx) => {
-    const contextHandle = ctx.session.resources.get("context");
-    const text = contextHandle?.state.text ?? "";
+    const text = ctx.resources.context?.state.text ?? "";
     const start = Math.max(0, input.start);
     const end = Math.min(text.length, start + input.length);
     return {

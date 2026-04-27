@@ -21,22 +21,21 @@ function buildCtx(collection: ReturnType<typeof createMockSkillsCollection>) {
     session: {
       identity: { id: "s1", userId: "u1" },
       state: sessionState,
-      resources: {
-        get: (k: string) => (k === "skills" ? collection : undefined),
-        list: () => [collection],
-      },
       patchState: async (updates: Record<string, unknown>) => {
         Object.assign(sessionState, updates);
       },
     },
     org: {
       identity: { type: "org" as const, id: "p1" },
-      resources: {
-        get: (k: string) => (k === "skills" ? collection : undefined),
-        list: () => [collection],
-      },
     },
-    user: { resources: { get: () => undefined, list: () => [] } },
+    user: {},
+    // Unified resource registry — the collection's intrinsic scope (set on
+    // defineSkillsCollection) routes reads/writes; tests don't need per-scope bags.
+    resources: {
+      skills: collection,
+      get: (k: string) => (k === "skills" ? collection : undefined),
+      list: () => [collection],
+    },
     signal: new AbortController().signal,
     response: { emit: async () => {} },
     resolveModel: () => ({ modelId: "test", generate: async () => ({ text: "ok" }) }),
@@ -133,7 +132,6 @@ describe("createRunSkillTool — inline mode", () => {
     });
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      scope: "org",
       catalog: {},
     });
     const ctx = buildCtx(c);
@@ -152,7 +150,6 @@ describe("createRunSkillTool — inline mode", () => {
     });
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      scope: "org",
       catalog: {},
     });
     await expect(tool.run({ name: "missing" }, buildCtx(c))).rejects.toThrow(
@@ -169,7 +166,6 @@ describe("createRunSkillTool — inline mode", () => {
     });
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      scope: "org",
       catalog: {},
     });
     await expect(tool.run({ name: "private" }, buildCtx(c))).rejects.toThrow(
@@ -208,7 +204,6 @@ describe("createRunSkillTool — fork mode", () => {
 
     const tool = createRunSkillTool({
       collectionKey: "skills",
-      scope: "org",
       catalog: { webSearch },
     });
 
@@ -252,7 +247,6 @@ describe("createRunSkillTool — fork mode", () => {
     try {
       const tool = createRunSkillTool({
         collectionKey: "skills",
-        scope: "org",
         catalog: {},
       });
       const ctx = buildCtx(c);

@@ -89,6 +89,7 @@ export type {
   ResourceClientDataFn,
   ResourceConfig,
   ResourceContext,
+  ResourceScope,
   AnyResourceRef,
   ResourceRef,
   ResourceHandle,

@@ -39,16 +39,20 @@ export const episodicMemoryStateSchema = z.object({
 export type EpisodicMemoryState = z.infer<typeof episodicMemoryStateSchema>
 
 /**
- * Create an episodic memory resource definition with the given scope.
+ * Create an episodic memory resource definition at the given scope.
  *
- * - `scope: 'user'` → declared via `userResources`, accessed via `ctx.user.resources.get('episodicMemory')`
- * - `scope: 'org'` → declared via `orgResources`, accessed via `ctx.org.resources.get('episodicMemory')`
+ * Under FIX-435 each resource carries its scope intrinsically. Episodic
+ * memory persists across sessions, so it lives at `'user'` or `'org'`
+ * scope; pick the scope that matches the access pattern and storage
+ * boundary you want.
  *
- * The scope is a logical marker for the factory — the actual scope enforcement
- * happens when blocks declare the resource in `userResources` vs `orgResources`.
+ * Blocks and capabilities install the returned definition via the unified
+ * `resources: { episodicMemory: <created> }` map and access it through
+ * `ctx.resources.get('episodicMemory')` regardless of scope.
  */
-export function createEpisodicMemoryResource(_scope: 'user' | 'org') {
+export function createEpisodicMemoryResource(scope: 'user' | 'org') {
   return defineResource({
+    scope,
     stateSchema: episodicMemoryStateSchema,
     default: { episodes: [], totalEncoded: 0 },
     writable: true,

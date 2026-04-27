@@ -762,6 +762,8 @@ describe("sequencer builder", () => {
 
     it("preserves declared resources from child blocks", () => {
       const resource = defineResource({
+        ref: "myResource",
+        scope: "session",
         stateSchema: z.object({ items: z.array(z.string()) })
       });
 
@@ -769,7 +771,7 @@ describe("sequencer builder", () => {
         name: "step-with-resource",
         inputSchema: z.number(),
         outputSchema: z.number(),
-        sessionResources: { myResource: resource },
+        resources: { myResource: resource },
         execute: (v) => v
       });
 
@@ -778,9 +780,7 @@ describe("sequencer builder", () => {
 
       const connected = seq.connectInput((s: string) => Number(s));
 
-      expect(connected.declaredResources).toEqual({
-        session: { myResource: resource }
-      });
+      expect(connected.declaredResources).toEqual({ myResource: resource });
     });
 
     it("supports chaining DSL methods after connectInput", async () => {
@@ -890,6 +890,8 @@ describe("sequencer builder", () => {
 
     it("collects resources from child blocks", () => {
       const resource = defineResource({
+        ref: "myResource",
+        scope: "session",
         stateSchema: z.object({ items: z.array(z.string()) }),
       });
 
@@ -897,16 +899,14 @@ describe("sequencer builder", () => {
         name: "res-step",
         inputSchema: z.number(),
         outputSchema: z.number(),
-        sessionResources: { myResource: resource },
+        resources: { myResource: resource },
         execute: (v) => v,
       });
 
       const seq = sequencer({ name: "then-all-res", inputSchema: z.number() })
         .thenAll([step]);
 
-      expect(seq.declaredResources).toEqual({
-        session: { myResource: resource },
-      });
+      expect(seq.declaredResources).toEqual({ myResource: resource });
     });
   });
 
@@ -1130,6 +1130,8 @@ describe("sequencer builder", () => {
 
     it("collects resources from all race blocks", () => {
       const resource = defineResource({
+        ref: "myResource",
+        scope: "session",
         stateSchema: z.object({ count: z.number() }),
       });
 
@@ -1137,16 +1139,14 @@ describe("sequencer builder", () => {
         name: "res-step",
         inputSchema: z.number(),
         outputSchema: z.number(),
-        sessionResources: { myResource: resource },
+        resources: { myResource: resource },
         execute: (v) => v,
       });
 
       const seq = sequencer({ name: "race-res", inputSchema: z.number() })
         .race([step]);
 
-      expect(seq.declaredResources).toEqual({
-        session: { myResource: resource },
-      });
+      expect(seq.declaredResources).toEqual({ myResource: resource });
     });
   });
 

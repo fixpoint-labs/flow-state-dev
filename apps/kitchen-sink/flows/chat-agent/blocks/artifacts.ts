@@ -36,6 +36,7 @@ export const artifactStateSchema = z.object({
 // without eagerly loading document bodies.
 export const artifactsCollection = defineResourceCollection({
   pattern: "artifacts/**",
+  scope: "session",
   stateSchema: artifactStateSchema,
   client: {
     content: { read: true, update: true },
@@ -61,7 +62,7 @@ export const artifactResources = {
  * so the LLM knows what artifacts exist without reading full content.
  */
 const artifactListContext = (_input: unknown, ctx: any) => {
-  const artifacts = ctx.session.resources.artifacts as ResourceCollectionRef<{
+  const artifacts = ctx.resources.artifacts as ResourceCollectionRef<{
     title: string;
     summary: string;
     updatedAt: number;
@@ -103,10 +104,10 @@ export const readArtifact = handler({
   description: "Read an artifact by ID from the session artifacts collection.",
   inputSchema: readArtifactInputSchema,
   outputSchema: readArtifactOutputSchema,
-  sessionResources: artifactResources,
+  resources: artifactResources,
 
   execute: async (input, ctx) => {
-    const ref = ctx.session.resources.artifacts.getOptional(input.artifactId);
+    const ref = ctx.resources.artifacts.getOptional(input.artifactId);
 
     if (ref === undefined) {
       return { id: input.artifactId, title: "Not Found", updatedAt: 0, summary: "", content: "" };
@@ -147,7 +148,7 @@ const artifactSummarizer = utility.summarizer({
 const upsertArtifact = utility.upsertResource({
   name: "upsert-artifact",
   inputSchema: updateArtifactInputSchema,
-  sessionResources: artifactResources,
+  resources: artifactResources,
   collectionKey: "artifacts",
   key: (input) => input.id,
   state: (input) => {
@@ -167,10 +168,10 @@ const saveSummary = handler({
   outputSchema: updateArtifactOutputSchema,
   // TODO: we will refactor the need for this out of the framework. Ideally blocks should mainly rely on their input and use connectors to send necessary data into them
   parentInputSchema: updateArtifactInputSchema,
-  sessionResources: artifactResources,
+  resources: artifactResources,
   execute: async (input, ctx) => {
     const { id } = ctx.parent!.input;
-    const ref = ctx.session.resources.artifacts.getOptional(id);
+    const ref = ctx.resources.artifacts.getOptional(id);
     if (ref) await ref.patchState({ summary: input.summary });
     return { success: true, id };
   }
@@ -210,7 +211,7 @@ export const updateArtifact = writeArtifact;
  */
 export const artifactsCapability = defineCapability({
   name: "artifacts",
-  sessionResources: artifactResources,
+  resources: artifactResources,
 
   presets: {
     /**

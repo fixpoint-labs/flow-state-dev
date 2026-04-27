@@ -7,7 +7,9 @@
  * gain:
  *
  * - Resource installation in the appropriate scope (session for observations,
- *   configurable for positions)
+ *   configurable for positions). Each resource carries its scope intrinsically
+ *   under FIX-435; the capability declares them on a single flat `resources`
+ *   map.
  * - Two context presets (`static`, `accumulated`) — both on by default for
  *   generators, individually opt-out-able via `cap.presets({ ... })`
  * - Typed helpers via `ctx.cap.perspective.*` — `observe()`, `position()`,
@@ -20,7 +22,7 @@
  */
 
 import { defineCapability } from '@flow-state-dev/core'
-import type { ResourceContext } from '@flow-state-dev/core'
+import type { DefinedResource, ResourceContext } from '@flow-state-dev/core'
 
 import type {
   PerspectiveInstance,
@@ -63,23 +65,26 @@ export interface PerspectiveCapabilityConfig {
    * conversation they emerged from.
    */
   positionScope?: PositionScope
+  /**
+   * Optional shared positions resource definition. When omitted, the
+   * capability creates its own positions resource at `positionScope`. Pass
+   * an existing definition (e.g. the one created by `system()`) so the
+   * bundled blocks and capability share a single `defineResource()`
+   * reference under the FIX-435 same-reference rule.
+   */
+  positionsResource?: DefinedResource
 }
 
 // ---------------------------------------------------------------------------
-// Internal: scope-aware position ref lookup
+// Internal: resource ref lookup
 // ---------------------------------------------------------------------------
 
-function getPositionsRef(
-  ctx: any,
-  scope: PositionScope,
-): ResourceContext<PerspectivePositionsState> {
-  if (scope === 'session') return ctx.session.resources.perspectivePositions
-  if (scope === 'user') return ctx.user?.resources?.perspectivePositions
-  return ctx.org?.resources?.perspectivePositions
+function getPositionsRef(ctx: any): ResourceContext<PerspectivePositionsState> {
+  return ctx.resources.perspectivePositions ?? ctx.resources.get?.('perspectivePositions')
 }
 
 function getObservationsRef(ctx: any): ResourceContext<PerspectiveObservationsState> {
-  return ctx.session.resources.perspectiveObservations
+  return ctx.resources.perspectiveObservations ?? ctx.resources.get?.('perspectiveObservations')
 }
 
 // ---------------------------------------------------------------------------
@@ -134,13 +139,14 @@ export function createPerspectiveCapability(
   config?: PerspectiveCapabilityConfig,
 ) {
   const positionScope: PositionScope = config?.positionScope ?? 'session'
+  const resources = buildPerspectiveResources(positionScope, config?.positionsResource)
 
   return defineCapability({
     name: 'perspective' as const,
-    ...buildPerspectiveResources(positionScope),
+    resources,
     fns: (ctx: any) => {
       const obsRef = getObservationsRef(ctx)
-      const posRef = getPositionsRef(ctx, positionScope)
+      const posRef = getPositionsRef(ctx)
       return {
         // -- Observations --
         /** Record an observation in the session-scoped observations resource. */
@@ -191,7 +197,7 @@ export function createPerspectiveCapability(
         context: {
           'perspective-history': (_input: any, ctx: any) => {
             const obsRef = getObservationsRef(ctx)
-            const posRef = getPositionsRef(ctx, positionScope)
+            const posRef = getPositionsRef(ctx)
             return formatPerspectiveAccumulated(obsRef, posRef)
           },
         },

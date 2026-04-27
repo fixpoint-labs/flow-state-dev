@@ -93,19 +93,17 @@ function mockCtx(opts: {
   ep?: ResourceHandle<EpisodicMemoryState>
   sem?: ResourceHandle<SemanticMemoryState>
 }) {
+  const refs: Record<string, unknown> = {
+    workingMemory: opts.wm ?? createMockWmRef(),
+    episodicMemory: opts.ep ?? createMockEpRef(),
+    semanticMemory: opts.sem ?? createMockSemRef(),
+  }
   return {
-    session: {
-      resources: {
-        workingMemory: opts.wm ?? createMockWmRef(),
-      },
+    resources: {
+      ...refs,
+      get: (name: string) => refs[name],
+      list: () => Object.values(refs),
     },
-    user: {
-      resources: {
-        episodicMemory: opts.ep ?? createMockEpRef(),
-        semanticMemory: opts.sem ?? createMockSemRef(),
-      },
-    },
-    org: { resources: {} },
   }
 }
 
@@ -120,9 +118,10 @@ describe('memory/capabilities', () => {
       expect(workingMemoryCapability.name).toBe('workingMemory')
     })
 
-    it('declares workingMemory session resource', () => {
-      expect(workingMemoryCapability.sessionResources).toBeDefined()
-      expect(workingMemoryCapability.sessionResources!.workingMemory).toBeDefined()
+    it('declares workingMemory resource', () => {
+      expect(workingMemoryCapability.resources).toBeDefined()
+      expect(workingMemoryCapability.resources!.workingMemory).toBeDefined()
+      expect((workingMemoryCapability.resources!.workingMemory as any).scope).toBe('session')
     })
 
     it('has no presets (works on all block kinds)', () => {
@@ -255,15 +254,16 @@ describe('memory/capabilities', () => {
     })
 
     it('declares episodicMemory user resource by default', () => {
-      expect(episodicMemoryCapability.userResources).toBeDefined()
-      expect(episodicMemoryCapability.userResources!.episodicMemory).toBeDefined()
+      expect(episodicMemoryCapability.resources).toBeDefined()
+      expect(episodicMemoryCapability.resources!.episodicMemory).toBeDefined()
+      expect((episodicMemoryCapability.resources!.episodicMemory as any).scope).toBe('user')
     })
 
-    it('org scope puts resource in orgResources', () => {
+    it('org scope sets resource scope to org', () => {
       const cap = createEpisodicMemoryCapability({ scope: 'org' })
-      expect(cap.orgResources).toBeDefined()
-      expect(cap.orgResources!.episodicMemory).toBeDefined()
-      expect(cap.userResources).toBeUndefined()
+      expect(cap.resources).toBeDefined()
+      expect(cap.resources!.episodicMemory).toBeDefined()
+      expect((cap.resources!.episodicMemory as any).scope).toBe('org')
     })
 
     it('fns returns bound helpers', () => {
@@ -350,15 +350,16 @@ describe('memory/capabilities', () => {
     })
 
     it('declares semanticMemory user resource by default', () => {
-      expect(semanticMemoryCapability.userResources).toBeDefined()
-      expect(semanticMemoryCapability.userResources!.semanticMemory).toBeDefined()
+      expect(semanticMemoryCapability.resources).toBeDefined()
+      expect(semanticMemoryCapability.resources!.semanticMemory).toBeDefined()
+      expect((semanticMemoryCapability.resources!.semanticMemory as any).scope).toBe('user')
     })
 
-    it('org scope puts resource in orgResources', () => {
+    it('org scope sets resource scope to org', () => {
       const cap = createSemanticMemoryCapability({ scope: 'org' })
-      expect(cap.orgResources).toBeDefined()
-      expect(cap.orgResources!.semanticMemory).toBeDefined()
-      expect(cap.userResources).toBeUndefined()
+      expect(cap.resources).toBeDefined()
+      expect(cap.resources!.semanticMemory).toBeDefined()
+      expect((cap.resources!.semanticMemory as any).scope).toBe('org')
     })
 
     it('fns returns bound helpers', () => {
@@ -607,12 +608,19 @@ describe('memory/capabilities', () => {
         maxEpisodes: 2,
       })
 
-      expect(cap.orgResources).toBeDefined()
-      expect(cap.userResources).toBeUndefined()
+      expect(cap.resources).toBeDefined()
+      expect((cap.resources!.episodicMemory as any).scope).toBe('org')
 
       // Verify maxEpisodes by encoding 3 episodes
       const epRef = createMockEpRef()
-      const ctx = { ...mockCtx({}), org: { resources: { episodicMemory: epRef } } }
+      const refs: Record<string, unknown> = { episodicMemory: epRef }
+      const ctx = {
+        resources: {
+          ...refs,
+          get: (name: string) => refs[name],
+          list: () => Object.values(refs),
+        },
+      }
       const fns = cap.fns!(ctx as any)
 
       await fns.encode({
@@ -635,9 +643,9 @@ describe('memory/capabilities', () => {
 
     it('createSemanticMemoryCapability respects org scope', () => {
       const cap = createSemanticMemoryCapability({ scope: 'org' })
-      expect(cap.orgResources).toBeDefined()
-      expect(cap.orgResources!.semanticMemory).toBeDefined()
-      expect(cap.userResources).toBeUndefined()
+      expect(cap.resources).toBeDefined()
+      expect(cap.resources!.semanticMemory).toBeDefined()
+      expect((cap.resources!.semanticMemory as any).scope).toBe('org')
     })
   })
 })

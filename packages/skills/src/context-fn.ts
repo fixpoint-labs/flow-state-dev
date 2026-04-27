@@ -15,10 +15,7 @@
  *      otherwise concatenated bodies with `$ARGUMENTS` substituted.
  */
 
-import type {
-  BlockContext,
-  ScopeType,
-} from "@flow-state-dev/core/types";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import type { InitialSkill, SkillState } from "@flow-state-dev/core";
 import path from "node:path";
 import { readActiveSkills } from "./active-skill-state";
@@ -33,7 +30,6 @@ import { substitute } from "./skill-md";
 
 export interface SkillsContextOptions {
   collectionKey: string;
-  scope: ScopeType;
   mountPath: string;
   /**
    * Bundled skill defaults, passed through from the capability factory.
@@ -58,7 +54,7 @@ export function buildSkillsCatalogContext(
   opts: SkillsContextOptions,
 ): (input: unknown, ctx: any) => Promise<string | null> {
   return async (_input: unknown, ctx: BlockContext) => {
-    const collection = getCollection(ctx, opts.scope, opts.collectionKey);
+    const collection = getCollection(ctx, opts.collectionKey);
     if (!collection) return null;
     // Seed on first render so the model sees the catalog on turn 1.
     // `ensureSeeded` is memoized per collection ref, so subsequent turns
@@ -87,7 +83,7 @@ export function buildActiveSkillsContext(
   return async (_input: unknown, ctx: BlockContext) => {
     const active = readActiveSkills(ctx.session.state);
     if (active.length === 0) return null;
-    const collection = getCollection(ctx, opts.scope, opts.collectionKey);
+    const collection = getCollection(ctx, opts.collectionKey);
     if (!collection) return null;
 
     const blocks: string[] = [];

@@ -155,14 +155,12 @@ export interface PlanAndExecuteConfig<
   /** Agent type for the default synthesizer. Default: "primary". */
   synthesizerAgentType?: AgentType;
 
-  /** Session resources to declare on the outer sequencer. */
-  sessionResources?: Record<string, any>;
-
-  /** User resources to declare on the outer sequencer. */
-  userResources?: Record<string, any>;
-
-  /** Org resources to declare on the outer sequencer. */
-  orgResources?: Record<string, any>;
+  /**
+   * Resources to declare on the default executor. Each resource's intrinsic
+   * `scope` (set on `defineResource`) routes it to the correct storage layer
+   * (FIX-435).
+   */
+  resources?: Record<string, any>;
 
 }
 
@@ -479,9 +477,7 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
     ...(config.tools !== undefined ? { tools: config.tools } : {}),
     ...(config.uses ? { uses: config.uses as any } : {}),
     ...(config.search !== undefined ? { search: config.search } : {}),
-    ...(config.sessionResources !== undefined ? { sessionResources: config.sessionResources } : {}),
-    ...(config.userResources !== undefined ? { userResources: config.userResources } : {}),
-    ...(config.orgResources !== undefined ? { orgResources: config.orgResources } : {}),
+    ...(config.resources !== undefined ? { resources: config.resources } : {}),
     prompt: [config.instructions, basePrompt, config.executionInstructions],
     user: (input: { goal: string; dependencyResults?: Record<string, unknown> }) => {
       const parts = [`Task: ${input.goal}`];
@@ -843,9 +839,6 @@ export function planAndExecute<
     inputSchema: planAndExecuteInputSchema,
     stateSchema: planAndExecuteStateSchema,
     container: { component: "plan" },
-    ...(config.sessionResources ? { sessionResources: config.sessionResources } : {}),
-    ...(config.userResources ? { userResources: config.userResources } : {}),
-    ...(config.orgResources ? { orgResources: config.orgResources } : {}),
   })
     // 1. Capture goal, run planner, store tasks
     .then(captureAndPlan)

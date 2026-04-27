@@ -42,7 +42,7 @@ export function createMarkDoneSuccess<TItem>(
     name: `${poolName}-worker-mark-done`,
     inputSchema: z.any(),
     outputSchema: z.any(),
-    sessionResources: { [queueKey]: queueCollection },
+    resources: { [queueKey]: queueCollection },
     sequencerStateSchema: drainPoolWorkerStateSchema,
     execute: async (input, ctx) => {
       const workerState = (ctx.sequencer as StateRef<DrainPoolWorkerState>).state;
@@ -76,7 +76,7 @@ export function createMarkDoneSuccess<TItem>(
         });
       }
 
-      const collection = (ctx.session.resources as unknown as Record<string, QueueRef<TItem>>)[queueKey];
+      const collection = (ctx.resources as unknown as Record<string, QueueRef<TItem>>)[queueKey];
       const ref = collection.get(itemId) as ResourceRef<any>;
       await ref.updateState((current: any) => ({
         ...current,
@@ -110,7 +110,7 @@ export function createMarkDoneError<TItem>(
     name: `${poolName}-worker-mark-error`,
     inputSchema: z.any(),
     outputSchema: z.any(),
-    sessionResources: { [queueKey]: queueCollection },
+    resources: { [queueKey]: queueCollection },
     sequencerStateSchema: drainPoolWorkerStateSchema,
     execute: async (error, ctx) => {
       const workerState = (ctx.sequencer as StateRef<DrainPoolWorkerState>).state;
@@ -186,7 +186,7 @@ export function createMarkDoneError<TItem>(
         return { skipped: true, error: errorMessage };
       }
 
-      const collection = (ctx.session.resources as unknown as Record<string, QueueRef<TItem>>)[queueKey];
+      const collection = (ctx.resources as unknown as Record<string, QueueRef<TItem>>)[queueKey];
       const ref = collection.get(itemId) as ResourceRef<any>;
       if (exhausted) {
         await ref.updateState((current: any) => ({

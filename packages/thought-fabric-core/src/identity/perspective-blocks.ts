@@ -13,15 +13,16 @@
  */
 
 import { generator, handler, sequencer } from '@flow-state-dev/core'
+import type { DefinedResource } from '@flow-state-dev/core'
 import { z } from 'zod'
 import {
   perspectiveInputSchema,
   perspectiveApplyOutputSchema,
   perspectiveAnalysisSchema,
-  perspectiveObservationSchema,
   perspectivePositionSchema,
   perspectiveObservationsResource,
   perspectivePositionsResource,
+  createPerspectivePositionsResource,
   perspectiveObserveInputSchema,
   perspectiveObserveOutputSchema,
   perspectivePositionInputSchema,
@@ -31,7 +32,6 @@ import {
 import type {
   PerspectiveInstance,
   PerspectiveObservation,
-  PerspectivePosition,
 } from './perspective.js'
 import {
   formatPerspective,
@@ -50,46 +50,43 @@ export type PositionScope = 'session' | 'user' | 'org'
 // Internal: positions ref lookup
 // ---------------------------------------------------------------------------
 
-/** Resolve the positions resource ref from a runtime ctx for the given scope. */
-export function getPerspectivePositionsRef(ctx: any, scope: PositionScope) {
-  if (scope === 'session') return ctx.session.resources.get('perspectivePositions')
-  if (scope === 'user') return ctx.user.resources.get('perspectivePositions')
-  return ctx.org.resources.get('perspectivePositions')
+/**
+ * Resolve the positions resource ref from a runtime ctx.
+ *
+ * Under FIX-435 every resource lives on the flat `ctx.resources` registry
+ * regardless of intrinsic scope, so the lookup no longer branches on scope.
+ * The `scope` parameter is retained so the signature documents the
+ * configured placement at the call site.
+ */
+export function getPerspectivePositionsRef(ctx: any, _scope: PositionScope) {
+  return ctx.resources.get('perspectivePositions')
 }
 
 /**
- * Build the `sessionResources` / `userResources` / `orgResources` shape
- * that installs the observations + positions resources at the right scopes
- * for a given `positionScope`. Observations are always session-scoped.
+ * Build the unified `resources` map that installs the observations + positions
+ * resources for a given `positionScope`. Observations are always
+ * session-scoped; positions are created at the requested scope via the
+ * positions resource factory so each consumer (capability, block) gets a
+ * single shared definition.
  *
- * The return type is permissive (`Record<string, ...>` rather than per-key
- * generics), so it can be spread into `defineCapability(...)` and into the
- * `Record<string, unknown>` exports on the system bundle. Block factories
- * (handler/generator/sequencer) use stricter per-key inference and would
- * reject the union, so they keep an inline literal.
+ * Pass `positionsResource` to reuse a positions resource definition created
+ * elsewhere in the same system (e.g. the bundled `system()` factory creates
+ * it once and forwards it to both the capability and the bundled blocks so
+ * they share a `defineResource()` reference and therefore the same storage
+ * key under FIX-435).
  */
-export function buildPerspectiveResources(scope: PositionScope): {
-  sessionResources: Record<string, typeof perspectiveObservationsResource | typeof perspectivePositionsResource>
-  userResources?: Record<string, typeof perspectivePositionsResource>
-  orgResources?: Record<string, typeof perspectivePositionsResource>
-} {
-  if (scope === 'session') {
-    return {
-      sessionResources: {
-        perspectiveObservations: perspectiveObservationsResource,
-        perspectivePositions: perspectivePositionsResource,
-      },
-    }
-  }
-  if (scope === 'user') {
-    return {
-      sessionResources: { perspectiveObservations: perspectiveObservationsResource },
-      userResources: { perspectivePositions: perspectivePositionsResource },
-    }
-  }
+export function buildPerspectiveResources(
+  scope: PositionScope,
+  positionsResource?: DefinedResource,
+): Record<string, DefinedResource> {
+  const positions = positionsResource ?? (
+    scope === 'session'
+      ? perspectivePositionsResource
+      : createPerspectivePositionsResource(scope)
+  )
   return {
-    sessionResources: { perspectiveObservations: perspectiveObservationsResource },
-    orgResources: { perspectivePositions: perspectivePositionsResource },
+    perspectiveObservations: perspectiveObservationsResource,
+    perspectivePositions: positions,
   }
 }
 
@@ -279,6 +276,13 @@ export interface PerspectiveStatefulBlockConfig {
 export interface PerspectivePositionBlockConfig extends PerspectiveStatefulBlockConfig {
   /** Where positions live. Default: 'session'. */
   positionScope?: PositionScope
+  /**
+   * Optional shared positions resource definition. When omitted, the block
+   * creates its own positions resource at `positionScope`. Pass an existing
+   * definition (e.g. the one created by `system()`) to share state across
+   * blocks under the FIX-435 same-reference rule.
+   */
+  positionsResource?: DefinedResource
 }
 
 // ---------------------------------------------------------------------------
@@ -306,9 +310,9 @@ export function perspectiveObserve(config: PerspectiveStatefulBlockConfig) {
     name: blockName,
     inputSchema: perspectiveObserveInputSchema,
     outputSchema: perspectiveObserveOutputSchema,
-    sessionResources: { perspectiveObservations: perspectiveObservationsResource },
+    resources: { perspectiveObservations: perspectiveObservationsResource },
     execute: async (input, ctx) => {
-      const ref = ctx.session.resources.get('perspectiveObservations')
+      const ref = ctx.resources.get('perspectiveObservations')
       const recorded: PerspectiveObservation[] = []
 
       // Discriminate input shape: PerspectiveAnalysis vs explicit batch.
@@ -352,20 +356,23 @@ export function perspectivePosition(config: PerspectivePositionBlockConfig) {
   const { perspective: instance } = config
   const blockName = config.name ?? `${instance.name}/position`
   const scope = config.positionScope ?? 'session'
+  const positionsResource = config.positionsResource ?? (
+    scope === 'session'
+      ? perspectivePositionsResource
+      : createPerspectivePositionsResource(scope)
+  )
 
   return handler({
     name: blockName,
     inputSchema: perspectivePositionInputSchema,
     outputSchema: perspectivePositionSchema,
-    sessionResources: {
+    resources: {
       perspectiveObservations: perspectiveObservationsResource,
-      ...(scope === 'session' ? { perspectivePositions: perspectivePositionsResource } : {}),
+      perspectivePositions: positionsResource,
     },
-    ...(scope === 'user' ? { userResources: { perspectivePositions: perspectivePositionsResource } } : {}),
-    ...(scope === 'org' ? { orgResources: { perspectivePositions: perspectivePositionsResource } } : {}),
     execute: async (input, ctx) => {
-      const obsRef = ctx.session.resources.get('perspectiveObservations')
-      const posRef = getPerspectivePositionsRef(ctx, scope)
+      const obsRef = ctx.resources.get('perspectiveObservations')
+      const posRef = ctx.resources.get('perspectivePositions')
       return addPerspectivePosition(posRef, input, obsRef)
     },
   })
@@ -385,20 +392,23 @@ export function perspectiveChallenge(config: PerspectivePositionBlockConfig) {
   const { perspective: instance } = config
   const blockName = config.name ?? `${instance.name}/challenge`
   const scope = config.positionScope ?? 'session'
+  const positionsResource = config.positionsResource ?? (
+    scope === 'session'
+      ? perspectivePositionsResource
+      : createPerspectivePositionsResource(scope)
+  )
 
   return handler({
     name: blockName,
     inputSchema: perspectiveChallengeInputSchema,
     outputSchema: z.object({ challenged: z.boolean() }),
-    sessionResources: {
+    resources: {
       perspectiveObservations: perspectiveObservationsResource,
-      ...(scope === 'session' ? { perspectivePositions: perspectivePositionsResource } : {}),
+      perspectivePositions: positionsResource,
     },
-    ...(scope === 'user' ? { userResources: { perspectivePositions: perspectivePositionsResource } } : {}),
-    ...(scope === 'org' ? { orgResources: { perspectivePositions: perspectivePositionsResource } } : {}),
     execute: async (input, ctx) => {
-      const obsRef = ctx.session.resources.get('perspectiveObservations')
-      const posRef = getPerspectivePositionsRef(ctx, scope)
+      const obsRef = ctx.resources.get('perspectiveObservations')
+      const posRef = ctx.resources.get('perspectivePositions')
       const challenged = await challengePerspectivePosition(posRef, input.positionId, input.evidence, obsRef)
       return { challenged }
     },
@@ -418,20 +428,23 @@ export function perspectiveSnapshot(config: PerspectivePositionBlockConfig) {
   const { perspective: instance } = config
   const blockName = config.name ?? `${instance.name}/snapshot`
   const scope = config.positionScope ?? 'session'
+  const positionsResource = config.positionsResource ?? (
+    scope === 'session'
+      ? perspectivePositionsResource
+      : createPerspectivePositionsResource(scope)
+  )
 
   return handler({
     name: blockName,
     inputSchema: z.any(),
     outputSchema: perspectiveSnapshotOutputSchema,
-    sessionResources: {
+    resources: {
       perspectiveObservations: perspectiveObservationsResource,
-      ...(scope === 'session' ? { perspectivePositions: perspectivePositionsResource } : {}),
+      perspectivePositions: positionsResource,
     },
-    ...(scope === 'user' ? { userResources: { perspectivePositions: perspectivePositionsResource } } : {}),
-    ...(scope === 'org' ? { orgResources: { perspectivePositions: perspectivePositionsResource } } : {}),
     execute: async (_input, ctx) => {
-      const obsRef = ctx.session.resources.get('perspectiveObservations')
-      const posRef = getPerspectivePositionsRef(ctx, scope)
+      const obsRef = ctx.resources.get('perspectiveObservations')
+      const posRef = ctx.resources.get('perspectivePositions')
       return {
         observations: perspectiveObservations(obsRef),
         positions: perspectivePositions(posRef),
@@ -459,9 +472,9 @@ export function perspectiveAdvance(config: PerspectiveStatefulBlockConfig) {
   return handler({
     name: blockName,
     inputSchema: z.any(),
-    sessionResources: { perspectiveObservations: perspectiveObservationsResource },
+    resources: { perspectiveObservations: perspectiveObservationsResource },
     execute: async (_input, ctx) => {
-      const ref = ctx.session.resources.get('perspectiveObservations')
+      const ref = ctx.resources.get('perspectiveObservations')
       await advancePerspectiveObservations(ref)
     },
   })

@@ -1,6 +1,6 @@
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { contextResourceStateSchema } from "../schemas";
+import { contextResource } from "../schemas";
 
 export const grepInputSchema = z.object({
   pattern: z.string().describe("Regex pattern to search for"),
@@ -30,11 +30,10 @@ export const grep = handler({
     "Returns matches with surrounding text for locating relevant sections.",
   inputSchema: grepInputSchema,
   outputSchema: grepOutputSchema,
-  sessionResourceSchemas: z.object({ context: contextResourceStateSchema }),
+  resources: { context: contextResource },
 
   execute: async (input, ctx) => {
-    const contextHandle = ctx.session.resources.get("context");
-    const text = contextHandle?.state.text ?? "";
+    const text = ctx.resources.context?.state.text ?? "";
 
     let regex: RegExp;
     try {

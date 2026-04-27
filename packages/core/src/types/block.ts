@@ -101,9 +101,7 @@ export interface BlockContext<
   TSessionState extends object = Record<string, unknown>,
   TUserState extends object = Record<string, unknown>,
   TOrgState extends object = Record<string, unknown>,
-  TSessionResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>,
-  TUserResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>,
-  TOrgResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>,
+  TResources extends Record<string, AnyResourceRef> = Record<string, AnyResourceRef>,
   TSequencerState extends object = Record<string, unknown>,
   TParentInput = unknown,
   TTargets extends Record<string, ZodTypeAny> | undefined = undefined,
@@ -111,10 +109,21 @@ export interface BlockContext<
   TCapabilities extends Record<string, Record<string, (...args: any[]) => any>> = {},
 > {
   request: RequestScopeHandle<TRequestState>;
-  session: SessionScopeHandle<TSessionState, TSessionResources>;
-  user: UserScopeHandle<TUserState, TUserResources>;
-  org?: OrgScopeHandle<TOrgState, TOrgResources>;
+  session: SessionScopeHandle<TSessionState>;
+  user: UserScopeHandle<TUserState>;
+  org?: OrgScopeHandle<TOrgState>;
   sequencer?: StateRef<TSequencerState>;
+
+  /**
+   * Flat resource registry — every resource declared by this block, the
+   * flow it lives in, or any capability it uses, accessible by its accessor
+   * key. The resource's intrinsic `scope` (set on `defineResource`) routes
+   * reads/writes to the right storage layer; consumers don't need to know
+   * which scope a resource lives in. Replaces the legacy per-scope
+   * `ctx.session.resources.*` / `ctx.user.resources.*` / `ctx.org.resources.*`
+   * accessors.
+   */
+  resources: import("./resource").ResourceRegistry<TResources>;
 
   /**
    * The immediate parent block in the execution chain, if any.
@@ -334,11 +343,15 @@ export interface BlockConfig<
 
 export type DeclaredResourceEntry = DefinedResource | DefinedResourceCollection;
 
-export type DeclaredResources = {
-  session?: Record<string, DeclaredResourceEntry>;
-  user?: Record<string, DeclaredResourceEntry>;
-  org?: Record<string, DeclaredResourceEntry>;
-};
+/**
+ * Flat resource declaration: accessor key → resource definition. The
+ * resource's intrinsic `scope` (and `flowIsolation`) determines its storage
+ * placement; the accessor key is what consumers reach for via
+ * `ctx.resources.<key>`. The two are independent — multiple accessor keys
+ * can point at the same `(scope, ref)` only if the storage keys do not
+ * collide (see flow-build collision detection).
+ */
+export type DeclaredResources = Record<string, DeclaredResourceEntry>;
 
 export interface BlockDefinition<
   TInputSchema extends ZodTypeAny = ZodTypeAny,

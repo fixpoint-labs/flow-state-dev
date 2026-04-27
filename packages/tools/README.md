@@ -128,7 +128,7 @@ import { providerTool } from "@flow-state-dev/core";
 
 // Inside a handler's execute function:
 const { tools, sandbox } = await createBashTool({
-  collections: { files: ctx.session.resources.files },
+  collections: { files: ctx.resources.files },
   provider: { type: "local", cwd: "./workspace" },
 });
 
@@ -156,7 +156,7 @@ generator({
 
 ```typescript
 createBashTool({
-  collections: { files: ctx.session.resources.files },
+  collections: { files: ctx.resources.files },
   provider: { type: "vercel" },
   destination: "/workspace",     // workspace root (default: "/workspace")
   persist: true,                 // persist sandbox across sessions

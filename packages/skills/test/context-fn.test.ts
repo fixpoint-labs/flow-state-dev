@@ -19,19 +19,18 @@ function buildCtx(collection: ReturnType<typeof createMockSkillsCollection>) {
     session: {
       identity: { id: "s1", userId: "u1" },
       state: { activeSkills: [] },
-      resources: {
-        get: (k: string) => (k === "skills" ? collection : undefined),
-        list: () => [collection],
-      },
     },
     org: {
       identity: { id: "p1" },
-      resources: {
-        get: (k: string) => (k === "skills" ? collection : undefined),
-        list: () => [collection],
-      },
     },
-    user: { resources: { get: () => undefined, list: () => [] } },
+    user: {},
+    // Unified resource registry — collection's intrinsic scope routes
+    // reads/writes at runtime; tests don't need per-scope bags.
+    resources: {
+      skills: collection,
+      get: (k: string) => (k === "skills" ? collection : undefined),
+      list: () => [collection],
+    },
   } as never;
 }
 
@@ -49,7 +48,6 @@ describe("buildSkillsCatalogContext", () => {
     ];
     const formatter = buildSkillsCatalogContext({
       collectionKey: "skills",
-      scope: "org",
       mountPath: "skills",
       initialSkills,
     });
@@ -75,7 +73,6 @@ describe("buildSkillsCatalogContext", () => {
     ];
     const formatter = buildSkillsCatalogContext({
       collectionKey: "skills",
-      scope: "org",
       mountPath: "skills",
       initialSkills,
     });
@@ -99,7 +96,6 @@ describe("buildSkillsCatalogContext", () => {
 
     const formatter = buildSkillsCatalogContext({
       collectionKey: "skills",
-      scope: "org",
       mountPath: "skills",
     });
 
@@ -113,7 +109,6 @@ describe("buildActiveSkillsContext", () => {
     const collection = createMockSkillsCollection();
     const formatter = buildActiveSkillsContext({
       collectionKey: "skills",
-      scope: "org",
       mountPath: "skills",
     });
     const out = await formatter(undefined, buildCtx(collection));

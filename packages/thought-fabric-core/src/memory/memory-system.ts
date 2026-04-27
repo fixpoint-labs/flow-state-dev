@@ -75,6 +75,8 @@ export type MemorySystemState = z.infer<typeof memorySystemStateSchema>
  * Session-scoped resource for memory system tracking (watermark + consolidation counters).
  */
 export const memorySystemResource = defineResource({
+  ref: 'memorySystem',
+  scope: 'session',
   stateSchema: memorySystemStateSchema,
   default: {
     lastProcessedIndex: -1,
@@ -236,10 +238,10 @@ export interface MemorySystem {
     }
   }
   /**
-   * Session-scoped resources for this memory system.
-   * Spread into `defineFlow`'s `session.resources`:
+   * Session-scoped resources for this memory system. Spread into `defineFlow`'s
+   * single flat `resources` map (FIX-435):
    * ```ts
-   * session: { resources: { ...mem.sessionResources, ...otherResources } }
+   * resources: { ...mem.sessionResources, ...mem.userResources }
    * ```
    * Always includes `workingMemory` and `memorySystem`.
    */
@@ -248,13 +250,10 @@ export interface MemorySystem {
     memorySystem: typeof memorySystemResource
   }
   /**
-   * User-scoped resources for this memory system.
-   * Spread into `defineFlow`'s `user.resources`:
-   * ```ts
-   * user: { resources: { ...mem.userResources } }
-   * ```
-   * Populated based on which memory tiers are configured:
-   * `episodicMemory` (if episodic enabled), `semanticMemory` (if semantic enabled).
+   * User-scoped resources for this memory system. Spread into `defineFlow`'s
+   * single flat `resources` map alongside `sessionResources`. Populated based
+   * on which memory tiers are configured: `episodicMemory` (if episodic
+   * enabled), `semanticMemory` (if semantic enabled).
    */
   userResources: {
     episodicMemory?: ReturnType<typeof createEpisodicMemoryResource>
@@ -320,8 +319,8 @@ function createRecall(
     if (semanticConfig) {
       try {
         const semRef = semanticConfig.scope === 'user'
-          ? ctx.user?.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
-          : ctx.org?.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
+          ? ctx.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
+          : ctx.resources?.semanticMemory as ResourceContext<SemanticMemoryState> | undefined
 
         if (semRef) {
           const facts = allFacts(semRef)
@@ -350,7 +349,7 @@ function createRecall(
 
     // 2. Read working memory
     try {
-      const wmRef = ctx.session?.resources?.workingMemory as ResourceContext<WorkingMemoryState> | undefined
+      const wmRef = ctx.resources?.workingMemory as ResourceContext<WorkingMemoryState> | undefined
       if (wmRef) {
         const entries = wmItems(wmRef)
         for (const entry of entries) {
@@ -380,8 +379,8 @@ function createRecall(
     if (episodicConfig) {
       try {
         const epRef = episodicConfig.scope === 'user'
-          ? ctx.user?.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
-          : ctx.org?.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
+          ? ctx.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
+          : ctx.resources?.episodicMemory as ResourceContext<EpisodicMemoryState> | undefined
 
         if (epRef) {
           const episodes = recent(epRef)
@@ -664,16 +663,14 @@ export function system(config: MemorySystemConfig): MemorySystem {
   // Extract resource references from capabilities for shared use by blocks.
   // Cast required: capability types store resources as DeclaredResourceEntry
   // (broad), but the MemorySystem interface uses specific resource types.
+  // Resources live on the flat `resources` map (FIX-435); the resource's
+  // intrinsic scope determines storage placement.
   const episodicResource = epCapability
-    ? (episodicConfig!.scope === 'user'
-        ? epCapability.userResources!.episodicMemory
-        : epCapability.orgResources!.episodicMemory) as ReturnType<typeof createEpisodicMemoryResource>
+    ? epCapability.resources!.episodicMemory as ReturnType<typeof createEpisodicMemoryResource>
     : undefined
 
   const semanticResource = semCapability
-    ? (semanticConfig!.scope === 'user'
-        ? semCapability.userResources!.semanticMemory
-        : semCapability.orgResources!.semanticMemory) as ReturnType<typeof createSemanticMemoryResource>
+    ? semCapability.resources!.semanticMemory as ReturnType<typeof createSemanticMemoryResource>
     : undefined
 
   // Build blocks config — pass shared resources to avoid resource conflicts
@@ -719,7 +716,7 @@ export function system(config: MemorySystemConfig): MemorySystem {
   const composedCapability = defineCapability({
     name: 'memory' as const,
     uses: capUses,
-    sessionResources: { memorySystem: memorySystemResource },
+    resources: { memorySystem: memorySystemResource },
     fns: (ctx: any) => ({
       /** Cross-store recall — queries all configured stores, deduplicates, ranks by relevance. */
       recall: (cue?: string) => recallFn(ctx, cue),

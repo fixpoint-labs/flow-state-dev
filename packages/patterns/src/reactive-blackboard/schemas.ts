@@ -23,6 +23,7 @@ import { z } from "zod";
  */
 export function createReactiveBlackboard() {
   return defineResource({
+    scope: "session",
     stateSchema: reactiveBlackboardStateSchema,
     writable: true,
     client: {

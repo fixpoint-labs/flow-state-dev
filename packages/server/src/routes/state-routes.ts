@@ -125,8 +125,21 @@ export async function handleGetSessionState(
     org !== undefined ? ctx.stores.content.getAll("org", org.id) : Promise.resolve({})
   ]);
 
+  // FIX-435: partition the flat flow.resources map back into per-scope
+  // buckets so the existing per-scope storage helpers and snapshot builders
+  // continue to work. Each entry's `scope` is intrinsic to its definition.
+  const flatFlowResources = (flow.resources ?? {}) as Record<string, { scope?: string }>;
+  const sessionConfigs: Record<string, unknown> = {};
+  const userConfigs: Record<string, unknown> = {};
+  const orgConfigs: Record<string, unknown> = {};
+  for (const [accessor, def] of Object.entries(flatFlowResources)) {
+    if (def.scope === "session") sessionConfigs[accessor] = def;
+    else if (def.scope === "user") userConfigs[accessor] = def;
+    else if (def.scope === "org") orgConfigs[accessor] = def;
+  }
+
   const sessionResources = createScopeResources({
-    configs: flow.session?.resources as Record<string, unknown> | undefined,
+    configs: sessionConfigs,
     persisted: session.resources as Record<string, unknown> | undefined,
     persistedContent: {
       ...(session.resourceContent as Record<string, string> | undefined),
@@ -134,7 +147,7 @@ export async function handleGetSessionState(
     }
   });
   const userResources = createScopeResources({
-    configs: flow.user?.resources as Record<string, unknown> | undefined,
+    configs: userConfigs,
     persisted: user?.resources as Record<string, unknown> | undefined,
     persistedContent: {
       ...(user?.resourceContent as Record<string, string> | undefined),
@@ -142,7 +155,7 @@ export async function handleGetSessionState(
     }
   });
   const orgResources = createScopeResources({
-    configs: flow.org?.resources as Record<string, unknown> | undefined,
+    configs: orgConfigs,
     persisted: org?.resources as Record<string, unknown> | undefined,
     persistedContent: {
       ...(org?.resourceContent as Record<string, string> | undefined),
@@ -178,7 +191,7 @@ export async function handleGetSessionState(
   // and surface their raw state under `clientData`.
   const [sessionResourceSnapshot, userResourceSnapshot, orgResourceSnapshot] = await Promise.all([
     buildResourceSnapshot({
-      configs: flow.session?.resources as Record<string, unknown> | undefined,
+      configs: sessionConfigs,
       persisted: session.resources as Record<string, unknown> | undefined,
       persistedContent: {
         ...(session.resourceContent as Record<string, string> | undefined),
@@ -187,7 +200,7 @@ export async function handleGetSessionState(
       includeInternal: includeInternalResources,
     }),
     buildResourceSnapshot({
-      configs: flow.user?.resources as Record<string, unknown> | undefined,
+      configs: userConfigs,
       persisted: user?.resources as Record<string, unknown> | undefined,
       persistedContent: {
         ...(user?.resourceContent as Record<string, string> | undefined),
@@ -196,7 +209,7 @@ export async function handleGetSessionState(
       includeInternal: includeInternalResources,
     }),
     buildResourceSnapshot({
-      configs: flow.org?.resources as Record<string, unknown> | undefined,
+      configs: orgConfigs,
       persisted: org?.resources as Record<string, unknown> | undefined,
       persistedContent: {
         ...(org?.resourceContent as Record<string, string> | undefined),

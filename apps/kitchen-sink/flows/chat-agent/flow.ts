@@ -470,9 +470,12 @@ const chatAgentFlow = defineFlow({
     },
   },
 
+  // FIX-435: resources live in a single flat flow.resources map; their
+  // intrinsic scope routes them to the right storage layer.
+  resources: { ...(mem.userResources ?? {}) },
+
   user: {
     stateSchema: userStateSchema,
-    resources: mem.userResources,
     clientData: {
       preferences: (ctx) => ({
         displayName: String(ctx.state.displayName ?? "Developer"),

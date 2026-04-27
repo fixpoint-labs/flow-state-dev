@@ -14,7 +14,7 @@
  * import { createBashTool } from "@flow-state-dev/tools/bash";
  *
  * const { tools, sandbox } = await createBashTool({
- *   collections: { files: ctx.session.resources.files },
+ *   collections: { files: ctx.resources.files },
  *   provider: { type: "local", cwd: "./workspace" },
  * });
  * ```

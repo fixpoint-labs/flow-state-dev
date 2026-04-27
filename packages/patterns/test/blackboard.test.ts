@@ -45,7 +45,7 @@ function makeDeterministicController(
       name,
       inputSchema: z.any(),
       outputSchema: controllerOutputSchema,
-      sessionResources: { blackboard: board },
+      resources: { blackboard: board },
       execute: () => {
         if (index >= script.length) {
           return { specialist: null, done: true, reasoning: "Script exhausted" };
@@ -72,11 +72,11 @@ function makeSpecialist(
     name: specialistName,
     inputSchema: z.any(),
     outputSchema: z.any(),
-    sessionResources: { blackboard: board },
+    resources: { blackboard: board },
     execute: async (_input, ctx) => {
-      const current = ctx.session.resources.blackboard.state as z.infer<typeof boardSchema>;
+      const current = ctx.resources.blackboard.state as z.infer<typeof boardSchema>;
       const patch = contribute(current);
-      await ctx.session.resources.blackboard.patchState(patch);
+      await ctx.resources.blackboard.patchState(patch);
       return { specialist: specialistName, contributed: true };
     },
   });
@@ -208,11 +208,11 @@ describe("blackboard", () => {
         name: "observer",
         inputSchema: z.any(),
         outputSchema: z.any(),
-        sessionResources: { blackboard: board },
+        resources: { blackboard: board },
         execute: async (_input, ctx) => {
-          const state = ctx.session.resources.blackboard.state as z.infer<typeof boardSchema>;
+          const state = ctx.resources.blackboard.state as z.infer<typeof boardSchema>;
           observedStates.push({ ...state, data: [...state.data] });
-          await ctx.session.resources.blackboard.patchState({
+          await ctx.resources.blackboard.patchState({
             data: [...state.data, `item-${state.data.length}`],
           });
           return { ok: true };

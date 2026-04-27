@@ -32,14 +32,17 @@ type MaybePromise<T> = T | Promise<T>;
  * Lightweight context shape for preset callbacks. Inferred from the
  * capability's sessionStateSchema so `(ctx) =>` is typed automatically.
  * Defaults to `any` for backwards compatibility.
+ *
+ * Resources live at `ctx.resources` (FIX-435); they're a flat namespace
+ * routed by each resource's intrinsic `scope`.
  */
 export type CapabilityPresetCtx<TSessionState = any> = {
   session: {
     state: Readonly<TSessionState>;
     identity: { id: string; userId?: string; orgId?: string };
-    resources: Record<string, any>;
     [key: string]: any;
   };
+  resources: Record<string, any>;
   [key: string]: any;
 };
 
@@ -48,10 +51,9 @@ export type CapabilityPresetCtx<TSessionState = any> = {
  * the capability's sessionStateSchema so preset callbacks get typed ctx.
  */
 export type PresetDef<TSessionState = any> = {
-  // Resources (any block kind)
-  sessionResources?: Record<string, DeclaredResourceEntry>;
-  userResources?: Record<string, DeclaredResourceEntry>;
-  orgResources?: Record<string, DeclaredResourceEntry>;
+  // Resources (any block kind) — flat map; scope is intrinsic to each
+  // resource via `defineResource({ scope })` (FIX-435).
+  resources?: Record<string, DeclaredResourceEntry>;
 
   // State schemas (any block kind for the corresponding scope)
   sessionStateSchema?: ZodTypeAny;
@@ -112,9 +114,8 @@ export interface CapabilityConfig<
   name: TName;
 
   // Required surface — always installed when the capability is used
-  sessionResources?: Record<string, DeclaredResourceEntry>;
-  userResources?: Record<string, DeclaredResourceEntry>;
-  orgResources?: Record<string, DeclaredResourceEntry>;
+  /** Flat resource map — accessor key → resource definition (FIX-435). */
+  resources?: Record<string, DeclaredResourceEntry>;
   sessionStateSchema?: TSessionStateSchema;
   requestStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;
@@ -178,9 +179,7 @@ export interface DefinedCapability<
   readonly name: TName;
 
   // Required surface — always installed when the capability is used
-  sessionResources?: Record<string, DeclaredResourceEntry>;
-  userResources?: Record<string, DeclaredResourceEntry>;
-  orgResources?: Record<string, DeclaredResourceEntry>;
+  resources?: Record<string, DeclaredResourceEntry>;
   sessionStateSchema?: ZodTypeAny;
   requestStateSchema?: ZodTypeAny;
   userStateSchema?: ZodTypeAny;

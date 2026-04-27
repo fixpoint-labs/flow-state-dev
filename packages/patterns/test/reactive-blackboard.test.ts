@@ -404,10 +404,10 @@ describe("mesh emit", () => {
           name: "observer-body",
           inputSchema: z.any(),
           outputSchema: z.any(),
-          sessionResources: { reactiveBlackboard: rb.blackboard },
+          resources: { reactiveBlackboard: rb.blackboard },
           execute: (_input, ctx) => {
             // Read the resource to verify the entry was appended
-            const state = (ctx.session.resources as any).reactiveBlackboard
+            const state = (ctx.resources as any).reactiveBlackboard
               .state as ReactiveBlackboardState;
             observedEntries = [...state.entries];
             return { ok: true };
@@ -1060,9 +1060,9 @@ describe("re-emission", () => {
         name: "body-b",
         inputSchema: z.any(),
         outputSchema: z.any(),
-        sessionResources: { reactiveBlackboard: rb.blackboard },
+        resources: { reactiveBlackboard: rb.blackboard },
         execute: (_input, ctx) => {
-          const state = (ctx.session.resources as any).reactiveBlackboard
+          const state = (ctx.resources as any).reactiveBlackboard
             .state as ReactiveBlackboardState;
           finalEntries = [...state.entries];
           return { ok: true };

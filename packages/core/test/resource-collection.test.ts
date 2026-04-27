@@ -24,6 +24,7 @@ describe("defineResourceCollection", () => {
   it("creates a collection with single-level wildcard pattern", () => {
     const coll = defineResourceCollection({
       pattern: "files/*",
+      scope: "session",
       stateSchema: z.object({ language: z.string() }),
     });
 
@@ -34,6 +35,7 @@ describe("defineResourceCollection", () => {
   it("creates a collection with deep wildcard pattern", () => {
     const coll = defineResourceCollection({
       pattern: "files/**",
+      scope: "session",
       stateSchema: z.object({ language: z.string() }),
       maxInstances: 200,
       eviction: "lru",
@@ -47,6 +49,7 @@ describe("defineResourceCollection", () => {
   it("creates a collection with parameterized pattern", () => {
     const coll = defineResourceCollection({
       pattern: "[topic]/observations",
+      scope: "session",
       stateSchema: z.object({ entries: z.array(z.string()).default([]) }),
       maxInstances: 50,
     });
@@ -55,10 +58,43 @@ describe("defineResourceCollection", () => {
     expect(coll.maxInstances).toBe(50);
   });
 
+  it("requires an explicit scope", () => {
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        // @ts-expect-error: scope is required
+        stateSchema: z.object({}),
+      })
+    ).toThrow("requires an explicit scope");
+  });
+
+  it("rejects flowIsolation:true on session-scoped collections", () => {
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        scope: "session",
+        flowIsolation: true,
+        stateSchema: z.object({}),
+      })
+    ).toThrow("flowIsolation:true on session-scoped");
+  });
+
+  it("allows flowIsolation:true on user-scoped collections", () => {
+    expect(() =>
+      defineResourceCollection({
+        pattern: "files/*",
+        scope: "user",
+        flowIsolation: true,
+        stateSchema: z.object({}),
+      })
+    ).not.toThrow();
+  });
+
   it("throws on invalid pattern (empty)", () => {
     expect(() =>
       defineResourceCollection({
         pattern: "",
+        scope: "session",
         stateSchema: z.object({}),
       })
     ).toThrow("non-empty");
@@ -68,6 +104,7 @@ describe("defineResourceCollection", () => {
     expect(() =>
       defineResourceCollection({
         pattern: "files/**/extra",
+        scope: "session",
         stateSchema: z.object({}),
       })
     ).toThrow("last segment");
@@ -77,6 +114,7 @@ describe("defineResourceCollection", () => {
     expect(() =>
       defineResourceCollection({
         pattern: "files/*",
+        scope: "session",
         stateSchema: z.object({}),
         maxInstances: 0,
       })
@@ -87,6 +125,7 @@ describe("defineResourceCollection", () => {
     expect(() =>
       defineResourceCollection({
         pattern: "files/*",
+        scope: "session",
         stateSchema: z.object({}),
         eviction: "lru",
       })
@@ -97,6 +136,7 @@ describe("defineResourceCollection", () => {
     expect(() =>
       defineResourceCollection({
         pattern: "files/*",
+        scope: "session",
         stateSchema: z.object({}),
         eviction: "none",
       })
@@ -112,6 +152,7 @@ describe("isDefinedResourceCollection", () => {
   it("returns true for collection definitions", () => {
     const coll = defineResourceCollection({
       pattern: "files/*",
+      scope: "session",
       stateSchema: z.object({}),
     });
     expect(isDefinedResourceCollection(coll)).toBe(true);
@@ -119,6 +160,7 @@ describe("isDefinedResourceCollection", () => {
 
   it("returns false for static resource definitions", () => {
     const res = defineResource({
+      scope: "session",
       stateSchema: z.object({ value: z.string() }),
     });
     expect(isDefinedResourceCollection(res)).toBe(false);
@@ -323,11 +365,13 @@ describe("normalizeResourcePath", () => {
 const fileSchema = z.object({ language: z.string() });
 const filesCollection = defineResourceCollection({
   pattern: "files/**",
+  scope: "session",
   stateSchema: fileSchema,
   maxInstances: 200,
 });
 
 const observationsResource = defineResource({
+  scope: "session",
   stateSchema: z.object({
     entries: z.array(z.object({ text: z.string(), score: z.number() }))
   })
@@ -336,52 +380,54 @@ const observationsResource = defineResource({
 describe("DeclaredResources with collections", () => {
   it("extractDeclaredResources handles collection alongside static resource", () => {
     const result = extractDeclaredResources({
-      sessionResources: {
+      resources: {
         observations: observationsResource,
         files: filesCollection,
       },
     });
 
     expect(result).toBeDefined();
-    expect(result!.session!.observations).toBe(observationsResource);
-    expect(result!.session!.files).toBe(filesCollection);
+    expect(result!.observations).toBe(observationsResource);
+    expect(result!.files).toBe(filesCollection);
   });
 
   it("mergeDeclaredResources works with collections", () => {
-    const target = { session: { observations: observationsResource as any } };
-    const source = { session: { files: filesCollection as any } };
+    const target = { observations: observationsResource as any };
+    const source = { files: filesCollection as any };
     const result = mergeDeclaredResources(target, source);
 
     expect(result).toEqual({
-      session: { observations: observationsResource, files: filesCollection },
+      observations: observationsResource,
+      files: filesCollection,
     });
   });
 
-  it("detects conflict when different collection refs share a name", () => {
+  it("detects conflict when different collection refs share an accessor key", () => {
     const otherCollection = defineResourceCollection({
       pattern: "files/*",
+      scope: "session",
       stateSchema: z.object({ name: z.string() }),
     });
 
-    const target = { session: { files: filesCollection as any } };
-    const source = { session: { files: otherCollection as any } };
+    const target = { files: filesCollection as any };
+    const source = { files: otherCollection as any };
     expect(() => mergeDeclaredResources(target, source)).toThrow("Resource conflict");
   });
 
   it("allows same collection reference across blocks (no conflict)", () => {
-    const target = { session: { files: filesCollection as any } };
-    const source = { session: { files: filesCollection as any } };
+    const target = { files: filesCollection as any };
+    const source = { files: filesCollection as any };
     expect(() => mergeDeclaredResources(target, source)).not.toThrow();
   });
 });
 
 describe("handler with collection resources", () => {
-  it("surfaces declaredResources from sessionResources with collection", () => {
+  it("surfaces declaredResources from a flat resources map with collection", () => {
     const block = handler({
       name: "with-coll-resources",
       inputSchema: z.string(),
       outputSchema: z.string(),
-      sessionResources: {
+      resources: {
         files: filesCollection,
         observations: observationsResource,
       },
@@ -389,7 +435,8 @@ describe("handler with collection resources", () => {
     });
 
     expect(block.declaredResources).toEqual({
-      session: { files: filesCollection, observations: observationsResource },
+      files: filesCollection,
+      observations: observationsResource,
     });
   });
 
@@ -398,7 +445,7 @@ describe("handler with collection resources", () => {
       name: "exec-with-coll",
       inputSchema: z.string(),
       outputSchema: z.string(),
-      sessionResources: { files: filesCollection },
+      resources: { files: filesCollection },
       execute: (input) => `processed:${input}`,
     });
 
@@ -411,33 +458,32 @@ describe("sequencer with collection resources", () => {
   it("collects collection resources from child blocks", () => {
     const blockA = handler({
       name: "a",
-      sessionResources: { files: filesCollection },
+      resources: { files: filesCollection },
       execute: (v) => v,
     });
     const blockB = handler({
       name: "b",
-      sessionResources: { observations: observationsResource },
+      resources: { observations: observationsResource },
       execute: (v) => v,
     });
 
     const seq = sequencer({ name: "coll-seq" }).then(blockA).then(blockB);
     expect(seq.declaredResources).toEqual({
-      session: { files: filesCollection, observations: observationsResource },
+      files: filesCollection,
+      observations: observationsResource,
     });
   });
 
   it("bubbles collection resources from nested sequencers", () => {
     const block = handler({
       name: "inner-step",
-      sessionResources: { files: filesCollection },
+      resources: { files: filesCollection },
       execute: (v) => v,
     });
     const inner = sequencer({ name: "inner" }).then(block);
     const outer = sequencer({ name: "outer" }).then(inner);
 
-    expect(outer.declaredResources).toEqual({
-      session: { files: filesCollection },
-    });
+    expect(outer.declaredResources).toEqual({ files: filesCollection });
   });
 });
 
@@ -453,6 +499,7 @@ describe("lifecycle hooks", () => {
 
     const coll = defineResourceCollection({
       pattern: "files/**",
+      scope: "session",
       stateSchema: z.object({ lang: z.string().default("text") }),
       onInstanceCreated: (key) => { created.push(key); },
       onInstanceUpdated: (key) => { updated.push(key); },

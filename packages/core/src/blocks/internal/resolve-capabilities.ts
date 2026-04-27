@@ -19,9 +19,7 @@ import {
 import { extractDeclaredResources } from "./build-block";
 
 interface HasResources {
-  sessionResources?: Record<string, any>;
-  userResources?: Record<string, any>;
-  orgResources?: Record<string, any>;
+  resources?: Record<string, any>;
   uses?: readonly UsesEntry[];
   agentType?: AgentType;
 }

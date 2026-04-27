@@ -16,7 +16,7 @@ type ArtifactState = { title: string; summary: string; updatedAt: number };
 function makeTestFlow() {
   const block = handler({
     name: "noop",
-    sessionResources: { artifacts: artifactsCollection },
+    resources: { artifacts: artifactsCollection },
     execute: () => "ok",
   });
 
@@ -59,7 +59,7 @@ describe("chat-agent blocks", () => {
     const { ctx } = await createCtx();
 
     // Seed an artifact: metadata in state, body in content
-    const artifacts = ctx.session.resources.artifacts as unknown as ResourceCollectionRef<ArtifactState>;
+    const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<ArtifactState>;
     const ref = await artifacts.create("doc-1", {
       title: "Seeded Doc",
       summary: "",
@@ -96,7 +96,7 @@ describe("chat-agent blocks", () => {
     expect(output.title).toBe("New Document");
 
     // Verify: metadata in state, body in content
-    const artifacts = ctx.session.resources.artifacts as unknown as ResourceCollectionRef<ArtifactState>;
+    const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<ArtifactState>;
     const ref = artifacts.get("new-doc");
     expect(ref.state.title).toBe("New Document");
     const content = await ref.readContent();
@@ -118,7 +118,7 @@ describe("chat-agent blocks", () => {
       ctx,
     });
 
-    const artifacts = ctx.session.resources.artifacts as unknown as ResourceCollectionRef<ArtifactState>;
+    const artifacts = ctx.resources.artifacts as unknown as ResourceCollectionRef<ArtifactState>;
     const ref = artifacts.get("doc-1");
     expect(ref.state.title).toBe("Revised");
     const content = await ref.readContent();

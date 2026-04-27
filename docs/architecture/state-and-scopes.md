@@ -245,7 +245,7 @@ Block-level state declarations bubble upward for compatibility checking. This en
 
 ## Resource Declaration Bubbling
 
-Similar to state schemas, block-level resource declarations (`sessionResources`, `userResources`, `orgResources`) bubble upward through the composition hierarchy. Sequencers collect declared resources from all child blocks, and `defineFlow` merges them into the flow's scope configs automatically. Flow-level resource declarations take priority over block-declared ones. See [Resources and Client Data](./resources-and-client-data.md) for the full collection and merge model.
+Block-level resource declarations live in a single flat `resources` map (FIX-435). Each resource carries its intrinsic `scope` and `flowIsolation`, so the framework routes its storage automatically. Sequencers collect `declaredResources` from all child blocks, and `defineFlow` merges them into the flow's flat `resources` map at the top level. Flow-level declarations take priority on dedup; effective-storage-key collisions across distinct accessor keys are caught at flow-build time. See [Resources and Client Data](./resources-and-client-data.md) for the full collection, merge, and storage-key model.
 
 ## Cross-Flow State: Shared vs Isolated
 
@@ -271,7 +271,14 @@ The checker is coarse by design — Wave 1 accepts false-positive conflicts (ask
 
 ### Per-flow isolation (opt-in)
 
-A flow declares `isolateUserState: true` and/or `isolateOrgState: true` on its `FlowDefinition`. The storage key for that flow's scope becomes `${userId}:${flowKind}` (or `${orgId}:${flowKind}`). The flow does not participate in the registry schema merge for the isolated scope — other flows cannot conflict with it, and it cannot read data written by other flows. Use this for internal-only flows, background jobs, or flows with domain-specific user state that should not leak into shared surfaces.
+Two layers can promote a user/org-scope record to flow-isolated storage:
+
+- **Flow-level**: `isolateUserState: true` / `isolateOrgState: true` on the `FlowDefinition`. Acts as the default for resources at the relevant scope that don't declare `flowIsolation` themselves. The flow does not participate in the registry schema merge for the isolated scope.
+- **Resource-level** (FIX-435): `defineResource({ scope: "user", flowIsolation: true })`. Always wins. A library can ship a flow-private user-scoped resource, and consumers don't need to flip the flow flag.
+
+When either layer marks a user/org-scope storage cell as isolated, its key becomes `${id}:${flowKind}`. Other flows cannot conflict with it, and it cannot read data written by other flows.
+
+Use isolation for internal-only flows, background jobs, library-private state, or flows with domain-specific data that should not leak into shared surfaces.
 
 The `UserRecord.id` / `OrgRecord.id` field holds the namespaced key so lookups by record id are consistent. The `userId` / `orgId` fields remain the bare identity — list APIs that filter by `userId` continue to return both shared and isolated records for a given user, which is useful for admin and devtool views.
 
@@ -287,10 +294,9 @@ export function resolveUserStorageKey(userId: string, flow: IsolationFlow): stri
 
 `createExecutionContext` uses these helpers for every `user` / `org` read and write, including `ContentStore` operations. Session and request scopes are unaffected — sessions already carry `flowKind` on the record and are effectively flow-isolated already.
 
-### Non-goals in Wave 1
+### Non-goals
 
-- **Schema versioning / migration.** Flipping `isolateUserState` on an existing flow is a data-affecting change — existing shared records become invisible to the flow; new isolated records start fresh. No automatic migration.
-- **Per-resource isolation overrides.** A flow either fully shares or fully isolates its user scope. Per-resource namespaces are a Phase 2 concern.
+- **Schema versioning / migration.** Flipping `isolateUserState` (or a resource's `flowIsolation`) on an existing flow/resource is a data-affecting change — existing shared records become invisible; new isolated records start fresh. No automatic migration.
 - **Cross-flow read validation.** The registry prevents incompatible writes; it does not re-parse stored state on every read.
 
 ## Streaming Integration

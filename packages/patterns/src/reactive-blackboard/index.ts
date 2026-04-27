@@ -212,7 +212,7 @@ export interface MeshConfig {
 export function mesh(config: MeshConfig): {
   /** Sequencer block: appends entry + fans out to matching actors. */
   emit: BlockDefinition<any, any>;
-  /** The blackboard resource definition. Declare on your flow's sessionResources. */
+  /** The blackboard resource definition. Declare on your flow's `resources`. */
   blackboard: DefinedResource;
   /** The registered actors (frozen). */
   actors: readonly Actor[];
