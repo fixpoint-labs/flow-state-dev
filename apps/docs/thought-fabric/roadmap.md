@@ -19,7 +19,7 @@ This is a living document. Thought Fabric builds on top of flow-state-dev, so it
 - Helpers: add, evict, pin, unpin, refresh, advance, items, formatForContext
 - `workingMemoryContextFormatter` — ready-made context slot for generators
 
-### Identity (partial)
+### Identity
 - `perspective()` — structured viewpoint model with config validation and frozen instances
 - `system()` — factory that bundles blocks, capability, resources, and capture pipeline
 - Static blocks: `perspectiveApply`, `perspectiveAnalyze`, `perspectiveAuditor`
@@ -28,6 +28,10 @@ This is a living document. Thought Fabric builds on top of flow-state-dev, so it
 - `createPerspectiveCapability` — capability with `static` and `accumulated` context presets
 - Helpers: add/remove/challenge/read/format for observations and positions
 - Static formatters: `formatPerspective`, `summarizePerspective`, `perspectiveContextFormatter`
+- `constitution()` — ranked principle hierarchies with three conflict resolution modes (priority, weighted, contextual)
+- `constitutionAuditor` — bundled sequencer: LLM review → deterministic enforce
+- Individual blocks: `constitutionReview` (generator), `constitutionEnforce` (handler)
+- Helpers: `rankConstitutionPrinciples`, `computeConstitutionCompliance`, `formatConstitution`, `summarizeConstitutionReview`
 
 ### Metacognition (partial)
 - `biasAnalyzer` — bundled sequencer: detect → classify → score → counterpoint → format
@@ -41,7 +45,6 @@ This is a living document. Thought Fabric builds on top of flow-state-dev, so it
 ## Coming Soon
 
 ### Identity (remaining)
-- `constitution()` — values and constraints that guide agent behavior
 - Salience drift — perspective weights evolve with observation frequency
 
 ### Perception
