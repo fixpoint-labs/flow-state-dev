@@ -14,6 +14,7 @@ import { createPostgresUserStore } from "./user-store";
 import { createPostgresOrgStore } from "./org-store";
 import { createPostgresActiveRequestRegistry } from "./active-request-registry";
 import { createPostgresContentStore } from "./content-store";
+import { createPostgresCheckpointStore } from "./checkpoint-store";
 
 export type PostgresStoreRegistry = StoreRegistry & {
   /** Drain the connection pool and disconnect */
@@ -118,6 +119,7 @@ export async function createPostgresStores(
       org: createPostgresOrgStore(executor),
       activeRequests: createPostgresActiveRequestRegistry(executor),
       content: createPostgresContentStore(executor),
+      checkpoints: createPostgresCheckpointStore(executor),
       async close() {
         await closePool();
       }
@@ -135,6 +137,7 @@ export async function createPostgresStores(
     org: createPostgresOrgStore(executor),
     activeRequests: createPostgresActiveRequestRegistry(executor),
     content: createPostgresContentStore(executor),
+    checkpoints: createPostgresCheckpointStore(executor),
     async close() {
       await closePool();
     }
@@ -147,7 +150,8 @@ export {
   createPostgresUserStore,
   createPostgresOrgStore,
   createPostgresActiveRequestRegistry,
-  createPostgresContentStore
+  createPostgresContentStore,
+  createPostgresCheckpointStore
 };
 
 export { initializeSchema } from "./schema";

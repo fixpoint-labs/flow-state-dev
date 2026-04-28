@@ -80,7 +80,7 @@ Consumers reading historical items should use `resolveBlockValue(item.output, lo
 
 **`router_decision`** records which branch a router selected.
 
-**`state_snapshot`** captures the full sequencer state at each step boundary. Transient — streams to the devtool during execution but isn't persisted.
+**`state_snapshot`** captures the full sequencer state at each step boundary. Carries `key: blockInstanceId` so consumers treat new emissions for the same key as in-place updates (one logical item per sequencer that updates N times, not N items per sequencer per turn). When `durable: true` (the sequencer default; see FIX-401), the runtime side-channels these into `stores.checkpoints` for resume by the future durable execution runtime (FIX-141). Items themselves still stay out of the request items log.
 
 ## Persistence
 
@@ -115,7 +115,7 @@ There are two storage targets, kept separate:
 | `step_error` | Sequencer (block error, with/without rescue) | ✓ | — | — | Persistent |
 | `block_output` | Every block (auto, post-execution) | — | — | — | Persistent |
 | `router_decision` | Router (auto, on selection) | — | — | — | Persistent |
-| `state_snapshot` | Sequencer (at step boundaries) | — | — | — | **Always transient** |
+| `state_snapshot` | Sequencer (at step boundaries) | — | — | — | Stripped from request items log; durable frames side-channel to `stores.checkpoints` |
 | `block_debug` | Generator (resolved config at start) | — | — | — | Transient |
 
 **Column meanings:** `Client` = sent to connected clients; `History` = included in LLM conversation history. `Identity-governed` = visibility derives from the producing generator's `agentType`. A `trace` agentType forces `client: false, history: false` regardless of type.

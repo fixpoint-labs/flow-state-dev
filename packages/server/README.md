@@ -160,7 +160,7 @@ interface ContentStore {
 For custom store registries, provide a `ContentStore` implementation. `createInMemoryContentStore()` is the simplest option:
 
 ```ts
-import { createInMemoryContentStore } from "@flow-state-dev/server";
+import { createInMemoryContentStore, createInMemoryCheckpointStore } from "@flow-state-dev/server";
 
 const stores: StoreRegistry = {
   session: mySessionStore,
@@ -169,10 +169,27 @@ const stores: StoreRegistry = {
   org: myOrgStore,
   activeRequests: myActiveRequestRegistry,
   content: createInMemoryContentStore(),
+  checkpoints: createInMemoryCheckpointStore(),
 };
 ```
 
 Database adapters can implement `ContentStore` to route content to blob storage, S3, or a separate table while keeping scope metadata in the primary store.
+
+## CheckpointStore
+
+`StoreRegistry` includes a required `checkpoints: CheckpointStore` field for durable sequencer checkpoints (FIX-401). Sequencers default to `durable: true` and overwrite a single record per `(requestId, blockInstanceId)` at every step boundary; the future durable execution runtime (FIX-141) reads `latest(...)` to resume after an interruption.
+
+```ts
+interface CheckpointStore {
+  write(checkpoint: SequencerCheckpoint): Promise<void>;
+  latest(requestId: string, blockInstanceId: string): Promise<SequencerCheckpoint | null>;
+  delete(requestId: string, blockInstanceId: string): Promise<void>;
+}
+```
+
+Memory, filesystem, SQLite, and Postgres adapters all ship with first-class implementations. Custom registries can wrap a third-party KV store; storage is constant per sequencer regardless of step count, so the implementation needs no enumeration or pruning.
+
+By default the final checkpoint is retained after terminal completion (success / error / abort) for post-mortem inspection. Set `flow.request.cleanupCheckpointsOnTerminal: true` on a flow to make terminal frames trigger an immediate `delete()`.
 
 ## Notes
 

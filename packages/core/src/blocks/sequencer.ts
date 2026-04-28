@@ -192,32 +192,71 @@ function getSequencerEmitterItemCount(response: unknown): number {
 }
 
 /**
- * Emits a state_snapshot item at step boundaries so the devtool can display
- * the full state of a sequencer at each point in its execution.
+ * Emits a state_snapshot item at sequencer step boundaries (FIX-401).
  *
- * Only emits when state has actually changed since the last snapshot,
- * avoiding redundant snapshots for steps that don't mutate state.
- * When multiple steps run without changing state, the emitted snapshot
- * records which step actually caused the change.
+ * One logical snapshot per sequencer instance, keyed by `blockInstanceId`.
+ * Each emission overwrites the prior frame on the wire (clients dedupe on
+ * `key`) and — when `durable` is true — overwrites the prior record in
+ * `stores.checkpoints` via the server-side durability hook.
+ *
+ * Skips emission when state hasn't changed since the last snapshot to keep
+ * idle steps from cutting needless events. The first call (`lastStateJson`
+ * undefined) always emits so the durability writer sees a baseline frame.
+ *
+ * Non-durable sequencers gate on `isTraceObservabilityEnabled()` — there's
+ * no consumer for the snapshot in production unless the operator opted in.
+ * Durable sequencers always emit because the snapshot drives the persistence
+ * write; gating on observability would silently break checkpointing.
+ *
+ * `terminal: true` signals the final emission for this sequencer's run
+ * (success / error / cancellation). The durability hook treats terminal
+ * frames as a delete signal.
  */
 async function emitStateSnapshot(
   ctx: BlockContext,
   stepName: string,
   stepIndex: number,
-  lastStateJson: string | undefined
+  lastStateJson: string | undefined,
+  durable: boolean,
+  version: number,
+  stateSchema: ZodTypeAny | undefined,
+  terminal: boolean = false
 ): Promise<string | undefined> {
-  // Gate on the shared trace-observability flag. Off in production unless the
-  // operator opts in; on in dev/test by default.
-  if (!isTraceObservabilityEnabled()) return lastStateJson;
+  // Non-durable snapshots are stream-only and gated on the observability
+  // flag. Durable snapshots must always emit — they're the persistence path.
+  if (!durable && !isTraceObservabilityEnabled()) return lastStateJson;
 
   const seqRef = ctx.sequencer;
   if (seqRef === undefined) return lastStateJson;
 
   const currentStateJson = JSON.stringify(seqRef.state);
 
-  // Skip emission if state hasn't changed since the last snapshot.
-  if (lastStateJson !== undefined && currentStateJson === lastStateJson) {
+  // Skip step-boundary emissions when state hasn't changed. Terminal frames
+  // always emit so the durability hook sees the delete signal even when the
+  // last step left state untouched.
+  if (!terminal && lastStateJson !== undefined && currentStateJson === lastStateJson) {
     return lastStateJson;
+  }
+
+  // Schema validation at the durability boundary (FIX-401 acceptance #1).
+  // A handler that mutated state into a shape the schema rejects would
+  // otherwise persist garbage that the future resume runtime (FIX-141)
+  // can't restore. Downgrade to a non-durable emission so the devtool still
+  // sees the bad state for debugging, but the checkpoint store stays clean.
+  // Terminal frames always stay durable when configured so the delete
+  // signal still fires.
+  let effectiveDurable = durable;
+  if (durable && !terminal && stateSchema !== undefined) {
+    const parsed = stateSchema.safeParse(seqRef.state);
+    if (!parsed.success) {
+      effectiveDurable = false;
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[flow-state] sequencer "${seqRef.name}" state failed stateSchema validation; ` +
+        `checkpoint write skipped for blockInstanceId=${seqRef.instanceId}. ` +
+        `Issues: ${parsed.error.issues.map((i) => i.path.join(".") + ": " + i.message).join("; ")}`
+      );
+    }
   }
 
   const item = {
@@ -230,14 +269,18 @@ async function emitStateSnapshot(
     provenance: {
       blockName: seqRef.name,
       blockInstanceId: seqRef.instanceId,
+      parentBlockInstanceId: ctx._blockIdentity?.parentBlockInstanceId,
       phase: "main" as const,
       stepIndex,
     },
     ts: Date.now(),
+    key: seqRef.instanceId,
     stepName,
     stepIndex,
     state: structuredClone(seqRef.state),
-    version: 0
+    version,
+    durable: effectiveDurable,
+    terminal
   };
 
   await ctx.response.emit({ type: "item.added", item });
@@ -524,7 +567,9 @@ function createRuntimeState(): SequencerRuntimeState {
 
 function runSequencerOperations(
   operations: SequencerOperation[],
-  rescueHandlers: RescueHandlerSpec[]
+  rescueHandlers: RescueHandlerSpec[],
+  durable: boolean,
+  stateSchema: ZodTypeAny | undefined
 ): (input: unknown, ctx: BlockContext) => Promise<unknown> {
   return async (input: unknown, ctx: BlockContext): Promise<unknown> => {
     const runtime = createRuntimeState();
@@ -534,85 +579,149 @@ function runSequencerOperations(
     // which is not itself a persisted item to ref. Each op can override this.
     let lastDescriptor: BlockOutputHint = { kind: "inline" };
 
-    // Emit initial state snapshot before any steps execute.
-    let lastStateJson = await emitStateSnapshot(ctx, "__initial__", -1, undefined);
+    // Monotonic write counter for the (requestId, blockInstanceId) checkpoint —
+    // increments on each emission so durability middleware can disambiguate
+    // overwrites and clients can render version progress.
+    let snapshotVersion = 0;
+    let lastStepName = "__initial__";
+    let lastStepIndex = -1;
+    let lastStateJson: string | undefined;
 
     try {
-      for (let index = 0; index < operations.length; index += 1) {
-        const operation = operations[index];
-        runtime.stepHistory.push(operation.name);
-        const result = await operation.run(currentValue, ctx, runtime, index);
-        currentValue = result.value;
-        if (result.descriptor !== undefined) {
-          lastDescriptor = result.descriptor;
-        }
+      try {
+        // Emit initial state snapshot before any steps execute. For durable
+        // sequencers this also writes a baseline checkpoint so a crash before
+        // the first step still leaves a resumable record.
+        lastStateJson = await emitStateSnapshot(
+          ctx,
+          lastStepName,
+          lastStepIndex,
+          undefined,
+          durable,
+          snapshotVersion,
+          stateSchema
+        );
 
-        // Emit state snapshot only if state changed since last snapshot.
-        lastStateJson = await emitStateSnapshot(ctx, operation.name, index, lastStateJson);
-
-        if (result.exit === true) {
-          break;
-        }
-
-        if (result.jumpTo !== undefined) {
-          const jumpIndex = operations.findIndex((candidate) => candidate.name === result.jumpTo);
-          if (jumpIndex < 0) {
-            throw new Error(`loopBack target "${result.jumpTo}" was not found in sequencer "${runtime.stepHistory[0]}"`);
+        for (let index = 0; index < operations.length; index += 1) {
+          const operation = operations[index];
+          runtime.stepHistory.push(operation.name);
+          const result = await operation.run(currentValue, ctx, runtime, index);
+          currentValue = result.value;
+          if (result.descriptor !== undefined) {
+            lastDescriptor = result.descriptor;
           }
 
-          index = jumpIndex - 1;
-        }
-      }
+          // Emit state snapshot only if state changed since last snapshot.
+          const prevStateJson = lastStateJson;
+          snapshotVersion += 1;
+          lastStateJson = await emitStateSnapshot(
+            ctx,
+            operation.name,
+            index,
+            lastStateJson,
+            durable,
+            snapshotVersion,
+            stateSchema
+          );
+          // Roll back the version bump when the snapshot was suppressed (state
+          // unchanged) so version stays a true write counter.
+          if (lastStateJson === prevStateJson) {
+            snapshotVersion -= 1;
+          } else {
+            lastStepName = operation.name;
+            lastStepIndex = index;
+          }
 
-      // Auto-await any outstanding .work() tasks so the block (and its
-      // parent stream) stays alive until background work finishes.
-      if (runtime.workTasks.length > 0) {
-        const pending = runtime.workTasks.splice(0, runtime.workTasks.length);
-        let remaining = pending.length;
-        // Signal-only updates: undefined preserves the current status message
-        // while refreshing blocked/backgroundTasks so the client can unblock
-        // sendAction without the in-flight indicator flickering to blank.
-        ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
+          if (result.exit === true) {
+            break;
+          }
 
-        await Promise.all(pending.map((t) =>
-          t.promise.then((result) => {
-            remaining--;
-            if (result.status === "rejected") {
-              console.error(`[sequencer] Background work "${result.name}" failed:`, result.reason?.message ?? result.reason);
+          if (result.jumpTo !== undefined) {
+            const jumpIndex = operations.findIndex((candidate) => candidate.name === result.jumpTo);
+            if (jumpIndex < 0) {
+              throw new Error(`loopBack target "${result.jumpTo}" was not found in sequencer "${runtime.stepHistory[0]}"`);
             }
-            ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
-          })
-        ));
-      }
 
-      // Expose the running descriptor to the outer emitter so the sequencer's
-      // own block_output carries a ref/structure instead of duplicating the
-      // child's content (FIX-413). `inline` is the emitter default and needs
-      // no hint — leaves it carried as the raw value.
-      if (lastDescriptor.kind !== "inline") {
-        (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = lastDescriptor;
-      }
-
-      return currentValue;
-    } catch (error) {
-      const normalizedError = toError(error);
-      for (let i = 0; i < rescueHandlers.length; i += 1) {
-        const handler = rescueHandlers[i];
-        if (!matchesRescueHandler(normalizedError, handler)) {
-          continue;
+            index = jumpIndex - 1;
+          }
         }
 
-        const rescuePath = extendBlockPath(currentPath(ctx), blockPathRescue(i));
-        const rescued = await executeBlock(handler.block, normalizedError, ctx, rescuePath);
-        // A rescue branch passes through to the handler block's output.
-        const rescueDescriptor = refDescriptorForPath(ctx, rescuePath);
-        if (rescueDescriptor.kind !== "inline") {
-          (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = rescueDescriptor;
-        }
-        return rescued;
-      }
+        // Auto-await any outstanding .work() tasks so the block (and its
+        // parent stream) stays alive until background work finishes.
+        if (runtime.workTasks.length > 0) {
+          const pending = runtime.workTasks.splice(0, runtime.workTasks.length);
+          let remaining = pending.length;
+          // Signal-only updates: undefined preserves the current status message
+          // while refreshing blocked/backgroundTasks so the client can unblock
+          // sendAction without the in-flight indicator flickering to blank.
+          ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
 
-      throw normalizedError;
+          await Promise.all(pending.map((t) =>
+            t.promise.then((result) => {
+              remaining--;
+              if (result.status === "rejected") {
+                console.error(`[sequencer] Background work "${result.name}" failed:`, result.reason?.message ?? result.reason);
+              }
+              ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
+            })
+          ));
+        }
+
+        // Expose the running descriptor to the outer emitter so the sequencer's
+        // own block_output carries a ref/structure instead of duplicating the
+        // child's content (FIX-413). `inline` is the emitter default and needs
+        // no hint — leaves it carried as the raw value.
+        if (lastDescriptor.kind !== "inline") {
+          (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = lastDescriptor;
+        }
+
+        return currentValue;
+      } catch (error) {
+        const normalizedError = toError(error);
+        for (let i = 0; i < rescueHandlers.length; i += 1) {
+          const handler = rescueHandlers[i];
+          if (!matchesRescueHandler(normalizedError, handler)) {
+            continue;
+          }
+
+          const rescuePath = extendBlockPath(currentPath(ctx), blockPathRescue(i));
+          const rescued = await executeBlock(handler.block, normalizedError, ctx, rescuePath);
+          // A rescue branch passes through to the handler block's output.
+          const rescueDescriptor = refDescriptorForPath(ctx, rescuePath);
+          if (rescueDescriptor.kind !== "inline") {
+            (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = rescueDescriptor;
+          }
+          return rescued;
+        }
+
+        throw normalizedError;
+      }
+    } finally {
+      // Always emit a terminal snapshot — success, error, or cancellation.
+      // The server-side durability hook treats `terminal: true` as a delete
+      // signal, so each sequencer (root or nested) cleans up its own
+      // checkpoint without a separate enumeration pass at request termination.
+      // Errors during emit shouldn't mask the underlying execution outcome,
+      // so failures here are swallowed.
+      try {
+        snapshotVersion += 1;
+        await emitStateSnapshot(
+          ctx,
+          lastStepName,
+          lastStepIndex,
+          lastStateJson,
+          durable,
+          snapshotVersion,
+          stateSchema,
+          true
+        );
+      } catch (terminalEmitError) {
+        // Don't mask the underlying execution outcome, but surface this
+        // for diagnostics — a broken emitter signature would otherwise
+        // ship silently and leave checkpoints uncleaned.
+        // eslint-disable-next-line no-console
+        console.error("[flow-state] terminal state_snapshot emit failed:", terminalEmitError);
+      }
     }
   };
 }
@@ -632,6 +741,10 @@ function createSequencer<TInput, TOutput>(
   // individual blocks in the chain already validate their own outputs.
   const trackedOutputSchema = lastOutputSchema ?? config.outputSchema;
 
+  // Default `durable: true` (FIX-401). Always-on under latest-only checkpoint
+  // semantics is cheap (constant storage per sequencer); explicit `false` is
+  // the opt-out for tests and ephemeral fanouts.
+  const durable = config.durable ?? true;
   const baseBlock = buildBlock({
     kind: "sequencer",
     config: {
@@ -644,7 +757,7 @@ function createSequencer<TInput, TOutput>(
       container: config.container,
       activeStatusMessage: config.activeStatusMessage
     },
-    execute: runSequencerOperations(operations, rescueHandlers) as (
+    execute: runSequencerOperations(operations, rescueHandlers, durable, config.stateSchema) as (
       input: unknown,
       ctx: BlockContext
     ) => Promise<unknown>,

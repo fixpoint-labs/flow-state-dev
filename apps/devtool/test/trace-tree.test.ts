@@ -280,19 +280,23 @@ describe("buildTraceTree", () => {
     expect(blockNode.blockDuration).toBe(2500);
   });
 
-  it("collects state_snapshot items into stateSnapshots", () => {
+  it("collapses keyed state_snapshot items to the latest frame per sequencer", () => {
+    // FIX-401: snapshots emitted with `key === blockInstanceId` are
+    // in-place updates of the same logical sequencer, not separate rows.
+    // The trace tree retains the latest frame per key so the panel renders
+    // the current state of each sequencer.
     const items = [
       makeItem({
         id: "snap-init",
         type: "state_snapshot",
         transient: true,
         provenance: makeProvenance("research", "seq-inst"),
-        sequencerName: "research",
-        sequencerInstanceId: "seq-inst",
+        key: "seq-inst",
         stepName: "__initial__",
         stepIndex: -1,
         state: { progress: 0, phase: "planning" },
         version: 0,
+        durable: true,
       } as Partial<OutputItem> & { id: string; type: string }),
       makeItem({
         id: "msg-1",
@@ -307,12 +311,12 @@ describe("buildTraceTree", () => {
         transient: true,
         ts: 2000,
         provenance: makeProvenance("research", "seq-inst"),
-        sequencerName: "research",
-        sequencerInstanceId: "seq-inst",
+        key: "seq-inst",
         stepName: "analyze",
         stepIndex: 0,
         state: { progress: 50, phase: "analyzing" },
         version: 1,
+        durable: true,
       } as Partial<OutputItem> & { id: string; type: string }),
       makeItem({
         id: "snap-step1",
@@ -320,12 +324,12 @@ describe("buildTraceTree", () => {
         transient: true,
         ts: 3000,
         provenance: makeProvenance("research", "seq-inst"),
-        sequencerName: "research",
-        sequencerInstanceId: "seq-inst",
+        key: "seq-inst",
         stepName: "summarize",
         stepIndex: 1,
         state: { progress: 100, phase: "done" },
         version: 2,
+        durable: true,
       } as Partial<OutputItem> & { id: string; type: string }),
     ];
 
@@ -334,19 +338,17 @@ describe("buildTraceTree", () => {
 
     expect(blockNode.blockName).toBe("research");
     expect(blockNode.stateSnapshots).toBeDefined();
-    expect(blockNode.stateSnapshots).toHaveLength(3);
-    expect(blockNode.stateSnapshots![0].stepName).toBe("__initial__");
-    expect(blockNode.stateSnapshots![0].state).toEqual({ progress: 0, phase: "planning" });
-    expect(blockNode.stateSnapshots![1].stepName).toBe("analyze");
-    expect(blockNode.stateSnapshots![1].state).toEqual({ progress: 50, phase: "analyzing" });
-    expect(blockNode.stateSnapshots![2].stepName).toBe("summarize");
-    expect(blockNode.stateSnapshots![2].state).toEqual({ progress: 100, phase: "done" });
+    expect(blockNode.stateSnapshots).toHaveLength(1);
+    expect(blockNode.stateSnapshots![0].stepName).toBe("summarize");
+    expect(blockNode.stateSnapshots![0].state).toEqual({ progress: 100, phase: "done" });
+    expect(blockNode.stateSnapshots![0].version).toBe(2);
 
     // Snapshots should not appear as visible item children.
     const itemChildren = blockNode.children.filter((c) => c.type === "item");
     expect(itemChildren).toHaveLength(1);
     expect(itemChildren[0].item!.type).toBe("message");
   });
+
 
   it("handles nested sequencer state snapshots independently", () => {
     const items = [

@@ -129,6 +129,28 @@ const REQUEST_EVENTS_INDEXES = [
   "CREATE INDEX IF NOT EXISTS idx_request_events_request_id ON request_events(request_id)"
 ];
 
+// FIX-401: durable sequencer checkpoints. Identity is
+// (request_id, block_instance_id); upsert overwrites the latest record,
+// delete removes it at terminal completion. `data` is JSONB so the schema
+// can evolve without ALTER TABLE — scalar columns are indexed access paths
+// only, never the source of truth for record content.
+const SEQUENCER_CHECKPOINTS_TABLE = `
+CREATE TABLE IF NOT EXISTS sequencer_checkpoints (
+  request_id               TEXT NOT NULL,
+  block_instance_id        TEXT NOT NULL,
+  parent_block_instance_id TEXT,
+  step_index               INTEGER NOT NULL,
+  version                  INTEGER NOT NULL,
+  created_at               BIGINT NOT NULL,
+  data                     JSONB NOT NULL,
+  PRIMARY KEY (request_id, block_instance_id)
+);
+`;
+
+const SEQUENCER_CHECKPOINTS_INDEXES = [
+  "CREATE INDEX IF NOT EXISTS idx_sequencer_checkpoints_request_id ON sequencer_checkpoints(request_id)"
+];
+
 /**
  * One-shot rename migrations for deployments that ran the pre-FIX-428 schema
  * (project scope). Idempotent: each statement no-ops once the new name is in
@@ -196,7 +218,8 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ORGS_TABLE,
       ACTIVE_REQUESTS_TABLE,
       RESOURCE_CONTENT_TABLE,
-      REQUEST_EVENTS_TABLE
+      REQUEST_EVENTS_TABLE,
+      SEQUENCER_CHECKPOINTS_TABLE
     ],
     indexes: [
       ...SESSIONS_INDEXES,
@@ -205,7 +228,8 @@ function getSchemaDDL(): { migrations: string[]; tables: string[]; indexes: stri
       ...ORGS_INDEXES,
       ...ACTIVE_REQUESTS_INDEXES,
       ...RESOURCE_CONTENT_INDEXES,
-      ...REQUEST_EVENTS_INDEXES
+      ...REQUEST_EVENTS_INDEXES,
+      ...SEQUENCER_CHECKPOINTS_INDEXES
     ]
   };
 }

@@ -101,6 +101,25 @@ CREATE TABLE IF NOT EXISTS request_events (
 CREATE INDEX IF NOT EXISTS idx_request_events_request_id ON request_events(request_id);
 `;
 
+// FIX-401: durable sequencer checkpoints. Identity is
+// (request_id, block_instance_id); upsert overwrites latest, delete removes
+// at terminal completion. `data` carries the full SequencerCheckpoint JSON
+// so the schema can evolve without ALTER TABLE — scalar columns are indexed
+// access paths only, never the source of truth for record content.
+const SEQUENCER_CHECKPOINTS_TABLE = `
+CREATE TABLE IF NOT EXISTS sequencer_checkpoints (
+  request_id               TEXT NOT NULL,
+  block_instance_id        TEXT NOT NULL,
+  parent_block_instance_id TEXT,
+  step_index               INTEGER NOT NULL,
+  version                  INTEGER NOT NULL,
+  created_at               INTEGER NOT NULL,
+  data                     TEXT NOT NULL,
+  PRIMARY KEY (request_id, block_instance_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sequencer_checkpoints_request_id ON sequencer_checkpoints(request_id);
+`;
+
 /**
  * One-shot rename migrations for databases initialised under the pre-FIX-428
  * `project` scope. SQLite (3.25+) supports `ALTER TABLE ... RENAME COLUMN`
@@ -184,6 +203,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   db.exec(ORGS_TABLE);
   db.exec(ACTIVE_REQUESTS_TABLE);
   db.exec(REQUEST_EVENTS_TABLE);
+  db.exec(SEQUENCER_CHECKPOINTS_TABLE);
 }
 
 /**

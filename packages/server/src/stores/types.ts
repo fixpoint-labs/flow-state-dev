@@ -1,5 +1,6 @@
 import type {
-  JournalEntry
+  JournalEntry,
+  SequencerCheckpoint
 } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
@@ -255,6 +256,29 @@ export interface ContentStore {
   deleteAll(scopeType: ContentScopeType, scopeId: string): Promise<void>;
 }
 
+/**
+ * Durable sequencer checkpoint store (FIX-401).
+ *
+ * Latest-only persistence: identity is `(requestId, blockInstanceId)`. Each
+ * write overwrites any prior record. The Phase 2 resume runtime (FIX-141)
+ * reads the latest checkpoint to find the resume point — no enumeration
+ * needed since identity is fully scoped.
+ *
+ * GC is per-instance: each sequencer's terminal state_snapshot triggers a
+ * `delete` for its own instance. No `listForRequest` / `pruneBefore` /
+ * `stepHistory` — those are explicitly out of scope (see FIX-401 spec).
+ */
+export interface CheckpointStore {
+  /** Overwrite the latest checkpoint for this sequencer instance. */
+  write(checkpoint: SequencerCheckpoint): Promise<void>;
+
+  /** Read the latest checkpoint, or `null` if none exists. */
+  latest(requestId: string, blockInstanceId: string): Promise<SequencerCheckpoint | null>;
+
+  /** Remove the checkpoint when its sequencer reaches terminal state. */
+  delete(requestId: string, blockInstanceId: string): Promise<void>;
+}
+
 export type StoreRegistry = {
   session: SessionStore;
   request: RequestStore;
@@ -262,4 +286,5 @@ export type StoreRegistry = {
   org: OrgStore;
   activeRequests: ActiveRequestRegistry;
   content: ContentStore;
+  checkpoints: CheckpointStore;
 };

@@ -6,6 +6,10 @@ import {
   FilesystemActiveRequestRegistry
 } from "./filesystem/active-request-registry";
 import {
+  createFilesystemCheckpointStore,
+  FilesystemCheckpointStore
+} from "./filesystem/checkpoint-store";
+import {
   createFilesystemContentStore,
   FilesystemContentStore
 } from "./filesystem/content-store";
@@ -29,6 +33,10 @@ import {
   createInMemoryActiveRequestRegistry,
   InMemoryActiveRequestRegistry
 } from "./memory/active-request-registry";
+import {
+  createInMemoryCheckpointStore,
+  InMemoryCheckpointStore
+} from "./memory/checkpoint-store";
 import {
   createInMemoryContentStore,
   InMemoryContentStore
@@ -59,6 +67,7 @@ import type { StoreRegistry } from "./types";
 export type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
+  CheckpointStore,
   ContentScopeType,
   ContentStore,
   ExpectedVersion,
@@ -91,24 +100,28 @@ export {
   createScopeStateOps,
   createStateContainer,
   createFilesystemActiveRequestRegistry,
+  createFilesystemCheckpointStore,
   createFilesystemContentStore,
   createFilesystemProjectStore,
   createFilesystemRequestStore,
   createFilesystemSessionStore,
   createFilesystemUserStore,
   createInMemoryActiveRequestRegistry,
+  createInMemoryCheckpointStore,
   createInMemoryContentStore,
   createInMemoryProjectStore,
   createInMemoryRequestStore,
   createInMemorySessionStore,
   createInMemoryUserStore,
   FilesystemActiveRequestRegistry,
+  FilesystemCheckpointStore,
   FilesystemContentStore,
   FilesystemProjectStore,
   FilesystemRequestStore,
   FilesystemSessionStore,
   FilesystemUserStore,
   InMemoryActiveRequestRegistry,
+  InMemoryCheckpointStore,
   InMemoryContentStore,
   InMemoryProjectStore,
   InMemoryRequestStore,
@@ -133,7 +146,8 @@ export function createInMemoryStores(): StoreRegistry {
     user: createInMemoryUserStore(),
     org: createInMemoryProjectStore(),
     activeRequests: createInMemoryActiveRequestRegistry(),
-    content: createInMemoryContentStore()
+    content: createInMemoryContentStore(),
+    checkpoints: createInMemoryCheckpointStore()
   };
 }
 
@@ -156,6 +170,7 @@ export function createFilesystemStores(
     activeRequests: createFilesystemActiveRequestRegistry({
       directory: options.rootDir
     }),
-    content: createFilesystemContentStore(options.rootDir)
+    content: createFilesystemContentStore(options.rootDir),
+    checkpoints: createFilesystemCheckpointStore(options.rootDir)
   };
 }
