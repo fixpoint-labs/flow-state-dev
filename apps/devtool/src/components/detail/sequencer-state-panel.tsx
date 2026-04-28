@@ -1,10 +1,11 @@
 /**
  * Sequencer state inspector panel.
  *
- * Shows the state evolution of a sequencer block across step boundaries.
- * Each snapshot captures the full state after a step completes. Users can
- * click through steps to see how state changed during execution, including
- * across loopBack iterations.
+ * Shows the current state of a sequencer block. Under the keyed-update model
+ * (FIX-401), the trace tree retains a single snapshot per sequencer instance,
+ * so the panel renders that snapshot directly. The timeline / diff /
+ * step-name UI only appears when a feed produces multiple snapshots
+ * (a future opt-in `persistFullHistory` mode would reintroduce that).
  */
 import { useState, useMemo } from "react";
 import { ChevronDown, ChevronRight, Layers } from "lucide-react";
@@ -21,6 +22,7 @@ export function SequencerStatePanel({ snapshots }: SequencerStatePanelProps) {
   const [diffMode, setDiffMode] = useState(false);
 
   const selected = snapshots[selectedIndex];
+  const hasTimeline = snapshots.length > 1;
 
   // Compute diff between adjacent snapshots for the diff view.
   const diff = useMemo(() => {
@@ -40,48 +42,52 @@ export function SequencerStatePanel({ snapshots }: SequencerStatePanelProps) {
 
   return (
     <div className="space-y-2">
-      {/* Step timeline */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        {snapshots.map((snap, i) => {
-          const isInitial = snap.stepIndex === -1;
-          const label = isInitial ? "init" : snap.stepName;
-          const isSelected = i === selectedIndex;
+      {/* Step timeline — only shown when there are multiple snapshots to navigate */}
+      {hasTimeline && (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {snapshots.map((snap, i) => {
+            const isInitial = snap.stepIndex === -1;
+            const label = isInitial ? "init" : snap.stepName;
+            const isSelected = i === selectedIndex;
 
-          return (
-            <button
-              key={`${snap.stepIndex}-${snap.ts}`}
-              className={cn(
-                "text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors",
-                isSelected
-                  ? "bg-amber-900/40 border-amber-600/60 text-amber-300"
-                  : "border-slate-700 text-slate-500 hover:border-slate-600 hover:text-slate-400",
-              )}
-              onClick={() => setSelectedIndex(i)}
-              title={isInitial ? "Initial state" : `State changed after: ${snap.stepName} (step ${snap.stepIndex})`}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
+            return (
+              <button
+                key={`${snap.stepIndex}-${snap.ts}`}
+                className={cn(
+                  "text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors",
+                  isSelected
+                    ? "bg-amber-900/40 border-amber-600/60 text-amber-300"
+                    : "border-slate-700 text-slate-500 hover:border-slate-600 hover:text-slate-400",
+                )}
+                onClick={() => setSelectedIndex(i)}
+                title={isInitial ? "Initial state" : `State changed after: ${snap.stepName} (step ${snap.stepIndex})`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-      {/* Controls */}
-      <div className="flex items-center gap-2">
-        <label className="flex items-center gap-1 text-[10px] text-slate-500 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={diffMode}
-            onChange={(e) => setDiffMode(e.target.checked)}
-            className="rounded border-slate-600 bg-slate-800 h-3 w-3"
-          />
-          Show diff
-        </label>
-        {selected && (
-          <span className="text-[10px] text-slate-600 font-mono ml-auto">
-            step {selected.stepIndex === -1 ? "init" : selected.stepIndex}
-          </span>
-        )}
-      </div>
+      {/* Controls — diff toggle requires at least two frames; step indicator only adds noise when there's just one */}
+      {hasTimeline && (
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1 text-[10px] text-slate-500 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={diffMode}
+              onChange={(e) => setDiffMode(e.target.checked)}
+              className="rounded border-slate-600 bg-slate-800 h-3 w-3"
+            />
+            Show diff
+          </label>
+          {selected && (
+            <span className="text-[10px] text-slate-600 font-mono ml-auto">
+              step {selected.stepIndex === -1 ? "init" : selected.stepIndex}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* State display */}
       {selected && (
@@ -185,6 +191,10 @@ function formatValue(value: unknown): string {
  */
 export function SequencerStateSection({ snapshots }: { snapshots: StateSnapshot[] }) {
   const [open, setOpen] = useState(true);
+  // Only annotate the section header with a snapshot count when multiple
+  // frames are available — keyed-update single-snapshot is the common case
+  // and `(1 snapshot)` is just visual clutter.
+  const hasMultipleSnapshots = snapshots.length > 1;
 
   return (
     <div>
@@ -197,9 +207,11 @@ export function SequencerStateSection({ snapshots }: { snapshots: StateSnapshot[
         <span className="text-[10px] font-medium uppercase text-amber-500/80">
           Sequencer State
         </span>
-        <span className="text-[10px] text-slate-600 ml-1">
-          ({snapshots.length} snapshot{snapshots.length === 1 ? "" : "s"})
-        </span>
+        {hasMultipleSnapshots && (
+          <span className="text-[10px] text-slate-600 ml-1">
+            ({snapshots.length} snapshots)
+          </span>
+        )}
       </button>
       {open && (
         <div className="pl-4 mt-1">
