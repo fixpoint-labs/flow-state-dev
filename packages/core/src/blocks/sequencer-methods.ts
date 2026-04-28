@@ -292,6 +292,17 @@ export type SequencerConfig<
   name: string;
   description?: string;
   transient?: boolean;
+  /**
+   * When true (default), the sequencer's state is checkpointed to
+   * `stores.checkpoints` at every step boundary. The Phase 2 resume runtime
+   * (FIX-141) reads the latest checkpoint to pick up after an interrupted
+   * request. Set `false` to opt out — typically for tests or single-shot
+   * ephemeral sequencers where persistence is unwanted overhead.
+   *
+   * Latest-only semantics: storage is constant per sequencer regardless of
+   * step count. See `SequencerCheckpoint` and FIX-401 spec.
+   */
+  durable?: boolean;
   inputSchema?: TInputSchema;
   outputSchema?: ZodTypeAny;
   stateSchema?: ZodTypeAny;

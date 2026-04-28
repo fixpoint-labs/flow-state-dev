@@ -104,17 +104,23 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
         }
       }
 
-      // Collect state snapshots into the owning block node.
+      // Collect state snapshots into the owning block node. Under the
+      // FIX-401 keyed-update model, snapshots for the same sequencer
+      // instance share `key === blockInstanceId` and represent in-place
+      // updates rather than independent rows. Retain only the latest frame
+      // per block so the panel renders the current state of each sequencer
+      // without bookkeeping a per-step list. Terminal frames carry the final
+      // state at the moment the sequencer's run ended and are rendered the
+      // same way — the latest frame is what the user wants to see.
       if (item.type === "state_snapshot") {
         const snap = item as StateSnapshotItem;
-        if (!blockNode.stateSnapshots) blockNode.stateSnapshots = [];
-        blockNode.stateSnapshots.push({
+        blockNode.stateSnapshots = [{
           stepName: snap.stepName,
           stepIndex: snap.stepIndex,
           state: snap.state,
           version: snap.version,
           ts: snap.ts,
-        });
+        }];
         // State snapshots are trace-only metadata — don't add as visible children.
         continue;
       }

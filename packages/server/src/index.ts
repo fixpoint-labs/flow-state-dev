@@ -27,6 +27,7 @@ export {
 export type {
   ActiveRequestEntry,
   ActiveRequestRegistry,
+  CheckpointStore,
   ContentScopeType,
   ContentStore,
   ExpectedVersion,

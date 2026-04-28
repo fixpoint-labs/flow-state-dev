@@ -2,6 +2,20 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-04-28
+
+### Durable sequencer checkpoint schema (FIX-401)
+
+- **`SequencerCheckpoint` type + `CheckpointStore` interface** ship the persistence seam Phase 2 durable execution (FIX-141) will plug into without schema migration. Identity is `(requestId, blockInstanceId)`; `write` overwrites the latest record per sequencer instance, `latest` reads it, `delete` removes it at terminal completion.
+- **Latest-only persistence.** Storage is constant per sequencer regardless of step count. The original FIX-401 spec proposed append-and-prune with a `pruneBefore` API; revising to overwrite-latest collapses the store interface from four methods to three and makes always-on durability cheap.
+- **`durable: true` is now the sequencer default.** Explicit `durable: false` is the opt-out, intended for tests and ephemeral fanouts. `state_snapshot` items now carry `durable`, `version`, `key: blockInstanceId`, and an optional `terminal` flag.
+- **Stream emission realigned to keyed-update.** Sequencers emit one logical `state_snapshot` per instance — same `key` on every step boundary — so consumers (DevTool, durability middleware) treat each new emit as an in-place update rather than a new entry. Net: 1 stream item per sequencer per turn that updates N times instead of N items per sequencer per turn.
+- **DevTool snapshot timeline collapsed to one row per sequencer instance.** The trace tree dedupes keyed snapshots; the panel renders the current state of each sequencer rather than a step-by-step list. Older streams without `key` fall back to the legacy append behavior.
+- **Implementations.** Memory, filesystem (atomic temp-write + rename), SQLite (`INSERT ... ON CONFLICT DO UPDATE` on `(request_id, block_instance_id)` PK), and Postgres (`ON CONFLICT DO UPDATE`, JSONB `data`) all ship.
+- **Server middleware.** `runAction` watches `state_snapshot` items in `onItemDone`: durable + non-terminal frames write to `stores.checkpoints`; durable + terminal frames delete. Each sequencer cleans up after itself — no enumeration pass at request termination, root or nested.
+- **Tests.** `packages/server/test/sequencer-checkpoint.test.ts` covers write/read round-trip, overwrite semantics, default-durable, opt-out, nested checkpoints with parent pointers, schema validation at write, and the keyed-stream observability contract. SQLite checkpoint store has its own contract tests in `packages/store-sqlite/test/stores.test.ts`. DevTool trace-tree dedup has parallel tests in `apps/devtool/test/trace-tree.test.ts`.
+- **Out of scope (per spec).** Resume-from-checkpoint runtime (FIX-141), HITL suspend/approve (Wave 3), and append-and-prune step-history retention.
+
 ## 2026-04-26
 
 ### Org scope — rename + immutable session binding + `requireOrg` opt-in (FIX-428)

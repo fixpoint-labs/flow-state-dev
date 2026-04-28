@@ -150,6 +150,8 @@ export type {
 
 export type { BindingCacheOptions, BindingProvider } from "./binding";
 
+export type { SequencerCheckpoint } from "./checkpoints";
+
 export type { Middleware, MiddlewareContext, MiddlewareFn } from "./middleware";
 
 export type { TokenCounter } from "./tokens";

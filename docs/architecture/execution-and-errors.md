@@ -223,3 +223,57 @@ For full type signatures, execution pseudocode, and edge cases, see `../preperat
 
 Actions may define `tokenBudget` with `maxTotalTokens`, optional `warnAt`, and `onExceeded` policy (`error` | `stop` | `warn`). Runtime emits warning status items with `system.token_budget_warning` detail when thresholds are crossed.
 
+## Sequencer State Persistence
+
+Sequencers checkpoint their state at every step boundary so a future durable execution runtime (FIX-141) can resume an interrupted request mid-sequencer without losing progress. The mechanism is on by default and ships ahead of the resume runtime so the persisted shape can stabilize before consumers depend on it.
+
+### Wire model
+
+At every step boundary a sequencer emits a `state_snapshot` item with:
+
+- `key: blockInstanceId` — stable dedup key. Every snapshot from the same sequencer instance shares the same `key`; the wire-level convention is that consumers treat each new emit as an in-place update of the same logical item.
+- `version: number` — monotonic write counter. Increments on each emission that actually changed state.
+- `durable: boolean` — when `true`, the runtime persists the snapshot to `stores.checkpoints`.
+- `terminal?: boolean` — set on the final emission for the sequencer's run (success, error, or cancellation). Durability middleware treats terminal frames as a delete signal.
+
+Net wire effect: instead of N items per sequencer per turn (one per step), there is one logical item per sequencer that updates N times. The DevTool collapses these into one row per sequencer instance showing the current state.
+
+### Storage model
+
+`stores.checkpoints` is a small interface on `StoreRegistry`:
+
+```ts
+interface CheckpointStore {
+  write(checkpoint: SequencerCheckpoint): Promise<void>;
+  latest(requestId: string, blockInstanceId: string): Promise<SequencerCheckpoint | null>;
+  delete(requestId: string, blockInstanceId: string): Promise<void>;
+}
+```
+
+Identity is `(requestId, blockInstanceId)`. Each `write` overwrites the prior record — storage is constant per sequencer regardless of step count. Memory, filesystem, SQLite, and Postgres adapters all ship with first-class implementations; no migration is required when FIX-141 starts reading these records.
+
+### Defaults and opt-out
+
+```ts
+sequencer({ name: 'my-flow', stateSchema })                  // durable: true (default)
+sequencer({ name: 'my-flow', stateSchema, durable: false })  // explicit opt-out
+```
+
+Always-on durability is cheap under latest-only semantics. Opt-out exists for tests and single-shot ephemeral fanouts where persistence is unwanted overhead. With `durable: false` and trace observability off (production default), no `state_snapshot` items are emitted at all.
+
+### Lifecycle
+
+Each sequencer instance owns its own checkpoint:
+
+1. Pre-execution: emit baseline snapshot. If durable, write a baseline record.
+2. After each step that mutated state: emit + (if durable) overwrite.
+3. On terminal completion (success, rescued error, rethrown error, cancellation): emit a terminal snapshot. The durability hook treats terminal frames as `delete(requestId, blockInstanceId)`.
+
+Nested sequencers each get their own keyed checkpoint and their own delete on terminal — there is no enumeration pass at request termination. The `parentBlockInstanceId` on each `SequencerCheckpoint` records the nesting relationship for the resume runtime.
+
+### Out of scope
+
+- Resume-from-checkpoint execution (FIX-141, Wave 2).
+- Append-and-prune step-history retention. The latest-only model is intentional; an opt-in `persistFullHistory` mode is a future ask if it materializes.
+- HITL suspend/approve flows (Wave 3 territory).
+

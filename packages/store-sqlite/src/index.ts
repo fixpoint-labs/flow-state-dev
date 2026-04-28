@@ -7,6 +7,7 @@ import { createSQLiteRequestStore } from "./request-store";
 import { createSQLiteUserStore } from "./user-store";
 import { createSQLiteOrgStore } from "./org-store";
 import { createSQLiteActiveRequestRegistry } from "./active-request-registry";
+import { createSQLiteCheckpointStore } from "./checkpoint-store";
 
 export type SQLiteStoreOptions = {
   /** File path to the SQLite database, or ":memory:" for in-memory */
@@ -45,6 +46,7 @@ export function createSQLiteStores(options: SQLiteStoreOptions): SQLiteStoreRegi
     org: createSQLiteOrgStore(db),
     activeRequests: createSQLiteActiveRequestRegistry(db),
     content: new InMemoryContentStore(),
+    checkpoints: createSQLiteCheckpointStore(db),
     close() {
       db.close();
     }
@@ -56,7 +58,8 @@ export {
   createSQLiteRequestStore,
   createSQLiteUserStore,
   createSQLiteOrgStore,
-  createSQLiteActiveRequestRegistry
+  createSQLiteActiveRequestRegistry,
+  createSQLiteCheckpointStore
 };
 
 export { initializeSchema, initializeSchemaDDL, applyConnectionPragmas } from "./schema";

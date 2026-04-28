@@ -433,9 +433,70 @@ export async function runActionInternal<
     }
   }
 
-  // --- Incremental item persistence ---
+  // --- Incremental item persistence + sequencer checkpoint durability ---
+  // `state_snapshot` items are emitted by sequencers at every step boundary
+  // with a `key` (the sequencer's blockInstanceId) and a `durable` flag.
+  // Durable frames write a fresh checkpoint; terminal frames (final emission
+  // for a sequencer's run — success/error/cancel) trigger a delete so each
+  // sequencer cleans up after itself without a separate enumeration pass.
+  //
+  // Operations are serialized per `(requestId, blockInstanceId)` so a slow
+  // write can't lose its race with a faster terminal delete and leave an
+  // orphan checkpoint. A flush awaited at request termination ensures the
+  // last write/delete completes before the action returns. (FIX-401)
+  const checkpointChains = new Map<string, Promise<void>>();
+  const checkpointKey = (id: string) => `${requestId}:${id}`;
+  function chainCheckpoint(blockInstanceId: string, op: () => Promise<void>): void {
+    const k = checkpointKey(blockInstanceId);
+    const prior = checkpointChains.get(k) ?? Promise.resolve();
+    const next = prior.then(op, op);
+    checkpointChains.set(k, next);
+  }
+  async function flushCheckpoints(): Promise<void> {
+    if (checkpointChains.size === 0) return;
+    await Promise.allSettled(checkpointChains.values());
+  }
+
   response.setItemHooks({
     onItemDone: (item) => {
+      if (item.type === "state_snapshot") {
+        if (item.durable) {
+          const requestIdForCheckpoint = item.requestId;
+          const blockInstanceId = item.provenance.blockInstanceId;
+          const parentBlockInstanceId = item.provenance.parentBlockInstanceId ?? null;
+          if (item.terminal === true) {
+            chainCheckpoint(blockInstanceId, () =>
+              options.stores.checkpoints.delete(requestIdForCheckpoint, blockInstanceId).catch((err) => {
+                logRuntimeEvent(logger, "error", "[flow-state] checkpoint delete failed", {
+                  requestId: requestIdForCheckpoint,
+                  blockInstanceId,
+                  error: String(err)
+                });
+              })
+            );
+          } else {
+            chainCheckpoint(blockInstanceId, () =>
+              options.stores.checkpoints.write({
+                requestId: requestIdForCheckpoint,
+                blockInstanceId,
+                parentBlockInstanceId,
+                stepIndex: item.stepIndex,
+                state: item.state,
+                version: item.version,
+                createdAt: item.ts
+              }).catch((err) => {
+                logRuntimeEvent(logger, "error", "[flow-state] checkpoint write failed", {
+                  requestId: requestIdForCheckpoint,
+                  blockInstanceId,
+                  error: String(err)
+                });
+              })
+            );
+          }
+        }
+        // state_snapshot items are transient by design — no items-log persist.
+        return;
+      }
       if (item.transient === true) return;
       options.stores.request.persistItems(requestId, response.getItems());
     }
@@ -627,9 +688,13 @@ export async function runActionInternal<
     // Clear heartbeat
     if (heartbeatTimer !== undefined) clearInterval(heartbeatTimer);
 
-    // Flush pending item and event writes before terminal status
+    // Flush pending item, event, and checkpoint writes before terminal status.
+    // Checkpoints are fire-and-forget at emit time but must complete before
+    // the action returns so terminal deletes win their race against any
+    // straggling step writes (FIX-401).
     await options.stores.request.flushItems(requestId);
     await options.stores.request.flushEvents(requestId);
+    await flushCheckpoints();
 
     const completedAt = Date.now();
     const items = response.getItems();
@@ -717,6 +782,7 @@ export async function runActionInternal<
 
         await options.stores.request.flushItems(requestId);
         await options.stores.request.flushEvents(requestId);
+        await flushCheckpoints();
 
         const abortedAt = Date.now();
         await patchRequestRecord(options.stores, requestId, {
@@ -744,6 +810,7 @@ export async function runActionInternal<
 
         await options.stores.request.flushItems(requestId);
         await options.stores.request.flushEvents(requestId);
+        await flushCheckpoints();
 
         await patchRequestRecord(options.stores, requestId, {
           status: "interrupted",
@@ -781,6 +848,7 @@ export async function runActionInternal<
 
       await options.stores.request.flushItems(requestId);
       await options.stores.request.flushEvents(requestId);
+      await flushCheckpoints();
 
       const failedAt = Date.now();
       await patchRequestRecord(options.stores, requestId, {

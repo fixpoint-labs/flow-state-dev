@@ -252,18 +252,40 @@ export type SourceItem = OutputItemBase & {
 };
 
 /**
- * Full state snapshot emitted at a step boundary for devtool inspection.
- * Today only sequencers emit these; the type is kind-agnostic so any future
- * block with stepped state can reuse it. The owning block is identified by
- * `provenance.blockName` / `provenance.blockInstanceId`, so no separate
- * sequencer-specific fields are carried.
+ * Full state snapshot emitted at a step boundary for devtool inspection
+ * and durable checkpointing (FIX-401).
+ *
+ * Sequencers emit one logical snapshot per instance, keyed by `key`
+ * (the sequencer's `blockInstanceId`). Subsequent emissions for the same
+ * key are in-place updates, not new entries — clients and middleware
+ * dedupe on `key`.
+ *
+ * - `durable: true` — also written to `stores.checkpoints` so the Phase 2
+ *   resume runtime (FIX-141) can pick up after an interrupted request.
+ * - `durable: false` — stream-only, observability for the devtool.
+ * - `terminal: true` — final emission for this sequencer's run (success,
+ *   error, or cancellation). Durability middleware treats terminal frames
+ *   as a `delete(requestId, blockInstanceId)` signal so the checkpoint
+ *   store stays clean once the sequencer completes.
+ *
+ * The owning block is identified by `provenance.blockName` /
+ * `provenance.blockInstanceId`; no sequencer-specific identity fields are
+ * duplicated here.
  */
 export type StateSnapshotItem = OutputItemBase & {
   type: "state_snapshot";
+  /** Stable dedup key — set to the sequencer's `blockInstanceId`. */
+  key: string;
   stepName: string;
   stepIndex: number;
   state: unknown;
+  /** Monotonic write counter for this sequencer instance. */
   version: number;
+  /** When true, also persist this snapshot to `stores.checkpoints`. */
+  durable: boolean;
+  /** When true, this is the final emission for the sequencer run; durability
+   *  middleware should `delete` rather than `write`. */
+  terminal?: boolean;
 };
 
 /**

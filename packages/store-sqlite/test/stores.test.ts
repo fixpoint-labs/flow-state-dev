@@ -609,4 +609,58 @@ describe("SQLite store adapter", () => {
       expect(events).toHaveLength(2);
     });
   });
+
+  // --- Sequencer checkpoint store (FIX-401) ---
+
+  describe("checkpoint store", () => {
+    it("write/read round trip", async () => {
+      const s = freshStores();
+      await s.checkpoints.write({
+        requestId: "r1",
+        blockInstanceId: "b1",
+        parentBlockInstanceId: null,
+        stepIndex: 0,
+        state: { count: 5 },
+        version: 1,
+        createdAt: 1000
+      });
+      const got = await s.checkpoints.latest("r1", "b1");
+      expect(got).not.toBeNull();
+      expect(got!.state).toEqual({ count: 5 });
+      expect(got!.version).toBe(1);
+    });
+
+    it("upsert overwrites — N writes leave one record at the latest version", async () => {
+      const s = freshStores();
+      for (let v = 1; v <= 5; v += 1) {
+        await s.checkpoints.write({
+          requestId: "r1",
+          blockInstanceId: "b1",
+          parentBlockInstanceId: null,
+          stepIndex: v,
+          state: { count: v },
+          version: v,
+          createdAt: 1000 + v
+        });
+      }
+      const got = await s.checkpoints.latest("r1", "b1");
+      expect(got!.version).toBe(5);
+      expect(got!.state).toEqual({ count: 5 });
+    });
+
+    it("delete removes record; latest returns null", async () => {
+      const s = freshStores();
+      await s.checkpoints.write({
+        requestId: "r1",
+        blockInstanceId: "b1",
+        parentBlockInstanceId: null,
+        stepIndex: 0,
+        state: {},
+        version: 1,
+        createdAt: 1000
+      });
+      await s.checkpoints.delete("r1", "b1");
+      expect(await s.checkpoints.latest("r1", "b1")).toBeNull();
+    });
+  });
 });
