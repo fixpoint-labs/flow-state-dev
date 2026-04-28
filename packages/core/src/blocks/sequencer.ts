@@ -589,113 +589,113 @@ function runSequencerOperations(
 
     try {
       try {
-      // Emit initial state snapshot before any steps execute. For durable
-      // sequencers this also writes a baseline checkpoint so a crash before
-      // the first step still leaves a resumable record.
-      lastStateJson = await emitStateSnapshot(
-        ctx,
-        lastStepName,
-        lastStepIndex,
-        undefined,
-        durable,
-        snapshotVersion,
-        stateSchema
-      );
-
-      for (let index = 0; index < operations.length; index += 1) {
-        const operation = operations[index];
-        runtime.stepHistory.push(operation.name);
-        const result = await operation.run(currentValue, ctx, runtime, index);
-        currentValue = result.value;
-        if (result.descriptor !== undefined) {
-          lastDescriptor = result.descriptor;
-        }
-
-        // Emit state snapshot only if state changed since last snapshot.
-        const prevStateJson = lastStateJson;
-        snapshotVersion += 1;
+        // Emit initial state snapshot before any steps execute. For durable
+        // sequencers this also writes a baseline checkpoint so a crash before
+        // the first step still leaves a resumable record.
         lastStateJson = await emitStateSnapshot(
           ctx,
-          operation.name,
-          index,
-          lastStateJson,
+          lastStepName,
+          lastStepIndex,
+          undefined,
           durable,
           snapshotVersion,
           stateSchema
         );
-        // Roll back the version bump when the snapshot was suppressed (state
-        // unchanged) so version stays a true write counter.
-        if (lastStateJson === prevStateJson) {
-          snapshotVersion -= 1;
-        } else {
-          lastStepName = operation.name;
-          lastStepIndex = index;
-        }
 
-        if (result.exit === true) {
-          break;
-        }
-
-        if (result.jumpTo !== undefined) {
-          const jumpIndex = operations.findIndex((candidate) => candidate.name === result.jumpTo);
-          if (jumpIndex < 0) {
-            throw new Error(`loopBack target "${result.jumpTo}" was not found in sequencer "${runtime.stepHistory[0]}"`);
+        for (let index = 0; index < operations.length; index += 1) {
+          const operation = operations[index];
+          runtime.stepHistory.push(operation.name);
+          const result = await operation.run(currentValue, ctx, runtime, index);
+          currentValue = result.value;
+          if (result.descriptor !== undefined) {
+            lastDescriptor = result.descriptor;
           }
 
-          index = jumpIndex - 1;
-        }
-      }
+          // Emit state snapshot only if state changed since last snapshot.
+          const prevStateJson = lastStateJson;
+          snapshotVersion += 1;
+          lastStateJson = await emitStateSnapshot(
+            ctx,
+            operation.name,
+            index,
+            lastStateJson,
+            durable,
+            snapshotVersion,
+            stateSchema
+          );
+          // Roll back the version bump when the snapshot was suppressed (state
+          // unchanged) so version stays a true write counter.
+          if (lastStateJson === prevStateJson) {
+            snapshotVersion -= 1;
+          } else {
+            lastStepName = operation.name;
+            lastStepIndex = index;
+          }
 
-      // Auto-await any outstanding .work() tasks so the block (and its
-      // parent stream) stays alive until background work finishes.
-      if (runtime.workTasks.length > 0) {
-        const pending = runtime.workTasks.splice(0, runtime.workTasks.length);
-        let remaining = pending.length;
-        // Signal-only updates: undefined preserves the current status message
-        // while refreshing blocked/backgroundTasks so the client can unblock
-        // sendAction without the in-flight indicator flickering to blank.
-        ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
+          if (result.exit === true) {
+            break;
+          }
 
-        await Promise.all(pending.map((t) =>
-          t.promise.then((result) => {
-            remaining--;
-            if (result.status === "rejected") {
-              console.error(`[sequencer] Background work "${result.name}" failed:`, result.reason?.message ?? result.reason);
+          if (result.jumpTo !== undefined) {
+            const jumpIndex = operations.findIndex((candidate) => candidate.name === result.jumpTo);
+            if (jumpIndex < 0) {
+              throw new Error(`loopBack target "${result.jumpTo}" was not found in sequencer "${runtime.stepHistory[0]}"`);
             }
-            ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
-          })
-        ));
-      }
 
-      // Expose the running descriptor to the outer emitter so the sequencer's
-      // own block_output carries a ref/structure instead of duplicating the
-      // child's content (FIX-413). `inline` is the emitter default and needs
-      // no hint — leaves it carried as the raw value.
-      if (lastDescriptor.kind !== "inline") {
-        (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = lastDescriptor;
-      }
-
-      return currentValue;
-    } catch (error) {
-      const normalizedError = toError(error);
-      for (let i = 0; i < rescueHandlers.length; i += 1) {
-        const handler = rescueHandlers[i];
-        if (!matchesRescueHandler(normalizedError, handler)) {
-          continue;
+            index = jumpIndex - 1;
+          }
         }
 
-        const rescuePath = extendBlockPath(currentPath(ctx), blockPathRescue(i));
-        const rescued = await executeBlock(handler.block, normalizedError, ctx, rescuePath);
-        // A rescue branch passes through to the handler block's output.
-        const rescueDescriptor = refDescriptorForPath(ctx, rescuePath);
-        if (rescueDescriptor.kind !== "inline") {
-          (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = rescueDescriptor;
-        }
-        return rescued;
-      }
+        // Auto-await any outstanding .work() tasks so the block (and its
+        // parent stream) stays alive until background work finishes.
+        if (runtime.workTasks.length > 0) {
+          const pending = runtime.workTasks.splice(0, runtime.workTasks.length);
+          let remaining = pending.length;
+          // Signal-only updates: undefined preserves the current status message
+          // while refreshing blocked/backgroundTasks so the client can unblock
+          // sendAction without the in-flight indicator flickering to blank.
+          ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
 
-      throw normalizedError;
-    }
+          await Promise.all(pending.map((t) =>
+            t.promise.then((result) => {
+              remaining--;
+              if (result.status === "rejected") {
+                console.error(`[sequencer] Background work "${result.name}" failed:`, result.reason?.message ?? result.reason);
+              }
+              ctx.emitStatus(undefined, { blocked: false, backgroundTasks: remaining });
+            })
+          ));
+        }
+
+        // Expose the running descriptor to the outer emitter so the sequencer's
+        // own block_output carries a ref/structure instead of duplicating the
+        // child's content (FIX-413). `inline` is the emitter default and needs
+        // no hint — leaves it carried as the raw value.
+        if (lastDescriptor.kind !== "inline") {
+          (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = lastDescriptor;
+        }
+
+        return currentValue;
+      } catch (error) {
+        const normalizedError = toError(error);
+        for (let i = 0; i < rescueHandlers.length; i += 1) {
+          const handler = rescueHandlers[i];
+          if (!matchesRescueHandler(normalizedError, handler)) {
+            continue;
+          }
+
+          const rescuePath = extendBlockPath(currentPath(ctx), blockPathRescue(i));
+          const rescued = await executeBlock(handler.block, normalizedError, ctx, rescuePath);
+          // A rescue branch passes through to the handler block's output.
+          const rescueDescriptor = refDescriptorForPath(ctx, rescuePath);
+          if (rescueDescriptor.kind !== "inline") {
+            (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = rescueDescriptor;
+          }
+          return rescued;
+        }
+
+        throw normalizedError;
+      }
     } finally {
       // Always emit a terminal snapshot — success, error, or cancellation.
       // The server-side durability hook treats `terminal: true` as a delete
