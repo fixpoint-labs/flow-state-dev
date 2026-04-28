@@ -29,7 +29,7 @@ const STATE_SCHEMA = z.object({
   count: z.number().default(0)
 });
 
-function buildSimpleFlow(opts: { durable?: boolean } = {}) {
+function buildSimpleFlow(opts: { durable?: boolean; cleanupCheckpointsOnTerminal?: boolean } = {}) {
   const incrementHandler = handler({
     name: "increment",
     inputSchema: z.object({}),
@@ -65,6 +65,9 @@ function buildSimpleFlow(opts: { durable?: boolean } = {}) {
 
   return defineFlow({
     kind: "checkpoint-test-flow",
+    request: opts.cleanupCheckpointsOnTerminal === undefined
+      ? undefined
+      : { cleanupCheckpointsOnTerminal: opts.cleanupCheckpointsOnTerminal },
     actions: {
       run: { inputSchema: z.object({}), block: seq }
     }
@@ -88,8 +91,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
   it("writes a checkpoint at each step boundary and emits keyed snapshots", async () => {
     const stores = createInMemoryStores();
     const flow = buildSimpleFlow();
-    const requestId = "req_basic";
-    const response = createResponseEmitter({ requestId, now: () => Date.now() });
+    const response = createResponseEmitter({ requestId: "req_basic", now: () => Date.now() });
 
     const result = await runAction({
       flow,
@@ -121,10 +123,36 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
     expect(terminals).toHaveLength(1);
     expect(snapshots[snapshots.length - 1].terminal).toBe(true);
 
-    // Terminal frames are also a delete signal — by the time the action
-    // settles, the checkpoint store should be empty for this sequencer.
-    const latest = await stores.checkpoints.latest(requestId, seqInstanceId);
-    expect(latest).toBeNull();
+    // Default policy retains the final checkpoint after terminal completion;
+    // operators that want eager GC opt in via
+    // `flow.request.cleanupCheckpointsOnTerminal: true`. Use the
+    // runtime-assigned requestId carried on the snapshot, since runAction
+    // mints its own when the caller doesn't pass one.
+    const actualRequestId = snapshots[0].requestId;
+    const latest = await stores.checkpoints.latest(actualRequestId, seqInstanceId);
+    expect(latest).not.toBeNull();
+    expect(latest!.state).toEqual({ count: 2, step: "finalized" });
+  });
+
+  it("deletes the final checkpoint on terminal when cleanupCheckpointsOnTerminal is true", async () => {
+    const stores = createInMemoryStores();
+    const flow = buildSimpleFlow({ cleanupCheckpointsOnTerminal: true });
+    const response = createResponseEmitter({ requestId: "req_cleanup", now: () => Date.now() });
+
+    await runAction({
+      flow,
+      actionName: "run",
+      input: {},
+      userId: "user_1",
+      sessionId: "sess_1",
+      stores,
+      responseEmitter: response
+    });
+
+    const snapshots = getStateSnapshots(response.getItems());
+    const seqInstanceId = snapshots[0].provenance.blockInstanceId;
+    const actualRequestId = snapshots[0].requestId;
+    expect(await stores.checkpoints.latest(actualRequestId, seqInstanceId)).toBeNull();
   });
 
   it("overwrites checkpoints — N step boundaries leave one record with the latest state", async () => {
@@ -281,6 +309,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
 
     const flow = defineFlow({
       kind: "nested-checkpoint-flow",
+      // Opt into terminal cleanup so we can assert per-instance delete fires.
+      request: { cleanupCheckpointsOnTerminal: true },
       actions: { run: { inputSchema: z.object({}), block: outerSeq } }
     })();
 
@@ -446,6 +476,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
 
     const flow = defineFlow({
       kind: "err-flow",
+      request: { cleanupCheckpointsOnTerminal: true },
       actions: { run: { inputSchema: z.object({}), block: errSeq } }
     })();
 
@@ -470,7 +501,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
     expect(deletes).toContain(seqInstanceId);
 
     // Checkpoint store ends empty for this sequencer.
-    expect(await stores.checkpoints.latest("req_err", seqInstanceId)).toBeNull();
+    const actualRequestId = snapshots[0].requestId;
+    expect(await stores.checkpoints.latest(actualRequestId, seqInstanceId)).toBeNull();
   });
 
   it("emits a terminal frame and deletes the checkpoint when the request is aborted", async () => {
@@ -511,6 +543,7 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
 
     const flow = defineFlow({
       kind: "abort-flow",
+      request: { cleanupCheckpointsOnTerminal: true },
       actions: { run: { inputSchema: z.object({}), block: seq } }
     })();
 
@@ -536,7 +569,8 @@ describe("FIX-401 sequencer checkpoint persistence", () => {
 
     const seqInstanceId = snapshots[0].provenance.blockInstanceId;
     expect(deletes).toContain(seqInstanceId);
-    expect(await stores.checkpoints.latest("req_abort", seqInstanceId)).toBeNull();
+    const actualRequestId = snapshots[0].requestId;
+    expect(await stores.checkpoints.latest(actualRequestId, seqInstanceId)).toBeNull();
   });
 
   it("emits one stream item per step keyed by blockInstanceId, observable as a single logical item", async () => {

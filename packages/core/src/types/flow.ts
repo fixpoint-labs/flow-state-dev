@@ -154,6 +154,17 @@ export type RequestConfig = {
    * Default: 10000 (10 seconds). Set to 0 to disable.
    */
   heartbeatIntervalMs?: number;
+  /**
+   * When true, durable sequencer checkpoints (FIX-401) are deleted on
+   * terminal completion (success / error / abort). When false (default),
+   * checkpoints are retained — useful for post-mortem inspection, audit,
+   * or letting an external process decide retention.
+   *
+   * Latest-only persistence keeps storage bounded regardless of this
+   * setting (one record per sequencer instance per request), so retention
+   * doesn't compound across step counts.
+   */
+  cleanupCheckpointsOnTerminal?: boolean;
 };
 
 export type UserConfig = {

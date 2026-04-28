@@ -267,9 +267,11 @@ Each sequencer instance owns its own checkpoint:
 
 1. Pre-execution: emit baseline snapshot. If durable, write a baseline record.
 2. After each step that mutated state: emit + (if durable) overwrite.
-3. On terminal completion (success, rescued error, rethrown error, cancellation): emit a terminal snapshot. The durability hook treats terminal frames as `delete(requestId, blockInstanceId)`.
+3. On terminal completion (success, rescued error, rethrown error, cancellation): emit a terminal snapshot. By default the final record is **retained** for post-mortem inspection — the `latest()` of a completed run reflects its final state. Operators that want eager GC opt in via `flow.request.cleanupCheckpointsOnTerminal: true`, in which case the durability hook treats terminal frames as `delete(requestId, blockInstanceId)`.
 
-Nested sequencers each get their own keyed checkpoint and their own delete on terminal — there is no enumeration pass at request termination. The `parentBlockInstanceId` on each `SequencerCheckpoint` records the nesting relationship for the resume runtime.
+Nested sequencers each get their own keyed checkpoint, and (when cleanup is enabled) their own delete on terminal — there is no enumeration pass at request termination. The `parentBlockInstanceId` on each `SequencerCheckpoint` records the nesting relationship for the resume runtime.
+
+Latest-only persistence keeps storage bounded regardless of the retention setting (one record per sequencer instance per request), so retention doesn't compound across step counts.
 
 ### Out of scope
 

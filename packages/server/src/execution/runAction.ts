@@ -437,13 +437,16 @@ export async function runActionInternal<
   // `state_snapshot` items are emitted by sequencers at every step boundary
   // with a `key` (the sequencer's blockInstanceId) and a `durable` flag.
   // Durable frames write a fresh checkpoint; terminal frames (final emission
-  // for a sequencer's run — success/error/cancel) trigger a delete so each
-  // sequencer cleans up after itself without a separate enumeration pass.
+  // for a sequencer's run — success/error/cancel) optionally trigger a
+  // cleanup delete based on `flow.request.cleanupCheckpointsOnTerminal`
+  // (default `false` — checkpoints are retained for post-mortem inspection).
   //
   // Operations are serialized per `(requestId, blockInstanceId)` so a slow
-  // write can't lose its race with a faster terminal delete and leave an
-  // orphan checkpoint. A flush awaited at request termination ensures the
-  // last write/delete completes before the action returns. (FIX-401)
+  // write can't lose its race with a faster terminal delete (when cleanup
+  // is enabled) and leave an orphan checkpoint. A flush awaited at request
+  // termination ensures the last write/delete completes before the action
+  // returns. (FIX-401)
+  const cleanupCheckpointsOnTerminal = options.flow.request?.cleanupCheckpointsOnTerminal === true;
   const checkpointChains = new Map<string, Promise<void>>();
   const checkpointKey = (id: string) => `${requestId}:${id}`;
   function chainCheckpoint(blockInstanceId: string, op: () => Promise<void>): void {
@@ -465,15 +468,20 @@ export async function runActionInternal<
           const blockInstanceId = item.provenance.blockInstanceId;
           const parentBlockInstanceId = item.provenance.parentBlockInstanceId ?? null;
           if (item.terminal === true) {
-            chainCheckpoint(blockInstanceId, () =>
-              options.stores.checkpoints.delete(requestIdForCheckpoint, blockInstanceId).catch((err) => {
-                logRuntimeEvent(logger, "error", "[flow-state] checkpoint delete failed", {
-                  requestId: requestIdForCheckpoint,
-                  blockInstanceId,
-                  error: String(err)
-                });
-              })
-            );
+            // Default: retain the final checkpoint after terminal completion.
+            // Operators that want eager GC opt in via
+            // `flow.request.cleanupCheckpointsOnTerminal: true`.
+            if (cleanupCheckpointsOnTerminal) {
+              chainCheckpoint(blockInstanceId, () =>
+                options.stores.checkpoints.delete(requestIdForCheckpoint, blockInstanceId).catch((err) => {
+                  logRuntimeEvent(logger, "error", "[flow-state] checkpoint delete failed", {
+                    requestId: requestIdForCheckpoint,
+                    blockInstanceId,
+                    error: String(err)
+                  });
+                })
+              );
+            }
           } else {
             chainCheckpoint(blockInstanceId, () =>
               options.stores.checkpoints.write({

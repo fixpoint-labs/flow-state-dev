@@ -189,6 +189,8 @@ interface CheckpointStore {
 
 Memory, filesystem, SQLite, and Postgres adapters all ship with first-class implementations. Custom registries can wrap a third-party KV store; storage is constant per sequencer regardless of step count, so the implementation needs no enumeration or pruning.
 
+By default the final checkpoint is retained after terminal completion (success / error / abort) for post-mortem inspection. Set `flow.request.cleanupCheckpointsOnTerminal: true` on a flow to make terminal frames trigger an immediate `delete()`.
+
 ## Notes
 
 - Phase 1 requires caller-provided `userId` for all action/session routes
