@@ -46,6 +46,13 @@ export type UseLiveModeResult = {
   /** Derived view of what the system is actually doing. */
   liveStatus: LiveStatus;
   /**
+   * Most recent request on this session by start time, regardless of status.
+   * Computed once and reused for both `liveStatus` derivation and any UI that
+   * needs to gate on the tail (e.g. a Resume button when status is `interrupted`).
+   * `null` when the session has no requests yet.
+   */
+  latestRequest: SessionRequestSummary | null;
+  /**
    * True when the UI should expose the toggle: there's an active request the
    * user could choose to watch (or stop watching) — but we're not already
    * streaming it via SSE. When SSE is live there's nothing to toggle; when
@@ -143,12 +150,16 @@ export function useLiveMode(options: UseLiveModeOptions): UseLiveModeResult {
     setLiveMode((prev) => (typeof next === "boolean" ? next : !prev));
   }, []);
 
+  // Compute once and share with both `deriveLiveStatus` and the returned
+  // `latestRequest` so callers don't re-iterate `requests` to find the tail.
+  const latestRequest = findLatestRequest(requests) ?? null;
+
   const liveStatus = deriveLiveStatus({
     liveMode,
     lockedOn,
     streamStatus,
     pollingFallback,
-    requests,
+    latestRequest,
   });
 
   const hasInProgress = requests.some((req) => isInProgress(req.status));
@@ -160,6 +171,7 @@ export function useLiveMode(options: UseLiveModeOptions): UseLiveModeResult {
     liveSubscriptionRequestId,
     pollingFallback,
     liveStatus,
+    latestRequest,
     showToggle,
     toggleLiveMode,
   };
@@ -170,9 +182,9 @@ function deriveLiveStatus(input: {
   lockedOn: boolean;
   streamStatus: StreamStatus;
   pollingFallback: boolean;
-  requests: SessionRequestSummary[];
+  latestRequest: SessionRequestSummary | null;
 }): LiveStatus {
-  const { liveMode, lockedOn, streamStatus, pollingFallback, requests } = input;
+  const { liveMode, lockedOn, streamStatus, pollingFallback, latestRequest } = input;
 
   if (lockedOn) return "streaming";
   if (!liveMode) return "off";
@@ -182,10 +194,9 @@ function deriveLiveStatus(input: {
 
   // No active stream: reflect terminal state of the latest request, if any,
   // so the badge says something truthful instead of "Live" on stale data.
-  const latest = findLatestRequest(requests);
-  if (!latest) return "idle";
-  if (latest.status === "completed" || latest.status === "incomplete") return "complete";
-  if (latest.status === "failed" || latest.status === "interrupted" || latest.status === "aborted") {
+  if (!latestRequest) return "idle";
+  if (latestRequest.status === "completed" || latestRequest.status === "incomplete") return "complete";
+  if (latestRequest.status === "failed" || latestRequest.status === "interrupted" || latestRequest.status === "aborted") {
     return "failed";
   }
   return "idle";

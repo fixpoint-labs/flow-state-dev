@@ -103,7 +103,7 @@ function AppContent() {
   const [stateRefreshKey, setStateRefreshKey] = useState(0);
   const [sessionRefreshKey, setSessionRefreshKey] = useState(0);
 
-  const { liveMode, lockedOn, liveSubscriptionRequestId, liveStatus, showToggle, toggleLiveMode } =
+  const { liveMode, lockedOn, liveSubscriptionRequestId, liveStatus, latestRequest, showToggle, toggleLiveMode } =
     useLiveMode({
       requests,
       streamStatus,
@@ -194,21 +194,9 @@ function AppContent() {
     [activeFlowKind, effectiveSessionId, sendAction],
   );
 
-  // Most recent request, by start time. Used to decide whether to expose the
-  // Resume button — a Resume only makes sense for the *current* tail of the
-  // session, not for some older interrupted request the user has long since
-  // moved past.
-  const latestRequest = useMemo(() => {
-    if (requests.length === 0) return null;
-    let latest = requests[0];
-    for (const req of requests) {
-      const ts = req.startedAtMs ?? req.createdAt ?? 0;
-      const latestTs = latest.startedAtMs ?? latest.createdAt ?? 0;
-      if (ts > latestTs) latest = req;
-    }
-    return latest;
-  }, [requests]);
-
+  // The Resume button is only meaningful for the *current* tail of the
+  // session — `latestRequest` comes from `useLiveMode` so the same scan
+  // drives both the Live badge state and this gate.
   const canResume = latestRequest?.status === "interrupted" && !dispatchedRequestId;
   const [isResuming, setIsResuming] = useState(false);
 
