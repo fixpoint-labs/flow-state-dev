@@ -40,22 +40,18 @@ import {
   defaultOrder,
   listTasks,
 } from "./internal";
-import {
-  buildTaskChangeItem,
-  type TaskChangeEmissionFrame,
-  type TaskChangeKind,
-} from "../items/task-change";
+import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 
 export interface ResourceBackedOptions {
   collectionId: string;
   /** The parameterized resource collection ref. Pattern must be `someTopic/{id}` style. */
   collection: ResourceCollectionRef<JsonObject>;
-  /** Runtime emitter frame for `task_change` items. */
-  emit: (item: ReturnType<typeof buildTaskChangeItem>) => void;
-  /** Frame factory used to stamp ids/provenance on each emitted item. */
-  frame: TaskChangeEmissionFrame;
-  /** When true, omit `transient` on emitted `task_change` items so they persist. Default: false. */
-  persistTaskEvents?: boolean;
+  /**
+   * Optional callback fired after every successful task mutation. The
+   * `getOrCreateTaskCollection` factory wires this to `ctx.emitComponent`
+   * to publish lifecycle changes onto the framework item stream.
+   */
+  onChange?: (event: TaskChangeEvent) => void;
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
 }
@@ -71,24 +67,21 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
   options: ResourceBackedOptions
 ): TaskCollectionRef<TInput, TOutput> {
   const now = options.now ?? Date.now;
-  const transient = options.persistTaskEvents !== true;
+  const onChange = options.onChange;
 
   function emit(
     kind: TaskChangeKind,
     task: Task<TInput, TOutput>,
     prevStatus?: TaskStatus
   ): void {
-    options.emit(
-      buildTaskChangeItem({
-        collectionId: options.collectionId,
-        taskId: task.id,
-        kind,
-        task: task as Task,
-        prevStatus,
-        frame: options.frame,
-        transient,
-      })
-    );
+    if (onChange === undefined) return;
+    onChange({
+      collectionId: options.collectionId,
+      taskId: task.id,
+      kind,
+      task: task as Task,
+      prevStatus,
+    });
   }
 
   function listAll(): Task<TInput, TOutput>[] {

@@ -26,11 +26,7 @@ import {
   defaultOrder,
   listTasks,
 } from "./internal";
-import {
-  buildTaskChangeItem,
-  type TaskChangeEmissionFrame,
-  type TaskChangeKind,
-} from "../items/task-change";
+import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 
 export interface SequencerBackedOptions {
   collectionId: string;
@@ -39,12 +35,12 @@ export interface SequencerBackedOptions {
   sequencer: StateRef<Record<string, unknown>>;
   /** Key on sequencer state that holds the `Record<id, Task>`. Default: `"tasks"`. */
   stateKey?: string;
-  /** Runtime emitter frame for `task_change` items. */
-  emit: (item: ReturnType<typeof buildTaskChangeItem>) => void;
-  /** Frame factory used to stamp ids/provenance on each emitted item. */
-  frame: TaskChangeEmissionFrame;
-  /** When true, omit `transient` on emitted `task_change` items so they persist. Default: false. */
-  persistTaskEvents?: boolean;
+  /**
+   * Optional callback fired after every successful task mutation. The
+   * `getOrCreateTaskCollection` factory wires this to `ctx.emitComponent`
+   * to publish lifecycle changes onto the framework item stream.
+   */
+  onChange?: (event: TaskChangeEvent) => void;
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
 }
@@ -55,7 +51,7 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
 ): TaskCollectionRef<TInput, TOutput> {
   const stateKey = options.stateKey ?? "tasks";
   const now = options.now ?? Date.now;
-  const transient = options.persistTaskEvents !== true;
+  const onChange = options.onChange;
 
   function readTasks(): Record<string, Task<TInput, TOutput>> {
     const raw = options.sequencer.state as Record<string, unknown>;
@@ -70,17 +66,14 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     task: Task<TInput, TOutput>,
     prevStatus?: TaskStatus
   ): void {
-    options.emit(
-      buildTaskChangeItem({
-        collectionId: options.collectionId,
-        taskId: task.id,
-        kind,
-        task: task as Task,
-        prevStatus,
-        frame: options.frame,
-        transient,
-      })
-    );
+    if (onChange === undefined) return;
+    onChange({
+      collectionId: options.collectionId,
+      taskId: task.id,
+      kind,
+      task: task as Task,
+      prevStatus,
+    });
   }
 
   /**
@@ -299,6 +292,10 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
 
       await casWrite((tasks) => {
         const next: Record<string, Task<TInput, TOutput>> = { ...tasks };
+        // Reset on every CAS retry — `casWrite` may replay this closure
+        // with a fresher tasks snapshot, and we must not push duplicates
+        // from a previous attempt onto `reclaimed` (which the post-write
+        // emit loop iterates).
         reclaimed.length = 0;
         for (const task of Object.values(tasks)) {
           if (

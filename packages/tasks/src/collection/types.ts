@@ -29,12 +29,14 @@ export interface ClaimOptions {
 }
 
 /**
- * Runtime ref onto a TaskCollection. All mutations are CAS-safe and emit
- * a `task_change` item. Queries (`get`, `list`, `count`) are synchronous
- * reads of the latest committed view.
+ * Runtime ref onto a TaskCollection. All mutations are CAS-safe and emit a
+ * `task-change` component item via the configured `onChange` callback (the
+ * `getOrCreateTaskCollection` factory wires this to `ctx.emitComponent`).
+ * Queries (`get`, `list`, `count`) are synchronous reads of the latest
+ * committed view.
  */
 export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
-  /** Stable identifier — matches `task_change.collectionId` on emitted items. */
+  /** Stable identifier — matches `data.collectionId` on emitted `task-change` items. */
   collectionId: string;
 
   // creation
@@ -53,7 +55,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   /**
    * Reset stale leases. Tasks whose `leaseUntil` has passed are returned
    * to `pending`. Returns the number of tasks reclaimed; emits one
-   * `task_change(kind: 'resumed', prevStatus: 'in_progress')` per reset
+   * `task-change(kind: 'resumed', prevStatus: 'in_progress')` per reset
    * — the same kind used by `resumeFromReview` since the lifecycle UI
    * cares only that the task is back to pending.
    */

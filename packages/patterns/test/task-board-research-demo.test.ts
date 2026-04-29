@@ -15,8 +15,8 @@
  * on each completed task.
  *
  * Stands in for the kitchen-sink `<Plan />` demo until FIX-445 lands;
- * the substrate produces the live `task_change` stream that demo will
- * subscribe to.
+ * the substrate produces the live `task-change` component-item stream
+ * that demo will subscribe to.
  */
 import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
@@ -136,9 +136,9 @@ describe("taskBoard - research-board demo", () => {
     const result = await testBlock(board.block, { input: undefined });
     expect(result.error).toBeNull();
 
-    // Walk the task_change stream: assert all three completed and
-    // that synthesis-1 completed AFTER both analyses (the topological
-    // dispatcher's contract).
+    // Walk the `task-change` component-item stream: assert all three
+    // completed and that synthesis-1 completed AFTER both analyses (the
+    // topological dispatcher's contract).
     const statusByTask = new Map<string, string>();
     let marketCompleted = false;
     let financialCompleted = false;
@@ -147,21 +147,31 @@ describe("taskBoard - research-board demo", () => {
 
     for (const item of result.items as Array<{
       type?: string;
-      kind?: string;
-      task?: { id: string; status: string; output?: unknown };
+      component?: string;
+      data?: {
+        kind?: string;
+        task?: { id: string; status: string; output?: unknown };
+      };
     }>) {
-      if (item.type !== "task_change" || item.task === undefined) continue;
-      statusByTask.set(item.task.id, item.task.status);
-      if (item.kind === "completed") {
-        if (item.task.id === "market-1") marketCompleted = true;
-        if (item.task.id === "financial-1") financialCompleted = true;
+      if (
+        item.type !== "component" ||
+        item.component !== "task-change" ||
+        item.data?.task === undefined
+      ) {
+        continue;
+      }
+      const { kind, task } = item.data;
+      statusByTask.set(task.id, task.status);
+      if (kind === "completed") {
+        if (task.id === "market-1") marketCompleted = true;
+        if (task.id === "financial-1") financialCompleted = true;
         if (
-          item.task.id === "synthesis-1" &&
+          task.id === "synthesis-1" &&
           marketCompleted &&
           financialCompleted
         ) {
           synthesisCompletedAfterAnalyses = true;
-          synthesisOutput = item.task.output as { report?: string };
+          synthesisOutput = task.output as { report?: string };
         }
       }
     }

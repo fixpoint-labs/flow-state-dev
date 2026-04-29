@@ -3,7 +3,7 @@
  *
  * Centralizing init/transition logic here keeps the two backings in
  * lockstep on default values, claim eligibility, and the post-mutation
- * task shape that ends up on the emitted `task_change` item.
+ * task shape that ends up on the emitted `task-change` component item.
  */
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";

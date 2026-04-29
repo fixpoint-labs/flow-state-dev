@@ -6,18 +6,17 @@ import {
   DEFAULT_TASK_LOOP_MAX_ITERATIONS,
 } from "../../src";
 import {
-  createCapturedEmitter,
+  createCapturedChanges,
   createFakeSequencerState,
 } from "../helpers";
 
 function buildCollection() {
-  const captured = createCapturedEmitter();
+  const captured = createCapturedChanges();
   const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
   return createSequencerBackedTaskCollection({
     collectionId: "tasks",
     sequencer,
-    emit: captured.emit,
-    frame: captured.frame,
+    onChange: captured.onChange,
   });
 }
 

@@ -83,18 +83,23 @@ function makeGoalWorker(
 
 /**
  * Build a map from task id → its terminal status by walking the
- * `task_change` items emitted on the stream. The substrate emits one
- * item per transition; the last one for a given id is the final
- * status.
+ * `task-change` component items emitted on the stream. The substrate
+ * emits one item per transition; the last one for a given id is the
+ * final status.
  */
 function lastTaskState(items: unknown[]): Map<string, string> {
   const finalStatus = new Map<string, string>();
   for (const item of items as Array<{
     type?: string;
-    task?: { id: string; status: string };
+    component?: string;
+    data?: { task?: { id: string; status: string } };
   }>) {
-    if (item.type === "task_change" && item.task !== undefined) {
-      finalStatus.set(item.task.id, item.task.status);
+    if (
+      item.type === "component" &&
+      item.component === "task-change" &&
+      item.data?.task !== undefined
+    ) {
+      finalStatus.set(item.data.task.id, item.data.task.status);
     }
   }
   return finalStatus;

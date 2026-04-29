@@ -67,7 +67,7 @@ interface TaskCollectionRef<TInput, TOutput> {
   addTask(task: TaskInit<TInput>): Promise<Task>;
   addTasks(tasks: TaskInit<TInput>[]): Promise<Task[]>;
 
-  // lifecycle (CAS-safe; emits a task_change item)
+  // lifecycle (CAS-safe; emits a `task-change` component item)
   claim(workerId: string, options?: ClaimOptions): Promise<Task | null>;
   complete(id: string, output: TOutput): Promise<void>;
   fail(id: string, error: string): Promise<void>;
@@ -302,29 +302,41 @@ const result = await dispatchAndExecute(
 // result.taskId, result.output, result.error (per outcome)
 ```
 
-## `task_change` items
+## `task-change` component items
 
-Every lifecycle mutation emits a `task_change` item on the active stream:
+Every lifecycle mutation emits a `task-change` component item on the active
+stream via `ctx.emitComponent`. The substrate stays out of core's `OutputItem`
+union — it rides the framework's existing component-item plumbing instead:
 
 ```ts
-type TaskChangeItem = {
-  type: "task_change";
-  collectionId: string;
-  taskId: string;
-  kind:
-    | "added" | "claimed" | "completed" | "errored" | "blocked" | "unblocked"
-    | "review_requested" | "resumed" | "cancelled"
-    | "label_changed" | "metadata_changed" | "priority_changed" | "assignee_changed";
-  task: Task;
-  prevStatus?: TaskStatus;
-  // ...standard OutputItem fields
-};
+// Shape of the emitted item (built by ctx.emitComponent):
+{
+  type: "component",
+  component: "task-change",
+  key: `${collectionId}/${taskId}`,   // latest-wins replacement per task
+  data: {
+    collectionId: string;
+    taskId: string;
+    kind:
+      | "added" | "claimed" | "completed" | "errored" | "blocked" | "unblocked"
+      | "review_requested" | "resumed" | "cancelled"
+      | "label_changed" | "metadata_changed" | "priority_changed" | "assignee_changed";
+    task: Task;
+    prevStatus?: TaskStatus;
+  };
+  // ...standard OutputItem fields stamped by the framework
+}
 ```
 
-Transient by default (no replay buffer). `persistTaskEvents: true` on the
-factory opts the whole collection into persistence. `<Plan />` and the DevTool
-subscribe to `task_change` for a given `collectionId` and rebuild the visible
-state from the stream — there's no separate "load tasks" call.
+`<Plan />` and the DevTool subscribe to component items where `component ===
+"task-change"`, filter by `data.collectionId`, and rebuild the visible state
+from the stream — there's no separate "load tasks" call. The `key` ensures
+clients render only the latest update per task.
+
+The substrate exposes a programmatic `onChange` hook on each backing
+constructor for tests and advanced consumers that want a typed callback
+without going through item emission. `getOrCreateTaskCollection` wires
+`onChange` to `ctx.emitComponent` automatically.
 
 `kind: "resumed"` covers two paths to the same lifecycle outcome — the task
 is back to `pending`. It fires both for `resumeFromReview` (human review →

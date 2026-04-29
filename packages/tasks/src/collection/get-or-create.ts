@@ -2,9 +2,13 @@
  * Factory: `getOrCreateTaskCollection({ backing, ... })`.
  *
  * One-call helper that builds a `TaskCollectionRef` against either backing
- * and wires the task_change emission frame from the supplied
- * `BlockContext`. Patterns and dispatchers consume the returned ref;
- * neither knows nor cares which backing produced it.
+ * and adapts the substrate's `onChange` callback to the framework's
+ * component-item stream via `ctx.emitComponent`.
+ *
+ * Each lifecycle transition emits a `task-change` component item keyed by
+ * `${collectionId}/${taskId}`. The `key` ensures latest-wins replacement
+ * per task in the client UI — `<Plan />` and the devtool subscribe to
+ * these items, filter by `data.collectionId`, and render the board.
  */
 import type { JsonObject } from "@flow-state-dev/core";
 import type {
@@ -13,18 +17,16 @@ import type {
   StateRef,
 } from "@flow-state-dev/core/types";
 import type { TaskCollectionRef } from "./types";
+import type { TaskChangeEvent } from "./change-event";
 import { createSequencerBackedTaskCollection } from "./sequencer-backed";
 import { createResourceBackedTaskCollection } from "./resource-backed";
-import {
-  buildEmissionFrame,
-  buildEmitter,
-} from "../items/emission";
+
+/** Component-item type emitted on every task lifecycle transition. */
+export const TASK_CHANGE_COMPONENT_TYPE = "task-change";
 
 /** Common options shared by both backings. */
 interface CommonOptions {
   collectionId: string;
-  /** When true, omit `transient` on emitted `task_change` items so they persist. Default: false. */
-  persistTaskEvents?: boolean;
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
 }
@@ -70,17 +72,26 @@ export type GetOrCreateTaskCollectionOptions =
 export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
   options: GetOrCreateTaskCollectionOptions
 ): TaskCollectionRef<TInput, TOutput> {
-  const frame = buildEmissionFrame(options.ctx);
-  const emit = buildEmitter(options.ctx);
+  const onChange = (event: TaskChangeEvent): void => {
+    options.ctx.emitComponent(
+      TASK_CHANGE_COMPONENT_TYPE,
+      {
+        collectionId: event.collectionId,
+        taskId: event.taskId,
+        kind: event.kind,
+        task: event.task,
+        ...(event.prevStatus !== undefined ? { prevStatus: event.prevStatus } : {}),
+      },
+      { key: `${event.collectionId}/${event.taskId}` }
+    );
+  };
 
   if (options.backing === "sequencer") {
     return createSequencerBackedTaskCollection<TInput, TOutput>({
       collectionId: options.collectionId,
       sequencer: options.sequencer,
       stateKey: options.stateKey,
-      emit,
-      frame,
-      persistTaskEvents: options.persistTaskEvents,
+      onChange,
       now: options.now,
     });
   }
@@ -88,9 +99,7 @@ export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
   return createResourceBackedTaskCollection<TInput, TOutput>({
     collectionId: options.collectionId,
     collection: options.collection,
-    emit,
-    frame,
-    persistTaskEvents: options.persistTaskEvents,
+    onChange,
     now: options.now,
   });
 }
