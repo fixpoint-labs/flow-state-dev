@@ -46,6 +46,17 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   // lifecycle
   claim(workerId: string, options?: ClaimOptions): Promise<Task<TInput, TOutput> | null>;
   complete(id: string, output: TOutput): Promise<void>;
+  /**
+   * Mark the task failed.
+   *
+   * - When the task carries a `maxAttempts` budget that has not yet
+   *   been exhausted, this is a *soft* fail: status flips back to
+   *   `pending`, the error is captured on `feedback`, and the next
+   *   claim increments `attempts` for a fresh attempt. Emits a
+   *   `task-change` item with `kind: "retried"`.
+   * - Otherwise this is a *hard* fail: status transitions to terminal
+   *   `errored` with the error captured on `task.error`.
+   */
   fail(id: string, error: string): Promise<void>;
   block(id: string, reason?: string): Promise<void>;
   unblock(id: string): Promise<void>;

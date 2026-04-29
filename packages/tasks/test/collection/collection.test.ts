@@ -218,6 +218,65 @@ describe.each([
     });
   });
 
+  describe("fail retry semantics (maxAttempts)", () => {
+    it("with maxAttempts unset, fail goes terminal (errored) on first failure", async () => {
+      await collection.addTask({ id: "t", goal: "t" });
+      await collection.claim("w");
+      await collection.fail("t", "boom");
+      expect(collection.get("t")?.status).toBe("errored");
+    });
+
+    it("with maxAttempts=3, fail re-pends with kind=retried until budget exhausts", async () => {
+      await collection.addTask({ id: "t", goal: "t", maxAttempts: 3 });
+
+      // attempt 1: claim → fail → re-pend
+      await collection.claim("w1");
+      expect(collection.get("t")?.attempts).toBe(1);
+      await collection.fail("t", "err-1");
+      expect(collection.get("t")?.status).toBe("pending");
+      expect(collection.get("t")?.feedback).toBe("err-1");
+      expect(collection.get("t")?.error).toBeUndefined();
+      expect(events.at(-1)?.kind).toBe("retried");
+
+      // attempt 2: claim → fail → re-pend
+      await collection.claim("w2");
+      expect(collection.get("t")?.attempts).toBe(2);
+      await collection.fail("t", "err-2");
+      expect(collection.get("t")?.status).toBe("pending");
+      expect(collection.get("t")?.feedback).toBe("err-2");
+
+      // attempt 3: claim → fail → terminal errored (budget exhausted)
+      await collection.claim("w3");
+      expect(collection.get("t")?.attempts).toBe(3);
+      await collection.fail("t", "err-3");
+      expect(collection.get("t")?.status).toBe("errored");
+      expect(collection.get("t")?.error).toBe("err-3");
+      expect(events.at(-1)?.kind).toBe("errored");
+    });
+
+    it("with maxAttempts=1, fail goes terminal on first failure", async () => {
+      await collection.addTask({ id: "t", goal: "t", maxAttempts: 1 });
+      await collection.claim("w");
+      expect(collection.get("t")?.attempts).toBe(1);
+      await collection.fail("t", "boom");
+      expect(collection.get("t")?.status).toBe("errored");
+      expect(events.at(-1)?.kind).toBe("errored");
+    });
+
+    it("each retry preserves the user-set assignee", async () => {
+      await collection.addTask({
+        id: "t",
+        goal: "t",
+        assignee: "worker-a",
+        maxAttempts: 2,
+      });
+      await collection.claim("w");
+      await collection.fail("t", "first error");
+      expect(collection.get("t")?.assignee).toBe("worker-a");
+      expect(collection.get("t")?.status).toBe("pending");
+    });
+  });
+
   describe("block / unblock / awaitReview / resumeFromReview / cancel", () => {
     it("block transitions pending → blocked", async () => {
       await collection.addTask({ id: "t", goal: "t" });

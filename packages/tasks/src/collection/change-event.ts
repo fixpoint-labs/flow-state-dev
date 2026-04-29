@@ -18,6 +18,7 @@ export type TaskChangeKind =
   | "claimed"
   | "completed"
   | "errored"
+  | "retried"
   | "blocked"
   | "unblocked"
   | "review_requested"

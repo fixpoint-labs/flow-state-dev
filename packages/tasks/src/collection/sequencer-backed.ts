@@ -25,6 +25,7 @@ import {
   defaultEligibility,
   defaultOrder,
   listTasks,
+  shouldRetryOnFail,
 } from "./internal";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 
@@ -241,6 +242,20 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     async fail(id, error) {
+      // Retry path: if the task carries a `maxAttempts` budget that
+      // hasn't been exhausted, soft-fail back to `pending` and capture
+      // the error as `feedback` for the next attempt. The next claim
+      // will increment `attempts` again. Hard-fail (no budget left, or
+      // no budget set) goes terminal.
+      const current = readTasks()[id];
+      if (current !== undefined && shouldRetryOnFail(current)) {
+        await transitionTo(id, "pending", "retried", () => ({
+          feedback: error,
+          leaseUntil: undefined,
+          error: undefined,
+        }));
+        return;
+      }
       await transitionTo(id, "errored", "errored", () => ({
         error,
         completedAt: now(),

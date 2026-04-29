@@ -39,6 +39,7 @@ import {
   defaultEligibility,
   defaultOrder,
   listTasks,
+  shouldRetryOnFail,
 } from "./internal";
 import type { TaskChangeEvent, TaskChangeKind } from "./change-event";
 
@@ -219,6 +220,23 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
     },
 
     async fail(id, error) {
+      // Retry path: if the task carries a `maxAttempts` budget that
+      // hasn't been exhausted, soft-fail back to `pending` and capture
+      // the error as `feedback` for the next attempt. The next claim
+      // will increment `attempts` again. Hard-fail (no budget left, or
+      // no budget set) goes terminal.
+      const candidateRef = options.collection.getOptional(id);
+      if (candidateRef !== undefined) {
+        const current = readTaskState<TInput, TOutput>(candidateRef);
+        if (shouldRetryOnFail(current as Task)) {
+          await transitionRef(id, "pending", "retried", () => ({
+            feedback: error,
+            leaseUntil: undefined,
+            error: undefined,
+          }));
+          return;
+        }
+      }
       await transitionRef(id, "errored", "errored", () => ({
         error,
         completedAt: now(),
