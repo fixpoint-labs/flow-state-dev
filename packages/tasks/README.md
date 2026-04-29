@@ -67,7 +67,7 @@ interface TaskCollectionRef<TInput, TOutput> {
   addTask(task: TaskInit<TInput>): Promise<Task>;
   addTasks(tasks: TaskInit<TInput>[]): Promise<Task[]>;
 
-  // lifecycle (CAS-safe; emits a task_change item)
+  // lifecycle (CAS-safe; emits a `task-change` component item)
   claim(workerId: string, options?: ClaimOptions): Promise<Task | null>;
   complete(id: string, output: TOutput): Promise<void>;
   fail(id: string, error: string): Promise<void>;
@@ -302,35 +302,80 @@ const result = await dispatchAndExecute(
 // result.taskId, result.output, result.error (per outcome)
 ```
 
-## `task_change` items
+## `task-change` component items
 
-Every lifecycle mutation emits a `task_change` item on the active stream:
+Every lifecycle mutation emits a `task-change` component item on the active
+stream via `ctx.emitComponent`. The substrate stays out of core's `OutputItem`
+union — it rides the framework's existing component-item plumbing instead:
 
 ```ts
-type TaskChangeItem = {
-  type: "task_change";
-  collectionId: string;
-  taskId: string;
-  kind:
-    | "added" | "claimed" | "completed" | "errored" | "blocked" | "unblocked"
-    | "review_requested" | "resumed" | "cancelled"
-    | "label_changed" | "metadata_changed" | "priority_changed" | "assignee_changed";
-  task: Task;
-  prevStatus?: TaskStatus;
-  // ...standard OutputItem fields
-};
+// Shape of the emitted item (built by ctx.emitComponent):
+{
+  type: "component",
+  component: "task-change",
+  key: `${collectionId}/${taskId}`,   // latest-wins replacement per task
+  data: {
+    collectionId: string;
+    taskId: string;
+    kind:
+      | "added" | "claimed" | "completed" | "errored" | "blocked" | "unblocked"
+      | "review_requested" | "resumed" | "cancelled"
+      | "label_changed" | "metadata_changed" | "priority_changed" | "assignee_changed";
+    task: Task;
+    prevStatus?: TaskStatus;
+  };
+  // ...standard OutputItem fields stamped by the framework
+}
 ```
 
-Transient by default (no replay buffer). `persistTaskEvents: true` on the
-factory opts the whole collection into persistence. `<Plan />` and the DevTool
-subscribe to `task_change` for a given `collectionId` and rebuild the visible
-state from the stream — there's no separate "load tasks" call.
+`<Plan />` and the DevTool subscribe to component items where `component ===
+"task-change"`, filter by `data.collectionId`, and rebuild the visible state
+from the stream — there's no separate "load tasks" call. The `key` ensures
+clients render only the latest update per task.
+
+The substrate exposes a programmatic `onChange` hook on each backing
+constructor for tests and advanced consumers that want a typed callback
+without going through item emission. `getOrCreateTaskCollection` wires
+`onChange` to `ctx.emitComponent` automatically.
 
 `kind: "resumed"` covers two paths to the same lifecycle outcome — the task
 is back to `pending`. It fires both for `resumeFromReview` (human review →
 back to the queue) and for `reclaim` (stale lease detected → back to the
 queue). UI consumers can disambiguate via `prevStatus`: `awaiting_review`
 for review, `in_progress` for reclaim.
+
+`kind: "retried"` is the third path to `pending`. It fires when `fail()` is
+called against a task whose `maxAttempts` budget hasn't been exhausted —
+the substrate captures the error as `feedback` and re-pends the task for a
+fresh attempt. See "Retry policy" below.
+
+## Retry policy (`maxAttempts`)
+
+By default `fail(id, error)` is terminal — the task transitions straight to
+`errored`. Tasks created with a `maxAttempts` budget get retry semantics:
+
+```ts
+await collection.addTask({
+  id: "fetch-data",
+  goal: "Fetch upstream data",
+  maxAttempts: 3,           // up to 3 total attempts before terminal
+});
+```
+
+When a worker calls `collection.fail(id, "network timeout")`:
+
+- If `task.attempts < task.maxAttempts`, the substrate soft-fails: status →
+  `pending`, `error` cleared, `feedback` set to the error string. The next
+  claim picks up a fresh attempt and the next failure consults the budget
+  again.
+- If `task.attempts >= task.maxAttempts` (budget exhausted) or `maxAttempts`
+  is unset, the substrate hard-fails: status → terminal `errored`, `error`
+  set.
+
+`task.attempts` increments at claim time, so on the third failure with
+`maxAttempts: 3` the task ends `errored`. Workers can read the previous
+attempt's error via `task.feedback` if they want to incorporate it into the
+next attempt's behavior.
 
 ## HITL — what v1 ships
 

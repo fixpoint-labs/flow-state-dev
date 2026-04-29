@@ -14,18 +14,17 @@ import {
   type TaskCollectionRef,
 } from "../../src";
 import {
-  createCapturedEmitter,
+  createCapturedChanges,
   createFakeSequencerState,
 } from "../helpers";
 
 function buildCollection(): TaskCollectionRef {
-  const captured = createCapturedEmitter();
+  const captured = createCapturedChanges();
   const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
   return createSequencerBackedTaskCollection({
     collectionId: "tasks",
     sequencer,
-    emit: captured.emit,
-    frame: captured.frame,
+    onChange: captured.onChange,
   });
 }
 

@@ -30,13 +30,8 @@ export {
   type TaskFilter,
 } from "./schema/task-init";
 
-// Items
-export {
-  buildTaskChangeItem,
-  type TaskChangeItem,
-  type TaskChangeKind,
-  type TaskChangeEmissionFrame,
-} from "./items/task-change";
+// Change events (emitted as `task-change` component items via getOrCreateTaskCollection)
+export type { TaskChangeEvent, TaskChangeKind } from "./collection/change-event";
 
 // Collections
 export type { TaskCollectionRef, ClaimOptions } from "./collection/types";
@@ -46,6 +41,7 @@ export { createResourceBackedTaskCollection } from "./collection/resource-backed
 export type { ResourceBackedOptions } from "./collection/resource-backed";
 export {
   getOrCreateTaskCollection,
+  TASK_CHANGE_COMPONENT_TYPE,
   type GetOrCreateTaskCollectionOptions,
   type SequencerBackingSpec,
   type ResourceBackingSpec,

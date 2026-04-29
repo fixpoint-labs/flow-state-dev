@@ -307,23 +307,6 @@ function validateRequireUserFalseConsistency(
 }
 
 /**
- * Merge top-level `requireUser` shorthand with `authentication.requireUser`.
- * `authentication.requireUser` wins when set; otherwise we fall back to the
- * top-level flag, then the default of `true`. Same precedence rule applies
- * for instance overrides via `flow({ ... })`.
- */
-function effectiveRequireUser(
-  authentication: AuthenticationConfig | undefined,
-  topLevel: boolean | undefined
-): boolean {
-  if (authentication !== undefined && authentication.requireUser !== undefined) {
-    return authentication.requireUser;
-  }
-  if (topLevel !== undefined) return topLevel;
-  return true;
-}
-
-/**
  * Combine `definition.authentication` with an instance override. Field-level
  * merge — instance values win on each individual key but unset keys fall
  * through to the definition. Returns `undefined` only when neither side is

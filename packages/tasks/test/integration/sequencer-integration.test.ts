@@ -2,7 +2,9 @@
  * Integration tests — exercise the sequencer-state backing through the
  * full BlockContext path via `testBlock`. Verifies:
  *   - `getOrCreateTaskCollection` works with a real `ctx.sequencer`.
- *   - `task_change` items reach the items log.
+ *   - Lifecycle mutations emit `task-change` component items via
+ *     `ctx.emitComponent`, keyed by `${collectionId}/${taskId}` for
+ *     latest-wins replacement per task.
  *   - State-snapshot items at step boundaries carry the tasks map
  *     (FIX-401 keyed-update + checkpoint write contract).
  *   - Terminal `state_snapshot` is emitted at sequencer completion.
@@ -92,7 +94,7 @@ describe("sequencer-state integration", () => {
     expect(tasksMap.b?.output).toBe("done:beta");
   });
 
-  it("emits task_change items for every lifecycle transition", async () => {
+  it("emits task-change component items for every lifecycle transition", async () => {
     const body = handler({
       name: "lifecycle",
       inputSchema: z.any(),
@@ -121,16 +123,26 @@ describe("sequencer-state integration", () => {
 
     const result = await testBlock(block, { input: undefined });
 
+    type TaskChangeComponent = OutputItem & {
+      type: string;
+      component?: string;
+      data?: { collectionId?: string; kind?: string; taskId?: string };
+      key?: string;
+    };
     const taskChangeItems = result.items.filter(
-      (item: OutputItem & { type?: string }) => (item as { type: string }).type === "task_change"
-    ) as Array<OutputItem & { kind?: string; collectionId?: string }>;
+      (item: OutputItem & { type?: string }) => {
+        const i = item as TaskChangeComponent;
+        return i.type === "component" && i.component === "task-change";
+      }
+    ) as TaskChangeComponent[];
 
-    const kinds = taskChangeItems.map((i) => i.kind);
+    const kinds = taskChangeItems.map((i) => i.data?.kind);
     expect(kinds).toContain("added");
     expect(kinds).toContain("claimed");
     expect(kinds).toContain("completed");
     for (const item of taskChangeItems) {
-      expect(item.collectionId).toBe("plan");
+      expect(item.data?.collectionId).toBe("plan");
+      expect(item.key).toBe(`plan/${item.data?.taskId}`);
     }
   });
 
