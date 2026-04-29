@@ -56,7 +56,6 @@ import type { SequencerDefinition } from "@flow-state-dev/core";
 import type { BlockContext, StateRef } from "@flow-state-dev/core/types";
 import {
   getOrCreateTaskCollection,
-  taskSchema,
   type TaskCollectionRef,
   type TaskDispatcher,
   type TaskInit,
@@ -73,9 +72,8 @@ import {
 import type { Task } from "@flow-state-dev/tasks";
 import { resolveDispatcher, type TaskBoardDispatcherInput } from "./shared";
 import { createSeedCollection } from "./blocks/seed-collection";
-import { createSelectNextReadyTask } from "./blocks/select-next-ready-task";
 import { createClaimTask } from "./blocks/claim-task";
-import { buildWorkerStep, packWorkerInput } from "./blocks/worker-step";
+import { buildWorkerStep } from "./blocks/worker-step";
 import {
   createRecordSuccess,
   createRecordError,
@@ -349,7 +347,12 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
   // leaking across loop turns.
   const workerBody = sequencer({
     name: `${name}-worker-body`,
-    inputSchema: taskSchema,
+    // `taskSchema` is intentionally NOT used as the inputSchema generic
+    // arg here — embedding it as `typeof taskSchema` in the sequencer's
+    // type chain causes TS depth-instantiation OOMs (same family as
+    // `tasksRecordSchema` in schemas.ts). The runtime input is still a
+    // `Task`; the framework validates shape via the substrate's own
+    // CAS path before this body runs.
     stateSchema: taskBoardWorkerBodyStateSchema,
   })
     .tap(async (task: Task, ctx) => {

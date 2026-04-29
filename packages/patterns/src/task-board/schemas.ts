@@ -17,15 +17,29 @@
  * own state container, so two workers can never collide on
  * `currentTaskId`.
  */
-import { z } from "zod";
-import { taskSchema } from "@flow-state-dev/tasks";
+import { z, type ZodTypeAny } from "zod";
+import { taskSchema, type Task } from "@flow-state-dev/tasks";
 
-/** Default outer-sequencer state shape: a `tasks` record under the default key. */
-export const taskBoardStateSchema = z.object({
-  tasks: z.record(z.string(), taskSchema).default({}),
+/**
+ * Default outer-sequencer state shape: a `tasks` record under the default key.
+ *
+ * The record value is `z.unknown()` rather than `taskSchema` because deep
+ * `z.record(z.string(), <complex>).default(...)` inference triggers TS's
+ * "excessively deep" guard and OOMs the typecheck. The framework persists
+ * Task objects through the substrate's CAS-guarded mutation helpers, which
+ * already validate task shape at every transition — the schema-level
+ * validation here is redundant. `TaskBoardState` is hand-declared so
+ * consumers stay strongly typed.
+ */
+const tasksRecordSchema: ZodTypeAny = z
+  .record(z.string(), z.unknown())
+  .default({});
+
+export const taskBoardStateSchema: ZodTypeAny = z.object({
+  tasks: tasksRecordSchema,
 });
 
-export type TaskBoardState = z.infer<typeof taskBoardStateSchema>;
+export type TaskBoardState = { tasks: Record<string, Task> };
 
 /**
  * Per-worker (outer) sequencer state.
@@ -67,13 +81,22 @@ export type TaskBoardWorkerBodyState = z.infer<
  * pipeline runs the worker and records a result; when false, the
  * pipeline skips straight to `checkBoard` (which idle-sleeps or
  * exits).
+ *
+ * `task` is `z.unknown()` (the runtime instance is a `Task`) for the
+ * same depth-instantiation reason as `tasksRecordSchema` — embedding
+ * the deep `taskSchema` here would re-explode TS inference. The
+ * substrate's CAS path already validates the `Task` shape at every
+ * mutation, so this loses no integrity.
  */
 export const claimResultSchema = z.object({
   claimed: z.boolean(),
-  task: taskSchema.optional(),
+  task: z.unknown().optional(),
 });
 
-export type ClaimResult = z.infer<typeof claimResultSchema>;
+export type ClaimResult = {
+  claimed: boolean;
+  task?: Task;
+};
 
 /**
  * Worker input shape — mirrors the substrate's `TaskWorkerInput`

@@ -91,12 +91,12 @@ export interface BuildWorkerStepOptions {
  */
 export function buildWorkerStep(
   options: BuildWorkerStepOptions
-): BlockDefinition<typeof taskSchema, z.ZodUnknown> {
+): BlockDefinition<any, any> {
   const { name, workers } = options;
 
   if (isUniformWorker(workers)) {
     return workers.connectInput<Task>((task) => packWorkerInput(task)) as
-      BlockDefinition<typeof taskSchema, z.ZodUnknown>;
+      BlockDefinition<any, any>;
   }
 
   const routes = Object.values(workers) as BlockDefinition<any, any>[];
@@ -121,5 +121,5 @@ export function buildWorkerStep(
       return selected.connectInput(() => packWorkerInput(task)) as
         BlockDefinition<any, any>;
     },
-  }) as BlockDefinition<typeof taskSchema, z.ZodUnknown>;
+  }) as BlockDefinition<any, any>;
 }
