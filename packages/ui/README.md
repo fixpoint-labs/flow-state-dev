@@ -88,6 +88,32 @@ import { Plan } from "@/components/flow-state/plan";
 
 Status icons: gray circle (pending), blue spinner (in\_progress), green check (completed), red X (failed), gray dash (skipped), orange triangle (needs-revision), purple arrow (escalated).
 
+### TaskPlan Component
+
+`TaskPlan` is the generalized renderer for any TaskCollection (the unified Plan/Task primitive from `@flow-state-dev/tasks`). Pass a `collectionId` and it subscribes to `task-change` and `task-board-meta` component items in the session stream, latest-wins per task, grouped into sections by status.
+
+```tsx
+import { TaskPlan } from "@/components/flow-state/task-plan";
+
+// inside a session-aware view (SessionItemsProvider in scope)
+<TaskPlan collectionId="research-board" />
+
+// with assignee sub-grouping
+<TaskPlan collectionId="research-board" groupByAssignee />
+
+// with pattern-extended status vocabulary (e.g. plan-and-execute's "replanning")
+<TaskPlan
+  collectionId="research-board"
+  statusConfig={{ replanning: { icon: RotateCcwIcon, iconClassName: "text-amber-500", label: "Replanning" } }}
+/>
+```
+
+Sections render in canonical order (`pending → in_progress → blocked → awaiting_review → completed → errored`), empty sections hide, `cancelled` is hidden by default. Statuses outside the canonical seven trail at the end with a humanized label, so pattern wrappers that emit extended states (`planning`, `replanning`, `reviewing`) still render. Pass `statusConfig` to customize their presentation.
+
+`TaskPlan` reads its items from `useSessionItems()` by default; pass an explicit `items` prop when rendering outside that context (tests, replayed snapshots).
+
+`TaskPlan` does NOT replace `Plan`. The legacy `Plan` container renderer continues to handle `plan-meta` / `plan-task` items emitted by `planAndExecute` and `supervisor` until those patterns migrate onto the unified primitive.
+
 ## Architecture
 
 Components accepting primitive props (`role`, `content`, `isStreaming`) are framework-agnostic and have no dependency on `@flow-state-dev/*`. Components that render AI output types (`Message`, `Reasoning`, `Tool`, `Status`, `ErrorDisplay`) accept typed `item` props from `@flow-state-dev/core` directly — no adapter layer needed. All components are fully customizable (you own the source code).

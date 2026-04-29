@@ -15,6 +15,7 @@ import { FlowList } from "@/components/navigator/flow-list";
 import { SettingsSheet } from "@/components/navigator/settings-sheet";
 import { StreamView, type RequestGroup } from "@/components/workspace/stream-view";
 import { TraceView } from "@/components/workspace/trace-view";
+import { TaskCollectionsView } from "@/components/workspace/task-collections-view";
 import { ActionBar } from "@/components/workspace/action-bar";
 import { LiveSwitch } from "@/components/workspace/live-switch";
 import { SessionContextPanel } from "@/components/detail/session-context";
@@ -325,6 +326,7 @@ function AppContent() {
               <TabsList>
                 <TabsTrigger value="stream">Stream</TabsTrigger>
                 <TabsTrigger value="trace">Trace</TabsTrigger>
+                <TabsTrigger value="tasks">Tasks</TabsTrigger>
               </TabsList>
               <div className="flex items-center gap-3 min-w-0">
                 <SessionIdBadge sessionId={effectiveSessionId} />
@@ -368,6 +370,13 @@ function AppContent() {
 
             <TabsContent value="trace" className="flex-1 min-h-0 m-0">
               <TraceView key={effectiveSessionId ?? "none"} requestGroups={requestGroups} />
+            </TabsContent>
+
+            <TabsContent value="tasks" className="flex-1 min-h-0 m-0 overflow-auto">
+              <TaskCollectionsView
+                key={effectiveSessionId ?? "none"}
+                items={requestGroups.flatMap((g) => g.items)}
+              />
             </TabsContent>
 
             <Separator />
