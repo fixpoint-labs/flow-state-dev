@@ -1,11 +1,16 @@
 /**
  * Termination + idle-poll handler for the Task Board worker loop.
  *
+ * Reads the worker's `lastClaimed` flag from sequencer state (set by
+ * `claimTask`), checks the board's in-flight count, and returns
+ * `{ shouldContinue, reason }`. The pattern's worker `loopBack`
+ * predicate consumes `shouldContinue` to decide whether to iterate.
+ *
  * Modes:
  *
  * - `complete`: exit when no `pending`, `in_progress`, or
  *   `awaiting_review` tasks remain. `awaiting_review` keeps the loop
- *   alive (FIX-443 §10.1) — workers spin-poll until an external actor
+ *   alive (FIX-443 §10.1) — workers idle-poll until an external actor
  *   transitions the task back to `pending` (or to a terminal state).
  *
  * - `wait`: never exit on idle. Defers to the user-supplied
@@ -14,14 +19,19 @@
  *   long-running session-scoped boards that keep accepting tasks from
  *   external actors.
  *
- * In both modes, when the previous step's `claimed` is false, the
- * worker sleeps `idlePollMs` before returning `shouldContinue` — keeps
- * the busy-waiting cost bounded when the board is idle.
+ * In both modes, when `lastClaimed` is false, the worker sleeps
+ * `idlePollMs` before returning `shouldContinue` — bounds the
+ * busy-waiting cost when the board is idle.
  */
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { TaskCollectionRef } from "@flow-state-dev/tasks";
+import {
+  checkBoardOutputSchema,
+  taskBoardWorkerStateSchema,
+  type CheckBoardOutput,
+} from "../schemas";
 import { inFlightCount, sleep } from "../shared";
 
 export interface CheckBoardOptions {
@@ -30,22 +40,6 @@ export interface CheckBoardOptions {
   onIdle: "wait" | "complete";
   idlePollMs: number;
   shouldExit?: (collection: TaskCollectionRef) => boolean;
-}
-
-/**
- * Input shape: anything the upstream step produces. The check reads
- * `claimed` (the canonical signal from `claimAndExecute` /
- * `claimTask`) when present. Other shapes are tolerated — `claimed`
- * defaults to `true` so a chain of custom blocks doesn't accidentally
- * trigger the idle-sleep path.
- */
-export interface CheckBoardInput {
-  claimed?: boolean;
-}
-
-export interface CheckBoardOutput {
-  shouldContinue: boolean;
-  reason: "drained" | "exit" | "claimed" | "idle";
 }
 
 export function createCheckBoard(options: CheckBoardOptions) {
@@ -59,14 +53,12 @@ export function createCheckBoard(options: CheckBoardOptions) {
 
   return handler({
     name,
-    inputSchema: z.any(),
-    outputSchema: z.any(),
-    execute: async (
-      input: CheckBoardInput,
-      ctx
-    ): Promise<CheckBoardOutput> => {
+    inputSchema: z.unknown(),
+    outputSchema: checkBoardOutputSchema,
+    sequencerStateSchema: taskBoardWorkerStateSchema,
+    execute: async (_input, ctx): Promise<CheckBoardOutput> => {
       const collection = collectionFactory(ctx);
-      const claimed = input?.claimed !== false;
+      const claimed = ctx.sequencer!.state.lastClaimed;
 
       if (onIdle === "complete") {
         if (inFlightCount(collection) === 0) {

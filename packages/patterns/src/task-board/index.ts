@@ -3,106 +3,133 @@
  *
  * Concurrent drain over a `TaskCollection` with dependency gating and
  * per-task worker routing. The unified Plan/Task primitive's canonical
- * validation case: the dispatch is CAS-safe, workers are routed by
+ * validation case: dispatch is CAS-safe, workers are routed by
  * `task.assignee`, mid-drain enqueues are picked up automatically, and
  * `awaiting_review` is correctly handled (skip + wait) for the HITL
  * forward-compat surface that ships in Wave 2.
  *
  * ## Pipeline shape
  *
- *   [seedCollection?] → forEach(workerId, makeWorker)
+ * Outer sequencer:
+ *   `.tap(seedCollection?) → .forEach(workerId, makeWorker)`
  *
- *   makeWorker:
- *     [claimAndExecute] → [checkBoard] → loopBack(claimAndExecute, when=shouldContinue)
+ * Each worker (own sequencer state):
+ *   `.then(claimTask)
+ *      .thenIf(claimed, claim → task, workerBody)
+ *      .then(checkBoard)
+ *      .loopBack(claimTask, when=shouldContinue)`
  *
- *   claimAndExecute is implemented with the substrate's `dispatchAndExecute`
- *   helper — a single function call that does claim → run → record. The
- *   four exposed remix blocks (`selectNextReadyTask`, `claimTask`,
- *   `runWorker`, `recordResult`) are individually composable for
- *   consumers who need a different inner shape.
+ * `workerBody`:
+ *   `.then(workerStep) .tap(recordSuccess) .rescue(recordError)`
+ *
+ * `workerStep` is the user's worker block directly (uniform case) OR
+ * a `router` that selects by `task.assignee` (registry case). The
+ * worker block runs as a first-class step in the sequencer — it is
+ * NOT invoked from inside another block's `execute` (BP-011).
+ *
+ * `recordSuccess` reads `currentTaskId` from the worker's own
+ * sequencer state and calls `collection.complete`. `recordError` runs
+ * via `.rescue()` and calls `collection.fail` against the same
+ * per-state `currentTaskId` — so a thrown error fails exactly one
+ * task, never a sibling's concurrently-claimed work.
  *
  * ## Termination
  *
- *   - `onIdle: 'complete'` (default): exit when no `pending`,
- *     `in_progress`, or `awaiting_review` tasks remain. `awaiting_review`
- *     keeps the loop alive — workers idle-poll until an external actor
- *     transitions the task out.
+ * - `onIdle: 'complete'` (default): exit when no `pending`,
+ *   `in_progress`, or `awaiting_review` tasks remain.
+ *   `awaiting_review` keeps the loop alive — workers idle-poll until
+ *   an external actor transitions the task out.
  *
- *   - `onIdle: 'wait'`: never exit on drained-ness. Defer to the
- *     `shouldExit` predicate; the loop runs until `shouldExit` returns
- *     `true` or `maxIterations` trips.
+ * - `onIdle: 'wait'`: never exit on drained-ness. Defer to
+ *   `shouldExit`; the loop runs until that returns `true` or
+ *   `maxIterations` trips.
  *
  * ## CAS-safe dispatch
  *
  * The substrate's `collection.claim` runs eligibility scan + CAS flip
- * inside one mutator pass; under contention, exactly one worker wins
+ * inside one mutator pass; under contention exactly one worker wins
  * and the other immediately re-scans for the next eligible task. No
  * pattern-level coordination beyond that.
- *
- * ## Layering
- *
- * Lives in `@flow-state-dev/patterns`. Depends on
- * `@flow-state-dev/tasks` for the substrate (Task, TaskCollectionRef,
- * dispatchers, helpers). Never imports from `react`, `client`, or
- * `server`.
  */
 import { sequencer } from "@flow-state-dev/core";
 import type { SequencerDefinition } from "@flow-state-dev/core";
 import type { BlockContext, StateRef } from "@flow-state-dev/core/types";
-import { z } from "zod";
 import {
-  dispatchAndExecute,
   getOrCreateTaskCollection,
+  taskSchema,
   type TaskCollectionRef,
   type TaskDispatcher,
   type TaskInit,
   type TaskWorker,
   type TaskWorkerRegistry,
 } from "@flow-state-dev/tasks";
-import { handler } from "@flow-state-dev/core";
 
-import { taskBoardStateSchema, taskBoardWorkerStateSchema } from "./schemas";
+import {
+  taskBoardStateSchema,
+  taskBoardWorkerStateSchema,
+  taskBoardWorkerBodyStateSchema,
+  type ClaimResult,
+} from "./schemas";
+import type { Task } from "@flow-state-dev/tasks";
 import { resolveDispatcher, type TaskBoardDispatcherInput } from "./shared";
 import { createSeedCollection } from "./blocks/seed-collection";
 import { createSelectNextReadyTask } from "./blocks/select-next-ready-task";
 import { createClaimTask } from "./blocks/claim-task";
-import { createRunWorker } from "./blocks/run-worker";
-import { createRecordResult } from "./blocks/record-result";
+import { buildWorkerStep, packWorkerInput } from "./blocks/worker-step";
+import {
+  createRecordSuccess,
+  createRecordError,
+} from "./blocks/record-result";
 import { createCheckBoard } from "./blocks/check-board";
 
 // ---------------------------------------------------------------------------
 // Re-exports
 // ---------------------------------------------------------------------------
 
-export { taskBoardStateSchema, taskBoardWorkerStateSchema } from "./schemas";
-export type { TaskBoardState, TaskBoardWorkerState } from "./schemas";
+export {
+  taskBoardStateSchema,
+  taskBoardWorkerStateSchema,
+  taskBoardWorkerBodyStateSchema,
+  claimResultSchema,
+  taskWorkerInputSchema,
+  checkBoardOutputSchema,
+} from "./schemas";
+export type {
+  TaskBoardState,
+  TaskBoardWorkerState,
+  TaskBoardWorkerBodyState,
+  ClaimResult,
+  CheckBoardOutput,
+} from "./schemas";
 export type { TaskBoardDispatcherInput } from "./shared";
 export { createSeedCollection } from "./blocks/seed-collection";
-export { createSelectNextReadyTask } from "./blocks/select-next-ready-task";
+export type { SeedCollectionOptions } from "./blocks/seed-collection";
+export {
+  createSelectNextReadyTask,
+  selectNextReadyTaskOutputSchema,
+} from "./blocks/select-next-ready-task";
 export type {
   SelectNextReadyTaskOptions,
   SelectNextReadyTaskOutput,
 } from "./blocks/select-next-ready-task";
 export { createClaimTask } from "./blocks/claim-task";
 export type { ClaimTaskOptions, ClaimTaskOutput } from "./blocks/claim-task";
-export { createRunWorker } from "./blocks/run-worker";
+export {
+  buildWorkerStep,
+  isUniformWorker,
+  packWorkerInput,
+} from "./blocks/worker-step";
+export type { BuildWorkerStepOptions } from "./blocks/worker-step";
+export {
+  createRecordSuccess,
+  createRecordError,
+} from "./blocks/record-result";
 export type {
-  RunWorkerOptions,
-  RunWorkerInput,
-  RunWorkerOutput,
-} from "./blocks/run-worker";
-export { createRecordResult } from "./blocks/record-result";
-export type {
-  RecordResultOptions,
-  RecordResultInput,
-  RecordResultOutput,
+  RecordSuccessOptions,
+  RecordErrorOptions,
 } from "./blocks/record-result";
 export { createCheckBoard } from "./blocks/check-board";
-export type {
-  CheckBoardOptions,
-  CheckBoardInput,
-  CheckBoardOutput,
-} from "./blocks/check-board";
+export type { CheckBoardOptions } from "./blocks/check-board";
 
 // ---------------------------------------------------------------------------
 // Public config / handle
@@ -111,12 +138,10 @@ export type {
 /**
  * Sequencer-state-backed collection spec. The pattern wires
  * `getOrCreateTaskCollection({ backing: "sequencer", sequencer:
- * ctx.sequencer })` at runtime; the outer sequencer's `stateSchema`
- * must include a record at `[stateKey]` (default `"tasks"`).
- *
- * The default `taskBoardStateSchema` exported from this module already
- * declares the canonical shape — pass it directly when defining the
- * outer sequencer, or extend it with your own keys.
+ * <board-state-ref> })` at runtime. The outer sequencer's
+ * `stateSchema` must include a `Record<string, Task>` slot at
+ * `[stateKey]` (default `"tasks"`) — `taskBoardStateSchema` is the
+ * canonical shape.
  */
 export interface TaskBoardSequencerCollectionSpec {
   backing?: "sequencer";
@@ -148,9 +173,9 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
     | TaskBoardCollectionFactory<TInput, TOutput>;
 
   /**
-   * Worker(s) to dispatch tasks to. A single uniform worker runs every
-   * claimed task; a registry routes by `task.assignee`. Workers are
-   * standard `BlockDefinition`s wrapping the substrate's
+   * Worker(s) to dispatch tasks to. A single uniform worker runs
+   * every claimed task; a registry routes by `task.assignee`. Workers
+   * are standard `BlockDefinition`s consuming the substrate's
    * `TaskWorkerInput` shape.
    */
   workers: TaskWorker<TInput, TOutput> | TaskWorkerRegistry;
@@ -165,9 +190,6 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    * Dispatcher for ready-task selection. Either a `TaskDispatcher`
    * instance or a string naming one of the standard dispatchers
    * (`"fifo"`, `"topological"`, `"priority"`). Default: `"topological"`.
-   *
-   * Custom dispatchers must satisfy the substrate's `TaskDispatcher`
-   * contract (claim returns `Task | null`, CAS-safe).
    */
   dispatcher?: TaskBoardDispatcherInput;
 
@@ -181,14 +203,20 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
    */
   onIdle?: "wait" | "complete";
 
-  /** Tasks seeded into the collection at pool start. Optional. */
+  /** Tasks seeded into the collection at board start. Optional. */
   initialTasks?: readonly TaskInit<TInput>[];
 
   /**
    * Worker-failure policy. Default: `"skip"`.
-   * - `"skip"`: capture error on the task via `fail`, log; siblings
-   *   continue.
-   * - `"fail"`: propagate the error; the parent sequencer fails.
+   *
+   * - `"skip"`: capture error on the failing task via `fail`,
+   *   siblings continue.
+   * - `"fail"`: the worker sequencer rethrows after writing `fail`,
+   *   the parent forEach rejects, the board fails.
+   *
+   * Fails the offending task only — siblings concurrently in-progress
+   * are unaffected because each worker tracks its own `currentTaskId`
+   * in worker state.
    */
   onError?: "skip" | "fail";
 
@@ -221,8 +249,8 @@ export interface TaskBoardHandle {
    *
    * For the sequencer-backed default, the parent sequencer's
    * `stateSchema` MUST include a `Record<string, Task>` slot at
-   * `[stateKey]` (default `"tasks"`) — `taskBoardStateSchema` is the
-   * canonical shape.
+   * `[stateKey]` (default `"tasks"`). `taskBoardStateSchema` declares
+   * the canonical shape.
    */
   block: SequencerDefinition<any, any>;
   /** Stable identifier for the collection — matches `task_change.collectionId`. */
@@ -234,8 +262,8 @@ export interface TaskBoardHandle {
 // ---------------------------------------------------------------------------
 
 /**
- * Build a Task Board pattern instance. See module doc for the pipeline
- * semantics and termination rules.
+ * Build a Task Board pattern instance. See module doc for the
+ * pipeline semantics and termination rules.
  */
 export function taskBoard<TInput = unknown, TOutput = unknown>(
   config: TaskBoardConfig<TInput, TOutput>
@@ -279,46 +307,29 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
 
   const seedBlock = createSeedCollection<TInput>({
     name: `${name}-seed`,
-    collection: collectionFactory as (
-      ctx: BlockContext
-    ) => TaskCollectionRef<TInput, unknown>,
+    collection: collectionFactory,
     initialTasks,
   });
 
-  // Inner step: claim → run → record. Implemented via the substrate's
-  // `dispatchAndExecute` helper for atomicity — one function call
-  // surfaces the correct CAS / rescue semantics. The four individual
-  // remix blocks above are exported for consumers that want a
-  // different inner shape.
-  //
-  // Note: registry-miss errors (a task whose `assignee` has no
-  // matching worker) throw out of `dispatchAndExecute` BEFORE the
-  // try/catch around `worker.run`. We catch those here and convert
-  // them to a `fail` on the task, honoring the configured `onError`
-  // policy — otherwise a single mis-routed task would crash the loop.
-  const claimAndExecuteStepName = `${name}-worker-claim-and-execute`;
-  const claimAndExecute = handler({
-    name: claimAndExecuteStepName,
-    inputSchema: z.any(),
-    outputSchema: z.any(),
-    execute: async (_input, ctx) => {
-      const collection = collectionFactory(ctx);
-      const workerId = resolveWorkerIdFromCtx(ctx, name);
-      try {
-        return await dispatchAndExecute(
-          { collection, dispatcher, workers, workerId, onError },
-          ctx
-        );
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        const inProgress = collection.list({ status: "in_progress" });
-        for (const task of inProgress) {
-          await collection.fail(task.id, message);
-        }
-        if (onError === "fail") throw err;
-        return { claimed: true, error: message };
-      }
-    },
+  const claimStepName = `${name}-worker-claim`;
+  const claimTask = createClaimTask({
+    name: claimStepName,
+    collection: collectionFactory,
+    dispatcher,
+    workerId: (ctx) => resolveWorkerIdFromCtx(ctx, name),
+  });
+
+  const workerStep = buildWorkerStep({ name, workers });
+
+  const recordSuccess = createRecordSuccess({
+    name: `${name}-worker-record-success`,
+    collection: collectionFactory,
+  });
+
+  const recordError = createRecordError({
+    name: `${name}-worker-record-error`,
+    collection: collectionFactory,
+    onError,
   });
 
   const checkBoard = createCheckBoard({
@@ -329,16 +340,42 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     shouldExit,
   });
 
+  // Worker body: the worker block runs directly (BP-011 conformance —
+  // no handler wrapping). The body sequencer owns its own state with
+  // `currentTaskId`; the leading `.tap()` stamps the claimed task's
+  // id so `recordSuccess` (success path) and `recordError`
+  // (`.rescue()` path) can both read the same scoped value via
+  // `ctx.sequencer`. Per-iteration scoping prevents stale ids from
+  // leaking across loop turns.
+  const workerBody = sequencer({
+    name: `${name}-worker-body`,
+    inputSchema: taskSchema,
+    stateSchema: taskBoardWorkerBodyStateSchema,
+  })
+    .tap(async (task: Task, ctx) => {
+      await ctx.sequencer!.patchState({ currentTaskId: task.id });
+    })
+    .then(workerStep)
+    .tap(recordSuccess)
+    .rescue([{ block: recordError }]);
+
   function makeWorker(workerId: number): SequencerDefinition<any, any> {
     return sequencer({
       name: `${name}-worker-${workerId}`,
       stateSchema: taskBoardWorkerStateSchema,
     })
-      .then(claimAndExecute)
+      .then(claimTask)
+      .thenIf(
+        (out: ClaimResult) => out.claimed,
+        // Connector: ClaimResult → Task (the workerStep's input).
+        // `task` is guaranteed defined when claimed === true; the
+        // non-null assertion is safe here.
+        (out: ClaimResult) => out.task!,
+        workerBody
+      )
       .then(checkBoard)
-      .loopBack(claimAndExecuteStepName, {
-        when: (v: unknown) =>
-          (v as { shouldContinue?: boolean }).shouldContinue === true,
+      .loopBack(claimStepName, {
+        when: (v) => (v as { shouldContinue?: boolean }).shouldContinue === true,
         maxIterations,
       }) as SequencerDefinition<any, any>;
   }
@@ -347,7 +384,7 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     name,
     stateSchema: taskBoardStateSchema,
   })
-    .then(seedBlock)
+    .tap(seedBlock)
     .forEach(
       () => Array.from({ length: concurrency }, (_, i) => i),
       (workerId: number) => makeWorker(workerId),
@@ -388,10 +425,10 @@ function buildCollectionFactory<TInput, TOutput>(
   const { collectionId, stateKey } = collectionConfig;
   return (ctx: BlockContext) => {
     const target = ctx.getTarget<Record<string, unknown>>(boardName);
-    const sequencer = (target ?? ctx.sequencer) as
+    const stateRef = (target ?? ctx.sequencer) as
       | StateRef<Record<string, unknown>>
       | undefined;
-    if (sequencer === undefined) {
+    if (stateRef === undefined) {
       throw new Error(
         `[task-board] sequencer-backed collection "${collectionId}" requires either ctx.getTarget("${boardName}") or ctx.sequencer — call this block inside the board sequencer`
       );
@@ -400,7 +437,7 @@ function buildCollectionFactory<TInput, TOutput>(
       ctx,
       backing: "sequencer",
       collectionId,
-      sequencer,
+      sequencer: stateRef,
       stateKey,
     });
   };

@@ -2,15 +2,26 @@
  * Atomic claim block.
  *
  * Calls the configured dispatcher's `claim` to flip the next eligible
- * task to `in_progress` against the calling worker. Returns
- * `{ claimed, task? }`. The substrate's CAS retry inside `claim`
- * guarantees exactly-once dispatch under contention; under load this
- * block surfaces that semantic to the pattern layer.
+ * task to `in_progress` against the calling worker. Outputs a typed
+ * `ClaimResult` describing whether something was claimed and (if so)
+ * the claimed task. Side-channels the claim outcome onto the worker's
+ * sequencer state (`currentTaskId`, `lastClaimed`) so downstream
+ * `recordSuccess` / `recordError` / `checkBoard` can read it without
+ * threading the value through `.thenIf` branches.
+ *
+ * The substrate's CAS retry inside `collection.claim` guarantees
+ * exactly-once dispatch under contention; this block simply surfaces
+ * that semantic to the pattern layer.
  */
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import type { Task, TaskCollectionRef, TaskDispatcher } from "@flow-state-dev/tasks";
+import type { TaskCollectionRef, TaskDispatcher } from "@flow-state-dev/tasks";
+import {
+  claimResultSchema,
+  taskBoardWorkerStateSchema,
+  type ClaimResult,
+} from "../schemas";
 
 export interface ClaimTaskOptions {
   name: string;
@@ -24,21 +35,23 @@ export interface ClaimTaskOptions {
   workerId: (ctx: BlockContext) => string;
 }
 
-export interface ClaimTaskOutput {
-  claimed: boolean;
-  task?: Task;
-}
+export type ClaimTaskOutput = ClaimResult;
 
 export function createClaimTask(options: ClaimTaskOptions) {
   const { name, collection: collectionFactory, dispatcher, workerId } = options;
   return handler({
     name,
-    inputSchema: z.any(),
-    outputSchema: z.any(),
-    execute: async (_input, ctx): Promise<ClaimTaskOutput> => {
+    inputSchema: z.unknown(),
+    outputSchema: claimResultSchema,
+    sequencerStateSchema: taskBoardWorkerStateSchema,
+    execute: async (_input, ctx): Promise<ClaimResult> => {
       const collection = collectionFactory(ctx);
       const task = await dispatcher.claim(collection, workerId(ctx), ctx);
-      if (task === null) return { claimed: false };
+      if (task === null) {
+        await ctx.sequencer!.patchState({ lastClaimed: false });
+        return { claimed: false };
+      }
+      await ctx.sequencer!.patchState({ lastClaimed: true });
       return { claimed: true, task };
     },
   });

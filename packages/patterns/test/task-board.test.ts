@@ -11,7 +11,12 @@
  *   - worker failure: skip vs fail policies
  *   - awaiting_review: dispatcher skips, loop waits, resume wakes the loop
  *   - both onIdle modes (complete + wait)
- *   - individual remix blocks (claim, run, record, select)
+ *   - individual remix blocks (select, claim, record)
+ *
+ * Workers throughout these tests use typed Zod schemas
+ * (`taskWorkerInputSchema`) — the framework validates worker input at
+ * every dispatch, which is the convention the pattern is designed
+ * around. No `z.any()` escape hatches.
  */
 import { describe, expect, it } from "vitest";
 import { handler, sequencer } from "@flow-state-dev/core";
@@ -20,42 +25,74 @@ import { z } from "zod";
 import {
   fifoDispatcher,
   getOrCreateTaskCollection,
-  taskSchema,
-  type TaskCollectionRef,
   type TaskWorker,
 } from "@flow-state-dev/tasks";
 
 import {
   taskBoard,
   taskBoardStateSchema,
+  taskWorkerInputSchema,
   createSelectNextReadyTask,
   createClaimTask,
-  createRunWorker,
-  createRecordResult,
+  createRecordSuccess,
 } from "../src/task-board";
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Schemas + helpers
 // ---------------------------------------------------------------------------
 
-type ResearchInput = { topic: string };
+const researchInputSchema = z.object({ topic: z.string() });
+const echoWorkerInputSchema = taskWorkerInputSchema.extend({
+  input: researchInputSchema.optional(),
+});
+const echoWorkerOutputSchema = z.object({ findings: z.string() });
 
+/**
+ * Echo worker — typed input/output. The pattern's worker registry /
+ * uniform path takes any block whose input matches `TaskWorkerInput`;
+ * each worker is free to narrow its own input schema (here we add a
+ * concrete `input` shape) and declare its own output schema.
+ */
 function makeEchoWorker(name: string, traceTo?: string[]): TaskWorker {
   return handler({
     name,
-    inputSchema: z.any(),
-    outputSchema: z.any(),
-    execute: (input: { goal: string; input?: ResearchInput }) => {
+    inputSchema: echoWorkerInputSchema,
+    outputSchema: echoWorkerOutputSchema,
+    execute: (input) => {
       const tag = `${name}:${input.input?.topic ?? input.goal}`;
       traceTo?.push(tag);
       return { findings: tag };
     },
-  });
+  }) as TaskWorker;
 }
 
+const goalWorkerInputSchema = taskWorkerInputSchema;
+const noOutputSchema = z.null();
+
+function makeGoalWorker(
+  name: string,
+  body: (goal: string) => null
+): TaskWorker {
+  return handler({
+    name,
+    inputSchema: goalWorkerInputSchema,
+    outputSchema: noOutputSchema,
+    execute: (input) => body(input.goal),
+  }) as TaskWorker;
+}
+
+/**
+ * Build a map from task id → its terminal status by walking the
+ * `task_change` items emitted on the stream. The substrate emits one
+ * item per transition; the last one for a given id is the final
+ * status.
+ */
 function lastTaskState(items: unknown[]): Map<string, string> {
   const finalStatus = new Map<string, string>();
-  for (const item of items as Array<{ type?: string; task?: { id: string; status: string } }>) {
+  for (const item of items as Array<{
+    type?: string;
+    task?: { id: string; status: string };
+  }>) {
     if (item.type === "task_change" && item.task !== undefined) {
       finalStatus.set(item.task.id, item.task.status);
     }
@@ -72,12 +109,7 @@ describe("taskBoard - block structure", () => {
     const board = taskBoard({
       name: "structure",
       collection: { collectionId: "test" },
-      workers: handler({
-        name: "noop",
-        inputSchema: z.any(),
-        outputSchema: z.any(),
-        execute: () => null,
-      }),
+      workers: makeGoalWorker("noop", () => null),
     });
     expect(board.block.kind).toBe("sequencer");
     expect(board.collectionId).toBe("test");
@@ -89,12 +121,7 @@ describe("taskBoard - block structure", () => {
         name: "bad",
         collection: { collectionId: "x" },
         concurrency: 0,
-        workers: handler({
-          name: "noop",
-          inputSchema: z.any(),
-          outputSchema: z.any(),
-          execute: () => null,
-        }),
+        workers: makeGoalWorker("noop", () => null),
       })
     ).toThrow(/concurrency/);
   });
@@ -105,12 +132,7 @@ describe("taskBoard - block structure", () => {
         name: "bad",
         collection: { collectionId: "x" },
         maxIterations: 0,
-        workers: handler({
-          name: "noop",
-          inputSchema: z.any(),
-          outputSchema: z.any(),
-          execute: () => null,
-        }),
+        workers: makeGoalWorker("noop", () => null),
       })
     ).toThrow(/maxIterations/);
   });
@@ -121,12 +143,7 @@ describe("taskBoard - block structure", () => {
         name: "bad",
         collection: { collectionId: "x" },
         dispatcher: "nonsense" as never,
-        workers: handler({
-          name: "noop",
-          inputSchema: z.any(),
-          outputSchema: z.any(),
-          execute: () => null,
-        }),
+        workers: makeGoalWorker("noop", () => null),
       })
     ).toThrow(/unknown dispatcher/);
   });
@@ -139,7 +156,7 @@ describe("taskBoard - block structure", () => {
 describe("taskBoard - basic drain", () => {
   it("processes all initial tasks and exits cleanly (concurrency=1)", async () => {
     const trace: string[] = [];
-    const board = taskBoard<ResearchInput>({
+    const board = taskBoard({
       name: "drain-1",
       collection: { collectionId: "drain-1" },
       concurrency: 1,
@@ -173,7 +190,7 @@ describe("taskBoard - basic drain", () => {
       input: { topic: `t-${i}` },
     }));
 
-    const board = taskBoard<ResearchInput>({
+    const board = taskBoard({
       name: "drain-parallel",
       collection: { collectionId: "drain-parallel" },
       concurrency: 4,
@@ -189,17 +206,12 @@ describe("taskBoard - basic drain", () => {
   });
 
   it("exits cleanly with no initialTasks", async () => {
-    const board = taskBoard<ResearchInput>({
+    const board = taskBoard({
       name: "empty",
       collection: { collectionId: "empty" },
       concurrency: 2,
-      workers: handler({
-        name: "noop",
-        inputSchema: z.any(),
-        outputSchema: z.any(),
-        execute: () => {
-          throw new Error("should not run");
-        },
+      workers: makeGoalWorker("noop", () => {
+        throw new Error("should not run");
       }),
     });
 
@@ -215,22 +227,23 @@ describe("taskBoard - basic drain", () => {
 describe("taskBoard - dependency-gated dispatch (topological)", () => {
   it("waits for upstream completion before dispatching downstream", async () => {
     const order: string[] = [];
-    const worker = handler({
+
+    const orderedWorker = handler({
       name: "ordered",
-      inputSchema: z.any(),
-      outputSchema: z.any(),
-      execute: (input: { taskId: string; goal: string }) => {
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ done: z.string() }),
+      execute: (input) => {
         order.push(input.goal);
         return { done: input.goal };
       },
-    });
+    }) as TaskWorker;
 
     const board = taskBoard({
       name: "topo",
       collection: { collectionId: "topo" },
       concurrency: 2,
       dispatcher: "topological",
-      workers: worker,
+      workers: orderedWorker,
       initialTasks: [
         { id: "u", goal: "upstream" },
         { id: "d", goal: "downstream", deps: ["u"] },
@@ -258,16 +271,31 @@ describe("taskBoard - worker registry routing", () => {
       writer: makeEchoWorker("writer", trace),
     };
 
-    const board = taskBoard<ResearchInput>({
+    const board = taskBoard({
       name: "registry",
       collection: { collectionId: "registry" },
       concurrency: 2,
       dispatcher: "fifo",
       workers: registry,
       initialTasks: [
-        { id: "r1", goal: "research", assignee: "researcher", input: { topic: "topic-1" } },
-        { id: "w1", goal: "write", assignee: "writer", input: { topic: "topic-2" } },
-        { id: "r2", goal: "research", assignee: "researcher", input: { topic: "topic-3" } },
+        {
+          id: "r1",
+          goal: "research",
+          assignee: "researcher",
+          input: { topic: "topic-1" },
+        },
+        {
+          id: "w1",
+          goal: "write",
+          assignee: "writer",
+          input: { topic: "topic-2" },
+        },
+        {
+          id: "r2",
+          goal: "research",
+          assignee: "researcher",
+          input: { topic: "topic-3" },
+        },
       ],
     });
 
@@ -280,14 +308,23 @@ describe("taskBoard - worker registry routing", () => {
     ]);
   });
 
-  it("fails the task when no worker is registered for the assignee (onError: skip)", async () => {
+  it("fails the offending task only when no worker matches the assignee (onError: skip)", async () => {
+    const trace: string[] = [];
     const board = taskBoard({
       name: "missing-worker",
       collection: { collectionId: "mw" },
       concurrency: 1,
       dispatcher: "fifo",
-      workers: { only: makeEchoWorker("only") },
-      initialTasks: [{ id: "x", goal: "lost", assignee: "phantom" }],
+      workers: { only: makeEchoWorker("only", trace) },
+      initialTasks: [
+        { id: "x", goal: "lost", assignee: "phantom" },
+        {
+          id: "y",
+          goal: "ok",
+          assignee: "only",
+          input: { topic: "y" },
+        },
+      ],
       onError: "skip",
     });
 
@@ -295,6 +332,8 @@ describe("taskBoard - worker registry routing", () => {
     expect(result.error).toBeNull();
     const final = lastTaskState(result.items);
     expect(final.get("x")).toBe("errored");
+    expect(final.get("y")).toBe("completed");
+    expect(trace).toEqual(["only:y"]);
   });
 });
 
@@ -307,17 +346,17 @@ describe("taskBoard - CAS contention safety", () => {
     const seen = new Map<string, number>();
     const duplicates: string[] = [];
 
-    const worker = handler({
+    const raceWorker = handler({
       name: "race",
-      inputSchema: z.any(),
-      outputSchema: z.any(),
-      execute: (input: { taskId: string }) => {
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: noOutputSchema,
+      execute: (input) => {
         const count = (seen.get(input.taskId) ?? 0) + 1;
         seen.set(input.taskId, count);
         if (count > 1) duplicates.push(input.taskId);
         return null;
       },
-    });
+    }) as TaskWorker;
 
     const inits = Array.from({ length: 100 }, (_, i) => ({
       id: `t-${i}`,
@@ -329,7 +368,7 @@ describe("taskBoard - CAS contention safety", () => {
       collection: { collectionId: "race" },
       concurrency: 8,
       dispatcher: "fifo",
-      workers: worker,
+      workers: raceWorker,
       initialTasks: inits,
     });
 
@@ -349,21 +388,18 @@ describe("taskBoard - mid-drain enqueue", () => {
     const processed: string[] = [];
 
     const fanoutWorker = handler({
-      name: "fanout",
-      inputSchema: z.any(),
-      outputSchema: z.any(),
-      execute: async (
-        input: { taskId: string; goal: string },
-        ctx
-      ) => {
+      name: "fanout-worker",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ ack: z.string() }),
+      execute: async (input, ctx) => {
         processed.push(input.goal);
         const collection = getOrCreateTaskCollection({
           ctx,
           backing: "sequencer",
           collectionId: "fanout",
-          // ctx.sequencer inside a worker points at the worker's nested
-          // state. The shared task record lives on the outer board's
-          // sequencer — reach for it via ctx.getTarget("<boardName>").
+          // Workers spawned under `forEach` see their own nested
+          // `ctx.sequencer`. Reach for the board's StateRef via
+          // `ctx.getTarget(boardName)` to mutate the shared collection.
           sequencer: ctx.getTarget("fanout")!,
         });
         if (input.goal === "seed") {
@@ -372,7 +408,7 @@ describe("taskBoard - mid-drain enqueue", () => {
         }
         return { ack: input.goal };
       },
-    });
+    }) as TaskWorker;
 
     const board = taskBoard({
       name: "fanout",
@@ -397,23 +433,23 @@ describe("taskBoard - mid-drain enqueue", () => {
 describe("taskBoard - failure handling", () => {
   it('onError: "skip" isolates the failure; siblings continue', async () => {
     const processed: string[] = [];
-    const worker = handler({
+    const mixedWorker = handler({
       name: "mixed",
-      inputSchema: z.any(),
-      outputSchema: z.any(),
-      execute: (input: { goal: string }) => {
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: noOutputSchema,
+      execute: (input) => {
         if (input.goal === "bad") throw new Error("intentional");
         processed.push(input.goal);
         return null;
       },
-    });
+    }) as TaskWorker;
 
     const board = taskBoard({
       name: "skip-fail",
       collection: { collectionId: "skip" },
       concurrency: 2,
       dispatcher: "fifo",
-      workers: worker,
+      workers: mixedWorker,
       initialTasks: [
         { id: "good-1", goal: "good-1" },
         { id: "bad", goal: "bad" },
@@ -432,21 +468,21 @@ describe("taskBoard - failure handling", () => {
   });
 
   it('onError: "fail" propagates the error to the parent', async () => {
-    const worker = handler({
+    const boomWorker = handler({
       name: "boom",
-      inputSchema: z.any(),
-      outputSchema: z.any(),
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: noOutputSchema,
       execute: () => {
         throw new Error("boom-err");
       },
-    });
+    }) as TaskWorker;
 
     const board = taskBoard({
       name: "fail-prop",
       collection: { collectionId: "fp" },
       concurrency: 1,
       dispatcher: "fifo",
-      workers: worker,
+      workers: boomWorker,
       initialTasks: [{ id: "x", goal: "x" }],
       onError: "fail",
     });
@@ -457,21 +493,19 @@ describe("taskBoard - failure handling", () => {
   });
 
   it("downstream pending task with errored deps blocks loop exit until cancelled", async () => {
-    // The topological dispatcher excludes `d` (its dep `u` is errored, not
-    // completed). With v1 there's no automatic dep-failure propagation —
+    // The topological dispatcher excludes `d` (its dep `u` is errored,
+    // not completed). v1 has no automatic dep-failure propagation —
     // downstream stays `pending` and the `complete` loop counts it as
-    // in-flight, so workers spin-poll. An external actor must explicitly
-    // cancel the unreachable task to drain the board.
-    let cancelled = false;
-    const worker = handler({
+    // in-flight, so workers spin-poll. An external actor must
+    // explicitly cancel the unreachable task to drain the board.
+    let scheduled = false;
+    const failingWorker = handler({
       name: "fail-up",
-      inputSchema: z.any(),
-      outputSchema: z.any(),
-      execute: async (input: { goal: string }, ctx) => {
-        if (!cancelled) {
-          cancelled = true;
-          // Schedule a cancel on the unreachable downstream so the loop
-          // can exit. Mirrors what a UI / webhook handler would do.
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: noOutputSchema,
+      execute: async (input, ctx) => {
+        if (!scheduled) {
+          scheduled = true;
           const collection = getOrCreateTaskCollection({
             ctx,
             backing: "sequencer",
@@ -485,14 +519,14 @@ describe("taskBoard - failure handling", () => {
         if (input.goal === "u") throw new Error("upstream failed");
         return null;
       },
-    });
+    }) as TaskWorker;
 
     const board = taskBoard({
       name: "deps-fail",
       collection: { collectionId: "df" },
       concurrency: 1,
       dispatcher: "topological",
-      workers: worker,
+      workers: failingWorker,
       initialTasks: [
         { id: "u", goal: "u" },
         { id: "d", goal: "d", deps: ["u"] },
@@ -516,17 +550,17 @@ describe("taskBoard - failure handling", () => {
 
 describe("taskBoard - awaiting_review", () => {
   it("dispatcher skips awaiting_review; resume wakes the loop in onIdle: 'complete'", async () => {
-    // "park" is seeded directly in `awaiting_review` — the FIFO dispatcher
-    // must skip it. While "trigger" runs, it schedules a `resumeFromReview`
-    // that flips "park" back to `pending`. The `complete`-mode loop counts
-    // the awaiting_review task as in-flight so it doesn't exit before the
-    // resume lands.
+    // "park" is seeded directly in `awaiting_review` — the FIFO
+    // dispatcher must skip it. While "trigger" runs, it schedules a
+    // `resumeFromReview` that flips "park" back to `pending`. The
+    // `complete`-mode loop counts the awaiting_review task as
+    // in-flight so it doesn't exit before the resume lands.
     let scheduled = false;
-    const worker = handler({
+    const reviewWorker = handler({
       name: "review-worker",
-      inputSchema: z.any(),
-      outputSchema: z.any(),
-      execute: async (input: { goal: string }, ctx) => {
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ handled: z.string() }),
+      execute: async (input, ctx) => {
         if (input.goal === "trigger" && !scheduled) {
           scheduled = true;
           const collection = getOrCreateTaskCollection({
@@ -541,14 +575,14 @@ describe("taskBoard - awaiting_review", () => {
         }
         return { handled: input.goal };
       },
-    });
+    }) as TaskWorker;
 
     const board = taskBoard({
       name: "hitl",
       collection: { collectionId: "review" },
       concurrency: 1,
       dispatcher: "fifo",
-      workers: worker,
+      workers: reviewWorker,
       initialTasks: [
         { id: "park", goal: "park", status: "awaiting_review" },
         { id: "trigger", goal: "trigger" },
@@ -595,39 +629,39 @@ describe("taskBoard - onIdle modes", () => {
     const trace: string[] = [];
     let added = false;
 
+    const waitWorker = handler({
+      name: "wait-worker",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: noOutputSchema,
+      execute: async (input, ctx) => {
+        trace.push(input.goal);
+        if (!added) {
+          added = true;
+          const collection = getOrCreateTaskCollection({
+            ctx,
+            backing: "sequencer",
+            collectionId: "wm",
+            sequencer: ctx.getTarget("wait-mode")!,
+          });
+          setTimeout(() => {
+            collection
+              .addTask({ id: "late", goal: "late" })
+              .catch(() => undefined);
+          }, 50);
+        }
+        return null;
+      },
+    }) as TaskWorker;
+
     const board = taskBoard({
       name: "wait-mode",
       collection: { collectionId: "wm" },
       concurrency: 1,
       dispatcher: "fifo",
-      workers: handler({
-        name: "wait-worker",
-        inputSchema: z.any(),
-        outputSchema: z.any(),
-        execute: async (
-          input: { taskId: string; goal: string },
-          ctx
-        ) => {
-          trace.push(input.goal);
-          if (!added) {
-            added = true;
-            const collection = getOrCreateTaskCollection({
-              ctx,
-              backing: "sequencer",
-              collectionId: "wm",
-              sequencer: ctx.getTarget("wait-mode")!,
-            });
-            setTimeout(() => {
-              collection.addTask({ id: "late", goal: "late" }).catch(() => undefined);
-            }, 50);
-          }
-          return null;
-        },
-      }),
+      workers: waitWorker,
       initialTasks: [{ id: "seed", goal: "seed" }],
       onIdle: "wait",
       idlePollMs: 20,
-      // Exit once both the seed and the deferred task are completed.
       shouldExit: (collection) => {
         const total = collection.count();
         const done = collection.count({ status: "completed" });
@@ -647,27 +681,33 @@ describe("taskBoard - onIdle modes", () => {
 // ---------------------------------------------------------------------------
 
 describe("taskBoard - remix blocks", () => {
-  it("selectNextReadyTask previews without claiming; claimTask actually claims", async () => {
+  it("selectNextReadyTask previews; claimTask actually claims; recordSuccess writes back", async () => {
     const trace: string[] = [];
 
-    const stateSchema = taskBoardStateSchema;
-    const collectionFactory = (ctx: any) =>
-      getOrCreateTaskCollection({
+    // The collection lives on the outer "remix-pipeline" sequencer's
+    // state. Inside nested sequencers (the worker body), `ctx.sequencer`
+    // points at the inner state — reach for the outer one via
+    // `ctx.getTarget("remix-pipeline")` and fall back to `ctx.sequencer`
+    // for top-level callers (seed, select, claim).
+    const collectionFactory = (ctx: import("@flow-state-dev/core/types").BlockContext) => {
+      const outer = ctx.getTarget<{ tasks: Record<string, unknown> }>(
+        "remix-pipeline"
+      );
+      return getOrCreateTaskCollection({
         ctx,
         backing: "sequencer",
         collectionId: "remix",
-        sequencer: ctx.sequencer!,
+        sequencer: (outer ?? ctx.sequencer!) as never,
       });
+    };
 
     const seed = handler({
       name: "remix-seed",
-      inputSchema: z.any(),
-      outputSchema: z.any(),
+      inputSchema: z.unknown(),
       execute: async (_input, ctx) => {
         const c = collectionFactory(ctx);
         await c.addTask({ id: "a", goal: "alpha" });
         await c.addTask({ id: "b", goal: "beta", deps: ["a"] });
-        return null;
       },
     });
 
@@ -683,42 +723,69 @@ describe("taskBoard - remix blocks", () => {
       workerId: () => "remixer",
     });
 
-    const run = createRunWorker({
-      name: "remix-run",
-      workers: handler({
-        name: "remix-worker",
-        inputSchema: z.any(),
-        outputSchema: z.any(),
-        execute: (input: { taskId: string; goal: string }) => {
-          trace.push(input.goal);
-          return { ok: true };
-        },
-      }),
+    const remixWorker = handler({
+      name: "remix-worker",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.object({ ok: z.boolean() }),
+      execute: (input) => {
+        trace.push(input.goal);
+        return { ok: true };
+      },
     });
 
-    const record = createRecordResult({
+    const recordSuccess = createRecordSuccess({
       name: "remix-record",
       collection: collectionFactory,
-      onError: "skip",
     });
+
+    // Compose remix-style: select (peek) → claim → worker → record.
+    // Worker runs as a first-class step (BP-011 conformance). The
+    // worker body has its own state schema where `currentTaskId` is
+    // stamped before the worker runs so `recordSuccess` can read it.
+    const remixBodyStateSchema = z.object({
+      currentTaskId: z.string().optional(),
+    });
+
+    const remixBody = sequencer({
+      name: "remix-body",
+      stateSchema: remixBodyStateSchema,
+    })
+      .tap(async (claimResult, ctx) => {
+        if (claimResult.claimed) {
+          await ctx.sequencer!.patchState({
+            currentTaskId: claimResult.task!.id,
+          });
+        }
+      })
+      .thenIf(
+        (out) => out.claimed,
+        (out) => ({
+          taskId: out.task!.id,
+          goal: out.task!.goal,
+          input: out.task!.input,
+          attempts: out.task!.attempts,
+          feedback: out.task!.feedback,
+          metadata: out.task!.metadata,
+        }),
+        remixWorker
+      )
+      // Use a tap that fetches the recordSuccess block's behaviour
+      // inline — the exported `recordSuccess` reads its own sequencer
+      // state, which here is `remixBodyStateSchema`. The schemas are
+      // compatible because both declare `currentTaskId`.
+      .tap(recordSuccess);
 
     const pipeline = sequencer({
       name: "remix-pipeline",
-      stateSchema,
+      stateSchema: taskBoardStateSchema,
     })
-      .then(seed)
+      .tap(seed)
       .then(select)
       .tap((preview) => {
         expect((preview as { ready: boolean }).ready).toBe(true);
-        // Confirm the previewed task is still pending — selection is read-only.
       })
       .then(claim)
-      .map((claimed: any) => {
-        expect(claimed.claimed).toBe(true);
-        return { task: claimed.task };
-      })
-      .then(run)
-      .then(record);
+      .then(remixBody);
 
     const result = await testBlock(pipeline, { input: undefined });
     expect(result.error).toBeNull();

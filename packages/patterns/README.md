@@ -132,7 +132,9 @@ const board = taskBoard({
 
 `awaiting_review` is fully supported per FIX-443 §10.1: standard dispatchers skip it, and the loop counts it as in-flight (resume from `awaiting_review` wakes the loop on the next idle poll). `reviewPolicy`, review UI, and the `tasks.review.requested` topic ship in Wave 2.
 
-**Key exports:** `taskBoard`, `taskBoardStateSchema`, `taskBoardWorkerStateSchema`, `createSeedCollection`, `createSelectNextReadyTask`, `createClaimTask`, `createRunWorker`, `createRecordResult`, `createCheckBoard`
+Workers are first-class block compositions, not callbacks. The pattern composes them via `.then(workerStep)` inside the worker's sequencer, with `.tap(recordSuccess)` and `.rescue([{ block: recordError }])` handling write-back — no handler wrapping the worker (BP-011). For registries, an internal `router` selects per `task.assignee` (BP-013, with `connectInput` adapting `Task → TaskWorkerInput` inside the router's `execute`).
+
+**Key exports:** `taskBoard`, `taskBoardStateSchema`, `taskBoardWorkerStateSchema`, `taskBoardWorkerBodyStateSchema`, `claimResultSchema`, `taskWorkerInputSchema`, `checkBoardOutputSchema`, `createSeedCollection`, `createSelectNextReadyTask`, `createClaimTask`, `buildWorkerStep`, `packWorkerInput`, `createRecordSuccess`, `createRecordError`, `createCheckBoard`
 
 ## Pattern-Level `instructions`
 

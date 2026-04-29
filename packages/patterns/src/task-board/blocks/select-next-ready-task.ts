@@ -6,12 +6,13 @@
  * and external test harnesses. NOT atomic with respect to a concurrent
  * `claim` — by the time the caller reads this output, another worker
  * may have already claimed the previewed task. CAS-correct dispatch
- * runs through `claimTask` (or the substrate's `collection.claim`).
+ * runs through `claimTask` (which delegates to the substrate's
+ * `collection.claim`).
  */
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
-import type { Task, TaskCollectionRef } from "@flow-state-dev/tasks";
+import { taskSchema, type TaskCollectionRef } from "@flow-state-dev/tasks";
 import { depsSatisfied } from "../shared";
 
 export interface SelectNextReadyTaskOptions {
@@ -19,12 +20,14 @@ export interface SelectNextReadyTaskOptions {
   collection: (ctx: BlockContext) => TaskCollectionRef;
 }
 
-export interface SelectNextReadyTaskOutput {
-  /** True when a candidate was found. */
-  ready: boolean;
-  /** The would-be picked task, when `ready === true`. */
-  task?: Task;
-}
+export const selectNextReadyTaskOutputSchema = z.object({
+  ready: z.boolean(),
+  task: taskSchema.optional(),
+});
+
+export type SelectNextReadyTaskOutput = z.infer<
+  typeof selectNextReadyTaskOutputSchema
+>;
 
 /**
  * Builds a preview block. Default ordering matches the substrate's
@@ -34,8 +37,8 @@ export function createSelectNextReadyTask(options: SelectNextReadyTaskOptions) {
   const { name, collection: collectionFactory } = options;
   return handler({
     name,
-    inputSchema: z.any(),
-    outputSchema: z.any(),
+    inputSchema: z.unknown(),
+    outputSchema: selectNextReadyTaskOutputSchema,
     execute: async (_input, ctx): Promise<SelectNextReadyTaskOutput> => {
       const collection = collectionFactory(ctx);
       const pending = collection.list({ status: "pending" });

@@ -1,10 +1,13 @@
 /**
  * Seed initial tasks into a Task Board collection.
  *
- * Idempotent on retry: if any task with a given id already lives in the
- * collection, that init is skipped. Tasks without a stable `id` are
- * always added (so don't pass `initialTasks` without ids on a flow you
- * expect to retry).
+ * State-mutation-only — wired with `.tap()` per BP-012. No
+ * `outputSchema`, no `return input`.
+ *
+ * Idempotent on retry: if any task with a given id already lives in
+ * the collection, that init is skipped. Tasks without a stable `id`
+ * are always added — don't pass `initialTasks` without ids on a flow
+ * you expect to retry.
  */
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
@@ -24,10 +27,9 @@ export function createSeedCollection<TInput = unknown>(
   const { name, collection: collectionFactory, initialTasks } = options;
   return handler({
     name,
-    inputSchema: z.any(),
-    outputSchema: z.any(),
-    execute: async (input, ctx) => {
-      if (initialTasks.length === 0) return input;
+    inputSchema: z.unknown(),
+    execute: async (_input, ctx) => {
+      if (initialTasks.length === 0) return;
       const collection = collectionFactory(ctx);
       for (const init of initialTasks) {
         if (init.id !== undefined && collection.get(init.id) !== undefined) {
@@ -35,7 +37,6 @@ export function createSeedCollection<TInput = unknown>(
         }
         await collection.addTask(init);
       }
-      return input;
     },
   });
 }

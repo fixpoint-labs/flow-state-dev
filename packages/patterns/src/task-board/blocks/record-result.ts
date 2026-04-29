@@ -1,58 +1,95 @@
 /**
- * Write the worker's outcome back to the collection.
+ * Result-recorder blocks for the Task Board worker pipeline.
  *
- * Maps a `RunWorkerOutput` to either `collection.complete(taskId, output)`
- * or `collection.fail(taskId, error)`. Honors the pattern's `onError`
- * policy: with `"fail"` the recorder rethrows after writing the failure
- * so the parent sequencer's error path can fire.
+ * Two blocks, each scoped to one outcome:
+ *
+ * - `recordSuccess` — `.tap()`-shaped (per BP-012, no `outputSchema`,
+ *   no `return input`). Reads `currentTaskId` from worker state, takes
+ *   the worker's output as input, calls `collection.complete`. Clears
+ *   `currentTaskId` when done so a stale id can't leak into a later
+ *   iteration on retry.
+ *
+ * - `recordError` — invoked via `.rescue()` on the worker body
+ *   sequencer. Receives the caught error as input, reads
+ *   `currentTaskId` from worker state, calls `collection.fail`. Honors
+ *   `onError`: `"skip"` swallows the error after writing the failure;
+ *   `"fail"` rethrows so the parent forEach rejects.
+ *
+ * The split lets the worker run as a plain `.then(workerStep)` step in
+ * the sequencer — no handler wrapper around the worker, no manual
+ * try/catch. The framework's rescue mechanism owns failure flow
+ * (BP-011 conformance: the worker block is composed, not invoked from
+ * inside another block's `execute`).
  */
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import type { TaskCollectionRef } from "@flow-state-dev/tasks";
+import { taskBoardWorkerBodyStateSchema } from "../schemas";
 
-export interface RecordResultOptions {
+export interface RecordSuccessOptions {
+  name: string;
+  collection: (ctx: BlockContext) => TaskCollectionRef;
+}
+
+/**
+ * Builds the success-path recorder. Wired into the worker pipeline as
+ * `.tap(recordSuccess)` — no output is produced, the upstream worker
+ * output flows through unchanged.
+ */
+export function createRecordSuccess(options: RecordSuccessOptions) {
+  const { name, collection: collectionFactory } = options;
+  return handler({
+    name,
+    inputSchema: z.unknown(),
+    sequencerStateSchema: taskBoardWorkerBodyStateSchema,
+    execute: async (output: unknown, ctx) => {
+      const taskId = ctx.sequencer!.state.currentTaskId;
+      if (taskId === undefined) return;
+      await collectionFactory(ctx).complete(taskId, output);
+      await ctx.sequencer!.patchState({ currentTaskId: undefined });
+    },
+  });
+}
+
+export interface RecordErrorOptions {
   name: string;
   collection: (ctx: BlockContext) => TaskCollectionRef;
   /**
-   * Failure policy. `"skip"` records `fail` and returns. `"fail"` records
-   * `fail` and rethrows so the caller's sequencer fails too.
+   * Failure policy. `"skip"` swallows after writing the failure.
+   * `"fail"` rethrows so the worker sequencer fails — propagates up
+   * through `.forEach`, surfacing on the board's parent.
    */
   onError: "skip" | "fail";
 }
 
-export type RecordResultInput =
-  | { taskId: string; ok: true; output: unknown }
-  | { taskId: string; ok: false; error: string };
-
-export interface RecordResultOutput {
-  taskId: string;
-  recorded: "completed" | "errored";
-  /** Mirror of the input error message, for `onError: "skip"` callers. */
-  error?: string;
-}
-
-export function createRecordResult(options: RecordResultOptions) {
+/**
+ * Builds the rescue-path recorder. Wired into the worker body as
+ * `.rescue([{ block: recordError }])`.
+ *
+ * Reading `currentTaskId` (per-worker state) is the key correctness
+ * property: each worker only knows its own claimed task, so a thrown
+ * error here writes `fail` only to that one task — never to siblings'
+ * concurrently-claimed work.
+ */
+export function createRecordError(options: RecordErrorOptions) {
   const { name, collection: collectionFactory, onError } = options;
   return handler({
     name,
-    inputSchema: z.any(),
-    outputSchema: z.any(),
-    execute: async (
-      input: RecordResultInput,
-      ctx
-    ): Promise<RecordResultOutput> => {
-      const collection = collectionFactory(ctx);
-      if (input.ok) {
-        await collection.complete(input.taskId, input.output);
-        return { taskId: input.taskId, recorded: "completed" };
+    inputSchema: z.unknown(),
+    outputSchema: z.unknown(),
+    sequencerStateSchema: taskBoardWorkerBodyStateSchema,
+    execute: async (error: unknown, ctx) => {
+      const taskId = ctx.sequencer!.state.currentTaskId;
+      const message = error instanceof Error ? error.message : String(error);
+      if (taskId !== undefined) {
+        await collectionFactory(ctx).fail(taskId, message);
+        await ctx.sequencer!.patchState({ currentTaskId: undefined });
       }
-
-      await collection.fail(input.taskId, input.error);
       if (onError === "fail") {
-        throw new Error(input.error);
+        throw error instanceof Error ? error : new Error(message);
       }
-      return { taskId: input.taskId, recorded: "errored", error: input.error };
+      return { recorded: "errored" as const, error: message };
     },
   });
 }
