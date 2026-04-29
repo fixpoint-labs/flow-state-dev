@@ -797,3 +797,103 @@ describe("taskBoard - remix blocks", () => {
     expect(trace).toEqual(["alpha"]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Capability — board.capability exposes the collection at ctx.cap
+// ---------------------------------------------------------------------------
+
+describe("taskBoard - capability", () => {
+  it("returns a capability whose name encodes the board's name", () => {
+    const board = taskBoard({
+      name: "research",
+      collection: { collectionId: "research" },
+      workers: makeGoalWorker("noop", () => null),
+    });
+    expect(board.capability).toBeDefined();
+    expect(board.capability!.name).toBe("taskBoard_research");
+  });
+
+  it("declares the board's state slot via targetStateSchemas", () => {
+    const board = taskBoard({
+      name: "schemas-board",
+      collection: { collectionId: "x" },
+      workers: makeGoalWorker("noop", () => null),
+    });
+    // The capability must declare the board's `tasks` slot so blocks
+    // that consume the capability transitively contribute the state
+    // schema without manual flow-level wiring.
+    const targetSchemas = board.capability!.targetStateSchemas;
+    expect(targetSchemas).toBeDefined();
+    expect(targetSchemas?.["schemas-board"]).toBeDefined();
+  });
+
+  it("returns a factory-backed capability when a caller-supplied factory is used", () => {
+    // Factory-backed boards still get a capability — the capability's
+    // `tasks()` getter delegates to the user's factory. No state schema
+    // is declared because the storage is opaque (typically a
+    // ResourceCollection that already declares its own).
+    const board = taskBoard({
+      name: "factory-board",
+      collection: () => {
+        throw new Error("not used in this assertion");
+      },
+      workers: makeGoalWorker("noop", () => null),
+    });
+    expect(board.capability).toBeDefined();
+    expect(board.capability!.name).toBe("taskBoard_factory-board");
+    // Factory mode does NOT declare targetStateSchemas — storage is the
+    // caller's responsibility.
+    expect(board.capability!.targetStateSchemas).toBeUndefined();
+  });
+
+  it("multiple boards in one flow get distinct capability namespaces", () => {
+    const research = taskBoard({
+      name: "research",
+      collection: { collectionId: "research" },
+      workers: makeGoalWorker("noop", () => null),
+    });
+    const financials = taskBoard({
+      name: "financials",
+      collection: { collectionId: "financials" },
+      workers: makeGoalWorker("noop", () => null),
+    });
+    expect(research.capability!.name).toBe("taskBoard_research");
+    expect(financials.capability!.name).toBe("taskBoard_financials");
+    expect(research.capability!.name).not.toBe(financials.capability!.name);
+  });
+
+  it("the board's own pipeline emits task-change items the capability subscribers consume", async () => {
+    // End-to-end smoke: the board's drain produces `task-change`
+    // component items keyed by `${collectionId}/${taskId}`. Any future
+    // consumer that wires the capability into a generator's `uses` and
+    // calls `ctx.cap.taskBoard_<name>.tasks()` reads the same
+    // collection that emits these items.
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: "smoke",
+      collection: { collectionId: "smoke" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: makeEchoWorker("uniform", trace),
+      initialTasks: [{ id: "a", goal: "alpha", input: { topic: "alpha" } }],
+    });
+
+    const result = await testBlock(board.block, { input: undefined });
+    expect(result.error).toBeNull();
+
+    type ChangeItem = {
+      type?: string;
+      component?: string;
+      key?: string;
+      data?: { collectionId?: string; taskId?: string };
+    };
+    const changeItems = (result.items as ChangeItem[]).filter(
+      (i) => i.type === "component" && i.component === "task-change"
+    );
+    expect(changeItems.length).toBeGreaterThan(0);
+    for (const item of changeItems) {
+      expect(item.data?.collectionId).toBe("smoke");
+      expect(item.key).toBe(`smoke/${item.data?.taskId}`);
+    }
+  });
+});

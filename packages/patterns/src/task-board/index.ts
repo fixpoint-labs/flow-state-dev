@@ -52,7 +52,7 @@
  * pattern-level coordination beyond that.
  */
 import { sequencer } from "@flow-state-dev/core";
-import type { SequencerDefinition } from "@flow-state-dev/core";
+import type { DefinedCapability, SequencerDefinition } from "@flow-state-dev/core";
 import type { BlockContext, StateRef } from "@flow-state-dev/core/types";
 import {
   getOrCreateTaskCollection,
@@ -62,6 +62,10 @@ import {
   type TaskWorker,
   type TaskWorkerRegistry,
 } from "@flow-state-dev/tasks";
+import {
+  createTaskBoardCapability,
+  type TaskBoardCapabilityAccessor,
+} from "./capability";
 
 import {
   taskBoardStateSchema,
@@ -128,6 +132,11 @@ export type {
 } from "./blocks/record-result";
 export { createCheckBoard } from "./blocks/check-board";
 export type { CheckBoardOptions } from "./blocks/check-board";
+export {
+  createTaskBoardCapability,
+  type TaskBoardCapabilityOptions,
+  type TaskBoardCapabilityAccessor,
+} from "./capability";
 
 // ---------------------------------------------------------------------------
 // Public config / handle
@@ -251,8 +260,26 @@ export interface TaskBoardHandle {
    * the canonical shape.
    */
   block: SequencerDefinition<any, any>;
-  /** Stable identifier for the collection — matches `task_change.collectionId`. */
+  /** Stable identifier for the collection — matches `data.collectionId` on emitted `task-change` items. */
   collectionId: string;
+  /**
+   * Capability exposing the board's `TaskCollectionRef` at
+   * `ctx.cap.taskBoard_<name>.tasks()`. Add to any block's `uses` array
+   * to read or mutate the board's tasks from inside the board's
+   * sequencer subtree (i.e. blocks executing under `board.block`).
+   *
+   * Backing-aware: sequencer-spec collections also auto-declare the
+   * board's `tasks` slot via `targetStateSchemas`, so consumers don't
+   * need to extend the parent flow's state schema by hand. Factory-
+   * backed boards defer the collection construction to the user's
+   * factory and skip the schema declaration.
+   *
+   * Note: the capability throws if used from a block running outside
+   * the board sequencer (e.g. a sibling). State has to be in scope to
+   * be mutated; falling back to the wrong sequencer would silently
+   * corrupt unrelated state.
+   */
+  capability: DefinedCapability<string, TaskBoardCapabilityAccessor>;
 }
 
 // ---------------------------------------------------------------------------
@@ -394,7 +421,30 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
       { maxConcurrency: concurrency }
     ) as SequencerDefinition<any, any>;
 
-  return { block, collectionId };
+  // Capability — backing-aware. Sequencer-spec collections get a
+  // capability that auto-resolves the collection via the parent
+  // sequencer's state ref AND declares the `tasks` slot transitively.
+  // Caller-supplied factories get a capability that defers entirely to
+  // the user's factory function — useful for resource-collection-backed
+  // boards or any custom storage. Either way `board.capability` is
+  // always defined; consumers that opt into `uses: [board.capability]`
+  // get a typed `ctx.cap["taskBoard.<name>"].tasks()` accessor
+  // regardless of backing.
+  const capability = isFactoryFn(collectionConfig)
+    ? createTaskBoardCapability({
+        backing: "factory",
+        boardName: name,
+        collectionId,
+        factory: collectionConfig,
+      })
+    : createTaskBoardCapability({
+        backing: "sequencer",
+        boardName: name,
+        collectionId: collectionConfig.collectionId,
+        stateKey: collectionConfig.stateKey,
+      });
+
+  return { block, collectionId, capability };
 }
 
 // ---------------------------------------------------------------------------
