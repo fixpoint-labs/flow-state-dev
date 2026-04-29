@@ -10,6 +10,7 @@
     { "path": "./apps/devtool" },
     { "path": "./packages/thought-fabric-core" },
     { "path": "./packages/skills" },
+    { "path": "./packages/tasks" },
     { "path": "./examples/hello-chat" },
     { "path": "./apps/kitchen-sink" },
     { "path": "./packages/ui" }

@@ -2,6 +2,20 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-04-29
+
+### `@flow-state-dev/tasks` substrate (FIX-444)
+
+- **New package `@flow-state-dev/tasks`** ships the unified Plan/Task primitive substrate locked in FIX-443. Layering: `core` → `tasks` → `patterns`. Patterns will migrate onto this substrate in FIX-446–FIX-450; this wave only ships the primitives.
+- **Task schema + state machine.** Canonical `Task` shape (FIX-443 §2) with status enum `pending | in_progress | blocked | awaiting_review | completed | errored | cancelled`. State transitions enforced by `assertTransitionAllowed`. Terminal states (`completed`, `errored`, `cancelled`) reject further transitions; `cancel()` on a terminal status is a no-op with no item emitted.
+- **`TaskCollectionRef` API across two backings.** Same uniform interface from `getOrCreateTaskCollection({ backing, ... })`. `backing: "sequencer"` (default) puts tasks on the outer sequencer's state and rides `atomicState`'s CAS retry — durable as soon as FIX-401's checkpoint write fires. `backing: "resource"` puts tasks on a parameterized resource collection (`tasks/{id}` style) for collections that outlive a single request, with re-eligibility re-check inside `updateState` so concurrent claims serialize correctly.
+- **Five standard dispatchers.** `fifoDispatcher`, `topologicalDispatcher`, `priorityDispatcher`, `classifierDispatcher({ classify })`, and `eventDispatcher({ topicFor, topic })`. Each delegates to `collection.claim(workerId, { eligibility, order })` so the substrate's CAS retry runs uniformly. All standard dispatchers skip `awaiting_review` (FIX-443 §10.1) — a shared `isReady` predicate enforces it without dispatcher authors having to think about it.
+- **Worker contract.** `TaskWorkerInput<TIn>` is the input shape; workers are plain `BlockDefinition<TaskWorkerInput<TIn>, TOut>`. Patterns accept either a uniform worker or a registry keyed by `task.assignee` (the user-set routing key — `claim`'s `workerId` is for trace/lease, not registry routing).
+- **`task_change` items.** Every lifecycle mutation emits one `task_change` item (kind: `added | claimed | completed | errored | blocked | unblocked | review_requested | resumed | cancelled | label_changed | metadata_changed | priority_changed | assignee_changed`), transient by default with `persistTaskEvents: true` opting in. `kind: "resumed"` covers both `resumeFromReview` and stale-lease `reclaim`; consumers disambiguate via `prevStatus`.
+- **Helpers.** `taskLoopBack({ until?, maxIterations? })` packages the canonical drain-until-empty termination predicate (treats `awaiting_review` as in-flight). `dispatchAndExecute({ collection, dispatcher, workers, onError })` runs one claim → execute → record-result cycle with rescue-on-throw via `collection.fail`; routing discriminates uniform-vs-registry via `typeof workers.run === "function"` (not key presence).
+- **Tests.** 120 tests across schema, both backings parameterized, every dispatcher (including HITL-skip per dispatcher), helpers, sequencer integration via `testBlock` (state_snapshot durable + terminal frame + tasks-map persistence per the FIX-401 checkpoint contract), and type tests.
+- **Out of scope (per FIX-443 §11 / FIX-444 spec).** No `<Plan />` rendering (FIX-445), no `taskBoard` pattern (FIX-446), no migrations of existing patterns (FIX-447, FIX-448), no Plan Mode reshape (FIX-449), no skill-pattern frontmatter binding (FIX-450), no `reviewPolicy` config field, no inline review affordances on `<Plan />`, no `tasks.review.requested` cross-flow event topic — all Wave 2 follow-ons. The v1 substrate is HITL-ready (`awaiting_review` lifecycle, `awaitReview` / `resumeFromReview` on the ref, `metadata.review.history` documented as the audit-trail convention) so Wave 2's HITL push is config + UI work, not a primitives revision.
+
 ## 2026-04-28
 
 ### Durable sequencer checkpoint schema (FIX-401)
