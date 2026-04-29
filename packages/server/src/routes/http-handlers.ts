@@ -50,7 +50,7 @@ import {
   handleDeleteCollectionItem
 } from "./resource-routes";
 import { handleRequestStream, handleTranscribe } from "./stream-routes";
-import type { InboundTransportHost } from "../transports/types";
+import type { InboundTransportHost, PrincipalResolver } from "../transports/types";
 import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
 import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 
@@ -124,6 +124,11 @@ export type CreateFlowRouteHandlersOptions = {
   middleware?: Middleware[];
   onError?: (error: Error, context: { method: string; path: string }) => void;
   onBackgroundWork?: (promise: Promise<unknown>) => void;
+  /**
+   * Host-level fallback resolver. Per-flow `authentication.resolvePrincipal`
+   * always wins over this when set. Defaults to the body-userId stub.
+   */
+  resolvePrincipal?: PrincipalResolver;
   internalSeams?: InternalRouteSeams;
   /**
    * Stale threshold for interrupted request detection on startup.
@@ -185,7 +190,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     speechResolver: options.speechResolver,
     transcriptionResolver: options.transcriptionResolver,
     middleware: options.middleware,
-    resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+    resolvePrincipal: options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
     onBackgroundWork: options.onBackgroundWork,
     maxResponseBufferSize: options.maxResponseBufferSize
   });

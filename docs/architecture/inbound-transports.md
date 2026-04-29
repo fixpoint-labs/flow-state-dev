@@ -92,12 +92,13 @@ that need a streamed response (HTTP+SSE) consume `handle.liveStream.readable`;
 adapters that just want a final result (webhook, schedule) await
 `handle.finished`.
 
-`host.resolvePrincipal` is the auth integration point. Phase 1 ships
-`defaultBodyUserIdPrincipalResolver`, which reads `body.userId` exactly as
-the pre-FIX-438 router did. When [FIX-23] lands the resolver becomes
-configurable on `createFlowApiRouter`; adapter code does not change
-because adapters always call `host.resolvePrincipal` rather than
-implementing auth themselves.
+`host.resolvePrincipal` is the auth integration point. Per-flow
+`authentication.resolvePrincipal` (set on `defineFlow`) wins over the
+host-level fallback (`createFlowApiRouter({ resolvePrincipal })`). Adapter
+code does not change because adapters always call `host.resolvePrincipal`
+rather than implementing auth themselves; the host applies per-flow
+routing, `defaultUserId` fallback, and `requireUser` enforcement
+transparently. See `authentication.md`.
 
 ## The HTTP adapter as reference
 
@@ -236,18 +237,16 @@ webhook, scheduled, and notification adapters plug into the same harness.
 
 - The MCP, webhook, scheduled, and notification adapters themselves —
   each is its own issue and ships independently.
-- Authentication / `resolvePrincipal` extension — the contract reserves
-  the seam. The Phase 1 stub preserves today's body-userId behavior.
 - Outbound transport adapters (Ably AI Transport) — the symmetric mirror
   on the response side.
 
 ## Related
 
+- `docs/architecture/authentication.md` — `resolvePrincipal` contract,
+  per-flow auth config, `requireUser` semantics, convenience verifiers.
 - `docs/architecture/server-and-client.md` — the route table is now
   produced by the HTTP adapter rather than hard-coded in the router.
 - `docs/architecture/streaming.md` — `LiveRequestStream` / `ResponseEmitter`
   are public types adapters consume.
 - `packages/server/README.md` — public API reference for
   `createFlowApiRouter` and the `adapters` option.
-
-[FIX-23]: https://linear.app/fixpoint-labs/issue/FIX-23/authentication-strategy-principal-resolver-and-auth-hooks

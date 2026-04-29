@@ -59,6 +59,54 @@ See [`docs/architecture/inbound-transports.md`](../../docs/architecture/inbound-
 for the full contract reference and a walk-through of authoring a custom
 adapter.
 
+## Authentication
+
+Per-flow `defineFlow({ authentication })` and a host-level
+`createFlowApiRouter({ resolvePrincipal })` configure how the framework
+resolves the caller principal for every inbound transport. The framework
+owns the contract; the host owns credential verification.
+
+```ts
+import { defineFlow } from "@flow-state-dev/core";
+import {
+  createFlowApiRouter,
+  createHmacVerifier,
+  PrincipalResolutionError
+} from "@flow-state-dev/server";
+
+const verifyStripe = createHmacVerifier({
+  secret: process.env.STRIPE_WEBHOOK_SECRET!,
+  format: "stripe"
+});
+
+const stripeFlow = defineFlow({
+  kind: "stripe-webhook",
+  authentication: {
+    requireUser: false,
+    defaultUserId: "system",
+    resolvePrincipal: ({ rawBody, request }) => {
+      const sig = request?.headers.get("stripe-signature") ?? null;
+      if (rawBody === undefined || !verifyStripe(rawBody, sig)) {
+        throw new PrincipalResolutionError("Invalid signature", { status: 401 });
+      }
+      return null; // defaultUserId fills in
+    }
+  },
+  actions: { /* ... */ }
+});
+```
+
+`requireUser: false` opts the flow out of user-scope identity at build
+time — `defineFlow` rejects user-scope state, `clientData`, and resource
+declarations on such flows. Bundled helpers `createHmacVerifier` (Stripe
+and GitHub-style signatures), `createHs256JwtVerifier`, and
+`extractBearerToken` cover the most common verification patterns; hosts
+plug in their own for anything else.
+
+See [`docs/architecture/authentication.md`](../../docs/architecture/authentication.md)
+for the full contract, resolution order, and `requireUser: false`
+semantics.
+
 ## Store configuration
 
 ```ts

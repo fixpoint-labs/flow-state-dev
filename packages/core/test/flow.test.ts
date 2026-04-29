@@ -54,37 +54,118 @@ describe("defineFlow", () => {
     expect(custom.session?.metadata).toBeDefined();
   });
 
-  it("enforces requireUser phase policy at definition and instance creation", () => {
-    expect(() =>
-      defineFlow({
-        kind: "invalid",
-        requireUser: false,
-        actions: {
-          run: {
-            inputSchema: z.object({}),
-            block: handler({
-              name: "noop",
-              execute: () => ({})
-            })
-          }
-        }
-      })
-    ).toThrow("requireUser=true");
-
+  it("allows requireUser: false on flows with no user-scope declarations", () => {
     const flow = defineFlow({
-      kind: "valid",
+      kind: "system-only",
+      requireUser: false,
       actions: {
         run: {
           inputSchema: z.object({}),
           block: handler({
-            name: "noop-valid",
+            name: "noop",
             execute: () => ({})
           })
         }
       }
     });
 
-    expect(() => flow({ requireUser: false })).toThrow("requireUser=true");
+    expect(flow.requireUser).toBe(false);
+    const instance = flow();
+    expect(instance.requireUser).toBe(false);
+  });
+
+  it("authentication.requireUser overrides the top-level requireUser shorthand", () => {
+    const flow = defineFlow({
+      kind: "auth-overrides-top",
+      requireUser: true,
+      authentication: { requireUser: false },
+      actions: {
+        run: {
+          inputSchema: z.object({}),
+          block: handler({ name: "noop", execute: () => ({}) })
+        }
+      }
+    });
+
+    expect(flow.requireUser).toBe(false);
+    expect(flow.authentication?.requireUser).toBe(false);
+  });
+
+  it("rejects requireUser: false when user.stateSchema is declared", () => {
+    expect(() =>
+      defineFlow({
+        kind: "user-state-with-no-user",
+        requireUser: false,
+        user: { stateSchema: z.object({ pref: z.string() }) },
+        actions: {
+          run: {
+            inputSchema: z.object({}),
+            block: handler({ name: "noop", execute: () => ({}) })
+          }
+        }
+      })
+    ).toThrow(/requireUser: false/);
+  });
+
+  it("rejects requireUser: false when a user-scoped resource is declared at the flow level", () => {
+    const userResource = defineResource({
+      scope: "user",
+      stateSchema: z.object({ count: z.number() })
+    });
+    expect(() =>
+      defineFlow({
+        kind: "user-resource-with-no-user",
+        requireUser: false,
+        actions: {
+          run: {
+            inputSchema: z.object({}),
+            block: handler({ name: "noop", execute: () => ({}) })
+          }
+        },
+        resources: { artifacts: userResource }
+      })
+    ).toThrow(/scope: "user"/);
+  });
+
+  it("rejects requireUser: false when a block declares a user-scoped resource", () => {
+    const userResource = defineResource({
+      scope: "user",
+      stateSchema: z.object({ count: z.number() })
+    });
+    const block = handler({
+      name: "with-user-res",
+      resources: { artifacts: userResource },
+      execute: (v: unknown) => v
+    });
+    expect(() =>
+      defineFlow({
+        kind: "block-user-res-with-no-user",
+        requireUser: false,
+        actions: {
+          run: { inputSchema: z.any(), block }
+        }
+      })
+    ).toThrow(/scope: "user"/);
+  });
+
+  it("rejects requireUser: false when user.clientData is declared", () => {
+    expect(() =>
+      defineFlow({
+        kind: "user-clientdata-with-no-user",
+        requireUser: false,
+        user: {
+          clientData: {
+            displayName: () => "anon"
+          }
+        },
+        actions: {
+          run: {
+            inputSchema: z.object({}),
+            block: handler({ name: "noop", execute: () => ({}) })
+          }
+        }
+      })
+    ).toThrow(/user\.clientData/);
   });
 
   it("wires flow-level tool defaults and lifecycle hooks into generator execution", async () => {

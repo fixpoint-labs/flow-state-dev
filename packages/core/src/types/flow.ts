@@ -1,4 +1,5 @@
 import type { ZodTypeAny } from "zod";
+import type { AuthenticationConfig } from "./auth";
 import type { BlockContext, BlockDefinition, DeclaredResourceEntry, RetryPolicy } from "./block";
 import type { Middleware } from "./middleware";
 import type {
@@ -194,7 +195,18 @@ export type FlowDefinition<
   TResources extends Record<string, DeclaredResourceEntry> = Record<string, DeclaredResourceEntry>
 > = {
   kind: string;
+  /**
+   * Top-level shorthand for `authentication.requireUser`. When both are set,
+   * `authentication.requireUser` wins. Default: true.
+   */
   requireUser?: boolean;
+
+  /**
+   * Per-flow authentication hook. The framework owns the resolution contract
+   * (call `resolvePrincipal`, apply `defaultUserId`, enforce `requireUser`);
+   * the host owns credential verification. See `AuthenticationConfig`.
+   */
+  authentication?: AuthenticationConfig;
 
   actions: TActions;
 
@@ -244,6 +256,7 @@ export type FlowInstanceOptions<
   id?: string;
   kind?: string;
   requireUser?: boolean;
+  authentication?: AuthenticationConfig;
   actions?: Partial<TActions> & Record<string, ActionConfig>;
   session?: TSession;
   request?: TRequest;
@@ -278,6 +291,7 @@ export type FlowInstance<
    * any execution begins.
    */
   requiresOrg: boolean;
+  authentication?: AuthenticationConfig;
   actions: TActions;
   session?: TSession;
   request?: TRequest;
@@ -307,6 +321,7 @@ export type FlowType<
   requireUser: boolean;
   /** Mirror of `FlowInstance.requiresOrg`. */
   requiresOrg: boolean;
+  authentication?: AuthenticationConfig;
   actions: TActions;
   session?: TSession;
   request?: TRequest;

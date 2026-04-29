@@ -10,6 +10,7 @@
  */
 import { generator, type GeneratorConfig } from "../blocks/generator";
 import { mergeDeclaredResources } from "../blocks/internal/build-block";
+import type { AuthenticationConfig } from "../types/auth";
 import type { BlockDefinition, DeclaredResourceEntry, DeclaredResources } from "../types/block";
 import type {
   ActionConfig,
@@ -268,14 +269,83 @@ function mergeFlowResourceMap(
   return { ...blockResources, ...flowResources };
 }
 
+/**
+ * `requireUser: false` is a build-time opt-out from the framework's user-
+ * scope identity. Flows that opt out must not declare any user-scope state,
+ * clientData, or resources — otherwise the runtime would have nowhere to
+ * route the read/write. We catch the conflict at registration so authors
+ * see one clear error at startup rather than a confusing runtime failure on
+ * the first request.
+ */
+function validateRequireUserFalseConsistency(
+  flowKind: string,
+  user: UserConfig | undefined,
+  resources: DeclaredResources | undefined
+): void {
+  if (user?.stateSchema !== undefined) {
+    throw new Error(
+      `Flow "${flowKind}" sets requireUser: false but declares user.stateSchema. ` +
+      `Drop the user-scope state or set requireUser: true.`
+    );
+  }
+  if (user?.clientData !== undefined && Object.keys(user.clientData).length > 0) {
+    throw new Error(
+      `Flow "${flowKind}" sets requireUser: false but declares user.clientData. ` +
+      `Drop user.clientData or set requireUser: true.`
+    );
+  }
+  if (resources !== undefined) {
+    for (const [accessor, entry] of Object.entries(resources)) {
+      if (entry.scope === "user") {
+        throw new Error(
+          `Flow "${flowKind}" sets requireUser: false but the resource "${accessor}" ` +
+          `is scope: "user". Drop the user-scope resource or set requireUser: true.`
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Combine `definition.authentication` with an instance override. Field-level
+ * merge — instance values win on each individual key but unset keys fall
+ * through to the definition. Returns `undefined` only when neither side is
+ * set so we don't materialize empty config objects on every flow.
+ */
+function mergeAuthentication(
+  base: AuthenticationConfig | undefined,
+  override: AuthenticationConfig | undefined
+): AuthenticationConfig | undefined {
+  if (base === undefined && override === undefined) return undefined;
+  if (base === undefined) return { ...override };
+  if (override === undefined) return { ...base };
+  return {
+    resolvePrincipal: override.resolvePrincipal ?? base.resolvePrincipal,
+    defaultUserId: override.defaultUserId ?? base.defaultUserId,
+    requireUser: override.requireUser ?? base.requireUser,
+    requireOrg: override.requireOrg ?? base.requireOrg
+  };
+}
+
 function createFlowInstance(
   definition: AnyFlowDefinition,
   options: AnyFlowInstanceOptions | undefined
 ): FlowInstance<AnyActions, AnySession, AnyRequest, AnyUser, AnyOrg, AnyWork> {
-  const requireUser = options?.requireUser ?? definition.requireUser ?? true;
-  if (!requireUser) {
-    throw new Error(`Flow "${definition.kind}" must set requireUser=true in Phase 1`);
-  }
+  const authentication = mergeAuthentication(
+    definition.authentication,
+    options?.authentication
+  );
+
+  // `authentication.requireUser` wins over the top-level shorthand. Top-level
+  // `requireUser` stays as the legacy entry point so existing flows keep
+  // working unchanged. Both can coexist and a passed instance override on
+  // either field is applied as expected.
+  const requireUser =
+    options?.authentication?.requireUser ??
+    definition.authentication?.requireUser ??
+    options?.requireUser ??
+    definition.requireUser ??
+    true;
 
   const tools = mergeToolsConfig(definition.tools, options?.tools);
   const kind = options?.kind ?? definition.kind;
@@ -296,11 +366,16 @@ function createFlowInstance(
     validateFlowResources(mergedResources, kind, isolateUserState, isolateOrgState);
   }
 
+  if (!requireUser) {
+    validateRequireUserFalseConsistency(kind, user, mergedResources);
+  }
+
   return {
     id: options?.id ?? kind,
     kind,
     requireUser,
     requiresOrg: collectRequiresOrg(actions),
+    authentication,
     actions,
     session,
     request: mergeConfig(definition.request, options?.request),
@@ -330,13 +405,8 @@ export function defineFlow<
   definition: FlowDefinition<TActions, TSession, TRequest, TUser, TOrg, TWork, TResources>
 ): FlowType<TActions, TSession, TRequest, TUser, TOrg, TWork, TResources> {
   const normalizedDefinition: AnyFlowDefinition = {
-    ...definition,
-    requireUser: definition.requireUser ?? true
+    ...definition
   };
-
-  if (!normalizedDefinition.requireUser) {
-    throw new Error(`Flow "${definition.kind}" must set requireUser=true in Phase 1`);
-  }
 
   const flowFactory = ((options?: AnyFlowInstanceOptions) =>
     createFlowInstance(normalizedDefinition, options)) as FlowType<
@@ -354,6 +424,7 @@ export function defineFlow<
     kind: normalizedDefinition.kind,
     requireUser: baseInstance.requireUser,
     requiresOrg: baseInstance.requiresOrg,
+    authentication: baseInstance.authentication,
     actions: baseInstance.actions as TActions,
     session: baseInstance.session as TSession,
     request: baseInstance.request as TRequest,

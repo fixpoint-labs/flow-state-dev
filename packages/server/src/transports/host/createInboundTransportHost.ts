@@ -25,6 +25,7 @@ import { createLiveRequestStream } from "../../streaming/live-stream";
 import { createResponseEmitter } from "../../streaming/response-emitter";
 import { runAction } from "../../execution/runAction";
 import { generateId } from "../../utils/generate-id";
+import { PrincipalResolutionError } from "../errors";
 import type {
   DispatchHandle,
   InboundRequestEnvelope,
@@ -152,7 +153,54 @@ export function createInboundTransportHost(
   const resolve = async (
     context: PrincipalResolutionContext
   ): Promise<ResolvedPrincipal> => {
-    return Promise.resolve(resolvePrincipal(context));
+    // Per-flow `authentication.resolvePrincipal` wins over the host-level
+    // fallback when the flow is registered and configured. Adapters never
+    // touch this; they always call `host.resolvePrincipal` and the host
+    // routes per-flow overrides transparently.
+    const flow = registry.get(context.envelope.flowKind);
+    const flowAuth = flow?.authentication;
+    const resolver = flowAuth?.resolvePrincipal ?? resolvePrincipal;
+    const requireUser = flow?.requireUser ?? true;
+    const defaultUserId = flowAuth?.defaultUserId;
+
+    const result = await Promise.resolve(resolver(context));
+    let userId: string | undefined;
+    let orgId: string | undefined;
+    if (result !== null && result !== undefined) {
+      userId =
+        typeof result.userId === "string" && result.userId.length > 0
+          ? result.userId
+          : undefined;
+      orgId =
+        typeof result.orgId === "string" && result.orgId.length > 0
+          ? result.orgId
+          : undefined;
+    }
+
+    if (userId === undefined && defaultUserId !== undefined && defaultUserId.length > 0) {
+      userId = defaultUserId;
+    }
+
+    if (userId === undefined) {
+      if (requireUser) {
+        throw new PrincipalResolutionError(
+          "Action request requires non-empty userId",
+          { status: 401 }
+        );
+      }
+      // Flow opted out of user identity but the host has nowhere to route
+      // user-keyed runtime state. Authors must either return a userId from
+      // the resolver or set `authentication.defaultUserId`. Surface this as
+      // a 500 because it's a configuration mistake, not a caller error.
+      throw new PrincipalResolutionError(
+        `Flow "${context.envelope.flowKind}" has authentication.requireUser: false ` +
+        `but no userId was resolved. Set authentication.defaultUserId or return a ` +
+        `userId from authentication.resolvePrincipal.`,
+        { status: 500 }
+      );
+    }
+
+    return orgId === undefined ? { userId } : { userId, orgId };
   };
 
   return {
