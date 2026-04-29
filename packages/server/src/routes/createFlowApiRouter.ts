@@ -86,14 +86,25 @@ type AdapterBindings = {
 };
 
 /**
- * Creates a catch-all route adapter with default no-op internal seam behavior.
+ * Returned by `createFlowApiRouter`. The four method properties are the
+ * canonical `{ GET, POST, PATCH, DELETE }` dispatcher for the catch-all
+ * route. `dispose` is an optional teardown — call it when the host shuts
+ * down to give adapters a chance to release their resources via their
+ * `bindings.stop` hooks. Existing callers that don't shut down (Next.js
+ * dev/serverless) can ignore it.
  */
-export function createFlowApiRouter(options: CreateFlowApiRouterOptions): {
+export type FlowApiRouter = {
   GET: (req: Request, ctx: NextRouteContext) => Promise<Response>;
   POST: (req: Request, ctx: NextRouteContext) => Promise<Response>;
   PATCH: (req: Request, ctx: NextRouteContext) => Promise<Response>;
   DELETE: (req: Request, ctx: NextRouteContext) => Promise<Response>;
-} {
+  dispose: () => Promise<void>;
+};
+
+/**
+ * Creates a catch-all route adapter with default no-op internal seam behavior.
+ */
+export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowApiRouter {
   const internalOptions: CreateInternalFlowApiRouterOptions = {
     ...options,
     internalSeams: NOOP_INTERNAL_ROUTE_SEAMS
@@ -119,6 +130,31 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): {
   }));
 
   validateRouteUniqueness(allBindings);
+
+  // Invoke each adapter's `start` hook after bindings are collected.
+  // The contract documents this as the post-construction setup point
+  // (e.g., loading a JWKS, opening a long-poll). The router itself is
+  // synchronous, so async `start` is fire-and-forget here — adapters
+  // that need strict await semantics for startup should compose around
+  // `createFlowApiRouter` and await the bindings themselves. Errors are
+  // logged so they don't get silently swallowed.
+  for (const { adapter, bindings } of allBindings) {
+    if (bindings.start === undefined) continue;
+    try {
+      const result = bindings.start();
+      if (result instanceof Promise) {
+        result.catch((err) => {
+          console.error(
+            `[flow-state] adapter "${adapter.source}" start hook failed`,
+            err
+          );
+        });
+      }
+    } catch (err) {
+      // Synchronous start errors abort host startup per the contract.
+      throw err;
+    }
+  }
 
   // Build the custom-adapter route table for non-HTTP adapters. Routes
   // declared by the built-in HTTP adapter are intentionally skipped — the
@@ -152,11 +188,30 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): {
     return handlers.handle(req, { path: ctx.params.path });
   };
 
+  // Best-effort teardown: invoke each adapter's `stop` hook in reverse
+  // order. Failures are logged so one bad adapter doesn't block teardown
+  // of the rest.
+  const dispose = async (): Promise<void> => {
+    for (let i = allBindings.length - 1; i >= 0; i--) {
+      const entry = allBindings[i];
+      if (entry === undefined || entry.bindings.stop === undefined) continue;
+      try {
+        await entry.bindings.stop();
+      } catch (err) {
+        console.error(
+          `[flow-state] adapter "${entry.adapter.source}" stop hook failed`,
+          err
+        );
+      }
+    }
+  };
+
   return {
     GET: dispatch,
     POST: dispatch,
     PATCH: dispatch,
-    DELETE: dispatch
+    DELETE: dispatch,
+    dispose
   };
 }
 

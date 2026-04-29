@@ -37,6 +37,12 @@ hooks returned in their bindings. This matches the codebase's existing
 options-bag-factory convention (`createFlowApiRouter`, `createSQLiteStores`,
 `createVercelHandler`, etc.).
 
+`bindings.start()` runs after `createFlowApiRouter` collects all
+bindings and validates route uniqueness. Synchronous failures abort host
+startup; async rejections are logged (`console.error`) so they don't get
+silently swallowed. `bindings.stop()` runs from the router's `dispose()`
+method, in reverse order, on a best-effort basis.
+
 ### The envelope
 
 Every adapter constructs one of these before invoking the runtime:

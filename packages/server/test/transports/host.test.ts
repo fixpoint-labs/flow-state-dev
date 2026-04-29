@@ -10,6 +10,7 @@ import {
   createFlowRegistry,
   createInMemoryStores,
   createInboundTransportHost,
+  createResponseEmitter,
   defaultBodyUserIdPrincipalResolver,
   PrincipalResolutionError
 } from "../../src";
@@ -85,6 +86,22 @@ describe("createInboundTransportHost", () => {
       responseEmitter: null
     });
     expect(handle.liveStream).toBeNull();
+    await handle.finished;
+  });
+
+  it("dispatch with a caller-provided responseEmitter does not create a live stream", async () => {
+    const { host } = buildHost();
+    const customEmitter = createResponseEmitter({ requestId: "req_custom" });
+    const handle = host.dispatch({
+      source: "mcp",
+      flowKind: "host-test",
+      action: "run",
+      input: { value: "byo-emitter" },
+      principal: { userId: "u_byo" },
+      responseEmitter: customEmitter
+    });
+    expect(handle.liveStream).toBeNull();
+    expect(handle.responseEmitter).toBe(customEmitter);
     await handle.finished;
   });
 

@@ -80,13 +80,19 @@ export function createInboundTransportHost(
     }
 
     const requestId = envelope.requestId ?? generateId("req");
+
+    // The envelope's `responseEmitter` field is three-state:
+    //   - `undefined` (default) → host owns streaming; create a LiveRequestStream
+    //   - `null`                → explicit fire-and-forget (webhook, schedule)
+    //   - a `ResponseEmitter`   → caller is bringing its own; do not create a
+    //                             redundant live stream and waste a slot
     const liveStream =
-      envelope.responseEmitter === null
-        ? null
-        : createLiveRequestStream({
+      envelope.responseEmitter === undefined
+        ? createLiveRequestStream({
             requestId,
             maxBufferSize: maxResponseBufferSize
-          });
+          })
+        : null;
 
     if (liveStream !== null) {
       if (!canRegisterStream()) {
@@ -95,13 +101,14 @@ export function createInboundTransportHost(
       registerStream(requestId, liveStream);
     }
 
-    // Pick the emitter in priority order: live-stream emitter (HTTP+SSE),
-    // explicit caller-provided emitter, otherwise a fresh internal emitter
-    // so the runtime always has somewhere to write items. The handle
-    // exposes whichever one was used.
+    // Pick the emitter in priority order: caller-provided emitter wins when
+    // present (skips the live-stream branch above by construction), otherwise
+    // the host's live-stream emitter, otherwise a fresh internal emitter so
+    // the runtime always has somewhere to write items. The handle exposes
+    // whichever one was used.
     const responseEmitter =
-      liveStream?.emitter ??
       envelope.responseEmitter ??
+      liveStream?.emitter ??
       createResponseEmitter({ requestId });
 
     const finished = runAction({

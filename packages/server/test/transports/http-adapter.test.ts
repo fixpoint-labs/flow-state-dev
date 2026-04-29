@@ -132,6 +132,71 @@ describe("HTTP transport adapter (via createFlowApiRouter)", () => {
     ).toThrow(TransportRouteCollisionError);
   });
 
+  it("invokes adapter start and stop hooks when mounted and disposed", async () => {
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+
+    let started = 0;
+    let stopped = 0;
+    const adapter: InboundTransportAdapter = {
+      source: "lifecycle",
+      createBindings: () => ({
+        routes: [],
+        start: () => {
+          started++;
+        },
+        stop: () => {
+          stopped++;
+        }
+      })
+    };
+
+    const router = createFlowApiRouter({
+      registry,
+      stores,
+      adapters: [adapter]
+    });
+    expect(started).toBe(1);
+
+    await router.dispose();
+    expect(stopped).toBe(1);
+  });
+
+  it("logs (not throws) when an async start hook rejects", async () => {
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    const errors: unknown[] = [];
+    const originalConsoleError = console.error;
+    console.error = (...args: unknown[]) => errors.push(args);
+
+    try {
+      const adapter: InboundTransportAdapter = {
+        source: "boom",
+        createBindings: () => ({
+          routes: [],
+          start: async () => {
+            throw new Error("startup blew up");
+          }
+        })
+      };
+
+      // Should not throw — async failures surface via console.error.
+      const router = createFlowApiRouter({
+        registry,
+        stores,
+        adapters: [adapter]
+      });
+
+      // Drain microtasks so the rejected promise's `.catch` runs.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(errors.length).toBeGreaterThan(0);
+      await router.dispose();
+    } finally {
+      console.error = originalConsoleError;
+    }
+  });
+
   it("returns 400 when userId is missing — default body-userId resolver", async () => {
     const registry = createFlowRegistry();
     const stores = createInMemoryStores();
