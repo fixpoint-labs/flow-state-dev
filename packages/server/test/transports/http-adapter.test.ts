@@ -10,6 +10,7 @@ import {
   createFlowApiRouter,
   createFlowRegistry,
   createInMemoryStores,
+  disposeFlowApiRouter,
   TransportRouteCollisionError,
   type InboundTransportAdapter
 } from "../../src";
@@ -158,7 +159,30 @@ describe("HTTP transport adapter (via createFlowApiRouter)", () => {
     });
     expect(started).toBe(1);
 
-    await router.dispose();
+    await disposeFlowApiRouter(router);
+    expect(stopped).toBe(1);
+  });
+
+  it("disposeFlowApiRouter is idempotent and a no-op for unknown routers", async () => {
+    const registry = createFlowRegistry();
+    const stores = createInMemoryStores();
+    let stopped = 0;
+    const adapter: InboundTransportAdapter = {
+      source: "lifecycle-idempotent",
+      createBindings: () => ({
+        routes: [],
+        stop: () => {
+          stopped++;
+        }
+      })
+    };
+    const router = createFlowApiRouter({
+      registry,
+      stores,
+      adapters: [adapter]
+    });
+    await disposeFlowApiRouter(router);
+    await disposeFlowApiRouter(router);
     expect(stopped).toBe(1);
   });
 
@@ -191,7 +215,7 @@ describe("HTTP transport adapter (via createFlowApiRouter)", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(errors.length).toBeGreaterThan(0);
-      await router.dispose();
+      await disposeFlowApiRouter(router);
     } finally {
       console.error = originalConsoleError;
     }

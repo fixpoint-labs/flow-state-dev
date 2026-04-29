@@ -40,8 +40,11 @@ options-bag-factory convention (`createFlowApiRouter`, `createSQLiteStores`,
 `bindings.start()` runs after `createFlowApiRouter` collects all
 bindings and validates route uniqueness. Synchronous failures abort host
 startup; async rejections are logged (`console.error`) so they don't get
-silently swallowed. `bindings.stop()` runs from the router's `dispose()`
-method, in reverse order, on a best-effort basis.
+silently swallowed. `bindings.stop()` runs from `disposeFlowApiRouter(router)`,
+in reverse order, on a best-effort basis. Most callers don't need to
+call `dispose` — Next.js / Vercel / serverless hosts tear down by
+killing the process. It's intended for long-running custom servers and
+tests.
 
 ### The envelope
 

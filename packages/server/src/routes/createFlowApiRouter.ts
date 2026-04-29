@@ -88,18 +88,44 @@ type AdapterBindings = {
 /**
  * Returned by `createFlowApiRouter`. The four method properties are the
  * canonical `{ GET, POST, PATCH, DELETE }` dispatcher for the catch-all
- * route. `dispose` is an optional teardown — call it when the host shuts
- * down to give adapters a chance to release their resources via their
- * `bindings.stop` hooks. Existing callers that don't shut down (Next.js
- * dev/serverless) can ignore it.
+ * route. The shape matches what Next.js / Vercel / Hono catch-all routes
+ * expect; it is intentionally backward-compatible with the pre-FIX-438
+ * router so consumers indexing by HTTP method (`router[method]`,
+ * `keyof typeof router`) keep working.
+ *
+ * For teardown of registered transport adapters, call
+ * `disposeFlowApiRouter(router)` — keeping it off the router shape avoids
+ * widening `keyof` for index-call consumers.
  */
 export type FlowApiRouter = {
   GET: (req: Request, ctx: NextRouteContext) => Promise<Response>;
   POST: (req: Request, ctx: NextRouteContext) => Promise<Response>;
   PATCH: (req: Request, ctx: NextRouteContext) => Promise<Response>;
   DELETE: (req: Request, ctx: NextRouteContext) => Promise<Response>;
-  dispose: () => Promise<void>;
 };
+
+/**
+ * Per-router teardown registry. Populated by `createFlowApiRouter`,
+ * consumed by `disposeFlowApiRouter`. WeakMap so the router (and its
+ * bindings closure) get GC'd normally when no one holds a reference.
+ */
+const routerDisposers = new WeakMap<FlowApiRouter, () => Promise<void>>();
+
+/**
+ * Tear down a router by invoking each adapter's `bindings.stop()` in
+ * reverse order. Best-effort — failures are logged but don't abort the
+ * sweep. Idempotent: a second call after dispose is a no-op.
+ *
+ * Most callers don't need this: Next.js / Vercel / serverless hosts
+ * tear down by killing the process. It's intended for long-running
+ * servers (custom Node HTTP, Deno, Bun) and tests.
+ */
+export async function disposeFlowApiRouter(router: FlowApiRouter): Promise<void> {
+  const dispose = routerDisposers.get(router);
+  if (dispose === undefined) return;
+  routerDisposers.delete(router);
+  await dispose();
+}
 
 /**
  * Creates a catch-all route adapter with default no-op internal seam behavior.
@@ -190,7 +216,9 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
 
   // Best-effort teardown: invoke each adapter's `stop` hook in reverse
   // order. Failures are logged so one bad adapter doesn't block teardown
-  // of the rest.
+  // of the rest. Stored in a WeakMap keyed by the router so `dispose` is
+  // not part of the router's public shape (keeps `keyof typeof router`
+  // narrow for consumers that index by HTTP method).
   const dispose = async (): Promise<void> => {
     for (let i = allBindings.length - 1; i >= 0; i--) {
       const entry = allBindings[i];
@@ -206,13 +234,14 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     }
   };
 
-  return {
+  const router: FlowApiRouter = {
     GET: dispatch,
     POST: dispatch,
     PATCH: dispatch,
-    DELETE: dispatch,
-    dispose
+    DELETE: dispatch
   };
+  routerDisposers.set(router, dispose);
+  return router;
 }
 
 /**
