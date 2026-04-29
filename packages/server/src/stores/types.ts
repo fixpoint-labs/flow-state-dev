@@ -35,6 +35,14 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   userId: string;
   sessionId?: string;
   orgId?: string;
+  /**
+   * Provenance of the inbound transport that produced this request.
+   * Set from `InboundRequestEnvelope.source` (FIX-438). Open string —
+   * documented known-set: `http` | `mcp` | `webhook` | `scheduled` |
+   * `notification`. Reads of records persisted before this field existed
+   * default to `"http"` in the store implementations.
+   */
+  source: string;
   status: RequestStatus;
   startedAtMs: number;
   completedAtMs?: number;
@@ -200,6 +208,8 @@ export type ActiveRequestEntry = {
   sessionId?: string;
   userId: string;
   orgId?: string;
+  /** Inbound transport provenance — see `RequestRecord.source`. */
+  source: string;
   input?: unknown;
   metadata?: Record<string, unknown>;
   startedAt: number;

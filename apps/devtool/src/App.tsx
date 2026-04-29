@@ -168,6 +168,7 @@ function AppContent() {
         startedAt: req.startedAtMs ?? req.createdAt,
         duration: req.completedAtMs && req.startedAtMs ? req.completedAtMs - req.startedAtMs : undefined,
         items: liveItems.get(req.id) ?? req.items ?? [],
+        source: req.source,
       });
     }
     if (activeRequestId && !requests.find((r) => r.id === activeRequestId)) {

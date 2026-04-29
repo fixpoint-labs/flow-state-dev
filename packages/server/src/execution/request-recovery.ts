@@ -144,6 +144,11 @@ export async function retryRequest(
 
   registerStream(newRequestId, liveStream);
 
+  // Preserve the original request's transport provenance on retry so the
+  // RequestRecord chain is consistent. Falls back to "http" for records
+  // persisted before FIX-438.
+  const retrySource = entry?.source ?? originalRecord?.source ?? "http";
+
   void runAction({
     flow,
     actionName: actionName as keyof typeof flow.actions & string,
@@ -152,6 +157,7 @@ export async function retryRequest(
     sessionId,
     requestId: newRequestId,
     orgId,
+    source: retrySource,
     metadata: {
       ...(originalMetadata ?? {}),
       retryOf: options.originalRequestId

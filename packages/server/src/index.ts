@@ -51,6 +51,7 @@ export * from "./streaming";
 export * from "./execution";
 export * from "./registry";
 export * from "./routes";
+export * from "./transports";
 // Model infrastructure — re-exported from core.
 // Prefer importing from @flow-state-dev/core or @flow-state-dev/core/models.
 export {

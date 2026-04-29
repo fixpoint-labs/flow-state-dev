@@ -96,3 +96,42 @@ describe("ErrorAlert", () => {
     expect(screen.queryByText("Retry")).not.toBeInTheDocument();
   });
 });
+
+// ── RequestSeparator (FIX-438 source badge) ─────────────────
+
+import { RequestSeparator } from "@/components/workspace/request-separator";
+import { DebugProvider } from "@/context/debug-context";
+
+function renderSeparator(props: Parameters<typeof RequestSeparator>[0]) {
+  return render(
+    <DebugProvider>
+      <RequestSeparator {...props} />
+    </DebugProvider>,
+  );
+}
+
+describe("RequestSeparator (transport source surface)", () => {
+  const baseProps = {
+    requestId: "req_123",
+    action: "run",
+    status: "completed",
+  };
+
+  it("shows a badge for non-http sources", () => {
+    renderSeparator({ ...baseProps, source: "webhook" });
+    expect(screen.getByText("Webhook")).toBeInTheDocument();
+  });
+
+  it("renders unknown sources as a generic badge", () => {
+    renderSeparator({ ...baseProps, source: "custom-bot" });
+    expect(screen.getByText("custom-bot")).toBeInTheDocument();
+  });
+
+  it("does not render the badge for http or undefined source", () => {
+    renderSeparator({ ...baseProps, source: "http" });
+    expect(screen.queryByText("HTTP")).not.toBeInTheDocument();
+
+    renderSeparator({ ...baseProps });
+    expect(screen.queryByText("Webhook")).not.toBeInTheDocument();
+  });
+});

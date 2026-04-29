@@ -11,6 +11,7 @@ import {
   type FilesystemRecordStore
 } from "./shared";
 import { ensureDirectory, toRecordPath } from "./shared";
+import { withRequestSourceDefault } from "../shared";
 import { readFile, writeFile, rename } from "node:fs/promises";
 import {
   createSerializedWriteQueue,
@@ -85,7 +86,7 @@ export class FilesystemRequestStore implements RequestStore {
   }
 
   async get(id: string): Promise<RequestRecord | undefined> {
-    return this.store.get(id);
+    return withRequestSourceDefault(await this.store.get(id));
   }
 
   async set(
@@ -101,7 +102,8 @@ export class FilesystemRequestStore implements RequestStore {
   }
 
   async list(options?: RequestListOptions): Promise<RequestRecord[]> {
-    return this.store.list(options);
+    const records = await this.store.list(options);
+    return records.map((record) => withRequestSourceDefault(record));
   }
 
   persistItems(requestId: string, items: OutputItem[]): void {

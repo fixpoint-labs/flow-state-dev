@@ -375,6 +375,7 @@ describe("PostgreSQL store adapter", () => {
         flowKind: "flow-a",
         actionName: "run",
         userId: "user_1",
+        source: "http",
         startedAt: Date.now(),
         lastHeartbeatAt: Date.now()
       };
@@ -399,6 +400,7 @@ describe("PostgreSQL store adapter", () => {
         flowKind: "flow-a",
         actionName: "run",
         userId: "user_1",
+        source: "http",
         startedAt: startTime,
         lastHeartbeatAt: startTime
       });
@@ -420,6 +422,7 @@ describe("PostgreSQL store adapter", () => {
         flowKind: "flow-a",
         actionName: "run",
         userId: "user_1",
+        source: "http",
         startedAt: Date.now(),
         lastHeartbeatAt: Date.now()
       });
@@ -438,6 +441,7 @@ describe("PostgreSQL store adapter", () => {
         flowKind: "flow-a",
         actionName: "run",
         userId: "user_1",
+        source: "http",
         startedAt: oldTime,
         lastHeartbeatAt: oldTime
       });
@@ -446,6 +450,7 @@ describe("PostgreSQL store adapter", () => {
         flowKind: "flow-a",
         actionName: "run",
         userId: "user_1",
+        source: "http",
         startedAt: recentTime,
         lastHeartbeatAt: recentTime
       });
@@ -462,6 +467,7 @@ describe("PostgreSQL store adapter", () => {
         flowKind: "flow-a",
         actionName: "run",
         userId: "user_1",
+        source: "http",
         startedAt: Date.now(),
         lastHeartbeatAt: Date.now()
       });
@@ -470,6 +476,7 @@ describe("PostgreSQL store adapter", () => {
         flowKind: "flow-b",
         actionName: "act",
         userId: "user_2",
+        source: "http",
         startedAt: Date.now(),
         lastHeartbeatAt: Date.now()
       });
@@ -487,6 +494,7 @@ describe("PostgreSQL store adapter", () => {
         sessionId: "sess_1",
         userId: "user_1",
         orgId: "proj_1",
+        source: "webhook",
         input: { message: "hello" },
         metadata: { source: "test" },
         startedAt: Date.now(),
@@ -496,6 +504,7 @@ describe("PostgreSQL store adapter", () => {
       const result = await s.activeRequests.get("req_1");
       expect(result!.sessionId).toBe("sess_1");
       expect(result!.orgId).toBe("proj_1");
+      expect(result!.source).toBe("webhook");
       expect(result!.input).toEqual({ message: "hello" });
       expect(result!.metadata).toEqual({ source: "test" });
     });

@@ -7,6 +7,7 @@ import type {
   SetResult
 } from "../types";
 import { applyOffsetLimit, casWriteToMap, cloneValue } from "./shared";
+import { withRequestSourceDefault } from "../shared";
 
 export class InMemoryRequestStore implements RequestStore {
   private readonly records = new Map<string, RequestRecord>();
@@ -14,7 +15,9 @@ export class InMemoryRequestStore implements RequestStore {
 
   async get(id: string): Promise<RequestRecord | undefined> {
     const record = this.records.get(id);
-    return record === undefined ? undefined : cloneValue(record);
+    return record === undefined
+      ? undefined
+      : withRequestSourceDefault(cloneValue(record));
   }
 
   async set(
@@ -78,7 +81,7 @@ export class InMemoryRequestStore implements RequestStore {
 
     filtered.sort((left, right) => right.updatedAt - left.updatedAt);
     return applyOffsetLimit(filtered, options).map((record) =>
-      cloneValue(record)
+      withRequestSourceDefault(cloneValue(record))
     );
   }
 }

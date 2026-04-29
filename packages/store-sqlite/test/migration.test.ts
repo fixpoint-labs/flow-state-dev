@@ -117,6 +117,37 @@ describe("project → org schema migration", () => {
     db.close();
   });
 
+  it("FIX-438: adds `source` column to existing active_requests tables", () => {
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE TABLE active_requests (
+        request_id        TEXT PRIMARY KEY,
+        flow_kind         TEXT NOT NULL,
+        action_name       TEXT NOT NULL,
+        session_id        TEXT,
+        user_id           TEXT NOT NULL,
+        org_id            TEXT,
+        input             TEXT,
+        metadata          TEXT,
+        started_at        INTEGER NOT NULL,
+        last_heartbeat_at INTEGER NOT NULL
+      );
+    `);
+    db.prepare(
+      `INSERT INTO active_requests (request_id, flow_kind, action_name, user_id, started_at, last_heartbeat_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run("req_legacy", "demo", "run", "alice", 1, 1);
+
+    initializeSchema(db);
+
+    expect(tableInfo(db, "active_requests")).toContain("source");
+    const row = db
+      .prepare(`SELECT source FROM active_requests WHERE request_id = ?`)
+      .get("req_legacy") as { source: string };
+    expect(row.source).toBe("http");
+    db.close();
+  });
+
   it("is idempotent — calling initializeSchema twice doesn't break", () => {
     const db = new Database(":memory:");
     db.exec(`

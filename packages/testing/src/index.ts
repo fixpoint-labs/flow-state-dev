@@ -66,4 +66,14 @@ export type {
   ScoreMapping,
 } from "./eval";
 
+export {
+  createInboundTransportConformanceTests,
+  createMockTransportHost,
+  type ConformanceCaseHelpers,
+  type CreateInboundTransportConformanceTestsOptions,
+  type CreateMockTransportHostOptions,
+  type DispatchCall,
+  type MockTransportHost
+} from "./transports/conformance";
+
 export const testingPackageMarker = "@flow-state-dev/testing";

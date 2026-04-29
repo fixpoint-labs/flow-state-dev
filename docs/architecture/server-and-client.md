@@ -65,6 +65,12 @@ export const DELETE = router.DELETE;
 
 ### Canonical Endpoints
 
+The route table below is produced by the built-in HTTP transport adapter
+(`createHttpTransportAdapter`), which `createFlowApiRouter` mounts onto an
+`InboundTransportHost` internally. Custom transports (MCP, webhook, scheduled,
+custom) mount alongside it via the `adapters` option — see
+[`docs/architecture/inbound-transports.md`](./inbound-transports.md).
+
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/flows` | List registered flows |

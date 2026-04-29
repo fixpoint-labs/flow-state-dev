@@ -17,6 +17,7 @@ function serializeEntry(entry: ActiveRequestEntry): unknown[] {
     entry.sessionId ?? null,
     entry.userId,
     entry.orgId ?? null,
+    entry.source,
     entry.input !== undefined ? JSON.stringify(entry.input) : null,
     entry.metadata !== undefined ? JSON.stringify(entry.metadata) : null,
     entry.startedAt,
@@ -25,11 +26,21 @@ function serializeEntry(entry: ActiveRequestEntry): unknown[] {
 }
 
 function deserializeRow(row: Record<string, unknown>): ActiveRequestEntry {
+  // Pre-FIX-438 rows that haven't been migrated read back without a
+  // `source` column; default to the HTTP transport. The schema migration
+  // adds the column with a NOT NULL DEFAULT, so once a database has been
+  // touched by the new code path this fallback is unreachable.
+  const source =
+    typeof row.source === "string" && row.source.length > 0
+      ? (row.source as string)
+      : "http";
+
   const entry: ActiveRequestEntry = {
     requestId: row.request_id as string,
     flowKind: row.flow_kind as string,
     actionName: row.action_name as string,
     userId: row.user_id as string,
+    source,
     startedAt: Number(row.started_at),
     lastHeartbeatAt: Number(row.last_heartbeat_at)
   };
@@ -59,14 +70,15 @@ export function createPostgresActiveRequestRegistry(
       await executor.query(
         `INSERT INTO active_requests
           (request_id, flow_kind, action_name, session_id, user_id, org_id,
-           input, metadata, started_at, last_heartbeat_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           source, input, metadata, started_at, last_heartbeat_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT(request_id) DO UPDATE SET
           flow_kind = EXCLUDED.flow_kind,
           action_name = EXCLUDED.action_name,
           session_id = EXCLUDED.session_id,
           user_id = EXCLUDED.user_id,
           org_id = EXCLUDED.org_id,
+          source = EXCLUDED.source,
           input = EXCLUDED.input,
           metadata = EXCLUDED.metadata,
           started_at = EXCLUDED.started_at,
