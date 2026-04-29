@@ -1,5 +1,6 @@
 import { createClient, type Client } from "@flow-state-dev/client";
 import { createSessionClient, type SessionClient } from "@flow-state-dev/client";
+import { createRecoveryClient, type RecoveryClient } from "@flow-state-dev/client";
 import { createSSEClient, type CreateSSEClientOptions } from "@flow-state-dev/client";
 import type { RequestStreamHandle } from "@flow-state-dev/client";
 
@@ -16,6 +17,10 @@ export function createDevToolClient(config: DevToolConfig): Client {
 
 export function createDevToolSessionClient(): SessionClient {
   return createSessionClient({});
+}
+
+export function createDevToolRecoveryClient(): RecoveryClient {
+  return createRecoveryClient({});
 }
 
 export function connectRequestStream(

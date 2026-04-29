@@ -81,21 +81,32 @@ describe("buildGeneratorDebugPayload", () => {
       model: "claude-sonnet-4-5",
       prompt: "You are a helpful assistant.\n\nAdditional context here.",
       tools: ["search", "calculator"],
+      user: [{ role: "user", content: "What is the weather?" }],
+      history: [
+        { role: "user", content: "Hi" },
+        { role: "assistant", content: "Hello!" },
+      ],
     });
 
     expect(payload.model).toBe("claude-sonnet-4-5");
     expect(payload.prompt).toBe("You are a helpful assistant.\n\nAdditional context here.");
     expect(payload.tools).toEqual(["search", "calculator"]);
+    expect(payload.user).toEqual([{ role: "user", content: "What is the weather?" }]);
+    expect(payload.history).toHaveLength(2);
   });
 
-  it("omits empty tools array", () => {
+  it("omits empty tools, user, and history arrays", () => {
     const payload = buildGeneratorDebugPayload({
       model: "gpt-4o",
       prompt: "hello",
       tools: [],
+      user: [],
+      history: [],
     });
 
     expect(payload.tools).toBeUndefined();
+    expect(payload.user).toBeUndefined();
+    expect(payload.history).toBeUndefined();
   });
 });
 

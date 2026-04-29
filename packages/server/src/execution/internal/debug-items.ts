@@ -42,6 +42,8 @@ function createDebugProvenance(
 
 /**
  * Convert a generator's runtime capture payload to the stored debug payload format.
+ * Empty `tools`/`user`/`history` arrays are omitted so the persisted item only
+ * carries fields that have meaningful content for the devtool to render.
  */
 export function buildGeneratorDebugPayload(
   capture: BlockDebugCapturePayload
@@ -50,6 +52,8 @@ export function buildGeneratorDebugPayload(
     model: capture.model,
     prompt: capture.prompt,
     tools: capture.tools.length > 0 ? capture.tools : undefined,
+    user: capture.user.length > 0 ? capture.user : undefined,
+    history: capture.history.length > 0 ? capture.history : undefined,
   };
 }
 

@@ -1632,17 +1632,22 @@ export function generator<
       // Emit debug capture for devtool inspection before the LLM call. Use
       // the same combined-system-message assembly the model sees so the
       // devtool view matches the real prompt rather than a flat join.
+      // `user` and `history` are captured post-`asUserMessage` wrapping so
+      // the devtool sees the exact message shapes sent to the model.
       const debugPrompt = systemPrefix
         .map((m) => (m && typeof m === "object" && "content" in m
           ? String((m as { content: unknown }).content ?? "")
           : ""))
         .filter((s) => s.length > 0)
         .join("\n\n");
+      const debugUserMessages = userValues.map(asUserMessage);
       ctx._runtimeHooks?.onBlockDebugCapture?.(
         {
           model: modelId,
           prompt: debugPrompt,
           tools: toolBlocks.map((t) => t.name),
+          user: debugUserMessages,
+          history: historyValues,
         },
         ctx
       );

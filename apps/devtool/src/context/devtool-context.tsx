@@ -7,14 +7,20 @@ import {
   useReducer,
   type ReactNode,
 } from "react";
-import type { Client, FlowListEntry, SessionClient } from "@flow-state-dev/client";
-import { createDevToolClient, createDevToolSessionClient, type DevToolConfig } from "@/lib/client";
+import type { Client, FlowListEntry, RecoveryClient, SessionClient } from "@flow-state-dev/client";
+import {
+  createDevToolClient,
+  createDevToolRecoveryClient,
+  createDevToolSessionClient,
+  type DevToolConfig,
+} from "@/lib/client";
 import { readUserId, writeUserId } from "@/config";
 
 type DevToolState = {
   config: DevToolConfig;
   client: Client;
   sessionClient: SessionClient;
+  recoveryClient: RecoveryClient;
   activeFlowKind: string | null;
   activeSessionId: string | null;
   flows: FlowListEntry[];
@@ -34,6 +40,7 @@ function buildClients(config: DevToolConfig) {
   return {
     client: createDevToolClient(config),
     sessionClient: createDevToolSessionClient(),
+    recoveryClient: createDevToolRecoveryClient(),
   };
 }
 
@@ -115,6 +122,18 @@ export function DevToolProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshFlows();
   }, [refreshFlows]);
+
+  // Sweep interrupted requests for the current user once on devtool mount.
+  // The framework only auto-detects on server startup, and the kitchen-sink
+  // disables that for serverless safety — without this poke, requests that
+  // died while the server kept running stay stuck `in_progress` forever.
+  useEffect(() => {
+    const userId = state.config.userId;
+    if (userId.trim().length === 0) return;
+    void state.recoveryClient.checkInterrupted({ userId }).catch((err) => {
+      console.warn("[devtool] checkInterrupted failed", err);
+    });
+  }, [state.recoveryClient, state.config.userId]);
 
   const value = useMemo(
     () => ({ ...state, dispatch, refreshFlows, setConfig, setActiveFlow, setActiveSession }),

@@ -97,6 +97,52 @@ describe("detectInterruptedRequests", () => {
     expect(interrupted).toHaveLength(0);
   });
 
+  it("filters by userId when provided", async () => {
+    const longAgo = Date.now() - 60_000;
+
+    await stores.activeRequests.register({
+      requestId: "req_alice",
+      flowKind: "chat",
+      actionName: "run",
+      userId: "alice",
+      startedAt: longAgo,
+      lastHeartbeatAt: longAgo
+    });
+    await stores.request.set(
+      "req_alice",
+      makeRequestRecord("req_alice", { userId: "alice" }),
+      "any"
+    );
+
+    await stores.activeRequests.register({
+      requestId: "req_bob",
+      flowKind: "chat",
+      actionName: "run",
+      userId: "bob",
+      startedAt: longAgo,
+      lastHeartbeatAt: longAgo
+    });
+    await stores.request.set(
+      "req_bob",
+      makeRequestRecord("req_bob", { userId: "bob" }),
+      "any"
+    );
+
+    const interrupted = await detectInterruptedRequests({
+      stores,
+      staleThresholdMs: 30_000,
+      userId: "alice"
+    });
+
+    expect(interrupted).toHaveLength(1);
+    expect(interrupted[0].entry.requestId).toBe("req_alice");
+
+    expect((await stores.request.get("req_alice"))!.status).toBe("interrupted");
+    // Bob's untouched
+    expect((await stores.request.get("req_bob"))!.status).toBe("in_progress");
+    expect(await stores.activeRequests.get("req_bob")).toBeDefined();
+  });
+
   it("skips entries with recent heartbeats", async () => {
     await stores.activeRequests.register({
       requestId: "req_fresh",

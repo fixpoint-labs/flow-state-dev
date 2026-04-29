@@ -59,15 +59,16 @@ const session = useSession(sessionId, {
   items: { includeTransient: false },       // exclude transient items
 });
 
-session.detail;        // SessionDetail | null
-session.snapshot;      // SessionStateSnapshotResponse | null
-session.items;         // OutputItem[]  — includes sub-agent items
-session.messages;      // MessageItem[]
-session.blockOutputs;  // BlockOutputItem[]
-session.functionCalls; // FunctionCallItem[]
-session.isLoading;     // boolean
-session.isStreaming;    // boolean
-session.error;         // Error | null
+session.detail;          // SessionDetail | null
+session.snapshot;        // SessionStateSnapshotResponse | null
+session.latestRequest;   // SessionRequestSummary | null — most recent request (any status)
+session.items;           // OutputItem[]  — includes sub-agent items
+session.messages;        // MessageItem[]
+session.blockOutputs;    // BlockOutputItem[]
+session.functionCalls;   // FunctionCallItem[]
+session.isLoading;       // boolean
+session.isStreaming;     // boolean
+session.error;           // Error | null
 
 // Identity-based filtering:
 session.getItemsByAgent("researcher");      // items stamped with agentName
@@ -77,8 +78,12 @@ session.getItemsByAgentType("sub");         // items stamped with agentType
 session.getOwnedItems(containerBlockInstanceId);
 
 await session.sendAction("chat", { message: "Hello!" });
+await session.abortRequest();        // signal in-flight request to stop
+await session.resumeLatestRequest(); // re-dispatch latest if interrupted/failed
 session.refresh();
 ```
+
+`resumeLatestRequest` is a no-op unless `latestRequest.status` is `interrupted` or `failed`. The server creates a new request that re-runs the original action with the same input, and the hook auto-attaches to its stream.
 
 ### `useClientData(session, options)`
 

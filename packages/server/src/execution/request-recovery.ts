@@ -27,18 +27,27 @@ export type InterruptedRequestInfo = {
  * Scans the active request registry for stale entries and marks
  * the corresponding request records as interrupted.
  *
+ * When `userId` is provided, only stale entries owned by that user are
+ * processed — the rest are left untouched. This is the safe surface for the
+ * client-driven recovery endpoint, which sweeps on behalf of a single user.
+ *
  * Returns the list of interrupted requests for optional retry.
  */
 export async function detectInterruptedRequests(options: {
   stores: StoreRegistry;
   /** Requests with no heartbeat for this duration are considered stale. Default: 30000 (30s). */
   staleThresholdMs?: number;
+  /** Restrict the sweep to entries owned by this userId. */
+  userId?: string;
   logger?: RuntimeLogger;
 }): Promise<InterruptedRequestInfo[]> {
-  const { stores, logger = DEFAULT_RUNTIME_LOGGER } = options;
+  const { stores, userId, logger = DEFAULT_RUNTIME_LOGGER } = options;
   const staleThresholdMs = options.staleThresholdMs ?? 30_000;
 
-  const stale = await stores.activeRequests.listStale(staleThresholdMs);
+  const allStale = await stores.activeRequests.listStale(staleThresholdMs);
+  const stale = userId === undefined
+    ? allStale
+    : allStale.filter((entry) => entry.userId === userId);
   const results: InterruptedRequestInfo[] = [];
 
   for (const entry of stale) {
