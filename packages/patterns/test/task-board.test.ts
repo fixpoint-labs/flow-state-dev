@@ -35,6 +35,7 @@ import {
   createSelectNextReadyTask,
   createClaimTask,
   createRecordSuccess,
+  createSeedCollection,
 } from "../src/task-board";
 
 // ---------------------------------------------------------------------------
@@ -896,4 +897,74 @@ describe("taskBoard - capability", () => {
       expect(item.key).toBe(`smoke/${item.data?.taskId}`);
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// Re-entry idempotency — the board can be re-run inside an outer loop
+// without re-seeding completed tasks
+// ---------------------------------------------------------------------------
+
+describe("taskBoard - seed idempotency", () => {
+  it("seed step skips initialTasks whose ids already exist in the collection", async () => {
+    // Local idempotency: re-running the seed step against a collection
+    // already populated with the same task ids must not throw and must
+    // not duplicate. Required for any future re-entry / resume work —
+    // the seed step itself can't be the thing that breaks a replay.
+    //
+    // Strategy: run the same seed handler twice inside a wrapper
+    // sequencer (so both calls share the parent's `tasks` state slot
+    // via ctx.getTarget on the wrapper's name).
+    const seed = createSeedCollection({
+      name: "seed-twice",
+      collection: (ctx) =>
+        getOrCreateTaskCollection({
+          ctx,
+          backing: "sequencer",
+          collectionId: "seed-twice",
+          sequencer: ctx.sequencer!,
+        }),
+      initialTasks: [
+        { id: "a", goal: "alpha", input: { topic: "alpha" } },
+        { id: "b", goal: "beta", input: { topic: "beta" } },
+      ],
+    });
+
+    // Wrapper sequencer holds the `tasks` slot; both seed invocations
+    // resolve `ctx.sequencer` to the SAME state ref since they run
+    // under the same parent sequencer instance.
+    const wrapper = sequencer({
+      name: "seed-idempotency-wrapper",
+      stateSchema: taskBoardStateSchema,
+    })
+      .tap(seed)
+      .tap(seed); // second call must observe a/b already present and skip
+
+    const result = await testBlock(wrapper, { input: undefined });
+    expect(result.error).toBeNull();
+
+    // The "added" change events fire exactly twice — once per task,
+    // not four times. The second seed pass observes the existing ids
+    // and short-circuits.
+    type Change = {
+      type?: string;
+      component?: string;
+      data?: { kind?: string; taskId?: string };
+    };
+    const addedEvents = (result.items as Change[]).filter(
+      (i) =>
+        i.type === "component" &&
+        i.component === "task-change" &&
+        i.data?.kind === "added"
+    );
+    expect(addedEvents.map((e) => e.data?.taskId).sort()).toEqual(["a", "b"]);
+  });
+
+  // Broader note on re-entry (e.g. wrapping `board.block` inside an
+  // outer replan loop for the FIX-447 planAndExecute migration): each
+  // invocation of `board.block` creates a fresh sequencer state, so
+  // the `tasks` slot does not survive across invocations of the
+  // board itself. Migrations that need that shape should either use
+  // a resource-collection-backed collection (session-scope persists
+  // across invocations) or wait on a substrate addition that lifts
+  // the board's state into a parent slot. Tracked as a follow-up.
 });
