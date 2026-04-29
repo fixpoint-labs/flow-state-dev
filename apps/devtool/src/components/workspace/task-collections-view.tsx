@@ -241,14 +241,12 @@ function groupCollections(items: ReadonlyArray<OutputItem>): CollectionView[] {
       id: string;
       boardMeta: BoardMeta;
       tasksById: Map<string, ResolvedTask>;
-      orderSeen: Map<string, number>;
     }
   >();
 
   // Forward iteration so `tasksById` ends with the latest entry per task and
   // `boardMeta` reflects the latest meta. Forward also lets us track the
   // total number of changes per task (for the `×N` ribbon).
-  let order = 0;
   for (const item of items) {
     if (item.type !== "component") continue;
     const component = (item as { component?: string }).component;
@@ -264,9 +262,6 @@ function groupCollections(items: ReadonlyArray<OutputItem>): CollectionView[] {
         continue;
       }
       const bucket = ensureBucket(byId, change.collectionId);
-      if (!bucket.orderSeen.has(change.taskId)) {
-        bucket.orderSeen.set(change.taskId, order++);
-      }
       const prior = bucket.tasksById.get(change.taskId);
       bucket.tasksById.set(change.taskId, {
         task: change.task,
@@ -308,7 +303,6 @@ function ensureBucket(
       id: string;
       boardMeta: BoardMeta;
       tasksById: Map<string, ResolvedTask>;
-      orderSeen: Map<string, number>;
     }
   >,
   id: string,
@@ -319,7 +313,6 @@ function ensureBucket(
       id,
       boardMeta: {},
       tasksById: new Map(),
-      orderSeen: new Map(),
     };
     map.set(id, bucket);
   }
