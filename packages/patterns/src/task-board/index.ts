@@ -83,6 +83,10 @@ import {
   createRecordError,
 } from "./blocks/record-result";
 import { createCheckBoard } from "./blocks/check-board";
+import {
+  createBoardMetaActive,
+  createBoardMetaCompleted,
+} from "./blocks/board-meta";
 
 // ---------------------------------------------------------------------------
 // Re-exports
@@ -132,6 +136,12 @@ export type {
 } from "./blocks/record-result";
 export { createCheckBoard } from "./blocks/check-board";
 export type { CheckBoardOptions } from "./blocks/check-board";
+export {
+  createBoardMetaActive,
+  createBoardMetaCompleted,
+  TASK_BOARD_META_COMPONENT_TYPE,
+} from "./blocks/board-meta";
+export type { BoardMetaOptions } from "./blocks/board-meta";
 export {
   createTaskBoardCapability,
   type TaskBoardCapabilityOptions,
@@ -336,6 +346,18 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     initialTasks,
   });
 
+  const boardMetaActive = createBoardMetaActive({
+    name: `${name}-meta-active`,
+    collection: collectionFactory,
+    collectionId,
+  });
+
+  const boardMetaCompleted = createBoardMetaCompleted({
+    name: `${name}-meta-completed`,
+    collection: collectionFactory,
+    collectionId,
+  });
+
   const claimStepName = `${name}-worker-claim`;
   const claimTask = createClaimTask({
     name: claimStepName,
@@ -414,12 +436,14 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     name,
     stateSchema: taskBoardStateSchema,
   })
+    .tap(boardMetaActive)
     .tap(seedBlock)
     .forEach(
       () => Array.from({ length: concurrency }, (_, i) => i),
       (workerId: number) => makeWorker(workerId),
       { maxConcurrency: concurrency }
-    ) as SequencerDefinition<any, any>;
+    )
+    .tap(boardMetaCompleted) as SequencerDefinition<any, any>;
 
   // Capability — backing-aware. Sequencer-spec collections get a
   // capability that auto-resolves the collection via the parent

@@ -904,6 +904,106 @@ describe("taskBoard - capability", () => {
 // without re-seeding completed tasks
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Board-level meta emission — `task-board-meta` component item at
+// start (status: active) and end (status: completed + counts)
+// ---------------------------------------------------------------------------
+
+describe("taskBoard - board-meta emission", () => {
+  it("emits an `active` meta item before the drain and a `completed` meta item after", async () => {
+    const trace: string[] = [];
+    const board = taskBoard({
+      name: "meta-test",
+      collection: { collectionId: "meta-test" },
+      concurrency: 2,
+      dispatcher: "fifo",
+      workers: makeEchoWorker("uniform", trace),
+      initialTasks: [
+        { id: "a", goal: "alpha", input: { topic: "alpha" } },
+        { id: "b", goal: "beta", input: { topic: "beta" } },
+      ],
+    });
+
+    const result = await testBlock(board.block, { input: undefined });
+    expect(result.error).toBeNull();
+
+    type MetaItem = {
+      type?: string;
+      component?: string;
+      key?: string;
+      data?: {
+        collectionId?: string;
+        status?: string;
+        counts?: Record<string, number>;
+      };
+    };
+    const metaItems = (result.items as MetaItem[]).filter(
+      (i) => i.type === "component" && i.component === "task-board-meta"
+    );
+
+    // Exactly two meta emissions: active at start, completed at end.
+    expect(metaItems).toHaveLength(2);
+    expect(metaItems[0]?.data?.status).toBe("active");
+    expect(metaItems[1]?.data?.status).toBe("completed");
+
+    // Both share the same key (collectionId) so client UI shows just
+    // the latest one.
+    for (const item of metaItems) {
+      expect(item.key).toBe("meta-test");
+      expect(item.data?.collectionId).toBe("meta-test");
+    }
+
+    // Counts on the `completed` emission reflect the final state.
+    const final = metaItems[1]?.data?.counts;
+    expect(final?.total).toBe(2);
+    expect(final?.completed).toBe(2);
+    expect(final?.errored).toBe(0);
+  });
+
+  it("counts errored tasks on completion", async () => {
+    const failingWorker = handler({
+      name: "failing",
+      inputSchema: taskWorkerInputSchema,
+      outputSchema: z.null(),
+      execute: () => {
+        throw new Error("boom");
+      },
+    }) as TaskWorker;
+
+    const board = taskBoard({
+      name: "meta-fail",
+      collection: { collectionId: "meta-fail" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: failingWorker,
+      onError: "skip",
+      initialTasks: [
+        { id: "x", goal: "fail-1" },
+        { id: "y", goal: "fail-2" },
+      ],
+    });
+
+    const result = await testBlock(board.block, { input: undefined });
+    expect(result.error).toBeNull();
+
+    type MetaItem = {
+      type?: string;
+      component?: string;
+      data?: { status?: string; counts?: Record<string, number> };
+    };
+    const completed = (result.items as MetaItem[]).find(
+      (i) =>
+        i.type === "component" &&
+        i.component === "task-board-meta" &&
+        i.data?.status === "completed"
+    );
+    expect(completed).toBeDefined();
+    expect(completed?.data?.counts?.total).toBe(2);
+    expect(completed?.data?.counts?.errored).toBe(2);
+    expect(completed?.data?.counts?.completed).toBe(0);
+  });
+});
+
 describe("taskBoard - seed idempotency", () => {
   it("seed step skips initialTasks whose ids already exist in the collection", async () => {
     // Local idempotency: re-running the seed step against a collection
