@@ -10,8 +10,12 @@
  * implementation. See `docs/architecture/inbound-transports.md`.
  */
 import type {
+  InboundSource,
   Middleware,
   ModelResolver,
+  PrincipalResolutionContext,
+  ResolvePrincipalFn,
+  ResolvedPrincipal,
   SpeechResolver,
   TranscriptionResolver
 } from "@flow-state-dev/core/types";
@@ -22,52 +26,24 @@ import type { StoreRegistry } from "../stores/types";
 import type { RuntimeLogger } from "../execution/logging";
 import type { ExecutionResult } from "../execution/types";
 
-/**
- * Stable provenance identifier for inbound requests. Open string — adapters
- * may use any value; the documented known-set lives in the architecture doc.
- *
- * Known-set:
- * - `http`         — built-in HTTP adapter
- * - `mcp`          — MCP server adapter (FIX-22)
- * - `webhook`      — webhook receivers (FIX-439)
- * - `scheduled`    — scheduled dispatch (FIX-440)
- * - `notification` — cross-flow event subscribers (FIX-441)
- */
-export type InboundSource = string;
-
-/**
- * Resolved caller principal. Adapters call `host.resolvePrincipal` to
- * produce one of these from transport-specific request data before
- * dispatching an envelope.
- */
-export interface ResolvedPrincipal {
-  userId: string;
-  orgId?: string;
-}
-
-/**
- * Context passed to a principal resolver. `request` is set for HTTP-shaped
- * transports; non-HTTP transports use `envelope` and `rawBody`.
- */
-export interface PrincipalResolutionContext {
-  source: InboundSource;
-  request?: Request;
-  envelope: Pick<
-    InboundRequestEnvelope,
-    "flowKind" | "action" | "sessionId" | "metadata" | "input"
-  >;
-  rawBody?: Uint8Array;
-}
+export type {
+  InboundSource,
+  PrincipalResolutionContext,
+  ResolvedPrincipal
+} from "@flow-state-dev/core/types";
 
 /**
  * Principal resolver hook. The framework owns the wiring; adapters never
  * implement auth themselves — they construct a `PrincipalResolutionContext`
- * and call `host.resolvePrincipal`. FIX-23 will replace the default body-
- * userId stub with a configurable resolver on `createFlowApiRouter`.
+ * and call `host.resolvePrincipal`. The host applies per-flow resolvers,
+ * `defaultUserId` fallback, and `requireUser` enforcement around the value
+ * returned by this function.
+ *
+ * Re-exported under the historical `PrincipalResolver` name for backward
+ * compatibility; `ResolvePrincipalFn` (in `@flow-state-dev/core/types`) is
+ * the canonical name shared by `defineFlow`'s `authentication.resolvePrincipal`.
  */
-export type PrincipalResolver = (
-  context: PrincipalResolutionContext
-) => Promise<ResolvedPrincipal> | ResolvedPrincipal;
+export type PrincipalResolver = ResolvePrincipalFn;
 
 /**
  * Single shape every adapter constructs before invoking the runtime. The

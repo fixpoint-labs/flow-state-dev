@@ -27,6 +27,7 @@ import {
 import { TransportRouteCollisionError } from "../transports/errors";
 import type {
   InboundTransportAdapter,
+  PrincipalResolver,
   TransportBindings,
   TransportRoute
 } from "../transports/types";
@@ -68,6 +69,15 @@ export type CreateFlowApiRouterOptions = {
    * `TransportRouteCollisionError` at construction time. (FIX-438)
    */
   adapters?: InboundTransportAdapter[];
+
+  /**
+   * Host-level fallback principal resolver, called when an inbound flow has
+   * no `authentication.resolvePrincipal` of its own. Defaults to
+   * `defaultBodyUserIdPrincipalResolver`, which reads `body.userId` from
+   * the parsed HTTP body. Per-flow `defineFlow({ authentication })` always
+   * wins over this fallback. (FIX-23)
+   */
+  resolvePrincipal?: PrincipalResolver;
 };
 
 type CreateInternalFlowApiRouterOptions = CreateFlowApiRouterOptions & {

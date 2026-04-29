@@ -1,13 +1,13 @@
 /**
- * Phase 1 stub principal resolver.
+ * Default body-userId principal resolver.
  *
  * Reads `body.userId` from the parsed request body — exactly the model the
- * pre-FIX-438 router used at `routes/action-routes.ts`. FIX-23 will replace
- * this stub with a configurable resolver hook on `createFlowApiRouter`;
- * adapter code does not change because adapters always call
- * `host.resolvePrincipal` rather than implementing auth themselves.
+ * pre-FIX-438 router used at `routes/action-routes.ts`. Returns `null` when
+ * the body has no `userId`; the host then applies `authentication.defaultUserId`
+ * fallback and enforces `authentication.requireUser` (FIX-23). Throwing is
+ * reserved for explicit auth failures (e.g., custom resolvers verifying a
+ * signature); a missing field is not, by itself, an auth failure here.
  */
-import { PrincipalResolutionError } from "../errors";
 import type {
   PrincipalResolutionContext,
   PrincipalResolver,
@@ -20,25 +20,20 @@ function getString(value: unknown): string | undefined {
 
 /**
  * Resolve a principal from a body-shaped object. The HTTP adapter already
- * parses the body for action input, so the resolver receives the parsed
- * value via `context.envelope.input` is *not* the body — webhook adapters
- * need the raw body for signature verification. We therefore look at:
+ * parses the body for action input, so the resolver looks at:
  *   1. `context.envelope.metadata.body` (set by the HTTP adapter)
- *   2. fall back to `context.envelope.input` shape when metadata is absent
+ *   2. fall back to `context.envelope.input` when metadata is absent
  *
- * Either way, missing or empty `userId` raises a 401-equivalent error. The
- * runtime treats the resolved `userId` as authoritative.
+ * Returns `null` when no userId is present so the host can apply the
+ * configured fallback (`defaultUserId`) and `requireUser` enforcement.
  */
 export const defaultBodyUserIdPrincipalResolver: PrincipalResolver = (
   context: PrincipalResolutionContext
-): ResolvedPrincipal => {
+): ResolvedPrincipal | null => {
   const body = pickBody(context);
   const userId = getString(body?.userId);
   if (userId === undefined) {
-    throw new PrincipalResolutionError(
-      "Action request requires non-empty userId",
-      { status: 401 }
-    );
+    return null;
   }
   const orgId = getString(body?.orgId);
   return orgId === undefined ? { userId } : { userId, orgId };

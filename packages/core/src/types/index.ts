@@ -50,6 +50,14 @@ export type {
 } from "./flow";
 
 export type {
+  AuthenticationConfig,
+  InboundSource,
+  PrincipalResolutionContext,
+  ResolvePrincipalFn,
+  ResolvedPrincipal
+} from "./auth";
+
+export type {
   SpeechModel,
   SpeechResolver,
   SpeechResult,

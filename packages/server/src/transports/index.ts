@@ -19,12 +19,32 @@ export type {
   TransportRoute
 } from "./types";
 
+export type { AuthenticationConfig, ResolvePrincipalFn } from "@flow-state-dev/core/types";
+
 export {
   PrincipalResolutionError,
   TransportRouteCollisionError
 } from "./errors";
 
 export { defaultBodyUserIdPrincipalResolver } from "./auth/defaultBodyUserIdPrincipalResolver";
+
+export {
+  createHmacVerifier,
+  type CreateHmacVerifierOptions,
+  type HmacAlgorithm,
+  type HmacEncoding,
+  type HmacSignatureParser,
+  type HmacVerifier,
+  type ParsedHmacSignature
+} from "./auth/createHmacVerifier";
+
+export {
+  createHs256JwtVerifier,
+  extractBearerToken,
+  type CreateHs256JwtVerifierOptions,
+  type Hs256JwtVerifier,
+  type JwtPayload
+} from "./auth/createBearerTokenVerifier";
 
 export {
   createInboundTransportHost,

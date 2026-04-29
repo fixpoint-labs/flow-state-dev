@@ -99,10 +99,13 @@ better than ambiguous runtime dispatch.
 ## Auth
 
 Every adapter calls `host.resolvePrincipal` before constructing an
-envelope. The default resolver reads `body.userId` — exactly the shape
-the framework used before the contract existed. When the configurable
-auth hook lands, the resolver becomes a parameter on
-`createFlowApiRouter`; adapters do not change.
+envelope. Per-flow `defineFlow({ authentication })` wins over the
+host-level fallback configured on
+`createFlowApiRouter({ resolvePrincipal })`, which itself defaults to
+reading `body.userId` from the parsed HTTP body. Adapters never implement
+auth themselves — see the [Authentication](./authentication) page for
+the resolver contract, `requireUser` semantics, and the bundled HMAC and
+JWT helper utilities.
 
 ## Per-registry, not per-flow
 
