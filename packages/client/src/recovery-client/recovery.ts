@@ -30,6 +30,24 @@ export type InterruptedRequestSummary = {
   interruptedAt: number;
 };
 
+export type RetryRequestOptions = {
+  flowKind: string;
+  sessionId: string;
+  requestId: string;
+  /** Optional input override; falls back to the original request's input. */
+  inputOverride?: unknown;
+};
+
+export type RetryRequestResult = {
+  /** Server-issued id of the newly dispatched request. */
+  newRequestId: string;
+  flowKind: string;
+  actionName: string;
+  /** The original request id this retry derives from. */
+  retryOf: string;
+  sessionId?: string;
+};
+
 export type RecoveryClient = {
   /**
    * Sweep stale active-request entries for the given user. Returns the
@@ -38,6 +56,24 @@ export type RecoveryClient = {
    * excluded from the response.
    */
   checkInterrupted: (options: CheckInterruptedOptions) => Promise<InterruptedRequestSummary[]>;
+  /**
+   * Re-dispatch a previously interrupted or failed request against its
+   * original session and action, returning the new request id. The caller
+   * is responsible for attaching to the new request's stream.
+   */
+  retry: (options: RetryRequestOptions) => Promise<RetryRequestResult>;
+};
+
+type RetryResponseBody = {
+  status: string;
+  request: {
+    id: string;
+    flowKind: string;
+    actionName: string;
+    status: string;
+    retryOf: string;
+  };
+  session?: { id: string };
 };
 
 export function createRecoveryClient(options: CreateRecoveryClientOptions = {}): RecoveryClient {
@@ -61,6 +97,41 @@ export function createRecoveryClient(options: CreateRecoveryClientOptions = {}):
       });
 
       return payload.interrupted;
+    },
+
+    retry: async ({ flowKind, sessionId, requestId, inputOverride }) => {
+      requireNonEmpty(flowKind, "flowKind");
+      requireNonEmpty(sessionId, "sessionId");
+      requireNonEmpty(requestId, "requestId");
+
+      const init: RequestInit = { method: "POST" };
+      if (inputOverride !== undefined) {
+        init.headers = { "content-type": "application/json" };
+        init.body = JSON.stringify({ inputOverride });
+      }
+
+      const payload = await requestJson<RetryResponseBody>({
+        fetcher,
+        url: buildFlowApiUrl({
+          baseUrl: options.baseUrl,
+          path: `/api/flows/${encodeURIComponent(flowKind)}/sessions/${encodeURIComponent(sessionId)}/requests/${encodeURIComponent(requestId)}/retry`
+        }),
+        init
+      });
+
+      return {
+        newRequestId: payload.request.id,
+        flowKind: payload.request.flowKind,
+        actionName: payload.request.actionName,
+        retryOf: payload.request.retryOf,
+        sessionId: payload.session?.id
+      };
     }
   };
+}
+
+function requireNonEmpty(value: string, name: string): void {
+  if (value.trim().length === 0) {
+    throw new Error(`createRecoveryClient.retry requires a non-empty ${name}`);
+  }
 }

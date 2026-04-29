@@ -10,7 +10,7 @@ import {
   useVoice,
 } from "@flow-state-dev/react";
 import { Button } from "@/components/ui/button";
-import { Menu, MessageSquareText, Package } from "lucide-react";
+import { Menu, MessageSquareText, Package, RotateCcw } from "lucide-react";
 
 import {
   Conversation,
@@ -512,6 +512,52 @@ const ConversationBody = memo(function ConversationBody({
   );
 });
 
+/**
+ * Inline notice that appears above the prompt when the latest request on this
+ * session was interrupted. Clicking Resume re-dispatches the same action and
+ * starts streaming the new request id. Hidden in every other state — including
+ * while a new request is already streaming — so the chat doesn't pile up
+ * dueling controls.
+ */
+function ResumePrompt({ session }: { session: ReturnType<typeof useSession> }) {
+  const [isResuming, setIsResuming] = useState(false);
+  const latest = session.latestRequest;
+  const canResume =
+    latest?.status === "interrupted" && !session.isStreaming && !session.isFinishing;
+
+  const handleResume = useCallback(async () => {
+    setIsResuming(true);
+    try {
+      await session.resumeLatestRequest();
+    } catch {
+      // Error is already surfaced via session.error.
+    } finally {
+      setIsResuming(false);
+    }
+  }, [session]);
+
+  if (!canResume) return null;
+
+  return (
+    <div className="mx-auto max-w-3xl px-3 pt-2 sm:px-4">
+      <div className="flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
+        <span className="text-amber-700 dark:text-amber-300">
+          The previous request was interrupted before it finished.
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleResume}
+          disabled={isResuming}
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          {isResuming ? "Resuming…" : "Resume"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ChatPanel({
   message,
   mode,
@@ -549,6 +595,7 @@ function ChatPanel({
 
       <div className="border-t">
         {session.items.length === 0 && <SuggestionRow onSuggestionClick={onSuggestionClick} disabled={isDisabled} />}
+        <ResumePrompt session={session} />
         <div className="mx-auto max-w-3xl px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:px-4 sm:pb-4">
           <div className="mb-2 flex items-center gap-3">
             <ModeSelector mode={mode} onModeChange={onSetMode} disabled={isDisabled} />

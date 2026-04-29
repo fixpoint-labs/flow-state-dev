@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Copy, PanelLeft, User } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, PanelLeft, RotateCcw, User } from "lucide-react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,6 @@ import { SettingsSheet } from "@/components/navigator/settings-sheet";
 import { StreamView, type RequestGroup } from "@/components/workspace/stream-view";
 import { TraceView } from "@/components/workspace/trace-view";
 import { ActionBar } from "@/components/workspace/action-bar";
-import { StreamStatusIndicator } from "@/components/workspace/stream-status";
 import { LiveSwitch } from "@/components/workspace/live-switch";
 import { SessionContextPanel } from "@/components/detail/session-context";
 import { TokenUsageSummary } from "@/components/detail/token-usage-summary";
@@ -50,7 +49,7 @@ export function App() {
 }
 
 function AppContent() {
-  const { config, flows, activeFlowKind, activeSessionId, setActiveSession } = useDevTool();
+  const { config, flows, activeFlowKind, activeSessionId, recoveryClient, setActiveSession } = useDevTool();
   const [navExpanded, setNavExpanded] = useState(true);
   const [navWidth, setNavWidth] = useState(NAV_EXPANDED_WIDTH);
   const [detailWidth, setDetailWidth] = useState(DETAIL_DEFAULT_WIDTH);
@@ -195,6 +194,45 @@ function AppContent() {
     [activeFlowKind, effectiveSessionId, sendAction],
   );
 
+  // Most recent request, by start time. Used to decide whether to expose the
+  // Resume button — a Resume only makes sense for the *current* tail of the
+  // session, not for some older interrupted request the user has long since
+  // moved past.
+  const latestRequest = useMemo(() => {
+    if (requests.length === 0) return null;
+    let latest = requests[0];
+    for (const req of requests) {
+      const ts = req.startedAtMs ?? req.createdAt ?? 0;
+      const latestTs = latest.startedAtMs ?? latest.createdAt ?? 0;
+      if (ts > latestTs) latest = req;
+    }
+    return latest;
+  }, [requests]);
+
+  const canResume = latestRequest?.status === "interrupted" && !dispatchedRequestId;
+  const [isResuming, setIsResuming] = useState(false);
+
+  const handleResume = useCallback(async () => {
+    if (!latestRequest || !effectiveSessionId) return;
+    setIsResuming(true);
+    try {
+      const result = await recoveryClient.retry({
+        flowKind: latestRequest.flowKind,
+        sessionId: effectiveSessionId,
+        requestId: latestRequest.id,
+      });
+      // Treat the retry like a user-dispatched request: lock Live ON and
+      // subscribe to the new stream id.
+      setActiveRequestId(result.newRequestId);
+      setDispatchedRequestId(result.newRequestId);
+      void refreshRequests();
+    } catch (err) {
+      console.error("[devtool] resume failed", err);
+    } finally {
+      setIsResuming(false);
+    }
+  }, [latestRequest, effectiveSessionId, recoveryClient, refreshRequests]);
+
   const handleReplayFull = useCallback(
     (requestId: string) => {
       setLiveItems((prev) => { const next = new Map(prev); next.delete(requestId); return next; });
@@ -246,7 +284,6 @@ function AppContent() {
           <h1 className="text-sm font-semibold tracking-wide">FSD DevTools</h1>
           <Badge variant="secondary" className="text-[10px]">v0.1.0</Badge>
         </div>
-        <StreamStatusIndicator status={streamStatus} />
       </header>
 
       <div className="flex h-[calc(100vh-2.5rem)]">
@@ -302,6 +339,18 @@ function AppContent() {
               </TabsList>
               <div className="flex items-center gap-3 min-w-0">
                 <SessionIdBadge sessionId={effectiveSessionId} />
+                {canResume && (
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={handleResume}
+                    disabled={isResuming}
+                    title="Resume interrupted request"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    {isResuming ? "Resuming…" : "Resume"}
+                  </Button>
+                )}
                 {(liveStatus !== "idle" || showToggle) && (
                   <LiveSwitch
                     on={lockedOn ? true : liveMode}

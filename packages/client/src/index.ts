@@ -43,6 +43,8 @@ export {
   type CreateRecoveryClientOptions,
   type CheckInterruptedOptions,
   type InterruptedRequestSummary,
+  type RetryRequestOptions,
+  type RetryRequestResult,
   type RecoveryClient
 } from "./recovery-client/recovery";
 
