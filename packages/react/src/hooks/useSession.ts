@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createClient,
+  createRecoveryClient,
   createSessionClient,
   createSSEClient,
   createSSEClientFromResponse,
@@ -11,6 +12,7 @@ import {
   type RequestSSECallbacks,
   type RequestStreamHandle,
   type SessionDetail,
+  type SessionRequestSummary,
   type SessionStateSnapshotResponse
 } from "@flow-state-dev/client";
 import type {
@@ -91,6 +93,12 @@ export type SessionView = {
   readonly error: Error | null;
   readonly detail: SessionDetail | null;
   readonly snapshot: SessionStateSnapshotResponse | null;
+  /**
+   * Most recent request on this session, regardless of status. `null` until
+   * the first list fetch resolves or when the session has no requests yet.
+   * Refreshed on mount and whenever an SSE stream reaches a terminal state.
+   */
+  readonly latestRequest: SessionRequestSummary | null;
   readonly items: OutputItem[];
   /** Returns items owned by a container scope (items where `ownedBy === blockInstanceId`). */
   getOwnedItems: (ownedBy: string) => OutputItem[];
@@ -105,6 +113,12 @@ export type SessionView = {
   ) => Promise<ExecuteActionResponse>;
   /** Abort the currently in-flight request. No-op if nothing is in flight. */
   abortRequest: () => Promise<void>;
+  /**
+   * Re-dispatch the most recent request and attach to the new stream.
+   * No-op when there is no latest request, or when its status is not one
+   * that the server will retry (`interrupted` or `failed`).
+   */
+  resumeLatestRequest: () => Promise<void>;
   refresh: () => Promise<void>;
 };
 
@@ -333,6 +347,7 @@ export function useSession(
 
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [snapshot, setSnapshot] = useState<SessionStateSnapshotResponse | null>(null);
+  const [latestRequest, setLatestRequest] = useState<SessionRequestSummary | null>(null);
   const [items, setItems] = useState<OutputItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -391,6 +406,26 @@ export function useSession(
     () => createClient({ flowKind: resolvedFlowKind, userId, baseUrl }),
     [resolvedFlowKind, userId, baseUrl]
   );
+
+  const recoveryClient = useMemo(
+    () => createRecoveryClient({ baseUrl }),
+    [baseUrl]
+  );
+
+  /** Fetch the single most recent request for this session. */
+  const refreshLatestRequest = useCallback(async () => {
+    if (sessionId === undefined) {
+      setLatestRequest(null);
+      return;
+    }
+    try {
+      const list = await sessionClient.listSessionRequests(sessionId, { limit: 1 });
+      setLatestRequest(list[0] ?? null);
+    } catch {
+      // Best effort — a missing latest request shouldn't surface as a
+      // session-level error. Consumers see the previous value.
+    }
+  }, [sessionId, sessionClient]);
 
   const flushContentDeltas = useCallback(() => {
     flushHandleRef.current = null;
@@ -771,6 +806,11 @@ export function useSession(
               resourceChangedDuringStreamRef.current = false;
               void refreshSnapshot();
             }
+
+            // Refresh the latestRequest summary so consumers can render
+            // recovery affordances (e.g. a Resume button when status moves
+            // to `interrupted`).
+            void refreshLatestRequest();
           }
         },
         onError: () => {
@@ -799,6 +839,7 @@ export function useSession(
       resolvedFlowKind,
       baseUrl,
       refreshSnapshot,
+      refreshLatestRequest,
       scheduleContentFlush,
       flushContentDeltas,
       trackOwnership
@@ -815,6 +856,7 @@ export function useSession(
       cancelScheduledFlush();
       setDetail(null);
       setSnapshot(null);
+      setLatestRequest(null);
       setItems([]);
       setError(null);
       return;
@@ -828,7 +870,8 @@ export function useSession(
       try {
         const [nextDetail, nextSnapshot] = await Promise.all([
           sessionClient.getSession(sessionId),
-          fetchSessionSnapshot()
+          fetchSessionSnapshot(),
+          refreshLatestRequest()
         ]);
 
         if (cancelled) {
@@ -876,7 +919,7 @@ export function useSession(
     return () => {
       cancelled = true;
     };
-  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, autoResume, itemConfig.enabled, attachToStream]);
+  }, [sessionId, sessionClient, fetchSessionSnapshot, applySnapshot, autoResume, itemConfig.enabled, attachToStream, refreshLatestRequest]);
 
   // Clean up when sessionId changes — close old stream and reset request state
   // so the new session isn't blocked by the previous session's in-flight request.
@@ -1085,6 +1128,41 @@ export function useSession(
     await refreshSnapshot();
   }, [refreshSnapshot]);
 
+  const resumeLatestRequest = useCallback(async () => {
+    if (sessionId === undefined) return;
+    const target = latestRequest;
+    if (target === null) return;
+    if (target.status !== "interrupted" && target.status !== "failed") {
+      // Server only retries interrupted/failed records; bail rather than
+      // round-trip and surface a 409.
+      return;
+    }
+    if (streamHandleRef.current !== null) {
+      streamHandleRef.current.close();
+      streamHandleRef.current = null;
+    }
+    setError(null);
+
+    try {
+      const { newRequestId } = await recoveryClient.retry({
+        flowKind: target.flowKind,
+        sessionId,
+        requestId: target.id
+      });
+
+      activeRequestIdRef.current = newRequestId;
+      attachToStream(newRequestId);
+      // The new request is fresh in_progress; reflect it immediately so any
+      // UI gating on `latestRequest.status === "interrupted"` updates without
+      // waiting for the next list fetch.
+      void refreshLatestRequest();
+    } catch (cause) {
+      const normalized = cause instanceof Error ? cause : new Error(String(cause));
+      setError(normalized);
+      throw normalized;
+    }
+  }, [sessionId, latestRequest, recoveryClient, attachToStream, refreshLatestRequest]);
+
   return {
     flowKind: resolvedFlowKind,
     sessionId,
@@ -1098,12 +1176,14 @@ export function useSession(
     error,
     detail,
     snapshot,
+    latestRequest,
     items,
     getOwnedItems,
     getItemsByAgent,
     getItemsByAgentType,
     sendAction,
     abortRequest,
+    resumeLatestRequest,
     refresh
   };
 }

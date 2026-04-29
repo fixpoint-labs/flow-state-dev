@@ -73,6 +73,34 @@ const snapshot = await sessions.getSessionState("sess_1", {
 | Type safety | Runtime only | Compile-time + runtime |
 | Best for | Generic UIs, devtools | App code with known flow definitions |
 
+## Recovery
+
+```ts
+import { createRecoveryClient } from "@flow-state-dev/client";
+
+const recovery = createRecoveryClient({ baseUrl: "/api" });
+
+// Sweep stale active-request entries for one user. Marks any in_progress
+// records whose heartbeat went stale as `interrupted` and returns the
+// transitioned ones. Long-running dev servers and serverless deployments
+// (which disable startup detection) call this on demand — for example, on
+// devtool mount and on session-list refresh.
+const interrupted = await recovery.checkInterrupted({ userId: "user_1" });
+
+// Re-dispatch a previously interrupted or failed request. The server creates
+// a brand-new request that re-runs the original action with the same input.
+const { newRequestId } = await recovery.retry({
+  flowKind: "chat",
+  sessionId: "sess_1",
+  requestId: "req_1",
+  // Optional: override the original input
+  // inputOverride: { message: "try again" },
+});
+```
+
+`retry` only succeeds for requests whose status is `interrupted` or `failed`
+— the server returns 409 otherwise.
+
 ## Public API
 
 - `createClient(options)` — Dynamic action client
@@ -80,6 +108,7 @@ const snapshot = await sessions.getSessionState("sess_1", {
 - `createSessionClient(options)` — Session CRUD and state snapshots
 - `createSSEClient(options)` — Request stream consumer
 - `createUserSSEClient(options)` — User-level stream consumer
+- `createRecoveryClient(options)` — Sweep stale requests and retry interrupted/failed ones
 - `client.abortRequest(requestId)` — Signal the server to abort an in-progress request
 - `ClientHttpError` — Typed HTTP error class
 

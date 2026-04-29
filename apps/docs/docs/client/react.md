@@ -63,13 +63,14 @@ const session = useSession(flow.activeSessionId, {
 });
 
 // Available:
-session.detail;        // SessionDetail object
-session.items;         // All items, including sub-agent items
-session.messages;      // Message items only
-session.blockOutputs;  // Block output items only
-session.isStreaming;   // Active request in progress
-session.isLoading;     // Initial load in progress
-session.error;         // Error state
+session.detail;          // SessionDetail object
+session.latestRequest;   // Most recent request (any status), or null
+session.items;           // All items, including sub-agent items
+session.messages;        // Message items only
+session.blockOutputs;    // Block output items only
+session.isStreaming;     // Active request in progress
+session.isLoading;       // Initial load in progress
+session.error;           // Error state
 
 // Identity-based filtering:
 session.getItemsByAgent("researcher");     // items stamped with agentName
@@ -80,8 +81,24 @@ session.getOwnedItems(containerBlockInstanceId);
 
 // Actions:
 await session.sendAction("chat", { message: "Hello!" });
-session.refresh();     // Force refetch
+await session.abortRequest();      // Stop the in-flight request
+await session.resumeLatestRequest(); // Re-run the latest request if it was interrupted/failed
+session.refresh();                 // Force refetch
 ```
+
+### Resuming an interrupted request
+
+When a request dies before it can finish — server crash, HMR reload mid-flow, network drop — its record stays as `interrupted`. `latestRequest` exposes that, and `resumeLatestRequest` re-dispatches the same action with the original input, returning a new request id and attaching the stream.
+
+```tsx
+{session.latestRequest?.status === "interrupted" && !session.isStreaming && (
+  <button onClick={() => session.resumeLatestRequest()}>
+    Resume
+  </button>
+)}
+```
+
+`resumeLatestRequest` is a no-op when the latest request is `completed`, `aborted`, or `in_progress` — only `interrupted` and `failed` are retryable.
 
 ### `useClientData` — Client Data
 

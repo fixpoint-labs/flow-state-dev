@@ -18,6 +18,23 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-04-28
 
+### Interrupted-request recovery: client-driven sweep + resume
+
+- **New `POST /api/flows/users/:userId/check-interrupted` endpoint.** Sweeps stale `active_requests` entries owned by the given user and transitions any matching `in_progress` request records to `interrupted`. Long-running dev servers and serverless deployments — which often disable startup detection (`detectInterruptedOnStartup: false`) for pool-safety reasons — now have an on-demand path to reconcile orphaned requests instead of needing a full server restart. Response returns only the requests this call transitioned: `{ interrupted: [{ requestId, sessionId, flowKind, actionName, interruptedAt }] }`. `detectInterruptedRequests` accepts an optional `userId` filter to support this surface.
+- **`createRecoveryClient` (new in `@flow-state-dev/client`).** Two methods: `checkInterrupted({ userId, staleThresholdMs? })` calls the sweep endpoint; `retry({ flowKind, sessionId, requestId, inputOverride? })` re-dispatches a previously interrupted or failed request through the existing retry endpoint and returns the new request id. The server creates a fresh request that re-runs the original action with the same input — items from the interrupted run stay in the session log; the new request appends alongside them.
+- **`useSession` exposes recovery surface.** Two new fields on `SessionView`: `latestRequest: SessionRequestSummary | null` (refreshed on mount and on every terminal SSE event) and `resumeLatestRequest()` (re-dispatches the latest request when its status is `interrupted` or `failed`, attaching to the new stream automatically). No-op for any other status.
+- **DevTool: sweep on mount + session-list refresh, Resume button.** The DevTool calls `checkInterrupted` on mount and inside `useSessions.refresh` so the user always sees current truth without a manual refresh. A Resume button appears next to the Live badge when the latest request is `interrupted` and no user-dispatched stream is in flight; click re-dispatches via the recovery client and locks the Live toggle ON.
+- **Kitchen-sink: amber Resume notice above prompt input.** When `session.latestRequest?.status === "interrupted"` and no stream is active, an inline notice surfaces above the prompt with a Resume button that calls `session.resumeLatestRequest()`.
+- **Tests.** 1 new test in `packages/server/test/request-recovery.test.ts` for the userId filter; 2 new tests in `packages/server/test/recovery-routes.test.ts` for the new route shape; 6 new tests in `packages/client/test/recovery.test.ts` covering both client methods (URL shape, query forwarding, body serialization, empty-input guards).
+
+### Generator debug capture extended with `user` and `history`
+
+- **`BlockDebugPayload` gains optional `user?: unknown[]` and `history?: unknown[]` fields.** Generators now record the user-slot messages (post-`asUserMessage` wrapping, in the form sent to the model) and the resolved conversation history alongside the existing `prompt`, `model`, and `tools`. Both fields are omitted when the generator had no corresponding slot, so the persisted item stays compact.
+- **`BlockDebugCapturePayload` (the runtime hook payload) now requires `user` and `history`.** Affects only callers that construct the payload directly — the standard `onBlockDebugCapture` consumer in `createExecutionContext` forwards the capture unchanged, so middleware authors using the hook see the new data automatically.
+- **DevTool block detail panel renders two new sections.** "User Message(s)" sits right below Prompt and opens by default; "History (N)" sits below it and stays collapsed by default. Each renders role-tagged bubbles (sky/emerald/amber/purple for user/assistant/system/tool) for string content, falling back to a JSON viewer for multi-part content, tool calls, or any non-string `content`.
+- **Gating is unchanged.** Capture still only fires when `isTraceObservabilityEnabled()` returns true (`FSDEV_TRACE_OBSERVABILITY=true`, dev default). No new env vars, no new emission paths.
+- **Tests.** `packages/server/test/debug-items.test.ts` extended to cover the new fields and the empty-array omission semantics.
+
 ### Durable sequencer checkpoint schema (FIX-401)
 
 - **`SequencerCheckpoint` type + `CheckpointStore` interface** ship the persistence seam Phase 2 durable execution (FIX-141) will plug into without schema migration. Identity is `(requestId, blockInstanceId)`; `write` overwrites the latest record per sequencer instance, `latest` reads it, `delete` removes it at terminal completion.

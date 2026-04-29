@@ -4,7 +4,7 @@
 import type { Middleware, ModelResolver, SpeechResolver } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
-import { retryRequest } from "../execution/request-recovery";
+import { detectInterruptedRequests, retryRequest } from "../execution/request-recovery";
 import { jsonResponse, parseJsonBody } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import type { RuntimeLogger } from "../execution/logging";
@@ -125,4 +125,62 @@ export async function handleListActiveRequests(
       ageMs: now - entry.startedAt
     }))
   });
+}
+
+/**
+ * Sweep stale active-request entries for a single user and mark their
+ * `in_progress` request records as `interrupted`.
+ *
+ * The framework only auto-runs `detectInterruptedRequests` at server startup
+ * (and many deployments disable that for serverless safety). This endpoint
+ * lets a client poke detection on demand — typically the DevTool calls it
+ * when it mounts and on every session-list refresh.
+ *
+ * Optional query: `staleThresholdMs` (default 30_000).
+ *
+ * Response: `{ interrupted: [{ requestId, sessionId, flowKind, actionName, interruptedAt }] }`,
+ * limited to records that this call actually transitioned to `interrupted`.
+ * Records whose status was already terminal (completed/failed/aborted) are
+ * silently deregistered and excluded from the response.
+ */
+export async function handleCheckInterruptedRequests(
+  request: Request,
+  route: Extract<ParsedFlowRoute, { kind: "check_interrupted_requests" }>,
+  ctx: RecoveryRouteContext
+): Promise<Response> {
+  const userId = route.userId.trim();
+  if (userId.length === 0) {
+    return jsonResponse(400, { error: "userId is required" });
+  }
+
+  const url = new URL(request.url);
+  const thresholdParam = url.searchParams.get("staleThresholdMs");
+  const staleThresholdMs =
+    thresholdParam === null ? undefined : Number.parseInt(thresholdParam, 10);
+  if (staleThresholdMs !== undefined && !Number.isFinite(staleThresholdMs)) {
+    return jsonResponse(400, { error: "staleThresholdMs must be a number" });
+  }
+
+  const swept = await detectInterruptedRequests({
+    stores: ctx.stores,
+    userId,
+    staleThresholdMs,
+    logger: ctx.logger
+  });
+
+  const interrupted = swept
+    .filter(
+      (info) =>
+        info.requestRecord !== undefined &&
+        info.requestRecord.status === "in_progress"
+    )
+    .map((info) => ({
+      requestId: info.entry.requestId,
+      sessionId: info.entry.sessionId,
+      flowKind: info.entry.flowKind,
+      actionName: info.entry.actionName,
+      interruptedAt: Date.now()
+    }));
+
+  return jsonResponse(200, { interrupted });
 }

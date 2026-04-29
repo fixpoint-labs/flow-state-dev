@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, PanelLeft, User } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, PanelLeft, RotateCcw, User } from "lucide-react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,7 @@ import { SettingsSheet } from "@/components/navigator/settings-sheet";
 import { StreamView, type RequestGroup } from "@/components/workspace/stream-view";
 import { TraceView } from "@/components/workspace/trace-view";
 import { ActionBar } from "@/components/workspace/action-bar";
-import { StreamStatusIndicator } from "@/components/workspace/stream-status";
+import { LiveSwitch } from "@/components/workspace/live-switch";
 import { SessionContextPanel } from "@/components/detail/session-context";
 import { TokenUsageSummary } from "@/components/detail/token-usage-summary";
 import { ItemDetail } from "@/components/detail/item-detail";
@@ -26,6 +26,7 @@ import { useRequestStream } from "@/hooks/use-request-stream";
 import { useActionDispatch } from "@/hooks/use-action-dispatch";
 import { useSessionRequests } from "@/hooks/use-session-requests";
 import { useReplay } from "@/hooks/use-replay";
+import { useLiveMode } from "@/hooks/use-live-mode";
 
 const NAV_EXPANDED_WIDTH = 240;
 const NAV_COLLAPSED_WIDTH = 64;
@@ -48,7 +49,7 @@ export function App() {
 }
 
 function AppContent() {
-  const { config, flows, activeFlowKind, activeSessionId, setActiveSession } = useDevTool();
+  const { config, flows, activeFlowKind, activeSessionId, recoveryClient, setActiveSession } = useDevTool();
   const [navExpanded, setNavExpanded] = useState(true);
   const [navWidth, setNavWidth] = useState(NAV_EXPANDED_WIDTH);
   const [detailWidth, setDetailWidth] = useState(DETAIL_DEFAULT_WIDTH);
@@ -68,6 +69,11 @@ function AppContent() {
   const { sendAction, isSending, lastResponse } = useActionDispatch();
 
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  // Tracks the request id the user dispatched from the action bar while it's
+  // still in flight. Distinct from `activeRequestId` so we can tell whether
+  // the open SSE stream belongs to the user (locks the Live toggle) or was
+  // auto-subscribed by live mode (toggle stays interactive).
+  const [dispatchedRequestId, setDispatchedRequestId] = useState<string | null>(null);
   const [liveItems, setLiveItems] = useState<Map<string, OutputItem[]>>(new Map());
 
   const { replayState, isReplaying, replayFull, replayFromCursor, simulateReconnect, clearReplay } = useReplay();
@@ -97,13 +103,50 @@ function AppContent() {
   const [stateRefreshKey, setStateRefreshKey] = useState(0);
   const [sessionRefreshKey, setSessionRefreshKey] = useState(0);
 
+  const { liveMode, lockedOn, liveSubscriptionRequestId, liveStatus, latestRequest, showToggle, toggleLiveMode } =
+    useLiveMode({
+      requests,
+      streamStatus,
+      dispatchedRequestId,
+      refreshRequests,
+    });
+
   useEffect(() => {
     if (streamStatus === "completed" || streamStatus === "failed") {
       void refreshRequests();
       setStateRefreshKey((k) => k + 1);
       if (isReplaying) clearReplay();
+      // The user-dispatched stream finished (or errored). Releasing the id
+      // unlocks the Live toggle and lets live mode pick up any external
+      // in-progress request that's still running.
+      setDispatchedRequestId(null);
     }
   }, [streamStatus, refreshRequests, isReplaying, clearReplay]);
+
+  // Live mode wants to subscribe to an external in-progress request. Drop any
+  // partial liveItems for it so polled `req.items` show through cleanly if SSE
+  // can't connect.
+  useEffect(() => {
+    if (!liveSubscriptionRequestId) return;
+    if (activeRequestId === liveSubscriptionRequestId) return;
+    setLiveItems((prev) => {
+      if (!prev.has(liveSubscriptionRequestId)) return prev;
+      const next = new Map(prev);
+      next.delete(liveSubscriptionRequestId);
+      return next;
+    });
+    setActiveRequestId(liveSubscriptionRequestId);
+  }, [liveSubscriptionRequestId, activeRequestId]);
+
+  // Live mode turned off while an auto-subscribed external stream is open: close it.
+  // The user-dispatched stream (if any) is preserved.
+  useEffect(() => {
+    if (liveMode) return;
+    if (!activeRequestId) return;
+    if (activeRequestId === dispatchedRequestId) return;
+    if (replayState.requestId) return;
+    setActiveRequestId(null);
+  }, [liveMode, activeRequestId, dispatchedRequestId, replayState.requestId]);
 
   useEffect(() => {
     if (streamRequestId && streamItems.length > 0) {
@@ -145,10 +188,38 @@ function AppContent() {
       const response = await sendAction(activeFlowKind, effectiveSessionId, action, input);
       if (response?.request.id) {
         setActiveRequestId(response.request.id);
+        setDispatchedRequestId(response.request.id);
       }
     },
     [activeFlowKind, effectiveSessionId, sendAction],
   );
+
+  // The Resume button is only meaningful for the *current* tail of the
+  // session — `latestRequest` comes from `useLiveMode` so the same scan
+  // drives both the Live badge state and this gate.
+  const canResume = latestRequest?.status === "interrupted" && !dispatchedRequestId;
+  const [isResuming, setIsResuming] = useState(false);
+
+  const handleResume = useCallback(async () => {
+    if (!latestRequest || !effectiveSessionId) return;
+    setIsResuming(true);
+    try {
+      const result = await recoveryClient.retry({
+        flowKind: latestRequest.flowKind,
+        sessionId: effectiveSessionId,
+        requestId: latestRequest.id,
+      });
+      // Treat the retry like a user-dispatched request: lock Live ON and
+      // subscribe to the new stream id.
+      setActiveRequestId(result.newRequestId);
+      setDispatchedRequestId(result.newRequestId);
+      void refreshRequests();
+    } catch (err) {
+      console.error("[devtool] resume failed", err);
+    } finally {
+      setIsResuming(false);
+    }
+  }, [latestRequest, effectiveSessionId, recoveryClient, refreshRequests]);
 
   const handleReplayFull = useCallback(
     (requestId: string) => {
@@ -196,18 +267,17 @@ function AppContent() {
 
   return (
     <div className="h-screen overflow-hidden bg-slate-950 text-slate-100">
-      <header className="flex h-10 items-center justify-between border-b border-slate-800 px-4">
+      <header className="flex h-10 select-none items-center justify-between border-b border-slate-800 px-4">
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-semibold tracking-wide">FSD DevTools</h1>
           <Badge variant="secondary" className="text-[10px]">v0.1.0</Badge>
         </div>
-        <StreamStatusIndicator status={streamStatus} />
       </header>
 
       <div className="flex h-[calc(100vh-2.5rem)]">
         {/* Navigator */}
         <aside
-          className="flex flex-col border-r border-slate-800 bg-slate-900/50"
+          className="flex flex-col select-none border-r border-slate-800 bg-slate-900/50"
           style={{ width: navExpanded ? `${navWidth}px` : `${NAV_COLLAPSED_WIDTH}px` }}
         >
           <div className="p-2">
@@ -250,17 +320,35 @@ function AppContent() {
         {/* Main workspace */}
         <main className="flex min-w-0 min-h-0 flex-1 flex-col bg-slate-950">
           <Tabs defaultValue="stream" className="flex flex-1 flex-col min-h-0">
-            <div className="flex items-center justify-between px-3 pt-2">
+            <div className="flex select-none items-center justify-between gap-3 px-3 pt-2">
               <TabsList>
                 <TabsTrigger value="stream">Stream</TabsTrigger>
                 <TabsTrigger value="trace">Trace</TabsTrigger>
               </TabsList>
-              {streamStatus === "streaming" && (
-                <div className="flex items-center gap-1.5">
-                  <span className="inline-block h-2 w-2 rounded-full bg-green-400 animate-pulse" />
-                  <span className="text-[10px] text-slate-400">Auto-refresh on</span>
-                </div>
-              )}
+              <div className="flex items-center gap-3 min-w-0">
+                <SessionIdBadge sessionId={effectiveSessionId} />
+                {canResume && (
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={handleResume}
+                    disabled={isResuming}
+                    title="Resume interrupted request"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    {isResuming ? "Resuming…" : "Resume"}
+                  </Button>
+                )}
+                {(liveStatus !== "idle" || showToggle) && (
+                  <LiveSwitch
+                    on={lockedOn ? true : liveMode}
+                    disabled={lockedOn}
+                    status={liveStatus}
+                    showToggle={showToggle}
+                    onToggle={() => toggleLiveMode()}
+                  />
+                )}
+              </div>
             </div>
 
             <Separator className="mt-2" />
@@ -318,5 +406,40 @@ function AppContent() {
         </aside>
       </div>
     </div>
+  );
+}
+
+function SessionIdBadge({ sessionId }: { sessionId: string | null }) {
+  const [copied, setCopied] = useState(false);
+
+  if (!sessionId) {
+    return (
+      <span className="text-[10px] text-slate-600 italic">no session</span>
+    );
+  }
+
+  const handleCopy = () => {
+    void navigator.clipboard.writeText(sessionId);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  };
+
+  const truncated = sessionId.length > 12 ? `${sessionId.slice(0, 8)}…${sessionId.slice(-4)}` : sessionId;
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title={`Session ID: ${sessionId}\nClick to copy`}
+      className="group inline-flex items-center gap-1.5 rounded border border-slate-800 bg-slate-900/60 px-2 py-0.5 text-[10px] font-mono text-slate-300 hover:border-slate-700 hover:bg-slate-800"
+    >
+      <span className="text-[9px] uppercase tracking-wide text-slate-500 font-sans">session</span>
+      <span>{truncated}</span>
+      {copied ? (
+        <Check className="h-3 w-3 text-green-400" />
+      ) : (
+        <Copy className="h-3 w-3 text-slate-500 group-hover:text-slate-300" />
+      )}
+    </button>
   );
 }
