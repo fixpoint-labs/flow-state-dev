@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, PanelLeft, User } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Copy, PanelLeft, User } from "lucide-react";
 import type { OutputItem } from "@flow-state-dev/core/items";
 
 import { Badge } from "@/components/ui/badge";
@@ -241,7 +241,7 @@ function AppContent() {
 
   return (
     <div className="h-screen overflow-hidden bg-slate-950 text-slate-100">
-      <header className="flex h-10 items-center justify-between border-b border-slate-800 px-4">
+      <header className="flex h-10 select-none items-center justify-between border-b border-slate-800 px-4">
         <div className="flex items-center gap-3">
           <h1 className="text-sm font-semibold tracking-wide">FSD DevTools</h1>
           <Badge variant="secondary" className="text-[10px]">v0.1.0</Badge>
@@ -252,7 +252,7 @@ function AppContent() {
       <div className="flex h-[calc(100vh-2.5rem)]">
         {/* Navigator */}
         <aside
-          className="flex flex-col border-r border-slate-800 bg-slate-900/50"
+          className="flex flex-col select-none border-r border-slate-800 bg-slate-900/50"
           style={{ width: navExpanded ? `${navWidth}px` : `${NAV_COLLAPSED_WIDTH}px` }}
         >
           <div className="p-2">
@@ -295,20 +295,23 @@ function AppContent() {
         {/* Main workspace */}
         <main className="flex min-w-0 min-h-0 flex-1 flex-col bg-slate-950">
           <Tabs defaultValue="stream" className="flex flex-1 flex-col min-h-0">
-            <div className="flex items-center justify-between px-3 pt-2">
+            <div className="flex select-none items-center justify-between gap-3 px-3 pt-2">
               <TabsList>
                 <TabsTrigger value="stream">Stream</TabsTrigger>
                 <TabsTrigger value="trace">Trace</TabsTrigger>
               </TabsList>
-              {(liveStatus !== "idle" || showToggle) && (
-                <LiveSwitch
-                  on={lockedOn ? true : liveMode}
-                  disabled={lockedOn}
-                  status={liveStatus}
-                  showToggle={showToggle}
-                  onToggle={() => toggleLiveMode()}
-                />
-              )}
+              <div className="flex items-center gap-3 min-w-0">
+                <SessionIdBadge sessionId={effectiveSessionId} />
+                {(liveStatus !== "idle" || showToggle) && (
+                  <LiveSwitch
+                    on={lockedOn ? true : liveMode}
+                    disabled={lockedOn}
+                    status={liveStatus}
+                    showToggle={showToggle}
+                    onToggle={() => toggleLiveMode()}
+                  />
+                )}
+              </div>
             </div>
 
             <Separator className="mt-2" />
@@ -366,5 +369,40 @@ function AppContent() {
         </aside>
       </div>
     </div>
+  );
+}
+
+function SessionIdBadge({ sessionId }: { sessionId: string | null }) {
+  const [copied, setCopied] = useState(false);
+
+  if (!sessionId) {
+    return (
+      <span className="text-[10px] text-slate-600 italic">no session</span>
+    );
+  }
+
+  const handleCopy = () => {
+    void navigator.clipboard.writeText(sessionId);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  };
+
+  const truncated = sessionId.length > 12 ? `${sessionId.slice(0, 8)}…${sessionId.slice(-4)}` : sessionId;
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title={`Session ID: ${sessionId}\nClick to copy`}
+      className="group inline-flex items-center gap-1.5 rounded border border-slate-800 bg-slate-900/60 px-2 py-0.5 text-[10px] font-mono text-slate-300 hover:border-slate-700 hover:bg-slate-800"
+    >
+      <span className="text-[9px] uppercase tracking-wide text-slate-500 font-sans">session</span>
+      <span>{truncated}</span>
+      {copied ? (
+        <Check className="h-3 w-3 text-green-400" />
+      ) : (
+        <Copy className="h-3 w-3 text-slate-500 group-hover:text-slate-300" />
+      )}
+    </button>
   );
 }

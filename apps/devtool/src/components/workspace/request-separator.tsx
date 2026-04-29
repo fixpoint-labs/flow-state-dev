@@ -46,7 +46,7 @@ export function RequestSeparator({
   const durationText = formatDuration(duration, isActive);
 
   return (
-    <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-800/40 bg-slate-950/95 backdrop-blur-sm px-4 py-1.5">
+    <div className="sticky top-0 z-10 flex select-none items-center gap-2 border-b border-slate-800/40 bg-slate-950/95 backdrop-blur-sm px-4 py-1.5">
       <span className="text-xs font-medium text-slate-300">{action}</span>
       <StatusBadge status={status} />
       {durationText && (

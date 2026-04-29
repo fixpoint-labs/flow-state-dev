@@ -125,7 +125,7 @@ export function TraceView({ requestGroups }: TraceViewProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full select-none">
       <div className="flex items-center justify-end gap-2 px-3 py-1.5 border-b border-slate-800/50">
         <label className="flex items-center gap-1.5 text-[11px] text-slate-500 cursor-pointer select-none">
           <input

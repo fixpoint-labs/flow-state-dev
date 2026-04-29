@@ -4,6 +4,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-04-28
 
+### Generator debug capture extended with `user` and `history`
+
+- **`BlockDebugPayload` gains optional `user?: unknown[]` and `history?: unknown[]` fields.** Generators now record the user-slot messages (post-`asUserMessage` wrapping, in the form sent to the model) and the resolved conversation history alongside the existing `prompt`, `model`, and `tools`. Both fields are omitted when the generator had no corresponding slot, so the persisted item stays compact.
+- **`BlockDebugCapturePayload` (the runtime hook payload) now requires `user` and `history`.** Affects only callers that construct the payload directly — the standard `onBlockDebugCapture` consumer in `createExecutionContext` forwards the capture unchanged, so middleware authors using the hook see the new data automatically.
+- **DevTool block detail panel renders two new sections.** "User Message(s)" sits right below Prompt and opens by default; "History (N)" sits below it and stays collapsed by default. Each renders role-tagged bubbles (sky/emerald/amber/purple for user/assistant/system/tool) for string content, falling back to a JSON viewer for multi-part content, tool calls, or any non-string `content`.
+- **Gating is unchanged.** Capture still only fires when `isTraceObservabilityEnabled()` returns true (`FSDEV_TRACE_OBSERVABILITY=true`, dev default). No new env vars, no new emission paths.
+- **Tests.** `packages/server/test/debug-items.test.ts` extended to cover the new fields and the empty-array omission semantics.
+
 ### Durable sequencer checkpoint schema (FIX-401)
 
 - **`SequencerCheckpoint` type + `CheckpointStore` interface** ship the persistence seam Phase 2 durable execution (FIX-141) will plug into without schema migration. Identity is `(requestId, blockInstanceId)`; `write` overwrites the latest record per sequencer instance, `latest` reads it, `delete` removes it at terminal completion.

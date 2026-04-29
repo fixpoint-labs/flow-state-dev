@@ -22,6 +22,12 @@ export type BlockDebugCapturePayload = {
   model: string;
   prompt: string;
   tools: string[];
+  /** Resolved user-slot values, post-`asUserMessage` wrapping, in the form
+   *  the model was sent. Empty array when no user slot was provided. */
+  user: unknown[];
+  /** Resolved history values (already in message form). Empty array when
+   *  no history slot was provided. */
+  history: unknown[];
 };
 
 export type ExecutionParent = {
