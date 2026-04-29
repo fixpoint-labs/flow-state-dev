@@ -13,6 +13,16 @@ import type {
 import type { QueryExecutor } from "./types";
 import { createPgRecordStore } from "./pg-store";
 
+/**
+ * Backfill `source` on records persisted before FIX-438 added the field.
+ * Records written by the new code path always carry it.
+ */
+function withSourceDefault(record: RequestRecord | undefined): RequestRecord | undefined {
+  if (record === undefined) return undefined;
+  if (typeof record.source === "string") return record;
+  return { ...record, source: "http" };
+}
+
 export function createPostgresRequestStore(executor: QueryExecutor): RequestStore {
   const base = createPgRecordStore<RequestRecord, RequestListOptions>(executor, {
     tableName: "requests",
@@ -63,10 +73,15 @@ export function createPostgresRequestStore(executor: QueryExecutor): RequestStor
   const pendingNewEvents = new Map<string, RequestStreamEvent[]>();
 
   return {
-    get: base.get,
+    async get(id: string): Promise<RequestRecord | undefined> {
+      return withSourceDefault(await base.get(id));
+    },
     set: base.set,
     delete: base.delete,
-    list: base.list,
+    async list(options?: RequestListOptions): Promise<RequestRecord[]> {
+      const records = await base.list(options);
+      return records.map((r) => withSourceDefault(r) as RequestRecord);
+    },
 
     persistItems(requestId: string, items: OutputItem[]): void {
       // Always capture the latest snapshot so the queued write uses the most

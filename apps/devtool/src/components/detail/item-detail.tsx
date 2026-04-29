@@ -111,6 +111,26 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
         </CollapsibleSection>
       )}
 
+      {/* User message(s) for this turn — what the caller actually sent in */}
+      {node.debugPayload?.user && node.debugPayload.user.length > 0 && (
+        <CollapsibleSection
+          title={`User Message${node.debugPayload.user.length > 1 ? `s (${node.debugPayload.user.length})` : ""}`}
+          defaultOpen
+        >
+          <MessageList messages={node.debugPayload.user} />
+        </CollapsibleSection>
+      )}
+
+      {/* Conversation history sent alongside the user message */}
+      {node.debugPayload?.history && node.debugPayload.history.length > 0 && (
+        <CollapsibleSection
+          title={`History (${node.debugPayload.history.length})`}
+          defaultOpen={false}
+        >
+          <MessageList messages={node.debugPayload.history} />
+        </CollapsibleSection>
+      )}
+
       {/* Resolved generator config */}
       {node.debugPayload && <DebugPayloadSection payload={node.debugPayload} />}
 
@@ -153,6 +173,97 @@ function BlockNodeDetail({ node }: { node: TraceNode }) {
       </CollapsibleSection>
     </div>
   );
+}
+
+/**
+ * Renders an array of generator messages (user-slot or history) as compact
+ * role-tagged bubbles. String content is shown inline; everything else falls
+ * through to the JsonViewer so unusual shapes (multi-part content, tool
+ * calls/results in history) stay inspectable without losing fidelity.
+ */
+function MessageList({ messages }: { messages: unknown[] }) {
+  return (
+    <div className="space-y-2">
+      {messages.map((msg, i) => (
+        <MessageRow key={i} message={msg} />
+      ))}
+    </div>
+  );
+}
+
+function MessageRow({ message }: { message: unknown }) {
+  const role = isObject(message) && typeof message.role === "string" ? message.role : null;
+  const content = isObject(message) ? message.content : undefined;
+  const badge = classifyMessageBadge(role, content);
+
+  return (
+    <div className="rounded border border-slate-800 bg-slate-950/50 p-2">
+      <div className="flex items-center gap-2 mb-1">
+        <span className={`text-[10px] uppercase font-medium font-mono px-1.5 py-0 rounded border ${badge.className}`}>
+          {badge.label}
+        </span>
+      </div>
+      {typeof content === "string" ? (
+        <pre className="text-[11px] text-slate-300 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
+          {content}
+        </pre>
+      ) : (
+        <JsonViewer data={role ? content : message} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Pick the badge label/color from message shape. Pure tool-call payloads
+ * (assistant role, content is only `tool-call` parts) read as "TOOL CALL"
+ * rather than ASSISTANT — the role describes who emitted it on the wire,
+ * but for debug viewing the payload kind is what the reader cares about.
+ * Mixed assistant content (text + tool-call) keeps the ASSISTANT badge
+ * since the prose is the user-visible part.
+ */
+function classifyMessageBadge(
+  role: string | null,
+  content: unknown
+): { label: string; className: string } {
+  const partTypes = collectContentPartTypes(content);
+  if (partTypes && partTypes.size > 0) {
+    if (partTypes.size === 1 && partTypes.has("tool-call")) {
+      return { label: "tool call", className: TOOL_CALL_BADGE };
+    }
+    if (partTypes.size === 1 && partTypes.has("tool-result")) {
+      return { label: "tool result", className: TOOL_RESULT_BADGE };
+    }
+  }
+  return {
+    label: role ?? "msg",
+    className: role
+      ? ROLE_BADGE_COLORS[role] ?? "border-slate-700 text-slate-400"
+      : "border-slate-700 text-slate-500",
+  };
+}
+
+function collectContentPartTypes(content: unknown): Set<string> | null {
+  if (!Array.isArray(content)) return null;
+  const types = new Set<string>();
+  for (const part of content) {
+    if (isObject(part) && typeof part.type === "string") types.add(part.type);
+  }
+  return types;
+}
+
+const TOOL_CALL_BADGE = "border-purple-700/60 text-purple-300";
+const TOOL_RESULT_BADGE = "border-fuchsia-700/60 text-fuchsia-300";
+
+const ROLE_BADGE_COLORS: Record<string, string> = {
+  user: "border-sky-700/60 text-sky-300",
+  assistant: "border-emerald-700/60 text-emerald-300",
+  system: "border-amber-700/60 text-amber-300",
+  tool: TOOL_RESULT_BADGE,
+};
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function DebugPayloadSection({ payload }: { payload: BlockDebugPayload }) {

@@ -17,6 +17,7 @@ export type ParsedFlowRoute =
   | { kind: "transcribe" }
   | { kind: "retry_request"; flowKind: string; sessionId: string; requestId: string }
   | { kind: "active_requests" }
+  | { kind: "check_interrupted_requests"; userId: string }
   | { kind: "get_resource_content"; sessionId: string; ref: string }
   | { kind: "get_collection_item_content"; sessionId: string; ref: string; topic: string }
   | { kind: "create_collection_item"; sessionId: string; ref: string }
@@ -230,6 +231,19 @@ export function parseFlowRoute(
     segments[0] === "active-requests"
   ) {
     return { kind: "active_requests" };
+  }
+
+  // POST /api/flows/users/:userId/check-interrupted
+  if (
+    normalizedMethod === "POST" &&
+    segments.length === 3 &&
+    segments[0] === "users" &&
+    segments[2] === "check-interrupted"
+  ) {
+    return {
+      kind: "check_interrupted_requests",
+      userId: segments[1]
+    };
   }
 
   // GET /api/flows/sessions/:sessionId/resources/:ref/content

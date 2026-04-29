@@ -33,4 +33,18 @@ describe("parseFlowRoute — recovery routes", () => {
     const route = parseFlowRoute("POST", ["active-requests"]);
     expect(route.kind).toBe("not_found");
   });
+
+  it("parses check_interrupted_requests route", () => {
+    // POST /api/flows/users/:userId/check-interrupted
+    const route = parseFlowRoute("POST", ["users", "alice", "check-interrupted"]);
+    expect(route).toEqual({
+      kind: "check_interrupted_requests",
+      userId: "alice"
+    });
+  });
+
+  it("does not match check_interrupted_requests with GET", () => {
+    const route = parseFlowRoute("GET", ["users", "alice", "check-interrupted"]);
+    expect(route.kind).toBe("not_found");
+  });
 });

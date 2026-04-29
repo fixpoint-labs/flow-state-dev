@@ -1766,6 +1766,7 @@ export async function createExecutionContext<
       userId,
       sessionId: sessionRecord?.id,
       orgId: orgRecord?.orgId,
+      source: options.source ?? "http",
       status: "in_progress",
       startedAtMs: now,
       metadata: options.metadata,
@@ -1776,6 +1777,10 @@ export async function createExecutionContext<
       updatedAt: now
     };
     await stores.request.set(requestRecord.id, requestRecord, "any");
+  } else if (requestRecord.source === undefined) {
+    // Pre-FIX-438 records read from a store that hasn't been migrated
+    // default to the HTTP source. New writes always carry the field.
+    requestRecord = { ...requestRecord, source: "http" };
   }
 
   if (requestRecord === undefined) {

@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import type { ActiveRequestEntry, ActiveRequestRegistry } from "../types";
+import { withActiveRequestSourceDefault } from "../shared";
 import { atomicWriteFile } from "../../utils/atomic-write";
 import {
   createSerializedWriteQueue,
@@ -106,7 +107,7 @@ export class FilesystemActiveRequestRegistry implements ActiveRequestRegistry {
     const stale: ActiveRequestEntry[] = [];
     for (const entry of Object.values(data.entries)) {
       if (entry.lastHeartbeatAt < cutoff) {
-        stale.push({ ...entry });
+        stale.push(withActiveRequestSourceDefault({ ...entry }));
       }
     }
     return stale;
@@ -114,13 +115,17 @@ export class FilesystemActiveRequestRegistry implements ActiveRequestRegistry {
 
   async listAll(): Promise<ActiveRequestEntry[]> {
     const data = await this.readFile();
-    return Object.values(data.entries).map((e) => ({ ...e }));
+    return Object.values(data.entries).map((e) =>
+      withActiveRequestSourceDefault({ ...e })
+    );
   }
 
   async get(requestId: string): Promise<ActiveRequestEntry | undefined> {
     const data = await this.readFile();
     const entry = data.entries[requestId];
-    return entry === undefined ? undefined : { ...entry };
+    return entry === undefined
+      ? undefined
+      : withActiveRequestSourceDefault({ ...entry });
   }
 
   private async readFile(): Promise<RegistryFile> {

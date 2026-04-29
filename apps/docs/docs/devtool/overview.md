@@ -72,6 +72,8 @@ Watch items arrive in real-time as blocks execute. Messages, tool calls, state c
 
 Visualizes the execution tree. Every item carries provenance: block name, instance ID, parent block, phase, step index. The trace view assembles this into a timeline, grouping items by block and showing parent-child relationships.
 
+Click a generator block in the trace and the detail panel shows what the model actually saw on that turn: the resolved system prompt, the user-slot messages for this turn, and the conversation history that came in alongside them. Tools and the resolved model identifier appear in the same panel. This is observability data — gated by `FSDEV_TRACE_OBSERVABILITY` (on by default in development) — so you can leave it on while iterating and switch it off in production.
+
 ## Session state
 
 Inspect current state at every scope level. View session-level state, user-level state, and project-level state. Resources and their content are visible. ClientData values appear in the detail panel.

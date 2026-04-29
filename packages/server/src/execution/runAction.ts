@@ -397,6 +397,7 @@ export async function runActionInternal<
   // the main try/catch. Registration must happen before createExecutionContext
   // because composedSignal is consumed by it.
   const registry = options.stores.activeRequests;
+  const source = options.source ?? "http";
   await registry.register({
     requestId,
     flowKind: options.flow.kind,
@@ -404,6 +405,7 @@ export async function runActionInternal<
     sessionId: options.sessionId,
     userId: options.userId,
     orgId: options.orgId,
+    source,
     input: options.input,
     metadata: options.metadata,
     startedAt: Date.now(),
@@ -582,6 +584,7 @@ export async function runActionInternal<
       userId: options.userId,
       sessionId: options.sessionId,
       orgId: options.orgId,
+      source,
       metadata: options.metadata,
       input: options.input,
       signal: composedSignal,

@@ -155,6 +155,12 @@ export type SessionRequestSummary = {
   userId: string;
   sessionId?: string;
   orgId?: string;
+  /**
+   * Inbound transport provenance — see server `RequestRecord.source`.
+   * Records summarized from a server that pre-dates FIX-438 may omit the
+   * field; clients should default missing values to `"http"`.
+   */
+  source?: string;
   status: RequestStatus;
   startedAtMs?: number;
   completedAtMs?: number;

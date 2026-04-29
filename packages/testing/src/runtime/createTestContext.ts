@@ -239,6 +239,7 @@ async function seedStores(options: {
       userId: options.userId,
       sessionId: options.sessionId,
       orgId: options.orgId,
+      source: "http",
       status: "in_progress",
       startedAtMs: now,
       state: toJsonObject(cloneRecord(options.seed.request.state ?? {})),

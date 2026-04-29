@@ -306,6 +306,12 @@ export type BlockDebugPayload = {
   prompt?: string;
   /** Registered tool names (generators only). */
   tools?: string[];
+  /** Resolved user-slot messages as sent to the model (generators only).
+   *  Omitted when the generator had no user slot. */
+  user?: unknown[];
+  /** Resolved conversation history as sent to the model (generators only).
+   *  Omitted when the generator had no history slot. */
+  history?: unknown[];
   /** Input after `connectInput` transformation. Only set when the connector
    *  actually changed the value — otherwise the previous block's output is
    *  the input, already visible via block_output. */

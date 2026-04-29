@@ -88,6 +88,30 @@ Supports resume via `Last-Event-ID` or `starting_after`.
 
 Create a user-scoped event stream client for cross-session notifications.
 
+### `createRecoveryClient(options)`
+
+Create a client for the request-recovery surface — sweep stale active-request entries and re-dispatch interrupted/failed requests.
+
+```ts
+import { createRecoveryClient } from "@flow-state-dev/client";
+
+const recovery = createRecoveryClient({ baseUrl: "/api" });
+
+// Sweep stale entries for one user; returns the requests this call
+// transitioned from `in_progress` to `interrupted`.
+await recovery.checkInterrupted({ userId: "user_1" });
+
+// Re-dispatch a previously interrupted or failed request. Returns the
+// new request id; subscribe to its stream as you would any new request.
+const { newRequestId } = await recovery.retry({
+  flowKind: "chat",
+  sessionId: "sess_1",
+  requestId: "req_1",
+});
+```
+
+`retry` returns 409 from the server unless the original request's status is `interrupted` or `failed`.
+
 ## Error Handling
 
 ### `ClientHttpError`

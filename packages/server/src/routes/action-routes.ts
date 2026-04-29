@@ -1,21 +1,15 @@
 /**
  * Action execution route handler.
+ *
+ * Builds an `InboundRequestEnvelope` from an HTTP request and dispatches it
+ * through the `InboundTransportHost`. The host owns the `runAction`
+ * machinery — this file is the HTTP-specific glue (body parsing, principal
+ * resolution context, SSE response shaping) only.
  */
-import type {
-  Middleware,
-  ModelResolver,
-  SpeechResolver
-} from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
-import {
-  canRegisterStream,
-  cleanupStaleStreams,
-  registerStream,
-  removeStream
-} from "../streaming/active-streams";
-import { createLiveRequestStream } from "../streaming/live-stream";
-import { runAction } from "../execution/runAction";
+import type { InboundTransportHost } from "../transports/types";
+import { PrincipalResolutionError } from "../transports/errors";
 import { generateId } from "../utils/generate-id";
 import {
   asObject,
@@ -40,13 +34,10 @@ type ActionRunInput = {
 };
 
 type ActionRouteContext = {
+  host: InboundTransportHost;
+  /** Convenience aliases — same instances the host holds. */
   registry: FlowRegistry;
   stores: StoreRegistry;
-  modelResolver?: ModelResolver;
-  speechResolver?: SpeechResolver;
-  middleware?: Middleware[];
-  maxResponseBufferSize?: number;
-  onBackgroundWork?: (promise: Promise<unknown>) => void;
   seams: InternalRouteSeams;
   bootstrapMetadata: Record<string, unknown>;
   requestContext: RequestContext;
@@ -65,23 +56,47 @@ export async function handleExecuteAction(
   }
 
   const body = await parseJsonBody(request);
-  const userId = getString(body.userId);
-  if (userId === undefined) {
-    return jsonResponse(400, {
-      error: "Action request requires non-empty userId"
-    });
-  }
-
   const sessionId = route.sessionId ?? getString(body.sessionId);
   const metadata = asObject(body.metadata);
+
+  // Build principal-resolution context. The body is exposed under
+  // `metadata.body` so the default body-userId resolver can read it
+  // without re-parsing the request.
+  let principal;
+  try {
+    principal = await ctx.host.resolvePrincipal({
+      source: "http",
+      request,
+      envelope: {
+        flowKind: flow.kind,
+        action: route.actionName,
+        sessionId,
+        metadata: { ...(metadata ?? {}), body },
+        input: body.input
+      }
+    });
+  } catch (error) {
+    if (error instanceof PrincipalResolutionError) {
+      // Preserve the legacy 400 status for missing body.userId so existing
+      // tests and clients keep working. Other PrincipalResolutionErrors map
+      // to whatever status the resolver chose (typically 401).
+      const status =
+        error.status === 401 && error.message.includes("userId")
+          ? 400
+          : error.status;
+      return jsonResponse(status, { error: error.message });
+    }
+    throw error;
+  }
+
   const actionInput: ActionRunInput = {
     flowKind: flow.kind,
     actionName: route.actionName,
     input: body.input,
-    userId,
+    userId: principal.userId,
     sessionId,
     requestId: getString(body.requestId) ?? generateId("req"),
-    orgId: getString(body.orgId),
+    orgId: getString(body.orgId) ?? principal.orgId,
     metadata: {
       ...ctx.bootstrapMetadata,
       ...(metadata ?? {})
@@ -121,46 +136,29 @@ export async function handleExecuteAction(
     }
   }
 
-  const liveStream = createLiveRequestStream({
-    requestId: resolvedActionInput.requestId,
-    maxBufferSize: ctx.maxResponseBufferSize
-  });
-
-  if (!canRegisterStream()) {
-    return jsonResponse(503, {
-      error: "Server is at active stream capacity. Retry shortly."
+  let handle;
+  try {
+    handle = ctx.host.dispatch({
+      source: "http",
+      flowKind: resolvedActionInput.flowKind,
+      action: resolvedActionInput.actionName,
+      input: resolvedActionInput.input,
+      sessionId: resolvedActionInput.sessionId,
+      requestId: resolvedActionInput.requestId,
+      orgId: resolvedActionInput.orgId,
+      principal: { userId: resolvedActionInput.userId, orgId: resolvedActionInput.orgId },
+      metadata: resolvedActionInput.metadata,
+      signal: resolvedActionInput.signal
     });
-  }
-
-  registerStream(resolvedActionInput.requestId, liveStream);
-
-  const runPromise = runAction({
-    flow,
-    actionName: resolvedActionInput.actionName as keyof typeof flow.actions & string,
-    input: resolvedActionInput.input,
-    userId: resolvedActionInput.userId,
-    sessionId: resolvedActionInput.sessionId,
-    requestId: resolvedActionInput.requestId,
-    orgId: resolvedActionInput.orgId,
-    metadata: resolvedActionInput.metadata,
-    signal: resolvedActionInput.signal,
-    modelResolver: ctx.modelResolver,
-    speechResolver: ctx.speechResolver,
-    middleware: ctx.middleware,
-    stores: ctx.stores,
-    responseEmitter: liveStream.emitter
-  }).finally(() => {
-    liveStream.close();
-    removeStream(resolvedActionInput.requestId);
-    // Safety net: deregister if runAction didn't (e.g., truly catastrophic failure)
-    ctx.stores.activeRequests.deregister(resolvedActionInput.requestId).catch(() => {});
-  });
-
-  // Notify the platform that background work must complete. On serverless
-  // platforms this is critical: without it the function instance is killed
-  // after the 202 response is sent, before runAction persists anything.
-  if (ctx.onBackgroundWork !== undefined) {
-    ctx.onBackgroundWork(runPromise);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("active stream capacity")) {
+      return jsonResponse(503, { error: message });
+    }
+    if (message.startsWith("Unknown flow")) {
+      return jsonResponse(404, { error: message });
+    }
+    throw error;
   }
 
   // Inline streaming: when the client sends Accept: text/event-stream, return
@@ -168,8 +166,8 @@ export async function handleExecuteAction(
   // execution and stream delivery on the same function instance — essential
   // for serverless platforms where POST and GET may hit different instances.
   const accept = request.headers.get("accept") ?? "";
-  if (accept.includes("text/event-stream")) {
-    return new Response(liveStream.readable, {
+  if (accept.includes("text/event-stream") && handle.liveStream !== null) {
+    return new Response(handle.liveStream.readable, {
       status: 200,
       headers: {
         ...SSE_HEADERS,
@@ -177,7 +175,7 @@ export async function handleExecuteAction(
         // the Vercel adapter skips heartbeat wrapping for POST responses.
         "cache-control": "no-cache, no-transform",
         "x-accel-buffering": "no",
-        "x-request-id": resolvedActionInput.requestId,
+        "x-request-id": handle.requestId,
         "x-session-id": resolvedActionInput.sessionId ?? ""
       }
     });
@@ -186,7 +184,7 @@ export async function handleExecuteAction(
   return jsonResponse(202, {
     status: "in_progress",
     request: {
-      id: resolvedActionInput.requestId,
+      id: handle.requestId,
       flowKind: flow.kind,
       actionName: resolvedActionInput.actionName,
       status: "in_progress"

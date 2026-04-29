@@ -3,7 +3,9 @@
  */
 export {
   createFlowApiRouter,
-  type CreateFlowApiRouterOptions
+  disposeFlowApiRouter,
+  type CreateFlowApiRouterOptions,
+  type FlowApiRouter
 } from "./createFlowApiRouter";
 export {
   parseFlowRoute,

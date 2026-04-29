@@ -21,6 +21,8 @@ Conflict rule: `preperation/architecture/*` wins.
 - Resume paths: both `Last-Event-ID` and `starting_after`
 - Generator provider boundary: Vercel AI SDK in Phase 1
 - `@flow-state-dev/client` required; `@flow-state-dev/react` wraps client (no transport logic)
+- Inbound transport contract: `InboundTransportAdapter`, `InboundRequestEnvelope`, `RequestRecord.source`
+  → [Inbound Transports](../architecture/inbound-transports.md)
 
 ## Sequencer Surface (21 methods)
 
