@@ -159,10 +159,41 @@ export {
  * `stateSchema` must include a `Record<string, Task>` slot at
  * `[stateKey]` (default `"tasks"`) — `taskBoardStateSchema` is the
  * canonical shape.
+ *
+ * Single-invocation only. If a board needs to be re-entered from
+ * inside an outer loop (e.g. a replan loop that calls `board.block`
+ * across iterations), use `TaskBoardRequestCollectionSpec` instead —
+ * sequencer state is per-invocation and won't survive across calls.
  */
 export interface TaskBoardSequencerCollectionSpec {
   backing?: "sequencer";
   collectionId: string;
+  stateKey?: string;
+}
+
+/**
+ * Request-scoped collection spec (FIX-471). Tasks live on
+ * `ctx.request` so the collection survives every block boundary —
+ * including multiple invocations of `board.block` from a parent
+ * sequencer's outer loop. The `tasks` record persists for the request
+ * lifetime; cross-request boards still want
+ * `TaskBoardCollectionFactory` with a session/user/org-scoped resource
+ * collection.
+ *
+ * The capability built for this backing does NOT declare
+ * `targetStateSchemas` (the storage isn't on a parent sequencer slot)
+ * and reaches the collection via `getOrCreateTaskCollection({ backing:
+ * "request" })` from any block in the request, not just blocks running
+ * under `board.block`'s subtree.
+ */
+export interface TaskBoardRequestCollectionSpec {
+  backing: "request";
+  collectionId: string;
+  /**
+   * Top-level field on `ctx.request.state` holding the
+   * `Record<id, Task>`. Defaults to `collectionId` so multiple boards
+   * in one request stay namespaced without manual setup.
+   */
   stateKey?: string;
 }
 
@@ -180,13 +211,20 @@ export interface TaskBoardConfig<TInput = unknown, TOutput = unknown> {
   name: string;
 
   /**
-   * Where the collection lives. Either a sequencer-state spec (the
-   * default backing) or a caller-supplied factory `(ctx) => collection`
-   * for advanced cases (resource-backed collections, externally
-   * managed collections, etc).
+   * Where the collection lives. One of:
+   *
+   * - `TaskBoardSequencerCollectionSpec` (default) — tasks on the
+   *   board's own sequencer state. Single-invocation; per-call state.
+   * - `TaskBoardRequestCollectionSpec` (FIX-471) — tasks on
+   *   `ctx.request`. Re-enterable across multiple `board.block`
+   *   invocations within the same request.
+   * - `TaskBoardCollectionFactory<TInput, TOutput>` — caller-supplied
+   *   `(ctx) => collection` for advanced cases (resource-collection
+   *   backed, externally managed collections, etc.).
    */
   collection:
     | TaskBoardSequencerCollectionSpec
+    | TaskBoardRequestCollectionSpec
     | TaskBoardCollectionFactory<TInput, TOutput>;
 
   /**
@@ -448,12 +486,14 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
   // Capability — backing-aware. Sequencer-spec collections get a
   // capability that auto-resolves the collection via the parent
   // sequencer's state ref AND declares the `tasks` slot transitively.
-  // Caller-supplied factories get a capability that defers entirely to
-  // the user's factory function — useful for resource-collection-backed
-  // boards or any custom storage. Either way `board.capability` is
-  // always defined; consumers that opt into `uses: [board.capability]`
-  // get a typed `ctx.cap["taskBoard.<name>"].tasks()` accessor
-  // regardless of backing.
+  // Request-spec collections (FIX-471) skip the schema declaration and
+  // resolve the collection through `ctx.request` so re-entry works
+  // across multiple `board.block` invocations. Caller-supplied factories
+  // defer entirely to the user's factory function — useful for
+  // resource-collection-backed boards or any custom storage. Either way
+  // `board.capability` is always defined; consumers that opt into
+  // `uses: [board.capability]` get a typed `ctx.cap["taskBoard.<name>"].tasks()`
+  // accessor regardless of backing.
   const capability = isFactoryFn(collectionConfig)
     ? createTaskBoardCapability({
         backing: "factory",
@@ -461,12 +501,19 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
         collectionId,
         factory: collectionConfig,
       })
-    : createTaskBoardCapability({
-        backing: "sequencer",
-        boardName: name,
-        collectionId: collectionConfig.collectionId,
-        stateKey: collectionConfig.stateKey,
-      });
+    : collectionConfig.backing === "request"
+      ? createTaskBoardCapability({
+          backing: "request",
+          boardName: name,
+          collectionId: collectionConfig.collectionId,
+          stateKey: collectionConfig.stateKey,
+        })
+      : createTaskBoardCapability({
+          backing: "sequencer",
+          boardName: name,
+          collectionId: collectionConfig.collectionId,
+          stateKey: collectionConfig.stateKey,
+        });
 
   return { block, collectionId, capability };
 }
@@ -482,22 +529,38 @@ function isFactoryFn<TInput, TOutput>(
 }
 
 /**
- * Build the runtime collection factory. Sequencer-backed specs go
- * through `getOrCreateTaskCollection({ backing: "sequencer", ... })`
- * which wires the emission frame from `ctx`. Caller-supplied factories
- * pass through unchanged.
+ * Build the runtime collection factory.
  *
- * The factory resolves the board's `StateRef` via `ctx.getTarget(boardName)`
- * so workers spawned inside `.forEach` (whose `ctx.sequencer` points at
- * their own nested worker-state) still address the shared task record on
- * the outer board sequencer. Falls back to `ctx.sequencer` for top-level
- * callers (e.g., the seed block running directly under the board).
+ * - `sequencer` (default): `getOrCreateTaskCollection({ backing:
+ *   "sequencer" })` against the board's `StateRef`, resolved via
+ *   `ctx.getTarget(boardName)` so workers nested inside `.forEach`
+ *   still address the shared task record. Falls back to
+ *   `ctx.sequencer` for the top-level seed handler that runs directly
+ *   under the board.
+ * - `request` (FIX-471): `getOrCreateTaskCollection({ backing:
+ *   "request" })`. The request scope's CAS surface is identical to a
+ *   sequencer state ref's, so the underlying mutation engine is the
+ *   same. State survives across multiple `board.block` invocations,
+ *   which is the point of this backing.
+ * - factory: caller-supplied `(ctx) => collection` passes through
+ *   unchanged.
  */
 function buildCollectionFactory<TInput, TOutput>(
   boardName: string,
   collectionConfig: TaskBoardConfig<TInput, TOutput>["collection"]
 ): (ctx: BlockContext) => TaskCollectionRef<TInput, TOutput> {
   if (isFactoryFn(collectionConfig)) return collectionConfig;
+
+  if (collectionConfig.backing === "request") {
+    const { collectionId, stateKey } = collectionConfig;
+    return (ctx: BlockContext) =>
+      getOrCreateTaskCollection<TInput, TOutput>({
+        ctx,
+        backing: "request",
+        collectionId,
+        stateKey,
+      });
+  }
 
   const { collectionId, stateKey } = collectionConfig;
   return (ctx: BlockContext) => {
@@ -520,7 +583,7 @@ function buildCollectionFactory<TInput, TOutput>(
   };
 }
 
-/** Pull the collection id out of either spec form for the public handle. */
+/** Pull the collection id out of any spec form for the public handle. */
 function resolveCollectionId(
   collectionConfig: TaskBoardConfig<unknown, unknown>["collection"]
 ): string {
