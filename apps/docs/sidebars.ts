@@ -99,6 +99,7 @@ const sidebars: SidebarsConfig = {
         "server/setup",
         "server/custom-model-resolver",
         "server/model-groups",
+        "server/inbound-transports",
         "persistence/overview",
       ],
     },

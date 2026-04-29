@@ -27,6 +27,38 @@ That's a full API with action execution, session management, SSE streaming with 
 - **Structured logging** — Every action execution logs flow/action/block IDs, attempt numbers, timing, and summarized payloads
 - **Template utility** — `renderTemplate(content, state)` for opt-in Handlebars-style resource rendering
 
+## Inbound transports
+
+Every entry point into the runtime — native HTTP, MCP servers, webhooks,
+scheduled actions, custom transports — implements the same
+`InboundTransportAdapter` contract. The built-in HTTP adapter is mounted
+automatically; `createFlowApiRouter` accepts an `adapters` option to mount
+additional transports onto the same host:
+
+```ts
+import { createFlowApiRouter } from "@flow-state-dev/server";
+
+const router = createFlowApiRouter({
+  registry,
+  stores,
+  adapters: [
+    // createMcpTransportAdapter({ /* ... */ }),
+    // createWebhookTransportAdapter({ /* ... */ }),
+  ],
+});
+```
+
+Routes from every adapter merge into the returned `{ GET, POST, PATCH, DELETE }`
+dispatcher. Path collisions among non-HTTP adapters throw
+`TransportRouteCollisionError` at construction time so dispatch is
+unambiguous at runtime. Every request carries a `source` field on its
+`RequestRecord` for provenance — `http` for the default adapter, set by
+each custom transport for its own.
+
+See [`docs/architecture/inbound-transports.md`](../../docs/architecture/inbound-transports.md)
+for the full contract reference and a walk-through of authoring a custom
+adapter.
+
 ## Store configuration
 
 ```ts

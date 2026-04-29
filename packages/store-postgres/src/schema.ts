@@ -89,11 +89,32 @@ CREATE TABLE IF NOT EXISTS active_requests (
   session_id        TEXT,
   user_id           TEXT NOT NULL,
   org_id        TEXT,
+  source            TEXT NOT NULL DEFAULT 'http',
   input             TEXT,
   metadata          TEXT,
   started_at        BIGINT NOT NULL,
   last_heartbeat_at BIGINT NOT NULL
 );
+`;
+
+/**
+ * Add `source` column to pre-FIX-438 `active_requests` tables.
+ * Idempotent — wrapped in a DO block so absence of the column on a fresh
+ * database is a no-op.
+ */
+const ADD_ACTIVE_REQUESTS_SOURCE_MIGRATION = `
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = current_schema() AND table_name = 'active_requests'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = 'active_requests' AND column_name = 'source'
+  ) THEN
+    EXECUTE 'ALTER TABLE active_requests ADD COLUMN source TEXT NOT NULL DEFAULT ''http''';
+  END IF;
+END $$;
 `;
 
 const ACTIVE_REQUESTS_INDEXES = [
@@ -195,7 +216,11 @@ const PROJECT_TO_ORG_MIGRATIONS = [
   // directly by the CREATE INDEX block below).
   "ALTER INDEX IF EXISTS idx_requests_project_id RENAME TO idx_requests_org_id",
   "ALTER INDEX IF EXISTS idx_projects_user_id RENAME TO idx_orgs_user_id",
-  "ALTER INDEX IF EXISTS idx_projects_updated_at RENAME TO idx_orgs_updated_at"
+  "ALTER INDEX IF EXISTS idx_projects_updated_at RENAME TO idx_orgs_updated_at",
+
+  // FIX-438: ensure `active_requests.source` exists on pre-FIX-438 schemas.
+  // Idempotent on fresh databases.
+  ADD_ACTIVE_REQUESTS_SOURCE_MIGRATION
 ];
 
 /**

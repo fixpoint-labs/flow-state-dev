@@ -29,6 +29,8 @@ type RequestGroup = {
   startedAt: number;
   duration?: number;
   items: OutputItem[];
+  /** Inbound transport that produced the request — undefined for legacy data. */
+  source?: string;
 };
 
 /** Item types that belong in a chat-like stream. */
@@ -127,6 +129,7 @@ export function StreamView({
               duration={group.duration}
               isActive={isActive}
               totalTokens={group.totalTokens}
+              source={group.source}
               onReplayFull={onReplayFull ? () => onReplayFull(group.requestId) : undefined}
               onReplayFromCursor={onReplayFromCursor ? () => onReplayFromCursor(group.requestId) : undefined}
               onReconnect={onReconnect ? () => onReconnect(group.requestId) : undefined}

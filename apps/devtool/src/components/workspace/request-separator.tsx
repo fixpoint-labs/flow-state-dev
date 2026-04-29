@@ -17,9 +17,23 @@ type RequestSeparatorProps = {
   duration?: number;
   isActive?: boolean;
   totalTokens?: number;
+  /** Inbound transport that produced the request. Undefined for legacy data. */
+  source?: string;
   onReplayFull?: () => void;
   onReplayFromCursor?: () => void;
   onReconnect?: () => void;
+};
+
+/**
+ * Visual treatment per known transport source. Unknown values render as
+ * a generic badge so custom transports still surface — the framework does
+ * not police namespacing (FIX-438 §3.5).
+ */
+const SOURCE_LABELS: Record<string, { label: string; className: string }> = {
+  mcp: { label: "MCP", className: "border-purple-700 text-purple-300" },
+  webhook: { label: "Webhook", className: "border-amber-700 text-amber-300" },
+  scheduled: { label: "Scheduled", className: "border-cyan-700 text-cyan-300" },
+  notification: { label: "Notification", className: "border-fuchsia-700 text-fuchsia-300" }
 };
 
 function formatDuration(ms?: number, isActive?: boolean): string {
@@ -35,6 +49,7 @@ export function RequestSeparator({
   duration,
   isActive,
   totalTokens,
+  source,
   onReplayFull,
   onReplayFromCursor,
   onReconnect,
@@ -49,6 +64,16 @@ export function RequestSeparator({
     <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-slate-800/40 bg-slate-950/95 backdrop-blur-sm px-4 py-1.5">
       <span className="text-xs font-medium text-slate-300">{action}</span>
       <StatusBadge status={status} />
+      {source !== undefined && source !== "http" && (
+        <span
+          className={`rounded border px-1.5 py-0 text-[10px] font-medium ${
+            SOURCE_LABELS[source]?.className ?? "border-slate-700 text-slate-400"
+          }`}
+          title={`Source: ${source}`}
+        >
+          {SOURCE_LABELS[source]?.label ?? source}
+        </span>
+      )}
       {durationText && (
         <span className="text-[11px] text-slate-500 font-mono tabular-nums">{durationText}</span>
       )}

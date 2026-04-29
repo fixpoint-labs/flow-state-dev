@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS active_requests (
   session_id        TEXT,
   user_id           TEXT NOT NULL,
   org_id        TEXT,
+  source            TEXT NOT NULL DEFAULT 'http',
   input             TEXT,
   metadata          TEXT,
   started_at        INTEGER NOT NULL,
@@ -90,6 +91,27 @@ CREATE INDEX IF NOT EXISTS idx_active_requests_heartbeat  ON active_requests(las
 CREATE INDEX IF NOT EXISTS idx_active_requests_user_id    ON active_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_active_requests_session_id ON active_requests(session_id);
 `;
+
+/**
+ * Add `source` column to pre-FIX-438 `active_requests` tables. SQLite has
+ * no `ADD COLUMN IF NOT EXISTS`, so we probe `pragma_table_info` first.
+ * The new column carries a `NOT NULL DEFAULT 'http'` so existing rows
+ * read back as the HTTP transport without needing a data backfill.
+ */
+function migrateAddActiveRequestsSource(db: Database.Database): void {
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'active_requests'")
+    .get();
+  if (tableExists === undefined) return;
+
+  const cols = db
+    .prepare("SELECT name FROM pragma_table_info('active_requests')")
+    .all() as Array<{ name: string }>;
+  const hasSource = cols.some((c) => c.name === "source");
+  if (!hasSource) {
+    db.exec("ALTER TABLE active_requests ADD COLUMN source TEXT NOT NULL DEFAULT 'http'");
+  }
+}
 
 const REQUEST_EVENTS_TABLE = `
 CREATE TABLE IF NOT EXISTS request_events (
@@ -195,6 +217,7 @@ export function initializeSchemaDDL(db: Database.Database): void {
   // sees the renamed columns and the create-index-if-not-exists step finds
   // its target columns.
   migrateProjectToOrg(db);
+  migrateAddActiveRequestsSource(db);
 
   // Create tables and indexes
   db.exec(SESSIONS_TABLE);

@@ -76,6 +76,7 @@ export async function handleRetryRequest(
             sessionId: originalRecord.sessionId,
             userId: originalRecord.userId,
             orgId: originalRecord.orgId,
+            source: originalRecord.source,
             input: inputOverride,
             metadata: originalRecord.metadata,
             startedAt: originalRecord.startedAtMs,

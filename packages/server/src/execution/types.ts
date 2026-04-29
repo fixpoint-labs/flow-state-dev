@@ -73,6 +73,12 @@ export type RunActionOptions<
   sessionId?: string;
   orgId?: string;
   requestId?: string;
+  /**
+   * Inbound transport provenance, propagated to `RequestRecord.source` and
+   * `ActiveRequestEntry.source`. Defaults to `"http"` to preserve behavior
+   * for callers that pre-date the transport adapter contract (FIX-438).
+   */
+  source?: string;
   metadata?: Record<string, unknown>;
   signal?: AbortSignal;
   modelResolver?: ModelResolver;

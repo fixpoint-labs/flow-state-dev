@@ -2,6 +2,22 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-04-29
+
+### Inbound transport adapter contract (FIX-438)
+
+- **`InboundTransportAdapter` contract** ships in `@flow-state-dev/server`. Every entry point into the runtime — native HTTP, MCP, webhooks, scheduled actions, custom transports — implements the same shape: a `source` identifier plus a single pure `createBindings(host)` function returning routes/dispatchers. Adapters are immutable factory objects; they do not retain references to the host and have no post-construction lifecycle outside the optional `start`/`stop` hooks in their bindings.
+- **`InboundRequestEnvelope` is the single shape every adapter constructs before invoking the runtime.** Carries `source`, `flowKind`, `action`, `input`, `principal`, `metadata`, `signal`, optional `rawBody` for adapters that need pre-parse access (webhook signature verification), and an optional `responseEmitter`. The runtime below the adapter is identical regardless of `source`.
+- **`createFlowApiRouter` is the first reference implementation.** Public API and behavior unchanged — every existing test in `packages/server/test/`, `apps/devtool/`, and `packages/vercel/test/` passes without modification. Internally the router constructs an `InboundTransportHost`, mounts the built-in `HttpTransportAdapter`, and exposes the canonical `{ GET, POST, PATCH, DELETE }` dispatcher. Action execution flows through `host.dispatch`; session/state/resource/stream/abort/recovery routes use `host.registry` and `host.stores` directly.
+- **`adapters?: InboundTransportAdapter[]` is the new public option** on `createFlowApiRouter`. Routes from every adapter merge into the returned dispatcher; path collisions among non-HTTP adapters throw `TransportRouteCollisionError` at construction time so dispatch is unambiguous at runtime.
+- **`source` is a first-class field** on `RequestRecord` and `ActiveRequestEntry`. CloudEvents-aligned, queryable, surfaces in DevTool's request list as a small badge for non-`http` sources. Open string with a documented known-set: `http` | `mcp` | `webhook` | `scheduled` | `notification`. SQLite `active_requests` migration adds the column with `NOT NULL DEFAULT 'http'`; record-store reads default to `"http"` for pre-existing JSON-blob records.
+- **Auth boundary preserved** as a soft dependency on FIX-23. `host.resolvePrincipal` is the single integration point; Phase 1 ships `defaultBodyUserIdPrincipalResolver` (reads `body.userId` exactly as today). When FIX-23 lands the resolver becomes configurable on `createFlowApiRouter`; adapter code does not change because adapters always call `host.resolvePrincipal`.
+- **Vercel adapter unchanged.** `createVercelHandler(flowRouter)` continues to wrap a `FlowApiRouter` value as today. The transport adapter operates at the request layer; the Vercel adapter operates at the response layer; they compose without edits.
+- **Conformance suite** ships in `@flow-state-dev/testing`: `createInboundTransportConformanceTests({ name, factory, helpers })`. Modeled on `store-cas-contract.test.ts`. The HTTP adapter is the first conformer; future MCP/webhook/scheduled/notification adapters plug into the same harness.
+- **Tests.** `packages/server/test/transports/{types,host,http-adapter}.test.ts` exercise the contract directly; `packages/testing/test/transport-conformance.test.ts` runs the conformance suite against the HTTP adapter; `apps/devtool/test/components.test.tsx` covers the source-badge rendering.
+- **Internal seam preserved.** `InternalRouteSeams` is kept as the internal hot-path mechanism (currently used only by tests). The new public `InboundTransportAdapter` is the documented external API; the seam neither promotes nor deprecates it.
+- **Out of scope (per spec).** The MCP, webhook, scheduled, and cross-flow notification adapters themselves; the FIX-23 auth hook implementation; outbound transport adapters (Ably AI Transport).
+
 ## 2026-04-28
 
 ### Durable sequencer checkpoint schema (FIX-401)

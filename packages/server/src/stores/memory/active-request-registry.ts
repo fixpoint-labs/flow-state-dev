@@ -1,4 +1,5 @@
 import type { ActiveRequestEntry, ActiveRequestRegistry } from "../types";
+import { withActiveRequestSourceDefault } from "../shared";
 
 export class InMemoryActiveRequestRegistry implements ActiveRequestRegistry {
   private readonly entries = new Map<string, ActiveRequestEntry>();
@@ -23,19 +24,23 @@ export class InMemoryActiveRequestRegistry implements ActiveRequestRegistry {
     const stale: ActiveRequestEntry[] = [];
     for (const entry of this.entries.values()) {
       if (entry.lastHeartbeatAt < cutoff) {
-        stale.push({ ...entry });
+        stale.push(withActiveRequestSourceDefault({ ...entry }));
       }
     }
     return stale;
   }
 
   async listAll(): Promise<ActiveRequestEntry[]> {
-    return Array.from(this.entries.values()).map((e) => ({ ...e }));
+    return Array.from(this.entries.values()).map((e) =>
+      withActiveRequestSourceDefault({ ...e })
+    );
   }
 
   async get(requestId: string): Promise<ActiveRequestEntry | undefined> {
     const entry = this.entries.get(requestId);
-    return entry === undefined ? undefined : { ...entry };
+    return entry === undefined
+      ? undefined
+      : withActiveRequestSourceDefault({ ...entry });
   }
 }
 

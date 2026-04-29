@@ -42,6 +42,11 @@ export type CreateExecutionContextOptions<
   userId?: string;
   sessionId?: string;
   orgId?: string;
+  /**
+   * Inbound transport provenance written to the initial `RequestRecord`.
+   * Defaults to `"http"` for callers that don't supply one (FIX-438).
+   */
+  source?: string;
   requestState?: TRequestState;
   sessionState?: TSessionState;
   userState?: TUserState;

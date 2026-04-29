@@ -46,6 +46,9 @@ import {
   handleDeleteCollectionItem
 } from "./resource-routes";
 import { handleRequestStream, handleTranscribe } from "./stream-routes";
+import type { InboundTransportHost } from "../transports/types";
+import { createInboundTransportHost } from "../transports/host/createInboundTransportHost";
+import { defaultBodyUserIdPrincipalResolver } from "../transports/auth/defaultBodyUserIdPrincipalResolver";
 
 export type RequestContext = {
   method: string;
@@ -137,7 +140,7 @@ export type FlowRouteContext = {
   path?: string[];
 };
 
-function resolveStores(partial: Partial<StoreRegistry> | undefined): StoreRegistry {
+export function resolveStores(partial: Partial<StoreRegistry> | undefined): StoreRegistry {
   const fallback = createInMemoryStores();
   return {
     session: partial?.session ?? fallback.session,
@@ -152,9 +155,14 @@ function resolveStores(partial: Partial<StoreRegistry> | undefined): StoreRegist
 
 /**
  * Creates method-aware route handlers for canonical `/api/flows` endpoints.
+ *
+ * Constructs an `InboundTransportHost` internally and routes action
+ * execution through `host.dispatch`; non-action routes (sessions, streams,
+ * resources, etc.) read from the same host's stores and registry directly.
  */
 export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions): {
   handle: (request: Request, context: FlowRouteContext) => Promise<Response>;
+  host: InboundTransportHost;
 } {
   const stores = resolveStores(options.stores);
   configureActiveStreamRegistry({
@@ -165,6 +173,18 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     }
   });
   const seams = options.internalSeams ?? NOOP_INTERNAL_ROUTE_SEAMS;
+
+  const host: InboundTransportHost = createInboundTransportHost({
+    registry: options.registry,
+    stores,
+    modelResolver: options.modelResolver,
+    speechResolver: options.speechResolver,
+    transcriptionResolver: options.transcriptionResolver,
+    middleware: options.middleware,
+    resolvePrincipal: defaultBodyUserIdPrincipalResolver,
+    onBackgroundWork: options.onBackgroundWork,
+    maxResponseBufferSize: options.maxResponseBufferSize
+  });
 
   // Detect interrupted requests from previous runs on startup
   if (options.detectInterruptedOnStartup !== false) {
@@ -229,13 +249,9 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       if (route.kind === "execute_action") {
         return await handleExecuteAction(request, route, {
+          host,
           registry: options.registry,
           stores,
-          modelResolver: options.modelResolver,
-          speechResolver: options.speechResolver,
-          middleware: options.middleware,
-          maxResponseBufferSize: options.maxResponseBufferSize,
-          onBackgroundWork: options.onBackgroundWork,
           seams,
           bootstrapMetadata,
           requestContext
@@ -386,6 +402,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   };
 
   return {
-    handle
+    handle,
+    host
   };
 }
