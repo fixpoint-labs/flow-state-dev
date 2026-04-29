@@ -28,7 +28,11 @@ import {
 } from "./route-utils";
 import { handleAbortRequest } from "./abort-routes";
 import { handleExecuteAction } from "./action-routes";
-import { handleListActiveRequests, handleRetryRequest } from "./recovery-routes";
+import {
+  handleCheckInterruptedRequests,
+  handleListActiveRequests,
+  handleRetryRequest
+} from "./recovery-routes";
 import {
   handleCreateSession,
   handleDeleteSession,
@@ -331,6 +335,13 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       if (route.kind === "active_requests") {
         return await handleListActiveRequests(request, {
+          registry: options.registry,
+          stores
+        });
+      }
+
+      if (route.kind === "check_interrupted_requests") {
+        return await handleCheckInterruptedRequests(request, route, {
           registry: options.registry,
           stores
         });

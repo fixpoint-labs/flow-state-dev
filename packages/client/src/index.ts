@@ -38,6 +38,14 @@ export {
   type UpdateResourceContentOptions
 } from "./resource-client/resources";
 
+export {
+  createRecoveryClient,
+  type CreateRecoveryClientOptions,
+  type CheckInterruptedOptions,
+  type InterruptedRequestSummary,
+  type RecoveryClient
+} from "./recovery-client/recovery";
+
 export type {
   ClientFetch,
   ClientTransportOptions,
