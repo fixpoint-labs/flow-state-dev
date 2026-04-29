@@ -18,6 +18,13 @@ export type TaskInit<TInput = unknown> = {
   assignee?: string;
   deps?: string[];
   priority?: number;
+  /**
+   * Optional retry budget. When set and `attempts < maxAttempts`,
+   * `collection.fail(id, ...)` re-pends the task (with the error
+   * captured as `feedback`) instead of transitioning to terminal
+   * `errored`. Unset is single-attempt — `fail` goes terminal.
+   */
+  maxAttempts?: number;
   input?: TInput;
   labels?: string[];
   metadata?: Record<string, unknown>;

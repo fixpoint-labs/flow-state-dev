@@ -10,34 +10,21 @@ import type {
   StateRef,
 } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core";
-import type { TaskChangeEmissionFrame, TaskChangeItem } from "../src";
+import type { TaskChangeEvent } from "../src";
 
-/** Bag of items captured from the substrate's emitter. */
-export interface CapturedEmitter {
-  items: TaskChangeItem[];
-  emit: (item: TaskChangeItem) => void;
-  frame: TaskChangeEmissionFrame;
+/** Captured `onChange` events for assertions in tests. */
+export interface CapturedChanges {
+  events: TaskChangeEvent[];
+  onChange: (event: TaskChangeEvent) => void;
 }
 
-/** Build a capturing emit + frame pair for tests. */
-export function createCapturedEmitter(): CapturedEmitter {
-  const items: TaskChangeItem[] = [];
+/** Build a capturing `onChange` callback for tests. */
+export function createCapturedChanges(): CapturedChanges {
+  const events: TaskChangeEvent[] = [];
   return {
-    items,
-    emit: (item) => {
-      items.push(item);
-    },
-    frame: {
-      requestId: "test-request",
-      nextItemIndex: (() => {
-        let n = 0;
-        return () => ++n;
-      })(),
-      provenance: () => ({
-        blockName: "test",
-        blockInstanceId: "test#0",
-        phase: "main",
-      }),
+    events,
+    onChange: (event) => {
+      events.push(event);
     },
   };
 }

@@ -3,7 +3,7 @@
  *
  * Centralizing init/transition logic here keeps the two backings in
  * lockstep on default values, claim eligibility, and the post-mutation
- * task shape that ends up on the emitted `task_change` item.
+ * task shape that ends up on the emitted `task-change` component item.
  */
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
@@ -26,6 +26,7 @@ export function buildInitialTask<TInput, TOutput>(
     goal: init.goal,
     status: init.status ?? "pending",
     attempts: 0,
+    maxAttempts: init.maxAttempts,
     assignee: init.assignee,
     deps: init.deps,
     priority: init.priority,
@@ -35,6 +36,27 @@ export function buildInitialTask<TInput, TOutput>(
     createdAt: now,
     updatedAt: now,
   };
+}
+
+/**
+ * Decide whether `fail(id, error)` should re-pend (retry path) or
+ * transition the task to terminal `errored`. Centralized so both
+ * backings agree on the contract.
+ *
+ * Semantics: when `task.maxAttempts` is set and `task.attempts <
+ * task.maxAttempts`, the task has a retry budget remaining and `fail`
+ * is treated as a soft fail — status flips to `pending`, the error is
+ * captured on `feedback`, and the next claim picks up a fresh attempt.
+ * Otherwise the call is a hard fail — terminal `errored`.
+ *
+ * `attempts` is incremented at claim time (`applyClaimToTask`), so
+ * after the first failed attempt `attempts === 1`. With
+ * `maxAttempts === 3`, the comparison `1 < 3` permits two more
+ * retries before the budget is exhausted on the third failure.
+ */
+export function shouldRetryOnFail(task: Task): boolean {
+  if (task.maxAttempts === undefined) return false;
+  return task.attempts < task.maxAttempts;
 }
 
 /**

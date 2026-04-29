@@ -11,17 +11,17 @@ import {
   createSequencerBackedTaskCollection,
   createResourceBackedTaskCollection,
   type TaskCollectionRef,
-  type TaskChangeItem,
+  type TaskChangeEvent,
 } from "../../src";
 import {
-  createCapturedEmitter,
+  createCapturedChanges,
   createFakeResourceCollection,
   createFakeSequencerState,
 } from "../helpers";
 
 type BackingFactory = () => {
   collection: TaskCollectionRef;
-  events: TaskChangeItem[];
+  events: TaskChangeEvent[];
   /** Advance the test clock — both backings accept an injected `now`. */
   setNow: (n: number) => void;
 };
@@ -30,16 +30,15 @@ function sequencerBacking(): BackingFactory {
   return () => {
     let clock = 1000;
     const sequencer = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
-    const captured = createCapturedEmitter();
+    const captured = createCapturedChanges();
     return {
       collection: createSequencerBackedTaskCollection({
         collectionId: "tasks",
         sequencer,
-        emit: captured.emit,
-        frame: captured.frame,
+        onChange: captured.onChange,
         now: () => clock,
       }),
-      events: captured.items,
+      events: captured.events,
       setNow: (n) => {
         clock = n;
       },
@@ -51,16 +50,15 @@ function resourceBacking(): BackingFactory {
   return () => {
     let clock = 1000;
     const collection = createFakeResourceCollection();
-    const captured = createCapturedEmitter();
+    const captured = createCapturedChanges();
     return {
       collection: createResourceBackedTaskCollection({
         collectionId: "tasks",
         collection,
-        emit: captured.emit,
-        frame: captured.frame,
+        onChange: captured.onChange,
         now: () => clock,
       }),
-      events: captured.items,
+      events: captured.events,
       setNow: (n) => {
         clock = n;
       },
@@ -73,7 +71,7 @@ describe.each([
   ["resource-backed", resourceBacking()],
 ])("TaskCollection (%s)", (_label, factory) => {
   let collection: TaskCollectionRef;
-  let events: TaskChangeItem[];
+  let events: TaskChangeEvent[];
   let setNow: (n: number) => void;
 
   beforeEach(() => {
@@ -101,7 +99,7 @@ describe.each([
       );
     });
 
-    it("addTasks emits one task_change per task", async () => {
+    it("addTasks emits one change event per task", async () => {
       events.length = 0;
       await collection.addTasks([
         { id: "a", goal: "A" },
@@ -136,7 +134,7 @@ describe.each([
       expect(claimed).toBeNull();
     });
 
-    it("emits task_change with kind=claimed and prevStatus=pending", async () => {
+    it("emits change event with kind=claimed and prevStatus=pending", async () => {
       await collection.addTask({ id: "a", goal: "A" });
       events.length = 0;
       await collection.claim("worker-1");
@@ -220,6 +218,65 @@ describe.each([
     });
   });
 
+  describe("fail retry semantics (maxAttempts)", () => {
+    it("with maxAttempts unset, fail goes terminal (errored) on first failure", async () => {
+      await collection.addTask({ id: "t", goal: "t" });
+      await collection.claim("w");
+      await collection.fail("t", "boom");
+      expect(collection.get("t")?.status).toBe("errored");
+    });
+
+    it("with maxAttempts=3, fail re-pends with kind=retried until budget exhausts", async () => {
+      await collection.addTask({ id: "t", goal: "t", maxAttempts: 3 });
+
+      // attempt 1: claim → fail → re-pend
+      await collection.claim("w1");
+      expect(collection.get("t")?.attempts).toBe(1);
+      await collection.fail("t", "err-1");
+      expect(collection.get("t")?.status).toBe("pending");
+      expect(collection.get("t")?.feedback).toBe("err-1");
+      expect(collection.get("t")?.error).toBeUndefined();
+      expect(events.at(-1)?.kind).toBe("retried");
+
+      // attempt 2: claim → fail → re-pend
+      await collection.claim("w2");
+      expect(collection.get("t")?.attempts).toBe(2);
+      await collection.fail("t", "err-2");
+      expect(collection.get("t")?.status).toBe("pending");
+      expect(collection.get("t")?.feedback).toBe("err-2");
+
+      // attempt 3: claim → fail → terminal errored (budget exhausted)
+      await collection.claim("w3");
+      expect(collection.get("t")?.attempts).toBe(3);
+      await collection.fail("t", "err-3");
+      expect(collection.get("t")?.status).toBe("errored");
+      expect(collection.get("t")?.error).toBe("err-3");
+      expect(events.at(-1)?.kind).toBe("errored");
+    });
+
+    it("with maxAttempts=1, fail goes terminal on first failure", async () => {
+      await collection.addTask({ id: "t", goal: "t", maxAttempts: 1 });
+      await collection.claim("w");
+      expect(collection.get("t")?.attempts).toBe(1);
+      await collection.fail("t", "boom");
+      expect(collection.get("t")?.status).toBe("errored");
+      expect(events.at(-1)?.kind).toBe("errored");
+    });
+
+    it("each retry preserves the user-set assignee", async () => {
+      await collection.addTask({
+        id: "t",
+        goal: "t",
+        assignee: "worker-a",
+        maxAttempts: 2,
+      });
+      await collection.claim("w");
+      await collection.fail("t", "first error");
+      expect(collection.get("t")?.assignee).toBe("worker-a");
+      expect(collection.get("t")?.status).toBe("pending");
+    });
+  });
+
   describe("block / unblock / awaitReview / resumeFromReview / cancel", () => {
     it("block transitions pending → blocked", async () => {
       await collection.addTask({ id: "t", goal: "t" });
@@ -268,7 +325,7 @@ describe.each([
       expect(events).toHaveLength(0);
     });
 
-    it("cancel emits task_change with kind=cancelled when task is non-terminal", async () => {
+    it("cancel emits change event with kind=cancelled when task is non-terminal", async () => {
       await collection.addTask({ id: "t", goal: "t" });
       await collection.cancel("t", "user cancelled");
       expect(collection.get("t")?.status).toBe("cancelled");
@@ -398,20 +455,24 @@ describe.each([
     });
   });
 
-  describe("task_change emission", () => {
+  describe("change events", () => {
     it("every event carries collectionId, taskId, kind, task", async () => {
       await collection.addTask({ id: "t", goal: "t" });
       const evt = events.at(-1)!;
-      expect(evt.type).toBe("task_change");
       expect(evt.collectionId).toBe("tasks");
       expect(evt.taskId).toBe("t");
       expect(evt.kind).toBe("added");
       expect(evt.task.id).toBe("t");
     });
 
-    it("transient by default (no persistTaskEvents flag)", async () => {
+    it("includes prevStatus on transitions and omits it on additions", async () => {
       await collection.addTask({ id: "t", goal: "t" });
-      expect(events.at(-1)?.transient).toBe(true);
+      expect(events.at(-1)?.prevStatus).toBeUndefined();
+
+      await collection.claim("worker-1");
+      const claimed = events.at(-1)!;
+      expect(claimed.kind).toBe("claimed");
+      expect(claimed.prevStatus).toBe("pending");
     });
   });
 });
