@@ -501,19 +501,14 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
         collectionId,
         factory: collectionConfig,
       })
-    : collectionConfig.backing === "request"
-      ? createTaskBoardCapability({
-          backing: "request",
-          boardName: name,
-          collectionId: collectionConfig.collectionId,
-          stateKey: collectionConfig.stateKey,
-        })
-      : createTaskBoardCapability({
-          backing: "sequencer",
-          boardName: name,
-          collectionId: collectionConfig.collectionId,
-          stateKey: collectionConfig.stateKey,
-        });
+    : createTaskBoardCapability({
+        // `backing` is optional on TaskBoardSequencerCollectionSpec —
+        // omitted spec defaults to sequencer, the historical mode.
+        backing: collectionConfig.backing ?? "sequencer",
+        boardName: name,
+        collectionId: collectionConfig.collectionId,
+        stateKey: collectionConfig.stateKey,
+      });
 
   return { block, collectionId, capability };
 }
