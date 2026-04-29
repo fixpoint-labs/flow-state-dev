@@ -10,7 +10,9 @@
   "include": [
     "scripts/**/*",
     "test/**/*",
-    "registry/components/tool-grouping.ts"
+    "registry/components/tool-grouping.ts",
+    "registry/components/task-plan-state.ts"
   ],
-  "exclude": ["registry/**/*.tsx"]
+  "exclude": ["registry/**/*.tsx"],
+  "references": [{ "path": "../core" }]
 }

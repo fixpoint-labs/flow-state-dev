@@ -179,6 +179,27 @@
       "categories": ["ai", "patterns"]
     },
     {
+      "name": "task-plan",
+      "title": "Task Plan",
+      "type": "registry:component",
+      "description": "Section-grouped renderer for any TaskCollection. Subscribes to task-change and task-board-meta component items emitted by the unified Plan/Task substrate.",
+      "dependencies": ["@flow-state-dev/core", "lucide-react"],
+      "registryDependencies": [],
+      "files": [
+        {
+          "type": "registry:component",
+          "path": "registry/components/task-plan.tsx",
+          "target": "components/flow-state/task-plan.tsx"
+        },
+        {
+          "type": "registry:lib",
+          "path": "registry/components/task-plan-state.ts",
+          "target": "components/flow-state/task-plan-state.ts"
+        }
+      ],
+      "categories": ["ai", "patterns"]
+    },
+    {
       "name": "chat-assistant",
       "title": "Chat Assistant Renderers",
       "type": "registry:component",

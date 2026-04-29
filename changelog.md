@@ -4,6 +4,17 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-04-29
 
+### `<TaskPlan />` + DevTool task-collection viewer (FIX-445)
+
+- **New component `TaskPlan`** ships in `@flow-state-dev/ui` (registry: `task-plan`). Section-grouped renderer for any TaskCollection — accepts a `collectionId` and subscribes to the substrate's `task-change` and `task-board-meta` component items in the session item stream, latest-wins per task, sectioned by status (`pending → in_progress → blocked → awaiting_review → completed → errored`, with `cancelled` hidden by default). Empty sections hide; per-task rows surface goal, assignee, deps, error/feedback, and a retry indicator when `kind === "retried"` or `attempts > 1`.
+- **Open status vocabulary.** Pattern wrappers extending the substrate vocabulary (`planning`, `replanning`, `reviewing`, etc.) render with a humanized fallback. Consumers pass `statusConfig` to register pattern-specific icons/colors without forking the component.
+- **`groupByAssignee` toggle.** Sub-groups each section by `task.assignee`; sections with a single assignee skip the sub-heading. Missing assignees bucket as "Unassigned" at the end.
+- **No coupling to the legacy `Plan`.** `Plan` is unchanged and continues to handle the `plan-meta` / `plan-task` shape emitted by `planAndExecute` and `supervisor`. The two components ship side-by-side until FIX-447 migrates those patterns onto the unified primitive; at that point `Plan` becomes a thin alias and is deprecated.
+- **Pure-helpers split.** Data extraction (`extractTaskPlanState`, `groupTasksByStatus`, `groupTasksByAssignee`, `discoverCollections`) lives in `task-plan-state.ts` (registry:lib), tested independently. The `.tsx` wrapper memoizes the helpers and renders.
+- **DevTool TaskCollections panel.** New "Tasks" tab in `apps/devtool` auto-discovers every TaskCollection referenced by the active session's items (`data.collectionId`) and renders a developer-mode table per collection: full Task fields, all statuses including cancelled/errored, latest TaskChangeKind, and the count of `task-change` items per task. JSON drilldown per row.
+- **Tests.** 20 new tests in `packages/ui/test/task-plan-state.test.ts` cover collection filtering, latest-wins dedup, createdAt ordering, board-meta capture, malformed-item resilience, hidden statuses, extended-status fallthrough, assignee bucketing, and collection discovery. UI suite at 37 / DevTool at 81 / Tasks at 129 / Patterns at 189 — all green.
+- **README updates.** `packages/ui/README.md` documents the new component alongside the existing `Plan`.
+
 ### `taskBoard` re-entry via request-scoped collection (FIX-471)
 
 - **Re-enterable boards.** `taskBoard({ collection: { backing: "request", collectionId } })` puts the `tasks` record on `ctx.request` instead of on the board's own sequencer state. Multiple `board.block` invocations within the same request now share a single collection, which unblocks the FIX-447 P&E migration's replan loop and any other "wrap a board inside a higher-level loop" pattern. Sequencer-backed remains the default — single-invocation boards keep their per-call state model and existing tests stay green.
