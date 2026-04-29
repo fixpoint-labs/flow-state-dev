@@ -900,9 +900,188 @@ describe("taskBoard - capability", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Re-entry idempotency — the board can be re-run inside an outer loop
-// without re-seeding completed tasks
+// Re-entry — request-scoped collection survives multiple `board.block`
+// invocations from a parent sequencer (FIX-471)
 // ---------------------------------------------------------------------------
+//
+// Sequencer-backed boards lose their `tasks` slot at the end of each
+// `board.block` invocation because sequencer state is per-instance. A
+// replan loop that wraps `board.block` (e.g. the FIX-447 P&E migration)
+// needs the collection to survive across calls. Request-scoped backing
+// is the substrate's answer: `ctx.request` exposes the same atomic-state
+// surface as a sequencer state ref, so the same CAS engine writes there
+// instead — and request lifetime spans every block in the request.
+
+describe("taskBoard - re-entry (request-scoped collection)", () => {
+  it("a second board invocation observes mid-loop additions made between calls", async () => {
+    const trace: string[] = [];
+
+    const board = taskBoard({
+      name: "reentry-basic",
+      collection: { backing: "request", collectionId: "reentry-basic" },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: makeEchoWorker("uniform", trace),
+      initialTasks: [
+        { id: "a", goal: "alpha", input: { topic: "alpha" } },
+        { id: "b", goal: "beta", input: { topic: "beta" } },
+      ],
+    });
+
+    // Stand-in for an `applyReplan` step in the P&E migration: between
+    // the two board invocations we inject a new pending task. Sequencer-
+    // backed boards would lose this between calls; request-backed boards
+    // pick it up on the next drain.
+    const enqueueBetween = handler({
+      name: "enqueue-between",
+      inputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        const collection = getOrCreateTaskCollection({
+          ctx,
+          backing: "request",
+          collectionId: "reentry-basic",
+        });
+        await collection.addTask({
+          id: "c",
+          goal: "gamma",
+          input: { topic: "gamma" },
+        });
+      },
+    });
+
+    const wrapper = sequencer({ name: "reentry-basic-wrapper" })
+      .tap(board.block)
+      .tap(enqueueBetween)
+      .tap(board.block);
+
+    const result = await testBlock(wrapper, { input: undefined });
+    expect(result.error).toBeNull();
+
+    // First drain processes a + b. Second drain processes c only —
+    // a and b are terminal and the dispatcher's eligibility filter
+    // skips them, so they're not re-run.
+    expect(trace.sort()).toEqual([
+      "uniform:alpha",
+      "uniform:beta",
+      "uniform:gamma",
+    ]);
+
+    const final = lastTaskState(result.items);
+    expect(final.get("a")).toBe("completed");
+    expect(final.get("b")).toBe("completed");
+    expect(final.get("c")).toBe("completed");
+  });
+
+  it("three sequential drains separated by enqueues sum across rounds", async () => {
+    const processed: string[] = [];
+
+    const board = taskBoard({
+      name: "reentry-three-rounds",
+      collection: {
+        backing: "request",
+        collectionId: "reentry-three-rounds",
+      },
+      concurrency: 1,
+      dispatcher: "fifo",
+      workers: makeEchoWorker("uniform", processed),
+      initialTasks: [
+        { id: "r1-x", goal: "r1-x", input: { topic: "r1-x" } },
+      ],
+    });
+
+    function makeEnqueue(name: string, ids: string[]) {
+      return handler({
+        name,
+        inputSchema: z.unknown(),
+        execute: async (_input, ctx) => {
+          const collection = getOrCreateTaskCollection({
+            ctx,
+            backing: "request",
+            collectionId: "reentry-three-rounds",
+          });
+          for (const id of ids) {
+            await collection.addTask({ id, goal: id, input: { topic: id } });
+          }
+        },
+      });
+    }
+
+    const wrapper = sequencer({ name: "reentry-three-rounds-wrapper" })
+      .tap(board.block)
+      .tap(makeEnqueue("enq-2", ["r2-y", "r2-z"]))
+      .tap(board.block)
+      .tap(makeEnqueue("enq-3", ["r3-q"]))
+      .tap(board.block);
+
+    const result = await testBlock(wrapper, { input: undefined });
+    expect(result.error).toBeNull();
+
+    // Total processed = 1 (round 1) + 2 (round 2) + 1 (round 3). Each
+    // task runs exactly once across all three drains — no re-processing
+    // of the previous rounds' completed tasks.
+    expect(processed.sort()).toEqual([
+      "uniform:r1-x",
+      "uniform:r2-y",
+      "uniform:r2-z",
+      "uniform:r3-q",
+    ]);
+  });
+
+  it("re-entry under concurrency=4 does not re-claim completed tasks", async () => {
+    const processed: string[] = [];
+
+    const board = taskBoard({
+      name: "reentry-concurrent",
+      collection: {
+        backing: "request",
+        collectionId: "reentry-concurrent",
+      },
+      concurrency: 4,
+      dispatcher: "fifo",
+      workers: makeEchoWorker("uniform", processed),
+      initialTasks: Array.from({ length: 8 }, (_, i) => ({
+        id: `r1-${i}`,
+        goal: `r1-${i}`,
+        input: { topic: `r1-${i}` },
+      })),
+      idlePollMs: 5,
+    });
+
+    const enqueueRound2 = handler({
+      name: "enqueue-round-2",
+      inputSchema: z.unknown(),
+      execute: async (_input, ctx) => {
+        const collection = getOrCreateTaskCollection({
+          ctx,
+          backing: "request",
+          collectionId: "reentry-concurrent",
+        });
+        for (let i = 0; i < 8; i += 1) {
+          await collection.addTask({
+            id: `r2-${i}`,
+            goal: `r2-${i}`,
+            input: { topic: `r2-${i}` },
+          });
+        }
+      },
+    });
+
+    const wrapper = sequencer({ name: "reentry-concurrent-wrapper" })
+      .tap(board.block)
+      .tap(enqueueRound2)
+      .tap(board.block);
+
+    const result = await testBlock(wrapper, { input: undefined });
+    expect(result.error).toBeNull();
+
+    // 16 tasks, processed exactly once — uniqueness proves CAS is
+    // working through the request-scope adapter (no double-claim under
+    // contention) and that round-1 tasks are NOT re-claimed by round-2
+    // workers (re-entry idempotency via dispatcher eligibility).
+    expect(processed.length).toBe(16);
+    expect(new Set(processed).size).toBe(16);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Board-level meta emission — `task-board-meta` component item at
@@ -1059,12 +1238,10 @@ describe("taskBoard - seed idempotency", () => {
     expect(addedEvents.map((e) => e.data?.taskId).sort()).toEqual(["a", "b"]);
   });
 
-  // Broader note on re-entry (e.g. wrapping `board.block` inside an
-  // outer replan loop for the FIX-447 planAndExecute migration): each
-  // invocation of `board.block` creates a fresh sequencer state, so
-  // the `tasks` slot does not survive across invocations of the
-  // board itself. Migrations that need that shape should either use
-  // a resource-collection-backed collection (session-scope persists
-  // across invocations) or wait on a substrate addition that lifts
-  // the board's state into a parent slot. Tracked as a follow-up.
+  // Cross-invocation re-entry — the broader case where `board.block`
+  // is called multiple times from a parent sequencer — is covered by
+  // the `taskBoard - re-entry (request-scoped collection)` describe
+  // block above. The sequencer-backed default still creates fresh
+  // state per invocation by design; consumers that need re-entry opt
+  // into `collection: { backing: "request", ... }`.
 });

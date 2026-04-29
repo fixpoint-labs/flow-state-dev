@@ -148,6 +148,7 @@ export type {
   TaskBoardConfig,
   TaskBoardHandle,
   TaskBoardSequencerCollectionSpec,
+  TaskBoardRequestCollectionSpec,
   TaskBoardCollectionFactory,
   TaskBoardDispatcherInput,
   TaskBoardState,

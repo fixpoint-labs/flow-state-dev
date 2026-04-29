@@ -6,8 +6,8 @@ Plan/Task primitive locked in [FIX-443](https://linear.app/fixpoint-labs/issue/F
 This package ships four primitives:
 
 - **Task** — canonical work-unit schema (id, goal, status, deps, lease, etc.)
-- **TaskCollection** — uniform `TaskCollectionRef` API across two backings
-  (sequencer-state, resource-collection)
+- **TaskCollection** — uniform `TaskCollectionRef` API across three backings
+  (sequencer-state, request-state, resource-collection)
 - **Dispatcher** — `claim` contract + five standard dispatchers
 - **Worker** — `BlockDefinition<TaskWorkerInput<TIn>, TOut>` alias; uniform or
   registry shapes
@@ -57,7 +57,7 @@ status is a no-op and emits no item. Illegal transitions throw via
 
 ## TaskCollectionRef
 
-The same shape across both backings:
+The same shape across all backings:
 
 ```ts
 interface TaskCollectionRef<TInput, TOutput> {
@@ -169,6 +169,33 @@ Durability follows the sequencer's checkpoint contract
 latest-only with always-on default). State-snapshots emit at every step
 boundary; the latest is persisted to `stores.checkpoints` and overwritten on
 each subsequent step.
+
+### Request-state backing
+
+```ts
+const collection = getOrCreateTaskCollection({
+  ctx,
+  backing: "request",
+  collectionId: "replan-board",
+});
+await collection.addTask({ id: "t1", goal: "draft" });
+```
+
+Tasks live on `ctx.request.state[stateKey]` (default `stateKey` is the
+`collectionId`). The CAS surface is identical to the sequencer-state backing
+— `ctx.request.atomicState` exposes the same retry semantics — so the
+underlying mutation engine is shared.
+
+Use this when a collection has to survive across multiple block boundaries
+within a single request, such as a board re-entered from inside an outer
+replan loop. Sequencer-backed collections lose their state at each
+sequencer-invocation boundary because sequencer state is per-instance.
+Request-backed collections persist for the request lifetime, which is
+exactly the scope of "tasks shared across the blocks of one request."
+
+For collections that need to outlive a single request (a user's persistent
+queue, a multi-session work pool), use the resource-collection backing
+below.
 
 ### Resource-collection backing
 
