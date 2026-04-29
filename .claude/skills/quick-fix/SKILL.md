@@ -106,6 +106,8 @@ Launch a `general-purpose` sub-agent to determine what documentation and changel
    - The fix affects how developers use the framework
    - The fix resolves a known issue that users may have worked around
    - It does NOT need an entry for purely internal refactors or test-only changes
+
+   When an entry is warranted, follow the **Changelog style** section in `AGENTS.md`: 3–6 bullets, each one or two short sentences naming a user-facing fact. No file paths, no test counts, no "Out of scope" sections, no implementation rationale. The 2026-04-11 and 2026-03-20 entries in `changelog.md` are the reference style.
 4. **Return a concrete list** of files that need updating and what specifically should change in each. Don't just say "README might need updating" — say which section and what the new content should reflect.
 
 Review the sub-agent results. If they surface anything critical (a bug in the fix, a clearly better approach, a missed test case), address it before presenting to the user. For non-critical observations (possible future refactor, related issues to create), include them in the summary.

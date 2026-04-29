@@ -163,6 +163,7 @@ Launch a `superpowers:code-reviewer` sub-agent to:
 - Verify adherence to project conventions (AGENTS.md, best-practices.md)
 - Identify if changes affect other parts of the codebase
 - Check documentation needs (architecture docs, READMEs, changelog)
+- For changelog entries specifically, follow the **Changelog style** section in `AGENTS.md`: 3–6 bullets per entry, each one or two short sentences naming a user-facing fact. No file paths, test counts, "Out of scope" sections, implementation rationale, or per-sub-PR follow-up entries. The reference style is the 2026-04-11 and 2026-03-20 entries in `changelog.md`. If the spec is large, summarize at user-facing depth — don't transcribe the spec into the changelog.
 
 #### Process Review Results
 

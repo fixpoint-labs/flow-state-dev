@@ -25,7 +25,24 @@ Use this protocol when work is wave-based:
 - Completed wave work must update:
   - `docs/internal/waves/wave-1/wave-1.<letter>-journal.md`
   - `docs/internal/waves/wave-1/wave-1.<letter>-changelog.md`
-  - `changelog.md` (concise project-level summary)
+  - `changelog.md` (concise project-level summary — see Changelog style below)
+
+## Changelog style
+
+`changelog.md` is read by humans scanning what shipped — not by reviewers auditing how. Keep it tight.
+
+**Audience and depth.** Write for a contributor or user catching up on the project, not for the reviewer of the originating PR. Implementation rationale, decision lineage, file paths, exact test counts, "out of scope" sections, and references to other tickets belong in the PR description, the wave journal, or the Linear comment — not here.
+
+**Shape of an entry:**
+
+- One H3 per shipped change, dated under the H2 of the day it landed on `main`.
+- 3–6 bullets. Each bullet is one or two short sentences conveying a single user-facing fact: a new API, a renamed concept, a behavior change, a doc location. If you can't summarize at this level, the entry probably needs to be split or trimmed.
+- Lead each bullet with the fact, not bolded preamble. Inline `code` for symbol names is fine; bolded category labels at the start of every bullet are not.
+- No file paths, line numbers, LOC counts, test counts, or "Tests" / "Out of scope" sections. If a doc page is genuinely worth pointing readers at, name it; don't list every README that got a sentence updated.
+
+**One entry per PR, not per intermediate decision.** Mid-PR refinements get folded into the single entry for that PR. If a follow-up PR materially revises a feature whose entry is still in the same release window, prefer extending or rewriting the original entry rather than adding a "follow-up" entry that documents the diff.
+
+**When in doubt, look at the older entries.** The 2026-04-11 (`fsdev dev`, `defineCapability`, View Sequencer State) and 2026-03-20 (Resource Namespaces) entries are the reference style. The recent verbose entries were a regression — don't repeat them.
 
 ## Implementation guardrails
 
