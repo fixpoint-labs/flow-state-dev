@@ -56,14 +56,9 @@ function makeAnalyst(role: "market" | "financial"): TaskWorker {
     name: `${role}-analyst`,
     inputSchema: analystWorkerInputSchema,
     outputSchema: analysisOutputSchema,
-    execute: async (input) => {
-      // Yield to the event loop so the two analyses can actually
-      // overlap under concurrency=3.
-      await new Promise((r) => setTimeout(r, 5));
-      return {
-        findings: `${role}: ${input.input?.topic ?? "unknown"} analysis`,
-      };
-    },
+    execute: (input) => ({
+      findings: `${role}: ${input.input?.topic ?? "unknown"} analysis`,
+    }),
   }) as TaskWorker;
 }
 
