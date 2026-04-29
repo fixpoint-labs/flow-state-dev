@@ -44,6 +44,10 @@
     "./reactive-blackboard": {
       "types": "./dist/reactive-blackboard/index.d.ts",
       "default": "./dist/reactive-blackboard/index.js"
+    },
+    "./task-board": {
+      "types": "./dist/task-board/index.d.ts",
+      "default": "./dist/task-board/index.js"
     }
   },
   "license": "MIT",
@@ -55,6 +59,7 @@
   },
   "dependencies": {
     "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/tasks": "workspace:*",
     "zod": "^3.24.1"
   },
   "devDependencies": {

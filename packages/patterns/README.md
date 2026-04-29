@@ -101,6 +101,39 @@ const pool = drainPool({
 
 **Key exports:** `drainPool`, `createDrainPoolItemSchema`, `drainPoolProjectionSchema`, `drainPoolWorkerStateSchema`, `drainPoolItemMetaSchema`, `createSeedPool`, `createLeaseNext`, `createMarkDoneSuccess`, `createMarkDoneError`, `createCheckPool`, `createEnqueueHelper`
 
+### Task Board
+
+Concurrent drain over a `TaskCollection` with dependency gating and per-task worker routing. Built on the unified Plan/Task substrate (`@flow-state-dev/tasks`). Up to N workers run in parallel, each task is routed to the worker whose key matches `task.assignee`, and dependencies (`deps[]`) are respected via the topological dispatcher. Workers can enqueue new tasks mid-drain; the loop terminates when the board drains (or `shouldExit` returns true in `wait` mode).
+
+```typescript
+import { taskBoard, taskBoardStateSchema } from "@flow-state-dev/patterns/task-board";
+
+const board = taskBoard({
+  name: "research-board",
+  collection: { collectionId: "research" },
+  concurrency: 3,
+  dispatcher: "topological",
+  workers: {
+    "market-analyst": marketAnalyst,
+    "financial-analyst": financialAnalyst,
+    synthesizer: synthesizer,
+  },
+  initialTasks: [
+    { id: "m", goal: "market", assignee: "market-analyst" },
+    { id: "f", goal: "financial", assignee: "financial-analyst" },
+    { id: "s", goal: "synthesize", assignee: "synthesizer", deps: ["m", "f"] },
+  ],
+});
+
+// board.block plugs into a flow as an action; the parent sequencer's
+// stateSchema must include taskBoardStateSchema (or the canonical
+// Record<string, Task> at the configured stateKey).
+```
+
+`awaiting_review` is fully supported per FIX-443 §10.1: standard dispatchers skip it, and the loop counts it as in-flight (resume from `awaiting_review` wakes the loop on the next idle poll). `reviewPolicy`, review UI, and the `tasks.review.requested` topic ship in Wave 2.
+
+**Key exports:** `taskBoard`, `taskBoardStateSchema`, `taskBoardWorkerStateSchema`, `createSeedCollection`, `createSelectNextReadyTask`, `createClaimTask`, `createRunWorker`, `createRecordResult`, `createCheckBoard`
+
 ## Pattern-Level `instructions`
 
 All three coordination patterns (`planAndExecute`, `supervisor`, `blackboard`) accept an `instructions` prop — a top-level "team brief" that the pattern digests across its internal sub-blocks. This lets consumers apply a role, stance, or set of rules without rebuilding sub-blocks.
