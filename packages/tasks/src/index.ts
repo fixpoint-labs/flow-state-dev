@@ -44,6 +44,7 @@ export {
   TASK_CHANGE_COMPONENT_TYPE,
   type GetOrCreateTaskCollectionOptions,
   type SequencerBackingSpec,
+  type RequestBackingSpec,
   type ResourceBackingSpec,
 } from "./collection/get-or-create";
 

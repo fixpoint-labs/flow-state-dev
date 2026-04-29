@@ -1,8 +1,9 @@
 /**
  * Factory: `getOrCreateTaskCollection({ backing, ... })`.
  *
- * One-call helper that builds a `TaskCollectionRef` against either backing
- * and adapts the substrate's `onChange` callback to the framework's
+ * One-call helper that builds a `TaskCollectionRef` against any of three
+ * backings (sequencer-state, request-state, resource-collection) and
+ * adapts the substrate's `onChange` callback to the framework's
  * component-item stream via `ctx.emitComponent`.
  *
  * Each lifecycle transition emits a `task-change` component item keyed by
@@ -13,6 +14,7 @@
 import type { JsonObject } from "@flow-state-dev/core";
 import type {
   BlockContext,
+  RequestScopeHandle,
   ResourceCollectionRef,
   StateRef,
 } from "@flow-state-dev/core/types";
@@ -50,8 +52,35 @@ export interface ResourceBackingSpec extends CommonOptions {
   collection: ResourceCollectionRef<JsonObject>;
 }
 
+/**
+ * Request-state backing options (FIX-471).
+ *
+ * Tasks live on `ctx.request` — the same atomic-state surface a
+ * sequencer state ref exposes — so the collection survives every block
+ * boundary inside a single request. Use this backing when a board needs
+ * to be re-entered from inside an outer loop (e.g. a replan loop wraps
+ * the same `taskBoard.block` to drain freshly added tasks across
+ * iterations); sequencer-backed collections don't survive across
+ * sequencer invocations because each call creates a fresh state
+ * container.
+ *
+ * Lifetime is the request, not the session. For cross-request boards,
+ * use `backing: "resource"` with a session/user/org-scoped resource
+ * collection.
+ */
+export interface RequestBackingSpec extends CommonOptions {
+  backing: "request";
+  /**
+   * Top-level field on `ctx.request.state` that holds the
+   * `Record<id, Task>`. Defaults to the `collectionId`, which keeps
+   * multiple boards in the same request namespaced by default.
+   */
+  stateKey?: string;
+}
+
 export type GetOrCreateTaskCollectionOptions =
   | (SequencerBackingSpec & { ctx: BlockContext })
+  | (RequestBackingSpec & { ctx: BlockContext })
   | (ResourceBackingSpec & { ctx: BlockContext });
 
 /**
@@ -96,10 +125,53 @@ export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
     });
   }
 
+  if (options.backing === "request") {
+    return createSequencerBackedTaskCollection<TInput, TOutput>({
+      collectionId: options.collectionId,
+      sequencer: requestStateRef(options.ctx.request),
+      // Default to the collectionId — multiple boards in one request
+      // each get an isolated top-level slot without manual namespacing.
+      stateKey: options.stateKey ?? options.collectionId,
+      onChange,
+      now: options.now,
+    });
+  }
+
   return createResourceBackedTaskCollection<TInput, TOutput>({
     collectionId: options.collectionId,
     collection: options.collection,
     onChange,
     now: options.now,
   });
+}
+
+/**
+ * Adapt `ctx.request` to the `StateRef` shape the sequencer-backed CAS
+ * impl expects. Both surfaces expose the same `ScopeStateOps` mutators
+ * (`atomicState`, `patchState`, etc.) so the only adaptation needed is a
+ * live `state` getter and a stable name/instanceId pair. Keeping this in
+ * one place lets request-backed and sequencer-backed share the same
+ * mutation engine, retry semantics, and `onChange` emission path.
+ */
+function requestStateRef(
+  request: RequestScopeHandle
+): StateRef<Record<string, unknown>> {
+  return {
+    name: "request",
+    instanceId: request.identity.id,
+    // Live getter — the CAS read path inside createSequencerBackedTaskCollection
+    // calls `sequencer.state` to peek at the current tasks map (e.g. inside
+    // the retry-on-fail branch). A frozen snapshot would silently desync.
+    get state() {
+      return request.state as Record<string, unknown>;
+    },
+    input: undefined,
+    patchState: request.patchState.bind(request),
+    setState: request.setState.bind(request),
+    incState: request.incState.bind(request),
+    pushState: request.pushState.bind(request),
+    setStateRecord: request.setStateRecord.bind(request),
+    deleteStateRecord: request.deleteStateRecord.bind(request),
+    atomicState: request.atomicState.bind(request),
+  };
 }

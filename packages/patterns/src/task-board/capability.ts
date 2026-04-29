@@ -68,6 +68,27 @@ export interface TaskBoardSequencerCapabilityOptions {
 }
 
 /**
+ * Request-scoped options (FIX-471). The collection lives on
+ * `ctx.request` so any block in the request — board-internal or
+ * sibling — can read/mutate it. The capability does NOT declare
+ * `targetStateSchemas` (the slot isn't on a parent sequencer) and does
+ * NOT require the consumer to be inside the board's subtree, which is
+ * what enables re-entry from outer loops that wrap `board.block`
+ * across iterations.
+ *
+ * The slot key on `ctx.request.state` defaults to `collectionId` so
+ * multiple request-backed boards in one request are namespaced by
+ * default; override `stateKey` if the id collides with other
+ * request-state shapes.
+ */
+export interface TaskBoardRequestCapabilityOptions {
+  backing: "request";
+  boardName: string;
+  collectionId: string;
+  stateKey?: string;
+}
+
+/**
  * Factory-backed options. The capability defers entirely to the
  * caller-supplied `(ctx) => TaskCollectionRef` factory — used for
  * resource-collection-backed boards or any custom backing the pattern
@@ -87,6 +108,7 @@ export interface TaskBoardFactoryCapabilityOptions {
 
 export type TaskBoardCapabilityOptions =
   | TaskBoardSequencerCapabilityOptions
+  | TaskBoardRequestCapabilityOptions
   | TaskBoardFactoryCapabilityOptions;
 
 /**
@@ -140,6 +162,33 @@ export function createTaskBoardCapability(
       name: capabilityName,
       fns: (ctx: BlockContext): TaskBoardCapabilityAccessor => ({
         tasks: () => userFactory(ctx),
+      }),
+    });
+  }
+
+  if (options.backing === "request") {
+    // Request-backed: the collection's tasks live on `ctx.request`, so
+    // there's no parent sequencer slot to declare and no `getTarget`
+    // scoping check. Any block that lists this capability in `uses` can
+    // read or mutate the board, including blocks that run BEFORE,
+    // AFTER, or BETWEEN `board.block` invocations from a parent loop.
+    // That's the whole point of this backing — re-entry across multiple
+    // board calls within the same request.
+    //
+    // Tasks are namespaced on `ctx.request.state` at `[stateKey ??
+    // collectionId]`; collisions with other request-state shapes are
+    // the consumer's responsibility (override `stateKey` if needed).
+    const { collectionId, stateKey } = options;
+    return defineCapability({
+      name: capabilityName,
+      fns: (ctx: BlockContext): TaskBoardCapabilityAccessor => ({
+        tasks: () =>
+          getOrCreateTaskCollection({
+            ctx,
+            backing: "request",
+            collectionId,
+            stateKey,
+          }),
       }),
     });
   }
