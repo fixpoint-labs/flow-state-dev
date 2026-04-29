@@ -296,10 +296,22 @@ describe.each([
       expect(reclaimed).toBe(1);
       const t = collection.get("t")!;
       expect(t.status).toBe("pending");
-      expect(t.assignee).toBeUndefined();
       expect(t.leaseUntil).toBeUndefined();
       expect(events.at(-1)?.kind).toBe("resumed");
       expect(events.at(-1)?.prevStatus).toBe("in_progress");
+    });
+
+    it("preserves user-set assignee on reclaim (registry routing key)", async () => {
+      // Regression test: an earlier version cleared `assignee` on
+      // reclaim, which broke re-dispatch through a worker registry
+      // because `assignee` is the registry routing key, not the
+      // runtime worker identity.
+      setNow(1000);
+      await collection.addTask({ id: "t", goal: "t", assignee: "researcher" });
+      await collection.claim("w");
+      setNow(1000 + 60_000);
+      await collection.reclaim();
+      expect(collection.get("t")?.assignee).toBe("researcher");
     });
 
     it("does not reset still-leased tasks", async () => {

@@ -306,10 +306,12 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
             task.leaseUntil !== undefined &&
             task.leaseUntil < at
           ) {
+            // Preserve `assignee` — it's the user-set worker-registry
+            // routing key, not the runtime worker identity. Clearing it
+            // would break re-dispatch through a worker registry.
             const reset: Task<TInput, TOutput> = {
               ...task,
               status: "pending",
-              assignee: undefined,
               leaseUntil: undefined,
               updatedAt: at,
             };
