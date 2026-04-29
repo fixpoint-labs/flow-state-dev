@@ -17,6 +17,7 @@ import { StreamView, type RequestGroup } from "@/components/workspace/stream-vie
 import { TraceView } from "@/components/workspace/trace-view";
 import { ActionBar } from "@/components/workspace/action-bar";
 import { StreamStatusIndicator } from "@/components/workspace/stream-status";
+import { LiveSwitch } from "@/components/workspace/live-switch";
 import { SessionContextPanel } from "@/components/detail/session-context";
 import { TokenUsageSummary } from "@/components/detail/token-usage-summary";
 import { ItemDetail } from "@/components/detail/item-detail";
@@ -26,6 +27,7 @@ import { useRequestStream } from "@/hooks/use-request-stream";
 import { useActionDispatch } from "@/hooks/use-action-dispatch";
 import { useSessionRequests } from "@/hooks/use-session-requests";
 import { useReplay } from "@/hooks/use-replay";
+import { useLiveMode } from "@/hooks/use-live-mode";
 
 const NAV_EXPANDED_WIDTH = 240;
 const NAV_COLLAPSED_WIDTH = 64;
@@ -68,6 +70,11 @@ function AppContent() {
   const { sendAction, isSending, lastResponse } = useActionDispatch();
 
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  // Tracks the request id the user dispatched from the action bar while it's
+  // still in flight. Distinct from `activeRequestId` so we can tell whether
+  // the open SSE stream belongs to the user (locks the Live toggle) or was
+  // auto-subscribed by live mode (toggle stays interactive).
+  const [dispatchedRequestId, setDispatchedRequestId] = useState<string | null>(null);
   const [liveItems, setLiveItems] = useState<Map<string, OutputItem[]>>(new Map());
 
   const { replayState, isReplaying, replayFull, replayFromCursor, simulateReconnect, clearReplay } = useReplay();
@@ -97,13 +104,50 @@ function AppContent() {
   const [stateRefreshKey, setStateRefreshKey] = useState(0);
   const [sessionRefreshKey, setSessionRefreshKey] = useState(0);
 
+  const { liveMode, lockedOn, liveSubscriptionRequestId, liveStatus, showToggle, toggleLiveMode } =
+    useLiveMode({
+      requests,
+      streamStatus,
+      dispatchedRequestId,
+      refreshRequests,
+    });
+
   useEffect(() => {
     if (streamStatus === "completed" || streamStatus === "failed") {
       void refreshRequests();
       setStateRefreshKey((k) => k + 1);
       if (isReplaying) clearReplay();
+      // The user-dispatched stream finished (or errored). Releasing the id
+      // unlocks the Live toggle and lets live mode pick up any external
+      // in-progress request that's still running.
+      setDispatchedRequestId(null);
     }
   }, [streamStatus, refreshRequests, isReplaying, clearReplay]);
+
+  // Live mode wants to subscribe to an external in-progress request. Drop any
+  // partial liveItems for it so polled `req.items` show through cleanly if SSE
+  // can't connect.
+  useEffect(() => {
+    if (!liveSubscriptionRequestId) return;
+    if (activeRequestId === liveSubscriptionRequestId) return;
+    setLiveItems((prev) => {
+      if (!prev.has(liveSubscriptionRequestId)) return prev;
+      const next = new Map(prev);
+      next.delete(liveSubscriptionRequestId);
+      return next;
+    });
+    setActiveRequestId(liveSubscriptionRequestId);
+  }, [liveSubscriptionRequestId, activeRequestId]);
+
+  // Live mode turned off while an auto-subscribed external stream is open: close it.
+  // The user-dispatched stream (if any) is preserved.
+  useEffect(() => {
+    if (liveMode) return;
+    if (!activeRequestId) return;
+    if (activeRequestId === dispatchedRequestId) return;
+    if (replayState.requestId) return;
+    setActiveRequestId(null);
+  }, [liveMode, activeRequestId, dispatchedRequestId, replayState.requestId]);
 
   useEffect(() => {
     if (streamRequestId && streamItems.length > 0) {
@@ -145,6 +189,7 @@ function AppContent() {
       const response = await sendAction(activeFlowKind, effectiveSessionId, action, input);
       if (response?.request.id) {
         setActiveRequestId(response.request.id);
+        setDispatchedRequestId(response.request.id);
       }
     },
     [activeFlowKind, effectiveSessionId, sendAction],
@@ -255,11 +300,14 @@ function AppContent() {
                 <TabsTrigger value="stream">Stream</TabsTrigger>
                 <TabsTrigger value="trace">Trace</TabsTrigger>
               </TabsList>
-              {streamStatus === "streaming" && (
-                <div className="flex items-center gap-1.5">
-                  <span className="inline-block h-2 w-2 rounded-full bg-green-400 animate-pulse" />
-                  <span className="text-[10px] text-slate-400">Auto-refresh on</span>
-                </div>
+              {(liveStatus !== "idle" || showToggle) && (
+                <LiveSwitch
+                  on={lockedOn ? true : liveMode}
+                  disabled={lockedOn}
+                  status={liveStatus}
+                  showToggle={showToggle}
+                  onToggle={() => toggleLiveMode()}
+                />
               )}
             </div>
 
