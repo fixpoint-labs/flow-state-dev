@@ -10,10 +10,15 @@
  *
  * Returns `{ decision: "continue" }` so the loop predicate
  * (`r.decision !== "complete"`) keeps the board re-entry alive for one
- * more iteration. If the replanner emits a task whose `id` collides
- * with an existing collection entry the substrate's `addTask` throws —
- * that's a hard contract violation by the replanner and intentionally
- * propagates.
+ * more iteration.
+ *
+ * Id-collision handling: an LLM replanner naturally re-emits ids that
+ * already exist in the collection (e.g. it asks to "redo task-1"). The
+ * substrate's `addTasks` rejects duplicates, so we auto-suffix the
+ * conflicting ids with `-replan-N` and remap any within-batch deps that
+ * referenced the original id. The replanner's intent — adding fresh
+ * work — is preserved without breaking referential integrity inside
+ * the batch.
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
@@ -70,14 +75,38 @@ export function createApplyReplan(options: ApplyReplanOptions) {
         collectionId,
       });
 
-      const tasks: TaskInit[] = input.tasks.map((t) => ({
-        ...(t.id !== undefined ? { id: t.id } : {}),
-        goal: t.goal,
-        deps: t.deps ?? t.dependencies ?? [],
-        ...(typeof t.priority === "number" ? { priority: t.priority } : {}),
-        ...(t.input !== undefined ? { input: t.input } : {}),
-        maxAttempts: t.maxAttempts ?? maxAttemptsPerTask,
-      }));
+      const taken = new Set(collection.list().map((t) => t.id));
+
+      // Build a remap from the replanner's chosen id (if any) to the id
+      // we'll actually use. Suffix duplicates so the LLM's natural
+      // "redo task-1" output doesn't collide with the original.
+      const idRemap = new Map<string, string>();
+      for (const t of input.tasks) {
+        if (t.id === undefined) continue;
+        let candidate = t.id;
+        let suffix = 1;
+        while (taken.has(candidate)) {
+          candidate = `${t.id}-replan-${suffix}`;
+          suffix++;
+        }
+        idRemap.set(t.id, candidate);
+        taken.add(candidate);
+      }
+
+      const tasks: TaskInit[] = input.tasks.map((t) => {
+        const remappedId =
+          t.id !== undefined ? idRemap.get(t.id) : undefined;
+        const rawDeps = t.deps ?? t.dependencies ?? [];
+        const remappedDeps = rawDeps.map((d) => idRemap.get(d) ?? d);
+        return {
+          ...(remappedId !== undefined ? { id: remappedId } : {}),
+          goal: t.goal,
+          deps: remappedDeps,
+          ...(typeof t.priority === "number" ? { priority: t.priority } : {}),
+          ...(t.input !== undefined ? { input: t.input } : {}),
+          maxAttempts: t.maxAttempts ?? maxAttemptsPerTask,
+        };
+      });
 
       if (tasks.length > 0) {
         await collection.addTasks(tasks);

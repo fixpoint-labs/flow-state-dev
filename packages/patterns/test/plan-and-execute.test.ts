@@ -581,6 +581,85 @@ describe("plan-and-execute pattern", () => {
       expect(output.totalSteps).toBe(2);
       expect(output.tasks.find((t: any) => t.id === "added")).toBeDefined();
     });
+
+    it("auto-suffixes replanner-emitted ids that collide with existing tasks", async () => {
+      // Real-world LLM replanners often re-emit an id that already lives
+      // in the collection (e.g. asking to "redo task-1"). The substrate
+      // rejects duplicate ids, so applyReplan suffixes the colliding id
+      // and remaps any within-batch deps.
+      const planner = createDeterministicPlanner([
+        { id: "task-1", goal: "Initial work" },
+      ]);
+
+      let pass = 0;
+      const partialFailExecutor = handler({
+        name: "partial-fail-executor",
+        inputSchema: z.any(),
+        outputSchema: z.object({ summary: z.string(), success: z.boolean() }),
+        execute: () => {
+          pass += 1;
+          // Fail the first task to provoke a replan.
+          if (pass === 1) {
+            return {
+              summary: "needed context",
+              success: false,
+            };
+          }
+          return { summary: "ok", success: true };
+        },
+      });
+
+      // Evaluator triggers replan on first call, completes on second.
+      const evaluatorMock = mockGenerator({
+        name: "id-collision-test-evaluate-llm",
+        script: [
+          { structuredOutput: { decision: "replan", reasoning: "redo it" } },
+          { structuredOutput: { decision: "complete", reasoning: "done" } },
+        ],
+      });
+
+      // Replanner re-emits "task-1" — exactly the colliding case.
+      // Includes a within-batch dep that references the colliding id.
+      const replannerMock = mockGenerator({
+        name: "id-collision-test-replanner",
+        script: [
+          {
+            structuredOutput: {
+              tasks: [
+                { id: "task-1", goal: "redo first task" },
+                { id: "task-2", goal: "depends on redo", deps: ["task-1"] },
+              ],
+            },
+          },
+        ],
+      });
+
+      const block = planAndExecute({
+        name: "id-collision-test",
+        planner,
+        stepExecutor: partialFailExecutor,
+        enableReplanning: true,
+        maxIterations: 3,
+        synthesizer: false,
+      });
+
+      const result = await testBlock(block, {
+        input: { goal: "Test id collision" },
+        generators: {
+          "id-collision-test-evaluate-llm": evaluatorMock,
+          "id-collision-test-replanner": replannerMock,
+        },
+      });
+
+      expect(result.error).toBeNull();
+      const output = result.output as { tasks: Array<{ id: string }> };
+      const ids = output.tasks.map((t) => t.id).sort();
+      // Original task-1, replan-suffixed task-1, and task-2 (which had
+      // its dep remapped from task-1 → task-1-replan-1).
+      expect(ids).toContain("task-1");
+      expect(ids).toContain("task-1-replan-1");
+      expect(ids).toContain("task-2");
+    });
   });
 
   // -----------------------------------------------------------------------
