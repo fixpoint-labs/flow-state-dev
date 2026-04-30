@@ -17,8 +17,12 @@
  * `task-board-meta` items consumed by this component.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
-import { ItemsRenderer } from "@flow-state-dev/react";
+import type { BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
+import {
+  ItemRenderer,
+  buildItemRenderStream,
+  type ItemRenderSegment,
+} from "@flow-state-dev/react";
 import { ToolGroup } from "./tool";
 import { cn } from "@/lib/utils";
 import {
@@ -543,11 +547,7 @@ function TaskPlanRow({
           />
         </summary>
         <div className="mt-1.5 space-y-1.5 pl-5">
-          <ItemsRenderer
-            items={windowItems!}
-            toolGroupRenderer={ToolGroup}
-            showSubAgents
-          />
+          <TaskWindowItems items={windowItems!} />
         </div>
       </details>
     </li>
@@ -559,6 +559,122 @@ function formatDeps(task: Task): string | null {
   if (task.deps.length === 1) return task.deps[0]!;
   if (task.deps.length <= 3) return task.deps.join(", ");
   return `${task.deps.slice(0, 2).join(", ")}, +${task.deps.length - 2}`;
+}
+
+// ---------------------------------------------------------------------------
+// Per-task expansion renderer
+// ---------------------------------------------------------------------------
+
+/**
+ * Renders the items emitted during a task's execution window. Uses
+ * `buildItemRenderStream` for the same dedup / sub-agent / tool-grouping
+ * passes as the chat-thread `<ItemsRenderer>`, then dispatches each
+ * segment with a kitchen-sink twist:
+ *
+ *   - tool-call groups → `<ToolGroup>` (rollup with expandable details)
+ *   - `block_output` items → `<WorkerBlockOutput>` (registry hides them
+ *     globally with `block_output: false`; inside a task they're the
+ *     worker's actual response and we want to surface them)
+ *   - everything else → `<ItemRenderer>` (delegates to the registry)
+ */
+function TaskWindowItems({ items }: { items: OutputItem[] }) {
+  const segments = useMemo<ItemRenderSegment[]>(
+    () =>
+      buildItemRenderStream(items, undefined, {
+        deduplicateByKey: true,
+        showSubAgents: true,
+        groupToolCalls: true,
+      }),
+    [items]
+  );
+
+  if (segments.length === 0) return null;
+
+  return (
+    <>
+      {segments.map((segment, i) => {
+        if (segment.kind === "group") {
+          return (
+            <ToolGroup
+              key={`tg-${segment.items[0]?.id ?? i}`}
+              items={segment.items}
+            />
+          );
+        }
+        const item = segment.item;
+        if (item.type === "block_output") {
+          return (
+            <WorkerBlockOutput key={item.id} item={item as BlockOutputItem} />
+          );
+        }
+        return <ItemRenderer key={item.id} item={item} />;
+      })}
+    </>
+  );
+}
+
+/**
+ * Renders the inline payload of a worker's `block_output` item.
+ *
+ * Sub-agent generators in P&E and supervisor produce structured outputs
+ * (e.g. `{ summary, success, reason? }` or a plain string). The chat
+ * registry hides `block_output` globally so it doesn't clutter the main
+ * thread, but inside a task expansion the worker's response IS what the
+ * user came to see. This component pulls a sensible text representation
+ * out of the structured value and shows it.
+ *
+ * `output.kind === "ref"` and `"structure"` are skipped — those are
+ * pass-through wrappers; the leaf inline value is on a different item
+ * already in the same window.
+ */
+function WorkerBlockOutput({ item }: { item: BlockOutputItem }) {
+  const text = useMemo(() => extractWorkerText(item), [item]);
+  if (text === null) return null;
+
+  const isStreaming = item.status === "in_progress";
+
+  return (
+    <div
+      className={cn(
+        "whitespace-pre-wrap rounded border-l-2 border-muted-foreground/20 pl-2 text-xs leading-snug",
+        isStreaming
+          ? "text-foreground/90"
+          : "text-muted-foreground"
+      )}
+    >
+      {text}
+      {isStreaming && (
+        <span className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-blue-500/60" />
+      )}
+    </div>
+  );
+}
+
+function extractWorkerText(item: BlockOutputItem): string | null {
+  if (item.output.kind !== "inline") return null;
+  const value = item.output.value;
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") {
+    return value.length > 0 ? value : null;
+  }
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const summary = obj.summary;
+    if (typeof summary === "string" && summary.length > 0) {
+      const reason =
+        obj.success === false && typeof obj.reason === "string"
+          ? `\n\nReason: ${obj.reason}`
+          : "";
+      return summary + reason;
+    }
+    // Generic structured output — show as JSON so we never silently swallow content.
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return null;
+    }
+  }
+  return String(value);
 }
 
 // ---------------------------------------------------------------------------
