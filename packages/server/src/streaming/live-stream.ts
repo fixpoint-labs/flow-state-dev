@@ -13,6 +13,7 @@ import {
 } from "./response-emitter";
 import type { InternalStreamingSeams } from "./internal/seams";
 import { createClientEventFilter } from "./client-filter";
+import { injectHeartbeat } from "./heartbeat";
 
 export type LiveRequestStream = {
   readonly requestId: string;
@@ -25,6 +26,14 @@ export type CreateLiveRequestStreamOptions = {
   requestId: string;
   maxBufferSize?: number;
   internalSeams?: InternalStreamingSeams;
+  /**
+   * SSE heartbeat interval in milliseconds. When set to a positive number,
+   * the readable stream emits periodic `: ping\n\n` comment frames to keep
+   * proxies/load balancers from closing idle connections and to give
+   * clients a wire-level signal for inactivity watchdogs. When 0, undefined,
+   * or negative, the stream is returned unwrapped.
+   */
+  sseHeartbeatMs?: number;
 };
 
 const encoder = new TextEncoder();
@@ -43,7 +52,7 @@ export function createLiveRequestStream(
   let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
   let closed = false;
 
-  const readable = new ReadableStream<Uint8Array>({
+  const rawReadable = new ReadableStream<Uint8Array>({
     start(c) {
       controller = c;
     },
@@ -51,6 +60,11 @@ export function createLiveRequestStream(
       closed = true;
     }
   });
+
+  const readable =
+    options.sseHeartbeatMs !== undefined && options.sseHeartbeatMs > 0
+      ? injectHeartbeat(rawReadable, options.sseHeartbeatMs)
+      : rawReadable;
 
   const shouldForward = createClientEventFilter();
 

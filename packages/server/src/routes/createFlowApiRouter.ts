@@ -25,6 +25,7 @@ import {
   HTTP_TRANSPORT_SOURCE
 } from "../transports/http/createHttpTransportAdapter";
 import { TransportRouteCollisionError } from "../transports/errors";
+import { createStaleRequestSweeper } from "../execution/stale-request-sweeper";
 import type {
   InboundTransportAdapter,
   PrincipalResolver,
@@ -78,6 +79,32 @@ export type CreateFlowApiRouterOptions = {
    * wins over this fallback. (FIX-23)
    */
   resolvePrincipal?: PrincipalResolver;
+
+  /**
+   * Default SSE wire heartbeat interval in milliseconds. Applied to every
+   * live and GET-attach SSE response when the per-flow
+   * `request.sseHeartbeatMs` is unset. The heartbeat keeps NAT/proxy idle
+   * timeouts from closing the connection and gives clients a robust
+   * inactivity signal.
+   * Default: 15000 (15 seconds). Set to 0 to disable.
+   */
+  defaultSseHeartbeatMs?: number;
+
+  /**
+   * How often the server-internal stale-request sweeper runs (milliseconds).
+   * The sweeper marks `in_progress` requests whose registry heartbeat has
+   * stopped as `interrupted`, releasing session locks for the next action.
+   * Default: 30000 (30 seconds). Set to 0 to disable.
+   */
+  staleSweepIntervalMs?: number;
+
+  /**
+   * Heartbeat-age threshold (milliseconds) used by the stale-request
+   * sweeper to decide that an active request has gone stuck. Should be
+   * at least 2× the executor's registry heartbeat (default 10s) to avoid
+   * false positives. Default: 60000 (60 seconds).
+   */
+  staleSweepThresholdMs?: number;
 };
 
 type CreateInternalFlowApiRouterOptions = CreateFlowApiRouterOptions & {
@@ -137,6 +164,9 @@ export async function disposeFlowApiRouter(router: FlowApiRouter): Promise<void>
   await dispose();
 }
 
+const DEFAULT_STALE_SWEEP_INTERVAL_MS = 30_000;
+const DEFAULT_STALE_SWEEP_THRESHOLD_MS = 60_000;
+
 /**
  * Creates a catch-all route adapter with default no-op internal seam behavior.
  */
@@ -146,6 +176,22 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
     internalSeams: NOOP_INTERNAL_ROUTE_SEAMS
   };
   const handlers = createFlowRouteHandlers(internalOptions);
+
+  // Server-internal sweeper: marks requests whose executor heartbeat stopped
+  // as interrupted, releasing session locks. Disabled when interval is 0.
+  const staleSweepIntervalMs =
+    options.staleSweepIntervalMs !== undefined
+      ? options.staleSweepIntervalMs
+      : DEFAULT_STALE_SWEEP_INTERVAL_MS;
+  const staleSweepThresholdMs =
+    options.staleSweepThresholdMs !== undefined
+      ? options.staleSweepThresholdMs
+      : DEFAULT_STALE_SWEEP_THRESHOLD_MS;
+  const sweeper = createStaleRequestSweeper({
+    stores: handlers.host.stores,
+    intervalMs: staleSweepIntervalMs,
+    staleThresholdMs: staleSweepThresholdMs
+  });
 
   // Built-in HTTP adapter delegates to the canonical handler. The catch-all
   // route returned by the adapter doesn't need to be wired into a custom
@@ -230,6 +276,8 @@ export function createFlowApiRouter(options: CreateFlowApiRouterOptions): FlowAp
   // not part of the router's public shape (keeps `keyof typeof router`
   // narrow for consumers that index by HTTP method).
   const dispose = async (): Promise<void> => {
+    // Stop the sweeper first so its tick can't race with adapter teardown.
+    sweeper.dispose();
     for (let i = allBindings.length - 1; i >= 0; i--) {
       const entry = allBindings[i];
       if (entry === undefined || entry.bindings.stop === undefined) continue;

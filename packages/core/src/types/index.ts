@@ -158,6 +158,8 @@ export type {
 
 export type { BindingCacheOptions, BindingProvider } from "./binding";
 
+export type { RequestStatus, RequestStatusSnapshot } from "./request";
+
 export type { SequencerCheckpoint } from "./checkpoints";
 
 export type { Middleware, MiddlewareContext, MiddlewareFn } from "./middleware";
