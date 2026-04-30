@@ -281,4 +281,4 @@ Adapters are plain objects. No class inheritance, no registration step. Type err
 ## Next steps
 
 - See [Core Utilities](./core) for the general-purpose utility blocks
-- See [Coordinator](../coordinator), [Supervisor](../supervisor), and [Plan and Execute](../plan-and-execute) for composable multi-step patterns that use these utilities internally
+- See [Parallel Tasks](../parallelTasks), [Supervisor](../supervisor), and [Plan and Execute](../plan-and-execute) for composable multi-step patterns that use these utilities internally

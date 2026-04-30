@@ -274,6 +274,6 @@ const selfCorrectingChat = sequencer({ name: "self-correct", inputSchema: chatIn
 ## See also
 
 - [Metacognition](/thought-fabric/metacognition) — full guide to the bias & sycophancy analyzer
-- [Coordinator](./coordinator) — single-pass fan-out for independent tasks
+- [Parallel Tasks](./parallelTasks) — single-pass fan-out for independent tasks
 - [Supervisor](./supervisor) — fan-out with quality review loop
 - [Patterns Overview](./overview) — when to use which pattern

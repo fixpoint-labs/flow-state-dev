@@ -73,11 +73,12 @@ const sidebars: SidebarsConfig = {
           type: "category",
           label: "Composable Patterns",
           items: [
-            "patterns/coordinator",
+            "patterns/parallelTasks",
             "patterns/supervisor",
             "patterns/plan-and-execute",
             "patterns/response-auditor",
             "patterns/reactive-blackboard",
+            "patterns/coordinator",
             "patterns/drain-pool",
           ],
         },
