@@ -30,14 +30,16 @@ export const mcpCap = createMcpCapability({
       ],
       category: "project-management",
       transport: {
-        type: "sse",
-        url: "https://mcp.linear.app/sse",
+        type: "http",
+        url: "https://mcp.linear.app/mcp",
         headers: { Authorization: `Bearer ${process.env.LINEAR_MCP_API_KEY}` },
       },
     },
   ],
 });
 ```
+
+`transport.type` accepts `"http"` (Streamable HTTP, recommended) or `"sse"`. Most MCP providers — Linear included — are migrating off SSE; check the provider's docs for the current endpoint and transport.
 
 Pass the capability to your generator:
 
