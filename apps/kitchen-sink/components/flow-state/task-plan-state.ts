@@ -221,6 +221,13 @@ export function scopeItemsToLatestCollectionRequest(
  * the renderer's status grouping. `task-board-meta` items are not added
  * either — they're the entry point that mounts `<TaskPlan />` at the
  * chat position.
+ *
+ * Windows use `item.ts` (timestamp), not `item.itemIndex`. itemIndex is
+ * not monotonic across emit batches — multiple items can share an
+ * index, and AI-SDK-driven `block_tool_output` emissions sometimes
+ * land after the worker's terminal `task-change` in itemIndex order
+ * but inside it chronologically. Timestamps are monotonic per emitter
+ * and reliably bracket the worker's actual work.
  */
 export function collectTaskOwnedItemIds(
   items: ReadonlyArray<OutputItem>,
@@ -228,8 +235,8 @@ export function collectTaskOwnedItemIds(
   const owned = new Set<string>();
 
   type WindowKey = string;
-  const startIndex = new Map<WindowKey, number>();
-  const endIndex = new Map<WindowKey, number>();
+  const startTs = new Map<WindowKey, number>();
+  const endTs = new Map<WindowKey, number>();
 
   for (const item of items) {
     if (!isComponentItem(item)) continue;
@@ -240,18 +247,18 @@ export function collectTaskOwnedItemIds(
     if (collectionId === undefined || taskId === undefined) continue;
     const key = `${collectionId}/${taskId}`;
 
-    if (data.kind === "claimed" && !startIndex.has(key)) {
-      startIndex.set(key, item.itemIndex);
+    if (data.kind === "claimed" && !startTs.has(key)) {
+      startTs.set(key, item.ts);
     } else if (
       data.kind === "completed" ||
       data.kind === "errored" ||
       data.kind === "cancelled"
     ) {
-      endIndex.set(key, item.itemIndex);
+      endTs.set(key, item.ts);
     }
   }
 
-  if (startIndex.size === 0) return owned;
+  if (startTs.size === 0) return owned;
 
   for (const item of items) {
     if (isComponentItem(item)) {
@@ -262,10 +269,10 @@ export function collectTaskOwnedItemIds(
         continue;
       }
     }
-    for (const [key, start] of startIndex) {
-      if (item.itemIndex < start) continue;
-      const end = endIndex.get(key);
-      if (end !== undefined && item.itemIndex > end) continue;
+    for (const [key, start] of startTs) {
+      if (item.ts < start) continue;
+      const end = endTs.get(key);
+      if (end !== undefined && item.ts > end) continue;
       owned.add(item.id);
       break;
     }
@@ -304,8 +311,8 @@ export function extractTaskItemWindows(
   collectionId: string,
 ): Map<string, OutputItem[]> {
   const windows = new Map<string, OutputItem[]>();
-  const startIndex = new Map<string, number>();
-  const endIndex = new Map<string, number>();
+  const startTs = new Map<string, number>();
+  const endTs = new Map<string, number>();
 
   for (const item of items) {
     if (!isComponentItem(item)) continue;
@@ -314,18 +321,18 @@ export function extractTaskItemWindows(
     if (data.collectionId !== collectionId) continue;
     if (data.taskId === undefined) continue;
 
-    if (data.kind === "claimed" && !startIndex.has(data.taskId)) {
-      startIndex.set(data.taskId, item.itemIndex);
+    if (data.kind === "claimed" && !startTs.has(data.taskId)) {
+      startTs.set(data.taskId, item.ts);
     } else if (
       data.kind === "completed" ||
       data.kind === "errored" ||
       data.kind === "cancelled"
     ) {
-      endIndex.set(data.taskId, item.itemIndex);
+      endTs.set(data.taskId, item.ts);
     }
   }
 
-  if (startIndex.size === 0) return windows;
+  if (startTs.size === 0) return windows;
 
   for (const item of items) {
     if (isComponentItem(item)) {
@@ -336,10 +343,10 @@ export function extractTaskItemWindows(
         continue;
       }
     }
-    for (const [taskId, start] of startIndex) {
-      if (item.itemIndex < start) continue;
-      const end = endIndex.get(taskId);
-      if (end !== undefined && item.itemIndex > end) continue;
+    for (const [taskId, start] of startTs) {
+      if (item.ts < start) continue;
+      const end = endTs.get(taskId);
+      if (end !== undefined && item.ts > end) continue;
       let bucket = windows.get(taskId);
       if (bucket === undefined) {
         bucket = [];
