@@ -12,10 +12,9 @@
  * `<TaskCollection />` consumer of the same item streams rather than forking
  * this renderer.
  *
- * `<Plan />` (sibling file) remains the renderer for the legacy
- * `plan-meta` / `plan-task` shape emitted by Plan & Execute and Supervisor.
- * Those patterns migrate onto this component in FIX-447, after which `Plan`
- * becomes a thin alias and is deprecated.
+ * The legacy `<Plan />` component (plan-meta / plan-task shape) has been
+ * retired. Plan & Execute and Supervisor now emit `task-change` and
+ * `task-board-meta` items consumed by this component.
  */
 import React, { useMemo } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";

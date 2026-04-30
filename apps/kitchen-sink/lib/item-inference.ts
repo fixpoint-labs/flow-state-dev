@@ -11,16 +11,16 @@ type BlockOutputItem = OutputItem & {
 };
 
 /**
- * Infers the thinking style from a set of items by looking for plan-meta
+ * Infers the thinking style from a set of items by looking for task-board-meta
  * component items or supervisor block outputs.
  */
 export function inferThinkingStyle(items: OutputItem[]): ThinkingStyle | null {
-  const planMetaItems = items.filter(
-    (i) => i.type === "component" && (i as ComponentItem).component === "plan-meta",
+  const boardMetaItems = items.filter(
+    (i) => i.type === "component" && (i as ComponentItem).component === "task-board-meta",
   ) as ComponentItem[];
 
-  if (planMetaItems.length > 0) {
-    const isSupervisor = planMetaItems.some((i) => i.key?.includes("supervisor"));
+  if (boardMetaItems.length > 0) {
+    const isSupervisor = boardMetaItems.some((i) => i.key?.includes("supervisor"));
     return isSupervisor ? "supervisor" : "plan-and-execute";
   }
 
