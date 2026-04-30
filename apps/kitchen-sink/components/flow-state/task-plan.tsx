@@ -128,6 +128,20 @@ export type TaskPlanProps = {
   /** Identifier of the TaskCollection this view is bound to. Required. */
   collectionId: string;
   /**
+   * Scope the rendered plan to a specific request. The same collection
+   * runs once per chat message (request-backed substrate), so the
+   * session-level item stream concatenates many runs of the same
+   * collection. Without this scope, every TaskPlan instance in the chat
+   * history reads from the global stream and shows the latest run's
+   * data — including TaskPlans rendered at older positions in the
+   * thread. Pass `requestId` to bind the plan to its originating run.
+   *
+   * When omitted, the component falls back to the most recent request
+   * that emitted events for `collectionId` (useful when there's only
+   * ever one active board, e.g. embedded views).
+   */
+  requestId?: string;
+  /**
    * Optional explicit items source. When omitted the component reads from
    * `useSessionItems()` context, matching the existing registry components'
    * convention. Pass an array when rendering outside a session context (tests,
@@ -172,6 +186,7 @@ export type TaskPlanProps = {
  */
 export function TaskPlan({
   collectionId,
+  requestId,
   items: itemsProp,
   groupByAssignee = false,
   statusConfig,
@@ -183,14 +198,15 @@ export function TaskPlan({
   const sessionItems = useSessionItems();
   const rawItems = itemsProp ?? sessionItems;
 
-  // Scope to the latest request that emitted events for this collection.
-  // The substrate backing is already request-scoped, but the session item
-  // stream accumulates — without this filter the renderer carries the
-  // previous chat message's plan into the new one.
-  const items = useMemo(
-    () => scopeItemsToLatestCollectionRequest(rawItems, collectionId),
-    [rawItems, collectionId]
-  );
+  // Scope to one request. When `requestId` is supplied, every TaskPlan
+  // mount in the chat history binds to its own run. Otherwise fall back
+  // to the latest request that emitted events for the collection.
+  const items = useMemo(() => {
+    if (requestId !== undefined) {
+      return rawItems.filter((item) => item.requestId === requestId);
+    }
+    return scopeItemsToLatestCollectionRequest(rawItems, collectionId);
+  }, [rawItems, collectionId, requestId]);
 
   const state = useMemo(
     () => extractTaskPlanState(items, collectionId),

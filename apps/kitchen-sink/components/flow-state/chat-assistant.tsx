@@ -11,17 +11,19 @@ import { AuditAnnotation } from "./audit-annotation";
 import { TaskPlan } from "./task-plan";
 
 /**
- * Renders `<TaskPlan />` once per task board. The board emits a
- * `task-board-meta` item keyed by collectionId — latest-wins keeps a single
- * TaskPlan mounted per board across phase transitions. `task-change` items
- * are read by TaskPlan internally via `useSessionItems`, so they need no
- * standalone renderer.
+ * Renders `<TaskPlan />` once per task board, keyed to the request that
+ * emitted the `task-board-meta`. Many requests in the chat history can
+ * run the same `collectionId`; passing `requestId` binds each rendered
+ * board to its own run instead of the global "latest run" view.
+ *
+ * `task-change` items are read by TaskPlan internally via
+ * `useSessionItems`, so they need no standalone renderer.
  */
 function TaskBoardMeta({ item }: { item: ComponentItem }) {
   const collectionId = (item.data as { collectionId?: string } | undefined)
     ?.collectionId;
   if (collectionId === undefined) return null;
-  return <TaskPlan collectionId={collectionId} />;
+  return <TaskPlan collectionId={collectionId} requestId={item.requestId} />;
 }
 
 /**
