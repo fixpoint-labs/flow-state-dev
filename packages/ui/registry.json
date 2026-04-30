@@ -296,6 +296,34 @@
         "target": "components/flow-state/sandbox.tsx"
       }],
       "categories": ["ai", "code"]
+    },
+    {
+      "name": "info-card",
+      "title": "Info Card",
+      "type": "registry:component",
+      "description": "Generative-UI info card: title, optional image, fact rows. Pairs with the emitInfoCard tool from @flow-state-dev/ui/generative.",
+      "dependencies": ["@flow-state-dev/core"],
+      "registryDependencies": [],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/generative/info-card.tsx",
+        "target": "components/flow-state/generative/info-card.tsx"
+      }],
+      "categories": ["ai", "generative"]
+    },
+    {
+      "name": "link-card",
+      "title": "Link Card",
+      "type": "registry:component",
+      "description": "Generative-UI link card: rich preview for an external URL. Pairs with the emitLinkCard tool from @flow-state-dev/ui/generative.",
+      "dependencies": ["@flow-state-dev/core"],
+      "registryDependencies": [],
+      "files": [{
+        "type": "registry:component",
+        "path": "registry/components/generative/link-card.tsx",
+        "target": "components/flow-state/generative/link-card.tsx"
+      }],
+      "categories": ["ai", "generative"]
     }
   ]
 }

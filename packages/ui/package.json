@@ -3,10 +3,23 @@
   "version": "0.0.0",
   "type": "module",
   "private": true,
+  "exports": {
+    "./generative": {
+      "types": "./src/generative/index.ts",
+      "default": "./src/generative/index.ts"
+    }
+  },
   "scripts": {
     "build": "tsx scripts/build-registry.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@flow-state-dev/core": "workspace:*",
+    "zod": "^3.24.1"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
   },
   "devDependencies": {
     "@testing-library/react": "^16.0.0",

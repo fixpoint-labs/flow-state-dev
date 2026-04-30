@@ -43,6 +43,8 @@ Generic, framework-agnostic components. No dependency on `@flow-state-dev/*`.
 | `file-tree` | Tree-structured file and folder display with expand/collapse and selection |
 | `jsx-preview` | Live JSX/TSX renderer with streaming support and error fallback |
 | `sandbox` | Source/preview tab wrapper for JSX artifacts using JSXPreview and CodeBlock |
+| `info-card` | Generative-UI info card: title, optional image, fact rows. Pairs with `emitInfoCard` |
+| `link-card` | Generative-UI link card: rich preview for an external URL. Pairs with `emitLinkCard` |
 
 ## Framework Integration
 
@@ -113,6 +115,48 @@ Sections render in canonical order (`pending → in_progress → blocked → awa
 `TaskPlan` reads its items from `useSessionItems()` by default; pass an explicit `items` prop when rendering outside that context (tests, replayed snapshots).
 
 `TaskPlan` does NOT replace `Plan`. The legacy `Plan` container renderer continues to handle `plan-meta` / `plan-task` items emitted by `planAndExecute` and `supervisor` until those patterns migrate onto the unified primitive.
+
+### Generative UI
+
+`@flow-state-dev/ui/generative` is the *only* runtime-importable surface in this package. It ships a starter pack of generative-UI shapes — each shape is a bundle of (Zod schema, React renderer, `emit*` tool block) that travels as a unit.
+
+Generators load the tool factories so the LLM can pick a rendering shape per turn; FlowProvider loads the renderers so the emitted items render in place.
+
+```ts
+// flow.ts (server-side)
+import { generativeUI } from "@flow-state-dev/ui/generative";
+
+const tripGenerator = generator({
+  name: "trip-concierge",
+  agentType: "primary",
+  prompt: TRIP_CONCIERGE_PROMPT,
+  tools: [...generativeUI.tools(), webSearch],
+});
+```
+
+```tsx
+// app.tsx (client-side)
+import { generativeUI } from "@flow-state-dev/ui/generative";
+
+<FlowProvider
+  flowKind="trip-concierge"
+  userId={userId}
+  renderers={{ component: generativeUI.renderers() }}
+>
+  <ChatUI />
+</FlowProvider>
+```
+
+Use `generativeUI.pick("info-card", "link-card")` to ship a tighter palette — fewer tools yields better selection accuracy on smaller models.
+
+#### Phase 1 starter shapes
+
+| Tool | Component | Use for |
+| -- | -- | -- |
+| `emitInfoCard` | `info-card` | Profile snapshots, place summaries, contact-style info |
+| `emitLinkCard` | `link-card` | Citations, source attributions, replacing bare URLs |
+
+For a polished, project-owned variant, install the renderer via the registry (`fsdev ui add info-card`) and override the entry in `renderers.component`.
 
 ## Architecture
 
