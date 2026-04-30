@@ -405,6 +405,20 @@ export function useSession(
    * past `stuckThresholdMs`.
    */
   const lastEventAtRef = useRef<number>(Date.now());
+  /**
+   * Mirror of `isStuck` state. Reads from a ref let `sendAction` and
+   * `dismissRequest` consult the latest stuck-flag without depending on
+   * the `isStuck` state directly, which would churn their useCallback
+   * identities every time the watchdog flips.
+   */
+  const isStuckRef = useRef(false);
+  /**
+   * Mirror of `latestRequest` state. Same motive as `isStuckRef` —
+   * `dismissRequest`'s id-resolution chain reads this without taking
+   * `latestRequest` as a dep, so the callback stays stable across
+   * request lifecycle transitions.
+   */
+  const latestRequestRef = useRef<SessionRequestSummary | null>(null);
   const itemsByIdRef = useRef<Map<string, OutputItem>>(new Map());
   const sortedItemIdsRef = useRef<string[]>([]);
   const deltaQueueRef = useRef<Map<string, ContentDeltaAccumulator>>(new Map());
@@ -426,6 +440,18 @@ export function useSession(
     }
     set.add(item.id);
   }, []);
+
+  // Mirror state into refs so callbacks that consult these values can
+  // stay stable across renders. Without these mirrors, `sendAction` and
+  // `dismissRequest` would have to take the underlying state as deps and
+  // get recreated on every state transition (defeating useCallback's
+  // identity stability).
+  useEffect(() => {
+    isStuckRef.current = isStuck;
+  }, [isStuck]);
+  useEffect(() => {
+    latestRequestRef.current = latestRequest;
+  }, [latestRequest]);
 
   const cancelScheduledFlush = useCallback(() => {
     if (flushHandleRef.current === null) {
@@ -873,9 +899,12 @@ export function useSession(
         onError: () => {
           // Capture the in-flight requestId BEFORE clearing the active ref so
           // the watchdog and any subsequent dismissRequest() call still have a
-          // target to address.
+          // target to address. After capturing, clear the active ref — its
+          // role is "stream is open"; the post-error sentinel is
+          // latestRequestIdAfterDropRef.
           if (activeRequestIdRef.current !== null) {
             latestRequestIdAfterDropRef.current = activeRequestIdRef.current;
+            activeRequestIdRef.current = null;
           }
           flushContentDeltas();
           setIsStreaming(false);
@@ -986,6 +1015,9 @@ export function useSession(
 
   // Clean up when sessionId changes — close old stream and reset request state
   // so the new session isn't blocked by the previous session's in-flight request.
+  // Resets every request-scoped ref the watchdog reads, so a session switch
+  // can't smuggle a stale `activeRequestIdRef` or `lastEventAtRef` into the
+  // new session and trip a false-positive `isStuck`.
   useEffect(() => {
     return () => {
       if (streamHandleRef.current !== null) {
@@ -996,7 +1028,9 @@ export function useSession(
       setIsStreaming(false);
       setIsFinishing(false);
       setIsStuck(false);
+      activeRequestIdRef.current = null;
       latestRequestIdAfterDropRef.current = null;
+      lastEventAtRef.current = Date.now();
       cancelScheduledFlush();
     };
   }, [sessionId, cancelScheduledFlush]);
@@ -1065,7 +1099,7 @@ export function useSession(
         requestId ??
         latestRequestIdAfterDropRef.current ??
         activeRequestIdRef.current ??
-        latestRequest?.id ??
+        latestRequestRef.current?.id ??
         null;
 
       if (targetId === null) {
@@ -1103,7 +1137,6 @@ export function useSession(
       client,
       flushContentDeltas,
       injectSyntheticAbortItem,
-      latestRequest,
       refreshSnapshot,
       refreshLatestRequest
     ]
@@ -1122,11 +1155,14 @@ export function useSession(
       // Auto-dismiss a stuck prior request before kicking off a new one.
       // The synthetic abort item from `dismissRequest` keeps the prior
       // attempt visible in the items log instead of silently dropping it.
+      // Reads via refs so this callback's identity stays stable across
+      // every isStuck/latestRequest state transition (a cold-path check
+      // shouldn't churn the cb that consumers pass as a prop).
       if (
-        isStuck &&
+        isStuckRef.current &&
         (latestRequestIdAfterDropRef.current !== null ||
           activeRequestIdRef.current !== null ||
-          latestRequest !== null)
+          latestRequestRef.current !== null)
       ) {
         await dismissRequest();
       }
@@ -1237,9 +1273,7 @@ export function useSession(
       itemConfig.enabled,
       attachToStream,
       refreshSnapshot,
-      isStuck,
       dismissRequest,
-      latestRequest,
       orgId
     ]
   );
