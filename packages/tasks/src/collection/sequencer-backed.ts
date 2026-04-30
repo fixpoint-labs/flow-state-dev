@@ -12,11 +12,13 @@
  * sequencer's checkpoint contract (FIX-401, latest-only with always-on
  * default).
  */
+import type { OutputItem } from "@flow-state-dev/core/items";
 import type { StateRef } from "@flow-state-dev/core/types";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { assertTransitionAllowed, isTerminalStatus } from "../schema/task-status";
-import type { TaskCollectionRef } from "./types";
+import type { TaskCollectionRef, TaskHandle } from "./types";
+import { extractTaskItems } from "../items/extract-window";
 import {
   applyClaimToTask,
   applyTransition,
@@ -42,6 +44,14 @@ export interface SequencerBackedOptions {
    * to publish lifecycle changes onto the framework item stream.
    */
   onChange?: (event: TaskChangeEvent) => void;
+  /**
+   * Item-log accessor for `TaskHandle.items()` (FIX-480). Reads the
+   * response's persistent item buffer at call time so synthesizer
+   * prompt-builders can pick from a worker's natural emissions
+   * (messages, sources, tool calls). When omitted, `items()` returns
+   * `[]` — useful for tests that don't wire a response.
+   */
+  getItems?: () => readonly OutputItem[];
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
 }
@@ -53,6 +63,19 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
   const stateKey = options.stateKey ?? "tasks";
   const now = options.now ?? Date.now;
   const onChange = options.onChange;
+  const collectionId = options.collectionId;
+  const getItems = options.getItems;
+
+  /** Wrap a `Task` data record with the FIX-480 `items()` accessor. */
+  function wrap(task: Task<TInput, TOutput>): TaskHandle<TInput, TOutput> {
+    return {
+      ...task,
+      items: () => {
+        if (getItems === undefined) return [];
+        return extractTaskItems(getItems(), collectionId, task.id);
+      },
+    };
+  }
 
   function readTasks(): Record<string, Task<TInput, TOutput>> {
     const raw = options.sequencer.state as Record<string, unknown>;
@@ -378,11 +401,12 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     get(id) {
-      return readTasks()[id];
+      const task = readTasks()[id];
+      return task === undefined ? undefined : wrap(task);
     },
 
     list(filter?: TaskFilter) {
-      return listTasks(Object.values(readTasks()), filter);
+      return listTasks(Object.values(readTasks()), filter).map(wrap);
     },
 
     count(filter?: TaskFilter) {

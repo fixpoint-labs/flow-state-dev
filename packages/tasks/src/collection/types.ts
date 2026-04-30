@@ -6,6 +6,7 @@
  * Patterns and dispatchers consume `TaskCollectionRef` and never reach for
  * the underlying storage directly.
  */
+import type { OutputItem } from "@flow-state-dev/core/items";
 import type { Task } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 
@@ -27,6 +28,34 @@ export interface ClaimOptions {
    */
   leaseDurationMs?: number;
 }
+
+/**
+ * `Task` plus a runtime accessor for the items the worker emitted while it
+ * held the claim window (FIX-480 §3.1). Returned from `list` / `get` so
+ * pattern aggregators (synthesizers, reviewers, replanners) can pick from
+ * a worker's natural emissions — messages, sources, tool calls, reasoning
+ * — instead of relying solely on `task.output`.
+ *
+ * The data fields match `Task` exactly; only `items()` is added. State
+ * persistence sees only the data record, not the closure.
+ *
+ * `items()` is synchronous and throw-free. It snapshots the current item
+ * log at call time. Callers normally invoke it inside a synthesizer that
+ * runs after worker completion (`.then(synthesizer)`), so the log is
+ * stable. A mid-flight call returns whatever's emitted so far with no
+ * special signaling.
+ *
+ * Returns `[]` when the task has not been claimed yet.
+ *
+ * The window is defined as `[first claimed event ts, terminal event ts]`
+ * for this taskId under this collection. Retries do NOT reset the start;
+ * all attempts append to the same window. Bookend `task-change` events
+ * and `task-board-meta` items are excluded — they are substrate
+ * scaffolding, not worker emissions.
+ */
+export type TaskHandle<TInput = unknown, TOutput = unknown> = Task<TInput, TOutput> & {
+  items(): readonly OutputItem[];
+};
 
 /**
  * Runtime ref onto a TaskCollection. All mutations are CAS-safe and emit a
@@ -80,7 +109,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   patchMetadata(id: string, patch: Record<string, unknown>): Promise<void>;
 
   // query
-  get(id: string): Task<TInput, TOutput> | undefined;
-  list(filter?: TaskFilter): Task<TInput, TOutput>[];
+  get(id: string): TaskHandle<TInput, TOutput> | undefined;
+  list(filter?: TaskFilter): TaskHandle<TInput, TOutput>[];
   count(filter?: TaskFilter): number;
 }

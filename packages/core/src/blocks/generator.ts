@@ -4,6 +4,7 @@ import type {
   BlockConfig,
   BlockContext,
   BlockDefinition,
+  BlockOutputHint,
   ConnectorFn,
   InferBlockResources,
   InferStateFromSchema,
@@ -1347,6 +1348,27 @@ async function executeStreamingGeneration<TInput, TOutput>(
     await ctx.response.emit({ type: "item.done", item: completedItem });
   }
 
+  // FIX-480 §3.2: when this generator's logical output IS the streamed
+  // text, emit a `block_output { kind: "ref", sourceItemId: <messageId> }`
+  // instead of an inline copy of the same string. The defensive equality
+  // check (`parsed.data === accumulated`) handles post-validation
+  // transforms like `z.string().transform(s => s.trim())` — when the
+  // returned string differs from what was streamed, we fall back to
+  // inline so the block_output's resolved value matches what the block
+  // actually returned.
+  if (
+    emit &&
+    messageItem !== null &&
+    isTextOutputSchema(outputSchema) &&
+    typeof parsed.data === "string" &&
+    parsed.data === accumulated
+  ) {
+    (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = {
+      kind: "ref",
+      sourceItemId: itemId,
+    };
+  }
+
   ctx._runtimeHooks?.onGeneratorModelResult?.({
     model: model.modelId,
     usage: finalResult?.usage,
@@ -1771,6 +1793,16 @@ export function generator<
         };
         await ctx.response.emit({ type: "item.added", item: messageItem });
         await ctx.response.emit({ type: "item.done", item: messageItem });
+
+        // FIX-480 §3.2: emit `block_output` as a ref to this message
+        // instead of an inline copy of the same text. The message's
+        // content equals `output` by construction here (the message is
+        // built from `output` above), so no defensive equality check is
+        // needed in this path.
+        (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = {
+          kind: "ref",
+          sourceItemId: itemId,
+        };
       }
 
       return output;

@@ -43,13 +43,14 @@ export { resolveItemVisibility } from "./resolve-visibility";
 
 export {
   buildBlockOutputLookup,
+  buildItemLookup,
   inlineBlockValue,
   isBlockValue,
   refBlockValue,
   resolveBlockValue,
   structureBlockValue
 } from "./resolve-value";
-export type { BlockOutputLookup } from "./resolve-value";
+export type { BlockOutputLookup, ItemLookup } from "./resolve-value";
 
 export type {
   ContentPartAddedEvent,

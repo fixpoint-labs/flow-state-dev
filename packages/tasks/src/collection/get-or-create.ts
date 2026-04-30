@@ -12,6 +12,7 @@
  * these items, filter by `data.collectionId`, and render the board.
  */
 import type { JsonObject } from "@flow-state-dev/core";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   BlockContext,
   RequestScopeHandle,
@@ -101,6 +102,16 @@ export type GetOrCreateTaskCollectionOptions =
 export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
   options: GetOrCreateTaskCollectionOptions
 ): TaskCollectionRef<TInput, TOutput> {
+  // FIX-480 §3.1: capture the response's item-log accessor so
+  // `TaskHandle.items()` can return per-task emission slices. Duck-typed
+  // against `ctx.response` — the same access pattern the generator uses
+  // in `getEmitterItemCount` (packages/core/src/blocks/generator.ts).
+  // Tests with no response surface just see `items()` return `[]`.
+  const getItems = (): readonly OutputItem[] => {
+    const r = options.ctx.response as { getItems?: () => readonly OutputItem[] };
+    return r.getItems?.() ?? [];
+  };
+
   const onChange = (event: TaskChangeEvent): void => {
     // task-change items are the user-facing signal of task lifecycle —
     // explicitly non-transient even when emitted from a transient
@@ -125,6 +136,7 @@ export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
       sequencer: options.sequencer,
       stateKey: options.stateKey,
       onChange,
+      getItems,
       now: options.now,
     });
   }
@@ -137,6 +149,7 @@ export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
       // each get an isolated top-level slot without manual namespacing.
       stateKey: options.stateKey ?? options.collectionId,
       onChange,
+      getItems,
       now: options.now,
     });
   }
@@ -145,6 +158,7 @@ export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
     collectionId: options.collectionId,
     collection: options.collection,
     onChange,
+    getItems,
     now: options.now,
   });
 }

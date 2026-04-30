@@ -71,7 +71,7 @@ Structural items ignore `agentType` for visibility. `agentType` on a structural 
 Since FIX-413, `block_output.output` is a `BlockValue<T>` discriminated union with three cases:
 
 - **`inline`** — the block produced novel content. Leaves (generators, handlers) and explicit transforms (`.map`, non-identity `connectOutput`) emit this kind. The payload rides on `output.value`.
-- **`ref`** — the block's output is reference-identical to another item's content. Pass-through composers (`.then`, `.work`, `.tap`, routers, `.rescue`) emit this kind, with `output.sourceItemId` pointing at the content-bearing item. The invariant is **flatten-at-emit**: every ref points one hop to a content-bearing item, never to another ref.
+- **`ref`** — the block's output is reference-identical to another item's content. Pass-through composers (`.then`, `.work`, `.tap`, routers, `.rescue`) emit this kind, with `output.sourceItemId` pointing at the content-bearing item. The invariant is **flatten-at-emit**: every ref points one hop to a content-bearing item, never to another ref. Since FIX-480, streaming-text generators (`outputSchema: z.string()`, `agentType` set) also emit a `ref` pointing at their just-emitted `MessageItem` instead of inlining a duplicate copy of the streamed text. `resolveBlockValue` resolves message-targeting refs to the joined `output_text` content.
 - **`structure`** — the block produced a novel container of existing content. Aggregators (`.thenAll`, `.parallel`, `.forEach`) emit this kind, with `output.shape` describing the array or object of nested BlockValues.
 
 The union exists so a deeply nested pass-through pipeline (`s1 → s2 → s3 → generator`) persists the LLM output exactly once, on the generator's item — intermediate sequencers carry a ~40-byte ref rather than an N-byte copy.
@@ -97,6 +97,14 @@ When a block is configured with `transient: true`, all items it emits become tra
 There are two storage targets, kept separate:
 - **Item record** — the final state of each durable item, used to reconstruct session history
 - **Event log** — every SSE event in order, including transient items and intermediate states, used for SSE resume and devtool replay
+
+## Item windows (per task)
+
+Pattern aggregators (synthesizer prompt builders, reviewer input builders, replanners) often want a slice of the item log: "what did worker X emit while it held its claim?". Since FIX-480, that's first-class via `TaskHandle.items()` on the `TaskCollectionRef.list / get` returns.
+
+The window is bounded by the substrate's `task-change` lifecycle events for the task — `kind: "claimed"` opens it, terminal `kind: "completed" | "errored" | "cancelled"` closes it. Retries do NOT reset the start; all attempts append. Bookend `task-change` and `task-board-meta` items are excluded — they're substrate scaffolding, not worker emissions.
+
+The standalone substrate utility — `extractTaskItems(items, collectionId, taskId)` — is exported from `@flow-state-dev/tasks` for any consumer that wants the same window logic without going through a `TaskCollection`. The kitchen-sink renderer's per-task expansion uses the same algorithm.
 
 ## The full registry
 
