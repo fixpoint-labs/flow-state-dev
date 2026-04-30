@@ -4,6 +4,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-04-29
 
+### Migrate patterns onto `taskBoard` substrate; retire legacy plan items (FIX-447)
+
+- Renamed `coordinator` to `parallelTasks`. `coordinator()` still works as a deprecation-warned alias — same config shape, warns once per name.
+- `planAndExecute` and `supervisor` now run on the `taskBoard` substrate with a request-backed `TaskCollection`. Both emit `task-change` (per-task lifecycle) and `task-board-meta` (board-level aggregate) items; pair with `<TaskPlan />` for rendering. The old `plan-meta` / `plan-task` ComponentItems are gone.
+- Status vocabulary aligns with the substrate (`errored`, `cancelled` with labels). Public output shapes translate back to legacy `failed` / `skipped` for backward compat.
+- `supervisor` replaces its wave-level review loop with per-task review baked into each worker chain: `worker → reviewer → applyVerdict`. On rejection, the substrate re-pends the task with feedback; `maxAttemptsPerTask` (default 3) bounds retries. `workers: Record<assignee, block>` enables per-task worker routing. `legacyWorkerAdapter` translates pre-migration `ExecutableTask` workers automatically.
+- `emitPlanMeta`, `emitTaskUpdate`, and `emitPlanSnapshot` runtime helpers retired. `BasePlanSchema`, `BasePlanTaskSchema`, and related types remain exported (deprecated) for backward compatibility.
+
 ### Per-flow authentication and principal resolver (FIX-23)
 
 - New `authentication` config on `defineFlow`: `{ resolvePrincipal?, defaultUserId?, requireUser?, requireOrg? }`. The framework owns the contract; the host owns credential verification. Per-flow declarations win over a host-level fallback.
