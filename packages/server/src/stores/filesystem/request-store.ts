@@ -123,15 +123,18 @@ export class FilesystemRequestStore implements RequestStore {
       this.latestItemSnapshots.delete(requestId);
       if (snapshot === undefined) return;
 
-      const current = await this.store.get(requestId);
-      if (current !== undefined) {
-        // Items are append-only and coalesced — last write wins intentionally.
-        await this.store.set(
-          requestId,
-          { ...current, items: snapshot, updatedAt: Date.now() },
-          "any"
-        );
-      }
+      // Use the store's atomic update path so the read-merge-write happens
+      // under the per-id write lock. The previous read-then-`set` pattern
+      // raced with concurrent state CAS writes (`request.atomicState`): a
+      // state mutation that landed between this read and write would be
+      // silently overwritten because `set("any")` skips version checks.
+      // Items are append-only and coalesced — last write wins intentionally —
+      // but only the items + updatedAt fields, never the state field.
+      await this.store.update(requestId, (current) => ({
+        ...current,
+        items: snapshot,
+        updatedAt: Date.now()
+      }));
     });
   }
 

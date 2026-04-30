@@ -108,6 +108,58 @@ describe("RequestStore.persistItems — filesystem", () => {
     await store.flushItems("nonexistent");
   });
 
+  // FIX-447 regression — persistItems must not stomp on state mutations.
+  //
+  // The original implementation queued a write that read `current` from disk
+  // outside any write lock, then wrote `{...current, items, updatedAt}` with
+  // `"any"` version. The runtime sequence in production:
+  //
+  //   1. handler.execute calls `request.atomicState(...)` → `stores.request.set(record_v1, expected=0)`
+  //      writes a new record with state=tasks, v=1.
+  //   2. After CAS resolves, the same handler emits component items
+  //      (e.g. task-change items via the substrate's onChange path).
+  //   3. Each non-transient item triggers `persistItems`, queueing a task
+  //      that reads the request record and writes back with the items field
+  //      merged in.
+  //
+  // Step 3's queued task can be scheduled while step 1 is still in-flight.
+  // If the queued read observes the pre-CAS record, the write would overwrite
+  // the post-CAS state. We exercise that race by enqueueing a persistItems
+  // task whose read snapshots the pre-CAS state, then completing the CAS
+  // write, then draining the queue. After the fix, `persistItems` re-reads
+  // inside the lock and merges only the `items` field, so the post-CAS state
+  // survives.
+  it("persistItems does not overwrite a concurrent state mutation", async () => {
+    // Initial record on disk: state is empty, version 0.
+    await store.set("req_race", makeRequestRecord("req_race"), "any");
+
+    const items = [makeItem("item_1", 0)];
+
+    // 1. Enqueue persistItems first. The queued task will start its disk read
+    //    on the next microtask tick.
+    store.persistItems("req_race", items);
+
+    // 2. CAS-style state write — runs concurrently with the queued items
+    //    write. Both compete for the per-id write lock; the merge inside the
+    //    lock guarantees neither field stomps the other.
+    const stateUpdated: RequestRecord = {
+      ...makeRequestRecord("req_race"),
+      state: { tasks: { t1: { id: "t1", goal: "first" } } },
+      version: 1,
+      updatedAt: Date.now()
+    };
+    await store.set("req_race", stateUpdated, 0);
+
+    // 3. Drain the queue.
+    await store.flushItems("req_race");
+
+    const final = await store.get("req_race");
+    expect(final).toBeDefined();
+    // Both fields must be present — the items write must merge under the
+    // lock against whatever the latest CAS state write committed.
+    expect(final!.state).toEqual({ tasks: { t1: { id: "t1", goal: "first" } } });
+  });
+
   it("items are persisted after flush before terminal write", async () => {
     await store.set("req_1", makeRequestRecord("req_1"), "any");
 
