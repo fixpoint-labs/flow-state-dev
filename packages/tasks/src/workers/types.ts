@@ -28,10 +28,18 @@ export type TaskWorkerInput<TIn = unknown> = {
   goal: string;
   input?: TIn;
   /**
-   * Pattern-supplied dep outputs, keyed by dep task id. Convenience for
-   * workers that want to read upstream results without re-querying the
-   * collection. Patterns that don't materialize dep outputs leave this
-   * undefined.
+   * Dep outputs keyed by dep task id, materialized from the collection
+   * at claim time. Always populated when the task declares
+   * `task.deps[]` and those deps have produced output (`completed`
+   * status). Workers read upstream results from `input.deps[depId]`
+   * without re-querying the collection.
+   *
+   * Substrate-supplied as of FIX-447 follow-up. The substrate's
+   * `packWorkerInput` reads each `task.deps[]` entry, fetches the
+   * dep's `output` from the live collection, and populates this map
+   * before invoking the worker. Patterns no longer need to plumb dep
+   * results through their own glue — this happens in the worker
+   * dispatch path itself.
    */
   deps?: Record<string, unknown>;
   attempts: number;

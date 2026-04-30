@@ -274,6 +274,27 @@ Workers are `BlockDefinition<TaskWorkerInput<TIn>, TOut>` — no parallel
 generator/handler/sequencer like any other, free to declare its own
 resources, capabilities, and tools.
 
+`TaskWorkerInput.deps` carries upstream task outputs keyed by dep task
+id, materialized from the live collection at claim time. Workers that
+need context from prior tasks read `input.deps[depId]` directly:
+
+```ts
+const summarizeWorker = handler({
+  name: "summarize",
+  inputSchema: z.any(),
+  outputSchema: z.string(),
+  execute: (input: TaskWorkerInput) => {
+    const research = input.deps?.["research-step"];
+    return `Summary based on: ${JSON.stringify(research)}`;
+  },
+});
+```
+
+When a task has no `deps` (or the deps haven't completed yet),
+`input.deps` is `undefined`. The substrate populates it before
+invoking the worker — patterns don't plumb dep results through their
+own glue.
+
 A pattern accepts either:
 
 - a single uniform worker (every task goes through it), or

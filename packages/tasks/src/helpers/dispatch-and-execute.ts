@@ -85,7 +85,25 @@ function resolveWorker(
   return worker;
 }
 
-function packWorkerInput(task: Task): TaskWorkerInput {
+/**
+ * Pack a `Task` into the substrate's `TaskWorkerInput` shape. When the
+ * task declares `deps`, this resolves each dep's `output` from the
+ * collection and exposes them under `deps: Record<depId, output>`.
+ * Workers that need upstream context read `input.deps` directly.
+ */
+function packWorkerInput(
+  task: Task,
+  collection: TaskCollectionRef,
+): TaskWorkerInput {
+  const deps: Record<string, unknown> = {};
+  if (task.deps !== undefined) {
+    for (const depId of task.deps) {
+      const depTask = collection.get(depId);
+      if (depTask !== undefined && depTask.output !== undefined) {
+        deps[depId] = depTask.output;
+      }
+    }
+  }
   return {
     taskId: task.id,
     goal: task.goal,
@@ -93,6 +111,7 @@ function packWorkerInput(task: Task): TaskWorkerInput {
     attempts: task.attempts,
     feedback: task.feedback,
     metadata: task.metadata,
+    ...(Object.keys(deps).length > 0 ? { deps } : {}),
   };
 }
 
@@ -117,7 +136,7 @@ export async function dispatchAndExecute<TOut = unknown>(
   }
 
   const worker = resolveWorker(options.workers, claimed);
-  const workerInput = packWorkerInput(claimed);
+  const workerInput = packWorkerInput(claimed, options.collection);
 
   try {
     const output = (await worker.run(workerInput, ctx)) as TOut;
