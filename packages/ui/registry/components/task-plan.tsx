@@ -44,6 +44,7 @@ import {
   groupTasksByAssignee,
   groupTasksByStatus,
   humanizeStatus,
+  scopeItemsToLatestCollectionRequest,
 } from "./task-plan-state";
 
 // ---------------------------------------------------------------------------
@@ -180,7 +181,16 @@ export function TaskPlan({
   className,
 }: TaskPlanProps) {
   const sessionItems = useSessionItems();
-  const items = itemsProp ?? sessionItems;
+  const rawItems = itemsProp ?? sessionItems;
+
+  // Scope to the latest request that emitted events for this collection.
+  // The substrate backing is already request-scoped, but the session item
+  // stream accumulates — without this filter the renderer carries the
+  // previous chat message's plan into the new one.
+  const items = useMemo(
+    () => scopeItemsToLatestCollectionRequest(rawItems, collectionId),
+    [rawItems, collectionId]
+  );
 
   const state = useMemo(
     () => extractTaskPlanState(items, collectionId),

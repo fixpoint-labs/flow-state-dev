@@ -158,6 +158,52 @@ export const STATUS_SECTIONS: ReadonlyArray<{
 export const DEFAULT_HIDDEN_STATUSES: ReadonlyArray<TaskStatus> = ["cancelled"];
 
 // ---------------------------------------------------------------------------
+// Latest-request scoping
+// ---------------------------------------------------------------------------
+
+/**
+ * Find the most recent `requestId` that emitted a `task-change` item for
+ * the given `collectionId`. Returns `undefined` when the session has
+ * never seen this collection.
+ *
+ * The collection backing in P&E and supervisor is request-scoped — each
+ * chat message produces a fresh substrate state — but the session-level
+ * item stream accumulates across requests. Without this filter the
+ * renderer carries over task-change events from earlier messages, so
+ * the user sees the prior plan layered on top of the current one. The
+ * substrate is correct; only the UI scoping is wrong.
+ */
+export function findLatestCollectionRequestId(
+  items: ReadonlyArray<OutputItem>,
+  collectionId: string,
+): string | undefined {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i]!;
+    if (!isComponentItem(item)) continue;
+    if (item.component !== TASK_CHANGE_COMPONENT) continue;
+    const data = item.data as TaskChangeData;
+    if (data.collectionId !== collectionId) continue;
+    return item.requestId;
+  }
+  return undefined;
+}
+
+/**
+ * Filter items down to the most recent request that emitted task-change
+ * events for the given collection. Returns the original array unchanged
+ * when no such request exists (so an early return on the call site can
+ * stay simple).
+ */
+export function scopeItemsToLatestCollectionRequest(
+  items: ReadonlyArray<OutputItem>,
+  collectionId: string,
+): ReadonlyArray<OutputItem> {
+  const requestId = findLatestCollectionRequestId(items, collectionId);
+  if (requestId === undefined) return items;
+  return items.filter((item) => item.requestId === requestId);
+}
+
+// ---------------------------------------------------------------------------
 // Per-task item windowing
 // ---------------------------------------------------------------------------
 
