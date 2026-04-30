@@ -50,8 +50,8 @@ export const linearConfig: MCPServerConfig = {
   examples: ["To list bugs: mcp__linear__list_issues({ filter: { labels: ['bug'] } })"],
   category: "project-management",
   transport: {
-    type: "sse",
-    url: "https://mcp.linear.app/sse",
+    type: "http",
+    url: "https://mcp.linear.app/mcp",
     headers: { Authorization: "Bearer test-key" },
   },
 };

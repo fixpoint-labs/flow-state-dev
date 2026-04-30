@@ -10,7 +10,7 @@ import type { MCPServerConfig } from "../../src/mcp";
 
 const linear: MCPServerConfig = {
   name: "linear",
-  transport: { type: "sse", url: "https://mcp.linear.app/sse" },
+  transport: { type: "http", url: "https://mcp.linear.app/mcp" },
 };
 
 const cap = createMcpCapability({ servers: [linear] });
