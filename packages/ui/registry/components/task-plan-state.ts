@@ -158,6 +158,84 @@ export const STATUS_SECTIONS: ReadonlyArray<{
 export const DEFAULT_HIDDEN_STATUSES: ReadonlyArray<TaskStatus> = ["cancelled"];
 
 // ---------------------------------------------------------------------------
+// Per-task item windowing
+// ---------------------------------------------------------------------------
+
+/**
+ * Walks the item stream and returns, per task id, the items emitted
+ * during that task's execution window.
+ *
+ * Window boundaries:
+ *   - start: the `task-change` with `kind: "claimed"` for that task id
+ *     (when the task transitions to `in_progress`)
+ *   - end: the next terminal `task-change` for that id (`completed`,
+ *     `errored`, or `cancelled`). `retried` does NOT close the window —
+ *     subsequent attempts append to the same task's windowed items so
+ *     consumers see the full attempt history.
+ *
+ * Items emitted before the first claim (e.g. seed-time `added` events)
+ * are not part of any task's window. The bookend `task-change` items
+ * themselves are excluded — they're consumed by `<TaskPlan />` to drive
+ * the status grouping, not by the per-task expansion.
+ *
+ * `task-board-meta` items are also excluded so the per-task expansion
+ * does not recursively re-render the entire `<TaskPlan />` (that
+ * component is the registry renderer for `task-board-meta`).
+ */
+export function extractTaskItemWindows(
+  items: ReadonlyArray<OutputItem>,
+  collectionId: string,
+): Map<string, OutputItem[]> {
+  const windows = new Map<string, OutputItem[]>();
+  const startIndex = new Map<string, number>();
+  const endIndex = new Map<string, number>();
+
+  for (const item of items) {
+    if (!isComponentItem(item)) continue;
+    if (item.component !== TASK_CHANGE_COMPONENT) continue;
+    const data = item.data as TaskChangeData;
+    if (data.collectionId !== collectionId) continue;
+    if (data.taskId === undefined) continue;
+
+    if (data.kind === "claimed" && !startIndex.has(data.taskId)) {
+      startIndex.set(data.taskId, item.itemIndex);
+    } else if (
+      data.kind === "completed" ||
+      data.kind === "errored" ||
+      data.kind === "cancelled"
+    ) {
+      endIndex.set(data.taskId, item.itemIndex);
+    }
+  }
+
+  if (startIndex.size === 0) return windows;
+
+  for (const item of items) {
+    if (isComponentItem(item)) {
+      if (
+        item.component === TASK_CHANGE_COMPONENT ||
+        item.component === TASK_BOARD_META_COMPONENT
+      ) {
+        continue;
+      }
+    }
+    for (const [taskId, start] of startIndex) {
+      if (item.itemIndex < start) continue;
+      const end = endIndex.get(taskId);
+      if (end !== undefined && item.itemIndex > end) continue;
+      let bucket = windows.get(taskId);
+      if (bucket === undefined) {
+        bucket = [];
+        windows.set(taskId, bucket);
+      }
+      bucket.push(item);
+    }
+  }
+
+  return windows;
+}
+
+// ---------------------------------------------------------------------------
 // Item-stream extraction
 // ---------------------------------------------------------------------------
 

@@ -16,11 +16,13 @@
  * retired. Plan & Execute and Supervisor now emit `task-change` and
  * `task-board-meta` items consumed by this component.
  */
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
+import { ItemRenderer } from "@flow-state-dev/react";
 import { cn } from "@/lib/utils";
 import {
   CheckCircle2Icon,
+  ChevronRightIcon,
   CircleIcon,
   CircleSlashIcon,
   EyeIcon,
@@ -37,6 +39,7 @@ import {
   TaskStatus,
   StatusGroup,
   Task,
+  extractTaskItemWindows,
   extractTaskPlanState,
   groupTasksByAssignee,
   groupTasksByStatus,
@@ -184,6 +187,11 @@ export function TaskPlan({
     [items, collectionId]
   );
 
+  const taskWindows = useMemo(
+    () => extractTaskItemWindows(items, collectionId),
+    [items, collectionId]
+  );
+
   const groups = useMemo(
     () => groupTasksByStatus(state.tasks, { hiddenStatuses }),
     [state.tasks, hiddenStatuses]
@@ -245,6 +253,7 @@ export function TaskPlan({
             group={group}
             groupByAssignee={groupByAssignee}
             statusConfig={statusConfig}
+            taskWindows={taskWindows}
           />
         ))}
       </div>
@@ -314,10 +323,12 @@ function TaskPlanSection({
   group,
   groupByAssignee,
   statusConfig,
+  taskWindows,
 }: {
   group: StatusGroup;
   groupByAssignee: boolean;
   statusConfig?: Record<string, StatusConfig>;
+  taskWindows: Map<string, OutputItem[]>;
 }) {
   const subgroups = useMemo(
     () => (groupByAssignee ? groupTasksByAssignee(group.entries) : null),
@@ -359,6 +370,7 @@ function TaskPlanSection({
                     key={entry.task.id}
                     entry={entry}
                     statusConfig={statusConfig}
+                    windowItems={taskWindows.get(entry.task.id)}
                   />
                 ))}
               </ul>
@@ -372,6 +384,7 @@ function TaskPlanSection({
               key={entry.task.id}
               entry={entry}
               statusConfig={statusConfig}
+              windowItems={taskWindows.get(entry.task.id)}
             />
           ))}
         </ul>
@@ -387,9 +400,11 @@ function TaskPlanSection({
 function TaskPlanRow({
   entry,
   statusConfig,
+  windowItems,
 }: {
   entry: TaskEntry;
   statusConfig?: Record<string, StatusConfig>;
+  windowItems?: OutputItem[];
 }) {
   const { task } = entry;
   const config = resolveStatusConfig(task.status, statusConfig);
@@ -419,36 +434,93 @@ function TaskPlanRow({
       entry.kind === "retried");
   const deps = formatDeps(task);
 
-  return (
-    <li className="flex items-start gap-2">
-      <Icon
-        className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", config.iconClassName)}
-        aria-hidden="true"
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-1">
-          <span className={cn("text-xs leading-snug", config.goalClassName)}>
-            {task.goal}
-          </span>
-          {assigneeBadge}
-          {retryBadge}
-          {deps !== null && (
-            <span className="text-[10px] text-muted-foreground/60">
-              ← {deps}
-            </span>
-          )}
+  const isActive = task.status === "in_progress";
+  const hasWindow = (windowItems?.length ?? 0) > 0;
+
+  // Auto-expand while the task is running, auto-collapse on terminal
+  // status. The user can still toggle manually in between; the next
+  // status transition resets to the new default.
+  const [open, setOpen] = useState(isActive);
+  const lastStatusRef = useRef(task.status);
+  useEffect(() => {
+    if (lastStatusRef.current !== task.status) {
+      lastStatusRef.current = task.status;
+      setOpen(task.status === "in_progress");
+    }
+  }, [task.status]);
+
+  const goalRow = (
+    <div className="flex flex-wrap items-baseline gap-x-1">
+      <span className={cn("text-xs leading-snug", config.goalClassName)}>
+        {task.goal}
+      </span>
+      {assigneeBadge}
+      {retryBadge}
+      {deps !== null && (
+        <span className="text-[10px] text-muted-foreground/60">
+          ← {deps}
+        </span>
+      )}
+    </div>
+  );
+
+  const banners = (
+    <>
+      {showError && (
+        <p className="mt-0.5 text-[11px] leading-snug text-destructive/80">
+          {task.error}
+        </p>
+      )}
+      {showFeedback && (
+        <p className="mt-0.5 whitespace-pre-wrap text-[11px] leading-snug text-amber-500/80">
+          {task.feedback}
+        </p>
+      )}
+    </>
+  );
+
+  if (!hasWindow) {
+    return (
+      <li className="flex items-start gap-2">
+        <Icon
+          className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", config.iconClassName)}
+          aria-hidden="true"
+        />
+        <div className="min-w-0 flex-1">
+          {goalRow}
+          {banners}
         </div>
-        {showError && (
-          <p className="mt-0.5 text-[11px] leading-snug text-destructive/80">
-            {task.error}
-          </p>
-        )}
-        {showFeedback && (
-          <p className="mt-0.5 whitespace-pre-wrap text-[11px] leading-snug text-amber-500/80">
-            {task.feedback}
-          </p>
-        )}
-      </div>
+      </li>
+    );
+  }
+
+  return (
+    <li>
+      <details
+        open={open}
+        onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
+        className="group"
+      >
+        <summary className="flex cursor-pointer list-none items-start gap-2">
+          <Icon
+            className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", config.iconClassName)}
+            aria-hidden="true"
+          />
+          <div className="min-w-0 flex-1">
+            {goalRow}
+            {banners}
+          </div>
+          <ChevronRightIcon
+            className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground/50 transition-transform group-open:rotate-90"
+            aria-hidden="true"
+          />
+        </summary>
+        <div className="mt-1.5 space-y-1.5 pl-5">
+          {windowItems!.map((wi) => (
+            <ItemRenderer key={wi.id} item={wi} />
+          ))}
+        </div>
+      </details>
     </li>
   );
 }
