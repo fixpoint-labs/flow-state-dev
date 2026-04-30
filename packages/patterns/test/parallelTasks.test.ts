@@ -1,28 +1,17 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { mockGenerator, testBlock } from "@flow-state-dev/testing";
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { coordinator } from "../src/coordinator";
-
-// Suppress the one-time deprecation warning each call emits — tests exercise
-// the alias intentionally; the warning is verified separately in
-// coordinator-alias.test.ts.
-let warnSpy: ReturnType<typeof vi.spyOn>;
-beforeAll(() => {
-  warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-});
-afterAll(() => {
-  warnSpy.mockRestore();
-});
+import { parallelTasks } from "../src/parallelTasks";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 /**
- * A deterministic worker that echoes its input as a "finding".
- * Used instead of a generator so we don't need mock model resolution for every
- * sub-task invocation.
+ * Deterministic worker — echoes its input as a "finding".
+ * Workers now receive TaskWorkerInput from taskBoard, so we stringify
+ * the whole object to get a stable output shape.
  */
 const echoWorker = handler({
   name: "echo-worker",
@@ -32,8 +21,8 @@ const echoWorker = handler({
     finding: z.string()
   }),
   execute: (input) => ({
-    source: typeof input === "string" ? input : JSON.stringify(input),
-    finding: `Result for: ${typeof input === "string" ? input : JSON.stringify(input)}`
+    source: JSON.stringify(input),
+    finding: `Result for: ${JSON.stringify(input)}`
   })
 });
 
@@ -62,8 +51,8 @@ const partialFailWorker = handler({
       throw new Error("second task failed");
     }
     return {
-      source: typeof input === "string" ? input : JSON.stringify(input),
-      finding: `Result for: ${typeof input === "string" ? input : JSON.stringify(input)}`
+      source: JSON.stringify(input),
+      finding: `Result for: ${JSON.stringify(input)}`
     };
   }
 });
@@ -98,27 +87,26 @@ const singleTaskPlannerMock = mockGenerator({
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("coordinator pattern", () => {
+describe("parallelTasks pattern", () => {
   it("decomposes a goal, dispatches workers, and merges results", async () => {
     plannerMock.reset();
 
-    const coord = coordinator({
-      name: "research-coordinator",
+    const block = parallelTasks({
+      name: "research-pt",
       worker: echoWorker,
       maxConcurrency: 5
     });
 
-    const result = await testBlock(coord, {
+    const result = await testBlock(block, {
       input: { goal: "Research AI safety" },
       generators: {
-        "research-coordinator-planner": plannerMock
+        "research-pt-planner": plannerMock
       }
     });
 
     expect(result.error).toBeNull();
     expect(result.output).toBeDefined();
 
-    // The combiner merges the 3 worker outputs
     const output = result.output as { combined: unknown; mergeNotes?: string[] };
     expect(output.combined).toBeDefined();
   });
@@ -127,7 +115,7 @@ describe("coordinator pattern", () => {
     singleTaskPlannerMock.reset();
 
     const customPlanner = handler({
-      name: "custom-planner",
+      name: "pt-custom-planner",
       inputSchema: z.any(),
       outputSchema: z.object({
         tasks: z.array(z.object({ id: z.string(), goal: z.string() }))
@@ -137,13 +125,13 @@ describe("coordinator pattern", () => {
       })
     });
 
-    const coord = coordinator({
-      name: "custom-coord",
+    const block = parallelTasks({
+      name: "pt-custom-coord",
       worker: echoWorker,
       planner: customPlanner
     });
 
-    const result = await testBlock(coord, {
+    const result = await testBlock(block, {
       input: { goal: "Test custom planner" }
     });
 
@@ -154,7 +142,7 @@ describe("coordinator pattern", () => {
 
   it("uses custom merger when provided", async () => {
     const customMerger = handler({
-      name: "custom-merger",
+      name: "pt-custom-merger",
       inputSchema: z.any(),
       outputSchema: z.object({
         summary: z.string(),
@@ -167,7 +155,7 @@ describe("coordinator pattern", () => {
     });
 
     const customPlanner = handler({
-      name: "det-planner",
+      name: "pt-det-planner",
       inputSchema: z.any(),
       outputSchema: z.object({
         tasks: z.array(z.object({ id: z.string(), goal: z.string() }))
@@ -180,14 +168,14 @@ describe("coordinator pattern", () => {
       })
     });
 
-    const coord = coordinator({
-      name: "merger-test",
+    const block = parallelTasks({
+      name: "pt-merger-test",
       worker: echoWorker,
       planner: customPlanner,
       merger: customMerger
     });
 
-    const result = await testBlock(coord, {
+    const result = await testBlock(block, {
       input: { goal: "Test merging" }
     });
 
@@ -197,21 +185,53 @@ describe("coordinator pattern", () => {
     expect(output.summary).toBe("Merged 2 results");
   });
 
+  it("synthesizer alias works the same as merger", async () => {
+    const customSynthesizer = handler({
+      name: "pt-synthesizer",
+      inputSchema: z.any(),
+      outputSchema: z.object({ total: z.number() }),
+      execute: (results: unknown[]) => ({
+        total: Array.isArray(results) ? results.length : 0
+      })
+    });
+
+    const customPlanner = handler({
+      name: "pt-synth-planner",
+      inputSchema: z.any(),
+      outputSchema: z.object({
+        tasks: z.array(z.object({ id: z.string(), goal: z.string() }))
+      }),
+      execute: () => ({
+        tasks: [{ id: "t1", goal: "Task one" }, { id: "t2", goal: "Task two" }]
+      })
+    });
+
+    const block = parallelTasks({
+      name: "pt-synth-test",
+      worker: echoWorker,
+      planner: customPlanner,
+      synthesizer: customSynthesizer
+    });
+
+    const result = await testBlock(block, { input: { goal: "Test synthesizer" } });
+    expect(result.error).toBeNull();
+    const output = result.output as { total: number };
+    expect(output.total).toBe(2);
+  });
+
   it("respects maxConcurrency option", async () => {
     plannerMock.reset();
 
-    // maxConcurrency is passed through to forEach — we verify the coordinator
-    // accepts it and still produces correct output.
-    const coord = coordinator({
-      name: "concurrency-test",
+    const block = parallelTasks({
+      name: "pt-concurrency-test",
       worker: echoWorker,
       maxConcurrency: 1
     });
 
-    const result = await testBlock(coord, {
+    const result = await testBlock(block, {
       input: { goal: "Sequential test" },
       generators: {
-        "concurrency-test-planner": plannerMock
+        "pt-concurrency-test-planner": plannerMock
       }
     });
 
@@ -224,7 +244,7 @@ describe("coordinator pattern", () => {
       callCount = 0;
 
       const customPlanner = handler({
-        name: "skip-planner",
+        name: "pt-skip-planner",
         inputSchema: z.any(),
         outputSchema: z.object({
           tasks: z.array(z.object({ id: z.string(), goal: z.string() }))
@@ -238,18 +258,17 @@ describe("coordinator pattern", () => {
         })
       });
 
-      const coord = coordinator({
-        name: "skip-test",
+      const block = parallelTasks({
+        name: "pt-skip-test",
         worker: partialFailWorker,
         planner: customPlanner,
         onSubTaskError: "skip"
       });
 
-      const result = await testBlock(coord, {
+      const result = await testBlock(block, {
         input: { goal: "Test skip strategy" }
       });
 
-      // Should succeed — failed task is skipped
       expect(result.error).toBeNull();
       const output = result.output as { combined: unknown };
       expect(output.combined).toBeDefined();
@@ -257,7 +276,7 @@ describe("coordinator pattern", () => {
 
     it("aborts on any failure with onSubTaskError='fail'", async () => {
       const customPlanner = handler({
-        name: "fail-planner",
+        name: "pt-fail-planner",
         inputSchema: z.any(),
         outputSchema: z.object({
           tasks: z.array(z.object({ id: z.string(), goal: z.string() }))
@@ -267,14 +286,14 @@ describe("coordinator pattern", () => {
         })
       });
 
-      const coord = coordinator({
-        name: "fail-test",
+      const block = parallelTasks({
+        name: "pt-fail-test",
         worker: failingWorker,
         planner: customPlanner,
         onSubTaskError: "fail"
       });
 
-      const result = await testBlock(coord, {
+      const result = await testBlock(block, {
         input: { goal: "Test fail strategy" }
       });
 
@@ -283,10 +302,8 @@ describe("coordinator pattern", () => {
   });
 
   it("works as a .then() step in another sequencer", async () => {
-    singleTaskPlannerMock.reset();
-
     const customPlanner = handler({
-      name: "then-planner",
+      name: "pt-then-planner",
       inputSchema: z.any(),
       outputSchema: z.object({
         tasks: z.array(z.object({ id: z.string(), goal: z.string() }))
@@ -296,20 +313,19 @@ describe("coordinator pattern", () => {
       })
     });
 
-    const coord = coordinator({
-      name: "inner-coord",
+    const block = parallelTasks({
+      name: "inner-pt",
       worker: echoWorker,
       planner: customPlanner
     });
 
-    // The coordinator block should be composable in a parent sequencer
-    expect(coord.kind).toBe("sequencer");
-    expect(coord.name).toBe("inner-coord");
+    expect(block.kind).toBe("sequencer");
+    expect(block.name).toBe("inner-pt");
   });
 
   it("emits block_output items from the pipeline", async () => {
     const customPlanner = handler({
-      name: "emit-planner",
+      name: "pt-emit-planner",
       inputSchema: z.any(),
       outputSchema: z.object({
         tasks: z.array(z.object({ id: z.string(), goal: z.string() }))
@@ -319,13 +335,13 @@ describe("coordinator pattern", () => {
       })
     });
 
-    const coord = coordinator({
-      name: "emit-test",
+    const block = parallelTasks({
+      name: "pt-emit-test",
       worker: echoWorker,
       planner: customPlanner
     });
 
-    const result = await testBlock(coord, {
+    const result = await testBlock(block, {
       input: { goal: "Test item emission" }
     });
 
