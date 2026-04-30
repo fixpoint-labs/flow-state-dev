@@ -1839,7 +1839,10 @@ describe("transient block output", () => {
     expect(storedBlockOutputNames).toContain("mixed-sequencer");
   });
 
-  it("transient generator streams message items to response", async () => {
+  it("transient block: emitMessage produces persisted message; only block_output traces are stripped", async () => {
+    // FIX-478: explicit emit calls are user-facing content. They no longer
+    // inherit the producing block's `transient` flag — only the auto-emitted
+    // block_output bookkeeping does.
     const stores = createInMemoryStores();
     const flow = defineFlow({
       kind: "transient-gen-flow",
@@ -1871,18 +1874,270 @@ describe("transient block output", () => {
 
     expect(result.error).toBeUndefined();
 
-    // In-flight: message items should be present
-    const messageItems = result.items.filter((item) => item.type === "message" && item.role === "assistant");
+    // In-flight: message item present and non-transient (emitMessage no longer
+    // inherits blockTransient).
+    const messageItems = result.items.filter(
+      (item) => item.type === "message" && item.role === "assistant"
+    );
     expect(messageItems.length).toBeGreaterThanOrEqual(1);
+    expect(messageItems[0]?.transient).toBeUndefined();
 
-    // Persisted: transient items should be stripped
+    // Persisted: the message survives because it is not transient.
     const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
     const storedMessages = (requestRecord?.items ?? []).filter(
       (item) => item.type === "message" && (item as { role: string }).role === "assistant"
     );
-    // The message was emitted by a transient block, so its message items should also be transient
-    // and stripped from the store
-    expect(storedMessages.length).toBe(0);
+    expect(storedMessages.length).toBe(1);
+
+    // Block-level transient still suppresses the auto-emitted block_output trace.
+    const storedBlockOutputs = (requestRecord?.items ?? []).filter(
+      (item) => item.type === "block_output"
+    );
+    expect(storedBlockOutputs.length).toBe(0);
+  });
+
+  describe("emit* default semantics (FIX-478)", () => {
+    it("transient block + emitComponent → non-transient by default; persists", async () => {
+      const stores = createInMemoryStores();
+      const flow = defineFlow({
+        kind: "fix478-comp-default",
+        actions: {
+          run: {
+            inputSchema: z.object({ value: z.string() }),
+            block: handler({
+              name: "transient-emit-component",
+              transient: true,
+              inputSchema: z.object({ value: z.string() }),
+              outputSchema: z.string(),
+              execute: async ({ value }, ctx) => {
+                ctx.emitComponent("widget", { v: 1 });
+                return value;
+              }
+            })
+          }
+        }
+      })();
+
+      const result = await runAction({
+        flow,
+        actionName: "run",
+        input: { value: "ok" },
+        userId: "u",
+        sessionId: "s",
+        stores
+      });
+
+      expect(result.error).toBeUndefined();
+      const inFlight = result.items.filter((item) => item.type === "component");
+      expect(inFlight.length).toBe(1);
+      expect(inFlight[0]?.transient).toBeUndefined();
+
+      const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
+      const stored = (requestRecord?.items ?? []).filter((item) => item.type === "component");
+      expect(stored.length).toBe(1);
+    });
+
+    it("transient block + emitComponent({ transient: true }) → transient; stripped", async () => {
+      const stores = createInMemoryStores();
+      const flow = defineFlow({
+        kind: "fix478-comp-opt-in",
+        actions: {
+          run: {
+            inputSchema: z.object({ value: z.string() }),
+            block: handler({
+              name: "transient-emit-component-transient",
+              transient: true,
+              inputSchema: z.object({ value: z.string() }),
+              outputSchema: z.string(),
+              execute: async ({ value }, ctx) => {
+                ctx.emitComponent("widget", { v: 1 }, { transient: true });
+                return value;
+              }
+            })
+          }
+        }
+      })();
+
+      const result = await runAction({
+        flow,
+        actionName: "run",
+        input: { value: "ok" },
+        userId: "u",
+        sessionId: "s",
+        stores
+      });
+
+      expect(result.error).toBeUndefined();
+      const inFlight = result.items.filter((item) => item.type === "component");
+      expect(inFlight.length).toBe(1);
+      expect(inFlight[0]?.transient).toBe(true);
+
+      const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
+      const stored = (requestRecord?.items ?? []).filter((item) => item.type === "component");
+      expect(stored.length).toBe(0);
+    });
+
+    it("non-transient block + emitComponent({ transient: true }) → transient", async () => {
+      const stores = createInMemoryStores();
+      const flow = defineFlow({
+        kind: "fix478-comp-nontransient-block",
+        actions: {
+          run: {
+            inputSchema: z.object({ value: z.string() }),
+            block: handler({
+              name: "durable-block-transient-emit",
+              inputSchema: z.object({ value: z.string() }),
+              outputSchema: z.string(),
+              execute: async ({ value }, ctx) => {
+                ctx.emitComponent("widget", { v: 1 }, { transient: true });
+                return value;
+              }
+            })
+          }
+        }
+      })();
+
+      const result = await runAction({
+        flow,
+        actionName: "run",
+        input: { value: "ok" },
+        userId: "u",
+        sessionId: "s",
+        stores
+      });
+
+      expect(result.error).toBeUndefined();
+      const inFlight = result.items.filter((item) => item.type === "component");
+      expect(inFlight.length).toBe(1);
+      expect(inFlight[0]?.transient).toBe(true);
+
+      const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
+      const stored = (requestRecord?.items ?? []).filter((item) => item.type === "component");
+      expect(stored.length).toBe(0);
+    });
+
+    it("transient block + emitMessage({ transient: true }) → transient; stripped", async () => {
+      const stores = createInMemoryStores();
+      const flow = defineFlow({
+        kind: "fix478-message-opt-in",
+        actions: {
+          run: {
+            inputSchema: z.object({ value: z.string() }),
+            block: handler({
+              name: "transient-emit-message-transient",
+              transient: true,
+              inputSchema: z.object({ value: z.string() }),
+              outputSchema: z.string(),
+              execute: async ({ value }, ctx) => {
+                ctx.emitMessage("hi", { transient: true });
+                return value;
+              }
+            })
+          }
+        }
+      })();
+
+      const result = await runAction({
+        flow,
+        actionName: "run",
+        input: { value: "ok" },
+        userId: "u",
+        sessionId: "s",
+        stores
+      });
+
+      expect(result.error).toBeUndefined();
+      const inFlight = result.items.filter(
+        (item) => item.type === "message" && (item as { role: string }).role === "assistant"
+      );
+      expect(inFlight.length).toBe(1);
+      expect(inFlight[0]?.transient).toBe(true);
+
+      const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
+      const stored = (requestRecord?.items ?? []).filter(
+        (item) => item.type === "message" && (item as { role: string }).role === "assistant"
+      );
+      expect(stored.length).toBe(0);
+    });
+
+    it("transient block + emitStatus → transient by default", async () => {
+      const stores = createInMemoryStores();
+      const flow = defineFlow({
+        kind: "fix478-status-default",
+        actions: {
+          run: {
+            inputSchema: z.object({ value: z.string() }),
+            block: handler({
+              name: "transient-emit-status",
+              transient: true,
+              inputSchema: z.object({ value: z.string() }),
+              outputSchema: z.string(),
+              execute: async ({ value }, ctx) => {
+                ctx.emitStatus("working");
+                return value;
+              }
+            })
+          }
+        }
+      })();
+
+      const result = await runAction({
+        flow,
+        actionName: "run",
+        input: { value: "ok" },
+        userId: "u",
+        sessionId: "s",
+        stores
+      });
+
+      expect(result.error).toBeUndefined();
+      const inFlight = result.items.filter((item) => item.type === "status");
+      expect(inFlight.length).toBeGreaterThanOrEqual(1);
+      expect(inFlight[0]?.transient).toBe(true);
+
+      const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
+      const stored = (requestRecord?.items ?? []).filter((item) => item.type === "status");
+      expect(stored.length).toBe(0);
+    });
+
+    it("non-transient block + emitStatus({ transient: false }) → persisted", async () => {
+      const stores = createInMemoryStores();
+      const flow = defineFlow({
+        kind: "fix478-status-opt-out",
+        actions: {
+          run: {
+            inputSchema: z.object({ value: z.string() }),
+            block: handler({
+              name: "status-persist-opt-out",
+              inputSchema: z.object({ value: z.string() }),
+              outputSchema: z.string(),
+              execute: async ({ value }, ctx) => {
+                ctx.emitStatus("working", { transient: false });
+                return value;
+              }
+            })
+          }
+        }
+      })();
+
+      const result = await runAction({
+        flow,
+        actionName: "run",
+        input: { value: "ok" },
+        userId: "u",
+        sessionId: "s",
+        stores
+      });
+
+      expect(result.error).toBeUndefined();
+      const inFlight = result.items.filter((item) => item.type === "status");
+      expect(inFlight.length).toBeGreaterThanOrEqual(1);
+      expect(inFlight[0]?.transient).toBeUndefined();
+
+      const requestRecord = await stores.request.get(result.items[0]?.requestId ?? "");
+      const stored = (requestRecord?.items ?? []).filter((item) => item.type === "status");
+      expect(stored.length).toBe(1);
+    });
   });
 
   it("existing transient status items are also stripped from store", async () => {

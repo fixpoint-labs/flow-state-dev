@@ -1235,21 +1235,28 @@ type EmissionContext = {
 function createEmitMessage(
   emCtx: EmissionContext
 ): {
-  (text: string, options?: { agentType?: AgentType; agentName?: string }): void;
-  (content: Content[], options?: { agentType?: AgentType; agentName?: string }): void;
+  (text: string, options?: { agentType?: AgentType; agentName?: string; transient?: boolean }): void;
+  (content: Content[], options?: { agentType?: AgentType; agentName?: string; transient?: boolean }): void;
 } {
-  return function emitMessage(textOrContent: string | Content[], options?: { agentType?: AgentType; agentName?: string }): void {
+  return function emitMessage(
+    textOrContent: string | Content[],
+    options?: { agentType?: AgentType; agentName?: string; transient?: boolean }
+  ): void {
     const content: Content[] =
       typeof textOrContent === "string"
         ? [{ type: "output_text", text: textOrContent }]
         : textOrContent;
 
     const itemIndex = emCtx.nextItemIndex();
+    // FIX-478: explicit emit calls are content, not bookkeeping. Default to
+    // non-transient regardless of `blockTransient` — the block's flag only
+    // controls auto-emitted block_output traces. Per-call `{ transient: true }`
+    // is the explicit opt-in for live-only output.
     const item: MessageItem = {
       id: `item_message_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "message",
       status: "completed",
-      transient: emCtx.blockTransient || undefined,
+      transient: options?.transient === true ? true : undefined,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -1289,20 +1296,15 @@ function createEmitComponent(
     },
   ): void {
     const itemIndex = emCtx.nextItemIndex();
-    // The block author can override the inherited blockTransient
-    // — useful when an internal/infrastructure block (marked
-    // `transient: true` to suppress its auto-emitted block_output
-    // trace) needs to emit a user-facing component item that should
-    // remain visible to the client.
-    const transient =
-      options?.transient !== undefined
-        ? options.transient || undefined
-        : emCtx.blockTransient || undefined;
+    // FIX-478: explicit emit calls are content, not bookkeeping. Default to
+    // non-transient regardless of `blockTransient` — the block's flag only
+    // controls auto-emitted block_output traces. Per-call `{ transient: true }`
+    // is the explicit opt-in (e.g. live-only progress with dedup).
     const item: ComponentItem = {
       id: `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "component",
       status: "completed",
-      transient,
+      transient: options?.transient === true ? true : undefined,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -1540,10 +1542,10 @@ type StatusSlot = { message: string };
 function createEmitStatus(
   emCtx: EmissionContext,
   slot: StatusSlot
-): (message: string | undefined, options?: { blocked?: boolean; backgroundTasks?: number }) => void {
+): (message: string | undefined, options?: { blocked?: boolean; backgroundTasks?: number; transient?: boolean }) => void {
   return function emitStatus(
     message: string | undefined,
-    options?: { blocked?: boolean; backgroundTasks?: number }
+    options?: { blocked?: boolean; backgroundTasks?: number; transient?: boolean }
   ): void {
     if (message !== undefined) {
       // Dedupe: skip when the proposed message matches the slot. `undefined`
@@ -1555,11 +1557,15 @@ function createEmitStatus(
     }
 
     const itemIndex = emCtx.nextItemIndex();
+    // FIX-478: status defaults to transient (live-only; statuses are
+    // naturally ephemeral). Per-call `{ transient: false }` opts out for
+    // symmetry with emitMessage / emitComponent. `false` produces a
+    // persisted item; `undefined` keeps the field absent.
     const item: StatusItem = {
       id: `item_status_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "status",
       status: "completed",
-      transient: true,
+      transient: options?.transient === false ? undefined : true,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),

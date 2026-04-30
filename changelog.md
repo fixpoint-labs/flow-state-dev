@@ -4,6 +4,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-04-30
 
+### Decouple `emit*` default-transient from `blockTransient`; document the keyed-snapshot pattern (FIX-478)
+
+- `ctx.emitMessage()` and `ctx.emitComponent()` no longer inherit the producing block's `transient` flag. Both default to `transient: false` (persisted) regardless of whether the calling block is transient. The block flag retains its single intended meaning: suppress the framework's auto-emitted `block_output` bookkeeping for that block.
+- `ctx.emitStatus()` continues to default to `transient: true` (statuses are naturally ephemeral). All three emitters now accept a per-call `{ transient?: boolean }` override for symmetry.
+- Reverts the FIX-447 surgical workarounds (the explicit `transient: false` overrides in `getOrCreateTaskCollection`'s `onChange` and in the `boardMetaActive` / `boardMetaCompleted` blocks) — the architectural fix at the framework layer makes them redundant.
+- Documents the **keyed snapshot** pattern (component item with a stable `key`, latest-wins per `${requestId}:${key}`) and the four-cell `transient × key` matrix in `apps/docs/docs/streaming/emitting-items.md`. Cross-links from `OutputItemBase.transient`, `ComponentItem.key`, and the `BlockContext` emit JSDocs. No new APIs — the pattern was already supported, just unnamed.
+- Behavior change: third-party blocks declared `transient: true` that previously relied on `emitMessage` / `emitComponent` calls being auto-suppressed will now persist those items. Migration is one keyword: pass `{ transient: true }` explicitly on the emit call.
+
 ### `taskBoard` follow-up: dep materialization, sub-agent tool visibility, render hygiene (FIX-447)
 
 - `TaskWorkerInput.deps` is now substrate-supplied. The worker dispatch path resolves each `task.deps[]` entry to its dep's `output` and passes the map to the worker before invocation. Workers read upstream context via `input.deps[depId]` directly — no pattern plumbing required.

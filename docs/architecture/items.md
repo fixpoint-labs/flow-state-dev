@@ -92,7 +92,20 @@ Items fall into three buckets:
 
 **Conditionally persistent** — `state_change` items are transient in production and persistent in development. Use `persistStateChanges: true` on the flow config to force persistence in production (needed for the devtool state timeline).
 
-When a block is configured with `transient: true`, all items it emits become transient regardless of their type. This is how you mark an entire block's output as stream-only.
+When a block is marked `transient: true`, the framework's auto-emitted bookkeeping for that block (`block_output` traces) is suppressed. Items the block emits explicitly (via `emitMessage`, `emitComponent`, `emitStatus`) are **not** affected by the block flag — their persistence is controlled by their own `transient` field, with sensible per-emitter defaults: `false` for `emitMessage` and `emitComponent` (persisted), `true` for `emitStatus` (live-only). Each emitter accepts a per-call `transient?: boolean` override.
+
+### Transient × keyed item matrix
+
+The `transient` and `key` fields compose orthogonally — knowing one tells you nothing about the other.
+
+| `transient` | `key` | Semantics | Example |
+|:-----------:|:-----:|-----------|---------|
+| `false` | absent | Append-only event | A finalized message; a completed tool output |
+| `false` | present | **Keyed snapshot** — replays on reload | `task-change`, `task-board-meta`, `rb-entry` |
+| `true` | absent | Ephemeral one-shot | A debug trace |
+| `true` | present | Live-only progress with dedup | A spinner-style "currently doing X" |
+
+The `(transient: false, key: present)` cell is the **keyed snapshot** pattern: one logical entity whose latest state replays on reload. The renderer's `deduplicateComponentItems` collapses multiple emissions per `${requestId}:${key}` to the latest. See [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots) for the user-facing reference.
 
 There are two storage targets, kept separate:
 - **Item record** — the final state of each durable item, used to reconstruct session history
@@ -190,6 +203,8 @@ ctx.emitComponent("search-results", { results }, { key: "search" });
 ```
 
 When `key` is set, `ItemsRenderer` shows only the latest item with that key per request. Use this when the component represents a stateful view you want to replace in-place — for example, incrementally updating search results rather than appending a new card for each update.
+
+When combined with `transient: false` (the default), this is the **keyed snapshot** pattern: one logical entity whose latest state replays on reload. See [Persistence](#persistence) above for the full transient × key matrix and [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots) for the user-facing reference.
 
 ### Registering a renderer
 
