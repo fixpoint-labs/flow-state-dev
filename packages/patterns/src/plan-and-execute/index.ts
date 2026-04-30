@@ -257,12 +257,12 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
     "You are a focused task executor.",
     "Given a specific task, produce a substantive finding in 2-4 sentences with specific facts or insights.",
     "Use the web to find information if needed, you have search capabilities available to you.",
-    "If prior task results are provided, build directly on that context rather than starting from scratch.",
+    "If prior task results are provided, build directly on that context — reuse their findings and sources rather than re-discovering what an upstream task already established.",
     "Return a JSON object with:",
     "- summary: your substantive finding",
     "- success: true if you found meaningful information, false if the information was unavailable or missing",
     "- reason: (only if success is false) a brief explanation of why the task could not be completed",
-    "- sources: list of { title?, url } for any web sources you consulted (omit if no search was performed)",
+    "- sources: list of { title?, url } for the web sources that ACTUALLY informed your summary. Include sources reused from prior tasks if they shaped your answer. Do NOT list every URL the search returned — only the ones you specifically leveraged.",
   ].join("\n");
 
   return generator({
@@ -298,20 +298,54 @@ function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
         input.dependencyResults &&
         Object.keys(input.dependencyResults).length > 0
       ) {
-        const ctx = Object.values(input.dependencyResults)
-          .map((r) => {
-            const obj = r as Record<string, unknown> | null | undefined;
-            return obj && typeof obj === "object" && "summary" in obj
-              ? String(obj.summary)
-              : JSON.stringify(r);
-          })
-          .join("\n");
-        parts.push(`\nContext from prior tasks:\n${ctx}`);
+        const sections = Object.entries(input.dependencyResults).map(
+          ([depId, r]) => formatDependencyContext(depId, r),
+        );
+        parts.push(
+          `\nContext from prior tasks:\n${sections.join("\n\n---\n\n")}`,
+        );
       }
       return parts.join("\n");
     },
     agentType: config.stepExecutorAgentType ?? "sub",
   });
+}
+
+/**
+ * Format a single dep's output as a labeled context block — summary
+ * first, then a "Sources used in this task" list when the dep recorded
+ * any. Workers reuse the URLs by citing them in their own `sources`
+ * array, so links propagate down the task chain without
+ * re-discovering.
+ */
+function formatDependencyContext(depId: string, value: unknown): string {
+  if (value === null || value === undefined) {
+    return `From ${depId}: (no output)`;
+  }
+  if (typeof value === "string") {
+    return `From ${depId}:\n${value}`;
+  }
+  if (typeof value !== "object") {
+    return `From ${depId}: ${String(value)}`;
+  }
+  const obj = value as Record<string, unknown>;
+  const summary =
+    "summary" in obj && typeof obj.summary === "string"
+      ? obj.summary
+      : JSON.stringify(value);
+  const sources = Array.isArray(obj.sources)
+    ? (obj.sources as Array<{ title?: string; url: string }>).filter(
+        (s) => typeof s?.url === "string" && s.url.length > 0,
+      )
+    : [];
+  const sourceLines = sources
+    .map((s) => `- ${s.title ? `${s.title}: ` : ""}${s.url}`)
+    .join("\n");
+  const sourcesPart =
+    sourceLines.length > 0
+      ? `\nSources used in this task:\n${sourceLines}`
+      : "";
+  return `From ${depId}:\n${summary}${sourcesPart}`;
 }
 
 /**
@@ -455,6 +489,8 @@ function createDefaultSynthesizer(config: {
     "Write a clear, direct final answer to the original goal.",
     "Integrate the findings into a coherent narrative — do not just summarize each step.",
     "Be specific and draw on the concrete facts gathered.",
+    "When grounding a specific claim in a source, cite it inline as a Markdown link, e.g. [title](https://...). Don't link every sentence — only the ones that actually depend on a source.",
+    "End the response with a 'Sources' section listing only the URLs you actually relied on to construct the answer. Do not aggregate every URL that was searched — only the ones that contributed. Format each line as '- [Title](URL)'.",
     "If no findings are available, briefly explain that the research could not be completed and why, without asking the user for more information.",
   ].join("\n");
 

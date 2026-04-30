@@ -278,6 +278,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       taskId: z.string(),
       goal: z.string(),
       input: z.unknown().optional(),
+      deps: z.record(z.unknown()).optional(),
       attempts: z.number().int().nonnegative().default(0),
       feedback: z.string().optional(),
       metadata: z.record(z.unknown()).optional(),
@@ -291,12 +292,43 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       "You are a focused task executor within a supervisor workflow.",
       "Complete the assigned task concisely and accurately.",
       "If task context is provided, follow those guidelines while completing the task.",
+      "If prior task results are provided, build directly on that context — reuse their findings and source URLs rather than re-discovering what an upstream task already established.",
+      "When citing a fact that came from a source, include the URL inline as a Markdown link.",
       "If feedback from a prior attempt is provided, address it directly.",
       "IMPORTANT: Your text response IS the task deliverable. Return all substantive content as your response text — do not write it to files instead.",
     ].join("\n"),
     user: (input) => {
       const parts = [`Task: ${input.goal}`];
       if (typeof input.input === "string") parts.push(`\nContext: ${input.input}`);
+      if (input.deps !== undefined && Object.keys(input.deps).length > 0) {
+        const sections = Object.entries(input.deps).map(([depId, value]) => {
+          if (typeof value === "string") return `From ${depId}:\n${value}`;
+          if (value === null || typeof value !== "object") {
+            return `From ${depId}: ${JSON.stringify(value)}`;
+          }
+          const obj = value as Record<string, unknown>;
+          const summary =
+            "summary" in obj && typeof obj.summary === "string"
+              ? obj.summary
+              : JSON.stringify(value);
+          const sources = Array.isArray(obj.sources)
+            ? (obj.sources as Array<{ title?: string; url: string }>).filter(
+                (s) => typeof s?.url === "string" && s.url.length > 0,
+              )
+            : [];
+          const sourceLines = sources
+            .map((s) => `- ${s.title ? `${s.title}: ` : ""}${s.url}`)
+            .join("\n");
+          const sourcesPart =
+            sourceLines.length > 0
+              ? `\nSources used in this task:\n${sourceLines}`
+              : "";
+          return `From ${depId}:\n${summary}${sourcesPart}`;
+        });
+        parts.push(
+          `\nContext from prior tasks:\n${sections.join("\n\n---\n\n")}`,
+        );
+      }
       if (input.feedback) parts.push(`\nPrevious feedback: ${input.feedback}`);
       return parts.join("\n");
     },
