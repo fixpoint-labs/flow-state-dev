@@ -203,6 +203,7 @@ function createDefaultReplanner(config: {
 }) {
   return generator({
     name: `${config.name}-replanner`,
+    activeStatusMessage: "Adjusting the plan",
     model: config.model ?? "openai/gpt-5.4-mini",
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.history !== undefined ? { history: config.history } : {}),
@@ -496,6 +497,7 @@ function createDefaultSynthesizer(config: {
 
   return generator({
     name: `${config.name}-synthesizer`,
+    activeStatusMessage: "Putting it all together",
     model: config.model ?? "openai/gpt-5.4-mini",
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.history !== undefined ? { history: config.history } : {}),

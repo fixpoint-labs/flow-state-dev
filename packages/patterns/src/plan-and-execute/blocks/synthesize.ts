@@ -154,6 +154,7 @@ export function createSynthesize(options: CreateSynthesizeOptions) {
   return sequencer({
     name: `${name}-synthesize`,
     stateSchema: planAndExecuteStateSchema,
+    activeStatusMessage: "Putting it all together",
   })
     .then(buildPlanOutput)
     .then(synthesizer);

@@ -127,6 +127,7 @@ export function createCaptureAndPlan(options: CaptureAndPlanOptions) {
     name: `${name}-capture-and-plan`,
     inputSchema: planAndExecuteInputSchema,
     stateSchema: planAndExecuteStateSchema,
+    activeStatusMessage: "Planning the steps",
   })
     .tap(setInitialState)
     .tap(emitPlanningMeta)

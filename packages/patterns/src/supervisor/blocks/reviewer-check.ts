@@ -140,6 +140,30 @@ export function buildReviewedWorker(
     },
   });
 
+  // Surface a clear "now reviewing" status when the worker output is in
+  // hand and the reviewer LLM is about to look at it. The earlier
+  // claim-time "Working on: {goal}" status persists through the worker
+  // run; this overrides it briefly during review.
+  const emitReviewingStatus = handler({
+    name: `${name}-${workerKey}-reviewing-status`,
+    inputSchema: z.unknown(),
+    sequencerStateSchema: reviewedWorkerStateSchema,
+    execute: async (_input, ctx) => {
+      const taskId = ctx.sequencer!.state.taskId;
+      const goal =
+        taskId !== undefined
+          ? getOrCreateTaskCollection({
+              ctx,
+              backing: "request",
+              collectionId,
+            }).get(taskId)?.goal
+          : undefined;
+      ctx.emitStatus(
+        goal !== undefined ? `Reviewing: ${goal}` : "Reviewing the result",
+      );
+    },
+  });
+
   return sequencer({
     name: `${name}-${workerKey}-reviewed`,
     stateSchema: reviewedWorkerStateSchema,
@@ -148,6 +172,7 @@ export function buildReviewedWorker(
     .then(adaptedWorker)
     .tap(stashWorkerOutput)
     .tap(stampReviewEntered)
+    .tap(emitReviewingStatus)
     .map(buildReviewerInput)
     .then(reviewerGenerator)
     .then(applyVerdict) as BlockDefinition<any, any>;

@@ -111,6 +111,7 @@ export function createTaskEvaluator(options: DefaultEvaluatorOptions) {
 
   return handler({
     name: `${name}-evaluate`,
+    activeStatusMessage: "Reviewing progress",
     inputSchema: z.unknown(),
     outputSchema: iterationOutputSchema,
     sequencerStateSchema: planAndExecuteStateSchema,
@@ -152,6 +153,7 @@ export function createLLMEvaluator(options: {
 
   return generator({
     name: `${name}-evaluate-llm`,
+    activeStatusMessage: "Reviewing progress",
     model: model ?? "openai/gpt-5.4-mini",
     outputSchema: llmEvaluatorOutputSchema,
     sequencerStateSchema: planAndExecuteStateSchema,

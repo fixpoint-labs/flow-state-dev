@@ -102,6 +102,7 @@ export function createCaptureAndPlan(options: CaptureAndPlanOptions) {
     name: `${name}-capture-and-plan`,
     inputSchema: supervisorInputSchema,
     stateSchema: supervisorStateSchema,
+    activeStatusMessage: "Planning tasks",
   })
     .tap(setInitialState)
     .tap(emitPlanningMeta)

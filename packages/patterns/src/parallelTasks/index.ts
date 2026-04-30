@@ -158,6 +158,7 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   // of excluding failed/skipped tasks from the synthesizer input.
   const collectResults = handler({
     name: `${name}-collect-results`,
+    activeStatusMessage: "Combining results",
     inputSchema: z.unknown(),
     outputSchema: z.array(z.unknown()),
     execute: (_input, ctx) => {
@@ -173,7 +174,11 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     }
   });
 
-  return sequencer({ name, inputSchema: parallelTasksInputSchema })
+  return sequencer({
+    name,
+    inputSchema: parallelTasksInputSchema,
+    activeStatusMessage: "Planning tasks",
+  })
     .then(activePlanner)
     .tap(seedTasksFromPlan)
     .then(board.block)

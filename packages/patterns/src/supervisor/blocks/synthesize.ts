@@ -57,6 +57,7 @@ export function createSynthesize(options: CreateSynthesizeOptions) {
   return sequencer({
     name: `${name}-synthesize`,
     stateSchema: supervisorStateSchema,
+    activeStatusMessage: "Putting it all together",
   })
     .then(buildResults)
     .then(synthesizer);
