@@ -62,11 +62,45 @@ export function createSynthesize(options: CreateSynthesizeOptions) {
     },
   });
 
+  // Latest task-board-meta wins per collectionId, so without a final
+  // re-emit the renderer would stay on "synthesizing" forever after
+  // the synthesizer returns. Re-emit `completed` with current counts so
+  // the badge clears.
+  const boardMetaFinal = handler({
+    name: `${name}-meta-final`,
+    inputSchema: z.unknown(),
+    sequencerStateSchema: supervisorStateSchema,
+    execute: async (_input, ctx) => {
+      const collection = getOrCreateTaskCollection({
+        ctx,
+        backing: "request",
+        collectionId,
+      });
+      const counts = {
+        total: collection.list().length,
+        completed: collection.count({ status: "completed" }),
+        errored: collection.count({ status: "errored" }),
+        cancelled: collection.count({ status: "cancelled" }),
+        blocked: collection.count({ status: "blocked" }),
+        awaiting_review: collection.count({ status: "awaiting_review" }),
+        in_progress: collection.count({ status: "in_progress" }),
+        pending: collection.count({ status: "pending" }),
+      };
+      await ctx.sequencer!.patchState({ status: "completed" });
+      ctx.emitComponent(
+        TASK_BOARD_META_COMPONENT_TYPE,
+        { collectionId, status: "completed", counts },
+        { key: collectionId },
+      );
+    },
+  });
+
   return sequencer({
     name: `${name}-synthesize`,
     stateSchema: supervisorStateSchema,
   })
     .tap(boardMetaSynthesizing)
     .then(buildResults)
-    .then(synthesizer);
+    .then(synthesizer)
+    .tap(boardMetaFinal);
 }
