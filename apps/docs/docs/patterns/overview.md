@@ -16,7 +16,7 @@ Primitives → Utility Blocks → Composable Patterns
 
 **Utility blocks** are single-block factories that wrap primitives into reusable, named capabilities. `utility.decomposer()` returns a generator pre-configured for task decomposition. `utility.summarizer()` returns one for summarization. You still get one block — it just has sensible defaults and a focused API. Some utilities are general-purpose (no adapter required). Others are adapter-driven: they require a provider configuration to connect to an external service.
 
-**Composable patterns** are multi-block factory functions that return a fully wired sequencer. `coordinator()` returns a sequencer that handles decomposition, parallel dispatch, and merging. `supervisor()` returns one that adds a review-and-replan feedback loop. These aren't single blocks — they're complete agentic workflows, composable within larger pipelines.
+**Composable patterns** are multi-block factory functions that return a fully wired sequencer. `parallelTasks()` returns a sequencer that handles decomposition, parallel dispatch, and merging. `supervisor()` returns one that adds per-task review with retries on rejection. These aren't single blocks — they're complete agentic workflows, composable within larger pipelines.
 
 The line between utility blocks and composable patterns is clear: utility blocks are single blocks. Patterns are multi-block sequencer compositions.
 
@@ -48,9 +48,9 @@ See [Core Utilities](./utility-blocks/core) and [Extension Utilities](./utility-
 
 The first three patterns use `utility.decomposer` internally to plan work. They differ in their dispatch model and feedback loop:
 
-**Coordinator** — single-pass fan-out/fan-in. Decomposes a goal, runs sub-tasks concurrently, merges results. No review, no loop. Use it when you trust the workers and just need parallel execution.
+**Parallel Tasks** — single-pass fan-out/fan-in. Decomposes a goal, runs sub-tasks concurrently, merges results. No review, no loop. Use it when you trust the workers and just need parallel execution. (`coordinator()` is a deprecated alias for the same factory.)
 
-**Supervisor** — fan-out with quality review and replan. Decomposes, dispatches, reviews each result, replans failed tasks, repeats until all tasks pass review or max iterations is hit. Use it when output quality matters and failures should be corrected, not just skipped.
+**Supervisor** — fan-out with per-task review. Decomposes, dispatches, reviews each result as it completes, retries on rejection (up to `maxAttemptsPerTask`). Use it when output quality matters and individual results should be corrected, not just skipped.
 
 **Plan and Execute** — sequential step-by-step with adaptive replanning. Plans a dependency-ordered task graph, executes one task at a time, evaluates progress, and optionally replans remaining tasks after each step. Use it when tasks are ordered and depend on each other's results.
 
@@ -67,13 +67,13 @@ The first three patterns use `utility.decomposer` internally to plan work. They 
 ```
 Do your tasks depend on each other's outputs?
   No → are they parallel?
-    Yes → Coordinator (single-pass fan-out)
+    Yes → Parallel Tasks (single-pass fan-out)
     No  → Plan and Execute with one task at a time
   Yes → Plan and Execute (dependency-ordered execution)
 
 Do you need quality review on each result?
-  Yes → Supervisor (review + replan loop)
-  No  → Coordinator or Plan and Execute
+  Yes → Supervisor (per-task review with retry)
+  No  → Parallel Tasks or Plan and Execute
 
 Do you need to audit a generated response for quality issues?
   Yes → Response Auditor (parallel analyzers)
@@ -81,8 +81,8 @@ Do you need to audit a generated response for quality issues?
 
 More specifically:
 
-- **Single-pass fan-out with parallel workers** → [Coordinator](./coordinator)
-- **Parallel workers with quality review and a replan loop** → [Supervisor](./supervisor)
+- **Single-pass fan-out with parallel workers** → [Parallel Tasks](./parallelTasks)
+- **Parallel workers with per-task review and retry-on-rejection** → [Supervisor](./supervisor)
 - **Sequential steps with dependency ordering and adaptive replanning** → [Plan and Execute](./plan-and-execute)
 - **Post-generation quality audit with pluggable analyzers** → [Response Auditor](./response-auditor)
 - **Controller-driven multi-agent workspace (incremental synthesis)** → Blackboard

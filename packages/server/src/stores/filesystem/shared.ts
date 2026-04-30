@@ -105,6 +105,21 @@ export type FilesystemRecordStore<
     value: TRecord,
     expectedVersion: ExpectedVersion
   ): Promise<SetResult<TRecord>>;
+  /**
+   * Atomically read-modify-write a record under the per-id write lock.
+   *
+   * Use this when the caller needs to merge new fields into the existing
+   * record without clobbering concurrent writes. The merge function runs
+   * inside the lock against the freshest on-disk state, so a CAS state
+   * write that lands while the merge is pending is observed by `current`
+   * here and preserved by the merge.
+   *
+   * Returns the new record, or `undefined` if the record does not exist.
+   */
+  update(
+    id: string,
+    merge: (current: TRecord) => TRecord
+  ): Promise<TRecord | undefined>;
   delete(id: string): Promise<void>;
   list(options?: TListOptions): Promise<TRecord[]>;
 };
@@ -167,6 +182,21 @@ export function createFilesystemRecordStore<
         }
         await writeRecord(rootDir, id, value);
         return { ok: true, version: value.version };
+      }),
+
+    update: (
+      id: string,
+      merge: (current: TRecord) => TRecord
+    ): Promise<TRecord | undefined> =>
+      withLock(id, async () => {
+        // Re-read inside the lock so concurrent CAS writes (which take the
+        // same lock for `set`) are visible. Without this, `update` would race
+        // with state-mutation writes and silently overwrite the state field.
+        const current = await readRecord<TRecord>(rootDir, id);
+        if (current === undefined) return undefined;
+        const next = merge(current);
+        await writeRecord(rootDir, id, next);
+        return next;
       }),
 
     delete: async (id: string): Promise<void> => {

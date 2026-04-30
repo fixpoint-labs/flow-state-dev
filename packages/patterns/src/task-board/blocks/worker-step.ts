@@ -32,11 +32,12 @@
  * work.
  */
 import { router } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockContext, BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   taskSchema,
   type Task,
+  type TaskCollectionRef,
   type TaskWorker,
   type TaskWorkerInput,
   type TaskWorkerRegistry,
@@ -54,8 +55,25 @@ export function isUniformWorker(
   return typeof (workers as { run?: unknown }).run === "function";
 }
 
-/** Pack a `Task` into the substrate's `TaskWorkerInput` shape. */
-export function packWorkerInput(task: Task): TaskWorkerInput {
+/**
+ * Pack a `Task` into the substrate's `TaskWorkerInput` shape. When the
+ * task declares `deps`, this resolves each dep's `output` from the
+ * collection and exposes them under `deps: Record<depId, output>` so
+ * the worker can read upstream context via `input.deps`.
+ */
+export function packWorkerInput(
+  task: Task,
+  collection: TaskCollectionRef,
+): TaskWorkerInput {
+  const deps: Record<string, unknown> = {};
+  if (task.deps !== undefined) {
+    for (const depId of task.deps) {
+      const depTask = collection.get(depId);
+      if (depTask !== undefined && depTask.output !== undefined) {
+        deps[depId] = depTask.output;
+      }
+    }
+  }
   return {
     taskId: task.id,
     goal: task.goal,
@@ -63,6 +81,7 @@ export function packWorkerInput(task: Task): TaskWorkerInput {
     attempts: task.attempts,
     feedback: task.feedback,
     metadata: task.metadata,
+    ...(Object.keys(deps).length > 0 ? { deps } : {}),
   };
 }
 
@@ -70,6 +89,13 @@ export interface BuildWorkerStepOptions {
   /** Block-name prefix for the synthesised router (registry path only). */
   name: string;
   workers: TaskWorker | TaskWorkerRegistry;
+  /**
+   * Resolves the active board's collection from a block context.
+   * `packWorkerInput` calls this on every claim so dep outputs can be
+   * materialized into `TaskWorkerInput.deps` from the live collection
+   * state.
+   */
+  collection: (ctx: BlockContext) => TaskCollectionRef;
 }
 
 /**
@@ -92,11 +118,12 @@ export interface BuildWorkerStepOptions {
 export function buildWorkerStep(
   options: BuildWorkerStepOptions
 ): BlockDefinition<any, any> {
-  const { name, workers } = options;
+  const { name, workers, collection: collectionFactory } = options;
 
   if (isUniformWorker(workers)) {
-    return workers.connectInput<Task>((task) => packWorkerInput(task)) as
-      BlockDefinition<any, any>;
+    return workers.connectInput<Task>((task, ctx) =>
+      packWorkerInput(task, collectionFactory(ctx))
+    ) as BlockDefinition<any, any>;
   }
 
   const routes = Object.values(workers) as BlockDefinition<any, any>[];
@@ -118,8 +145,9 @@ export function buildWorkerStep(
           `[task-board] no worker registered under assignee "${task.assignee}" for task "${task.id}"`
         );
       }
-      return selected.connectInput(() => packWorkerInput(task)) as
-        BlockDefinition<any, any>;
+      return selected.connectInput((_input, ctx) =>
+        packWorkerInput(task, collectionFactory(ctx))
+      ) as BlockDefinition<any, any>;
     },
   }) as BlockDefinition<any, any>;
 }

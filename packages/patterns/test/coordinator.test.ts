@@ -1,8 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { mockGenerator, testBlock } from "@flow-state-dev/testing";
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
 import { coordinator } from "../src/coordinator";
+
+// Suppress the one-time deprecation warning each call emits — tests exercise
+// the alias intentionally; the warning is verified separately in
+// coordinator-alias.test.ts.
+let warnSpy: ReturnType<typeof vi.spyOn>;
+beforeAll(() => {
+  warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+});
+afterAll(() => {
+  warnSpy.mockRestore();
+});
 
 // ---------------------------------------------------------------------------
 // Helpers

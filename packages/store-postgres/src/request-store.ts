@@ -98,20 +98,22 @@ export function createPostgresRequestStore(executor: QueryExecutor): RequestStor
               latestItemSnapshots.delete(requestId);
               if (snapshot === undefined) return;
 
-              const result = await executor.query(
-                "SELECT data FROM requests WHERE id = $1",
-                [requestId]
+              // Atomic items-only merge using jsonb_set. The previous
+              // SELECT-then-UPDATE pattern raced with concurrent state CAS
+              // writes (`request.atomicState`): a state mutation that landed
+              // between the SELECT and the UPDATE would be silently
+              // overwritten because the UPDATE rewrote the entire `data`
+              // column. jsonb_set targets only the `items` and `updatedAt`
+              // sub-paths, so concurrent writes to other paths (e.g. `state`)
+              // survive (FIX-447 regression).
+              const updatedAt = Date.now();
+              await executor.query(
+                "UPDATE requests SET " +
+                  "data = jsonb_set(jsonb_set(data, '{items}', $1::jsonb, true), '{updatedAt}', to_jsonb($2::bigint), true), " +
+                  "updated_at = $2 " +
+                  "WHERE id = $3",
+                [JSON.stringify(snapshot), updatedAt, requestId]
               );
-              if (result.rows.length > 0) {
-                const data = result.rows[0]!.data;
-                const current = (typeof data === "string" ? JSON.parse(data) : data) as RequestRecord;
-                const updatedAt = Date.now();
-                const updated = { ...current, items: snapshot, updatedAt };
-                await executor.query(
-                  "UPDATE requests SET data = $1, updated_at = $2 WHERE id = $3",
-                  [JSON.stringify(updated), updatedAt, requestId]
-                );
-              }
             } finally {
               pendingItemWrites.delete(requestId);
               resolve();

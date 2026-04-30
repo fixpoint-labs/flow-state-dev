@@ -41,6 +41,9 @@ export function createRecordSuccess(options: RecordSuccessOptions) {
   const { name, collection: collectionFactory } = options;
   return handler({
     name,
+    // Substrate-internal write-back; user-visible task lifecycle flows
+    // through the `task-change` ComponentItem `collection.complete` emits.
+    transient: true,
     inputSchema: z.unknown(),
     sequencerStateSchema: taskBoardWorkerBodyStateSchema,
     execute: async (output: unknown, ctx) => {
@@ -76,6 +79,9 @@ export function createRecordError(options: RecordErrorOptions) {
   const { name, collection: collectionFactory, onError } = options;
   return handler({
     name,
+    // Substrate-internal failure write-back; the failure is surfaced
+    // via `task-change kind:"errored"` on the collection.
+    transient: true,
     inputSchema: z.unknown(),
     outputSchema: z.unknown(),
     sequencerStateSchema: taskBoardWorkerBodyStateSchema,

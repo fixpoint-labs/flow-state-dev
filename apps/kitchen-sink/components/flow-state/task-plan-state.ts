@@ -158,6 +158,208 @@ export const STATUS_SECTIONS: ReadonlyArray<{
 export const DEFAULT_HIDDEN_STATUSES: ReadonlyArray<TaskStatus> = ["cancelled"];
 
 // ---------------------------------------------------------------------------
+// Latest-request scoping
+// ---------------------------------------------------------------------------
+
+/**
+ * Find the most recent `requestId` that emitted a `task-change` item for
+ * the given `collectionId`. Returns `undefined` when the session has
+ * never seen this collection.
+ *
+ * The collection backing in P&E and supervisor is request-scoped — each
+ * chat message produces a fresh substrate state — but the session-level
+ * item stream accumulates across requests. Without this filter the
+ * renderer carries over task-change events from earlier messages, so
+ * the user sees the prior plan layered on top of the current one. The
+ * substrate is correct; only the UI scoping is wrong.
+ */
+export function findLatestCollectionRequestId(
+  items: ReadonlyArray<OutputItem>,
+  collectionId: string,
+): string | undefined {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i]!;
+    if (!isComponentItem(item)) continue;
+    if (item.component !== TASK_CHANGE_COMPONENT) continue;
+    const data = item.data as TaskChangeData;
+    if (data.collectionId !== collectionId) continue;
+    return item.requestId;
+  }
+  return undefined;
+}
+
+/**
+ * Filter items down to the most recent request that emitted task-change
+ * events for the given collection. Returns the original array unchanged
+ * when no such request exists (so an early return on the call site can
+ * stay simple).
+ */
+export function scopeItemsToLatestCollectionRequest(
+  items: ReadonlyArray<OutputItem>,
+  collectionId: string,
+): ReadonlyArray<OutputItem> {
+  const requestId = findLatestCollectionRequestId(items, collectionId);
+  if (requestId === undefined) return items;
+  return items.filter((item) => item.requestId === requestId);
+}
+
+// ---------------------------------------------------------------------------
+// Chat-thread vs task-board ownership
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the set of `item.id` values that fall inside any task-board's
+ * per-task execution window in `items` — across every `collectionId`
+ * present.
+ *
+ * Items belonging to a task should render inside that task's expansion
+ * in `<TaskPlan />`, not also inline in the chat thread. The chat-level
+ * `<RequestGroupRenderer>` uses this set to skip them so the user sees
+ * each tool call / message / reasoning event exactly once.
+ *
+ * `task-change` items themselves are not added to the set — they drive
+ * the renderer's status grouping. `task-board-meta` items are not added
+ * either — they're the entry point that mounts `<TaskPlan />` at the
+ * chat position.
+ *
+ * Windows use `item.ts` (timestamp), not `item.itemIndex`. itemIndex is
+ * not monotonic across emit batches — multiple items can share an
+ * index, and AI-SDK-driven `block_tool_output` emissions sometimes
+ * land after the worker's terminal `task-change` in itemIndex order
+ * but inside it chronologically. Timestamps are monotonic per emitter
+ * and reliably bracket the worker's actual work.
+ */
+export function collectTaskOwnedItemIds(
+  items: ReadonlyArray<OutputItem>,
+): Set<string> {
+  const owned = new Set<string>();
+
+  type WindowKey = string;
+  const startTs = new Map<WindowKey, number>();
+  const endTs = new Map<WindowKey, number>();
+
+  for (const item of items) {
+    if (!isComponentItem(item)) continue;
+    if (item.component !== TASK_CHANGE_COMPONENT) continue;
+    const data = item.data as TaskChangeData;
+    const collectionId = data.collectionId;
+    const taskId = data.taskId;
+    if (collectionId === undefined || taskId === undefined) continue;
+    const key = `${collectionId}/${taskId}`;
+
+    if (data.kind === "claimed" && !startTs.has(key)) {
+      startTs.set(key, item.ts);
+    } else if (
+      data.kind === "completed" ||
+      data.kind === "errored" ||
+      data.kind === "cancelled"
+    ) {
+      endTs.set(key, item.ts);
+    }
+  }
+
+  if (startTs.size === 0) return owned;
+
+  for (const item of items) {
+    if (isComponentItem(item)) {
+      if (
+        item.component === TASK_CHANGE_COMPONENT ||
+        item.component === TASK_BOARD_META_COMPONENT
+      ) {
+        continue;
+      }
+    }
+    for (const [key, start] of startTs) {
+      if (item.ts < start) continue;
+      const end = endTs.get(key);
+      if (end !== undefined && item.ts > end) continue;
+      owned.add(item.id);
+      break;
+    }
+  }
+
+  return owned;
+}
+
+// ---------------------------------------------------------------------------
+// Per-task item windowing
+// ---------------------------------------------------------------------------
+
+/**
+ * Walks the item stream and returns, per task id, the items emitted
+ * during that task's execution window.
+ *
+ * Window boundaries:
+ *   - start: the `task-change` with `kind: "claimed"` for that task id
+ *     (when the task transitions to `in_progress`)
+ *   - end: the next terminal `task-change` for that id (`completed`,
+ *     `errored`, or `cancelled`). `retried` does NOT close the window —
+ *     subsequent attempts append to the same task's windowed items so
+ *     consumers see the full attempt history.
+ *
+ * Items emitted before the first claim (e.g. seed-time `added` events)
+ * are not part of any task's window. The bookend `task-change` items
+ * themselves are excluded — they're consumed by `<TaskPlan />` to drive
+ * the status grouping, not by the per-task expansion.
+ *
+ * `task-board-meta` items are also excluded so the per-task expansion
+ * does not recursively re-render the entire `<TaskPlan />` (that
+ * component is the registry renderer for `task-board-meta`).
+ */
+export function extractTaskItemWindows(
+  items: ReadonlyArray<OutputItem>,
+  collectionId: string,
+): Map<string, OutputItem[]> {
+  const windows = new Map<string, OutputItem[]>();
+  const startTs = new Map<string, number>();
+  const endTs = new Map<string, number>();
+
+  for (const item of items) {
+    if (!isComponentItem(item)) continue;
+    if (item.component !== TASK_CHANGE_COMPONENT) continue;
+    const data = item.data as TaskChangeData;
+    if (data.collectionId !== collectionId) continue;
+    if (data.taskId === undefined) continue;
+
+    if (data.kind === "claimed" && !startTs.has(data.taskId)) {
+      startTs.set(data.taskId, item.ts);
+    } else if (
+      data.kind === "completed" ||
+      data.kind === "errored" ||
+      data.kind === "cancelled"
+    ) {
+      endTs.set(data.taskId, item.ts);
+    }
+  }
+
+  if (startTs.size === 0) return windows;
+
+  for (const item of items) {
+    if (isComponentItem(item)) {
+      if (
+        item.component === TASK_CHANGE_COMPONENT ||
+        item.component === TASK_BOARD_META_COMPONENT
+      ) {
+        continue;
+      }
+    }
+    for (const [taskId, start] of startTs) {
+      if (item.ts < start) continue;
+      const end = endTs.get(taskId);
+      if (end !== undefined && item.ts > end) continue;
+      let bucket = windows.get(taskId);
+      if (bucket === undefined) {
+        bucket = [];
+        windows.set(taskId, bucket);
+      }
+      bucket.push(item);
+    }
+  }
+
+  return windows;
+}
+
+// ---------------------------------------------------------------------------
 // Item-stream extraction
 // ---------------------------------------------------------------------------
 

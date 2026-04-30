@@ -670,7 +670,9 @@ function compileToolsWithExecute(
   tools: GeneratorTool[],
   ctx: BlockContext,
   flowTools: ToolsConfig | undefined,
-  generatorBlockName: string
+  generatorBlockName: string,
+  agentType: AgentType | undefined,
+  agentName: string | undefined,
 ): GeneratorModelTool[] {
   const timeoutMs = flowTools?.defaults?.timeoutMs;
   const retry = flowTools?.defaults?.retry;
@@ -690,6 +692,10 @@ function compileToolsWithExecute(
 
           // Emit block_tool_output item so tool results appear in the stream
           // and can be replayed into LLM context on subsequent requests.
+          // `agentType` / `agentName` carry the parent generator's identity
+          // so `resolveItemVisibility()` can route the item correctly:
+          // sub-agent tool calls render to the client but are excluded from
+          // primary-agent LLM history.
           if (options?.toolCallId !== undefined) {
             const identity = scopedCtx._blockIdentity;
             const toolOutputItem = {
@@ -706,6 +712,8 @@ function compileToolsWithExecute(
               },
               ts: Date.now(),
               ownedBy: identity?.ownedBy,
+              ...(agentType !== undefined ? { agentType } : {}),
+              ...(agentName !== undefined ? { agentName } : {}),
               blockName: tool.name,
               output,
               toolCall: {
@@ -741,6 +749,8 @@ function compileToolsWithExecute(
               },
               ts: Date.now(),
               ownedBy: identity?.ownedBy,
+              ...(agentType !== undefined ? { agentType } : {}),
+              ...(agentName !== undefined ? { agentName } : {}),
               blockName: tool.name,
               output: undefined,
               toolCall: {
@@ -1604,22 +1614,26 @@ export function generator<
       const runTools = normalizedConfig.loop?.runTools !== false;
       const maxSteps = resolveMaxIterations(normalizedConfig);
 
-      // Compile tools: with execute wrappers (AI SDK auto-runs them) or
-      // without (model suggests calls but doesn't execute them).
-      const compiledTools = toolBlocks.length > 0
-        ? (runTools
-            ? compileToolsWithExecute(toolBlocks, ctx, normalizedConfig.flowTools, blockName)
-            : compileToolsForModel(toolBlocks))
-        : [];
-
       // Identity: generators without `agentType` produce no auto-emitted
       // items (only block_output via graph edges). When set, `agentName`
       // defaults to the block name so collaborating generators can be
       // given a shared name explicitly.
+      // Resolved BEFORE `compileToolsWithExecute` so the tool runner can
+      // stamp `agentType`/`agentName` on emitted `block_tool_output`
+      // items — `resolveItemVisibility()` uses those to decide
+      // sub-agent visibility (client: true, history: false).
       const agentType = normalizedConfig.agentType;
       const agentName = agentType !== undefined
         ? (normalizedConfig.agentName ?? blockName)
         : undefined;
+
+      // Compile tools: with execute wrappers (AI SDK auto-runs them) or
+      // without (model suggests calls but doesn't execute them).
+      const compiledTools = toolBlocks.length > 0
+        ? (runTools
+            ? compileToolsWithExecute(toolBlocks, ctx, normalizedConfig.flowTools, blockName, agentType, agentName)
+            : compileToolsForModel(toolBlocks))
+        : [];
 
       // Streaming path: text output + model supports streaming. We stream
       // whenever tools are present (so tool `execute` closures fire) or

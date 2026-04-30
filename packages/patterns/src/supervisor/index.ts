@@ -1,40 +1,51 @@
 /**
- * Supervisor Pattern
+ * Supervisor pattern — per-task review on the taskBoard substrate.
  *
- * Agentic orchestration loop: plan → dispatch → review → replan.
+ * Each registered worker is wrapped in a
+ * `worker → reviewer → applyVerdict` sequencer (BP-011 — reviewer is
+ * composed, never invoked from inside a handler's `execute`). On
+ * `reject` / `needs-revision` the verdict feedback becomes the thrown
+ * error message; the substrate's `recordError` + `maxAttempts`
+ * machinery re-pends the task with feedback until the budget is
+ * exhausted, then `labelFailedReviews` tags the terminal task.
  *
- * Pipeline: [captureGoal] → [planner] → [updatePlanState] → [forEach(worker)]
- *           → [reviewer] → [applyReview] → loopBack(planner) → [synthesizer]
- *
- * Unlike the Coordinator (single-pass), the Supervisor includes a review-and-replan
- * feedback loop powered by `.loopBack()` and sequencer `stateSchema`.
+ * Pipeline:
+ *   captureAndPlan → board.block → cascadeSkipDependents (.tap)
+ *   → labelFailedReviews (.tap) → synthesize
  */
-import { sequencer, handler, generator } from "@flow-state-dev/core";
-import { emitPlanMeta, emitTaskUpdate } from "../shared/plan";
+import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
+import type {
+  AgentType,
+  GeneratorHistoryConfig,
+  GeneratorSlot,
+  SequencerDefinition,
+  UsesSlot,
+} from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
-import type { AgentType, GeneratorHistoryConfig, GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
+import { taskBoard } from "../task-board";
+import { createCascadeSkipDependents } from "../plan-and-execute/blocks/cascade-skip-dependents";
 import {
   supervisorInputSchema,
   supervisorStateSchema,
-  reviewOutputSchema,
-  plannerOutputSchema,
-  executableTasksSchema,
-  applyReviewOutputSchema,
+  reviewerVerdictSchema,
+  reviewerInputSchema,
   type SubTaskErrorStrategy,
-  type SupervisorState,
-  type PlannerOutput,
-  type ReviewOutput,
-  type ExecutableTask,
 } from "./schemas";
+import { createCaptureAndPlan } from "./blocks/capture-and-plan";
+import { buildReviewedWorker } from "./blocks/reviewer-check";
+import { createSynthesize } from "./blocks/synthesize";
+import { createLabelFailedReviews } from "./blocks/label-failed-reviews";
 
 export {
   supervisorInputSchema,
   supervisorStateSchema,
+  reviewerVerdictSchema,
+  reviewerInputSchema,
   reviewOutputSchema,
   plannerOutputSchema,
+  executableTaskSchema,
 } from "./schemas";
-
 
 export type {
   SupervisorInput,
@@ -42,705 +53,275 @@ export type {
   ReviewOutput,
   PlannerOutput,
   ExecutableTask,
+  ReviewerVerdict,
+  ReviewerInput,
   SubTaskErrorStrategy,
 } from "./schemas";
 
-/** Resolvable string — static or computed at runtime from input and context. */
-type InstructionsSlot = string | ((input: any, ctx: any) => string | Promise<string>);
+export { createCaptureAndPlan } from "./blocks/capture-and-plan";
+export { buildReviewedWorker } from "./blocks/reviewer-check";
+export { createSynthesize } from "./blocks/synthesize";
+export { createLabelFailedReviews } from "./blocks/label-failed-reviews";
+export { legacyWorkerAdapter } from "./blocks/legacy-worker-adapter";
+
+type InstructionsSlot =
+  | string
+  | ((input: any, ctx: any) => string | Promise<string>);
 
 export interface SupervisorConfig<
-  TOutputSchema extends ZodTypeAny = ZodTypeAny
+  TOutputSchema extends ZodTypeAny = ZodTypeAny,
 > {
-  /** Name for this supervisor instance. */
   name: string;
-
-  /** The worker block that processes each sub-task. Receives `{ id, goal, context?, feedback? }`. */
-  worker: BlockDefinition<any, any, ExecutableTask, any>;
-
-  /**
-   * Overall instructions for this supervisor — role, stance, rules, or goal framing.
-   *
-   * Digested by the default planner and synthesizer only. Workers don't receive
-   * these directly — the planner distills relevant parts into each task's
-   * `context` field when dispatching.
-   *
-   * Not injected when `planner` or `synthesizer` are overridden (consumer owns
-   * full control).
-   */
+  /** Single uniform worker. Mutually exclusive with `workers`. */
+  worker?: BlockDefinition<any, any>;
+  /** Worker registry — `Record<assignee, BlockDefinition>`. */
+  workers?: Record<string, BlockDefinition<any, any>>;
   instructions?: InstructionsSlot;
-
-  /** Criteria the reviewer uses to evaluate sub-task quality. */
   reviewCriteria?: string[];
-
-  /** Maximum number of plan/dispatch/review iterations. Defaults to 3. */
-  maxIterations?: number;
-
-  /** Maximum number of sub-tasks to run concurrently. Defaults to 3. */
+  /** Per-task retry budget for review rejection. Default 3. */
+  maxAttemptsPerTask?: number;
+  /** Worker pool size. Default 3. */
   maxConcurrency?: number;
-
-  /** Override the planning step. Must output `{ tasks: [{ id, goal, ... }] }`. Defaults to a supervisor-aware decomposer. */
-  planner?: BlockDefinition<any, any, any, PlannerOutput>;
-
-  /** Override the review step. Must output `reviewOutputSchema`. Defaults to a review generator. */
-  reviewer?: BlockDefinition<any, any, any, ReviewOutput>;
-
-  /** Override the final synthesis step. Receives `unknown[]` (accepted results). Defaults to `utility.synthesizer()`. */
-  synthesizer?: BlockDefinition<any, any, unknown[], any>;
-
-  /**
-   * How to handle individual sub-task failures.
-   * - `skip` (default): exclude failed sub-tasks from review
-   * - `fail`: abort entire supervision on any failure
-   * - `retry`: retry per worker's retry policy before failing
-   */
-  onSubTaskError?: SubTaskErrorStrategy;
-
-  /** Context slot applied to default planner and synthesizer. */
-  context?: GeneratorSlot<any, any>;
-
-  /** History slot applied to default planner and synthesizer. */
-  history?: GeneratorHistoryConfig<any, any>;
-
-  /** Capabilities to install on default blocks (planner, reviewer, synthesizer). */
-  uses?: UsesSlot;
-
-  /** Schema for the final synthesized output. */
+  planner?: BlockDefinition<any, any>;
+  /** Reviewer block. Pass `false` to disable per-task review entirely. */
+  reviewer?: BlockDefinition<any, any> | false;
+  synthesizer?: BlockDefinition<any, any>;
   outputSchema?: TOutputSchema;
-
-  /** Agent type for the default reviewer. Default: "sub". */
+  onSubTaskError?: SubTaskErrorStrategy;
+  context?: GeneratorSlot<any, any>;
+  history?: GeneratorHistoryConfig<any, any>;
+  uses?: UsesSlot;
   reviewerAgentType?: AgentType;
-
-  /** Agent type for the default synthesizer. Default: "primary". */
   synthesizerAgentType?: AgentType;
 }
 
-const SKIPPED_SENTINEL = "__supervisorSkipped";
-type SkippedTaskResult = {
-  [SKIPPED_SENTINEL]: true;
-  error: string;
-};
-
-function isSkippedTaskResult(value: unknown): value is SkippedTaskResult {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    SKIPPED_SENTINEL in value
-  );
+/** Default reviewer — generator over `ReviewerInput → ReviewerVerdict`. */
+function buildDefaultReviewer(opts: {
+  name: string;
+  reviewCriteria?: string[];
+  agentType?: AgentType;
+  context?: GeneratorSlot<any, any>;
+  uses?: UsesSlot;
+}): BlockDefinition<any, any> {
+  const criteriaBlock =
+    opts.reviewCriteria && opts.reviewCriteria.length > 0
+      ? `\nEvaluation criteria:\n${opts.reviewCriteria
+          .map((c, i) => `${i + 1}. ${c}`)
+          .join("\n")}`
+      : "";
+  return generator({
+    name: `${opts.name}-reviewer`,
+    model: "preset/fast",
+    inputSchema: reviewerInputSchema,
+    outputSchema: reviewerVerdictSchema,
+    ...(opts.context !== undefined ? { context: opts.context } : {}),
+    ...(opts.uses ? { uses: opts.uses as any } : {}),
+    agentType: opts.agentType ?? "sub",
+    prompt: [
+      "You are a quality reviewer in a supervisor workflow.",
+      "Evaluate the worker's output and return a verdict:",
+      "- 'approve' when the output meets the goal and criteria.",
+      "- 'reject' when it must be redone — provide actionable feedback.",
+      "- 'needs-revision' when it's close but needs targeted fixes — provide actionable feedback.",
+      "When rejecting or requesting revision, ALWAYS include feedback.",
+      criteriaBlock || null,
+    ],
+    user: (input: unknown) =>
+      typeof input === "string" ? input : JSON.stringify(input, null, 2),
+  }) as BlockDefinition<any, any>;
 }
 
-/**
- * Stores the original goal in sequencer state so it's available on re-plan iterations.
- */
-export const captureGoal = handler({
-  name: "capture-goal",
-  inputSchema: supervisorInputSchema,
-  sequencerStateSchema: supervisorStateSchema,
-  execute: async (input, ctx) => {
-    await ctx.sequencer!.patchState({ goal: input.goal });
-  },
-});
-
-/**
- * Records the planner's decomposition into sequencer state and returns
- * executable task objects for the forEach dispatch step.
- */
-export const updatePlanState = handler({
-  name: "update-plan-state",
-  inputSchema: plannerOutputSchema,
-  outputSchema: executableTasksSchema,
-  sequencerStateSchema: supervisorStateSchema,
-  execute: async (input, ctx) => {
-    const state = ctx.sequencer!.state;
-    const isFirstIteration = state.iteration === 0;
-    const newPlan = input.tasks.map((t) => ({
-      id: t.id,
-      goal: t.goal,
-      deps: t.deps ?? [],
-      status: "in-progress" as const,
-    }));
-
-    await ctx.sequencer!.patchState({
-      plan: isFirstIteration
-        ? newPlan
-        : [
-            ...state.plan.filter(
-              (t) =>
-                t.status === "completed" || t.status === "escalated"
-            ),
-            ...newPlan,
-          ],
-      iteration: state.iteration + 1,
-    });
-
-    const updatedState = ctx.sequencer!.state;
-    emitPlanMeta(ctx, {
-      goal: updatedState.goal,
-      taskOrder: updatedState.plan.map((t) => t.id),
-      taskGoals: Object.fromEntries(updatedState.plan.map((t) => [t.id, t.goal])),
-      iteration: updatedState.iteration,
-    });
-    for (const t of newPlan) {
-      emitTaskUpdate(ctx, {
-        id: t.id,
-        goal: t.goal,
-        status: t.status,
-      });
-    }
-
-    // On re-plan, include feedback from prior iterations so workers know what was wrong
-    return newPlan.map((t) => {
-      const prior = state.plan.find((p) => p.id === t.id);
-      return {
-        id: t.id,
-        goal: t.goal,
-        deps: t.deps ?? [],
-        feedback: prior?.feedback,
-      };
-    });
-  },
-});
-
-/**
- * Applies reviewer verdicts to sequencer state and returns a signal
- * that drives the loopBack condition.
- */
-export const applyReview = handler({
-  name: "apply-review",
-  inputSchema: reviewOutputSchema,
-  outputSchema: applyReviewOutputSchema,
-  sequencerStateSchema: supervisorStateSchema,
-  execute: async (input, ctx) => {
-    const state = ctx.sequencer!.state;
-    const newAccepted = [...state.acceptedResults];
-    const updatedPlan = state.plan.map((task) => {
-      const assessment = input.assessments.find(
-        (a) => a.taskId === task.id
-      );
-      if (!assessment) return task;
-      if (assessment.verdict === "accepted" && task.result !== undefined) {
-        newAccepted.push(task.result);
-      }
-      const mappedStatus =
-        assessment.verdict === "accepted"
-          ? ("completed" as const)
-          : assessment.verdict === "escalate"
-            ? ("escalated" as const)
-            : ("needs-revision" as const);
-      return {
-        ...task,
-        status: mappedStatus,
-        feedback: assessment.feedback,
-      };
-    });
-    await ctx.sequencer!.patchState({
-      acceptedResults: newAccepted,
-      plan: updatedPlan,
-    });
-    // Emit only the tasks whose status changed during review
-    for (const task of updatedPlan) {
-      const assessment = input.assessments.find((a) => a.taskId === task.id);
-      if (assessment) {
-        emitTaskUpdate(ctx, {
-          id: task.id,
-          goal: task.goal,
-          status: task.status,
-          result: task.result,
-          error: task.error,
-          assignee: task.assignee,
-        });
-      }
-    }
-    return { needsReplanning: input.needsReplanning };
-  },
-});
-
-function buildDefaultPlanner(name: string, opts?: {
+/** Default synthesizer — combines `{ goal, results }` into a final deliverable. */
+function buildDefaultSynthesizer(opts: {
+  name: string;
+  outputSchema?: ZodTypeAny;
   context?: GeneratorSlot<any, any>;
   history?: GeneratorHistoryConfig<any, any>;
   uses?: UsesSlot;
   instructions?: InstructionsSlot;
-}) {
-  return generator({
-    name: `${name}-planner`,
-    model: "preset/fast",
-    outputSchema: plannerOutputSchema,
-    sequencerStateSchema: supervisorStateSchema,
-    context: opts?.context,
-    history: opts?.history,
-    ...(opts?.uses ? { uses: opts.uses as any } : {}),
-    prompt: async (_input, ctx) => {
-      const resolved = opts?.instructions
-        ? typeof opts.instructions === "function"
-          ? await opts.instructions(_input, ctx)
-          : opts.instructions
-        : null;
-
-      const instructionsBlock = resolved
-        ? [
-            "",
-            "## Overall Instructions",
-            "The following instructions define the role, stance, and rules for this entire workflow.",
-            "Keep them in mind when decomposing tasks.",
-            "When relevant, distill the appropriate parts into each task's `context` field so workers",
-            "understand the stance or constraints they should follow. Keep task context concise —",
-            "workers don't need the full brief, just the parts relevant to their specific task.",
-            "",
-            resolved,
-          ].join("\n")
-        : "";
-
-      const state = ctx.sequencer?.state as SupervisorState | undefined;
-      if (!state || state.iteration === 0) {
-        return [
-          "You are a task decomposition assistant for a supervisor workflow.",
-          "Break the request into sub-tasks that can ALL run in parallel — every task you emit will execute concurrently.",
-          "If some work depends on the output of other work, only include the independent tasks now.",
-          "Dependent follow-up tasks will be planned in a later iteration once earlier results are available.",
-          "Each task must include a stable unique id and a clear goal.",
-          "Optionally assign each task an assignee — a role, team member, or specialist best suited for that task.",
-          "Use the optional `context` field to pass relevant instructions or constraints to the worker for that task.",
-          "Return output that exactly matches the required schema.",
-          instructionsBlock,
-        ].join("\n");
-      }
-
-      const completed = state.plan.filter((t) => t.status === "completed");
-      const needsRevision = state.plan.filter((t) => t.status === "needs-revision");
-
-      const completedSummary = completed.length > 0
-        ? `\nCompleted tasks from prior iterations:\n${completed.map(
-            (t) => `- "${t.id}" (${t.goal}): ${typeof t.result === "string" ? t.result.slice(0, 200) : "done"}`
-          ).join("\n")}`
-        : "";
-
-      if (needsRevision.length > 0) {
-        return [
-          `Original goal: ${state.goal}`,
-          completedSummary,
-          `\nIteration ${state.iteration + 1}. The following tasks need revision:`,
-          ...needsRevision.map(
-            (t) => `- Task "${t.id}" (${t.goal}): ${t.feedback}`
-          ),
-          "Return revised sub-tasks that address the feedback.",
-          "Also include any NEW follow-up tasks that can now run given the completed results above.",
-          "Do not re-plan tasks that were already accepted.",
-          "Return output that exactly matches the required schema.",
-          instructionsBlock,
-        ].join("\n");
-      }
-
-      return [
-        `Original goal: ${state.goal}`,
-        completedSummary,
-        `\nIteration ${state.iteration + 1}. The tasks above are complete.`,
-        "Plan the next wave of tasks that depend on or build upon the completed results.",
-        "If the goal is fully addressed, return an empty tasks array.",
-        "Every task you emit will run concurrently, so only include tasks that are independent of each other.",
-        "Return output that exactly matches the required schema.",
-        instructionsBlock,
-      ].join("\n");
-    },
-    user: (input) =>
-      typeof input === "string" ? input : JSON.stringify(input),
-  });
-}
-
-function buildDefaultReviewer(
-  name: string,
-  reviewCriteria?: string[],
-  agentType?: AgentType
-) {
-  const criteriaBlock = reviewCriteria?.length
-    ? `\nEvaluation criteria:\n${reviewCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}`
-    : "";
-
-  return generator({
-    name: `${name}-reviewer`,
-    model: "preset/fast",
-    outputSchema: reviewOutputSchema,
-    prompt: [
-      "You are a quality review assistant for a supervisor workflow.",
-      "Evaluate each sub-task result against the original goal and review criteria.",
-      "For each task, provide a verdict: accepted, needs-revision, or escalate.",
-      "Set needsReplanning to true if:",
-      "  - ANY task received a needs-revision verdict, OR",
-      "  - The completed tasks are only a partial step toward the goal and more work is needed",
-      "    (e.g., foundational tasks are done but the main deliverable hasn't been produced yet).",
-      "Provide specific, actionable feedback for tasks that need revision.",
-      "Score each task from 0 to 1 based on quality.",
-      criteriaBlock || null,
-      "Return output that exactly matches the required schema.",
-    ],
-    agentType: agentType ?? "sub",
-    user: (input) =>
-      typeof input === "string" ? input : JSON.stringify(input),
-  });
-}
-
-function buildDefaultSynthesizer(
-  name: string,
-  outputSchema?: ZodTypeAny,
-  opts?: {
-    context?: GeneratorSlot<any, any>;
-    history?: GeneratorHistoryConfig<any, any>;
-    uses?: UsesSlot;
-    instructions?: InstructionsSlot;
-    agentType?: AgentType;
-  }
-) {
+  agentType?: AgentType;
+}): BlockDefinition<any, any> {
   const basePrompt = [
-    "You are a final synthesis step in a supervisor workflow.",
-    "A team of workers has already completed the tasks. You will receive the original goal and their outputs.",
-    "Your job is to combine the workers' outputs into the FINAL DELIVERABLE that the user requested.",
-    "Your output IS the end product — not a summary, not a recommendation, not commentary about the process.",
-    "If the workers wrote a story, output the story. If they produced a report, output the report. If they built a plan, output the plan.",
-    "Merge overlapping content, resolve conflicts, and ensure the result reads as one unified piece — not a list of fragments.",
-    "Do NOT describe what the workers did. Do NOT recommend next steps. Do NOT output JSON unless the goal explicitly requires it.",
-    "Deliver the finished work.",
+    "You are the final synthesis step in a supervisor workflow.",
+    "Combine the workers' outputs into the FINAL DELIVERABLE the user requested.",
+    "Your output IS the end product — not a summary or commentary.",
+    "Merge overlapping content and resolve conflicts so the result reads as one unified piece.",
   ].join("\n");
-
   return generator({
-    name: `${name}-synthesizer`,
+    name: `${opts.name}-synthesizer`,
     model: "preset/fast",
-    outputSchema: outputSchema ?? z.string(),
-    context: opts?.context,
-    history: opts?.history,
-    ...(opts?.uses ? { uses: opts.uses as any } : {}),
-    agentType: opts?.agentType ?? "primary",
-    prompt: [opts?.instructions, basePrompt],
+    outputSchema: opts.outputSchema ?? z.string(),
+    ...(opts.context !== undefined ? { context: opts.context } : {}),
+    ...(opts.history !== undefined ? { history: opts.history } : {}),
+    ...(opts.uses ? { uses: opts.uses as any } : {}),
+    agentType: opts.agentType ?? "primary",
+    prompt: [opts.instructions, basePrompt],
     user: (input: unknown) => {
       if (typeof input === "string") return input;
       const data = input as { goal?: string; results?: unknown[] };
       const parts: string[] = [];
       if (data.goal) parts.push(`Goal: ${data.goal}`);
-      if (data.results && Array.isArray(data.results)) {
+      if (Array.isArray(data.results)) {
         data.results.forEach((r, i) => {
-          const text = typeof r === "string" ? r : JSON.stringify(r, null, 2);
-          parts.push(`--- Task ${i + 1} Result ---\n${text}`);
+          parts.push(
+            `--- Task ${i + 1} Result ---\n${typeof r === "string" ? r : JSON.stringify(r, null, 2)}`,
+          );
         });
       }
       return parts.join("\n\n");
     },
-  });
+  }) as BlockDefinition<any, any>;
 }
 
-/**
- * Creates a supervisor block — a sequencer that decomposes a goal into
- * sub-tasks, dispatches workers, reviews results, and re-plans when needed.
- */
+/** Build a `supervisor` block. See module doc for pipeline shape. */
 export function supervisor<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
-  config: SupervisorConfig<TOutputSchema>
-) {
-  const name = config.name;
-  const errorStrategy = config.onSubTaskError ?? "skip";
-  const maxIterations = config.maxIterations ?? 3;
+  config: SupervisorConfig<TOutputSchema>,
+): SequencerDefinition<any, any> {
+  const {
+    name,
+    worker,
+    workers: workerRegistry,
+    reviewCriteria,
+    maxAttemptsPerTask = 3,
+    maxConcurrency = 3,
+    onSubTaskError = "skip",
+    context,
+    history,
+    uses,
+    reviewerAgentType,
+    synthesizerAgentType,
+    instructions,
+    outputSchema,
+  } = config;
 
-  const slotOpts = {
-    context: config.context,
-    history: config.history,
-    uses: config.uses,
-  };
+  if (worker === undefined && workerRegistry === undefined) {
+    throw new Error(
+      `[supervisor] "${name}" requires either \`worker\` or \`workers\``,
+    );
+  }
+  if (onSubTaskError === "retry") {
+    console.warn(
+      `[flow-state-dev] supervisor "${name}": onSubTaskError="retry" is not supported; ` +
+        `treated as "skip". Use \`maxAttemptsPerTask\` for review-driven retries.`,
+    );
+  }
+  const boardOnError: "skip" | "fail" =
+    onSubTaskError === "fail" ? "fail" : "skip";
 
-  const planner =
-    config.planner ?? buildDefaultPlanner(name, {
-      ...slotOpts,
-      instructions: config.instructions,
+  const resolvedReviewer: BlockDefinition<any, any> | undefined =
+    config.reviewer === false
+      ? undefined
+      : (config.reviewer ??
+        buildDefaultReviewer({
+          name,
+          reviewCriteria,
+          agentType: reviewerAgentType,
+          context,
+          uses,
+        }));
+
+  // Wrap each worker (uniform OR registry entry) in a reviewedWorker chain.
+  const reviewedWorkers:
+    | BlockDefinition<any, any>
+    | Record<string, BlockDefinition<any, any>> =
+    workerRegistry !== undefined
+      ? Object.fromEntries(
+          Object.entries(workerRegistry).map(([key, block]) => [
+            key,
+            buildReviewedWorker({
+              name,
+              workerKey: key,
+              workerBlock: block,
+              reviewerGenerator: resolvedReviewer,
+              reviewCriteria,
+            }),
+          ]),
+        )
+      : buildReviewedWorker({
+          name,
+          workerKey: "default",
+          workerBlock: worker!,
+          reviewerGenerator: resolvedReviewer,
+          reviewCriteria,
+        });
+
+  const activePlanner =
+    config.planner ??
+    utility.decomposer({
+      name: `${name}-planner`,
+      ...(context !== undefined ? { context } : {}),
+      ...(history !== undefined ? { history } : {}),
     });
 
-  const reviewer =
-    config.reviewer ?? buildDefaultReviewer(name, config.reviewCriteria, config.reviewerAgentType);
-
-  const finalSynthesizer =
+  const activeSynthesizer =
     config.synthesizer ??
-    buildDefaultSynthesizer(name, config.outputSchema, {
-      ...slotOpts,
-      instructions: config.instructions,
-      agentType: config.synthesizerAgentType,
+    buildDefaultSynthesizer({
+      name,
+      outputSchema,
+      context,
+      history,
+      uses,
+      instructions,
+      agentType: synthesizerAgentType,
     });
 
-  // Wrap the worker in a sequencer with rescue for skip/retry strategies.
-  // "fail" uses the bare worker so errors propagate naturally.
-  // "skip"/"retry" wrap in a sequencer with .rescue() that returns the sentinel.
-  const taskRunner =
-    errorStrategy === "fail"
-      ? config.worker
-      : sequencer({
-          name: `${name}-task-runner`,
-          inputSchema: z.any(),
-        })
-          .then(config.worker)
-          .rescue([
-            {
-              block: handler({
-                name: `${name}-task-rescue`,
-                inputSchema: z.instanceof(Error),
-                outputSchema: z.any(),
-                execute: (error) => ({
-                  [SKIPPED_SENTINEL]: true,
-                  error: error.message,
-                }),
-              }),
-            },
-          ]);
+  // `onIdle: "wait"` + `shouldExit` mirrors plan-and-execute so pendings
+  // whose deps `errored` don't deadlock the drain — they get
+  // cascade-skipped after instead.
+  const board = taskBoard({
+    name: `${name}-board`,
+    collection: { backing: "request", collectionId: name },
+    workers: reviewedWorkers,
+    concurrency: maxConcurrency,
+    dispatcher: "topological",
+    onIdle: "wait",
+    onError: boardOnError,
+    shouldExit: (collection) => {
+      if (
+        collection.count({ status: ["in_progress", "awaiting_review"] }) > 0
+      )
+        return false;
+      const pending = collection.list({ status: "pending" });
+      if (pending.length === 0) return true;
+      const completedIds = new Set(
+        collection.list({ status: "completed" }).map((t) => t.id),
+      );
+      return !pending.some((t) =>
+        (t.deps ?? []).every((d) => completedIds.has(d)),
+      );
+    },
+  });
 
-  // Instance-specific handlers that pass a stable plan key for UI deduplication.
-  // The exported updatePlanState / applyReview lack access to config.name,
-  // so supervisor() creates named closures to ensure all snapshots share the
-  // same key and only the latest snapshot is rendered (via ItemsRenderer dedup).
+  const captureAndPlan = createCaptureAndPlan({
+    name,
+    planner: activePlanner,
+    maxAttemptsPerTask,
+  });
+  const cascadeSkipDependents = createCascadeSkipDependents({ name });
+  const labelFailedReviews = createLabelFailedReviews({ name });
+  const synthesize = createSynthesize({ name, synthesizer: activeSynthesizer });
 
-  const updatePlanStateBlock = handler({
-    name: "update-plan-state",
-    inputSchema: plannerOutputSchema,
-    outputSchema: z.any(),
+  // captureAndPlan stamps `goal` on its OWN inner sequencer state — that
+  // doesn't reach the outer pipeline's state where synthesize reads from.
+  // Mirror the goal here so downstream blocks see it.
+  const stampOuterGoal = handler({
+    name: `${name}-stamp-outer-goal`,
+    inputSchema: supervisorInputSchema,
     sequencerStateSchema: supervisorStateSchema,
     execute: async (input, ctx) => {
-      const state = ctx.sequencer!.state;
-      const isFirstIteration = state.iteration === 0;
-      const newPlan = input.tasks.map((t) => ({
-        id: t.id,
-        goal: t.goal,
-        ...(t.assignee ? { assignee: t.assignee } : {}),
-        deps: t.deps ?? [],
-        status: "in-progress" as const,
-      }));
-
-      await ctx.sequencer!.patchState({
-        plan: isFirstIteration
-          ? newPlan
-          : [
-              ...state.plan.filter(
-                (t) =>
-                  t.status === "completed" || t.status === "escalated"
-              ),
-              ...newPlan,
-            ],
-        iteration: state.iteration + 1,
-      });
-
-      const updatedState = ctx.sequencer!.state;
-      emitPlanMeta(ctx, {
-        goal: updatedState.goal,
-        taskOrder: updatedState.plan.map((t) => t.id),
-        taskGoals: Object.fromEntries(updatedState.plan.map((t) => [t.id, t.goal])),
-        iteration: updatedState.iteration,
-      }, { key: name });
-      for (const t of newPlan) {
-        emitTaskUpdate(ctx, {
-          id: t.id,
-          goal: t.goal,
-          status: t.status,
-          ...(t.assignee ? { assignee: t.assignee } : {}),
-        }, { key: name });
-      }
-
-      return newPlan.map((t) => {
-        const prior = state.plan.find((p) => p.id === t.id);
-        const plannerTask = input.tasks.find((pt) => pt.id === t.id);
-        return {
-          id: t.id,
-          goal: t.goal,
-          ...(plannerTask?.context ? { context: plannerTask.context } : {}),
-          feedback: prior?.feedback,
-        };
-      });
+      await ctx.sequencer!.patchState({ goal: input.goal });
     },
   });
 
-  const applyReviewBlock = handler({
-    name: "apply-review",
-    inputSchema: reviewOutputSchema,
-    outputSchema: applyReviewOutputSchema,
-    sequencerStateSchema: supervisorStateSchema,
-    execute: async (input, ctx) => {
-      const state = ctx.sequencer!.state;
-      const newAccepted = [...state.acceptedResults];
-      const updatedPlan = state.plan.map((task) => {
-        const assessment = input.assessments.find(
-          (a) => a.taskId === task.id
-        );
-        if (!assessment) return task;
-        if (assessment.verdict === "accepted" && task.result !== undefined) {
-          newAccepted.push(task.result);
-        }
-        const mappedStatus =
-          assessment.verdict === "accepted"
-            ? ("completed" as const)
-            : assessment.verdict === "escalate"
-              ? ("escalated" as const)
-              : ("needs-revision" as const);
-        return {
-          ...task,
-          status: mappedStatus,
-          feedback: assessment.feedback,
-        };
-      });
-      await ctx.sequencer!.patchState({
-        acceptedResults: newAccepted,
-        plan: updatedPlan,
-      });
-      // Emit each reviewed task with its verdict and feedback
-      for (const task of updatedPlan) {
-        const assessment = input.assessments.find((a) => a.taskId === task.id);
-        if (assessment) {
-          emitTaskUpdate(ctx, {
-            id: task.id,
-            goal: task.goal,
-            status: task.status,
-            result: task.result,
-            error: task.error,
-            feedback: assessment.feedback,
-            assignee: task.assignee,
-          }, { key: name });
-        }
-      }
-
-      // Signal plan-level status so the client sees replanning vs completion
-      const updatedState = ctx.sequencer!.state;
-      emitPlanMeta(ctx, {
-        goal: updatedState.goal,
-        taskOrder: updatedState.plan.map((t) => t.id),
-        taskGoals: Object.fromEntries(updatedState.plan.map((t) => [t.id, t.goal])),
-        status: input.needsReplanning ? "replanning" : "completed",
-        iteration: updatedState.iteration,
-      }, { key: name });
-
-      return { needsReplanning: input.needsReplanning };
-    },
-  });
-
-  // Collect reviewable results from the forEach output (task statuses already
-  // updated incrementally inside the forEach factory).
-  const collectResults = handler({
-    name: `${name}-collect-results`,
-    inputSchema: z.any(),
-    outputSchema: z.any(),
-    sequencerStateSchema: supervisorStateSchema,
-    execute: async (results: unknown[], ctx) => {
-      const state = ctx.sequencer!.state;
-
-      // Signal "reviewing" so the client sees the transition
-      emitPlanMeta(ctx, {
-        goal: state.goal,
-        taskOrder: state.plan.map((t) => t.id),
-        taskGoals: Object.fromEntries(state.plan.map((t) => [t.id, t.goal])),
-        status: "reviewing",
-        iteration: state.iteration,
-      }, { key: name });
-
-      return state.plan
-        .filter((t) => t.status === "awaiting-review" && t.result !== undefined && t.result !== "")
-        .map((t) => ({ taskId: t.id, goal: t.goal, result: t.result }));
-    },
-  });
-
-  // Per-task status updater: runs inside forEach after each worker completes.
-  // Updates that task's status in sequencer state and emits a fresh snapshot
-  // so the UI reflects each completion incrementally.
-  const updateTaskStatus = (task: { id: string; goal: string }) =>
-    handler({
-      name: `${name}-update-task-${task.id}`,
-      inputSchema: z.any(),
-      outputSchema: z.any(),
-      sequencerStateSchema: supervisorStateSchema,
-      execute: async (result: unknown, ctx) => {
-        if (isSkippedTaskResult(result)) {
-          const errorMessage =
-            result.error || "Worker failed and task was skipped";
-          ctx.emitStatus(
-            `[supervisor:${name}] skipped task "${task.id}": ${errorMessage}`
-          );
-          // Functional updater reads the latest state to avoid race conditions
-          // when multiple tasks complete concurrently.
-          await ctx.sequencer!.patchState("plan", (currentPlan) =>
-            currentPlan.map((t) =>
-              t.id === task.id
-                ? { ...t, status: "skipped" as const, error: errorMessage, feedback: errorMessage }
-                : t
-            )
-          );
-        } else if (result === undefined || result === null || result === "") {
-          // Worker completed but produced no substantive output (e.g. it used
-          // tools to write to files instead of returning text). Mark as
-          // needs-revision so the planner re-dispatches with clearer instructions.
-          const emptyMsg = "Worker produced no output. Ensure the task result is returned as text, not written to external files.";
-          ctx.emitStatus(
-            `[supervisor:${name}] empty result for task "${task.id}"`
-          );
-          await ctx.sequencer!.patchState("plan", (currentPlan) =>
-            currentPlan.map((t) =>
-              t.id === task.id
-                ? { ...t, status: "needs-revision" as const, feedback: emptyMsg }
-                : t
-            )
-          );
-        } else {
-          await ctx.sequencer!.patchState("plan", (currentPlan) =>
-            currentPlan.map((t) =>
-              t.id === task.id
-                ? { ...t, result, status: "awaiting-review" as const }
-                : t
-            )
-          );
-        }
-        const updatedState = ctx.sequencer!.state;
-        const updatedTask = updatedState.plan.find((t) => t.id === task.id);
-        if (updatedTask) {
-          emitTaskUpdate(ctx, {
-            id: updatedTask.id,
-            goal: updatedTask.goal,
-            status: updatedTask.status,
-            result: updatedTask.result,
-            error: updatedTask.error,
-            feedback: updatedTask.feedback,
-            assignee: updatedTask.assignee,
-          }, { key: name });
-        }
-        return result;
-      },
-    });
-
-  let pipeline = sequencer({
+  return sequencer({
     name,
     inputSchema: supervisorInputSchema,
     stateSchema: supervisorStateSchema,
-    container: { component: "plan" },
   })
-    .tap(captureGoal)
-    .then(planner)
-    .then(updatePlanStateBlock)
-    .forEach(
-      (task: ExecutableTask, _index, _ctx) =>
-        sequencer({ name: `${name}-task-${task.id}`, inputSchema: z.any() })
-          .then(taskRunner)
-          .then(updateTaskStatus(task)),
-      { maxConcurrency: config.maxConcurrency ?? 3 },
-    );
-
-  return pipeline
-    .then(collectResults)
-    .then(reviewer)
-    .then(applyReviewBlock)
-    .loopBack(planner.name, {
-      when: (value) =>
-        (value as { needsReplanning: boolean }).needsReplanning,
-      maxIterations,
-    })
-    // Pass the goal and accepted results to the synthesizer so it has
-    // context for producing a coherent final output.
-    .map((_value, ctx) => {
-      const state = ctx.sequencer!.state as SupervisorState;
-
-      // Emit final "completed" plan-meta so the UI stops showing
-      // "Replanning..." when the loop exits (either naturally or at maxIterations).
-      emitPlanMeta(ctx, {
-        goal: state.goal,
-        taskOrder: state.plan.map((t) => t.id),
-        taskGoals: Object.fromEntries(state.plan.map((t) => [t.id, t.goal])),
-        status: "completed",
-        iteration: state.iteration,
-      }, { key: name });
-
-      return { goal: state.goal, results: state.acceptedResults };
-    })
-    .then(finalSynthesizer);
+    .tap(stampOuterGoal)
+    .then(captureAndPlan)
+    .then(board.block)
+    .tap(cascadeSkipDependents)
+    .tap(labelFailedReviews)
+    .then(synthesize) as SequencerDefinition<any, any>;
 }

@@ -404,7 +404,7 @@ export function taskBoard<TInput = unknown, TOutput = unknown>(
     workerId: (ctx) => resolveWorkerIdFromCtx(ctx, name),
   });
 
-  const workerStep = buildWorkerStep({ name, workers });
+  const workerStep = buildWorkerStep({ name, workers, collection: collectionFactory });
 
   const recordSuccess = createRecordSuccess({
     name: `${name}-worker-record-success`,

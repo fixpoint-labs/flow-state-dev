@@ -39,6 +39,9 @@ export function createSeedCollection<TInput = unknown>(
   const { name, collection: collectionFactory, initialTasks } = options;
   return handler({
     name,
+    // Substrate-internal seed step; tasks become user-visible via
+    // `task-change kind:"added"` items emitted by `collection.addTask`.
+    transient: true,
     inputSchema: z.unknown(),
     execute: async (_input, ctx) => {
       if (initialTasks.length === 0) return;

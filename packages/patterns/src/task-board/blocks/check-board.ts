@@ -53,6 +53,9 @@ export function createCheckBoard(options: CheckBoardOptions) {
 
   return handler({
     name,
+    // Substrate-internal idle-poll block. Same transient rationale as
+    // `claimTask` — fires once per worker per `idlePollMs` tick.
+    transient: true,
     inputSchema: z.unknown(),
     outputSchema: checkBoardOutputSchema,
     sequencerStateSchema: taskBoardWorkerStateSchema,

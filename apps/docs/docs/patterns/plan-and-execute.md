@@ -11,25 +11,23 @@ Use it when:
 - You need step-by-step progress tracking with per-task status
 - You want adaptive replanning when earlier steps fail or need adjustment
 
-If tasks are independent and can run in parallel, use [Coordinator](./coordinator) or [Supervisor](./supervisor) instead.
+If tasks are independent and can run in parallel, use [Parallel Tasks](./parallelTasks) or [Supervisor](./supervisor) instead.
 
 ## Block composition
 
 ```
 goal
-  → captureAndPlan          (store goal, run planner, save task graph to state)
-  → doUntil(complete):
-      → findTask            (select next eligible pending task)
-      → stepExecutor        (execute the task)
-      → recordResult        (write result to state, cascade-skip if failed)
-      → evaluator           (decide: continue | replan | complete)
-      → [replanner]         (if replan decision)
-      → [applyReplan]       (update pending tasks in state)
-  → .map(planState)         (extract completed plan from sequencer state)
-  → [synthesizer]           (combine task results into final answer)
+  → captureAndPlan          (store goal, run planner, seed taskBoard collection)
+  → board.block             (drain — workers process tasks until idle)   ←┐ loopBack target
+  → cascadeSkipDependents   (cancel pendings whose deps errored)            │
+  → evaluator               (decide: continue | replan | complete)         │
+  → [replanner]             (only when replan + no inline tasks)            │
+  → [applyReplan]           (add new tasks to the collection)               │
+  → loopBack(when: decision !== "complete") ────────────────────────────────┘
+  → synthesize              (build legacy plan output, then run synthesizer)
 ```
 
-Plan state lives entirely on the sequencer — no session resource registration is needed. The pattern self-contains its state management.
+Plan tasks live on a request-scoped `TaskCollection` so the same collection survives across multiple `board.block` re-entries inside the replan loop. The outer sequencer state is minimal — `{ goal, status?, iteration }` — with the substrate's `task-change` and `task-board-meta` items as the source of truth for per-task progress.
 
 ## Basic usage
 
@@ -75,17 +73,19 @@ import { planAndExecuteInputSchema } from "@flow-state-dev/patterns";
 
 ## Task lifecycle
 
-Each task moves through this status sequence:
+The pattern's public output preserves the legacy P&E status vocabulary so existing consumers keep working:
 
-| Status | Meaning |
-|--------|---------|
-| `pending` | Queued, waiting for dependencies to complete |
-| `in-progress` | Currently executing |
-| `completed` | Finished successfully |
-| `failed` | Threw an error or returned `{ success: false }` |
-| `skipped` | Bypassed because a dependency failed |
+| Output status | Meaning | Substrate equivalent |
+|--------|---------|---------|
+| `pending` | Queued, waiting for dependencies | `pending` |
+| `in-progress` | Currently executing | `in_progress` |
+| `completed` | Finished successfully | `completed` |
+| `failed` | Threw an error or returned `{ success: false }` | `errored` |
+| `skipped` | Bypassed because a dependency failed | `cancelled` + `label: "skipped"` |
 
-When a task fails, the pattern automatically cascade-skips all tasks that depend on it (directly or transitively). This prevents the evaluator from looping indefinitely on permanently blocked tasks and gives the UI a clear signal to render them differently.
+Internally tasks are full substrate `Task` records — every transition emits a `task-change` component item on the stream so renderers see live state without polling. The `<TaskPlan />` renderer subscribes to `task-change` per task and `task-board-meta` for board-level progress; both items are emitted by the pattern out of the box.
+
+When a task errors, `cascadeSkipDependents` runs after the drain and cancels any pending task whose deps include the failed one (transitively). This prevents the evaluator from looping indefinitely on permanently blocked tasks.
 
 These statuses are intentionally different from Supervisor's quality-gate statuses (`needs-revision`, `escalated`) — they model a different lifecycle. Don't conflate them.
 
@@ -145,6 +145,15 @@ planAndExecute({
   // Enable LLM-based replanning. When false, uses a deterministic evaluator.
   // Default: false.
   enableReplanning?: boolean;
+
+  // Per-task retry budget stamped onto every seeded TaskInit. Default 1
+  // (no retries; preserves pre-migration behavior).
+  maxAttemptsPerTask?: number;
+
+  // Worker pool size for the underlying taskBoard. Default 1 (sequential
+  // drain). Bump to fan out independent dep-free steps within a single
+  // drain.
+  maxConcurrency?: number;
 
   // Final synthesis step. Receives the completed plan shape and produces
   // the final result. Pass false to skip synthesis and return the raw plan.
@@ -219,15 +228,19 @@ import type {
 
 ## Exported internal block factories
 
-These are exported so you can build custom plan-and-execute compositions:
+These are exported so you can build custom plan-and-execute compositions on top of the substrate:
 
 ```ts
 import {
-  selectNextStep,       // createSelectNextStep — selects next eligible task
-  recordStepResult,     // createRecordResult — writes result to sequencer state
-  evaluatePlanProgress, // createEvaluateProgress — evaluates progress, returns decision
-  createTaskEvaluator,  // deterministic evaluator (no LLM)
-  createLLMEvaluator,   // LLM-based evaluator (with replan support)
+  evaluatePlanProgress,         // createEvaluateProgress — evaluator block factory
+  createTaskEvaluator,          // deterministic evaluator (no LLM)
+  createLLMEvaluator,           // LLM-based evaluator
+  createCaptureAndPlan,         // entry sequencer (set state, plan, seed collection)
+  createApplyReplan,            // adds replanner output to the collection
+  createCascadeSkipDependents,  // cancels pendings blocked on errored deps
+  createSynthesize,             // builds the legacy plan output + optional synthesizer
+  createBuildPlanOutput,        // just the substrate→legacy translation
+  normalizeOutputStatus,        // substrate status → legacy status helper
 } from "@flow-state-dev/patterns";
 ```
 
@@ -338,19 +351,17 @@ const research = planAndExecute({
 });
 ```
 
-## Plan snapshots
+## Stream items
 
-The pattern emits plan snapshots into the chat stream at key moments (plan created, task completed, task failed). These are `ComponentItem` values with `component: "plan"`. If your renderer registers a `"plan"` component, it can display live plan progress.
+The pattern emits two component-item streams renderers can subscribe to:
 
-The snapshot shape matches `BasePlanSchema` from `@flow-state-dev/patterns`:
+- `task-change` — one item per task transition, emitted by the substrate `TaskCollection`. Carries the full `Task` snapshot at the moment of the change. The `<TaskPlan />` renderer keys per-task rows on `data.task.id`.
+- `task-board-meta` — board-level status, keyed by `data.collectionId`. The substrate emits `active` and `completed`; this pattern adds `planning`, `replanning`, and `synthesizing` at the corresponding phase boundaries so the renderer can show a status header.
 
-```ts
-import { BasePlanSchema, BasePlanTaskSchema } from "@flow-state-dev/patterns";
-import type { BasePlan, BasePlanTask } from "@flow-state-dev/patterns";
-```
+Pre-migration the pattern emitted `plan-meta` and `plan-task` items. Those have been removed — the substrate items above carry strictly more information and are keyed identically.
 
 ## See also
 
-- [Coordinator](./coordinator) — parallel execution, no dependencies, single pass
+- [Parallel Tasks](./parallelTasks) — parallel execution, no dependencies, single pass
 - [Supervisor](./supervisor) — parallel execution with quality review loop
 - [Patterns Overview](./overview) — when to use which pattern

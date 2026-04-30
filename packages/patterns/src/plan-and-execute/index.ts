@@ -1,65 +1,96 @@
 /**
- * Plan and Execute Pattern
+ * Plan-and-Execute pattern.
  *
- * Two-phase agentic architecture: a planner LLM generates a structured task
- * plan stored as sequencer state, then an executor works through steps with
- * optional replanning.
+ * Two-phase agentic architecture: a planner LLM decomposes a goal into
+ * structured tasks, an executor drains them through a `taskBoard` (one
+ * worker by default), and an evaluator decides whether to replan and
+ * re-enter the board for another drain.
  *
- * Pipeline:
- *   [captureAndPlan] → doUntil(complete, [executeNextTask → evaluate → replan?])
+ * Pipeline (post-FIX-447 migration onto the taskBoard substrate):
  *
- * State lives on the outer sequencer — no session resource registration needed:
- *   planAndExecute({ name, stepExecutor }) works without any defineFlow config.
+ *   captureAndPlan
+ *     → board.block                   ← loopBack target
+ *     → cascadeSkipDependents
+ *     → evaluatePlanProgress
+ *     → .thenIf(decision === "replan", replanner)
+ *     → .thenIf(Array.isArray(tasks), applyReplan)
+ *     → .map(d => { decision: d.decision ?? "continue" })
+ *     → .loopBack(board.block.name, { when: decision !== "complete" })
+ *     → synthesize
  *
- * Multi-plan composability via sequencer composition:
- *   - Sequential: .then(planAndExecute({ name: "design" })).then(planAndExecute({ name: "impl" }))
- *   - Parallel: .forEach(planAndExecute({ name: (input) => input.topic }))
- *   - Nested: stepExecutor invokes a sub-planAndExecute
+ * The board is request-backed (`{ backing: "request", collectionId:
+ * name }`) so the same TaskCollection survives across `board.block`
+ * re-entries inside the replan loop. Per-worker concurrency defaults to
+ * 1 to preserve the legacy single-stream-per-step semantic; bump
+ * `maxConcurrency` to fan out independent steps within a single drain.
+ *
+ * Output shape is preserved as `{ goal, status, tasks: [{ id, goal,
+ * status, result?, error? }], completedSteps, totalSteps }` for
+ * pre-migration consumers — see `synthesize.ts` for the substrate →
+ * legacy status translation.
  */
-import { sequencer, handler, generator } from "@flow-state-dev/core";
-import { utility } from "@flow-state-dev/core";
-import type { BlockDefinition, BlockContext } from "@flow-state-dev/core/types";
-import type { AgentType, GeneratorHistoryConfig, GeneratorSlot, GeneratorSearchConfig, ToolsSlot, UsesSlot } from "@flow-state-dev/core";
+import { sequencer, handler, generator, utility } from "@flow-state-dev/core";
+import type {
+  AgentType,
+  GeneratorHistoryConfig,
+  GeneratorSearchConfig,
+  GeneratorSlot,
+  ToolsSlot,
+  UsesSlot,
+  SequencerDefinition,
+} from "@flow-state-dev/core";
+import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z, type ZodTypeAny } from "zod";
+import { taskBoard } from "../task-board";
 import {
   planAndExecuteInputSchema,
   planAndExecuteStateSchema,
-  iterationOutputSchema,
-  type PlanTask,
+  type PlanAndExecuteState,
 } from "./schemas";
+import { createCaptureAndPlan } from "./blocks/capture-and-plan";
+import { createCascadeSkipDependents } from "./blocks/cascade-skip-dependents";
 import { createEvaluateProgress } from "./blocks/evaluate-progress";
-import { emitPlanMeta, emitTaskUpdate } from "../shared/plan";
+import { createApplyReplan } from "./blocks/apply-replan";
+import { createSynthesize, normalizeOutputStatus } from "./blocks/synthesize";
 
 // ---------------------------------------------------------------------------
-// Re-exports
+// Re-exports (schemas + block factories)
 // ---------------------------------------------------------------------------
 
 export {
   PlanSchema,
-  PlanStepSchema,  // backward compat
-  PlanTaskSchema,  // new
+  PlanStepSchema,
+  PlanTaskSchema,
   planAndExecuteStateSchema,
   planAndExecuteInputSchema,
   iterationOutputSchema,
+  evaluatorVerdictSchema,
 } from "./schemas";
 
 export type {
   Plan,
-  PlanStep,   // backward compat
-  PlanTask,   // new
+  PlanStep,
+  PlanTask,
   PlanAndExecuteState,
   PlanAndExecuteInput,
   IterationOutput,
+  EvaluatorVerdict,
 } from "./schemas";
 
-// Re-export block factories for custom compositions
-export { createSelectNextStep as selectNextStep } from "./blocks/select-next-step";
-export { createRecordResult as recordStepResult } from "./blocks/record-result";
 export {
   createEvaluateProgress as evaluatePlanProgress,
   createTaskEvaluator,
   createLLMEvaluator,
 } from "./blocks/evaluate-progress";
+
+export { createCaptureAndPlan } from "./blocks/capture-and-plan";
+export { createApplyReplan } from "./blocks/apply-replan";
+export { createCascadeSkipDependents } from "./blocks/cascade-skip-dependents";
+export {
+  createSynthesize,
+  createBuildPlanOutput,
+  normalizeOutputStatus,
+} from "./blocks/synthesize";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -69,99 +100,93 @@ export {
 type InstructionsSlot = string | ((input: any, ctx: any) => string | Promise<string>);
 
 export interface PlanAndExecuteConfig<
-  TOutputSchema extends ZodTypeAny = ZodTypeAny
+  TOutputSchema extends ZodTypeAny = ZodTypeAny,
 > {
   /** Name for this plan-and-execute instance. Required. */
   name: string;
 
-  /** The planning generator — produces the initial plan. Default: utility.decomposer(). */
+  /** Planner block. Default: `utility.decomposer()`. */
   planner?: BlockDefinition<any, any>;
 
-  /** How to execute each step — receives { stepId, goal, dependencyResults? }.
-   *  Default: a research generator that produces { summary, success, reason?, sources? }. */
+  /**
+   * Worker block. Receives `{ stepId, goal, dependencyResults? }` —
+   * the legacy P&E worker contract — by default; the pattern adapts
+   * the substrate `TaskWorkerInput` into that shape so existing
+   * consumers keep working.
+   */
   stepExecutor?: BlockDefinition<any, any>;
 
-  /** Evaluator — decides continue/replan/complete after each step. Default: createTaskEvaluator. */
+  /** Evaluator block. Default: built-in (no-LLM unless `enableReplanning`). */
   evaluator?: BlockDefinition<any, any>;
 
-  /** Replanner — adjusts remaining plan based on results. Default: generator with replan prompt. */
+  /** Replanner block. Invoked when the evaluator returns `decision: "replan"`. */
   replanner?: BlockDefinition<any, any>;
 
-  /** Max replanning iterations before forced completion. Default: 3. */
+  /** Hard cap on replan-loop iterations. Default: 3. */
   maxIterations?: number;
 
-  /** Whether to enable replanning. When false, uses createTaskEvaluator (no LLM call). Default: false. */
+  /** Whether the LLM evaluator path is active. Default: false. */
   enableReplanning?: boolean;
 
-  /** Final synthesis step — receives completed plan output, produces the final result.
-   *  When provided, the block's output is whatever the synthesizer produces instead
-   *  of the raw plan object. Default: a generator that integrates step findings into
-   *  a coherent answer. Pass `false` to disable synthesis and return the plan object. */
+  /**
+   * Final synthesizer. Receives the legacy plan shape and returns the
+   * pattern's final output. Pass `false` to disable synthesis (the
+   * legacy plan shape is returned directly).
+   */
   synthesizer?: BlockDefinition<any, any> | false;
 
-  /** Output schema for the final synthesized result. Used by the default synthesizer. */
+  /** Output schema for the final synthesized result (default synthesizer only). */
   outputSchema?: TOutputSchema;
 
-  /** Model ID to use for default planner, executor, replanner, and synthesizer. Default: "openai/gpt-5.4-mini". */
+  /** Model id for default planner / executor / replanner / synthesizer. */
   model?: string;
 
-  // ---------------------------------------------------------------------------
-  // Shared defaults — apply only to default blocks (planner, executor, replanner, synthesizer).
-  // Ignored when a custom block is provided for that role.
-  // ---------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // FIX-447 additions
+  // -------------------------------------------------------------------------
 
   /**
-   * Overall instructions for this pipeline — role, stance, rules, or goal framing.
-   *
-   * Digested by the default planner (via context), executor, and synthesizer.
-   * Not injected when the corresponding block is overridden.
-   *
-   * Composes with `executionInstructions` and `synthesizeInstructions` — top-level
-   * instructions come first, granular ones are appended after.
+   * Per-task retry budget stamped onto every seeded `TaskInit`. Default
+   * `1` — single attempt, no retries (preserves pre-migration behavior).
    */
+  maxAttemptsPerTask?: number;
+
+  /**
+   * Worker pool size for the underlying `taskBoard`. Default `1`
+   * (sequential drain, matching pre-migration semantics). Bump to
+   * fan out independent dep-free steps within a single drain.
+   */
+  maxConcurrency?: number;
+
+  // -------------------------------------------------------------------------
+  // Shared defaults — applied to default blocks only.
+  // -------------------------------------------------------------------------
+
+  /** Overall instructions for the pipeline. Composes with executionInstructions / synthesizeInstructions. */
   instructions?: InstructionsSlot;
-
-  /** Context slot applied to all default blocks. Accepts a single entry or an array. */
+  /** Context slot applied to all default blocks. */
   context?: GeneratorSlot<any, any>;
-
   /** History slot applied to default planner and synthesizer. */
   history?: GeneratorHistoryConfig<any, any>;
-
-  /** Tools assigned to all default blocks (executor, replanner, synthesizer). */
+  /** Tools assigned to default blocks. */
   tools?: ToolsSlot;
-
-  /** Web search — applied to default executor (planner already enables search internally). */
+  /** Web search applied to default executor. */
   search?: boolean | GeneratorSearchConfig;
-
-  /** Instructions appended to the default step executor's system prompt. */
+  /** Instructions appended to the default executor's prompt. */
   executionInstructions?: string;
-
-  /** Instructions appended to the default synthesizer's system prompt. */
+  /** Instructions appended to the default synthesizer's prompt. */
   synthesizeInstructions?: string;
 
-  // ---------------------------------------------------------------------------
-  // Resource declarations — registered on the outer sequencer.
-  // ---------------------------------------------------------------------------
-
-  /** Capabilities to install on default blocks (executor, replanner, synthesizer). */
+  /** Capabilities to install on default blocks. */
   uses?: UsesSlot;
-
-  /** Agent type for the default planner. Default: "sub". */
+  /** Agent type for default planner. Default: "sub". */
   plannerAgentType?: AgentType;
-
-  /** Agent type for the default step executor. Default: "sub". */
+  /** Agent type for default executor. Default: "sub". */
   stepExecutorAgentType?: AgentType;
-
-  /** Agent type for the default synthesizer. Default: "primary". */
+  /** Agent type for default synthesizer. Default: "primary". */
   synthesizerAgentType?: AgentType;
-
-  /**
-   * Resources to declare on the default executor. Each resource's intrinsic
-   * `scope` (set on `defineResource`) routes it to the correct storage layer
-   * (FIX-435).
-   */
+  /** Resources declared on the default executor. */
   resources?: Record<string, any>;
-
 }
 
 // ---------------------------------------------------------------------------
@@ -178,18 +203,20 @@ function createDefaultReplanner(config: {
 }) {
   return generator({
     name: `${config.name}-replanner`,
+    activeStatusMessage: "Adjusting the plan",
     model: config.model ?? "openai/gpt-5.4-mini",
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.history !== undefined ? { history: config.history } : {}),
     ...(config.tools !== undefined ? { tools: config.tools as any } : {}),
     ...(config.uses ? { uses: config.uses as any } : {}),
     outputSchema: z.object({
-      tasks: z.array(z.object({
-        id: z.string(),
-        goal: z.string(),
-        deps: z.array(z.string()).default([]),
-        priority: z.enum(["high", "medium", "low"]).default("medium"),
-      })),
+      tasks: z.array(
+        z.object({
+          id: z.string(),
+          goal: z.string(),
+          deps: z.array(z.string()).default([]),
+        }),
+      ),
     }),
     sequencerStateSchema: planAndExecuteStateSchema,
     search: true,
@@ -197,97 +224,196 @@ function createDefaultReplanner(config: {
       "You are a plan replanner.",
       "Given the current plan state with completed, failed, and pending tasks,",
       "generate an updated list of remaining tasks to achieve the original goal.",
-      "Keep completed tasks as-is. Replace or adjust pending/failed tasks as needed.",
       "Each task must have a unique id and clear goal.",
-      "Only output the NEW tasks that should replace the current pending tasks.",
+      "Only output the NEW tasks that should be added; do not repeat completed work.",
     ].join("\n"),
     user: (_input: unknown, ctx) => {
-      const plan = ctx.sequencer!.state;
-      return JSON.stringify({
-        goal: plan.goal,
-        completedTasks: plan.tasks
-          .filter((s: PlanTask) => s.status === "completed")
-          .map((s: PlanTask) => ({ id: s.id, goal: s.goal, result: s.result })),
-        failedTasks: plan.tasks
-          .filter((s: PlanTask) => s.status === "failed")
-          .map((s: PlanTask) => ({ id: s.id, goal: s.goal, error: s.error })),
-        pendingTasks: plan.tasks
-          .filter((s: PlanTask) => s.status === "pending")
-          .map((s: PlanTask) => ({ id: s.id, goal: s.goal })),
-      }, null, 2);
+      // The replanner reads the goal from outer state and the per-task
+      // status snapshot from the request collection — same source the
+      // evaluator and synthesizer consult, so all three see one
+      // canonical view of progress.
+      return JSON.stringify(
+        { goal: (ctx.sequencer!.state as PlanAndExecuteState).goal ?? "" },
+        null,
+        2,
+      );
     },
   });
 }
 
 // ---------------------------------------------------------------------------
-// Apply replan
+// Default executor + legacy worker adapter
 // ---------------------------------------------------------------------------
 
 /**
- * Handler that applies replanner output to sequencer state,
- * replacing pending tasks with the new tasks.
+ * Build the default executor — a research generator returning
+ * `{ summary, success, reason?, sources? }`.
+ *
+ * Input schema is the legacy `{ stepId, goal, dependencyResults? }`
+ * shape. The substrate `TaskWorkerInput` is adapted by
+ * `wrapWorkerForLegacyContract` below.
  */
-function createApplyReplan(config: { name: string }) {
-  return handler({
-    name: `${config.name}-apply-replan`,
+function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
+  const basePrompt = [
+    "You are a focused task executor.",
+    "Given a specific task, produce a substantive finding in 2-4 sentences with specific facts or insights.",
+    "Use the web to find information if needed, you have search capabilities available to you.",
+    "If prior task results are provided, build directly on that context — reuse their findings and sources rather than re-discovering what an upstream task already established.",
+    "Return a JSON object with:",
+    "- summary: your substantive finding",
+    "- success: true if you found meaningful information, false if the information was unavailable or missing",
+    "- reason: (only if success is false) a brief explanation of why the task could not be completed",
+    "- sources: list of { title?, url } for the web sources that ACTUALLY informed your summary. Include sources reused from prior tasks if they shaped your answer. Do NOT list every URL the search returned — only the ones you specifically leveraged.",
+  ].join("\n");
+
+  return generator({
+    name: `${config.name}-executor`,
+    model: config.model ?? "preset/small",
     inputSchema: z.object({
-      tasks: z.array(z.object({
-        id: z.string(),
-        goal: z.string(),
-        deps: z.array(z.string()).default([]),
-        priority: z.enum(["high", "medium", "low"]).default("medium"),
-      })),
+      stepId: z.string(),
+      goal: z.string(),
+      dependencyResults: z.record(z.unknown()).optional(),
     }),
-    outputSchema: iterationOutputSchema,
-    sequencerStateSchema: planAndExecuteStateSchema,
-
-    execute: async (input, ctx) => {
-      const state = ctx.sequencer!.state;
-
-      const keptTasks = state.tasks.filter(
-        (s: PlanTask) => s.status === "completed" || s.status === "failed" || s.status === "skipped"
-      );
-
-      const newTasks = input.tasks.map((task) => ({
-        id: task.id,
-        goal: task.goal,
-        status: "pending" as const,
-        dependencies: task.deps ?? [],
-      }));
-
-      const allTasks = [...keptTasks, ...newTasks];
-
-      await ctx.sequencer!.patchState({
-        tasks: allTasks,
-        status: "executing",
-        iteration: state.iteration + 1,
-      });
-
-      // Emit updated plan-meta with new task ordering
-      emitPlanMeta(ctx as BlockContext, {
-        goal: state.goal,
-        taskOrder: allTasks.map((t) => t.id),
-        taskGoals: Object.fromEntries(allTasks.map((t) => [t.id, t.goal])),
-        status: "executing",
-        iteration: state.iteration + 1,
-      }, { key: config.name });
-
-      // Emit task updates for each new pending task
-      for (const task of newTasks) {
-        emitTaskUpdate(ctx as BlockContext, {
-          id: task.id,
-          goal: task.goal,
-          status: task.status,
-        }, { key: config.name });
+    outputSchema: z.object({
+      summary: z.string(),
+      success: z.boolean(),
+      reason: z.string().default(""),
+      sources: z
+        .array(
+          z.object({
+            title: z.string().default(""),
+            url: z.string(),
+          }),
+        )
+        .default([]),
+    }),
+    ...(config.context !== undefined ? { context: config.context } : {}),
+    ...(config.tools !== undefined ? { tools: config.tools } : {}),
+    ...(config.uses ? { uses: config.uses as any } : {}),
+    ...(config.search !== undefined ? { search: config.search } : {}),
+    ...(config.resources !== undefined ? { resources: config.resources } : {}),
+    prompt: [config.instructions, basePrompt, config.executionInstructions],
+    user: (input: { goal: string; dependencyResults?: Record<string, unknown> }) => {
+      const parts = [`Task: ${input.goal}`];
+      if (
+        input.dependencyResults &&
+        Object.keys(input.dependencyResults).length > 0
+      ) {
+        const sections = Object.entries(input.dependencyResults).map(
+          ([depId, r]) => formatDependencyContext(depId, r),
+        );
+        parts.push(
+          `\nContext from prior tasks:\n${sections.join("\n\n---\n\n")}`,
+        );
       }
-
-      return { decision: "continue" as const };
+      return parts.join("\n");
     },
+    agentType: config.stepExecutorAgentType ?? "sub",
   });
 }
 
+/**
+ * Format a single dep's output as a labeled context block — summary
+ * first, then a "Sources used in this task" list when the dep recorded
+ * any. Workers reuse the URLs by citing them in their own `sources`
+ * array, so links propagate down the task chain without
+ * re-discovering.
+ */
+function formatDependencyContext(depId: string, value: unknown): string {
+  if (value === null || value === undefined) {
+    return `From ${depId}: (no output)`;
+  }
+  if (typeof value === "string") {
+    return `From ${depId}:\n${value}`;
+  }
+  if (typeof value !== "object") {
+    return `From ${depId}: ${String(value)}`;
+  }
+  const obj = value as Record<string, unknown>;
+  const summary =
+    "summary" in obj && typeof obj.summary === "string"
+      ? obj.summary
+      : JSON.stringify(value);
+  const sources = Array.isArray(obj.sources)
+    ? (obj.sources as Array<{ title?: string; url: string }>).filter(
+        (s) => typeof s?.url === "string" && s.url.length > 0,
+      )
+    : [];
+  const sourceLines = sources
+    .map((s) => `- ${s.title ? `${s.title}: ` : ""}${s.url}`)
+    .join("\n");
+  const sourcesPart =
+    sourceLines.length > 0
+      ? `\nSources used in this task:\n${sourceLines}`
+      : "";
+  return `From ${depId}:\n${summary}${sourcesPart}`;
+}
+
+/**
+ * Adapt a legacy P&E worker (input shape `{ stepId, goal,
+ * dependencyResults? }`) to the substrate's `TaskWorkerInput` (shape
+ * `{ taskId, goal, deps?, ... }`).
+ *
+ * Two responsibilities:
+ *   - Pre-connect input: substrate `TaskWorkerInput` → legacy shape.
+ *   - Throw on `success: false` so the substrate marks the task
+ *     `errored`. Without this, soft-failures pass through as
+ *     `completed` and downstream cascade-skip never fires.
+ *
+ * The wrapper is composed as a sequencer (no `block.run` inside
+ * handler — BP-011) so the user's worker remains a first-class step.
+ */
+function wrapWorkerForLegacyContract(
+  name: string,
+  worker: BlockDefinition<any, any>,
+): BlockDefinition<any, any> {
+  // Pre-connect adapts the substrate's TaskWorkerInput to legacy.
+  const adapted = worker.connectInput<unknown>((input: unknown) => {
+    const obj = input as {
+      taskId?: string;
+      goal?: string;
+      deps?: Record<string, unknown>;
+    };
+    return {
+      stepId: obj.taskId ?? "",
+      goal: obj.goal ?? "",
+      ...(obj.deps && Object.keys(obj.deps).length > 0
+        ? { dependencyResults: obj.deps }
+        : {}),
+    };
+  });
+
+  // Throw-on-soft-failure. The wrapper sequencer keeps the worker as
+  // a first-class step (BP-011) and uses `.tap()` for the soft-fail
+  // check (BP-012, no return-input).
+  const checkSoftFailure = handler({
+    name: `${name}-check-soft-failure`,
+    inputSchema: z.unknown(),
+    execute: (output) => {
+      const obj = output as { success?: unknown; reason?: unknown } | null;
+      if (
+        obj !== null &&
+        typeof obj === "object" &&
+        obj.success === false
+      ) {
+        const reason =
+          typeof obj.reason === "string"
+            ? obj.reason
+            : "Task did not produce a result";
+        throw new Error(reason);
+      }
+    },
+  });
+
+  return sequencer({
+    name: `${name}-worker-adapted`,
+  })
+    .then(adapted)
+    .tap(checkSoftFailure) as BlockDefinition<any, any>;
+}
+
 // ---------------------------------------------------------------------------
-// Synthesizer prompt builder
+// Synthesizer prompt builder (preserved for backward compat)
 // ---------------------------------------------------------------------------
 
 export interface SynthesizerPromptInput {
@@ -297,9 +423,9 @@ export interface SynthesizerPromptInput {
 }
 
 /**
- * Builds the user prompt for a plan synthesizer from completed task results.
- * Exported so custom synthesizers can reuse the same formatting without
- * duplicating source-dedup and findings-assembly logic.
+ * Builds the user prompt for a plan synthesizer from completed task
+ * results. Exported so custom synthesizers can reuse the same
+ * formatting.
  */
 export function buildSynthesizerUserPrompt(input: SynthesizerPromptInput): string {
   if (input.completedSteps === 0) {
@@ -315,7 +441,6 @@ export function buildSynthesizerUserPrompt(input: SynthesizerPromptInput): strin
   }
 
   const allSources: Array<{ title?: string; url: string }> = [];
-
   const findings = input.tasks
     .filter((t) => t.status === "completed")
     .map((t, i) => {
@@ -325,7 +450,9 @@ export function buildSynthesizerUserPrompt(input: SynthesizerPromptInput): strin
           ? String(r.summary)
           : JSON.stringify(t.result);
       if (r && typeof r === "object" && Array.isArray(r.sources)) {
-        allSources.push(...(r.sources as Array<{ title?: string; url: string }>));
+        allSources.push(
+          ...(r.sources as Array<{ title?: string; url: string }>),
+        );
       }
       return `${i + 1}. ${t.goal}\n   ${summary}`;
     })
@@ -339,15 +466,13 @@ export function buildSynthesizerUserPrompt(input: SynthesizerPromptInput): strin
   });
   const sourcesSection =
     uniqueSources.length > 0
-      ? `\n\nSources:\n${uniqueSources.map((s) => `- ${s.title ? `${s.title}: ` : ""}${s.url}`).join("\n")}`
+      ? `\n\nSources:\n${uniqueSources
+          .map((s) => `- ${s.title ? `${s.title}: ` : ""}${s.url}`)
+          .join("\n")}`
       : "";
 
   return `Goal: ${input.goal}\n\nFindings:\n\n${findings}${sourcesSection}`;
 }
-
-// ---------------------------------------------------------------------------
-// Default synthesizer
-// ---------------------------------------------------------------------------
 
 function createDefaultSynthesizer(config: {
   name: string;
@@ -365,11 +490,14 @@ function createDefaultSynthesizer(config: {
     "Write a clear, direct final answer to the original goal.",
     "Integrate the findings into a coherent narrative — do not just summarize each step.",
     "Be specific and draw on the concrete facts gathered.",
+    "When grounding a specific claim in a source, cite it inline as a Markdown link, e.g. [title](https://...). Don't link every sentence — only the ones that actually depend on a source.",
+    "End the response with a 'Sources' section listing only the URLs you actually relied on to construct the answer. Do not aggregate every URL that was searched — only the ones that contributed. Format each line as '- [Title](URL)'.",
     "If no findings are available, briefly explain that the research could not be completed and why, without asking the user for more information.",
   ].join("\n");
 
   return generator({
     name: `${config.name}-synthesizer`,
+    activeStatusMessage: "Putting it all together",
     model: config.model ?? "openai/gpt-5.4-mini",
     ...(config.context !== undefined ? { context: config.context } : {}),
     ...(config.history !== undefined ? { history: config.history } : {}),
@@ -378,13 +506,15 @@ function createDefaultSynthesizer(config: {
     inputSchema: z.object({
       goal: z.string(),
       status: z.string().optional(),
-      tasks: z.array(z.object({
-        id: z.string(),
-        goal: z.string(),
-        status: z.string(),
-        result: z.unknown().optional(),
-        error: z.string().optional(),
-      })),
+      tasks: z.array(
+        z.object({
+          id: z.string(),
+          goal: z.string(),
+          status: z.string(),
+          result: z.unknown().optional(),
+          error: z.string().optional(),
+        }),
+      ),
       completedSteps: z.number(),
       totalSteps: z.number(),
     }),
@@ -396,167 +526,86 @@ function createDefaultSynthesizer(config: {
 }
 
 // ---------------------------------------------------------------------------
-// Cascade-skip helper
-// ---------------------------------------------------------------------------
-
-/**
- * When a task fails, transitively marks all pending tasks that depend on it
- * (directly or indirectly) as "skipped". This prevents the evaluator from
- * seeing permanently-blocked tasks as pending and looping indefinitely, and
- * gives the UI a clear signal to render them differently from unstarted tasks.
- */
-function cascadeSkipDependents(tasks: PlanTask[], failedId: string): PlanTask[] {
-  const blockedIds = new Set<string>();
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const task of tasks) {
-      if (task.status === "pending" && !blockedIds.has(task.id)) {
-        const blockedByFailed = task.dependencies.some(
-          (dep) => dep === failedId || blockedIds.has(dep)
-        );
-        if (blockedByFailed) {
-          blockedIds.add(task.id);
-          changed = true;
-        }
-      }
-    }
-  }
-  if (blockedIds.size === 0) return tasks;
-  return tasks.map((t) =>
-    blockedIds.has(t.id)
-      ? {
-          ...t,
-          status: "skipped" as const,
-          error: `Skipped: dependency '${t.dependencies.find((dep) => dep === failedId || blockedIds.has(dep)) ?? failedId}' failed`,
-        }
-      : t
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Default executor
-// ---------------------------------------------------------------------------
-
-/**
- * Creates the default step executor — a task generator that receives a task
- * goal (and optional dependency context from prior tasks) and returns a structured
- * finding: { summary, success, reason?, sources? }.
- */
-function createDefaultExecutor(config: PlanAndExecuteConfig<any>) {
-  const basePrompt = [
-    "You are a focused task executor.",
-    "Given a specific task, produce a substantive finding in 2-4 sentences with specific facts or insights.",
-    "Use the web to find information if needed, you have search capabilities available to you.",
-    "If prior task results are provided, build directly on that context rather than starting from scratch.",
-    "Return a JSON object with:",
-    "- summary: your substantive finding",
-    "- success: true if you found meaningful information, false if the information was unavailable or missing",
-    "- reason: (only if success is false) a brief explanation of why the task could not be completed",
-    "- sources: list of { title?, url } for any web sources you consulted (omit if no search was performed)",
-  ].join("\n");
-
-  return generator({
-    name: `${config.name}-executor`,
-    model: config.model ?? "preset/small",
-    inputSchema: z.object({
-      stepId: z.string(),
-      goal: z.string(),
-      dependencyResults: z.record(z.unknown()).optional(),
-    }),
-    outputSchema: z.object({
-      summary: z.string(),
-      success: z.boolean(),
-      reason: z.string().default(""),
-      sources: z.array(z.object({
-        title: z.string().default(""),
-        url: z.string(),
-      })).default([]),
-    }),
-    ...(config.context !== undefined ? { context: config.context } : {}),
-    ...(config.tools !== undefined ? { tools: config.tools } : {}),
-    ...(config.uses ? { uses: config.uses as any } : {}),
-    ...(config.search !== undefined ? { search: config.search } : {}),
-    ...(config.resources !== undefined ? { resources: config.resources } : {}),
-    prompt: [config.instructions, basePrompt, config.executionInstructions],
-    user: (input: { goal: string; dependencyResults?: Record<string, unknown> }) => {
-      const parts = [`Task: ${input.goal}`];
-      if (input.dependencyResults && Object.keys(input.dependencyResults).length > 0) {
-        const context = Object.values(input.dependencyResults)
-          .map((r) => {
-            const obj = r as Record<string, unknown> | null | undefined;
-            return obj && typeof obj === "object" && "summary" in obj
-              ? String(obj.summary)
-              : JSON.stringify(r);
-          })
-          .join("\n");
-        parts.push(`\nContext from prior tasks:\n${context}`);
-      }
-      return parts.join("\n");
-    },
-    agentType: config.stepExecutorAgentType ?? "sub",
-  });
-}
-
-// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a plan-and-execute block — a sequencer that decomposes a goal into
- * tasks, executes them iteratively with dependency ordering, and optionally
- * replans. Plan state lives on the sequencer — no defineFlow resource
- * registration required.
+ * Build a `planAndExecute` block. Composes a `taskBoard` with a
+ * planner front and an evaluator/replanner replan-loop, returning a
+ * sequencer that drains task work then synthesizes the result.
  */
 export function planAndExecute<
-  TOutputSchema extends ZodTypeAny = ZodTypeAny
->(config: PlanAndExecuteConfig<TOutputSchema>) {
+  TOutputSchema extends ZodTypeAny = ZodTypeAny,
+>(config: PlanAndExecuteConfig<TOutputSchema>): SequencerDefinition<any, any> {
   const {
     name,
     maxIterations = 3,
     enableReplanning = false,
+    maxAttemptsPerTask = 1,
+    maxConcurrency = 1,
   } = config;
 
+  // ------- Default block resolution -----------------------------------------
+
   const stepExecutor = config.stepExecutor ?? createDefaultExecutor(config);
+  // Always wrap user/default workers so soft-failures throw and the
+  // legacy `{ stepId, goal, dependencyResults? }` contract holds.
+  const adaptedWorker = wrapWorkerForLegacyContract(name, stepExecutor);
 
-  const plannerContext: GeneratorSlot<any, any> | undefined = config.instructions && !config.planner
-    ? [
-        ...(config.context ? (Array.isArray(config.context) ? config.context : [config.context]) : []),
-        async (_input: any, ctx: any) => {
-          const resolved = typeof config.instructions! === "function"
-            ? await config.instructions!(_input, ctx)
-            : config.instructions!;
-          return resolved ? `Overall instructions for this workflow:\n${resolved}` : null;
-        },
-      ]
-    : config.context;
+  const plannerContext: GeneratorSlot<any, any> | undefined =
+    config.instructions && !config.planner
+      ? [
+          ...(config.context
+            ? Array.isArray(config.context)
+              ? config.context
+              : [config.context]
+            : []),
+          async (_input: any, ctx: any) => {
+            const resolved =
+              typeof config.instructions! === "function"
+                ? await config.instructions!(_input, ctx)
+                : config.instructions!;
+            return resolved
+              ? `Overall instructions for this workflow:\n${resolved}`
+              : null;
+          },
+        ]
+      : config.context;
 
-  const planner = config.planner ?? utility.decomposer({
-    name: `${name}-planner`,
-    model: config.model,
-    context: plannerContext,
-    history: config.history,
-  });
+  const planner =
+    config.planner ??
+    utility.decomposer({
+      name: `${name}-planner`,
+      model: config.model,
+      context: plannerContext,
+      history: config.history,
+    });
 
-  const evaluator = config.evaluator ?? createEvaluateProgress({
-    name,
-    enableReplanning,
-    model: config.model,
-  });
+  const evaluator =
+    config.evaluator ??
+    createEvaluateProgress({
+      name,
+      enableReplanning,
+      maxIterations,
+      model: config.model,
+    });
 
-  const replanner = config.replanner ?? createDefaultReplanner({
-    name,
-    model: config.model,
-    context: config.context,
-    history: config.history,
-    tools: config.tools,
-    uses: config.uses,
-  });
-  const applyReplan = createApplyReplan({ name });
+  const replanner =
+    config.replanner ??
+    createDefaultReplanner({
+      name,
+      model: config.model,
+      context: config.context,
+      history: config.history,
+      tools: config.tools,
+      uses: config.uses,
+    });
 
   const synthesizer =
-    config.synthesizer !== false
-      ? (config.synthesizer ?? createDefaultSynthesizer({
+    config.synthesizer === false
+      ? false
+      : (config.synthesizer ??
+        createDefaultSynthesizer({
           name,
           model: config.model,
           context: config.context,
@@ -566,327 +615,111 @@ export function planAndExecute<
           instructions: config.instructions,
           synthesizeInstructions: config.synthesizeInstructions,
           agentType: config.synthesizerAgentType,
-        }))
-      : null;
+        }));
 
-  // ---------------------------------------------------------------------------
-  // captureAndPlan: runs once at the start — stores goal, runs the planner,
-  // saves tasks into sequencer state, emits initial snapshot.
-  // ---------------------------------------------------------------------------
-  const captureAndPlan = handler({
-    name: `${name}-plan`,
-    inputSchema: planAndExecuteInputSchema,
-    outputSchema: z.object({}),
-    sequencerStateSchema: planAndExecuteStateSchema,
+  // ------- Pattern-specific blocks ------------------------------------------
 
-    execute: async (input, ctx) => {
-      await ctx.sequencer!.patchState({
-        goal: input.goal,
-        maxIterations,
-        status: "planning",
-      });
-
-      const plannerOutput = await planner.run(input, ctx as BlockContext) as {
-        tasks: Array<{ id: string; goal: string; deps?: string[] }>;
-      };
-
-      const tasks = plannerOutput.tasks.map((task) => ({
-        id: task.id,
-        goal: task.goal,
-        status: "pending" as const,
-        dependencies: task.deps ?? [],
-      }));
-
-      await ctx.sequencer!.patchState({ tasks, status: "executing" });
-
-      emitPlanMeta(ctx as BlockContext, {
-        goal: input.goal,
-        taskOrder: tasks.map((t) => t.id),
-        taskGoals: Object.fromEntries(tasks.map((t) => [t.id, t.goal])),
-        status: "executing",
-        iteration: 0,
-      }, { key: name });
-      for (const task of tasks) {
-        emitTaskUpdate(ctx as BlockContext, {
-          id: task.id,
-          goal: task.goal,
-          status: task.status,
-        }, { key: name });
-      }
-
-      return {};
-    },
+  const captureAndPlan = createCaptureAndPlan({
+    name,
+    planner,
+    maxAttemptsPerTask,
   });
 
-  // ---------------------------------------------------------------------------
-  // findTask: selects the next eligible pending task, marks it in_progress,
-  // and returns the input for stepExecutor. Sets currentTaskId in state so
-  // recordResult and the error rescue handler know which task to update.
-  // This is the loopBack target — it runs at the start of every iteration.
-  // ---------------------------------------------------------------------------
-  const findTask = handler({
-    name: `${name}-execute-step`,
-    inputSchema: z.object({
-      decision: z.enum(["continue", "replan", "complete"]).optional(),
-    }),
-    outputSchema: z.union([
-      z.object({
-        stepId: z.string(),
-        goal: z.string(),
-        dependencyResults: z.record(z.unknown()).optional(),
-      }),
-      z.object({ noTask: z.literal(true) }),
-    ]),
-    sequencerStateSchema: planAndExecuteStateSchema,
+  // Single uniform worker — every task routes through `adaptedWorker`.
+  // The substrate's worker registry path requires `task.assignee` which
+  // the planner/replanner contracts don't carry, so we stay on the
+  // uniform path even when the spec illustration shows a registry.
+  //
+  // `onIdle: "wait"` + `shouldExit` is a deliberate substitute for
+  // `onIdle: "complete"`. With the topological dispatcher, a pending
+  // task whose dep `errored` is never claimable but still counts in
+  // `inFlightCount`, so the default `complete` mode would spin forever
+  // waiting for tasks the dispatcher cannot pick. The custom predicate
+  // exits the drain as soon as no claimable work remains — pendings
+  // with `errored` deps are then cascade-skipped by
+  // `cascadeSkipDependents` after the drain.
+  const board = taskBoard({
+    name: `${name}-board`,
+    collection: { backing: "request", collectionId: name },
+    workers: adaptedWorker,
+    concurrency: maxConcurrency,
+    dispatcher: "topological",
+    onIdle: "wait",
+    onError: "skip",
+    shouldExit: (collection) => {
+      // No active workers AND no claimable pending tasks → drain done.
+      const active = collection.count({
+        status: ["in_progress", "awaiting_review"],
+      });
+      if (active > 0) return false;
 
-    execute: async (_input, ctx) => {
-      const state = ctx.sequencer!.state;
+      const pending = collection.list({ status: "pending" });
+      if (pending.length === 0) return true;
 
       const completedIds = new Set(
-        state.tasks
-          .filter((s: PlanTask) => s.status === "completed" || s.status === "skipped")
-          .map((s: PlanTask) => s.id)
+        collection
+          .list({ status: "completed" })
+          .map((t) => t.id),
       );
-
-      const nextStep = state.tasks.find((s: PlanTask) => {
-        if (s.status !== "pending") return false;
-        return s.dependencies.every((dep: string) => completedIds.has(dep));
-      });
-
-      if (nextStep === undefined) {
-        return { noTask: true as const };
-      }
-
-      // Build dependency context for the executor
-      const dependencyResults = Object.fromEntries(
-        nextStep.dependencies
-          .map((depId: string) => state.tasks.find((t: PlanTask) => t.id === depId))
-          .filter((t): t is PlanTask => t !== undefined && t.result !== undefined)
-          .map((t: PlanTask) => [t.id, t.result])
+      // A pending task is claimable iff every dep is completed. Note
+      // that `errored` and `cancelled` deps make a pending task
+      // permanently unclaimable until cascade-skip runs.
+      const claimable = pending.some((t) =>
+        (t.deps ?? []).every((d) => completedIds.has(d)),
       );
-
-      await ctx.sequencer!.patchState({
-        currentTaskId: nextStep.id,
-        tasks: state.tasks.map((s: PlanTask) =>
-          s.id === nextStep.id ? { ...s, status: "in-progress" as const } : s
-        ),
-      });
-
-      emitTaskUpdate(ctx as BlockContext, {
-        id: nextStep.id,
-        goal: nextStep.goal,
-        status: "in-progress",
-      }, { key: name });
-
-      return {
-        stepId: nextStep.id,
-        goal: nextStep.goal,
-        ...(Object.keys(dependencyResults).length > 0 && { dependencyResults }),
-      };
+      return !claimable;
     },
   });
 
-  // ---------------------------------------------------------------------------
-  // recordResult: writes the executor's output back to sequencer state,
-  // applies cascade-skip for failed tasks, and emits a plan snapshot.
-  // Receives either the executor output or { noTask: true } passthrough.
-  // ---------------------------------------------------------------------------
-  const recordResult = handler({
-    name: `${name}-record-result`,
-    inputSchema: z.any(),
-    outputSchema: z.object({ stepResult: z.any().optional() }),
-    sequencerStateSchema: planAndExecuteStateSchema,
+  const cascadeSkipDependents = createCascadeSkipDependents({ name });
+  const applyReplan = createApplyReplan({ name, maxAttemptsPerTask });
+  const synthesize = createSynthesize({ name, synthesizer });
 
+  // ------- Assemble pipeline -----------------------------------------------
+
+  // captureAndPlan stamps `goal` on its OWN inner sequencer state — that
+  // doesn't reach the outer pipeline's state where evaluator and synthesize
+  // read from. Mirror the goal here so downstream blocks see it.
+  const stampOuterGoal = handler({
+    name: `${name}-stamp-outer-goal`,
+    inputSchema: planAndExecuteInputSchema,
+    sequencerStateSchema: planAndExecuteStateSchema,
     execute: async (input, ctx) => {
-      const noTask = input && typeof input === "object" && "noTask" in input;
-      if (noTask) {
-        return { stepResult: undefined };
-      }
-
-      const stepResult = input;
-      const state = ctx.sequencer!.state;
-      const taskId = state.currentTaskId;
-
-      if (!taskId) return { stepResult };
-
-      // Check for explicit failure signal { success: false, reason? }
-      const resultObj = stepResult as Record<string, unknown> | null | undefined;
-      const signaledFailure =
-        resultObj !== null &&
-        resultObj !== undefined &&
-        typeof resultObj === "object" &&
-        resultObj.success === false;
-
-      const newStatus: PlanTask["status"] = signaledFailure ? "failed" : "completed";
-      const recordedError = signaledFailure
-        ? String(resultObj!.reason ?? "Task did not produce a result")
-        : undefined;
-
-      let updatedTasks = state.tasks.map((s: PlanTask) =>
-        s.id === taskId
-          ? { ...s, status: newStatus, result: stepResult, error: recordedError }
-          : s
-      );
-
-      if (newStatus === "failed") {
-        updatedTasks = cascadeSkipDependents(updatedTasks, taskId);
-      }
-
-      await ctx.sequencer!.patchState({ tasks: updatedTasks, currentTaskId: undefined });
-
-      // Emit granular update for the completed/failed task
-      const finishedTask = updatedTasks.find((t: PlanTask) => t.id === taskId)!;
-      emitTaskUpdate(ctx as BlockContext, {
-        id: finishedTask.id,
-        goal: finishedTask.goal,
-        status: finishedTask.status,
-        result: finishedTask.result,
-        error: finishedTask.error,
-      }, { key: name });
-
-      // Emit updates for any cascade-skipped tasks
-      if (newStatus === "failed") {
-        for (const t of updatedTasks) {
-          if (t.status === "skipped" && t.id !== taskId) {
-            emitTaskUpdate(ctx as BlockContext, {
-              id: t.id,
-              goal: t.goal,
-              status: t.status,
-              error: t.error,
-            }, { key: name });
-          }
-        }
-      }
-
-      return { stepResult };
+      await ctx.sequencer!.patchState({ goal: input.goal });
     },
   });
 
-  // ---------------------------------------------------------------------------
-  // recordExecutorError: rescue handler for the executeNextTask sequencer.
-  // Fires when stepExecutor throws. Reads currentTaskId from outer state,
-  // marks the task failed, cascade-skips dependents, and returns a value
-  // the outer loop can continue from.
-  // ---------------------------------------------------------------------------
-  const recordExecutorError = handler({
-    name: `${name}-executor-error`,
-    inputSchema: z.unknown(),
-    outputSchema: z.object({ stepResult: z.any().optional() }),
-    sequencerStateSchema: planAndExecuteStateSchema,
-
-    execute: async (error, ctx) => {
-      const state = ctx.sequencer!.state;
-      const taskId = state.currentTaskId;
-
-      if (!taskId) return { stepResult: undefined };
-
-      let updatedTasks = state.tasks.map((s: PlanTask) =>
-        s.id === taskId
-          ? { ...s, status: "failed" as const, error: String(error) }
-          : s
-      );
-      updatedTasks = cascadeSkipDependents(updatedTasks, taskId);
-
-      await ctx.sequencer!.patchState({ tasks: updatedTasks, currentTaskId: undefined });
-
-      // Emit granular update for the failed task
-      const failedTask = updatedTasks.find((t: PlanTask) => t.id === taskId)!;
-      emitTaskUpdate(ctx as BlockContext, {
-        id: failedTask.id,
-        goal: failedTask.goal,
-        status: failedTask.status,
-        error: failedTask.error,
-      }, { key: name });
-
-      // Emit updates for cascade-skipped tasks
-      for (const t of updatedTasks) {
-        if (t.status === "skipped" && t.id !== taskId) {
-          emitTaskUpdate(ctx as BlockContext, {
-            id: t.id,
-            goal: t.goal,
-            status: t.status,
-            error: t.error,
-          }, { key: name });
-        }
-      }
-
-      return { stepResult: undefined };
-    },
-  });
-
-  // ---------------------------------------------------------------------------
-  // executeNextTask: inner sequencer — findTask → stepExecutor → recordResult.
-  // stepExecutor runs as a proper named step (visible in trace). Errors from
-  // the executor are caught by the rescue handler rather than crashing the plan.
-  // ---------------------------------------------------------------------------
-  const executeNextTask = sequencer({
-    name: `${name}-execute-step-seq`,
-    inputSchema: z.object({
-      decision: z.enum(["continue", "replan", "complete"]).optional(),
-    }),
-  })
-    .then(findTask)
-    .thenIf((r) => !(r as any).noTask, stepExecutor as BlockDefinition<any, any>)
-    .then(recordResult)
-    .rescue([{ when: [Error], block: recordExecutorError }]);
-
-  // ---------------------------------------------------------------------------
-  // Build pipeline
-  // ---------------------------------------------------------------------------
-
-  const base = sequencer({
+  const pipeline = sequencer({
     name,
     inputSchema: planAndExecuteInputSchema,
     stateSchema: planAndExecuteStateSchema,
-    container: { component: "plan" },
   })
-    // 1. Capture goal, run planner, store tasks
+    .tap(stampOuterGoal)
     .then(captureAndPlan)
-    // 2. Execute next ready task (loopBack target)
-    .then(executeNextTask)
-    // 3. Evaluate progress
+    .then(board.block)
+    .tap(cascadeSkipDependents)
     .then(evaluator)
-    // 4. Conditionally replan
+    // Replanner only runs when the evaluator asked for a replan AND
+    // didn't pre-bake the new tasks. Pre-baked `tasks` bypasses the
+    // LLM call and goes straight to applyReplan.
     .thenIf(
-      (result) => (result as any).decision === "replan",
-      replanner
+      (d) =>
+        (d as { decision?: string }).decision === "replan" &&
+        !Array.isArray((d as { tasks?: unknown }).tasks),
+      replanner,
     )
     .thenIf(
-      (result) => (result as any).tasks !== undefined,
-      applyReplan
+      (d) => Array.isArray((d as { tasks?: unknown }).tasks),
+      applyReplan,
     )
-    // Normalize decision shape
-    .map((result): { decision: "continue" | "replan" | "complete" } => ({
-      decision: (result as any).decision ?? "continue",
+    .map((d) => ({
+      decision: (d as { decision?: string }).decision ?? "continue",
     }))
-    // 5. Loop back to executeNextTask until evaluator says complete.
-    // Each iteration executes one task; the loop terminates when the evaluator
-    // returns "complete". The replanning guard (maxIterations) is enforced
-    // inside the evaluator — the hard cap here is a safety net only.
-    .loopBack(executeNextTask.name, {
-      when: (result) => (result as any).decision !== "complete",
-      maxIterations: 1000,
+    .loopBack(board.block.name, {
+      when: (r) => (r as { decision?: string }).decision !== "complete",
+      maxIterations,
     })
-    // 6. Extract final plan from sequencer state
-    .map((_value, ctx) => {
-      const state = (ctx.sequencer!.state as any) as typeof planAndExecuteStateSchema._type;
-      return {
-        goal: state.goal,
-        status: state.status,
-        tasks: state.tasks.map((s: PlanTask) => ({
-          id: s.id,
-          goal: s.goal,
-          status: s.status,
-          result: s.result,
-          error: s.error,
-        })),
-        completedSteps: state.tasks.filter((s: PlanTask) => s.status === "completed").length,
-        totalSteps: state.tasks.length,
-      };
-    });
+    .then(synthesize) as SequencerDefinition<any, any>;
 
-  // 7. Optionally synthesize findings into a final answer
-  return synthesizer
-    ? base.then(synthesizer as BlockDefinition<any, any>)
-    : base;
+  return pipeline;
 }

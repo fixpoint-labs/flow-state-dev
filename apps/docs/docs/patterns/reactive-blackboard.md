@@ -201,5 +201,5 @@ import { createAppendEntry } from "@flow-state-dev/patterns/reactive-blackboard"
 ## See also
 
 - Blackboard -- the controller-driven sibling pattern
-- [Coordinator](./coordinator) -- single-pass fan-out (use when tasks are known upfront)
+- [Parallel Tasks](./parallelTasks) -- single-pass fan-out (use when tasks are known upfront)
 - [Supervisor](./supervisor) -- fan-out with review loop (use when quality review is needed)

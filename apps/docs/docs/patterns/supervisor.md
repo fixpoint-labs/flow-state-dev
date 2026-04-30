@@ -4,31 +4,43 @@ sidebar_position: 5
 
 # Supervisor
 
-The Supervisor is a fan-out pattern with a quality review loop. It decomposes a goal into sub-tasks, dispatches workers, reviews each result, replans the tasks that need revision, and repeats until all results pass review or the iteration limit is hit.
+The Supervisor is a fan-out pattern with a per-task quality review loop. It decomposes a goal into sub-tasks, dispatches workers concurrently, runs a reviewer on each individual worker output, and retries via a per-task budget when the reviewer rejects.
 
 Use it when:
-- Output quality matters and failures should be corrected, not just skipped
-- You need a review step that can send individual tasks back for revision
-- You want to escalate tasks the reviewer deems out of scope
 
-If you just need parallel execution without review, use [Coordinator](./coordinator). If tasks depend on each other's results and need strictly sequential execution with replanning, use [Plan and Execute](./plan-and-execute). The supervisor also supports task dependencies via `deps` — dependent tasks are held back until their prerequisites complete — but executes independent tasks concurrently rather than one at a time.
+- Output quality matters and individual failures should be corrected, not skipped
+- Each task needs its own review — a worker output should be approved or revised before it counts as done
+- You want a retry budget that triggers on review rejection (not just on worker exceptions)
+
+If you don't need review, use [Parallel Tasks](./parallelTasks) for concurrent execution. If tasks need strict dependency ordering, use [Plan and Execute](./plan-and-execute). The supervisor honours `deps` between tasks (dependent tasks wait until their prerequisites complete) but executes independent tasks concurrently within the worker pool.
 
 ## Block composition
 
 ```
 goal
-  → captureGoal             (store goal in sequencer state)
-  → planner                 (decompose into tasks)
-  → updatePlanState         (write plan to sequencer state)
-  → .forEach(worker)        (dispatch concurrently)
-  → reviewer                (evaluate each result)
-  → applyReview             (write verdicts to state)
-  → .loopBack(planner)      (replan if needsReplanning=true)
-  → .map(acceptedResults)   (extract accepted results from state)
-  → synthesizer             (combine into final output)
+  → captureAndPlan            (store goal, run planner, seed taskBoard collection)
+  → board.block               (drain — each worker runs the per-task review chain)
+  → cascadeSkipDependents     (.tap — cancel pendings whose deps errored)
+  → labelFailedReviews        (.tap — label terminal errored tasks by failure category)
+  → synthesize                (build { goal, results } and run the synthesizer)
 ```
 
-The `captureGoal`, `updatePlanState`, and `applyReview` blocks are exported — you can use them in custom compositions.
+Each registered worker is wrapped at supervisor-construction time in a sequencer:
+
+```
+TaskWorkerInput
+  → stashTaskId (.tap — capture taskId / goal / attempts)
+  → adaptedWorker        (the user's worker; legacyWorkerAdapter applied if needed)
+  → stashWorkerOutput (.tap — capture worker output for applyVerdict)
+  → stampReviewEntered (.tap — set metadata.review.entered for terminal labelling)
+  → buildReviewerInput   (.map — { taskId, goal, attempts, workerOutput, criteria? })
+  → reviewerGenerator    (produces ReviewerVerdict)
+  → applyVerdict         (approve → flow workerOutput through; reject → throw)
+```
+
+When `applyVerdict` throws, the substrate's `recordError` catches it. If `attempts < maxAttempts`, the task re-pends with the verdict feedback as `task.feedback` so the next attempt can address it. When the budget exhausts, the task transitions to terminal `errored` and `labelFailedReviews` adds the `failed-review` label.
+
+The reviewer composition is BP-011 conformant — the reviewer runs as a `.then(reviewer)` step in the worker's sequencer, not as a `block.run` call inside a handler.
 
 ## Basic usage
 
@@ -41,12 +53,12 @@ const researchWorker = generator({
   name: "research-task",
   model: "gpt-5-mini",
   inputSchema: z.object({
-    id: z.string(),
+    taskId: z.string(),
     goal: z.string(),
     feedback: z.string().optional(),
   }),
-  outputSchema: z.object({ summary: z.string(), sources: z.array(z.string()) }),
-  prompt: "You are a research assistant. Complete the given task thoroughly.",
+  outputSchema: z.object({ summary: z.string() }),
+  prompt: "You are a research assistant. Complete the task thoroughly.",
   user: (input) => {
     const base = `Task: ${input.goal}`;
     return input.feedback ? `${base}\n\nPrior feedback: ${input.feedback}` : base;
@@ -58,93 +70,117 @@ const researchSupervisor = supervisor({
   worker: researchWorker,
   reviewCriteria: [
     "Sources are specific and relevant",
-    "Summary is substantive (not vague)",
+    "Summary is substantive",
     "Addresses the task goal directly",
   ],
-  maxIterations: 3,
+  maxAttemptsPerTask: 3,
   maxConcurrency: 4,
-});
-```
-
-The supervisor returns a sequencer block. Use it in a flow like any other block:
-
-```ts
-const flow = defineFlow({
-  kind: "research",
-  requireUser: true,
-  actions: {
-    research: {
-      inputSchema: z.object({ goal: z.string() }),
-      block: researchSupervisor,
-      userMessage: (input) => input.goal,
-    },
-  },
-  session: { stateSchema: z.object({}) },
 });
 ```
 
 ## Worker input shape
 
-The worker receives an `ExecutableTask` for each sub-task:
+The worker receives the substrate's `TaskWorkerInput`:
 
 ```ts
 {
-  id: string;       // stable task identifier
-  goal: string;     // what to accomplish
-  feedback?: string; // reviewer feedback from prior iteration (if replanning)
+  taskId: string;
+  goal: string;
+  input?: unknown;          // task input — typically the planner's `context` field
+  attempts: number;          // 1 on first attempt, increments on retry
+  feedback?: string;         // verdict feedback from the prior attempt (if retrying)
+  metadata?: Record<string, unknown>;
 }
 ```
 
-On the first iteration, `feedback` is absent. On subsequent iterations, tasks that received a `"needs-revision"` verdict include the reviewer's feedback so the worker can address it.
+On the first attempt, `feedback` is absent. On retry — after a reviewer rejection — it contains the verdict's feedback string so the worker can address it.
+
+### Legacy worker shape (back-compat)
+
+Pre-migration the supervisor used a simpler shape: `{ id, goal, context?, feedback? }`. Workers declaring `inputSchema: executableTaskSchema` are auto-adapted via `legacyWorkerAdapter` so existing code keeps working:
+
+```ts
+import { executableTaskSchema, supervisor } from "@flow-state-dev/patterns";
+
+const legacyWorker = handler({
+  inputSchema: executableTaskSchema,
+  // ... receives { id, goal, context?, feedback? }
+});
+
+supervisor({ worker: legacyWorker, ... });   // adapter wraps it transparently
+```
+
+The legacy adapter is detected by `inputSchema` reference equality. Workers without `inputSchema` are passed through unchanged — they receive `TaskWorkerInput`.
+
+## Reviewer verdict shape
+
+The reviewer block receives a `ReviewerInput` and must return a `ReviewerVerdict`:
+
+```ts
+type ReviewerInput = {
+  taskId: string;
+  goal: string;
+  attempts: number;
+  workerOutput: unknown;
+  criteria?: string[];        // forwarded from `reviewCriteria`
+};
+
+type ReviewerVerdict = {
+  decision: "approve" | "reject" | "needs-revision";
+  feedback?: string;          // shown to the worker on retry; required on reject / needs-revision
+  criteria?: Record<string, unknown>;
+  reasoning?: string;
+};
+```
+
+`reject` and `needs-revision` are functionally identical for the retry path — both throw the verdict's `feedback` so the substrate re-pends. They're separated for prompt clarity (the reviewer can express "redo from scratch" vs "polish the existing output").
+
+Pass `reviewer: false` to disable per-task review — every worker output flows straight through to `collection.complete`.
+
+## Per-task retry budget
+
+`maxAttemptsPerTask` (default 3) bounds how many times a task can be re-attempted on review rejection. The substrate's `Task.maxAttempts` field is stamped at planning time:
+
+- Attempt 1 fails review → task re-pends with feedback, `attempts: 1`.
+- Attempt 2 fails review → task re-pends, `attempts: 2`.
+- Attempt 3 fails review → task transitions to terminal `errored`, `labelFailedReviews` adds `failed-review`.
+
+A worker that throws (rather than producing output the reviewer rejects) is also subject to the same budget — the substrate doesn't distinguish. After the drain, `labelFailedReviews` separates them by metadata:
+
+| Failure kind | Label |
+|---|---|
+| Reviewer rejected on the final attempt | `failed-review` |
+| Reviewer block itself threw | `reviewer-error` |
+| Worker threw before review could run | `worker-error` |
 
 ## Task dependencies
 
-The planner can declare dependencies between tasks using the `deps` field — an array of task IDs that must complete before a task is dispatched:
+The planner can declare dependencies between tasks using `deps`:
 
 ```ts
-{
-  tasks: [
-    { id: "gather", goal: "Collect raw data from API" },
-    { id: "analyze", goal: "Analyze the collected data", deps: ["gather"] },
-    { id: "report", goal: "Write summary report", deps: ["analyze"] },
-  ]
-}
+{ tasks: [
+  { id: "gather", goal: "Collect raw data" },
+  { id: "analyze", goal: "Analyze data", deps: ["gather"] },
+  { id: "report", goal: "Write report", deps: ["analyze"] },
+]}
 ```
 
-Tasks with unmet dependencies are held back from the worker batch. When a task fails, all tasks that depend on it (directly or transitively) are automatically marked `skipped`.
+Tasks with unmet dependencies are held back. When a task `errored`s, every task that depends on it (transitively) is `cancelled` with the `skipped` label by `cascadeSkipDependents`.
 
-## Task assignees
+## Worker registry
 
-The planner can optionally set an `assignee` on each task — a free-form string label that the client can display next to the task in the UI. This is useful when the supervisor coordinates different specialized workers or when you want to surface which capability handles each task:
+When different tasks need different workers, pass a registry instead of a single `worker`:
 
 ```ts
-{
-  tasks: [
-    { id: "search", goal: "Search for papers", assignee: "search-agent" },
-    { id: "summarize", goal: "Summarize findings", assignee: "writer-agent", deps: ["search"] },
-  ]
-}
+supervisor({
+  workers: {
+    "search-agent": searchWorker,
+    "writer-agent": writerWorker,
+  },
+});
 ```
 
-The `assignee` field has no effect on routing — all tasks go to the same worker block. It's purely a labeling mechanism for observability.
-
-## Task statuses
-
-Supervisor tasks use a quality-gate vocabulary. These are intentionally different from the step statuses used by Plan and Execute — they model a different kind of lifecycle:
-
-| Status | Meaning |
-|--------|---------|
-| `in-progress` | Dispatched to the worker, awaiting result |
-| `awaiting-review` | Worker finished, waiting for reviewer evaluation |
-| `completed` | Accepted by the reviewer |
-| `needs-revision` | Reviewer returned it for rework |
-| `escalated` | Reviewer flagged it as out of scope |
-| `failed` | Worker threw or returned an error |
-| `skipped` | Skipped due to a failed dependency |
-
-Tasks update atomically as each worker completes — the plan snapshot updates per-task rather than waiting for the entire batch to finish. This means the client sees live progress during concurrent execution.
-
-The `needs-revision` status feeds directly into the replan loop: tasks with this status are replanned and redispatched on the next iteration.
+The substrate routes each task to the worker matching `task.assignee`. Each registry entry is wrapped in its own reviewedWorker chain.
 
 ## Config reference
 
@@ -152,52 +188,48 @@ The `needs-revision` status feeds directly into the replan loop: tasks with this
 supervisor({
   name: string;
 
-  // Worker block — receives ExecutableTask, returns any result.
-  worker: BlockDefinition;
+  // One of `worker` or `workers` is required.
+  worker?: BlockDefinition;
+  workers?: Record<string, BlockDefinition>;
 
-  // Strings the reviewer uses as evaluation criteria.
-  // Included verbatim in the reviewer's system prompt.
+  // Strings forwarded into the reviewer's input.criteria.
   reviewCriteria?: string[];
 
-  // Max plan/dispatch/review iterations. Default: 3.
-  maxIterations?: number;
+  // Per-task retry budget for review rejection. Default 3.
+  maxAttemptsPerTask?: number;
 
-  // Max concurrent sub-tasks. Default: 3.
+  // Worker pool size. Default 3.
   maxConcurrency?: number;
 
-  // Override the planning step.
-  // Must output { tasks: Array<{ id: string; goal: string; assignee?: string; deps?: string[]; priority?: string }> }
-  // Default: a supervisor-aware decomposer generator.
+  // Override the planning step. Default: `utility.decomposer()`.
   planner?: BlockDefinition;
 
-  // Override the review step.
-  // Must output reviewOutputSchema (assessments + needsReplanning).
-  // Default: a review generator.
-  reviewer?: BlockDefinition;
+  // Override the reviewer. Pass `false` to disable per-task review.
+  reviewer?: BlockDefinition | false;
 
-  // Override the final synthesis step.
-  // Receives unknown[] (the accepted results array).
-  // Default: utility.synthesizer()
+  // Optional outer replanner — when present, supervisor adds a replan loop
+  // around the board, re-entering when failed-review tasks accumulate.
+  replanner?: BlockDefinition;
+
+  // Outer replan-loop iteration cap. Default 3.
+  maxIterations?: number;
+
+  // Final synthesizer. Receives `{ goal, results }`.
   synthesizer?: BlockDefinition;
 
-  // How to handle worker failures:
-  //   "skip"  — exclude failed tasks from review (default)
-  //   "fail"  — abort on any failure
-  //   "retry" — retry per worker's retry policy
+  // How to handle worker failures (forwarded to taskBoard.onError):
+  //   "skip" — capture error on the failing task, siblings continue (default).
+  //   "fail" — the failing worker propagates up, aborting the supervisor.
+  //   "retry" — not supported; treated as "skip". Use maxAttemptsPerTask.
   onSubTaskError?: "skip" | "fail" | "retry";
 
-  // Output schema for the final synthesized result.
-  // Passed through to the synthesizer block.
   outputSchema?: ZodSchema;
-
-  // Identity assigned to the internal reviewer generator.
-  // Default: "sub". Override to "primary" if the reviewer's output
-  // should appear in the top-level conversation stream.
-  reviewerAgentType?: "primary" | "sub" | "trace";
-
-  // Identity assigned to the internal synthesizer generator.
-  // Default: "primary" — synthesis is the user-facing final answer.
-  synthesizerAgentType?: "primary" | "sub" | "trace";
+  context?: GeneratorSlot;
+  history?: GeneratorHistoryConfig;
+  uses?: UsesSlot;
+  reviewerAgentType?: AgentType;
+  synthesizerAgentType?: AgentType;
+  instructions?: string | (input, ctx) => string;
 });
 ```
 
@@ -205,95 +237,38 @@ supervisor({
 
 ```ts
 import {
-  supervisor,           // factory function
-  supervisorInputSchema,  // z.object({ goal: z.string() })
-  supervisorStateSchema,  // full sequencer state schema
-  reviewOutputSchema,     // schema for reviewer output
-  plannerOutputSchema,    // schema for planner output
-
-  // Internal blocks — re-export for custom compositions
-  captureGoal,          // stores goal in sequencer state
-  updatePlanState,      // writes planner output to sequencer state
-  applyReview,          // applies reviewer verdicts to state
+  supervisor,
+  supervisorInputSchema,
+  supervisorStateSchema,
+  reviewerVerdictSchema,
+  reviewerInputSchema,
+  plannerOutputSchema,
+  executableTaskSchema,        // legacy worker input shape
+  legacyWorkerAdapter,          // back-compat shim
+  buildReviewedWorker,          // build a per-task review chain manually
+  createSupervisorCaptureAndPlan,
+  createSupervisorSynthesize,
+  createLabelFailedReviews,
 } from "@flow-state-dev/patterns";
 
 import type {
   SupervisorConfig,
   SupervisorState,
-  ReviewOutput,
+  ReviewerVerdict,
+  ReviewerInput,
   PlannerOutput,
   ExecutableTask,
-  SubTaskErrorStrategy,
 } from "@flow-state-dev/patterns";
 ```
 
-## Custom planner
+## Output shape
 
-The default planner understands the supervisor's state structure — on first iteration it decomposes the goal, on subsequent iterations it replans only the tasks marked `needs-revision`. If you provide a custom planner, it receives the current sequencer state and should do the same.
+The supervisor's output is whatever the synthesizer produces — typically a string for the default synthesizer. With a custom synthesizer the shape follows the synthesizer's `outputSchema`.
 
-```ts
-import { supervisor } from "@flow-state-dev/patterns";
-import { generator } from "@flow-state-dev/core";
-import { plannerOutputSchema } from "@flow-state-dev/patterns";
-import { z } from "zod";
-
-const legalPlanner = generator({
-  name: "legal-planner",
-  model: "gpt-5",
-  outputSchema: plannerOutputSchema,
-  prompt: "You are a legal research task planner. Decompose legal questions into discrete research tasks.",
-  user: (input) => input.goal,
-});
-
-const legalSupervisor = supervisor({
-  name: "legal-research",
-  worker: legalWorker,
-  planner: legalPlanner,
-});
-```
-
-## Custom reviewer
-
-The reviewer receives all worker results and must output `reviewOutputSchema`. If you swap in a custom reviewer, make sure its output matches:
-
-```ts
-{
-  assessments: Array<{
-    taskId: string;
-    verdict: "accepted" | "needs-revision" | "escalate";
-    feedback: string;
-    score: number; // 0–1
-  }>;
-  needsReplanning: boolean;
-  overallAssessment: string;
-}
-```
-
-Set `needsReplanning: true` if any task received `"needs-revision"` and the loop should continue.
-
-## Composability with Plan and Execute
-
-For complex hierarchical work, you can use Supervisor as the `stepExecutor` inside Plan and Execute:
-
-```ts
-import { planAndExecute } from "@flow-state-dev/patterns";
-import { supervisor } from "@flow-state-dev/patterns";
-
-// Each step in the plan is itself supervised
-const hierarchicalPlan = planAndExecute({
-  name: "complex-research",
-  stepExecutor: supervisor({
-    name: "step-supervisor",
-    worker: deepResearchWorker,
-    reviewCriteria: ["Comprehensive", "Well-sourced"],
-  }),
-});
-```
-
-This gives you sequential dependency ordering at the outer level and quality-reviewed parallel execution within each step.
+The synthesizer receives `{ goal: string, results: unknown[] }` where `results` is the array of `output` values from every `completed` task.
 
 ## See also
 
-- [Coordinator](./coordinator) — same fan-out model, no review loop
-- [Plan and Execute](./plan-and-execute) — sequential dependency-ordered execution
+- [Parallel Tasks](./parallelTasks) — fan-out without per-task review
+- [Plan and Execute](./plan-and-execute) — sequential dependency-ordered execution with optional replanning
 - [Patterns Overview](./overview) — when to use which pattern

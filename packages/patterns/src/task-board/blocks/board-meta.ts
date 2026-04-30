@@ -53,12 +53,16 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
   const { name, collectionId } = options;
   return handler({
     name,
+    // Substrate-internal meta-emitter. The task-board-meta
+    // ComponentItem it emits IS the user-visible signal; the
+    // auto-emitted block_output trace is redundant noise.
+    transient: true,
     inputSchema: z.unknown(),
     execute: async (_input, ctx) => {
       ctx.emitComponent(
         TASK_BOARD_META_COMPONENT_TYPE,
         { collectionId, status: "active" },
-        { key: collectionId }
+        { key: collectionId, transient: false }
       );
     },
   });
@@ -74,6 +78,10 @@ export function createBoardMetaCompleted(options: BoardMetaOptions) {
   const { name, collection: collectionFactory, collectionId } = options;
   return handler({
     name,
+    // Substrate-internal meta-emitter. The task-board-meta
+    // ComponentItem it emits IS the user-visible signal; the
+    // auto-emitted block_output trace is redundant noise.
+    transient: true,
     inputSchema: z.unknown(),
     execute: async (_input, ctx) => {
       const collection = collectionFactory(ctx);
@@ -91,7 +99,7 @@ export function createBoardMetaCompleted(options: BoardMetaOptions) {
       ctx.emitComponent(
         TASK_BOARD_META_COMPONENT_TYPE,
         { collectionId, status: "completed", counts },
-        { key: collectionId }
+        { key: collectionId, transient: false }
       );
     },
   });
