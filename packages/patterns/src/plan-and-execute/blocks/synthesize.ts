@@ -20,7 +20,6 @@ import { sequencer, handler } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { getOrCreateTaskCollection, type Task } from "@flow-state-dev/tasks";
-import { TASK_BOARD_META_COMPONENT_TYPE } from "../../task-board/blocks/board-meta";
 import { planAndExecuteStateSchema } from "../schemas";
 
 /**
@@ -143,59 +142,19 @@ export function createSynthesize(options: CreateSynthesizeOptions) {
 
   if (synthesizer === false) return buildPlanOutput;
 
-  const boardMetaSynthesizing = handler({
-    name: `${name}-meta-synthesizing`,
-    inputSchema: z.unknown(),
-    sequencerStateSchema: planAndExecuteStateSchema,
-    execute: async (_input, ctx) => {
-      await ctx.sequencer!.patchState({ status: "synthesizing" });
-      ctx.emitComponent(
-        TASK_BOARD_META_COMPONENT_TYPE,
-        { collectionId, status: "synthesizing" },
-        { key: collectionId },
-      );
-    },
-  });
-
-  // Latest task-board-meta wins per collectionId, so without a final
-  // re-emit the renderer would stay on "synthesizing" forever after
-  // the synthesizer returns. Re-emit `completed` with current counts so
-  // the badge clears.
-  const boardMetaFinal = handler({
-    name: `${name}-meta-final`,
-    inputSchema: z.unknown(),
-    sequencerStateSchema: planAndExecuteStateSchema,
-    execute: async (_input, ctx) => {
-      const collection = getOrCreateTaskCollection({
-        ctx,
-        backing: "request",
-        collectionId,
-      });
-      const counts = {
-        total: collection.list().length,
-        completed: collection.count({ status: "completed" }),
-        errored: collection.count({ status: "errored" }),
-        cancelled: collection.count({ status: "cancelled" }),
-        blocked: collection.count({ status: "blocked" }),
-        awaiting_review: collection.count({ status: "awaiting_review" }),
-        in_progress: collection.count({ status: "in_progress" }),
-        pending: collection.count({ status: "pending" }),
-      };
-      await ctx.sequencer!.patchState({ status: "completed" });
-      ctx.emitComponent(
-        TASK_BOARD_META_COMPONENT_TYPE,
-        { collectionId, status: "completed", counts },
-        { key: collectionId },
-      );
-    },
-  });
-
+  // No phase-meta emissions here. Both `boardMetaSynthesizing` and a
+  // post-synthesizer `boardMetaFinal` would keep the same `key:
+  // collectionId`, and the chat-thread renderer mounts `<TaskPlan />`
+  // at the position of the latest task-board-meta — so emitting them
+  // would drag the board mount past the synthesizer's streamed output
+  // and back. The substrate's own `boardMetaCompleted` (fired during
+  // board drain) is the canonical anchor; the renderer keeps its
+  // "completed" status from there and the synthesizer's text streams
+  // below as the user-facing payload.
   return sequencer({
     name: `${name}-synthesize`,
     stateSchema: planAndExecuteStateSchema,
   })
-    .tap(boardMetaSynthesizing)
     .then(buildPlanOutput)
-    .then(synthesizer)
-    .tap(boardMetaFinal);
+    .then(synthesizer);
 }
