@@ -17,12 +17,9 @@
  * `task-board-meta` items consumed by this component.
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import type { BlockOutputItem, OutputItem } from "@flow-state-dev/core/items";
-import {
-  ItemRenderer,
-  buildItemRenderStream,
-  type ItemRenderSegment,
-} from "@flow-state-dev/react";
+import type { OutputItem } from "@flow-state-dev/core/items";
+import { ItemsRenderer } from "@flow-state-dev/react";
+import Markdown from "react-markdown";
 import { ToolGroup } from "./tool";
 import { cn } from "@/lib/utils";
 import {
@@ -466,7 +463,9 @@ function TaskPlanRow({
   const deps = formatDeps(task);
 
   const isActive = task.status === "in_progress";
-  const hasWindow = (windowItems?.length ?? 0) > 0;
+  const outputText = useMemo(() => extractTaskOutputText(task), [task]);
+  const hasWindow =
+    (windowItems?.length ?? 0) > 0 || outputText !== null;
 
   // Auto-expand while the task is running, auto-collapse on terminal
   // status. The user can still toggle manually in between; the next
@@ -547,7 +546,14 @@ function TaskPlanRow({
           />
         </summary>
         <div className="mt-1.5 space-y-1.5 pl-5">
-          <TaskWindowItems items={windowItems!} />
+          {(windowItems?.length ?? 0) > 0 && (
+            <ItemsRenderer
+              items={windowItems!}
+              toolGroupRenderer={ToolGroup}
+              showSubAgents
+            />
+          )}
+          {outputText !== null && <TaskOutput text={outputText} />}
         </div>
       </details>
     </li>
@@ -562,97 +568,24 @@ function formatDeps(task: Task): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Per-task expansion renderer
+// Task output (the worker's final result, captured on collection.complete)
 // ---------------------------------------------------------------------------
 
 /**
- * Renders the items emitted during a task's execution window. Uses
- * `buildItemRenderStream` for the same dedup / sub-agent / tool-grouping
- * passes as the chat-thread `<ItemsRenderer>`, then dispatches each
- * segment with a kitchen-sink twist:
+ * Extract a text representation of `task.output` for display.
  *
- *   - tool-call groups → `<ToolGroup>` (rollup with expandable details)
- *   - `block_output` items → `<WorkerBlockOutput>` (registry hides them
- *     globally with `block_output: false`; inside a task they're the
- *     worker's actual response and we want to surface them)
- *   - everything else → `<ItemRenderer>` (delegates to the registry)
+ * The substrate stores whatever the worker returned. Common shapes:
+ *   - plain string (e.g. supervisor's `outputSchema: z.string()`)
+ *   - `{ summary, success, reason?, sources? }` (P&E default executor)
+ *   - arbitrary structured object (custom workers)
+ *
+ * Returns `null` when there is no output yet (in-progress tasks) or when
+ * the output is empty. Object shapes with a known `summary` field surface
+ * that field; unknown shapes pretty-print as JSON so nothing is silently
+ * swallowed.
  */
-function TaskWindowItems({ items }: { items: OutputItem[] }) {
-  const segments = useMemo<ItemRenderSegment[]>(
-    () =>
-      buildItemRenderStream(items, undefined, {
-        deduplicateByKey: true,
-        showSubAgents: true,
-        groupToolCalls: true,
-      }),
-    [items]
-  );
-
-  if (segments.length === 0) return null;
-
-  return (
-    <>
-      {segments.map((segment, i) => {
-        if (segment.kind === "group") {
-          return (
-            <ToolGroup
-              key={`tg-${segment.items[0]?.id ?? i}`}
-              items={segment.items}
-            />
-          );
-        }
-        const item = segment.item;
-        if (item.type === "block_output") {
-          return (
-            <WorkerBlockOutput key={item.id} item={item as BlockOutputItem} />
-          );
-        }
-        return <ItemRenderer key={item.id} item={item} />;
-      })}
-    </>
-  );
-}
-
-/**
- * Renders the inline payload of a worker's `block_output` item.
- *
- * Sub-agent generators in P&E and supervisor produce structured outputs
- * (e.g. `{ summary, success, reason? }` or a plain string). The chat
- * registry hides `block_output` globally so it doesn't clutter the main
- * thread, but inside a task expansion the worker's response IS what the
- * user came to see. This component pulls a sensible text representation
- * out of the structured value and shows it.
- *
- * `output.kind === "ref"` and `"structure"` are skipped — those are
- * pass-through wrappers; the leaf inline value is on a different item
- * already in the same window.
- */
-function WorkerBlockOutput({ item }: { item: BlockOutputItem }) {
-  const text = useMemo(() => extractWorkerText(item), [item]);
-  if (text === null) return null;
-
-  const isStreaming = item.status === "in_progress";
-
-  return (
-    <div
-      className={cn(
-        "whitespace-pre-wrap rounded border-l-2 border-muted-foreground/20 pl-2 text-xs leading-snug",
-        isStreaming
-          ? "text-foreground/90"
-          : "text-muted-foreground"
-      )}
-    >
-      {text}
-      {isStreaming && (
-        <span className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-blue-500/60" />
-      )}
-    </div>
-  );
-}
-
-function extractWorkerText(item: BlockOutputItem): string | null {
-  if (item.output.kind !== "inline") return null;
-  const value = item.output.value;
+function extractTaskOutputText(task: Task): string | null {
+  const value = task.output;
   if (value === null || value === undefined) return null;
   if (typeof value === "string") {
     return value.length > 0 ? value : null;
@@ -663,11 +596,10 @@ function extractWorkerText(item: BlockOutputItem): string | null {
     if (typeof summary === "string" && summary.length > 0) {
       const reason =
         obj.success === false && typeof obj.reason === "string"
-          ? `\n\nReason: ${obj.reason}`
+          ? `\n\n${obj.reason}`
           : "";
       return summary + reason;
     }
-    // Generic structured output — show as JSON so we never silently swallow content.
     try {
       return JSON.stringify(value, null, 2);
     } catch {
@@ -675,6 +607,42 @@ function extractWorkerText(item: BlockOutputItem): string | null {
     }
   }
   return String(value);
+}
+
+const taskOutputHeading = ({ children }: { children?: React.ReactNode }) => (
+  <p className="font-semibold">{children}</p>
+);
+
+/**
+ * Renders the task's output text as Markdown. Mirrors the styling used
+ * for reactive-blackboard entries so per-pattern expansions feel
+ * consistent.
+ */
+function TaskOutput({ text }: { text: string }) {
+  return (
+    <div
+      className={cn(
+        "prose-none text-xs leading-snug text-muted-foreground",
+        "[&_ol]:list-decimal [&_ol]:pl-4 [&_p]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_li]:my-0.5",
+        "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[10px]",
+        "[&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-muted [&_pre]:p-2",
+        "[&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-2 [&_blockquote]:italic"
+      )}
+    >
+      <Markdown
+        components={{
+          h1: taskOutputHeading,
+          h2: taskOutputHeading,
+          h3: taskOutputHeading,
+          h4: taskOutputHeading,
+          h5: taskOutputHeading,
+          h6: taskOutputHeading,
+        }}
+      >
+        {text}
+      </Markdown>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
