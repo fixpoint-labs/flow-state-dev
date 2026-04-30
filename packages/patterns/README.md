@@ -39,6 +39,25 @@ const myFlow = defineFlow({
 
 See `apps/kitchen-sink` for a full integration example.
 
+### parallelTasks
+
+Single-pass fan-out/fan-in orchestration backed by `taskBoard`. Decomposes a goal into sub-tasks, dispatches a worker concurrently for each, and synthesizes the completed results. No feedback loop.
+
+`coordinator()` is a deprecated alias — same config shape, emits a one-time deprecation warning.
+
+```typescript
+import { parallelTasks } from "@flow-state-dev/patterns";
+import { handler } from "@flow-state-dev/core";
+
+const block = parallelTasks({
+  name: "research",
+  worker: researchWorker,  // receives TaskWorkerInput { taskId, goal, input, ... }
+  maxConcurrency: 5,
+});
+```
+
+**Key exports:** `parallelTasks`, `parallelTasksInputSchema`
+
 ### Blackboard
 
 Controller-driven multi-agent coordination. Specialist blocks read from and write to a shared workspace resource. An LLM controller reads the blackboard state and decides which specialist to invoke next, in a `.loopBack()` loop.
@@ -183,7 +202,7 @@ Each pattern decides which sub-blocks receive `instructions`. The table below sh
 | Pattern | Receives `instructions` | Does not receive |
 |---------|------------------------|------------------|
 | **plan-and-execute** | planner (via context), executor, synthesizer | — |
-| **supervisor** | planner (supervisor LLM), synthesizer | workers (supervisor translates per-task via `context` field), reviewer |
+| **supervisor** | planner, synthesizer | workers (planner can pass per-task `context`), reviewer |
 | **blackboard** | controller, synthesizer | specialists (keep their domain roles) |
 
 ### Composition rules
@@ -194,43 +213,36 @@ Each pattern decides which sub-blocks receive `instructions`. The table below sh
 
 ### Supervisor task `context` field
 
-The supervisor pattern includes a `context` field on tasks (`ExecutableTask`). When `instructions` is provided, the supervisor planner is told to distill relevant parts into each task's `context` field. This keeps `goal` clean (what to do) and `context` separate (how/stance/constraints). Workers receive `{ id, goal, context?, feedback? }`.
+The supervisor planner may include a `context` field on each task (alongside `id`, `goal`, `deps`, `assignee`). The pattern stamps that string onto the seeded `TaskInit.input`, so workers receive it as `TaskWorkerInput.input`. Use it for per-task stance/constraint guidance distilled from overall `instructions`.
 
-## Shared Plan Schema
+Pre-migration workers that declared the legacy `executableTaskSchema` (input shape `{ id, goal, context?, feedback? }`) keep working — `legacyWorkerAdapter` translates `TaskWorkerInput → ExecutableTask` transparently.
 
-All plan-oriented patterns (`planAndExecute`, `supervisor`) share a common base schema for interoperability with the `<Plan />` UI component.
+## Task Progress Rendering
+
+`planAndExecute` and `supervisor` emit `task-change` (per-task lifecycle) and `task-board-meta` (board-level aggregate) `ComponentItem`s via the `taskBoard` substrate. Pair with `<TaskPlan />` from `@flow-state-dev/ui` for rendering.
+
+```typescript
+// In your UI registry or renderer setup:
+import { TaskPlan } from "@flow-state-dev/ui/task-plan";
+
+// Bind to the pattern's collectionId (same as config.name by default):
+<TaskPlan collectionId="my-plan" />
+```
+
+### Deprecated type exports
+
+`BasePlanSchema`, `BasePlanTaskSchema`, and the `BasePlan` / `BasePlanTask` / `PlanMeta` / `PlanTaskUpdate` types remain exported for backward compatibility. They are not used by the patterns internally.
 
 ```typescript
 import {
   BasePlanSchema,
   BasePlanTaskSchema,
-  emitPlanSnapshot,
   type BasePlan,
   type BasePlanTask,
 } from "@flow-state-dev/patterns";
 ```
 
-**`BasePlanTask` status vocabulary:**
-
-| Status | Pattern | Meaning |
-|---|---|---|
-| `pending` | P&E | Queued, not yet started |
-| `in_progress` | both | Actively executing |
-| `completed` | both | Done successfully |
-| `failed` | P&E | Hard failure |
-| `skipped` | P&E | Bypassed (dependency not met) |
-| `needs-revision` | Supervisor | Quality gate failed |
-| `escalated` | Supervisor | Out of scope |
-
-**`emitPlanSnapshot(ctx, plan)`** emits a `ComponentItem` with `component: "plan"` into the chat stream. Both `planAndExecute` and `supervisor` call this automatically. Custom patterns can call it directly:
-
-```typescript
-import { emitPlanSnapshot, type BasePlan } from "@flow-state-dev/patterns";
-
-emitPlanSnapshot(ctx, { goal, tasks, status, iteration });
-```
-
-Pair with the `<Plan />` component from `@flow-state-dev/ui` — or use `chatAssistantRenderers` which includes it by default.
+The `emitPlanMeta`, `emitTaskUpdate`, and `emitPlanSnapshot` runtime helpers have been retired. Patterns that tracked tasks via those helpers should migrate to `taskBoard`.
 
 ## Running tests
 

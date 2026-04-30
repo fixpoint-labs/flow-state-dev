@@ -301,31 +301,24 @@ const plannerContext = config.instructions && !config.planner
 
 #### Task Progress Emission
 
-Patterns that decompose work into trackable tasks should emit progress via `emitPlanMeta` and `emitTaskUpdate` from `packages/patterns/src/shared/plan.ts`. These produce keyed `ComponentItem`s that the UI renders as live task trackers.
+Patterns that decompose work into trackable tasks should use `taskBoard` as the dispatch primitive. The substrate emits `task-change` (per-task lifecycle) and `task-board-meta` (board-level aggregate) `ComponentItem`s automatically — the UI renders them via `<TaskPlan />`.
 
 ```typescript
-import { emitPlanMeta, emitTaskUpdate } from "../shared/plan";
+import { taskBoard } from "../task-board";
 
-// After planning: emit the plan structure
-emitPlanMeta(ctx, {
-  goal: state.goal,
-  taskOrder: tasks.map(t => t.id),
-  taskGoals: Object.fromEntries(tasks.map(t => [t.id, t.goal])),
-  status: "executing",
-  iteration: 0,
-}, { key: config.name });
+const board = taskBoard({
+  name: config.name,
+  collection: { backing: "request", collectionId: config.name },
+  concurrency: 1,
+  workers: { default: workerBlock },
+  initialTasks: tasks.map(t => ({ id: t.id, goal: t.goal, assignee: "default" })),
+});
 
-// As each task progresses: emit individual updates
-emitTaskUpdate(ctx, {
-  id: task.id,
-  goal: task.goal,
-  status: "in-progress",  // or "completed", "failed", "skipped"
-  result: task.result,     // on completion
-  error: task.error,       // on failure
-}, { key: config.name });
+// board.block plugs into a sequencer; task-change + task-board-meta items
+// are emitted automatically as tasks move through pending → in_progress → completed/errored.
 ```
 
-The `key` option namespaces emissions so multiple pattern instances don't collide. Both `planAndExecute` and `supervisor` use these helpers. If your pattern tracks multi-step progress, use the same utilities for a consistent UI experience.
+Pair with `<TaskPlan collectionId={config.name} />` in the UI registry. The legacy `emitPlanMeta` / `emitTaskUpdate` helpers have been retired — new patterns should use the substrate directly.
 
 #### Critical Rules
 
