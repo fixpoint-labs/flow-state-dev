@@ -2,6 +2,17 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-04-30
+
+### `taskBoard` follow-up: dep materialization, sub-agent tool visibility, render hygiene (FIX-447)
+
+- `TaskWorkerInput.deps` is now substrate-supplied. The worker dispatch path resolves each `task.deps[]` entry to its dep's `output` and passes the map to the worker before invocation. Workers read upstream context via `input.deps[depId]` directly — no pattern plumbing required.
+- `block_tool_output` items now carry the parent generator's `agentType` and `agentName`. Sub-agent tool calls are now correctly excluded from primary-agent LLM history (the visibility contract in `resolveItemVisibility` was already in place; the framework just wasn't stamping the field).
+- `planAndExecute` and `supervisor` no longer emit `task-board-meta` phase markers (`synthesizing`, `completed`-after-synth) from their synthesize step. The substrate's own `boardMetaCompleted` (during board drain) is the canonical board-level meta. Stops the renderer's status badge from flipping back to "Synthesizing…" once the synthesizer ran, and keeps `<TaskPlan />` mounted at a stable chat position.
+- `<TaskPlan />` (kitchen-sink + ui registry) row expansions render a vertical timeline of windowed items — compact tool-call rows, message lines, reasoning lines, and the worker's `task.output` Markdown — instead of nesting the chat-thread `<ToolGroup>` card inside the section card. Tool-call summary extraction lifted into a shared `tool-summaries.ts` helper used by both reactive-blackboard and task-plan. Per-task ownership now keys on `item.ts` (timestamps), not `item.itemIndex`, so AI-SDK tool emissions that land after the worker's terminal `task-change` still attribute to the correct task.
+- Default P&E executor and synthesizer prompts now thread source URLs through the task chain. Workers see prior-task summaries plus the URLs that actually informed each prior result; the synthesizer is instructed to cite URLs inline as Markdown links and end with a `Sources` section listing only the URLs it relied on. Distinction is explicit: pass and cite sources that were leveraged, not every URL the search returned.
+- Substrate-internal task-board blocks (`claimTask`, `checkBoard`, `recordSuccess`, `recordError`, `seedCollection`, board-meta emitters) marked `transient: true` so their auto-emitted `block_output` traces are filtered from client subscriptions and history replay. Idle workers no longer flood the SSE stream with `block_output` trace records every poll tick. `claimTask` also skips its `lastClaimed` state patch when the value is unchanged. Both are point-fixes for FIX-477.
+
 ## 2026-04-29
 
 ### Migrate patterns onto `taskBoard` substrate; retire legacy plan items (FIX-447)
