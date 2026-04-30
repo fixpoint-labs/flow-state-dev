@@ -275,10 +275,12 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     name: "supervisor-worker",
     model: modelId,
     inputSchema: z.object({
-      id: z.string(),
+      taskId: z.string(),
       goal: z.string(),
-      context: z.string().optional(),
+      input: z.unknown().optional(),
+      attempts: z.number().int().nonnegative().default(0),
       feedback: z.string().optional(),
+      metadata: z.record(z.unknown()).optional(),
     }),
     outputSchema: z.string(),
     context,
@@ -294,7 +296,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     ].join("\n"),
     user: (input) => {
       const parts = [`Task: ${input.goal}`];
-      if (input.context) parts.push(`\nContext: ${input.context}`);
+      if (typeof input.input === "string") parts.push(`\nContext: ${input.input}`);
       if (input.feedback) parts.push(`\nPrevious feedback: ${input.feedback}`);
       return parts.join("\n");
     },

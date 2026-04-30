@@ -1,3 +1,11 @@
+/**
+ * Schemas for the supervisor pattern (post-FIX-447 migration onto taskBoard).
+ *
+ * Outer state is minimal — task storage lives on the request-scoped
+ * TaskCollection, not here. Per-task review verdicts conform to
+ * `reviewerVerdictSchema`; the legacy aggregate `reviewOutputSchema`
+ * is kept as an export for pre-migration consumers.
+ */
 import { z } from "zod";
 
 export const supervisorInputSchema = z.object({
@@ -6,50 +14,51 @@ export const supervisorInputSchema = z.object({
 
 export type SupervisorInput = z.infer<typeof supervisorInputSchema>;
 
-export const supervisorPlanTaskSchema = z.object({
-  id: z.string(),
-  goal: z.string(),
-  assignee: z.string().optional(),
-  deps: z.array(z.string()).default([]),
-  status: z.enum([
-    "in-progress",
-    "awaiting-review",
-    "completed",
-    "failed",
-    "skipped",
-    "needs-revision",
-    "escalated",
-  ]),
-  result: z.unknown().optional(),
-  feedback: z.string().optional(),
-  error: z.string().optional(),
-});
-
+/** Outer sequencer state: goal, optional pattern-level status, iteration counter. */
 export const supervisorStateSchema = z.object({
   goal: z.string().default(""),
-  plan: z.array(supervisorPlanTaskSchema).default([]),
+  status: z
+    .enum([
+      "planning",
+      "executing",
+      "replanning",
+      "synthesizing",
+      "completed",
+      "failed",
+    ])
+    .optional(),
   iteration: z.number().default(0),
-  acceptedResults: z.array(z.unknown()).default([]),
 });
 
 export type SupervisorState = z.infer<typeof supervisorStateSchema>;
 
-export const reviewOutputSchema = z.object({
-  assessments: z.array(
-    z.object({
-      taskId: z.string(),
-      verdict: z.enum(["accepted", "needs-revision", "escalate"]),
-      feedback: z.string(),
-      score: z.number().min(0).max(1),
-    })
-  ),
-  needsReplanning: z.boolean(),
-  overallAssessment: z.string(),
+/**
+ * Per-task reviewer verdict. `applyVerdict` flows the worker output
+ * through on `approve`; on `reject` / `needs-revision` it throws so
+ * the substrate's `recordError` + `maxAttempts` machinery handles the
+ * retry.
+ */
+export const reviewerVerdictSchema = z.object({
+  decision: z.enum(["approve", "reject", "needs-revision"]),
+  feedback: z.string().optional(),
+  criteria: z.record(z.string(), z.unknown()).optional(),
+  reasoning: z.string().optional(),
 });
 
-export type ReviewOutput = z.infer<typeof reviewOutputSchema>;
+export type ReviewerVerdict = z.infer<typeof reviewerVerdictSchema>;
 
-/** Schema for the planner output (decomposed tasks). */
+/** Input shape passed to a reviewer block — worker output plus task metadata. */
+export const reviewerInputSchema = z.object({
+  taskId: z.string(),
+  goal: z.string(),
+  attempts: z.number().int().nonnegative().default(1),
+  workerOutput: z.unknown(),
+  criteria: z.array(z.string()).optional(),
+});
+
+export type ReviewerInput = z.infer<typeof reviewerInputSchema>;
+
+/** Planner output — task list. */
 export const plannerOutputSchema = z.object({
   tasks: z.array(
     z.object({
@@ -59,13 +68,18 @@ export const plannerOutputSchema = z.object({
       deps: z.array(z.string()).optional(),
       priority: z.enum(["high", "medium", "low"]).optional(),
       context: z.string().optional(),
-    })
+    }),
   ),
 });
 
 export type PlannerOutput = z.infer<typeof plannerOutputSchema>;
 
-/** Schema for the updatePlanState output — executable tasks for forEach dispatch. */
+/**
+ * Legacy worker input shape — `{ id, goal, context?, feedback? }`.
+ * `legacyWorkerAdapter` detects this schema by reference equality and
+ * adapts the substrate's `TaskWorkerInput` into it before invoking a
+ * pre-migration worker.
+ */
 export const executableTaskSchema = z.object({
   id: z.string(),
   goal: z.string(),
@@ -75,11 +89,20 @@ export const executableTaskSchema = z.object({
 
 export type ExecutableTask = z.infer<typeof executableTaskSchema>;
 
-export const executableTasksSchema = z.array(executableTaskSchema);
-
-/** Schema for the applyReview output — drives the loopBack condition. */
-export const applyReviewOutputSchema = z.object({
+/** Legacy aggregate review output. Preserved for back-compat imports only. */
+export const reviewOutputSchema = z.object({
+  assessments: z.array(
+    z.object({
+      taskId: z.string(),
+      verdict: z.enum(["accepted", "needs-revision", "escalate"]),
+      feedback: z.string(),
+      score: z.number().min(0).max(1),
+    }),
+  ),
   needsReplanning: z.boolean(),
+  overallAssessment: z.string(),
 });
+
+export type ReviewOutput = z.infer<typeof reviewOutputSchema>;
 
 export type SubTaskErrorStrategy = "skip" | "fail" | "retry";
