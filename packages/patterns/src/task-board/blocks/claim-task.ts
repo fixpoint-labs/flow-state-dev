@@ -41,17 +41,33 @@ export function createClaimTask(options: ClaimTaskOptions) {
   const { name, collection: collectionFactory, dispatcher, workerId } = options;
   return handler({
     name,
+    // Substrate-internal worker-loop block: a single idle worker can
+    // run claim every `idlePollMs` for the lifetime of the board, so
+    // its `block_output` trace is the highest-volume noise in the
+    // session item stream. Mark transient so the auto-emitted trace
+    // is filtered out of client subscriptions and history replay —
+    // task-level outcomes flow through `task-change` items instead.
+    transient: true,
     inputSchema: z.unknown(),
     outputSchema: claimResultSchema,
     sequencerStateSchema: taskBoardWorkerStateSchema,
     execute: async (_input, ctx): Promise<ClaimResult> => {
       const collection = collectionFactory(ctx);
       const task = await dispatcher.claim(collection, workerId(ctx), ctx);
+      // Skip the patch when `lastClaimed` already matches. Idle
+      // workers poll every `idlePollMs`; without this guard each tick
+      // emits a `block_instance.patch` for an unchanged value, and a
+      // pool of N idle workers floods the stream proportionally.
+      const previous = ctx.sequencer!.state.lastClaimed;
       if (task === null) {
-        await ctx.sequencer!.patchState({ lastClaimed: false });
+        if (previous !== false) {
+          await ctx.sequencer!.patchState({ lastClaimed: false });
+        }
         return { claimed: false };
       }
-      await ctx.sequencer!.patchState({ lastClaimed: true });
+      if (previous !== true) {
+        await ctx.sequencer!.patchState({ lastClaimed: true });
+      }
       return { claimed: true, task };
     },
   });
