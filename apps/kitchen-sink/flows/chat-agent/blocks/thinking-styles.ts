@@ -338,7 +338,6 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     name: "supervisor-thinking",
     worker: supervisorWorker,
     instructions,
-    maxIterations: 3,
     maxConcurrency: 3,
     onSubTaskError: "skip",
     outputSchema: z.string(),

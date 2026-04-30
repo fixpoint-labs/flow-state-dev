@@ -142,10 +142,10 @@ export function buildReviewedWorker(
 
   // Surface a clear "now reviewing" status when the worker output is in
   // hand and the reviewer LLM is about to look at it. The earlier
-  // claim-time "Working on: {goal}" status persists through the worker
+  // claim-time "Working..." status persists through the worker
   // run; this overrides it briefly during review.
   const emitReviewingStatus = handler({
-    name: `${name}-${workerKey}-reviewing-status`,
+    name: `${name}-${workerKey}-reviewing-status`,  
     inputSchema: z.unknown(),
     sequencerStateSchema: reviewedWorkerStateSchema,
     execute: async (_input, ctx) => {
