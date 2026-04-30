@@ -1268,18 +1268,41 @@ function createEmitMessage(
 
 function createEmitComponent(
   emCtx: EmissionContext
-): (component: string, data: Record<string, unknown>, options?: { key?: string; agentType?: AgentType; agentName?: string }) => void {
+): (
+  component: string,
+  data: Record<string, unknown>,
+  options?: {
+    key?: string;
+    agentType?: AgentType;
+    agentName?: string;
+    transient?: boolean;
+  },
+) => void {
   return function emitComponent(
     component: string,
     data: Record<string, unknown>,
-    options?: { key?: string; agentType?: AgentType; agentName?: string }
+    options?: {
+      key?: string;
+      agentType?: AgentType;
+      agentName?: string;
+      transient?: boolean;
+    },
   ): void {
     const itemIndex = emCtx.nextItemIndex();
+    // The block author can override the inherited blockTransient
+    // — useful when an internal/infrastructure block (marked
+    // `transient: true` to suppress its auto-emitted block_output
+    // trace) needs to emit a user-facing component item that should
+    // remain visible to the client.
+    const transient =
+      options?.transient !== undefined
+        ? options.transient || undefined
+        : emCtx.blockTransient || undefined;
     const item: ComponentItem = {
       id: `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "component",
       status: "completed",
-      transient: emCtx.blockTransient || undefined,
+      transient,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),

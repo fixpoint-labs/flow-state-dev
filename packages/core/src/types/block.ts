@@ -168,7 +168,7 @@ export interface BlockContext<
 
   emitMessage(text: string, options?: { agentType?: AgentType; agentName?: string }): void;
   emitMessage(content: Content[], options?: { agentType?: AgentType; agentName?: string }): void;
-  emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; agentType?: AgentType; agentName?: string }): void;
+  emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; agentType?: AgentType; agentName?: string; transient?: boolean }): void;
   /**
    * Update the request-scoped status slot. Rendered by clients as a single
    * in-flight indicator ("what is happening right now").
