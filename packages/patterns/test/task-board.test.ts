@@ -631,6 +631,44 @@ describe("taskBoard - onIdle modes", () => {
     expect(trace.length).toBe(2);
   });
 
+  it("idle workers don't flood the stream with lastClaimed patches (FIX-477)", async () => {
+    // FIX-477: lastClaimed is a transient slot. Idle workers polling every
+    // idlePollMs no longer emit a state_change item per tick. Three workers
+    // with no real tasks should produce zero block_instance state_change
+    // items for the worker sequencer's lastClaimed flag over many idle ticks.
+    let exitAfterTicks = 6;
+    const board = taskBoard({
+      name: "noisy-idle",
+      collection: { collectionId: "noise" },
+      concurrency: 3,
+      dispatcher: "fifo",
+      workers: makeEchoWorker("uniform", []),
+      initialTasks: [],
+      onIdle: "wait",
+      idlePollMs: 5,
+      shouldExit: () => {
+        exitAfterTicks -= 1;
+        return exitAfterTicks <= 0;
+      },
+      maxIterations: 50,
+    });
+
+    const result = await testBlock(board.block, { input: undefined });
+    expect(result.error).toBeNull();
+
+    const stateChanges = result.items.filter((item) => item.type === "state_change");
+    const lastClaimedEmits = stateChanges.filter((item) => {
+      const i = item as Extract<typeof item, { type: "state_change" }>;
+      const delta = i.delta as Record<string, unknown> | undefined;
+      return (
+        i.scope === "block_instance" &&
+        delta !== undefined &&
+        Object.prototype.hasOwnProperty.call(delta, "lastClaimed")
+      );
+    });
+    expect(lastClaimedEmits).toHaveLength(0);
+  });
+
   it("onIdle: 'wait' continues until shouldExit returns true", async () => {
     const trace: string[] = [];
     let added = false;

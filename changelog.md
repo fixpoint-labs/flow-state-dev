@@ -4,6 +4,13 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-04-30
 
+### Reduce SSE stream noise: no-op `patchState` guard + transient state slots (FIX-477)
+
+- Framework-level no-op guard in `applyMutation`. Every state-write helper (`patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) now compares the proposed next state against the current state. When deep-equal, the persist call is skipped, no `state_change` SSE item is emitted, and the helper returns `false` instead of `true`. Idempotent writes are now free.
+- New `transientSlot()` helper in `@flow-state-dev/core` marks top-level fields on a sequencer's `stateSchema` as in-memory only. Transient slots stay readable across the sequencer's run via `ctx.sequencer.state` but never appear on the SSE stream, never write to the durable checkpoint store, and reset to schema defaults on resume.
+- `taskBoard` worker schemas mark `lastClaimed` and `currentTaskId` as `transientSlot`. The narrow `lastClaimed` identity-check guard FIX-447 added to `claim-task.ts` is reverted — the framework guard subsumes it.
+- **Breaking (internal):** `runWithCAS` now returns `{ state, committed }` instead of bare `Readonly<TState>`. `applyMutation` and the seven `ScopeStateOps` helpers now return `Promise<boolean>`. Existing call sites that ignore the return value are source-compatible; direct shape assertions on `runWithCAS` need updating.
+
 ### `taskBoard` follow-up: dep materialization, sub-agent tool visibility, render hygiene (FIX-447)
 
 - `TaskWorkerInput.deps` is now substrate-supplied. The worker dispatch path resolves each `task.deps[]` entry to its dep's `output` and passes the map to the worker before invocation. Workers read upstream context via `input.deps[depId]` directly — no pattern plumbing required.

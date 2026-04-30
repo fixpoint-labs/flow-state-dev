@@ -53,6 +53,22 @@ await ctx.session.atomicState((state) => ({
 - Concurrent calls won't lose updates
 - `patchState`/`setState` are NOT automatically commutative — use `atomicState` for custom concurrent transforms
 
+### No-op guard
+
+Every write helper compares the proposed next state against the current state via structural equality. When the mutation produces a value deep-equal to the current state, the framework suppresses the persist call and the corresponding `state_change` SSE emission, and the helper resolves to `false` instead of `true`. CAS retry semantics are preserved — only the commit phase is short-circuited.
+
+Comparison rules: `Object.is` for primitives (NaN equals NaN; +0 != -0), recursive structural equality for plain objects/arrays, `Date.getTime()` for dates. Non-JSON shapes (Map, Set, RegExp, functions) raise `TypeError` — state must be JSON-shaped.
+
+### Transient state slots
+
+A sequencer's `stateSchema` can mark individual top-level fields with `transientSlot()` from `@flow-state-dev/core`. Transient slots:
+
+- Hold their value in memory across the sequencer's run (readable via `ctx.sequencer.state` from later steps).
+- Do **not** emit `state_change` items on the SSE stream.
+- Do **not** appear in `state_snapshot` payloads, so they never enter the durable checkpoint store and reset to their schema default on resume.
+
+Apply `transientSlot()` last in the schema chain — after `.optional()`, `.default()`, etc. — so the marker sits on the outermost schema instance referenced by the parent ZodObject's shape. Mixed patches (transient + non-transient) emit a `state_change` whose delta carries only the non-transient keys.
+
 ## CAS and Concurrency
 
 Every persisted scope state is versioned. Writes provide an expected version; mismatches trigger optimistic retry.

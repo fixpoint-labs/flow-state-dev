@@ -54,20 +54,11 @@ export function createClaimTask(options: ClaimTaskOptions) {
     execute: async (_input, ctx): Promise<ClaimResult> => {
       const collection = collectionFactory(ctx);
       const task = await dispatcher.claim(collection, workerId(ctx), ctx);
-      // Skip the patch when `lastClaimed` already matches. Idle
-      // workers poll every `idlePollMs`; without this guard each tick
-      // emits a `block_instance.patch` for an unchanged value, and a
-      // pool of N idle workers floods the stream proportionally.
-      const previous = ctx.sequencer!.state.lastClaimed;
       if (task === null) {
-        if (previous !== false) {
-          await ctx.sequencer!.patchState({ lastClaimed: false });
-        }
+        await ctx.sequencer!.patchState({ lastClaimed: false });
         return { claimed: false };
       }
-      if (previous !== true) {
-        await ctx.sequencer!.patchState({ lastClaimed: true });
-      }
+      await ctx.sequencer!.patchState({ lastClaimed: true });
       // Per-task status — surface what the agent is actually working
       // on. Latest-wins, so multi-worker boards cycle through their
       // active task goals naturally.

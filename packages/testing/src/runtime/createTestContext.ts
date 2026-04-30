@@ -311,7 +311,7 @@ function createTargetRef(
     get state() {
       return cloneRecord(targetState.value);
     },
-    patchState: async (updates: unknown): Promise<void> => {
+    patchState: async (updates: unknown): Promise<boolean> => {
       if (typeof updates === "object" && updates !== null) {
         await mutate((current) => ({
           ...current,
@@ -320,12 +320,14 @@ function createTargetRef(
       }
 
       pushTargetStateChange("patchState", [updates]);
+      return true;
     },
-    setState: async (nextState: unknown): Promise<void> => {
+    setState: async (nextState: unknown): Promise<boolean> => {
       await mutate(() => asRecord(nextState));
       pushTargetStateChange("setState", [nextState]);
+      return true;
     },
-    incState: async (increments: unknown): Promise<void> => {
+    incState: async (increments: unknown): Promise<boolean> => {
       await mutate((current) => {
         const next = { ...current };
         for (const [field, value] of Object.entries(asRecord(increments))) {
@@ -338,8 +340,9 @@ function createTargetRef(
       });
 
       pushTargetStateChange("incState", [increments]);
+      return true;
     },
-    pushState: async (field: unknown, value: unknown): Promise<void> => {
+    pushState: async (field: unknown, value: unknown): Promise<boolean> => {
       const key = typeof field === "string" ? field : String(field);
       await mutate((current) => {
         const existing = Array.isArray(current[key]) ? (current[key] as unknown[]) : [];
@@ -350,12 +353,13 @@ function createTargetRef(
       });
 
       pushTargetStateChange("pushState", [field, value]);
+      return true;
     },
     setStateRecord: async (
       field: unknown,
       key: unknown,
       value: unknown
-    ): Promise<void> => {
+    ): Promise<boolean> => {
       const fieldName = typeof field === "string" ? field : String(field);
       const recordKey = typeof key === "string" ? key : String(key);
 
@@ -368,8 +372,9 @@ function createTargetRef(
       }));
 
       pushTargetStateChange("setStateRecord", [field, key, value]);
+      return true;
     },
-    deleteStateRecord: async (field: unknown, key: unknown): Promise<void> => {
+    deleteStateRecord: async (field: unknown, key: unknown): Promise<boolean> => {
       const fieldName = typeof field === "string" ? field : String(field);
       const recordKey = typeof key === "string" ? key : String(key);
 
@@ -384,10 +389,11 @@ function createTargetRef(
       });
 
       pushTargetStateChange("deleteStateRecord", [field, key]);
+      return true;
     },
-    atomicState: async (mutator: unknown): Promise<void> => {
+    atomicState: async (mutator: unknown): Promise<boolean> => {
       if (typeof mutator !== "function") {
-        return;
+        return false;
       }
 
       await mutate((current) => {
@@ -402,6 +408,7 @@ function createTargetRef(
       });
 
       pushTargetStateChange("atomicState", [mutator]);
+      return true;
     }
   };
 }
