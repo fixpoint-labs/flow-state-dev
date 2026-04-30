@@ -5,6 +5,13 @@
  * stream are collapsed into a <ToolGroup> via ItemsRenderer's
  * `toolGroupRenderer` prop — that ensures the dedup / sub-agent /
  * container-owner filters run before grouping.
+ *
+ * Items emitted inside a task-board's per-task execution window are
+ * hidden from the chat thread — they render under the task in
+ * `<TaskPlan />` instead, mounted at the position of the
+ * `task-board-meta` ComponentItem. This avoids duplication
+ * (e.g., 6 individual searches under the task plus a "Ran 6 searches"
+ * rollup outside it).
  */
 
 import { useMemo } from "react";
@@ -12,6 +19,7 @@ import type { OutputItem } from "@flow-state-dev/core/items";
 import { ItemsRenderer } from "@flow-state-dev/react";
 import { SourcesGroup } from "./sources";
 import { StreamingIndicator } from "./streaming-indicator";
+import { collectTaskOwnedItemIds } from "./task-plan-state";
 import { ToolGroup } from "./tool";
 
 type RequestGroup = {
@@ -59,16 +67,46 @@ export function RequestGroupRenderer({ items, isStreaming, statusMessage }: Requ
     const isLast = index === groups.length - 1;
 
     return (
-      <div
+      <RequestGroup
         key={group.requestId}
-        data-request-id={group.requestId}
-        className="flex flex-col gap-2"
-        style={isLast ? { minHeight: "70dvh" } : undefined}
-      >
-        <ItemsRenderer items={group.items} toolGroupRenderer={ToolGroup} />
-        <SourcesGroup items={group.items} />
-        {isLast && isStreaming && <StreamingIndicator message={statusMessage} />}
-      </div>
+        group={group}
+        isLast={isLast}
+        isStreaming={isStreaming}
+        statusMessage={statusMessage}
+      />
     );
   });
+}
+
+function RequestGroup({
+  group,
+  isLast,
+  isStreaming,
+  statusMessage,
+}: {
+  group: RequestGroup;
+  isLast: boolean;
+  isStreaming: boolean;
+  statusMessage?: string;
+}) {
+  // Items inside a task-board window render under the task in
+  // <TaskPlan /> — hide them from the chat-thread stream so we don't
+  // duplicate.
+  const filteredItems = useMemo(() => {
+    const owned = collectTaskOwnedItemIds(group.items);
+    if (owned.size === 0) return group.items;
+    return group.items.filter((item) => !owned.has(item.id));
+  }, [group.items]);
+
+  return (
+    <div
+      data-request-id={group.requestId}
+      className="flex flex-col gap-2"
+      style={isLast ? { minHeight: "70dvh" } : undefined}
+    >
+      <ItemsRenderer items={filteredItems} toolGroupRenderer={ToolGroup} />
+      <SourcesGroup items={group.items} />
+      {isLast && isStreaming && <StreamingIndicator message={statusMessage} />}
+    </div>
+  );
 }

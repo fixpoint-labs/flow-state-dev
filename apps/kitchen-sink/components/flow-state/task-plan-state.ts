@@ -204,6 +204,77 @@ export function scopeItemsToLatestCollectionRequest(
 }
 
 // ---------------------------------------------------------------------------
+// Chat-thread vs task-board ownership
+// ---------------------------------------------------------------------------
+
+/**
+ * Return the set of `item.id` values that fall inside any task-board's
+ * per-task execution window in `items` — across every `collectionId`
+ * present.
+ *
+ * Items belonging to a task should render inside that task's expansion
+ * in `<TaskPlan />`, not also inline in the chat thread. The chat-level
+ * `<RequestGroupRenderer>` uses this set to skip them so the user sees
+ * each tool call / message / reasoning event exactly once.
+ *
+ * `task-change` items themselves are not added to the set — they drive
+ * the renderer's status grouping. `task-board-meta` items are not added
+ * either — they're the entry point that mounts `<TaskPlan />` at the
+ * chat position.
+ */
+export function collectTaskOwnedItemIds(
+  items: ReadonlyArray<OutputItem>,
+): Set<string> {
+  const owned = new Set<string>();
+
+  type WindowKey = string;
+  const startIndex = new Map<WindowKey, number>();
+  const endIndex = new Map<WindowKey, number>();
+
+  for (const item of items) {
+    if (!isComponentItem(item)) continue;
+    if (item.component !== TASK_CHANGE_COMPONENT) continue;
+    const data = item.data as TaskChangeData;
+    const collectionId = data.collectionId;
+    const taskId = data.taskId;
+    if (collectionId === undefined || taskId === undefined) continue;
+    const key = `${collectionId}/${taskId}`;
+
+    if (data.kind === "claimed" && !startIndex.has(key)) {
+      startIndex.set(key, item.itemIndex);
+    } else if (
+      data.kind === "completed" ||
+      data.kind === "errored" ||
+      data.kind === "cancelled"
+    ) {
+      endIndex.set(key, item.itemIndex);
+    }
+  }
+
+  if (startIndex.size === 0) return owned;
+
+  for (const item of items) {
+    if (isComponentItem(item)) {
+      if (
+        item.component === TASK_CHANGE_COMPONENT ||
+        item.component === TASK_BOARD_META_COMPONENT
+      ) {
+        continue;
+      }
+    }
+    for (const [key, start] of startIndex) {
+      if (item.itemIndex < start) continue;
+      const end = endIndex.get(key);
+      if (end !== undefined && item.itemIndex > end) continue;
+      owned.add(item.id);
+      break;
+    }
+  }
+
+  return owned;
+}
+
+// ---------------------------------------------------------------------------
 // Per-task item windowing
 // ---------------------------------------------------------------------------
 

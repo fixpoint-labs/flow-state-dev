@@ -18,7 +18,8 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { OutputItem } from "@flow-state-dev/core/items";
-import { ItemRenderer } from "@flow-state-dev/react";
+import { ItemsRenderer } from "@flow-state-dev/react";
+import { ToolGroup } from "./tool";
 import { cn } from "@/lib/utils";
 import {
   CheckCircle2Icon,
@@ -542,9 +543,11 @@ function TaskPlanRow({
           />
         </summary>
         <div className="mt-1.5 space-y-1.5 pl-5">
-          {windowItems!.map((wi) => (
-            <ItemRenderer key={wi.id} item={wi} />
-          ))}
+          <ItemsRenderer
+            items={windowItems!}
+            toolGroupRenderer={ToolGroup}
+            showSubAgents
+          />
         </div>
       </details>
     </li>
