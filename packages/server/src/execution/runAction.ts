@@ -509,6 +509,18 @@ export async function runActionInternal<
       }
       if (item.transient === true) return;
       options.stores.request.persistItems(requestId, response.getItems());
+    },
+    // FIX-479: incremental items-snapshot checkpoint while streaming text.
+    // content.delta events no longer enter the persisted events log; the
+    // running text is captured by mutating MessageItem.content / Reasoning-
+    // Item.summary in-place inside the emitter, then flushed here at the
+    // store's natural cadence. persistItems is already coalesced via the
+    // FilesystemRequestStore's itemWriteQueued sentinel — high-frequency
+    // delta callers do not amplify disk I/O.
+    onItemUpdate: (item) => {
+      if (item.type === "state_snapshot") return;
+      if (item.transient === true) return;
+      options.stores.request.persistItems(requestId, response.getItems());
     }
   });
 

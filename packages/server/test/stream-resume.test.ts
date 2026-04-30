@@ -208,7 +208,7 @@ describe("stream resume — active request replay from buffer", () => {
     expect(liveEvents[1]!.type).toBe("request.completed");
   });
 
-  it("includes content delta events in replay (not just item snapshots)", async () => {
+  it("excludes content.delta from replay; in-flight text reaches snapshots instead (FIX-479)", async () => {
     const requestId = "req_content_replay";
     const emitter = createResponseEmitter({ requestId, now: () => 100 });
 
@@ -222,18 +222,20 @@ describe("stream resume — active request replay from buffer", () => {
     await emitter.emitItemDone(makeMessageItem({ requestId, itemIndex: 0, ts: 100 }));     // seq 8
     await emitter.emitRequestStatus("completed");                                           // seq 9
 
-    // The replayable events should include content.delta events
+    // FIX-479: content.delta is reclassified as non-replayable. Live SSE
+    // consumers still see deltas via the in-memory buffer / wire callback;
+    // the replayable view (used for resume-on-reconnect) excludes them.
     const replayable = emitter.getReplayableEvents();
     const types = replayable.map((e) => e.type);
 
     expect(types).toContain("content.added");
-    expect(types).toContain("content.delta");
     expect(types).toContain("content.done");
+    expect(types).not.toContain("content.delta");
 
-    // Verify content deltas are present and in order
-    const deltas = replayable.filter((e) => e.type === "content.delta");
-    expect(deltas).toHaveLength(2);
-    expect(deltas[0]!.sequence_number).toBeLessThan(deltas[1]!.sequence_number);
+    // The in-memory event buffer still holds deltas for live observers and
+    // the wire callback path.
+    const allTypes = emitter.getEvents().map((e) => e.type);
+    expect(allTypes.filter((t) => t === "content.delta")).toHaveLength(2);
   });
 });
 
