@@ -23,8 +23,8 @@ function resolveServers(): MCPServerConfig[] {
       ],
       category: "project-management",
       transport: {
-        type: "sse",
-        url: "https://mcp.linear.app/sse",
+        type: "http",
+        url: "https://mcp.linear.app/mcp",
         headers: { Authorization: `Bearer ${linearKey}` },
       },
     });

@@ -27,7 +27,10 @@ export function useSessions(flowKind: string | null) {
             console.warn("[devtool] checkInterrupted failed", err);
           });
       }
-      const result = await sessionClient.listSessions({ flowKind });
+      const result = await sessionClient.listSessions({
+        flowKind,
+        userId: config.userId,
+      });
       setSessions(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch sessions");

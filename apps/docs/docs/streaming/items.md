@@ -57,7 +57,7 @@ GET /api/flows/:kind/requests/:requestId/stream
 Last-Event-ID: 42
 ```
 
-The server replays all events after sequence 42, then switches to live streaming. No data loss. No duplicate events. No application-level retry logic needed.
+The server replays all events after sequence 42, then switches to live streaming.
 
 You can also use the `starting_after` query parameter:
 
@@ -66,6 +66,12 @@ GET /api/flows/:kind/requests/:requestId/stream?starting_after=42
 ```
 
 Both approaches produce the same result. `Last-Event-ID` is the standard SSE header. `starting_after` is a query parameter alternative for environments where setting headers isn't convenient.
+
+### Streaming-text resume
+
+`content.delta` events are not replayed. Streaming text on a reconnect snaps to the most recent persisted snapshot of the message item, then continues from the next live delta. The exact token sequence isn't replayed, and the eventual `item.done` payload supersedes with the final text. Completed messages always replay exactly.
+
+Why: streaming a message token-by-token to disk would require a disk round-trip per token. Multiple concurrent streams would serialize behind a single per-request queue and the request would freeze. Snapping to the latest snapshot keeps the live experience smooth and bounds disk I/O to the natural write rate.
 
 ## Generator identity
 

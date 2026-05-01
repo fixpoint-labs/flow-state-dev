@@ -11,7 +11,12 @@ import type { CapabilityPresetCtx, GeneratorTool } from "@flow-state-dev/core";
 // ---------------------------------------------------------------------------
 
 export type MCPTransportConfig = {
-  type: "sse";
+  /**
+   * `"http"` is the Streamable HTTP transport and the recommended default for
+   * remote MCP servers. `"sse"` remains supported for servers that have not
+   * migrated yet, but most providers (including Linear) are deprecating it.
+   */
+  type: "sse" | "http";
   url: string;
   headers?: Record<string, string>;
 };

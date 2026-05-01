@@ -8,6 +8,7 @@ const sidebars: SidebarsConfig = {
     "development-tips",
     "building-agents",
     "adding-skills-to-your-app",
+    "projects-on-org-scope",
     {
       type: "category",
       label: "Deployment",

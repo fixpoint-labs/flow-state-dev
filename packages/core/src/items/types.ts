@@ -171,11 +171,26 @@ export type RouterDecisionItem = OutputItemBase & {
 export type MessageItem = OutputItemBase & {
   type: "message";
   role: "assistant" | "user" | "system" | "developer" | "tool";
+  /**
+   * Message content parts. `output_text` parts accumulate `text` in-place
+   * during streaming: each `content.delta` event mutates the current
+   * snapshot held inside the emitter, and consumers reading
+   * `response.getItems()` observe the latest accumulated text. The final
+   * `item.done` payload supersedes any mid-stream accumulation, so the
+   * authoritative final text always comes from the generator's terminal
+   * emission. Aborted streams may leave a partial-token tail in the
+   * persisted snapshot — this is a deliberate trade-off (see FIX-479).
+   */
   content: Content[];
 };
 
 export type ReasoningItem = OutputItemBase & {
   type: "reasoning";
+  /**
+   * Reasoning summary parts. `reasoning_text` parts accumulate `text`
+   * in-place during streaming via the same `content.delta` channel as
+   * message text (see {@link MessageItem.content}).
+   */
   summary: Content[];
 };
 
