@@ -57,7 +57,7 @@ function makeClientDataFlow(kind: string, id = kind): FlowInstance {
     },
     org: {
       clientData: {
-        projectInfo: () => ({ configured: true })
+        orgInfo: () => ({ configured: true })
       }
     }
   })({
@@ -405,7 +405,7 @@ describe("createFlowApiRouter", () => {
           }
         },
         org: {
-          projectInfo: {
+          orgInfo: {
             configured: true
           }
         }
@@ -470,7 +470,7 @@ describe("createFlowApiRouter", () => {
       org: {
         stateSchema: z.object({ title: z.string().optional() }),
         clientData: {
-          projectLabel: (ctx) => ({ title: ctx.state.title })
+          orgLabel: (ctx) => ({ title: ctx.state.title })
         }
       }
     })({ id: "isolated-state-route" });
@@ -513,7 +513,7 @@ describe("createFlowApiRouter", () => {
     expect(body.state.org).toMatchObject({ title: "Project Ada" });
     expect(body.clientData).toMatchObject({
       user: { userLabel: { nickname: "Ada" } },
-      org: { projectLabel: { title: "Project Ada" } }
+      org: { orgLabel: { title: "Project Ada" } }
     });
     expect(await stores.user.get("user_iso_state")).toBeUndefined();
     expect(await stores.org.get("proj_iso_state")).toBeUndefined();

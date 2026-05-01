@@ -2,14 +2,11 @@ export * from "./rlm";
 export {
   parallelTasks,
   parallelTasksInputSchema,
-  coordinatorInputSchema,
 } from "./parallelTasks";
 export type {
   ParallelTasksConfig,
-  CoordinatorConfig,
   SubTaskErrorStrategy,
 } from "./parallelTasks";
-export { coordinator, __resetCoordinatorWarnings } from "./coordinator";
 
 export {
   planAndExecute,

@@ -357,10 +357,11 @@ export function biasFormat() {
  *
  * const audit = biasAnalyzer({ model: 'preset/fast' })
  *
- * // Standalone usage:
- * const result = await audit.run({ userInput: '...', aiResponse: '...' }, ctx)
+ * // As a sequencer step:
+ * const pipeline = sequencer({ name: 'audit-response' })
+ *   .then(audit)
  *
- * // In a pipeline:
+ * // As a .work() sidechain alongside a chat block:
  * const pipeline = sequencer({ name: 'chat-with-audit' })
  *   .then(chat)
  *   .work(audit)

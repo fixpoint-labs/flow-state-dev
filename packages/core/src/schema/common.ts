@@ -8,5 +8,3 @@ export type JsonObject = { [key: string]: JsonValue };
 
 export type SchemaInput<TSchema> = TSchema extends ZodTypeAny ? TSchema["_input"] : never;
 export type SchemaOutput<TSchema> = TSchema extends ZodTypeAny ? TSchema["_output"] : never;
-
-export type OptionalSchema = ZodTypeAny | undefined;

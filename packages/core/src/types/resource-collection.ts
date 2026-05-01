@@ -171,30 +171,3 @@ export function isDefinedResourceCollection(
   );
 }
 
-// ---------------------------------------------------------------------------
-// Deprecated aliases — backward compatibility
-// ---------------------------------------------------------------------------
-
-/** @deprecated Use CollectionHookContext instead. */
-export type NamespaceHookContext = CollectionHookContext;
-
-/** @deprecated Use ResourceCollectionConfig instead. */
-export type ResourceNamespaceConfig = ResourceCollectionConfig;
-
-/** @deprecated Use DefinedResourceCollection instead. */
-export type DefinedResourceNamespace<TState extends JsonObject = JsonObject> = DefinedResourceCollection<TState>;
-
-/** @deprecated Use ResourceCollectionRef instead. */
-export type ResourceNamespaceRef<TState extends JsonObject = JsonObject> = ResourceCollectionRef<TState>;
-
-/** @deprecated Use ResourceCollectionRef instead. */
-export type ResourceNamespaceHandle<TState extends JsonObject = JsonObject> = ResourceCollectionRef<TState>;
-
-/** @deprecated Use ResourceCollectionHandle instead. */
-export type ResourceCollectionHandle<TState extends JsonObject = JsonObject> = ResourceCollectionRef<TState>;
-
-/** @deprecated Use defineResourceCollection instead. */
-export const defineResourceNamespace = defineResourceCollection;
-
-/** @deprecated Use isDefinedResourceCollection instead. */
-export const isDefinedResourceNamespace = isDefinedResourceCollection;

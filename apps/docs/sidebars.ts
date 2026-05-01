@@ -72,7 +72,6 @@ const sidebars: SidebarsConfig = {
             "patterns/response-auditor",
             "patterns/routed-specialists",
             "patterns/event-actors",
-            "patterns/coordinator",
           ],
         },
       ],

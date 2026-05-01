@@ -3,7 +3,6 @@ export type {
   JsonPrimitive,
   JsonValue,
   MaybePromise,
-  OptionalSchema,
   SchemaInput,
   SchemaOutput
 } from "./common";

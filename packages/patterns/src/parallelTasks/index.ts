@@ -7,8 +7,6 @@
  *
  * Pipeline:
  *   [planner] → [seedTasksFromPlan] → [board.block] → [collectResults] → [synthesizer]
- *
- * `coordinator()` is a deprecated alias for this factory.
  */
 import { sequencer, handler, utility } from "@flow-state-dev/core";
 import type { SequencerDefinition } from "@flow-state-dev/core";
@@ -20,9 +18,6 @@ import { parallelTasksInputSchema, type SubTaskErrorStrategy } from "./schemas";
 
 export type { SubTaskErrorStrategy } from "./schemas";
 export { parallelTasksInputSchema } from "./schemas";
-
-// Backward-compat re-export so existing `coordinatorInputSchema` imports still work.
-export { parallelTasksInputSchema as coordinatorInputSchema } from "./schemas";
 
 export interface ParallelTasksConfig<
   TOutputSchema extends ZodTypeAny = ZodTypeAny
@@ -41,16 +36,9 @@ export interface ParallelTasksConfig<
 
   /**
    * Final synthesis block. Receives `unknown[]` of completed task outputs.
-   * When omitted, `merger` is used. When both are omitted, `utility.combiner()`
-   * is used.
+   * When omitted, `utility.combiner()` is used.
    */
   synthesizer?: BlockDefinition<any, any>;
-
-  /**
-   * Deprecated alias for `synthesizer`. Kept for backward compatibility with
-   * the coordinator API.
-   */
-  merger?: BlockDefinition<any, any>;
 
   /**
    * How to handle individual sub-task failures.
@@ -63,10 +51,6 @@ export interface ParallelTasksConfig<
   /** Schema for the synthesized output. Passed to the default combiner when no custom synthesizer is provided. */
   outputSchema?: TOutputSchema;
 }
-
-/** Backward-compat alias. `CoordinatorConfig` is the same shape as `ParallelTasksConfig`. */
-export type CoordinatorConfig<TOutputSchema extends ZodTypeAny = ZodTypeAny> =
-  ParallelTasksConfig<TOutputSchema>;
 
 /**
  * Creates a parallelTasks block — a sequencer that decomposes a goal into
@@ -82,7 +66,6 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     maxConcurrency = 3,
     planner,
     synthesizer,
-    merger,
     onSubTaskError = "skip",
     outputSchema,
   } = config;
@@ -99,7 +82,7 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   const defaultPlanner = utility.decomposer({ name: `${name}-planner` });
   const activePlanner = planner ?? defaultPlanner;
 
-  const finalize = synthesizer ?? merger ?? utility.combiner({
+  const finalize = synthesizer ?? utility.combiner({
     name: `${name}-merger`,
     ...(outputSchema ? { outputSchema } : {})
   });
@@ -154,8 +137,8 @@ export function parallelTasks<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
   });
 
   // Collects completed task outputs after the board drains.
-  // Filters to `completed` only — mirrors the old coordinator's behavior
-  // of excluding failed/skipped tasks from the synthesizer input.
+  // Filters to `completed` only — failed and skipped tasks are excluded
+  // from the synthesizer input.
   const collectResults = handler({
     name: `${name}-collect-results`,
     activeStatusMessage: "Combining results",

@@ -89,12 +89,6 @@ export type StateRef<TState extends object = Record<string, unknown>> = {
 /** Stable typed reference to a target block's stateful instance. */
 export type TargetRef<TState extends object = Record<string, unknown>> = StateRef<TState>;
 
-/** @deprecated Use StateRef instead. */
-export type StateHandle<TState extends object = Record<string, unknown>> = StateRef<TState>;
-
-/** @deprecated Use TargetRef instead. */
-export type TargetHandle<TState extends object = Record<string, unknown>> = TargetRef<TState>;
-
 
 export type BlockResult<TOutput> =
   | { status: "not_started" }

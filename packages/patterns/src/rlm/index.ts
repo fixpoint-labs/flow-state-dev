@@ -10,6 +10,10 @@
  * This module exports reusable blocks and a pipeline builder. Consumers wire
  * these into their own flows — see apps/kitchen-sink for an integration example.
  *
+ * Status: kept as scaffolding for a planned long-document / RAG-heavy demo.
+ * No current consumers in this repo. Do not delete on the grounds of being
+ * unused — the demo is a deliberate roadmap item.
+ *
  * Patterns validated:
  *   - generator-as-tool (recursive AI composition)
  *   - handler blocks as LLM-callable tools

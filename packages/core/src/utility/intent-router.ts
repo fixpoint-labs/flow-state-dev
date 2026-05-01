@@ -64,8 +64,8 @@ export function intentRouter<TCategories extends IntentRouterCategories>(
     (input: IntentRouterEnvelope) => input.originalInput
   );
 
-  const classifyInput = handler({
-    name: `${config.name}-intent-router-input`,
+  const packEnvelope = handler({
+    name: `${config.name}-intent-router-envelope`,
     outputSchema: z.object({
       originalInput: z.unknown(),
       classification: z.object({
@@ -74,13 +74,10 @@ export function intentRouter<TCategories extends IntentRouterCategories>(
         reasoning: z.string().optional()
       })
     }),
-    execute: async (input, ctx) => {
-      const classification = await classifier.run(input, ctx);
-      return {
-        originalInput: input,
-        classification
-      };
-    }
+    execute: (classification: IntentClassifierOutput, ctx) => ({
+      originalInput: ctx.parent?.input,
+      classification
+    })
   });
 
   const dispatcher = router({
@@ -122,6 +119,7 @@ export function intentRouter<TCategories extends IntentRouterCategories>(
     name: config.name,
     inputSchema: z.any()
   })
-    .then(classifyInput)
+    .then(classifier)
+    .then(packEnvelope)
     .then(dispatcher);
 }

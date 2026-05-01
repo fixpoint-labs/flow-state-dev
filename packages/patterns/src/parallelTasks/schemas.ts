@@ -1,5 +1,5 @@
 /**
- * Input schema for `parallelTasks` / `coordinator`.
+ * Input schema for `parallelTasks`.
  *
  * The factory accepts a plain `{ goal: string }` at the sequencer
  * boundary; the planner sub-block turns it into structured tasks.

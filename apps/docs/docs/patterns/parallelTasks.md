@@ -13,11 +13,6 @@ Use it when:
 
 If you need results reviewed and revised before merging, use [Supervisor](./supervisor) instead.
 
-:::note Migration from `coordinator`
-`coordinator()` still works but emits a deprecation warning. Replace it with `parallelTasks()` — same config shape.
-See [Migration from coordinator](#migration-from-coordinator) below.
-:::
-
 ## Block composition
 
 ```
@@ -98,9 +93,6 @@ parallelTasks({
   // Override the synthesis step. Receives unknown[] of completed task outputs.
   // Default: utility.combiner()
   synthesizer?: BlockDefinition;
-
-  // Deprecated alias for synthesizer. Kept for backward compatibility.
-  merger?: BlockDefinition;
 
   // How to handle individual sub-task failures:
   //   "skip"  — exclude failed sub-tasks from synthesis (default)
@@ -209,22 +201,6 @@ const outer = sequencer({ name: "outer", inputSchema })
   .then(parallelTasks({ name: "parallel-work", worker: taskWorker }))
   .then(postprocess);
 ```
-
-## Migration from coordinator
-
-`coordinator()` still works as a deprecation-warned alias. Replace it with `parallelTasks()` — same config shape.
-
-```ts
-// Before
-import { coordinator } from "@flow-state-dev/patterns";
-const block = coordinator({ name: "research", worker: researchWorker });
-
-// After
-import { parallelTasks } from "@flow-state-dev/patterns";
-const block = parallelTasks({ name: "research", worker: researchWorker });
-```
-
-One behavioral difference: worker input changed. The old `coordinator` passed a plain string (the task goal). `parallelTasks` passes `TaskWorkerInput` from `taskBoard`: `{ taskId, goal, input, attempts, feedback, metadata }`. Workers that typed their input as `z.string()` need updating to `z.any()` or `taskWorkerInputSchema`.
 
 ## See also
 

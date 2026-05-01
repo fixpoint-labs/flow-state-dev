@@ -173,11 +173,11 @@ export function perspectiveApply(config: PerspectiveBlockConfig) {
  *   model: 'gpt-5',
  * })
  *
- * const result = await securityAnalysis.run(
- *   { content: 'Feature proposal: add public file sharing...' },
- *   ctx,
- * )
- * // result.analysis, result.salienceNotes, result.recommendations
+ * const pipeline = sequencer({
+ *   name: 'analyze-proposal',
+ *   inputSchema: z.object({ content: z.string() }),
+ * }).then(securityAnalysis)
+ * // pipeline output → { analysis, salienceNotes, recommendations, ... }
  * ```
  *
  * Input: `{ content: string, context?: string }`
@@ -239,11 +239,14 @@ export function perspectiveAnalyze(config: PerspectiveAnalyzeConfig) {
  *   model: 'gpt-5',
  * })
  *
- * // Standalone
- * const result = await securityAudit.run({ content: '...' }, ctx)
+ * // As a sequencer step
+ * const pipeline = sequencer({ name: 'review-proposal' })
+ *   .map((input) => ({ content: input.proposal }))
+ *   .then(securityAudit)
  *
- * // In a pipeline
+ * // As a .work() sidechain
  * const pipeline = sequencer({ name: 'review' })
+ *   .then(mainBlock)
  *   .work((input) => ({ content: input.proposal }), securityAudit)
  *   .then(nextBlock)
  * ```

@@ -19,7 +19,7 @@ type DemoStateMap = InferFlowStateMap<DemoFlowDefinition>;
 const requestStateValue: DemoStateMap["request"] = { requestCount: 1 };
 const sessionStateValue: DemoStateMap["session"] = { mode: "plan" };
 const userStateValue: DemoStateMap["user"] = { role: "admin" };
-const projectStateValue: DemoStateMap["org"] = { orgId: "proj_1" };
+const orgStateValue: DemoStateMap["org"] = { orgId: "proj_1" };
 
 type DemoCtx = InferFlowBlockContext<DemoFlowDefinition>;
 declare const inferredCtx: DemoCtx;
@@ -33,6 +33,6 @@ const explicitCtx: BlockContext<
 void requestStateValue;
 void sessionStateValue;
 void userStateValue;
-void projectStateValue;
+void orgStateValue;
 void explicitCtx;
 export const flowStateInferenceTypeSmoke = true;

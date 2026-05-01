@@ -191,14 +191,6 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<an
     options?: { name?: string }
   ): SequencerDefinition<TInput, TOutput>;
 
-  /** Alias for `.work()` — reads more naturally in fan-out contexts. */
-  background(block: BlockDefinition<any, any>, options?: { name?: string }): SequencerDefinition<TInput, TOutput>;
-  background<TStepIn>(
-    connector: ConnectorFn<TOutput, TStepIn>,
-    block: BlockDefinition<any, any>,
-    options?: { name?: string }
-  ): SequencerDefinition<TInput, TOutput>;
-
   /**
    * Conditional variant of `.work()` — dispatches a fire-and-forget sidechain
    * only when the condition is truthy. Complete no-op when falsy (no items, no trace).
@@ -276,8 +268,6 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<an
   exitIf(
     condition: (value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>
   ): SequencerDefinition<TInput, TOutput>;
-
-  validate(): SequencerDefinition<TInput, TOutput>;
 
   // connectInput — native override returns SequencerDefinition (not a wrapper block)
   connectInput<TFrom>(

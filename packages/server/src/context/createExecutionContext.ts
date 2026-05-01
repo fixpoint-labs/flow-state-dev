@@ -1851,7 +1851,7 @@ export async function createExecutionContext<
   // ContentStore values take precedence over inline record values.
   // Content scope keys mirror the scope record keys — namespaced when the
   // flow isolates that scope.
-  const [sessionContentFromStore, userContentFromStore, projectContentFromStore] = await Promise.all([
+  const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
     stores.content.getAll("session", sessionId),
     stores.content.getAll("user", userKey),
     resolvedOrgKey !== undefined ? stores.content.getAll("org", resolvedOrgKey) : Promise.resolve({})
@@ -1865,10 +1865,10 @@ export async function createExecutionContext<
     userResourceConfigs,
     { ...(userRecord.resourceContent ?? {}), ...userContentFromStore }
   );
-  const initialProjectContent = normalizeScopeResourceContent(
+  const initialOrgContent = normalizeScopeResourceContent(
     orgResourceConfigs,
     resolvedOrgId !== undefined
-      ? { ...(orgRecord?.resourceContent ?? {}), ...projectContentFromStore }
+      ? { ...(orgRecord?.resourceContent ?? {}), ...orgContentFromStore }
       : undefined
   );
 
@@ -1926,7 +1926,7 @@ export async function createExecutionContext<
   // Writes update the cache and persist to ContentStore (async, per-key).
   const sessionContentRef = { current: initialSessionContent };
   const userContentRef = { current: initialUserContent };
-  const projectContentRef = { current: initialProjectContent };
+  const orgContentRef = { current: initialOrgContent };
 
   const readSessionResourceContent = (): Record<string, string> =>
     sessionContentRef.current;
@@ -1947,7 +1947,7 @@ export async function createExecutionContext<
     );
 
   const readProjectResourceContent = (): Record<string, string> =>
-    projectContentRef.current;
+    orgContentRef.current;
 
   const persistSessionResources = async (
     next: Record<string, JsonObject>
@@ -2041,7 +2041,7 @@ export async function createExecutionContext<
     }
 
     const normalized = normalizeScopeResourceContent(orgResourceConfigs, next);
-    const previous = projectContentRef.current;
+    const previous = orgContentRef.current;
 
     for (const [key, value] of Object.entries(normalized)) {
       if (previous[key] !== value) {
@@ -2054,7 +2054,7 @@ export async function createExecutionContext<
       }
     }
 
-    projectContentRef.current = normalized;
+    orgContentRef.current = normalized;
   };
 
   const requestContainer = createStateContainer<TRequestState>(
@@ -2069,7 +2069,7 @@ export async function createExecutionContext<
     sessionRef.current.state as TSessionState,
     sessionRef.current.version
   );
-  const projectContainer =
+  const orgContainer =
     orgRef.current === undefined
       ? undefined
       : createStateContainer<TOrgState>(
@@ -2129,10 +2129,10 @@ export async function createExecutionContext<
     )
   });
 
-  const projectOps =
-    orgRef.current === undefined || projectContainer === undefined
+  const orgOps =
+    orgRef.current === undefined || orgContainer === undefined
       ? undefined
-      : createScopeStateOps(projectContainer, {
+      : createScopeStateOps(orgContainer, {
           onStateSizeWarning,
           persist: async (state, expectedVersion) => {
             const current = orgRef.current;
@@ -2417,8 +2417,8 @@ export async function createExecutionContext<
     () => sessionContainer.read()
   ) as SessionScopeHandle<TSessionState>;
 
-  const projectHandle =
-    orgRef.current === undefined || projectOps === undefined || projectContainer === undefined
+  const orgHandle =
+    orgRef.current === undefined || orgOps === undefined || orgContainer === undefined
       ? undefined
       : (defineStateProperty(
           {
@@ -2428,9 +2428,9 @@ export async function createExecutionContext<
               userId: orgRef.current.userId,
               orgId: orgRef.current.orgId
             },
-            ...projectOps
+            ...orgOps
           },
-          () => projectContainer.read()
+          () => orgContainer.read()
         ) as OrgScopeHandle<TOrgState>);
 
   // FIX-435: build the flat ctx.resources registry by merging the per-scope
@@ -2766,7 +2766,7 @@ export async function createExecutionContext<
       request: requestHandle,
       session: sessionHandle,
       user: userHandle,
-      org: projectHandle,
+      org: orgHandle,
       resources: flatResourcesRegistry,
       response: responseRef.current as ExecutionContext["response"],
       signal: options.signal ?? new AbortController().signal,
