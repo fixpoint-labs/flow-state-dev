@@ -11,8 +11,8 @@
  */
 import { handler } from "@flow-state-dev/core";
 import { z } from "zod";
-import { getOrCreateTaskCollection, taskWorkerInputSchema } from "@flow-state-dev/tasks";
-import { taskBoard } from "@flow-state-dev/patterns/task-board";
+import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
+import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/patterns/task-board";
 
 const COLLECTION_ID = "task-queue-demo";
 
