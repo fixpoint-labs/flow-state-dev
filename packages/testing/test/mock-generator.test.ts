@@ -43,4 +43,110 @@ describe("mockGenerator", () => {
     const modelResult = await modelModel.generate({ messages: [] });
     expect(modelResult.structuredOutput).toEqual({ source: "model" });
   });
+
+  describe("predicate entries", () => {
+    it("matches calls by predicate without consuming the entry", () => {
+      const mock = mockGenerator({
+        name: "predicate-only",
+        script: [
+          {
+            when: (input) => JSON.stringify(input).includes("alpha"),
+            then: { text: "A response" }
+          },
+          {
+            when: (input) => JSON.stringify(input).includes("beta"),
+            then: { text: "B response" }
+          }
+        ]
+      });
+
+      expect(mock.next("alpha goes here")).toEqual({ text: "A response" });
+      expect(mock.next("beta goes here")).toEqual({ text: "B response" });
+      // Same predicate fires repeatedly:
+      expect(mock.next("alpha again")).toEqual({ text: "A response" });
+      expect(mock.next("alpha once more")).toEqual({ text: "A response" });
+    });
+
+    it("evaluates predicates in script order; first match wins", () => {
+      const mock = mockGenerator({
+        name: "ordered-predicates",
+        script: [
+          { when: () => true, then: { text: "first" } },
+          { when: () => true, then: { text: "second" } }
+        ]
+      });
+
+      expect(mock.next("anything")).toEqual({ text: "first" });
+      expect(mock.next("anything")).toEqual({ text: "first" });
+    });
+
+    it("falls through to plain steps when no predicate matches", () => {
+      const mock = mockGenerator({
+        name: "mixed",
+        script: [
+          {
+            when: (input) => JSON.stringify(input).includes("special"),
+            then: { text: "special response" }
+          },
+          { text: "plain-1" },
+          { text: "plain-2" }
+        ]
+      });
+
+      // Predicate matches — plain queue not advanced.
+      expect(mock.next("special call")).toEqual({ text: "special response" });
+      // Predicate doesn't match — plain queue head consumed.
+      expect(mock.next("nothing here")).toEqual({ text: "plain-1" });
+      // Predicate matches again — plain queue still has plain-2.
+      expect(mock.next("special again")).toEqual({ text: "special response" });
+      expect(mock.next("nothing here")).toEqual({ text: "plain-2" });
+    });
+
+    it("returns undefined only when no predicate matches and plain queue is empty", () => {
+      const mock = mockGenerator({
+        name: "exhaustion",
+        script: [
+          {
+            when: (input) => JSON.stringify(input).includes("yes"),
+            then: { text: "matched" }
+          },
+          { text: "fallback" }
+        ]
+      });
+
+      expect(mock.next("yes")).toEqual({ text: "matched" });
+      expect(mock.next("no")).toEqual({ text: "fallback" });
+      // Plain queue exhausted; predicate doesn't match.
+      expect(mock.next("no again")).toBeUndefined();
+      // Predicate still matches once it's in the input.
+      expect(mock.next("yes again")).toEqual({ text: "matched" });
+    });
+
+    it("throws a descriptive error when invoked with no matching entry", async () => {
+      const mock = mockGenerator({
+        name: "predicate-strict",
+        script: [
+          {
+            when: (input) => JSON.stringify(input).includes("only-this"),
+            then: { text: "ok" }
+          }
+        ]
+      });
+
+      const resolver = createMockModelResolver({
+        generators: { "x": mock }
+      });
+
+      const model = resolver("any/model", "x");
+      // First call matches.
+      await expect(
+        model.generate({ messages: "only-this" as unknown as never })
+      ).resolves.toMatchObject({ text: "ok" });
+
+      // Second call: no match, no plain queue → resolver throws.
+      await expect(
+        model.generate({ messages: "something-else" as unknown as never })
+      ).rejects.toThrow(/no script entry matching/);
+    });
+  });
 });

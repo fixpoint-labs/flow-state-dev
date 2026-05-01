@@ -53,7 +53,9 @@ import { mockGenerator } from "@flow-state-dev/testing";
 
 - `testSequencer(seq, options)` — returns `TestSequencerResult` with `.steps: StepTrace[]` for inspecting step-by-step execution
 - `testRouter(router, options)` — returns `TestRouterResult` with `.selectedRoute: string`
-- `mockGenerator({ name, script })` — creates a generator with scripted responses (each call consumes the next entry in `script`). Entries can be `{ structuredOutput }` or `{ text }`. Preferred over inline mock functions for complex multi-step tests.
+- `mockGenerator({ name, script })` — creates a generator with scripted responses. Plain entries (`{ text }`, `{ structuredOutput }`, `{ toolCalls }`) consume sequentially, one per call. Predicate entries (`{ when: (input) => boolean, then: ... }`) match by input and stay matchable on every call — use these for concurrent workers (supervisor, parallel plan-and-execute) where call ordering isn't guaranteed.
+
+**Tier 1 vs unit tests.** If the test exercises a whole flow through `runAction` (pattern factory wiring, claim systems, dispatcher loops, multi-pattern interactions, session resume), it belongs in `packages/integration-tests/src/scenarios/`, not the producing package's `test/` directory. Use `testFlow` there. See `apps/docs/docs/testing/flow-integration-tests.md` for the authoring pattern. Keep this skill's scope to single-block / single-router / single-sequencer tests.
 
 ### Step 4: Write Tests by Category
 

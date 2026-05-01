@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { generator, handler, router } from "@flow-state-dev/core";
 import type { FlowInstance } from "@flow-state-dev/core/types";
+import { createInMemoryStores } from "@flow-state-dev/server";
 import {
   mockGenerator,
   testBlock,
@@ -147,6 +148,60 @@ describe("testing utilities", () => {
     });
     expect(secondary.status).toBe("completed");
     expect(secondary.output).toEqual({ reply: "from model-id" });
+  });
+
+  it("testFlow shares state across runs when given the same stores", async () => {
+    const counter = handler<{ amount: number }, { total: number }>({
+      name: "counter",
+      execute: async (input, ctx) => {
+        const current = (ctx.session.state as { count?: number }).count ?? 0;
+        const total = current + input.amount;
+        await ctx.session.patchState({ count: total });
+        return { total };
+      }
+    });
+
+    const flow: FlowInstance = {
+      id: "stateful",
+      kind: "stateful-flow",
+      requireUser: true,
+      actions: {
+        run: {
+          inputSchema: passthroughSchema as any,
+          block: counter
+        }
+      }
+    } as FlowInstance;
+
+    const stores = createInMemoryStores();
+    const sessionId = "test-resume-session";
+
+    const r1 = await testFlow({
+      flow,
+      action: "run",
+      input: { amount: 1 },
+      userId: "user_1",
+      sessionId,
+      stores
+    });
+    expect(r1.status).toBe("completed");
+    expect(r1.output).toEqual({ total: 1 });
+
+    const r2 = await testFlow({
+      flow,
+      action: "run",
+      input: { amount: 2 },
+      userId: "user_1",
+      sessionId,
+      stores
+    });
+    expect(r2.status).toBe("completed");
+    // Second run sees the first run's mutation — proof that the registry
+    // is shared and seeding didn't reset the session.
+    expect(r2.output).toEqual({ total: 3 });
+
+    const session = await stores.session.get(sessionId);
+    expect((session?.state as { count: number }).count).toBe(3);
   });
 
   it("testItems and snapshotTrace provide deterministic assertions", () => {

@@ -124,6 +124,7 @@ const sidebars: SidebarsConfig = {
       items: [
         "testing/overview",
         "testing/testing-flows",
+        "testing/flow-integration-tests",
       ],
     },
     {

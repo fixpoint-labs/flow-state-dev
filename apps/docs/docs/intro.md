@@ -5,15 +5,7 @@ slug: /intro
 
 # Why flow-state.dev?
 
-Most agentic frameworks hold up fine for the tutorial case. Call an LLM, stream a response, keep a chat history. Then requirements get real: parallel branches with merged outputs, background workers that shouldn't block the stream, state that accumulates across turns and across sessions, error recovery that doesn't unwind your entire flow. You push on the framework and there's nothing there to push against.
-
-The problem isn't capability. It's opacity. The framework makes decisions for you, and when you need to change one, you can't — because you can't see inside it.
-
-flow-state.dev is built from the opposite direction. Four composable block primitives, a typed state system, and a library of production-ready implementations that are themselves built from those same primitives. Nothing is a black box. Every implementation is yours to take apart, understand, and rebuild your way.
-
-## Four primitives
-
-Every piece of logic in a flow-state.dev application is one of exactly four block kinds:
+flow-state.dev is a TypeScript framework for building agents and agentic systems out of typed, composable blocks. The core gives you four block kinds, four state scopes, items that stream over SSE with sequence-based resume, and an HTTP layer that turns a flow into a complete API. With just the core you can ship a streaming chat or an agent with tools. When you need more — supervisor patterns, a task-board substrate, a memory system, a React component pack — the ecosystem packages compose on top of the same primitives. The framework is unopinionated by design. Nothing is hidden.
 
 ## What it looks like
 
@@ -43,9 +35,7 @@ export default defineFlow({
 
 That gives you: streaming over SSE with resume, conversation history, tool loops, atomic state operations, typed clientData to the client, error recovery, and lifecycle hooks. From that one definition.
 
-## What you get
-
-### Four block primitives
+## Four primitives
 
 Every piece of logic — calling an LLM, validating input, choosing a path, composing a pipeline — is one of exactly four block kinds:
 
@@ -126,23 +116,9 @@ GET  /api/flows/sessions/:id/state          → State snapshot with clientData
 
 Items stream over SSE as blocks execute. Every event has a sequence number. Disconnect mid-response, reconnect with a cursor, and pick up exactly where you left off. No data loss, no duplicates, no manual SSE plumbing.
 
-## Strategies: built to be remixed
+## The ecosystem
 
-The strategy library is built from the same blocks you use. That's the point. Every strategy is something you can open, understand, and change.
-
-**Multi-agent coordination patterns** — Supervisor, Coordinator, Chain of Agents, Blackboard, Debate, Round Robin
-
-**Reasoning & planning patterns** — Plan and Execute, Self-Ask, Self-Consistency, Skeleton of Thought, Least-to-Most, Step-Back Prompting
-
-**Memory & retrieval patterns** — RAPTOR, Mind-Map Memory, Context Folding, RLM, Self-querying, Episodic Replay
-
-**Inference-time scaling patterns** — RSA, Tree of Thoughts, Mixture of Agents, Best-of-N, Sequential Revision
-
-**Reactive patterns** — Observer, Reflector, Self-Healing Loop, Response Auditor, Citation Verifier
-
-**Human-in-the-loop patterns** — Approval Gates, Tool Call Approval, Human Feedback, Collaborative Editing, Preference Elicitation
-
-More are added regularly. The primitives are everything you need to build and share your own.
+Higher-level patterns — supervisor and coordinator topologies, planning and reasoning loops, memory architectures, human-in-the-loop gates — ship as ecosystem packages built from the same blocks. Each one is open code you can read, fork, or replace. See the [ecosystem overview](/docs/ecosystem/overview) for the current map.
 
 ## The production stack
 
@@ -156,18 +132,10 @@ The primitives are the foundation. The rest ships with the framework:
 
 All composable, all optional.
 
-## Thought Fabric
-
-Thought Fabric is what the primitives make possible when you push them. A full cognitive architecture — working memory, episodic memory, semantic memory, attention, reasoning — built entirely from flow-state.dev blocks.
-
-Not a feature of the framework. Proof of concept.
-
-Memory and attention are shipped. Identity, perception, and metacognition are on the roadmap.
-
-[Learn about Thought Fabric →](/thought-fabric/introduction)
-
 ## Get started
 
 - **[Quick Start](/docs/getting-started/quick-start)** — Build a streaming chat app in five minutes
 - **[Blocks](/docs/fundamentals/blocks)** — Deep dive into the four primitives
 - **[Building a Chat App](/guides/building-a-chat-app)** — Complete walkthrough from blocks to React UI to tests
+
+> An optional cognitive layer ships separately as Thought Fabric — see [Thought Fabric →](/thought-fabric/introduction).

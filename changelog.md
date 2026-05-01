@@ -12,6 +12,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Supervisor's reviewer chain audit-state moved off the task collection's request scope onto the supervisor sequencer's outer state (`reviewMetadata[taskId]`). The task collection now sees only the irreducible `claim` / `complete` / `fail` writes from `taskBoard`, eliminating the contention surface that drove the original failure.
 - No public API change to `atomicState`, `patchState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`. Behavior under `concurrency: 1` is unchanged.
 
+### Tier 1 flow integration test suite (FIX-487)
+
+- New `@flow-state-dev/integration-tests` workspace package (private). Seven scenarios drive whole flows through `runAction` against in-memory stores with mocked generators: hello-chat smoke, ask-mode happy path, tool-loop convergence, build-mode artifact, plan-and-execute, session resume, and the supervisor + task-board regression. Suite finishes in a few seconds; loop guards plus a 30s vitest `testTimeout` catch infinite-loop regressions deterministically.
+- `mockGenerator` accepts `{ when, then }` predicate entries alongside plain steps. Predicates match by input and stay matchable on every call; plain steps still consume sequentially. Lets concurrent patterns (supervisor workers, parallel plan-and-execute steps) be mocked without depending on call order.
+- `mockGenerator` now simulates the AI SDK's internal multi-step tool loop. When a returned step has `toolCalls` but no terminal `text`/`structuredOutput`, the mock model invokes each tool's `execute` closure and pulls the next script step until a terminal step or `maxSteps` is hit.
+- `testFlow` accepts an optional `stores: StoreRegistry`. Multiple runs sharing the same registry preserve session, journal, and resource state across calls. Seeding is idempotent — already-seeded users/sessions/orgs aren't re-`set`.
+- New `apps/docs/docs/testing/flow-integration-tests.md` page positions the new tier between `testBlock` and `fsdev run`. Linked from the Testing sidebar.
+
 ### Make `fsdev run` the primary CLI dev loop for agents (FIX-490)
 
 - `fsdev run` now emits `[flow-state] *` runtime events to stderr by default at `info` level — action lifecycle, block lifecycle, retries, errors. Previously these were silently dropped because the command never passed a logger to `runAction`. New `--quiet` suppresses them; new `--log-level <debug|info|warn|error>` sets the threshold. The CLI always passes an explicit logger so the server's `console.*`-backed default never writes runtime traces to stdout and corrupt the NDJSON stream.

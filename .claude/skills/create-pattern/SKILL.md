@@ -396,12 +396,23 @@ describe("<pattern-name>", () => {
 });
 ```
 
-### Step 7: Update Documentation
+### Step 7: Add a Tier 1 integration scenario (when warranted)
+
+Pattern factories have failure modes that only emerge from full `runAction` composition — claim systems deadlocking, dispatchers looping, sub-agent state bleeding across iterations. `testBlock` doesn't catch these. Add a scenario in `packages/integration-tests/src/scenarios/` when the pattern:
+
+- Uses `taskBoard` or another claim-system substrate.
+- Has a dispatcher loop, drain loop, or replan loop.
+- Composes multiple sub-blocks whose interaction can deadlock or cycle.
+- Passes data between sub-agents through scope state or resources.
+
+Skip this step if the pattern is a thin sequencer (e.g., a static `.then` chain with no loops). Authoring pattern: synthetic fixture flow under `src/scenarios/fixtures/` + scenario file under `src/scenarios/`. Use `unmockedGeneratorPolicy: "error"` so missing mocks surface loudly. See `apps/docs/docs/testing/flow-integration-tests.md` and `packages/integration-tests/README.md`.
+
+### Step 8: Update Documentation
 
 1. Add a section to `packages/patterns/README.md` for the new pattern
 2. If it demonstrates a novel framework capability, add a page under `apps/docs/docs/patterns/`
 
-### Step 8: Verify
+### Step 9: Verify
 
 ```bash
 pnpm --filter @flow-state-dev/patterns typecheck

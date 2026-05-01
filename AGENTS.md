@@ -104,6 +104,27 @@ pnpm fsdev run hello-chat chat -i '{"message":"hi"}' --quiet
 
 **When something breaks**, switch into the `debug-flow` skill — it has the failure-pattern matrix and the `fsdev block` isolation workflow. This section is for confirming a change works; `debug-flow` is for diagnosing why one doesn't.
 
+## Adding test coverage
+
+Three tiers, picked by what kind of regression you want to catch:
+
+| Layer | Where | Use when |
+|---|---|---|
+| Block / router / sequencer unit | `packages/<pkg>/test/*.test.ts` via `testBlock`, `testRouter`, `testSequencer` | A single block's logic — state changes, output shape, error paths. Default tier for new code. |
+| Flow integration | `packages/integration-tests/src/scenarios/*.test.ts` via `testFlow` | A regression that only emerges from full `runAction` composition: pattern factory wiring, claim systems, dispatcher loops, multi-pattern interactions, session resume across runs. |
+| Tier 2/3 (Playwright UI, real-LLM smoke) | Not yet on main | UI rendering, real-network behavior. Out of scope for most changes. |
+
+**Reach for `packages/integration-tests/` when**:
+
+- You fix a bug in a pattern factory (`supervisor`, `taskBoard`, `planAndExecute`, `eventActors`, `routedSpecialists`, `coordinator`) where the bug only manifests when the pattern runs end-to-end with mocked generators. The supervisor + task-board claim-system regression is the canonical example.
+- You add a new pattern factory whose composition would benefit from a multi-block scenario test.
+- You change the request lifecycle (`runAction`, scope seeding, session journal, store contracts, resume) — add a scenario that exercises the new contract.
+- You change `mockGenerator` or `testFlow` semantics — extend the existing scenarios or add one that pins the new behavior.
+
+**Don't** put block-level assertions there. If a new test would only need `testBlock`, it belongs in the producing package's `test/` directory.
+
+**Authoring** is described in `apps/docs/docs/testing/flow-integration-tests.md` and `packages/integration-tests/README.md`. Pattern: synthetic fixture flow under `src/scenarios/fixtures/` + scenario file under `src/scenarios/`. Use `unmockedGeneratorPolicy: "error"` so missing mocks surface as a loud throw with the offending block name. Scripts use predicate entries (`{ when, then }`) for concurrent workers and plain steps for ordered conversations.
+
 ## Code style rules for examples
 
 1. **Trust the type system.** If you declared an `inputSchema` on a block, the input is typed.
