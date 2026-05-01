@@ -72,16 +72,28 @@ export async function handleRequestStream(
         const shouldForward = unfiltered ? undefined : createClientEventFilter();
 
         // 1. Replay buffered events after the cursor.
+        // FIX-479: content.delta is non-replayable. The reconnecting
+        // client snaps forward to the latest item snapshot from
+        // item.added/done payloads; it picks up live deltas from the
+        // observer subscription (step 2) onward.
         const buffered = emitter.getEvents();
         for (const event of buffered) {
           if (event.sequence_number <= minSeq) continue;
-          if (event.type === "ping" || event.type === "debug") continue;
+          if (
+            event.type === "ping" ||
+            event.type === "debug" ||
+            event.type === "content.delta"
+          ) {
+            continue;
+          }
           if (shouldForward && !shouldForward(event)) continue;
           const frame = encodeStreamEvent(event);
           controller.enqueue(textEncoder.encode(frame));
         }
 
-        // 2. Subscribe to new events going forward.
+        // 2. Subscribe to new events going forward. content.delta is
+        // forwarded live here — the resume contract drops only the
+        // historical (buffered) deltas, not the in-flight stream.
         emitter.addEventObserver((event) => {
           if (event.sequence_number <= minSeq) return;
           if (event.type === "ping" || event.type === "debug") return;
