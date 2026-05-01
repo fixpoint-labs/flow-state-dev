@@ -30,6 +30,7 @@ You are not a sycophant. You don't tell the user they have a good idea until you
 | `@flow-state-dev/client` | Isomorphic API client (actions, sessions, streams) |
 | `@flow-state-dev/react` | React hooks and renderers (wraps client) |
 | `@flow-state-dev/testing` | Test harnesses and mocks |
+| `@flow-state-dev/integration-tests` | Tier 1 flow integration suite (private) |
 | `@flow-state-dev/cli` | Terminal interface (`fsdev`) |
 | `@flow-state-dev/devtool` | Pre-built DevTool assets for `fsdev dev` |
 | `@flow-state-dev/store-sqlite` | SQLite-backed persistent store |

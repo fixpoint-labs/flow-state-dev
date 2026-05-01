@@ -136,18 +136,23 @@ export function createMockModelResolver(options: {
         // expected to return the terminal output after running any tool
         // calls itself. Walk script steps until we hit a terminal step or
         // exhaust `maxSteps`.
+        //
+        // `mock.calls` records framework invocations of `generate()` — one
+        // entry per call, not per inner iteration. Tool-loop steps consumed
+        // inside this single call don't push additional entries; tests that
+        // count generator invocations stay accurate.
+        mock.calls.push({
+          input: generateOptions.messages,
+          model: modelId,
+          blockName
+        });
+
         const maxSteps = generateOptions.maxSteps ?? 8;
         const tools = generateOptions.tools ?? [];
         const toolByName = new Map(tools.map((tool) => [tool.name, tool] as const));
         const accumulatedToolCalls: NonNullable<GeneratorModelResult["toolCalls"]> = [];
 
         for (let i = 0; i < maxSteps; i += 1) {
-          mock.calls.push({
-            input: generateOptions.messages,
-            model: modelId,
-            blockName
-          });
-
           const step = mock.next(generateOptions.messages);
           if (step === undefined) {
             const mockName = blockName ?? modelId;

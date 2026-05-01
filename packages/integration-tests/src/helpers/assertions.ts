@@ -7,7 +7,6 @@
  * assertions speak for themselves.
  */
 import type { OutputItem } from "@flow-state-dev/core/items";
-import type { TestFlowResult } from "@flow-state-dev/testing";
 
 /** Returns every item of the given top-level `type`. */
 export function itemsByType<T extends OutputItem["type"]>(
@@ -62,37 +61,6 @@ export function findBlockOutputs(
   blockName: string
 ): Extract<OutputItem, { type: "block_output" }>[] {
   return itemsByType(items, "block_output").filter((item) => item.blockName === blockName);
-}
-
-/**
- * Asserts that a `testFlow` result completed cleanly and emitted no error
- * items. Combines the two signals a regression like the supervisor +
- * task-board infinite loop would trip: thrown errors land on `result.error`
- * (and may also be emitted as `error` items), and a non-completed status
- * surfaces as `result.status` ≠ `"completed"`.
- */
-export function expectCompleted(result: TestFlowResult, vitestExpect: (actual: unknown) => any): void {
-  vitestExpect(result.error).toBeUndefined();
-  vitestExpect(result.status).toBe("completed");
-  const errorItems = itemsByType(result.items, "error");
-  vitestExpect(errorItems).toHaveLength(0);
-}
-
-/** Asserts that a `testFlow` result reported failure. */
-export function expectFailed(
-  result: TestFlowResult,
-  vitestExpect: (actual: unknown) => any,
-  errorMessageMatcher?: string | RegExp
-): void {
-  vitestExpect(result.status).toBe("failed");
-  if (errorMessageMatcher !== undefined) {
-    const errorMessage = result.error?.message ?? "";
-    if (typeof errorMessageMatcher === "string") {
-      vitestExpect(errorMessage.includes(errorMessageMatcher)).toBe(true);
-    } else {
-      vitestExpect(errorMessageMatcher.test(errorMessage)).toBe(true);
-    }
-  }
 }
 
 /**

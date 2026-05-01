@@ -54,7 +54,8 @@ the pattern under test, isolating it from app-specific composition.
 ## Helpers
 
 `src/helpers/assertions.ts` exports plain functions, not custom vitest
-matchers:
+matchers. The set is small on purpose — additions arrive when a third
+scenario asks for them, not before.
 
 - `itemsByType(items, type)` — filter to a specific `OutputItem` type.
 - `findMessage(items, role)` — first message matching role.
