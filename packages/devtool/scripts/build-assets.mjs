@@ -1,6 +1,11 @@
 /**
- * Builds the DevTool app (apps/devtool) and copies its dist/ output into
- * packages/devtool/dist-client/ so the package ships pre-built static assets.
+ * Builds the standalone DevTool app (apps/devtool) and copies its dist/ into
+ * packages/devtool/dist-client/ so the package ships pre-built static assets
+ * for `fsdev dev` to serve.
+ *
+ * The Vite build now consumes the panel from the same package's library
+ * entry, so we build the library first (`pnpm --filter <pkg> build`) before
+ * running the Vite build via the alias config in apps/devtool.
  *
  * Usage: node scripts/build-assets.mjs
  */
@@ -16,7 +21,6 @@ const devtoolAppDir = resolve(monorepoRoot, "apps/devtool");
 const sourceDistDir = resolve(devtoolAppDir, "dist");
 const targetDir = resolve(packageRoot, "dist-client");
 
-// 1. Build the DevTool Vite app
 console.log("Building DevTool app...");
 execSync("pnpm run build", {
   cwd: devtoolAppDir,
@@ -28,7 +32,6 @@ if (!existsSync(sourceDistDir)) {
   process.exit(1);
 }
 
-// 2. Clean and copy dist to dist-client
 if (existsSync(targetDir)) {
   rmSync(targetDir, { recursive: true });
 }

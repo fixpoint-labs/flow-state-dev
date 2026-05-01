@@ -40,6 +40,8 @@ export type { SSEFrame } from "./sse";
 export { createLiveRequestStream } from "./live-stream";
 export type { LiveRequestStream, CreateLiveRequestStreamOptions } from "./live-stream";
 
+export { injectHeartbeat } from "./heartbeat";
+
 export {
   canRegisterStream,
   cleanupStaleStreams,

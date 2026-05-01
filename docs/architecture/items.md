@@ -71,7 +71,7 @@ Structural items ignore `agentType` for visibility. `agentType` on a structural 
 Since FIX-413, `block_output.output` is a `BlockValue<T>` discriminated union with three cases:
 
 - **`inline`** — the block produced novel content. Leaves (generators, handlers) and explicit transforms (`.map`, non-identity `connectOutput`) emit this kind. The payload rides on `output.value`.
-- **`ref`** — the block's output is reference-identical to another item's content. Pass-through composers (`.then`, `.work`, `.tap`, routers, `.rescue`) emit this kind, with `output.sourceItemId` pointing at the content-bearing item. The invariant is **flatten-at-emit**: every ref points one hop to a content-bearing item, never to another ref.
+- **`ref`** — the block's output is reference-identical to another item's content. Pass-through composers (`.then`, `.work`, `.tap`, routers, `.rescue`) emit this kind, with `output.sourceItemId` pointing at the content-bearing item. The invariant is **flatten-at-emit**: every ref points one hop to a content-bearing item, never to another ref. Since FIX-480, streaming-text generators (`outputSchema: z.string()`, `agentType` set) also emit a `ref` pointing at their just-emitted `MessageItem` instead of inlining a duplicate copy of the streamed text. `resolveBlockValue` resolves message-targeting refs to the joined `output_text` content.
 - **`structure`** — the block produced a novel container of existing content. Aggregators (`.thenAll`, `.parallel`, `.forEach`) emit this kind, with `output.shape` describing the array or object of nested BlockValues.
 
 The union exists so a deeply nested pass-through pipeline (`s1 → s2 → s3 → generator`) persists the LLM output exactly once, on the generator's item — intermediate sequencers carry a ~40-byte ref rather than an N-byte copy.
@@ -92,7 +92,20 @@ Items fall into three buckets:
 
 **Conditionally persistent** — `state_change` items are transient in production and persistent in development. Use `persistStateChanges: true` on the flow config to force persistence in production (needed for the devtool state timeline).
 
-When a block is configured with `transient: true`, all items it emits become transient regardless of their type. This is how you mark an entire block's output as stream-only.
+When a block is marked `transient: true`, the framework's auto-emitted bookkeeping for that block (`block_output` traces) is suppressed. Items the block emits explicitly (via `emitMessage`, `emitComponent`, `emitStatus`) are **not** affected by the block flag — their persistence is controlled by their own `transient` field, with sensible per-emitter defaults: `false` for `emitMessage` and `emitComponent` (persisted), `true` for `emitStatus` (live-only). Each emitter accepts a per-call `transient?: boolean` override.
+
+### Transient × keyed item matrix
+
+The `transient` and `key` fields compose orthogonally — knowing one tells you nothing about the other.
+
+| `transient` | `key` | Semantics | Example |
+|:-----------:|:-----:|-----------|---------|
+| `false` | absent | Append-only event | A finalized message; a completed tool output |
+| `false` | present | **Keyed snapshot** — replays on reload | `task-change`, `task-board-meta`, `rb-entry` |
+| `true` | absent | Ephemeral one-shot | A debug trace |
+| `true` | present | Live-only progress with dedup | A spinner-style "currently doing X" |
+
+The `(transient: false, key: present)` cell is the **keyed snapshot** pattern: one logical entity whose latest state replays on reload. The renderer's `deduplicateComponentItems` collapses multiple emissions per `${requestId}:${key}` to the latest. See [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots) for the user-facing reference.
 
 There are two storage targets, kept separate:
 - **Item record** — the final state of each durable item, used to reconstruct session history
@@ -103,6 +116,14 @@ There are two storage targets, kept separate:
 `content.delta` events are non-replayable. The events log only carries the durable boundaries — `item.added`, `content.added`, `content.done`, `item.done`. The running text accumulates into the in-flight `MessageItem.content[i].text` (and `ReasoningItem.summary[i].text`) on each delta and the items snapshot is checkpointed via `persistItems` at the store's natural cadence.
 
 This means streaming text fits the same "transient × keyed" cell that other live-only updates occupy: the wire and live observers see every delta; the durable surface is the latest accumulated snapshot keyed by item id. Mid-stream reconnects via `Last-Event-ID` snap forward to the latest snapshot rather than replaying token-by-token; the eventual `item.done` payload supersedes with the authoritative final text. The trade-off is intentional — token-by-token disk persistence under concurrent worker streams serializes every delta behind a single per-request write queue and the request appears to lock up.
+
+## Item windows (per task)
+
+Pattern aggregators (synthesizer prompt builders, reviewer input builders, replanners) often want a slice of the item log: "what did worker X emit while it held its claim?". Since FIX-480, that's first-class via `TaskHandle.items()` on the `TaskCollectionRef.list / get` returns.
+
+The window is bounded by the substrate's `task-change` lifecycle events for the task — `kind: "claimed"` opens it, terminal `kind: "completed" | "errored" | "cancelled"` closes it. Retries do NOT reset the start; all attempts append. Bookend `task-change` and `task-board-meta` items are excluded — they're substrate scaffolding, not worker emissions.
+
+The standalone substrate utility — `extractTaskItems(items, collectionId, taskId)` — is exported from `@flow-state-dev/tasks` for any consumer that wants the same window logic without going through a `TaskCollection`. The kitchen-sink renderer's per-task expansion uses the same algorithm.
 
 ## The full registry
 
@@ -196,6 +217,8 @@ ctx.emitComponent("search-results", { results }, { key: "search" });
 ```
 
 When `key` is set, `ItemsRenderer` shows only the latest item with that key per request. Use this when the component represents a stateful view you want to replace in-place — for example, incrementally updating search results rather than appending a new card for each update.
+
+When combined with `transient: false` (the default), this is the **keyed snapshot** pattern: one logical entity whose latest state replays on reload. See [Persistence](#persistence) above for the full transient × key matrix and [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots) for the user-facing reference.
 
 ### Registering a renderer
 

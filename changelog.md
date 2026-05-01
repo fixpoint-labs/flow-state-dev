@@ -12,8 +12,22 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Mock-fallback claim in `AGENTS.md` audited and rewritten. `createModelResolver` has no mock fallback — without a configured provider, generator blocks fail with `No provider available for "<provider>"`. The doc now describes the actual behavior and points provider-free smoke tests at vitest.
 - `@flow-state-dev/testing` no longer re-exports `createInboundTransportConformanceTests` and `createMockTransportHost` from its index. Conformance helpers import `vitest` at module top level, which made any non-test consumer (notably the CLI) fail to load. They're available via the new `@flow-state-dev/testing/conformance` subpath export.
 
+### Migrate / retire queue-shaped patterns onto `taskBoard` substrate (FIX-448)
+
+- **Removed** `drainPool` and `eventQueue` patterns. The `taskBoard` substrate gives both for free: drainPool's lease/concurrent-drain semantics are exactly what taskBoard provides (CAS-safe claim, lease/reclaim, per-task error policy); eventQueue is a sequential taskBoard with `fifoDispatcher` and mid-run enqueue. Existing call sites migrate to `taskBoard({...})` directly. The kitchen-sink's chat-agent demo action `event-queue` is rewritten as `task-queue-demo` against `taskBoard` with `getOrCreateTaskCollection({ backing: "request" })` for mid-handler enqueue. `EventQueueProgress` removed from `@flow-state-dev/react`.
+- **Renamed** `blackboard` to `routedSpecialists`. The controller-pick → specialist loop now stores per-iteration records in a sequencer-backed `TaskCollection` (assignee = picked specialist, output = specialist result); the shared workspace stays as a sibling writable resource. `createBlackboard` → `createWorkspace`. `<Plan />` renders the decision sequence natively. Default controller's "previous decisions" prompt section is now read from `collection.list({ status: "completed" })` ordered by `completedAt` and FIFO-trimmed by `maxHistory`.
+- **Renamed** `reactiveBlackboard` to `eventActors`. Each actor invocation becomes a `Task` in a request-backed collection (assignee = actor name, `metadata.depth` = reactive cascade depth). The `mesh()` factory is renamed `eventActors()`; `reactiveBlackboard()` factory is renamed `createEventActorsWorkspace()`. `actor()` unchanged. The reEmit cascade is implemented via in-actor `collection.addTask()` calls with depth tracking; `taskBoard` is the inner drain. Entry log stays as a sibling writable session resource. UI continues to render `container: "reactive-blackboard"` containers — the entry-log timeline component is unchanged.
+- Net source LOC reduction: ~−2360 across `packages/patterns/src/` (well past the 40% spec target). Kitchen-sink, UI registry, docs, and skill files updated in the same pass.
+
 ## 2026-04-30
 
+### Decouple `emit*` default-transient from `blockTransient`; document the keyed-snapshot pattern (FIX-478)
+
+- `ctx.emitMessage()` and `ctx.emitComponent()` no longer inherit the producing block's `transient` flag. Both default to `transient: false` (persisted) regardless of whether the calling block is transient. The block flag retains its single intended meaning: suppress the framework's auto-emitted `block_output` bookkeeping for that block.
+- `ctx.emitStatus()` continues to default to `transient: true` (statuses are naturally ephemeral). All three emitters now accept a per-call `{ transient?: boolean }` override for symmetry.
+- Reverts the FIX-447 surgical workarounds (the explicit `transient: false` overrides in `getOrCreateTaskCollection`'s `onChange` and in the `boardMetaActive` / `boardMetaCompleted` blocks) — the architectural fix at the framework layer makes them redundant.
+- Documents the **keyed snapshot** pattern (component item with a stable `key`, latest-wins per `${requestId}:${key}`) and the four-cell `transient × key` matrix in `apps/docs/docs/streaming/emitting-items.md`. Cross-links from `OutputItemBase.transient`, `ComponentItem.key`, and the `BlockContext` emit JSDocs. No new APIs — the pattern was already supported, just unnamed.
+- Behavior change: third-party blocks declared `transient: true` that previously relied on `emitMessage` / `emitComponent` calls being auto-suppressed will now persist those items. Migration is one keyword: pass `{ transient: true }` explicitly on the emit call.
 
 ### Reduce SSE stream noise: no-op `patchState` guard + transient state slots (FIX-477)
 
@@ -29,6 +43,13 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Resume contract change. Mid-stream reconnects via `Last-Event-ID` no longer replay the exact token sequence — the running text snaps to the latest persisted snapshot and continues from the next live delta, with the eventual `item.done` payload superseding. Page-load bootstrap now shows the latest accumulated text for in-flight messages instead of empty content, which is strictly better than before. Completed messages still replay exactly.
 - Live SSE consumers, devtool observers, and the in-memory event buffer continue to receive every `content.delta` event unchanged. Filesystem and Postgres stores benefit transparently — the change is at the emitter, not the store.
 
+### Sub-agent items as first-class data for parent agents (FIX-480)
+
+- `TaskCollectionRef.list` / `get` now return a `TaskHandle` — the existing `Task` data fields plus an `items()` accessor that returns the items emitted during the worker's claim window. Pattern aggregators (synthesizer prompt builders, reviewer input builders, replanners) can now pick from a worker's natural emissions — `message`, `source`, `tool_call`, `reasoning` — instead of relying solely on `task.output`. Sync, throw-free, returns `[]` until the task is claimed.
+- Streaming-text generators (`outputSchema: z.string()`, `agentType` set) now emit their `block_output` as `BlockValue { kind: "ref", sourceItemId }` pointing at the just-emitted `MessageItem`, rather than inlining a duplicate copy of the same text. `resolveBlockValue` resolves the ref transparently to the joined `output_text` content. Object-output generators are unchanged. The streaming path's defensive equality check (returned string == accumulated stream) prevents the ref emission when post-validation transforms (`z.string().transform(...)`) mutate the value.
+- `BlockOutputLookup` renamed to `ItemLookup`; the old name stays as a non-breaking alias. `buildItemLookup(items)` indexes every item by id (not just `block_output`s) so refs may resolve to messages.
+- Substrate utility `extractTaskItems(items, collectionId, taskId)` and `computeTaskItemWindows(items, collectionId)` exported from `@flow-state-dev/tasks`. Same algorithm the kitchen-sink renderer uses for per-task expansion in `<TaskPlan />`; available server-side for any pattern that wants to inspect a worker's window without touching the renderer.
+- Supervisor's `buildResults` handler now also returns a `resultItems` field — `Array<{ taskId, goal, items }>` — alongside `results`. The default synthesizer's user prompt appends a deduped `Sources:` block when worker `source` items are present. Custom synthesizers ignoring the new field continue working unchanged.
 
 ### `taskBoard` follow-up: dep materialization, sub-agent tool visibility, render hygiene (FIX-447)
 
@@ -39,6 +60,17 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Default P&E executor and synthesizer prompts now thread source URLs through the task chain. Workers see prior-task summaries plus the URLs that actually informed each prior result; the synthesizer is instructed to cite URLs inline as Markdown links and end with a `Sources` section listing only the URLs it relied on. Distinction is explicit: pass and cite sources that were leveraged, not every URL the search returned.
 - Substrate-internal task-board blocks (`claimTask`, `checkBoard`, `recordSuccess`, `recordError`, `seedCollection`, board-meta emitters) marked `transient: true` so their auto-emitted `block_output` traces are filtered from client subscriptions and history replay. Idle workers no longer flood the SSE stream with `block_output` trace records every poll tick. `claimTask` also skips its `lastClaimed` state patch when the value is unchanged. Both are point-fixes for FIX-477.
 - Pattern-level status messages now describe what the agent is actually doing instead of leaving the chat at the default "Thinking…". `claimTask` emits `Working on: {task.goal}` on each successful claim. P&E, supervisor, and parallelTasks set phase statuses on their planning, evaluation, replanning, review, and synthesis blocks (e.g. `Planning the steps`, `Reviewing progress`, `Adjusting the plan`, `Putting it all together`).
+
+### Connection resilience (FIX-476)
+
+- Server emits `: ping\n\n` SSE comment frames on every live and GET-attach response (default 15 s). Heartbeat injection moved out of `@flow-state-dev/vercel` into `@flow-state-dev/server` so every deployment — including non-Vercel and POST inline streams — gets it.
+- New server-internal sweeper marks `in_progress` requests whose executor heartbeat stopped as `interrupted`, releasing session locks. On by default in `createFlowApiRouter` (30 s cadence, 60 s threshold); set `staleSweepIntervalMs: 0` to disable.
+- New read-only `GET /api/flows/:flowKind/requests/:requestId/status` endpoint returns a `RequestStatusSnapshot`. Callable when no SSE is connected; used by the client dismiss path to confirm authoritative server state.
+- `useSession` now exposes `isStuck` (watchdog-tripped flag) and `dismissRequest(requestId?)` (works without a live SSE handle). `sendAction` auto-dismisses a stuck prior request before opening the new stream, with a synthetic abort item making the prior attempt visible.
+- Client SSE parser detects comment frames and fires a new `onHeartbeat` callback alongside regular events.
+- `RequestStatus` and `RequestStatusSnapshot` now live in `@flow-state-dev/core/types`. `@flow-state-dev/server` re-exports `RequestStatus` for backward compatibility.
+- Vercel adapter no longer injects heartbeats itself — the core handles it. `VercelHandlerOptions.heartbeatMs` is now a deprecated no-op; configure via `createFlowApiRouter({ defaultSseHeartbeatMs })` or per-flow `defineFlow({ request: { sseHeartbeatMs } })` instead.
+- Docs: new `apps/docs/docs/server/connection-resilience.md` (linked from the Server sidebar); sections added to `packages/server/README.md`, `packages/react/README.md`, `apps/docs/docs/streaming/overview.md`; deprecation note in `packages/vercel/README.md`.
 
 ## 2026-04-29
 

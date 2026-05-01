@@ -2,17 +2,16 @@
  * Vercel deployment adapter for flow-state-dev.
  *
  * Wraps a `FlowApiRouter` (from `createFlowApiRouter`) into Next.js App Router
- * handlers with Vercel-specific SSE response shaping, heartbeats, and
- * runtime configuration.
+ * handlers with Vercel-specific SSE response shaping and runtime configuration.
+ *
+ * SSE heartbeats are emitted by `@flow-state-dev/server` for every live and
+ * GET-attach stream — this adapter no longer injects them itself.
  */
 import type {
   FlowApiRouter,
   VercelHandlerInput,
   VercelHandlerOptions
 } from "./types";
-import { injectHeartbeat } from "./heartbeat";
-
-const DEFAULT_HEARTBEAT_MS = 15_000;
 
 /**
  * Additional SSE headers for Vercel's proxy infrastructure.
@@ -49,7 +48,6 @@ function createHandlerCore(
   app: VercelHandlerInput,
   options?: VercelHandlerOptions
 ) {
-  const heartbeatMs = options?.heartbeatMs ?? DEFAULT_HEARTBEAT_MS;
   const onAbort = options?.onAbort;
 
   let cachedRouter: FlowApiRouter | Promise<FlowApiRouter> | undefined;
@@ -61,7 +59,7 @@ function createHandlerCore(
     return cachedRouter;
   }
 
-  function wrapResponse(response: Response, skipHeartbeat: boolean): Response {
+  function wrapResponse(response: Response): Response {
     if (!isSSEResponse(response) || response.body === null) {
       return response;
     }
@@ -69,11 +67,7 @@ function createHandlerCore(
     for (const [key, value] of Object.entries(VERCEL_SSE_HEADERS)) {
       headers.set(key, value);
     }
-    if (skipHeartbeat) {
-      return new Response(response.body, { status: response.status, headers });
-    }
-    const body = injectHeartbeat(response.body, heartbeatMs);
-    return new Response(body, { status: response.status, headers });
+    return new Response(response.body, { status: response.status, headers });
   }
 
   return { getRouter, wrapResponse, onAbort };
@@ -82,10 +76,9 @@ function createHandlerCore(
 /**
  * Creates Next.js App Router handlers for deploying a flow-state-dev app to Vercel.
  *
- * Handles the Next.js 15 async params contract, injects Vercel-specific SSE
- * headers to prevent proxy buffering, and adds periodic heartbeat comments
- * to keep long-lived GET streams alive. POST responses skip heartbeat
- * wrapping (inline streaming — the server writes events continuously).
+ * Handles the Next.js 15 async params contract and injects Vercel-specific
+ * SSE headers to prevent proxy buffering. SSE heartbeats are emitted by
+ * `@flow-state-dev/server` for every live and GET-attach stream.
  *
  * ```ts
  * // app/api/fsd/[...path]/route.ts
@@ -110,20 +103,20 @@ export function createVercelHandler(
 } {
   const { getRouter, wrapResponse, onAbort } = createHandlerCore(app, options);
 
-  function makeHandler(method: keyof FlowApiRouter, skipHeartbeat = false): CatchAllHandler {
+  function makeHandler(method: keyof FlowApiRouter): CatchAllHandler {
     return async (req, ctx) => {
       if (onAbort !== undefined) {
         req.signal.addEventListener("abort", () => onAbort(req), { once: true });
       }
       const [router, params] = await Promise.all([getRouter(), ctx.params]);
       const response = await router[method](req, { params });
-      return wrapResponse(response, skipHeartbeat);
+      return wrapResponse(response);
     };
   }
 
   return {
     GET: makeHandler("GET"),
-    POST: makeHandler("POST", true),
+    POST: makeHandler("POST"),
     PATCH: makeHandler("PATCH"),
     DELETE: makeHandler("DELETE")
   };
@@ -157,7 +150,7 @@ export function createVercelBareHandler(
     return async (req) => {
       const router = await getRouter();
       const response = await router[method](req, { params: { path: [] } });
-      return wrapResponse(response, false);
+      return wrapResponse(response);
     };
   }
 

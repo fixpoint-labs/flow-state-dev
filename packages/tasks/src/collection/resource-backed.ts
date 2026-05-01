@@ -26,6 +26,7 @@
  * given task.
  */
 import type { JsonObject } from "@flow-state-dev/core";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskFilter } from "../schema/task-init";
@@ -35,6 +36,7 @@ import {
   applyClaimToTask,
   applyTransition,
   buildInitialTask,
+  createTaskHandleWrapper,
   DEFAULT_LEASE_DURATION_MS,
   defaultEligibility,
   defaultOrder,
@@ -53,6 +55,14 @@ export interface ResourceBackedOptions {
    * to publish lifecycle changes onto the framework item stream.
    */
   onChange?: (event: TaskChangeEvent) => void;
+  /**
+   * Item-log accessor for `TaskHandle.items()` (FIX-480). Reads the
+   * response's persistent item buffer at call time so synthesizer
+   * prompt-builders can pick from a worker's natural emissions
+   * (messages, sources, tool calls). When omitted, `items()` returns
+   * `[]` — useful for tests that don't wire a response.
+   */
+  getItems?: () => readonly OutputItem[];
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
 }
@@ -69,6 +79,10 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
 ): TaskCollectionRef<TInput, TOutput> {
   const now = options.now ?? Date.now;
   const onChange = options.onChange;
+  const wrap = createTaskHandleWrapper<TInput, TOutput>(
+    options.collectionId,
+    options.getItems,
+  );
 
   function emit(
     kind: TaskChangeKind,
@@ -365,15 +379,18 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
 
     get(id) {
       const taskRef = options.collection.getOptional(id);
-      return taskRef === undefined ? undefined : readTaskState<TInput, TOutput>(taskRef);
+      return taskRef === undefined
+        ? undefined
+        : wrap(readTaskState<TInput, TOutput>(taskRef));
     },
 
     list(filter?: TaskFilter) {
-      return listTasks(listAll(), filter);
+      return listTasks(listAll(), filter).map(wrap);
     },
 
+    // Counts via `listTasks` directly to skip the per-task wrap allocation.
     count(filter?: TaskFilter) {
-      return ref.list(filter).length;
+      return listTasks(listAll(), filter).length;
     },
   };
 

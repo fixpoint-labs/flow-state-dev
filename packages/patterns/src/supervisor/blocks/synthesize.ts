@@ -27,9 +27,22 @@ export function createSynthesize(options: CreateSynthesizeOptions) {
   const buildResults = handler({
     name: `${name}-build-results`,
     inputSchema: z.unknown(),
+    // FIX-480 §3.3: `resultItems` exposes per-task emission slices so the
+    // synthesizer's user prompt can pick `source` / `tool_call` / `message`
+    // items directly. Field stays optional in the synthesizer-input
+    // contract — user-supplied synthesizers ignoring it keep working.
     outputSchema: z.object({
       goal: z.string(),
       results: z.array(z.unknown()),
+      resultItems: z
+        .array(
+          z.object({
+            taskId: z.string(),
+            goal: z.string(),
+            items: z.array(z.unknown()),
+          }),
+        )
+        .optional(),
     }),
     sequencerStateSchema: supervisorStateSchema,
     execute: async (_input, ctx) => {
@@ -39,11 +52,16 @@ export function createSynthesize(options: CreateSynthesizeOptions) {
         collectionId,
       });
       const goal = (ctx.sequencer!.state.goal as string | undefined) ?? "";
-      const results = collection
-        .list({ status: "completed" })
+      const completed = collection.list({ status: "completed" });
+      const results = completed
         .map((t) => t.output)
         .filter((o): o is unknown => o !== undefined);
-      return { goal, results };
+      const resultItems = completed.map((t) => ({
+        taskId: t.id,
+        goal: t.goal,
+        items: [...t.items()],
+      }));
+      return { goal, results, resultItems };
     },
   });
 

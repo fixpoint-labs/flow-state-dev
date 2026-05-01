@@ -58,67 +58,50 @@ const block = parallelTasks({
 
 **Key exports:** `parallelTasks`, `parallelTasksInputSchema`
 
-### Blackboard
+### Routed Specialists
 
-Controller-driven multi-agent coordination. Specialist blocks read from and write to a shared workspace resource. An LLM controller reads the blackboard state and decides which specialist to invoke next, in a `.loopBack()` loop.
+Controller-driven multi-agent coordination. Specialist blocks read from and write to a shared writable workspace resource. An LLM controller reads the workspace state and decides which specialist to invoke next, in a `.loopBack()` loop. Per-iteration records live in a `TaskCollection` so the decision sequence is first-class data.
 
 ```typescript
-import { blackboard, createBlackboard } from "@flow-state-dev/patterns/blackboard";
+import { routedSpecialists, createWorkspace } from "@flow-state-dev/patterns/routedSpecialists";
+
+const workspace = createWorkspace(workspaceSchema);
+
+const pattern = routedSpecialists({
+  name: "research",
+  workspace,
+  specialists: { researcher, analyst, critic },
+  maxIterations: 8,
+});
 ```
 
-### Reactive Blackboard
+**Key exports:** `routedSpecialists`, `createWorkspace`, `controllerOutputSchema`
 
-Stigmergic multi-agent coordination via write-time fan-out. Actors subscribe to entry topics on a shared resource and react automatically when matching entries are written. No controller, no loop — dispatch happens via `forEachBackground`, and reactions run as background sidechains.
+### Event Actors
+
+Stigmergic multi-agent coordination via topic subscriptions. Actors declare which entry topics they watch (`type:topic` glob patterns); when a matching entry is emitted, every matching actor's body runs concurrently as a `Task` on the unified substrate. No controller, no central loop. With `reEmit: true`, actor outputs that match the entry shape become new dispatched entries, creating reactive cascades up to `maxDepth`.
 
 ```typescript
-import { reactiveBlackboard, actor, mesh } from "@flow-state-dev/patterns/reactive-blackboard";
+import { createEventActorsWorkspace, actor, eventActors } from "@flow-state-dev/patterns/eventActors";
 
-const rb = reactiveBlackboard({ name: "feedback", entries: entrySchema });
+const rb = createEventActorsWorkspace({ name: "feedback", entries: entrySchema });
 
 const monitor = actor({
   name: "slack-monitor",
   watch: ["observation:slack.*"],
-  body: slackHandler,
+  block: slackHandler,
 });
 
-const system = mesh({
+const system = eventActors({
   name: "feedback",
-  blackboard: rb,
+  workspace: rb,
   actors: [monitor],
 });
 
 // Use system.emit in a sequencer to write entries with fan-out
 ```
 
-**Key exports:** `reactiveBlackboard`, `actor`, `mesh`, `matchTopic`, `compilePattern`, `createAppendEntry`, `createReactiveBlackboard`
-
-### Drain Pool
-
-Concurrent streaming dispatch over a dynamic, durable queue. N workers pull items from a shared session-resource collection, process them, and loop until drained. Workers can enqueue follow-up items mid-drain. The parent sequencer waits for full completion.
-
-At-least-once semantics (lease-based recovery); callers own idempotency.
-
-```typescript
-import { drainPool } from "@flow-state-dev/patterns/drain-pool";
-
-const pool = drainPool({
-  name: "jobs",
-  item: jobSchema,
-  concurrency: 8,
-  initialItems: seeds,
-  block: ({ enqueue }) =>
-    sequencer({ name: "job-body" })
-      .then(runJob)
-      .tap(enqueue((result) => result.followUps ?? [])),
-});
-
-// pool.block plugs into a flow; pool.queue is auto-installed
-// as a session resource. Use pool.enqueue externally only for
-// pre-drain seeding — mid-drain enqueue must happen inside a
-// worker body (see docs for the correctness constraint).
-```
-
-**Key exports:** `drainPool`, `createDrainPoolItemSchema`, `drainPoolProjectionSchema`, `drainPoolWorkerStateSchema`, `drainPoolItemMetaSchema`, `createSeedPool`, `createLeaseNext`, `createMarkDoneSuccess`, `createMarkDoneError`, `createCheckPool`, `createEnqueueHelper`
+**Key exports:** `eventActors`, `actor`, `createEventActorsWorkspace`, `matchTopic`, `compilePattern`, `createAppendEntry`, `normalizeToEntries`
 
 ### Task Board
 
@@ -216,6 +199,31 @@ Each pattern decides which sub-blocks receive `instructions`. The table below sh
 The supervisor planner may include a `context` field on each task (alongside `id`, `goal`, `deps`, `assignee`). The pattern stamps that string onto the seeded `TaskInit.input`, so workers receive it as `TaskWorkerInput.input`. Use it for per-task stance/constraint guidance distilled from overall `instructions`.
 
 Pre-migration workers that declared the legacy `executableTaskSchema` (input shape `{ id, goal, context?, feedback? }`) keep working — `legacyWorkerAdapter` translates `TaskWorkerInput → ExecutableTask` transparently.
+
+## Accessing worker output items
+
+Workers emit `message`, `source`, `tool_call`, and `reasoning` items naturally as they run. Synthesizer prompt builders, reviewer input builders, and replanners can read those emissions per-task via `TaskHandle.items()` (FIX-480) instead of forcing the worker to pack everything into a structured `outputSchema`.
+
+```typescript
+import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
+
+const collection = getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "my-plan" });
+
+for (const task of collection.list({ status: "completed" })) {
+  const items = task.items();
+  const messages = items.filter((i) => i.type === "message");
+  const sources = items.filter((i) => i.type === "source");
+  const toolCalls = items.filter((i) => i.type === "block_tool_output");
+  const finalText = task.output ?? messages.map((m) => /* join text */ "").join("\n");
+  // …feed into your synthesizer's prompt
+}
+```
+
+The window is `[first claimed, terminal]` for the task's lifecycle. Retries are included in the same window. `task-change` and `task-board-meta` items (substrate scaffolding) are excluded. Returns `[]` when the task has not been claimed.
+
+`supervisor`'s default synthesizer already uses this — the `buildResults` handler returns `resultItems` alongside `results`, and the default user prompt appends a deduped `Sources:` block when `source` items are present in any worker's window. Custom synthesizers receive the same input shape and can ignore the new field if they don't need it.
+
+The contract: workers emit naturally; parents pick what they want. No need to re-pack everything into `outputSchema` for downstream visibility.
 
 ## Task Progress Rendering
 

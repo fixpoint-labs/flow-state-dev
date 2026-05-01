@@ -1347,6 +1347,25 @@ async function executeStreamingGeneration<TInput, TOutput>(
     await ctx.response.emit({ type: "item.done", item: completedItem });
   }
 
+  // FIX-480 §3.2: when this generator's logical output IS the streamed
+  // text, emit a `block_output { kind: "ref", sourceItemId: <messageId> }`
+  // instead of inlining the same string. The `parsed.data === accumulated`
+  // check guards against post-validation transforms (e.g.
+  // `z.string().transform(s => s.trim())`) where the returned value
+  // diverges from what was streamed; in that case we fall back to inline.
+  // Skip empty strings — a ref to an empty message resolves to "" too,
+  // but inline is cheaper and avoids a dangling-looking pointer.
+  if (
+    emit &&
+    messageItem !== null &&
+    isTextOutputSchema(outputSchema) &&
+    typeof parsed.data === "string" &&
+    parsed.data.length > 0 &&
+    parsed.data === accumulated
+  ) {
+    ctx._blockOutputHint = { kind: "ref", sourceItemId: itemId };
+  }
+
   ctx._runtimeHooks?.onGeneratorModelResult?.({
     model: model.modelId,
     usage: finalResult?.usage,
@@ -1771,6 +1790,15 @@ export function generator<
         };
         await ctx.response.emit({ type: "item.added", item: messageItem });
         await ctx.response.emit({ type: "item.done", item: messageItem });
+
+        // FIX-480 §3.2: emit `block_output` as a ref to this message
+        // instead of an inline copy of the same text. The message's
+        // content equals `output` by construction (built from `output`
+        // above), so no defensive equality check is needed here. Skip
+        // empty strings to keep block_output inline for the trivial case.
+        if (output.length > 0) {
+          ctx._blockOutputHint = { kind: "ref", sourceItemId: itemId };
+        }
       }
 
       return output;

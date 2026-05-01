@@ -128,6 +128,70 @@ ctx.emitComponent("task-status", { id: "task-1", status: "complete", result: "..
 
 If you call `emitComponent()` multiple times with the same component name but no `key`, each call creates a separate persisted item. They all render independently in the UI. This is the right approach when each emission represents a distinct piece of output — search result cards, log entries, individual items in a list.
 
+## Keyed snapshots
+
+When you emit a component item with a stable `key`, the renderer collapses to the latest. We call that a **keyed snapshot** — one logical entity that updates over time. The latest version replays on reload, so a returning user sees the final state without replaying every intermediate step.
+
+`transient` and `key` are independent. They compose into four cells:
+
+| `transient` | `key` | Semantics | Example |
+|:-----------:|:-----:|-----------|---------|
+| `false` | absent | Append-only event | A finalized message; a completed tool output |
+| `false` | present | **Keyed snapshot** — replays on reload | `task-change`, `task-board-meta`, `rb-entry` |
+| `true` | absent | Ephemeral one-shot | A debug trace |
+| `true` | present | Live-only progress with dedup | A spinner-style "currently doing X" |
+
+Two principles fall out of the matrix:
+
+- **Append-only events vs. keyed snapshots.** Pick based on whether the consumer wants every emission or only the latest. Search result cards stack — emit them as separate items. A status badge for a task replaces — emit it with a stable key.
+- **Transient × keyed compose orthogonally.** Knowing one tells you nothing about the other. A transient item with a key still dedups live; a persisted item without a key still appends on reload.
+
+A few pitfalls:
+
+- **Keys must be stable.** If a key changes between emissions for the same logical entity (e.g. you regenerate a UUID per call), the renderer treats it as a new entity and remounts. Use deterministic identity — a task id, a row primary key, a content hash.
+- **`key` is logical identity, not transport.** It's not the SSE `id:` field used for resume. The two are independent.
+- **Replay correctness.** Only `(transient: false, key: present)` items can drop intermediate snapshots safely. If a consumer needs every intermediate value (a log of state transitions, an audit trail), use append-only.
+- **`agentType: "trace"` filters items regardless of `transient`.** The matrix above describes persistence. Items with `agentType: "trace"` are filtered out for clients via `resolveItemVisibility`, even if non-transient. Persistence and visibility are separate concerns.
+
+The substrate's task-board uses keyed snapshots for both per-task lifecycle and board-level status. The reactive-blackboard uses them for entry append-but-update:
+
+```ts
+// task-change: per-task lifecycle snapshot
+ctx.emitComponent("task-change", { ... }, { key: `${collectionId}/${taskId}` });
+
+// task-board-meta: per-board status snapshot
+ctx.emitComponent("task-board-meta", { ... }, { key: collectionId });
+
+// rb-entry: append-only blackboard entry (counter-keyed for replace-on-update)
+ctx.emitComponent("rb-entry", { ... }, { key: `entry-${count}` });
+```
+
+The same idea shows up across the industry. Vercel AI SDK calls them "data parts" with id-based reconciliation. Phoenix LiveView calls them "keyed streams". Hotwire Turbo Streams splits them into `append`/`prepend` (events) and `replace`/`update` (snapshots). Event sourcing calls them snapshots; CDC calls them upserts.
+
+## Default transience and the block flag
+
+A block declared with `transient: true` suppresses the framework's auto-emitted bookkeeping for that block — its `block_output` traces don't enter the persisted log. It does **not** affect items the block emits explicitly.
+
+That separation is intentional. When you call `ctx.emitComponent()` or `ctx.emitMessage()` from inside any block — including a transient one — that's an explicit choice to surface user-facing content. The producing block being infrastructure says nothing about the content's status.
+
+Defaults per emitter:
+
+| Method | Default `transient` | Rationale |
+|--------|:-------------------:|-----------|
+| `emitMessage()` | `false` | Messages are conversational content. |
+| `emitComponent()` | `false` | Components are user-facing UI. |
+| `emitStatus()` | `true` | Statuses are naturally ephemeral; the slot is latest-wins. |
+
+Each method accepts a per-call `{ transient }` option to opt in or out:
+
+```ts
+// Persist a status (rare — usually you want the live-only default)
+ctx.emitStatus("Completed final step", { transient: false });
+
+// Live-only component for an in-flight indicator with dedup
+ctx.emitComponent("typing-indicator", { user: "alice" }, { key: "typing", transient: true });
+```
+
 ## Container components
 
 Containers group items from multiple blocks into a single UI component. When a sequencer or router declares a `container`, all items emitted by its child blocks are visually owned by the container.

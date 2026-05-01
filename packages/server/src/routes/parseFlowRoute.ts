@@ -24,6 +24,7 @@ export type ParsedFlowRoute =
   | { kind: "update_resource_content"; sessionId: string; ref: string; topic: string }
   | { kind: "delete_collection_item"; sessionId: string; ref: string; topic: string }
   | { kind: "abort_request"; flowKind: string; requestId: string }
+  | { kind: "request_status"; flowKind: string; requestId: string }
   | { kind: "not_found" };
 
 function cleanSegments(path: string[] | undefined): string[] {
@@ -219,6 +220,20 @@ export function parseFlowRoute(
   ) {
     return {
       kind: "abort_request",
+      flowKind: segments[0],
+      requestId: segments[2]
+    };
+  }
+
+  // GET /api/flows/:flowKind/requests/:requestId/status
+  if (
+    normalizedMethod === "GET" &&
+    segments.length === 4 &&
+    segments[1] === "requests" &&
+    segments[3] === "status"
+  ) {
+    return {
+      kind: "request_status",
       flowKind: segments[0],
       requestId: segments[2]
     };
