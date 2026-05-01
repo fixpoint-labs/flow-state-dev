@@ -1,5 +1,6 @@
 import type { OutputItem } from "@flow-state-dev/core/items";
 import type { BlockInput, BlockOutput, FlowInstance } from "@flow-state-dev/core/types";
+import type { StoreRegistry } from "@flow-state-dev/server";
 import type {
   MockGeneratorInstance,
   UnmockedGeneratorPolicy
@@ -120,6 +121,14 @@ export type TestFlowOptions<TInput = unknown> = {
   generators?: Record<string, MockGeneratorInstance>;
   models?: Record<string, MockGeneratorInstance>;
   unmockedGeneratorPolicy?: UnmockedGeneratorPolicy;
+  /**
+   * Reuse an existing in-memory store registry instead of creating a fresh
+   * one. Lets multiple `testFlow` calls share session, user, org, and
+   * request state — the foundation for session-resume scenarios. Seeding
+   * is idempotent, so repeated runs against the same registry preserve
+   * journal entries and resource state from prior calls.
+   */
+  stores?: StoreRegistry;
 };
 
 export type TestFlowResult = {

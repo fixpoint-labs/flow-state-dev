@@ -138,12 +138,45 @@ analyzerScorer.safety()        // No harmful content
 - `pnpm --filter @flow-state-dev/testing typecheck`
 - `pnpm --filter @flow-state-dev/testing test`
 
+### Predicate-driven mock generators
+
+Concurrent patterns (supervisor's worker pool, parallel plan-and-execute steps) call the same generator block with different inputs. Plain script entries are consumed in order — fragile when call ordering isn't guaranteed. Predicate entries match against the input and remain matchable on every call:
+
+```ts
+mockGenerator({
+  name: "worker",
+  script: [
+    { when: (input) => JSON.stringify(input).includes("Task A"), then: { text: "Did A" } },
+    { when: (input) => JSON.stringify(input).includes("Task B"), then: { text: "Did B" } },
+    { when: () => true, then: { text: "Default" } }, // catch-all
+  ],
+});
+```
+
+Plain steps and predicate entries mix freely. Predicates win when they fire; otherwise the next plain step is consumed.
+
+When a returned step has `toolCalls` but no `text` / `structuredOutput`, the mock model resolver invokes each tool's `execute` closure and pulls the next script step — mirroring the AI SDK's internal multi-step loop.
+
+### Sharing stores across runs
+
+`testFlow` accepts an optional `stores: StoreRegistry`. Pass the same registry to two calls and the second resumes from the first run's session, journal, and resource state:
+
+```ts
+import { createInMemoryStores } from "@flow-state-dev/server";
+
+const stores = createInMemoryStores();
+await testFlow({ flow, action, userId, sessionId: "s1", stores, /* ... */ });
+await testFlow({ flow, action, userId, sessionId: "s1", stores, /* ... */ });
+```
+
+Seeding is idempotent — already-present users/sessions/orgs aren't re-`set`, so the second run preserves the first run's mutations.
+
 ## Notes
 
 - Utilities are intentionally framework-contract focused, not app-specific.
 - `testSequencer` step/work traces are inferred from emitted item provenance in Phase 1.
 - Generator mocks are resolved by generator block name first (`generators`) and model id second (`models`).
-- `testFlow` accepts `generators`, `models`, and `unmockedGeneratorPolicy` with the same behavior as `testBlock`.
+- `testFlow` accepts `generators`, `models`, `unmockedGeneratorPolicy`, and an optional `stores` registry.
 
 ## Architecture Reference
 
