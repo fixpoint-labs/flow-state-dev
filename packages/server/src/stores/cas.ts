@@ -62,9 +62,9 @@ export type RunWithCASOptions<TState> = {
   }) => void;
 };
 
-const DEFAULT_MAX_STATE_SIZE_BYTES = 10 * 1024;
+export const DEFAULT_MAX_STATE_SIZE_BYTES = 10 * 1024;
 
-function estimateSizeBytes(value: unknown): number {
+export function estimateSizeBytes(value: unknown): number {
   try {
     return JSON.stringify(value)?.length ?? 0;
   } catch {

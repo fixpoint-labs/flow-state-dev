@@ -180,6 +180,7 @@ const sidebars: SidebarsConfig = {
         "advanced/custom-model-resolver",
         "advanced/model-groups",
         "advanced/inbound-transports",
+        "state/mutation-model",
         "advanced/utility-blocks-deprecated",
       ],
     },

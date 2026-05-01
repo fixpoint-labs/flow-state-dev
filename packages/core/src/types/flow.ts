@@ -175,6 +175,18 @@ export type RequestConfig = {
    * doesn't compound across step counts.
    */
   cleanupCheckpointsOnTerminal?: boolean;
+  /**
+   * Per-mutation budget for in-memory state writes (target, sequencer
+   * scopes — anything not bridged through a `persist` callback). When a
+   * mutator's queue wait + execution time exceeds this, the call rejects
+   * with `ScopeMutationTimeoutError` instead of hanging the request
+   * indefinitely. Default 30000 (30s). Set to `Infinity` to disable.
+   *
+   * Does not apply to external-store scopes (filesystem / sqlite /
+   * postgres adapters) — those use the optimistic CAS retry path and
+   * surface contention as `ConcurrentModificationError`.
+   */
+  mutationTimeoutMs?: number;
 };
 
 export type UserConfig = {

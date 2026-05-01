@@ -10,7 +10,7 @@ The split matters because it shapes what you should learn first. Core is a small
 
 ## What's here
 
-**Patterns** are higher-level compositions — `planAndExecute`, `supervisor`, `parallelTasks`, and others — that wire blocks together into common shapes. The `Substrates` subsection covers `task-board` and `eventActors`, the lower-level building blocks that the patterns compose.
+**Patterns** are higher-level compositions — `planAndExecute`, `supervisor`, `parallelTasks`, `eventActors`, and others — that wire blocks together into common shapes. They sit on top of lower-level substrates like `task-board` and reuse the same block primitives you'd use directly.
 
 **Tools** are reusable handler-style blocks: `fetch`, `crawl`, `bash`, MCP. Drop them into a generator's tool list or a sequencer step. The package is additive — you take what you need.
 
@@ -21,6 +21,8 @@ The split matters because it shapes what you should learn first. Core is a small
 **Thought Fabric** is a separate cognitive architecture sub-site. Attention, memory, identity. It builds on Core but has its own conventions.
 
 **Dev Experience** covers the CLI (`fsdev`) and the DevTool — a pre-built inspector you can mount into your own app or run standalone with `fsdev dev`.
+
+A full map of the ecosystem is still being assembled. Until then, browse the package READMEs in the repo for what's currently published.
 
 ## How to read this section
 

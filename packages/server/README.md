@@ -306,6 +306,25 @@ defineFlow({
 
 Clients consume the wire heartbeat through `useSession`'s watchdog: it surfaces `session.isStuck` when the stream goes silent past `stuckThresholdMs` (default 30s) and exposes `session.dismissRequest()` to clear the request without a live connection. See [Connection Resilience](https://flow-state.dev/docs/server/connection-resilience) for full details.
 
+## State mutations: two-tier model
+
+Every state mutator (`patchState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) routes through one of two paths inside the runtime, picked by whether the scope has a `persist` callback:
+
+- **In-memory scopes** — target state, sequencer state, and any scope without a `persist` bridge. Mutations serialize through a per-`StateContainer` FIFO queue (`withScopeLock`). Concurrent mutators run one at a time in submission order; there is no version check, no retry, and no `ConcurrentModificationError`. Reads are still synchronous against `container.read()`.
+- **External-store scopes** — `request`, `session`, `user`, `org` scopes bridged through `persist` (filesystem, sqlite, postgres). Mutations use the optimistic `runWithCAS` retry loop because a remote authority can advance the version underneath the local cache. `ConcurrentModificationError` still surfaces on retry exhaustion at this boundary.
+
+`flow.request.mutationTimeoutMs` (default `30_000`, set to `Infinity` to disable) bounds the worst-case wait for any in-memory mutation. When a mutator's queue wait + execution exceeds the budget, the call rejects with `ScopeMutationTimeoutError` instead of hanging the request indefinitely.
+
+```ts
+defineFlow({
+  kind: "chat",
+  request: { mutationTimeoutMs: 60_000 },
+  actions: { /* ... */ }
+});
+```
+
+The lock is non-reentrant: a mutator that calls `atomicState` again on the same container would await its own completion forever. Compose state mutations within a single mutator instead. Cross-scope mutator chains (scope A's mutator calls `atomicState` on scope B) are fine — different containers have independent queues.
+
 ## Notes
 
 - Phase 1 requires caller-provided `userId` for all action/session routes
