@@ -2,6 +2,15 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-01
+
+### Migrate / retire queue-shaped patterns onto `taskBoard` substrate (FIX-448)
+
+- **Removed** `drainPool` and `eventQueue` patterns. The `taskBoard` substrate gives both for free: drainPool's lease/concurrent-drain semantics are exactly what taskBoard provides (CAS-safe claim, lease/reclaim, per-task error policy); eventQueue is a sequential taskBoard with `fifoDispatcher` and mid-run enqueue. Existing call sites migrate to `taskBoard({...})` directly. The kitchen-sink's chat-agent demo action `event-queue` is rewritten as `task-queue-demo` against `taskBoard` with `getOrCreateTaskCollection({ backing: "request" })` for mid-handler enqueue. `EventQueueProgress` removed from `@flow-state-dev/react`.
+- **Renamed** `blackboard` to `routedSpecialists`. The controller-pick → specialist loop now stores per-iteration records in a sequencer-backed `TaskCollection` (assignee = picked specialist, output = specialist result); the shared workspace stays as a sibling writable resource. `createBlackboard` → `createWorkspace`. `<Plan />` renders the decision sequence natively. Default controller's "previous decisions" prompt section is now read from `collection.list({ status: "completed" })` ordered by `completedAt` and FIFO-trimmed by `maxHistory`.
+- **Renamed** `reactiveBlackboard` to `eventActors`. Each actor invocation becomes a `Task` in a request-backed collection (assignee = actor name, `metadata.depth` = reactive cascade depth). The `mesh()` factory is renamed `eventActors()`; `reactiveBlackboard()` factory is renamed `createEventActorsWorkspace()`. `actor()` unchanged. The reEmit cascade is implemented via in-actor `collection.addTask()` calls with depth tracking; `taskBoard` is the inner drain. Entry log stays as a sibling writable session resource. UI continues to render `container: "reactive-blackboard"` containers — the entry-log timeline component is unchanged.
+- Net source LOC reduction: ~−2360 across `packages/patterns/src/` (well past the 40% spec target). Kitchen-sink, UI registry, docs, and skill files updated in the same pass.
+
 ## 2026-04-30
 
 ### Decouple `emit*` default-transient from `blockTransient`; document the keyed-snapshot pattern (FIX-478)

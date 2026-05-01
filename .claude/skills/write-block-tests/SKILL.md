@@ -30,8 +30,8 @@ Read the test that most closely matches your block kind:
 | Sequencer | `packages/core/test/sequencer.test.ts` |
 | Router | `packages/core/test/router.test.ts` |
 | Capability integration | `packages/core/test/capability-block-integration.test.ts` |
-| Pattern | `packages/patterns/test/event-queue.test.ts` or `packages/patterns/test/blackboard.test.ts` |
-| Reactive blackboard | `packages/patterns/test/reactive-blackboard.test.ts` |
+| Pattern | `packages/patterns/test/task-board.test.ts` or `packages/patterns/test/routedSpecialists.test.ts` |
+| Event actors | `packages/patterns/test/eventActors.test.ts` |
 
 Also read `packages/core/test/helpers.ts` — it defines `createMockContext()` which is used in most tests.
 

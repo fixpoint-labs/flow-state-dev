@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import Markdown from "react-markdown";
 
-type BlackboardData = {
+type RoutedSpecialistsData = {
   state: Record<string, unknown>;
   iteration: number;
   specialist: string | null;
@@ -19,11 +19,11 @@ type BlackboardData = {
 };
 
 /**
- * Renders a blackboard pattern component item — showing the shared workspace
- * state that specialists have written to across iterations.
+ * Renders a routedSpecialists pattern component item — showing the shared
+ * workspace state that specialists have written to across iterations.
  */
-export function Blackboard({ item }: { item: ComponentItem }) {
-  const data = item.data as BlackboardData;
+export function RoutedSpecialists({ item }: { item: ComponentItem }) {
+  const data = item.data as RoutedSpecialistsData;
   const { state, iteration, specialist } = data;
 
   const isFinished = item.status === "completed";
@@ -40,7 +40,7 @@ export function Blackboard({ item }: { item: ComponentItem }) {
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <ClipboardListIcon className="h-3.5 w-3.5 text-emerald-500" aria-hidden="true" />
-          <p className="text-sm font-medium leading-snug">Blackboard</p>
+          <p className="text-sm font-medium leading-snug">Routed Specialists</p>
         </div>
         <div className="flex items-center gap-2">
           {specialist && !isFinished && (
@@ -65,7 +65,7 @@ export function Blackboard({ item }: { item: ComponentItem }) {
       {entries.length > 0 && (
         <ul className="space-y-1">
           {entries.map(([key, value]) => (
-            <BlackboardEntry key={key} label={key} value={value} />
+            <WorkspaceEntry key={key} label={key} value={value} />
           ))}
         </ul>
       )}
@@ -77,7 +77,7 @@ export function Blackboard({ item }: { item: ComponentItem }) {
   );
 }
 
-function BlackboardEntry({ label, value }: { label: string; value: unknown }) {
+function WorkspaceEntry({ label, value }: { label: string; value: unknown }) {
   const text =
     typeof value === "string"
       ? value

@@ -27,11 +27,11 @@ Before writing, read at least two existing patterns in `packages/patterns/src/`:
 | Pattern | What to learn from it |
 |---------|----------------------|
 | `plan-and-execute/index.ts` | Config with replaceable sub-blocks, doUntil loop, sequencer state, synthesis step |
-| `blackboard/index.ts` | Session resources, router dispatch, controller loop, specialist composition |
-| `event-queue/index.ts` | Typed state schema, loopBack, internal block factories, FIFO processing |
+| `routedSpecialists/index.ts` | Session resources, router dispatch, controller loop, specialist composition |
+| `task-board/index.ts` | TaskCollection substrate, dispatcher + worker registry, concurrent drain, mid-run enqueue |
 | `response-auditor/index.ts` | Simpler pattern: linear chain, tap for side effects, evaluation criteria |
 | `supervisor/index.ts` | forEachBackground for concurrent work, resource-based coordination |
-| `reactive-blackboard/index.ts` | Stigmergic multi-agent coordination, actor dispatch, background work |
+| `eventActors/index.ts` | Stigmergic multi-agent coordination, actor dispatch, event-driven drain |
 
 Also read:
 - `docs/contributing/best-practices.md` — especially BP-011 (no block.run in handlers), BP-012 (use .tap for state-only), BP-014 (never return input)

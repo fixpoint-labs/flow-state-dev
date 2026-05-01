@@ -85,9 +85,9 @@ More specifically:
 - **Parallel workers with per-task review and retry-on-rejection** → [Supervisor](./supervisor)
 - **Sequential steps with dependency ordering and adaptive replanning** → [Plan and Execute](./plan-and-execute)
 - **Post-generation quality audit with pluggable analyzers** → [Response Auditor](./response-auditor)
-- **Controller-driven multi-agent workspace (incremental synthesis)** → Blackboard
-- **Event-driven multi-agent coordination (broadcast/react)** → [Reactive Blackboard](./reactive-blackboard)
-- **Concurrent streaming dispatch over a dynamic, durable queue** → [Drain Pool](./drain-pool)
+- **Controller-driven multi-agent workspace (incremental synthesis)** → [Routed Specialists](./routed-specialists)
+- **Event-driven multi-agent coordination (broadcast/react)** → [Event Actors](./event-actors)
+- **Concurrent dependency-aware drain over a Task Collection** → Task Board (see `@flow-state-dev/patterns/task-board`)
 - **Complex hierarchical work where steps need their own sub-planning** → Plan and Execute with a Supervisor as the `stepExecutor`
 
 The first three accept a custom `planner` override, so you can swap out `utility.decomposer` for a domain-specific planner if you need tighter control.
