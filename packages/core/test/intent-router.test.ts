@@ -145,6 +145,30 @@ describe("utility.intentRouter", () => {
     );
   });
 
+  it("forwards the original input to the matched category handler", async () => {
+    const billing = handler({
+      name: "billing-handler-input",
+      execute: (input: unknown) => ({ received: input })
+    });
+
+    const tech = handler({
+      name: "tech-handler-input",
+      execute: (input: unknown) => ({ received: input })
+    });
+
+    const triage = utility.intentRouter({
+      name: "input-forwarding",
+      categories: {
+        billing: { description: "Billing issues", handler: billing },
+        technical: { description: "Technical issues", handler: tech }
+      }
+    });
+
+    await expect(
+      triage.run("I was charged twice", makeContext("billing", 0.91))
+    ).resolves.toEqual({ received: "I was charged twice" });
+  });
+
   it("supports nested sequencer category handlers", async () => {
     const nested = sequencer({ name: "nested-technical" })
       .map(() => "nested")
