@@ -115,7 +115,7 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
-      label: "UI",
+      label: "UI Components",
       items: [
         "ui/overview",
         "ui/common-components",

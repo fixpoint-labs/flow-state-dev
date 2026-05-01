@@ -2,7 +2,7 @@
 sidebar_position: 1
 ---
 
-# UI
+# Overview
 
 `@flow-state-dev/ui` — A first-party component library for chat, agent, and generative-UI patterns, distributed via a [shadcn-compatible custom registry](https://ui.shadcn.com/docs/registry). Components are copied into your project, so you own and edit them like any other source file.
 
