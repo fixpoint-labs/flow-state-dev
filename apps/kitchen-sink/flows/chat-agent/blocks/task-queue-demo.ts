@@ -10,6 +10,7 @@
  * are routed by `task.assignee`.
  */
 import { handler } from "@flow-state-dev/core";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
 import { taskBoard, taskWorkerInputSchema } from "@flow-state-dev/patterns/task-board";
@@ -31,7 +32,7 @@ const extractInputSchema = z.object({
 // Handlers — receive `TaskWorkerInput`, enqueue follow-ups via the collection
 // ---------------------------------------------------------------------------
 
-function getCollection(ctx: Parameters<Parameters<typeof handler>[0]["execute"]>[1]) {
+function getCollection(ctx: BlockContext) {
   return getOrCreateTaskCollection({
     ctx,
     backing: "request",
@@ -47,7 +48,7 @@ const handleSearch = handler({
     const { query } = searchInputSchema.parse(input.input);
     const found = `Search results for "${query}": [doc-1, doc-2, doc-3]`;
 
-    const collection = getCollection(ctx);
+    const collection = getCollection(ctx as unknown as BlockContext);
     await collection.addTask({
       goal: `analyze: ${query}`,
       assignee: "ANALYZE",
@@ -69,7 +70,7 @@ const handleAnalyze = handler({
     const analysis = `Analyzed: ${data.slice(0, 60)}`;
 
     if (hasStructuredData) {
-      const collection = getCollection(ctx);
+      const collection = getCollection(ctx as unknown as BlockContext);
       await collection.addTask({
         goal: "extract fields",
         assignee: "EXTRACT",
@@ -108,11 +109,15 @@ export const taskQueueDemoInputSchema = z.object({
 const board = taskBoard({
   name: "task-queue-demo",
   collection: { backing: "request", collectionId: COLLECTION_ID },
+  // Cast: TaskWorkerRegistry expects TaskWorker<unknown, unknown>; our
+  // handlers are typed-narrower (z.object outputs). The taskBoard
+  // pipeline only reads task.input/output as `unknown`, so the runtime
+  // contract is satisfied.
   workers: {
     SEARCH: handleSearch,
     ANALYZE: handleAnalyze,
     EXTRACT: handleExtract,
-  },
+  } as Record<string, any>,
   concurrency: 1,
   dispatcher: "fifo",
   onIdle: "complete",

@@ -24,7 +24,7 @@
  *
  *   .tap(stashDepth)               // remember `task.metadata.depth`
  *   .map(unwrapToEntry)            // pass entry to user actor body
- *   .then(actor.body)              // user code
+ *   .then(actor.block)             // user code
  *   .tap(reEmitIfEnabled)          // append entries from output, spawn next-depth tasks
  */
 import { handler, sequencer } from "@flow-state-dev/core";
@@ -111,7 +111,7 @@ export interface ActorConfig {
    * entry as input (NOT TaskWorkerInput — the wrapper unwraps it). Can
    * be any block kind.
    */
-  body: BlockDefinition<any, any>;
+  block: BlockDefinition<any, any>;
 }
 
 export type Actor = Readonly<ActorConfig>;
@@ -348,7 +348,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
     })
       .then(stashTaskId)
       .map((input: TaskWorkerInput) => input.input)
-      .then(a.body)
+      .then(a.block)
       .tap(reEmitTap);
   }
 

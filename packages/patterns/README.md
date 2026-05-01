@@ -89,7 +89,7 @@ const rb = createEventActorsWorkspace({ name: "feedback", entries: entrySchema }
 const monitor = actor({
   name: "slack-monitor",
   watch: ["observation:slack.*"],
-  body: slackHandler,
+  block: slackHandler,
 });
 
 const system = eventActors({

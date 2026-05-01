@@ -505,7 +505,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   const rbExplorer = actor({
     name: "rb-explorer",
     watch: ["request:**"],
-    body: generator({
+    block: generator({
       name: "rb-explorer-gen",
       model: modelId,
       outputSchema: entryOutputSchema,
@@ -539,7 +539,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   const rbAnalyst = actor({
     name: "rb-analyst",
     watch: ["observation:**"],
-    body: generator({
+    block: generator({
       name: "rb-analyst-gen",
       model: modelId,
       outputSchema: entryOutputSchema,
@@ -572,7 +572,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   const rbChallenger = actor({
     name: "rb-challenger",
     watch: ["finding:**"],
-    body: generator({
+    block: generator({
       name: "rb-challenger-gen",
       model: modelId,
       outputSchema: entryOutputSchema,

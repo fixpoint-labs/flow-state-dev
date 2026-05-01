@@ -85,7 +85,7 @@ describe("actor", () => {
     const a = actor({
       name: "a",
       watch: ["**"],
-      body: handler({
+      block: handler({
         name: "noop",
         inputSchema: z.any(),
         outputSchema: z.any(),
@@ -100,7 +100,7 @@ describe("actor", () => {
       actor({
         name: "a",
         watch: [],
-        body: handler({
+        block: handler({
           name: "noop",
           inputSchema: z.any(),
           outputSchema: z.any(),
@@ -154,7 +154,7 @@ describe("eventActors", () => {
       },
     });
 
-    const a = actor({ name: "a", watch: ["request:**"], body: rec });
+    const a = actor({ name: "a", watch: ["request:**"], block: rec });
     const { emit } = buildEventActors({ name: "test1", actors: [a] });
 
     const result = await testBlock(emit, {
@@ -172,7 +172,7 @@ describe("eventActors", () => {
       return actor({
         name,
         watch,
-        body: handler({
+        block: handler({
           name: `${name}-h`,
           inputSchema: z.any(),
           outputSchema: z.any(),
@@ -206,7 +206,7 @@ describe("eventActors", () => {
     const a1 = actor({
       name: "a1",
       watch: ["request:**"],
-      body: handler({
+      block: handler({
         name: "a1-h",
         inputSchema: z.any(),
         outputSchema: z.any(),
@@ -219,7 +219,7 @@ describe("eventActors", () => {
     const a2 = actor({
       name: "a2",
       watch: ["request:query"],
-      body: handler({
+      block: handler({
         name: "a2-h",
         inputSchema: z.any(),
         outputSchema: z.any(),
@@ -248,7 +248,7 @@ describe("eventActors", () => {
     const tier1 = actor({
       name: "tier1",
       watch: ["request:**"],
-      body: handler({
+      block: handler({
         name: "tier1-h",
         inputSchema: z.any(),
         outputSchema: z.any(),
@@ -262,7 +262,7 @@ describe("eventActors", () => {
     const tier2 = actor({
       name: "tier2",
       watch: ["observation:**"],
-      body: handler({
+      block: handler({
         name: "tier2-h",
         inputSchema: z.any(),
         outputSchema: z.any(),
@@ -299,7 +299,7 @@ describe("eventActors", () => {
     const tier1 = actor({
       name: "tier1",
       watch: ["request:**"],
-      body: handler({
+      block: handler({
         name: "tier1-h",
         inputSchema: z.any(),
         outputSchema: z.any(),
@@ -309,7 +309,7 @@ describe("eventActors", () => {
     const tier2 = actor({
       name: "tier2",
       watch: ["observation:**"],
-      body: handler({
+      block: handler({
         name: "tier2-h",
         inputSchema: z.any(),
         outputSchema: z.any(),
@@ -319,7 +319,7 @@ describe("eventActors", () => {
     const tier3 = actor({
       name: "tier3",
       watch: ["finding:**"],
-      body: handler({
+      block: handler({
         name: "tier3-h",
         inputSchema: z.any(),
         outputSchema: z.any(),

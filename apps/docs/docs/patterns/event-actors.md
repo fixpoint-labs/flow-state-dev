@@ -30,7 +30,7 @@ Each actor task drains through a wrapped sequencer:
 TaskWorkerInput
   → stashTaskId          (record taskId so reEmit can read its depth)
   → unwrapToEntry        (pass entry to user actor body)
-  → actor.body           (user code — handler/generator/sequencer/router)
+  → actor.block          (user code — handler/generator/sequencer/router)
   → reEmitIfEnabled      (append output entries, spawn next-depth tasks)
 ```
 
@@ -53,7 +53,7 @@ const rb = createEventActorsWorkspace({ name: "feedback", entries: entrySchema }
 const slackMonitor = actor({
   name: "slack-monitor",
   watch: ["observation:slack.*"],
-  body: handler({
+  block: handler({
     name: "slack-handler",
     inputSchema: z.any(),
     outputSchema: z.any(),
@@ -64,7 +64,7 @@ const slackMonitor = actor({
 const alertWatcher = actor({
   name: "alert-watcher",
   watch: ["event:alert.**"],
-  body: handler({
+  block: handler({
     name: "alert-handler",
     inputSchema: z.any(),
     outputSchema: z.any(),
@@ -111,7 +111,7 @@ Creates an actor descriptor (a plain frozen value, not a class).
 actor({
   name: string;                // Unique actor name (= worker registry key)
   watch: string[];             // Glob patterns over `${type}:${topic}`
-  body: BlockDefinition;       // Any block kind; receives the entry as input
+  block: BlockDefinition;      // Any block kind; receives the entry as input
 });
 // Returns: Actor (frozen)
 ```
@@ -160,7 +160,7 @@ The reactive vs. deliberative split is a user-land pattern, not a framework conc
 const feedbackMonitor = actor({
   name: "feedback_monitor",
   watch: ["observation:slack.message"],
-  body: sequencer({ name: "monitor-pipeline" })
+  block: sequencer({ name: "monitor-pipeline" })
     .then(router({
       name: "classify",
       routes: [cheapHandler, expensiveGenerator],
