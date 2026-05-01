@@ -130,7 +130,7 @@ Items stream over SSE as blocks execute. Every event has a sequence number. Disc
 
 The strategy library is built from the same blocks you use. That's the point. Every strategy is something you can open, understand, and change.
 
-**Multi-agent coordination patterns** — Supervisor, Coordinator, Chain of Agents, Blackboard, Debate, Round Robin
+**Multi-agent coordination patterns** — Supervisor, Parallel Tasks, Chain of Agents, Blackboard, Debate, Round Robin
 
 **Reasoning & planning patterns** — Plan and Execute, Self-Ask, Self-Consistency, Skeleton of Thought, Least-to-Most, Step-Back Prompting
 
