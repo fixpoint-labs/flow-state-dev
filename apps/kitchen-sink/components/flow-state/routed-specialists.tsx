@@ -14,7 +14,7 @@ import { useMemo } from "react";
 import Markdown from "react-markdown";
 import { useSessionItems } from "./session-items-context";
 
-type BlackboardData = {
+type RoutedSpecialistsData = {
   state: Record<string, unknown>;
   iteration: number;
   specialist: string | null;
@@ -22,22 +22,21 @@ type BlackboardData = {
 };
 
 /**
- * Container renderer for the blackboard pattern. The blackboard sequencer
- * emits a single keyed "blackboard" component item inside a "blackboard"
- * container. This renderer reads that child component to display the
- * shared workspace state.
+ * Container renderer for the routedSpecialists pattern. The pattern
+ * sequencer emits a single keyed "routedSpecialists" component item inside
+ * a "routedSpecialists" container. This renderer reads that child component
+ * to display the shared workspace state.
  *
  * Register via:
- *   <FlowProvider renderers={{ container: { blackboard: Blackboard } }}>
+ *   <FlowProvider renderers={{ container: { routedSpecialists: RoutedSpecialists } }}>
  */
-export function Blackboard({ item }: { item: ContainerItem }) {
+export function RoutedSpecialists({ item }: { item: ContainerItem }) {
   const allItems = useSessionItems();
   const { componentsByKey } = useContainerItems(item, allItems);
 
   const data = useMemo(() => {
     for (const [, value] of componentsByKey) {
-      // The blackboard pattern emits a single component with the board state
-      const candidate = value as unknown as BlackboardData;
+      const candidate = value as unknown as RoutedSpecialistsData;
       if (candidate && typeof candidate.state === "object") {
         return candidate;
       }
@@ -62,7 +61,7 @@ export function Blackboard({ item }: { item: ContainerItem }) {
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <ClipboardListIcon className="h-3.5 w-3.5 text-emerald-500" aria-hidden="true" />
-          <p className="text-sm font-medium leading-snug">Blackboard</p>
+          <p className="text-sm font-medium leading-snug">Routed Specialists</p>
         </div>
         <div className="flex items-center gap-2">
           {specialist && !isFinished && (
@@ -87,7 +86,7 @@ export function Blackboard({ item }: { item: ContainerItem }) {
       {entries.length > 0 && (
         <ul className="space-y-1">
           {entries.map(([key, value]) => (
-            <BlackboardEntry key={key} label={key} value={value} />
+            <WorkspaceEntry key={key} label={key} value={value} />
           ))}
         </ul>
       )}
@@ -99,7 +98,7 @@ export function Blackboard({ item }: { item: ContainerItem }) {
   );
 }
 
-function BlackboardEntry({ label, value }: { label: string; value: unknown }) {
+function WorkspaceEntry({ label, value }: { label: string; value: unknown }) {
   const text =
     typeof value === "string"
       ? value

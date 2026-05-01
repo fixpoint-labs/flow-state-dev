@@ -1,11 +1,11 @@
 /**
  * Shared helpers for compact tool-call rendering inside container
- * components (reactive-blackboard, task-plan).
+ * components (evented-actors, task-plan).
  *
  * Both components emit a small visual summary per tool call: tool name
  * (humanized), an optional first-string-arg label (typically a search
  * `query`), and up to 5 result summaries pulled from the tool output.
- * Lifted out of `reactive-blackboard.tsx` so task-plan can adopt the
+ * Lifted out of `evented-actors.tsx` so task-plan can adopt the
  * same vocabulary without forking the parser.
  */
 import type { BlockToolOutputItem } from "@flow-state-dev/core/items";

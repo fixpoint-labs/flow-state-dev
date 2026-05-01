@@ -1,11 +1,12 @@
+/**
+ * Router that dispatches to the specialist named by the controller's
+ * decision. Throws when the name is missing or unregistered — those are
+ * controller bugs, not runtime conditions to swallow.
+ */
 import { router } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { z } from "zod";
 
-/**
- * Creates a router that dispatches to the specialist named by the controller.
- * Throws a descriptive error if the specialist name is null or unregistered.
- */
 export function createDispatchSpecialist(
   name: string,
   specialists: Record<string, BlockDefinition<any, any>>
@@ -22,13 +23,13 @@ export function createDispatchSpecialist(
     execute: (input: { specialist: string | null }) => {
       if (!input.specialist) {
         throw new Error(
-          `[blackboard] Controller returned null specialist without done=true in "${name}"`
+          `[routedSpecialists] Controller returned null specialist without done=true in "${name}"`
         );
       }
       const target = specialists[input.specialist];
       if (!target) {
         throw new Error(
-          `[blackboard] No specialist registered for "${input.specialist}" in "${name}". ` +
+          `[routedSpecialists] No specialist registered for "${input.specialist}" in "${name}". ` +
             `Available: ${Object.keys(specialists).join(", ")}`
         );
       }

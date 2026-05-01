@@ -42,10 +42,10 @@ Many more utility blocks exist in `packages/core/src/utility/` (analyzer, combin
 - Any handler in `packages/tools/src/` for a tool example
 
 **For routers**, read:
-- `packages/patterns/src/blackboard/blocks/dispatch-specialist.ts` — clean router example
+- `packages/patterns/src/routedSpecialists/blocks/dispatch-specialist.ts` — clean router example
 
 **For sequencers**, read:
-- `packages/patterns/src/event-queue/index.ts` — sequencer composition example
+- `packages/patterns/src/task-board/index.ts` — sequencer composition example
 
 Also read `docs/contributing/best-practices.md` for the active best practices (BP-007 through BP-014).
 

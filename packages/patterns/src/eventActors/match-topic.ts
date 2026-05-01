@@ -1,8 +1,8 @@
 /**
  * Topic Matching
  *
- * Glob-style pattern matching for reactive blackboard topic routing.
- * Patterns match against entry keys in `${type}:${topic}` format.
+ * Glob-style pattern matching for eventActors topic routing. Patterns
+ * match against entry keys in `${type}:${topic}` format.
  *
  * Syntax:
  * - `*` matches a single segment (between `:` or `.` delimiters)
@@ -20,15 +20,11 @@ const patternCache = new Map<string, RegExp>();
 
 /**
  * Compiles a glob pattern into a RegExp. Results are cached for repeated use.
- *
- * @param pattern Glob pattern (e.g., `observation:slack.*`)
- * @returns Compiled RegExp anchored to full string
  */
 export function compilePattern(pattern: string): RegExp {
   const cached = patternCache.get(pattern);
   if (cached) return cached;
 
-  // Escape regex special characters except `*`
   let regex = "";
   let i = 0;
   while (i < pattern.length) {
@@ -36,7 +32,6 @@ export function compilePattern(pattern: string): RegExp {
       regex += ".*";
       i += 2;
     } else if (pattern[i] === "*") {
-      // Match a single segment — anything except `:` and `.`
       regex += "[^:.]*";
       i += 1;
     } else if (".+^${}()|[]\\".includes(pattern[i])) {
@@ -53,13 +48,7 @@ export function compilePattern(pattern: string): RegExp {
   return compiled;
 }
 
-/**
- * Tests whether a topic key matches a glob pattern.
- *
- * @param pattern Glob pattern (e.g., `observation:slack.*`)
- * @param topicKey Entry key in `${type}:${topic}` format
- * @returns true if the key matches the pattern
- */
+/** Tests whether a topic key matches a glob pattern. */
 export function matchTopic(pattern: string, topicKey: string): boolean {
   return compilePattern(pattern).test(topicKey);
 }
