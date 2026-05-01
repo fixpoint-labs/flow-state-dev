@@ -27,6 +27,7 @@ import {
   jsonResponse
 } from "./route-utils";
 import { handleAbortRequest } from "./abort-routes";
+import { handleGetRequestStatus } from "./request-status-routes";
 import { handleExecuteAction } from "./action-routes";
 import {
   handleCheckInterruptedRequests,
@@ -140,7 +141,17 @@ export type CreateFlowRouteHandlersOptions = {
    * Default: true.
    */
   detectInterruptedOnStartup?: boolean;
+  /**
+   * Default SSE heartbeat interval in milliseconds. Applied to every live
+   * stream when the per-flow `request.sseHeartbeatMs` is unset. The wire
+   * heartbeat keeps NAT/proxy idle timeouts from closing the SSE
+   * connection and gives clients a robust inactivity signal.
+   * Default: 15000 (15 seconds). Set to 0 to disable.
+   */
+  defaultSseHeartbeatMs?: number;
 };
+
+const DEFAULT_SSE_HEARTBEAT_MS = 15_000;
 
 /**
  * Context object expected by catch-all route handlers.
@@ -183,6 +194,11 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
   });
   const seams = options.internalSeams ?? NOOP_INTERNAL_ROUTE_SEAMS;
 
+  const defaultSseHeartbeatMs =
+    options.defaultSseHeartbeatMs !== undefined
+      ? options.defaultSseHeartbeatMs
+      : DEFAULT_SSE_HEARTBEAT_MS;
+
   const host: InboundTransportHost = createInboundTransportHost({
     registry: options.registry,
     stores,
@@ -192,7 +208,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
     middleware: options.middleware,
     resolvePrincipal: options.resolvePrincipal ?? defaultBodyUserIdPrincipalResolver,
     onBackgroundWork: options.onBackgroundWork,
-    maxResponseBufferSize: options.maxResponseBufferSize
+    maxResponseBufferSize: options.maxResponseBufferSize,
+    defaultSseHeartbeatMs
   });
 
   // Detect interrupted requests from previous runs on startup
@@ -271,7 +288,8 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
         return await handleRequestStream(request, route, {
           registry: options.registry,
           stores,
-          transcriptionResolver: options.transcriptionResolver
+          transcriptionResolver: options.transcriptionResolver,
+          defaultSseHeartbeatMs
         });
       }
 
@@ -350,6 +368,12 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
 
       if (route.kind === "abort_request") {
         return await handleAbortRequest(request, route, {
+          stores
+        });
+      }
+
+      if (route.kind === "request_status") {
+        return await handleGetRequestStatus(request, route, {
           stores
         });
       }

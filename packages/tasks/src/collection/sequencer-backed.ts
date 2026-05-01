@@ -12,6 +12,7 @@
  * sequencer's checkpoint contract (FIX-401, latest-only with always-on
  * default).
  */
+import type { OutputItem } from "@flow-state-dev/core/items";
 import type { StateRef } from "@flow-state-dev/core/types";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
@@ -21,6 +22,7 @@ import {
   applyClaimToTask,
   applyTransition,
   buildInitialTask,
+  createTaskHandleWrapper,
   DEFAULT_LEASE_DURATION_MS,
   defaultEligibility,
   defaultOrder,
@@ -42,6 +44,14 @@ export interface SequencerBackedOptions {
    * to publish lifecycle changes onto the framework item stream.
    */
   onChange?: (event: TaskChangeEvent) => void;
+  /**
+   * Item-log accessor for `TaskHandle.items()` (FIX-480). Reads the
+   * response's persistent item buffer at call time so synthesizer
+   * prompt-builders can pick from a worker's natural emissions
+   * (messages, sources, tool calls). When omitted, `items()` returns
+   * `[]` — useful for tests that don't wire a response.
+   */
+  getItems?: () => readonly OutputItem[];
   /** Clock injection for tests. Default: `Date.now`. */
   now?: () => number;
 }
@@ -53,6 +63,10 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
   const stateKey = options.stateKey ?? "tasks";
   const now = options.now ?? Date.now;
   const onChange = options.onChange;
+  const wrap = createTaskHandleWrapper<TInput, TOutput>(
+    options.collectionId,
+    options.getItems,
+  );
 
   function readTasks(): Record<string, Task<TInput, TOutput>> {
     const raw = options.sequencer.state as Record<string, unknown>;
@@ -378,15 +392,19 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
     },
 
     get(id) {
-      return readTasks()[id];
+      const task = readTasks()[id];
+      return task === undefined ? undefined : wrap(task);
     },
 
     list(filter?: TaskFilter) {
-      return listTasks(Object.values(readTasks()), filter);
+      return listTasks(Object.values(readTasks()), filter).map(wrap);
     },
 
+    // Counts via `listTasks` directly to skip the per-task wrap allocation.
+    // `shouldExit` predicates in patterns call `count()` on every drain
+    // tick, so the closure-per-task cost matters under load.
     count(filter?: TaskFilter) {
-      return ref.list(filter).length;
+      return listTasks(Object.values(readTasks()), filter).length;
     },
   };
 

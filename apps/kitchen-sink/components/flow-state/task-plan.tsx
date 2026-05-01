@@ -730,7 +730,7 @@ const taskOutputHeading = ({ children }: { children?: React.ReactNode }) => (
 
 /**
  * Renders the task's output text as Markdown. Mirrors the styling used
- * for reactive-blackboard entries so per-pattern expansions feel
+ * for evented-actors entries so per-pattern expansions feel
  * consistent.
  */
 function TaskOutput({ text }: { text: string }) {
@@ -766,7 +766,7 @@ function TaskOutput({ text }: { text: string }) {
 
 /**
  * Renders a task's windowed items + final output as a vertical
- * timeline, matching reactive-blackboard's `<Step>` / `<StepItem>`
+ * timeline, matching evented-actors's `<Step>` / `<StepItem>`
  * vocabulary. Tool calls collapse to a compact one-liner
  * (`<TaskToolItem>`) — the chat-thread `<ToolGroup>` card style is
  * deliberately not used here because nesting card-shaped chrome
@@ -869,8 +869,8 @@ function TaskWindowTimeline({
 
 /**
  * Vertical-timeline row connector — bullet on a connector line, content
- * to the right. Lifted from reactive-blackboard's `<StepItem>` so
- * task-plan and reactive-blackboard share the same visual vocabulary.
+ * to the right. Lifted from evented-actors's `<StepItem>` so
+ * task-plan and evented-actors share the same visual vocabulary.
  */
 function StepItem({
   isLast,
@@ -891,7 +891,7 @@ function StepItem({
 }
 
 /**
- * Compact tool-call row mirroring reactive-blackboard's
+ * Compact tool-call row mirroring evented-actors's
  * `<ToolCallItem>`. Flat line for tools with no result detail;
  * expandable `<details>` for tools that returned a list of results.
  */

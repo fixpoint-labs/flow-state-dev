@@ -32,8 +32,8 @@ import { z } from "zod";
 import {
   updateArtifact,
   updateArtifactInputSchema,
-  eventQueueDemo,
-  eventQueueDemoInputSchema,
+  taskQueueDemo,
+  taskQueueDemoInputSchema,
   artifactListContext,
   voiceContext,
   createThinkingStyleRouter,
@@ -93,7 +93,7 @@ const analystPerspective = perspectiveSystem(analyst, { model: MODEL_ID });
 // ---------------------------------------------------------------------------
 
 const thinkingStyleInputSchema = z
-  .enum(["auto", "default", "plan-and-execute", "supervisor", "blackboard", "reactive-blackboard"])
+  .enum(["auto", "default", "plan-and-execute", "supervisor", "routed-specialists", "evented-actors"])
   .default("default");
 
 const inputSchema = z.object({
@@ -436,9 +436,9 @@ const chatAgentFlow = defineFlow({
       inputSchema: setPreferredProviderInputSchema,
       block: setPreferredProviderHandler,
     },
-    "event-queue": {
-      inputSchema: eventQueueDemoInputSchema,
-      block: eventQueueDemo,
+    "task-queue": {
+      inputSchema: taskQueueDemoInputSchema,
+      block: taskQueueDemo,
     },
   },
 

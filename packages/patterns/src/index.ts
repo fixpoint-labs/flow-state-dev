@@ -68,45 +68,19 @@ export type {
 export { BasePlanSchema, BasePlanTaskSchema } from "./shared/legacy-plan-types";
 export type { BasePlan, BasePlanTask, PlanMeta, PlanTaskUpdate } from "./shared/legacy-plan-types";
 // emitPlanMeta, emitTaskUpdate, emitPlanSnapshot removed — runtime helpers retired.
-export { eventQueue, createEventQueueStateSchema } from "./event-queue";
-export type { EventQueueConfig, EventQueueState } from "./event-queue";
 export {
-  drainPool,
-  createDrainPoolItemSchema,
-  drainPoolProjectionSchema,
-  drainPoolWorkerStateSchema,
-  drainPoolItemMetaSchema,
-  createSeedPool,
-  createLeaseNext,
-  createMarkDoneSuccess,
-  createMarkDoneError,
-  createCheckPool,
-  createEnqueueHelper,
-} from "./drain-pool";
-export type {
-  DrainPoolConfig,
-  DrainPoolHandle,
-  DrainPoolItem,
-  DrainPoolItemStatus,
-  DrainPoolItemMeta,
-  DrainPoolProjection,
-  DrainPoolWorkerState,
-  EnqueueResolver,
-  LeaseNextOutput,
-} from "./drain-pool";
-export {
-  blackboard,
-  createBlackboard,
-  blackboardControlSchema,
+  routedSpecialists,
+  createWorkspace,
+  routedSpecialistsControlSchema,
   controllerOutputSchema,
   createDispatchSpecialist,
-  createCheckBlackboard,
-} from "./blackboard";
+  createCheckLoop,
+} from "./routedSpecialists";
 export type {
-  BlackboardConfig,
-  BlackboardControlState,
+  RoutedSpecialistsConfig,
+  RoutedSpecialistsControlState,
   ControllerOutput,
-} from "./blackboard";
+} from "./routedSpecialists";
 export {
   responseAuditor,
   AnalyzerResultSchema,
@@ -126,24 +100,24 @@ export type {
   DisplayMode,
 } from "./response-auditor";
 export {
-  reactiveBlackboard,
+  eventActors,
   actor,
-  mesh,
+  createEventActorsWorkspace,
   matchTopic,
   compilePattern,
-  createReactiveBlackboard,
-  reactiveBlackboardStateSchema,
-  emitControlSchema,
+  createEventActorsWorkspaceResource,
+  eventActorsWorkspaceStateSchema,
   createAppendEntry,
-} from "./reactive-blackboard";
+  normalizeToEntries,
+} from "./eventActors";
 export type {
-  ReactiveBlackboardConfig,
+  EventActorsConfig,
+  EventActorsHandle,
+  EventActorsWorkspaceConfig,
   ActorConfig,
   Actor,
-  MeshConfig,
-  ReactiveBlackboardState,
-  EmitControlState,
-} from "./reactive-blackboard";
+  EventActorsWorkspaceState,
+} from "./eventActors";
 export {
   taskBoard,
   taskBoardStateSchema,

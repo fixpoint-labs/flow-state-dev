@@ -15,6 +15,7 @@ const nextConfig = {
   transpilePackages: [
     "@flow-state-dev/core",
     "@flow-state-dev/client",
+    "@flow-state-dev/devtool",
     "@flow-state-dev/react",
     "@flow-state-dev/server",
     "@flow-state-dev/store-postgres",

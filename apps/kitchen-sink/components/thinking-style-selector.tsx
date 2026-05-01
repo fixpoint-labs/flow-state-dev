@@ -22,7 +22,7 @@ import {
   ChevronDownIcon,
 } from "lucide-react";
 
-export type ThinkingStyle = "auto" | "default" | "plan-and-execute" | "supervisor" | "blackboard" | "reactive-blackboard";
+export type ThinkingStyle = "auto" | "default" | "plan-and-execute" | "supervisor" | "routed-specialists" | "evented-actors";
 
 interface StyleOption {
   value: ThinkingStyle;
@@ -67,17 +67,17 @@ const STYLE_OPTIONS: StyleOption[] = [
     color: "text-amber-500 dark:text-amber-400",
   },
   {
-    value: "blackboard",
-    label: "Blackboard",
-    shortLabel: "Board",
-    description: "Controller picks which expert to consult next",
+    value: "routed-specialists",
+    label: "Routed Specialists",
+    shortLabel: "Specialists",
+    description: "Controller picks which specialist to consult next",
     icon: ClipboardList,
     color: "text-emerald-500 dark:text-emerald-400",
   },
   {
-    value: "reactive-blackboard",
-    label: "Reactive Board",
-    shortLabel: "Reactive",
+    value: "evented-actors",
+    label: "Evented Actors",
+    shortLabel: "Evented",
     description: "Parallel actors react independently, no controller",
     icon: RadioIcon,
     color: "text-cyan-500 dark:text-cyan-400",

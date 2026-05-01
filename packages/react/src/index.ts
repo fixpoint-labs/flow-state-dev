@@ -110,11 +110,6 @@ export {
 } from "./voice";
 
 export {
-  EventQueueProgress,
-  type EventQueueProgressProps
-} from "./components/EventQueueProgress";
-
-export {
   AuditAnnotation,
   type AuditAnnotationProps,
   type AuditAnnotationData

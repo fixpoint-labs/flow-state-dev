@@ -42,6 +42,8 @@ type Frame = {
   id?: string;
   event?: string;
   data?: string;
+  /** True when the frame contained only SSE comment lines (`: ...`). */
+  comment?: boolean;
 };
 
 const DEFAULT_DEDUP_WINDOW_SIZE = 1000;
@@ -123,6 +125,10 @@ export function createSSEClientFromResponse(
     signal: controller.signal,
     onFrame: (frame) => {
       if (closed) return;
+      if (frame.comment === true) {
+        options.onHeartbeat?.();
+        return;
+      }
       if (frame.id !== undefined) lastEventId = frame.id;
       if (frame.data === undefined) return;
       try {
@@ -187,6 +193,11 @@ export function createSSEClient(options: CreateSSEClientOptions): RequestStreamH
           },
     onFrame: (frame) => {
       if (closed) {
+        return;
+      }
+
+      if (frame.comment === true) {
+        options.onHeartbeat?.();
         return;
       }
 
@@ -453,9 +464,12 @@ function parseFrames(value: string): Frame[] {
     const lines = block.split("\n");
     const frame: Frame = {};
     const dataLines: string[] = [];
+    let sawComment = false;
+    let sawNonComment = false;
 
     for (const line of lines) {
       if (line.startsWith(":")) {
+        sawComment = true;
         continue;
       }
 
@@ -468,10 +482,13 @@ function parseFrames(value: string): Frame[] {
 
       if (key === "id") {
         frame.id = valuePart;
+        sawNonComment = true;
       } else if (key === "event") {
         frame.event = valuePart;
+        sawNonComment = true;
       } else if (key === "data") {
         dataLines.push(valuePart);
+        sawNonComment = true;
       }
     }
 
@@ -481,6 +498,9 @@ function parseFrames(value: string): Frame[] {
 
     if (frame.id !== undefined || frame.event !== undefined || frame.data !== undefined) {
       frames.push(frame);
+    } else if (sawComment && !sawNonComment) {
+      // Comment-only frame (SSE heartbeat: `: ping\n\n`).
+      frames.push({ comment: true });
     }
   }
 

@@ -334,6 +334,13 @@ export type RequestSSECallbacks = {
   onDebug?: (event: RequestDebugEvent) => void;
   onEvent?: (event: RequestStreamEvent) => void;
   onError?: (error: Error) => void;
+  /**
+   * Fired when the parser sees an SSE comment frame (`: ping\n\n`). The
+   * server emits these on a fixed cadence so clients can run an inactivity
+   * watchdog without producing false positives during long pauses (e.g.
+   * an LLM thinking between tokens).
+   */
+  onHeartbeat?: () => void;
 };
 
 /**

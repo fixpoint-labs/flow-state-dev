@@ -156,6 +156,15 @@ export type RequestConfig = {
    */
   heartbeatIntervalMs?: number;
   /**
+   * SSE wire-level heartbeat interval in milliseconds. When set,
+   * the server emits `: ping\n\n` comment frames on every SSE response
+   * for this flow at the configured cadence. This keeps NAT/proxy idle
+   * timeouts from closing the connection and gives clients a robust
+   * inactivity signal independent of platform-specific abort behaviors.
+   * Default: 15000 (15 seconds). Set to 0 to disable.
+   */
+  sseHeartbeatMs?: number;
+  /**
    * When true, durable sequencer checkpoints (FIX-401) are deleted on
    * terminal completion (success / error / abort). When false (default),
    * checkpoints are retained — useful for post-mortem inspection, audit,

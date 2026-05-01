@@ -63,6 +63,15 @@ export type UseSessionHookOptions = {
    * Default: false.
    */
   autoResume?: boolean;
+  /**
+   * Threshold in milliseconds before the in-flight request is treated as
+   * stuck. The watchdog tracks the most recent SSE event or heartbeat and
+   * trips when the gap exceeds this value while a request is in flight (or
+   * was, before an `onError`). Should be ≥ 2× the server's wire heartbeat
+   * to avoid false positives during long pauses (e.g. an LLM thinking).
+   * Default: 30000 (30 seconds).
+   */
+  stuckThresholdMs?: number;
 };
 
 /**
@@ -81,6 +90,14 @@ export type SessionView = {
   readonly isStreaming: boolean;
   /** True when the main execution chain has completed but background work tasks are still running. */
   readonly isFinishing: boolean;
+  /**
+   * True when the SSE stream has gone silent for longer than
+   * `stuckThresholdMs` while a request is (or was) in flight. Surfaces a
+   * "connection lost" affordance when the stream drops without producing
+   * a terminal event. Cleared on the next terminal status, successful
+   * dismiss, or new `sendAction`.
+   */
+  readonly isStuck: boolean;
   /** True when the session can accept a new sendAction call (not blocked by an in-flight request). */
   readonly canSendAction: boolean;
   /**
@@ -113,6 +130,17 @@ export type SessionView = {
   ) => Promise<ExecuteActionResponse>;
   /** Abort the currently in-flight request. No-op if nothing is in flight. */
   abortRequest: () => Promise<void>;
+  /**
+   * Dismiss a stuck request without requiring a live SSE connection.
+   * Sends the abort signal to the server, closes any local stream
+   * handle, injects a synthetic abort item so the user sees the prior
+   * request was stopped, and refreshes the latest server snapshot.
+   *
+   * The target id is resolved in this order: explicit argument →
+   * captured-on-error id → active stream id → `latestRequest.id`. No-op
+   * (with a console warning) if no id can be resolved.
+   */
+  dismissRequest: (requestId?: string) => Promise<void>;
   /**
    * Re-dispatch the most recent request and attach to the new stream.
    * No-op when there is no latest request, or when its status is not one
@@ -325,6 +353,7 @@ export function useSession(
   const orgId = options?.orgId;
   const baseUrl = options?.baseUrl ?? context.baseUrl;
   const autoResume = options?.autoResume === true;
+  const stuckThresholdMs = options?.stuckThresholdMs ?? 30_000;
 
   // Decompose the items option into stable primitives so that an inline object
   // literal doesn't cause a new reference on every render.
@@ -352,6 +381,7 @@ export function useSession(
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
+  const [isStuck, setIsStuck] = useState(false);
   // Request-scoped status slot mirror — driven by status items arriving in the
   // SSE stream. Always tracked (even when transient items are filtered from
   // `items`) so consumers can render a single in-flight indicator.
@@ -361,6 +391,34 @@ export function useSession(
   const streamHandleRef = useRef<RequestStreamHandle | null>(null);
   /** The requestId of the currently in-flight request, used for abort. */
   const activeRequestIdRef = useRef<string | null>(null);
+  /**
+   * Captured at the moment the SSE stream emits `onError`, before
+   * `activeRequestIdRef` is cleared. Lets `dismissRequest` target the
+   * request that just dropped — `latestRequest.id` may not have caught
+   * up yet, and `activeRequestIdRef` is null by the time the user clicks
+   * the "Dismiss" button.
+   */
+  const latestRequestIdAfterDropRef = useRef<string | null>(null);
+  /**
+   * Wall-clock timestamp of the most recent SSE event or heartbeat. The
+   * watchdog reads this to decide whether the stream has gone silent
+   * past `stuckThresholdMs`.
+   */
+  const lastEventAtRef = useRef<number>(Date.now());
+  /**
+   * Mirror of `isStuck` state. Reads from a ref let `sendAction` and
+   * `dismissRequest` consult the latest stuck-flag without depending on
+   * the `isStuck` state directly, which would churn their useCallback
+   * identities every time the watchdog flips.
+   */
+  const isStuckRef = useRef(false);
+  /**
+   * Mirror of `latestRequest` state. Same motive as `isStuckRef` —
+   * `dismissRequest`'s id-resolution chain reads this without taking
+   * `latestRequest` as a dep, so the callback stays stable across
+   * request lifecycle transitions.
+   */
+  const latestRequestRef = useRef<SessionRequestSummary | null>(null);
   const itemsByIdRef = useRef<Map<string, OutputItem>>(new Map());
   const sortedItemIdsRef = useRef<string[]>([]);
   const deltaQueueRef = useRef<Map<string, ContentDeltaAccumulator>>(new Map());
@@ -382,6 +440,18 @@ export function useSession(
     }
     set.add(item.id);
   }, []);
+
+  // Mirror state into refs so callbacks that consult these values can
+  // stay stable across renders. Without these mirrors, `sendAction` and
+  // `dismissRequest` would have to take the underlying state as deps and
+  // get recreated on every state transition (defeating useCallback's
+  // identity stability).
+  useEffect(() => {
+    isStuckRef.current = isStuck;
+  }, [isStuck]);
+  useEffect(() => {
+    latestRequestRef.current = latestRequest;
+  }, [latestRequest]);
 
   const cancelScheduledFlush = useCallback(() => {
     if (flushHandleRef.current === null) {
@@ -619,6 +689,11 @@ export function useSession(
 
       setIsStreaming(true);
       setIsFinishing(false);
+      setIsStuck(false);
+      latestRequestIdAfterDropRef.current = null;
+      // Baseline the watchdog at stream open so it doesn't fire instantly
+      // on the first slow response.
+      lastEventAtRef.current = Date.now();
       // New request — reset any lingering status from a previous request so
       // the in-flight indicator starts at "Thinking…" until a block emits.
       setStatusMessage("");
@@ -629,6 +704,12 @@ export function useSession(
       };
 
       const sseCallbacks: RequestSSECallbacks = {
+        onEvent: () => {
+          lastEventAtRef.current = Date.now();
+        },
+        onHeartbeat: () => {
+          lastEventAtRef.current = Date.now();
+        },
         onItemAdded: (event) => {
           if (event.item.type === "status") {
             const statusItem = event.item as OutputItem & {
@@ -791,6 +872,8 @@ export function useSession(
             flushContentDeltas();
             setIsStreaming(false);
             setIsFinishing(false);
+            setIsStuck(false);
+            latestRequestIdAfterDropRef.current = null;
             // Status slot clears automatically on request termination per FIX-387.
             setStatusMessage("");
             activeRequestIdRef.current = null;
@@ -814,6 +897,15 @@ export function useSession(
           }
         },
         onError: () => {
+          // Capture the in-flight requestId BEFORE clearing the active ref so
+          // the watchdog and any subsequent dismissRequest() call still have a
+          // target to address. After capturing, clear the active ref — its
+          // role is "stream is open"; the post-error sentinel is
+          // latestRequestIdAfterDropRef.
+          if (activeRequestIdRef.current !== null) {
+            latestRequestIdAfterDropRef.current = activeRequestIdRef.current;
+            activeRequestIdRef.current = null;
+          }
           flushContentDeltas();
           setIsStreaming(false);
           setStatusMessage("");
@@ -923,6 +1015,9 @@ export function useSession(
 
   // Clean up when sessionId changes — close old stream and reset request state
   // so the new session isn't blocked by the previous session's in-flight request.
+  // Resets every request-scoped ref the watchdog reads, so a session switch
+  // can't smuggle a stale `activeRequestIdRef` or `lastEventAtRef` into the
+  // new session and trip a false-positive `isStuck`.
   useEffect(() => {
     return () => {
       if (streamHandleRef.current !== null) {
@@ -932,9 +1027,120 @@ export function useSession(
 
       setIsStreaming(false);
       setIsFinishing(false);
+      setIsStuck(false);
+      activeRequestIdRef.current = null;
+      latestRequestIdAfterDropRef.current = null;
+      lastEventAtRef.current = Date.now();
       cancelScheduledFlush();
     };
   }, [sessionId, cancelScheduledFlush]);
+
+  // Stuck-request watchdog. Polls a clock against `lastEventAtRef`; if the
+  // SSE stream has produced no event or heartbeat in `stuckThresholdMs`
+  // while a request is (or just was) in flight, flip `isStuck` so the host
+  // can render a dismiss affordance. This is a genuine side effect (timer
+  // polling for an external signal), not derived state — `useEffect` is
+  // the right primitive (BP-010).
+  useEffect(() => {
+    if (!Number.isFinite(stuckThresholdMs) || stuckThresholdMs <= 0) {
+      return;
+    }
+    const tickMs = Math.max(1000, Math.floor(stuckThresholdMs / 4));
+    const timer = setInterval(() => {
+      const inFlight =
+        activeRequestIdRef.current !== null ||
+        latestRequestIdAfterDropRef.current !== null;
+      if (!inFlight) return;
+      const gap = Date.now() - lastEventAtRef.current;
+      if (gap > stuckThresholdMs) {
+        setIsStuck(true);
+      }
+    }, tickMs);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [stuckThresholdMs]);
+
+  /**
+   * Insert a synthetic abort `status` item into the local items log so the
+   * user has a visible record of the request being stopped. Idempotent on
+   * the same `requestId` (the id is derived from it, so a second call
+   * overwrites the same map entry).
+   */
+  const injectSyntheticAbortItem = useCallback(
+    (requestId: string) => {
+      if (!itemConfig.enabled) return;
+      const abortItem: OutputItem = {
+        id: `item_status_aborted_${requestId}`,
+        type: "status",
+        status: "completed",
+        requestId,
+        itemIndex: itemsByIdRef.current.size,
+        provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
+        ts: Date.now(),
+        message: "Request was stopped.",
+        detail: { code: "system.request_aborted" }
+      } as OutputItem;
+
+      itemsByIdRef.current.set(abortItem.id, abortItem);
+      sortedItemIdsRef.current = insertSortedItemId(
+        sortedItemIdsRef.current,
+        abortItem,
+        itemsByIdRef.current
+      );
+      setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
+    },
+    [itemConfig.enabled]
+  );
+
+  const dismissRequest = useCallback(
+    async (requestId?: string) => {
+      const targetId =
+        requestId ??
+        latestRequestIdAfterDropRef.current ??
+        activeRequestIdRef.current ??
+        latestRequestRef.current?.id ??
+        null;
+
+      if (targetId === null) {
+        console.warn(
+          "[flow-state] dismissRequest: no in-flight or recent request to dismiss"
+        );
+        return;
+      }
+
+      try {
+        await client.abortRequest(targetId);
+      } catch {
+        // Network failure or a 409 against an already-terminal record both
+        // land here. The local cleanup below still runs so the UI clears.
+      }
+
+      streamHandleRef.current?.close();
+      streamHandleRef.current = null;
+      activeRequestIdRef.current = null;
+      latestRequestIdAfterDropRef.current = null;
+
+      flushContentDeltas();
+      setIsStreaming(false);
+      setIsFinishing(false);
+      setIsStuck(false);
+
+      injectSyntheticAbortItem(targetId);
+
+      // Pull authoritative server state — covers 409 (already terminal)
+      // and 404 (unknown id) gracefully without surfacing them as errors.
+      void refreshSnapshot();
+      void refreshLatestRequest();
+    },
+    [
+      client,
+      flushContentDeltas,
+      injectSyntheticAbortItem,
+      refreshSnapshot,
+      refreshLatestRequest
+    ]
+  );
 
   const sendAction = useCallback(
     async (
@@ -946,6 +1152,21 @@ export function useSession(
         throw new Error("useSession.sendAction requires a sessionId");
       }
 
+      // Auto-dismiss a stuck prior request before kicking off a new one.
+      // The synthetic abort item from `dismissRequest` keeps the prior
+      // attempt visible in the items log instead of silently dropping it.
+      // Reads via refs so this callback's identity stays stable across
+      // every isStuck/latestRequest state transition (a cold-path check
+      // shouldn't churn the cb that consumers pass as a prop).
+      if (
+        isStuckRef.current &&
+        (latestRequestIdAfterDropRef.current !== null ||
+          activeRequestIdRef.current !== null ||
+          latestRequestRef.current !== null)
+      ) {
+        await dismissRequest();
+      }
+
       if (streamHandleRef.current !== null) {
         streamHandleRef.current.close();
         streamHandleRef.current = null;
@@ -953,6 +1174,8 @@ export function useSession(
 
       setError(null);
       setIsFinishing(false);
+      setIsStuck(false);
+      latestRequestIdAfterDropRef.current = null;
 
       const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
       activeRequestIdRef.current = requestId;
@@ -1049,7 +1272,9 @@ export function useSession(
       client,
       itemConfig.enabled,
       attachToStream,
-      refreshSnapshot
+      refreshSnapshot,
+      dismissRequest,
+      orgId
     ]
   );
 
@@ -1096,33 +1321,15 @@ export function useSession(
     streamHandleRef.current?.close();
     streamHandleRef.current = null;
     activeRequestIdRef.current = null;
+    latestRequestIdAfterDropRef.current = null;
 
     flushContentDeltas();
     setIsStreaming(false);
     setIsFinishing(false);
+    setIsStuck(false);
 
-    if (itemConfig.enabled) {
-      const abortItem: OutputItem = {
-        id: `item_status_aborted_${requestId}`,
-        type: "status",
-        status: "completed",
-        requestId,
-        itemIndex: itemsByIdRef.current.size,
-        provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" },
-        ts: Date.now(),
-        message: "Request was stopped.",
-        detail: { code: "system.request_aborted" }
-      } as OutputItem;
-
-      itemsByIdRef.current.set(abortItem.id, abortItem);
-      sortedItemIdsRef.current = insertSortedItemId(
-        sortedItemIdsRef.current,
-        abortItem,
-        itemsByIdRef.current
-      );
-      setItems(buildItemsFromMap(sortedItemIdsRef.current, itemsByIdRef.current));
-    }
-  }, [client, flushContentDeltas, itemConfig.enabled]);
+    injectSyntheticAbortItem(requestId);
+  }, [client, flushContentDeltas, injectSyntheticAbortItem]);
 
   const refresh = useCallback(async () => {
     await refreshSnapshot();
@@ -1171,6 +1378,7 @@ export function useSession(
     isLoading,
     isStreaming,
     isFinishing,
+    isStuck,
     canSendAction: !isStreaming || isFinishing,
     statusMessage,
     error,
@@ -1183,6 +1391,7 @@ export function useSession(
     getItemsByAgentType,
     sendAction,
     abortRequest,
+    dismissRequest,
     resumeLatestRequest,
     refresh
   };

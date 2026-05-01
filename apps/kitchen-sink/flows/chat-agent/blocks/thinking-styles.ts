@@ -6,19 +6,20 @@
  *   2. LLM classifier — intentClassifier fallback when no keyword matched
  *
  * Defines five concrete pipelines (default, plan-and-execute, supervisor,
- * blackboard, reactive-blackboard) and the router that dispatches between them.
+ * routed-specialists, evented-actors) and the router that dispatches
+ * between them.
  */
 import { generator, handler, router, sequencer, utility } from "@flow-state-dev/core";
 import type { GeneratorHistoryConfig, GeneratorSlot, UsesSlot } from "@flow-state-dev/core";
 import type { BlockDefinition } from "@flow-state-dev/core/types";
 import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { supervisor } from "@flow-state-dev/patterns/supervisor";
-import { blackboard, createBlackboard } from "@flow-state-dev/patterns/blackboard";
+import { routedSpecialists, createWorkspace } from "@flow-state-dev/patterns/routedSpecialists";
 import {
-  reactiveBlackboard,
+  createEventActorsWorkspace,
   actor,
-  mesh,
-} from "@flow-state-dev/patterns/reactive-blackboard";
+  eventActors,
+} from "@flow-state-dev/patterns/eventActors";
 import { z } from "zod";
 
 // -------------------------------------------------------------------------
@@ -28,8 +29,8 @@ import { z } from "zod";
 export const thinkingStyleSchema = z.enum([
   "plan-and-execute",
   "supervisor",
-  "blackboard",
-  "reactive-blackboard",
+  "routed-specialists",
+  "evented-actors",
   "default",
 ]);
 
@@ -63,8 +64,9 @@ export const SUPERVISOR_KEYWORDS = [
   "team of",
 ];
 
-export const BLACKBOARD_KEYWORDS = [
-  "blackboard",
+export const ROUTED_SPECIALISTS_KEYWORDS = [
+  "routed specialists",
+  "routed-specialists",
   "shared workspace",
   "multiple perspectives",
   "expert perspectives",
@@ -74,8 +76,8 @@ export const BLACKBOARD_KEYWORDS = [
   "contribute independently",
 ];
 
-export const REACTIVE_BLACKBOARD_KEYWORDS = [
-  "reactive blackboard",
+export const EVENTED_ACTORS_KEYWORDS = [
+  "evented actors",
   "reactive analysis",
   "parallel analysis",
   "multiple angles",
@@ -118,10 +120,10 @@ export const keywordHandler = handler({
     let matched: ThinkingStyle | null = null;
     if (SUPERVISOR_KEYWORDS.some((kw) => message.includes(kw))) {
       matched = "supervisor";
-    } else if (REACTIVE_BLACKBOARD_KEYWORDS.some((kw) => message.includes(kw))) {
-      matched = "reactive-blackboard";
-    } else if (BLACKBOARD_KEYWORDS.some((kw) => message.includes(kw))) {
-      matched = "blackboard";
+    } else if (EVENTED_ACTORS_KEYWORDS.some((kw) => message.includes(kw))) {
+      matched = "evented-actors";
+    } else if (ROUTED_SPECIALISTS_KEYWORDS.some((kw) => message.includes(kw))) {
+      matched = "routed-specialists";
     } else if (PLAN_KEYWORDS.some((kw) => message.includes(kw))) {
       matched = "plan-and-execute";
     }
@@ -161,15 +163,15 @@ export const classifierBlock = utility.intentClassifier({
       research + synthesis pipelines, code review across multiple dimensions,
       cross-domain analysis tasks.
     `,
-    blackboard: `
+    "routed-specialists": `
       The message asks for analysis or research where multiple independent expert
       perspectives should each contribute to a shared workspace incrementally.
-      A controller decides which expert to consult next based on accumulated
+      A controller decides which specialist to consult next based on accumulated
       knowledge. Examples: document analysis from legal/technical/business angles,
       complex problem-solving requiring research + analysis + critique,
       multi-disciplinary review where each discipline contributes independently.
     `,
-    "reactive-blackboard": `
+    "evented-actors": `
       The message asks for analysis where multiple independent perspectives should
       examine the problem in parallel — reacting simultaneously rather than being
       orchestrated by a controller. Each perspective fires independently and
@@ -346,10 +348,10 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     uses,
   });
 
-  // Blackboard — multiple independent specialists contribute to a shared
-  // resource workspace. A controller reads the workspace state and decides
-  // which specialist to invoke next until the problem converges.
-  const bbBoard = createBlackboard(z.object({
+  // Routed Specialists — multiple independent specialists contribute to a
+  // shared workspace resource. A controller reads the workspace state and
+  // decides which specialist to invoke next until the problem converges.
+  const workspace = createWorkspace(z.object({
     goal: z.string().default(""),
     research: z.string().optional(),
     analysis: z.string().optional(),
@@ -365,7 +367,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       name: `${specConfig.name}-gen`,
       model: modelId,
       outputSchema: z.string(),
-      resources: { blackboard: bbBoard },
+      resources: { workspace },
       ...(uses ? { uses: uses as any } : {}),
       context,
       history: config.history,
@@ -373,8 +375,8 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       agentType: "sub",
       prompt: specConfig.prompt,
       user: (_input: any, ctx: any) => {
-        const state = ctx.resources.blackboard.state;
-        return `Current blackboard state:\n${JSON.stringify(state, null, 2)}`;
+        const state = ctx.resources.workspace.state;
+        return `Current workspace state:\n${JSON.stringify(state, null, 2)}`;
       },
     });
 
@@ -382,9 +384,9 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       name: `${specConfig.name}-write`,
       inputSchema: z.string(),
       outputSchema: z.any(),
-      resources: { blackboard: bbBoard },
+      resources: { workspace },
       execute: async (output: string, ctx) => {
-        await ctx.resources.blackboard.patchState({
+        await ctx.resources.workspace.patchState({
           [specConfig.field]: output,
         });
         return { specialist: specConfig.name, contributed: true };
@@ -400,9 +402,9 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     name: "bb-researcher",
     field: "research",
     prompt: [
-      "You are a research specialist within a blackboard collaboration.",
+      "You are a research specialist within a routed-specialists collaboration.",
       "Your job is to gather information, find relevant data, evidence,",
-      "and source material related to the goal on the blackboard.",
+      "and source material related to the goal in the shared workspace.",
       "Review what other specialists have contributed and focus on",
       "filling knowledge gaps. Be thorough and cite sources when possible.",
     ].join("\n"),
@@ -412,8 +414,8 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     name: "bb-analyst",
     field: "analysis",
     prompt: [
-      "You are an analytical specialist within a blackboard collaboration.",
-      "Your job is to synthesize the research on the blackboard into structured",
+      "You are an analytical specialist within a routed-specialists collaboration.",
+      "Your job is to synthesize the research in the workspace into structured",
       "analysis: identify patterns, draw conclusions, compare perspectives,",
       "and produce actionable insights. Build on what the researcher found.",
     ].join("\n"),
@@ -423,16 +425,16 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     name: "bb-critic",
     field: "critique",
     prompt: [
-      "You are a critical review specialist within a blackboard collaboration.",
+      "You are a critical review specialist within a routed-specialists collaboration.",
       "Your job is to identify gaps, weaknesses, counterarguments, and blind spots",
-      "in the research and analysis on the blackboard. Be constructive but honest.",
+      "in the research and analysis in the workspace. Be constructive but honest.",
       "Suggest what needs more investigation or where reasoning is weak.",
     ].join("\n"),
   });
 
-  const blackboardPipeline = blackboard({
-    name: "blackboard-thinking",
-    blackboard: bbBoard,
+  const routedSpecialistsPipeline = routedSpecialists({
+    name: "routedSpecialists-thinking",
+    workspace,
     specialists: {
       "bb-researcher": bbResearcher,
       "bb-analyst": bbAnalyst,
@@ -451,7 +453,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   });
 
   // -----------------------------------------------------------------------
-  // Reactive Blackboard — stigmergic multi-agent coordination.
+  // Evented Actors — stigmergic multi-agent coordination.
   //
   // Actors produce granular entries (observations, findings, challenges)
   // that trigger other actors via topic-based watch patterns. The reactive
@@ -466,7 +468,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     body: z.any(),
   });
 
-  const rb = reactiveBlackboard({ name: "reactive", entries: rbEntrySchema });
+  const rb = createEventActorsWorkspace({ name: "reactive", entries: rbEntrySchema });
 
   // Shared output schema for actors that produce re-emittable entries.
   // Wrapped in an object because the AI SDK requires top-level "type: object".
@@ -481,7 +483,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
 
   // Helper: build the user prompt from the triggering entry + blackboard context.
   function rbUserPrompt(input: any, ctx: any): string {
-    const state = ctx.resources.reactiveBlackboard.state as {
+    const state = ctx.resources.eventedActors.state as {
       entries: Array<{ type: string; topic: string; body: string }>;
     };
     const entries = state?.entries ?? [];
@@ -503,17 +505,17 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   const rbExplorer = actor({
     name: "rb-explorer",
     watch: ["request:**"],
-    body: generator({
+    block: generator({
       name: "rb-explorer-gen",
       model: modelId,
       outputSchema: entryOutputSchema,
-      resources: { reactiveBlackboard: rb.blackboard },
+      resources: { eventedActors: rb.workspace },
       ...(uses ? { uses: uses as any } : {}),
       context,
       history: config.history,
       search: true,
       prompt: [
-        "You are an Explorer in a reactive blackboard analysis.",
+        "You are an Explorer in an evented actors analysis.",
         "Investigate the question broadly: identify key concepts, gather",
         "evidence, surface context others might miss.",
         "",
@@ -537,17 +539,17 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   const rbAnalyst = actor({
     name: "rb-analyst",
     watch: ["observation:**"],
-    body: generator({
+    block: generator({
       name: "rb-analyst-gen",
       model: modelId,
       outputSchema: entryOutputSchema,
-      resources: { reactiveBlackboard: rb.blackboard },
+      resources: { eventedActors: rb.workspace },
       ...(uses ? { uses: uses as any } : {}),
       context,
       history: config.history,
       search: true,
       prompt: [
-        "You are an Analyst in a reactive blackboard analysis.",
+        "You are an Analyst in an evented actors analysis.",
         "You receive a specific observation from the Explorer.",
         "Analyze it in the context of the full blackboard state:",
         "identify patterns, draw inferences, evaluate trade-offs.",
@@ -570,17 +572,17 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   const rbChallenger = actor({
     name: "rb-challenger",
     watch: ["finding:**"],
-    body: generator({
+    block: generator({
       name: "rb-challenger-gen",
       model: modelId,
       outputSchema: entryOutputSchema,
-      resources: { reactiveBlackboard: rb.blackboard },
+      resources: { eventedActors: rb.workspace },
       ...(uses ? { uses: uses as any } : {}),
       context,
       history: config.history,
       search: true,
       prompt: [
-        "You are a Challenger in a reactive blackboard analysis.",
+        "You are a Challenger in an evented actors analysis.",
         "You receive a specific finding from the Analyst.",
         "Stress-test it: find gaps, counter-arguments, edge cases,",
         "hidden assumptions. Be constructive but rigorous.",
@@ -597,9 +599,9 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     }),
   });
 
-  const rbMesh = mesh({
+  const rbMesh = eventActors({
     name: "reactive-thinking",
-    blackboard: rb,
+    workspace: rb,
     actors: [rbExplorer, rbAnalyst, rbChallenger],
     concurrency: 3,
     reEmit: true,
@@ -622,7 +624,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     name: "rb-synthesizer",
     model: modelId,
     outputSchema: z.string(),
-    resources: { reactiveBlackboard: rb.blackboard },
+    resources: { eventedActors: rb.workspace },
     ...(uses ? { uses: uses as any } : {}),
     context,
     history: config.history,
@@ -631,7 +633,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     agentType: "primary",
     activeStatusMessage: "Synthesizing all of the findings...",
     user: (_input: any, ctx: any) => {
-      const state = ctx.resources.reactiveBlackboard.state as {
+      const state = ctx.resources.eventedActors.state as {
         entries: Array<{ type: string; topic: string; body: string }>;
       };
       const entries = state?.entries ?? [];
@@ -658,8 +660,8 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     },
   });
 
-  const reactiveBlackboardPipeline = sequencer({
-    name: "reactive-blackboard-thinking",
+  const eventedActorsPipeline = sequencer({
+    name: "evented-actors-thinking",
     inputSchema: z.any(),
   })
     .map((input: any) => ({
@@ -675,7 +677,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   // interception (e.g. testRouter) works transparently.
   const thinkingStyleRouter = router({
     name: "thinking-style-router",
-    routes: [defaultPipeline, paePipeline, supervisorPipeline, blackboardPipeline, reactiveBlackboardPipeline],
+    routes: [defaultPipeline, paePipeline, supervisorPipeline, routedSpecialistsPipeline, eventedActorsPipeline],
     execute: (input, ctx) => {
       const style = ctx.session.state.thinkingStyle as string | undefined;
       switch (style) {
@@ -683,15 +685,15 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
           return paePipeline.connectInput(() => ({ goal: input.message }));
         case "supervisor":
           return supervisorPipeline.connectInput(() => ({ goal: input.message }));
-        case "blackboard":
-          return blackboardPipeline.connectInput(() => input);
-        case "reactive-blackboard":
-          return reactiveBlackboardPipeline.connectInput(() => input);
+        case "routed-specialists":
+          return routedSpecialistsPipeline.connectInput(() => input);
+        case "evented-actors":
+          return eventedActorsPipeline.connectInput(() => input);
         default:
           return defaultPipeline;
       }
     },
   });
 
-  return { thinkingStyleRouter, defaultPipeline, paePipeline, supervisorPipeline, blackboardPipeline, reactiveBlackboardPipeline };
+  return { thinkingStyleRouter, defaultPipeline, paePipeline, supervisorPipeline, routedSpecialistsPipeline, eventedActorsPipeline };
 }

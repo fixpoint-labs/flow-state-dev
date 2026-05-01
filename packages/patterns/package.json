@@ -25,25 +25,17 @@
       "types": "./dist/supervisor/index.d.ts",
       "default": "./dist/supervisor/index.js"
     },
-    "./event-queue": {
-      "types": "./dist/event-queue/index.d.ts",
-      "default": "./dist/event-queue/index.js"
-    },
-    "./drain-pool": {
-      "types": "./dist/drain-pool/index.d.ts",
-      "default": "./dist/drain-pool/index.js"
-    },
-    "./blackboard": {
-      "types": "./dist/blackboard/index.d.ts",
-      "default": "./dist/blackboard/index.js"
+    "./routedSpecialists": {
+      "types": "./dist/routedSpecialists/index.d.ts",
+      "default": "./dist/routedSpecialists/index.js"
     },
     "./response-auditor": {
       "types": "./dist/response-auditor/index.d.ts",
       "default": "./dist/response-auditor/index.js"
     },
-    "./reactive-blackboard": {
-      "types": "./dist/reactive-blackboard/index.d.ts",
-      "default": "./dist/reactive-blackboard/index.js"
+    "./eventActors": {
+      "types": "./dist/eventActors/index.d.ts",
+      "default": "./dist/eventActors/index.js"
     },
     "./task-board": {
       "types": "./dist/task-board/index.d.ts",

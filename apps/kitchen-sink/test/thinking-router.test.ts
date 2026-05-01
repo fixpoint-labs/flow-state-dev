@@ -74,14 +74,14 @@ describe("thinking style detector — Tier 1 (keyword handler)", () => {
     expect(result.state.session).toMatchObject({ thinkingStyle: "plan-and-execute" });
   });
 
-  it("selects blackboard for multi-perspective keywords", async () => {
+  it("selects routed-specialists for multi-perspective keywords", async () => {
     const result = await testSequencer(keywordTestSeq, {
       input: { message: "Analyze this from multiple perspectives using expert perspectives" },
       flow: testFlow,
     });
 
     expect(result.error).toBeNull();
-    expect(result.state.session).toMatchObject({ thinkingStyle: "blackboard" });
+    expect(result.state.session).toMatchObject({ thinkingStyle: "routed-specialists" });
   });
 
   it("does not match reasoning keywords (no CoT style)", async () => {

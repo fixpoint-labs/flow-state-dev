@@ -1,11 +1,11 @@
-@import "tailwindcss";
-
+/*
+ * Standalone-shell global styles. The panel's own stylesheet is imported
+ * separately in `main.tsx` and provides Tailwind utilities + panel-scoped
+ * font/color-scheme. This file applies the dark body background so scroll
+ * bounce / overflow areas around the panel match.
+ */
 :root {
   color-scheme: dark;
-}
-
-* {
-  box-sizing: border-box;
 }
 
 body {

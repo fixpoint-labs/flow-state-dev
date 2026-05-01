@@ -867,11 +867,10 @@ function itemToLLMMessages(item: OutputItem, allItems: readonly OutputItem[]): L
     // the matching tool-call part. Emit both in order.
     // Resolve the BlockValue union to its typed payload before stringifying
     // (FIX-413). Refs would otherwise serialize to `{kind:"ref",sourceItemId}`.
+    // FIX-480: refs may target `message` items, so accept any item type.
     const resolvedOutput = resolveBlockValue(bo.output, (id) => {
       for (let i = allItems.length - 1; i >= 0; i -= 1) {
-        if (allItems[i].id === id && allItems[i].type === "block_output") {
-          return allItems[i] as BlockOutputItem;
-        }
+        if (allItems[i].id === id) return allItems[i];
       }
       return undefined;
     });
