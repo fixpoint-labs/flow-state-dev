@@ -81,3 +81,7 @@ Inspect current state at every scope level. View session-level state, user-level
 ## Replay
 
 Re-stream a previous request to reproduce behavior. Select a completed request and choose replay full or replay from cursor. The DevTool reconnects to the SSE stream and replays the events.
+
+## Embedding the panel
+
+The same UI ships as a React component you can mount inside any framework app. Useful for inspecting flows on Vercel previews and other deployed environments without leaving the app's origin. See [Embedding DevTool](./embedding.md).

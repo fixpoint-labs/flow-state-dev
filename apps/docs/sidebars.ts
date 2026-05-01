@@ -128,6 +128,7 @@ const sidebars: SidebarsConfig = {
         "cli/overview",
         "devtool/overview",
         "devtool/setup",
+        "devtool/embedding",
       ],
     },
     {
