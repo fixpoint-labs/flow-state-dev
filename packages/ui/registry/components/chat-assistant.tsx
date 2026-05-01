@@ -5,7 +5,7 @@ import { Reasoning } from "./reasoning";
 import { Tool } from "./tool";
 import { Status } from "./status";
 import { ErrorDisplay } from "./error";
-import { Blackboard } from "./blackboard";
+import { RoutedSpecialists } from "./routed-specialists";
 import { ReactiveBlackboard } from "./reactive-blackboard";
 import { AuditAnnotation } from "./audit-annotation";
 import { TaskPlan } from "./task-plan";
@@ -33,7 +33,7 @@ function TaskBoardMeta({ item }: { item: ComponentItem }) {
  * Sources are excluded (source: false) — render them grouped via
  * <SourcesGroup items={session.items} /> alongside <ItemsRenderer>.
  *
- * Component renderers (blackboard, audit-annotation, task-board-meta) receive
+ * Component renderers (routedSpecialists, audit-annotation, task-board-meta) receive
  * a single ComponentItem with the full snapshot data.
  */
 export const chatAssistantRenderers: RendererRegistry = {
@@ -49,7 +49,7 @@ export const chatAssistantRenderers: RendererRegistry = {
     "reactive-blackboard": ReactiveBlackboard,
   },
   component: {
-    blackboard: Blackboard,
+    routedSpecialists: RoutedSpecialists,
     "audit-annotation": AuditAnnotation,
     "task-board-meta": TaskBoardMeta,
     "task-change": false,

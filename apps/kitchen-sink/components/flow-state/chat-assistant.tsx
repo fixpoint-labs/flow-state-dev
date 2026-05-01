@@ -5,7 +5,7 @@ import { Reasoning } from "./reasoning";
 import { Tool } from "./tool";
 import { Status } from "./status";
 import { ErrorDisplay } from "./error";
-import { Blackboard } from "./blackboard";
+import { RoutedSpecialists } from "./routed-specialists";
 import { ReactiveBlackboard } from "./reactive-blackboard";
 import { AuditAnnotation } from "./audit-annotation";
 import { TaskPlan } from "./task-plan";
@@ -47,5 +47,5 @@ export const chatAssistantRenderers: RendererRegistry = {
     "task-board-meta": TaskBoardMeta,
     "task-change": false,
   },
-  container: { blackboard: Blackboard, "reactive-blackboard": ReactiveBlackboard },
+  container: { routedSpecialists: RoutedSpecialists, "reactive-blackboard": ReactiveBlackboard },
 };

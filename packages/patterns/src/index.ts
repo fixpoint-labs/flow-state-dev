@@ -69,18 +69,18 @@ export { BasePlanSchema, BasePlanTaskSchema } from "./shared/legacy-plan-types";
 export type { BasePlan, BasePlanTask, PlanMeta, PlanTaskUpdate } from "./shared/legacy-plan-types";
 // emitPlanMeta, emitTaskUpdate, emitPlanSnapshot removed — runtime helpers retired.
 export {
-  blackboard,
-  createBlackboard,
-  blackboardControlSchema,
+  routedSpecialists,
+  createWorkspace,
+  routedSpecialistsControlSchema,
   controllerOutputSchema,
   createDispatchSpecialist,
-  createCheckBlackboard,
-} from "./blackboard";
+  createCheckLoop,
+} from "./routedSpecialists";
 export type {
-  BlackboardConfig,
-  BlackboardControlState,
+  RoutedSpecialistsConfig,
+  RoutedSpecialistsControlState,
   ControllerOutput,
-} from "./blackboard";
+} from "./routedSpecialists";
 export {
   responseAuditor,
   AnalyzerResultSchema,

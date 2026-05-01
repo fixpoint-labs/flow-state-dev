@@ -58,13 +58,24 @@ const block = parallelTasks({
 
 **Key exports:** `parallelTasks`, `parallelTasksInputSchema`
 
-### Blackboard
+### Routed Specialists
 
-Controller-driven multi-agent coordination. Specialist blocks read from and write to a shared workspace resource. An LLM controller reads the blackboard state and decides which specialist to invoke next, in a `.loopBack()` loop.
+Controller-driven multi-agent coordination. Specialist blocks read from and write to a shared writable workspace resource. An LLM controller reads the workspace state and decides which specialist to invoke next, in a `.loopBack()` loop. Per-iteration records live in a `TaskCollection` so the decision sequence is first-class data.
 
 ```typescript
-import { blackboard, createBlackboard } from "@flow-state-dev/patterns/blackboard";
+import { routedSpecialists, createWorkspace } from "@flow-state-dev/patterns/routedSpecialists";
+
+const workspace = createWorkspace(workspaceSchema);
+
+const pattern = routedSpecialists({
+  name: "research",
+  workspace,
+  specialists: { researcher, analyst, critic },
+  maxIterations: 8,
+});
 ```
+
+**Key exports:** `routedSpecialists`, `createWorkspace`, `controllerOutputSchema`
 
 ### Reactive Blackboard
 

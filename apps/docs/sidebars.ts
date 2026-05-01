@@ -77,6 +77,7 @@ const sidebars: SidebarsConfig = {
             "patterns/supervisor",
             "patterns/plan-and-execute",
             "patterns/response-auditor",
+            "patterns/routed-specialists",
             "patterns/reactive-blackboard",
             "patterns/coordinator",
           ],

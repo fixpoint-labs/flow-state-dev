@@ -49,7 +49,7 @@ const testFlow = defineFlow({
       inputSchema: z.object({
         message: z.string(),
         mode: z.enum(["ask", "build", "interview", "debate"]).default("ask"),
-        thinkingStyle: z.enum(["auto", "default", "plan-and-execute", "supervisor", "blackboard"]).default("auto"),
+        thinkingStyle: z.enum(["auto", "default", "plan-and-execute", "supervisor", "routed-specialists"]).default("auto"),
       }),
       block: thinkingStyleRouter,
     },
@@ -57,7 +57,7 @@ const testFlow = defineFlow({
   session: {
     stateSchema: z.object({
       mode: z.enum(["ask", "build", "interview", "debate"]).default("ask"),
-      thinkingStyle: z.enum(["plan-and-execute", "supervisor", "blackboard", "default"]).optional(),
+      thinkingStyle: z.enum(["plan-and-execute", "supervisor", "routed-specialists", "default"]).optional(),
       requestCount: z.number().default(0),
       lastAction: z.string().optional(),
       features: z.object({ biasCheck: z.boolean().default(false) }).default({}),
@@ -132,17 +132,17 @@ describe("chat-agent flow", () => {
     expect(routed.selectedRoute).toBe("supervisor-thinking");
   });
 
-  it("routes to blackboard-pipeline for blackboard style", async () => {
+  it("routes to routed-specialists-pipeline for routed-specialists style", async () => {
     const routed = await testRouter(thinkingStyleRouter, {
       input: { message: "Analyze this from multiple perspectives", mode: "ask", thinkingStyle: "auto" },
       flow: testFlow,
       session: {
-        state: { thinkingStyle: "blackboard", features: { biasCheck: false } },
+        state: { thinkingStyle: "routed-specialists", features: { biasCheck: false } },
         resources: { workingMemory: emptyWorkingMemory, memorySystem: emptyMemorySystem },
       },
       unmockedGeneratorPolicy: "warn",
     });
-    expect(routed.selectedRoute).toBe("blackboard-thinking");
+    expect(routed.selectedRoute).toBe("routedSpecialists-thinking");
   });
 
   it("defaults to default-pipeline when thinkingStyle is not set", async () => {

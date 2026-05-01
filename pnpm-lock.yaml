@@ -172,6 +172,9 @@ importers:
       '@flow-state-dev/store-postgres':
         specifier: workspace:*
         version: link:../../packages/store-postgres
+      '@flow-state-dev/tasks':
+        specifier: workspace:*
+        version: link:../../packages/tasks
       '@flow-state-dev/tools':
         specifier: workspace:*
         version: link:../../packages/tools

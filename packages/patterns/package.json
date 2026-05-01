@@ -25,9 +25,9 @@
       "types": "./dist/supervisor/index.d.ts",
       "default": "./dist/supervisor/index.js"
     },
-    "./blackboard": {
-      "types": "./dist/blackboard/index.d.ts",
-      "default": "./dist/blackboard/index.js"
+    "./routedSpecialists": {
+      "types": "./dist/routedSpecialists/index.d.ts",
+      "default": "./dist/routedSpecialists/index.js"
     },
     "./response-auditor": {
       "types": "./dist/response-auditor/index.d.ts",
