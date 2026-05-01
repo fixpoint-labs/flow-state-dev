@@ -6,6 +6,7 @@ export type {
 } from "./context/types";
 export {
   ConcurrentModificationError,
+  ScopeMutationTimeoutError,
   createFilesystemContentStore,
   createFilesystemProjectStore,
   createFilesystemRequestStore,

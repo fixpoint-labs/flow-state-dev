@@ -4,6 +4,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-01
 
+### Per-scope FIFO mutation queue replaces optimistic CAS for in-memory scopes (FIX-492)
+
+- In-memory state scopes (target state, sequencer state — anything without a `persist` callback) now serialize mutations through a per-`StateContainer` FIFO queue. `ConcurrentModificationError` is no longer thrown for these scopes; supervisor patterns with `concurrency > 1` complete reliably under sustained contention instead of intermittently failing once the CAS retry budget exhausts.
+- External-store scopes (filesystem, sqlite, postgres adapters) keep the optimistic CAS path. Their `persist` callbacks signal version mismatch when a remote authority advances state; CAS retries with exponential backoff still apply, and `ConcurrentModificationError` continues to surface when retries exhaust.
+- New `flow.request.mutationTimeoutMs` (default 30s) bounds the worst-case wait for any in-memory mutation. When a mutator's queue wait + execution exceeds the budget, `ScopeMutationTimeoutError` is thrown instead of hanging the request indefinitely. Set to `Infinity` to disable.
+- Supervisor's reviewer chain audit-state moved off the task collection's request scope onto the supervisor sequencer's outer state (`reviewMetadata[taskId]`). The task collection now sees only the irreducible `claim` / `complete` / `fail` writes from `taskBoard`, eliminating the contention surface that drove the original failure.
+- No public API change to `atomicState`, `patchState`, `pushState`, `incState`, `setStateRecord`, `deleteStateRecord`. Behavior under `concurrency: 1` is unchanged.
+
 ### Make `fsdev run` the primary CLI dev loop for agents (FIX-490)
 
 - `fsdev run` now emits `[flow-state] *` runtime events to stderr by default at `info` level — action lifecycle, block lifecycle, retries, errors. Previously these were silently dropped because the command never passed a logger to `runAction`. New `--quiet` suppresses them; new `--log-level <debug|info|warn|error>` sets the threshold. The CLI always passes an explicit logger so the server's `console.*`-backed default never writes runtime traces to stdout and corrupt the NDJSON stream.

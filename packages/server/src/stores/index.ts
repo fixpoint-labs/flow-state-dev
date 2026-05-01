@@ -57,6 +57,7 @@ import {
   createInMemoryUserStore,
   InMemoryUserStore
 } from "./memory/user-store";
+import { ScopeMutationTimeoutError, withScopeLock } from "./scope-lock";
 import {
   createScopeStateOps,
   createStateContainer,
@@ -97,6 +98,7 @@ export type { IsolationFlow } from "./scope-keys";
 
 export {
   ConcurrentModificationError,
+  ScopeMutationTimeoutError,
   createScopeStateOps,
   createStateContainer,
   createFilesystemActiveRequestRegistry,
