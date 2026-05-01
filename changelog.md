@@ -4,6 +4,13 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-04-30
 
+### Streaming-text throughput: `content.delta` reclassified as non-replayable (FIX-479)
+
+- `content.delta` events (covers both message and reasoning streaming — they share the same wire type) are no longer persisted to the events log and no longer await the `flushEvents` durability barrier. Per-token disk round-trips were serializing concurrent worker streams behind a single per-request events queue; under a supervisor with `concurrency: 3` and three streaming workers the queue saturated and the request appeared to lock up.
+- Running text is checkpointed via the items snapshot instead. The emitter mutates the in-flight `MessageItem.content[i].text` (and `ReasoningItem.summary[i].text`) in-place on each delta and fires a new `ResponseEmitterItemHooks.onItemUpdate` hook. `runAction` wires this hook to a coalesced `persistItems` write — the `FilesystemRequestStore`'s `itemWriteQueued` sentinel keeps disk I/O bounded by the natural write rate regardless of token rate.
+- Resume contract change. Mid-stream reconnects via `Last-Event-ID` no longer replay the exact token sequence — the running text snaps to the latest persisted snapshot and continues from the next live delta, with the eventual `item.done` payload superseding. Page-load bootstrap now shows the latest accumulated text for in-flight messages instead of empty content, which is strictly better than before. Completed messages still replay exactly.
+- Live SSE consumers, devtool observers, and the in-memory event buffer continue to receive every `content.delta` event unchanged. Filesystem and Postgres stores benefit transparently — the change is at the emitter, not the store.
+
 ### Sub-agent items as first-class data for parent agents (FIX-480)
 
 - `TaskCollectionRef.list` / `get` now return a `TaskHandle` — the existing `Task` data fields plus an `items()` accessor that returns the items emitted during the worker's claim window. Pattern aggregators (synthesizer prompt builders, reviewer input builders, replanners) can now pick from a worker's natural emissions — `message`, `source`, `tool_call`, `reasoning` — instead of relying solely on `task.output`. Sync, throw-free, returns `[]` until the task is claimed.
