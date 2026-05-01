@@ -26,6 +26,11 @@ export type {
   RetryRequestOptions,
   RetryRequestResult
 } from "./request-recovery";
+export { createStaleRequestSweeper } from "./stale-request-sweeper";
+export type {
+  CreateStaleRequestSweeperOptions,
+  StaleRequestSweeper
+} from "./stale-request-sweeper";
 export {
   DEFAULT_RUNTIME_LOGGER,
   createExecutionLogContext,

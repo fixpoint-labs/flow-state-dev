@@ -95,6 +95,7 @@ const sidebars: SidebarsConfig = {
         "server/model-groups",
         "server/inbound-transports",
         "server/authentication",
+        "server/connection-resilience",
         "persistence/overview",
       ],
     },

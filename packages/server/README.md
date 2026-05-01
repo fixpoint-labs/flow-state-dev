@@ -271,6 +271,41 @@ Memory, filesystem, SQLite, and Postgres adapters all ship with first-class impl
 
 By default the final checkpoint is retained after terminal completion (success / error / abort) for post-mortem inspection. Set `flow.request.cleanupCheckpointsOnTerminal: true` on a flow to make terminal frames trigger an immediate `delete()`.
 
+## Connection resilience
+
+The server runs three coordinated mechanisms so a dropped SSE connection doesn't leave a request running forever with no way to recover:
+
+- **Wire-level SSE heartbeat.** Every live and GET-attach SSE response emits `: ping\n\n` comment frames at a configurable cadence. Keeps NAT/proxy idle timeouts from closing the connection and gives clients a robust inactivity signal during long pauses (e.g. an LLM thinking).
+- **Stale-request sweeper.** A periodic in-process job that reads the active request registry and, for entries whose executor heartbeat has stopped, marks the persisted request record `interrupted` so session locks release.
+- **Read-only status endpoint.** `GET /api/flows/:flowKind/requests/:requestId/status` returns a `RequestStatusSnapshot` callable when no SSE stream is attached — used by clients to confirm authoritative server state after the watchdog trips.
+
+```ts
+createFlowApiRouter({
+  registry,
+  stores,
+  // SSE wire heartbeat — applied to every live and GET-attach stream when
+  // the per-flow `request.sseHeartbeatMs` is unset. Default 15_000 ms.
+  defaultSseHeartbeatMs: 15_000,
+  // Internal sweeper cadence (0 disables). Default 30_000 ms.
+  staleSweepIntervalMs: 30_000,
+  // Heartbeat-age threshold the sweeper uses to mark a request `interrupted`.
+  // Should be ≥ 2× the executor's registry heartbeat. Default 60_000 ms.
+  staleSweepThresholdMs: 60_000
+});
+```
+
+Per-flow override (wins over the host-level default):
+
+```ts
+defineFlow({
+  kind: "chat",
+  request: { sseHeartbeatMs: 10_000 },
+  actions: { /* ... */ }
+});
+```
+
+Clients consume the wire heartbeat through `useSession`'s watchdog: it surfaces `session.isStuck` when the stream goes silent past `stuckThresholdMs` (default 30s) and exposes `session.dismissRequest()` to clear the request without a live connection. See [Connection Resilience](https://flow-state.dev/docs/server/connection-resilience) for full details.
+
 ## Notes
 
 - Phase 1 requires caller-provided `userId` for all action/session routes

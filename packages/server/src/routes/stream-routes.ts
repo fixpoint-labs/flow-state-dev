@@ -13,6 +13,7 @@ import {
   filterClientEvents
 } from "../streaming/client-filter";
 import { encodeStreamEvent } from "../streaming/encode-event";
+import { injectHeartbeat } from "../streaming/heartbeat";
 import {
   resolveRequestReplayCursor,
   replayRequestEvents
@@ -31,6 +32,11 @@ type StreamRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
   transcriptionResolver?: TranscriptionResolver;
+  /**
+   * Default SSE wire heartbeat interval in milliseconds. Applied to GET
+   * attach streams when the per-flow `request.sseHeartbeatMs` is unset.
+   */
+  defaultSseHeartbeatMs?: number;
 };
 
 const textEncoder = new TextEncoder();
@@ -50,6 +56,11 @@ export async function handleRequestStream(
 
   const url = new URL(request.url);
   const unfiltered = getBooleanFlag(url.searchParams.get("unfiltered"));
+
+  // Per-flow heartbeat override wins over the host-level default.
+  const flowHeartbeatMs = flow.request?.sseHeartbeatMs;
+  const sseHeartbeatMs =
+    flowHeartbeatMs !== undefined ? flowHeartbeatMs : ctx.defaultSseHeartbeatMs;
 
   const activeStream = getActiveStream(route.requestId);
   if (activeStream !== undefined) {
@@ -129,7 +140,12 @@ export async function handleRequestStream(
       }
     });
 
-    return new Response(readable, {
+    const wrapped =
+      sseHeartbeatMs !== undefined && sseHeartbeatMs > 0
+        ? injectHeartbeat(readable, sseHeartbeatMs)
+        : readable;
+
+    return new Response(wrapped, {
       status: 200,
       headers: SSE_HEADERS
     });

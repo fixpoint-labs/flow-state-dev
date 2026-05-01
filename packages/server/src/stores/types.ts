@@ -1,11 +1,12 @@
 import type {
   JournalEntry,
+  RequestStatus,
   SequencerCheckpoint
 } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
 import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
 
-export type RequestStatus = "in_progress" | "completed" | "incomplete" | "failed" | "interrupted" | "aborted";
+export type { RequestStatus };
 
 export type ScopeRecordBase<TState extends JsonObject = JsonObject> = {
   id: string;

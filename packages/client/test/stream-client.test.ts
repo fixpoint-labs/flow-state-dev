@@ -431,3 +431,61 @@ describe("createUserSSEClient", () => {
     handle.close();
   });
 });
+
+describe("createSSEClient — heartbeat parsing", () => {
+  it("invokes onHeartbeat for `: ping` comment frames and not for normal events", async () => {
+    const onHeartbeat = vi.fn();
+    const onItemAdded = vi.fn();
+
+    const streamBody = [
+      ": ping\n\n",
+      requestEventFrame({
+        id: "req_1:1",
+        event: "item.added",
+        data: {
+          stream: "request",
+          type: "item.added",
+          requestId: "req_1",
+          sequence_number: 1,
+          ts: 1,
+          item: {
+            id: "item_1",
+            type: "status",
+            status: "in_progress",
+            requestId: "req_1",
+            itemIndex: 0,
+            provenance: {
+              blockName: "runtime",
+              blockInstanceId: "runtime",
+              phase: "main"
+            },
+            ts: 1,
+            message: "tick"
+          }
+        }
+      }),
+      ": ping\n\n"
+    ].join("");
+
+    const fetcher = vi.fn<ClientFetch>(async () =>
+      new Response(streamBody, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" }
+      })
+    );
+
+    const handle = createSSEClient({
+      url: "/api/flows/demo/requests/req_1/stream",
+      fetcher,
+      onItemAdded,
+      onHeartbeat
+    });
+
+    await flushSSE();
+
+    expect(onHeartbeat).toHaveBeenCalledTimes(2);
+    expect(onItemAdded).toHaveBeenCalledTimes(1);
+
+    handle.close();
+  });
+});

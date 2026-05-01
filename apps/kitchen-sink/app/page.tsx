@@ -27,6 +27,7 @@ import {
 } from "@/components/flow-state/prompt-input";
 import { chatAssistantRenderers } from "@/components/flow-state/chat-assistant";
 import { RequestGroupRenderer } from "@/components/flow-state/request-group";
+import { StuckRequestBanner } from "@/components/flow-state/stuck-request-banner";
 
 import { SessionSidebar } from "@/components/session-sidebar";
 import { AgentResponseCard } from "@/components/agent-response-card";
@@ -595,6 +596,7 @@ function ChatPanel({
 
       <div className="border-t">
         {session.items.length === 0 && <SuggestionRow onSuggestionClick={onSuggestionClick} disabled={isDisabled} />}
+        <StuckRequestBanner session={session} />
         <ResumePrompt session={session} />
         <div className="mx-auto max-w-3xl px-3 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 sm:px-4 sm:pb-4">
           <div className="mb-2 flex items-center gap-3">
@@ -626,7 +628,7 @@ function ChatPanel({
               className="mr-2 sm:mr-4"
               status={session.isStreaming ? "streaming" : "ready"}
               disabled={!session.isStreaming && (isDisabled || message.trim().length === 0)}
-              onStop={session.abortRequest}
+              onStop={session.isStuck ? () => session.dismissRequest() : session.abortRequest}
             />
           </PromptInput>
         </div>

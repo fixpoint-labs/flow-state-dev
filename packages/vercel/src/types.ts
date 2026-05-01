@@ -30,9 +30,10 @@ export type VercelHandlerInput =
  */
 export type VercelHandlerOptions = {
   /**
-   * Interval in milliseconds between SSE heartbeat comments.
-   * Heartbeats prevent intermediate proxies from closing idle connections.
-   * Default: 15000 (15 seconds).
+   * @deprecated SSE heartbeats are now emitted by `@flow-state-dev/server`
+   * for every live and GET-attach stream. Configure the cadence via
+   * `createFlowApiRouter({ defaultSseHeartbeatMs })` or per-flow
+   * `defineFlow({ request: { sseHeartbeatMs } })`. This option is ignored.
    */
   heartbeatMs?: number;
 

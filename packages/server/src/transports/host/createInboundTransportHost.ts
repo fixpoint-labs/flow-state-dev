@@ -48,6 +48,12 @@ export type CreateInboundTransportHostOptions = {
   onBackgroundWork?: (promise: Promise<unknown>) => void;
   /** Maximum buffered SSE bytes per request — see `createLiveRequestStream`. */
   maxResponseBufferSize?: number;
+  /**
+   * Default SSE wire-level heartbeat interval in milliseconds applied to
+   * every live stream when the per-flow `request.sseHeartbeatMs` is unset.
+   * When 0 or undefined, no host-level default is applied.
+   */
+  defaultSseHeartbeatMs?: number;
 };
 
 /**
@@ -71,7 +77,8 @@ export function createInboundTransportHost(
     logger,
     resolvePrincipal,
     onBackgroundWork,
-    maxResponseBufferSize
+    maxResponseBufferSize,
+    defaultSseHeartbeatMs
   } = options;
 
   const dispatch = (envelope: InboundRequestEnvelope): DispatchHandle => {
@@ -82,6 +89,11 @@ export function createInboundTransportHost(
 
     const requestId = envelope.requestId ?? generateId("req");
 
+    // Per-flow SSE heartbeat override wins over the host default.
+    const flowHeartbeatMs = flow.request?.sseHeartbeatMs;
+    const sseHeartbeatMs =
+      flowHeartbeatMs !== undefined ? flowHeartbeatMs : defaultSseHeartbeatMs;
+
     // The envelope's `responseEmitter` field is three-state:
     //   - `undefined` (default) → host owns streaming; create a LiveRequestStream
     //   - `null`                → explicit fire-and-forget (webhook, schedule)
@@ -91,7 +103,8 @@ export function createInboundTransportHost(
       envelope.responseEmitter === undefined
         ? createLiveRequestStream({
             requestId,
-            maxBufferSize: maxResponseBufferSize
+            maxBufferSize: maxResponseBufferSize,
+            sseHeartbeatMs
           })
         : null;
 

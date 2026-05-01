@@ -1,7 +1,11 @@
 /**
  * Action execution client and typed flow-bound client builders.
  */
-import type { ActionConfig, FlowActionInput } from "@flow-state-dev/core/types";
+import type {
+  ActionConfig,
+  FlowActionInput,
+  RequestStatusSnapshot
+} from "@flow-state-dev/core/types";
 import { buildFlowApiUrl, requestJson, resolveFetch } from "../internal/http";
 import {
   type ClientFetch,
@@ -55,6 +59,12 @@ export type Client = {
   ) => Promise<Response>;
   /** Signal the server to abort an in-progress request. */
   abortRequest: (requestId: string) => Promise<void>;
+  /**
+   * Read-only snapshot of a request's lifecycle state. Callable when no
+   * SSE stream is connected — used by the client-side dismiss path to
+   * confirm authoritative server state after a stuck-request banner.
+   */
+  getRequestStatus: (requestId: string) => Promise<RequestStatusSnapshot>;
 };
 
 /**
@@ -182,6 +192,16 @@ export function createClient(options: CreateClientOptions): Client {
     }
   };
 
+  const getRequestStatus = async (
+    requestId: string
+  ): Promise<RequestStatusSnapshot> => {
+    const path = `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/status`;
+    return requestJson<RequestStatusSnapshot>({
+      fetcher,
+      url: buildFlowApiUrl({ baseUrl: options.baseUrl, path })
+    });
+  };
+
   return {
     flowKind,
     userId,
@@ -189,7 +209,8 @@ export function createClient(options: CreateClientOptions): Client {
     getCapabilities,
     sendAction,
     sendActionStream,
-    abortRequest
+    abortRequest,
+    getRequestStatus
   };
 }
 
