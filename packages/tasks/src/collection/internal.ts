@@ -5,15 +5,38 @@
  * lockstep on default values, claim eligibility, and the post-mutation
  * task shape that ends up on the emitted `task-change` component item.
  */
+import type { OutputItem } from "@flow-state-dev/core/items";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { matchesFilter } from "../schema/task-init";
-import type { ClaimOptions } from "./types";
+import { extractTaskItems } from "../items/extract-window";
+import type { ClaimOptions, TaskHandle } from "./types";
 
 let idCounter = 0;
 function generateTaskId(): string {
   idCounter += 1;
   return `task_${Date.now().toString(36)}_${idCounter}_${Math.random().toString(16).slice(2, 8)}`;
+}
+
+/**
+ * Build a `TaskHandle` factory closed over the collection's id and item-log
+ * accessor (FIX-480). Both backings call this once at construction.
+ *
+ * Data fields are snapshot at wrap time (matches the pre-FIX-480 `Task`
+ * read contract). `items()` is live — re-reads the item log at call time
+ * so synthesizers running after worker completion see the latest window.
+ */
+export function createTaskHandleWrapper<TInput, TOutput>(
+  collectionId: string,
+  getItems: (() => readonly OutputItem[]) | undefined,
+): (task: Task<TInput, TOutput>) => TaskHandle<TInput, TOutput> {
+  return (task) => ({
+    ...task,
+    items: () => {
+      if (getItems === undefined) return [];
+      return extractTaskItems(getItems(), collectionId, task.id);
+    },
+  });
 }
 
 /** Build a fresh task from a `TaskInit`, stamping defaults and timestamps. */

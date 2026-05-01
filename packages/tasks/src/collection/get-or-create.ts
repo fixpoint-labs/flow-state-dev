@@ -12,6 +12,7 @@
  * these items, filter by `data.collectionId`, and render the board.
  */
 import type { JsonObject } from "@flow-state-dev/core";
+import type { OutputItem } from "@flow-state-dev/core/items";
 import type {
   BlockContext,
   RequestScopeHandle,
@@ -101,6 +102,18 @@ export type GetOrCreateTaskCollectionOptions =
 export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
   options: GetOrCreateTaskCollectionOptions
 ): TaskCollectionRef<TInput, TOutput> {
+  // Item-log accessor for `TaskHandle.items()` (FIX-480). Duck-typed
+  // against `ctx.response` — same access pattern as
+  // `getEmitterItemCount` in `packages/core/src/blocks/generator.ts`.
+  // Optional-chains the whole expression so a missing `response` (mock
+  // contexts in tests) yields `[]` instead of throwing.
+  const getItems = (): readonly OutputItem[] => {
+    const r = options.ctx.response as
+      | { getItems?: () => readonly OutputItem[] }
+      | undefined;
+    return r?.getItems?.() ?? [];
+  };
+
   const onChange = (event: TaskChangeEvent): void => {
     options.ctx.emitComponent(
       TASK_CHANGE_COMPONENT_TYPE,
@@ -121,6 +134,7 @@ export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
       sequencer: options.sequencer,
       stateKey: options.stateKey,
       onChange,
+      getItems,
       now: options.now,
     });
   }
@@ -133,6 +147,7 @@ export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
       // each get an isolated top-level slot without manual namespacing.
       stateKey: options.stateKey ?? options.collectionId,
       onChange,
+      getItems,
       now: options.now,
     });
   }
@@ -141,6 +156,7 @@ export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
     collectionId: options.collectionId,
     collection: options.collection,
     onChange,
+    getItems,
     now: options.now,
   });
 }

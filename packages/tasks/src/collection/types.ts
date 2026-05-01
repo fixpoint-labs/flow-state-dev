@@ -6,6 +6,7 @@
  * Patterns and dispatchers consume `TaskCollectionRef` and never reach for
  * the underlying storage directly.
  */
+import type { OutputItem } from "@flow-state-dev/core/items";
 import type { Task } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 
@@ -27,6 +28,39 @@ export interface ClaimOptions {
    */
   leaseDurationMs?: number;
 }
+
+/**
+ * `Task` plus a runtime accessor for the items the worker emitted while it
+ * held the claim window (FIX-480 §3.1). Returned from `list` / `get` so
+ * pattern aggregators (synthesizers, reviewers, replanners) can pick from
+ * a worker's natural emissions — messages, sources, tool calls, reasoning
+ * — instead of relying solely on `task.output`.
+ *
+ * Mixed staleness contract:
+ *   - Data fields (`status`, `output`, `goal`, ...) are snapshot at the
+ *     moment `list` / `get` returned, matching the pre-FIX-480 `Task` read
+ *     contract. Holding a handle past a mutation reads stale data fields
+ *     — re-call `get(id)` to refresh.
+ *   - `items()` is live — re-reads the response item log on every call.
+ *     This is intentional so synthesizers running after worker completion
+ *     pick up emissions that landed during their own pre-execution.
+ *
+ * Sync, throw-free. Returns `[]` when the task has not been claimed yet.
+ *
+ * Window: `[first claimed event ts, terminal event ts]` for this taskId
+ * under this collection. Retries do NOT reset the start; all attempts
+ * append to the same window. Bookend `task-change` events and
+ * `task-board-meta` items are excluded — they are substrate scaffolding,
+ * not worker emissions.
+ *
+ * Mutators (`claim`, `addTask`, ...) still return raw `Task`. The
+ * just-claimed task has no items in its window yet, so a handle would be
+ * empty by construction; re-fetch via `get(id)` post-completion if a
+ * handle is needed.
+ */
+export type TaskHandle<TInput = unknown, TOutput = unknown> = Task<TInput, TOutput> & {
+  items(): readonly OutputItem[];
+};
 
 /**
  * Runtime ref onto a TaskCollection. All mutations are CAS-safe and emit a
@@ -80,7 +114,7 @@ export interface TaskCollectionRef<TInput = unknown, TOutput = unknown> {
   patchMetadata(id: string, patch: Record<string, unknown>): Promise<void>;
 
   // query
-  get(id: string): Task<TInput, TOutput> | undefined;
-  list(filter?: TaskFilter): Task<TInput, TOutput>[];
+  get(id: string): TaskHandle<TInput, TOutput> | undefined;
+  list(filter?: TaskFilter): TaskHandle<TInput, TOutput>[];
   count(filter?: TaskFilter): number;
 }

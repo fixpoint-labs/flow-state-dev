@@ -131,6 +131,37 @@ function buildDefaultReviewer(opts: {
   }) as BlockDefinition<any, any>;
 }
 
+/**
+ * Pull `{ title?, url }` entries out of `task.items()` slices, in
+ * emission order, deduped by URL. First-title-wins on duplicates —
+ * matches the order ordering. Tolerates missing fields and unexpected
+ * shapes; renderer-shape guarantees aren't part of the synthesizer's
+ * input contract.
+ */
+function collectUniqueSources(
+  resultItems?: Array<{ taskId: string; goal: string; items: unknown[] }>,
+): Array<{ url: string; title?: string }> {
+  if (resultItems === undefined) return [];
+  const out: Array<{ url: string; title?: string }> = [];
+  const seen = new Set<string>();
+  for (const entry of resultItems) {
+    if (!Array.isArray(entry.items)) continue;
+    for (const it of entry.items) {
+      if (it === null || typeof it !== "object") continue;
+      const item = it as { type?: unknown; url?: unknown; title?: unknown };
+      if (item.type !== "source") continue;
+      if (typeof item.url !== "string" || item.url.length === 0) continue;
+      if (seen.has(item.url)) continue;
+      seen.add(item.url);
+      out.push({
+        url: item.url,
+        ...(typeof item.title === "string" ? { title: item.title } : {}),
+      });
+    }
+  }
+  return out;
+}
+
 /** Default synthesizer — combines `{ goal, results }` into a final deliverable. */
 function buildDefaultSynthesizer(opts: {
   name: string;
@@ -158,7 +189,15 @@ function buildDefaultSynthesizer(opts: {
     prompt: [opts.instructions, basePrompt],
     user: (input: unknown) => {
       if (typeof input === "string") return input;
-      const data = input as { goal?: string; results?: unknown[] };
+      const data = input as {
+        goal?: string;
+        results?: unknown[];
+        resultItems?: Array<{
+          taskId: string;
+          goal: string;
+          items: unknown[];
+        }>;
+      };
       const parts: string[] = [];
       if (data.goal) parts.push(`Goal: ${data.goal}`);
       if (Array.isArray(data.results)) {
@@ -167,6 +206,17 @@ function buildDefaultSynthesizer(opts: {
             `--- Task ${i + 1} Result ---\n${typeof r === "string" ? r : JSON.stringify(r, null, 2)}`,
           );
         });
+      }
+      // FIX-480 §3.3: surface `source` items collected by workers so the
+      // synthesizer can cite URLs without the LLM repeating them inside
+      // structured output. Block is appended only when sources exist —
+      // otherwise the prompt is byte-identical to pre-FIX-480.
+      const sources = collectUniqueSources(data.resultItems);
+      if (sources.length > 0) {
+        const lines = sources
+          .map((s) => `- ${s.title ? `${s.title}: ` : ""}${s.url}`)
+          .join("\n");
+        parts.push(`Sources:\n${lines}`);
       }
       return parts.join("\n\n");
     },

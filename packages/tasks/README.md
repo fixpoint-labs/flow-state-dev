@@ -86,10 +86,16 @@ interface TaskCollectionRef<TInput, TOutput> {
   patchMetadata(id: string, patch: Record<string, unknown>): Promise<void>;
 
   // query
-  get(id: string): Task | undefined;
-  list(filter?: TaskFilter): Task[];
+  get(id: string): TaskHandle | undefined;
+  list(filter?: TaskFilter): TaskHandle[];
   count(filter?: TaskFilter): number;
 }
+
+// Returned from list/get — Task data plus an `items()` accessor that
+// returns items the worker emitted during its claim window (FIX-480).
+type TaskHandle<TInput, TOutput> = Task<TInput, TOutput> & {
+  items(): readonly OutputItem[];
+};
 ```
 
 `task.assignee` is the worker-registry routing key (set at creation by the
