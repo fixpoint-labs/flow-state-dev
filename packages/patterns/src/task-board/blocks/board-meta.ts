@@ -62,7 +62,7 @@ export function createBoardMetaActive(options: BoardMetaOptions) {
       ctx.emitComponent(
         TASK_BOARD_META_COMPONENT_TYPE,
         { collectionId, status: "active" },
-        { key: collectionId, transient: false }
+        { key: collectionId }
       );
     },
   });
@@ -99,7 +99,7 @@ export function createBoardMetaCompleted(options: BoardMetaOptions) {
       ctx.emitComponent(
         TASK_BOARD_META_COMPONENT_TYPE,
         { collectionId, status: "completed", counts },
-        { key: collectionId, transient: false }
+        { key: collectionId }
       );
     },
   });

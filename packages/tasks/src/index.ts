@@ -33,8 +33,15 @@ export {
 // Change events (emitted as `task-change` component items via getOrCreateTaskCollection)
 export type { TaskChangeEvent, TaskChangeKind } from "./collection/change-event";
 
+// Item windowing (FIX-480 §3.1) — substrate utilities for `task.items()`
+// and renderer-side per-task expansion.
+export {
+  extractTaskItems,
+  extractTaskItemWindows,
+} from "./items";
+
 // Collections
-export type { TaskCollectionRef, ClaimOptions } from "./collection/types";
+export type { TaskCollectionRef, ClaimOptions, TaskHandle } from "./collection/types";
 export { createSequencerBackedTaskCollection } from "./collection/sequencer-backed";
 export type { SequencerBackedOptions } from "./collection/sequencer-backed";
 export { createResourceBackedTaskCollection } from "./collection/resource-backed";

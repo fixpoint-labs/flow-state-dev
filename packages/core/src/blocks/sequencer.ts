@@ -27,6 +27,7 @@ import {
   ROOT_BLOCK_PATH
 } from "./internal/block-instance-id";
 import { isTraceObservabilityEnabled } from "../utils/trace-observability";
+import { getTransientKeys, stripTransientKeys } from "../utils/transient-slot";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
 
@@ -229,7 +230,18 @@ async function emitStateSnapshot(
   const seqRef = ctx.sequencer;
   if (seqRef === undefined) return lastStateJson;
 
-  const currentStateJson = JSON.stringify(seqRef.state);
+  // Strip transient slots before serialization. Transient values stay on
+  // `seqRef.state` for in-memory reads but never enter the snapshot payload,
+  // so durable checkpoints are clean and on-resume the slot resets to its
+  // schema default. Both sides of the dedup compare run on the stripped form
+  // so the saved `lastStateJson` is comparable across calls.
+  const transientKeys = getTransientKeys(stateSchema);
+  const visibleState = stripTransientKeys(
+    seqRef.state as Record<string, unknown>,
+    transientKeys
+  );
+
+  const currentStateJson = JSON.stringify(visibleState);
 
   // Skip step-boundary emissions when state hasn't changed. Terminal frames
   // always emit so the durability hook sees the delete signal even when the
@@ -277,7 +289,7 @@ async function emitStateSnapshot(
     key: seqRef.instanceId,
     stepName,
     stepIndex,
-    state: structuredClone(seqRef.state),
+    state: structuredClone(visibleState),
     version,
     durable: effectiveDurable,
     terminal
@@ -294,6 +306,11 @@ async function emitStateSnapshot(
  * generators so `_withExecutionScope` can skip its default emission and
  * avoid duplicates. `modelUsage` and `error` are optional — the caller
  * passes whichever matches the success/failure path.
+ *
+ * Reads `_blockOutputHint` from the passed ctx (FIX-480) so streaming-
+ * text generators can ref their just-emitted message item instead of
+ * inlining a duplicate copy of the streamed text. Clears the hint after
+ * reading so a downstream observer doesn't see a stale value.
  */
 async function emitGeneratorBlockOutput(
   block: BlockDefinition<any, any>,
@@ -305,10 +322,23 @@ async function emitGeneratorBlockOutput(
   error?: { message: string; code?: string }
 ): Promise<void> {
   const completedAt = Date.now();
-  // Generators are leaves — their output is always novel content (FIX-413).
-  const blockValue: BlockValue<unknown> = error
-    ? { kind: "inline", value: undefined }
-    : { kind: "inline", value: output };
+  const hint = error
+    ? undefined
+    : (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint;
+  if (hint !== undefined) {
+    (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = undefined;
+  }
+  // Default for generators is inline (FIX-413: leaves carry novel
+  // content). FIX-480 lets streaming-text generators promote to a ref
+  // when the output IS the streamed message.
+  const blockValue: BlockValue<unknown> =
+    error
+      ? { kind: "inline", value: undefined }
+      : hint?.kind === "ref"
+        ? { kind: "ref", sourceItemId: hint.sourceItemId }
+        : hint?.kind === "structure"
+          ? { kind: "structure", shape: hint.shape }
+          : { kind: "inline", value: output };
   const item = {
     id: `item_block_output_${completedAt}_${Math.random().toString(16).slice(2)}`,
     type: "block_output" as const,
@@ -442,11 +472,13 @@ async function executeBlock(
       // and shares the scope's instanceId with streaming items). We emit it
       // here unconditionally so `_withExecutionScope` can skip its nested
       // trace for generators — otherwise each generator produced two
-      // block_output items in the devtool.
+      // block_output items in the devtool. Passing `execCtx` (not
+      // `scopedCtx`) so the FIX-480 ref hint the generator wrote to its
+      // own ctx is visible to `emitGeneratorBlockOutput`.
       if (block.kind === "generator") {
         const identity = scopedCtx._blockIdentity;
         const generatorInstanceId = identity?.blockInstanceId ?? instanceId;
-        await emitGeneratorBlockOutput(block, output, scopedCtx, startedAt, generatorInstanceId, modelUsage);
+        await emitGeneratorBlockOutput(block, output, execCtx, startedAt, generatorInstanceId, modelUsage);
       }
 
       return output;
@@ -462,7 +494,7 @@ async function executeBlock(
         await emitGeneratorBlockOutput(
           block,
           undefined,
-          scopedCtx,
+          execCtx,
           startedAt,
           generatorInstanceId,
           modelUsage,

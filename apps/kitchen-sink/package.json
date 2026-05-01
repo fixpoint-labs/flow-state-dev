@@ -19,6 +19,7 @@
     "@ai-sdk/gateway": "^3.0.51",
     "@flow-state-dev/client": "workspace:*",
     "@flow-state-dev/core": "workspace:*",
+    "@flow-state-dev/devtool": "workspace:*",
     "@flow-state-dev/patterns": "workspace:*",
     "@flow-state-dev/react": "workspace:*",
     "@flow-state-dev/server": "workspace:*",

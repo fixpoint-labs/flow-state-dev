@@ -144,7 +144,11 @@ export function replayRequestEvents(
         return false;
       }
 
-      if (event.type === "ping" || event.type === "debug") {
+      if (
+        event.type === "ping" ||
+        event.type === "debug" ||
+        event.type === "content.delta"
+      ) {
         return false;
       }
 

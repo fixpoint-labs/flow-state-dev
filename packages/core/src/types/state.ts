@@ -23,18 +23,26 @@ export interface StateContainer<TState = unknown> {
   commit(nextState: TState, version: number): Readonly<TState>;
 }
 
+/**
+ * Scope-level state-mutation surface. Every method's resolved boolean is
+ * `true` when the write produced a real state change and `false` when the
+ * proposed update was structurally equal to the current state — in which
+ * case the framework suppresses the persist call and the corresponding
+ * `state_change` SSE emit. Existing callers that ignore the return value
+ * remain source-compatible.
+ */
 export interface ScopeStateOps<TState extends object> {
-  patchState(updates: Partial<TState>): Promise<void>;
+  patchState(updates: Partial<TState>): Promise<boolean>;
   patchState<TKey extends keyof TState>(
     key: TKey,
     updater: (current: TState[TKey]) => TState[TKey]
-  ): Promise<void>;
+  ): Promise<boolean>;
 
-  setState(nextState: TState): Promise<void>;
-  incState(increments: Record<string, number>): Promise<void>;
-  pushState(field: string, value: unknown): Promise<void>;
-  setStateRecord(field: string, key: string, value: unknown): Promise<void>;
-  deleteStateRecord(field: string, key: string): Promise<void>;
+  setState(nextState: TState): Promise<boolean>;
+  incState(increments: Record<string, number>): Promise<boolean>;
+  pushState(field: string, value: unknown): Promise<boolean>;
+  setStateRecord(field: string, key: string, value: unknown): Promise<boolean>;
+  deleteStateRecord(field: string, key: string): Promise<boolean>;
 
-  atomicState(mutator: (state: Readonly<TState>) => Partial<TState>): Promise<void>;
+  atomicState(mutator: (state: Readonly<TState>) => Partial<TState>): Promise<boolean>;
 }

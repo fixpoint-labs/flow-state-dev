@@ -200,6 +200,31 @@ The supervisor planner may include a `context` field on each task (alongside `id
 
 Pre-migration workers that declared the legacy `executableTaskSchema` (input shape `{ id, goal, context?, feedback? }`) keep working — `legacyWorkerAdapter` translates `TaskWorkerInput → ExecutableTask` transparently.
 
+## Accessing worker output items
+
+Workers emit `message`, `source`, `tool_call`, and `reasoning` items naturally as they run. Synthesizer prompt builders, reviewer input builders, and replanners can read those emissions per-task via `TaskHandle.items()` (FIX-480) instead of forcing the worker to pack everything into a structured `outputSchema`.
+
+```typescript
+import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
+
+const collection = getOrCreateTaskCollection({ ctx, backing: "request", collectionId: "my-plan" });
+
+for (const task of collection.list({ status: "completed" })) {
+  const items = task.items();
+  const messages = items.filter((i) => i.type === "message");
+  const sources = items.filter((i) => i.type === "source");
+  const toolCalls = items.filter((i) => i.type === "block_tool_output");
+  const finalText = task.output ?? messages.map((m) => /* join text */ "").join("\n");
+  // …feed into your synthesizer's prompt
+}
+```
+
+The window is `[first claimed, terminal]` for the task's lifecycle. Retries are included in the same window. `task-change` and `task-board-meta` items (substrate scaffolding) are excluded. Returns `[]` when the task has not been claimed.
+
+`supervisor`'s default synthesizer already uses this — the `buildResults` handler returns `resultItems` alongside `results`, and the default user prompt appends a deduped `Sources:` block when `source` items are present in any worker's window. Custom synthesizers receive the same input shape and can ignore the new field if they don't need it.
+
+The contract: workers emit naturally; parents pick what they want. No need to re-pack everything into `outputSchema` for downstream visibility.
+
 ## Task Progress Rendering
 
 `planAndExecute` and `supervisor` emit `task-change` (per-task lifecycle) and `task-board-meta` (board-level aggregate) `ComponentItem`s via the `taskBoard` substrate. Pair with `<TaskPlan />` from `@flow-state-dev/ui` for rendering.

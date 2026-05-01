@@ -42,6 +42,14 @@ export type OutputItemBase = {
   id: string;
   type: string;
   status: ItemStatus;
+  /**
+   * When true, the item is delivered to live SSE consumers but never
+   * persisted to the session log or replayed on history reload.
+   *
+   * Composes orthogonally with {@link ComponentItem.key}: see the "keyed
+   * snapshot" pattern in `apps/docs/docs/streaming/emitting-items.md` for
+   * the full transient × key matrix.
+   */
   transient?: boolean;
   requestId: string;
   itemIndex: number;
@@ -163,11 +171,26 @@ export type RouterDecisionItem = OutputItemBase & {
 export type MessageItem = OutputItemBase & {
   type: "message";
   role: "assistant" | "user" | "system" | "developer" | "tool";
+  /**
+   * Message content parts. `output_text` parts accumulate `text` in-place
+   * during streaming: each `content.delta` event mutates the current
+   * snapshot held inside the emitter, and consumers reading
+   * `response.getItems()` observe the latest accumulated text. The final
+   * `item.done` payload supersedes any mid-stream accumulation, so the
+   * authoritative final text always comes from the generator's terminal
+   * emission. Aborted streams may leave a partial-token tail in the
+   * persisted snapshot — this is a deliberate trade-off (see FIX-479).
+   */
   content: Content[];
 };
 
 export type ReasoningItem = OutputItemBase & {
   type: "reasoning";
+  /**
+   * Reasoning summary parts. `reasoning_text` parts accumulate `text`
+   * in-place during streaming via the same `content.delta` channel as
+   * message text (see {@link MessageItem.content}).
+   */
   summary: Content[];
 };
 
@@ -175,8 +198,15 @@ export type ComponentItem = OutputItemBase & {
   type: "component";
   component: string;
   data: Record<string, unknown>;
-  /** Caller-provided stable identity for deduplication. When present, clients
-   *  should show only the latest item with a given key (replacing prior ones). */
+  /**
+   * Caller-provided stable identity for deduplication. When present, clients
+   * show only the latest item with a given key (replacing prior ones).
+   *
+   * Combined with `transient: false`, this expresses the **keyed snapshot**
+   * pattern — one logical entity whose latest state replays on reload. See
+   * `apps/docs/docs/streaming/emitting-items.md` for the transient × key
+   * matrix.
+   */
   key?: string;
 };
 

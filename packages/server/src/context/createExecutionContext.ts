@@ -63,6 +63,7 @@ import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { deepEqual, getTransientKeys } from "@flow-state-dev/core/utils";
 import {
   buildConnectedInputDebugPayload,
   buildGeneratorDebugPayload,
@@ -866,11 +867,10 @@ function itemToLLMMessages(item: OutputItem, allItems: readonly OutputItem[]): L
     // the matching tool-call part. Emit both in order.
     // Resolve the BlockValue union to its typed payload before stringifying
     // (FIX-413). Refs would otherwise serialize to `{kind:"ref",sourceItemId}`.
+    // FIX-480: refs may target `message` items, so accept any item type.
     const resolvedOutput = resolveBlockValue(bo.output, (id) => {
       for (let i = allItems.length - 1; i >= 0; i -= 1) {
-        if (allItems[i].id === id && allItems[i].type === "block_output") {
-          return allItems[i] as BlockOutputItem;
-        }
+        if (allItems[i].id === id) return allItems[i];
       }
       return undefined;
     });
@@ -1211,7 +1211,6 @@ function buildJournalEntry(entry: JournalEntryInput): JournalEntry {
 
 type EmissionContext = {
   requestId: string;
-  blockTransient: boolean;
   response: {
     emitItemAdded(item: OutputItem): Promise<unknown>;
     emitItemDone(item: OutputItem): Promise<unknown>;
@@ -1235,21 +1234,28 @@ type EmissionContext = {
 function createEmitMessage(
   emCtx: EmissionContext
 ): {
-  (text: string, options?: { agentType?: AgentType; agentName?: string }): void;
-  (content: Content[], options?: { agentType?: AgentType; agentName?: string }): void;
+  (text: string, options?: { agentType?: AgentType; agentName?: string; transient?: boolean }): void;
+  (content: Content[], options?: { agentType?: AgentType; agentName?: string; transient?: boolean }): void;
 } {
-  return function emitMessage(textOrContent: string | Content[], options?: { agentType?: AgentType; agentName?: string }): void {
+  return function emitMessage(
+    textOrContent: string | Content[],
+    options?: { agentType?: AgentType; agentName?: string; transient?: boolean }
+  ): void {
     const content: Content[] =
       typeof textOrContent === "string"
         ? [{ type: "output_text", text: textOrContent }]
         : textOrContent;
 
     const itemIndex = emCtx.nextItemIndex();
+    // FIX-478: explicit emit calls are user-facing content, not bookkeeping.
+    // Default non-transient; the block's `transient` flag governs only the
+    // auto-emitted block_output trace (see emitNestedBlockTrace). Per-call
+    // `{ transient: true }` is the explicit opt-in for live-only output.
     const item: MessageItem = {
       id: `item_message_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "message",
       status: "completed",
-      transient: emCtx.blockTransient || undefined,
+      transient: options?.transient === true ? true : undefined,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -1289,20 +1295,16 @@ function createEmitComponent(
     },
   ): void {
     const itemIndex = emCtx.nextItemIndex();
-    // The block author can override the inherited blockTransient
-    // — useful when an internal/infrastructure block (marked
-    // `transient: true` to suppress its auto-emitted block_output
-    // trace) needs to emit a user-facing component item that should
-    // remain visible to the client.
-    const transient =
-      options?.transient !== undefined
-        ? options.transient || undefined
-        : emCtx.blockTransient || undefined;
+    // FIX-478: explicit emit calls are user-facing content, not bookkeeping.
+    // Default non-transient; the block's `transient` flag governs only the
+    // auto-emitted block_output trace (see emitNestedBlockTrace). Per-call
+    // `{ transient: true }` is the explicit opt-in (e.g. live-only progress
+    // with dedup).
     const item: ComponentItem = {
       id: `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "component",
       status: "completed",
-      transient,
+      transient: options?.transient === true ? true : undefined,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -1390,23 +1392,54 @@ function createTargetStateOps<TState extends JsonObject>(options: {
   provenance: () => ItemProvenance;
   blockInstanceId: string;
   transientStateChanges: boolean;
+  /**
+   * Top-level keys of the parent sequencer's `stateSchema` that were marked
+   * with `transientSlot()`. Patches affecting only these keys are persisted
+   * to the in-memory container (so later steps can read them) but suppressed
+   * from `state_change` SSE emits and `state_snapshot` payloads.
+   */
+  transientKeys?: Set<string>;
 }): Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> {
   // Target state has no backing store. `createScopeStateOps` supplies a
   // container-based CAS fallback when no `persist` is provided — that's what
   // we want here, so concurrent mutators serialize through the container.
   const baseOps = createScopeStateOps<TState>(options.container);
+  const transientKeys = options.transientKeys ?? new Set<string>();
+
+  function isTransientKey(key: string): boolean {
+    return transientKeys.has(key);
+  }
+
+  function filterTransientFromDelta<T extends Record<string, unknown>>(
+    delta: T
+  ): { filtered: Partial<T>; hasNonTransient: boolean } {
+    if (transientKeys.size === 0) {
+      return { filtered: delta, hasNonTransient: Object.keys(delta).length > 0 };
+    }
+    const filtered: Record<string, unknown> = {};
+    let hasNonTransient = false;
+    for (const k of Object.keys(delta)) {
+      if (!isTransientKey(k)) {
+        filtered[k] = delta[k];
+        hasNonTransient = true;
+      }
+    }
+    return { filtered: filtered as Partial<T>, hasNonTransient };
+  }
 
   return {
     async patchState(
       updatesOrKey: Partial<TState> | keyof TState,
       updater?: (current: TState[keyof TState]) => TState[keyof TState]
     ) {
-      await (baseOps.patchState as (
+      const committed = await (baseOps.patchState as (
         updatesOrKey: Partial<TState> | keyof TState,
         updater?: (current: TState[keyof TState]) => TState[keyof TState]
-      ) => Promise<void>)(updatesOrKey, updater);
+      ) => Promise<boolean>)(updatesOrKey, updater);
+      if (!committed) return false;
       const version = options.container.getVersion();
       if (typeof updatesOrKey === "string") {
+        if (isTransientKey(updatesOrKey)) return true;
         await emitStateChangeItem({
           response: options.response,
           requestId: options.requestId,
@@ -1420,8 +1453,13 @@ function createTargetStateOps<TState extends JsonObject>(options: {
           blockInstanceId: options.blockInstanceId,
           transient: options.transientStateChanges
         });
-        return;
+        return true;
       }
+
+      const { filtered, hasNonTransient } = filterTransientFromDelta(
+        updatesOrKey as Record<string, unknown>
+      );
+      if (!hasNonTransient) return true;
 
       await emitStateChangeItem({
         response: options.response,
@@ -1430,14 +1468,20 @@ function createTargetStateOps<TState extends JsonObject>(options: {
         provenance: options.provenance,
         scope: "block_instance",
         operation: "patch",
-        delta: updatesOrKey,
+        delta: filtered,
         version,
         blockInstanceId: options.blockInstanceId,
         transient: options.transientStateChanges
       });
+      return true;
     },
     async setState(nextState: TState) {
-      await baseOps.setState(nextState);
+      const committed = await baseOps.setState(nextState);
+      if (!committed) return false;
+      const { filtered, hasNonTransient } = filterTransientFromDelta(
+        nextState as Record<string, unknown>
+      );
+      if (!hasNonTransient) return true;
       await emitStateChangeItem({
         response: options.response,
         requestId: options.requestId,
@@ -1445,14 +1489,18 @@ function createTargetStateOps<TState extends JsonObject>(options: {
         provenance: options.provenance,
         scope: "block_instance",
         operation: "set",
-        delta: nextState,
+        delta: filtered,
         version: options.container.getVersion(),
         blockInstanceId: options.blockInstanceId,
         transient: options.transientStateChanges
       });
+      return true;
     },
     async incState(increments: Record<string, number>) {
-      await baseOps.incState(increments);
+      const committed = await baseOps.incState(increments);
+      if (!committed) return false;
+      const { filtered, hasNonTransient } = filterTransientFromDelta(increments);
+      if (!hasNonTransient) return true;
       await emitStateChangeItem({
         response: options.response,
         requestId: options.requestId,
@@ -1460,14 +1508,17 @@ function createTargetStateOps<TState extends JsonObject>(options: {
         provenance: options.provenance,
         scope: "block_instance",
         operation: "increment",
-        delta: increments,
+        delta: filtered,
         version: options.container.getVersion(),
         blockInstanceId: options.blockInstanceId,
         transient: options.transientStateChanges
       });
+      return true;
     },
     async pushState(field: string, value: unknown) {
-      await baseOps.pushState(field, value);
+      const committed = await baseOps.pushState(field, value);
+      if (!committed) return false;
+      if (isTransientKey(field)) return true;
       await emitStateChangeItem({
         response: options.response,
         requestId: options.requestId,
@@ -1481,9 +1532,12 @@ function createTargetStateOps<TState extends JsonObject>(options: {
         blockInstanceId: options.blockInstanceId,
         transient: options.transientStateChanges
       });
+      return true;
     },
     async setStateRecord(field: string, key: string, value: unknown) {
-      await baseOps.setStateRecord(field, key, value);
+      const committed = await baseOps.setStateRecord(field, key, value);
+      if (!committed) return false;
+      if (isTransientKey(field)) return true;
       await emitStateChangeItem({
         response: options.response,
         requestId: options.requestId,
@@ -1497,9 +1551,12 @@ function createTargetStateOps<TState extends JsonObject>(options: {
         blockInstanceId: options.blockInstanceId,
         transient: options.transientStateChanges
       });
+      return true;
     },
     async deleteStateRecord(field: string, key: string) {
-      await baseOps.deleteStateRecord(field, key);
+      const committed = await baseOps.deleteStateRecord(field, key);
+      if (!committed) return false;
+      if (isTransientKey(field)) return true;
       await emitStateChangeItem({
         response: options.response,
         requestId: options.requestId,
@@ -1513,9 +1570,31 @@ function createTargetStateOps<TState extends JsonObject>(options: {
         blockInstanceId: options.blockInstanceId,
         transient: options.transientStateChanges
       });
+      return true;
     },
     async atomicState(mutator: (state: Readonly<TState>) => Partial<TState>) {
-      await baseOps.atomicState(mutator);
+      const before = options.container.read() as Record<string, unknown>;
+      const committed = await baseOps.atomicState(mutator);
+      if (!committed) return false;
+      // atomicState has no structured delta. To honor transient slots we
+      // diff before/after by top-level key — if every changed key is
+      // transient, suppress the emit; otherwise emit as today.
+      if (transientKeys.size > 0) {
+        const after = options.container.read() as Record<string, unknown>;
+        const changedKeys: string[] = [];
+        const allKeys = new Set<string>([
+          ...Object.keys(before),
+          ...Object.keys(after)
+        ]);
+        for (const k of allKeys) {
+          if (!deepEqual(before[k], after[k])) {
+            changedKeys.push(k);
+          }
+        }
+        if (changedKeys.length > 0 && changedKeys.every((k) => isTransientKey(k))) {
+          return true;
+        }
+      }
       await emitStateChangeItem({
         response: options.response,
         requestId: options.requestId,
@@ -1527,6 +1606,7 @@ function createTargetStateOps<TState extends JsonObject>(options: {
         blockInstanceId: options.blockInstanceId,
         transient: options.transientStateChanges
       });
+      return true;
     }
   };
 }
@@ -1540,10 +1620,10 @@ type StatusSlot = { message: string };
 function createEmitStatus(
   emCtx: EmissionContext,
   slot: StatusSlot
-): (message: string | undefined, options?: { blocked?: boolean; backgroundTasks?: number }) => void {
+): (message: string | undefined, options?: { blocked?: boolean; backgroundTasks?: number; transient?: boolean }) => void {
   return function emitStatus(
     message: string | undefined,
-    options?: { blocked?: boolean; backgroundTasks?: number }
+    options?: { blocked?: boolean; backgroundTasks?: number; transient?: boolean }
   ): void {
     if (message !== undefined) {
       // Dedupe: skip when the proposed message matches the slot. `undefined`
@@ -1555,11 +1635,15 @@ function createEmitStatus(
     }
 
     const itemIndex = emCtx.nextItemIndex();
+    // FIX-478: status defaults to transient (live-only; statuses are
+    // naturally ephemeral). Per-call `{ transient: false }` opts out for
+    // symmetry with emitMessage / emitComponent. `false` produces a
+    // persisted item; `undefined` keeps the field absent.
     const item: StatusItem = {
       id: `item_status_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "status",
       status: "completed",
-      transient: true,
+      transient: options?.transient === false ? undefined : true,
       requestId: emCtx.requestId,
       itemIndex,
       provenance: emCtx.provenance(),
@@ -2510,7 +2594,6 @@ export async function createExecutionContext<
 
   const emCtx: EmissionContext = {
     requestId: requestRef.current.id,
-    blockTransient: false,
     response: emissionResponse,
     provenance: () => ({
       blockName: "runtime",
@@ -2727,7 +2810,8 @@ export async function createExecutionContext<
                     phase: "main"
                   }),
                   blockInstanceId: matched.parent.instanceId,
-                  transientStateChanges
+                  transientStateChanges,
+                  transientKeys: getTransientKeys(matched.parent.stateSchema)
                 }) as unknown as Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">);
 
           return defineStateProperty(
@@ -2904,7 +2988,6 @@ export async function createExecutionContext<
         // defaults in `resolveItemVisibility()`.
         const childEmCtx: EmissionContext = {
           requestId: requestRef.current.id,
-          blockTransient: resolvedParent.transient === true,
           response: emissionResponse,
           provenance: () => ({
             blockName: resolvedParent.name,

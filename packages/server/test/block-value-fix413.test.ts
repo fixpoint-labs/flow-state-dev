@@ -13,7 +13,7 @@ import {
   sequencer
 } from "@flow-state-dev/core";
 import type { BlockOutputItem, BlockValue } from "@flow-state-dev/core/items";
-import { resolveBlockValue, buildBlockOutputLookup } from "@flow-state-dev/core/items";
+import { resolveBlockValue, buildItemLookup } from "@flow-state-dev/core/items";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
@@ -223,7 +223,7 @@ describe("FIX-413 BlockValue on block_output", () => {
     });
 
     const outer = items.find((i) => i.blockName === "fanout2")!;
-    const lookup = buildBlockOutputLookup(allItems as unknown as BlockOutputItem[]);
+    const lookup = buildItemLookup(allItems);
 
     const resolved = resolveBlockValue<Array<{ echo: string }>>(outer.output, lookup);
     expect(resolved).toEqual([{ echo: "msg" }, { echo: "msg" }]);

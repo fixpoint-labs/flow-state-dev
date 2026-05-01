@@ -57,7 +57,20 @@ const DEFAULT_PROVENANCE: ItemProvenance = {
 };
 
 export type ResponseEmitterItemHooks = {
+  /** Fires once an item reaches a terminal status via `item.done`. */
   onItemDone?: (item: OutputItem) => void;
+  /**
+   * Fires when an in-flight item's content is mutated by a streaming
+   * `content.delta` event (FIX-479). Both `MessageItem.content[i].text`
+   * and `ReasoningItem.summary[i].text` accumulation flow through this
+   * hook so callers can checkpoint the running snapshot to durable
+   * storage at a coalesced cadence. The hook is synchronous and not a
+   * durability barrier — it does not gate the wire push and is not
+   * awaited. For per-event durability use the events log via
+   * `setEventHooks`; this hook covers snapshot-style checkpointing of
+   * the items field.
+   */
+  onItemUpdate?: (item: OutputItem) => void;
 };
 
 export type ResponseEmitterEventHooks = {
@@ -464,11 +477,18 @@ export class ResponseEmitter implements ResponseEmitterHandle {
   }
 
   /**
-   * Returns all replayable events (excludes ping and debug).
+   * Returns all replayable events (excludes ping, debug, and content.delta).
+   *
+   * `content.delta` is reclassified as non-replayable (FIX-479): the running
+   * text is checkpointed via `MessageItem.content` / `ReasoningItem.summary`
+   * snapshots through the `onItemUpdate` hook instead.
    */
   getReplayableEvents(): RequestStreamEventWithId[] {
     return this.events.filter(
-      (event) => event.type !== "ping" && event.type !== "debug"
+      (event) =>
+        event.type !== "ping" &&
+        event.type !== "debug" &&
+        event.type !== "content.delta"
     );
   }
 
@@ -517,18 +537,33 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     this.events.push(withId);
     this.enforceBufferLimit();
 
+    // Mutate the in-flight item snapshot for streaming-text deltas
+    // (FIX-479). The events log no longer carries content.delta entries,
+    // so the items snapshot is the durable source of in-flight text.
+    if (withId.type === "content.delta") {
+      this.applyDelta(withId.itemId, withId.contentIndex, withId.delta);
+    }
+
     // Persist replayable events BEFORE publishing to the wire (FIX-399).
     // Without this barrier the client could observe `seq=N`, the process
     // could die, and the persisted log would still cap at `seq < N` —
     // a silent gap on reconnect. Ping/debug aren't replayable so they
-    // don't need durability and skip the barrier entirely.
+    // don't need durability and skip the barrier entirely. content.delta
+    // is reclassified as non-replayable (FIX-479): per-token disk round-
+    // trips serialize concurrent worker streams behind a single events
+    // queue. Live SSE consumers still receive every delta; durable
+    // checkpointing of the running text happens through the items
+    // snapshot via the onItemUpdate hook.
     //
     // FIX-361's incremental batching is preserved: persistEvents accumulates
     // events that arrive while a write is in flight, so concurrent emissions
     // (Promise.all of content deltas, etc.) coalesce into a single write.
     // Backpressure also comes for free — slow persistence throttles the
     // producer instead of growing an unbounded RAM buffer.
-    const isReplayable = withId.type !== "ping" && withId.type !== "debug";
+    const isReplayable =
+      withId.type !== "ping" &&
+      withId.type !== "debug" &&
+      withId.type !== "content.delta";
     if (isReplayable && this.eventHooks?.onEvent !== undefined) {
       this.eventHooks.onEvent([withId]);
       if (this.eventHooks.flushEvents !== undefined) {
@@ -558,6 +593,37 @@ export class ResponseEmitter implements ResponseEmitterHandle {
     }
 
     return withId;
+  }
+
+  /**
+   * Applies a streaming text delta to an in-flight item's content (FIX-479).
+   *
+   * `content.delta` events share a single wire type for both message and
+   * reasoning streaming (verified at generator.ts where reasoning deltas
+   * reuse `type: "content.delta"` against a `ReasoningItem.id`). The
+   * dispatch below branches on the tracked item's type to pick the
+   * correct field path (`MessageItem.content[i].text` vs
+   * `ReasoningItem.summary[i].text`).
+   *
+   * Defensive no-ops keep the emitter robust to ordering drift: an unknown
+   * `itemId`, an out-of-range `contentIndex`, or an unsupported item type
+   * is ignored silently.
+   */
+  private applyDelta(itemId: string, contentIndex: number, delta: string): void {
+    const item = this.itemsById.get(itemId);
+    if (item === undefined) return;
+    if (item.type === "message") {
+      const part = item.content?.[contentIndex];
+      if (part === undefined || part.type !== "output_text") return;
+      part.text += delta;
+    } else if (item.type === "reasoning") {
+      const part = item.summary?.[contentIndex];
+      if (part === undefined || part.type !== "reasoning_text") return;
+      part.text += delta;
+    } else {
+      return;
+    }
+    this.itemHooks?.onItemUpdate?.(item);
   }
 
   private enforceBufferLimit(): void {

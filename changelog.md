@@ -13,6 +13,36 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-04-30
 
+### Decouple `emit*` default-transient from `blockTransient`; document the keyed-snapshot pattern (FIX-478)
+
+- `ctx.emitMessage()` and `ctx.emitComponent()` no longer inherit the producing block's `transient` flag. Both default to `transient: false` (persisted) regardless of whether the calling block is transient. The block flag retains its single intended meaning: suppress the framework's auto-emitted `block_output` bookkeeping for that block.
+- `ctx.emitStatus()` continues to default to `transient: true` (statuses are naturally ephemeral). All three emitters now accept a per-call `{ transient?: boolean }` override for symmetry.
+- Reverts the FIX-447 surgical workarounds (the explicit `transient: false` overrides in `getOrCreateTaskCollection`'s `onChange` and in the `boardMetaActive` / `boardMetaCompleted` blocks) — the architectural fix at the framework layer makes them redundant.
+- Documents the **keyed snapshot** pattern (component item with a stable `key`, latest-wins per `${requestId}:${key}`) and the four-cell `transient × key` matrix in `apps/docs/docs/streaming/emitting-items.md`. Cross-links from `OutputItemBase.transient`, `ComponentItem.key`, and the `BlockContext` emit JSDocs. No new APIs — the pattern was already supported, just unnamed.
+- Behavior change: third-party blocks declared `transient: true` that previously relied on `emitMessage` / `emitComponent` calls being auto-suppressed will now persist those items. Migration is one keyword: pass `{ transient: true }` explicitly on the emit call.
+
+### Reduce SSE stream noise: no-op `patchState` guard + transient state slots (FIX-477)
+
+- Framework-level no-op guard in `applyMutation`. Every state-write helper (`patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) now compares the proposed next state against the current state. When deep-equal, the persist call is skipped, no `state_change` SSE item is emitted, and the helper returns `false` instead of `true`. Idempotent writes are now free.
+- New `transientSlot()` helper in `@flow-state-dev/core` marks top-level fields on a sequencer's `stateSchema` as in-memory only. Transient slots stay readable across the sequencer's run via `ctx.sequencer.state` but never appear on the SSE stream, never write to the durable checkpoint store, and reset to schema defaults on resume.
+- `taskBoard` worker schemas mark `lastClaimed` and `currentTaskId` as `transientSlot`. The narrow `lastClaimed` identity-check guard FIX-447 added to `claim-task.ts` is reverted — the framework guard subsumes it.
+- **Breaking (internal):** `runWithCAS` now returns `{ state, committed }` instead of bare `Readonly<TState>`. `applyMutation` and the seven `ScopeStateOps` helpers now return `Promise<boolean>`. Existing call sites that ignore the return value are source-compatible; direct shape assertions on `runWithCAS` need updating.
+
+### Streaming-text throughput: `content.delta` reclassified as non-replayable (FIX-479)
+
+- `content.delta` events (covers both message and reasoning streaming — they share the same wire type) are no longer persisted to the events log and no longer await the `flushEvents` durability barrier. Per-token disk round-trips were serializing concurrent worker streams behind a single per-request events queue; under a supervisor with `concurrency: 3` and three streaming workers the queue saturated and the request appeared to lock up.
+- Running text is checkpointed via the items snapshot instead. The emitter mutates the in-flight `MessageItem.content[i].text` (and `ReasoningItem.summary[i].text`) in-place on each delta and fires a new `ResponseEmitterItemHooks.onItemUpdate` hook. `runAction` wires this hook to a coalesced `persistItems` write — the `FilesystemRequestStore`'s `itemWriteQueued` sentinel keeps disk I/O bounded by the natural write rate regardless of token rate.
+- Resume contract change. Mid-stream reconnects via `Last-Event-ID` no longer replay the exact token sequence — the running text snaps to the latest persisted snapshot and continues from the next live delta, with the eventual `item.done` payload superseding. Page-load bootstrap now shows the latest accumulated text for in-flight messages instead of empty content, which is strictly better than before. Completed messages still replay exactly.
+- Live SSE consumers, devtool observers, and the in-memory event buffer continue to receive every `content.delta` event unchanged. Filesystem and Postgres stores benefit transparently — the change is at the emitter, not the store.
+
+### Sub-agent items as first-class data for parent agents (FIX-480)
+
+- `TaskCollectionRef.list` / `get` now return a `TaskHandle` — the existing `Task` data fields plus an `items()` accessor that returns the items emitted during the worker's claim window. Pattern aggregators (synthesizer prompt builders, reviewer input builders, replanners) can now pick from a worker's natural emissions — `message`, `source`, `tool_call`, `reasoning` — instead of relying solely on `task.output`. Sync, throw-free, returns `[]` until the task is claimed.
+- Streaming-text generators (`outputSchema: z.string()`, `agentType` set) now emit their `block_output` as `BlockValue { kind: "ref", sourceItemId }` pointing at the just-emitted `MessageItem`, rather than inlining a duplicate copy of the same text. `resolveBlockValue` resolves the ref transparently to the joined `output_text` content. Object-output generators are unchanged. The streaming path's defensive equality check (returned string == accumulated stream) prevents the ref emission when post-validation transforms (`z.string().transform(...)`) mutate the value.
+- `BlockOutputLookup` renamed to `ItemLookup`; the old name stays as a non-breaking alias. `buildItemLookup(items)` indexes every item by id (not just `block_output`s) so refs may resolve to messages.
+- Substrate utility `extractTaskItems(items, collectionId, taskId)` and `computeTaskItemWindows(items, collectionId)` exported from `@flow-state-dev/tasks`. Same algorithm the kitchen-sink renderer uses for per-task expansion in `<TaskPlan />`; available server-side for any pattern that wants to inspect a worker's window without touching the renderer.
+- Supervisor's `buildResults` handler now also returns a `resultItems` field — `Array<{ taskId, goal, items }>` — alongside `results`. The default synthesizer's user prompt appends a deduped `Sources:` block when worker `source` items are present. Custom synthesizers ignoring the new field continue working unchanged.
+
 ### `taskBoard` follow-up: dep materialization, sub-agent tool visibility, render hygiene (FIX-447)
 
 - `TaskWorkerInput.deps` is now substrate-supplied. The worker dispatch path resolves each `task.deps[]` entry to its dep's `output` and passes the map to the worker before invocation. Workers read upstream context via `input.deps[depId]` directly — no pattern plumbing required.

@@ -226,6 +226,17 @@ async function executeByKind(
     try {
       const output = await block.run(input, generatorCtx as any);
       await emitGeneratorLifecycleSeam(seams, "after_execute", options.metadata);
+
+      // FIX-480: streaming-text generators write `_blockOutputHint` on
+      // their ctx to signal a ref-to-message block_output. The spread
+      // above creates a new object, so the hint write doesn't propagate
+      // naturally — forward it back to the outer ctx so executeBlock's
+      // hint capture path picks it up.
+      const generatorHint = (generatorCtx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint;
+      if (generatorHint !== undefined) {
+        (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = generatorHint;
+      }
+
       return { output, modelUsage };
     } catch (error) {
       await emitGeneratorLifecycleSeam(seams, "errored", options.metadata);

@@ -4,12 +4,13 @@
     "composite": true,
     "jsx": "react-jsx",
     "types": ["vite/client", "vitest/globals"],
-    "noEmit": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"]
-    }
+    "noEmit": true
   },
   "include": ["src/**/*", "test/**/*", "vite.config.ts"],
-  "references": [{ "path": "../../packages/core" }, { "path": "../../packages/client" }, { "path": "../../packages/react" }]
+  "references": [
+    { "path": "../../packages/core" },
+    { "path": "../../packages/client" },
+    { "path": "../../packages/react" },
+    { "path": "../../packages/devtool" }
+  ]
 }
