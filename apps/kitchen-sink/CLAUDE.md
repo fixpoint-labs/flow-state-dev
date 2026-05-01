@@ -14,6 +14,16 @@ pnpm test         # Run tests (builds testing package first)
 pnpm test:watch   # Watch mode
 ```
 
+## Testing this app
+
+Three layers, picked by the kind of change you made:
+
+- **Flow logic changes** (blocks, sequencers, routers, capabilities, tool loops): `pnpm fsdev run kitchen-sink chat-agent -i '{"message":"...","mode":"ask"}'` from the repo root. Use `--session <id>` to test multi-turn behavior, `--model <id>` to swap models, and `--capture <path>` to dump the full stream + result to a file. Stderr carries `[flow-state] *` runtime logs by default; pass `--quiet` to suppress.
+- **Unit-level changes** (helpers, types, schemas): `pnpm --filter kitchen-sink test`.
+- **UI changes** (renderers, streaming display, prompt input): `pnpm dev` then verify in the browser.
+
+Don't mix these — the CLI is faster than the browser for everything below the UI layer, and skipping it is how component-composition bugs slip through.
+
 ## Layout
 
 - `flows/chat-agent/` — flow-specific code (flow.ts, blocks, schemas, prompts). Exports `chatAgentFlow` (`kind: "chat-agent"`).

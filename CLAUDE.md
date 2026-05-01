@@ -12,6 +12,8 @@ You are not a sycophant. You don't tell the user they have a good idea until you
 2. `docs/contributing/architecture-reference.md` — Locked contracts quick reference
 3. `AGENTS.md` — Process protocol and code style rules
 
+**Verifying flow changes**: When you change flow logic, the default verification is `fsdev run` (see `AGENTS.md` → "Verifying flow changes during development"). Reach for `pnpm test` only for unit-level changes; reach for kitchen-sink in a browser only for UI-layer changes.
+
 **Read when relevant:**
 - `docs/architecture/items.md` — **Read before touching items, rendering, or the stream.** Complete item type registry, classification, and rendering contracts.
 - `docs/architecture/*.md` — Deep dives into blocks, flows, state, streaming, execution, etc.

@@ -4,6 +4,14 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-01
 
+### Make `fsdev run` the primary CLI dev loop for agents (FIX-490)
+
+- `fsdev run` now emits `[flow-state] *` runtime events to stderr by default at `info` level — action lifecycle, block lifecycle, retries, errors. Previously these were silently dropped because the command never passed a logger to `runAction`. New `--quiet` suppresses them; new `--log-level <debug|info|warn|error>` sets the threshold. The CLI always passes an explicit logger so the server's `console.*`-backed default never writes runtime traces to stdout and corrupt the NDJSON stream.
+- New `--capture <path>` writes the full structured run output to a JSON file (`{ command, events, result }`) — additive with stdout NDJSON, parent directories created as needed.
+- `AGENTS.md` gains a "Verifying flow changes during development" section that frames `fsdev run` as the default verification tool and shows the kind-of-change → tool routing (CLI for flow logic, vitest for units, browser for UI). `CLAUDE.md` adds a one-line orientation pointer; `apps/kitchen-sink/CLAUDE.md` adds a "Testing this app" section. New `apps/docs/docs/cli/agent-dev-loop.md` page covers the same loop for human readers, linked from `cli/overview.md`.
+- Mock-fallback claim in `AGENTS.md` audited and rewritten. `createModelResolver` has no mock fallback — without a configured provider, generator blocks fail with `No provider available for "<provider>"`. The doc now describes the actual behavior and points provider-free smoke tests at vitest.
+- `@flow-state-dev/testing` no longer re-exports `createInboundTransportConformanceTests` and `createMockTransportHost` from its index. Conformance helpers import `vitest` at module top level, which made any non-test consumer (notably the CLI) fail to load. They're available via the new `@flow-state-dev/testing/conformance` subpath export.
+
 ### Migrate / retire queue-shaped patterns onto `taskBoard` substrate (FIX-448)
 
 - **Removed** `drainPool` and `eventQueue` patterns. The `taskBoard` substrate gives both for free: drainPool's lease/concurrent-drain semantics are exactly what taskBoard provides (CAS-safe claim, lease/reclaim, per-task error policy); eventQueue is a sequential taskBoard with `fifoDispatcher` and mid-run enqueue. Existing call sites migrate to `taskBoard({...})` directly. The kitchen-sink's chat-agent demo action `event-queue` is rewritten as `task-queue-demo` against `taskBoard` with `getOrCreateTaskCollection({ backing: "request" })` for mid-handler enqueue. `EventQueueProgress` removed from `@flow-state-dev/react`.

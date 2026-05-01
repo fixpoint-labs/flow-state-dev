@@ -1,5 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { resolve } from "node:path";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { createInMemoryStores } from "@flow-state-dev/server";
 import { executeRunCommand, type FlowRunResult, type FlowEvent } from "../src/commands/run";
 import { discoverFlows } from "../src/resolve-flow";
@@ -10,16 +12,27 @@ const fixturesDir = resolve(import.meta.dirname, "fixtures");
 
 // Capture stdout writes as NDJSON lines
 let stdoutLines: string[];
+let stderrLines: string[];
 const originalStdoutWrite = process.stdout.write;
+const originalStderrWrite = process.stderr.write;
 
 beforeEach(() => {
   stdoutLines = [];
+  stderrLines = [];
   process.stdout.write = vi.fn((chunk: any) => {
     const text = typeof chunk === "string" ? chunk : chunk.toString();
-    // Split by newlines to capture individual NDJSON events
     for (const line of text.split("\n")) {
       if (line.trim().length > 0) {
         stdoutLines.push(line);
+      }
+    }
+    return true;
+  }) as any;
+  process.stderr.write = vi.fn((chunk: any) => {
+    const text = typeof chunk === "string" ? chunk : chunk.toString();
+    for (const line of text.split("\n")) {
+      if (line.trim().length > 0) {
+        stderrLines.push(line);
       }
     }
     return true;
@@ -29,6 +42,7 @@ beforeEach(() => {
 
 afterEach(() => {
   process.stdout.write = originalStdoutWrite;
+  process.stderr.write = originalStderrWrite;
   process.exitCode = undefined;
 });
 
@@ -335,6 +349,150 @@ describe("exit codes", () => {
     });
 
     expect(process.exitCode).toBe(1);
+  });
+});
+
+describe("stderr runtime logger", () => {
+  it("emits [flow-state] action lifecycle events to stderr by default", async () => {
+    await executeRunCommand("echo", "respond", {
+      input: '{"message": "logger-default"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+    });
+
+    const startedLine = stderrLines.find((l) => l.startsWith("[flow-state] action execution started"));
+    const completedLine = stderrLines.find((l) => l.startsWith("[flow-state] action execution completed"));
+    expect(startedLine).toBeDefined();
+    expect(completedLine).toBeDefined();
+  });
+
+  it("does not pollute stdout NDJSON with runtime log lines", async () => {
+    await executeRunCommand("echo", "respond", {
+      input: '{"message": "stdout-clean"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+    });
+
+    for (const line of stdoutLines) {
+      expect(line.startsWith("[flow-state]")).toBe(false);
+      // Every stdout line must be valid NDJSON
+      expect(() => JSON.parse(line)).not.toThrow();
+    }
+  });
+
+  it("--quiet suppresses all stderr runtime logs", async () => {
+    await executeRunCommand("echo", "respond", {
+      input: '{"message": "quiet"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+      quiet: true,
+    });
+
+    expect(stderrLines.filter((l) => l.startsWith("[flow-state]"))).toEqual([]);
+  });
+
+  it("--log-level warn drops info-level lifecycle events", async () => {
+    await executeRunCommand("echo", "respond", {
+      input: '{"message": "warn-only"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+      logLevel: "warn",
+    });
+
+    expect(stderrLines.find((l) => l.startsWith("[flow-state] action execution started"))).toBeUndefined();
+    expect(stderrLines.find((l) => l.startsWith("[flow-state] action execution completed"))).toBeUndefined();
+  });
+
+  it("rejects unknown --log-level values with EXIT_INVALID_ARGS", async () => {
+    await expect(
+      executeRunCommand("echo", "respond", {
+        input: '{"message": "bad-level"}',
+        cwd: fixturesDir,
+        stores: createInMemoryStores(),
+        logLevel: "trace" as any,
+      }),
+    ).rejects.toThrow(/Invalid --log-level/);
+  });
+});
+
+describe("--capture", () => {
+  let captureDir: string;
+
+  beforeEach(() => {
+    captureDir = mkdtempSync(join(tmpdir(), "fsdev-capture-"));
+  });
+
+  afterEach(() => {
+    rmSync(captureDir, { recursive: true, force: true });
+  });
+
+  it("writes the structured run payload to the capture file", async () => {
+    const capturePath = join(captureDir, "run.json");
+
+    const result = await executeRunCommand("echo", "respond", {
+      input: '{"message": "capture-me"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+      capture: capturePath,
+      quiet: true,
+    });
+
+    const payload = JSON.parse(readFileSync(capturePath, "utf-8"));
+    expect(payload.command.flow).toBe("echo");
+    expect(payload.command.action).toBe("respond");
+    expect(payload.command.input).toEqual({ message: "capture-me" });
+    expect(Array.isArray(payload.events)).toBe(true);
+    expect(payload.events.find((e: FlowEvent) => e.type === "flow_complete")).toBeDefined();
+    expect(payload.result.success).toBe(true);
+    expect(payload.result.exitCode).toBe(0);
+    expect(result.success).toBe(true);
+  });
+
+  it("captures error events when the flow fails", async () => {
+    const capturePath = join(captureDir, "fail.json");
+
+    await executeRunCommand("throwing", "fail", {
+      input: '{"message": "boom"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+      capture: capturePath,
+      quiet: true,
+    });
+
+    const payload = JSON.parse(readFileSync(capturePath, "utf-8"));
+    expect(payload.result.success).toBe(false);
+    expect(payload.result.exitCode).toBe(1);
+    expect(payload.events.find((e: FlowEvent) => e.type === "error")).toBeDefined();
+  });
+
+  it("creates parent directories when --capture path is nested", async () => {
+    const capturePath = join(captureDir, "nested", "subdir", "run.json");
+
+    await executeRunCommand("echo", "respond", {
+      input: '{"message": "deep"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+      capture: capturePath,
+      quiet: true,
+    });
+
+    const payload = JSON.parse(readFileSync(capturePath, "utf-8"));
+    expect(payload.command.flow).toBe("echo");
+  });
+
+  it("still emits NDJSON to stdout when --capture is set (additive)", async () => {
+    const capturePath = join(captureDir, "additive.json");
+
+    await executeRunCommand("echo", "respond", {
+      input: '{"message": "both"}',
+      cwd: fixturesDir,
+      stores: createInMemoryStores(),
+      capture: capturePath,
+      quiet: true,
+    });
+
+    const events = stdoutLines.map((line) => JSON.parse(line));
+    expect(events.find((e) => e.type === "flow_complete")).toBeDefined();
   });
 });
 

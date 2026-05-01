@@ -66,14 +66,11 @@ export type {
   ScoreMapping,
 } from "./eval";
 
-export {
-  createInboundTransportConformanceTests,
-  createMockTransportHost,
-  type ConformanceCaseHelpers,
-  type CreateInboundTransportConformanceTestsOptions,
-  type CreateMockTransportHostOptions,
-  type DispatchCall,
-  type MockTransportHost
-} from "./transports/conformance";
+// Note: conformance helpers (`createInboundTransportConformanceTests`,
+// `createMockTransportHost`, etc.) live in `./transports/conformance` and
+// import `vitest` at the top level. Re-exporting them from this index would
+// make `import "@flow-state-dev/testing"` fail for non-test consumers
+// (e.g. the CLI loading at runtime). They're available via the
+// `@flow-state-dev/testing/conformance` subpath export instead.
 
 export const testingPackageMarker = "@flow-state-dev/testing";

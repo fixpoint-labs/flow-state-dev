@@ -1,8 +1,8 @@
 /**
  * `fsdev run <flowKind> <action>` command — executes a flow action with streaming NDJSON output.
  */
-import { readFileSync } from "node:fs";
-import { resolve, isAbsolute } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve, isAbsolute } from "node:path";
 import type { Command } from "commander";
 import type { OutputItem } from "@flow-state-dev/core/items";
 import {
@@ -13,6 +13,8 @@ import {
   createResponseEmitter,
   type ExecutionResult,
   type RequestStreamEventWithId,
+  type RuntimeLogger,
+  type RuntimeLoggerLevel,
   type StoreRegistry
 } from "@flow-state-dev/server";
 import type { FlowInstance, ModelResolver, JsonObject } from "@flow-state-dev/core/types";
@@ -94,6 +96,9 @@ export function registerRunCommand(program: Command): void {
     .option("--seed-org <json>", "Seed org-level state (JSON or file path)")
     .option("--flow-dir <path>", "Override flow discovery root (repeatable)", collectValues, undefined)
     .option("--format <format>", "Output format", "json")
+    .option("--quiet", "Suppress runtime logs on stderr (NDJSON on stdout still emitted)")
+    .option("--log-level <level>", "Stderr log level: debug | info | warn | error (default: info)")
+    .option("--capture <path>", "Write the full structured run output to a JSON file")
     .action(async (flowKind: string, action: string, options: RunCommandOptions) => {
       try {
         await executeRunCommand(flowKind, action, options);
@@ -121,6 +126,123 @@ export interface RunCommandOptions {
   seedOrg?: string;
   flowDir?: string[];
   format?: string;
+  /** Suppress all runtime logs on stderr. */
+  quiet?: boolean;
+  /** Minimum runtime log level emitted to stderr (default: "info"). */
+  logLevel?: RuntimeLoggerLevel;
+  /** When set, writes the full structured run output to this JSON file. */
+  capture?: string;
+}
+
+const LOG_LEVELS: readonly RuntimeLoggerLevel[] = ["debug", "info", "warn", "error"] as const;
+
+/**
+ * Truncates context values for stderr logging. Strings over the byte budget are
+ * trimmed in place; objects/arrays are kept intact when they serialize within
+ * the budget (so the outer `JSON.stringify` produces real nested JSON), and
+ * replaced with a truncated string preview only when they exceed it.
+ */
+function summarizeContext(context: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(context)) {
+    if (value === undefined) continue;
+    if (typeof value === "string") {
+      out[key] = value.length > 240 ? `${value.slice(0, 239)}…` : value;
+      continue;
+    }
+    if (value === null || typeof value === "number" || typeof value === "boolean") {
+      out[key] = value;
+      continue;
+    }
+    try {
+      const serialized = JSON.stringify(value);
+      if (serialized === undefined) {
+        out[key] = String(value);
+      } else if (serialized.length > 240) {
+        out[key] = `${serialized.slice(0, 239)}…`;
+      } else {
+        out[key] = value;
+      }
+    } catch {
+      out[key] = String(value);
+    }
+  }
+  return out;
+}
+
+/** No-op logger used by `--quiet` to suppress server-side default console logging. */
+const SILENT_LOGGER: RuntimeLogger = {
+  debug: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {}
+};
+
+/**
+ * Builds a CLI runtime logger that writes one line per event to stderr,
+ * filtered to events at or above `level`. Returns a no-op logger for "silent".
+ *
+ * Always returns an explicit logger (never `undefined`) so that `runAction`
+ * does not fall back to `DEFAULT_RUNTIME_LOGGER`, whose `console.debug`/
+ * `console.info` calls write to stdout and would corrupt the NDJSON stream.
+ */
+function createCliLogger(level: RuntimeLoggerLevel | "silent"): RuntimeLogger {
+  if (level === "silent") return SILENT_LOGGER;
+  const minIdx = LOG_LEVELS.indexOf(level);
+  const emit = (lvl: RuntimeLoggerLevel) => (message: string, context: Record<string, unknown>) => {
+    if (LOG_LEVELS.indexOf(lvl) < minIdx) return;
+    const summary = summarizeContext(context);
+    process.stderr.write(`${message} ${JSON.stringify(summary)}\n`);
+  };
+  return {
+    debug: emit("debug"),
+    info: emit("info"),
+    warn: emit("warn"),
+    error: emit("error")
+  };
+}
+
+/** Resolves the effective stderr log level from command options. */
+function resolveLogLevel(options: RunCommandOptions): RuntimeLoggerLevel | "silent" {
+  if (options.quiet === true) return "silent";
+  const requested = options.logLevel;
+  if (requested !== undefined) {
+    if (!LOG_LEVELS.includes(requested)) {
+      throw new CliError(
+        `Invalid --log-level "${requested}". Expected one of: ${LOG_LEVELS.join(", ")}`,
+        EXIT_INVALID_ARGS
+      );
+    }
+    return requested;
+  }
+  return "info";
+}
+
+/** Final on-disk shape written by `--capture`. */
+interface CapturePayload {
+  command: {
+    flow: string;
+    action: string;
+    input: unknown;
+    model: string | null;
+    session: string | null;
+    seedSession: unknown;
+    seedUser: unknown;
+    seedOrg: unknown;
+  };
+  events: FlowEvent[];
+  result: FlowRunResult & { exitCode: number };
+}
+
+/** Writes a capture payload to disk, creating parent directories as needed. */
+function writeCaptureFile(path: string, payload: CapturePayload): void {
+  const target = isAbsolute(path) ? path : resolve(process.cwd(), path);
+  try {
+    mkdirSync(dirname(target), { recursive: true });
+  } catch {
+    // best-effort: writeFileSync below will surface a real error
+  }
+  writeFileSync(target, JSON.stringify(payload, null, 2) + "\n", "utf-8");
 }
 
 /** Internal options for testability. */
@@ -212,17 +334,28 @@ export async function executeRunCommand(
     modelResolver = override;
   }
 
-  // 6. Create response emitter with NDJSON streaming
+  // 6. Create response emitter with NDJSON streaming.
+  //    When --capture is set, also collect every emitted event for the on-disk payload.
   const requestId = `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const captureEnabled = options.capture !== undefined && options.capture !== "";
+  const capturedEvents: FlowEvent[] = [];
+  const recordEvent = (event: FlowEvent): void => {
+    if (captureEnabled) capturedEvents.push(event);
+    emitNdjson(event);
+  };
   const responseEmitter = createResponseEmitter({
     requestId,
     onEvent: (event) => {
       const ndjsonEvent = mapStreamEventToNdjson(event);
       if (ndjsonEvent !== undefined) {
-        emitNdjson(ndjsonEvent);
+        recordEvent(ndjsonEvent);
       }
     },
   });
+
+  // 6b. Construct the stderr runtime logger (suppressible via --quiet, level via --log-level).
+  const logLevel = resolveLogLevel(options);
+  const logger = createCliLogger(logLevel);
 
   // 7. Execute flow action
   const startMs = Date.now();
@@ -240,6 +373,7 @@ export async function executeRunCommand(
       stores,
       modelResolver,
       responseEmitter,
+      logger,
     });
 
     if (result.error !== undefined) {
@@ -262,14 +396,14 @@ export async function executeRunCommand(
 
   // 8. Emit terminal NDJSON event
   if (success) {
-    emitNdjson({
+    recordEvent({
       type: "flow_complete",
       output: result.output ?? null,
       durationMs,
       items: result.items.length,
     });
   } else {
-    emitNdjson({
+    recordEvent({
       type: "error",
       message: error!.message,
     });
@@ -283,7 +417,34 @@ export async function executeRunCommand(
     ...(error !== undefined ? { error } : {}),
   };
 
-  process.exitCode = success ? EXIT_SUCCESS : EXIT_EXECUTION_ERROR;
+  const exitCode = success ? EXIT_SUCCESS : EXIT_EXECUTION_ERROR;
+
+  // 9. Optional --capture: write structured run payload to disk.
+  //    Capture failures are surfaced on stderr but don't override the run's exit code.
+  if (captureEnabled) {
+    try {
+      writeCaptureFile(options.capture!, {
+        command: {
+          flow: flowKind,
+          action: actionName,
+          input: input ?? null,
+          model: options.model ?? null,
+          session: options.session ?? null,
+          seedSession: options.seedSession ?? null,
+          seedUser: options.seedUser ?? null,
+          seedOrg: options.seedOrg ?? null,
+        },
+        events: capturedEvents,
+        result: { ...runResult, exitCode },
+      });
+    } catch (err) {
+      process.stderr.write(
+        `Failed to write --capture file: ${err instanceof Error ? err.message : String(err)}\n`
+      );
+    }
+  }
+
+  process.exitCode = exitCode;
 
   return runResult;
 }
