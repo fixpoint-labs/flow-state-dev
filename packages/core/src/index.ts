@@ -55,6 +55,7 @@ export type {
 export { contextFn } from "./context";
 export type { ContextFunction } from "./context";
 export { isTraceObservabilityEnabled } from "./utils/trace-observability";
+export { transientSlot } from "./utils/transient-slot";
 export {
   buildBlockInstanceId,
   blockPathBranch,

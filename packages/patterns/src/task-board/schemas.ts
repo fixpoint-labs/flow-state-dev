@@ -18,6 +18,7 @@
  * `currentTaskId`.
  */
 import { z, type ZodTypeAny } from "zod";
+import { transientSlot } from "@flow-state-dev/core";
 import { taskSchema, type Task } from "@flow-state-dev/tasks";
 
 /**
@@ -46,6 +47,10 @@ export type TaskBoardState = { tasks: Record<string, Task> };
  *
  * `lastClaimed`: was the most recent `claimTask` successful? Set by
  * `claimTask`, consumed by `checkBoard` to gate the idle-sleep path.
+ * Marked `transientSlot` because the value is purely a worker-local
+ * scratch flag — clients have no use for it, and emitting a patch on
+ * every idle poll dominates the SSE stream when many workers are idle
+ * (FIX-477).
  *
  * The currently-claimed task id lives one level deeper, on the
  * worker-body sequencer's state (`taskBoardWorkerBodyStateSchema`),
@@ -54,7 +59,7 @@ export type TaskBoardState = { tasks: Record<string, Task> };
  * directly via `ctx.sequencer`.
  */
 export const taskBoardWorkerStateSchema = z.object({
-  lastClaimed: z.boolean().default(false),
+  lastClaimed: transientSlot(z.boolean().default(false)),
 });
 
 export type TaskBoardWorkerState = z.infer<typeof taskBoardWorkerStateSchema>;
@@ -69,7 +74,7 @@ export type TaskBoardWorkerState = z.infer<typeof taskBoardWorkerStateSchema>;
  * stale values from a previous iteration cannot leak in.
  */
 export const taskBoardWorkerBodyStateSchema = z.object({
-  currentTaskId: z.string().optional(),
+  currentTaskId: transientSlot(z.string().optional()),
 });
 
 export type TaskBoardWorkerBodyState = z.infer<

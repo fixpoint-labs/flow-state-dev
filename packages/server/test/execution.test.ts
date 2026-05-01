@@ -3,7 +3,8 @@ import {
   generator,
   handler,
   router,
-  sequencer
+  sequencer,
+  transientSlot
 } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
@@ -1236,6 +1237,229 @@ describe("execution runtime", () => {
     } finally {
       process.env.NODE_ENV = originalNodeEnv;
     }
+  });
+
+  it("suppresses state_change emit when patchState is a no-op (FIX-477 part 1)", async () => {
+    const { ctx } = await createRuntimeContext("req_seq_state_noop");
+
+    const noOp = handler({
+      name: "noop-mutate",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: async (input, stepCtx) => {
+        // schema default is `count: 0`. Patch with the same value — should
+        // be detected as a no-op and emit nothing.
+        await stepCtx.sequencer!.patchState({ count: 0 });
+        return input;
+      }
+    });
+
+    const seq = sequencer({
+      name: "noop-stateful",
+      inputSchema: z.number(),
+      stateSchema: z.object({ count: z.number().default(0) })
+    }).then(noOp);
+
+    const result = await executeBlock({ block: seq, input: 1, ctx });
+    expect(result.error).toBeUndefined();
+
+    const response = ctx.response as ReturnType<typeof createResponseEmitter>;
+    const stateChanges = response
+      .getItems()
+      .filter((item) => item.type === "state_change");
+    expect(stateChanges).toHaveLength(0);
+  });
+
+  it("no-op guard runs even when persistStateChanges is enabled", async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const stores = createInMemoryStores();
+      const step = handler({
+        name: "noop-step",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: async (value, stepCtx) => {
+          await stepCtx.sequencer!.patchState({ count: 0 });
+          return value;
+        }
+      });
+
+      const seq = sequencer({
+        name: "noop-persisted",
+        inputSchema: z.number(),
+        stateSchema: z.object({ count: z.number().default(0) })
+      }).then(step);
+
+      const flow = defineFlow({
+        kind: "noop-persisted-flow",
+        actions: {
+          run: { inputSchema: z.number(), block: seq }
+        }
+      })() as ReturnType<ReturnType<typeof defineFlow>> & { persistStateChanges?: boolean };
+      flow.persistStateChanges = true;
+
+      const response = createResponseEmitter({ requestId: "req_noop_persisted" });
+      const ctx = await createExecutionContext({
+        flow,
+        actionName: "run",
+        requestId: "req_noop_persisted",
+        sessionId: "sess_noop_persisted",
+        userId: "user_noop_persisted",
+        stores,
+        response,
+        modelResolver: (modelId) => ({
+          modelId,
+          async generate() {
+            return { text: "ok" };
+          }
+        })
+      });
+
+      const result = await executeBlock({ block: seq, input: 1, ctx });
+      expect(result.error).toBeUndefined();
+      const stateChanges = response
+        .getItems()
+        .filter((item) => item.type === "state_change");
+      expect(stateChanges).toHaveLength(0);
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+  });
+
+  it("transient slots: patches are in-memory only and never appear on the stream (FIX-477 part 2)", async () => {
+    const { ctx } = await createRuntimeContext("req_seq_state_transient");
+
+    let observedScratch: unknown = undefined;
+
+    const writeScratch = handler({
+      name: "write-scratch",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: async (input, stepCtx) => {
+        await stepCtx.sequencer!.patchState({ scratch: "v1" });
+        return input;
+      }
+    });
+
+    const readScratch = handler({
+      name: "read-scratch",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: async (input, stepCtx) => {
+        observedScratch = (stepCtx.sequencer!.state as Record<string, unknown>).scratch;
+        return input;
+      }
+    });
+
+    const seq = sequencer({
+      name: "transient-only",
+      inputSchema: z.number(),
+      stateSchema: z.object({
+        visible: z.number().default(0),
+        scratch: transientSlot(z.string().optional())
+      })
+    })
+      .then(writeScratch)
+      .then(readScratch);
+
+    const result = await executeBlock({ block: seq, input: 1, ctx });
+    expect(result.error).toBeUndefined();
+
+    const response = ctx.response as ReturnType<typeof createResponseEmitter>;
+
+    // No state_change item: only a transient slot mutated.
+    const stateChanges = response
+      .getItems()
+      .filter((item) => item.type === "state_change");
+    expect(stateChanges).toHaveLength(0);
+
+    // Subsequent step still saw the in-memory value.
+    expect(observedScratch).toBe("v1");
+
+    // state_snapshot payloads must not carry the transient key.
+    const snapshots = response
+      .getItems()
+      .filter((item) => item.type === "state_snapshot") as Array<{
+        type: "state_snapshot";
+        state: Record<string, unknown>;
+      }>;
+    for (const snap of snapshots) {
+      expect("scratch" in snap.state).toBe(false);
+      expect("visible" in snap.state).toBe(true);
+    }
+  });
+
+  it("transient slots: mixed patch emits delta with transient keys stripped", async () => {
+    const { ctx } = await createRuntimeContext("req_seq_state_transient_mix");
+
+    const mixed = handler({
+      name: "mixed-mutate",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: async (input, stepCtx) => {
+        await stepCtx.sequencer!.patchState({ visible: 5, scratch: "x" });
+        return input;
+      }
+    });
+
+    const seq = sequencer({
+      name: "transient-mixed",
+      inputSchema: z.number(),
+      stateSchema: z.object({
+        visible: z.number().default(0),
+        scratch: transientSlot(z.string().optional())
+      })
+    }).then(mixed);
+
+    const result = await executeBlock({ block: seq, input: 1, ctx });
+    expect(result.error).toBeUndefined();
+
+    const response = ctx.response as ReturnType<typeof createResponseEmitter>;
+    const stateChanges = response
+      .getItems()
+      .filter((item) => item.type === "state_change") as Array<
+        Extract<ReturnType<typeof response.getItems>[number], { type: "state_change" }>
+      >;
+    expect(stateChanges).toHaveLength(1);
+    expect(stateChanges[0].operation).toBe("patch");
+    expect(stateChanges[0].delta).toEqual({ visible: 5 });
+  });
+
+  it("transient slots: setState delta is filtered to non-transient keys", async () => {
+    const { ctx } = await createRuntimeContext("req_seq_state_transient_set");
+
+    const setBoth = handler({
+      name: "set-both",
+      inputSchema: z.number(),
+      outputSchema: z.number(),
+      execute: async (input, stepCtx) => {
+        await stepCtx.sequencer!.setState({ visible: 1, scratch: "y" });
+        return input;
+      }
+    });
+
+    const seq = sequencer({
+      name: "transient-set",
+      inputSchema: z.number(),
+      stateSchema: z.object({
+        visible: z.number().default(0),
+        scratch: transientSlot(z.string().optional())
+      })
+    }).then(setBoth);
+
+    const result = await executeBlock({ block: seq, input: 1, ctx });
+    expect(result.error).toBeUndefined();
+
+    const response = ctx.response as ReturnType<typeof createResponseEmitter>;
+    const stateChanges = response
+      .getItems()
+      .filter((item) => item.type === "state_change") as Array<
+        Extract<ReturnType<typeof response.getItems>[number], { type: "state_change" }>
+      >;
+    expect(stateChanges).toHaveLength(1);
+    expect(stateChanges[0].operation).toBe("set");
+    expect(stateChanges[0].delta).toEqual({ visible: 1 });
   });
 
   it("resolves nearest sequencer and applies schema defaults", async () => {

@@ -1,6 +1,7 @@
 import type { StateRef } from "@flow-state-dev/core/types";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { JsonObject, JsonValue } from "@flow-state-dev/core/types";
+import { deepEqual } from "@flow-state-dev/core/utils";
 import { z } from "zod";
 import {
   createExecutionContext,
@@ -287,10 +288,19 @@ function createTargetRef(
   targetState: MutableTargetState,
   stateChanges: StateChange[]
 ): StateRef<Record<string, unknown>> {
+  // Mirror the framework's no-op guard: when the mutator's output is
+  // structurally equal to the current state, leave the value untouched
+  // and signal `false` so callers branching on the return value behave
+  // consistently with production (FIX-477).
   const mutate = async (
     mutator: (current: Record<string, unknown>) => Record<string, unknown>
-  ): Promise<void> => {
-    targetState.value = mutator(targetState.value);
+  ): Promise<boolean> => {
+    const next = mutator(targetState.value);
+    if (deepEqual(targetState.value, next)) {
+      return false;
+    }
+    targetState.value = next;
+    return true;
   };
 
   const pushTargetStateChange = (operation: ScopeOperation, args: unknown[]): void => {
@@ -311,22 +321,25 @@ function createTargetRef(
     get state() {
       return cloneRecord(targetState.value);
     },
-    patchState: async (updates: unknown): Promise<void> => {
+    patchState: async (updates: unknown): Promise<boolean> => {
+      let changed = false;
       if (typeof updates === "object" && updates !== null) {
-        await mutate((current) => ({
+        changed = await mutate((current) => ({
           ...current,
           ...(updates as Record<string, unknown>)
         }));
       }
 
       pushTargetStateChange("patchState", [updates]);
+      return changed;
     },
-    setState: async (nextState: unknown): Promise<void> => {
-      await mutate(() => asRecord(nextState));
+    setState: async (nextState: unknown): Promise<boolean> => {
+      const changed = await mutate(() => asRecord(nextState));
       pushTargetStateChange("setState", [nextState]);
+      return changed;
     },
-    incState: async (increments: unknown): Promise<void> => {
-      await mutate((current) => {
+    incState: async (increments: unknown): Promise<boolean> => {
+      const changed = await mutate((current) => {
         const next = { ...current };
         for (const [field, value] of Object.entries(asRecord(increments))) {
           const currentValue = typeof next[field] === "number" ? (next[field] as number) : 0;
@@ -338,10 +351,11 @@ function createTargetRef(
       });
 
       pushTargetStateChange("incState", [increments]);
+      return changed;
     },
-    pushState: async (field: unknown, value: unknown): Promise<void> => {
+    pushState: async (field: unknown, value: unknown): Promise<boolean> => {
       const key = typeof field === "string" ? field : String(field);
-      await mutate((current) => {
+      const changed = await mutate((current) => {
         const existing = Array.isArray(current[key]) ? (current[key] as unknown[]) : [];
         return {
           ...current,
@@ -350,16 +364,17 @@ function createTargetRef(
       });
 
       pushTargetStateChange("pushState", [field, value]);
+      return changed;
     },
     setStateRecord: async (
       field: unknown,
       key: unknown,
       value: unknown
-    ): Promise<void> => {
+    ): Promise<boolean> => {
       const fieldName = typeof field === "string" ? field : String(field);
       const recordKey = typeof key === "string" ? key : String(key);
 
-      await mutate((current) => ({
+      const changed = await mutate((current) => ({
         ...current,
         [fieldName]: {
           ...asRecord(current[fieldName]),
@@ -368,12 +383,13 @@ function createTargetRef(
       }));
 
       pushTargetStateChange("setStateRecord", [field, key, value]);
+      return changed;
     },
-    deleteStateRecord: async (field: unknown, key: unknown): Promise<void> => {
+    deleteStateRecord: async (field: unknown, key: unknown): Promise<boolean> => {
       const fieldName = typeof field === "string" ? field : String(field);
       const recordKey = typeof key === "string" ? key : String(key);
 
-      await mutate((current) => {
+      const changed = await mutate((current) => {
         const nextRecord = { ...asRecord(current[fieldName]) };
         delete nextRecord[recordKey];
 
@@ -384,13 +400,14 @@ function createTargetRef(
       });
 
       pushTargetStateChange("deleteStateRecord", [field, key]);
+      return changed;
     },
-    atomicState: async (mutator: unknown): Promise<void> => {
+    atomicState: async (mutator: unknown): Promise<boolean> => {
       if (typeof mutator !== "function") {
-        return;
+        return false;
       }
 
-      await mutate((current) => {
+      const changed = await mutate((current) => {
         const patch = asRecord(
           (mutator as (state: Readonly<Record<string, unknown>>) => unknown)(current)
         );
@@ -402,6 +419,7 @@ function createTargetRef(
       });
 
       pushTargetStateChange("atomicState", [mutator]);
+      return changed;
     }
   };
 }

@@ -28,6 +28,10 @@
     "./capability": {
       "types": "./dist/capability/index.d.ts",
       "default": "./dist/capability/index.js"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "default": "./dist/utils/index.js"
     }
   },
   "license": "MIT",

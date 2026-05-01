@@ -54,7 +54,7 @@ Structural items ignore `agentType` for visibility. `agentType` on a structural 
 
 **`status`** is a transient progress update — "Searching the web...", "Running analysis...". Streams to the client but is never persisted. Backed by a request-scoped single slot: the latest `emitStatus` value wins, and the UI renders it as a single in-flight indicator (falling back to "Thinking..." when the slot is empty). Emit declaratively via `activeStatusMessage` on any block config, or imperatively via `ctx.emitStatus()` — see [Status slot semantics](#status-slot-semantics).
 
-**`state_change`** records that a state mutation happened. In production it's transient; the client uses it to know something changed so it can update its view. In development it's persisted to support the devtool state timeline.
+**`state_change`** records that a state mutation happened. In production it's transient; the client uses it to know something changed so it can update its view. In development it's persisted to support the devtool state timeline. The framework suppresses emission when the proposed write is structurally equal to the current state (no-op guard) and when the mutation only touches keys marked `transientSlot()` on a sequencer's `stateSchema`.
 
 **`resource_change`** records that a resource was created, updated, or deleted. A notification — the real state lives in the resource store. Transient by default.
 

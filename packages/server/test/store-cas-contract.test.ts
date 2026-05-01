@@ -159,7 +159,7 @@ describe.each([
       options: { maxRetries: 5, baseDelayMs: 0 }
     });
 
-    expect(result).toEqual({ count: 11 });
+    expect(result).toEqual({ state: { count: 11 }, committed: true });
     const fetched = await store.get("s5");
     expect(fetched?.version).toBe(2);
     expect(fetched?.state).toEqual({ count: 11 });
@@ -204,7 +204,7 @@ describe.each([
     expect(conflictSeen).toBe(true);
     // After B observes A's write (count=42), its mutator runs again and
     // yields count=142.
-    expect(resultB).toEqual({ count: 142 });
+    expect(resultB).toEqual({ state: { count: 142 }, committed: true });
     const fetched = await store.get("s6");
     expect(fetched?.version).toBe(2);
     expect(fetched?.state).toEqual({ count: 142 });

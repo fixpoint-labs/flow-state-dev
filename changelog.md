@@ -4,12 +4,21 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-04-30
 
+
+### Reduce SSE stream noise: no-op `patchState` guard + transient state slots (FIX-477)
+
+- Framework-level no-op guard in `applyMutation`. Every state-write helper (`patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, `atomicState`) now compares the proposed next state against the current state. When deep-equal, the persist call is skipped, no `state_change` SSE item is emitted, and the helper returns `false` instead of `true`. Idempotent writes are now free.
+- New `transientSlot()` helper in `@flow-state-dev/core` marks top-level fields on a sequencer's `stateSchema` as in-memory only. Transient slots stay readable across the sequencer's run via `ctx.sequencer.state` but never appear on the SSE stream, never write to the durable checkpoint store, and reset to schema defaults on resume.
+- `taskBoard` worker schemas mark `lastClaimed` and `currentTaskId` as `transientSlot`. The narrow `lastClaimed` identity-check guard FIX-447 added to `claim-task.ts` is reverted — the framework guard subsumes it.
+- **Breaking (internal):** `runWithCAS` now returns `{ state, committed }` instead of bare `Readonly<TState>`. `applyMutation` and the seven `ScopeStateOps` helpers now return `Promise<boolean>`. Existing call sites that ignore the return value are source-compatible; direct shape assertions on `runWithCAS` need updating.
+
 ### Streaming-text throughput: `content.delta` reclassified as non-replayable (FIX-479)
 
 - `content.delta` events (covers both message and reasoning streaming — they share the same wire type) are no longer persisted to the events log and no longer await the `flushEvents` durability barrier. Per-token disk round-trips were serializing concurrent worker streams behind a single per-request events queue; under a supervisor with `concurrency: 3` and three streaming workers the queue saturated and the request appeared to lock up.
 - Running text is checkpointed via the items snapshot instead. The emitter mutates the in-flight `MessageItem.content[i].text` (and `ReasoningItem.summary[i].text`) in-place on each delta and fires a new `ResponseEmitterItemHooks.onItemUpdate` hook. `runAction` wires this hook to a coalesced `persistItems` write — the `FilesystemRequestStore`'s `itemWriteQueued` sentinel keeps disk I/O bounded by the natural write rate regardless of token rate.
 - Resume contract change. Mid-stream reconnects via `Last-Event-ID` no longer replay the exact token sequence — the running text snaps to the latest persisted snapshot and continues from the next live delta, with the eventual `item.done` payload superseding. Page-load bootstrap now shows the latest accumulated text for in-flight messages instead of empty content, which is strictly better than before. Completed messages still replay exactly.
 - Live SSE consumers, devtool observers, and the in-memory event buffer continue to receive every `content.delta` event unchanged. Filesystem and Postgres stores benefit transparently — the change is at the emitter, not the store.
+
 
 ### `taskBoard` follow-up: dep materialization, sub-agent tool visibility, render hygiene (FIX-447)
 
