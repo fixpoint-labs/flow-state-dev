@@ -2,12 +2,17 @@
  * `labelFailedReviews` — post-drain audit: label every `errored` task
  * by failure category.
  *
- * Heuristic (driven by metadata stamped in `applyVerdict`):
- *   - `metadata.review.lastVerdict ∈ {"reject", "needs-revision"}`
+ * Heuristic (driven by reviewer audit-state on the supervisor sequencer's
+ * outer state, populated by `stampReviewEntered` / `applyVerdict`):
+ *   - `reviewMetadata[taskId].lastVerdict ∈ {"reject", "needs-revision"}`
  *     → `"failed-review"`. Reviewer rejected on final attempt.
- *   - `metadata.review.entered === true` AND `lastVerdict` unset
+ *   - `reviewMetadata[taskId].entered === true` AND `lastVerdict` unset
  *     → `"reviewer-error"`. Reviewer step itself threw.
- *   - No review metadata → `"worker-error"`. Worker failed before review.
+ *   - No reviewer audit slot → `"worker-error"`. Worker failed before review.
+ *
+ * Reading from supervisor sequencer state (in-memory, lock-serialized)
+ * instead of `task.metadata` keeps reviewer-side audit traffic off the
+ * task collection's CAS-driven request scope.
  *
  * Wired in via `.tap()` per BP-012 (state-mutation only).
  */
@@ -33,10 +38,15 @@ export function createLabelFailedReviews(options: LabelFailedReviewsOptions) {
         backing: "request",
         collectionId,
       });
+      // Look up the supervisor sequencer by name (same approach as
+      // reviewer-check) rather than `ctx.sequencer`, so the read still
+      // works if this handler is ever wrapped inside another sequencer.
+      const supervisorRef = ctx.getTarget<{
+        reviewMetadata?: Record<string, { entered?: boolean; lastVerdict?: string }>;
+      }>(name);
+      const reviewMetadata = supervisorRef?.state.reviewMetadata ?? {};
       for (const task of collection.list({ status: "errored" })) {
-        const review = (task.metadata as
-          | { review?: { entered?: boolean; lastVerdict?: string } }
-          | undefined)?.review;
+        const review = reviewMetadata[task.id];
         const labels = task.labels ?? [];
         const label =
           review?.lastVerdict === "reject" ||

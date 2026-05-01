@@ -2,10 +2,14 @@
  * Per-request state container and scope state operation builder.
  *
  * The container is a same-request read-through cache over a scope's state.
- * It does NOT enforce CAS — that responsibility lives in the `Store.set`
- * contract (`expectedVersion` predicate). The CAS retry loop (`runWithCAS`)
- * calls `container.commit(state, version)` to refresh the cache after a
- * successful write or a conflict.
+ * `applyMutation` dispatches between two write paths:
+ *   - In-memory scopes (no `persist`) serialize through `withScopeLock`,
+ *     commit `version + 1` directly, and never throw
+ *     `ConcurrentModificationError`.
+ *   - External-store scopes (`persist` defined) drive the classic
+ *     `runWithCAS` retry loop. A successful or conflicting persist refreshes
+ *     the container via `container.commit(state, version)`; CAS still owns
+ *     `ConcurrentModificationError` at the durable boundary.
  */
 
 import type {
@@ -13,7 +17,14 @@ import type {
   ScopeStateOps,
   StateContainer
 } from "@flow-state-dev/core/types";
-import { runWithCAS, type CASPersist } from "./cas";
+import { deepEqual } from "@flow-state-dev/core/utils";
+import {
+  DEFAULT_MAX_STATE_SIZE_BYTES,
+  estimateSizeBytes,
+  runWithCAS,
+  type CASPersist
+} from "./cas";
+import { withScopeLock } from "./scope-lock";
 import { cloneValue } from "../utils/clone";
 
 function toRecord(value: unknown): Record<string, unknown> {
@@ -68,44 +79,77 @@ export type ScopeStateOpsOptions<TState extends object> = {
    * CAS retry loop with the proposed next state and the `expectedVersion`
    * the container believes is currently stored. Returns the new version on
    * success, or the store's current value/version on conflict.
+   *
+   * When omitted, the scope is treated as in-memory: mutators serialize
+   * through a per-container FIFO queue (`withScopeLock`) instead of the
+   * CAS retry loop. There is no version check, no retry, no
+   * `ConcurrentModificationError`.
    */
   persist?: CASPersist<TState>;
+  /**
+   * Total budget for an in-memory mutation (queue wait + execution). Throws
+   * `ScopeMutationTimeoutError` when exceeded. Defaults to the flow's
+   * `request.mutationTimeoutMs` (resolved by `createExecutionContext`).
+   * Ignored when `persist` is set — external-store CAS uses its own retry
+   * semantics. Set to `Infinity` to disable.
+   */
+  mutationTimeoutMs?: number;
 };
 
 /**
- * Fallback persist for state that has no backing store (e.g. target state
- * shared across sibling blocks). The container itself plays the role of the
- * CAS authority — the callback checks expectedVersion against the container's
- * current version synchronously so interleaved concurrent mutators can't
- * silently overwrite each other's commits.
+ * Apply a mutator to the container's state.
+ *
+ * Two-tier dispatch:
+ * - When `persist` is undefined the scope is in-memory: `withScopeLock`
+ *   serializes mutators per-container, the deep-equal short-circuit
+ *   skips persist + version bump on no-op writes, and a successful
+ *   commit bumps the version by one. No retries, no
+ *   `ConcurrentModificationError`.
+ * - When `persist` is defined the scope is external-store backed:
+ *   `runWithCAS` drives the optimistic load → mutate → persist cycle with
+ *   exponential backoff. `ConcurrentModificationError` still surfaces on
+ *   retry exhaustion because a remote authority can advance the version
+ *   underneath us.
  */
-function createContainerPersist<TState>(
-  container: StateContainer<TState>
-): CASPersist<TState> {
-  return async (nextState, expectedVersion) => {
-    const currentVersion = container.getVersion();
-    if (currentVersion !== expectedVersion) {
-      return {
-        ok: false,
-        currentState: container.read() as TState,
-        currentVersion
-      };
-    }
-    // Commit inside the callback so the version check and the update form
-    // one atomic (microtask-free) step. runWithCAS does a second, idempotent
-    // commit after ok — with no store backing it, the sync pre-commit here
-    // is what prevents concurrent mutators from all passing the v-check.
-    container.commit(nextState, expectedVersion + 1);
-    return { ok: true, version: expectedVersion + 1 };
-  };
-}
-
 async function applyMutation<TState extends object>(
   container: StateContainer<TState>,
   options: ScopeStateOpsOptions<TState> | undefined,
   mutator: (state: Readonly<TState>) => TState | Promise<TState>
 ): Promise<boolean> {
-  const persist = options?.persist ?? createContainerPersist(container);
+  const persist = options?.persist;
+
+  if (persist === undefined) {
+    const sizeThreshold =
+      options?.maxStateSizeBytes ?? DEFAULT_MAX_STATE_SIZE_BYTES;
+    const onSizeWarning = options?.onStateSizeWarning;
+
+    let committed = false;
+    await withScopeLock(
+      container,
+      async () => {
+        const current = container.read();
+        const next = await mutator(current);
+
+        // No-op short-circuit (matches runWithCAS): structurally-equal
+        // outputs skip the commit + version bump and return false so
+        // callers can suppress redundant `state_change` emits.
+        if (deepEqual(current, next)) return;
+
+        const nextSizeBytes = estimateSizeBytes(next);
+        if (nextSizeBytes > sizeThreshold) {
+          onSizeWarning?.({
+            sizeBytes: nextSizeBytes,
+            maxStateSizeBytes: sizeThreshold
+          });
+        }
+
+        container.commit(next, container.getVersion() + 1);
+        committed = true;
+      },
+      { timeoutMs: options?.mutationTimeoutMs }
+    );
+    return committed;
+  }
 
   const { committed } = await runWithCAS({
     container,
