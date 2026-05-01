@@ -16,10 +16,10 @@ import { planAndExecute } from "@flow-state-dev/patterns/plan-and-execute";
 import { supervisor } from "@flow-state-dev/patterns/supervisor";
 import { routedSpecialists, createWorkspace } from "@flow-state-dev/patterns/routedSpecialists";
 import {
-  reactiveBlackboard,
+  createEventActorsWorkspace,
   actor,
-  mesh,
-} from "@flow-state-dev/patterns/reactive-blackboard";
+  eventActors,
+} from "@flow-state-dev/patterns/eventActors";
 import { z } from "zod";
 
 // -------------------------------------------------------------------------
@@ -468,7 +468,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     body: z.any(),
   });
 
-  const rb = reactiveBlackboard({ name: "reactive", entries: rbEntrySchema });
+  const rb = createEventActorsWorkspace({ name: "reactive", entries: rbEntrySchema });
 
   // Shared output schema for actors that produce re-emittable entries.
   // Wrapped in an object because the AI SDK requires top-level "type: object".
@@ -509,7 +509,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       name: "rb-explorer-gen",
       model: modelId,
       outputSchema: entryOutputSchema,
-      resources: { reactiveBlackboard: rb.blackboard },
+      resources: { reactiveBlackboard: rb.workspace },
       ...(uses ? { uses: uses as any } : {}),
       context,
       history: config.history,
@@ -543,7 +543,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       name: "rb-analyst-gen",
       model: modelId,
       outputSchema: entryOutputSchema,
-      resources: { reactiveBlackboard: rb.blackboard },
+      resources: { reactiveBlackboard: rb.workspace },
       ...(uses ? { uses: uses as any } : {}),
       context,
       history: config.history,
@@ -576,7 +576,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       name: "rb-challenger-gen",
       model: modelId,
       outputSchema: entryOutputSchema,
-      resources: { reactiveBlackboard: rb.blackboard },
+      resources: { reactiveBlackboard: rb.workspace },
       ...(uses ? { uses: uses as any } : {}),
       context,
       history: config.history,
@@ -599,9 +599,9 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     }),
   });
 
-  const rbMesh = mesh({
+  const rbMesh = eventActors({
     name: "reactive-thinking",
-    blackboard: rb,
+    workspace: rb,
     actors: [rbExplorer, rbAnalyst, rbChallenger],
     concurrency: 3,
     reEmit: true,
@@ -624,7 +624,7 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
     name: "rb-synthesizer",
     model: modelId,
     outputSchema: z.string(),
-    resources: { reactiveBlackboard: rb.blackboard },
+    resources: { reactiveBlackboard: rb.workspace },
     ...(uses ? { uses: uses as any } : {}),
     context,
     history: config.history,

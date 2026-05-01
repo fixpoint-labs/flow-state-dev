@@ -77,14 +77,14 @@ const pattern = routedSpecialists({
 
 **Key exports:** `routedSpecialists`, `createWorkspace`, `controllerOutputSchema`
 
-### Reactive Blackboard
+### Event Actors
 
-Stigmergic multi-agent coordination via write-time fan-out. Actors subscribe to entry topics on a shared resource and react automatically when matching entries are written. No controller, no loop — dispatch happens via `forEachBackground`, and reactions run as background sidechains.
+Stigmergic multi-agent coordination via topic subscriptions. Actors declare which entry topics they watch (`type:topic` glob patterns); when a matching entry is emitted, every matching actor's body runs concurrently as a `Task` on the unified substrate. No controller, no central loop. With `reEmit: true`, actor outputs that match the entry shape become new dispatched entries, creating reactive cascades up to `maxDepth`.
 
 ```typescript
-import { reactiveBlackboard, actor, mesh } from "@flow-state-dev/patterns/reactive-blackboard";
+import { createEventActorsWorkspace, actor, eventActors } from "@flow-state-dev/patterns/eventActors";
 
-const rb = reactiveBlackboard({ name: "feedback", entries: entrySchema });
+const rb = createEventActorsWorkspace({ name: "feedback", entries: entrySchema });
 
 const monitor = actor({
   name: "slack-monitor",
@@ -92,16 +92,16 @@ const monitor = actor({
   body: slackHandler,
 });
 
-const system = mesh({
+const system = eventActors({
   name: "feedback",
-  blackboard: rb,
+  workspace: rb,
   actors: [monitor],
 });
 
 // Use system.emit in a sequencer to write entries with fan-out
 ```
 
-**Key exports:** `reactiveBlackboard`, `actor`, `mesh`, `matchTopic`, `compilePattern`, `createAppendEntry`, `createReactiveBlackboard`
+**Key exports:** `eventActors`, `actor`, `createEventActorsWorkspace`, `matchTopic`, `compilePattern`, `createAppendEntry`, `normalizeToEntries`
 
 ### Task Board
 

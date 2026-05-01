@@ -100,24 +100,24 @@ export type {
   DisplayMode,
 } from "./response-auditor";
 export {
-  reactiveBlackboard,
+  eventActors,
   actor,
-  mesh,
+  createEventActorsWorkspace,
   matchTopic,
   compilePattern,
-  createReactiveBlackboard,
-  reactiveBlackboardStateSchema,
-  emitControlSchema,
+  createEventActorsWorkspaceResource,
+  eventActorsWorkspaceStateSchema,
   createAppendEntry,
-} from "./reactive-blackboard";
+  normalizeToEntries,
+} from "./eventActors";
 export type {
-  ReactiveBlackboardConfig,
+  EventActorsConfig,
+  EventActorsHandle,
+  EventActorsWorkspaceConfig,
   ActorConfig,
   Actor,
-  MeshConfig,
-  ReactiveBlackboardState,
-  EmitControlState,
-} from "./reactive-blackboard";
+  EventActorsWorkspaceState,
+} from "./eventActors";
 export {
   taskBoard,
   taskBoardStateSchema,

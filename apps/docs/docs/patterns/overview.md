@@ -86,7 +86,7 @@ More specifically:
 - **Sequential steps with dependency ordering and adaptive replanning** → [Plan and Execute](./plan-and-execute)
 - **Post-generation quality audit with pluggable analyzers** → [Response Auditor](./response-auditor)
 - **Controller-driven multi-agent workspace (incremental synthesis)** → [Routed Specialists](./routed-specialists)
-- **Event-driven multi-agent coordination (broadcast/react)** → [Event Actors](./reactive-blackboard)
+- **Event-driven multi-agent coordination (broadcast/react)** → [Event Actors](./event-actors)
 - **Concurrent dependency-aware drain over a Task Collection** → [Task Board](./task-board)
 - **Complex hierarchical work where steps need their own sub-planning** → Plan and Execute with a Supervisor as the `stepExecutor`
 

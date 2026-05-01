@@ -78,7 +78,7 @@ const sidebars: SidebarsConfig = {
             "patterns/plan-and-execute",
             "patterns/response-auditor",
             "patterns/routed-specialists",
-            "patterns/reactive-blackboard",
+            "patterns/event-actors",
             "patterns/coordinator",
           ],
         },

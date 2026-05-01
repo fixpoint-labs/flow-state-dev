@@ -33,9 +33,9 @@
       "types": "./dist/response-auditor/index.d.ts",
       "default": "./dist/response-auditor/index.js"
     },
-    "./reactive-blackboard": {
-      "types": "./dist/reactive-blackboard/index.d.ts",
-      "default": "./dist/reactive-blackboard/index.js"
+    "./eventActors": {
+      "types": "./dist/eventActors/index.d.ts",
+      "default": "./dist/eventActors/index.js"
     },
     "./task-board": {
       "types": "./dist/task-board/index.d.ts",
