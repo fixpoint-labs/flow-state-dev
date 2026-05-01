@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
 import "@flow-state-dev/devtool/react/styles.css";
+import "./styles.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
