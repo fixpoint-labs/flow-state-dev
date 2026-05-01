@@ -51,14 +51,6 @@ export function isBlockValue(candidate: unknown): candidate is BlockValue {
 export type ItemLookup = (itemId: string) => OutputItem | undefined;
 
 /**
- * @deprecated FIX-480: use `ItemLookup` so refs may point at `MessageItem`s
- * in addition to `BlockOutputItem`s. The old alias stays as a non-breaking
- * shim — the runtime contract is wider but assignment-compatible because
- * `BlockOutputItem` extends `OutputItem`.
- */
-export type BlockOutputLookup = ItemLookup;
-
-/**
  * Resolve a BlockValue to its typed payload `T`.
  *
  * - `inline` → returns `value` directly.
@@ -136,12 +128,10 @@ function joinMessageText(item: MessageItem): string {
 }
 
 /**
- * Build a lookup closure from a flat items list.
- *
- * FIX-480: indexes ALL items by id (not just `block_output`) so refs may
- * resolve to `message` items. Callers with a Map already indexed by id
- * should wrap the Map directly; this helper exists for the common case of
- * a response's in-memory items array.
+ * Build a lookup closure from a flat items list. Indexes every item by
+ * id (not just `block_output`) so refs may resolve to `message` items
+ * as well — FIX-480 widened the source pool. Callers with a Map already
+ * indexed by id should wrap that directly.
  */
 export function buildItemLookup(items: readonly OutputItem[] | readonly { id: string; type: string }[]): ItemLookup {
   const index = new Map<string, OutputItem>();
@@ -150,10 +140,3 @@ export function buildItemLookup(items: readonly OutputItem[] | readonly { id: st
   }
   return (id) => index.get(id);
 }
-
-/**
- * @deprecated FIX-480: use `buildItemLookup`. Kept as a non-breaking shim;
- * the broader index has zero behavior change for existing `block_output`
- * ref resolution and adds support for `message`-targeting refs.
- */
-export const buildBlockOutputLookup = buildItemLookup;

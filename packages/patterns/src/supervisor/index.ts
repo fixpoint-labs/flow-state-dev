@@ -132,10 +132,11 @@ function buildDefaultReviewer(opts: {
 }
 
 /**
- * Pull `{ title?, url }` entries out of `task.items()` slices in the
- * order they were emitted, deduped by URL. Tolerates missing fields and
- * unexpected shapes — the renderer-shape guarantees aren't part of the
- * synthesizer's input contract.
+ * Pull `{ title?, url }` entries out of `task.items()` slices, in
+ * emission order, deduped by URL. First-title-wins on duplicates —
+ * matches the order ordering. Tolerates missing fields and unexpected
+ * shapes; renderer-shape guarantees aren't part of the synthesizer's
+ * input contract.
  */
 function collectUniqueSources(
   resultItems?: Array<{ taskId: string; goal: string; items: unknown[] }>,
@@ -148,7 +149,8 @@ function collectUniqueSources(
     for (const it of entry.items) {
       if (it === null || typeof it !== "object") continue;
       const item = it as { type?: unknown; url?: unknown; title?: unknown };
-      if (item.type !== "source" || typeof item.url !== "string") continue;
+      if (item.type !== "source") continue;
+      if (typeof item.url !== "string" || item.url.length === 0) continue;
       if (seen.has(item.url)) continue;
       seen.add(item.url);
       out.push({

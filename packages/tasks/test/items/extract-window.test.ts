@@ -1,15 +1,14 @@
 /**
- * Tests for FIX-480 §3.1 — `extractTaskItems` / `computeTaskItemWindows`.
+ * Tests for FIX-480 §3.1 — `extractTaskItems` / `extractTaskItemWindows`.
  *
- * The substrate utility is the lifted-from-renderer `extractTaskItemWindows`
- * algorithm. Tests cover the boundary cases the spec calls out (single-task
- * happy path, parallel claims, retries without terminal close, abandoned
- * tasks, cross-collection isolation, bookend exclusion).
+ * The substrate utility is the lifted-from-renderer windowing algorithm.
+ * Tests cover the boundary cases the spec calls out (single-task happy
+ * path, parallel claims, retries without terminal close, abandoned tasks,
+ * cross-collection isolation, bookend exclusion).
  */
 import { describe, expect, it } from "vitest";
 import type { ComponentItem, MessageItem, OutputItem, SourceItem } from "@flow-state-dev/core/items";
 import {
-  computeTaskItemWindows,
   extractTaskItems,
   extractTaskItemWindows,
 } from "../../src";
@@ -103,7 +102,7 @@ function sourceItem(args: { ts: number; url: string; title?: string }): SourceIt
   };
 }
 
-describe("extractTaskItems / computeTaskItemWindows", () => {
+describe("extractTaskItems / extractTaskItemWindows", () => {
   it("single-task happy path: returns items between claim and terminal", () => {
     const items: OutputItem[] = [
       taskChange({ collectionId: "c1", taskId: "t1", kind: "added", ts: 100 }),
@@ -211,19 +210,6 @@ describe("extractTaskItems / computeTaskItemWindows", () => {
     expect(bOut.map((i) => (i as MessageItem).content[0])).toEqual([
       { type: "output_text", text: "b-work" },
     ]);
-  });
-
-  it("computeTaskItemWindows reports start/end per task", () => {
-    const items: OutputItem[] = [
-      taskChange({ collectionId: "c1", taskId: "t1", kind: "claimed", ts: 100 }),
-      taskChange({ collectionId: "c1", taskId: "t2", kind: "claimed", ts: 150 }),
-      taskChange({ collectionId: "c1", taskId: "t1", kind: "completed", ts: 200 }),
-      // t2 never terminates
-    ];
-    const w = computeTaskItemWindows(items, "c1");
-    expect(w.size).toBe(2);
-    expect(w.get("t1")).toEqual({ start: 100, end: 200 });
-    expect(w.get("t2")).toEqual({ start: 150, end: undefined });
   });
 
   it("extractTaskItemWindows assigns each item to first matching task only (no duplication)", () => {

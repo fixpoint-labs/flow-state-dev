@@ -102,14 +102,16 @@ export type GetOrCreateTaskCollectionOptions =
 export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
   options: GetOrCreateTaskCollectionOptions
 ): TaskCollectionRef<TInput, TOutput> {
-  // FIX-480 §3.1: capture the response's item-log accessor so
-  // `TaskHandle.items()` can return per-task emission slices. Duck-typed
-  // against `ctx.response` — the same access pattern the generator uses
-  // in `getEmitterItemCount` (packages/core/src/blocks/generator.ts).
-  // Tests with no response surface just see `items()` return `[]`.
+  // Item-log accessor for `TaskHandle.items()` (FIX-480). Duck-typed
+  // against `ctx.response` — same access pattern as
+  // `getEmitterItemCount` in `packages/core/src/blocks/generator.ts`.
+  // Optional-chains the whole expression so a missing `response` (mock
+  // contexts in tests) yields `[]` instead of throwing.
   const getItems = (): readonly OutputItem[] => {
-    const r = options.ctx.response as { getItems?: () => readonly OutputItem[] };
-    return r.getItems?.() ?? [];
+    const r = options.ctx.response as
+      | { getItems?: () => readonly OutputItem[] }
+      | undefined;
+    return r?.getItems?.() ?? [];
   };
 
   const onChange = (event: TaskChangeEvent): void => {

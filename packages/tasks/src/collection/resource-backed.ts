@@ -31,12 +31,12 @@ import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/ty
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskFilter } from "../schema/task-init";
 import { assertTransitionAllowed, isTerminalStatus } from "../schema/task-status";
-import type { TaskCollectionRef, TaskHandle } from "./types";
-import { extractTaskItems } from "../items/extract-window";
+import type { TaskCollectionRef } from "./types";
 import {
   applyClaimToTask,
   applyTransition,
   buildInitialTask,
+  createTaskHandleWrapper,
   DEFAULT_LEASE_DURATION_MS,
   defaultEligibility,
   defaultOrder,
@@ -79,19 +79,10 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
 ): TaskCollectionRef<TInput, TOutput> {
   const now = options.now ?? Date.now;
   const onChange = options.onChange;
-  const collectionId = options.collectionId;
-  const getItems = options.getItems;
-
-  /** Wrap a `Task` data record with the FIX-480 `items()` accessor. */
-  function wrap(task: Task<TInput, TOutput>): TaskHandle<TInput, TOutput> {
-    return {
-      ...task,
-      items: () => {
-        if (getItems === undefined) return [];
-        return extractTaskItems(getItems(), collectionId, task.id);
-      },
-    };
-  }
+  const wrap = createTaskHandleWrapper<TInput, TOutput>(
+    options.collectionId,
+    options.getItems,
+  );
 
   function emit(
     kind: TaskChangeKind,
@@ -397,8 +388,9 @@ export function createResourceBackedTaskCollection<TInput = unknown, TOutput = u
       return listTasks(listAll(), filter).map(wrap);
     },
 
+    // Counts via `listTasks` directly to skip the per-task wrap allocation.
     count(filter?: TaskFilter) {
-      return ref.list(filter).length;
+      return listTasks(listAll(), filter).length;
     },
   };
 

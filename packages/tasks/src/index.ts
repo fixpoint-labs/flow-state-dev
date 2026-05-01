@@ -36,10 +36,8 @@ export type { TaskChangeEvent, TaskChangeKind } from "./collection/change-event"
 // Item windowing (FIX-480 §3.1) — substrate utilities for `task.items()`
 // and renderer-side per-task expansion.
 export {
-  computeTaskItemWindows,
   extractTaskItems,
   extractTaskItemWindows,
-  type TaskItemWindow,
 } from "./items";
 
 // Collections

@@ -12,17 +12,19 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { generator } from "../src";
 import type { BlockOutputHint, BlockContext } from "../src/types/block";
+import type { GeneratorModel } from "../src/types/model";
 import { createMockContext } from "./helpers";
 
 interface CapturingCtx extends BlockContext {
   _blockOutputHint?: BlockOutputHint;
 }
 
-function streamingModel(args: {
+type StreamingModelArgs = {
   textChunks: string[];
-  /** Final fullResult.text. If omitted, the joined chunks are used. */
   finalText?: string;
-}) {
+};
+
+function streamingModel(args: StreamingModelArgs): GeneratorModel {
   return {
     modelId: "mock-stream",
     async generate() {
@@ -37,7 +39,7 @@ function streamingModel(args: {
         fullResult: { text: args.finalText ?? args.textChunks.join("") },
       };
     },
-  };
+  } as unknown as GeneratorModel;
 }
 
 describe("FIX-480 generator block_output ref-to-message", () => {
@@ -52,7 +54,7 @@ describe("FIX-480 generator block_output ref-to-message", () => {
 
     const ctx = createMockContext({
       resolveModel: () =>
-        streamingModel({ textChunks: ["hello", " world"] }) as any,
+        streamingModel({ textChunks: ["hello", " world"] }),
       response: {
         emit: (event: any) => {
           emitted.push(event);
@@ -85,8 +87,7 @@ describe("FIX-480 generator block_output ref-to-message", () => {
     });
 
     const ctx = createMockContext({
-      resolveModel: () =>
-        streamingModel({ textChunks: ["hello"] }) as any,
+      resolveModel: () => streamingModel({ textChunks: ["hello"] }),
       response: {
         emit: () => undefined,
       },
@@ -106,18 +107,19 @@ describe("FIX-480 generator block_output ref-to-message", () => {
     });
 
     const ctx = createMockContext({
-      resolveModel: () => ({
-        modelId: "mock-stream",
-        async generate() {
-          return { structuredOutput: { result: "ok" } };
-        },
-        async *stream() {
-          yield {
-            type: "finish" as const,
-            fullResult: { structuredOutput: { result: "ok" } },
-          };
-        },
-      }) as any,
+      resolveModel: () =>
+        ({
+          modelId: "mock-stream",
+          async generate() {
+            return { structuredOutput: { result: "ok" } };
+          },
+          async *stream() {
+            yield {
+              type: "finish" as const,
+              fullResult: { structuredOutput: { result: "ok" } },
+            };
+          },
+        }) as unknown as GeneratorModel,
       response: {
         emit: () => undefined,
       },

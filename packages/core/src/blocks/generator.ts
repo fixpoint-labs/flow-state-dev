@@ -4,7 +4,6 @@ import type {
   BlockConfig,
   BlockContext,
   BlockDefinition,
-  BlockOutputHint,
   ConnectorFn,
   InferBlockResources,
   InferStateFromSchema,
@@ -1350,23 +1349,21 @@ async function executeStreamingGeneration<TInput, TOutput>(
 
   // FIX-480 §3.2: when this generator's logical output IS the streamed
   // text, emit a `block_output { kind: "ref", sourceItemId: <messageId> }`
-  // instead of an inline copy of the same string. The defensive equality
-  // check (`parsed.data === accumulated`) handles post-validation
-  // transforms like `z.string().transform(s => s.trim())` — when the
-  // returned string differs from what was streamed, we fall back to
-  // inline so the block_output's resolved value matches what the block
-  // actually returned.
+  // instead of inlining the same string. The `parsed.data === accumulated`
+  // check guards against post-validation transforms (e.g.
+  // `z.string().transform(s => s.trim())`) where the returned value
+  // diverges from what was streamed; in that case we fall back to inline.
+  // Skip empty strings — a ref to an empty message resolves to "" too,
+  // but inline is cheaper and avoids a dangling-looking pointer.
   if (
     emit &&
     messageItem !== null &&
     isTextOutputSchema(outputSchema) &&
     typeof parsed.data === "string" &&
+    parsed.data.length > 0 &&
     parsed.data === accumulated
   ) {
-    (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = {
-      kind: "ref",
-      sourceItemId: itemId,
-    };
+    ctx._blockOutputHint = { kind: "ref", sourceItemId: itemId };
   }
 
   ctx._runtimeHooks?.onGeneratorModelResult?.({
@@ -1796,13 +1793,12 @@ export function generator<
 
         // FIX-480 §3.2: emit `block_output` as a ref to this message
         // instead of an inline copy of the same text. The message's
-        // content equals `output` by construction here (the message is
-        // built from `output` above), so no defensive equality check is
-        // needed in this path.
-        (ctx as { _blockOutputHint?: BlockOutputHint })._blockOutputHint = {
-          kind: "ref",
-          sourceItemId: itemId,
-        };
+        // content equals `output` by construction (built from `output`
+        // above), so no defensive equality check is needed here. Skip
+        // empty strings to keep block_output inline for the trivial case.
+        if (output.length > 0) {
+          ctx._blockOutputHint = { kind: "ref", sourceItemId: itemId };
+        }
       }
 
       return output;

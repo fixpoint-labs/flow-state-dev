@@ -6,10 +6,12 @@
  * call time and slices it to the task's claim window.
  */
 import { describe, expect, it } from "vitest";
+import type { BlockContext } from "@flow-state-dev/core/types";
 import type { ComponentItem, MessageItem, OutputItem } from "@flow-state-dev/core/items";
 import {
   createResourceBackedTaskCollection,
   createSequencerBackedTaskCollection,
+  getOrCreateTaskCollection,
   type TaskCollectionRef,
 } from "../../src";
 import {
@@ -202,3 +204,31 @@ for (const { name, build } of factories) {
     });
   });
 }
+
+// Regression: `getOrCreateTaskCollection` reads `ctx.response` to capture
+// the item-log accessor. A test that supplies a BlockContext without a
+// `response` field must not crash — `items()` should fall through to [].
+describe("getOrCreateTaskCollection items() — undefined ctx.response", () => {
+  it("does not throw when ctx.response is missing", async () => {
+    const sequencerState = createFakeSequencerState<{ tasks: Record<string, unknown> }>({ tasks: {} });
+    const ctx = {
+      response: undefined,
+      emitComponent: () => undefined,
+      request: { state: { plan: {} } },
+    } as unknown as BlockContext;
+
+    const collection = getOrCreateTaskCollection({
+      ctx,
+      backing: "sequencer",
+      collectionId: "plan",
+      sequencer: sequencerState,
+      now: () => 1000,
+    });
+
+    await collection.addTask({ id: "t1", goal: "g" });
+    const handle = collection.get("t1");
+    expect(handle).toBeDefined();
+    expect(() => handle!.items()).not.toThrow();
+    expect(handle!.items()).toEqual([]);
+  });
+});

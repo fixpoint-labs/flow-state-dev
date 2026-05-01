@@ -36,22 +36,27 @@ export interface ClaimOptions {
  * a worker's natural emissions — messages, sources, tool calls, reasoning
  * — instead of relying solely on `task.output`.
  *
- * The data fields match `Task` exactly; only `items()` is added. State
- * persistence sees only the data record, not the closure.
+ * Mixed staleness contract:
+ *   - Data fields (`status`, `output`, `goal`, ...) are snapshot at the
+ *     moment `list` / `get` returned, matching the pre-FIX-480 `Task` read
+ *     contract. Holding a handle past a mutation reads stale data fields
+ *     — re-call `get(id)` to refresh.
+ *   - `items()` is live — re-reads the response item log on every call.
+ *     This is intentional so synthesizers running after worker completion
+ *     pick up emissions that landed during their own pre-execution.
  *
- * `items()` is synchronous and throw-free. It snapshots the current item
- * log at call time. Callers normally invoke it inside a synthesizer that
- * runs after worker completion (`.then(synthesizer)`), so the log is
- * stable. A mid-flight call returns whatever's emitted so far with no
- * special signaling.
+ * Sync, throw-free. Returns `[]` when the task has not been claimed yet.
  *
- * Returns `[]` when the task has not been claimed yet.
+ * Window: `[first claimed event ts, terminal event ts]` for this taskId
+ * under this collection. Retries do NOT reset the start; all attempts
+ * append to the same window. Bookend `task-change` events and
+ * `task-board-meta` items are excluded — they are substrate scaffolding,
+ * not worker emissions.
  *
- * The window is defined as `[first claimed event ts, terminal event ts]`
- * for this taskId under this collection. Retries do NOT reset the start;
- * all attempts append to the same window. Bookend `task-change` events
- * and `task-board-meta` items are excluded — they are substrate
- * scaffolding, not worker emissions.
+ * Mutators (`claim`, `addTask`, ...) still return raw `Task`. The
+ * just-claimed task has no items in its window yet, so a handle would be
+ * empty by construction; re-fetch via `get(id)` post-completion if a
+ * handle is needed.
  */
 export type TaskHandle<TInput = unknown, TOutput = unknown> = Task<TInput, TOutput> & {
   items(): readonly OutputItem[];

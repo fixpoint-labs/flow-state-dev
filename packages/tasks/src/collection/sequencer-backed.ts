@@ -17,12 +17,12 @@ import type { StateRef } from "@flow-state-dev/core/types";
 import type { Task, TaskStatus } from "../schema/task";
 import type { TaskInit, TaskFilter } from "../schema/task-init";
 import { assertTransitionAllowed, isTerminalStatus } from "../schema/task-status";
-import type { TaskCollectionRef, TaskHandle } from "./types";
-import { extractTaskItems } from "../items/extract-window";
+import type { TaskCollectionRef } from "./types";
 import {
   applyClaimToTask,
   applyTransition,
   buildInitialTask,
+  createTaskHandleWrapper,
   DEFAULT_LEASE_DURATION_MS,
   defaultEligibility,
   defaultOrder,
@@ -63,19 +63,10 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
   const stateKey = options.stateKey ?? "tasks";
   const now = options.now ?? Date.now;
   const onChange = options.onChange;
-  const collectionId = options.collectionId;
-  const getItems = options.getItems;
-
-  /** Wrap a `Task` data record with the FIX-480 `items()` accessor. */
-  function wrap(task: Task<TInput, TOutput>): TaskHandle<TInput, TOutput> {
-    return {
-      ...task,
-      items: () => {
-        if (getItems === undefined) return [];
-        return extractTaskItems(getItems(), collectionId, task.id);
-      },
-    };
-  }
+  const wrap = createTaskHandleWrapper<TInput, TOutput>(
+    options.collectionId,
+    options.getItems,
+  );
 
   function readTasks(): Record<string, Task<TInput, TOutput>> {
     const raw = options.sequencer.state as Record<string, unknown>;
@@ -409,8 +400,11 @@ export function createSequencerBackedTaskCollection<TInput = unknown, TOutput = 
       return listTasks(Object.values(readTasks()), filter).map(wrap);
     },
 
+    // Counts via `listTasks` directly to skip the per-task wrap allocation.
+    // `shouldExit` predicates in patterns call `count()` on every drain
+    // tick, so the closure-per-task cost matters under load.
     count(filter?: TaskFilter) {
-      return ref.list(filter).length;
+      return listTasks(Object.values(readTasks()), filter).length;
     },
   };
 
