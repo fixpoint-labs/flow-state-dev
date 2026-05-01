@@ -50,6 +50,60 @@ Use this protocol when work is wave-based:
 - Keep exported API surfaces documented with concise, high-signal comments.
 - Preserve canonical package boundaries (`core`, `server`, `client`, `react`, `testing`, `cli`).
 
+## Verifying flow changes during development
+
+When you change flow logic, the default verification path is `fsdev run`, not `pnpm test` and not opening kitchen-sink in a browser. The CLI runs the full `runAction` engine against the same stores and execution context the production server uses, with structured NDJSON events on stdout and `[flow-state] *` runtime logs on stderr. It is the fastest way to confirm a change works as intended.
+
+**Pick the right tool for the kind of change:**
+
+| You changed… | Reach for |
+|---|---|
+| Block logic, sequencer composition, router branching, generator wiring, tool-loop behavior, resource state ops, scope plumbing | `fsdev run` |
+| Pure helpers, type definitions, store contracts, isolated block units | `pnpm test` (vitest) |
+| Component rendering, streaming display, theming, prompt-input UI, hydration | Open kitchen-sink in a browser |
+
+If a single change spans more than one row, run them in that order: `fsdev run` first to confirm the flow still composes, then vitest, then the browser.
+
+**Common invocations:**
+
+```bash
+# Smoke a flow with one input — fastest possible feedback loop
+pnpm fsdev run hello-chat chat -i '{"message":"hello"}'
+
+# Reuse a session across invocations to test multi-turn behavior
+pnpm fsdev run kitchen-sink chat-agent -i '{"message":"now what?","mode":"ask"}' --session test-multi-1
+
+# Seed session state before running (e.g. to test recovery from a specific state)
+pnpm fsdev run kitchen-sink chat-agent -i '{...}' --seed-session ./fixtures/state.json
+
+# Override the model — useful for cheap iteration or to force a specific path
+pnpm fsdev run kitchen-sink chat-agent -i '{...}' --model openai/gpt-4o-mini
+
+# Capture the full stream + result to a file you can grep/jq later
+pnpm fsdev run kitchen-sink chat-agent -i '{...}' --capture /tmp/run.json
+
+# Suppress runtime logs when you only want the NDJSON
+pnpm fsdev run hello-chat chat -i '{"message":"hi"}' --quiet
+```
+
+**Reading the output efficiently.** Two streams matter:
+
+- **stderr** carries `[flow-state] *` runtime logs (action start/complete, block lifecycle, retries, errors). Skim this for the *shape* of execution. On by default at `info` level; pass `--quiet` to suppress or `--log-level debug` to include nested-block events.
+- **stdout** carries NDJSON events. Each line is a JSON object; types are `item_added`, `content_delta`, `state_change`, `flow_complete`, `error`. Pipe to `jq` to filter:
+
+  ```bash
+  # Final result only
+  pnpm fsdev run ... 2>/dev/null | jq -c 'select(.type=="flow_complete")'
+
+  # All errors
+  pnpm fsdev run ... 2>/dev/null | jq -c 'select(.type=="error")'
+
+  # Just the assistant message text
+  pnpm fsdev run ... 2>/dev/null | jq -r 'select(.type=="content_delta") | .delta' | tr -d '\n'
+  ```
+
+**When something breaks**, switch into the `debug-flow` skill — it has the failure-pattern matrix and the `fsdev block` isolation workflow. This section is for confirming a change works; `debug-flow` is for diagnosing why one doesn't.
+
 ## Code style rules for examples
 
 1. **Trust the type system.** If you declared an `inputSchema` on a block, the input is typed.
@@ -113,6 +167,6 @@ This is a pnpm monorepo (pnpm@10.4.1, Node 22). No Docker, databases, or externa
 
 **Key commands** are documented in `CLAUDE.md` and `docs/contributing/development-setup.md`. Summary: `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm --filter <pkg> test`.
 
-**Running reference/example apps** (`apps/kitchen-sink`, `examples/hello-chat`) requires `OPENAI_API_KEY` for real LLM calls but works without it via the CLI: `pnpm fsdev run hello-chat chat -i '{"message": "Hello"}'` falls back to mock generation.
+**Running reference/example apps** (`apps/kitchen-sink`, `examples/hello-chat`) requires a provider key for the model the flow uses. `hello-chat` is wired to `openai/gpt-5-mini`, so `pnpm fsdev run hello-chat chat -i '{"message":"hi"}'` needs `OPENAI_API_KEY` (or an `AI_GATEWAY_API_KEY` that resolves OpenAI). There is no mock fallback in `createModelResolver` — without a configured provider, generator blocks fail with `No provider available for "<provider>"`. For provider-free smoke tests, use `pnpm test` (mocks every generator) or write a flow that uses no generator blocks and run it through `fsdev run`.
 
 **Docs site**: `cd apps/docs && npx docusaurus start --port 3000` (do not use `pnpm docs:dev` with extra `--` flags — argument forwarding breaks).

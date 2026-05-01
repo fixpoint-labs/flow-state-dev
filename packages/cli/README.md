@@ -46,6 +46,27 @@ Options:
 | `--seed-project <json\|path>` | Seed project-level state |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--format <format>` | Output format (default: `json`) |
+| `--quiet` | Suppress `[flow-state] *` runtime logs on stderr |
+| `--log-level <level>` | Stderr log level: `debug \| info \| warn \| error` (default: `info`) |
+| `--capture <path>` | Write the full structured run output to a JSON file (additive with stdout) |
+
+#### Stderr runtime logs
+
+By default `fsdev run` emits `[flow-state] *` runtime events to stderr at `info` level — action lifecycle, block lifecycle, retries, errors. They are separate from the NDJSON stream on stdout, so piping stdout to `jq` works without filtering. Pass `--quiet` to suppress them entirely; pass `--log-level debug` to include nested-block events.
+
+#### Capture mode
+
+`--capture <path>` writes a single JSON file with the full run for later inspection:
+
+```jsonc
+{
+  "command": { "flow": "...", "action": "...", "input": {...}, "model": null, "session": null, ... },
+  "events":  [ /* every NDJSON event in order */ ],
+  "result":  { "success": true, "flow": {...}, "output": {...}, "execution": {...}, "exitCode": 0 }
+}
+```
+
+Stdout NDJSON streaming continues unchanged when `--capture` is set — you get both. Parent directories are created as needed.
 
 #### NDJSON streaming
 

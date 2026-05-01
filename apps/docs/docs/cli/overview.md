@@ -43,5 +43,6 @@ Use `-m` to swap models without code changes. Pass a model ID (e.g. `gpt-4o-mini
 
 ## Next steps
 
+- [Agent Dev Loop](./agent-dev-loop.md) — The recommended edit → `fsdev run` → read NDJSON loop, with worked examples and `jq` recipes. If you're iterating on a flow, start here.
 - [CLI API Reference](/docs/api/cli) — Full command reference, NDJSON event types, programmatic API, exit codes.
 - [Development Tips](/guides/development-tips) — Workflow patterns for using the CLI in daily development.

@@ -9,7 +9,7 @@ import {
 } from "@flow-state-dev/server";
 import {
   createInboundTransportConformanceTests
-} from "../src";
+} from "../src/transports/conformance";
 
 createInboundTransportConformanceTests({
   name: "createHttpTransportAdapter",

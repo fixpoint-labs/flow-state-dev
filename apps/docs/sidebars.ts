@@ -129,6 +129,7 @@ const sidebars: SidebarsConfig = {
       label: "Dev Experience",
       items: [
         "cli/overview",
+        "cli/agent-dev-loop",
         "devtool/overview",
         "devtool/setup",
       ],

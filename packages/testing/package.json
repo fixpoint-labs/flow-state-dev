@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./conformance": {
+      "types": "./dist/transports/conformance.d.ts",
+      "default": "./dist/transports/conformance.js"
     }
   },
   "license": "MIT",
