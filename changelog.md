@@ -14,7 +14,7 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Substrate-internal task-board blocks (`claimTask`, `checkBoard`, `recordSuccess`, `recordError`, `seedCollection`, board-meta emitters) marked `transient: true` so their auto-emitted `block_output` traces are filtered from client subscriptions and history replay. Idle workers no longer flood the SSE stream with `block_output` trace records every poll tick. `claimTask` also skips its `lastClaimed` state patch when the value is unchanged. Both are point-fixes for FIX-477.
 - Pattern-level status messages now describe what the agent is actually doing instead of leaving the chat at the default "Thinking…". `claimTask` emits `Working on: {task.goal}` on each successful claim. P&E, supervisor, and parallelTasks set phase statuses on their planning, evaluation, replanning, review, and synthesis blocks (e.g. `Planning the steps`, `Reviewing progress`, `Adjusting the plan`, `Putting it all together`).
 
-### Stuck-request handling (FIX-476)
+### Connection resilience (FIX-476)
 
 - Server emits `: ping\n\n` SSE comment frames on every live and GET-attach response (default 15 s). Heartbeat injection moved out of `@flow-state-dev/vercel` into `@flow-state-dev/server` so every deployment — including non-Vercel and POST inline streams — gets it.
 - New server-internal sweeper marks `in_progress` requests whose executor heartbeat stopped as `interrupted`, releasing session locks. On by default in `createFlowApiRouter` (30 s cadence, 60 s threshold); set `staleSweepIntervalMs: 0` to disable.
@@ -23,7 +23,7 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - Client SSE parser detects comment frames and fires a new `onHeartbeat` callback alongside regular events.
 - `RequestStatus` and `RequestStatusSnapshot` now live in `@flow-state-dev/core/types`. `@flow-state-dev/server` re-exports `RequestStatus` for backward compatibility.
 - Vercel adapter no longer injects heartbeats itself — the core handles it. `VercelHandlerOptions.heartbeatMs` is now a deprecated no-op; configure via `createFlowApiRouter({ defaultSseHeartbeatMs })` or per-flow `defineFlow({ request: { sseHeartbeatMs } })` instead.
-- Docs: new `apps/docs/docs/server/stuck-requests.md`; sections added to `packages/server/README.md`, `packages/react/README.md`, `apps/docs/docs/streaming/overview.md`; deprecation note in `packages/vercel/README.md`.
+- Docs: new `apps/docs/docs/server/connection-resilience.md` (linked from the Server sidebar); sections added to `packages/server/README.md`, `packages/react/README.md`, `apps/docs/docs/streaming/overview.md`; deprecation note in `packages/vercel/README.md`.
 
 ## 2026-04-29
 

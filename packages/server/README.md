@@ -271,13 +271,13 @@ Memory, filesystem, SQLite, and Postgres adapters all ship with first-class impl
 
 By default the final checkpoint is retained after terminal completion (success / error / abort) for post-mortem inspection. Set `flow.request.cleanupCheckpointsOnTerminal: true` on a flow to make terminal frames trigger an immediate `delete()`.
 
-## Heartbeats and stuck-request handling
+## Connection resilience
 
-The server runs three coordinated mechanisms so a dropped SSE connection doesn't leave a request stuck forever:
+The server runs three coordinated mechanisms so a dropped SSE connection doesn't leave a request running forever with no way to recover:
 
 - **Wire-level SSE heartbeat.** Every live and GET-attach SSE response emits `: ping\n\n` comment frames at a configurable cadence. Keeps NAT/proxy idle timeouts from closing the connection and gives clients a robust inactivity signal during long pauses (e.g. an LLM thinking).
 - **Stale-request sweeper.** A periodic in-process job that reads the active request registry and, for entries whose executor heartbeat has stopped, marks the persisted request record `interrupted` so session locks release.
-- **Read-only status endpoint.** `GET /api/flows/:flowKind/requests/:requestId/status` returns a `RequestStatusSnapshot` callable when no SSE stream is attached — used by clients to confirm authoritative server state after a stuck-request banner is shown.
+- **Read-only status endpoint.** `GET /api/flows/:flowKind/requests/:requestId/status` returns a `RequestStatusSnapshot` callable when no SSE stream is attached — used by clients to confirm authoritative server state after the watchdog trips.
 
 ```ts
 createFlowApiRouter({
@@ -304,7 +304,7 @@ defineFlow({
 });
 ```
 
-Clients consume the wire heartbeat through `useSession`'s watchdog: it surfaces `session.isStuck` when the stream goes silent past `stuckThresholdMs` (default 30s) and exposes `session.dismissRequest()` to clear the stuck request without a live connection.
+Clients consume the wire heartbeat through `useSession`'s watchdog: it surfaces `session.isStuck` when the stream goes silent past `stuckThresholdMs` (default 30s) and exposes `session.dismissRequest()` to clear the request without a live connection. See [Connection Resilience](https://flow-state.dev/docs/server/connection-resilience) for full details.
 
 ## Notes
 

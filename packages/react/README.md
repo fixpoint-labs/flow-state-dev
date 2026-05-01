@@ -188,12 +188,12 @@ function ChatBubble({ item }: { item: MessageItem }) {
 
 Register renderers via `FlowProvider` or pass them directly to `ItemRenderer`.
 
-## Detecting stuck requests
+## Connection resilience
 
-When the SSE connection drops mid-flight (network blip, tab background, server restart), `useSession` flips `session.isStuck` to `true` and exposes `session.dismissRequest()` so the user can clear the stuck request without reloading.
+When the SSE connection drops mid-flight (network blip, tab background, server restart), `useSession` flips `session.isStuck` to `true` and exposes `session.dismissRequest()` so the user can clear the request without reloading.
 
 ```tsx
-function StuckBanner() {
+function ConnectionBanner() {
   const session = useSession(activeSessionId);
   if (!session.isStuck) return null;
   return (
@@ -211,7 +211,7 @@ The watchdog tracks the last SSE event or wire heartbeat; if the gap exceeds `st
 const session = useSession(sessionId, { stuckThresholdMs: 30_000 });
 ```
 
-A user-triggered `sendAction` while `isStuck` is true auto-dismisses the prior stuck request before opening the new stream, so the chat keeps moving.
+A user-triggered `sendAction` while `isStuck` is true auto-dismisses the prior request before opening the new stream, so the chat keeps moving. See [Connection Resilience](https://flow-state.dev/docs/server/connection-resilience) for the full layered defense (server heartbeat + sweeper + client watchdog).
 
 ## Scripts
 

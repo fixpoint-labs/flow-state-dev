@@ -136,4 +136,4 @@ For reference, here's the complete registry:
 
 ## Wire-level heartbeat
 
-`@flow-state-dev/server` injects `: ping\n\n` SSE comment frames into every live and GET-attach response at a configurable cadence (default 15 s). They keep NAT and proxy idle timeouts from closing the connection and give clients a wire-level signal independent of any specific event. Configure via `createFlowApiRouter({ defaultSseHeartbeatMs })` or per-flow `defineFlow({ request: { sseHeartbeatMs } })`. See [Stuck Requests](/docs/server/stuck-requests) for how this fits into the broader stuck-request defense.
+`@flow-state-dev/server` injects `: ping\n\n` SSE comment frames into every live and GET-attach response at a configurable cadence (default 15 s). They keep NAT and proxy idle timeouts from closing the connection and give clients a wire-level signal independent of any specific event. Configure via `createFlowApiRouter({ defaultSseHeartbeatMs })` or per-flow `defineFlow({ request: { sseHeartbeatMs } })`. See [Connection Resilience](/docs/server/connection-resilience) for how heartbeats fit alongside the watchdog and stale-request sweeper.
