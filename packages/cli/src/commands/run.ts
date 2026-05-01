@@ -136,7 +136,12 @@ export interface RunCommandOptions {
 
 const LOG_LEVELS: readonly RuntimeLoggerLevel[] = ["debug", "info", "warn", "error"] as const;
 
-/** Truncates a stringified value at a sensible byte budget for stderr logging. */
+/**
+ * Truncates context values for stderr logging. Strings over the byte budget are
+ * trimmed in place; objects/arrays are kept intact when they serialize within
+ * the budget (so the outer `JSON.stringify` produces real nested JSON), and
+ * replaced with a truncated string preview only when they exceed it.
+ */
 function summarizeContext(context: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(context)) {
@@ -151,7 +156,13 @@ function summarizeContext(context: Record<string, unknown>): Record<string, unkn
     }
     try {
       const serialized = JSON.stringify(value);
-      out[key] = serialized.length > 240 ? `${serialized.slice(0, 239)}…` : serialized;
+      if (serialized === undefined) {
+        out[key] = String(value);
+      } else if (serialized.length > 240) {
+        out[key] = `${serialized.slice(0, 239)}…`;
+      } else {
+        out[key] = value;
+      }
     } catch {
       out[key] = String(value);
     }
