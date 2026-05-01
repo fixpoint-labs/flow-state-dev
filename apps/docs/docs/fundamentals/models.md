@@ -338,5 +338,5 @@ For a fuller treatment — including the audit of call paths that existed before
 ## What to Read Next
 
 - [Server Setup](/docs/server/setup) — wiring the resolver into your app
-- [Model Groups](/docs/server/model-groups) — deeper dive into presets, gateways, introspection
-- [Custom Model Resolver](/docs/server/custom-model-resolver) — advanced resolver configuration
+- [Model Groups](/docs/advanced/model-groups) — deeper dive into presets, gateways, introspection
+- [Custom Model Resolver](/docs/advanced/custom-model-resolver) — advanced resolver configuration

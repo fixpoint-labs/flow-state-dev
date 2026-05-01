@@ -240,7 +240,7 @@ The condition receives the `BlockContext`, so it can check session state, featur
 pipeline.workIf(ENABLE_ANALYTICS, analyticsBlock);
 ```
 
-See [Side Chains](/docs/sequencers/side-chains) for the full story on `.work()`, `.workIf()`, and `.forEachBackground()`.
+See [Side Chains](/docs/advanced/sequencer-side-chains) for the full story on `.work()`, `.workIf()`, and `.forEachBackground()`.
 
 ### Wait for Work
 

@@ -4,6 +4,13 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-01
 
+### Reorganize docs sidebar around core and ecosystem boundaries (FIX-495)
+
+- The Docs sidebar now has four top-level groups: Getting Started, Core, Ecosystem, and Advanced. Core holds the runtime primitives and Ecosystem holds patterns, tools, skills, UI, Thought Fabric, and dev tooling.
+- Capabilities documentation is split by audience. Using capabilities stays in Core for attaching bundled capabilities; Authoring capabilities moves to Advanced for `defineCapability`, presets, dynamic `uses`, and merge behavior.
+- Power-user pages moved into Advanced, including flow isolation, generator context, voice, sequencer side-chains, custom model resolver, model groups, and inbound transports.
+- Ecosystem now has an overview page and a Thought Fabric bridge page that points to the dedicated Thought Fabric docs.
+
 ### Tier 1 flow integration test suite (FIX-487)
 
 - New `@flow-state-dev/integration-tests` workspace package (private). Seven scenarios drive whole flows through `runAction` against in-memory stores with mocked generators: hello-chat smoke, ask-mode happy path, tool-loop convergence, build-mode artifact, plan-and-execute, session resume, and the supervisor + task-board regression. Suite finishes in a few seconds; loop guards plus a 30s vitest `testTimeout` catch infinite-loop regressions deterministically.

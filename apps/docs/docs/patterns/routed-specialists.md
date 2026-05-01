@@ -117,5 +117,5 @@ The pattern stores per-iteration records in a sequencer-state-backed `TaskCollec
 ## See also
 
 - [Event Actors](./event-actors) — actors react to entry topics in parallel; no controller.
-- Task Board (`@flow-state-dev/patterns/task-board`) — concurrent drain over a `TaskCollection` with dependency gating and worker routing.
+- [Task Board](/docs/patterns/task-board) — concurrent drain over a `TaskCollection` with dependency gating and worker routing.
 - [Supervisor](./supervisor) — plan, execute, review, replan loop.

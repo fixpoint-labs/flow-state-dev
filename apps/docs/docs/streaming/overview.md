@@ -71,7 +71,7 @@ const memoryObserver = generator({ agentType: "trace", /* ... */ });
 const classifier = generator({ outputSchema: z.enum(["A", "B"]), /* ... */ });
 ```
 
-See [Generator identity](../streaming/items#generator-identity) for the full model — multi-peer agents, collaborative vs. isolated parallel work, and the `selectForContext` escape hatch for custom prompt context.
+See [Generator identity](/docs/streaming/items#generator-identity) for the full model — multi-peer agents, collaborative vs. isolated parallel work, and the `selectForContext` escape hatch for custom prompt context.
 
 ### Handler-emitted items
 
