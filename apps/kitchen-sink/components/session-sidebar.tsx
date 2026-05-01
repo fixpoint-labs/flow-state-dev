@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { Plus, MessageSquare } from "lucide-react";
+import { Plus, MessageSquare, Wrench } from "lucide-react";
+import Link from "next/link";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { SessionSummary } from "@flow-state-dev/client";
 
@@ -66,8 +67,13 @@ export function SessionSidebar({
         </div>
       </ScrollArea>
       <Separator />
-      <div className="p-3">
+      <div className="flex items-center gap-1 p-3">
         <ThemeToggle />
+        <Button asChild variant="ghost" size="icon-sm" aria-label="Open DevTool">
+          <Link href="/devtool" target="_blank" rel="noopener" title="Open DevTool">
+            <Wrench className="h-4 w-4" />
+          </Link>
+        </Button>
       </div>
     </aside>
   );
