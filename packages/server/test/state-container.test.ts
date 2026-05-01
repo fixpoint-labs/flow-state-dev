@@ -58,7 +58,7 @@ describe("state container and CAS", () => {
       options: { maxRetries: 3, baseDelayMs: 0 }
     });
 
-    expect(result).toEqual({ count: 100 });
+    expect(result).toEqual({ state: { count: 100 }, committed: true });
     expect(container.getVersion()).toBe(2);
   });
 
@@ -122,5 +122,47 @@ describe("state container and CAS", () => {
     });
     expect(persist).toHaveBeenCalledTimes(7);
     expect(container.getVersion()).toBe(7);
+  });
+
+  it("no-op writes return false and skip persist + version bump", async () => {
+    type DemoState = {
+      count: number;
+      list: string[];
+      bag: Record<string, number>;
+      mode: string;
+    };
+
+    const container: StateContainer<DemoState> = createStateContainer<DemoState>({
+      count: 5,
+      list: ["a"],
+      bag: { x: 1 },
+      mode: "idle"
+    });
+
+    const persist = vi.fn<CASPersist<DemoState>>(async (_state, expectedVersion) => ({
+      ok: true,
+      version: expectedVersion + 1
+    }));
+
+    const ops = createScopeStateOps<DemoState>(container, { persist });
+
+    // Equal-value patch: no-op, no persist, no version advance.
+    expect(await ops.patchState({ count: 5 })).toBe(false);
+    expect(await ops.patchState({ mode: "idle" })).toBe(false);
+    expect(await ops.patchState("count", (c) => c)).toBe(false);
+    expect(await ops.setState({ count: 5, list: ["a"], bag: { x: 1 }, mode: "idle" })).toBe(false);
+    expect(await ops.incState({ count: 0 })).toBe(false);
+    expect(await ops.setStateRecord("bag", "x", 1)).toBe(false);
+    expect(await ops.deleteStateRecord("bag", "missing")).toBe(false);
+    expect(await ops.atomicState(() => ({}))).toBe(false);
+    expect(await ops.atomicState((s) => ({ count: s.count }))).toBe(false);
+
+    expect(persist).not.toHaveBeenCalled();
+    expect(container.getVersion()).toBe(0);
+
+    // Real change still commits and reports true.
+    expect(await ops.patchState({ count: 6 })).toBe(true);
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(container.getVersion()).toBe(1);
   });
 });

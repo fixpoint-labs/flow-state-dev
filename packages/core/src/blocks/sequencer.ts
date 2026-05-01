@@ -27,6 +27,7 @@ import {
   ROOT_BLOCK_PATH
 } from "./internal/block-instance-id";
 import { isTraceObservabilityEnabled } from "../utils/trace-observability";
+import { getTransientKeys, stripTransientKeys } from "../utils/transient-slot";
 
 const DEFAULT_MAX_LOOP_GUARD = 250;
 
@@ -229,7 +230,18 @@ async function emitStateSnapshot(
   const seqRef = ctx.sequencer;
   if (seqRef === undefined) return lastStateJson;
 
-  const currentStateJson = JSON.stringify(seqRef.state);
+  // Strip transient slots before serialization. Transient values stay on
+  // `seqRef.state` for in-memory reads but never enter the snapshot payload,
+  // so durable checkpoints are clean and on-resume the slot resets to its
+  // schema default. Both sides of the dedup compare run on the stripped form
+  // so the saved `lastStateJson` is comparable across calls.
+  const transientKeys = getTransientKeys(stateSchema);
+  const visibleState = stripTransientKeys(
+    seqRef.state as Record<string, unknown>,
+    transientKeys
+  );
+
+  const currentStateJson = JSON.stringify(visibleState);
 
   // Skip step-boundary emissions when state hasn't changed. Terminal frames
   // always emit so the durability hook sees the delete signal even when the
@@ -277,7 +289,7 @@ async function emitStateSnapshot(
     key: seqRef.instanceId,
     stepName,
     stepIndex,
-    state: structuredClone(seqRef.state),
+    state: structuredClone(visibleState),
     version,
     durable: effectiveDurable,
     terminal

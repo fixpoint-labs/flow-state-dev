@@ -63,6 +63,7 @@ import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver } from "@flow-state-dev/core";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
+import { deepEqual, getTransientKeys } from "@flow-state-dev/core/utils";
 import {
   buildConnectedInputDebugPayload,
   buildGeneratorDebugPayload,
@@ -1392,23 +1393,54 @@ function createTargetStateOps<TState extends JsonObject>(options: {
   provenance: () => ItemProvenance;
   blockInstanceId: string;
   transientStateChanges: boolean;
+  /**
+   * Top-level keys of the parent sequencer's `stateSchema` that were marked
+   * with `transientSlot()`. Patches affecting only these keys are persisted
+   * to the in-memory container (so later steps can read them) but suppressed
+   * from `state_change` SSE emits and `state_snapshot` payloads.
+   */
+  transientKeys?: Set<string>;
 }): Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> {
   // Target state has no backing store. `createScopeStateOps` supplies a
   // container-based CAS fallback when no `persist` is provided — that's what
   // we want here, so concurrent mutators serialize through the container.
   const baseOps = createScopeStateOps<TState>(options.container);
+  const transientKeys = options.transientKeys ?? new Set<string>();
+
+  function isTransientKey(key: string): boolean {
+    return transientKeys.has(key);
+  }
+
+  function filterTransientFromDelta<T extends Record<string, unknown>>(
+    delta: T
+  ): { filtered: Partial<T>; hasNonTransient: boolean } {
+    if (transientKeys.size === 0) {
+      return { filtered: delta, hasNonTransient: Object.keys(delta).length > 0 };
+    }
+    const filtered: Record<string, unknown> = {};
+    let hasNonTransient = false;
+    for (const k of Object.keys(delta)) {
+      if (!isTransientKey(k)) {
+        filtered[k] = delta[k];
+        hasNonTransient = true;
+      }
+    }
+    return { filtered: filtered as Partial<T>, hasNonTransient };
+  }
 
   return {
     async patchState(
       updatesOrKey: Partial<TState> | keyof TState,
       updater?: (current: TState[keyof TState]) => TState[keyof TState]
     ) {
-      await (baseOps.patchState as (
+      const committed = await (baseOps.patchState as (
         updatesOrKey: Partial<TState> | keyof TState,
         updater?: (current: TState[keyof TState]) => TState[keyof TState]
-      ) => Promise<void>)(updatesOrKey, updater);
+      ) => Promise<boolean>)(updatesOrKey, updater);
+      if (!committed) return false;
       const version = options.container.getVersion();
       if (typeof updatesOrKey === "string") {
+        if (isTransientKey(updatesOrKey)) return true;
         await emitStateChangeItem({
           response: options.response,
           requestId: options.requestId,
@@ -1422,8 +1454,13 @@ function createTargetStateOps<TState extends JsonObject>(options: {
           blockInstanceId: options.blockInstanceId,
           transient: options.transientStateChanges
         });
-        return;
+        return true;
       }
+
+      const { filtered, hasNonTransient } = filterTransientFromDelta(
+        updatesOrKey as Record<string, unknown>
+      );
+      if (!hasNonTransient) return true;
 
       await emitStateChangeItem({
         response: options.response,
@@ -1432,14 +1469,20 @@ function createTargetStateOps<TState extends JsonObject>(options: {
         provenance: options.provenance,
         scope: "block_instance",
         operation: "patch",
-        delta: updatesOrKey,
+        delta: filtered,
         version,
         blockInstanceId: options.blockInstanceId,
         transient: options.transientStateChanges
       });
+      return true;
     },
     async setState(nextState: TState) {
-      await baseOps.setState(nextState);
+      const committed = await baseOps.setState(nextState);
+      if (!committed) return false;
+      const { filtered, hasNonTransient } = filterTransientFromDelta(
+        nextState as Record<string, unknown>
+      );
+      if (!hasNonTransient) return true;
       await emitStateChangeItem({
         response: options.response,
         requestId: options.requestId,
@@ -1447,14 +1490,18 @@ function createTargetStateOps<TState extends JsonObject>(options: {
         provenance: options.provenance,
         scope: "block_instance",
         operation: "set",
-        delta: nextState,
+        delta: filtered,
         version: options.container.getVersion(),
         blockInstanceId: options.blockInstanceId,
         transient: options.transientStateChanges
       });
+      return true;
     },
     async incState(increments: Record<string, number>) {
-      await baseOps.incState(increments);
+      const committed = await baseOps.incState(increments);
+      if (!committed) return false;
+      const { filtered, hasNonTransient } = filterTransientFromDelta(increments);
+      if (!hasNonTransient) return true;
       await emitStateChangeItem({
         response: options.response,
         requestId: options.requestId,
@@ -1462,14 +1509,17 @@ function createTargetStateOps<TState extends JsonObject>(options: {
         provenance: options.provenance,
         scope: "block_instance",
         operation: "increment",
-        delta: increments,
+        delta: filtered,
         version: options.container.getVersion(),
         blockInstanceId: options.blockInstanceId,
         transient: options.transientStateChanges
       });
+      return true;
     },
     async pushState(field: string, value: unknown) {
-      await baseOps.pushState(field, value);
+      const committed = await baseOps.pushState(field, value);
+      if (!committed) return false;
+      if (isTransientKey(field)) return true;
       await emitStateChangeItem({
         response: options.response,
         requestId: options.requestId,
@@ -1483,9 +1533,12 @@ function createTargetStateOps<TState extends JsonObject>(options: {
         blockInstanceId: options.blockInstanceId,
         transient: options.transientStateChanges
       });
+      return true;
     },
     async setStateRecord(field: string, key: string, value: unknown) {
-      await baseOps.setStateRecord(field, key, value);
+      const committed = await baseOps.setStateRecord(field, key, value);
+      if (!committed) return false;
+      if (isTransientKey(field)) return true;
       await emitStateChangeItem({
         response: options.response,
         requestId: options.requestId,
@@ -1499,9 +1552,12 @@ function createTargetStateOps<TState extends JsonObject>(options: {
         blockInstanceId: options.blockInstanceId,
         transient: options.transientStateChanges
       });
+      return true;
     },
     async deleteStateRecord(field: string, key: string) {
-      await baseOps.deleteStateRecord(field, key);
+      const committed = await baseOps.deleteStateRecord(field, key);
+      if (!committed) return false;
+      if (isTransientKey(field)) return true;
       await emitStateChangeItem({
         response: options.response,
         requestId: options.requestId,
@@ -1515,9 +1571,31 @@ function createTargetStateOps<TState extends JsonObject>(options: {
         blockInstanceId: options.blockInstanceId,
         transient: options.transientStateChanges
       });
+      return true;
     },
     async atomicState(mutator: (state: Readonly<TState>) => Partial<TState>) {
-      await baseOps.atomicState(mutator);
+      const before = options.container.read() as Record<string, unknown>;
+      const committed = await baseOps.atomicState(mutator);
+      if (!committed) return false;
+      // atomicState has no structured delta. To honor transient slots we
+      // diff before/after by top-level key — if every changed key is
+      // transient, suppress the emit; otherwise emit as today.
+      if (transientKeys.size > 0) {
+        const after = options.container.read() as Record<string, unknown>;
+        const changedKeys: string[] = [];
+        const allKeys = new Set<string>([
+          ...Object.keys(before),
+          ...Object.keys(after)
+        ]);
+        for (const k of allKeys) {
+          if (!deepEqual(before[k], after[k])) {
+            changedKeys.push(k);
+          }
+        }
+        if (changedKeys.length > 0 && changedKeys.every((k) => isTransientKey(k))) {
+          return true;
+        }
+      }
       await emitStateChangeItem({
         response: options.response,
         requestId: options.requestId,
@@ -1529,6 +1607,7 @@ function createTargetStateOps<TState extends JsonObject>(options: {
         blockInstanceId: options.blockInstanceId,
         transient: options.transientStateChanges
       });
+      return true;
     }
   };
 }
@@ -2732,7 +2811,8 @@ export async function createExecutionContext<
                     phase: "main"
                   }),
                   blockInstanceId: matched.parent.instanceId,
-                  transientStateChanges
+                  transientStateChanges,
+                  transientKeys: getTransientKeys(matched.parent.stateSchema)
                 }) as unknown as Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">);
 
           return defineStateProperty(
