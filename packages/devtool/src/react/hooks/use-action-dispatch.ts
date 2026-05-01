@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import type { ExecuteActionResponse } from "@flow-state-dev/client";
 import { useDevTool } from "../context/devtool-context";
+import { dispatchDevToolAction } from "../lib/client";
 
 export type UseActionDispatchResult = {
   sendAction: (flowKind: string, sessionId: string, action: string, input: unknown) => Promise<ExecuteActionResponse | null>;
@@ -10,7 +11,7 @@ export type UseActionDispatchResult = {
 };
 
 export function useActionDispatch(): UseActionDispatchResult {
-  const { config } = useDevTool();
+  const { config, baseUrl } = useDevTool();
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastResponse, setLastResponse] = useState<ExecuteActionResponse | null>(null);
@@ -20,19 +21,10 @@ export function useActionDispatch(): UseActionDispatchResult {
       setIsSending(true);
       setError(null);
       try {
-        const response = await fetch(
-          `/api/flows/${encodeURIComponent(flowKind)}/${encodeURIComponent(sessionId)}/actions/${encodeURIComponent(action)}`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ input, userId: config.userId }),
-          },
-        );
-        if (!response.ok) {
-          const body = await response.text();
-          throw new Error(`Action failed (${response.status}): ${body}`);
-        }
-        const result = (await response.json()) as ExecuteActionResponse;
+        const result = await dispatchDevToolAction(flowKind, sessionId, action, input, {
+          userId: config.userId,
+          baseUrl,
+        });
         setLastResponse(result);
         return result;
       } catch (err) {
@@ -43,7 +35,7 @@ export function useActionDispatch(): UseActionDispatchResult {
         setIsSending(false);
       }
     },
-    [config],
+    [config, baseUrl],
   );
 
   return { sendAction, isSending, error, lastResponse };

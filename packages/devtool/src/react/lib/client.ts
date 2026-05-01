@@ -11,6 +11,7 @@ import {
   createRecoveryClient,
   createSSEClient,
   type Client,
+  type ExecuteActionResponse,
   type SessionClient,
   type RecoveryClient,
   type CreateSSEClientOptions,
@@ -48,4 +49,25 @@ export function connectRequestStream(
     baseUrl,
     url: `/api/flows/${encodeURIComponent(flowKind)}/requests/${encodeURIComponent(requestId)}/stream?unfiltered=true`,
   });
+}
+
+/**
+ * Dispatch an action against a specific flow. The DevTool's shared `Client`
+ * is bound to a synthetic `__devtool__` flowKind for listing/capabilities,
+ * so action dispatches build a per-flow client to hit the right endpoint
+ * while still threading `baseUrl` for cross-origin embedded mounts.
+ */
+export function dispatchDevToolAction(
+  flowKind: string,
+  sessionId: string,
+  action: string,
+  input: unknown,
+  options: { userId: string; baseUrl?: string },
+): Promise<ExecuteActionResponse> {
+  const client = createClient({
+    flowKind,
+    userId: options.userId,
+    baseUrl: options.baseUrl,
+  });
+  return client.sendAction(action, input, { sessionId });
 }

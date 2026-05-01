@@ -163,6 +163,16 @@ export function DevToolProvider({
     void refreshFlows();
   }, [refreshFlows]);
 
+  // Sync external `initialConfig`/`baseUrl` changes into state. The reducer's
+  // initializer only runs on mount, so without this the standalone shell's
+  // focus-driven re-read of localStorage (or a host swapping the userId
+  // prop) would be silently ignored. Skipped when nothing changed to avoid
+  // rebuilding the clients on every render.
+  useEffect(() => {
+    if (state.config.userId === initialConfig.userId) return;
+    dispatch({ type: "SET_CONFIG", config: initialConfig, baseUrl });
+  }, [initialConfig, baseUrl, state.config.userId]);
+
   // Sweep interrupted requests for the current user once on devtool mount.
   // Off by default for embedded panels — the host app may not want a panel
   // mount to mutate request state. The standalone shell opts in.
