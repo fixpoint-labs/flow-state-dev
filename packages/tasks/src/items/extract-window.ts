@@ -152,15 +152,22 @@ export function extractTaskItems(
 }
 
 /**
- * Multi-task variant that mirrors the renderer's `extractTaskItemWindows`
- * exactly: walks all `task-change` items for `collectionId` to build
- * (start, end) maps, then assigns each non-bookend item to the FIRST
- * task whose window contains its `ts`. An item lands in at most one
- * task's bucket — never duplicated across overlapping windows.
+ * Multi-task variant: walks all `task-change` items for `collectionId`
+ * to build (start, end) maps, then assigns each non-bookend item to the
+ * FIRST task whose window contains its `ts`. An item lands in at most
+ * one task's bucket — never duplicated across overlapping windows.
  *
- * Use this when bucketing every item in a stream at once (renderer use
- * case). For server-side single-task reads, `extractTaskItems` is the
- * cheaper path.
+ * This matches the renderer's `collectTaskOwnedItemIds` algorithm
+ * (assign-once via `break`), not its `extractTaskItemWindows`
+ * (assign-to-all-overlapping). The substrate uses assign-once
+ * intentionally — the spec calls for "no duplication" so synthesizers
+ * iterating completed tasks don't see the same item across multiple
+ * `task.items()` slices. The renderer's no-break variant predates this
+ * decision and is a separate concern (rendering UX, not aggregation).
+ *
+ * Use this when bucketing every item in a stream at once. For
+ * server-side single-task reads, `extractTaskItems` is the cheaper
+ * path.
  */
 export function extractTaskItemWindows(
   items: readonly OutputItem[],
