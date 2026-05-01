@@ -159,7 +159,7 @@ describe("eventActors", () => {
 
     const result = await testBlock(emit, {
       input: { type: "request", topic: "query", body: "hi" },
-      session: { resources: { eventActorsWorkspace: emptyWorkspaceState } },
+      session: { resources: { eventedActors: emptyWorkspaceState } },
     });
 
     expect(result.error).toBeNull();
@@ -194,7 +194,7 @@ describe("eventActors", () => {
 
     const result = await testBlock(emit, {
       input: { type: "request", topic: "query", body: "hi" },
-      session: { resources: { eventActorsWorkspace: emptyWorkspaceState } },
+      session: { resources: { eventedActors: emptyWorkspaceState } },
     });
 
     expect(result.error).toBeNull();
@@ -234,7 +234,7 @@ describe("eventActors", () => {
 
     const result = await testBlock(emit, {
       input: { type: "request", topic: "query", body: "hi" },
-      session: { resources: { eventActorsWorkspace: emptyWorkspaceState } },
+      session: { resources: { eventedActors: emptyWorkspaceState } },
     });
 
     expect(result.error).toBeNull();
@@ -283,7 +283,7 @@ describe("eventActors", () => {
 
     const result = await testBlock(emit, {
       input: { type: "request", topic: "query", body: "seed" },
-      session: { resources: { eventActorsWorkspace: emptyWorkspaceState } },
+      session: { resources: { eventedActors: emptyWorkspaceState } },
     });
 
     expect(result.error).toBeNull();
@@ -339,7 +339,7 @@ describe("eventActors", () => {
 
     const result = await testBlock(emit, {
       input: { type: "request", topic: "query", body: "seed" },
-      session: { resources: { eventActorsWorkspace: emptyWorkspaceState } },
+      session: { resources: { eventedActors: emptyWorkspaceState } },
     });
 
     expect(result.error).toBeNull();

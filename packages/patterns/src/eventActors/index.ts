@@ -217,7 +217,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   }
 
   const collectionId = `eventActors:${name}`;
-  const RESOURCE_KEY = "eventActorsWorkspace";
+  const RESOURCE_KEY = "eventedActors";
   const appendEntry = createAppendEntry(name, workspaceResource, RESOURCE_KEY);
 
   function getCollection(ctx: BlockContext): TaskCollectionRef {
