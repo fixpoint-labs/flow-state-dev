@@ -42,6 +42,14 @@ export type OutputItemBase = {
   id: string;
   type: string;
   status: ItemStatus;
+  /**
+   * When true, the item is delivered to live SSE consumers but never
+   * persisted to the session log or replayed on history reload.
+   *
+   * Composes orthogonally with {@link ComponentItem.key}: see the "keyed
+   * snapshot" pattern in `apps/docs/docs/streaming/emitting-items.md` for
+   * the full transient × key matrix.
+   */
   transient?: boolean;
   requestId: string;
   itemIndex: number;
@@ -190,8 +198,15 @@ export type ComponentItem = OutputItemBase & {
   type: "component";
   component: string;
   data: Record<string, unknown>;
-  /** Caller-provided stable identity for deduplication. When present, clients
-   *  should show only the latest item with a given key (replacing prior ones). */
+  /**
+   * Caller-provided stable identity for deduplication. When present, clients
+   * show only the latest item with a given key (replacing prior ones).
+   *
+   * Combined with `transient: false`, this expresses the **keyed snapshot**
+   * pattern — one logical entity whose latest state replays on reload. See
+   * `apps/docs/docs/streaming/emitting-items.md` for the transient × key
+   * matrix.
+   */
   key?: string;
 };
 

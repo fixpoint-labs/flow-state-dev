@@ -183,6 +183,36 @@ Output item unions, content types, and stream event helpers. Item types: `messag
 
 **`BlockValue<T>`** — `block_output.output` is a discriminated union (FIX-413) with three cases: `inline` (novel content on the emitter), `ref` (pointer to another item's content), and `structure` (container of nested BlockValues, used by aggregators like `.thenAll`). Use `resolveBlockValue(value, lookup)` to recover the typed payload `T`; `ctx.getBlockOutput()` resolves transparently. Since FIX-480, refs may also point at `MessageItem`s — streaming-text generators emit a ref to their just-emitted message instead of duplicating the text inline. `buildItemLookup(items)` indexes every item by id so the resolver can follow either kind of ref.
 
+## Sequencer instance state
+
+A sequencer can declare a `stateSchema` that gives every step in the pipeline a shared, typed state container. State is read via `ctx.sequencer.state` and written via the seven helpers on `ctx.sequencer`: `patchState`, `setState`, `incState`, `pushState`, `setStateRecord`, `deleteStateRecord`, and `atomicState`.
+
+```ts
+import { sequencer, transientSlot } from "@flow-state-dev/core";
+import { z } from "zod";
+
+const counter = sequencer({
+  name: "counter",
+  stateSchema: z.object({
+    count: z.number().default(0),
+    // Worker-local scratch. Stays in memory but never appears on the SSE
+    // stream, never writes to the durable checkpoint, and resets to its
+    // schema default on resume.
+    lastClaimed: transientSlot(z.boolean().default(false)),
+  }),
+}).then(/* ... */);
+```
+
+**No-op write guard.** A state-write helper that produces a value structurally equal to the current state is suppressed: no persist call, no `state_change` SSE item, and the helper returns `false` instead of `true`. Idempotent writes are now free — callers no longer need to guard with manual identity checks. The comparison uses `Object.is` for primitives (NaN-equal-NaN; `+0 != -0`) and recursive structural equality for plain objects and arrays.
+
+**Transient slots.** `transientSlot()` marks a top-level field on `stateSchema` as in-memory only. Transient slots:
+
+- Hold their value across a sequencer's run, readable by later steps via `ctx.sequencer.state`.
+- Do **not** emit `state_change` items on the SSE stream.
+- Do **not** appear in `state_snapshot` payloads, so they never enter the durable checkpoint store and reset to their schema default on resume.
+
+Apply `transientSlot()` LAST in the schema chain — after `.optional()`, `.default()`, etc. — so the marker sits on the outermost schema instance referenced by the parent `z.object` shape.
+
 ## Key design decisions
 
 **Partial state schemas.** Each block declares only the state fields it touches. A counter block doesn't need to know about a preferences block's state. This keeps blocks reusable and self-documenting about their dependencies.

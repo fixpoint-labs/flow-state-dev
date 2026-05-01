@@ -104,10 +104,10 @@ async function applyMutation<TState extends object>(
   container: StateContainer<TState>,
   options: ScopeStateOpsOptions<TState> | undefined,
   mutator: (state: Readonly<TState>) => TState | Promise<TState>
-): Promise<void> {
+): Promise<boolean> {
   const persist = options?.persist ?? createContainerPersist(container);
 
-  await runWithCAS({
+  const { committed } = await runWithCAS({
     container,
     mutator,
     persist,
@@ -115,6 +115,7 @@ async function applyMutation<TState extends object>(
     maxStateSizeBytes: options?.maxStateSizeBytes,
     onStateSizeWarning: options?.onStateSizeWarning
   });
+  return committed;
 }
 
 export function createScopeStateOps<TState extends object>(
@@ -123,16 +124,16 @@ export function createScopeStateOps<TState extends object>(
 ): ScopeStateOps<TState> {
   async function patchState(
     updates: Partial<TState>
-  ): Promise<void>;
+  ): Promise<boolean>;
   async function patchState<TKey extends keyof TState>(
     key: TKey,
     updater: (current: TState[TKey]) => TState[TKey]
-  ): Promise<void>;
+  ): Promise<boolean>;
   async function patchState<TKey extends keyof TState>(
     updatesOrKey: Partial<TState> | TKey,
     updater?: (current: TState[TKey]) => TState[TKey]
-  ): Promise<void> {
-    await applyMutation(container, options, async (state) => {
+  ): Promise<boolean> {
+    return applyMutation(container, options, async (state) => {
       const next = { ...state } as TState;
 
       if (typeof updatesOrKey === "object" && updatesOrKey !== null) {
@@ -153,12 +154,12 @@ export function createScopeStateOps<TState extends object>(
     });
   }
 
-  async function setState(nextState: TState): Promise<void> {
-    await applyMutation(container, options, async () => nextState);
+  async function setState(nextState: TState): Promise<boolean> {
+    return applyMutation(container, options, async () => nextState);
   }
 
-  async function incState(increments: Record<string, number>): Promise<void> {
-    await applyMutation(container, options, async (state) => {
+  async function incState(increments: Record<string, number>): Promise<boolean> {
+    return applyMutation(container, options, async (state) => {
       const next = {
         ...state
       } as Record<string, unknown>;
@@ -174,8 +175,8 @@ export function createScopeStateOps<TState extends object>(
     });
   }
 
-  async function pushState(field: string, value: unknown): Promise<void> {
-    await applyMutation(container, options, async (state) => {
+  async function pushState(field: string, value: unknown): Promise<boolean> {
+    return applyMutation(container, options, async (state) => {
       const next = {
         ...state
       } as Record<string, unknown>;
@@ -190,8 +191,8 @@ export function createScopeStateOps<TState extends object>(
     field: string,
     key: string,
     value: unknown
-  ): Promise<void> {
-    await applyMutation(container, options, async (state) => {
+  ): Promise<boolean> {
+    return applyMutation(container, options, async (state) => {
       const next = {
         ...state
       } as Record<string, unknown>;
@@ -207,8 +208,8 @@ export function createScopeStateOps<TState extends object>(
   async function deleteStateRecord(
     field: string,
     key: string
-  ): Promise<void> {
-    await applyMutation(container, options, async (state) => {
+  ): Promise<boolean> {
+    return applyMutation(container, options, async (state) => {
       const next = {
         ...state
       } as Record<string, unknown>;
@@ -223,8 +224,8 @@ export function createScopeStateOps<TState extends object>(
 
   async function atomicState(
     mutator: (state: Readonly<TState>) => Partial<TState>
-  ): Promise<void> {
-    await applyMutation(container, options, async (state) => {
+  ): Promise<boolean> {
+    return applyMutation(container, options, async (state) => {
       const patch = mutator(state);
       return {
         ...state,

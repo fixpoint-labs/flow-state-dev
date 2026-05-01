@@ -115,10 +115,6 @@ export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
   };
 
   const onChange = (event: TaskChangeEvent): void => {
-    // task-change items are the user-facing signal of task lifecycle —
-    // explicitly non-transient even when emitted from a transient
-    // infrastructure block (e.g. `recordSuccess`, which marks itself
-    // transient to suppress its own `block_output` trace).
     options.ctx.emitComponent(
       TASK_CHANGE_COMPONENT_TYPE,
       {
@@ -128,7 +124,7 @@ export function getOrCreateTaskCollection<TInput = unknown, TOutput = unknown>(
         task: event.task,
         ...(event.prevStatus !== undefined ? { prevStatus: event.prevStatus } : {}),
       },
-      { key: `${event.collectionId}/${event.taskId}`, transient: false }
+      { key: `${event.collectionId}/${event.taskId}` }
     );
   };
 

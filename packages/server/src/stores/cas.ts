@@ -11,6 +11,7 @@
  */
 
 import type { CASOptions, StateContainer } from "@flow-state-dev/core/types";
+import { deepEqual } from "@flow-state-dev/core/utils";
 
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_BASE_DELAY_MS = 10;
@@ -81,6 +82,17 @@ function wait(ms: number): Promise<void> {
   });
 }
 
+/**
+ * Outcome of `runWithCAS`. `committed` is `false` when the proposed next
+ * state was structurally equal to the current state — no persist call was
+ * made, no version bump, and the caller should treat the operation as a
+ * no-op (skip downstream side effects like SSE emits).
+ */
+export type RunWithCASResult<TState> = {
+  state: Readonly<TState>;
+  committed: boolean;
+};
+
 export async function runWithCAS<TState>({
   container,
   mutator,
@@ -88,7 +100,7 @@ export async function runWithCAS<TState>({
   options,
   maxStateSizeBytes,
   onStateSizeWarning
-}: RunWithCASOptions<TState>): Promise<Readonly<TState>> {
+}: RunWithCASOptions<TState>): Promise<RunWithCASResult<TState>> {
   const maxRetries = Math.max(0, options?.maxRetries ?? DEFAULT_MAX_RETRIES);
   const baseDelayMs = Math.max(0, options?.baseDelayMs ?? DEFAULT_BASE_DELAY_MS);
   const sizeThreshold = maxStateSizeBytes ?? DEFAULT_MAX_STATE_SIZE_BYTES;
@@ -106,10 +118,21 @@ export async function runWithCAS<TState>({
 
     const expectedVersion = container.getVersion();
     const nextState = await mutator(current);
+
+    // No-op short-circuit: if the mutator's output is structurally equal to
+    // the current state, skip persist and signal `committed: false`. The CAS
+    // retry loop is preserved — only the commit phase is guarded. If a retry
+    // attempt produces an equal state (e.g. a concurrent writer landed the
+    // same value), this also returns `committed: false` instead of emitting
+    // a redundant downstream event for our late-but-no-op commit.
+    if (deepEqual(current, nextState)) {
+      return { state: current, committed: false };
+    }
+
     const result = await persist(nextState, expectedVersion);
 
     if (result.ok) {
-      return container.commit(nextState, result.version);
+      return { state: container.commit(nextState, result.version), committed: true };
     }
 
     // Conflict: refresh the container with the store's current state so the
