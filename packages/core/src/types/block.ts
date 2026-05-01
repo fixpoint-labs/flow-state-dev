@@ -166,9 +166,47 @@ export interface BlockContext<
    *  Each capability's fns(ctx) result is memoized on first access. */
   cap: TCapabilities;
 
-  emitMessage(text: string, options?: { agentType?: AgentType; agentName?: string }): void;
-  emitMessage(content: Content[], options?: { agentType?: AgentType; agentName?: string }): void;
-  emitComponent(component: string, data: Record<string, unknown>, options?: { key?: string; agentType?: AgentType; agentName?: string; transient?: boolean }): void;
+  /**
+   * Emit a chat message item.
+   *
+   * Defaults to `transient: false` (persisted) regardless of the producing
+   * block's `transient` flag. Pass `{ transient: true }` to opt in to a
+   * stream-only message.
+   *
+   * See `apps/docs/docs/streaming/emitting-items.md` for the
+   * transient × key matrix.
+   */
+  emitMessage(
+    text: string,
+    options?: { agentType?: AgentType; agentName?: string; transient?: boolean }
+  ): void;
+  emitMessage(
+    content: Content[],
+    options?: { agentType?: AgentType; agentName?: string; transient?: boolean }
+  ): void;
+  /**
+   * Emit a component item rendered by a registered UI component.
+   *
+   * Defaults to `transient: false` (persisted) regardless of the producing
+   * block's `transient` flag. Pass `{ transient: true }` to opt in to a
+   * stream-only component (e.g. live-only progress with dedup).
+   *
+   * Combined with a stable `key`, this expresses the "keyed snapshot"
+   * pattern: one logical entity whose latest state replays on reload.
+   * See `apps/docs/docs/streaming/emitting-items.md` for the
+   * transient × key matrix.
+   */
+  emitComponent(
+    component: string,
+    data: Record<string, unknown>,
+    options?: {
+      /** Stable identity for the keyed-snapshot pattern. See emitting-items.md. */
+      key?: string;
+      agentType?: AgentType;
+      agentName?: string;
+      transient?: boolean;
+    }
+  ): void;
   /**
    * Update the request-scoped status slot. Rendered by clients as a single
    * in-flight indicator ("what is happening right now").
@@ -177,8 +215,14 @@ export interface BlockContext<
    *   re-emission when the value is unchanged.
    * - `message` as `undefined` preserves the slot value — useful when updating
    *   only `blocked` / `backgroundTasks` signals.
+   *
+   * Defaults to `transient: true` (live-only) — statuses are naturally
+   * ephemeral. Pass `{ transient: false }` to persist a status item.
    */
-  emitStatus(message: string | undefined, options?: { blocked?: boolean; backgroundTasks?: number }): void;
+  emitStatus(
+    message: string | undefined,
+    options?: { blocked?: boolean; backgroundTasks?: number; transient?: boolean }
+  ): void;
 
   /**
    * Runtime metadata for the current request. Available during server-side
