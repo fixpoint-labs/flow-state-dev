@@ -2406,6 +2406,214 @@ describe("transient block output", () => {
   });
 });
 
+describe("keyed component upsert (FIX-491)", () => {
+  it("two emits with same key collapse to one item; latest data wins", async () => {
+    const stores = createInMemoryStores();
+    const flow = defineFlow({
+      kind: "fix491-keyed-upsert",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: handler({
+            name: "keyed-emit-twice",
+            inputSchema: z.object({ value: z.string() }),
+            outputSchema: z.string(),
+            execute: async ({ value }, ctx) => {
+              ctx.emitComponent("widget", { a: 1, b: 2 }, { key: "k" });
+              ctx.emitComponent("widget", { a: 99 }, { key: "k" });
+              return value;
+            }
+          })
+        }
+      }
+    })();
+
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: { value: "ok" },
+      userId: "u",
+      sessionId: "s",
+      stores
+    });
+
+    expect(result.error).toBeUndefined();
+
+    const inFlight = result.items.filter((item) => item.type === "component");
+    expect(inFlight.length).toBe(1);
+    const inFlightItem = inFlight[0] as {
+      id: string;
+      data: Record<string, unknown>;
+      key?: string;
+    };
+    expect(inFlightItem.id).toBe("item_component_keyed:k");
+    expect(inFlightItem.key).toBe("k");
+    // Replace, not merge: `b` from the first emission is gone.
+    expect(inFlightItem.data).toEqual({ a: 99 });
+
+    const requestRecord = await stores.request.get(
+      result.items[0]?.requestId ?? ""
+    );
+    const stored = (requestRecord?.items ?? []).filter(
+      (item) => item.type === "component"
+    );
+    expect(stored.length).toBe(1);
+    expect((stored[0] as { data: Record<string, unknown> }).data).toEqual({
+      a: 99
+    });
+  });
+
+  it("two emits without a key produce two distinct items", async () => {
+    const stores = createInMemoryStores();
+    const flow = defineFlow({
+      kind: "fix491-non-keyed",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: handler({
+            name: "non-keyed-emit-twice",
+            inputSchema: z.object({ value: z.string() }),
+            outputSchema: z.string(),
+            execute: async ({ value }, ctx) => {
+              ctx.emitComponent("widget", { v: 1 });
+              ctx.emitComponent("widget", { v: 2 });
+              return value;
+            }
+          })
+        }
+      }
+    })();
+
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: { value: "ok" },
+      userId: "u",
+      sessionId: "s",
+      stores
+    });
+
+    expect(result.error).toBeUndefined();
+
+    const inFlight = result.items.filter((item) => item.type === "component");
+    expect(inFlight.length).toBe(2);
+    const ids = new Set(inFlight.map((item) => item.id));
+    expect(ids.size).toBe(2);
+
+    const requestRecord = await stores.request.get(
+      result.items[0]?.requestId ?? ""
+    );
+    const stored = (requestRecord?.items ?? []).filter(
+      (item) => item.type === "component"
+    );
+    expect(stored.length).toBe(2);
+  });
+
+  it("distinct keys produce distinct items", async () => {
+    const stores = createInMemoryStores();
+    const flow = defineFlow({
+      kind: "fix491-distinct-keys",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: handler({
+            name: "distinct-keyed-emit",
+            inputSchema: z.object({ value: z.string() }),
+            outputSchema: z.string(),
+            execute: async ({ value }, ctx) => {
+              ctx.emitComponent("widget", { v: 1 }, { key: "a" });
+              ctx.emitComponent("widget", { v: 2 }, { key: "b" });
+              ctx.emitComponent("widget", { v: 3 }, { key: "a" });
+              return value;
+            }
+          })
+        }
+      }
+    })();
+
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: { value: "ok" },
+      userId: "u",
+      sessionId: "s",
+      stores
+    });
+
+    expect(result.error).toBeUndefined();
+
+    const inFlight = result.items.filter((item) => item.type === "component");
+    expect(inFlight.length).toBe(2);
+    const byKey = new Map(
+      inFlight.map((item) => {
+        const typed = item as { key?: string; data: Record<string, unknown> };
+        return [typed.key, typed.data] as const;
+      })
+    );
+    expect(byKey.get("a")).toEqual({ v: 3 });
+    expect(byKey.get("b")).toEqual({ v: 2 });
+  });
+
+  it("event log appends one item.added + item.done per emission, all sharing the keyed item ID", async () => {
+    const stores = createInMemoryStores();
+    const flow = defineFlow({
+      kind: "fix491-event-log",
+      actions: {
+        run: {
+          inputSchema: z.object({ value: z.string() }),
+          block: handler({
+            name: "keyed-emit-thrice",
+            inputSchema: z.object({ value: z.string() }),
+            outputSchema: z.string(),
+            execute: async ({ value }, ctx) => {
+              ctx.emitComponent("widget", { v: 1 }, { key: "k" });
+              ctx.emitComponent("widget", { v: 2 }, { key: "k" });
+              ctx.emitComponent("widget", { v: 3 }, { key: "k" });
+              return value;
+            }
+          })
+        }
+      }
+    })();
+
+    const result = await runAction({
+      flow,
+      actionName: "run",
+      input: { value: "ok" },
+      userId: "u",
+      sessionId: "s",
+      stores
+    });
+
+    expect(result.error).toBeUndefined();
+    const requestId = result.items[0]?.requestId ?? "";
+    const events = await stores.request.getEvents(requestId);
+
+    const componentEvents = events.filter((event) => {
+      const e = event as {
+        type: string;
+        item?: { type?: string; id?: string };
+      };
+      return (
+        (e.type === "item.added" || e.type === "item.done") &&
+        e.item?.type === "component"
+      );
+    });
+
+    // 3 emissions × (added + done) = 6 events.
+    expect(componentEvents.length).toBe(6);
+
+    const itemIds = new Set(
+      componentEvents.map((event) => {
+        const e = event as { item?: { id?: string } };
+        return e.item?.id;
+      })
+    );
+    expect(itemIds.size).toBe(1);
+    expect(itemIds.has("item_component_keyed:k")).toBe(true);
+  });
+});
+
 describe("rescue boundary in nested sequencer", () => {
   it("rescues inner block failure and produces rescue output as sequencer result", async () => {
     const executionOrder: string[] = [];

@@ -86,7 +86,7 @@ Consumers reading historical items should use `resolveBlockValue(item.output, lo
 
 Items fall into three buckets:
 
-**Persistent** — stored in the request record. Survive page refreshes. Form the session's durable history. Most items are persistent.
+**Persistent** — stored in the request record. Survive page refreshes. Form the session's durable history. Most items are persistent. Keyed `component` items (`emitComponent(..., { key })`) are a special case: persisted with **upsert** semantics — one entry per `(requestId, key)`, latest snapshot wins, `data` replaced not merged. See the matrix below and [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots).
 
 **Transient** — stream-only. The client sees them during execution via SSE, but they're stripped before the request record is written. When someone reconnects or opens a past session, these items don't appear. `status` is always transient. `resource_change` and `state_snapshot` are transient by default.
 
@@ -105,7 +105,7 @@ The `transient` and `key` fields compose orthogonally — knowing one tells you 
 | `true` | absent | Ephemeral one-shot | A debug trace |
 | `true` | present | Live-only progress with dedup | A spinner-style "currently doing X" |
 
-The `(transient: false, key: present)` cell is the **keyed snapshot** pattern: one logical entity whose latest state replays on reload. The renderer's `deduplicateComponentItems` collapses multiple emissions per `${requestId}:${key}` to the latest. See [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots) for the user-facing reference.
+The `(transient: false, key: present)` cell is the **keyed snapshot** pattern: one logical entity whose latest state replays on reload. The framework derives a deterministic item ID from `key` so emissions upsert in place — the persisted record holds one entry per `(requestId, key)`, and the SSE event log still appends `item.added` + `item.done` per emission for live consumers. The renderer's `deduplicateComponentItems` is a no-op on the pre-collapsed persisted-record path but still runs on the event-log replay path. See [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots) for the user-facing reference.
 
 There are two storage targets, kept separate:
 - **Item record** — the final state of each durable item, used to reconstruct session history
@@ -132,7 +132,7 @@ The standalone substrate utility — `extractTaskItems(items, collectionId, task
 | `message` | Generator (auto), `ctx.emitMessage()` | agentType | agentType | ✓ | Persistent |
 | `reasoning` | Generator (auto, CoT models) | agentType | agentType | ✓ | Persistent |
 | `block_tool_output` | Generator (per tool invocation) | agentType | agentType | ✓ | Persistent |
-| `component` | `ctx.emitComponent()` | ✓ | — | — | Persistent |
+| `component` | `ctx.emitComponent()` | ✓ | — | — | Persistent (keyed: upsert in place — one entry per `(requestId, key)`) |
 | `container` | Sequencer/Router with `container` config | ✓ | — | — | Persistent |
 | `source` | Generator (provider-native tools) | ✓ | — | — | Persistent |
 | `status` | `ctx.emitStatus()` | ✓ | — | — | **Always transient** |

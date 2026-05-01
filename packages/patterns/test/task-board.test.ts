@@ -1158,20 +1158,17 @@ describe("taskBoard - board-meta emission", () => {
       (i) => i.type === "component" && i.component === "task-board-meta"
     );
 
-    // Exactly two meta emissions: active at start, completed at end.
-    expect(metaItems).toHaveLength(2);
-    expect(metaItems[0]?.data?.status).toBe("active");
-    expect(metaItems[1]?.data?.status).toBe("completed");
+    // FIX-491: keyed component emissions upsert in place. The board emits
+    // "active" at start and "completed" at end against the same key, so the
+    // persisted record collapses to a single entry holding the final
+    // snapshot. Live SSE consumers see both transitions via the event log.
+    expect(metaItems).toHaveLength(1);
+    expect(metaItems[0]?.data?.status).toBe("completed");
+    expect(metaItems[0]?.key).toBe("meta-test");
+    expect(metaItems[0]?.data?.collectionId).toBe("meta-test");
 
-    // Both share the same key (collectionId) so client UI shows just
-    // the latest one.
-    for (const item of metaItems) {
-      expect(item.key).toBe("meta-test");
-      expect(item.data?.collectionId).toBe("meta-test");
-    }
-
-    // Counts on the `completed` emission reflect the final state.
-    const final = metaItems[1]?.data?.counts;
+    // Counts on the final snapshot reflect the final state.
+    const final = metaItems[0]?.data?.counts;
     expect(final?.total).toBe(2);
     expect(final?.completed).toBe(2);
     expect(final?.errored).toBe(0);

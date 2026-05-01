@@ -200,7 +200,7 @@ export interface BlockContext<
     component: string,
     data: Record<string, unknown>,
     options?: {
-      /** Stable identity for the keyed-snapshot pattern. See emitting-items.md. */
+      /** Stable identity for the keyed-snapshot pattern. See {@link ComponentItem.key}. */
       key?: string;
       agentType?: AgentType;
       agentName?: string;

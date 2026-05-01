@@ -837,12 +837,12 @@ describe("plan-and-execute pattern", () => {
         (it: any) =>
           it.type === "component" && it.component === "task-board-meta",
       ) as Array<{ data: { status: string; collectionId: string } }>;
-      // Pattern emits "planning" up-front and the board emits "active"
-      // and "completed" around its drain.
-      const statuses = metaItems.map((it) => it.data.status);
-      expect(statuses).toContain("planning");
-      expect(statuses).toContain("active");
-      expect(statuses).toContain("completed");
+      // FIX-491: keyed component emissions upsert in place. The pattern
+      // emits "planning" → "active" → "completed" against the same key, so
+      // the persisted record collapses to the latest snapshot. Live SSE
+      // consumers see every transition via the event log.
+      expect(metaItems.length).toBe(1);
+      expect(metaItems[0]?.data?.status).toBe("completed");
     });
 
     it("does not emit legacy plan-meta or plan-task items", async () => {

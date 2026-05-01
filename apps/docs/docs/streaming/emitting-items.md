@@ -101,7 +101,7 @@ await step2();
 ctx.emitComponent("task-status", { id: "task-1", status: "complete", result: "..." }, { key: "task-1" });
 ```
 
-Each `emitComponent` call with the same key replaces the previous one. Live clients see each intermediate state via SSE. All versions are persisted, but the UI shows just the most recent one for each key.
+Each `emitComponent` call with the same key replaces the previous one. Live clients see each intermediate state via SSE. The persisted record collapses to one entry per key — only the latest snapshot is stored, intermediate ones are not retained.
 
 This pattern is central to how the framework's built-in patterns work. The plan-and-execute pattern, for example, emits keyed components for each task so they update independently:
 
@@ -131,6 +131,26 @@ If you call `emitComponent()` multiple times with the same component name but no
 ## Keyed snapshots
 
 When you emit a component item with a stable `key`, the renderer collapses to the latest. We call that a **keyed snapshot** — one logical entity that updates over time. The latest version replays on reload, so a returning user sees the final state without replaying every intermediate step.
+
+### Persistence: upsert in place
+
+Keyed component emissions **upsert** on the persisted request record. The framework derives a deterministic item ID from the key, so subsequent emissions overwrite the prior entry. The persisted `items[]` array contains exactly one entry per `(requestId, key)` — not one per emission.
+
+The SSE event log is unchanged: each `emitComponent` call still appends an `item.added` + `item.done` event. Live clients see every update; mid-stream resume replays each event. The client renderer reconciles by item ID and overwrites in place, so duplicate IDs in the event stream resolve correctly.
+
+If your client is something other than the bundled React hooks, make sure it overwrites items by ID rather than appending. Third-party SSE clients that naively append every `item.added` will end up with duplicates.
+
+### Replace, not merge
+
+Each emission with the same `key` **fully replaces** the `data` payload. Fields absent from the new payload are removed.
+
+```ts
+ctx.emitComponent("widget", { a: 1, b: 2 }, { key: "k" });
+ctx.emitComponent("widget", { a: 99 }, { key: "k" });
+// Final data: { a: 99 }   — `b` is gone, not preserved.
+```
+
+Component `data` is the full snapshot to render now. If you need merge, read the prior `data`, compute the merged value, and emit the result.
 
 `transient` and `key` are independent. They compose into four cells:
 
