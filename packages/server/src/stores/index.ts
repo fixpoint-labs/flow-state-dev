@@ -57,7 +57,7 @@ import {
   createInMemoryUserStore,
   InMemoryUserStore
 } from "./memory/user-store";
-import { ScopeMutationTimeoutError, withScopeLock } from "./scope-lock";
+import { ScopeMutationTimeoutError } from "./scope-lock";
 import {
   createScopeStateOps,
   createStateContainer,
