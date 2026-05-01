@@ -1,3 +1,13 @@
+/**
+ * `testFlow` — runs one flow action against the same `runAction` engine the
+ * server uses, against an isolated in-memory store registry, with mocked
+ * generators. Returns the items, status, and persisted request snapshot.
+ *
+ * Pass `stores` to share state across multiple calls (session-resume
+ * scenarios). When the same registry is reused, scope-seeding is idempotent
+ * — `set()` only fires when the entity is missing, so prior journal entries
+ * and resources survive subsequent runs.
+ */
 import { createInMemoryStores, runAction, type StoreRegistry } from "@flow-state-dev/server";
 import type { FlowInstance } from "@flow-state-dev/core/types";
 import type { JsonObject, JsonValue } from "@flow-state-dev/core/types";
@@ -71,74 +81,92 @@ async function seedFlowStores(options: {
 }): Promise<void> {
   const now = Date.now();
 
+  // Idempotent seeding: only `set()` an entity when no record exists yet for
+  // its identity. Lets multiple `testFlow` calls share a registry without
+  // resetting journals or resource state on each invocation.
+
   if (options.seed?.user !== undefined) {
-    await options.stores.user.set(options.userId, {
-      id: options.userId,
-      userId: options.userId,
-      state: toJsonObject(cloneRecord(options.seed.user.state ?? {})),
-      resources:
-        options.seed.user.resources === undefined
-          ? undefined
-          : toJsonObjectRecord(cloneRecord(options.seed.user.resources)),
-      version: 0,
-      createdAt: now,
-      updatedAt: now
-    }, "any");
+    const existing = await options.stores.user.get(options.userId);
+    if (existing === undefined) {
+      await options.stores.user.set(options.userId, {
+        id: options.userId,
+        userId: options.userId,
+        state: toJsonObject(cloneRecord(options.seed.user.state ?? {})),
+        resources:
+          options.seed.user.resources === undefined
+            ? undefined
+            : toJsonObjectRecord(cloneRecord(options.seed.user.resources)),
+        version: 0,
+        createdAt: now,
+        updatedAt: now
+      }, "any");
+    }
   }
 
   if (options.orgId !== undefined) {
-    await options.stores.org.set(options.orgId, {
-      id: options.orgId,
-      orgId: options.orgId,
-      userId: options.userId,
-      state: toJsonObject(cloneRecord(options.seed?.org?.state ?? {})),
-      resources:
-        options.seed?.org?.resources === undefined
-          ? undefined
-          : toJsonObjectRecord(cloneRecord(options.seed.org.resources)),
-      version: 0,
-      createdAt: now,
-      updatedAt: now
-    }, "any");
+    const existing = await options.stores.org.get(options.orgId);
+    if (existing === undefined) {
+      await options.stores.org.set(options.orgId, {
+        id: options.orgId,
+        orgId: options.orgId,
+        userId: options.userId,
+        state: toJsonObject(cloneRecord(options.seed?.org?.state ?? {})),
+        resources:
+          options.seed?.org?.resources === undefined
+            ? undefined
+            : toJsonObjectRecord(cloneRecord(options.seed.org.resources)),
+        version: 0,
+        createdAt: now,
+        updatedAt: now
+      }, "any");
+    }
   }
 
   if (options.sessionId !== undefined) {
-    await options.stores.session.set(options.sessionId, {
-      id: options.sessionId,
-      flowKind: options.flow.kind,
-      userId: options.userId,
-      orgId: options.orgId,
-      metadata: undefined,
-      latestRequestId: undefined,
-      state: toJsonObject(cloneRecord(options.seed?.session?.state ?? {})),
-      resources:
-        options.seed?.session?.resources === undefined
-          ? undefined
-          : toJsonObjectRecord(cloneRecord(options.seed.session.resources)),
-      version: 0,
-      createdAt: now,
-      updatedAt: now,
-      journal: []
-    }, "any");
+    const existing = await options.stores.session.get(options.sessionId);
+    if (existing === undefined) {
+      await options.stores.session.set(options.sessionId, {
+        id: options.sessionId,
+        flowKind: options.flow.kind,
+        userId: options.userId,
+        orgId: options.orgId,
+        metadata: undefined,
+        latestRequestId: undefined,
+        state: toJsonObject(cloneRecord(options.seed?.session?.state ?? {})),
+        resources:
+          options.seed?.session?.resources === undefined
+            ? undefined
+            : toJsonObjectRecord(cloneRecord(options.seed.session.resources)),
+        version: 0,
+        createdAt: now,
+        updatedAt: now,
+        journal: []
+      }, "any");
+    }
   }
 
   if (options.seed?.request !== undefined) {
-    await options.stores.request.set(options.requestId, {
-      id: options.requestId,
-      flowKind: options.flow.kind,
-      actionName: options.action,
-      userId: options.userId,
-      sessionId: options.sessionId,
-      orgId: options.orgId,
-      source: "http",
-      status: "in_progress",
-      startedAtMs: now,
-      state: toJsonObject(cloneRecord(options.seed.request.state ?? {})),
-      metadata: undefined,
-      version: 0,
-      createdAt: now,
-      updatedAt: now
-    }, "any");
+    // Request IDs are unique per call, so the existence check is mostly
+    // defensive — but it keeps the seeding path uniform.
+    const existing = await options.stores.request.get(options.requestId);
+    if (existing === undefined) {
+      await options.stores.request.set(options.requestId, {
+        id: options.requestId,
+        flowKind: options.flow.kind,
+        actionName: options.action,
+        userId: options.userId,
+        sessionId: options.sessionId,
+        orgId: options.orgId,
+        source: "http",
+        status: "in_progress",
+        startedAtMs: now,
+        state: toJsonObject(cloneRecord(options.seed.request.state ?? {})),
+        metadata: undefined,
+        version: 0,
+        createdAt: now,
+        updatedAt: now
+      }, "any");
+    }
   }
 }
 
@@ -148,7 +176,7 @@ async function seedFlowStores(options: {
 export async function testFlow<TInput = unknown>(
   options: TestFlowOptions<TInput>
 ): Promise<TestFlowResult> {
-  const stores = createInMemoryStores();
+  const stores = options.stores ?? createInMemoryStores();
   const requestId = generateId("test_flow_req");
   const sessionId = options.sessionId ?? "test-session";
   const orgId = options.seed?.org === undefined ? undefined : "test-org";
