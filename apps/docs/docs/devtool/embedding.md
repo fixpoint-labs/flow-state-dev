@@ -36,7 +36,7 @@ The package ships:
 The minimal Next.js setup is a per-route layout that imports the panel CSS, plus a client-only page:
 
 ```tsx
-// app/_devtool/layout.tsx
+// app/devtool/layout.tsx
 import "@flow-state-dev/devtool/react/styles.css";
 
 export default function DevToolLayout({ children }: { children: React.ReactNode }) {
@@ -45,7 +45,7 @@ export default function DevToolLayout({ children }: { children: React.ReactNode 
 ```
 
 ```tsx
-// app/_devtool/page.tsx
+// app/devtool/page.tsx
 "use client";
 import { DevToolPanel } from "@flow-state-dev/devtool/react";
 

@@ -3,7 +3,7 @@
 import { DevToolPanel } from "@flow-state-dev/devtool/react";
 
 /**
- * Embedded DevTool panel for kitchen-sink. Mounted at `/_devtool` so PR and
+ * Embedded DevTool panel for kitchen-sink. Mounted at `/devtool` so PR and
  * Vercel previews are observable from the same origin as the main app.
  *
  * `userId` is hardcoded to `devuser` to mirror `<FlowProvider userId="devuser">`
