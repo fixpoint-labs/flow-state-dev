@@ -115,6 +115,16 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: "category",
+      label: "UI",
+      items: [
+        "ui/overview",
+        "ui/common-components",
+        "ui/flow-aware-components",
+        "ui/generative",
+      ],
+    },
+    {
+      type: "category",
       label: "Testing",
       items: [
         "testing/overview",

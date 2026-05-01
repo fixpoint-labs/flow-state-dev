@@ -2,7 +2,9 @@
 
 First-party component library for AI/agentic UI patterns, distributed via a [shadcn-compatible custom registry](https://ui.shadcn.com/docs/registry).
 
-Components are copied into your project — you own them completely. No runtime dependency on this package.
+Components are copied into your project — you own them completely. The only runtime-importable surface is `@flow-state-dev/ui/generative` (the generative-UI bundle pack).
+
+For the full UI guide — overview, common components, flow-aware components, and generative UI — see [flow-state.dev/docs/ui](https://flow-state.dev/docs/ui/overview).
 
 ## Installation
 
