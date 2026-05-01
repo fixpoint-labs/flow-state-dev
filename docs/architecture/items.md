@@ -86,13 +86,11 @@ Consumers reading historical items should use `resolveBlockValue(item.output, lo
 
 Items fall into three buckets:
 
-**Persistent** — stored in the request record. Survive page refreshes. Form the session's durable history. Most items are persistent.
+**Persistent** — stored in the request record. Survive page refreshes. Form the session's durable history. Most items are persistent. Keyed `component` items (`emitComponent(..., { key })`) are a special case: persisted with **upsert** semantics — one entry per `(requestId, key)`, latest snapshot wins, `data` replaced not merged. See the matrix below and [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots).
 
 **Transient** — stream-only. The client sees them during execution via SSE, but they're stripped before the request record is written. When someone reconnects or opens a past session, these items don't appear. `status` is always transient. `resource_change` and `state_snapshot` are transient by default.
 
 **Conditionally persistent** — `state_change` items are transient in production and persistent in development. Use `persistStateChanges: true` on the flow config to force persistence in production (needed for the devtool state timeline).
-
-**Keyed-upsert** — keyed `component` items (`emitComponent(..., { key })`) persist with **upsert** semantics. The framework derives a deterministic item ID from the key, so subsequent emissions overwrite the prior entry on the request record. The persisted `items[]` collapses to one entry per `(requestId, key)` — intermediate snapshots are not retained. The SSE event log still appends `item.added` + `item.done` per emission, so live clients and mid-stream resume see every update; the client reconciles by item ID and overwrites in place. `data` is **replaced, not merged** — fields absent from a later emission are dropped. See [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots) for the user-facing reference.
 
 When a block is marked `transient: true`, the framework's auto-emitted bookkeeping for that block (`block_output` traces) is suppressed. Items the block emits explicitly (via `emitMessage`, `emitComponent`, `emitStatus`) are **not** affected by the block flag — their persistence is controlled by their own `transient` field, with sensible per-emitter defaults: `false` for `emitMessage` and `emitComponent` (persisted), `true` for `emitStatus` (live-only). Each emitter accepts a per-call `transient?: boolean` override.
 
@@ -107,7 +105,7 @@ The `transient` and `key` fields compose orthogonally — knowing one tells you 
 | `true` | absent | Ephemeral one-shot | A debug trace |
 | `true` | present | Live-only progress with dedup | A spinner-style "currently doing X" |
 
-The `(transient: false, key: present)` cell is the **keyed snapshot** pattern: one logical entity whose latest state replays on reload. Persistence is upsert-in-place (see "Keyed-upsert" above): the persisted record holds one entry per `(requestId, key)`, not one per emission. The renderer's `deduplicateComponentItems` is a no-op for the persisted-record path (already collapsed) but still runs for the event-log replay path, where every `item.added` event appears in order. See [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots) for the user-facing reference.
+The `(transient: false, key: present)` cell is the **keyed snapshot** pattern: one logical entity whose latest state replays on reload. The framework derives a deterministic item ID from `key` so emissions upsert in place — the persisted record holds one entry per `(requestId, key)`, and the SSE event log still appends `item.added` + `item.done` per emission for live consumers. The renderer's `deduplicateComponentItems` is a no-op on the pre-collapsed persisted-record path but still runs on the event-log replay path. See [Emitting Items — Keyed snapshots](../../apps/docs/docs/streaming/emitting-items.md#keyed-snapshots) for the user-facing reference.
 
 There are two storage targets, kept separate:
 - **Item record** — the final state of each durable item, used to reconstruct session history

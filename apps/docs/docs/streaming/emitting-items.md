@@ -150,9 +150,7 @@ ctx.emitComponent("widget", { a: 99 }, { key: "k" });
 // Final data: { a: 99 }   — `b` is gone, not preserved.
 ```
 
-Component `data` is the full snapshot to render now. Every existing caller emits self-contained payloads (`{ collectionId, status: "active" }`, then `{ collectionId, status: "completed", counts }`). The framework never merges shallow with deep, never decides whether arrays concat or replace, never silently keeps fields you intended to drop.
-
-If you need merge, do it at the call site: read the prior `data`, compute the merged value, emit the result. That keeps the merge policy under the caller's control.
+Component `data` is the full snapshot to render now. If you need merge, read the prior `data`, compute the merged value, and emit the result.
 
 `transient` and `key` are independent. They compose into four cells:
 

@@ -200,16 +200,7 @@ export interface BlockContext<
     component: string,
     data: Record<string, unknown>,
     options?: {
-      /**
-       * Stable identity for the keyed-snapshot pattern. When supplied, the
-       * framework derives a deterministic item ID from the key and **upserts
-       * in place**: subsequent emissions with the same key overwrite the
-       * prior entry in the persisted record (one entry per
-       * `(requestId, key)`). The `data` payload is **replaced, not merged**
-       * — fields absent from a later emission are dropped. Live SSE
-       * consumers still see every update via the event log. See
-       * `apps/docs/docs/streaming/emitting-items.md`.
-       */
+      /** Stable identity for the keyed-snapshot pattern. See {@link ComponentItem.key}. */
       key?: string;
       agentType?: AgentType;
       agentName?: string;

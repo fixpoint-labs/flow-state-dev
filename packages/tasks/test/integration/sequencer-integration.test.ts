@@ -141,7 +141,6 @@ describe("sequencer-state integration", () => {
     // latest lifecycle snapshot, not one per transition. Live SSE consumers
     // still see every transition via the event log; only the durable record
     // is collapsed.
-    expect(taskChangeItems.length).toBe(1);
     const kinds = taskChangeItems.map((i) => i.data?.kind);
     expect(kinds).toEqual(["completed"]);
     for (const item of taskChangeItems) {
