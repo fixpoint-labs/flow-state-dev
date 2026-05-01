@@ -182,26 +182,36 @@ describe("stream resume — active request replay from buffer", () => {
     expect(cursor.source).toBe("starting_after");
     expect(cursor.sequenceNumber).toBe(3);
 
-    // Filter buffered events after cursor (simulating what handleRequestStream does)
+    // Filter buffered events after cursor (simulating what handleRequestStream
+    // does for an active stream — see stream-routes.ts:74). FIX-479: the
+    // active-stream replay path drops content.delta along with ping/debug;
+    // the reconnecting client snaps to the latest item snapshot and picks up
+    // live deltas from the observer subscription onward.
     const replayed = allBuffered.filter(
-      (e) => e.sequence_number > 3 && e.type !== "ping" && e.type !== "debug"
+      (e) =>
+        e.sequence_number > 3 &&
+        e.type !== "ping" &&
+        e.type !== "debug" &&
+        e.type !== "content.delta"
     );
 
-    expect(replayed).toHaveLength(4);
+    expect(replayed).toHaveLength(2);
     expect(replayed.map((e) => e.type)).toEqual([
       "content.added",
-      "content.delta",
-      "content.delta",
       "content.done"
     ]);
-    expect(replayed.map((e) => e.sequence_number)).toEqual([4, 5, 6, 7]);
+    expect(replayed.map((e) => e.sequence_number)).toEqual([4, 7]);
 
     // Subsequent live events continue after replay
     await emitter.emitItemDone(makeMessageItem({ requestId, itemIndex: 0, ts: 100 })); // seq 8
     await emitter.emitRequestStatus("completed"); // seq 9
 
     const liveEvents = emitter.getEvents().filter(
-      (e) => e.sequence_number > 7 && e.type !== "ping" && e.type !== "debug"
+      (e) =>
+        e.sequence_number > 7 &&
+        e.type !== "ping" &&
+        e.type !== "debug" &&
+        e.type !== "content.delta"
     );
     expect(liveEvents).toHaveLength(2);
     expect(liveEvents[0]!.type).toBe("item.done");
@@ -484,6 +494,59 @@ describe("stream resume — cursor precedence", () => {
     });
 
     expect(replayed).toHaveLength(2);
+  });
+
+  it("filters content.delta out of replay (FIX-479)", () => {
+    // Persisted logs from before the FIX-479 deploy may still contain
+    // content.delta entries. The replay path must drop them so reconnects
+    // don't deliver stale token-level deltas alongside the snapshot text.
+    const requestId = "req_delta_filter";
+
+    const events: RequestStreamEvent[] = [
+      {
+        stream: "request",
+        type: "request.created",
+        requestId,
+        sequence_number: 1,
+        status: "in_progress",
+        ts: 100
+      },
+      {
+        stream: "request",
+        type: "content.delta",
+        requestId,
+        sequence_number: 2,
+        ts: 101,
+        itemId: "item_0",
+        contentIndex: 0,
+        delta: "stale "
+      },
+      {
+        stream: "request",
+        type: "content.delta",
+        requestId,
+        sequence_number: 3,
+        ts: 102,
+        itemId: "item_0",
+        contentIndex: 0,
+        delta: "tokens"
+      },
+      {
+        stream: "request",
+        type: "request.completed",
+        requestId,
+        sequence_number: 4,
+        status: "completed",
+        ts: 103
+      }
+    ];
+
+    const replayed = replayRequestEvents({ requestId, events });
+
+    expect(replayed.map((e) => e.type)).toEqual([
+      "request.created",
+      "request.completed"
+    ]);
   });
 });
 
