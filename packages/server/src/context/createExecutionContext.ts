@@ -1211,7 +1211,6 @@ function buildJournalEntry(entry: JournalEntryInput): JournalEntry {
 
 type EmissionContext = {
   requestId: string;
-  blockTransient: boolean;
   response: {
     emitItemAdded(item: OutputItem): Promise<unknown>;
     emitItemDone(item: OutputItem): Promise<unknown>;
@@ -1248,10 +1247,10 @@ function createEmitMessage(
         : textOrContent;
 
     const itemIndex = emCtx.nextItemIndex();
-    // FIX-478: explicit emit calls are content, not bookkeeping. Default to
-    // non-transient regardless of `blockTransient` — the block's flag only
-    // controls auto-emitted block_output traces. Per-call `{ transient: true }`
-    // is the explicit opt-in for live-only output.
+    // FIX-478: explicit emit calls are user-facing content, not bookkeeping.
+    // Default non-transient; the block's `transient` flag governs only the
+    // auto-emitted block_output trace (see emitNestedBlockTrace). Per-call
+    // `{ transient: true }` is the explicit opt-in for live-only output.
     const item: MessageItem = {
       id: `item_message_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "message",
@@ -1296,10 +1295,11 @@ function createEmitComponent(
     },
   ): void {
     const itemIndex = emCtx.nextItemIndex();
-    // FIX-478: explicit emit calls are content, not bookkeeping. Default to
-    // non-transient regardless of `blockTransient` — the block's flag only
-    // controls auto-emitted block_output traces. Per-call `{ transient: true }`
-    // is the explicit opt-in (e.g. live-only progress with dedup).
+    // FIX-478: explicit emit calls are user-facing content, not bookkeeping.
+    // Default non-transient; the block's `transient` flag governs only the
+    // auto-emitted block_output trace (see emitNestedBlockTrace). Per-call
+    // `{ transient: true }` is the explicit opt-in (e.g. live-only progress
+    // with dedup).
     const item: ComponentItem = {
       id: `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "component",
@@ -2516,7 +2516,6 @@ export async function createExecutionContext<
 
   const emCtx: EmissionContext = {
     requestId: requestRef.current.id,
-    blockTransient: false,
     response: emissionResponse,
     provenance: () => ({
       blockName: "runtime",
@@ -2910,7 +2909,6 @@ export async function createExecutionContext<
         // defaults in `resolveItemVisibility()`.
         const childEmCtx: EmissionContext = {
           requestId: requestRef.current.id,
-          blockTransient: resolvedParent.transient === true,
           response: emissionResponse,
           provenance: () => ({
             blockName: resolvedParent.name,
