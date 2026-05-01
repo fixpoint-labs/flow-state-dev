@@ -99,21 +99,21 @@ const sidebars: SidebarsConfig = {
             "patterns/overview",
             {
               type: "category",
-              label: "Composable Patterns",
+              label: "Coordination Patterns",
               items: [
                 "patterns/parallelTasks",
                 "patterns/supervisor",
                 "patterns/plan-and-execute",
-                "patterns/response-auditor",
                 "patterns/routed-specialists",
                 "patterns/coordinator",
+                "patterns/event-actors",
               ],
             },
             {
               type: "category",
-              label: "Substrates",
+              label: "Other Patterns",
               items: [
-                "patterns/event-actors",
+                "patterns/response-auditor",
               ],
             },
             {
@@ -184,7 +184,6 @@ const sidebars: SidebarsConfig = {
         "advanced/utility-blocks-deprecated",
       ],
     },
-    "roadmap",
     {
       type: "category",
       label: "API Reference",
