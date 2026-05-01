@@ -364,7 +364,7 @@ export function eventActors(config: EventActorsConfig): EventActorsHandle {
   const emit = sequencer({
     name: `${name}-emit`,
     inputSchema: z.any(),
-    container: { component: "reactive-blackboard" },
+    container: { component: "evented-actors" },
   })
     .tap(appendEntry)
     .tap(spawnInitialTasks)

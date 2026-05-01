@@ -12,7 +12,7 @@ export {
   thinkingStyleSessionStateSchema,
   SUPERVISOR_KEYWORDS,
   ROUTED_SPECIALISTS_KEYWORDS,
-  REACTIVE_BLACKBOARD_KEYWORDS,
+  EVENTED_ACTORS_KEYWORDS,
   PLAN_KEYWORDS,
   type ThinkingStyle,
 } from "./thinking-styles";

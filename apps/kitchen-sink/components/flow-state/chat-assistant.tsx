@@ -6,7 +6,7 @@ import { Tool } from "./tool";
 import { Status } from "./status";
 import { ErrorDisplay } from "./error";
 import { RoutedSpecialists } from "./routed-specialists";
-import { ReactiveBlackboard } from "./reactive-blackboard";
+import { EventedActors } from "./evented-actors";
 import { AuditAnnotation } from "./audit-annotation";
 import { TaskPlan } from "./task-plan";
 
@@ -47,5 +47,5 @@ export const chatAssistantRenderers: RendererRegistry = {
     "task-board-meta": TaskBoardMeta,
     "task-change": false,
   },
-  container: { routedSpecialists: RoutedSpecialists, "reactive-blackboard": ReactiveBlackboard },
+  container: { routedSpecialists: RoutedSpecialists, "evented-actors": EventedActors },
 };

@@ -6,7 +6,7 @@ import { Tool } from "./tool";
 import { Status } from "./status";
 import { ErrorDisplay } from "./error";
 import { RoutedSpecialists } from "./routed-specialists";
-import { ReactiveBlackboard } from "./reactive-blackboard";
+import { EventedActors } from "./evented-actors";
 import { AuditAnnotation } from "./audit-annotation";
 import { TaskPlan } from "./task-plan";
 
@@ -46,7 +46,7 @@ export const chatAssistantRenderers: RendererRegistry = {
   step_error: ErrorDisplay,
   source: false,
   container: {
-    "reactive-blackboard": ReactiveBlackboard,
+    "evented-actors": EventedActors,
   },
   component: {
     routedSpecialists: RoutedSpecialists,

@@ -93,7 +93,7 @@ const analystPerspective = perspectiveSystem(analyst, { model: MODEL_ID });
 // ---------------------------------------------------------------------------
 
 const thinkingStyleInputSchema = z
-  .enum(["auto", "default", "plan-and-execute", "supervisor", "blackboard", "reactive-blackboard"])
+  .enum(["auto", "default", "plan-and-execute", "supervisor", "routed-specialists", "evented-actors"])
   .default("default");
 
 const inputSchema = z.object({

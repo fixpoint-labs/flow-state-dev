@@ -27,7 +27,7 @@ import { Shimmer } from "./shimmer";
 // Types
 // ---------------------------------------------------------------------------
 
-type BlackboardEntry = {
+type EventedActorsEntry = {
   type: string;
   topic: string;
   body?: string;
@@ -89,7 +89,7 @@ const ACTORS: ActorDef[] = [
 // Main component
 // ---------------------------------------------------------------------------
 
-export function ReactiveBlackboard({ item }: { item: ContainerItem }) {
+export function EventedActors({ item }: { item: ContainerItem }) {
   const [isOpen, setIsOpen] = useState(true);
   const allItems = useSessionItems();
   const { items: ownedItems } = useContainerItems(item, allItems);
@@ -114,7 +114,7 @@ export function ReactiveBlackboard({ item }: { item: ContainerItem }) {
   }, [ownedItems, allItems, requestId]);
 
   const entries = useMemo(() => {
-    const result: BlackboardEntry[] = [];
+    const result: EventedActorsEntry[] = [];
     for (const i of scopedItems) {
       if (i.type !== "component") continue;
       const comp = i as ComponentItem;
@@ -243,7 +243,7 @@ export function ReactiveBlackboard({ item }: { item: ContainerItem }) {
           )}
           aria-hidden="true"
         />
-        <span className="text-sm font-medium">Blackboard</span>
+        <span className="text-sm font-medium">Evented Actors</span>
         <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
           {isFinished ? (
             <CheckCircle2Icon className="h-3 w-3 text-emerald-500" />
@@ -458,7 +458,7 @@ function ToolCallItem({ call }: { call: ToolCall }) {
   );
 }
 
-function EntryItem({ entry }: { entry: BlackboardEntry }) {
+function EntryItem({ entry }: { entry: EventedActorsEntry }) {
   if (!entry.body) {
     return (
       <div className="text-xs leading-4 text-muted-foreground">{entry.topic}</div>
