@@ -12,7 +12,7 @@ Use it when:
 - A single specialist can't solve the problem in one pass
 - You want adaptive selection — the next move depends on what's already on the workspace
 
-If specialists should fire concurrently and react to topic-keyed entries instead of being orchestrated, use [Reactive Blackboard](./reactive-blackboard) instead.
+If specialists should fire concurrently and react to topic-keyed entries instead of being orchestrated, use [Event Actors](./event-actors) instead.
 
 ## Block composition
 
@@ -116,6 +116,6 @@ The pattern stores per-iteration records in a sequencer-state-backed `TaskCollec
 
 ## See also
 
-- [Reactive Blackboard](./reactive-blackboard) — actors react to entry topics in parallel; no controller.
-- [Task Board](./task-board) — concurrent drain over a `TaskCollection` with dependency gating and worker routing.
+- [Event Actors](./event-actors) — actors react to entry topics in parallel; no controller.
+- Task Board (`@flow-state-dev/patterns/task-board`) — concurrent drain over a `TaskCollection` with dependency gating and worker routing.
 - [Supervisor](./supervisor) — plan, execute, review, replan loop.
