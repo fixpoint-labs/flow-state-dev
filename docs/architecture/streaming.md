@@ -177,6 +177,18 @@ Replayable events are persisted **before** they are flushed to the SSE wire. The
 
 `ping` and `debug` events are not replayable and skip the durability barrier — they go straight to the wire.
 
+`content.delta` events are also non-replayable. The events-log path is bypassed for streaming text, but the running text is checkpointed durably via the items snapshot: each delta mutates the in-flight `MessageItem.content[i].text` (and `ReasoningItem.summary[i].text`) in-place, and the emitter's `onItemUpdate` hook drives a coalesced `persistItems` write at the store's natural cadence. The motivation is throughput: under concurrent worker streams (e.g. a supervisor with `concurrency: 3` and three streaming workers), a per-token disk round-trip on the events log serializes every delta behind every other delta and the request appears to lock up. Live SSE consumers and devtool observers still receive every delta via the wire callback and the in-memory event buffer.
+
+### Streaming-text contract
+
+| Boundary | Replayable on the events log | Mutates `request.items` snapshot |
+| -- | -- | -- |
+| `item.added` (message/reasoning) | yes | yes |
+| `content.added` | yes | no |
+| `content.delta` | **no** (FIX-479) | yes — accumulates text in-place |
+| `content.done` | yes | no |
+| `item.done` | yes | yes (final authoritative payload) |
+
 ## Resume Semantics
 
 Resume after disconnect uses sequence-number cursors:
@@ -190,6 +202,7 @@ GET /stream?starting_after=42
 - If both provided, `starting_after` takes precedence
 - Server replays persisted events with `sequence_number > cursor` then continues live
 - `ping` events and diagnostics are NOT replayed
+- `content.delta` events are NOT replayed (FIX-479). The current item snapshot in `request.items` carries the running text up to the most recent coalesced flush; reconnecting clients pick up live deltas from the new connection forward, and the eventual `item.done` payload supersedes with the authoritative final text. Page-load bootstrap (`/items` synthesis path) shows the latest accumulated text rather than empty content for in-flight messages
 
 ## Emission Rules by Block Kind
 

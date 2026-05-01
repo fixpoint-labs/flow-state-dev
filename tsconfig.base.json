@@ -33,6 +33,7 @@
       "@flow-state-dev/tools/fetch": ["packages/tools/src/fetch/index.ts"],
       "@flow-state-dev/tools/crawl": ["packages/tools/src/crawl/index.ts"],
       "@flow-state-dev/tools/bash": ["packages/tools/src/bash/index.ts"],
+      "@flow-state-dev/ui/generative": ["packages/ui/src/generative/index.ts"],
       "@flow-state-dev/devtool": ["packages/devtool/src/index.ts"],
       "@flow-state-dev/store-sqlite": ["packages/store-sqlite/src/index.ts"],
       "@flow-state-dev/vercel": ["packages/vercel/src/index.ts"],

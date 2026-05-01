@@ -98,6 +98,12 @@ There are two storage targets, kept separate:
 - **Item record** — the final state of each durable item, used to reconstruct session history
 - **Event log** — every SSE event in order, including transient items and intermediate states, used for SSE resume and devtool replay
 
+### Streaming-text contract (FIX-479)
+
+`content.delta` events are non-replayable. The events log only carries the durable boundaries — `item.added`, `content.added`, `content.done`, `item.done`. The running text accumulates into the in-flight `MessageItem.content[i].text` (and `ReasoningItem.summary[i].text`) on each delta and the items snapshot is checkpointed via `persistItems` at the store's natural cadence.
+
+This means streaming text fits the same "transient × keyed" cell that other live-only updates occupy: the wire and live observers see every delta; the durable surface is the latest accumulated snapshot keyed by item id. Mid-stream reconnects via `Last-Event-ID` snap forward to the latest snapshot rather than replaying token-by-token; the eventual `item.done` payload supersedes with the authoritative final text. The trade-off is intentional — token-by-token disk persistence under concurrent worker streams serializes every delta behind a single per-request write queue and the request appears to lock up.
+
 ## The full registry
 
 | Type | Emitted by | Client | History | Identity-governed | Persistence |
