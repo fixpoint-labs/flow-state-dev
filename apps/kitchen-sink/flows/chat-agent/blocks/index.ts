@@ -1,7 +1,7 @@
 export { readArtifact, readArtifactInputSchema, readArtifactOutputSchema } from "./artifacts";
 export { writeArtifact, updateArtifact, updateArtifactInputSchema, updateArtifactOutputSchema } from "./artifacts";
 export { artifactsCapability, artifactResources } from "./artifacts";
-export { eventQueueDemo, eventQueueDemoInputSchema } from "./event-queue-demo";
+export { taskQueueDemo, taskQueueDemoInputSchema } from "./task-queue-demo";
 export { artifactListContext, voiceContext, type GeneratorMemory } from "./context";
 export {
   createThinkingStyleRouter,

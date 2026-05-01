@@ -32,8 +32,8 @@ import { z } from "zod";
 import {
   updateArtifact,
   updateArtifactInputSchema,
-  eventQueueDemo,
-  eventQueueDemoInputSchema,
+  taskQueueDemo,
+  taskQueueDemoInputSchema,
   artifactListContext,
   voiceContext,
   createThinkingStyleRouter,
@@ -436,9 +436,9 @@ const chatAgentFlow = defineFlow({
       inputSchema: setPreferredProviderInputSchema,
       block: setPreferredProviderHandler,
     },
-    "event-queue": {
-      inputSchema: eventQueueDemoInputSchema,
-      block: eventQueueDemo,
+    "task-queue": {
+      inputSchema: taskQueueDemoInputSchema,
+      block: taskQueueDemo,
     },
   },
 

@@ -79,7 +79,6 @@ const sidebars: SidebarsConfig = {
             "patterns/response-auditor",
             "patterns/reactive-blackboard",
             "patterns/coordinator",
-            "patterns/drain-pool",
           ],
         },
       ],
