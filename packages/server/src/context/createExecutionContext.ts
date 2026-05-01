@@ -1301,8 +1301,16 @@ function createEmitComponent(
     // auto-emitted block_output trace (see emitNestedBlockTrace). Per-call
     // `{ transient: true }` is the explicit opt-in (e.g. live-only progress
     // with dedup).
+    // FIX-491: when a `key` is supplied, derive a deterministic item ID from
+    // the key so subsequent emissions upsert in place — `itemsById` collapses
+    // to one entry per `(requestId, key)`. The SSE event log still appends
+    // an `item.added` + `item.done` event per emission; clients reconcile by
+    // item ID and overwrite. `data` is replaced wholesale, never merged.
     const item: ComponentItem = {
-      id: `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
+      id:
+        options?.key !== undefined
+          ? `item_component_keyed:${options.key}`
+          : `item_component_${itemIndex}_${Math.random().toString(16).slice(2)}`,
       type: "component",
       status: "completed",
       transient: options?.transient === true ? true : undefined,

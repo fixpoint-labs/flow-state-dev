@@ -440,10 +440,12 @@ describe("blackboard", () => {
       const componentItems = result.items.filter(
         (item) => item.type === "component" && (item as any).component === "blackboard"
       );
-      // One snapshot per iteration (3 total: after analyst, after researcher, after done)
-      expect(componentItems.length).toBe(3);
-      // All use the same key for dedup
-      expect(componentItems.every((c) => (c as any).key === "ux-snap")).toBe(true);
+      // FIX-491: keyed component emissions upsert in place, so the persisted
+      // record collapses to one entry per key — the latest snapshot. Live SSE
+      // consumers still see every iteration via the event log; only the
+      // durable record is collapsed.
+      expect(componentItems.length).toBe(1);
+      expect((componentItems[0] as any).key).toBe("ux-snap");
     });
   });
 

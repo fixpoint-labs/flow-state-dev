@@ -39,6 +39,13 @@ export type ItemProvenance = {
 };
 
 export type OutputItemBase = {
+  /**
+   * Stable identity for the item. Most items mint a fresh random ID per
+   * emission. Keyed component items are an exception: their ID is derived
+   * deterministically from the caller-provided `key`
+   * (`item_component_keyed:${key}`) so subsequent emissions upsert in place
+   * on the persisted record. See {@link ComponentItem.key}.
+   */
   id: string;
   type: string;
   status: ItemStatus;
@@ -203,9 +210,17 @@ export type ComponentItem = OutputItemBase & {
    * show only the latest item with a given key (replacing prior ones).
    *
    * Combined with `transient: false`, this expresses the **keyed snapshot**
-   * pattern — one logical entity whose latest state replays on reload. See
-   * `apps/docs/docs/streaming/emitting-items.md` for the transient × key
-   * matrix.
+   * pattern — one logical entity whose latest state replays on reload.
+   *
+   * Persistence semantics (FIX-491): keyed component emissions **upsert in
+   * place**. The item ID is derived deterministically from `key`, so the
+   * persisted request record collapses to one entry per `(requestId, key)`
+   * — intermediate snapshots are not retained. `data` is **replaced**, not
+   * merged: fields absent from a later emission are dropped. The SSE event
+   * log still appends `item.added` + `item.done` per emission, so live
+   * clients see every update. See
+   * `apps/docs/docs/streaming/emitting-items.md` for the full transient ×
+   * key matrix and the replace-not-merge contract.
    */
   key?: string;
 };

@@ -94,7 +94,7 @@ describe("sequencer-state integration", () => {
     expect(tasksMap.b?.output).toBe("done:beta");
   });
 
-  it("emits task-change component items for every lifecycle transition", async () => {
+  it("collapses task-change emissions per task to the latest lifecycle snapshot (FIX-491)", async () => {
     const body = handler({
       name: "lifecycle",
       inputSchema: z.any(),
@@ -136,13 +136,18 @@ describe("sequencer-state integration", () => {
       }
     ) as TaskChangeComponent[];
 
+    // FIX-491: keyed component emissions upsert in place, so the persisted
+    // record contains exactly one task-change per (collection, task) — the
+    // latest lifecycle snapshot, not one per transition. Live SSE consumers
+    // still see every transition via the event log; only the durable record
+    // is collapsed.
+    expect(taskChangeItems.length).toBe(1);
     const kinds = taskChangeItems.map((i) => i.data?.kind);
-    expect(kinds).toContain("added");
-    expect(kinds).toContain("claimed");
-    expect(kinds).toContain("completed");
+    expect(kinds).toEqual(["completed"]);
     for (const item of taskChangeItems) {
       expect(item.data?.collectionId).toBe("plan");
       expect(item.key).toBe(`plan/${item.data?.taskId}`);
+      expect(item.id).toBe(`item_component_keyed:plan/${item.data?.taskId}`);
     }
   });
 
