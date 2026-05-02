@@ -124,7 +124,7 @@ This keeps `@flow-state-dev/tools` free of a peer dep on the SDK and gives bundl
 
 On the first bash call in a session:
 
-1. **Discover mounts** — walk `ctx.session.resources`, `ctx.user.resources`, `ctx.project.resources`; any `ResourceCollectionRef` becomes a mount at its pattern prefix. `collections` / `exclude` can override.
+1. **Discover mounts** — walk `ctx.session.resources`, `ctx.user.resources`, `ctx.org.resources`; any `ResourceCollectionRef` becomes a mount at its pattern prefix. `collections` / `exclude` can override.
 2. **Hydrate** — write every mount's entries into the sandbox under its prefix. Seed `./tmp/.keep` so the scratch directory exists.
 3. **Run the command** — whatever the agent requested.
 4. **Flush** — walk the workspace with `find`. For each file:

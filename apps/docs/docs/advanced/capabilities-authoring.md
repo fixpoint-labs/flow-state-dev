@@ -74,7 +74,7 @@ When a block lists a capability in `uses`, the framework merges the capability's
 
 | Surface | Where it goes |
 |---------|--------------|
-| `sessionResources`, `userResources`, `projectResources` | Block's declared resources (bubble through sequencers to the flow) |
+| `sessionResources`, `userResources`, `orgResources` | Block's declared resources (bubble through sequencers to the flow) |
 | `sessionStateSchema`, `requestStateSchema`, etc. | Merged into block-level state schemas via Zod `.extend()` |
 | `targetStateSchemas` | Merged into block's target declarations |
 | `fns` | Available at `ctx.cap.{name}` during execution |

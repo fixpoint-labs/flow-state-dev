@@ -110,7 +110,7 @@ See [Resource Collections](/docs/resources/collections) for the full reference: 
 
 ## Block-level resource declarations
 
-Blocks declare resource dependencies with `sessionResources`, `userResources`, and `projectResources`:
+Blocks declare resource dependencies with `sessionResources`, `userResources`, and `orgResources`:
 
 ```ts
 const planManager = handler({
@@ -135,9 +135,9 @@ Sequencers merge `declaredResources` from all child blocks. `defineFlow` collect
 |-------|----------|
 | **session** | One conversation |
 | **user** | Across sessions for a user |
-| **project** | Shared across sessions in a project |
+| **org** | Shared across sessions in an org |
 
-Choose the scope that matches the data's lifetime. Session for conversation-local artifacts, user for personal notes and saved snippets, project for shared knowledge bases and team documents.
+Choose the scope that matches the data's lifetime. Session for conversation-local artifacts, user for personal notes and saved snippets, org for shared knowledge bases and team documents.
 
 ## Where to go next
 

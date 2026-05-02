@@ -101,7 +101,7 @@ Connectors can read from scope state or sequencer state when shaping input:
 )
 ```
 
-Scope state (session, user, project) and sequencer state are available in the block context. Use them when the next block needs contextual data.
+Scope state (session, user, org) and sequencer state are available in the block context. Use them when the next block needs contextual data.
 
 ## Why this matters for portability
 
