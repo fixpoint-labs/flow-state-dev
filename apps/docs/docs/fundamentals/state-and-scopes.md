@@ -570,7 +570,23 @@ await client.executeAction("my-flow", "chat", {
 });
 ```
 
-The framework creates a user record on first encounter and loads it on subsequent requests. The same user record is shared across all of that user's sessions — and, by default, across every flow registered on the same server. If two flows declare incompatible user-scope schemas, `FlowRegistry.register` throws `CrossFlowSchemaConflictError` at startup. Flows that don't need cross-flow sharing can opt out with `isolateUserState: true` on `defineFlow`. See [Flow Isolation](/docs/advanced/flow-isolation) for details.
+The framework creates a user record on first encounter and loads it on subsequent requests. The same user record is shared across all of that user's sessions.
+
+### Who's responsible for the `userId`
+
+The framework treats whatever `userId` you supply as authoritative. Verifying that the `userId` actually belongs to the caller is your application's job — typically your auth middleware (or a `resolvePrincipal` hook on the flow) verifies a session cookie or token before the request reaches block execution. The framework checks two things on top of that: that a session's `userId` doesn't change over its lifetime (`UserBindingMismatchError`), and that flows declaring user state agree on its shape. See [Authentication](/docs/server/authentication) for the full contract.
+
+### How user state stays consistent across flows
+
+User state is shared across flows by default. If a chat flow writes the user's preferred theme, an admin flow on the same server reading that user sees the same theme — they're touching the same `UserRecord`. Same for org state and the `OrgRecord`.
+
+Shared-by-default works because the registry checks schema compatibility at startup. When you call `FlowRegistry.register`, every flow's `user.stateSchema` is structurally compared against the schemas already registered. Two flows declaring `theme: z.string()` and `theme: z.number()` would silently corrupt each other's writes, so the registry throws `CrossFlowSchemaConflictError` immediately, names the conflicting field, and refuses to start the server.
+
+Identical schemas merge cleanly. One flow extending with extra optional fields merges with a warning. Anything that would overwrite data throws.
+
+The registry is the safety mechanism that makes shared-by-default safe. You don't need to think about it most of the time — it does its work at boot and then gets out of the way.
+
+When a flow really does need its own private user state, set `isolateUserState: true` on `defineFlow`. That flow's user state is then stored separately and excluded from the schema check. See [Sharing State Across Flows](/docs/advanced/flow-isolation) for the full opt-out.
 
 ### Real patterns for user scope
 
@@ -690,7 +706,9 @@ execute: async (input, ctx) => {
 }
 ```
 
-Like user scope, org scope is shared across flows by default and validated at registration time by `FlowRegistry`. Set `isolateOrgState: true` on `defineFlow` when a flow's org state should not be shared with other flows. See [Flow Isolation](/docs/advanced/flow-isolation).
+Like user scope, org scope is shared across flows by default and validated at registration time by `FlowRegistry`. The same shared-by-default story applies: incompatible `org.stateSchema` declarations throw `CrossFlowSchemaConflictError` at startup; once a session is bound to an org, requests claiming a different `orgId` against that session throw `OrgBindingMismatchError` at runtime. Verifying that the supplied `orgId` actually represents an org the caller belongs to is your application's job — see [Authentication](/docs/server/authentication).
+
+Set `isolateOrgState: true` on `defineFlow` when a flow's org state should not be shared with other flows. See [Sharing State Across Flows](/docs/advanced/flow-isolation).
 
 ### Real patterns for org scope
 
