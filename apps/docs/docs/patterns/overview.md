@@ -48,7 +48,7 @@ See [Core Utilities](./utility-blocks/core) and [Extension Utilities](./utility-
 
 The first three patterns use `utility.decomposer` internally to plan work. They differ in their dispatch model and feedback loop:
 
-**Parallel Tasks** — single-pass fan-out/fan-in. Decomposes a goal, runs sub-tasks concurrently, merges results. No review, no loop. Use it when you trust the workers and just need parallel execution. (`coordinator()` is a deprecated alias for the same factory.)
+**Parallel Tasks** — single-pass fan-out/fan-in. Decomposes a goal, runs sub-tasks concurrently, merges results. No review, no loop. Use it when you trust the workers and just need parallel execution.
 
 **Supervisor** — fan-out with per-task review. Decomposes, dispatches, reviews each result as it completes, retries on rejection (up to `maxAttemptsPerTask`). Use it when output quality matters and individual results should be corrected, not just skipped.
 

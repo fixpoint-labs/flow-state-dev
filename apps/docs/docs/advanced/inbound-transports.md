@@ -103,7 +103,7 @@ envelope. Per-flow `defineFlow({ authentication })` wins over the
 host-level fallback configured on
 `createFlowApiRouter({ resolvePrincipal })`, which itself defaults to
 reading `body.userId` from the parsed HTTP body. Adapters never implement
-auth themselves — see the [Authentication](./authentication) page for
+auth themselves — see the [Authentication](/docs/server/authentication) page for
 the resolver contract, `requireUser` semantics, and the bundled HMAC and
 JWT helper utilities.
 

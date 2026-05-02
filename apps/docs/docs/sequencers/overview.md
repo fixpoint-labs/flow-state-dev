@@ -126,5 +126,5 @@ This is a rendering hint — it has no effect on execution order or block behavi
 ## Where to go next
 
 - **[Control Flow](/docs/sequencers/control-flow)** — Common composition patterns with code examples
-- **[Side Chains](/docs/sequencers/side-chains)** — Fire-and-forget work with `.work()` and `.waitForWork()`
+- **[Side Chains](/docs/advanced/sequencer-side-chains)** — Fire-and-forget work with `.work()` and `.waitForWork()`
 - **[Connectors](/docs/sequencers/connectors)** — Shaping data between steps, typed refs, and portability

@@ -114,7 +114,7 @@ const patternCategories: PatternCategory[] = [
     name: "Multi-agent coordination patterns",
     items: [
       { label: "Supervisor", href: "/docs/patterns/supervisor" },
-      { label: "Coordinator", href: "/docs/patterns/coordinator" },
+      { label: "Parallel Tasks", href: "/docs/patterns/parallelTasks" },
       { label: "Chain of Agents" },
       { label: "Blackboard" },
       { label: "Debate" },

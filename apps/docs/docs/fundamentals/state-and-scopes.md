@@ -570,7 +570,7 @@ await client.executeAction("my-flow", "chat", {
 });
 ```
 
-The framework creates a user record on first encounter and loads it on subsequent requests. The same user record is shared across all of that user's sessions — and, by default, across every flow registered on the same server. If two flows declare incompatible user-scope schemas, `FlowRegistry.register` throws `CrossFlowSchemaConflictError` at startup. Flows that don't need cross-flow sharing can opt out with `isolateUserState: true` on `defineFlow`. See [Flow Isolation](/docs/fundamentals/flow-isolation) for details.
+The framework creates a user record on first encounter and loads it on subsequent requests. The same user record is shared across all of that user's sessions — and, by default, across every flow registered on the same server. If two flows declare incompatible user-scope schemas, `FlowRegistry.register` throws `CrossFlowSchemaConflictError` at startup. Flows that don't need cross-flow sharing can opt out with `isolateUserState: true` on `defineFlow`. See [Flow Isolation](/docs/advanced/flow-isolation) for details.
 
 ### Real patterns for user scope
 
@@ -690,7 +690,7 @@ execute: async (input, ctx) => {
 }
 ```
 
-Like user scope, org scope is shared across flows by default and validated at registration time by `FlowRegistry`. Set `isolateOrgState: true` on `defineFlow` when a flow's org state should not be shared with other flows. See [Flow Isolation](/docs/fundamentals/flow-isolation).
+Like user scope, org scope is shared across flows by default and validated at registration time by `FlowRegistry`. Set `isolateOrgState: true` on `defineFlow` when a flow's org state should not be shared with other flows. See [Flow Isolation](/docs/advanced/flow-isolation).
 
 ### Real patterns for org scope
 

@@ -118,7 +118,7 @@ Items stream over SSE as blocks execute. Every event has a sequence number. Disc
 
 ## The ecosystem
 
-Higher-level patterns — supervisor and coordinator topologies, planning and reasoning loops, memory architectures, human-in-the-loop gates — ship as ecosystem packages built from the same blocks. Each one is open code you can read, fork, or replace. See the [ecosystem overview](/docs/ecosystem/overview) for the current map.
+Higher-level patterns — supervisor and parallel-task topologies, planning and reasoning loops, memory architectures, human-in-the-loop gates — ship as ecosystem packages built from the same blocks. Each one is open code you can read, fork, or replace. See the [ecosystem overview](/docs/ecosystem/overview) for the current map.
 
 ## The production stack
 

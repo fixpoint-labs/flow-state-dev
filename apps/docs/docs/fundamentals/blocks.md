@@ -186,7 +186,7 @@ All config fields are optional and provider-normalized. The framework maps them 
 
 Fields that a provider doesn't support are silently ignored. This means you can write `search: { maxUses: 3, searchDepth: "high" }` and it works across Anthropic and OpenAI — each provider picks up the fields it understands.
 
-Search requires your model resolver to receive the provider object directly (not just a model factory function). See [Custom Model Resolver](/docs/server/custom-model-resolver#provider-search-tools) for setup details.
+Search requires your model resolver to receive the provider object directly (not just a model factory function). See [Custom Model Resolver](/docs/advanced/custom-model-resolver#provider-search-tools) for setup details.
 
 #### Provider tools
 
