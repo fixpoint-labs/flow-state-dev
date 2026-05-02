@@ -218,10 +218,11 @@ export function constitutionEnforce(config: ConstitutionEnforceBlockConfig) {
  *   model: 'preset/fast',
  * })
  *
- * // Standalone:
- * const result = await auditor.run({ content: '...' }, ctx)
+ * // As a sequencer step:
+ * const pipeline = sequencer({ name: 'review-content' })
+ *   .then(auditor)
  *
- * // As .tap() sidechain:
+ * // As a .tap() sidechain:
  * const pipeline = sequencer({ name: 'chat-with-audit' })
  *   .then(chat)
  *   .tap(auditor)

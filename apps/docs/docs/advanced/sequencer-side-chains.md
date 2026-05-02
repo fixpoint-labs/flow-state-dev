@@ -6,7 +6,7 @@ sidebar_position: 3
 
 Side chains let you run work in the background without blocking the main pipeline. Three primitives cover the common patterns:
 
-- **`.work()` / `.background()`** — queue a single background task (`.background()` is an alias that reads better in fan-out contexts)
+- **`.work()`** — queue a single background task
 - **`.workIf(condition, block)`** — conditional variant of `.work()`, dispatches only when condition is truthy
 - **`.forEachBackground()`** — dispatch each element of an array as a background task with concurrency control
 
@@ -155,20 +155,6 @@ const chatPipeline = sequencer({
 ```
 
 Analytics and cache warming run in parallel. `logToJournal` runs inline (tap) because we want it done before formatting. The pipeline only continues after the tap completes.
-
-## background — alias for work
-
-`.background()` is identical to `.work()`. It exists because "background" reads more naturally when you're thinking about fan-out patterns:
-
-```ts
-pipeline
-  .then(mainLogic)
-  .background(notifySlack)
-  .background(warmCache)
-  .then(nextStep);
-```
-
-Use whichever name makes the call site clearer.
 
 ## workIf — conditional background work
 

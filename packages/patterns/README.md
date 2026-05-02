@@ -43,8 +43,6 @@ See `apps/kitchen-sink` for a full integration example.
 
 Single-pass fan-out/fan-in orchestration backed by `taskBoard`. Decomposes a goal into sub-tasks, dispatches a worker concurrently for each, and synthesizes the completed results. No feedback loop.
 
-`coordinator()` is a deprecated alias — same config shape, emits a one-time deprecation warning.
-
 ```typescript
 import { parallelTasks } from "@flow-state-dev/patterns";
 import { handler } from "@flow-state-dev/core";

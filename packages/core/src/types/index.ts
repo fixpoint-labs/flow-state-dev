@@ -16,9 +16,7 @@ export type {
   ResponseEmitterHandle,
   RetryPolicy,
   StateRef,
-  StateHandle,
-  TargetRef,
-  TargetHandle
+  TargetRef
 } from "./block";
 
 export type {
@@ -112,13 +110,6 @@ export type {
   EvictionPolicy,
   ResourceCollectionConfig,
   ResourceCollectionRef,
-  ResourceCollectionHandle,
-  // Deprecated aliases
-  NamespaceHookContext,
-  DefinedResourceNamespace,
-  ResourceNamespaceConfig,
-  ResourceNamespaceHandle,
-  ResourceNamespaceRef,
 } from "./resource-collection";
 
 export {
@@ -129,10 +120,6 @@ export {
   matchesPattern,
   getPatternPrefix,
   extractPatternParams,
-  // Deprecated aliases
-  defineResourceNamespace,
-  isDefinedResourceNamespace,
-  resolveNamespaceKey,
 } from "./resource-collection";
 
 export type {
@@ -187,7 +174,6 @@ export type {
   JsonPrimitive,
   JsonValue,
   MaybePromise,
-  OptionalSchema,
   SchemaInput,
   SchemaOutput
 } from "../schema/common";

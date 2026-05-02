@@ -64,6 +64,14 @@ export function intentRouter<TCategories extends IntentRouterCategories>(
     (input: IntentRouterEnvelope) => input.originalInput
   );
 
+  // BP-011 note: this handler intentionally invokes `classifier.run` to keep the
+  // original input bound to the resulting classification. Lifting the classifier
+  // out into a sibling sequencer step would require reading `originalInput` back
+  // from `ctx.parent`, which is only populated under the full server runtime —
+  // mock contexts (and any `createMockContext` user tests) would silently get
+  // `undefined` as the route handler input. Until there's a runtime-agnostic way
+  // to recover the sequencer's input from a downstream step, the BP-011-friendly
+  // composition isn't worth the regression.
   const classifyInput = handler({
     name: `${config.name}-intent-router-input`,
     outputSchema: z.object({

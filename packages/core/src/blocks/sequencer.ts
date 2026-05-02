@@ -1378,14 +1378,6 @@ function createSequencer<TInput, TOutput>(
       );
     },
 
-    background<TStepIn>(
-      arg1: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
-      arg2?: BlockDefinition<any, any> | WorkOptions,
-      arg3?: WorkOptions
-    ): SequencerDefinition<TInput, TOutput> {
-      return definition.work(arg1 as any, arg2 as any, arg3 as any);
-    },
-
     workIf<TStepIn>(
       condition: boolean | ((ctx: BlockContext) => boolean | Promise<boolean>),
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
@@ -1854,38 +1846,6 @@ function createSequencer<TInput, TOutput>(
         },
         lastOutputSchema
       );
-    },
-
-    validate(): SequencerDefinition<TInput, TOutput> {
-      if (config.outputSchema === undefined || lastOutputSchema === undefined) {
-        return definition;
-      }
-
-      const declaredTypeName = (config.outputSchema as any)._def?.typeName as string | undefined;
-      const actualTypeName = (lastOutputSchema as any)._def?.typeName as string | undefined;
-
-      if (declaredTypeName !== undefined && actualTypeName !== undefined && declaredTypeName !== actualTypeName) {
-        throw new Error(
-          `Sequencer "${config.name}" output schema mismatch: declared ${declaredTypeName} but chain produces ${actualTypeName}`
-        );
-      }
-
-      // For ZodObject schemas, also check shape keys match
-      if (declaredTypeName === "ZodObject") {
-        const declaredShape = (config.outputSchema as any)._def?.shape?.();
-        const actualShape = (lastOutputSchema as any)._def?.shape?.();
-        if (declaredShape !== undefined && actualShape !== undefined) {
-          const declaredKeys = Object.keys(declaredShape).sort();
-          const actualKeys = Object.keys(actualShape).sort();
-          if (declaredKeys.join(",") !== actualKeys.join(",")) {
-            throw new Error(
-              `Sequencer "${config.name}" output schema shape mismatch: declared keys [${declaredKeys}] but chain produces [${actualKeys}]`
-            );
-          }
-        }
-      }
-
-      return definition;
     },
 
     connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): SequencerDefinition<TFrom, TOutput> {

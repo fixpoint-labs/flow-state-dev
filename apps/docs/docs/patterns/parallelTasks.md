@@ -94,9 +94,6 @@ parallelTasks({
   // Default: utility.combiner()
   synthesizer?: BlockDefinition;
 
-  // Deprecated alias for synthesizer. Kept for backward compatibility.
-  merger?: BlockDefinition;
-
   // How to handle individual sub-task failures:
   //   "skip"  — exclude failed sub-tasks from synthesis (default)
   //   "fail"  — abort the entire coordination on any failure

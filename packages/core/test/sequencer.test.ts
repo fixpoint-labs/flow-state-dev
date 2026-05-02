@@ -309,43 +309,6 @@ describe("sequencer builder", () => {
     });
   });
 
-  describe("background alias", () => {
-    it("is an alias for work", async () => {
-      const workBlock = handler({
-        name: "bg-alias-work",
-        inputSchema: z.number(),
-        outputSchema: z.number(),
-        execute: async (value) => value + 10
-      });
-
-      const seq = sequencer({ name: "bg-alias", inputSchema: z.number() })
-        .background(workBlock)
-        .waitForWork({ failOnError: true });
-
-      const ctx = createMockContext();
-      await expect(seq.run(1, ctx)).resolves.toBe(1);
-    });
-
-    it("supports connector overload", async () => {
-      const workBlock = handler({
-        name: "bg-alias-conn",
-        inputSchema: z.string(),
-        outputSchema: z.string(),
-        execute: async (value) => value.toUpperCase()
-      });
-
-      const seq = sequencer({ name: "bg-alias-conn", inputSchema: z.number() })
-        .background(
-          (value) => String(value),
-          workBlock
-        )
-        .waitForWork({ failOnError: true });
-
-      const ctx = createMockContext();
-      await expect(seq.run(42, ctx)).resolves.toBe(42);
-    });
-  });
-
   it("supports tap and tapIf", async () => {
     const tapped: number[] = [];
     const tapBlock = handler({
@@ -672,65 +635,6 @@ describe("sequencer builder", () => {
       expect((seq.outputSchema as any)._def?.typeName).toBe("ZodAny");
     });
 
-    it("validate() passes when chain output matches declared outputSchema", () => {
-      const addOne = handler({
-        name: "add-one",
-        inputSchema: z.number(),
-        outputSchema: z.number(),
-        execute: (value) => value + 1
-      });
-
-      // Declared outputSchema matches chain's last output
-      const seq = sequencer({ name: "validate-pass", inputSchema: z.number(), outputSchema: z.number() })
-        .then(addOne);
-
-      expect(() => seq.validate()).not.toThrow();
-    });
-
-    it("validate() throws when chain output diverges from declared outputSchema", () => {
-      const toStr = handler({
-        name: "to-str",
-        inputSchema: z.number(),
-        outputSchema: z.string(),
-        execute: (value) => String(value)
-      });
-
-      // Declared z.number() but chain ends with z.string()
-      const seq = sequencer({ name: "validate-fail", inputSchema: z.number(), outputSchema: z.number() })
-        .then(toStr);
-
-      expect(() => seq.validate()).toThrow(/output schema mismatch/);
-    });
-
-    it("validate() is a no-op when no outputSchema declared on config", () => {
-      const addOne = handler({
-        name: "add-one",
-        inputSchema: z.number(),
-        outputSchema: z.number(),
-        execute: (value) => value + 1
-      });
-
-      const seq = sequencer({ name: "validate-noop", inputSchema: z.number() }).then(addOne);
-      expect(() => seq.validate()).not.toThrow();
-    });
-
-    it("validate() detects object shape mismatch", () => {
-      const toObj = handler({
-        name: "to-obj",
-        inputSchema: z.number(),
-        outputSchema: z.object({ a: z.number(), b: z.string() }),
-        execute: (value) => ({ a: value, b: String(value) })
-      });
-
-      // Declared shape has different keys than chain output
-      const seq = sequencer({
-        name: "validate-shape",
-        inputSchema: z.number(),
-        outputSchema: z.object({ x: z.number(), y: z.string() })
-      }).then(toObj);
-
-      expect(() => seq.validate()).toThrow(/shape mismatch/);
-    });
   });
 
   describe("connectInput", () => {

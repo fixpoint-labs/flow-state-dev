@@ -45,27 +45,10 @@ parallelTasks({
   maxConcurrency?: number;       // default 3
   planner?: BlockDefinition;     // must output { tasks: Array<{ goal: string }> }
   synthesizer?: BlockDefinition; // receives unknown[] of completed task outputs
-  merger?: BlockDefinition;      // deprecated alias for synthesizer
   onSubTaskError?: "skip" | "fail" | "retry"; // default "skip"; "retry" treated as "skip"
   outputSchema?: ZodSchema;
 });
 ```
-
-## Migration from coordinator
-
-`coordinator()` is a deprecated alias. Replace:
-
-```ts
-// Before
-import { coordinator } from "@flow-state-dev/patterns";
-const block = coordinator({ name: "...", worker: myWorker });
-
-// After
-import { parallelTasks } from "@flow-state-dev/patterns";
-const block = parallelTasks({ name: "...", worker: myWorker });
-```
-
-Same config shape. Worker input changes from a plain string (goal) to `TaskWorkerInput` (`{ taskId, goal, input, ... }`).
 
 ## Exports
 

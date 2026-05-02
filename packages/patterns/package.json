@@ -13,10 +13,6 @@
       "types": "./dist/rlm/index.d.ts",
       "default": "./dist/rlm/index.js"
     },
-    "./coordinator": {
-      "types": "./dist/coordinator/index.d.ts",
-      "default": "./dist/coordinator/index.js"
-    },
     "./plan-and-execute": {
       "types": "./dist/plan-and-execute/index.d.ts",
       "default": "./dist/plan-and-execute/index.js"

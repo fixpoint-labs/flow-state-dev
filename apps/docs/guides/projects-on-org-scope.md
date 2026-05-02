@@ -134,4 +134,4 @@ This is a deliberate constraint. Orgs are stickier than projects — mid-convers
 
 ## What's not in this pattern (yet)
 
-The "memories" demo from the kitchen-sink showcase needs a resource that's **dynamically scoped** — sometimes user-scoped, sometimes org-scoped, depending on the session. That dynamic routing (`scope: (bind) => ...` and `ctx.dynamic.resources.*`) is FIX-435's territory and hasn't shipped yet. The projects-as-collection pattern above doesn't need it — pick `scope: "org"` at definition time and you're done.
+The "memories" demo from the kitchen-sink showcase needs a resource that's **dynamically scoped** — sometimes user-scoped, sometimes org-scoped, depending on the session. That dynamic routing (`scope: (bind) => ...` and `ctx.dynamic.resources.*`) hasn't shipped yet. The projects-as-collection pattern above doesn't need it — pick `scope: "org"` at definition time and you're done.

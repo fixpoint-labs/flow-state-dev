@@ -20,7 +20,7 @@ function makeFlow(options: {
   isolateUserState?: boolean;
   isolateOrgState?: boolean;
   userSchema?: z.ZodTypeAny;
-  projectSchema?: z.ZodTypeAny;
+  orgSchema?: z.ZodTypeAny;
   userResources?: Record<string, z.ZodTypeAny>;
 }) {
   const block = handler<{ value: string }, { ok: boolean }>({
@@ -53,7 +53,7 @@ function makeFlow(options: {
       run: { inputSchema: z.object({ value: z.string() }), block },
     },
     user,
-    org: options.projectSchema ? { stateSchema: options.projectSchema } : undefined,
+    org: options.orgSchema ? { stateSchema: options.orgSchema } : undefined,
     resources: userResources,
   })();
 }
@@ -148,10 +148,10 @@ describe("FlowRegistry cross-flow schema validation", () => {
 
   it("reports org-scope conflicts with the correct scope label", () => {
     const registry = createFlowRegistry();
-    registry.register(makeFlow({ kind: "flow-a", projectSchema: z.object({ title: z.string() }) }));
+    registry.register(makeFlow({ kind: "flow-a", orgSchema: z.object({ title: z.string() }) }));
 
     const error = captureConflict(() =>
-      registry.register(makeFlow({ kind: "flow-b", projectSchema: z.object({ title: z.number() }) }))
+      registry.register(makeFlow({ kind: "flow-b", orgSchema: z.object({ title: z.number() }) }))
     );
     expect(error.scope).toBe("org");
     expect(error.message).toContain("isolateOrgState");
@@ -175,7 +175,7 @@ describe("FlowRegistry cross-flow schema validation", () => {
       makeFlow({
         kind: "flow-a",
         userSchema: z.object({ theme: z.string() }),
-        projectSchema: z.object({ title: z.string() }),
+        orgSchema: z.object({ title: z.string() }),
       })
     );
     expect(() =>
@@ -184,7 +184,7 @@ describe("FlowRegistry cross-flow schema validation", () => {
           kind: "flow-b",
           // Compatible user, incompatible org.
           userSchema: z.object({ theme: z.string() }),
-          projectSchema: z.object({ title: z.number() }),
+          orgSchema: z.object({ title: z.number() }),
         })
       )
     ).toThrow();
@@ -258,7 +258,7 @@ describe("end-to-end: shared vs isolated state", () => {
     const flow = makeFlow({
       kind: "flow-iso-proj",
       isolateOrgState: true,
-      projectSchema: z.object({ title: z.string().optional() }),
+      orgSchema: z.object({ title: z.string().optional() }),
     });
     const stores = createInMemoryStores();
 

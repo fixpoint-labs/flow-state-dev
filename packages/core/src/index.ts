@@ -7,13 +7,6 @@ export type {
   EvictionPolicy,
   ResourceCollectionConfig,
   ResourceCollectionRef,
-  ResourceCollectionHandle,
-  // Deprecated aliases
-  NamespaceHookContext,
-  DefinedResourceNamespace,
-  ResourceNamespaceConfig,
-  ResourceNamespaceHandle,
-  ResourceNamespaceRef,
 } from "./types/resource-collection";
 export type {
   JsonObject,
@@ -25,7 +18,7 @@ export type {
 } from "./schema/common";
 
 export { defineResource, resource } from "./types/resource";
-export { defineResourceCollection, isDefinedResourceCollection, defineResourceNamespace, isDefinedResourceNamespace } from "./types/resource-collection";
+export { defineResourceCollection, isDefinedResourceCollection } from "./types/resource-collection";
 export type {
   InitialSkill,
   IntentSource,

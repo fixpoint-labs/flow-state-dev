@@ -140,52 +140,7 @@ describe("parallelTasks pattern", () => {
     expect(output.combined).toBeDefined();
   });
 
-  it("uses custom merger when provided", async () => {
-    const customMerger = handler({
-      name: "pt-custom-merger",
-      inputSchema: z.any(),
-      outputSchema: z.object({
-        summary: z.string(),
-        count: z.number()
-      }),
-      execute: (results: unknown[]) => ({
-        summary: `Merged ${Array.isArray(results) ? results.length : 0} results`,
-        count: Array.isArray(results) ? results.length : 0
-      })
-    });
-
-    const customPlanner = handler({
-      name: "pt-det-planner",
-      inputSchema: z.any(),
-      outputSchema: z.object({
-        tasks: z.array(z.object({ id: z.string(), goal: z.string() }))
-      }),
-      execute: () => ({
-        tasks: [
-          { id: "t1", goal: "Task one" },
-          { id: "t2", goal: "Task two" }
-        ]
-      })
-    });
-
-    const block = parallelTasks({
-      name: "pt-merger-test",
-      worker: echoWorker,
-      planner: customPlanner,
-      merger: customMerger
-    });
-
-    const result = await testBlock(block, {
-      input: { goal: "Test merging" }
-    });
-
-    expect(result.error).toBeNull();
-    const output = result.output as { summary: string; count: number };
-    expect(output.count).toBe(2);
-    expect(output.summary).toBe("Merged 2 results");
-  });
-
-  it("synthesizer alias works the same as merger", async () => {
+  it("uses custom synthesizer when provided", async () => {
     const customSynthesizer = handler({
       name: "pt-synthesizer",
       inputSchema: z.any(),
