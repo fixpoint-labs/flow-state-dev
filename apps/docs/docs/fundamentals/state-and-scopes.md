@@ -229,7 +229,7 @@ user: {
 }
 ```
 
-User scope is shared across flows on the same server by default. See [Flow Isolation](/docs/advanced/flow-isolation) if you need to keep flows' user state separate.
+User scope is shared across flows on the same server by default — every flow's `user.stateSchema` is structurally compared at startup, and incompatible declarations throw `CrossFlowSchemaConflictError` from `FlowRegistry.register` before any data can be corrupted. See [Authentication](/docs/server/authentication) for the trust model and [Flow Isolation](/docs/advanced/flow-isolation) if you need to keep a flow's user state separate.
 
 **Org** is the team-level boundary. Shared configuration, knowledge bases, settings that an admin controls for everyone. Available when the caller passes an `orgId`; `ctx.org` is `undefined` otherwise.
 
@@ -239,7 +239,9 @@ execute: async (input, ctx) => {
 }
 ```
 
-For the full operation reference and CAS semantics that apply to all four scopes, see [State Operations](/docs/fundamentals/state-operations). For how `userId` and `orgId` flow into a request, see [Authentication](/docs/server/authentication).
+Org scope is also shared across flows by default with the same registry-time schema check as user scope. Once a session is bound to an `orgId`, requests claiming a different `orgId` against that session throw `OrgBindingMismatchError` at runtime.
+
+For the full operation reference and CAS semantics that apply to all four scopes, see [State Operations](/docs/fundamentals/state-operations). For how `userId` and `orgId` flow into a request — including who's responsible for verifying them — see [Authentication](/docs/server/authentication).
 
 ## Why four scopes?
 

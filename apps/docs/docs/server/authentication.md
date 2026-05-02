@@ -4,11 +4,65 @@ sidebar_position: 5
 
 # Authentication
 
-Every inbound request to a flow has to be tied to a *principal* — the
+The framework treats the `userId` you supply as authoritative. Verifying
+that the `userId` belongs to the caller is your application's job —
+typically your auth middleware runs before the framework's HTTP handler
+and rejects anything it can't identify.
+
+Every inbound request to a flow has to be tied to a *principal*: the
 caller identity the runtime keys state, resources, and request records by.
-The framework gives you a hook to verify whatever credentials your
-transport carries and return a principal. It does not store secrets, run
-OAuth, or look up users in your database. That stays on your side.
+The framework gives you a hook to attach a principal to a request. It does
+not store secrets, run OAuth, or look up users in your database. That
+stays on your side.
+
+This is the same trust model Mastra, LangGraph, and other application-layer
+frameworks use. It works because the trust boundary is your auth code, not
+the framework's HTTP handler.
+
+## Who's responsible for what
+
+**Your job.** Verify the credentials your transport carries — session
+cookie, JWT, signed webhook header — and produce a `userId` (and optionally
+`orgId`) that the framework can trust. If the credential is missing or
+invalid, reject the request before it reaches the framework, or throw
+`PrincipalResolutionError` from inside the resolver.
+
+**The framework's job.** Enforce that the identity attached to a request
+is internally consistent with the rest of the runtime. Two checks:
+
+- **Session binding.** Once a session is created with `userId: A`, later
+  requests claiming `userId: B` against that session throw
+  `UserBindingMismatchError` at context creation. Same for `orgId` via
+  `OrgBindingMismatchError`. See [Session consistency check](#session-consistency-check).
+- **Schema compatibility.** If two flows on the same server declare
+  incompatible `user.stateSchema` (or `org.stateSchema`) shapes,
+  `FlowRegistry.register` throws `CrossFlowSchemaConflictError` at startup.
+  See [Cross-flow schema compatibility](#cross-flow-schema-compatibility).
+
+The framework does not — and cannot — verify that `userId: A` actually
+belongs to whoever sent the request. That's the credential your middleware
+or resolver verified before the framework ever saw the call.
+
+## What `requireUser: true` does (and doesn't)
+
+`requireUser: true` is the default. It means *the request must produce
+some `userId` after the resolver and `defaultUserId` fallback have run*.
+If neither yields a `userId`, the framework rejects with 401.
+
+It is a presence check, not an authentication check. A misconfigured
+resolver that returns `{ userId: "anyone" }` for every caller still
+satisfies `requireUser: true`. The framework only asks "is there a
+`userId`?" — not "does this `userId` belong to the caller?"
+
+To enforce real identity, do it inside `resolvePrincipal`: throw
+`PrincipalResolutionError` for invalid credentials, return `null` to fall
+through to `defaultUserId`, or look the resolved `userId` up against your
+own user store before returning it.
+
+`requireUser: false` opts a flow out of user-scope identity entirely. The
+framework then refuses to compile the flow if it declares any user-scope
+state, resources, or `clientData`. Use it for webhooks and scheduled jobs
+that legitimately have no end user.
 
 ## The hook
 
@@ -198,13 +252,62 @@ const router = createFlowApiRouter({
 
 Per-flow `defineFlow({ authentication })` always wins over this fallback.
 
+## Session consistency check
+
+A session's `userId` and `orgId` are immutable for the session's lifetime.
+Once a session has been created against a particular identity, every
+later request that loads it has to match. If it doesn't, the framework
+throws at context creation:
+
+- `UserBindingMismatchError` — request supplied a `userId` that doesn't
+  match the session's owner.
+- `OrgBindingMismatchError` — request supplied an `orgId` that doesn't
+  match the session's bound org.
+
+This is a structural integrity check, not an identity check. Your auth
+code is what guarantees a request actually represents `userId: A`. The
+framework guarantees that once a session belongs to `userId: A`, no
+request can route data through it under a different identity — whether
+the mismatch came from a buggy client, a routing mistake, or a stale
+cookie that drifted between users.
+
+To "move" a session to a different user or org, create a new session.
+
+## Cross-flow schema compatibility
+
+User and org records are shared across every flow registered on the same
+server by default. A chat flow that writes `user.preferences.theme` and
+an admin flow that reads it touch the same `UserRecord`. That's usually
+what you want — preferences, profile fields, org settings belong to the
+user or the org, not to one flow.
+
+For shared-by-default to be safe, the framework checks at startup that
+every flow's `user.stateSchema` and `org.stateSchema` are structurally
+compatible with the others already in the registry. Incompatible
+declarations throw `CrossFlowSchemaConflictError` immediately, naming
+the offending field and the two flows involved. You see it once, in
+development, and fix it before users do.
+
+Identical schemas merge cleanly. Schemas that one flow extends with extra
+optional fields merge with a warning. Anything that would actually
+overwrite data — same field, different type — throws.
+
+When sharing isn't appropriate, set `isolateUserState: true` (or
+`isolateOrgState: true`) on `defineFlow`. The flow's user (or org) state
+is then stored separately and excluded from the schema check. See
+[Sharing State Across Flows](/docs/advanced/flow-isolation) for the full
+opt-out story.
+
 ## What the framework does not do
 
 - Store credentials, OAuth tokens, or webhook secrets.
 - Implement RS256/ES256 JWT verification (needs JWKS, separate concern).
 - Run an OAuth provider.
-- Provide an org-scope state model — `requireOrg` is reserved for that
-  future work but has no runtime effect today.
+- Verify that a `userId` actually belongs to the caller. That's your
+  middleware or `resolvePrincipal` hook.
+- Honour `requireOrg` — the flag is reserved for future enforcement work
+  and has no runtime effect today. Org-scope state itself is fully
+  supported.
 
 For the contract details and edge cases, see
 `docs/architecture/authentication.md`.
