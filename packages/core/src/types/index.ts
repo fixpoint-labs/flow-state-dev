@@ -21,6 +21,7 @@ export type {
 
 export type {
   ActionConfig,
+  ActionMcpConfig,
   CostEstimator,
   ClientDataComputeFn,
   ClientDataContext,
@@ -36,6 +37,7 @@ export type {
   CostEstimate,
   InferFlowStateMap,
   InferScopeStateFromConfig,
+  McpConfig,
   OrgConfig,
   RequestConfig,
   RetentionPolicy,

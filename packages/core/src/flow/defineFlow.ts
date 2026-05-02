@@ -18,6 +18,7 @@ import type {
   FlowInstance,
   FlowInstanceOptions,
   FlowType,
+  McpConfig,
   OrgConfig,
   RequestConfig,
   SessionConfig,
@@ -327,6 +328,50 @@ function mergeAuthentication(
   };
 }
 
+/**
+ * When `mcp.enabled === true`, every action that will be exposed via the MCP
+ * adapter must carry a non-empty `description`. The MCP package converts
+ * actions into LLM-facing tools; an empty description ships an unusable
+ * tool. Catching the omission at registration is preferable to discovering
+ * it when an MCP client connects.
+ *
+ * Also validates `exposeActions` references — typos in the allowlist would
+ * silently exclude every action, which is hard to debug at runtime.
+ */
+function validateMcpConfig(
+  flowKind: string,
+  mcp: McpConfig | undefined,
+  actions: AnyActions
+): void {
+  if (mcp?.enabled !== true) return;
+
+  if (mcp.exposeActions !== undefined) {
+    for (const name of mcp.exposeActions) {
+      if (!Object.prototype.hasOwnProperty.call(actions, name)) {
+        throw new Error(
+          `Flow "${flowKind}" mcp.exposeActions references unknown action "${name}". ` +
+          `Known actions: ${Object.keys(actions).join(", ") || "(none)"}.`
+        );
+      }
+    }
+  }
+
+  const allowlist = mcp.exposeActions;
+  for (const [actionName, action] of Object.entries(actions)) {
+    const inAllowlist = allowlist === undefined || allowlist.includes(actionName);
+    const optedOut = action.mcp?.enabled === false;
+    if (!inAllowlist || optedOut) continue;
+
+    if (typeof action.description !== "string" || action.description.trim().length === 0) {
+      throw new Error(
+        `Flow "${flowKind}" exposes action "${actionName}" via MCP but the action has no ` +
+        `description. Set actions.${actionName}.description to a non-empty string — it ` +
+        `becomes the LLM-facing MCP tool description.`
+      );
+    }
+  }
+}
+
 function createFlowInstance(
   definition: AnyFlowDefinition,
   options: AnyFlowInstanceOptions | undefined
@@ -370,6 +415,9 @@ function createFlowInstance(
     validateRequireUserFalseConsistency(kind, user, mergedResources);
   }
 
+  const mcp = definition.mcp;
+  validateMcpConfig(kind, mcp, actions);
+
   return {
     id: options?.id ?? kind,
     kind,
@@ -386,6 +434,7 @@ function createFlowInstance(
     tools,
     voice: options?.voice ?? definition.voice,
     middleware: options?.middleware ?? definition.middleware,
+    mcp,
     tokenCounter: options?.tokenCounter ?? definition.tokenCounter,
     costEstimator: options?.costEstimator ?? definition.costEstimator,
     isolateUserState,
@@ -435,6 +484,7 @@ export function defineFlow<
     tools: baseInstance.tools,
     voice: baseInstance.voice,
     middleware: baseInstance.middleware,
+    mcp: baseInstance.mcp,
     tokenCounter: baseInstance.tokenCounter,
     costEstimator: baseInstance.costEstimator,
     isolateUserState: baseInstance.isolateUserState,
