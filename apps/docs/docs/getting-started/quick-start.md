@@ -4,83 +4,86 @@ sidebar_position: 1
 
 # Quick Start
 
-Build a streaming chat app in 5 minutes. By the end, you'll have an LLM-powered chat with conversation history, session state, and a React UI — all type-safe, all streaming.
+Build a streaming chat in five minutes. By the end you have a typed flow, a Next.js API route, and a React UI that talks to an LLM with conversation history.
 
 ## Prerequisites
 
-- Node.js >= 18 (Node 20+ recommended)
+- Node.js 20 or newer
 - pnpm (or npm/yarn)
+- An API key from OpenAI, Anthropic, or Google. See [Setting Up Models](/docs/getting-started/setting-up-models) for the full list.
 
-## 1. Install packages
+## 1. Install
 
 ```bash
-pnpm add @flow-state-dev/core @flow-state-dev/server @flow-state-dev/client @flow-state-dev/react zod
+pnpm add @flow-state-dev/core @flow-state-dev/server @flow-state-dev/react zod
 ```
 
-## 2. Define your flow
+## 2. Configure your model provider
 
-This is where you describe what your AI does. A generator calls the LLM. A handler tracks state. A sequencer wires them together. `defineFlow` makes it deployable.
+Set one API key in your shell:
+
+```bash
+export OPENAI_API_KEY=sk-...
+# or
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+The framework auto-detects whichever providers it finds keys for. The example below uses `model: "preset/small"`, which resolves to the first available small-tier model across providers. For multi-provider fallback, gateways, and custom presets, see [Setting Up Models](/docs/getting-started/setting-up-models).
+
+## 3. Define a flow
+
+Every piece of logic in flow-state.dev is a **block** — a typed unit of work. There are four block kinds: handler, generator, sequencer, router. You'll meet all four eventually. The quick-start uses one: a generator, which calls the LLM.
+
+A **flow** mounts blocks under named actions and packages everything for the server. `defineFlow` returns the flow factory; calling it with no arguments gives you the registerable instance.
 
 ```ts title="src/flows/hello-chat/flow.ts"
-import { defineFlow, generator, handler, sequencer } from "@flow-state-dev/core";
+import { defineFlow, generator } from "@flow-state-dev/core";
 import { z } from "zod";
 
 const inputSchema = z.object({ message: z.string() });
 
-// Generator: calls the LLM with conversation history
-const chatGen = generator({
+const chat = generator({
   name: "chat",
-  model: "preset/fast",
+  model: "preset/small",
   prompt: "You are a helpful assistant.",
   inputSchema,
   history: true,
   user: (input) => input.message,
 });
 
-// Handler: increments a message counter after each exchange
-const counter = handler({
-  name: "counter",
-  inputSchema: z.string(),
-  outputSchema: z.string(),
-  sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
-  execute: async (input, ctx) => {
-    await ctx.session.incState({ messageCount: 1 });
-    return input;
-  },
-});
-
-// Pipeline: generator → counter
-const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
-  .then(chatGen)
-  .then(counter);
-
-// Flow definition
-const chatFlow = defineFlow({
+export default defineFlow({
   kind: "hello-chat",
-  requireUser: true,
   actions: {
     chat: {
       inputSchema,
-      block: pipeline,
+      block: chat,
       userMessage: (input) => input.message,
     },
   },
   session: {
-    stateSchema: z.object({ messageCount: z.number().default(0) }),
+    stateSchema: z.object({}),
   },
-});
-
-export default chatFlow({ id: "default" });
+})();
 ```
 
-**What's happening:** The generator handles the LLM call — prompt assembly, streaming, conversation history. The handler is a pure function that bumps a counter. The sequencer pipes the generator's output into the handler. `defineFlow` wraps it all with actions, session state, and lifecycle management.
+The generator handles prompt assembly, streaming, and conversation history (`history: true` reads prior turns out of the session automatically). To chain multiple blocks together, you'd compose them with a **sequencer**:
 
-## 3. Set up the server
+```ts
+import { sequencer } from "@flow-state-dev/core";
 
-One catch-all route gives you a complete API with SSE streaming:
+const pipeline = sequencer({ name: "pipeline", inputSchema })
+  .then(chat)
+  .then(otherBlock);
+```
+
+The quick-start doesn't need one yet. [Your First Flow](/docs/getting-started/your-first-flow) walks through composing blocks step-by-step.
+
+## 4. Mount the server
+
+One catch-all route gives you action dispatch, SSE streaming, and session state:
 
 ```ts title="app/api/flows/[...path]/route.ts"
-import { createFlowRegistry, createFlowApiRouter } from "@flow-state-dev/server";
+import { createFlowApiRouter, createFlowRegistry } from "@flow-state-dev/server";
 import chatFlow from "@/flows/hello-chat/flow";
 
 const registry = createFlowRegistry();
@@ -93,38 +96,37 @@ export const POST = router.POST;
 export const DELETE = router.DELETE;
 ```
 
-That's it. You now have action execution, session management, SSE streaming with resume, and state snapshots at `/api/flows/`.
+That's it for the backend. You now have action execution, SSE streaming with resume, and session persistence under `/api/flows/`.
 
-## 4. Connect the React frontend
+## 5. Render in React
 
-The hooks handle streaming, reconnection, and state sync. You just render:
+`useSession` exposes the live item stream, streaming status, and `sendAction`. `ItemsRenderer` is the default plural renderer — it dispatches messages, reasoning, tool output, and errors to the framework's built-in renderers without you having to wire each one up.
 
 ```tsx title="src/app/page.tsx"
-import { FlowProvider, ItemRenderer, useFlow, useSession } from "@flow-state-dev/react";
+"use client";
+import { FlowProvider, ItemsRenderer, useFlow, useSession } from "@flow-state-dev/react";
 
-function App() {
+export default function Page() {
   return (
     <FlowProvider flowKind="hello-chat" userId="devuser">
-      <ChatUI />
+      <Chat />
     </FlowProvider>
   );
 }
 
-function ChatUI() {
+function Chat() {
   const flow = useFlow({ autoCreateSession: true });
   const session = useSession(flow.activeSessionId);
 
   return (
     <div>
-      {session.items.map((item) => (
-        <ItemRenderer key={item.id} item={item} />
-      ))}
+      <ItemsRenderer items={session.items} />
 
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          const input = new FormData(e.currentTarget).get("message") as string;
-          session.sendAction("chat", { message: input });
+          const message = new FormData(e.currentTarget).get("message") as string;
+          session.sendAction("chat", { message });
           e.currentTarget.reset();
         }}
       >
@@ -138,48 +140,27 @@ function ChatUI() {
 }
 ```
 
-**What's happening:** `FlowProvider` sets up the flow context. `useFlow` creates a session automatically. `useSession` gives you live-updating items, streaming status, and `sendAction`. `ItemRenderer` renders each streamed item. The framework handles SSE connection, reconnection, and state sync behind the scenes.
-
-## 5. Run it
+## 6. Run it
 
 ```bash
 pnpm dev
 ```
 
-Open your browser and start chatting. The framework is handling:
-- Input validation against your Zod schema
-- Action dispatch and async block execution
-- SSE streaming with automatic reconnection and resume
-- Session state persistence across requests
-- Conversation history assembly for the LLM
-- Item rendering in the UI
+Open the page and start chatting. Behind the scenes you have streaming over SSE with reconnect, conversation history, session state, and typed validation on every input.
 
-## Alternative: inspect with the DevTool
+## Skip the React layer
 
-The DevTool gives you a visual inspector for your flows. Install the devtool package and run `fsdev dev`:
-
-```bash
-pnpm add -D @flow-state-dev/cli @flow-state-dev/devtool
-
-fsdev dev
-```
-
-This starts a local server, discovers your flows, and opens the DevTool in your browser. You can dispatch actions, watch items stream in real-time, and inspect session state. See the [DevTool guide](/docs/devtool/setup) for configuration options.
-
-## Alternative: run from the terminal
-
-You don't need a server or UI to try your flows. The CLI runs them directly and streams NDJSON to stdout:
+You don't need a server or UI to try a flow. The CLI runs it directly and streams NDJSON to stdout:
 
 ```bash
 fsdev run hello-chat chat -i '{"message": "Hello!"}'
 ```
 
-See the [CLI reference](/docs/api/cli) for session reuse, model overrides, and more.
+Or open the visual inspector with `fsdev dev` — see the [DevTool guide](/docs/devtool/setup).
 
 ## Next steps
 
-- **[Installation](/docs/getting-started/installation)** — Package options, peer dependencies, TypeScript config
-- **[Project Structure](/docs/getting-started/project-structure)** — How to organize flows, blocks, and tools
-- **[Blocks](/docs/fundamentals/blocks)** — Deep dive into handler, generator, sequencer, and router
-- **[Building a Chat App](/guides/building-a-chat-app)** — Full walkthrough with state, clientData, tools, and tests
-- **[CLI Reference](/docs/api/cli)** — Run flows and blocks from the terminal
+- **[Your First Flow](/docs/getting-started/your-first-flow)** — A narrative walkthrough that explains each concept as you build.
+- **[Setting Up Models](/docs/getting-started/setting-up-models)** — Provider keys, presets, gateways, custom resolvers.
+- **[Project Structure](/docs/getting-started/project-structure)** — How to organize flows, blocks, and tools.
+- **[Blocks](/docs/fundamentals/blocks)** — The four block kinds in depth.
