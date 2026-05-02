@@ -430,7 +430,7 @@ execute: async (input, ctx) => {
 }
 ```
 
-Targets give a block typed access to the state of named ancestor blocks in the execution tree. They are declared via `targetStateSchemas` in the block config — see [Target state](/docs/fundamentals/state-and-scopes#target-state) for details.
+Targets give a block typed access to the state of named ancestor blocks in the execution tree. They are declared via `targetStateSchemas` in the block config — see [State Targets and Parents](/docs/advanced/state-targets-and-parents) for details.
 
 ### `ctx.parent`
 
