@@ -69,32 +69,46 @@ const executor = handler({
 
 ## The durability boundary
 
-This is the part to internalize. Sequencer state is **in-memory only**:
+Sequencer state has a different lifetime from the persistence scopes — but it is **not** purely in-memory.
 
-- It lives in process memory for the duration of the sequencer's execution.
-- It is **not** persisted to any store.
-- It is **not** included in checkpoints or session snapshots.
-- On a process restart mid-execution, sequencer state is gone — same as any other in-memory value.
+At every step boundary, durable sequencers checkpoint their state via the `CheckpointStore` (FIX-401). Each write is keyed by `(requestId, blockInstanceId)` and overwrites the prior record — latest-only semantics, so storage is constant per sequencer regardless of step count. The Phase 2 resume runtime (FIX-141) reads the latest checkpoint to pick up after an interrupted request.
+
+Sequencers default to `durable: true`. Opt out for tests or single-shot ephemeral pipelines where checkpointing is unwanted overhead:
+
+```ts
+sequencer({
+  name: "ephemeral-pipeline",
+  durable: false,
+  stateSchema: z.object({ /* ... */ }),
+});
+```
+
+When the sequencer reaches a terminal frame (success / error / cancel), the final checkpoint is **retained** by default for post-mortem inspection. Operators that want eager GC opt in via `flow.request.cleanupCheckpointsOnTerminal: true`.
 
 Compare with the persistence scopes (when wired to a durable store like sqlite or postgres):
 
 | | Sequencer | Session / User / Org |
 |---|---|---|
-| Lifetime | One execution | Across requests / users / orgs |
-| Persisted | No | Yes (with a durable store) |
-| Survives restart | No | Yes |
+| Lifetime tied to | Sequencer instance execution | Identity (request / session / user / org) |
+| Persistence model | Latest-only checkpoint per instance | Versioned per-scope record |
+| Survives restart | Yes (when `durable: true`) — resume runtime rehydrates | Yes (with a durable store) |
 | Concurrency model | FIFO lock per container | CAS retry loop |
 | Throws `ConcurrentModificationError`? | No | Yes |
 
 The mutation model details are in [State Mutation Model](/docs/state/mutation-model). The short version: sequencer scope serializes mutators through an in-process queue, so it never sees the version conflicts that drive `ConcurrentModificationError`. The cost of safety is zero, and the operation surface (`patchState`, `incState`, etc.) is identical to the durable scopes.
 
-### Why sequencer state isn't durable
+### Why not just use session state?
 
-It would be a footgun. Sequencers are execution units, not identity boundaries. Persisting their per-run state across restarts would force every flow author to think about resumption semantics — which fields are safe to recover, which would be stale, what happens if the schema changed mid-deploy. None of that pays off, because sequencer state is for *coordination during a run*. If you need data to survive a restart, that's session/user/org state by definition.
+Sequencer state is scoped to *one execution of one sequencer instance*. Session state lives across every request in a conversation. Even though both are durable, they answer different questions:
+
+- A planner's `currentStep`, a research pipeline's accumulating findings, a worker's claim — these belong to a single run. Resumed if the run is interrupted, gone when the run completes.
+- Conversation mode, message counts, accumulated user-visible context — these belong to the conversation, across many runs.
+
+Use sequencer state for *coordination during a run that should resume cleanly if interrupted*. Use session state for anything the next request might care about.
 
 ## Transient slots
 
-`transientSlot()` is the inverse marker — a way to opt **out** of even the limited surface that sequencer state offers on the SSE stream:
+Sequencer state checkpoints carry every field by default. `transientSlot()` is the opt-out — for fields that should stay in-memory only, never enter the durable checkpoint, and never ride the SSE stream:
 
 ```ts
 import { sequencer, transientSlot } from "@flow-state-dev/core";
@@ -116,16 +130,13 @@ A transient slot:
 - **Does not emit** `state_change` items on the SSE stream.
 - **Does not appear** in `state_snapshot` payloads, so it never enters the durable checkpoint store and resets to its schema default on resume.
 
-Use transient slots for high-frequency or worker-local fields where you want the in-memory coordination but don't want every write to ride the stream. The task-board pattern uses them for fields like `lastClaimed` — workers polling every loop tick would otherwise flood the stream with no-value events.
+Use transient slots for high-frequency or worker-local fields where you want in-memory coordination but don't want every write riding the stream or surviving a resume. The task-board pattern uses them for fields like `lastClaimed` — workers polling every loop tick would otherwise flood the stream with no-value events, and the value is meaningless after a resume anyway.
 
 Apply `transientSlot()` **last** in the schema chain (after `.optional()`, `.default()`, etc.) so the marker sits on the outermost schema instance referenced by the parent `z.object` shape:
 
 ```ts
 // Right
 field: transientSlot(z.string().optional())
-
-// Wrong — the marker is buried under .optional()
-field: z.string().transient().optional()  // would not work; .transient() doesn't exist this way
 ```
 
 ### Mixed patches

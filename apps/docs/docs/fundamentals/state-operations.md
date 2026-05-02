@@ -181,7 +181,9 @@ In practice, this is rare for typical conversational flows. It surfaces under su
 
 ### Two dispatch paths
 
-Not every scope uses the CAS retry loop. Persisted scopes (`request`, `session`, `user`, `org` when wired to a durable store like sqlite or postgres) use CAS because a remote authority can advance the version. In-memory scopes (`sequencer` state, target containers, scopes without a `persist` callback) use a per-container FIFO lock — no version checks, no retries, no `ConcurrentModificationError`.
+Not every scope uses the CAS retry loop. Scopes wired through a `persist` callback to a durable store (`request`, `session`, `user`, `org` on filesystem / sqlite / postgres) use CAS because a remote authority — another connection, another process — can advance the stored version under a stale read. Scopes that don't bridge through `persist` (`sequencer` state, target containers) use a per-container FIFO lock. The lock path serializes mutators in submission order with no version checks, no retries, and never throws `ConcurrentModificationError`.
+
+Note: sequencer state going through the lock path doesn't mean it's lost on restart. The runtime still checkpoints sequencer state asynchronously at step boundaries (FIX-401), so a Phase 2 resume can rehydrate it. See [Sequencer State](/docs/advanced/sequencer-state).
 
 The dispatch is internal to `applyMutation`. Callers see the same `ScopeStateOps` API regardless of which path runs. For the full breakdown — when you'd see `ConcurrentModificationError` vs `ScopeMutationTimeoutError`, and how to bound the lock path's worst case — see [State Mutation Model](/docs/state/mutation-model).
 
@@ -196,4 +198,4 @@ This is a guardrail, not a hard limit. State is meant for flat, structured field
 - **[State & Scopes](/docs/fundamentals/state-and-scopes)** — conceptual overview, schema bubbling, the four scopes.
 - **[State Mutation Model](/docs/state/mutation-model)** — dispatch internals, lock vs CAS, mutation timeout.
 - **[State Targets and Parents](/docs/advanced/state-targets-and-parents)** — typed access to ancestor block state.
-- **[Sequencer State](/docs/advanced/sequencer-state)** — the in-memory scope tied to execution structure.
+- **[Sequencer State](/docs/advanced/sequencer-state)** — state scoped to one execution of one sequencer instance, checkpointed for resume.
