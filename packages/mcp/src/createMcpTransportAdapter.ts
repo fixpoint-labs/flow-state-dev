@@ -62,8 +62,14 @@ import { toolResultFromExecution } from "./result-formatting";
 /** Stable provenance identifier stamped onto every MCP-originated request. */
 export const MCP_TRANSPORT_SOURCE = "mcp";
 
-/** Server protocol version we advertise on `initialize`. */
-const MCP_PROTOCOL_VERSION = "2025-06-18";
+/**
+ * MCP protocol versions this adapter understands. Ordered newest-first;
+ * the initialize handler picks the client's requested version when it is
+ * one of these and otherwise falls back to the oldest compat version per
+ * the spec's negotiation guidance.
+ */
+const SUPPORTED_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26"] as const;
+const MCP_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0];
 const MCP_FALLBACK_PROTOCOL_VERSION = "2025-03-26";
 
 export interface CreateMcpTransportAdapterOptions {
@@ -243,16 +249,21 @@ function buildInitializeResult(flowKind: string, params: unknown): {
   capabilities: Record<string, unknown>;
   serverInfo: { name: string; version: string };
 } {
-  // Echo the client's protocol version when we recognize it; otherwise
-  // fall back to the spec's documented compat version.
+  // Negotiate the protocol version per spec: only echo back a version we
+  // actually support. If the client requests one we do not implement,
+  // respond with our newest supported version so the client can decide
+  // whether to continue or disconnect.
   const requested =
     params !== null && typeof params === "object"
       ? (params as { protocolVersion?: unknown }).protocolVersion
       : undefined;
   const protocolVersion =
-    typeof requested === "string" && requested.length > 0
+    typeof requested === "string" &&
+    (SUPPORTED_PROTOCOL_VERSIONS as readonly string[]).includes(requested)
       ? requested
-      : MCP_FALLBACK_PROTOCOL_VERSION;
+      : requested === undefined
+        ? MCP_FALLBACK_PROTOCOL_VERSION
+        : MCP_PROTOCOL_VERSION;
 
   return {
     protocolVersion,

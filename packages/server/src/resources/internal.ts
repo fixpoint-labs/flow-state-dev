@@ -117,12 +117,12 @@ export async function getPersistedData(
   }
 
   if (scope === "user") {
+    // Forward the full flow object — `resolveUserStorageKey` consults
+    // `flow.resources` to honor per-resource `flowIsolation` overrides
+    // (FIX-435). Stripping the field would silently route to the wrong
+    // storage key when any user-scope resource sets its own override.
     const user = await ctx.stores.user.get(
-      resolveUserStorageKey(session.userId, {
-        kind: flow.kind,
-        isolateUserState: flow.isolateUserState ?? false,
-        isolateOrgState: flow.isolateOrgState ?? false
-      })
+      resolveUserStorageKey(session.userId, toIsolationFlow(flow))
     );
     if (!user) return undefined;
     const contentFromStore = await ctx.stores.content.getAll("user", user.id);
@@ -138,11 +138,7 @@ export async function getPersistedData(
   // org
   if (!session.orgId) return undefined;
   const org = await ctx.stores.org.get(
-    resolveOrgStorageKey(session.orgId, {
-      kind: flow.kind,
-      isolateUserState: flow.isolateUserState ?? false,
-      isolateOrgState: flow.isolateOrgState ?? false
-    })
+    resolveOrgStorageKey(session.orgId, toIsolationFlow(flow))
   );
   if (!org) return undefined;
   const contentFromStore = await ctx.stores.content.getAll("org", org.id);
@@ -170,6 +166,26 @@ export async function renderContent(
     return config.render(rawContent, state);
   }
   return rawContent;
+}
+
+/**
+ * Coerce a `ResourceFlowLike` into the `IsolationFlow` shape consumed by
+ * `resolveUserStorageKey` / `resolveOrgStorageKey`. Forwards `resources`
+ * so `effectiveScopeIsolation` can iterate per-resource `flowIsolation`
+ * overrides (FIX-435).
+ */
+function toIsolationFlow(flow: ResourceFlowLike): {
+  kind: string;
+  isolateUserState: boolean;
+  isolateOrgState: boolean;
+  resources?: Record<string, { scope?: string; flowIsolation?: boolean }>;
+} {
+  return {
+    kind: flow.kind,
+    isolateUserState: flow.isolateUserState ?? false,
+    isolateOrgState: flow.isolateOrgState ?? false,
+    resources: flow.resources as Record<string, { scope?: string; flowIsolation?: boolean }> | undefined
+  };
 }
 
 /** Shape returned for each entry surfaced by `listExposedResources`. */

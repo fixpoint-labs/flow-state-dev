@@ -174,6 +174,32 @@ describe("MCP adapter — JSON-RPC dispatch", () => {
     expect(await response.text()).toBe("");
   });
 
+  it("initialize falls back to the newest supported version when the client requests an unknown one", async () => {
+    const adapter = createMcpTransportAdapter();
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    const response = await callAdapter(adapter, host, "POST", "billing", {
+      jsonrpc: "2.0",
+      id: 11,
+      method: "initialize",
+      params: { protocolVersion: "2099-01-01" }
+    });
+    const json = (await response.json()) as { result: { protocolVersion: string } };
+    expect(json.result.protocolVersion).toBe("2025-06-18");
+  });
+
+  it("initialize echoes a supported version when the client requests one", async () => {
+    const adapter = createMcpTransportAdapter();
+    const host = withFlow(createMockTransportHost(), buildFlow());
+    const response = await callAdapter(adapter, host, "POST", "billing", {
+      jsonrpc: "2.0",
+      id: 12,
+      method: "initialize",
+      params: { protocolVersion: "2025-03-26" }
+    });
+    const json = (await response.json()) as { result: { protocolVersion: string } };
+    expect(json.result.protocolVersion).toBe("2025-03-26");
+  });
+
   it("initialize returns server capabilities and serverInfo named after the flow", async () => {
     const adapter = createMcpTransportAdapter();
     const host = withFlow(createMockTransportHost(), buildFlow());
