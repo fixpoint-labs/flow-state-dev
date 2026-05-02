@@ -126,7 +126,7 @@ session: {
 
 ### Automatic resource collection
 
-Blocks can declare resource dependencies directly (via `sessionResources`, `userResources`, `projectResources` using `defineResource()` values). When `defineFlow` is called, it collects declared resources from all action blocks and merges them into the session/user/project scope configs automatically:
+Blocks can declare resource dependencies directly (via `sessionResources`, `userResources`, `orgResources` using `defineResource()` values). When `defineFlow` is called, it collects declared resources from all action blocks and merges them into the session/user/org scope configs automatically:
 
 ```ts
 const planManager = handler({

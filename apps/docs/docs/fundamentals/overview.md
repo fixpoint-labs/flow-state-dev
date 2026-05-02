@@ -32,7 +32,7 @@ State lives in four nested scopes with atomic operations:
 | Request | Single action run |
 | Session | Across requests in a conversation |
 | User | Across sessions for a user |
-| Project | Shared across sessions in a project |
+| Org | Shared across sessions in an org |
 
 Each scope supports `patchState`, `setState`, `incState`, `pushState`, `atomicState`. Operations are CAS-guarded. Blocks declare only the state fields they need.
 

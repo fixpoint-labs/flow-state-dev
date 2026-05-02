@@ -26,7 +26,7 @@ fsdev run my-agent chat -i '{"message": "Hello!"}'
 | `-s, --session <id>` | Session ID for reuse across invocations |
 | `--seed-session <json\|path>` | Seed session-level state (JSON or file path) |
 | `--seed-user <json\|path>` | Seed user-level state |
-| `--seed-project <json\|path>` | Seed project-level state |
+| `--seed-org <json\|path>` | Seed org-level state |
 | `--flow-dir <path>` | Override flow discovery root (repeatable) |
 | `--format <format>` | Output format (default: `json`) |
 

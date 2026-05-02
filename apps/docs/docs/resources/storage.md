@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # State vs Resources
 
-You have two ways to store data in flow-state.dev: **scope state** and **resources**. Both live on the same scopes (session, user, project), both use atomic operations, and both are invisible to clients without `clientData`. They serve different purposes.
+You have two ways to store data in flow-state.dev: **scope state** and **resources**. Both live on the same scopes (session, user, org), both use atomic operations, and both are invisible to clients without `clientData`. They serve different purposes.
 
 ## Scope state
 
@@ -96,8 +96,8 @@ Quick rules:
 
 ## Choosing the right scope
 
-| Question | Session | User | Project |
-|----------|---------|------|---------|
+| Question | Session | User | Org |
+|----------|---------|------|-----|
 | Belongs to this conversation? | Yes | | |
 | Survives across conversations? | | Yes | |
 | Personal to one user? | | Yes | |

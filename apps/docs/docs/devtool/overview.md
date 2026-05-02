@@ -76,7 +76,7 @@ Click a generator block in the trace and the detail panel shows what the model a
 
 ## Session state
 
-Inspect current state at every scope level. View session-level state, user-level state, and project-level state. Resources and their content are visible. ClientData values appear in the detail panel.
+Inspect current state at every scope level. View session-level state, user-level state, and org-level state. Resources and their content are visible. ClientData values appear in the detail panel.
 
 ## Replay
 

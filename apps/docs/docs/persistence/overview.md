@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Persistence
 
-flow-state.dev stores three categories of data: **scope state** (session, user, project), **resources** (content files with metadata), and **items** (the accumulated conversation log). All of this goes through a store abstraction. The server ships with an in-memory store by default. Swap it for a file store or MongoDB when you need data to survive restarts.
+flow-state.dev stores three categories of data: **scope state** (session, user, org), **resources** (content files with metadata), and **items** (the accumulated conversation log). All of this goes through a store abstraction. The server ships with an in-memory store by default. Swap it for a file store or MongoDB when you need data to survive restarts.
 
 ## Store adapters
 
@@ -47,7 +47,7 @@ registry.register(myFlow);
 const router = createFlowApiRouter({ registry, store });
 ```
 
-The directory structure mirrors the scope hierarchy: sessions, users, and projects each get their own subdirectory.
+The directory structure mirrors the scope hierarchy: each scope (session, user, org) gets its own subdirectory. The org scope is stored under `projects/` — the directory name predates the scope rename and is preserved for compatibility.
 
 ### MongoDB
 
@@ -77,7 +77,7 @@ MongoDB provides the concurrency safety that CAS (Compare-and-Swap) operations r
 
 | Data | Where it lives | Persistence behavior |
 |------|---------------|---------------------|
-| **Scope state** | Session, user, project scopes | Always persisted (except request scope, which is ephemeral) |
+| **Scope state** | Session, user, org scopes | Always persisted (except request scope, which is ephemeral) |
 | **Resources** | Attached to scopes | Always persisted with their scope |
 | **Items** | Session item log | Persisted by default. `status` items are always transient. `state_change`/`resource_change` are transient in production. |
 | **Request state** | Request scope | Lives for one action execution, then discarded |

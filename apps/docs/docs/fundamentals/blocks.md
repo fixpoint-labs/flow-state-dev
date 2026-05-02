@@ -536,7 +536,7 @@ pipeline.then(
 
 ## Blocks declare their resources
 
-Just like blocks declare their state dependencies with partial schemas, blocks can declare their **resource dependencies** using `sessionResources`, `userResources`, and `projectResources`. These accept `defineResource()` values:
+Just like blocks declare their state dependencies with partial schemas, blocks can declare their **resource dependencies** using `sessionResources`, `userResources`, and `orgResources`. These accept `defineResource()` values:
 
 ```ts
 import { defineResource, handler } from "@flow-state-dev/core";

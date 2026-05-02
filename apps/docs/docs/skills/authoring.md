@@ -226,6 +226,6 @@ Individual skills that fail validation during `readSkillsDirectory` are collecte
 
 ## Editing skills at runtime
 
-Skills live in a resource collection at the scope you chose (`project`, `user`, or `session`). Once seeded, they're editable via any surface that can write to resources — the DevTool, a custom admin UI, or a CLI command. Changes take effect on the next generator turn since the catalog context formatter re-reads the collection each step.
+Skills live in a resource collection at the scope you chose (`org`, `user`, or `session`). Once seeded, they're editable via any surface that can write to resources — the DevTool, a custom admin UI, or a CLI command. Changes take effect on the next generator turn since the catalog context formatter re-reads the collection each step.
 
 This is the main operational reason skills exist as Markdown resources rather than imports: you can adjust how the agent handles a class of requests without shipping code.

@@ -92,11 +92,11 @@ State is a first-class primitive. Four scopes with atomic operations:
 | **Request** | Single action execution | Temporary processing data |
 | **Session** | Across requests in a conversation | Chat history, current mode, counters |
 | **User** | Across all sessions for a user | Preferences, accumulated knowledge |
-| **Project** | Shared across all sessions | Configuration, global data |
+| **Org** | Shared across all sessions | Configuration, global data |
 
 Each block declares only the fields it touches via partial schemas. A counter block doesn't need to know about a preferences block's schema.
 
-**Resources** go a step further. A resource has both a content body — a document, a plan, a code file — and structured metadata alongside it. Both live in one typed container with atomic operations, scoped to sessions, users, or projects. Your agent can read a draft, revise it, and update its metadata in one call.
+**Resources** go a step further. A resource has both a content body — a document, a plan, a code file — and structured metadata alongside it. Both live in one typed container with atomic operations, scoped to sessions, users, or orgs. Your agent can read a draft, revise it, and update its metadata in one call.
 
 ## Composable, not chaotic
 
