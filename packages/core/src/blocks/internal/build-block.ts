@@ -234,7 +234,16 @@ export function buildBlock<
       // Substrate-only escape (FIX-503). Bypasses the BP-011 nesting guard
       // for first-party utilities whose composition cannot be expressed via
       // sibling sequencer steps. Every caller MUST document why.
-      return dispatch(rawInput, ctx);
+      //
+      // Wrap the ctx with the `INSIDE_EXECUTE` flag explicitly cleared so
+      // the called block's own internals (sequencer steps, router routes,
+      // generator tools) don't inherit the caller's flag and trip the
+      // guard. Without this, calling a compound block (sequencer/router/
+      // generator-with-tools) via `_runUnchecked` from inside a handler
+      // would throw `BlockNestingError` at the first child dispatch.
+      const cleared = Object.create(ctx) as BlockContext;
+      (cleared as unknown as Record<symbol, unknown>)[INSIDE_EXECUTE] = false;
+      return dispatch(rawInput, cleared);
     },
     connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<ZodTypeAny, TOutputSchema> {
       const nextConfig = {

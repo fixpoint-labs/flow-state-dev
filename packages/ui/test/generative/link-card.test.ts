@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { emitLinkCardTool, LinkCardSchema } from "../../src/generative/link-card";
-
-import { runForTest } from "@flow-state-dev/testing";
+import { runForTest } from "../helpers";
 function makeCtx() {
   const emitComponent = vi.fn();
   return {
