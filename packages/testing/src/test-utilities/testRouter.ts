@@ -11,7 +11,7 @@ import type {
 /**
  * Executes a router block and returns the selected route name when detected.
  *
- * Wraps the router's substrate `_run` to inject an `onRouteSelected` hook
+ * Wraps the router's substrate `run` to inject an `onRouteSelected` hook
  * that captures the selected route name. This works transparently with
  * connectInput (which creates a new block but preserves the original name).
  */
@@ -22,8 +22,8 @@ export async function testRouter<TBlock extends BlockDefinition<any, any>>(
   let selectedRoute: string | undefined;
 
   const runtime = asRuntime(router) as BlockRuntime<any, any>;
-  const originalRun = runtime._run;
-  runtime._run = async (input: unknown, ctx: unknown) => {
+  const originalRun = runtime.run;
+  runtime.run = async (input: unknown, ctx: unknown) => {
     const blockCtx = ctx as { _runtimeHooks?: Record<string, Function> };
     const existingOnRouteSelected = blockCtx._runtimeHooks?.onRouteSelected;
     blockCtx._runtimeHooks = {
@@ -44,6 +44,6 @@ export async function testRouter<TBlock extends BlockDefinition<any, any>>(
       selectedRoute: selectedRoute ?? "unknown"
     };
   } finally {
-    runtime._run = originalRun;
+    runtime.run = originalRun;
   }
 }

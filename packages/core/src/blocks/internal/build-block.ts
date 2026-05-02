@@ -157,7 +157,7 @@ export function buildBlock<
   // concurrent sibling branches isolated — they each get their own
   // wrapper and never observe each other's flag.
   // Substrate orchestration (sequencer/router/generator) doesn't wrap,
-  // so chained sibling `_run` calls between substrate and child blocks
+  // so chained sibling `run` calls between substrate and child blocks
   // pass through naturally.
   const stampsInsideExecute = kind === "handler";
 
@@ -221,7 +221,7 @@ export function buildBlock<
     config: runtimeConfig,
     declaredResources: options.declaredResources,
     requiresOrg,
-    async _run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
+    async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       const ctxBag = ctx as unknown as Record<symbol, unknown>;
       if (ctxBag[INSIDE_EXECUTE] === true) {
         // Identify the outer block via _blockIdentity for a useful error message.
@@ -230,7 +230,7 @@ export function buildBlock<
       }
       return dispatch(rawInput, ctx);
     },
-    async _runUnchecked(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
+    async runUnchecked(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       // Substrate-only escape (FIX-503). Bypasses the BP-011 nesting guard
       // for first-party utilities whose composition cannot be expressed via
       // sibling sequencer steps. Every caller MUST document why.
@@ -239,7 +239,7 @@ export function buildBlock<
       // the called block's own internals (sequencer steps, router routes,
       // generator tools) don't inherit the caller's flag and trip the
       // guard. Without this, calling a compound block (sequencer/router/
-      // generator-with-tools) via `_runUnchecked` from inside a handler
+      // generator-with-tools) via `runUnchecked` from inside a handler
       // would throw `BlockNestingError` at the first child dispatch.
       const cleared = Object.create(ctx) as BlockContext;
       (cleared as unknown as Record<symbol, unknown>)[INSIDE_EXECUTE] = false;

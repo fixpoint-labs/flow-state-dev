@@ -182,7 +182,7 @@ describe("buildBlock", () => {
 
       const outer = handler({
         name: "outer",
-        execute: async (_input, ctx) => asRuntime(inner)._run(undefined, ctx)
+        execute: async (_input, ctx) => asRuntime(inner).run(undefined, ctx)
       });
 
       const ctx = createMockContext();
@@ -203,10 +203,10 @@ describe("buildBlock", () => {
       expect([ra, rb]).toEqual(["a-done", "b-done"]);
     });
 
-    it("_runUnchecked clears INSIDE_EXECUTE so the called block's children dispatch normally", async () => {
-      // Regression for the bug bot finding: _runUnchecked must not leak the
+    it("runUnchecked clears INSIDE_EXECUTE so the called block's children dispatch normally", async () => {
+      // Regression for the bug bot finding: runUnchecked must not leak the
       // caller's INSIDE_EXECUTE flag into the dispatched block. Otherwise a
-      // sequencer (or any compound block) called via _runUnchecked from
+      // sequencer (or any compound block) called via runUnchecked from
       // inside a handler would throw at the first child step.
       const inner = sequencer({ name: "inner-seq", inputSchema: z.unknown() })
         .then(handler({ name: "inner-step-1", execute: () => "step-1" }))
@@ -214,7 +214,7 @@ describe("buildBlock", () => {
 
       const outer = handler({
         name: "outer-handler",
-        execute: async (_input, ctx) => asRuntime(inner)._runUnchecked(undefined, ctx)
+        execute: async (_input, ctx) => asRuntime(inner).runUnchecked(undefined, ctx)
       });
 
       const ctx = createMockContext();

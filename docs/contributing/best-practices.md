@@ -129,12 +129,12 @@ Update policy:
   - A handler block must not instantiate or call any block (handler, generator, sequencer, router) inside its `execute` body.
   - When a block needs to produce another block's output and then act on it, model it as a sequencer with the upstream block as one step and the consuming handler as the next step.
 - Enforcement (FIX-503):
-  - Type-level: `BlockDefinition` no longer exposes a `run` method. The substrate dispatch entry lives on `BlockRuntime._run` and is recovered at substrate boundaries via `asRuntime(block)`. `someBlock.run(input, ctx)` from a user handler body is now a TypeScript error.
-  - Runtime: `BlockRuntime._run` checks for an `INSIDE_EXECUTE` symbol stamped on the context while a handler's `execute` is on the stack and throws `BlockNestingError` if invoked from there. Catches `any`-cast escapes that bypass the type firewall.
+  - Type-level: `BlockDefinition` no longer exposes a `run` method. The substrate dispatch entry lives on `BlockRuntime.run` and is recovered at substrate boundaries via `asRuntime(block)`. `someBlock.run(input, ctx)` from a user handler body is now a TypeScript error.
+  - Runtime: `BlockRuntime.run` checks for an `INSIDE_EXECUTE` symbol stamped on the context while a handler's `execute` is on the stack and throws `BlockNestingError` if invoked from there. Catches `any`-cast escapes that bypass the type firewall.
   - Tests: drive a block from test code with `runForTest(block, input, ctx)` from `@flow-state-dev/testing`.
 - Why:
   - Every block kind has substrate-managed semantics: streaming, retry, tool loops, observability hooks, state snapshots, lifecycle traces. Calling a block from inside a handler bypasses all of these and makes the inner block invisible to the runtime — no devtools row, no checkpoint, no rescue. The sequencer / router / generator-tool composition primitives are the only sanctioned way to chain blocks.
-  - First-party substrate utilities that genuinely cannot be expressed via sibling-step composition (e.g. dynamic worker dispatch by `task.assignee` in `dispatchAndExecuteBlock`, the classifier-bound input shape in `intentRouter`) use the substrate `_runUnchecked` escape, which bypasses the runtime guard. Every such call site must be documented inline with a justification.
+  - First-party substrate utilities that genuinely cannot be expressed via sibling-step composition (e.g. dynamic worker dispatch by `task.assignee` in `dispatchAndExecuteBlock`, the classifier-bound input shape in `intentRouter`) use the substrate `runUnchecked` escape, which bypasses the runtime guard. Every such call site must be documented inline with a justification.
 
 ### BP-012: Use `.tap()` for state-mutation-only blocks — never return input as passthrough
 

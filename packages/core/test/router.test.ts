@@ -60,18 +60,18 @@ describe("router builder", () => {
     await expect(runForTest(block, 1, ctx)).rejects.toThrow("invalid route");
   });
 
-  it("throws when selected route has no _run method", async () => {
+  it("throws when selected route has no run method", async () => {
     const valid = handler({
       name: "valid",
       execute: () => "ok"
     });
 
-    // FIX-503: substrate dispatch entry is `_run` (was `run` before the
+    // FIX-503: substrate dispatch entry is `run` (was `run` before the
     // BP-011 type firewall). Strip it to simulate a misshapen route.
     const missingRun = {
       ...valid,
       name: "missing-run",
-      _run: undefined
+      run: undefined
     };
 
     const block = router({

@@ -117,7 +117,7 @@ export async function executeBlockCommand(
   let success = true;
 
   try {
-    output = await asRuntime(block)._run(input, ctx);
+    output = await asRuntime(block).run(input, ctx);
   } catch (err) {
     success = false;
     error = {

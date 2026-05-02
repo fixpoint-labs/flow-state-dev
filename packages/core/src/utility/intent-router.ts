@@ -66,7 +66,7 @@ export function intentRouter<TCategories extends IntentRouterCategories>(
   );
 
   // BP-011 / FIX-503 deviation: this handler intentionally invokes the
-  // classifier via the substrate `_runUnchecked` escape so the classification
+  // classifier via the substrate `runUnchecked` escape so the classification
   // result is bound to the original input in a single step. Lifting the
   // classifier into a sibling sequencer step would require recovering
   // `originalInput` from `ctx.parent` (only populated under the full server
@@ -85,7 +85,7 @@ export function intentRouter<TCategories extends IntentRouterCategories>(
       })
     }),
     execute: async (input, ctx) => {
-      const classification = await asRuntime(classifier)._runUnchecked(input, ctx);
+      const classification = await asRuntime(classifier).runUnchecked(input, ctx);
       return {
         originalInput: input,
         classification

@@ -44,16 +44,16 @@ import {
 } from "@flow-state-dev/tasks";
 
 /**
- * True when `workers` is a single block (carries the substrate `_run`
+ * True when `workers` is a single block (carries the substrate `run`
  * dispatch entry) rather than a record of blocks. Discriminates on
- * `_run` not on key presence so a registry that happens to have a key
- * called `"_run"` doesn't misroute. Updated for FIX-503 — the public
- * `BlockDefinition.run` was removed in favour of `BlockRuntime._run`.
+ * `run` not on key presence so a registry that happens to have a key
+ * called `"run"` doesn't misroute. Updated for FIX-503 — the public
+ * `BlockDefinition.run` was removed in favour of `BlockRuntime.run`.
  */
 export function isUniformWorker(
   workers: TaskWorker | TaskWorkerRegistry
 ): workers is TaskWorker {
-  return typeof (workers as { _run?: unknown })._run === "function";
+  return typeof (workers as { run?: unknown }).run === "function";
 }
 
 /**

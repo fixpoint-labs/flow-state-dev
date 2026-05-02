@@ -12,5 +12,5 @@ export function runForTest<TInput, TOutput>(
   input: TInput,
   ctx: BlockContext
 ): Promise<TOutput> {
-  return asRuntime(block)._run(input, ctx);
+  return asRuntime(block).run(input, ctx);
 }

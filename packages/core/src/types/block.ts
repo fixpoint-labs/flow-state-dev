@@ -436,14 +436,14 @@ export interface BlockDefinition<
 }
 
 /**
- * Internal substrate view of a block (FIX-503). Adds the `_run` dispatch
+ * Internal substrate view of a block (FIX-503). Adds the `run` dispatch
  * entry point that the runtime uses to actually execute a block. Recovered
  * from a public `BlockDefinition` via `asRuntime()` at substrate boundaries.
  *
- * Not part of the public API surface — `_run`'s leading underscore plus the
- * type-level invisibility on `BlockDefinition` together signal that this is
- * substrate-only. The runtime guard in `_run` throws `BlockNestingError` if
- * a handler's `execute` reaches `_run` via an `any`-cast escape.
+ * Not part of the public API surface — `run` is invisible on `BlockDefinition`,
+ * so user code can't call `block.run(...)` without first laundering through
+ * `asRuntime()`. The runtime guard in `run` throws `BlockNestingError` if a
+ * handler's `execute` reaches `run` via an `any`-cast escape.
  *
  * @internal
  */
@@ -456,19 +456,19 @@ export interface BlockRuntime<
   /** @internal — dispatch entry point used by the substrate. Subject to the
    *  BP-011 runtime guard — throws `BlockNestingError` if invoked from
    *  inside a handler's `execute`. */
-  _run(input: TInput, ctx: BlockContext): Promise<TOutput>;
+  run(input: TInput, ctx: BlockContext): Promise<TOutput>;
   /** @internal — substrate-only escape that bypasses the BP-011 runtime
    *  guard. Reserved for first-party substrate code that intentionally
    *  invokes a nested block from inside a handler body (e.g. utilities
    *  whose composition cannot be expressed via sibling sequencer steps).
    *  Every call site MUST be documented with a justification. */
-  _runUnchecked(input: TInput, ctx: BlockContext): Promise<TOutput>;
+  runUnchecked(input: TInput, ctx: BlockContext): Promise<TOutput>;
 }
 
 /**
  * Substrate-only helper that recovers the runtime view of a block. Pure
  * type-level cast — every `BlockDefinition` produced by `buildBlock`
- * carries the `_run` method at runtime. Substrate (executor, sequencer,
+ * carries the `run` method at runtime. Substrate (executor, sequencer,
  * router, generator tool loop, CLI block runner) uses this at the call
  * boundary.
  *
@@ -487,19 +487,19 @@ export function asRuntime<
 
 /**
  * Symbol stamped on a `BlockContext` while a handler's user-supplied
- * `execute` is on the stack. The runtime guard in `BlockRuntime._run`
+ * `execute` is on the stack. The runtime guard in `BlockRuntime.run`
  * checks this on entry and throws `BlockNestingError` if set, catching
  * `any`-cast escapes that bypass the type-level firewall (BP-011).
  *
  * Substrate paths (sequencer/router/generator orchestration) never set
- * this flag, so chained `_run` calls between sibling blocks pass through.
+ * this flag, so chained `run` calls between sibling blocks pass through.
  *
  * @internal
  */
 export const INSIDE_EXECUTE = Symbol("flow-state.insideExecute");
 
 /**
- * Thrown by the runtime guard when a block's `_run` is invoked from inside
+ * Thrown by the runtime guard when a block's `run` is invoked from inside
  * another block's user-supplied `execute`. Signals a BP-011 violation that
  * escaped the type-level firewall (typically via an `any` cast).
  */

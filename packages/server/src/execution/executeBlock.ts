@@ -225,7 +225,7 @@ async function executeByKind(
     };
     await emitGeneratorLifecycleSeam(seams, "before_execute", options.metadata);
     try {
-      const output = await asRuntime(block)._run(input, generatorCtx as any);
+      const output = await asRuntime(block).run(input, generatorCtx as any);
       await emitGeneratorLifecycleSeam(seams, "after_execute", options.metadata);
 
       // FIX-480: streaming-text generators write `_blockOutputHint` on
@@ -250,7 +250,7 @@ async function executeByKind(
     block.kind === "sequencer" ||
     block.kind === "router"
   ) {
-    return { output: await asRuntime(block)._run(input, ctx as any) };
+    return { output: await asRuntime(block).run(input, ctx as any) };
   }
 
   throw new Error(`Unknown block kind "${String(block.kind)}"`);

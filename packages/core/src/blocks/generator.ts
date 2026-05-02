@@ -686,7 +686,7 @@ function compileToolsWithExecute(
         await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
         try {
           const output = await runWithRetry(
-            () => withTimeout(Promise.resolve(asRuntime(tool)._run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
+            () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
             retry
           );
           await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
@@ -825,13 +825,13 @@ function buildToolDescriptionContext(tools: GeneratorTool[]): string | undefined
 function isBlockObserver(
   observer: ToolsConfig["onToolStarted"]
 ): observer is BlockDefinition<any, any> {
-  // Block observers carry the substrate `_run` dispatch entry point installed
+  // Block observers carry the substrate `run` dispatch entry point installed
   // by `buildBlock`; plain function observers don't. Discriminate on that.
   return (
     typeof observer === "object" &&
     observer !== null &&
-    "_run" in observer &&
-    typeof (observer as { _run?: unknown })._run === "function"
+    "run" in observer &&
+    typeof (observer as { run?: unknown }).run === "function"
   );
 }
 
@@ -845,7 +845,7 @@ async function runToolObserver(
   }
 
   if (isBlockObserver(observer as ToolsConfig["onToolStarted"])) {
-    await asRuntime(observer as BlockDefinition<any, any>)._run(event, ctx);
+    await asRuntime(observer as BlockDefinition<any, any>).run(event, ctx);
     return;
   }
 

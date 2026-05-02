@@ -466,7 +466,7 @@ async function executeBlock(
     }
 
     try {
-      const output = await asRuntime(block)._run(input, execCtx);
+      const output = await asRuntime(block).run(input, execCtx);
       scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt);
 
       // Generator blocks own their own block_output trace (carries modelUsage

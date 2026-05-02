@@ -9,13 +9,13 @@
  *      or back off).
  *   3. Pack the task into `TaskWorkerInput`, look up the worker from
  *      the registry (or use the uniform worker), invoke the worker via
- *      the substrate `_runUnchecked` entry point.
+ *      the substrate `runUnchecked` entry point.
  *   4. On success → `collection.complete(taskId, output)`.
  *   5. On throw → `collection.fail(taskId, message)` and (per the
  *      `onError` policy) either swallow or rethrow.
  *
  * BP-011 / FIX-503 deviation: the produced block is a `handler` whose
- * execute invokes the worker via `asRuntime(worker)._runUnchecked`. A
+ * execute invokes the worker via `asRuntime(worker).runUnchecked`. A
  * sibling-sequencer composition would require static knowledge of the
  * worker at build time, but the worker is selected at claim time from
  * `task.assignee` against a registry. Using a router-by-assignee inside
@@ -69,14 +69,14 @@ export interface DispatchAndExecuteResult<TOut = unknown> {
 
 /**
  * A `BlockDefinition` exposes a callable substrate dispatch entry point;
- * a registry is a plain record of named blocks. Discriminate on `_run`
+ * a registry is a plain record of named blocks. Discriminate on `run`
  * rather than on `kind`-key presence — the latter would misroute a
  * registry that happens to use `"kind"` as an assignee key.
  */
 function isUniformWorker(
   workers: TaskWorker | TaskWorkerRegistry
 ): workers is TaskWorker {
-  return typeof (workers as { _run?: unknown })._run === "function";
+  return typeof (workers as { run?: unknown }).run === "function";
 }
 
 function resolveWorker(
@@ -165,9 +165,9 @@ export function dispatchAndExecuteBlock<TOut = unknown>(
       try {
         // Substrate path (FIX-503): the worker is selected dynamically from
         // `task.assignee`, so it can't be wired into a static sibling-step
-        // sequencer composition. `_runUnchecked` is the sanctioned escape
+        // sequencer composition. `runUnchecked` is the sanctioned escape
         // for first-party substrate dispatch.
-        const output = (await asRuntime(worker)._runUnchecked(workerInput, ctx)) as TOut;
+        const output = (await asRuntime(worker).runUnchecked(workerInput, ctx)) as TOut;
         await options.collection.complete(claimed.id, output);
         return { claimed: true, taskId: claimed.id, output };
       } catch (err) {

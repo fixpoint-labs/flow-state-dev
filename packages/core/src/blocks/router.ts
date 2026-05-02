@@ -196,7 +196,7 @@ export function router<
         scopedCtx._runtimeHooks?.onBlockStart?.(selected.name, selected.kind, input);
         resolveActiveStatusMessage(selected, input, scopedCtx);
         try {
-          const output = await asRuntime(selected)._run(input, scopedCtx);
+          const output = await asRuntime(selected).run(input, scopedCtx);
           scopedCtx._runtimeHooks?.onBlockComplete?.(selected.name, selected.kind, output, Date.now() - startedAt);
           return output;
         } catch (error) {

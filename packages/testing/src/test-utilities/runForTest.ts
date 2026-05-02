@@ -3,7 +3,7 @@
  * test code (FIX-503).
  *
  * The public `BlockDefinition` type intentionally omits the runtime
- * dispatch entry (`_run`); production callers are expected to compose
+ * dispatch entry (`run`); production callers are expected to compose
  * blocks via sequencer/router/generator rather than invoking them
  * directly. Tests still need to fire a single block in isolation, so
  * this helper recovers the substrate view via `asRuntime` and delegates.
@@ -25,5 +25,5 @@ export function runForTest<
   input: TInput,
   ctx: BlockContext
 ): Promise<TOutput> {
-  return asRuntime(block)._run(input, ctx);
+  return asRuntime(block).run(input, ctx);
 }
