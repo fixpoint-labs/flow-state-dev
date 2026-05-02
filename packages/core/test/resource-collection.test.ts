@@ -14,8 +14,7 @@ import {
 import { defineResource } from "../src/types/resource";
 import { handler, sequencer } from "../src";
 import { extractDeclaredResources, mergeDeclaredResources } from "../src/blocks/internal/build-block";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 // ---------------------------------------------------------------------------
 // defineResourceCollection()
 // ---------------------------------------------------------------------------
@@ -450,7 +449,7 @@ describe("handler with collection resources", () => {
     });
 
     const ctx = createMockContext();
-    await expect(block.run("test", ctx)).resolves.toBe("processed:test");
+    await expect(runForTest(block, "test", ctx)).resolves.toBe("processed:test");
   });
 });
 

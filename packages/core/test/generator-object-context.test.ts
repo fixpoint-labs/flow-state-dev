@@ -9,8 +9,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { defineCapability } from "../src/capability";
 import { generator } from "../src/blocks/generator";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 interface CapturedCall {
   messages: unknown[];
 }
@@ -47,7 +46,7 @@ describe("generator object-form context (FIX-434)", () => {
     const ctx = createMockContext({
       resolveModel: () => makeCapturingModel(captured),
     });
-    await block.run({ value: 1 }, ctx);
+    await runForTest(block, { value: 1 }, ctx);
 
     const sys = systemMessages(captured[0]!);
     expect(sys).toHaveLength(1);
@@ -80,7 +79,7 @@ describe("generator object-form context (FIX-434)", () => {
     const ctx = createMockContext({
       resolveModel: () => makeCapturingModel(captured),
     });
-    await block.run({ value: 1 }, ctx);
+    await runForTest(block, { value: 1 }, ctx);
 
     const sys = systemMessages(captured[0]!);
     expect(sys).toHaveLength(1);
@@ -104,7 +103,7 @@ describe("generator object-form context (FIX-434)", () => {
     const ctx = createMockContext({
       resolveModel: () => makeCapturingModel(captured),
     });
-    await block.run({ value: 1 }, ctx);
+    await runForTest(block, { value: 1 }, ctx);
 
     const sys = systemMessages(captured[0]!);
     expect(sys[0]!.content).toBe(
@@ -128,7 +127,7 @@ describe("generator object-form context (FIX-434)", () => {
     const ctx = createMockContext({
       resolveModel: () => makeCapturingModel(captured),
     });
-    await block.run({ value: 1 }, ctx);
+    await runForTest(block, { value: 1 }, ctx);
 
     const sys = systemMessages(captured[0]!);
     expect(sys[0]!.content).toBe(
@@ -147,7 +146,7 @@ describe("generator object-form context (FIX-434)", () => {
     const ctx = createMockContext({
       resolveModel: () => makeCapturingModel(captured),
     });
-    await block.run({ value: 1 }, ctx);
+    await runForTest(block, { value: 1 }, ctx);
 
     const sys = systemMessages(captured[0]!);
     expect(sys[0]!.content).toBe("P\n\n<memory>\n  m\n</memory>");
@@ -171,7 +170,7 @@ describe("generator object-form context (FIX-434)", () => {
     const ctx = createMockContext({
       resolveModel: () => makeCapturingModel(captured),
     });
-    await block.run({ value: 1 }, ctx);
+    await runForTest(block, { value: 1 }, ctx);
 
     const sys = systemMessages(captured[0]!);
     expect(sys[0]!.content).toBe(
@@ -190,7 +189,7 @@ describe("generator object-form context (FIX-434)", () => {
     const ctx = createMockContext({
       resolveModel: () => makeCapturingModel(captured),
     });
-    await block.run({ value: 1 }, ctx);
+    await runForTest(block, { value: 1 }, ctx);
 
     const sys = systemMessages(captured[0]!);
     // Combined message holds just the prompt (no tagged content), then two string entries.
@@ -212,7 +211,7 @@ describe("generator object-form context (FIX-434)", () => {
     const ctx = createMockContext({
       resolveModel: () => makeCapturingModel(captured),
     });
-    await block.run({ value: 1 }, ctx);
+    await runForTest(block, { value: 1 }, ctx);
 
     const sys = systemMessages(captured[0]!);
     expect(sys[0]!.content).toBe(
@@ -231,7 +230,7 @@ describe("generator object-form context (FIX-434)", () => {
     const ctx = createMockContext({
       resolveModel: () => makeCapturingModel(captured),
     });
-    await expect(block.run({ value: 1 }, ctx)).rejects.toThrow(
+    await expect(runForTest(block, { value: 1 }, ctx)).rejects.toThrow(
       /Reserved context tag name/
     );
   });
@@ -249,7 +248,7 @@ describe("generator object-form context (FIX-434)", () => {
     const ctx = createMockContext({
       resolveModel: () => makeCapturingModel(captured),
     });
-    await block.run({ value: 1 }, ctx);
+    await runForTest(block, { value: 1 }, ctx);
     const sys = systemMessages(captured[0]).map((m) => m.content).join("\n");
     expect(sys).toContain("<skills>");
     expect(sys).toContain("preamble");
@@ -271,7 +270,7 @@ describe("generator object-form context (FIX-434)", () => {
     const ctx = createMockContext({
       resolveModel: () => makeCapturingModel(captured),
     });
-    await block.run({ value: 1 }, ctx);
+    await runForTest(block, { value: 1 }, ctx);
     const sys = systemMessages(captured[0]).map((m) => m.content).join("\n");
     expect(sys).toContain("<skills>");
     expect(sys).toContain("rendered");
@@ -288,6 +287,6 @@ describe("generator object-form context (FIX-434)", () => {
     const ctx = createMockContext({
       resolveModel: () => makeCapturingModel(captured),
     });
-    await expect(block.run({ value: 1 }, ctx)).rejects.toThrow(/type mismatch/);
+    await expect(runForTest(block, { value: 1 }, ctx)).rejects.toThrow(/type mismatch/);
   });
 });

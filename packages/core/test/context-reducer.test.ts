@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { utility, sequencer } from "../src";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 describe("utility.contextReducer", () => {
   it("returns a generator block definition", () => {
     const block = utility.contextReducer({
@@ -35,7 +34,7 @@ describe("utility.contextReducer", () => {
       })
     });
 
-    await expect(block.run("source text", ctx)).resolves.toEqual({
+    await expect(runForTest(block, "source text", ctx)).resolves.toEqual({
       distilled: "Most important ideas",
       keyPoints: ["decision", "constraint"]
     });
@@ -65,7 +64,7 @@ describe("utility.contextReducer", () => {
       })
     });
 
-    await expect(block.run("source text", ctx)).resolves.toEqual({
+    await expect(runForTest(block, "source text", ctx)).resolves.toEqual({
       cleaned: "Cleaned context",
       removedCategories: ["repetition"]
     });
@@ -96,7 +95,7 @@ describe("utility.contextReducer", () => {
       })
     });
 
-    await expect(block.run("source text", ctx)).resolves.toEqual({
+    await expect(runForTest(block, "source text", ctx)).resolves.toEqual({
       compressed: "Compressed context",
       compressionRatio: 0.35,
       dropped: ["examples"]
@@ -140,12 +139,12 @@ describe("utility.contextReducer", () => {
       })
     });
 
-    await expect(defaultBlock.run("x", defaultCtx)).resolves.toEqual({
+    await expect(runForTest(defaultBlock, "x", defaultCtx)).resolves.toEqual({
       compressed: "ok",
       compressionRatio: 0.4,
       dropped: ["small-talk"]
     });
-    await expect(customBlock.run("x", customCtx)).resolves.toEqual({
+    await expect(runForTest(customBlock, "x", customCtx)).resolves.toEqual({
       compressed: "ok",
       tokensSaved: 120
     });
@@ -178,7 +177,7 @@ describe("utility.contextReducer", () => {
       })
     });
 
-    await expect(chain.run({ source: "details" }, ctx)).resolves.toEqual({
+    await expect(runForTest(chain, { source: "details" }, ctx)).resolves.toEqual({
       distilled: "condensed",
       keyPoints: ["k1"]
     });

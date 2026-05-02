@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { handler, sequencer, utility } from "../src";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 describe("utility.intentRouter", () => {
   const makeContext = (category: string, confidence: number) =>
     createMockContext({
@@ -72,7 +71,7 @@ describe("utility.intentRouter", () => {
       }
     });
 
-    await expect(triage.run("I was charged twice", makeContext("billing", 0.91))).resolves.toEqual({
+    await expect(runForTest(triage, "I was charged twice", makeContext("billing", 0.91))).resolves.toEqual({
       route: "billing"
     });
   });
@@ -109,7 +108,7 @@ describe("utility.intentRouter", () => {
       fallback
     });
 
-    await expect(triage.run("help", makeContext("billing", 0.4))).resolves.toEqual({
+    await expect(runForTest(triage, "help", makeContext("billing", 0.4))).resolves.toEqual({
       route: "fallback"
     });
   });
@@ -140,7 +139,7 @@ describe("utility.intentRouter", () => {
       confidenceThreshold: 0.8
     });
 
-    await expect(triage.run("help", makeContext("billing", 0.5))).rejects.toThrow(
+    await expect(runForTest(triage, "help", makeContext("billing", 0.5))).rejects.toThrow(
       /below threshold 0.8, and no fallback handler was provided/
     );
   });
@@ -165,7 +164,7 @@ describe("utility.intentRouter", () => {
     });
 
     await expect(
-      triage.run("I was charged twice", makeContext("billing", 0.91))
+      runForTest(triage, "I was charged twice", makeContext("billing", 0.91))
     ).resolves.toEqual({ received: "I was charged twice" });
   });
 
@@ -198,7 +197,7 @@ describe("utility.intentRouter", () => {
       }
     });
 
-    await expect(triage.run("app is crashing", makeContext("technical", 0.88))).resolves.toEqual({
+    await expect(runForTest(triage, "app is crashing", makeContext("technical", 0.88))).resolves.toEqual({
       route: "nested"
     });
   });

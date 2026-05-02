@@ -15,12 +15,12 @@ describe("isBlockDefinition", () => {
     expect(isBlockDefinition(null)).toBe(false);
   });
 
-  it("returns false for an object missing run", () => {
+  it("returns false for an object missing _run", () => {
     expect(isBlockDefinition({ kind: "handler", name: "test" })).toBe(false);
   });
 
   it("returns false for an object with invalid kind", () => {
-    expect(isBlockDefinition({ kind: "unknown", name: "test", run: () => {} })).toBe(false);
+    expect(isBlockDefinition({ kind: "unknown", name: "test", _run: () => {} })).toBe(false);
   });
 });
 
@@ -29,7 +29,8 @@ describe("resolveBlock", () => {
     const block = await resolveBlock(resolve(fixturesDir, "valid-block.ts"));
     expect(block.kind).toBe("handler");
     expect(block.name).toBe("echo-block");
-    expect(typeof block.run).toBe("function");
+    // FIX-503: substrate dispatch entry is `_run` (was `run`).
+    expect(typeof (block as { _run?: unknown })._run).toBe("function");
   });
 
   it("throws CliError for missing file", async () => {

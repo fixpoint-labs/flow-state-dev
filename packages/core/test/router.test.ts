@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { handler, router } from "../src";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 describe("router builder", () => {
   it("executes selected route", async () => {
     const low = handler({
@@ -20,8 +19,8 @@ describe("router builder", () => {
     });
 
     const ctx = createMockContext();
-    await expect(block.run(3, ctx)).resolves.toBe("low");
-    await expect(block.run(20, ctx)).resolves.toBe("high");
+    await expect(runForTest(block, 3, ctx)).resolves.toBe("low");
+    await expect(runForTest(block, 20, ctx)).resolves.toBe("high");
   });
 
   it("throws when selected route is not in declared candidates", async () => {
@@ -41,7 +40,7 @@ describe("router builder", () => {
     });
 
     const ctx = createMockContext();
-    await expect(block.run(1, ctx)).rejects.toThrow("invalid route");
+    await expect(runForTest(block, 1, ctx)).rejects.toThrow("invalid route");
   });
 
   it("uses validateRoute override when provided", async () => {
@@ -58,19 +57,21 @@ describe("router builder", () => {
     });
 
     const ctx = createMockContext();
-    await expect(block.run(1, ctx)).rejects.toThrow("invalid route");
+    await expect(runForTest(block, 1, ctx)).rejects.toThrow("invalid route");
   });
 
-  it("throws when selected route has no run method", async () => {
+  it("throws when selected route has no _run method", async () => {
     const valid = handler({
       name: "valid",
       execute: () => "ok"
     });
 
+    // FIX-503: substrate dispatch entry is `_run` (was `run` before the
+    // BP-011 type firewall). Strip it to simulate a misshapen route.
     const missingRun = {
       ...valid,
       name: "missing-run",
-      run: undefined
+      _run: undefined
     };
 
     const block = router({
@@ -80,6 +81,6 @@ describe("router builder", () => {
     });
 
     const ctx = createMockContext();
-    await expect(block.run(1, ctx)).rejects.toThrow("not a function");
+    await expect(runForTest(block, 1, ctx)).rejects.toThrow("not a function");
   });
 });

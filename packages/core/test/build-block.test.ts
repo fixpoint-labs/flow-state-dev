@@ -2,8 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { BlockConfig } from "../src/types/block";
 import { buildBlock } from "../src/blocks/internal/build-block";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 class RetryableError extends Error {}
 class FatalError extends Error {}
 
@@ -43,8 +42,8 @@ describe("buildBlock", () => {
     });
 
     const ctx = createMockContext();
-    await expect(block.run({ count: 1 }, ctx)).resolves.toEqual({ total: 2 });
-    await expect(block.run({ count: "bad" } as unknown as { count: number }, ctx)).rejects.toThrow(
+    await expect(runForTest(block, { count: 1 }, ctx)).resolves.toEqual({ total: 2 });
+    await expect(runForTest(block, { count: "bad" } as unknown as { count: number }, ctx)).rejects.toThrow(
       "input validation failed"
     );
   });
@@ -65,7 +64,7 @@ describe("buildBlock", () => {
     expect(
       block.config.execute?.({ count: "bad" } as unknown as { count: number }, ctx)
     ).toEqual({ total: "bad1" });
-    await expect(block.run({ count: "bad" } as unknown as { count: number }, ctx)).rejects.toThrow(
+    await expect(runForTest(block, { count: "bad" } as unknown as { count: number }, ctx)).rejects.toThrow(
       "input validation failed"
     );
   });
@@ -82,7 +81,7 @@ describe("buildBlock", () => {
       .connectOutput((value) => `n:${value}`);
 
     const ctx = createMockContext();
-    await expect(block.run("4", ctx)).resolves.toBe("n:8");
+    await expect(runForTest(block, "4", ctx)).resolves.toBe("n:8");
   });
 
   it("connectInput preserves declaredResources", () => {
@@ -135,7 +134,7 @@ describe("buildBlock", () => {
     });
 
     const ctx = createMockContext();
-    await expect(block.run(1, ctx)).rejects.toThrow("try again");
+    await expect(runForTest(block, 1, ctx)).rejects.toThrow("try again");
     expect(attempts).toBe(1);
   });
 
@@ -153,7 +152,7 @@ describe("buildBlock", () => {
       }
     });
 
-    await expect(okBlock.run(1, ctx)).resolves.toBe(2);
+    await expect(runForTest(okBlock, 1, ctx)).resolves.toBe(2);
     expect(onCompleted).toHaveBeenCalledWith(2, ctx);
 
     const failingBlock = buildBlock({
@@ -167,7 +166,7 @@ describe("buildBlock", () => {
       }
     });
 
-    await expect(failingBlock.run(1, ctx)).rejects.toThrow("boom");
+    await expect(runForTest(failingBlock, 1, ctx)).rejects.toThrow("boom");
     expect(onErrored).toHaveBeenCalledTimes(1);
     expect(onErrored.mock.calls[0]?.[0]).toBeInstanceOf(Error);
   });

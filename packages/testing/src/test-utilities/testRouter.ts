@@ -1,4 +1,5 @@
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockDefinition, BlockRuntime } from "@flow-state-dev/core/types";
+import { asRuntime } from "@flow-state-dev/core/types";
 import { testBlock } from "./testBlock";
 import type {
   BlockInput,
@@ -10,9 +11,9 @@ import type {
 /**
  * Executes a router block and returns the selected route name when detected.
  *
- * Wraps the router's `.run` to inject an `onRouteSelected` hook that captures
- * the selected route name. This works transparently with connectInput (which
- * creates a new block but preserves the original name).
+ * Wraps the router's substrate `_run` to inject an `onRouteSelected` hook
+ * that captures the selected route name. This works transparently with
+ * connectInput (which creates a new block but preserves the original name).
  */
 export async function testRouter<TBlock extends BlockDefinition<any, any>>(
   router: TBlock,
@@ -20,8 +21,9 @@ export async function testRouter<TBlock extends BlockDefinition<any, any>>(
 ): Promise<TestRouterResult<BlockOutput<TBlock>>> {
   let selectedRoute: string | undefined;
 
-  const originalRun = router.run;
-  router.run = async (input: unknown, ctx: unknown) => {
+  const runtime = asRuntime(router) as BlockRuntime<any, any>;
+  const originalRun = runtime._run;
+  runtime._run = async (input: unknown, ctx: unknown) => {
     const blockCtx = ctx as { _runtimeHooks?: Record<string, Function> };
     const existingOnRouteSelected = blockCtx._runtimeHooks?.onRouteSelected;
     blockCtx._runtimeHooks = {
@@ -31,7 +33,7 @@ export async function testRouter<TBlock extends BlockDefinition<any, any>>(
         existingOnRouteSelected?.(routerName, routeName, instanceId);
       }
     };
-    return originalRun(input, ctx as any);
+    return originalRun.call(runtime, input as any, ctx as any);
   };
 
   try {
@@ -42,6 +44,6 @@ export async function testRouter<TBlock extends BlockDefinition<any, any>>(
       selectedRoute: selectedRoute ?? "unknown"
     };
   } finally {
-    router.run = originalRun;
+    runtime._run = originalRun;
   }
 }

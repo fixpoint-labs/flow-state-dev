@@ -4,9 +4,11 @@ import type {
   BlockContext,
   BlockDefinition,
   BlockKind,
+  BlockRuntime,
   ConnectorFn,
   DeclaredResources
 } from "../../types/block";
+import { BlockNestingError, INSIDE_EXECUTE } from "../../types/block";
 import type { DefinedResource } from "../../types/resource";
 import type { DefinedResourceCollection } from "../../types/resource-collection";
 import type { CapabilityRef } from "../../capability/types";
@@ -116,7 +118,7 @@ export function buildBlock<
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
   TInput = z.infer<TInputSchema>,
   TOutput = z.infer<TOutputSchema>,
->(options: BuildBlockOptions<TInputSchema, TOutputSchema>): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+>(options: BuildBlockOptions<TInputSchema, TOutputSchema>): BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { kind, config } = options;
   const internalExecute = options.execute ?? config.execute;
 
@@ -149,7 +151,67 @@ export function buildBlock<
   // aggregate as `options.requiresOrg`).
   const requiresOrg = Boolean(config.requireOrg) || Boolean(options.requiresOrg);
 
-  const definition: BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> = {
+  // Runtime guard for BP-011 (FIX-503). For handler kind, the user's
+  // `execute` runs against a per-call ctx wrapper that carries the
+  // `INSIDE_EXECUTE` symbol. Wrapping rather than mutating keeps
+  // concurrent sibling branches isolated — they each get their own
+  // wrapper and never observe each other's flag.
+  // Substrate orchestration (sequencer/router/generator) doesn't wrap,
+  // so chained sibling `_run` calls between substrate and child blocks
+  // pass through naturally.
+  const stampsInsideExecute = kind === "handler";
+
+  const dispatch = async (rawInput: TInput, ctx: BlockContext): Promise<TOutput> => {
+    try {
+      const connectedInput = runtimeConfig.connectInput
+        ? await runtimeConfig.connectInput(rawInput, ctx)
+        : rawInput;
+      // Fire the runtime hook only when the connector actually transformed
+      // the value. Identity check avoids spurious debug items when the
+      // connector is a no-op passthrough.
+      if (runtimeConfig.connectInput && connectedInput !== rawInput) {
+        ctx._runtimeHooks?.onConnectedInput?.(connectedInput, ctx);
+      }
+      const validatedInput = validateSchema<TInput>(runtimeConfig.inputSchema, connectedInput, "input", runtimeConfig.name);
+      let output: TOutput;
+      if (stampsInsideExecute) {
+        // Per-call wrapper carrying the BP-011 flag. Reads delegate to the
+        // shared ctx; only the symbol lives on the wrapper, so siblings
+        // running concurrently against the same parent ctx don't bleed
+        // their flags into each other.
+        const wrappedCtx = Object.create(ctx) as BlockContext;
+        (wrappedCtx as unknown as Record<symbol, unknown>)[INSIDE_EXECUTE] = true;
+        output = await internalExecute(validatedInput, wrappedCtx);
+      } else {
+        output = await internalExecute(validatedInput, ctx);
+      }
+      const validatedOutput = validateSchema<TOutput>(
+        runtimeConfig.outputSchema,
+        output,
+        "output",
+        runtimeConfig.name
+      );
+
+      if (runtimeConfig.onCompleted !== undefined) {
+        await runtimeConfig.onCompleted(validatedOutput, ctx);
+      }
+
+      return validatedOutput;
+    } catch (error) {
+      const normalizedError = toError(error);
+      if (runtimeConfig.onErrored !== undefined) {
+        try {
+          await runtimeConfig.onErrored(normalizedError, ctx);
+        } catch {
+          // Preserve the original block failure and do not mask it with hook errors.
+        }
+      }
+
+      throw normalizedError;
+    }
+  };
+
+  const definition: BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput> = {
     kind,
     name: runtimeConfig.name,
     description: runtimeConfig.description,
@@ -159,43 +221,20 @@ export function buildBlock<
     config: runtimeConfig,
     declaredResources: options.declaredResources,
     requiresOrg,
-    async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
-      try {
-        const connectedInput = runtimeConfig.connectInput
-          ? await runtimeConfig.connectInput(rawInput, ctx)
-          : rawInput;
-        // Fire the runtime hook only when the connector actually transformed
-        // the value. Identity check avoids spurious debug items when the
-        // connector is a no-op passthrough.
-        if (runtimeConfig.connectInput && connectedInput !== rawInput) {
-          ctx._runtimeHooks?.onConnectedInput?.(connectedInput, ctx);
-        }
-        const validatedInput = validateSchema<TInput>(runtimeConfig.inputSchema, connectedInput, "input", runtimeConfig.name);
-        const output = await internalExecute(validatedInput, ctx);
-        const validatedOutput = validateSchema<TOutput>(
-          runtimeConfig.outputSchema,
-          output,
-          "output",
-          runtimeConfig.name
-        );
-
-        if (runtimeConfig.onCompleted !== undefined) {
-          await runtimeConfig.onCompleted(validatedOutput, ctx);
-        }
-
-        return validatedOutput;
-      } catch (error) {
-        const normalizedError = toError(error);
-        if (runtimeConfig.onErrored !== undefined) {
-          try {
-            await runtimeConfig.onErrored(normalizedError, ctx);
-          } catch {
-            // Preserve the original block failure and do not mask it with hook errors.
-          }
-        }
-
-        throw normalizedError;
+    async _run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
+      const ctxBag = ctx as unknown as Record<symbol, unknown>;
+      if (ctxBag[INSIDE_EXECUTE] === true) {
+        // Identify the outer block via _blockIdentity for a useful error message.
+        const outer = (ctx as { _blockIdentity?: { blockName?: string } })._blockIdentity?.blockName;
+        throw new BlockNestingError(runtimeConfig.name, outer);
       }
+      return dispatch(rawInput, ctx);
+    },
+    async _runUnchecked(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
+      // Substrate-only escape (FIX-503). Bypasses the BP-011 nesting guard
+      // for first-party utilities whose composition cannot be expressed via
+      // sibling sequencer steps. Every caller MUST document why.
+      return dispatch(rawInput, ctx);
     },
     connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<ZodTypeAny, TOutputSchema> {
       const nextConfig = {

@@ -3,6 +3,7 @@
  */
 import type { Command } from "commander";
 import type { BlockKind } from "@flow-state-dev/core/types";
+import { asRuntime } from "@flow-state-dev/core/types";
 import { createTestContext } from "@flow-state-dev/testing";
 import { resolveBlock, CliError } from "../resolve-block";
 import { parseInputArg } from "../parse-input";
@@ -116,7 +117,7 @@ export async function executeBlockCommand(
   let success = true;
 
   try {
-    output = await block.run(input, ctx);
+    output = await asRuntime(block)._run(input, ctx);
   } catch (err) {
     success = false;
     error = {

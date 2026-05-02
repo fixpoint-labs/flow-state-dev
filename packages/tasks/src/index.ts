@@ -86,7 +86,7 @@ export {
   type TaskLoopBackHandle,
 } from "./helpers/task-loop-back";
 export {
-  dispatchAndExecute,
+  dispatchAndExecuteBlock,
   type DispatchAndExecuteOptions,
   type DispatchAndExecuteResult,
 } from "./helpers/dispatch-and-execute";

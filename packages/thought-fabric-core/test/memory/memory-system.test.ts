@@ -1,3 +1,4 @@
+import { runForTest } from "@flow-state-dev/testing";
 import { describe, it, expect } from 'vitest'
 import type { ResourceHandle } from '@flow-state-dev/core'
 import {
@@ -587,7 +588,7 @@ describe('memory/memorySystem', () => {
         },
         response: { emit: async () => {} },
       } as any
-      return block.run({ items } as any, ctx)
+      return runForTest(block, { items } as any, ctx)
     }
 
     it('adds items to working memory', async () => {
@@ -740,7 +741,7 @@ describe('memory/memorySystem', () => {
         resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
         response: { emit: async () => {} },
       } as any
-      return block.run(undefined as any, ctx)
+      return runForTest(block, undefined as any, ctx)
     }
 
     it('advances working memory turn counter', async () => {
@@ -1151,7 +1152,7 @@ describe('memory/memorySystem', () => {
         }),
         response: { emit: async () => {} },
       } as any
-      return block.run(undefined as any, ctx)
+      return runForTest(block, undefined as any, ctx)
     }
 
     it('triggers when conditions are met', async () => {
@@ -1274,7 +1275,7 @@ describe('memory/memorySystem', () => {
         }),
         response: { emit: async () => {} },
       } as any
-      return block.run(input as any, ctx)
+      return runForTest(block, input as any, ctx)
     }
 
     it('handles "new" action — writes new facts', async () => {
@@ -1512,7 +1513,7 @@ describe('memory/memorySystem', () => {
         },
         response: { emit: async () => {} },
       } as any
-      return block.run({ items } as any, ctx)
+      return runForTest(block, { items } as any, ctx)
     }
 
     it('routes permanent+identity items directly to semantic store', async () => {
@@ -1679,7 +1680,7 @@ describe('memory/memorySystem', () => {
         resources: createMockResources({ workingMemory: wmRef, memorySystem: sysRef }),
         response: { emit: async () => {} },
       } as any
-      return block.run(undefined as any, ctx)
+      return runForTest(block, undefined as any, ctx)
     }
 
     it('does not reset counters when semantic is configured', async () => {
@@ -1968,7 +1969,7 @@ describe('memory/memorySystem', () => {
         }),
         response: { emit: async () => {} },
       } as any
-      return block.run(undefined as any, ctx)
+      return runForTest(block, undefined as any, ctx)
     }
 
     it('returns triggered: false when fact count is below default threshold (20)', async () => {
@@ -2011,7 +2012,7 @@ describe('memory/memorySystem', () => {
         resources: createMockResources({ semanticMemory: semRef }),
         response: { emit: async () => {} },
       } as any
-      const result = await block.run(undefined as any, ctx) as any
+      const result = await runForTest(block, undefined as any, ctx) as any
       expect(result.triggered).toBe(true)
     })
 
@@ -2028,7 +2029,7 @@ describe('memory/memorySystem', () => {
         resources: createMockResources({ semanticMemory: semRef }),
         response: { emit: async () => {} },
       } as any
-      const result = await block.run(undefined as any, ctx) as any
+      const result = await runForTest(block, undefined as any, ctx) as any
       expect(result.triggered).toBe(false)
     })
 
@@ -2059,7 +2060,7 @@ describe('memory/memorySystem', () => {
         resources: createMockResources({ semanticMemory: semRef }),
         response: { emit: async () => {} },
       } as any
-      return block.run(input as any, ctx)
+      return runForTest(block, input as any, ctx)
     }
 
     it('removes facts listed in removals', async () => {
@@ -2198,7 +2199,7 @@ describe('memory/memorySystem', () => {
         response: { emit: async () => {} },
       } as any
 
-      const result = await block.run({
+      const result = await runForTest(block, {
         removals: [{ factId: 'sf_1', reason: 'test' }],
         merges: [],
       } as any, ctx) as any

@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { createMcpManager } from "../../src/mcp/manager";
 import { createMockClientFactory, fakeMcpTool, linearConfig } from "./fixtures";
 
+import { runForTest } from "@flow-state-dev/testing";
 describe("createMcpManager", () => {
   describe("config + connection baseline", () => {
     it("returns empty tools when no servers configured", async () => {
@@ -123,7 +124,7 @@ describe("createMcpManager", () => {
 
       const manager = createMcpManager({ servers: [linearConfig], _createClient: factory });
       const [tool] = await manager.getTools();
-      const result = await tool.run({ title: "Test" }, {} as any);
+      const result = await runForTest(tool, { title: "Test" }, {} as any);
 
       expect(executeFn).toHaveBeenCalledWith({ title: "Test" });
       expect(result).toEqual({ id: "ISS-1" });
@@ -141,7 +142,7 @@ describe("createMcpManager", () => {
 
       const manager = createMcpManager({ servers: [linearConfig], _createClient: factory });
       const [tool] = await manager.getTools();
-      const result = await tool.run({}, {} as any);
+      const result = await runForTest(tool, {}, {} as any);
 
       expect(result).toEqual({ error: expect.stringContaining("does not support execution") });
     });

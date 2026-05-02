@@ -8,6 +8,7 @@ export type {
   BlockOutput,
   BlockOutputHint,
   BlockResult,
+  BlockRuntime,
   ChunkValidation,
   ConnectorFn,
   DeclaredResourceEntry,
@@ -17,6 +18,12 @@ export type {
   RetryPolicy,
   StateRef,
   TargetRef
+} from "./block";
+
+export {
+  asRuntime,
+  BlockNestingError,
+  INSIDE_EXECUTE
 } from "./block";
 
 export type {

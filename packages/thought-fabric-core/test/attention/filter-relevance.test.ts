@@ -1,3 +1,4 @@
+import { runForTest } from "@flow-state-dev/testing";
 import { describe, expect, it } from 'vitest'
 import { filterRelevance } from '../../src/attention/filter-relevance.js'
 import { createMockContext } from '../helpers.js'
@@ -19,7 +20,7 @@ describe('attention/filterRelevance', () => {
       mode: 'hard'
     })
 
-    const output = await block.run(
+    const output = await runForTest(block, 
       {
         task: 'plan next engineering steps',
         items: [
@@ -44,7 +45,7 @@ describe('attention/filterRelevance', () => {
       }
     })
 
-    const output = await block.run(
+    const output = await runForTest(block, 
       {
         task: 'pricing strategy memo',
         items: ['pricing strategy summary']

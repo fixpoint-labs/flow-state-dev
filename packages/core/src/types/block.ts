@@ -397,6 +397,16 @@ export type DeclaredResourceEntry = DefinedResource | DefinedResourceCollection;
  */
 export type DeclaredResources = Record<string, DeclaredResourceEntry>;
 
+/**
+ * Public block surface — what user code holds and passes around (FIX-503).
+ *
+ * Deliberately omits the dispatch entry point. Substrate code (executor,
+ * sequencer, router, generator tool loop, CLI) sees the runtime view via
+ * `BlockRuntime` and uses `asRuntime()` to recover it at the boundary.
+ * Removing `run` from the public type makes `block.run(input, ctx)` from
+ * inside a handler's `execute` a TypeScript error — closing BP-011 at the
+ * type system instead of at convention.
+ */
 export interface BlockDefinition<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
@@ -418,12 +428,93 @@ export interface BlockDefinition<
    * for HTTP-layer enforcement.
    */
   requiresOrg: boolean;
-  run(input: TInput, ctx: BlockContext): Promise<TOutput>;
 
   connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<ZodTypeAny, TOutputSchema>;
   connectOutput<TTo>(
     mapper: (output: TOutput, ctx: BlockContext) => TTo | Promise<TTo>
   ): BlockDefinition<TInputSchema, ZodTypeAny>;
+}
+
+/**
+ * Internal substrate view of a block (FIX-503). Adds the `_run` dispatch
+ * entry point that the runtime uses to actually execute a block. Recovered
+ * from a public `BlockDefinition` via `asRuntime()` at substrate boundaries.
+ *
+ * Not part of the public API surface — `_run`'s leading underscore plus the
+ * type-level invisibility on `BlockDefinition` together signal that this is
+ * substrate-only. The runtime guard in `_run` throws `BlockNestingError` if
+ * a handler's `execute` reaches `_run` via an `any`-cast escape.
+ *
+ * @internal
+ */
+export interface BlockRuntime<
+  TInputSchema extends ZodTypeAny = ZodTypeAny,
+  TOutputSchema extends ZodTypeAny = ZodTypeAny,
+  TInput = z.infer<TInputSchema>,
+  TOutput = z.infer<TOutputSchema>,
+> extends BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+  /** @internal — dispatch entry point used by the substrate. Subject to the
+   *  BP-011 runtime guard — throws `BlockNestingError` if invoked from
+   *  inside a handler's `execute`. */
+  _run(input: TInput, ctx: BlockContext): Promise<TOutput>;
+  /** @internal — substrate-only escape that bypasses the BP-011 runtime
+   *  guard. Reserved for first-party substrate code that intentionally
+   *  invokes a nested block from inside a handler body (e.g. utilities
+   *  whose composition cannot be expressed via sibling sequencer steps).
+   *  Every call site MUST be documented with a justification. */
+  _runUnchecked(input: TInput, ctx: BlockContext): Promise<TOutput>;
+}
+
+/**
+ * Substrate-only helper that recovers the runtime view of a block. Pure
+ * type-level cast — every `BlockDefinition` produced by `buildBlock`
+ * carries the `_run` method at runtime. Substrate (executor, sequencer,
+ * router, generator tool loop, CLI block runner) uses this at the call
+ * boundary.
+ *
+ * @internal
+ */
+export function asRuntime<
+  TInputSchema extends ZodTypeAny,
+  TOutputSchema extends ZodTypeAny,
+  TInput,
+  TOutput,
+>(
+  block: BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput>
+): BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput> {
+  return block as BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput>;
+}
+
+/**
+ * Symbol stamped on a `BlockContext` while a handler's user-supplied
+ * `execute` is on the stack. The runtime guard in `BlockRuntime._run`
+ * checks this on entry and throws `BlockNestingError` if set, catching
+ * `any`-cast escapes that bypass the type-level firewall (BP-011).
+ *
+ * Substrate paths (sequencer/router/generator orchestration) never set
+ * this flag, so chained `_run` calls between sibling blocks pass through.
+ *
+ * @internal
+ */
+export const INSIDE_EXECUTE = Symbol("flow-state.insideExecute");
+
+/**
+ * Thrown by the runtime guard when a block's `_run` is invoked from inside
+ * another block's user-supplied `execute`. Signals a BP-011 violation that
+ * escaped the type-level firewall (typically via an `any` cast).
+ */
+export class BlockNestingError extends Error {
+  readonly code = "BLOCK_NESTING";
+  constructor(innerBlockName: string, outerBlockName: string | undefined) {
+    super(
+      outerBlockName === undefined
+        ? `Block "${innerBlockName}" was invoked from inside another block's execute. ` +
+          `Compose blocks via sequencer/router/generator instead of calling them from a handler body (BP-011).`
+        : `Block "${innerBlockName}" was invoked from inside "${outerBlockName}" execute. ` +
+          `Compose blocks via sequencer/router/generator instead of calling them from a handler body (BP-011).`
+    );
+    this.name = "BlockNestingError";
+  }
 }
 
 export interface RescueHandlerSpec {

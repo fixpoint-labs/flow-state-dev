@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { emitInfoCardTool, InfoCardSchema } from "../../src/generative/info-card";
 
+import { runForTest } from "@flow-state-dev/testing";
 function makeCtx() {
   const emitComponent = vi.fn();
   return {
@@ -34,7 +35,7 @@ describe("emitInfoCardTool", () => {
       ],
     };
 
-    const output = await block.run(input as any, ctx);
+    const output = await runForTest(block, input as any, ctx);
 
     expect(emitComponent).toHaveBeenCalledTimes(1);
     expect(emitComponent).toHaveBeenCalledWith(
@@ -49,7 +50,7 @@ describe("emitInfoCardTool", () => {
     const block = emitInfoCardTool({ keyFrom: (i) => `card:${i.title}` });
     const { ctx, emitComponent } = makeCtx();
 
-    await block.run(
+    await runForTest(block, 
       { id: "x", title: "Shibuya", facts: [] } as any,
       ctx
     );
@@ -70,7 +71,7 @@ describe("emitInfoCardTool", () => {
     }));
 
     await expect(
-      block.run(
+      runForTest(block, 
         { id: "x", title: "T", facts: tooManyFacts } as any,
         ctx
       )

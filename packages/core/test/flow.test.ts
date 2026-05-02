@@ -2,8 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { defineFlow, generator, handler, sequencer } from "../src";
 import { defineResource } from "../src/types/resource";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 describe("defineFlow", () => {
   it("returns callable flow type with defaults and merge-based overrides", () => {
     const baseAction = handler({
@@ -235,7 +234,7 @@ describe("defineFlow", () => {
         }
       })
     });
-    await expect(instance.actions.run.block.run({ text: "hello" }, ctx)).resolves.toEqual({
+    await expect(runForTest(instance.actions.run.block, { text: "hello" }, ctx)).resolves.toEqual({
       ok: true
     });
 
@@ -298,7 +297,7 @@ describe("defineFlow", () => {
         }
       })
     });
-    await expect(instance.actions.run.block.run({ text: "hello" }, ctx)).resolves.toEqual({
+    await expect(runForTest(instance.actions.run.block, { text: "hello" }, ctx)).resolves.toEqual({
       ok: true
     });
 

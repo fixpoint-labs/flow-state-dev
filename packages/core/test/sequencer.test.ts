@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler, sequencer } from "../src";
 import { defineResource } from "../src/types/resource";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 function addHandler(name: string, delta = 1) {
   return handler({
     name,
@@ -22,7 +21,7 @@ describe("sequencer builder", () => {
       .then((value) => value * 2, two);
 
     const ctx = createMockContext();
-    await expect(chain.run(1, ctx)).resolves.toBe(6);
+    await expect(runForTest(chain, 1, ctx)).resolves.toBe(6);
   });
 
   it("supports thenIf", async () => {
@@ -32,13 +31,13 @@ describe("sequencer builder", () => {
       .thenIf((value) => value > 100, (value) => value, plusTen);
 
     const ctx = createMockContext();
-    await expect(seq.run(1, ctx)).resolves.toBe(11);
+    await expect(runForTest(seq, 1, ctx)).resolves.toBe(11);
   });
 
   it("supports map", async () => {
     const seq = sequencer({ name: "map-step", inputSchema: z.number() }).map((value) => `v:${value}`);
     const ctx = createMockContext();
-    await expect(seq.run(3, ctx)).resolves.toBe("v:3");
+    await expect(runForTest(seq, 3, ctx)).resolves.toBe("v:3");
   });
 
   it("supports parallel", async () => {
@@ -51,7 +50,7 @@ describe("sequencer builder", () => {
     });
 
     const ctx = createMockContext();
-    await expect(seq.run(2, ctx)).resolves.toEqual({
+    await expect(runForTest(seq, 2, ctx)).resolves.toEqual({
       left: 3,
       right: 7
     });
@@ -67,8 +66,8 @@ describe("sequencer builder", () => {
     );
 
     const ctx = createMockContext();
-    await expect(direct.run([1, 2], ctx)).resolves.toEqual([3, 4]);
-    await expect(viaConnector.run(2, ctx)).resolves.toEqual([4, 5]);
+    await expect(runForTest(direct, [1, 2], ctx)).resolves.toEqual([3, 4]);
+    await expect(runForTest(viaConnector, 2, ctx)).resolves.toEqual([4, 5]);
   });
 
   it("supports doUntil and doWhile", async () => {
@@ -77,8 +76,8 @@ describe("sequencer builder", () => {
     const whileSeq = sequencer({ name: "while", inputSchema: z.number() }).doWhile((value) => value < 3, inc);
 
     const ctx = createMockContext();
-    await expect(untilSeq.run(0, ctx)).resolves.toBe(3);
-    await expect(whileSeq.run(0, ctx)).resolves.toBe(3);
+    await expect(runForTest(untilSeq, 0, ctx)).resolves.toBe(3);
+    await expect(runForTest(whileSeq, 0, ctx)).resolves.toBe(3);
   });
 
   it("supports loopBack", async () => {
@@ -91,7 +90,7 @@ describe("sequencer builder", () => {
       });
 
     const ctx = createMockContext();
-    await expect(seq.run(0, ctx)).resolves.toBe(3);
+    await expect(runForTest(seq, 0, ctx)).resolves.toBe(3);
   });
 
   it("supports work and waitForWork", async () => {
@@ -107,7 +106,7 @@ describe("sequencer builder", () => {
       .waitForWork({ failOnError: true });
 
     const ctx = createMockContext();
-    await expect(seq.run(1, ctx)).resolves.toBe(1);
+    await expect(runForTest(seq, 1, ctx)).resolves.toBe(1);
   });
 
   it("waitForWork can fail on background errors", async () => {
@@ -125,7 +124,7 @@ describe("sequencer builder", () => {
       .waitForWork({ failOnError: true });
 
     const ctx = createMockContext();
-    await expect(seq.run(1, ctx)).rejects.toThrow("background failure");
+    await expect(runForTest(seq, 1, ctx)).rejects.toThrow("background failure");
   });
 
   it("emits structured status options during auto-await of work tasks", async () => {
@@ -156,7 +155,7 @@ describe("sequencer builder", () => {
       }
     });
 
-    await seq.run(1, ctx);
+    await runForTest(seq, 1, ctx);
 
     // First status: unblock client, report total background tasks
     expect(statusCalls[0]!.options?.blocked).toBe(false);
@@ -186,7 +185,7 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       // The sequencer's output should be the original input (pass-through), not the mapped results
-      const result = await seq.run([1, 2, 3], ctx);
+      const result = await runForTest(seq, [1, 2, 3], ctx);
       expect(result).toEqual([1, 2, 3]);
       // All items should have been processed in the background
       expect(executed.sort()).toEqual([1, 2, 3]);
@@ -212,7 +211,7 @@ describe("sequencer builder", () => {
         .waitForWork({ failOnError: true });
 
       const ctx = createMockContext();
-      const result = await seq.run(5, ctx);
+      const result = await runForTest(seq, 5, ctx);
       expect(result).toBe(5);
       expect(executed.sort()).toEqual(["5", "6"]);
     });
@@ -236,7 +235,7 @@ describe("sequencer builder", () => {
         .waitForWork({ failOnError: false });
 
       const ctx = createMockContext();
-      const result = await seq.run([1, 2, 3], ctx);
+      const result = await runForTest(seq, [1, 2, 3], ctx);
       expect(result).toEqual([1, 2, 3]);
       // Items 1 and 3 should have run; item 2 threw but didn't stop the others
       expect(executed.sort()).toEqual([1, 3]);
@@ -255,7 +254,7 @@ describe("sequencer builder", () => {
         .waitForWork({ failOnError: true });
 
       const ctx = createMockContext();
-      await expect(seq.run([1], ctx)).rejects.toThrow("iteration failure");
+      await expect(runForTest(seq, [1], ctx)).rejects.toThrow("iteration failure");
     });
 
     it("respects concurrency limit", async () => {
@@ -280,7 +279,7 @@ describe("sequencer builder", () => {
         .waitForWork({ failOnError: true });
 
       const ctx = createMockContext();
-      await seq.run([1, 2, 3, 4, 5], ctx);
+      await runForTest(seq, [1, 2, 3, 4, 5], ctx);
       expect(maxConcurrent).toBeLessThanOrEqual(2);
     });
 
@@ -304,7 +303,7 @@ describe("sequencer builder", () => {
         .waitForWork({ failOnError: true });
 
       const ctx = createMockContext();
-      await seq.run([10, 20, 30], ctx);
+      await runForTest(seq, [10, 20, 30], ctx);
       expect(executed.sort()).toEqual(["double:10", "double:30", "triple:20"]);
     });
   });
@@ -332,7 +331,7 @@ describe("sequencer builder", () => {
       .tapIf((value) => value > 0, (value) => value * 3, tapBlock);
 
     const ctx = createMockContext();
-    await expect(seq.run(2, ctx)).resolves.toBe(2);
+    await expect(runForTest(seq, 2, ctx)).resolves.toBe(2);
     expect(tapped).toEqual([3, 4, 4, 6]);
   });
 
@@ -358,7 +357,7 @@ describe("sequencer builder", () => {
       .rescue([{ block: rescueBlock }]);
 
     const ctx = createMockContext();
-    await expect(seq.run(1, ctx)).resolves.toBe("recovered:broken");
+    await expect(runForTest(seq, 1, ctx)).resolves.toBe("recovered:broken");
   });
 
   it("supports branch and throws when no branch matches", async () => {
@@ -385,8 +384,8 @@ describe("sequencer builder", () => {
     });
 
     const ctx = createMockContext();
-    await expect(branching.run(12, ctx)).resolves.toBe("large");
-    await expect(none.run(1, ctx)).rejects.toThrow("no matching route");
+    await expect(runForTest(branching, 12, ctx)).resolves.toBe("large");
+    await expect(runForTest(none, 1, ctx)).rejects.toThrow("no matching route");
   });
 
   describe("inline block definitions", () => {
@@ -397,7 +396,7 @@ describe("sequencer builder", () => {
       });
 
       const ctx = createMockContext();
-      await expect(seq.run(42, ctx)).resolves.toBe("value:42");
+      await expect(runForTest(seq, 42, ctx)).resolves.toBe("value:42");
     });
 
     it("injects inputSchema from previous step's outputSchema", async () => {
@@ -416,7 +415,7 @@ describe("sequencer builder", () => {
         });
 
       const ctx = createMockContext();
-      await expect(seq.run("7", ctx)).resolves.toBe("#7");
+      await expect(runForTest(seq, "7", ctx)).resolves.toBe("#7");
     });
 
     it("auto-generates name when name omitted", async () => {
@@ -426,7 +425,7 @@ describe("sequencer builder", () => {
       });
 
       const ctx = createMockContext();
-      await expect(seq.run(5, ctx)).resolves.toBe(10);
+      await expect(runForTest(seq, 5, ctx)).resolves.toBe(10);
     });
 
     it("uses provided name when name is given", async () => {
@@ -437,7 +436,7 @@ describe("sequencer builder", () => {
       });
 
       const ctx = createMockContext();
-      await expect(seq.run(5, ctx)).resolves.toBe(10);
+      await expect(runForTest(seq, 5, ctx)).resolves.toBe(10);
     });
 
     it("supports chained inline blocks", async () => {
@@ -452,7 +451,7 @@ describe("sequencer builder", () => {
         });
 
       const ctx = createMockContext();
-      await expect(seq.run(5, ctx)).resolves.toBe("result:10");
+      await expect(runForTest(seq, 5, ctx)).resolves.toBe("result:10");
     });
 
     it("supports tap(handler, config) side effect", async () => {
@@ -470,7 +469,7 @@ describe("sequencer builder", () => {
         });
 
       const ctx = createMockContext();
-      const result = await seq.run(4, ctx);
+      const result = await runForTest(seq, 4, ctx);
       expect(result).toBe(12);
       expect(sideEffects).toEqual([12]);
     });
@@ -484,9 +483,9 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       // Condition not met — passthrough
-      await expect(seq.run(5, ctx)).resolves.toBe(5);
+      await expect(runForTest(seq, 5, ctx)).resolves.toBe(5);
       // Condition met — inline block runs
-      await expect(seq.run(15, ctx)).resolves.toBe("big:15");
+      await expect(runForTest(seq, 15, ctx)).resolves.toBe("big:15");
     });
 
     it("supports mixed inline + pre-defined blocks", async () => {
@@ -507,7 +506,7 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       // (5 + 1) * 10 + 1 = 61
-      await expect(seq.run(5, ctx)).resolves.toBe(61);
+      await expect(runForTest(seq, 5, ctx)).resolves.toBe(61);
     });
 
     it("falls back to z.any() when no previous schema is available", async () => {
@@ -518,7 +517,7 @@ describe("sequencer builder", () => {
       });
 
       const ctx = createMockContext();
-      await expect(seq.run(99, ctx)).resolves.toBe("first:99");
+      await expect(runForTest(seq, 99, ctx)).resolves.toBe("first:99");
     });
   });
 
@@ -661,7 +660,7 @@ describe("sequencer builder", () => {
       const connected = seq.connectInput((s: string) => Number(s));
       const ctx = createMockContext();
       // "5" → 5 → 5 + 1 = 6
-      await expect(connected.run("5", ctx)).resolves.toBe(6);
+      await expect(runForTest(connected, "5", ctx)).resolves.toBe(6);
     });
 
     it("preserves declared resources from child blocks", () => {
@@ -703,7 +702,7 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       // "3" → 3 → 3 + 1 = 4 → 4 * 2 = 8
-      await expect(connected.run("3", ctx)).resolves.toBe(8);
+      await expect(runForTest(connected, "3", ctx)).resolves.toBe(8);
     });
 
     it("preserves name from original sequencer config", () => {
@@ -725,7 +724,7 @@ describe("sequencer builder", () => {
         .thenAll([addOne, addTwo, addThree]);
 
       const ctx = createMockContext();
-      await expect(seq.run(10, ctx)).resolves.toEqual([11, 12, 13]);
+      await expect(runForTest(seq, 10, ctx)).resolves.toEqual([11, 12, 13]);
     });
 
     it("supports connector steps", async () => {
@@ -740,7 +739,7 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       // addOne: 5 + 1 = 6; connector: 5 * 2 = 10, addTwo: 10 + 2 = 12
-      await expect(seq.run(5, ctx)).resolves.toEqual([6, 12]);
+      await expect(runForTest(seq, 5, ctx)).resolves.toEqual([6, 12]);
     });
 
     it("propagates first error on failure", async () => {
@@ -756,7 +755,7 @@ describe("sequencer builder", () => {
         .thenAll([addOne, failing]);
 
       const ctx = createMockContext();
-      await expect(seq.run(1, ctx)).rejects.toThrow("boom");
+      await expect(runForTest(seq, 1, ctx)).rejects.toThrow("boom");
     });
 
     it("respects maxConcurrency", async () => {
@@ -780,7 +779,7 @@ describe("sequencer builder", () => {
         .thenAll([slowBlock, slowBlock, slowBlock, slowBlock], { maxConcurrency: 2 });
 
       const ctx = createMockContext();
-      await seq.run(1, ctx);
+      await runForTest(seq, 1, ctx);
       expect(maxConcurrent).toBeLessThanOrEqual(2);
     });
 
@@ -789,7 +788,7 @@ describe("sequencer builder", () => {
         .thenAll([]);
 
       const ctx = createMockContext();
-      await expect(seq.run(1, ctx)).resolves.toEqual([]);
+      await expect(runForTest(seq, 1, ctx)).resolves.toEqual([]);
     });
 
     it("collects resources from child blocks", () => {
@@ -824,7 +823,7 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       // Sequential: addOne runs first and succeeds → returns its result, addTwo never runs
-      await expect(seq.run(5, ctx)).resolves.toBe(6);
+      await expect(runForTest(seq, 5, ctx)).resolves.toBe(6);
     });
 
     it("skips failed blocks and returns first success", async () => {
@@ -846,7 +845,7 @@ describe("sequencer builder", () => {
         .thenAny([failing, success]);
 
       const ctx = createMockContext();
-      await expect(seq.run(1, ctx)).resolves.toBe(43);
+      await expect(runForTest(seq, 1, ctx)).resolves.toBe(43);
     });
 
     it("does not execute blocks after first success", async () => {
@@ -870,7 +869,7 @@ describe("sequencer builder", () => {
         .thenAny([first, second]);
 
       const ctx = createMockContext();
-      await seq.run(5, ctx);
+      await runForTest(seq, 5, ctx);
       expect(secondRan).toBe(false);
     });
 
@@ -893,7 +892,7 @@ describe("sequencer builder", () => {
         .thenAny([fail1, fail2]);
 
       const ctx = createMockContext();
-      await expect(seq.run(1, ctx)).rejects.toThrow("All blocks in thenAny failed");
+      await expect(runForTest(seq, 1, ctx)).rejects.toThrow("All blocks in thenAny failed");
     });
 
     it("throws AggregateError with empty blocks array", async () => {
@@ -901,7 +900,7 @@ describe("sequencer builder", () => {
         .thenAny([]);
 
       const ctx = createMockContext();
-      await expect(seq.run(1, ctx)).rejects.toThrow("thenAny called with no blocks");
+      await expect(runForTest(seq, 1, ctx)).rejects.toThrow("thenAny called with no blocks");
     });
 
     it("works with a single block", async () => {
@@ -911,7 +910,7 @@ describe("sequencer builder", () => {
         .thenAny([addOne]);
 
       const ctx = createMockContext();
-      await expect(seq.run(5, ctx)).resolves.toBe(6);
+      await expect(runForTest(seq, 5, ctx)).resolves.toBe(6);
     });
   });
 
@@ -939,7 +938,7 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       // fast succeeds first → returns 6
-      await expect(seq.run(5, ctx)).resolves.toBe(6);
+      await expect(runForTest(seq, 5, ctx)).resolves.toBe(6);
     });
 
     it("skips failures and returns first success", async () => {
@@ -965,7 +964,7 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       // fastFail completes first but fails → slow succeeds → returns 101
-      await expect(seq.run(1, ctx)).resolves.toBe(101);
+      await expect(runForTest(seq, 1, ctx)).resolves.toBe(101);
     });
 
     it("throws AggregateError when all blocks fail", async () => {
@@ -987,7 +986,7 @@ describe("sequencer builder", () => {
         .race([fail1, fail2]);
 
       const ctx = createMockContext();
-      await expect(seq.run(1, ctx)).rejects.toThrow("All blocks in race failed");
+      await expect(runForTest(seq, 1, ctx)).rejects.toThrow("All blocks in race failed");
     });
 
     it("throws on empty blocks array", async () => {
@@ -995,7 +994,7 @@ describe("sequencer builder", () => {
         .race([]);
 
       const ctx = createMockContext();
-      await expect(seq.run(1, ctx)).rejects.toThrow("race called with no blocks");
+      await expect(runForTest(seq, 1, ctx)).rejects.toThrow("race called with no blocks");
     });
 
     it("single block completes normally", async () => {
@@ -1004,7 +1003,7 @@ describe("sequencer builder", () => {
         .race([addOne]);
 
       const ctx = createMockContext();
-      await expect(seq.run(10, ctx)).resolves.toBe(11);
+      await expect(runForTest(seq, 10, ctx)).resolves.toBe(11);
     });
 
     it("respects maxConcurrency", async () => {
@@ -1028,7 +1027,7 @@ describe("sequencer builder", () => {
         .race([slowBlock, slowBlock, slowBlock, slowBlock], { maxConcurrency: 2 });
 
       const ctx = createMockContext();
-      await seq.run(1, ctx);
+      await runForTest(seq, 1, ctx);
       expect(maxConcurrent).toBeLessThanOrEqual(2);
     });
 
@@ -1066,7 +1065,7 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       // 0 + 10 = 10, exitIf(10 > 5) → exits, skips addOne
-      await expect(seq.run(0, ctx)).resolves.toBe(10);
+      await expect(runForTest(seq, 0, ctx)).resolves.toBe(10);
     });
 
     it("continues chain when condition is false", async () => {
@@ -1080,7 +1079,7 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       // 0 + 10 = 10, exitIf(10 > 100) → false, continues → 10 + 1 = 11
-      await expect(seq.run(0, ctx)).resolves.toBe(11);
+      await expect(runForTest(seq, 0, ctx)).resolves.toBe(11);
     });
 
     it("supports async conditions", async () => {
@@ -1088,8 +1087,8 @@ describe("sequencer builder", () => {
         .exitIf(async (value) => value === 42);
 
       const ctx = createMockContext();
-      await expect(seq.run(42, ctx)).resolves.toBe(42);
-      await expect(seq.run(1, ctx)).resolves.toBe(1);
+      await expect(runForTest(seq, 42, ctx)).resolves.toBe(42);
+      await expect(runForTest(seq, 1, ctx)).resolves.toBe(1);
     });
 
     it("uses context in condition", async () => {
@@ -1098,7 +1097,7 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       // condition checks ctx.request.identity.id === "req_1" → true → exits
-      await expect(seq.run(5, ctx)).resolves.toBe(5);
+      await expect(runForTest(seq, 5, ctx)).resolves.toBe(5);
     });
 
     it("works with background work (auto-await still happens)", async () => {
@@ -1122,7 +1121,7 @@ describe("sequencer builder", () => {
         .then(addOne);
 
       const ctx = createMockContext();
-      const result = await seq.run(5, ctx);
+      const result = await runForTest(seq, 5, ctx);
       // exitIf condition is true (5 > 0), so addOne is skipped
       expect(result).toBe(5);
       // But background work should have completed (auto-await)
@@ -1142,9 +1141,9 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       // 5 + 1 = 6, exitIf(6 > 3) → true → exits with 6
-      await expect(seq.run(5, ctx)).resolves.toBe(6);
+      await expect(runForTest(seq, 5, ctx)).resolves.toBe(6);
       // 1 + 1 = 2, exitIf(2 > 3) → false → 2 + 10 = 12, exitIf(12 > 50) → false → 12 + 1 = 13
-      await expect(seq.run(1, ctx)).resolves.toBe(13);
+      await expect(runForTest(seq, 1, ctx)).resolves.toBe(13);
     });
   });
 
@@ -1166,7 +1165,7 @@ describe("sequencer builder", () => {
         .waitForWork({ failOnError: true });
 
       const ctx = createMockContext();
-      const result = await seq.run(1, ctx);
+      const result = await runForTest(seq, 1, ctx);
       expect(result).toBe(1);
       expect(workExecuted).toBe(true);
     });
@@ -1188,7 +1187,7 @@ describe("sequencer builder", () => {
         .waitForWork({ failOnError: true });
 
       const ctx = createMockContext();
-      const result = await seq.run(1, ctx);
+      const result = await runForTest(seq, 1, ctx);
       expect(result).toBe(1);
       expect(workExecuted).toBe(false);
     });
@@ -1210,7 +1209,7 @@ describe("sequencer builder", () => {
         .waitForWork({ failOnError: true });
 
       const ctx = createMockContext();
-      const result = await seq.run(1, ctx);
+      const result = await runForTest(seq, 1, ctx);
       expect(result).toBe(1);
       expect(workExecuted).toBe(true);
     });
@@ -1232,7 +1231,7 @@ describe("sequencer builder", () => {
         .waitForWork({ failOnError: true });
 
       const ctx = createMockContext();
-      const result = await seq.run(1, ctx);
+      const result = await runForTest(seq, 1, ctx);
       expect(result).toBe(1);
       expect(workExecuted).toBe(false);
     });
@@ -1254,7 +1253,7 @@ describe("sequencer builder", () => {
         .waitForWork({ failOnError: true });
 
       const ctx = createMockContext();
-      await seq.run(1, ctx);
+      await runForTest(seq, 1, ctx);
       expect(receivedCtx).not.toBeNull();
       expect((receivedCtx as any).request).toBeDefined();
     });
@@ -1279,7 +1278,7 @@ describe("sequencer builder", () => {
         .waitForWork({ failOnError: true });
 
       const ctx = createMockContext();
-      const result = await seq.run(1, ctx);
+      const result = await runForTest(seq, 1, ctx);
       expect(result).toBe(1);
       expect(workExecuted).toBe(true);
     });
@@ -1305,7 +1304,7 @@ describe("sequencer builder", () => {
         .waitForWork({ failOnError: true });
 
       const ctx = createMockContext();
-      const result = await seq.run(42, ctx);
+      const result = await runForTest(seq, 42, ctx);
       expect(result).toBe(42);
       expect(executed).toEqual(["42"]);
     });
@@ -1331,7 +1330,7 @@ describe("sequencer builder", () => {
         .waitForWork({ failOnError: true });
 
       const ctx = createMockContext();
-      await seq.run(42, ctx);
+      await runForTest(seq, 42, ctx);
       expect(connectorCalled).toBe(false);
     });
 
@@ -1350,7 +1349,7 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       // workIf returns unchanged value (5), then addOne → 6
-      await expect(seq.run(5, ctx)).resolves.toBe(6);
+      await expect(runForTest(seq, 5, ctx)).resolves.toBe(6);
     });
 
     it("propagates sidechain failures via waitForWork failOnError", async () => {
@@ -1368,7 +1367,7 @@ describe("sequencer builder", () => {
         .waitForWork({ failOnError: true });
 
       const ctx = createMockContext();
-      await expect(seq.run(1, ctx)).rejects.toThrow("conditional background failure");
+      await expect(runForTest(seq, 1, ctx)).rejects.toThrow("conditional background failure");
     });
   });
 });

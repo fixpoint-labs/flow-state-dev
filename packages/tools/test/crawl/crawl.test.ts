@@ -3,6 +3,7 @@ import { crawl, firecrawlCrawl, builtinCrawl } from "../../src/crawl";
 import { tools } from "../../src";
 import type { CrawlResult } from "../../src/crawl/types";
 
+import { runForTest } from "@flow-state-dev/testing";
 // Mock the providers module to avoid real SDK imports
 vi.mock("../../src/crawl/providers", () => {
   const mockCrawlResult: CrawlResult = {
@@ -86,7 +87,7 @@ describe("crawl tool factory", () => {
 
   it("executes crawl with auto-detected provider (falls back to builtin)", async () => {
     const tool = crawl();
-    const result = await tool.run(
+    const result = await runForTest(tool, 
       { url: "https://example.com", maxPages: 20, maxDepth: 2 },
       {} as any
     );
@@ -99,7 +100,7 @@ describe("crawl tool factory", () => {
     process.env.FIRECRAWL_API_KEY = "fc-key";
 
     const tool = crawl();
-    const result = await tool.run(
+    const result = await runForTest(tool, 
       { url: "https://example.com", maxPages: 20, maxDepth: 2 },
       {} as any
     );
@@ -110,7 +111,7 @@ describe("crawl tool factory", () => {
   it("uses input maxPages/maxDepth over config defaults", async () => {
     const tool = crawl({ maxPages: 100, maxDepth: 5 });
     // Input values should take precedence
-    const result = await tool.run(
+    const result = await runForTest(tool, 
       { url: "https://example.com", maxPages: 10, maxDepth: 1 },
       {} as any
     );
@@ -138,7 +139,7 @@ describe("direct provider crawl factories", () => {
 
   it("builtinCrawl locks to builtin", async () => {
     const tool = builtinCrawl();
-    const result = await tool.run(
+    const result = await runForTest(tool, 
       { url: "https://example.com", maxPages: 20, maxDepth: 2 },
       {} as any
     );
@@ -148,7 +149,7 @@ describe("direct provider crawl factories", () => {
   it("throws when firecrawl has no key", async () => {
     const tool = firecrawlCrawl();
     await expect(
-      tool.run(
+      runForTest(tool, 
         { url: "https://example.com", maxPages: 20, maxDepth: 2 },
         {} as any
       )

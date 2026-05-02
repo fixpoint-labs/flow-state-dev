@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { utility, sequencer, handler } from "../src";
-import { createMockContext } from "./helpers";
+import { createMockContext, runForTest } from "./helpers";
 import type { BlockContext } from "../src/types/block";
 import type { ResourceCollectionRef } from "../src/types/resource-collection";
 
@@ -127,7 +127,7 @@ describe("utility.upsertResource", () => {
       state: (input) => ({ title: input.title, updatedAt: 1000 }),
     });
 
-    await block.run({ id: "note-1", title: "Hello", body: "World" }, makeCtx(collection));
+    await runForTest(block, { id: "note-1", title: "Hello", body: "World" }, makeCtx(collection));
 
     const ref = collection.getOptional("note-1");
     expect(ref).toBeDefined();
@@ -145,7 +145,7 @@ describe("utility.upsertResource", () => {
       state: (input) => ({ title: input.title, updatedAt: 2000 }),
     });
 
-    await block.run({ id: "note-1", title: "Updated", body: "" }, makeCtx(collection));
+    await runForTest(block, { id: "note-1", title: "Updated", body: "" }, makeCtx(collection));
 
     const ref = collection.getOptional("note-1");
     expect(ref!.state.title).toBe("Updated");
@@ -164,7 +164,7 @@ describe("utility.upsertResource", () => {
       content: (input) => input.body,
     });
 
-    await block.run({ id: "note-2", title: "My Note", body: "Some content" }, makeCtx(collection));
+    await runForTest(block, { id: "note-2", title: "My Note", body: "Some content" }, makeCtx(collection));
 
     const ref = collection.getOptional("note-2");
     expect(await ref!.readContent()).toBe("Some content");
@@ -183,7 +183,7 @@ describe("utility.upsertResource", () => {
     });
 
     const ref = collection.makeCollectionRef ? null : null;
-    await block.run({ id: "note-3", title: "No content", body: "" }, makeCtx(collection));
+    await runForTest(block, { id: "note-3", title: "No content", body: "" }, makeCtx(collection));
 
     const created = collection.getOptional("note-3");
     expect(await created!.readContent()).toBeNull();
@@ -208,7 +208,7 @@ describe("utility.upsertResource", () => {
       .tap(block)
       .tap((value) => { captured = value; });
 
-    await chain.run(input, makeCtx(collection));
+    await runForTest(chain, input, makeCtx(collection));
 
     expect(captured).toEqual(input);
     // Resource was also written
@@ -238,7 +238,7 @@ describe("utility.upsertResource", () => {
       } as any,
     } as any);
 
-    await block.run({ id: "u-note-1", title: "User note", body: "" }, ctx);
+    await runForTest(block, { id: "u-note-1", title: "User note", body: "" }, ctx);
 
     const ref = collection.getOptional("u-note-1");
     expect(ref).toBeDefined();

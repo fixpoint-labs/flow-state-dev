@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler, utility, router, sequencer } from "../src";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 describe("utility.analyzer", () => {
   it("returns a generator block definition", () => {
     const block = utility.analyzer({
@@ -36,7 +35,7 @@ describe("utility.analyzer", () => {
       })
     });
 
-    await expect(block.run({ artifact: "report" }, ctx)).resolves.toEqual({
+    await expect(runForTest(block, { artifact: "report" }, ctx)).resolves.toEqual({
       findings: [{ criterion: "accuracy", assessment: "solid", severity: "info" }],
       score: 0.9,
       recommendation: "Proceed"
@@ -66,7 +65,7 @@ describe("utility.analyzer", () => {
       })
     });
 
-    await expect(block.run("artifact", ctx)).resolves.toEqual({
+    await expect(runForTest(block, "artifact", ctx)).resolves.toEqual({
       findings: [{ criterion: "quality", assessment: "good" }]
     });
 
@@ -121,7 +120,7 @@ describe("utility.analyzer", () => {
       })
     });
 
-    await expect(defaultBlock.run({ text: "artifact" }, defaultCtx)).resolves.toEqual({
+    await expect(runForTest(defaultBlock, { text: "artifact" }, defaultCtx)).resolves.toEqual({
       findings: [
         {
           criterion: "risk",
@@ -132,7 +131,7 @@ describe("utility.analyzer", () => {
       ]
     });
 
-    await expect(customBlock.run({ text: "artifact" }, customCtx)).resolves.toEqual({
+    await expect(runForTest(customBlock, { text: "artifact" }, customCtx)).resolves.toEqual({
       findings: [{ criterion: "coverage", assessment: "sufficient" }],
       route: "proceed"
     });
@@ -154,11 +153,11 @@ describe("utility.analyzer", () => {
       })
     });
 
-    await expect(block.run("text input", ctx)).resolves.toEqual({
+    await expect(runForTest(block, "text input", ctx)).resolves.toEqual({
       findings: [{ criterion: "clarity", assessment: "clear" }]
     });
 
-    await expect(block.run({ markdown: "# Heading" }, ctx)).resolves.toEqual({
+    await expect(runForTest(block, { markdown: "# Heading" }, ctx)).resolves.toEqual({
       findings: [{ criterion: "clarity", assessment: "clear" }]
     });
   });
@@ -202,6 +201,6 @@ describe("utility.analyzer", () => {
       })
     });
 
-    await expect(chain.run({ artifact: "migration plan" }, ctx)).resolves.toEqual({ path: "review" });
+    await expect(runForTest(chain, { artifact: "migration plan" }, ctx)).resolves.toEqual({ path: "review" });
   });
 });
