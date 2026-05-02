@@ -13,16 +13,23 @@
  *   .tap(stashTaskId)         — capture taskId/goal/attempts on inner state
  *   .then(adaptedWorker)       — runs the user's worker (legacy adapter applied)
  *   .tap(stashWorkerOutput)    — capture worker output for applyVerdict
- *   .tap(stampReviewEntered)   — set metadata.review.entered for failed-review labelling
+ *                                AND stamp reviewMetadata[taskId].entered=true
+ *                                on the supervisor sequencer state
  *   .map(buildReviewerInput)   — adapt workerOutput → ReviewerInput
  *   .then(reviewerGenerator)   — produces ReviewerVerdict
  *   .then(applyVerdict)        — approve flows workerOutput through; reject throws
+ *
+ * Reviewer audit-state (`entered`, `lastVerdict`) lives on the supervisor
+ * sequencer's outer state (`reviewMetadata[taskId]`) — not on the task
+ * record's metadata. Keeping reviewer writes off the task collection's
+ * mutation queue means the request-shared scope only sees the irreducible
+ * claim/complete/fail traffic from `taskBoard`.
  *
  * When `reviewerGenerator` is undefined the wrapper short-circuits and
  * returns `legacyWorkerAdapter(workerBlock)` directly.
  */
 import { sequencer, handler } from "@flow-state-dev/core";
-import type { BlockDefinition } from "@flow-state-dev/core/types";
+import type { BlockDefinition, StateRef } from "@flow-state-dev/core/types";
 import { z } from "zod";
 import {
   getOrCreateTaskCollection,
@@ -30,6 +37,34 @@ import {
 } from "@flow-state-dev/tasks";
 import { reviewerVerdictSchema, type ReviewerInput } from "../schemas";
 import { legacyWorkerAdapter } from "./legacy-worker-adapter";
+
+type SupervisorReviewState = {
+  reviewMetadata: Record<
+    string,
+    { entered?: boolean; lastVerdict?: "approve" | "reject" | "needs-revision" }
+  >;
+};
+
+/** Patch a single `reviewMetadata[taskId]` slot on the supervisor sequencer's
+ * outer state without touching sibling slots. The supervisor sequencer is
+ * looked up by name; if it can't be found (e.g. the worker is composed
+ * outside a supervisor for testing), the write is a silent no-op. */
+async function patchSupervisorReviewMetadata(
+  target: StateRef<SupervisorReviewState> | undefined,
+  taskId: string,
+  patch: { entered?: boolean; lastVerdict?: "approve" | "reject" | "needs-revision" },
+): Promise<void> {
+  if (target === undefined) return;
+  await target.atomicState((state) => {
+    const previous = state.reviewMetadata?.[taskId] ?? {};
+    return {
+      reviewMetadata: {
+        ...(state.reviewMetadata ?? {}),
+        [taskId]: { ...previous, ...patch },
+      },
+    };
+  });
+}
 
 const reviewedWorkerStateSchema = z.object({
   taskId: z.string().optional(),
@@ -71,29 +106,28 @@ export function buildReviewedWorker(
     },
   });
 
+  // Stashes the worker output for `applyVerdict` to read AND stamps
+  // `reviewMetadata[taskId].entered = true` on the supervisor sequencer's
+  // outer state — the latter lets `labelFailedReviews` distinguish a
+  // reviewer rejection from a worker- or reviewer-service error. Writing
+  // to the supervisor sequencer (in-memory, lock-serialized) instead of
+  // the task collection (request-scoped, CAS-driven) keeps reviewer
+  // audit traffic off the shared mutation queue that
+  // `claim` / `complete` / `fail` hit.
   const stashWorkerOutput = handler({
     name: `${name}-${workerKey}-stash-output`,
     inputSchema: z.unknown(),
     sequencerStateSchema: reviewedWorkerStateSchema,
     execute: async (workerOutput, ctx) => {
       await ctx.sequencer!.patchState({ workerOutput });
-    },
-  });
-
-  // `metadata.review.entered = true` lets `labelFailedReviews`
-  // distinguish reviewer rejections from worker / reviewer-service errors.
-  const stampReviewEntered = handler({
-    name: `${name}-${workerKey}-stamp-review-entered`,
-    inputSchema: z.unknown(),
-    sequencerStateSchema: reviewedWorkerStateSchema,
-    execute: async (_input, ctx) => {
       const taskId = ctx.sequencer!.state.taskId;
-      if (taskId === undefined) return;
-      await getOrCreateTaskCollection({
-        ctx,
-        backing: "request",
-        collectionId,
-      }).patchMetadata(taskId, { review: { entered: true } });
+      if (taskId !== undefined) {
+        await patchSupervisorReviewMetadata(
+          ctx.getTarget<SupervisorReviewState>(name),
+          taskId,
+          { entered: true },
+        );
+      }
     },
   });
 
@@ -115,8 +149,9 @@ export function buildReviewedWorker(
 
   // approve → flow upstream workerOutput through; reject/needs-revision
   // → throw so substrate's recordError + maxAttempts handle the retry.
-  // Stamps `metadata.review.lastVerdict` either way so
-  // `labelFailedReviews` can detect reviewer rejection on terminal tasks.
+  // Stamps `reviewMetadata[taskId].lastVerdict` on the supervisor
+  // sequencer state either way so `labelFailedReviews` can detect
+  // reviewer rejection on terminal tasks.
   const applyVerdict = handler({
     name: `${name}-${workerKey}-apply-verdict`,
     inputSchema: reviewerVerdictSchema,
@@ -125,13 +160,11 @@ export function buildReviewedWorker(
     execute: async (verdict, ctx) => {
       const { workerOutput, taskId } = ctx.sequencer!.state;
       if (taskId !== undefined) {
-        await getOrCreateTaskCollection({
-          ctx,
-          backing: "request",
-          collectionId,
-        }).patchMetadata(taskId, {
-          review: { entered: true, lastVerdict: verdict.decision },
-        });
+        await patchSupervisorReviewMetadata(
+          ctx.getTarget<SupervisorReviewState>(name),
+          taskId,
+          { entered: true, lastVerdict: verdict.decision },
+        );
       }
       if (verdict.decision === "approve") return workerOutput;
       throw new Error(
@@ -171,7 +204,6 @@ export function buildReviewedWorker(
     .tap(stashTaskId)
     .then(adaptedWorker)
     .tap(stashWorkerOutput)
-    .tap(stampReviewEntered)
     .tap(emitReviewingStatus)
     .map(buildReviewerInput)
     .then(reviewerGenerator)

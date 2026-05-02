@@ -14,7 +14,13 @@ export const supervisorInputSchema = z.object({
 
 export type SupervisorInput = z.infer<typeof supervisorInputSchema>;
 
-/** Outer sequencer state: goal, optional pattern-level status, iteration counter. */
+/** Outer sequencer state: goal, optional pattern-level status, iteration
+ * counter, plus per-task reviewer audit metadata. `reviewMetadata` is
+ * populated by `stampReviewEntered` / `applyVerdict` and read by
+ * `labelFailedReviews` to classify terminal task failures. Lives on the
+ * supervisor sequencer's own (in-memory, lock-serialized) state instead
+ * of the task collection so reviewer writes stay off the request scope's
+ * shared mutation queue. */
 export const supervisorStateSchema = z.object({
   goal: z.string().default(""),
   status: z
@@ -28,6 +34,15 @@ export const supervisorStateSchema = z.object({
     ])
     .optional(),
   iteration: z.number().default(0),
+  reviewMetadata: z
+    .record(
+      z.string(),
+      z.object({
+        entered: z.boolean().optional(),
+        lastVerdict: z.enum(["approve", "reject", "needs-revision"]).optional(),
+      })
+    )
+    .default({}),
 });
 
 export type SupervisorState = z.infer<typeof supervisorStateSchema>;

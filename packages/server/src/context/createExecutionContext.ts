@@ -1401,6 +1401,12 @@ function createTargetStateOps<TState extends JsonObject>(options: {
   blockInstanceId: string;
   transientStateChanges: boolean;
   /**
+   * Total budget for one target-state mutation (queue wait + execution).
+   * Forwarded to `createScopeStateOps` so the in-memory lock branch
+   * surfaces hangs as `ScopeMutationTimeoutError`.
+   */
+  mutationTimeoutMs?: number;
+  /**
    * Top-level keys of the parent sequencer's `stateSchema` that were marked
    * with `transientSlot()`. Patches affecting only these keys are persisted
    * to the in-memory container (so later steps can read them) but suppressed
@@ -1408,10 +1414,12 @@ function createTargetStateOps<TState extends JsonObject>(options: {
    */
   transientKeys?: Set<string>;
 }): Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState"> {
-  // Target state has no backing store. `createScopeStateOps` supplies a
-  // container-based CAS fallback when no `persist` is provided — that's what
-  // we want here, so concurrent mutators serialize through the container.
-  const baseOps = createScopeStateOps<TState>(options.container);
+  // Target state has no backing store. With no `persist` callback,
+  // `createScopeStateOps` routes mutations through `withScopeLock`, which
+  // serializes per-container without retries.
+  const baseOps = createScopeStateOps<TState>(options.container, {
+    mutationTimeoutMs: options.mutationTimeoutMs
+  });
   const transientKeys = options.transientKeys ?? new Set<string>();
 
   function isTransientKey(key: string): boolean {
@@ -1688,6 +1696,14 @@ export async function createExecutionContext<
     stores
   } = options;
   const transientStateChanges = !shouldPersistScopeChange(flow);
+  // Per-mutation budget for in-memory state writes (target / sequencer /
+  // any scope without a `persist` callback). Plumbed through to every
+  // ScopeStateOpsOptions so the lock branch can fire
+  // ScopeMutationTimeoutError instead of hanging the request. External-
+  // store scopes still receive the option but ignore it — runWithCAS
+  // owns its own retry/timeout semantics.
+  const resolvedMutationTimeoutMs =
+    flow.request?.mutationTimeoutMs ?? 30_000;
   // FIX-435: resources live in a single flat `flow.resources` map. Each
   // entry is routed to the appropriate scope storage via its intrinsic
   // `scope`. Partition the flat map back into per-scope buckets so the
@@ -2819,6 +2835,7 @@ export async function createExecutionContext<
                   }),
                   blockInstanceId: matched.parent.instanceId,
                   transientStateChanges,
+                  mutationTimeoutMs: resolvedMutationTimeoutMs,
                   transientKeys: getTransientKeys(matched.parent.stateSchema)
                 }) as unknown as Pick<StateRef<TState>, "patchState" | "setState" | "incState" | "pushState" | "setStateRecord" | "deleteStateRecord" | "atomicState">);
 

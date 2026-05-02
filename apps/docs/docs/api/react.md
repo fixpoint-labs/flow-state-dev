@@ -151,7 +151,7 @@ voice.stopListening();   // stop recording, transcribe, send action
 voice.stopSpeaking();    // stop audio playback
 ```
 
-See the [Voice guide](/docs/fundamentals/voice) for full usage details.
+See the [Voice guide](/docs/advanced/voice) for full usage details.
 
 ## Renderers
 
