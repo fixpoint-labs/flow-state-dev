@@ -216,8 +216,10 @@ createInboundTransportConformanceTests({
 });
 ```
 
-The HTTP adapter is the first conforming implementation; future MCP,
-webhook, scheduled, and notification adapters plug into the same harness.
+The HTTP adapter is the first conforming implementation. The MCP server
+adapter (`@flow-state-dev/mcp`) is the second; see
+[`mcp-server.md`](./mcp-server.md). Future webhook, scheduled, and
+notification adapters plug into the same harness.
 
 ## Edge cases
 
