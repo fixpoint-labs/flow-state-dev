@@ -2,6 +2,15 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-02
+
+### Quick-start rewrite + new model-setup and first-flow pages (FIX-496)
+
+- `apps/docs/docs/getting-started/quick-start.md` rewritten to introduce ≤6 concepts before the chat works: block, generator, sequencer (mentioned), flow, `useSession`, default item rendering. Removed: counter handler with `return input` (BP-014 violation), `agentType` ceremony, `clientData`, `requireUser: true` boilerplate, the `chatFlow({ id: "default" })` factory ceremony, and the per-item `<ItemRenderer>` map. The example now uses the framework's default `<ItemsRenderer items={...} />` plural renderer and `defineFlow({...})()` to register without a separate factory step.
+- New page `apps/docs/docs/getting-started/setting-up-models.md`. Covers env-var-based provider detection (Anthropic, OpenAI, Google, Vercel Gateway, OpenRouter), what `preset/small` resolves to, how to override or define presets, direct `provider/model` strings, and plugging in custom provider instances. Linked from the new quick-start callout so a senior engineer can go from `pnpm install` to a streaming chat in under ten minutes.
+- New page `apps/docs/docs/getting-started/your-first-flow.md`. A narrative walkthrough that builds the same chat in five steps, introducing one block, scopes, a `.tap()` state-mutation pattern (BP-012-compliant), sequencer composition, and the React rendering layer. Targets the reader who wants to understand the primitives, not just to copy a recipe.
+- `apps/docs/sidebars.ts` Getting Started category reordered to surface the new pages: quick-start → setting-up-models → your-first-flow → installation → project-structure. Sidebar reorg beyond Getting Started is out of scope (FIX-495).
+
 ## 2026-05-01
 
 ### Per-scope FIFO mutation queue replaces optimistic CAS for in-memory scopes (FIX-492)

@@ -8,6 +8,8 @@ const sidebars: SidebarsConfig = {
       label: "Getting Started",
       items: [
         "getting-started/quick-start",
+        "getting-started/setting-up-models",
+        "getting-started/your-first-flow",
         "getting-started/installation",
         "getting-started/project-structure",
       ],
