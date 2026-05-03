@@ -116,9 +116,8 @@ Blocks declare resource dependencies with `sessionResources`, `userResources`, a
 const planManager = handler({
   name: "plan-manager",
   sessionResources: { plan: planResource },
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.session.resources.plan.patchState({ status: "active" });
-    return input;
   },
 });
 ```

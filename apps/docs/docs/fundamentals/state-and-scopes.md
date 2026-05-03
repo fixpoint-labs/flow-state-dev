@@ -80,10 +80,9 @@ const myFlow = defineFlow({
 const counter = handler({
   name: "counter",
   sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     // ctx.session.state is typed as { messageCount: number } — inferred from the schema
     await ctx.session.incState({ messageCount: 1 });
-    return input;
   },
 });
 ```
@@ -102,18 +101,16 @@ Say you have two blocks, each declaring the session state they need:
 const counter = handler({
   name: "counter",
   sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.session.incState({ messageCount: 1 });
-    return input;
   },
 });
 
 const modeSwitch = handler({
   name: "mode-switch",
   sessionStateSchema: z.object({ mode: z.enum(["chat", "agent"]).default("chat") }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.session.patchState({ mode: "agent" });
-    return input;
   },
 });
 ```
@@ -149,8 +146,8 @@ import { counter } from "@shared/blocks";
 import { modeSwitch } from "@shared/blocks";
 
 const pipeline = sequencer({ name: "chat" })
-  .then(counter)       // bubbles up { messageCount }
-  .then(modeSwitch)    // bubbles up { mode }
+  .tap(counter)        // bubbles up { messageCount }
+  .tap(modeSwitch)     // bubbles up { mode }
   .then(agent);
 ```
 
@@ -815,13 +812,12 @@ const planner = handler({
     plan: z.array(z.string()),
     currentStep: z.number(),
   }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     // Write the plan into sequencer state for downstream blocks
     await ctx.sequencer!.patchState({
       plan: ["search", "analyze", "summarize"],
       currentStep: 0,
     });
-    return input;
   },
 });
 
@@ -831,7 +827,7 @@ const executor = handler({
     currentStep: z.number(),
     findings: z.record(z.string()),
   }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     const step = ctx.sequencer!.state.currentStep;
 
     // Do work, then record findings and advance
@@ -839,15 +835,16 @@ const executor = handler({
       findings: { [`step-${step}`]: "result..." },
     });
     await ctx.sequencer!.incState({ currentStep: 1 });
-    return input;
   },
 });
 
 const researchPipeline = pipeline
-  .then(planner)
-  .then(executor)
-  .then(executor);
+  .tap(planner)
+  .tap(executor)
+  .tap(executor);
 ```
+
+`planner` and `executor` only mutate `ctx.sequencer.state` — they have no output to feed downstream. They use `.tap()` and declare no `outputSchema`. Downstream blocks read sequencer state via `ctx.sequencer!.state` rather than from the pipeline value.
 
 The `sequencerStateSchema` on each block declares what state shape it expects from its enclosing sequencer. Like session/user/org state schemas, these bubble up and merge — the framework catches conflicts at build time.
 
@@ -1010,7 +1007,7 @@ const planManager = handler({
 });
 
 const pipeline = sequencer({ name: "pipeline" })
-  .then(planManager)    // resource declaration collected
+  .tap(planManager)     // resource declaration collected
   .then(otherBlock);
 
 // pipeline.declaredResources includes { session: { plan: planResource } }

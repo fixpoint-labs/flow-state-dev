@@ -23,10 +23,9 @@ const fileManager = handler({
   name: "file-manager",
   sessionResources: { files: filesCollection },
   //                   ^^^^^ this is the access key
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     const files = ctx.session.resources.files;  // ← access via property name
     await files.create("readme.md", { language: "markdown" });
-    return input;
   },
 });
 ```
@@ -143,11 +142,10 @@ Collections work with block-level resource declarations the same way static reso
 const fileManager = handler({
   name: "file-manager",
   sessionResources: { files: filesCollection },
-  execute: async (input, ctx) => {
-    const ref = await ctx.session.resources.files.create("output.md", {
+  execute: async (_input, ctx) => {
+    await ctx.session.resources.files.create("output.md", {
       language: "markdown",
     });
-    return input;
   },
 });
 ```

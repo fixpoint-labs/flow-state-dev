@@ -21,14 +21,14 @@ import { z } from "zod";
 const counter = handler({
   name: "counter",
   inputSchema: z.string(),
-  outputSchema: z.string(),
   sessionStateSchema: z.object({ count: z.number().default(0) }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.session.incState({ count: 1 });
-    return input;
   },
 });
 ```
+
+`counter` only mutates state — it has no transformation to feed downstream. So it declares no `outputSchema` and returns nothing, and it gets chained with `.tap()` rather than `.then()`. A handler that exists purely for its side effect should never echo its input back as output. See [Composing Blocks](/docs/sequencers/composing-blocks).
 
 Handlers are **silent by default** — they don't emit anything to the client unless you explicitly call `ctx.emitMessage()` or `ctx.emitComponent()`. This gives you precise control over what the user sees.
 
@@ -552,9 +552,8 @@ const planResource = defineResource({
 const planManager = handler({
   name: "plan-manager",
   sessionResources: { plan: planResource },
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.session.resources.plan.patchState({ status: "active" });
-    return input;
   },
 });
 ```

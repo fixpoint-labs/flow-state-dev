@@ -16,13 +16,13 @@ A **block** is the unit of work: a handler (deterministic logic), a generator (L
 import { handler, generator, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
+const chatInputSchema = z.object({ message: z.string() });
+
 const validate = handler({
   name: "validate",
-  inputSchema: z.object({ message: z.string() }),
-  outputSchema: z.object({ message: z.string() }),
+  inputSchema: chatInputSchema,
   execute: async (input) => {
     if (!input.message.trim()) throw new Error("Empty message");
-    return input;
   },
 });
 
@@ -30,7 +30,7 @@ const agent = generator({
   name: "agent",
   model: "preset/fast",
   prompt: "You are a helpful assistant.",
-  inputSchema: z.object({ message: z.string() }),
+  inputSchema: chatInputSchema,
   user: (input) => input.message,
 });
 
@@ -46,15 +46,17 @@ const extractJson = handler({
 
 const pipeline = sequencer({
   name: "chat-pipeline",
-  inputSchema: z.object({ message: z.string() }),
+  inputSchema: chatInputSchema,
 })
-  .then(validate)
+  .tap(validate)
   .then(agent)
   .map((out) => out.text)
   .then(extractJson);
 ```
 
-Here, a handler validates, a generator produces text, a `.map()` extracts the text, and a handler parses JSON. The chain's output type is inferred from the last step.
+Here, a handler validates as a tap (it throws on bad input but produces no output of its own), a generator produces text, a `.map()` extracts the text, and a handler parses JSON. The chain's output type is inferred from the last step.
+
+`validate` is chained with `.tap()` because it has no output to feed downstream — its job is to assert that the input is valid. A block that only mutates state, validates, or otherwise has no transformation should never declare an `outputSchema` or `return input`. Use `.tap()`. See [Composing Blocks](/docs/sequencers/composing-blocks) for the full rule.
 
 ## DSL methods
 

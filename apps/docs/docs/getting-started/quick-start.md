@@ -37,22 +37,20 @@ const chatGen = generator({
   user: (input) => input.message,
 });
 
-// Handler: increments a message counter after each exchange
+// Handler: increments a message counter after each exchange. State-only,
+// so it has no outputSchema and runs as a tap — see Composing Blocks.
 const counter = handler({
   name: "counter",
-  inputSchema: z.string(),
-  outputSchema: z.string(),
   sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.session.incState({ messageCount: 1 });
-    return input;
   },
 });
 
-// Pipeline: generator → counter
+// Pipeline: generator → counter (as a tap, since it only mutates state)
 const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .then(chatGen)
-  .then(counter);
+  .tap(counter);
 
 // Flow definition
 const chatFlow = defineFlow({
@@ -73,7 +71,7 @@ const chatFlow = defineFlow({
 export default chatFlow({ id: "default" });
 ```
 
-**What's happening:** The generator handles the LLM call — prompt assembly, streaming, conversation history. The handler is a pure function that bumps a counter. The sequencer pipes the generator's output into the handler. `defineFlow` wraps it all with actions, session state, and lifecycle management.
+**What's happening:** The generator handles the LLM call — prompt assembly, streaming, conversation history. The handler is a pure function that bumps a counter. Because it only mutates state, we attach it with `.tap()` so the generator's output passes through unchanged to the pipeline result. `defineFlow` wraps it all with actions, session state, and lifecycle management.
 
 ## 3. Set up the server
 

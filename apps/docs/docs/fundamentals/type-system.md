@@ -88,13 +88,12 @@ const analytics = handler({
     eventCount: z.number().default(0),
     lastEventAt: z.number().optional(),
   }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     ctx.session.state.eventCount;    // number — typed
     ctx.session.state.lastEventAt;   // number | undefined — typed
     ctx.session.state.somethingElse; // TypeScript error — not in schema
 
     await ctx.session.patchState({ lastEventAt: Date.now() });
-    return input;
   },
 });
 ```

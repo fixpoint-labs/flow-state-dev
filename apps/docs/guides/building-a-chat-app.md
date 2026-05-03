@@ -53,12 +53,9 @@ import { z } from "zod";
 
 export const counter = handler({
   name: "counter",
-  inputSchema: z.any(),
-  outputSchema: z.any(),
   sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.session.incState({ messageCount: 1 });
-    return input;
   },
 });
 ```
@@ -78,10 +75,10 @@ A sequencer chains blocks into a pipeline. Each step's output becomes the next s
 ```ts
 const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .then(chatGen)
-  .then(counter);
+  .tap(counter);
 ```
 
-**Why this order?** The generator produces the assistant response. The handler runs after, using that output (we pass it through) and the session context to increment the count. If we put the counter first, we'd count before the LLM replied. Order encodes data flow.
+**Why this order?** The generator produces the assistant response. The counter runs after, incrementing session state. We attach it with `.tap()` because it has no transformation — it only mutates state, so the generator's output flows through unchanged as the pipeline result. If we put the counter first, we'd count before the LLM replied. Order encodes data flow.
 
 The sequencer is the composition primitive. It replaces the agent-vs-workflow split. You chain blocks. Conditional logic, parallelism, and error recovery come from sequencer methods like `thenIf`, `parallel`, and `rescue`. For a simple chat pipeline, `.then()` is all you need. As flows grow, you'll use more of the DSL.
 
@@ -97,7 +94,7 @@ const inputSchema = z.object({ message: z.string() });
 
 const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
   .then(chatGen)
-  .then(counter);
+  .tap(counter);
 
 const chatFlow = defineFlow({
   kind: "hello-chat",

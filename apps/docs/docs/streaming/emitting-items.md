@@ -13,9 +13,8 @@ Generators emit messages automatically as they stream. But blocks can also emit 
 ```ts
 const notify = handler({
   name: "notify",
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     ctx.emitMessage("Your file has been saved.");
-    return input;
   },
 });
 ```
@@ -75,7 +74,6 @@ execute: async (input, ctx) => {
     results: searchResults,
     totalCount: 42,
   });
-  return input;
 }
 ```
 
