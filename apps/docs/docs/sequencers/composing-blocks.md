@@ -21,50 +21,64 @@ The example in this page builds up an order-processing pipeline one method at a 
 
 ## Setup: a few blocks
 
-We'll compose four blocks: a validator, an LLM-based pricing generator, a database writer, and an analytics block. The exact internals don't matter — focus on how they chain together.
+We'll compose three blocks: a validator, an LLM-based pricing generator, and a recorder that writes the result to session state. The internals are simplified — focus on how they chain together.
 
 ```ts
 import { handler, generator, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
+const orderInput = z.object({
+  items: z.array(z.object({ sku: z.string(), qty: z.number() })),
+  customerId: z.string(),
+});
+
+const pricedOrder = z.object({
+  total: z.number(),
+  discounted: z.boolean(),
+});
+
+// Validator: throws on bad input. No output — pipeline value passes through.
 const validateOrder = handler({
   name: "validate-order",
-  inputSchema: z.object({
-    items: z.array(z.object({ sku: z.string(), qty: z.number() })),
-    customerId: z.string(),
-  }),
-  outputSchema: z.object({
-    items: z.array(z.object({ sku: z.string(), qty: z.number() })),
-    customerId: z.string(),
-  }),
+  inputSchema: orderInput,
   execute: async (input) => {
     if (input.items.length === 0) throw new Error("Empty order");
-    return input;
   },
 });
 
+// Generator: applies pricing rules to the order.
 const priceOrder = generator({
   name: "price-order",
   model: "preset/fast",
-  prompt: "You apply customer-specific pricing rules to orders.",
-  inputSchema: z.object({
-    items: z.array(z.object({ sku: z.string(), qty: z.number() })),
-    customerId: z.string(),
-  }),
-  outputSchema: z.object({ total: z.number(), discounted: z.boolean() }),
+  prompt: "You apply customer-specific pricing rules.",
+  inputSchema: orderInput,
+  outputSchema: pricedOrder,
   user: (input) => `Price this order: ${JSON.stringify(input)}`,
 });
 
-const saveOrder = handler({
-  name: "save-order",
-  inputSchema: z.object({ total: z.number(), discounted: z.boolean() }),
+// Recorder: writes the priced result to session state and returns an order id.
+const recordOrder = handler({
+  name: "record-order",
+  inputSchema: pricedOrder,
   outputSchema: z.object({ orderId: z.string() }),
+  sessionStateSchema: z.object({
+    lastOrderId: z.string().optional(),
+    lastOrderTotal: z.number().optional(),
+  }),
   execute: async (input, ctx) => {
-    const orderId = await ctx.db.insertOrder(input);
+    const orderId = crypto.randomUUID();
+    await ctx.session.patchState({
+      lastOrderId: orderId,
+      lastOrderTotal: input.total,
+    });
     return { orderId };
   },
 });
 ```
+
+`validateOrder` has no `outputSchema` and returns nothing. That's the correct shape for a pure check: throw if the input is bad, otherwise stay out of the way. We'll attach it with `.tap()` below.
+
+`recordOrder` declares a `sessionStateSchema` so TypeScript types `ctx.session.state` to those fields. See [State and scopes](/docs/fundamentals/state-and-scopes) for the full state API.
 
 ## `then` — sequential steps
 
@@ -73,17 +87,13 @@ Chain blocks with `.then()`. Each block's output is the next block's input. Type
 ```ts
 const orderPipeline = sequencer({
   name: "order-pipeline",
-  inputSchema: z.object({
-    items: z.array(z.object({ sku: z.string(), qty: z.number() })),
-    customerId: z.string(),
-  }),
+  inputSchema: orderInput,
 })
-  .then(validateOrder)
   .then(priceOrder)
-  .then(saveOrder);
+  .then(recordOrder);
 ```
 
-`validateOrder` produces an order. `priceOrder` produces `{ total, discounted }`. `saveOrder` produces `{ orderId }`. The sequencer's output type is whatever the last step returns.
+`priceOrder` produces `{ total, discounted }`. `recordOrder` consumes that shape and produces `{ orderId }`. The sequencer's output type is whatever the last step returns.
 
 If the next block expects a different shape, pass a connector function as the first argument:
 
@@ -93,76 +103,78 @@ If the next block expects a different shape, pass a connector function as the fi
 
 The connector receives the previous output and returns the input the next block expects. See [Connectors](/docs/sequencers/connectors).
 
+## `tap` — side effects without changing the payload
+
+Some blocks exist to do something — log, validate, mutate state — without transforming the pipeline value. Use `.tap()`. The block runs, the value passes through unchanged.
+
+```ts
+sequencer({ name: "order-pipeline", inputSchema: orderInput })
+  .tap(validateOrder)   // throws if invalid; otherwise no-op
+  .then(priceOrder)     // still receives the original orderInput
+  .then(recordOrder);
+```
+
+`priceOrder` gets the original input, not anything from `validateOrder`. `validateOrder` has no output to merge in — it either throws or it doesn't.
+
+This is the right shape for a validator. Don't write a handler that returns its input back out just to satisfy `.then()` — that pollutes the items log with a redundant echo. If a block has no meaningful output, drop the `outputSchema` and use `.tap()`.
+
+The same applies to logging, telemetry, and state mutation. If the only purpose is the side effect, it's a tap.
+
 ## `map` — inline transform
 
-Sometimes you need to reshape the value between steps without running a block. Use `.map()`. It's a pure function, not a block, so it doesn't show up as its own step in the items log.
+Sometimes you need to reshape a value between steps without running a block. Use `.map()`. It's a pure function, not a block, so it doesn't show up as its own step in the items log.
 
 ```ts
 .then(priceOrder)
 .map((priced) => ({ ...priced, totalCents: Math.round(priced.total * 100) }))
-.then(saveOrder)
+.then(recordOrder)
 ```
 
-`map` is for cheap synchronous reshaping. If the transform has side effects, hits the network, or you'd want to see it as a step in the trace, use a handler block with `.then()` instead.
-
-## `tap` — side effects without changing the payload
-
-When you need to run a block for its effect (logging, telemetry, state mutation) but the next step still wants the previous value, use `.tap()`.
-
-```ts
-const logOrder = handler({
-  name: "log-order",
-  inputSchema: z.object({ total: z.number(), discounted: z.boolean() }),
-  execute: async (input) => {
-    console.log(`Pricing complete: $${input.total}`);
-  },
-});
-
-orderPipeline
-  .then(priceOrder)
-  .tap(logOrder)        // runs, doesn't change the value
-  .then(saveOrder);     // receives the priceOrder output, not logOrder's
-```
-
-`saveOrder` still gets `{ total, discounted }`. The pipeline value flows around `tap` like water around a rock. This is the right shape for any block that's purely a side effect — logging, mutating state, dispatching an event you want to await before continuing.
+`map` is for cheap synchronous reshaping. If the transform has side effects, hits the network, or you want it to appear as a step in the trace, use a handler block with `.then()` instead.
 
 ## `thenIf` — run a step only when a condition holds
 
-What if you only want to apply a discount to first-time customers? Wrap the discount step in `.thenIf()`:
+What if you only want to apply a discount on larger orders that aren't already discounted? Wrap the discount step in `.thenIf()`:
 
 ```ts
-const applyFirstOrderDiscount = handler({
-  name: "apply-first-order-discount",
-  inputSchema: z.object({ total: z.number(), discounted: z.boolean() }),
-  outputSchema: z.object({ total: z.number(), discounted: z.boolean() }),
+const applyVolumeDiscount = handler({
+  name: "apply-volume-discount",
+  inputSchema: pricedOrder,
+  outputSchema: pricedOrder,
   execute: async (input) => ({
     total: input.total * 0.9,
     discounted: true,
   }),
 });
 
-orderPipeline
-  .then(validateOrder)
+sequencer({ name: "order-pipeline", inputSchema: orderInput })
+  .tap(validateOrder)
   .then(priceOrder)
   .thenIf(
-    async (value, ctx) => {
-      const orderCount = await ctx.db.countOrders(ctx.user.identity.id);
-      return orderCount === 0;
-    },
-    applyFirstOrderDiscount
+    (value) => value.total > 100 && !value.discounted,
+    applyVolumeDiscount
   )
-  .then(saveOrder);
+  .then(recordOrder);
 ```
 
-The condition gets the current pipeline value and the block context. It can be sync or async. When the condition is false, the step is skipped and the pipeline value passes through unchanged — the next step still receives the `priceOrder` output, just untransformed.
+The condition gets the current pipeline value and the block context. It can be sync or async. When it returns false the step is skipped and the pipeline value passes through unchanged — the next step still receives `priceOrder`'s output.
+
+You can also reach into the context to read state from any scope the surrounding block has declared:
+
+```ts
+.thenIf(
+  (value, ctx) => ctx.session.state.features.discountsEnabled,
+  applyVolumeDiscount
+)
+```
 
 `thenIf` also accepts a static boolean if the condition is known at build time:
 
 ```ts
-.thenIf(ENABLE_DISCOUNTS, applyFirstOrderDiscount)
+.thenIf(ENABLE_DISCOUNTS, applyVolumeDiscount)
 ```
 
-For conditional side effects (run a tap only when something is true), there's `tapIf`. For conditional background work, there's `workIf`. Both are in the [Control Flow Reference](/docs/sequencers/control-flow).
+For conditional side effects (a tap that runs only when something is true) use `tapIf`. For conditional background work, `workIf`. Both are in the [Control Flow Reference](/docs/sequencers/control-flow).
 
 ## `work` — fire-and-forget background tasks
 
@@ -173,19 +185,22 @@ const trackOrder = handler({
   name: "track-order",
   inputSchema: z.object({ orderId: z.string() }),
   execute: async (input, ctx) => {
-    await ctx.analytics.send("order_placed", { orderId: input.orderId });
+    await fetch("https://analytics.example.com/orders", {
+      method: "POST",
+      body: JSON.stringify({ orderId: input.orderId }),
+      signal: ctx.signal,
+    });
   },
 });
 
 orderPipeline
-  .then(validateOrder)
+  .tap(validateOrder)
   .then(priceOrder)
-  .then(saveOrder)
-  .work(trackOrder)        // dispatched, not awaited
-  .then(returnConfirmation);
+  .then(recordOrder)
+  .work(trackOrder);     // dispatched, not awaited
 ```
 
-`returnConfirmation` runs immediately after `saveOrder` finishes. `trackOrder` runs in parallel. The sequencer waits for any outstanding `.work()` tasks to settle before it returns, so they don't get orphaned, but they don't slow the main chain.
+`recordOrder` returns immediately. `trackOrder` runs in parallel. The sequencer waits for outstanding `.work()` tasks to settle before it returns, so they don't get orphaned, but they don't slow the main chain.
 
 If a `.work()` block throws, the main chain is *not* aborted. The error is recorded as a `step_error` item on the work side. This is the right shape for non-essential work where failure is recoverable.
 
@@ -203,8 +218,9 @@ const retryWithDifferentProvider = handler({
   name: "retry-different-provider",
   inputSchema: z.unknown(),
   outputSchema: z.object({ orderId: z.string() }),
-  execute: async (input) => {
-    // ...
+  execute: async () => {
+    // ... try a backup payment provider, return { orderId } on success
+    return { orderId: crypto.randomUUID() };
   },
 });
 
@@ -212,23 +228,22 @@ const recordFailedOrder = handler({
   name: "record-failed-order",
   inputSchema: z.unknown(),
   outputSchema: z.object({ orderId: z.string() }),
-  execute: async (input) => {
-    // ...
+  execute: async () => {
+    return { orderId: "failed" };
   },
 });
 
 orderPipeline
-  .then(validateOrder)
+  .tap(validateOrder)
   .then(priceOrder)
-  .then(saveOrder)
+  .then(recordOrder)
   .rescue([
     { when: [NetworkError], block: retryWithDifferentProvider },
     { when: [PaymentDeclinedError], block: recordFailedOrder },
-    { block: genericRecovery },  // catch-all (no `when`)
   ]);
 ```
 
-Handlers are checked in order. The first match runs. If the recovery block succeeds, its output continues down the chain. If no handler matches, the original error propagates up.
+Handlers are checked in order. The first match runs. If the recovery block succeeds, its output continues down the chain. If no handler matches, the original error propagates up. Add a final entry without `when` to catch anything else.
 
 `rescue` is the only error-handling primitive in the DSL. There's no try/catch wrapping at the chain level. If you don't add `.rescue()`, errors bubble out and the sequencer fails — which is usually what you want.
 
@@ -241,12 +256,14 @@ const orderPipeline = sequencer({
   name: "order-pipeline",
   inputSchema: orderInput,
 })
-  .then(validateOrder)
+  .tap(validateOrder)
   .then(priceOrder)
   .map((priced) => ({ ...priced, totalCents: Math.round(priced.total * 100) }))
-  .thenIf(isFirstOrder, applyFirstOrderDiscount)
-  .tap(logPricing)
-  .then(saveOrder)
+  .thenIf(
+    (value) => value.total > 100 && !value.discounted,
+    applyVolumeDiscount
+  )
+  .then(recordOrder)
   .work(trackOrder)
   .rescue([
     { when: [NetworkError], block: retryWithDifferentProvider },
@@ -254,7 +271,7 @@ const orderPipeline = sequencer({
   ]);
 ```
 
-Read top to bottom: validate, price, normalize the shape, maybe discount, log, save, fire analytics in the background, recover from known errors. That covers a real pipeline with a small set of methods.
+Read top to bottom: validate (throws on bad input), price, normalize the shape, maybe discount, record, fire analytics in the background, recover from known errors. That covers a real pipeline with a small set of methods.
 
 ## When you outgrow this page
 
