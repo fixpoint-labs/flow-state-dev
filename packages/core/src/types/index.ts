@@ -20,11 +20,7 @@ export type {
   TargetRef
 } from "./block";
 
-export {
-  asRuntime,
-  BlockNestingError,
-  INSIDE_EXECUTE
-} from "./block";
+export { asRuntime } from "./block";
 
 export type {
   ActionConfig,

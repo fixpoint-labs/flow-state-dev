@@ -65,15 +65,16 @@ export function intentRouter<TCategories extends IntentRouterCategories>(
     (input: IntentRouterEnvelope) => input.originalInput
   );
 
-  // BP-011 / FIX-503 deviation: this handler intentionally invokes the
-  // classifier via the substrate `runUnchecked` escape so the classification
-  // result is bound to the original input in a single step. Lifting the
-  // classifier into a sibling sequencer step would require recovering
-  // `originalInput` from `ctx.parent` (only populated under the full server
-  // runtime — undefined under `createMockContext`) or sequencer state
-  // (also gated on `_withExecutionScope`). Until the framework grows a
-  // runtime-agnostic carrier for the sequencer's input, this is the
-  // sanctioned substrate path.
+  // BP-011 deviation (FIX-503): this handler reaches through `asRuntime` to
+  // invoke the classifier inside its own execute so the classification result
+  // is bound to the original input in a single step. Lifting the classifier
+  // into a sibling sequencer step would require recovering `originalInput`
+  // from `ctx.parent` (only populated under the full server runtime —
+  // undefined under `createMockContext`) or sequencer state (also gated on
+  // `_withExecutionScope`). Until the framework grows a runtime-agnostic
+  // carrier for the sequencer's input, the substrate cast is the
+  // intentional escape — no runtime guard catches it, but the explicit
+  // `asRuntime` call signs the deviation in the diff.
   const classifyInput = handler({
     name: `${config.name}-intent-router-input`,
     outputSchema: z.object({
@@ -85,7 +86,7 @@ export function intentRouter<TCategories extends IntentRouterCategories>(
       })
     }),
     execute: async (input, ctx) => {
-      const classification = await asRuntime(classifier).runUnchecked(input, ctx);
+      const classification = await asRuntime(classifier).run(input, ctx);
       return {
         originalInput: input,
         classification

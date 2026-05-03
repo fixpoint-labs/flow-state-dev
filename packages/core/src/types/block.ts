@@ -442,8 +442,9 @@ export interface BlockDefinition<
  *
  * Not part of the public API surface — `run` is invisible on `BlockDefinition`,
  * so user code can't call `block.run(...)` without first laundering through
- * `asRuntime()`. The runtime guard in `run` throws `BlockNestingError` if a
- * handler's `execute` reaches `run` via an `any`-cast escape.
+ * `asRuntime()`. That deliberate friction is the BP-011 firewall: anyone who
+ * reaches for `asRuntime` inside a handler is signing their name on the
+ * deviation. There is no runtime guard.
  *
  * @internal
  */
@@ -453,16 +454,8 @@ export interface BlockRuntime<
   TInput = z.infer<TInputSchema>,
   TOutput = z.infer<TOutputSchema>,
 > extends BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
-  /** @internal — dispatch entry point used by the substrate. Subject to the
-   *  BP-011 runtime guard — throws `BlockNestingError` if invoked from
-   *  inside a handler's `execute`. */
+  /** @internal — dispatch entry point used by the substrate. */
   run(input: TInput, ctx: BlockContext): Promise<TOutput>;
-  /** @internal — substrate-only escape that bypasses the BP-011 runtime
-   *  guard. Reserved for first-party substrate code that intentionally
-   *  invokes a nested block from inside a handler body (e.g. utilities
-   *  whose composition cannot be expressed via sibling sequencer steps).
-   *  Every call site MUST be documented with a justification. */
-  runUnchecked(input: TInput, ctx: BlockContext): Promise<TOutput>;
 }
 
 /**
@@ -483,38 +476,6 @@ export function asRuntime<
   block: BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput>
 ): BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput> {
   return block as BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput>;
-}
-
-/**
- * Symbol stamped on a `BlockContext` while a handler's user-supplied
- * `execute` is on the stack. The runtime guard in `BlockRuntime.run`
- * checks this on entry and throws `BlockNestingError` if set, catching
- * `any`-cast escapes that bypass the type-level firewall (BP-011).
- *
- * Substrate paths (sequencer/router/generator orchestration) never set
- * this flag, so chained `run` calls between sibling blocks pass through.
- *
- * @internal
- */
-export const INSIDE_EXECUTE = Symbol("flow-state.insideExecute");
-
-/**
- * Thrown by the runtime guard when a block's `run` is invoked from inside
- * another block's user-supplied `execute`. Signals a BP-011 violation that
- * escaped the type-level firewall (typically via an `any` cast).
- */
-export class BlockNestingError extends Error {
-  readonly code = "BLOCK_NESTING";
-  constructor(innerBlockName: string, outerBlockName: string | undefined) {
-    super(
-      outerBlockName === undefined
-        ? `Block "${innerBlockName}" was invoked from inside another block's execute. ` +
-          `Compose blocks via sequencer/router/generator instead of calling them from a handler body (BP-011).`
-        : `Block "${innerBlockName}" was invoked from inside "${outerBlockName}" execute. ` +
-          `Compose blocks via sequencer/router/generator instead of calling them from a handler body (BP-011).`
-    );
-    this.name = "BlockNestingError";
-  }
 }
 
 export interface RescueHandlerSpec {

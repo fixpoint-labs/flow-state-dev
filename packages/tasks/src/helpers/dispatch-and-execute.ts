@@ -9,20 +9,20 @@
  *      or back off).
  *   3. Pack the task into `TaskWorkerInput`, look up the worker from
  *      the registry (or use the uniform worker), invoke the worker via
- *      the substrate `runUnchecked` entry point.
+ *      `asRuntime(worker).run`.
  *   4. On success → `collection.complete(taskId, output)`.
  *   5. On throw → `collection.fail(taskId, message)` and (per the
  *      `onError` policy) either swallow or rethrow.
  *
- * BP-011 / FIX-503 deviation: the produced block is a `handler` whose
- * execute invokes the worker via `asRuntime(worker).runUnchecked`. A
- * sibling-sequencer composition would require static knowledge of the
- * worker at build time, but the worker is selected at claim time from
- * `task.assignee` against a registry. Using a router-by-assignee inside
- * a sequencer is feasible only when the registry is fully enumerated up
- * front; the substrate escape keeps the helper compatible with both the
- * uniform-worker and registry shapes without forcing patterns to
- * pre-declare every worker.
+ * BP-011 deviation (FIX-503): the produced block is a `handler` whose
+ * execute reaches through `asRuntime(worker).run` to dispatch the worker
+ * directly. A sibling-sequencer composition would require static
+ * knowledge of the worker at build time, but the worker is selected at
+ * claim time from `task.assignee` against a registry. Using a
+ * router-by-assignee inside a sequencer is feasible only when the
+ * registry is fully enumerated up front; the substrate cast keeps the
+ * helper compatible with both the uniform-worker and registry shapes
+ * without forcing patterns to pre-declare every worker.
  */
 import { handler } from "@flow-state-dev/core";
 import { asRuntime, type BlockContext, type BlockDefinition } from "@flow-state-dev/core/types";
@@ -163,11 +163,11 @@ export function dispatchAndExecuteBlock<TOut = unknown>(
       const workerInput = packWorkerInput(claimed, options.collection);
 
       try {
-        // Substrate path (FIX-503): the worker is selected dynamically from
+        // BP-011 deviation (FIX-503): the worker is selected dynamically from
         // `task.assignee`, so it can't be wired into a static sibling-step
-        // sequencer composition. `runUnchecked` is the sanctioned escape
-        // for first-party substrate dispatch.
-        const output = (await asRuntime(worker).runUnchecked(workerInput, ctx)) as TOut;
+        // sequencer composition. `asRuntime(worker).run` is the sanctioned
+        // substrate cast for first-party dispatch.
+        const output = (await asRuntime(worker).run(workerInput, ctx)) as TOut;
         await options.collection.complete(claimed.id, output);
         return { claimed: true, taskId: claimed.id, output };
       } catch (err) {

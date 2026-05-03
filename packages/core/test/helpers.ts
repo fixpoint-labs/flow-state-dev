@@ -5,8 +5,7 @@ import type { ScopeStateOps } from "../src/types/state";
 
 /**
  * Drive a block from test code (FIX-503). Recovers the substrate runtime
- * view via `asRuntime` and dispatches through `run`. The BP-011 nesting
- * guard does not fire because tests are the top-level caller.
+ * view via `asRuntime` and dispatches through `run`.
  *
  * Mirrors the `runForTest` helper in `@flow-state-dev/testing`; defined
  * here because `@flow-state-dev/core` cannot depend on `@flow-state-dev/testing`

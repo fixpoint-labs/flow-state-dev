@@ -1,9 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type { BlockConfig } from "../src/types/block";
-import { asRuntime, BlockNestingError } from "../src/types/block";
 import { buildBlock } from "../src/blocks/internal/build-block";
-import { handler, sequencer } from "../src/blocks";
 import { createMockContext, runForTest } from "./helpers";
 class RetryableError extends Error {}
 class FatalError extends Error {}
@@ -171,54 +169,5 @@ describe("buildBlock", () => {
     await expect(runForTest(failingBlock, 1, ctx)).rejects.toThrow("boom");
     expect(onErrored).toHaveBeenCalledTimes(1);
     expect(onErrored.mock.calls[0]?.[0]).toBeInstanceOf(Error);
-  });
-
-  describe("BP-011 runtime guard (FIX-503)", () => {
-    it("throws BlockNestingError when a block is invoked from inside a handler's execute", async () => {
-      const inner = handler({
-        name: "inner",
-        execute: () => "inner-result"
-      });
-
-      const outer = handler({
-        name: "outer",
-        execute: async (_input, ctx) => asRuntime(inner).run(undefined, ctx)
-      });
-
-      const ctx = createMockContext();
-      await expect(runForTest(outer, undefined, ctx)).rejects.toBeInstanceOf(BlockNestingError);
-    });
-
-    it("does NOT throw for sibling blocks dispatched concurrently against a shared ctx", async () => {
-      // thenAll / forEachBackground dispatch sibling blocks against the same ctx.
-      // The handler-execute flag must live on a per-call wrapper, not the shared
-      // ctx, so concurrent siblings don't observe each other's flags.
-      const a = handler({ name: "a", execute: async () => "a-done" });
-      const b = handler({ name: "b", execute: async () => "b-done" });
-      const ctx = createMockContext();
-      const [ra, rb] = await Promise.all([
-        runForTest(a, undefined, ctx),
-        runForTest(b, undefined, ctx)
-      ]);
-      expect([ra, rb]).toEqual(["a-done", "b-done"]);
-    });
-
-    it("runUnchecked clears INSIDE_EXECUTE so the called block's children dispatch normally", async () => {
-      // Regression for the bug bot finding: runUnchecked must not leak the
-      // caller's INSIDE_EXECUTE flag into the dispatched block. Otherwise a
-      // sequencer (or any compound block) called via runUnchecked from
-      // inside a handler would throw at the first child step.
-      const inner = sequencer({ name: "inner-seq", inputSchema: z.unknown() })
-        .then(handler({ name: "inner-step-1", execute: () => "step-1" }))
-        .then(handler({ name: "inner-step-2", execute: () => "step-2" }));
-
-      const outer = handler({
-        name: "outer-handler",
-        execute: async (_input, ctx) => asRuntime(inner).runUnchecked(undefined, ctx)
-      });
-
-      const ctx = createMockContext();
-      await expect(runForTest(outer, undefined, ctx)).resolves.toBe("step-2");
-    });
   });
 });
