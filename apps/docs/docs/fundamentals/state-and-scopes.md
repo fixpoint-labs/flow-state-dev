@@ -164,9 +164,11 @@ const recent = await ctx.session.getJournal({ limit: 10 });
 
 **Resources** — named typed containers for structured data and rich content. See [Resources](/docs/resources/overview).
 
-### Ephemeral sessions
+### Creating sessions
 
-If the caller omits `sessionId`, the framework auto-creates one with an ID like `ephemeral_1709312400000_a3f2b1`. Ephemeral sessions are fully functional but one-shot — nobody holds a reference to come back to them. Use them for stateless operations where you need session machinery (items, journal) but don't need to resume.
+A new session typically starts via `sessions.createSession({...})` on the client, which returns a stable `sess_<id>` you reuse on every subsequent action call. See [Client Overview](/docs/client/overview).
+
+If you call an action without a `sessionId`, the framework generates a fallback ID (prefix `ephemeral_<ts>_<rand>`) and persists the session record like any other. The action route doesn't return that generated ID to the client, so the session is effectively orphaned — useful for one-shot internal callers and tests, but not a way to start "real" conversations. For production conversational flows, always create the session first and pass the ID through.
 
 ## clientData: exposing state safely
 
@@ -263,21 +265,24 @@ A typical flow ends up looking closer to this:
 const myFlow = defineFlow({
   kind: "team-assistant",
   session: {
-    // Only fields the flow itself reads via clientData.
+    // Declared at the flow level so the clientData fn below sees it typed.
+    stateSchema: z.object({
+      messageCount: z.number().default(0),
+    }),
     clientData: {
-      messageCount: (ctx) => ctx.state.messageCount ?? 0,
+      messageCount: (ctx) => ctx.state.messageCount,
     },
   },
   actions: {
     chat: {
       inputSchema: z.object({ message: z.string() }),
-      block: chatPipeline,   // counter, modeSwitch, etc. bubble their schemas up
+      block: chatPipeline,   // other state fields (mode, etc.) bubble up from blocks
     },
   },
 });
 ```
 
-The blocks inside `chatPipeline` declare their own `sessionStateSchema` / `userStateSchema` / `orgStateSchema`, and those declarations merge into the flow at construction time. You think about state where it's used.
+`messageCount` is declared at the flow level because the flow itself reads it (in the `clientData` compute function). Other fields — a `mode` flag a router uses, a `lastModelUsed` field a generator writes — stay declared on their blocks and merge in via bubbling. The rule of thumb: declare state at the flow level only when something on the flow config actually reads it.
 
 ## Where to next
 
