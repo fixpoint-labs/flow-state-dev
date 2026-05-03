@@ -4,7 +4,7 @@ sidebar_position: 12
 
 # Sequencer State
 
-The four persistence scopes — `request`, `session`, `user`, `org` — are tied to identity. Sequencer state has a different lifetime: it lives for one execution of one sequencer instance, then it's gone. No store, no version history, no checkpoint.
+The four persistence scopes — `request`, `session`, `user`, `org` — are tied to identity. Sequencer state is tied to execution: it lives for one execution of one sequencer instance and is checkpointed at every step boundary so the run can resume after an interruption (FIX-401). When the run finishes, the state is done.
 
 When blocks inside a sequencer need to share data — a plan one block built and the next blocks act on, partial findings accumulating across steps — sequencer state is the right primitive.
 

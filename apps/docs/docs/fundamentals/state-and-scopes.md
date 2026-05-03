@@ -25,34 +25,29 @@ Most of your state lives at the session level. The other three matter, but they 
 
 A session is one conversation. When a client sends a request to a flow with a `sessionId`, the framework loads that session's state, runs the action, and persists any changes. The next request with the same `sessionId` picks up where the last one left off.
 
+A block declares the session-state fields it touches with `sessionStateSchema`. Inside `execute`, `ctx.session` is the read/write handle:
+
 ```ts
-const myFlow = defineFlow({
-  kind: "my-app",
-  session: {
-    stateSchema: z.object({
-      mode: z.enum(["chat", "agent"]).default("chat"),
-      messageCount: z.number().default(0),
-    }),
+const tracker = handler({
+  name: "tracker",
+  sessionStateSchema: z.object({
+    mode: z.enum(["chat", "agent"]).default("chat"),
+    messageCount: z.number().default(0),
+  }),
+  execute: async (input, ctx) => {
+    // Read — typed from the schema
+    const mode = ctx.session.state.mode;
+
+    // Merge fields into existing state
+    await ctx.session.patchState({ mode: "agent" });
+
+    // Atomic numeric increment
+    await ctx.session.incState({ messageCount: 1 });
   },
 });
 ```
 
-Inside any block, session state is read and written through `ctx.session`:
-
-```ts
-execute: async (input, ctx) => {
-  // Read — typed from your schema
-  const mode = ctx.session.state.mode;
-
-  // Merge fields into existing state
-  await ctx.session.patchState({ mode: "agent" });
-
-  // Atomic numeric increment
-  await ctx.session.incState({ messageCount: 1 });
-}
-```
-
-`ctx.session.state` is fully typed — the framework infers the type from your Zod schema. You write the schema once and reads, writes, and increments are all checked at compile time. See [Type System](/docs/fundamentals/type-system) for how this carries through blocks, sequencers, and flows.
+`ctx.session.state` is fully typed — the framework infers the type from your Zod schema. Reads, writes, and increments are all checked at compile time. See [Type System](/docs/fundamentals/type-system) for how this carries through blocks, sequencers, and flows.
 
 These three operations (`patchState`, `incState`, and the record helpers covered next) cover most of what you'll write. There are more — `setState` for full replacement, `pushState` for arrays, `atomicState` for read-modify-write — but you don't need them on day one.
 
@@ -220,26 +215,26 @@ Use request state when you explicitly *don't* want data to accumulate in the ses
 **User** persists across sessions. Preferences, accumulated knowledge, personal collections — anything that should follow a user from conversation to conversation.
 
 ```ts
-user: {
-  stateSchema: z.object({
-    preferences: z.object({
-      responseStyle: z.enum(["concise", "detailed"]).default("detailed"),
-    }).default({}),
-  }),
-}
+userStateSchema: z.object({
+  preferences: z.object({
+    responseStyle: z.enum(["concise", "detailed"]).default("detailed"),
+  }).default({}),
+})
 ```
 
-User scope is shared across flows on the same server by default — every flow's `user.stateSchema` is structurally compared at startup, and incompatible declarations throw `CrossFlowSchemaConflictError` from `FlowRegistry.register` before any data can be corrupted. See [Authentication](/docs/server/authentication) for the trust model and [Flow Isolation](/docs/advanced/flow-isolation) if you need to keep a flow's user state separate.
+User scope is shared across flows on the same server by default — every flow's user state schema is structurally compared at startup, and incompatible declarations throw `CrossFlowSchemaConflictError` from `FlowRegistry.register` before any data can be corrupted. See [Authentication](/docs/server/authentication) for the trust model and [Flow Isolation](/docs/advanced/flow-isolation) if you need to keep a flow's user state separate.
 
 **Org** is the team-level boundary. Shared configuration, knowledge bases, settings that an admin controls for everyone. Available when the caller passes an `orgId`; `ctx.org` is `undefined` otherwise.
 
 ```ts
-execute: async (input, ctx) => {
-  const budget = ctx.org?.state.config.maxTokenBudget ?? 100_000;
-}
+orgStateSchema: z.object({
+  config: z.object({
+    maxTokenBudget: z.number().default(100_000),
+  }).default({}),
+})
 ```
 
-Org scope is also shared across flows by default with the same registry-time schema check as user scope. Once a session is bound to an `orgId`, requests claiming a different `orgId` against that session throw `OrgBindingMismatchError` at runtime.
+Org scope is also shared across flows by default with the same registry-time schema check as user scope. Read it inside a block with `ctx.org?.state.config` — and remember the optional chain, since `ctx.org` is `undefined` when no `orgId` was passed. Once a session is bound to an `orgId`, requests claiming a different `orgId` against that session throw `OrgBindingMismatchError` at runtime.
 
 For the full operation reference and CAS semantics that apply to all four scopes, see [State Operations](/docs/fundamentals/state-operations). For how `userId` and `orgId` flow into a request — including who's responsible for verifying them — see [Authentication](/docs/server/authentication).
 
@@ -252,43 +247,37 @@ Two scopes would force you to choose between "per-request" and "everything else.
 - **User** — what follows a person across conversations.
 - **Org** — what a team shares.
 
-## Putting it together
+## When to declare state at the flow level
 
-A flow that uses all four scopes:
+In practice, most state declarations live on blocks, not flows. A counter block declares `messageCount`, a mode-switcher declares `mode`, and the flow picks them up by bubbling. You don't need to repeat them on `defineFlow`.
+
+Reach for flow-level `session.stateSchema` (or `user`, `org`) when:
+
+- You write a `clientData` compute function that reads the field — the compute function lives on the flow config, so the field has to be visible there.
+- You want one place to see the canonical schema for code review or onboarding.
+- A field doesn't belong to any one block (rare).
+
+A typical flow ends up looking closer to this:
 
 ```ts
-const teamAssistant = defineFlow({
+const myFlow = defineFlow({
   kind: "team-assistant",
-  request: {
-    stateSchema: z.object({ processingStage: z.string().optional() }),
-  },
   session: {
-    stateSchema: z.object({
-      mode: z.enum(["chat", "agent", "review"]).default("chat"),
-      messageCount: z.number().default(0),
-    }),
-  },
-  user: {
-    stateSchema: z.object({
-      preferences: z.object({
-        responseStyle: z.enum(["concise", "detailed"]).default("detailed"),
-      }).default({}),
-    }),
-  },
-  org: {
-    stateSchema: z.object({
-      config: z.object({
-        systemPrompt: z.string().default("You are a helpful assistant."),
-      }).default({}),
-    }),
+    // Only fields the flow itself reads via clientData.
+    clientData: {
+      messageCount: (ctx) => ctx.state.messageCount ?? 0,
+    },
   },
   actions: {
-    chat: { steps: chatPipeline },
+    chat: {
+      inputSchema: z.object({ message: z.string() }),
+      block: chatPipeline,   // counter, modeSwitch, etc. bubble their schemas up
+    },
   },
 });
 ```
 
-Each scope carries data appropriate for its lifetime: request for scratch, session for the conversation, user for personal preferences, org for team-wide configuration.
+The blocks inside `chatPipeline` declare their own `sessionStateSchema` / `userStateSchema` / `orgStateSchema`, and those declarations merge into the flow at construction time. You think about state where it's used.
 
 ## Where to next
 

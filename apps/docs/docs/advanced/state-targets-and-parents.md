@@ -112,11 +112,11 @@ A research pipeline reports progress to its outermost sequencer from a deeply ne
 import { handler, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
-// Outer sequencer carries progress state.
+// Outer sequencer carries progress state on its own instance state.
 const researchPipeline = sequencer({
   name: "research-pipeline",
   inputSchema: z.object({ query: z.string() }),
-  sessionStateSchema: z.object({ progress: z.number().default(0) }),
+  stateSchema: z.object({ progress: z.number().default(0) }),
 });
 
 // Inner block declares which ancestor it needs.
@@ -152,5 +152,5 @@ The point: `processChunk` doesn't know how many sequencers wrap it, only that an
 ## Where to next
 
 - **[State Operations](/docs/fundamentals/state-operations)** — the full operation reference shared by every scope and target.
-- **[Sequencer State](/docs/advanced/sequencer-state)** — the in-memory scope `ctx.sequencer` points to.
+- **[Sequencer State](/docs/advanced/sequencer-state)** — the per-execution scope `ctx.sequencer` points to.
 - **[Blocks](/docs/fundamentals/blocks)** — block configuration, including the `targetStateSchemas` field.
