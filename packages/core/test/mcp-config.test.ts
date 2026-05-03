@@ -85,39 +85,6 @@ describe("defineFlow mcp config validation", () => {
     ).not.toThrow();
   });
 
-  it("does not require description on actions outside mcp.exposeActions allowlist", () => {
-    expect(() =>
-      defineFlow({
-        kind: "demo",
-        mcp: { enabled: true, exposeActions: ["public"] },
-        actions: {
-          public: {
-            inputSchema: z.object({}),
-            block: noopBlock,
-            description: "Public."
-          },
-          private: { inputSchema: z.object({}), block: noopBlock }
-        }
-      })
-    ).not.toThrow();
-  });
-
-  it("rejects exposeActions referencing a missing action", () => {
-    expect(() =>
-      defineFlow({
-        kind: "demo",
-        mcp: { enabled: true, exposeActions: ["nope"] },
-        actions: {
-          run: {
-            inputSchema: z.object({}),
-            block: noopBlock,
-            description: "Run."
-          }
-        }
-      })
-    ).toThrow(/mcp\.exposeActions references unknown action "nope"/);
-  });
-
   it("propagates mcp config onto FlowInstance", () => {
     const flow = defineFlow({
       kind: "demo",

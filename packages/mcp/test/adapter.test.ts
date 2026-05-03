@@ -101,11 +101,29 @@ describe("toolNameFromActionKey", () => {
 describe("resolveExposedActions", () => {
   it("excludes actions opted out via action.mcp.enabled: false", () => {
     const flow = buildFlow();
-    const exposed = resolveExposedActions(flow.kind, flow.actions, flow.mcp);
+    const exposed = resolveExposedActions(flow.kind, flow.actions);
     expect([...exposed.keys()]).toEqual(["record_payment"]);
   });
 
-  it("throws when two exposed actions derive the same tool name", () => {
+  it("honors per-action mcp.name overrides", () => {
+    const flow = defineFlow({
+      kind: "demo",
+      mcp: { enabled: true },
+      actions: {
+        recordPayment: {
+          inputSchema: z.object({}),
+          block: noopBlock,
+          description: "Record a payment.",
+          mcp: { name: "log-payment" }
+        }
+      }
+    });
+    const exposed = resolveExposedActions(flow.kind, flow.actions);
+    expect([...exposed.keys()]).toEqual(["log-payment"]);
+    expect(exposed.get("log-payment")?.actionKey).toBe("recordPayment");
+  });
+
+  it("throws when two exposed actions resolve to the same tool name", () => {
     const collidingFlow = defineFlow({
       kind: "demo",
       mcp: { enabled: true },
@@ -123,8 +141,31 @@ describe("resolveExposedActions", () => {
       }
     });
     expect(() =>
-      resolveExposedActions(collidingFlow.kind, collidingFlow.actions, collidingFlow.mcp)
-    ).toThrow(/derive the MCP tool name "record_payment"/);
+      resolveExposedActions(collidingFlow.kind, collidingFlow.actions)
+    ).toThrow(/resolve to the MCP tool name "record_payment"/);
+  });
+
+  it("throws when an mcp.name override collides with another tool name", () => {
+    const collidingFlow = defineFlow({
+      kind: "demo",
+      mcp: { enabled: true },
+      actions: {
+        recordPayment: {
+          inputSchema: z.object({}),
+          block: noopBlock,
+          description: "A."
+        },
+        otherAction: {
+          inputSchema: z.object({}),
+          block: noopBlock,
+          description: "B.",
+          mcp: { name: "record_payment" }
+        }
+      }
+    });
+    expect(() =>
+      resolveExposedActions(collidingFlow.kind, collidingFlow.actions)
+    ).toThrow(/resolve to the MCP tool name "record_payment"/);
   });
 });
 
@@ -213,6 +254,32 @@ describe("MCP adapter — JSON-RPC dispatch", () => {
     const json = (await response.json()) as { result: { serverInfo: { name: string }; capabilities: { resources: { subscribe: boolean } } } };
     expect(json.result.serverInfo.name).toBe("billing");
     expect(json.result.capabilities.resources.subscribe).toBe(false);
+  });
+
+  it("tools/call resolves an action via its mcp.name override", async () => {
+    const flow = defineFlow({
+      kind: "demo",
+      mcp: { enabled: true },
+      actions: {
+        recordPayment: {
+          inputSchema: z.object({ amount: z.number() }),
+          block: noopBlock,
+          description: "Record a payment.",
+          mcp: { name: "log-payment" }
+        }
+      }
+    });
+    const adapter = createMcpTransportAdapter();
+    const host = withFlow(createMockTransportHost(), flow);
+    const response = await callAdapter(adapter, host, "POST", "demo", {
+      jsonrpc: "2.0",
+      id: 100,
+      method: "tools/call",
+      params: { name: "log-payment", arguments: { amount: 42 } }
+    });
+    expect(response.status).toBe(200);
+    expect(host.dispatchCalls).toHaveLength(1);
+    expect(host.dispatchCalls[0]!.envelope.action).toBe("recordPayment");
   });
 
   it("tools/list returns only exposed actions with descriptions and JSON schemas", async () => {

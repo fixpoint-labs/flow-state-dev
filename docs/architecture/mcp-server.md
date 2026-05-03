@@ -33,9 +33,8 @@ A flow opts in via the `mcp` config block:
 defineFlow({
   kind: "billing",
   mcp: {
-    enabled: true,                      // default false
-    exposeActions: ["recordPayment"],   // default: every non-opted-out action
-    exposeResources: true               // default true (currently empty in v1)
+    enabled: true,             // default false
+    exposeResources: true      // default true (currently empty in v1)
   },
   actions: {
     recordPayment: {
@@ -43,10 +42,16 @@ defineFlow({
       block,
       description: "Record a payment for an open invoice. ..."
     },
+    customName: {
+      inputSchema,
+      block,
+      description: "...",
+      mcp: { name: "logPayment" }   // override the auto-derived tool name
+    },
     privateInternal: {
       inputSchema,
       block,
-      mcp: { enabled: false }           // exclude from MCP regardless of allowlist
+      mcp: { enabled: false }       // exclude from MCP exposure
     }
   }
 });
@@ -88,9 +93,11 @@ prefix — the flow is the server, scope is implicit at the endpoint):
 | `getHTTPSProxy` | `get_https_proxy` |
 | `event-queue` | `event-queue` |
 
-Two actions deriving the same tool name throw at flow registration —
-the MCP client cache keys on tool name, so a runtime collision would
-silently break tool calls.
+Two actions resolving to the same tool name throw at flow registration
+— the MCP client cache keys on tool name, so a runtime collision would
+silently break tool calls. Override the auto-derived name on a single
+action by setting `mcp.name`; the override participates in the same
+collision check.
 
 The action's Zod input schema becomes the tool's JSON Schema input via
 `zod-to-json-schema`. Empty schemas (`z.object({})`) emit

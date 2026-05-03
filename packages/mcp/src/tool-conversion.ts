@@ -56,34 +56,37 @@ export function validateToolName(toolName: string, sourceKey: string): void {
 /**
  * Resolve the set of actions exposed via MCP for a given flow.
  *
- * Filters by `flow.mcp.exposeActions` (when set) and per-action
- * `action.mcp.enabled === false` opt-out. Throws if two exposed actions
- * derive the same tool name — the MCP client cache keys on tool name,
- * so collisions are catastrophic and must surface at startup.
+ * Excludes actions that opt out via `action.mcp.enabled === false`.
+ * Tool names come from `action.mcp.name` when set, otherwise are derived
+ * deterministically from the action key. Throws if two exposed actions
+ * resolve to the same tool name — the MCP client cache keys on tool
+ * name, so collisions are catastrophic and must surface at startup.
  *
  * Returns `Map<toolName, { actionKey, action }>` so the dispatcher can
  * look up the underlying action by tool name in O(1).
  */
 export function resolveExposedActions(
   flowKind: string,
-  actions: Record<string, ActionConfig>,
-  flowMcp: { exposeActions?: string[] } | undefined
+  actions: Record<string, ActionConfig>
 ): Map<string, { actionKey: string; action: ActionConfig }> {
-  const allowlist = flowMcp?.exposeActions;
   const result = new Map<string, { actionKey: string; action: ActionConfig }>();
 
   for (const [actionKey, action] of Object.entries(actions)) {
-    if (allowlist !== undefined && !allowlist.includes(actionKey)) continue;
     if (action.mcp?.enabled === false) continue;
 
-    const toolName = toolNameFromActionKey(actionKey);
+    const overrideName = action.mcp?.name;
+    const toolName =
+      typeof overrideName === "string" && overrideName.length > 0
+        ? overrideName
+        : toolNameFromActionKey(actionKey);
     validateToolName(toolName, actionKey);
 
     const existing = result.get(toolName);
     if (existing !== undefined) {
       throw new Error(
         `Flow "${flowKind}" exposes actions "${existing.actionKey}" and "${actionKey}" ` +
-        `which both derive the MCP tool name "${toolName}". Rename one of them.`
+        `which both resolve to the MCP tool name "${toolName}". Rename one of them ` +
+        `or set a distinct \`mcp.name\` override.`
       );
     }
     result.set(toolName, { actionKey, action });

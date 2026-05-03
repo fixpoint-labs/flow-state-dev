@@ -87,7 +87,18 @@ Action keys are converted to MCP tool names with `decamelize`:
 | `getHTTPSProxy` | `get_https_proxy` |
 | `event-queue` | `event-queue` |
 
-Two actions deriving the same tool name throw at flow registration.
+Two actions resolving to the same tool name throw at flow registration.
+
+Override the auto-derived name on a single action via `mcp.name`:
+
+```ts
+recordPayment: {
+  inputSchema,
+  block,
+  description: "...",
+  mcp: { name: "log-payment" }
+}
+```
 
 ## Per-action opt-out
 
@@ -99,12 +110,6 @@ actions: {
     mcp: { enabled: false }
   }
 }
-```
-
-Or use the flow-level allowlist:
-
-```ts
-mcp: { enabled: true, exposeActions: ["publicAction"] }
 ```
 
 ## Status

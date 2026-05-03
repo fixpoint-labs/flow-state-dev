@@ -215,7 +215,7 @@ async function handlePost(
 
   switch (body.method) {
     case "tools/list":
-      return jsonRpcResponse(id, undefined, { tools: listTools(flow.kind, flow.actions, flow.mcp) });
+      return jsonRpcResponse(id, undefined, { tools: listTools(flow.kind, flow.actions) });
 
     case "tools/call":
       return await handleToolsCall(host, flow, principal, body.params, id);
@@ -280,10 +280,9 @@ function buildInitializeResult(flowKind: string, params: unknown): {
 
 function listTools(
   flowKind: string,
-  actions: Record<string, ActionConfig>,
-  mcp: McpConfig | undefined
+  actions: Record<string, ActionConfig>
 ): McpTool[] {
-  const exposed = resolveExposedActions(flowKind, actions, mcp);
+  const exposed = resolveExposedActions(flowKind, actions);
   const tools: McpTool[] = [];
   for (const [toolName, { action }] of exposed) {
     tools.push(actionToMcpTool(toolName, action));
@@ -327,7 +326,7 @@ async function handleToolsCall(
     return jsonRpcResponse(id, jsonRpcError(JSON_RPC_INVALID_PARAMS, "tools/call params.name must be a string."));
   }
 
-  const exposed = resolveExposedActions(flow.kind, flow.actions, flow.mcp);
+  const exposed = resolveExposedActions(flow.kind, flow.actions);
   const target = exposed.get(name);
   if (target === undefined) {
     return jsonRpcResponse(id, jsonRpcError(JSON_RPC_METHOD_NOT_FOUND, `Unknown MCP tool "${name}".`));

@@ -101,17 +101,24 @@ export interface CostEstimate {
 }
 
 /**
- * Per-action overrides for MCP exposure. The flow-level `mcp.exposeActions`
- * decides the allowlist; this controls whether a given action opts out
- * regardless of that allowlist.
+ * Per-action overrides for MCP exposure. The flow-level `mcp.enabled`
+ * decides participation; per-action `enabled: false` opts an action out
+ * of exposure, and `name` overrides the auto-derived tool name.
  */
 export interface ActionMcpConfig {
   /**
-   * If false, the action is excluded from MCP exposure regardless of
-   * `flow.mcp.exposeActions`. Default: true (action is exposed when its
-   * flow exposes it).
+   * If false, the action is excluded from MCP exposure even when its
+   * flow has `mcp.enabled: true`. Default: true (action is exposed when
+   * its flow exposes it).
    */
   enabled?: boolean;
+  /**
+   * Optional override for the MCP tool name. When omitted, the tool
+   * name is derived deterministically from the action key
+   * (`recordPayment` → `record_payment`). Names must match the MCP
+   * charset `[A-Za-z0-9_.-]{1,128}`.
+   */
+  name?: string;
 }
 
 export type ActionConfig<
@@ -141,18 +148,14 @@ export type ActionConfig<
 
 /**
  * Per-flow MCP exposure config. Opt-in: a flow must set `enabled: true`
- * for the MCP transport adapter to mount routes for it. The runtime under
- * `host.dispatch` is identical between MCP and HTTP requests.
+ * for the MCP transport adapter to mount routes for it. Per-action
+ * inclusion is controlled on each action via `action.mcp.enabled`. The
+ * runtime under `host.dispatch` is identical between MCP and HTTP
+ * requests.
  */
 export interface McpConfig {
   /** Master enable. Default: false. */
   enabled?: boolean;
-  /**
-   * Allowlist of action names exposed as MCP tools. When undefined, every
-   * action whose own `mcp.enabled` is not `false` is exposed. References
-   * to missing actions throw at flow registration.
-   */
-  exposeActions?: string[];
   /**
    * If true (default), exposes flow-scoped resources via MCP
    * `resources/list` + `resources/read`, honoring the existing

@@ -329,14 +329,14 @@ function mergeAuthentication(
 }
 
 /**
- * When `mcp.enabled === true`, every action that will be exposed via the MCP
- * adapter must carry a non-empty `description`. The MCP package converts
- * actions into LLM-facing tools; an empty description ships an unusable
- * tool. Catching the omission at registration is preferable to discovering
- * it when an MCP client connects.
+ * When `mcp.enabled === true`, every action that will be exposed via the
+ * MCP adapter must carry a non-empty `description`. The MCP package
+ * converts actions into LLM-facing tools; an empty description ships an
+ * unusable tool. Catching the omission at registration is preferable to
+ * discovering it when an MCP client connects.
  *
- * Also validates `exposeActions` references — typos in the allowlist would
- * silently exclude every action, which is hard to debug at runtime.
+ * Per-action exclusion is set on the action itself via
+ * `action.mcp.enabled: false`.
  */
 function validateMcpConfig(
   flowKind: string,
@@ -345,22 +345,8 @@ function validateMcpConfig(
 ): void {
   if (mcp?.enabled !== true) return;
 
-  if (mcp.exposeActions !== undefined) {
-    for (const name of mcp.exposeActions) {
-      if (!Object.prototype.hasOwnProperty.call(actions, name)) {
-        throw new Error(
-          `Flow "${flowKind}" mcp.exposeActions references unknown action "${name}". ` +
-          `Known actions: ${Object.keys(actions).join(", ") || "(none)"}.`
-        );
-      }
-    }
-  }
-
-  const allowlist = mcp.exposeActions;
   for (const [actionName, action] of Object.entries(actions)) {
-    const inAllowlist = allowlist === undefined || allowlist.includes(actionName);
-    const optedOut = action.mcp?.enabled === false;
-    if (!inAllowlist || optedOut) continue;
+    if (action.mcp?.enabled === false) continue;
 
     if (typeof action.description !== "string" || action.description.trim().length === 0) {
       throw new Error(
