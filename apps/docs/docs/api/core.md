@@ -148,7 +148,7 @@ export default myFlow({ id: "default" });
 
 ### `defineResource(config)`
 
-Create a portable resource definition. Can be used in flow scope configs and in block-level resource declarations (`sessionResources`, `userResources`, `projectResources`):
+Create a portable resource definition. Can be used in flow scope configs and in block-level resource declarations (`sessionResources`, `userResources`, `orgResources`):
 
 ```ts
 import { defineResource } from "@flow-state-dev/core";
@@ -274,7 +274,7 @@ const agent = generator({
 });
 ```
 
-Three overloads: `(session)`, `(session, user)`, `(session, user, project)`.
+Three overloads: `(session)`, `(session, user)`, `(session, user, org)`.
 
 ## Prompt Formatters
 
@@ -294,7 +294,7 @@ Three overloads: `(session)`, `(session, user)`, `(session, user, project)`.
 
 ### `clientData` on scope configs
 
-Expose derived state to the frontend. Define compute functions on `session`, `user`, or `project` scope configs:
+Expose derived state to the frontend. Define compute functions on `session`, `user`, or `org` scope configs:
 
 ```ts
 defineFlow({

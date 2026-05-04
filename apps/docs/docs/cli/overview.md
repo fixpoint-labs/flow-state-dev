@@ -39,7 +39,7 @@ Use `-m` to swap models without code changes. Pass a model ID (e.g. `gpt-4o-mini
 
 ## State seeding
 
-`--seed-session`, `--seed-user`, and `--seed-project` let you start with specific state for debugging. Pass inline JSON or a file path. The seeded state is merged into the scopes before execution. Handy for reproducing issues that depend on prior state.
+`--seed-session`, `--seed-user`, and `--seed-org` let you start with specific state for debugging. Pass inline JSON or a file path. The seeded state is merged into the scopes before execution. Handy for reproducing issues that depend on prior state.
 
 ## Next steps
 

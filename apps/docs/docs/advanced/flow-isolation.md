@@ -4,21 +4,21 @@ sidebar_position: 11
 
 # Sharing State Across Flows
 
-Most apps end up with more than one flow on the same server. A chat flow, an admin flow, a background job. They share users and projects but do different things.
+Most apps end up with more than one flow on the same server. A chat flow, an admin flow, a background job. They share users and orgs but do different things.
 
-By default, all your flows share the same user and project records. If a chat flow writes the user's preferred theme, an admin flow reading that same user sees it. That's usually what you want — preferences, profile, project title — these belong to the user or project, not to a single flow.
+By default, all your flows share the same user and org records. If a chat flow writes the user's preferred theme, an admin flow reading that same user sees it. That's usually what you want — preferences, profile, org title — these belong to the user or org, not to a single flow.
 
 This page covers how that sharing works, the guardrail that catches conflicts, and the one-line opt-out for flows that need their own private state.
 
-## The default: shared user and project state
+## The default: shared user and org state
 
-Every flow you register on a server reads from and writes to the same `UserRecord` for a given `userId`. Same for project. Sessions and requests are different — those carry the flow's identity and stay separate per flow.
+Every flow you register on a server reads from and writes to the same `UserRecord` for a given `userId`. Same for org. Sessions and requests are different — those carry the flow's identity and stay separate per flow.
 
 So if two flows declare a `user.stateSchema`, they're declaring it over the *same* underlying record. That's powerful when the schemas agree, and it would be a silent data-loss bug if they didn't.
 
 ## The guardrail: schema conflicts caught at startup
 
-When you register your flows with the server, the framework checks that every flow's user and project schemas are compatible with each other. If two flows declare the same field with different types, registration fails immediately:
+When you register your flows with the server, the framework checks that every flow's user and org schemas are compatible with each other. If two flows declare the same field with different types, registration fails immediately:
 
 ```
 Flows "chat" and "admin" declare incompatible user.stateSchema schemas
@@ -48,7 +48,7 @@ defineFlow({
 });
 ```
 
-With `isolateUserState: true`, this flow's user state is stored separately. No other flow can see it, no other flow can clash with its schema. `isolateProjectState` does the same for project scope. The flags are independent — you can isolate one and share the other.
+With `isolateUserState: true`, this flow's user state is stored separately. No other flow can see it, no other flow can clash with its schema. `isolateOrgState` does the same for org scope. The flags are independent — you can isolate one and share the other.
 
 ## Picking shared vs isolated
 

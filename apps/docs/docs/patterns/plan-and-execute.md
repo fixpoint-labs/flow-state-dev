@@ -185,7 +185,7 @@ planAndExecute({
   // Resources to declare on the outer sequencer.
   sessionResources?: Record<string, any>;
   userResources?: Record<string, any>;
-  projectResources?: Record<string, any>;
+  orgResources?: Record<string, any>;
 
   // Identity for the internal planner generator. Default: "sub".
   // The default planner is a utility decomposer that does not currently

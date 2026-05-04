@@ -430,7 +430,7 @@ execute: async (input, ctx) => {
 }
 ```
 
-Targets give a block typed access to the state of named ancestor blocks in the execution tree. They are declared via `targetStateSchemas` in the block config — see [Target state](/docs/fundamentals/state-and-scopes#target-state) for details.
+Targets give a block typed access to the state of named ancestor blocks in the execution tree. They are declared via `targetStateSchemas` in the block config — see [State Targets and Parents](/docs/advanced/state-targets-and-parents) for details.
 
 ### `ctx.parent`
 
@@ -536,7 +536,7 @@ pipeline.then(
 
 ## Blocks declare their resources
 
-Just like blocks declare their state dependencies with partial schemas, blocks can declare their **resource dependencies** using `sessionResources`, `userResources`, and `projectResources`. These accept `defineResource()` values:
+Just like blocks declare their state dependencies with partial schemas, blocks can declare their **resource dependencies** using `sessionResources`, `userResources`, and `orgResources`. These accept `defineResource()` values:
 
 ```ts
 import { defineResource, handler } from "@flow-state-dev/core";

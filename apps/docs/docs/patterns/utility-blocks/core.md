@@ -627,11 +627,11 @@ const saveNote = utility.upsertResource({
 |--------|----------|-------------|
 | `name` | Yes | Block name |
 | `inputSchema` | Yes | Zod schema for the input |
-| `collectionKey` | Yes | Property name of the collection as declared in `sessionResources` / `userResources` / `projectResources` |
+| `collectionKey` | Yes | Property name of the collection as declared in `sessionResources` / `userResources` / `orgResources` |
 | `scope` | No | Which scope to look up the collection in. Defaults to `"session"`. |
 | `sessionResources` | No | Session-scoped resource collections |
 | `userResources` | No | User-scoped resource collections |
-| `projectResources` | No | Project-scoped resource collections |
+| `orgResources` | No | Org-scoped resource collections |
 | `sequencerStateSchema` | No | Outer sequencer state schema, if the block needs to read/write sequencer state |
 | `key` | Yes | Derive the resource key string from input |
 | `state` | Yes | Derive the state patch from input |
