@@ -1,5 +1,5 @@
 ---
-sidebar_position: 2
+sidebar_position: 6
 ---
 
 # MCP Server
@@ -178,7 +178,7 @@ plus a JSON-RPC error with code `-32001`. Throwing
 `PrincipalResolutionError` produces the same shape and lets you set the
 status explicitly.
 
-See [Authentication](../server/authentication) for the full hook contract.
+See [Authentication](./authentication) for the full hook contract.
 
 ## Per-user endpoints
 
