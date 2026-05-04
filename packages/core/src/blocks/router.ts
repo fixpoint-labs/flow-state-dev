@@ -8,6 +8,7 @@ import type {
   InferBlockResources,
   InferStateFromSchema
 } from "../types/block";
+import { asRuntime } from "../types/block";
 import type { AnyResourceRef } from "../types/resource";
 import type { DeclaredResourceEntry } from "../types/block";
 import type { OutputItem } from "../items/types";
@@ -195,7 +196,7 @@ export function router<
         scopedCtx._runtimeHooks?.onBlockStart?.(selected.name, selected.kind, input);
         resolveActiveStatusMessage(selected, input, scopedCtx);
         try {
-          const output = await selected.run(input, scopedCtx);
+          const output = await asRuntime(selected).run(input, scopedCtx);
           scopedCtx._runtimeHooks?.onBlockComplete?.(selected.name, selected.kind, output, Date.now() - startedAt);
           return output;
         } catch (error) {

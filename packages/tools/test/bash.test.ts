@@ -5,6 +5,7 @@ import { createBashTool } from "../src/bash/create-bash-tool";
 import type { Sandbox, CommandResult, FileEntryState } from "../src/bash/types";
 import type { ResourceCollectionRef, ResourceRef } from "@flow-state-dev/core/types";
 
+import { runForTest } from "@flow-state-dev/testing";
 // ---------------------------------------------------------------------------
 // Helpers: mock sandbox
 // ---------------------------------------------------------------------------
@@ -918,7 +919,7 @@ describe("createBashBlocks", () => {
     });
 
     const ctx = buildCtx("auto-1", { session: { artifacts }, org: { skills } });
-    await bashCommand.run({ command: "ls" }, ctx);
+    await runForTest(bashCommand, { command: "ls" }, ctx);
 
     expect(sandbox.files.get("/workspace/artifacts/notes.md")).toBe("existing note");
     expect(sandbox.files.get("/workspace/skills/check-news/SKILL.md")).toBe("body");
@@ -941,10 +942,10 @@ describe("createBashBlocks", () => {
       session: { artifacts },
       org: { skills },
     });
-    await bashCommand.run({ command: "ls" }, ctx);
+    await runForTest(bashCommand, { command: "ls" }, ctx);
 
-    await bashWriteFile.run({ path: "artifacts/new-doc.md", content: "artifact content" }, ctx);
-    await bashWriteFile.run({ path: "skills/draft/SKILL.md", content: "skill content" }, ctx);
+    await runForTest(bashWriteFile, { path: "artifacts/new-doc.md", content: "artifact content" }, ctx);
+    await runForTest(bashWriteFile, { path: "skills/draft/SKILL.md", content: "skill content" }, ctx);
 
     expect(artifacts.count()).toBe(1);
     expect(skills.count()).toBe(1);
@@ -970,8 +971,8 @@ describe("createBashBlocks", () => {
     });
 
     const ctx = buildCtx("ro-1", { org: { skills } });
-    await bashCommand.run({ command: "ls" }, ctx);
-    await bashWriteFile.run(
+    await runForTest(bashCommand, { command: "ls" }, ctx);
+    await runForTest(bashWriteFile, 
       { path: "skills/foo/SKILL.md", content: "EDITED" },
       ctx,
     );
@@ -994,11 +995,11 @@ describe("createBashBlocks", () => {
     });
 
     const ctx = buildCtx("orphan-1", { session: { artifacts } });
-    await bashCommand.run({ command: "ls" }, ctx);
+    await runForTest(bashCommand, { command: "ls" }, ctx);
 
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      await bashWriteFile.run({ path: "random.txt", content: "uh oh" }, ctx);
+      await runForTest(bashWriteFile, { path: "random.txt", content: "uh oh" }, ctx);
       // Orphan write stays in the sandbox for this session but is never
       // persisted to any collection.
       expect(sandbox.files.get("/workspace/random.txt")).toBe("uh oh");
@@ -1024,12 +1025,12 @@ describe("createBashBlocks", () => {
     });
 
     const ctx = buildCtx("scratch-1", { session: { artifacts } });
-    await bashCommand.run({ command: "ls" }, ctx);
+    await runForTest(bashCommand, { command: "ls" }, ctx);
 
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      await bashWriteFile.run({ path: "tmp/scratchpad.txt", content: "abc" }, ctx);
-      await bashWriteFile.run({ path: "tmp/nested/file.txt", content: "xyz" }, ctx);
+      await runForTest(bashWriteFile, { path: "tmp/scratchpad.txt", content: "abc" }, ctx);
+      await runForTest(bashWriteFile, { path: "tmp/nested/file.txt", content: "xyz" }, ctx);
       expect(sandbox.files.get("/workspace/tmp/scratchpad.txt")).toBe("abc");
       expect(sandbox.files.get("/workspace/tmp/nested/file.txt")).toBe("xyz");
       expect(artifacts.count()).toBe(0);
@@ -1071,7 +1072,7 @@ describe("createBashBlocks", () => {
       session: { artifacts },
       org: { skills },
     });
-    await bashCommand.run({ command: "ls" }, ctx);
+    await runForTest(bashCommand, { command: "ls" }, ctx);
 
     expect(sandbox.files.get("/workspace/artifacts/foo.md")).toBe("a");
     // Skills collection is NOT mounted despite being on ctx.
@@ -1105,7 +1106,7 @@ describe("createBashBlocks", () => {
     const ctx = buildCtx("exclude-1", {
       session: { artifacts, secrets },
     });
-    await bashCommand.run({ command: "ls" }, ctx);
+    await runForTest(bashCommand, { command: "ls" }, ctx);
 
     expect(sandbox.files.get("/workspace/artifacts/foo.md")).toBe("a");
     expect(sandbox.files.has("/workspace/secrets/api-key.txt")).toBe(false);
@@ -1143,11 +1144,11 @@ describe("createBashBlocks", () => {
       session: { artifacts },
       org: { skills },
     });
-    await bashCommand.run({ command: "ls" }, ctx);
+    await runForTest(bashCommand, { command: "ls" }, ctx);
 
     // Simulate the agent deleting an artifact via the sandbox directly.
     sandbox.files.delete("/workspace/artifacts/drop.md");
-    await bashCommand.run({ command: "ls" }, ctx);
+    await runForTest(bashCommand, { command: "ls" }, ctx);
 
     expect(artifacts.getOptional("keep.md")).toBeDefined();
     expect(artifacts.getOptional("drop.md")).toBeUndefined();

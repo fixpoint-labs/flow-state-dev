@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { utility, sequencer } from "../src";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 describe("utility.memoryExtractor", () => {
   it("returns a generator block definition", () => {
     const block = utility.memoryExtractor({
@@ -34,7 +33,7 @@ describe("utility.memoryExtractor", () => {
       })
     });
 
-    await expect(block.run("conversation", ctx)).resolves.toEqual({
+    await expect(runForTest(block, "conversation", ctx)).resolves.toEqual({
       memories: [
         { type: "fact", content: "User is in Berlin", confidence: 0.8, source: "chat" },
         { type: "preference", content: "Prefers concise answers" },
@@ -72,7 +71,7 @@ describe("utility.memoryExtractor", () => {
       })
     });
 
-    await expect(block.run("conversation", ctx)).resolves.toEqual({
+    await expect(runForTest(block, "conversation", ctx)).resolves.toEqual({
       memories: [{ type: "fact", content: "Team is remote" }],
       summary: "one durable memory"
     });
@@ -97,7 +96,7 @@ describe("utility.memoryExtractor", () => {
     });
 
     await expect(
-      block.run(
+      runForTest(block, 
         {
           conversation: [
             { role: "user", content: "I prefer markdown answers" },
@@ -142,7 +141,7 @@ describe("utility.memoryExtractor", () => {
       })
     });
 
-    await expect(chain.run({ content: "User likes checklists" }, ctx)).resolves.toEqual({
+    await expect(runForTest(chain, { content: "User likes checklists" }, ctx)).resolves.toEqual({
       memories: [{ type: "preference", content: "Likes checklists" }]
     });
   });

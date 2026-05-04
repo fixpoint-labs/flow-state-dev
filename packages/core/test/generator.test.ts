@@ -6,8 +6,7 @@ import {
   readResourceContentTool,
   writeResourceContentTool
 } from "../src";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 describe("generator builder", () => {
   it("defaults output schema to string when omitted", async () => {
     const block = generator({
@@ -24,7 +23,7 @@ describe("generator builder", () => {
         }
       })
     });
-    await expect(block.run({ value: "x" }, ctx)).resolves.toBe("hello");
+    await expect(runForTest(block, { value: "x" }, ctx)).resolves.toBe("hello");
   });
 
   it("accepts a direct GeneratorModel instance in config.model", async () => {
@@ -44,7 +43,7 @@ describe("generator builder", () => {
     });
 
     const ctx = createMockContext();
-    await expect(block.run({ value: "x" }, ctx)).resolves.toBe("from-direct-model");
+    await expect(runForTest(block, { value: "x" }, ctx)).resolves.toBe("from-direct-model");
   });
 
   it("resolves model and prompt from functions", async () => {
@@ -68,7 +67,7 @@ describe("generator builder", () => {
         }
       })
     });
-    await expect(block.run({ count: 2 }, ctx)).resolves.toBe("ok");
+    await expect(runForTest(block, { count: 2 }, ctx)).resolves.toBe("ok");
     expect(seen[0]).toEqual({
       modelId: "model-2",
       prompt: "prompt-2"
@@ -96,7 +95,7 @@ describe("generator builder", () => {
         }
       })
     });
-    await expect(block.run({ value: 1 }, ctx)).resolves.toEqual({ done: true });
+    await expect(runForTest(block, { value: 1 }, ctx)).resolves.toEqual({ done: true });
     expect(repairOutput).toHaveBeenCalledTimes(1);
   });
 
@@ -127,8 +126,8 @@ describe("generator builder", () => {
         }
       })
     });
-    await expect(blockFail.run({ value: 1 }, ctx)).rejects.toThrow("validation failed");
-    await expect(blockRescue.run({ value: 1 }, ctx)).rejects.toThrow("validation failed");
+    await expect(runForTest(blockFail, { value: 1 }, ctx)).rejects.toThrow("validation failed");
+    await expect(runForTest(blockRescue, { value: 1 }, ctx)).rejects.toThrow("validation failed");
   });
 
   it("runs model-requested tools via execute wrappers", async () => {
@@ -178,7 +177,7 @@ describe("generator builder", () => {
         }
       })
     });
-    await expect(block.run({ text: "hello" }, ctx)).resolves.toEqual({
+    await expect(runForTest(block, { text: "hello" }, ctx)).resolves.toEqual({
       text: "hello",
       ok: true
     });
@@ -227,13 +226,13 @@ describe("generator builder", () => {
       }),
     });
 
-    await block.run({ pick: "a" }, ctx);
+    await runForTest(block, { pick: "a" }, ctx);
     expect(seenToolNames).toEqual(["toolA"]);
 
-    await block.run({ pick: "b" }, ctx);
+    await runForTest(block, { pick: "b" }, ctx);
     expect(seenToolNames).toEqual(["toolB"]);
 
-    await block.run({ pick: "both" }, ctx);
+    await runForTest(block, { pick: "both" }, ctx);
     expect(seenToolNames).toEqual(["toolA", "toolB"]);
   });
 
@@ -258,7 +257,7 @@ describe("generator builder", () => {
         }
       })
     });
-    await expect(block.run({ n: 1 }, ctx)).resolves.toEqual({ done: true });
+    await expect(runForTest(block, { n: 1 }, ctx)).resolves.toEqual({ done: true });
     expect(receivedMaxSteps).toBe(4);
   });
 
@@ -281,7 +280,7 @@ describe("generator builder", () => {
         }
       })
     });
-    await block.run({ n: 1 }, ctx);
+    await runForTest(block, { n: 1 }, ctx);
     expect(receivedCaching).toEqual({ ttl: "1h" });
   });
 
@@ -305,7 +304,7 @@ describe("generator builder", () => {
         }
       })
     });
-    await block.run({ disable: true }, ctx);
+    await runForTest(block, { disable: true }, ctx);
     expect(receivedCaching).toEqual({ enabled: false });
   });
 
@@ -357,7 +356,7 @@ describe("generator builder", () => {
       })
     });
 
-    await expect(block.run({ value: "x" }, ctx)).resolves.toBe("ok");
+    await expect(runForTest(block, { value: "x" }, ctx)).resolves.toBe("ok");
   });
   it("skips tool invocation when loop.runTools is false", async () => {
     const toolCall = vi.fn();
@@ -398,7 +397,7 @@ describe("generator builder", () => {
         }
       })
     });
-    await expect(block.run({ value: 1 }, ctx)).resolves.toEqual({ ok: true });
+    await expect(runForTest(block, { value: 1 }, ctx)).resolves.toEqual({ ok: true });
     expect(toolCall).not.toHaveBeenCalled();
   });
 
@@ -445,7 +444,7 @@ describe("generator builder", () => {
       } as any
     });
 
-    await block.run({ value: "x" }, ctx);
+    await runForTest(block, { value: "x" }, ctx);
 
     const toolOutputEvents = emittedEvents.filter(
       (e) => e.type === "item.added" && e.item?.type === "block_tool_output"
@@ -533,7 +532,7 @@ it("supports manually adding unified resource content tools", async () => {
     })
   });
 
-  await expect(block.run({ value: "x" }, ctx)).resolves.toBe("done");
+  await expect(runForTest(block, { value: "x" }, ctx)).resolves.toBe("done");
   expect(calls).toEqual([
     { name: "list", args: ["session/notes", "session/soul"] },
     { name: "read", args: "rendered" },
@@ -568,7 +567,7 @@ describe("generator streaming", () => {
       })
     });
 
-    await block.run({ value: "x" }, ctx);
+    await runForTest(block, { value: "x" }, ctx);
     // Text generators (z.string()) should NOT pass outputSchema to the model —
     // it would trigger structured output mode (Output.object) which prevents
     // normal text delta streaming.
@@ -609,7 +608,7 @@ describe("generator streaming", () => {
       }
     });
 
-    await block.run({ value: "x" }, ctx);
+    await runForTest(block, { value: "x" }, ctx);
 
     const toolCallItems = emitted.filter(
       e => e.type === "item.added" && e.item?.type === "tool_call_progress"
@@ -654,7 +653,7 @@ describe("generator streaming", () => {
       }
     });
 
-    await block.run({ value: "x" }, ctx);
+    await runForTest(block, { value: "x" }, ctx);
 
     const toolResultItems = emitted.filter(
       e => e.type === "item.added" && e.item?.type === "tool_call_progress" && e.item?.status === "completed"
@@ -693,7 +692,7 @@ describe("generator streaming", () => {
       }
     });
 
-    await block.run({ value: "x" }, ctx);
+    await runForTest(block, { value: "x" }, ctx);
 
     const convItems = emitted.filter(
       e => e.type === "item.added" &&
@@ -740,7 +739,7 @@ describe("generator streaming", () => {
       }
     });
 
-    await block.run({ value: "x" }, ctx);
+    await runForTest(block, { value: "x" }, ctx);
 
     // Tool call events and text content both emit under agentType: "primary".
     const toolItems = emitted.filter(

@@ -11,6 +11,7 @@ import {
 import { tools } from "../src";
 import type { SearchOutput } from "../src/search/types";
 
+import { runForTest } from "@flow-state-dev/testing";
 // Mock the providers module to avoid real SDK imports
 vi.mock("../src/search/providers", () => {
   const mockSearchOutput: SearchOutput = {
@@ -128,7 +129,7 @@ describe("search tool factory", () => {
     process.env.TAVILY_API_KEY = "env-tavily-key";
 
     const tool = search();
-    const result = await tool.run(
+    const result = await runForTest(tool, 
       { query: "test query", maxResults: 5, topic: "general" },
       {} as any
     );
@@ -140,7 +141,7 @@ describe("search tool factory", () => {
 
   it("executes search with config keys", async () => {
     const tool = search({ keys: { tavily: "config-key" } });
-    const result = await tool.run(
+    const result = await runForTest(tool, 
       { query: "test", maxResults: 3, topic: "general" },
       {} as any
     );
@@ -152,7 +153,7 @@ describe("search tool factory", () => {
     const tool = search();
 
     await expect(
-      tool.run(
+      runForTest(tool, 
         { query: "test", maxResults: 5, topic: "general" },
         {} as any
       )
@@ -183,7 +184,7 @@ describe("direct provider search factories", () => {
 
   it("exaSearch creates a tool locked to exa", async () => {
     const tool = exaSearch({ keys: { exa: "key" } });
-    const result = await tool.run(
+    const result = await runForTest(tool, 
       { query: "test", maxResults: 5, topic: "general" },
       {} as any
     );
@@ -192,7 +193,7 @@ describe("direct provider search factories", () => {
 
   it("serperSearch creates a tool locked to serper", async () => {
     const tool = serperSearch({ keys: { serper: "key" } });
-    const result = await tool.run(
+    const result = await runForTest(tool, 
       { query: "test", maxResults: 5, topic: "general" },
       {} as any
     );
@@ -201,7 +202,7 @@ describe("direct provider search factories", () => {
 
   it("braveSearch creates a tool locked to brave", async () => {
     const tool = braveSearch({ keys: { brave: "key" } });
-    const result = await tool.run(
+    const result = await runForTest(tool, 
       { query: "test", maxResults: 5, topic: "general" },
       {} as any
     );
@@ -210,7 +211,7 @@ describe("direct provider search factories", () => {
 
   it("perplexitySearch creates a tool locked to perplexity", async () => {
     const tool = perplexitySearch({ keys: { perplexity: "key" } });
-    const result = await tool.run(
+    const result = await runForTest(tool, 
       { query: "test", maxResults: 5, topic: "general" },
       {} as any
     );
@@ -219,7 +220,7 @@ describe("direct provider search factories", () => {
 
   it("perplexitySonarSearch creates a tool locked to perplexity-sonar", async () => {
     const tool = perplexitySonarSearch({ keys: { "perplexity-sonar": "key" } });
-    const result = await tool.run(
+    const result = await runForTest(tool, 
       { query: "test", maxResults: 5, topic: "general" },
       {} as any
     );
@@ -229,7 +230,7 @@ describe("direct provider search factories", () => {
   it("throws when locked provider has no key", async () => {
     const tool = tavilySearch();
     await expect(
-      tool.run(
+      runForTest(tool, 
         { query: "test", maxResults: 5, topic: "general" },
         {} as any
       )

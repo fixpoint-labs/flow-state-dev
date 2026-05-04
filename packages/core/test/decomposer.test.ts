@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { utility, sequencer } from "../src";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 describe("utility.decomposer", () => {
   it("returns a generator block definition", () => {
     const block = utility.decomposer({
@@ -29,7 +28,7 @@ describe("utility.decomposer", () => {
       })
     });
 
-    await expect(block.run("do one thing", ctx)).resolves.toEqual({
+    await expect(runForTest(block, "do one thing", ctx)).resolves.toEqual({
       tasks: [{ id: "task-1", goal: "Implement the change" }]
     });
   });
@@ -54,7 +53,7 @@ describe("utility.decomposer", () => {
       })
     });
 
-    const result = await block.run("ship feature", ctx);
+    const result = await runForTest(block, "ship feature", ctx);
     expect(result.tasks).toHaveLength(3);
     expect(result.tasks[1]?.deps).toEqual(["task-1"]);
     expect(result.tasks[2]?.deps).toEqual(["task-2"]);
@@ -88,7 +87,7 @@ describe("utility.decomposer", () => {
       })
     });
 
-    await expect(block.run("x", ctx)).resolves.toEqual({
+    await expect(runForTest(block, "x", ctx)).resolves.toEqual({
       tasks: [{ id: "task-1", goal: "Implement", owner: "agent-a" }]
     });
   });
@@ -121,7 +120,7 @@ describe("utility.decomposer", () => {
       })
     });
 
-    await expect(chain.run({ request: "launch feature" }, ctx)).resolves.toEqual({
+    await expect(runForTest(chain, { request: "launch feature" }, ctx)).resolves.toEqual({
       tasks: [
         { id: "task-1", goal: "Plan" },
         { id: "task-2", goal: "Execute", deps: ["task-1"] }

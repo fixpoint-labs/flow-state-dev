@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { handler } from "../src";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 describe("handler builder", () => {
   it("builds a handler block definition", async () => {
     const block = handler({
@@ -14,6 +13,6 @@ describe("handler builder", () => {
 
     const ctx = createMockContext();
     expect(block.kind).toBe("handler");
-    await expect(block.run("team", ctx)).resolves.toEqual({ message: "hi team" });
+    await expect(runForTest(block, "team", ctx)).resolves.toEqual({ message: "hi team" });
   });
 });

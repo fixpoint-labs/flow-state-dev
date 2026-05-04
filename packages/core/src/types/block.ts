@@ -397,6 +397,16 @@ export type DeclaredResourceEntry = DefinedResource | DefinedResourceCollection;
  */
 export type DeclaredResources = Record<string, DeclaredResourceEntry>;
 
+/**
+ * Public block surface — what user code holds and passes around (FIX-503).
+ *
+ * Deliberately omits the dispatch entry point. Substrate code (executor,
+ * sequencer, router, generator tool loop, CLI) sees the runtime view via
+ * `BlockRuntime` and uses `asRuntime()` to recover it at the boundary.
+ * Removing `run` from the public type makes `block.run(input, ctx)` from
+ * inside a handler's `execute` a TypeScript error — closing BP-011 at the
+ * type system instead of at convention.
+ */
 export interface BlockDefinition<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
@@ -418,12 +428,54 @@ export interface BlockDefinition<
    * for HTTP-layer enforcement.
    */
   requiresOrg: boolean;
-  run(input: TInput, ctx: BlockContext): Promise<TOutput>;
 
   connectInput<TFrom>(mapper: ConnectorFn<TFrom, TInput>): BlockDefinition<ZodTypeAny, TOutputSchema>;
   connectOutput<TTo>(
     mapper: (output: TOutput, ctx: BlockContext) => TTo | Promise<TTo>
   ): BlockDefinition<TInputSchema, ZodTypeAny>;
+}
+
+/**
+ * Internal substrate view of a block (FIX-503). Adds the `run` dispatch
+ * entry point that the runtime uses to actually execute a block. Recovered
+ * from a public `BlockDefinition` via `asRuntime()` at substrate boundaries.
+ *
+ * Not part of the public API surface — `run` is invisible on `BlockDefinition`,
+ * so user code can't call `block.run(...)` without first laundering through
+ * `asRuntime()`. That deliberate friction is the BP-011 firewall: anyone who
+ * reaches for `asRuntime` inside a handler is signing their name on the
+ * deviation. There is no runtime guard.
+ *
+ * @internal
+ */
+export interface BlockRuntime<
+  TInputSchema extends ZodTypeAny = ZodTypeAny,
+  TOutputSchema extends ZodTypeAny = ZodTypeAny,
+  TInput = z.infer<TInputSchema>,
+  TOutput = z.infer<TOutputSchema>,
+> extends BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+  /** @internal — dispatch entry point used by the substrate. */
+  run(input: TInput, ctx: BlockContext): Promise<TOutput>;
+}
+
+/**
+ * Substrate-only helper that recovers the runtime view of a block. Pure
+ * type-level cast — every `BlockDefinition` produced by `buildBlock`
+ * carries the `run` method at runtime. Substrate (executor, sequencer,
+ * router, generator tool loop, CLI block runner) uses this at the call
+ * boundary.
+ *
+ * @internal
+ */
+export function asRuntime<
+  TInputSchema extends ZodTypeAny,
+  TOutputSchema extends ZodTypeAny,
+  TInput,
+  TOutput,
+>(
+  block: BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput>
+): BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput> {
+  return block as BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput>;
 }
 
 export interface RescueHandlerSpec {

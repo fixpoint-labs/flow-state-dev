@@ -3,6 +3,7 @@
  */
 import type { BlockOutputItem, BlockValue, ItemProvenance, OutputItem } from "@flow-state-dev/core/items";
 import type { BlockContext, BlockDefinition, BlockOutputHint } from "@flow-state-dev/core/types";
+import { asRuntime } from "@flow-state-dev/core/types";
 import type { CapabilityRef } from "@flow-state-dev/core";
 import { getBaseCapability, resolveActiveStatusMessage } from "@flow-state-dev/core";
 import { composeMiddleware, mergeMiddlewareStacks } from "../middleware/compose";
@@ -224,7 +225,7 @@ async function executeByKind(
     };
     await emitGeneratorLifecycleSeam(seams, "before_execute", options.metadata);
     try {
-      const output = await block.run(input, generatorCtx as any);
+      const output = await asRuntime(block).run(input, generatorCtx as any);
       await emitGeneratorLifecycleSeam(seams, "after_execute", options.metadata);
 
       // FIX-480: streaming-text generators write `_blockOutputHint` on
@@ -249,7 +250,7 @@ async function executeByKind(
     block.kind === "sequencer" ||
     block.kind === "router"
   ) {
-    return { output: await block.run(input, ctx as any) };
+    return { output: await asRuntime(block).run(input, ctx as any) };
   }
 
   throw new Error(`Unknown block kind "${String(block.kind)}"`);

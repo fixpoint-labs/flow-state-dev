@@ -1,3 +1,4 @@
+import { runForTest } from "@flow-state-dev/testing";
 import { describe, it, expect } from 'vitest'
 import {
   constitution,
@@ -815,7 +816,7 @@ describe('identity/constitution', () => {
       const block = constitutionEnforce({ constitution: def, complianceThreshold: threshold })
       const ctx = { response: { emit: async () => {} } } as any
 
-      return block.run({
+      return runForTest(block, {
         principleResults,
         violations,
         tradeoffs,

@@ -1,5 +1,6 @@
 import { z, type ZodTypeAny } from "zod";
 import type { BlockContext, BlockDefinition, BlockOutputHint, ConnectorFn, RescueHandlerSpec } from "../types/block";
+import { asRuntime } from "../types/block";
 import type { BlockValue, OutputItem, StructureShape } from "../items/types";
 import type {
   BranchStep,
@@ -465,7 +466,7 @@ async function executeBlock(
     }
 
     try {
-      const output = await block.run(input, execCtx);
+      const output = await asRuntime(block).run(input, execCtx);
       scopedCtx._runtimeHooks?.onBlockComplete?.(block.name, block.kind, output, Date.now() - startedAt);
 
       // Generator blocks own their own block_output trace (carries modelUsage

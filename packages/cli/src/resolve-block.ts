@@ -16,7 +16,8 @@ const VALID_BLOCK_KINDS: ReadonlySet<string> = new Set<BlockKind>([
 
 /**
  * Structural check for a BlockDefinition. We don't use instanceof because blocks
- * are created by factory functions across packages.
+ * are created by factory functions across packages. Probes for the substrate
+ * dispatch entry (`run`, FIX-503) rather than the public API.
  */
 export function isBlockDefinition(value: unknown): value is BlockDefinition {
   return (

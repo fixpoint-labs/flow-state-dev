@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { utility, sequencer } from "../src";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 describe("utility.intentClassifier", () => {
   const categories = {
     billing: "Questions related to invoices, charges, or subscription payments.",
@@ -46,7 +45,7 @@ describe("utility.intentClassifier", () => {
       })
     });
 
-    await expect(block.run("I was charged twice", ctx)).resolves.toEqual({
+    await expect(runForTest(block, "I was charged twice", ctx)).resolves.toEqual({
       category: "billing",
       confidence: 0.92,
       reasoning: ""
@@ -74,7 +73,7 @@ describe("utility.intentClassifier", () => {
       })
     });
 
-    await expect(block.run("Do you have enterprise pricing?", ctx)).rejects.toThrow(/Category must be one of/);
+    await expect(runForTest(block, "Do you have enterprise pricing?", ctx)).rejects.toThrow(/Category must be one of/);
   });
 
   it("uses default output schema and supports override", async () => {
@@ -111,13 +110,13 @@ describe("utility.intentClassifier", () => {
       })
     });
 
-    await expect(defaultBlock.run("The app crashes", defaultCtx)).resolves.toEqual({
+    await expect(runForTest(defaultBlock, "The app crashes", defaultCtx)).resolves.toEqual({
       category: "technical-support",
       confidence: 0.71,
       reasoning: "Error report"
     });
 
-    await expect(customBlock.run("How does this work?", customCtx)).resolves.toEqual({
+    await expect(runForTest(customBlock, "How does this work?", customCtx)).resolves.toEqual({
       category: "general-inquiry",
       confidence: 0.88,
       labelReason: "Feature question"
@@ -146,7 +145,7 @@ describe("utility.intentClassifier", () => {
       })
     });
 
-    await expect(chain.run({ message: "Invoice question" }, ctx)).resolves.toEqual({
+    await expect(runForTest(chain, { message: "Invoice question" }, ctx)).resolves.toEqual({
       category: "billing",
       confidence: 0.9,
       reasoning: ""
@@ -174,7 +173,7 @@ describe("utility.intentClassifier", () => {
       })
     });
 
-    await expect(triage.run("The checkout flow is down", ctx)).resolves.toEqual({
+    await expect(runForTest(triage, "The checkout flow is down", ctx)).resolves.toEqual({
       category: "urgent",
       confidence: 0.95,
       reasoning: "Production outage"

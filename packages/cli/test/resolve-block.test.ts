@@ -29,7 +29,8 @@ describe("resolveBlock", () => {
     const block = await resolveBlock(resolve(fixturesDir, "valid-block.ts"));
     expect(block.kind).toBe("handler");
     expect(block.name).toBe("echo-block");
-    expect(typeof block.run).toBe("function");
+    // FIX-503: substrate dispatch entry is `run` (was `run`).
+    expect(typeof (block as { run?: unknown }).run).toBe("function");
   });
 
   it("throws CliError for missing file", async () => {

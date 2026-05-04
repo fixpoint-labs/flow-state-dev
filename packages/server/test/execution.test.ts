@@ -8,6 +8,7 @@ import {
 } from "@flow-state-dev/core";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
+import { runForTest } from "@flow-state-dev/testing";
 import {
   FlowError,
   NetworkError,
@@ -2021,13 +2022,13 @@ describe("transient block output", () => {
               await ctx._withExecutionScope!(
                 { name: "transient-step", kind: "handler", instanceId: "t1" },
                 async (scopedCtx) => {
-                  return transientBlock.run(input, scopedCtx);
+                  return runForTest(transientBlock, input, scopedCtx);
                 }
               );
               const result = await ctx._withExecutionScope!(
                 { name: "durable-step", kind: "handler", instanceId: "d1" },
                 async (scopedCtx) => {
-                  return durableBlock.run("hello", scopedCtx);
+                  return runForTest(durableBlock, "hello", scopedCtx);
                 }
               );
               return result;

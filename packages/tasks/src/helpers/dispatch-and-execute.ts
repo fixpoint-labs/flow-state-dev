@@ -1,23 +1,32 @@
 /**
- * `dispatchAndExecute` — the canonical "claim one, execute it, record
- * the result" inner step shared by every task-shaped pattern (FIX-443
- * §7).
+ * `dispatchAndExecuteBlock` — the canonical "claim one, execute it,
+ * record the result" inner step shared by every task-shaped pattern
+ * (FIX-443 §7).
  *
- * Pipeline:
+ * Pipeline performed when the produced block runs:
  *   1. `dispatcher.claim(collection, workerId, ctx)`
  *   2. If null → return `{ claimed: false }` (caller's loop should exit
  *      or back off).
  *   3. Pack the task into `TaskWorkerInput`, look up the worker from
- *      the registry (or use the uniform worker), invoke `worker.run`.
+ *      the registry (or use the uniform worker), invoke the worker via
+ *      `asRuntime(worker).run`.
  *   4. On success → `collection.complete(taskId, output)`.
  *   5. On throw → `collection.fail(taskId, message)` and (per the
  *      `onError` policy) either swallow or rethrow.
  *
- * The substrate keeps this helper deliberately small. Patterns that
- * need different shapes (e.g., concurrent N-worker drains) compose
- * `dispatchAndExecute` inside `forEach` / `loopBack` themselves.
+ * BP-011 deviation (FIX-503): the produced block is a `handler` whose
+ * execute reaches through `asRuntime(worker).run` to dispatch the worker
+ * directly. A sibling-sequencer composition would require static
+ * knowledge of the worker at build time, but the worker is selected at
+ * claim time from `task.assignee` against a registry. Using a
+ * router-by-assignee inside a sequencer is feasible only when the
+ * registry is fully enumerated up front; the substrate cast keeps the
+ * helper compatible with both the uniform-worker and registry shapes
+ * without forcing patterns to pre-declare every worker.
  */
-import type { BlockContext } from "@flow-state-dev/core/types";
+import { handler } from "@flow-state-dev/core";
+import { asRuntime, type BlockContext, type BlockDefinition } from "@flow-state-dev/core/types";
+import { z } from "zod";
 import type { Task } from "../schema/task";
 import type { TaskCollectionRef } from "../collection/types";
 import type { TaskDispatcher } from "../dispatchers/types";
@@ -39,6 +48,12 @@ export interface DispatchAndExecuteOptions {
    * after `fail` so the parent sequencer fails, too.
    */
   onError?: "skip" | "fail";
+  /**
+   * Optional name override. Default: `"dispatch-and-execute"`. Useful
+   * when a pattern uses the helper multiple times in the same sequencer
+   * and needs distinct trace identities.
+   */
+  name?: string;
 }
 
 export interface DispatchAndExecuteResult<TOut = unknown> {
@@ -53,10 +68,10 @@ export interface DispatchAndExecuteResult<TOut = unknown> {
 }
 
 /**
- * A `BlockDefinition` exposes a callable `run`; a registry is a plain
- * record of named blocks. Discriminate on `run` rather than on
- * `kind`-key presence — the latter would misroute a registry that
- * happens to use `"kind"` as an assignee key.
+ * A `BlockDefinition` exposes a callable substrate dispatch entry point;
+ * a registry is a plain record of named blocks. Discriminate on `run`
+ * rather than on `kind`-key presence — the latter would misroute a
+ * registry that happens to use `"kind"` as an assignee key.
  */
 function isUniformWorker(
   workers: TaskWorker | TaskWorkerRegistry
@@ -116,36 +131,51 @@ function packWorkerInput(
 }
 
 /**
- * Run one claim → execute → record cycle.
- *
- * This is a free function rather than a block factory so patterns can
- * call it inline inside their own handler `execute` bodies. A pattern
- * that wants a block-shaped wrapper can `handler({ execute: (...) =>
- * dispatchAndExecute(...) })` themselves.
+ * Build a block that performs one claim → execute → record cycle.
+ * Patterns compose this via `.then(dispatchAndExecuteBlock(...))` in
+ * their own sequencer chains. Replaces the pre-FIX-503 free-function
+ * helper that callers invoked from inside their own handler bodies
+ * (BP-011 violation).
  */
-export async function dispatchAndExecute<TOut = unknown>(
-  options: DispatchAndExecuteOptions,
-  ctx: BlockContext
-): Promise<DispatchAndExecuteResult<TOut>> {
+export function dispatchAndExecuteBlock<TOut = unknown>(
+  options: DispatchAndExecuteOptions
+): BlockDefinition {
   const workerId = options.workerId ?? "worker";
   const onError = options.onError ?? "skip";
+  const name = options.name ?? "dispatch-and-execute";
 
-  const claimed = await options.dispatcher.claim(options.collection, workerId, ctx);
-  if (claimed === null) {
-    return { claimed: false };
-  }
+  return handler({
+    name,
+    inputSchema: z.unknown(),
+    outputSchema: z.object({
+      claimed: z.boolean(),
+      taskId: z.string().optional(),
+      output: z.unknown().optional(),
+      error: z.string().optional(),
+    }),
+    execute: async (_input, ctx: BlockContext): Promise<DispatchAndExecuteResult<TOut>> => {
+      const claimed = await options.dispatcher.claim(options.collection, workerId, ctx);
+      if (claimed === null) {
+        return { claimed: false };
+      }
 
-  const worker = resolveWorker(options.workers, claimed);
-  const workerInput = packWorkerInput(claimed, options.collection);
+      const worker = resolveWorker(options.workers, claimed);
+      const workerInput = packWorkerInput(claimed, options.collection);
 
-  try {
-    const output = (await worker.run(workerInput, ctx)) as TOut;
-    await options.collection.complete(claimed.id, output);
-    return { claimed: true, taskId: claimed.id, output };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    await options.collection.fail(claimed.id, message);
-    if (onError === "fail") throw err;
-    return { claimed: true, taskId: claimed.id, error: message };
-  }
+      try {
+        // BP-011 deviation (FIX-503): the worker is selected dynamically from
+        // `task.assignee`, so it can't be wired into a static sibling-step
+        // sequencer composition. `asRuntime(worker).run` is the sanctioned
+        // substrate cast for first-party dispatch.
+        const output = (await asRuntime(worker).run(workerInput, ctx)) as TOut;
+        await options.collection.complete(claimed.id, output);
+        return { claimed: true, taskId: claimed.id, output };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        await options.collection.fail(claimed.id, message);
+        if (onError === "fail") throw err;
+        return { claimed: true, taskId: claimed.id, error: message };
+      }
+    },
+  });
 }

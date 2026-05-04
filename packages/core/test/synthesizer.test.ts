@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { utility, sequencer } from "../src";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 describe("utility.synthesizer", () => {
   it("returns a generator block definition", () => {
     const block = utility.synthesizer({
@@ -39,7 +38,7 @@ describe("utility.synthesizer", () => {
     });
 
     await expect(
-      block.run(
+      runForTest(block, 
         {
           artifacts: [
             "Source A: Start in region A because error rates are below threshold.",
@@ -84,7 +83,7 @@ describe("utility.synthesizer", () => {
     });
 
     await expect(
-      block.run(
+      runForTest(block, 
         [
           "Security review requires audit logging.",
           "Support team needs an escalation playbook.",
@@ -134,11 +133,11 @@ describe("utility.synthesizer", () => {
       })
     });
 
-    await expect(defaultBlock.run("x", defaultCtx)).resolves.toEqual({
+    await expect(runForTest(defaultBlock, "x", defaultCtx)).resolves.toEqual({
       synthesis: "Canonical recommendation",
       rationale: ["Conflicting priorities were reconciled by impact score."]
     });
-    await expect(customBlock.run("x", customCtx)).resolves.toEqual({
+    await expect(runForTest(customBlock, "x", customCtx)).resolves.toEqual({
       synthesis: "Canonical recommendation",
       confidence: 0.83
     });
@@ -171,7 +170,7 @@ describe("utility.synthesizer", () => {
     });
 
     await expect(
-      chain.run(
+      runForTest(chain, 
         {
           artifacts: ["One source", "Another source"]
         },
