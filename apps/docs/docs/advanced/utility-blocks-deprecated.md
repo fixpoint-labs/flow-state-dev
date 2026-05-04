@@ -227,7 +227,6 @@ const persist = handler({
         confidence: memory.confidence,
       });
     }
-    return input;
   },
 });
 
@@ -237,7 +236,7 @@ export const learnUser = sequencer({
 })
   .map((input) => input.transcript)
   .then(extract)
-  .then(persist);
+  .tap(persist);
 ```
 
 ---
@@ -1104,7 +1103,6 @@ const persist = handler({
     }
 
     await ctx.session.setState("compressedHistory", compressed.compressed);
-    return input;
   },
 });
 
@@ -1114,7 +1112,7 @@ export const memoryPipeline = sequencer({
 })
   .map((input) => input.transcript)
   .parallel(extract, compress)
-  .then(persist);
+  .tap(persist);
 ```
 
 **Data flow:** `transcript` &rarr; `parallel(memoryExtractor, contextReducer)` &rarr; `persist to session` &rarr; done
@@ -1216,6 +1214,6 @@ const customAnalyzer = utility.analyzer({
 
 ## Next steps
 
-- See the [Control Flow](/docs/sequencers/control-flow) guide for more composition techniques
+- See [Composing Blocks](/docs/sequencers/composing-blocks) for the day-one sequencer methods, or the [Control Flow Reference](/docs/sequencers/control-flow) for the full DSL
 - Read about [Blocks](/docs/fundamentals/blocks) to understand how utilities fit into the four-primitive model
 - Check [Testing Flows](/docs/testing/testing-flows) for how to test utility-based pipelines with mocked generators

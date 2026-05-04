@@ -37,12 +37,11 @@ const planner = handler({
     plan: z.array(z.string()),
     currentStep: z.number(),
   }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.sequencer!.patchState({
       plan: ["search", "analyze", "summarize"],
       currentStep: 0,
     });
-    return input;
   },
 });
 
@@ -52,16 +51,17 @@ const executor = handler({
     currentStep: z.number(),
     findings: z.record(z.string()),
   }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     const step = ctx.sequencer!.state.currentStep;
     await ctx.sequencer!.patchState({
       findings: { [`step-${step}`]: "result..." },
     });
     await ctx.sequencer!.incState({ currentStep: 1 });
-    return input;
   },
 });
 ```
+
+`planner` and `executor` only mutate `ctx.sequencer.state`; they have no transformation to feed downstream. They declare no `outputSchema` and chain into a sequencer with `.tap()` rather than `.then()`.
 
 `sequencerStateSchema` on each block declares what state shape it expects from its enclosing sequencer. Like session/user/org schemas, these bubble up — the framework merges them and catches conflicts at build time.
 

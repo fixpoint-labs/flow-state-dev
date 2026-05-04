@@ -26,11 +26,11 @@ A sequencer replaces the agent-vs-workflow split you see in other frameworks. Yo
 
 ```ts
 const pipeline = sequencer({ name: "chat-pipeline", inputSchema })
-  .then(chatGen)   // output: assistant message
-  .then(counter);  // input: assistant message, output: passthrough
+  .then(chatGen)  // output: assistant message
+  .tap(counter);  // counter only mutates state, so the chain attaches it as a tap
 ```
 
-The order matters. In this example, the generator produces the response. The handler runs after, using that response (and anything else it needs from context) to do its work. Data flows in one direction.
+The order matters. In this example, the generator produces the response. The counter runs after, incrementing session state. Because it has no transformation, we attach it with `.tap()` so the assistant message flows through as the pipeline's result. Data flows in one direction.
 
 Sequencers also support conditional steps (`thenIf`), parallelism (`parallel`), loops (`doUntil`, `doWhile`), and error recovery (`rescue`). You can branch to different blocks based on conditions. The key idea: composition is the primary abstraction, not "agent" vs "workflow."
 

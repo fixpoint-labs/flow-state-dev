@@ -14,9 +14,8 @@ A flat, typed object on each scope. Blocks read and write fields directly:
 const modeSwitch = handler({
   name: "mode-switch",
   sessionStateSchema: z.object({ mode: z.enum(["chat", "agent"]).default("chat") }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.session.patchState({ mode: "agent" });
-    return input;
   },
 });
 ```

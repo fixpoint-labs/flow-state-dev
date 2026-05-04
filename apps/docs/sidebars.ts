@@ -38,6 +38,7 @@ const sidebars: SidebarsConfig = {
           label: "Composition",
           items: [
             "sequencers/overview",
+            "sequencers/composing-blocks",
             "sequencers/control-flow",
             "sequencers/connectors",
           ],
