@@ -72,6 +72,14 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: "category",
+          label: "Transports",
+          items: [
+            "transports/overview",
+            "transports/mcp",
+          ],
+        },
+        {
+          type: "category",
           label: "Client",
           items: [
             "client/overview",
