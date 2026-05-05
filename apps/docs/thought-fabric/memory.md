@@ -295,6 +295,95 @@ const focused = mem.recall(ctx, 'TypeScript preferences')
 // Token overlap with cue boosts relevance
 ```
 
+## Recall Tool
+
+The formatter is one half of the read path. The other half is the recall tool: a search the agent itself can invoke when it needs a detail that wasn't in the summary at the top of its context.
+
+Install it via `mem.tool.recall()`:
+
+```ts
+const chat = generator({
+  name: 'chat',
+  model: 'gpt-5',
+  uses: [mem.capability],
+  tools: [mem.tool.recall()],
+  user: (input) => input,
+})
+```
+
+The tool searches stored memory — semantic facts and past episodes — and returns ranked results. Working memory is intentionally not included; it already lives in the formatter, so surfacing it through the tool would duplicate context cost.
+
+The agent calls it with a query and an optional limit:
+
+```text
+recall({ query: "what did the user say about Postgres?", limit: 5 })
+```
+
+The result is an envelope:
+
+```ts
+{
+  results: [
+    { id, content, source: 'semantic' | 'episodic', score, metadata, truncated },
+    ...
+  ],
+  query: 'what did the user say about Postgres?',
+  strategy: 'llm-filter',
+  totalMatched: 12,
+  truncatedTo: 5,
+}
+```
+
+`source` tells the agent where the result came from — a stable, well-reinforced fact carries different weight than a one-off episode, but the agent doesn't have to route on it. `metadata` carries source-specific fields: `confidence` and `reinforcementCount` for facts, `occurredAtTurn` and `significance` for episodes.
+
+Each result's `content` is capped at 400 characters by default. When a result is truncated, `truncated` is `true` and the content ends with a marker telling the agent to re-query if it needs the full body.
+
+### Strategies
+
+The retrieval backend is pluggable. The default is `llm-filter`, which runs in two stages:
+
+1. **Query-blind intrinsic pre-rank.** Score every fact by `confidence × (0.5 + reinforcementCount/10)` and every episode by `significance × exp(-age/50)`. Pool both, sort, take the top 50. No tokenisation, no overlap math — high-value memories enter the candidate set regardless of query vocabulary.
+2. **Single LLM filter call.** A small model picks the actually-relevant subset from the bounded candidate list.
+
+Token spend is bounded regardless of total store size. As the store grows, the pre-rank gate gets stricter. When low-value facts the LLM never sees stop being recallable, that's the signal to upgrade to a heavier strategy. There is no silent degradation curve.
+
+There's also a small Stage 1.5 pass-through that catches exact phrases (proper nouns, error codes) buried in low-score memories — up to 5 extra candidates per call. Disable it via `tool: { strategy: createLlmFilterStrategy({ model, exactPhrasePassThrough: false }) }`.
+
+Configure the strategy at `memory.system()` time:
+
+```ts
+const mem = memorySystem({
+  model: 'gpt-5',
+  working: true,
+  episodic: true,
+  semantic: true,
+  tool: {
+    strategy: 'llm-filter',     // default
+    model: 'gpt-5-mini',         // overrides the system model for the filter call
+    defaults: { limit: 5, perItemCharCap: 400 },
+  },
+})
+```
+
+Custom strategies implement the `RetrievalStrategy` interface and slot in the same way:
+
+```ts
+const myStrategy: RetrievalStrategy = {
+  name: 'my-backend',
+  rank(query, ctx, opts) { /* ... */ },
+}
+
+memorySystem({ /* ... */, tool: { strategy: myStrategy } })
+```
+
+The `tool` preset is also available via the memory capability, but it's off by default in this release. Manual install (`tools: [mem.tool.recall()]`) is the supported path.
+
+### When to use it
+
+Tell the agent to call `recall` when it needs a specific detail not present in the summary at the top of its context. Tell it not to call `recall` to re-retrieve facts already shown to it. The tool's description (visible to the model) emphasises both.
+
+If you find the agent over-retrieving, the lever is the description, not the limit — the limit only constrains result count, not call frequency.
+
 ## Consolidation
 
 Consolidation is how episodic memories become semantic facts. It runs automatically as part of the capture pipeline when semantic memory is configured.
