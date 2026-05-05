@@ -50,7 +50,18 @@ import {
   createWorkingMemoryCapability,
   createEpisodicMemoryCapability,
   createSemanticMemoryCapability,
+  createDigestMemoryCapability,
 } from './capabilities.js'
+import {
+  createDigestMemoryResource,
+  type DigestMemoryState,
+  type Digest,
+} from './digest-memory.js'
+import {
+  computeSourceSignature as digestComputeSourceSignature,
+  isStale as digestIsStale,
+} from './digest-helpers.js'
+import { digestRegenerate } from './digest-blocks.js'
 import { createRecallTool } from './tools/recall-tool.js'
 import { resolveStrategy } from './tools/strategies/index.js'
 import type { BuiltInStrategyName } from './tools/strategies/index.js'
@@ -119,6 +130,12 @@ export const DEFAULT_PRUNE_CONFIG = {
   pruneThreshold: 20,
 }
 
+/** Default configuration for the digest tier. */
+export const DEFAULT_DIGEST_CONFIG = {
+  maxTokens: 400,
+  topN: { facts: 30, episodes: 10 },
+} as const
+
 // ---------------------------------------------------------------------------
 // Config types
 // ---------------------------------------------------------------------------
@@ -138,6 +155,19 @@ export interface EpisodicMemoryConfig {
   significanceThreshold?: number
   /** Maximum episodes to retain. Default: 200. */
   maxEpisodes?: number
+}
+
+/** Configuration for the digest tier within memory.system(). */
+export interface DigestSystemConfig {
+  /** Hard cap on digest output tokens. Default: 400. */
+  maxTokens?: number
+  /** Top-N inputs to the regeneration prompt. */
+  topN?: {
+    /** Top-N semantic facts by reinforcement count. Default: 30. */
+    facts?: number
+    /** Top-N recent-and-significant episodes. Default: 10. */
+    episodes?: number
+  }
 }
 
 /** Configuration for the semantic memory module within memory.system(). */
@@ -187,6 +217,14 @@ export interface MemorySystemConfig {
   episodic?: EpisodicMemoryConfig | true
   /** Semantic memory config. `true` for defaults. Omit to disable. Requires episodic. */
   semantic?: SemanticMemoryConfig | true
+  /**
+   * Digest tier config. `true` for defaults; omit to disable.
+   *
+   * Requires `semantic` (the digest summarises the same store the semantic
+   * tier owns). Scope is inherited from semantic; there is no separate
+   * `digest.scope` knob — see [FIX-408] simplification.
+   */
+  digest?: DigestSystemConfig | true
   /** Optional custom name for the capture pipeline. */
   name?: string
   /** Optional input schema for source override. */
@@ -265,6 +303,24 @@ export interface MemorySystem {
     }
   }
   /**
+   * Digest tier — resource and helpers. Undefined if not configured.
+   * The digest is the always-on, narrative-shaped memory summary used by
+   * the simplified formatter ([FIX-407]).
+   */
+  digest?: {
+    resource: ReturnType<typeof createDigestMemoryResource>
+    helpers: {
+      computeSourceSignature: typeof digestComputeSourceSignature
+      isStale: typeof digestIsStale
+    }
+  }
+  /**
+   * Manual digest regeneration block. Pre-bound with `force: true` so it
+   * always runs regardless of staleness — useful in tests and after
+   * bulk-loading memory in setup. Undefined when digest is not configured.
+   */
+  regenerateDigest?: ReturnType<ReturnType<typeof digestRegenerate>['connectInput']>
+  /**
    * Session-scoped resources for this memory system. Spread into `defineFlow`'s
    * single flat `resources` map (FIX-435):
    * ```ts
@@ -285,6 +341,7 @@ export interface MemorySystem {
   userResources: {
     episodicMemory?: ReturnType<typeof createEpisodicMemoryResource>
     semanticMemory?: ReturnType<typeof createSemanticMemoryResource>
+    digestMemory?: ReturnType<typeof createDigestMemoryResource>
   }
 
   /**
@@ -322,6 +379,9 @@ export interface MemorySystem {
 
   /** Semantic memory capability (when semantic configured). */
   semanticMemoryCapability?: CapabilityRef
+
+  /** Digest memory capability (when digest configured). */
+  digestMemoryCapability?: CapabilityRef
 
   /**
    * Agent-invocable memory tools (FIX-409).
@@ -645,6 +705,12 @@ export function system(config: MemorySystemConfig): MemorySystem {
     throw new Error('Semantic memory requires episodic memory to be configured')
   }
 
+  // Validate: digest requires semantic (the digest summarises stable knowledge,
+  // and semantic owns that store).
+  if (config.digest && !config.semantic) {
+    throw new Error('Digest requires semantic memory to be configured')
+  }
+
   // Resolve working memory config
   const workingConfig: WorkingMemorySystemConfig = config.working === true
     ? {}
@@ -683,6 +749,25 @@ export function system(config: MemorySystemConfig): MemorySystem {
       }
     : undefined
 
+  // Resolve digest config. Scope is inherited from semantic — there is no
+  // separate digest.scope knob ([FIX-408] simplification).
+  const digestConfig = config.digest && semanticConfig
+    ? {
+        scope: semanticConfig.scope,
+        maxTokens: config.digest === true
+          ? DEFAULT_DIGEST_CONFIG.maxTokens
+          : (config.digest.maxTokens ?? DEFAULT_DIGEST_CONFIG.maxTokens),
+        topN: {
+          facts: config.digest === true
+            ? DEFAULT_DIGEST_CONFIG.topN.facts
+            : (config.digest.topN?.facts ?? DEFAULT_DIGEST_CONFIG.topN.facts),
+          episodes: config.digest === true
+            ? DEFAULT_DIGEST_CONFIG.topN.episodes
+            : (config.digest.topN?.episodes ?? DEFAULT_DIGEST_CONFIG.topN.episodes),
+        },
+      }
+    : undefined
+
   // Create tier capabilities FIRST — these own the resource references.
   // Blocks and the system both derive resources from capabilities to avoid
   // resource conflicts (same defineResource() reference everywhere).
@@ -701,6 +786,10 @@ export function system(config: MemorySystemConfig): MemorySystem {
       })
     : undefined
 
+  const digestCapability = digestConfig
+    ? createDigestMemoryCapability({ scope: digestConfig.scope })
+    : undefined
+
   // Extract resource references from capabilities for shared use by blocks.
   // Cast required: capability types store resources as DeclaredResourceEntry
   // (broad), but the MemorySystem interface uses specific resource types.
@@ -714,6 +803,10 @@ export function system(config: MemorySystemConfig): MemorySystem {
     ? semCapability.resources!.semanticMemory as ReturnType<typeof createSemanticMemoryResource>
     : undefined
 
+  const digestResource = digestCapability
+    ? digestCapability.resources!.digestMemory as ReturnType<typeof createDigestMemoryResource>
+    : undefined
+
   // Build blocks config — pass shared resources to avoid resource conflicts
   const blocksConfig = {
     name: config.name,
@@ -723,6 +816,8 @@ export function system(config: MemorySystemConfig): MemorySystem {
     _episodicResource: episodicResource,
     semantic: semanticConfig,
     _semanticResource: semanticResource,
+    digest: digestConfig,
+    _digestResource: digestResource,
     source: config.source,
   }
 
@@ -765,6 +860,7 @@ export function system(config: MemorySystemConfig): MemorySystem {
   const capUses: CapabilityRef[] = [wmCapability]
   if (epCapability) capUses.push(epCapability)
   if (semCapability) capUses.push(semCapability)
+  if (digestCapability) capUses.push(digestCapability)
 
   const composedCapability = defineCapability({
     name: 'memory' as const,
@@ -823,6 +919,7 @@ export function system(config: MemorySystemConfig): MemorySystem {
     userResources: {
       ...(episodicResource ? { episodicMemory: episodicResource } : {}),
       ...(semanticResource ? { semanticMemory: semanticResource } : {}),
+      ...(digestResource ? { digestMemory: digestResource } : {}),
     },
     capability: composedCapability,
     workingMemoryCapability: wmCapability,
@@ -870,6 +967,25 @@ export function system(config: MemorySystemConfig): MemorySystem {
 
   if (semCapability) {
     result.semanticMemoryCapability = semCapability
+  }
+
+  if (digestConfig && digestResource) {
+    result.digest = {
+      resource: digestResource,
+      helpers: {
+        computeSourceSignature: digestComputeSourceSignature,
+        isStale: digestIsStale,
+      },
+    }
+
+    // Manual escape hatch — pre-bound with `force: true` so it bypasses the
+    // staleness guard. Same block used internally; specialised via connectInput.
+    const manualBlock = digestRegenerate(blocksConfig as any)
+    result.regenerateDigest = manualBlock.connectInput(() => ({ force: true })) as any
+  }
+
+  if (digestCapability) {
+    result.digestMemoryCapability = digestCapability
   }
 
   return result

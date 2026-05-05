@@ -28,12 +28,13 @@ The memory system exposes `defineCapability()`-based surfaces. Declare `uses: [.
 import { system as memorySystem, workingMemoryCapability } from '@thought-fabric/core/memory'
 import { handler, generator, sequencer } from '@flow-state-dev/core'
 
-// Full system — working + episodic + semantic
+// Full system — working + episodic + semantic + digest
 const mem = memorySystem({
   model: 'preset/fast',
   working: { capacity: 7 },
   episodic: true,
   semantic: true,
+  digest: true,   // narrative summary, regenerates with consolidation/prune
 })
 
 // Generator: auto-installs resources, context formatter, and typed helpers
@@ -205,11 +206,15 @@ Capability-based surfaces for the memory subsystems.
 | `createEpisodicMemoryCapability(config?)` | factory | Custom episodic memory capability. |
 | `semanticMemoryCapability` | capability | Default semantic memory capability (user-scoped). |
 | `createSemanticMemoryCapability(config?)` | factory | Custom semantic memory capability. |
+| `digestMemoryCapability` | capability | Default digest memory capability (user-scoped). |
+| `createDigestMemoryCapability(config?)` | factory | Custom digest memory capability. |
 | **Via `memory.system()`** | | |
 | `mem.capability` | capability | Composed capability (all configured tiers). Context preset for generators. |
 | `mem.workingMemoryCapability` | capability | Working memory tier from this system instance. |
 | `mem.episodicMemoryCapability?` | capability | Episodic tier (if configured). |
 | `mem.semanticMemoryCapability?` | capability | Semantic tier (if configured). |
+| `mem.digestMemoryCapability?` | capability | Digest tier (if configured). |
+| `mem.regenerateDigest?` | block | Manual digest regeneration (force-runs regardless of staleness). |
 | **Capability helpers (`ctx.cap.*`)** | | |
 | `ctx.cap.workingMemory.add(entry)` | helper | Add entry with auto-eviction. |
 | `ctx.cap.workingMemory.evict(id)` | helper | Remove entry by ID. |
@@ -228,11 +233,36 @@ Capability-based surfaces for the memory subsystems.
 | `ctx.cap.semanticMemory.removeFact(id)` | helper | Remove a fact. |
 | `ctx.cap.semanticMemory.allFacts(subject?)` | helper | Get all facts. |
 | `ctx.cap.semanticMemory.query(q, limit?, subject?)` | helper | Query by keyword. |
+| `ctx.cap.digestMemory.get()` | helper | Read the current digest object (or `undefined`). |
+| `ctx.cap.digestMemory.content()` | helper | Read the digest narrative string. |
 | `ctx.cap.memory.recall(cue?)` | helper | Cross-store recall (composed capability only). |
 | **Types** | | |
 | `EpisodicMemoryCapabilityConfig` | type | Config for episodic capability factory. |
 | `SemanticMemoryCapabilityConfig` | type | Config for semantic capability factory. |
+| `DigestMemoryCapabilityConfig` | type | Config for digest capability factory. |
 | `AddSemanticFactInput` | type | Input for adding a semantic fact via capability. |
+
+### Digest tier
+
+The digest is a single LLM-generated narrative paragraph that summarises stable knowledge about the user — the framing layer above atomic semantic facts. It regenerates as a side-effect of `consolidate` and `prune` when the underlying stores have actually changed (the `sourceSignature` short-circuit prevents wasted LLM calls), and is bounded by `maxTokens` (default 400).
+
+```ts
+const mem = memorySystem({
+  model: 'preset/fast',
+  working: { capacity: 7 },
+  episodic: true,
+  semantic: true,
+  digest: { maxTokens: 400, topN: { facts: 30, episodes: 10 } },
+})
+
+// Manual regeneration (e.g. after bulk-loading memory in setup):
+await runForTest(mem.regenerateDigest!, undefined as any, ctx)
+
+// Read it from a block:
+const text = ctx.cap.digestMemory.content()
+```
+
+The digest's scope is inherited from `semantic` — there is no separate `digest.scope` knob.
 
 ## Memory Recall Tool
 

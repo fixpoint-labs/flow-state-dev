@@ -35,6 +35,8 @@ import { createSemanticMemoryResource, type SemanticMemoryState } from './semant
 import type { SemanticFact } from './semantic-memory.js'
 import { addFact, updateFact, reinforce, removeFact, allFacts, query } from './semantic-memory-helpers.js'
 
+import { createDigestMemoryResource, type DigestMemoryState } from './digest-memory.js'
+
 // ---------------------------------------------------------------------------
 // Working Memory Capability
 // ---------------------------------------------------------------------------
@@ -186,3 +188,43 @@ export function createSemanticMemoryCapability(config?: SemanticMemoryCapability
 
 /** Semantic memory capability with default config (user-scoped). */
 export const semanticMemoryCapability = createSemanticMemoryCapability()
+
+// ---------------------------------------------------------------------------
+// Digest Memory Capability
+// ---------------------------------------------------------------------------
+
+/** Config for digest memory capability. */
+export interface DigestMemoryCapabilityConfig {
+  /** Resource scope. Default: 'user'. Should mirror semantic memory's scope. */
+  scope?: 'user' | 'org'
+}
+
+/**
+ * Create a digest memory capability.
+ *
+ * Declares `digestMemory` resource in the configured scope and exposes
+ * read helpers via `ctx.cap.digestMemory`. Regeneration is *not* exposed
+ * here — it is a sequencer (one LLM call), not a sync helper. The
+ * memory.system() factory exposes regeneration as `mem.regenerateDigest`.
+ */
+export function createDigestMemoryCapability(config?: DigestMemoryCapabilityConfig) {
+  const scope = config?.scope ?? 'user'
+  const resource = createDigestMemoryResource(scope)
+
+  return defineCapability({
+    name: 'digestMemory' as const,
+    resources: { digestMemory: resource },
+    fns: (ctx: any) => {
+      const ref = ctx.resources.digestMemory as ResourceContext<DigestMemoryState>
+      return {
+        /** Get the current digest, or undefined if never generated. */
+        get: () => ref.state.digest,
+        /** Get just the digest narrative content, or undefined. */
+        content: () => ref.state.digest?.content,
+      }
+    },
+  })
+}
+
+/** Digest memory capability with default config (user-scoped). */
+export const digestMemoryCapability = createDigestMemoryCapability()

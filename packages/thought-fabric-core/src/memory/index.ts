@@ -115,12 +115,57 @@ export { reinforce as reinforceSemanticFact } from './semantic-memory-helpers.js
 export { removeFact as removeSemanticFact } from './semantic-memory-helpers.js'
 export { allFacts as semanticFacts } from './semantic-memory-helpers.js'
 export { query as querySemanticFacts } from './semantic-memory-helpers.js'
+export { topFacts as topSemanticFacts } from './semantic-memory-helpers.js'
+
+// ---------------------------------------------------------------------------
+// Layer 1: Digest memory schemas, types, resource factory
+// ---------------------------------------------------------------------------
+
+export {
+  digestSchema,
+  digestSourceSignatureSchema,
+  digestMemoryStateSchema,
+  createDigestMemoryResource,
+} from './digest-memory.js'
+export type {
+  Digest,
+  DigestSourceSignature,
+  DigestMemoryState,
+} from './digest-memory.js'
+
+// ---------------------------------------------------------------------------
+// Layer 2: Digest memory helpers (verb-first naming)
+// ---------------------------------------------------------------------------
+
+export {
+  computeSourceSignature as computeDigestSourceSignature,
+  isStale as digestIsStale,
+} from './digest-helpers.js'
+
+// ---------------------------------------------------------------------------
+// Layer 3: Digest block factories
+// ---------------------------------------------------------------------------
+
+export {
+  digestOutputSchema,
+  digestRegenerateInputSchema,
+  digestRegenerate,
+  digestRegenerateGuard,
+  digestRegenerateGenerate,
+  digestRegeneratePersist,
+  buildDigestContext,
+  rankEpisodesForDigest,
+} from './digest-blocks.js'
+export type {
+  DigestBlocksConfig,
+  DigestRegenerateConfig,
+} from './digest-blocks.js'
 
 // ---------------------------------------------------------------------------
 // Layer 3: Unified memory system factory
 // ---------------------------------------------------------------------------
 
-export { system } from './memory-system.js'
+export { system, DEFAULT_DIGEST_CONFIG } from './memory-system.js'
 export type {
   MemorySystemConfig,
   MemorySystem,
@@ -129,6 +174,7 @@ export type {
   WorkingMemorySystemConfig,
   EpisodicMemoryConfig,
   SemanticMemoryConfig,
+  DigestSystemConfig,
 } from './memory-system.js'
 
 // ---------------------------------------------------------------------------
@@ -200,9 +246,12 @@ export {
   episodicMemoryCapability,
   createSemanticMemoryCapability,
   semanticMemoryCapability,
+  createDigestMemoryCapability,
+  digestMemoryCapability,
 } from './capabilities.js'
 export type {
   EpisodicMemoryCapabilityConfig,
   SemanticMemoryCapabilityConfig,
+  DigestMemoryCapabilityConfig,
   AddSemanticFactInput,
 } from './capabilities.js'
