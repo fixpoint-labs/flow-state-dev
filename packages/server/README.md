@@ -255,6 +255,8 @@ const stores: StoreRegistry = {
 
 Database adapters can implement `ContentStore` to route content to blob storage, S3, or a separate table while keeping scope metadata in the primary store.
 
+**Migrating from inline `resourceContent`:** Earlier versions stored content inline on `SessionRecord`/`UserRecord`/`OrgRecord` as a `resourceContent: Record<string, string>` field. That field has been removed. Operators with content already persisted inline must copy it into `ContentStore` before upgrading — for each scope record, walk its old `resourceContent` map and call `stores.content.set(scopeType, scopeId, key, value)` per entry. After the migration the field is silently dropped on the next record write.
+
 ## CheckpointStore
 
 `StoreRegistry` includes a required `checkpoints: CheckpointStore` field for durable sequencer checkpoints (FIX-401). Sequencers default to `durable: true` and overwrite a single record per `(requestId, blockInstanceId)` at every step boundary; the future durable execution runtime (FIX-141) reads `latest(...)` to resume after an interruption.

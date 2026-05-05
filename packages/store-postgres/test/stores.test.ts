@@ -517,7 +517,6 @@ describe("PostgreSQL store adapter", () => {
     const record = makeSessionRecord("sess_complex", "flow-a", "user_1", {
       state: { nested: { deep: { value: 42 } }, arr: [1, 2, 3] } as Record<string, unknown>,
       resources: { "res-1": { name: "test", data: { x: 1 } } as Record<string, unknown> },
-      resourceContent: { "res-1": "some content" },
       metadata: { tags: ["a", "b"], config: { key: "val" } }
     });
 
@@ -525,7 +524,6 @@ describe("PostgreSQL store adapter", () => {
     const result = await s.session.get("sess_complex");
     expect(result!.state).toEqual(record.state);
     expect(result!.resources).toEqual(record.resources);
-    expect(result!.resourceContent).toEqual(record.resourceContent);
     expect(result!.metadata).toEqual(record.metadata);
   });
 
