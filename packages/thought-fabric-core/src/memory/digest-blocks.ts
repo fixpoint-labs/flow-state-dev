@@ -357,17 +357,12 @@ export function digestRegenerate(config: DigestRegenerateConfig) {
   const generateBlock = digestRegenerateGenerate(digestConfig)
   const persistBlock = digestRegeneratePersist(digestConfig)
 
-  const generateAndPersist = sequencer({
-    name: config.name ? `${config.name}/digest/generate-and-persist` : 'tf.memory/digest/generate-and-persist',
-    inputSchema: digestGuardOutputSchema,
-  })
-    .then(generateBlock)
-    .then(persistBlock)
-
   return sequencer({
     name: config.name ? `${config.name}/digest/regenerate` : 'tf.memory/digest/regenerate',
     inputSchema: digestRegenerateInputSchema,
   })
     .then(guardBlock)
-    .thenIf((result: DigestGuardOutput) => result.triggered, generateAndPersist)
+    .exitIf((result: DigestGuardOutput) => !result.triggered)
+    .then(generateBlock)
+    .then(persistBlock)
 }
