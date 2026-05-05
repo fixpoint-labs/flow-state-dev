@@ -131,7 +131,9 @@ const assistantGenerator = generator({
   sessionStateSchema: z.object({ mode: modeSchema.default("ask"), thinkingStyle: z.string().optional() }),
 
   // Capabilities: auto-install resources, context formatters, and tools.
-  // mem.capability injects unified memory recall context.
+  // mem.capability with the default `agent` preset (FIX-513) installs the
+  // unified memory formatter plus the recall tool — the bundle a primary,
+  // user-facing agent wants. Equivalent to `.presets({ agent: true })`.
   // p.capability injects perspective framing (static + accumulated presets).
   // Perspective context appears in all modes but accumulated state only
   // grows in ask mode (capture is gated via workIf below).
@@ -182,6 +184,17 @@ const { thinkingStyleRouter } = createThinkingStyleRouter({
   history: { limit: 8 },
   context: { memory: mem.contextFormatter, artifacts: artifactListContext },
   uses: [featuresCapability],
+  // Worker generators in the supervisor / routed-specialists / evented-actors
+  // pipelines get the `worker` memory preset (FIX-513): the recall tool stays
+  // available, but the memory formatter is omitted so the parent's memory
+  // section isn't replicated into every worker prompt. workerContext drops
+  // the `memory` key for the same reason — the formerly manual installation
+  // would otherwise re-inject the formatter regardless of preset.
+  workerUses: [
+    featuresCapability,
+    mem.capability.presets({ agent: false, worker: true }),
+  ],
+  workerContext: { artifacts: artifactListContext },
   instructions: modeInstructions,
 });
 

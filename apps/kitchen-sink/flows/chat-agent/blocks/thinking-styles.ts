@@ -248,12 +248,28 @@ export interface ThinkingStyleRouterConfig {
   context: GeneratorSlot<any, any>;
   /** Capabilities to install on all default pattern blocks. */
   uses?: UsesSlot;
+  /**
+   * Capabilities for sub-agent worker generators (supervisor worker,
+   * routed-specialists, evented-actor explorer/analyst/challenger). Defaults
+   * to `uses`. Split this out to give workers a different capability bundle —
+   * e.g. memory's `worker` preset (recall tool only, no formatter) — while
+   * pattern coordinators keep the agent bundle.
+   */
+  workerUses?: UsesSlot;
+  /**
+   * Context bundle for sub-agent worker generators. Defaults to `context`.
+   * Pair with `workerUses` to drop entries that the worker preset would
+   * otherwise omit (e.g. the memory formatter).
+   */
+  workerContext?: GeneratorSlot<any, any>;
   /** Overall instructions passed to pattern sub-blocks (planner, controller, synthesizer). */
   instructions?: InstructionsSlot;
 }
 
 export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
   const { assistantGenerator, modelId, context, uses, instructions } = config;
+  const workerUses = config.workerUses ?? uses;
+  const workerContext = config.workerContext ?? context;
 
   // Default — direct generation.
   const defaultPipeline = assistantGenerator;
@@ -286,8 +302,8 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       metadata: z.record(z.unknown()).optional(),
     }),
     outputSchema: z.string(),
-    context,
-    ...(uses ? { uses: uses as any } : {}),
+    context: workerContext,
+    ...(workerUses ? { uses: workerUses as any } : {}),
     search: true,
     agentType: "sub",
     prompt: [
@@ -368,8 +384,8 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       model: modelId,
       outputSchema: z.string(),
       resources: { workspace },
-      ...(uses ? { uses: uses as any } : {}),
-      context,
+      ...(workerUses ? { uses: workerUses as any } : {}),
+      context: workerContext,
       history: config.history,
       search: true,
       agentType: "sub",
@@ -510,8 +526,8 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       model: modelId,
       outputSchema: entryOutputSchema,
       resources: { eventedActors: rb.workspace },
-      ...(uses ? { uses: uses as any } : {}),
-      context,
+      ...(workerUses ? { uses: workerUses as any } : {}),
+      context: workerContext,
       history: config.history,
       search: true,
       prompt: [
@@ -544,8 +560,8 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       model: modelId,
       outputSchema: entryOutputSchema,
       resources: { eventedActors: rb.workspace },
-      ...(uses ? { uses: uses as any } : {}),
-      context,
+      ...(workerUses ? { uses: workerUses as any } : {}),
+      context: workerContext,
       history: config.history,
       search: true,
       prompt: [
@@ -577,8 +593,8 @@ export function createThinkingStyleRouter(config: ThinkingStyleRouterConfig) {
       model: modelId,
       outputSchema: entryOutputSchema,
       resources: { eventedActors: rb.workspace },
-      ...(uses ? { uses: uses as any } : {}),
-      context,
+      ...(workerUses ? { uses: workerUses as any } : {}),
+      context: workerContext,
       history: config.history,
       search: true,
       prompt: [
