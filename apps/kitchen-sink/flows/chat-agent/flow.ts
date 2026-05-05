@@ -42,7 +42,6 @@ import {
   thinkingStyleSessionStateSchema,
   featuresCapability,
   intentSelectorBlock,
-  artifactResources,
 } from "./blocks";
 import { modeSchema, featuresSchema } from "./schemas";
 import { ASK_PROMPT, BUILD_PROMPT, INTERVIEW_PROMPT, DEBATE_PROMPT } from "./prompts";

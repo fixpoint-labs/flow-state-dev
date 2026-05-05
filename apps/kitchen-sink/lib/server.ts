@@ -32,7 +32,6 @@ const NeonClientForPg = NeonClient as unknown as PoolConfig["Client"];
 // openai/* model strings through the configured gateway.
 const gatewayApiKey = process.env.AI_GATEWAY_API_KEY;
 const modelResolver = createModelResolver({
-  providers: process.env.OPENAI_API_KEY ? { openai } : undefined,
   gateways: gatewayApiKey
     ? { vercel: createGateway({ apiKey: gatewayApiKey }) }
     : undefined,
