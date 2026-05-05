@@ -4,6 +4,13 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-05
 
+### Memory: simplified `contextFormatter` — digest + working memory only (FIX-407)
+
+- `mem.contextFormatter` now emits a single `<memory>` block containing only the rolling digest (when configured) and current working-memory entries. Output is naturally bounded by the digest's `maxTokens` and the working-memory capacity — no separate budget knob.
+- Behavior change: semantic facts and recent episodes are no longer pre-injected into the prompt. Agents retrieve them on demand via the recall tool (FIX-409).
+- Returns `undefined` when both the digest and working memory are empty so the generator omits the section entirely.
+- No `maxTokens`, `topN`, `strategy`, or `estimateTokens` knobs on the formatter API. Per-generator load behavior moves to the `agent` / `worker` presets in FIX-513.
+
 ### Memory: rolling digest tier (FIX-408)
 
 - New `digest` tier in `@thought-fabric/core`'s memory system. A single LLM-generated narrative paragraph that summarises stable knowledge about the user, sitting above atomic semantic facts as the always-on framing layer.
