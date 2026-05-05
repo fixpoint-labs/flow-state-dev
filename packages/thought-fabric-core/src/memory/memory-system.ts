@@ -104,6 +104,24 @@ export const memorySystemResource = defineResource({
 })
 
 // ---------------------------------------------------------------------------
+// Preset names
+// ---------------------------------------------------------------------------
+
+/**
+ * Named role presets exposed on the composed memory capability (FIX-513).
+ *
+ * - `agent` — primary, user-facing agent: formatter + recall tool.
+ * - `worker` — sub-agent / utility generator: recall tool only, no formatter.
+ *
+ * `default` is `'agent'` — most consumers want primary-agent behaviour, so
+ * workers must opt in explicitly via `.presets({ worker: true })`.
+ */
+export const MEMORY_CAPABILITY_PRESETS = ['agent', 'worker'] as const
+
+/** Union of valid preset names on the composed memory capability. */
+export type MemoryCapabilityPreset = (typeof MEMORY_CAPABILITY_PRESETS)[number]
+
+// ---------------------------------------------------------------------------
 // Default config constants
 // ---------------------------------------------------------------------------
 
@@ -355,21 +373,28 @@ export interface MemorySystem {
   /**
    * Composed memory capability for all configured tiers.
    *
-   * Use on generators to auto-install resources, context formatting, and
-   * typed helpers. Includes a `context` preset (on by default) that injects
-   * unified recall output into the generator prompt.
+   * Use on generators to auto-install resources, context formatting, typed
+   * helpers, and the agent-invocable recall tool. Two named presets cover
+   * the common roles (FIX-513):
+   *
+   *   - `agent` (default): formatter + recall tool. The bundle a primary,
+   *     user-facing agent wants.
+   *   - `worker`: recall tool only, no formatter. Use for sub-agents in
+   *     supervisor / Plan-and-Execute / coordinator patterns and for
+   *     single-shot utility generators that don't carry the conversation.
    *
    * ```ts
-   * const gen = generator({
-   *   uses: [mem.capability],
-   *   // resources, context, and ctx.cap.memory.* auto-available
-   * })
+   * // Primary agent — default; equivalent to `.presets({ agent: true })`
+   * generator({ uses: [mem.capability] })
+   *
+   * // Worker — tool only, no memory injected into the prompt
+   * generator({ uses: [mem.capability.presets({ worker: true })] })
    * ```
    *
-   * For handlers, disable the context preset:
+   * For handlers, opt out of both presets to keep just resources + helpers:
    * ```ts
    * handler({
-   *   uses: [mem.capability.presets({ context: false })],
+   *   uses: [mem.capability.presets({ agent: false })],
    *   execute: async (input, ctx) => {
    *     const items = ctx.cap.memory.recall()
    *     await ctx.cap.workingMemory.add({ content: '...', importance: 0.8 })
@@ -813,24 +838,32 @@ export function system(config: MemorySystemConfig): MemorySystem {
     }),
     presets: {
       /**
-       * Unified context formatter for generators — injects the digest plus
-       * working memory under a `<memory>` tag (FIX-407). Object-form so
-       * multiple memory contributors (e.g. layered memory systems) aggregate
-       * into one section.
+       * Primary user-facing agent (FIX-513). Installs both:
+       *   - the unified context formatter, which renders the rolling digest
+       *     plus working memory under a `<memory>` tag (FIX-407), and
+       *   - the agent-invocable `recall` tool, used to look up semantic
+       *     facts and past episodes on demand (FIX-409).
+       *
+       * On by default. Most consumers want this bundle.
        */
-      context: {
+      agent: {
         context: { memory: contextFormatterFn },
-      },
-      /**
-       * Agent-invocable recall tool (FIX-409). Off by default in this
-       * ticket — FIX-513 will introduce `agent`/`worker` presets that
-       * bundle this with `context` and flip the default. Manual install
-       * via `tools: [mem.tool.recall()]` remains supported.
-       */
-      tool: {
         tools: () => [recallToolBlock],
       },
-      default: ['context'],
+      /**
+       * Sub-agent or single-shot worker (FIX-513). Tool only — no formatter
+       * is installed, so no memory is pre-injected into the prompt. The
+       * `recall` tool remains available so the worker can look up specific
+       * details if it needs them.
+       *
+       * Use for sub-agents in supervisor / Plan-and-Execute / coordinator
+       * patterns and for single-shot utility generators (classifiers,
+       * formatters) that don't carry the conversation themselves.
+       */
+      worker: {
+        tools: () => [recallToolBlock],
+      },
+      default: ['agent'],
     },
   })
 

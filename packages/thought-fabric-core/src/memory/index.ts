@@ -165,7 +165,7 @@ export type {
 // Layer 3: Unified memory system factory
 // ---------------------------------------------------------------------------
 
-export { system, DEFAULT_DIGEST_CONFIG } from './memory-system.js'
+export { system, DEFAULT_DIGEST_CONFIG, MEMORY_CAPABILITY_PRESETS } from './memory-system.js'
 export type {
   MemorySystemConfig,
   MemorySystem,
@@ -175,6 +175,7 @@ export type {
   EpisodicMemoryConfig,
   SemanticMemoryConfig,
   DigestSystemConfig,
+  MemoryCapabilityPreset,
 } from './memory-system.js'
 
 // ---------------------------------------------------------------------------

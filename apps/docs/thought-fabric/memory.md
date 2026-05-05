@@ -133,12 +133,37 @@ const chat = generator({
 })
 ```
 
-The composed capability includes a `context` preset (on by default) that injects unified cross-store recall into the generator's prompt. For non-generator blocks, disable the preset:
+The composed capability ships two named role presets — pick the one that matches what the consuming block is doing:
+
+| Preset | Formatter | Recall tool | Use for |
+| --- | --- | --- | --- |
+| `agent` (default) | yes | yes | Primary, user-facing agents — the conversation-carrying generator. |
+| `worker` | no | yes | Sub-agents in supervisor / Plan-and-Execute / coordinator patterns, and single-shot utility generators (classifiers, formatters). Tool stays available; no memory is pre-injected. |
+
+`agent` is the default because most consumers want the heavy load + lookup bundle. Workers must opt in explicitly:
+
+```ts
+// Primary agent — default; equivalent to .presets({ agent: true })
+const chat = generator({
+  name: 'chat',
+  uses: [mem.capability],
+})
+
+// Worker — recall tool only; nothing pre-injected into the prompt
+const subAgent = generator({
+  name: 'sub-agent',
+  uses: [mem.capability.presets({ worker: true })],
+})
+```
+
+The split matters in multi-agent flows. A worker handed a focused task doesn't need the full memory summary at the top of its prompt — the parent agent already has it. Pre-injecting it on every sub-agent multiplies token cost without changing what the worker can actually do; the recall tool covers the rare cases where the worker needs a specific detail.
+
+For non-generator blocks, opt out of both presets to keep just resources and helpers:
 
 ```ts
 const myHandler = handler({
   name: 'remember',
-  uses: [mem.capability.presets({ context: false })],
+  uses: [mem.capability.presets({ agent: false })],
   execute: async (input, ctx) => {
     // Typed helpers via ctx.cap
     await ctx.cap.workingMemory.add({ content: 'User likes pizza', importance: 0.8 })
@@ -382,7 +407,7 @@ const myStrategy: RetrievalStrategy = {
 memorySystem({ /* ... */, tool: { strategy: myStrategy } })
 ```
 
-The `tool` preset is also available via the memory capability, but it's off by default in this release. Manual install (`tools: [mem.tool.recall()]`) is the supported path.
+The recall tool is bundled into both role presets on the memory capability — `agent` (default) installs it alongside the formatter, `worker` installs only the tool. Manual install (`tools: [mem.tool.recall()]`) remains supported when you need a configuration neither preset covers.
 
 ### When to use it
 

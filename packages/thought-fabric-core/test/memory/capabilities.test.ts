@@ -490,15 +490,55 @@ describe('memory/capabilities', () => {
       expect(mem.capability.uses!.length).toBeGreaterThanOrEqual(1)
     })
 
-    it('composed capability has context preset', () => {
+    it('composed capability declares agent and worker presets with agent default', () => {
       const mem = system({
         model: 'preset/fast',
         working: true,
       })
 
-      // The composed capability declares a context preset
       expect(mem.capability.__presetDefs).toBeDefined()
-      expect(mem.capability.__presetDefs!.context).toBeDefined()
+      expect(mem.capability.__presetDefs!.agent).toBeDefined()
+      expect(mem.capability.__presetDefs!.worker).toBeDefined()
+      expect(mem.capability.__presetDefs!.default).toEqual(['agent'])
+    })
+
+    it('agent preset bundles formatter context + recall tool', () => {
+      const mem = system({
+        model: 'preset/fast',
+        working: true,
+        episodic: true,
+        semantic: true,
+      })
+
+      const agentPreset = mem.capability.__presetDefs!.agent as {
+        context: { memory: unknown }
+        tools: () => unknown[]
+      }
+      expect(agentPreset.context).toBeDefined()
+      expect(agentPreset.context.memory).toBeDefined()
+      expect(typeof agentPreset.tools).toBe('function')
+      const tools = agentPreset.tools()
+      expect(Array.isArray(tools)).toBe(true)
+      expect(tools.length).toBe(1)
+    })
+
+    it('worker preset installs recall tool with no context formatter', () => {
+      const mem = system({
+        model: 'preset/fast',
+        working: true,
+        episodic: true,
+        semantic: true,
+      })
+
+      const workerPreset = mem.capability.__presetDefs!.worker as {
+        context?: unknown
+        tools: () => unknown[]
+      }
+      expect(workerPreset.context).toBeUndefined()
+      expect(typeof workerPreset.tools).toBe('function')
+      const tools = workerPreset.tools()
+      expect(Array.isArray(tools)).toBe(true)
+      expect(tools.length).toBe(1)
     })
 
     it('composed capability fns expose recall', () => {

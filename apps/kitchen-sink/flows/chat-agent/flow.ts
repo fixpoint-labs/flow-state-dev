@@ -181,7 +181,11 @@ const { thinkingStyleRouter } = createThinkingStyleRouter({
   modelId: (_input: any, ctx: any) => ctx.session.state.resolvedModel ?? MODEL_ID,
   history: { limit: 8 },
   context: { memory: mem.contextFormatter, artifacts: artifactListContext },
-  uses: [featuresCapability],
+  // Sub-agents in supervisor / P&E / coordinator pipelines get the `worker`
+  // memory preset (FIX-513): recall tool stays available, but no memory is
+  // pre-injected into their prompts. The parent agent already carries the
+  // conversation context; replicating it across every worker is pure cost.
+  uses: [featuresCapability, mem.capability.presets({ worker: true })],
   instructions: modeInstructions,
 });
 
