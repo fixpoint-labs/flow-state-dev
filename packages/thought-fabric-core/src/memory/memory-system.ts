@@ -383,12 +383,17 @@ export interface MemorySystem {
    *     supervisor / Plan-and-Execute / coordinator patterns and for
    *     single-shot utility generators that don't carry the conversation.
    *
+   * Presets compose additively with the `default` list, so opting into a
+   * non-default preset doesn't disable the default — disable it explicitly:
+   *
    * ```ts
    * // Primary agent — default; equivalent to `.presets({ agent: true })`
    * generator({ uses: [mem.capability] })
    *
    * // Worker — tool only, no memory injected into the prompt
-   * generator({ uses: [mem.capability.presets({ worker: true })] })
+   * generator({
+   *   uses: [mem.capability.presets({ agent: false, worker: true })],
+   * })
    * ```
    *
    * For handlers, opt out of both presets to keep just resources + helpers:

@@ -140,7 +140,7 @@ The composed capability ships two named role presets — pick the one that match
 | `agent` (default) | yes | yes | Primary, user-facing agents — the conversation-carrying generator. |
 | `worker` | no | yes | Sub-agents in supervisor / Plan-and-Execute / coordinator patterns, and single-shot utility generators (classifiers, formatters). Tool stays available; no memory is pre-injected. |
 
-`agent` is the default because most consumers want the heavy load + lookup bundle. Workers must opt in explicitly:
+`agent` is the default because most consumers want the heavy load + lookup bundle. Workers must opt in explicitly. Note that overrides compose additively with the `default` list — opting into a non-default preset doesn't disable the default, so disable it in the same call:
 
 ```ts
 // Primary agent — default; equivalent to .presets({ agent: true })
@@ -152,7 +152,7 @@ const chat = generator({
 // Worker — recall tool only; nothing pre-injected into the prompt
 const subAgent = generator({
   name: 'sub-agent',
-  uses: [mem.capability.presets({ worker: true })],
+  uses: [mem.capability.presets({ agent: false, worker: true })],
 })
 ```
 
