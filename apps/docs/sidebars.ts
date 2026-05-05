@@ -68,6 +68,7 @@ const sidebars: SidebarsConfig = {
           items: [
             "server/setup",
             "server/authentication",
+            "server/mcp",
             "server/connection-resilience",
             "persistence/overview",
           ],

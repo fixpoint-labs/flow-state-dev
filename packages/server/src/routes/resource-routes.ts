@@ -7,136 +7,28 @@
  */
 import type {
   JsonObject,
-  ResourceConfig,
-  ResourceCollectionConfig,
 } from "@flow-state-dev/core/types";
 import { matchesPattern, resolveCollectionKey } from "@flow-state-dev/core/types";
 import type { FlowRegistry } from "../registry/flow-registry";
 import type { StoreRegistry } from "../stores/types";
 import {
-  resolveOrgStorageKey,
-  resolveUserStorageKey
-} from "../stores/scope-keys";
-import {
-  isResourceConfig,
   jsonResponse,
   normalizeResourceState,
   parseJsonBody,
 } from "./route-utils";
 import type { ParsedFlowRoute } from "./parseFlowRoute";
 import { isJsonObject } from "../utils/json-helpers";
+import {
+  findResourceConfig,
+  getPersistedData,
+  isCollectionConfig,
+  renderContent
+} from "../resources/internal";
 
 type ResourceRouteContext = {
   registry: FlowRegistry;
   stores: StoreRegistry;
 };
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function isCollectionConfig(value: unknown): value is ResourceCollectionConfig {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "pattern" in value &&
-    typeof (value as ResourceCollectionConfig).pattern === "string"
-  );
-}
-
-function findResourceConfig(
-  flow: { resources?: unknown },
-  ref: string
-): { config: ResourceConfig | ResourceCollectionConfig; scope: "session" | "user" | "org" } | undefined {
-  // FIX-435: resources live in the flat `flow.resources` map; scope is
-  // intrinsic to each definition. Look up by accessor key, then read the
-  // resource's `scope` to know which storage layer holds its data.
-  const resources = flow.resources;
-  if (resources === undefined || typeof resources !== "object" || resources === null) {
-    return undefined;
-  }
-  const config = (resources as Record<string, unknown>)[ref];
-  if (config === undefined) return undefined;
-  if (!isResourceConfig(config) && !isCollectionConfig(config)) return undefined;
-  const scope = (config as { scope?: string }).scope;
-  if (scope !== "session" && scope !== "user" && scope !== "org") return undefined;
-  return { config, scope };
-}
-
-async function getPersistedData(
-  ctx: ResourceRouteContext,
-  flow: {
-    kind: string;
-    isolateUserState: boolean;
-    isolateOrgState: boolean;
-  },
-  sessionId: string,
-  scope: "session" | "user" | "org"
-): Promise<{ resources: Record<string, JsonObject>; content: Record<string, string> } | undefined> {
-  // Content is stored in the ContentStore during execution, not on the record's
-  // resourceContent field. Merge both sources for backward compatibility.
-  if (scope === "session") {
-    const session = await ctx.stores.session.get(sessionId);
-    if (!session) return undefined;
-    const contentFromStore = await ctx.stores.content.getAll("session", session.id);
-    return {
-      resources: (session.resources ?? {}) as Record<string, JsonObject>,
-      content: {
-        ...(session.resourceContent ?? {}) as Record<string, string>,
-        ...contentFromStore,
-      },
-    };
-  }
-
-  if (scope === "user") {
-    const session = await ctx.stores.session.get(sessionId);
-    if (!session) return undefined;
-    const user = await ctx.stores.user.get(
-      resolveUserStorageKey(session.userId, flow)
-    );
-    if (!user) return undefined;
-    const contentFromStore = await ctx.stores.content.getAll("user", user.id);
-    return {
-      resources: (user.resources ?? {}) as Record<string, JsonObject>,
-      content: {
-        ...(user.resourceContent ?? {}) as Record<string, string>,
-        ...contentFromStore,
-      },
-    };
-  }
-
-  // org
-  const session = await ctx.stores.session.get(sessionId);
-  if (!session || !session.orgId) return undefined;
-  const org = await ctx.stores.org.get(
-    resolveOrgStorageKey(session.orgId, flow)
-  );
-  if (!org) return undefined;
-  const contentFromStore = await ctx.stores.content.getAll("org", org.id);
-  return {
-    resources: (org.resources ?? {}) as Record<string, JsonObject>,
-    content: {
-      ...(org.resourceContent ?? {}) as Record<string, string>,
-      ...contentFromStore,
-    },
-  };
-}
-
-/**
- * Renders resource content using the config's render function if available,
- * falling back to the raw content string.
- */
-async function renderContent(
-  config: ResourceConfig | ResourceCollectionConfig,
-  rawContent: string | undefined,
-  state: JsonObject
-): Promise<string | null> {
-  if (rawContent === undefined) return null;
-  if ("render" in config && typeof config.render === "function") {
-    return config.render(rawContent, state);
-  }
-  return rawContent;
-}
 
 // ---------------------------------------------------------------------------
 // Route Handlers

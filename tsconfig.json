@@ -6,6 +6,7 @@
     { "path": "./packages/client" },
     { "path": "./packages/react" },
     { "path": "./packages/testing" },
+    { "path": "./packages/mcp" },
     { "path": "./packages/cli" },
     { "path": "./apps/devtool" },
     { "path": "./packages/thought-fabric-core" },
