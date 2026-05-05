@@ -133,17 +133,22 @@ const chat = generator({
 })
 ```
 
-The composed capability ships two named role presets — pick the one that matches what the consuming block is doing:
+The composed capability ships five orthogonal section presets — each one toggles a single slice of the memory surface independently:
 
-| Preset | Formatter | Recall tool | Use for |
-| --- | --- | --- | --- |
-| `agent` (default) | yes | yes | Primary, user-facing agents — the conversation-carrying generator. |
-| `worker` | no | yes | Sub-agents in supervisor / Plan-and-Execute / coordinator patterns, and single-shot utility generators (classifiers, formatters). Tool stays available; no memory is pre-injected. |
+| Preset | Default | Effect |
+| --- | --- | --- |
+| `digest` | on | Inject the rolling digest under `<memory><digest>…</digest></memory>`. No-op when no digest tier is configured. |
+| `working` | on | Inject working-memory entries under `<memory><working>…</working></memory>`. |
+| `recall` | on | Install the agent-invocable `tf.memory/recall` tool. No-op when neither episodic nor semantic is configured. |
+| `semantic` | off | Inject the top-N semantic facts under `<memory><semantic>…</semantic></memory>`. Default top-N is 10. No-op when no semantic tier is configured. |
+| `episodic` | off | Inject the most-recent episodes under `<memory><episodic>…</episodic></memory>`. Default limit is 5. No-op when no episodic tier is configured. |
 
-`agent` is the default because most consumers want the heavy load + lookup bundle. Workers must opt in explicitly. Note that overrides compose additively with the `default` list — opting into a non-default preset doesn't disable the default, so disable it in the same call:
+Inclusion is independent of processing: the capture pipeline still runs `digestRegenerate`, consolidation, prune, etc. for whichever tiers are configured on `memorySystem({...})`. Turning a preset off just suppresses the corresponding section in *that* generator's prompt — the underlying tier keeps running so the next generator that opts in sees fresh state.
+
+Default-on set is `['digest', 'working', 'recall']`. Toggle any preset on or off with `.presets({...})`:
 
 ```ts
-// Primary agent — default; equivalent to .presets({ agent: true })
+// Primary agent — defaults: digest + working + recall
 const chat = generator({
   name: 'chat',
   uses: [mem.capability],
@@ -152,18 +157,24 @@ const chat = generator({
 // Worker — recall tool only; nothing pre-injected into the prompt
 const subAgent = generator({
   name: 'sub-agent',
-  uses: [mem.capability.presets({ agent: false, worker: true })],
+  uses: [mem.capability.presets({ digest: false, working: false })],
+})
+
+// Add semantic facts alongside the defaults
+const reviewer = generator({
+  name: 'reviewer',
+  uses: [mem.capability.presets({ semantic: true })],
 })
 ```
 
 The split matters in multi-agent flows. A worker handed a focused task doesn't need the full memory summary at the top of its prompt — the parent agent already has it. Pre-injecting it on every sub-agent multiplies token cost without changing what the worker can actually do; the recall tool covers the rare cases where the worker needs a specific detail.
 
-For non-generator blocks, opt out of both presets to keep just resources and helpers:
+For non-generator blocks, opt out of every section preset to keep just resources and helpers:
 
 ```ts
 const myHandler = handler({
   name: 'remember',
-  uses: [mem.capability.presets({ agent: false })],
+  uses: [mem.capability.presets({ digest: false, working: false, recall: false })],
   execute: async (input, ctx) => {
     // Typed helpers via ctx.cap
     await ctx.cap.workingMemory.add({ content: 'User likes pizza', importance: 0.8 })
@@ -172,6 +183,42 @@ const myHandler = handler({
   },
 })
 ```
+
+### Custom limits — `createMemoryContextFormatter`
+
+The boolean presets use fixed defaults for `topN` (semantic) and `limit` (episodic). When you need a custom mix — top-30 facts, last-10 episodes, digest off but everything else on — bypass the section presets and wire the standalone factory directly into the generator's `context: { memory: … }` slot:
+
+```ts
+import { createMemoryContextFormatter } from '@thought-fabric/core/memory'
+
+const richReviewer = generator({
+  name: 'rich-reviewer',
+  // Disable the preset entries that would also write to the `memory` key,
+  // so the factory below is the single contributor.
+  uses: [mem.capability.presets({ digest: false, working: false })],
+  context: {
+    memory: createMemoryContextFormatter({
+      digest: true,
+      working: true,
+      semantic: { topN: 30 },
+      episodic: { limit: 10 },
+    }),
+  },
+})
+```
+
+Options shape:
+
+```ts
+type MemoryContextFormatterOptions = {
+  digest?: boolean                              // default: true
+  working?: boolean                             // default: true
+  semantic?: boolean | { topN?: number }       // default: false; topN default 10
+  episodic?: boolean | { limit?: number }      // default: false; limit default 5
+}
+```
+
+The factory's return shape is `{ digest?, working?, semantic?, episodic? }` — sibling keys nested under whatever context key it's registered against (so `context: { memory: factory(…) }` produces `<memory><digest>…</digest>…</memory>`).
 
 ### Individual tier capabilities
 
@@ -407,7 +454,7 @@ const myStrategy: RetrievalStrategy = {
 memorySystem({ /* ... */, tool: { strategy: myStrategy } })
 ```
 
-The recall tool is bundled into both role presets on the memory capability — `agent` (default) installs it alongside the formatter, `worker` installs only the tool. Manual install (`tools: [mem.tool.recall()]`) remains supported when you need a configuration neither preset covers.
+The recall tool ships as the `recall` preset on the memory capability — default-on, so `mem.capability` installs it automatically. To drop it (handlers that don't need search, or tightly-scoped sub-agents), disable explicitly: `mem.capability.presets({ recall: false })`. Manual install (`tools: [mem.tool.recall()]`) remains supported when you need a configuration the preset doesn't cover.
 
 ### When to use it
 

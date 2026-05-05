@@ -4,6 +4,16 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-05
 
+### Memory capability: orthogonal section presets + configurable formatter (FIX-513 pivot)
+
+Pivots away from the role-named `agent` / `worker` memory capability presets. The original FIX-513 design bundled "context formatter + recall tool" under role labels, which conflated two unrelated axes: which memory tier gets re-injected into the prompt, and whether the agent has a search tool. Authors who wanted only working memory but no digest, or recent episodes alongside the digest, couldn't express that without giving up the formatter entirely.
+
+- **Five orthogonal section presets** replace `agent` / `worker`: `digest`, `working`, `semantic`, `episodic`, `recall`. Default-on set is `['digest', 'working', 'recall']`. Each preset toggles independently with `.presets({...})`. `mem.capability` (no args) keeps the same effective behaviour as the old `agent` preset, so the migration nudge is contained: every consumer of `presets({ agent: …, worker: … })` updates to one of `presets({ digest: …, working: …, recall: …, semantic: …, episodic: … })`.
+- **Inclusion is independent of processing.** The capture pipeline still runs `tf.memory/digest/regenerate`, consolidation, and prune for whichever tiers are configured on `memorySystem({...})`. Disabling the `digest` preset on a worker generator just suppresses the section in *that* prompt — the underlying digest stays fresh for any other generator that opts in.
+- **Configurable formatter factory.** New export `createMemoryContextFormatter(options?)` from `@thought-fabric/core/memory`. Options: `{ digest?, working?, semantic?: { topN } | bool, episodic?: { limit } | bool }`. The boolean presets use fixed defaults (top-10 facts, last-5 episodes); reach for the factory directly when those defaults aren't right.
+- **Pre-FIX-407 sections are back, opt-in.** The simplification that removed semantic-fact and episodic-memory injection from the formatter is partially reversed — they're now selectable sections rather than always-on or always-off. The recall tool path remains the canonical way to fetch *specific* details on demand.
+- **Migration:** kitchen-sink's `workerUses` updated from `presets({ agent: false, worker: true })` to `presets({ digest: false, working: false })`. `MemoryCapabilityPreset` type changes from `'agent' | 'worker'` to `'digest' | 'working' | 'semantic' | 'episodic' | 'recall'`. `mem.contextFormatter` direct callers see no change — it remains an alias for `createMemoryContextFormatter()` with default options. Docs at `apps/docs/thought-fabric/memory.md` updated.
+
 ### Memory pipeline + tool naming reliability fixes
 
 Behavior fixes shipped after the memory + tool-naming work above landed:

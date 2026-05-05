@@ -162,6 +162,26 @@ export type {
 } from './digest-blocks.js'
 
 // ---------------------------------------------------------------------------
+// Layer 3: Memory context formatter (configurable factory + per-section builders)
+// ---------------------------------------------------------------------------
+
+export {
+  createMemoryContextFormatter,
+  createDigestEntry,
+  createWorkingEntry,
+  createSemanticEntry,
+  createEpisodicEntry,
+  DEFAULT_SEMANTIC_TOP_N,
+  DEFAULT_EPISODIC_LIMIT,
+} from './formatter.js'
+export type {
+  MemoryContextFormatterOptions,
+  MemoryContextValue,
+  SemanticSectionOption,
+  EpisodicSectionOption,
+} from './formatter.js'
+
+// ---------------------------------------------------------------------------
 // Layer 3: Unified memory system factory
 // ---------------------------------------------------------------------------
 

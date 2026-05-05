@@ -490,55 +490,71 @@ describe('memory/capabilities', () => {
       expect(mem.capability.uses!.length).toBeGreaterThanOrEqual(1)
     })
 
-    it('composed capability declares agent and worker presets with agent default', () => {
+    it('composed capability declares the five orthogonal section presets with the standard default-on set', () => {
       const mem = system({
         model: 'preset/fast',
         working: true,
+        episodic: true,
+        semantic: true,
+        digest: true,
       })
 
       expect(mem.capability.__presetDefs).toBeDefined()
-      expect(mem.capability.__presetDefs!.agent).toBeDefined()
-      expect(mem.capability.__presetDefs!.worker).toBeDefined()
-      expect(mem.capability.__presetDefs!.default).toEqual(['agent'])
+      expect(mem.capability.__presetDefs!.digest).toBeDefined()
+      expect(mem.capability.__presetDefs!.working).toBeDefined()
+      expect(mem.capability.__presetDefs!.semantic).toBeDefined()
+      expect(mem.capability.__presetDefs!.episodic).toBeDefined()
+      expect(mem.capability.__presetDefs!.recall).toBeDefined()
+      // Default-on: digest + working + recall. semantic + episodic are opt-in.
+      expect(mem.capability.__presetDefs!.default).toEqual(['digest', 'working', 'recall'])
     })
 
-    it('agent preset bundles formatter context + recall tool', () => {
+    it('digest + working presets register their own context entries; recall installs the recall tool', () => {
       const mem = system({
         model: 'preset/fast',
         working: true,
         episodic: true,
         semantic: true,
+        digest: true,
       })
 
-      const agentPreset = mem.capability.__presetDefs!.agent as {
-        context: { memory: unknown }
-        tools: () => unknown[]
-      }
-      expect(agentPreset.context).toBeDefined()
-      expect(agentPreset.context.memory).toBeDefined()
-      expect(typeof agentPreset.tools).toBe('function')
-      const tools = agentPreset.tools()
-      expect(Array.isArray(tools)).toBe(true)
-      expect(tools.length).toBe(1)
+      const presets = mem.capability.__presetDefs as Record<string, {
+        context?: { memory: unknown }
+        tools?: () => unknown[]
+      }>
+
+      expect(presets.digest.context?.memory).toBeDefined()
+      expect(presets.working.context?.memory).toBeDefined()
+      expect(presets.recall.tools).toBeDefined()
+      const recallTools = (presets.recall.tools as () => unknown[])()
+      expect(Array.isArray(recallTools)).toBe(true)
+      expect(recallTools.length).toBe(1)
     })
 
-    it('worker preset installs recall tool with no context formatter', () => {
+    it('digest preset is empty (no context entry) when digest tier is not configured', () => {
       const mem = system({
         model: 'preset/fast',
         working: true,
-        episodic: true,
-        semantic: true,
       })
 
-      const workerPreset = mem.capability.__presetDefs!.worker as {
+      // Preset is still declared so `.presets({ digest: false })` doesn't
+      // error, but it contributes nothing.
+      const digestPreset = mem.capability.__presetDefs!.digest as {
         context?: unknown
-        tools: () => unknown[]
       }
-      expect(workerPreset.context).toBeUndefined()
-      expect(typeof workerPreset.tools).toBe('function')
-      const tools = workerPreset.tools()
-      expect(Array.isArray(tools)).toBe(true)
-      expect(tools.length).toBe(1)
+      expect(digestPreset.context).toBeUndefined()
+    })
+
+    it('semantic + episodic presets are empty when their tier is not configured', () => {
+      const mem = system({
+        model: 'preset/fast',
+        working: true,
+      })
+
+      const semanticPreset = mem.capability.__presetDefs!.semantic as { context?: unknown }
+      const episodicPreset = mem.capability.__presetDefs!.episodic as { context?: unknown }
+      expect(semanticPreset.context).toBeUndefined()
+      expect(episodicPreset.context).toBeUndefined()
     })
 
     it('composed capability fns expose recall', () => {
