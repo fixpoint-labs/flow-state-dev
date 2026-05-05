@@ -12,6 +12,24 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - `mem.regenerateDigest` exposes a manual escape hatch that bypasses the staleness guard — useful after bulk-loading memory in setup or in tests.
 - New `digestMemoryCapability` exposes `get` / `content` for blocks that read the digest. The composed `mem.capability` installs the digest resource alongside the other tiers.
 
+### Memory: agent-invocable `recall` tool (FIX-409)
+
+- New `mem.tool.recall()` factory on `memory.system()` returns a handler block agents can install on a generator with `tools: [mem.tool.recall()]`. Searches stored memory — semantic facts and past episodes — on demand. Working memory is intentionally excluded; it already lives in the formatter, so surfacing it through the tool would duplicate context cost.
+- One unified tool, not three. The agent's mental model is "find a thing I knew" — whether the thing is a fact or an episode is an implementation detail surfaced as a `source` field on each result rather than a routing decision the LLM has to make.
+- Pluggable `RetrievalStrategy` interface. V1 ships `'llm-filter'`: query-blind intrinsic pre-rank (top 50 by `confidence × reinforcement` for facts, `significance × exp(-age/50)` for episodes) followed by a single LLM filter call over the bounded candidate set. Token spend per call is bounded regardless of total store size. Optional Stage 1.5 exact-phrase pass-through catches distinctive strings (proper nouns, error codes) buried in low-score memories.
+- Result envelope includes `query`, `strategy`, `totalMatched`, `truncatedTo` so the agent can detect "more available" and re-query. Per-item char cap (default 400) with a truncation marker prevents runaway result sizes.
+- Configure via `memory.system({ tool: { strategy, model, defaults } })`. Custom strategies implement the same interface; the keyword (FIX-410) and hybrid (FIX-412) backends will plug in without changing the tool surface. The memory capability gains a `tool` preset (off by default in this release; FIX-513 introduces `agent`/`worker` presets that bundle it).
+
+## 2026-05-02 (later)
+
+### MCP server adapter — every flow is reachable from MCP clients (FIX-22)
+
+- New `@flow-state-dev/mcp` package. Mounts as a sibling of the built-in HTTP adapter via `createFlowApiRouter({ adapters: [createMcpTransportAdapter()] })`. Every flow with `mcp.enabled: true` becomes its own MCP server at `POST /api/flows/:kind/mcp`; `GET` and `DELETE` return 405.
+- Per-flow `mcp` config and per-action `description` and `mcp.enabled` on `defineFlow`. Tool names derive deterministically from action keys via `decamelize` (`recordPayment` → `record_payment`); collisions and missing descriptions throw at flow registration.
+- Authentication runs through the existing `host.resolvePrincipal` hook — bearer tokens, HMAC, or anything else a flow's `authentication.resolvePrincipal` returns. `PrincipalResolutionError` maps to HTTP 401 + JSON-RPC `-32001` with `WWW-Authenticate: Bearer realm="MCP"`.
+- v1 ships stateless-only with single-text-content tool results — no `Mcp-Session-Id`, no `notifications/progress`, no `outputSchema`/`structuredContent`. `resources/list` returns the empty list pending a flow-bound resource scope.
+- DevTool already renders MCP-originated requests with a purple `MCP` badge from FIX-438; no devtool change needed.
+
 ## 2026-05-02
 
 ### Quick-start rewrite + new model-setup and first-flow pages (FIX-496)

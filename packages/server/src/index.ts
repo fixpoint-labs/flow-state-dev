@@ -126,3 +126,22 @@ export * from "./middleware";
 export const serverPackageMarker = "@flow-state-dev/server";
 
 export { renderTemplate } from "./utils/renderTemplate";
+
+// ---------------------------------------------------------------------------
+// Internal resource helpers exposed for sibling-package consumption
+// (e.g. @flow-state-dev/mcp). Prefixed `unstable_` — not part of the
+// long-term public API.
+// ---------------------------------------------------------------------------
+export {
+  findResourceConfig as unstable_findResourceConfig,
+  getPersistedData as unstable_getPersistedData,
+  isCollectionConfig as unstable_isCollectionConfig,
+  listExposedResources as unstable_listExposedResources,
+  renderContent as unstable_renderContent
+} from "./resources/internal";
+export type {
+  ExposedResourceEntry as unstable_ExposedResourceEntry,
+  ResolvedResourceScope as unstable_ResolvedResourceScope,
+  ResourceFlowLike as unstable_ResourceFlowLike,
+  ResourcePersistenceContext as unstable_ResourcePersistenceContext
+} from "./resources/internal";

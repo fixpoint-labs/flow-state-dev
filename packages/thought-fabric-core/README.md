@@ -264,6 +264,44 @@ const text = ctx.cap.digestMemory.content()
 
 The digest's scope is inherited from `semantic` — there is no separate `digest.scope` knob.
 
+## Memory Recall Tool
+
+Agent-invocable search over stored memory (semantic facts + past episodes). Working memory is intentionally excluded — it lives in the formatter.
+
+```ts
+const mem = memorySystem({ model: 'gpt-5', working: true, episodic: true, semantic: true })
+
+generator({
+  // ...
+  uses: [mem.capability],
+  tools: [mem.tool.recall()],
+})
+```
+
+The agent calls `recall({ query, limit?, sinceTurn? })` and gets a ranked envelope with `{ results, query, strategy, totalMatched, truncatedTo }`. Each result carries `source` (`'semantic' | 'episodic'`), per-source `metadata`, and a per-item char cap (default 400) with a truncation marker when triggered.
+
+Strategy is pluggable. Default `'llm-filter'` does a query-blind intrinsic pre-rank (top 50) plus a single LLM filter call. Configure at system time:
+
+```ts
+memorySystem({
+  // ...
+  tool: { strategy: 'llm-filter', model: 'gpt-5-mini', defaults: { limit: 5, perItemCharCap: 400 } },
+})
+```
+
+Custom strategies implement the `RetrievalStrategy` interface. See [`apps/docs/thought-fabric/memory.md`](https://flowstatedev.com/thought-fabric/memory) for details.
+
+| Export | Kind | Description |
+|--------|------|-------------|
+| `mem.tool.recall()` | factory | Returns the recall handler block, ready to install on a generator. |
+| `createRecallTool(opts)` | factory | Lower-level: build the tool with a custom strategy. |
+| `createLlmFilterStrategy(opts)` | factory | The default V1 strategy. |
+| `resolveStrategy(ref, opts)` | helper | Resolve a built-in name or strategy object. |
+| `recallToolDescription` | string | Tool description shown to the LLM. |
+| `recallToolInputSchema` | zod | Input schema for `recall(...)`. |
+| `RetrievalStrategy` | interface | Pluggable retrieval backend contract. |
+| `MemoryItem`, `RankedResult`, `RecallToolResult` | types | Tool surface types. |
+
 ## Attention Exports
 
 - `scoreSalience(config)` → generator `BlockDefinition`

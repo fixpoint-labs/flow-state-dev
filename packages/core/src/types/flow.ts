@@ -100,11 +100,42 @@ export interface CostEstimate {
   readonly byModel: Record<string, number>;
 }
 
+/**
+ * Per-action overrides for MCP exposure. The flow-level `mcp.enabled`
+ * decides participation; per-action `enabled: false` opts an action out
+ * of exposure, and `name` overrides the auto-derived tool name.
+ */
+export interface ActionMcpConfig {
+  /**
+   * If false, the action is excluded from MCP exposure even when its
+   * flow has `mcp.enabled: true`. Default: true (action is exposed when
+   * its flow exposes it).
+   */
+  enabled?: boolean;
+  /**
+   * Optional override for the MCP tool name. When omitted, the tool
+   * name is derived deterministically from the action key
+   * (`recordPayment` → `record_payment`). Names must match the MCP
+   * charset `[A-Za-z0-9_.-]{1,128}`.
+   */
+  name?: string;
+}
+
 export type ActionConfig<
   TInputSchema extends ZodTypeAny = ZodTypeAny,
 > = {
   inputSchema: TInputSchema;
   block: BlockDefinition<TInputSchema, any>;
+  /**
+   * Human-readable description. Required when the action is exposed via
+   * MCP — the text becomes the LLM-facing tool description and must
+   * communicate (1) what the tool does, (2) when to use it vs. siblings,
+   * (3) preconditions and side effects, (4) what each argument means.
+   * Used by the devtool for tooltips even when MCP is not enabled.
+   */
+  description?: string;
+  /** Per-action MCP overrides. */
+  mcp?: ActionMcpConfig;
   onCompleted?: BlockDefinition<any, any>;
   onErrored?: BlockDefinition<any, any>;
   userMessage?: (input: TInputSchema["_output"]) => string;
@@ -114,6 +145,24 @@ export type ActionConfig<
     onExceeded?: "error" | "stop" | "warn";
   };
 };
+
+/**
+ * Per-flow MCP exposure config. Opt-in: a flow must set `enabled: true`
+ * for the MCP transport adapter to mount routes for it. Per-action
+ * inclusion is controlled on each action via `action.mcp.enabled`. The
+ * runtime under `host.dispatch` is identical between MCP and HTTP
+ * requests.
+ */
+export interface McpConfig {
+  /** Master enable. Default: false. */
+  enabled?: boolean;
+  /**
+   * If true (default), exposes flow-scoped resources via MCP
+   * `resources/list` + `resources/read`, honoring the existing
+   * `client.content.read` permission. If false, no resources are exposed.
+   */
+  exposeResources?: boolean;
+}
 
 /**
  * Retention policy for bounding a session's persisted item log.
@@ -249,6 +298,13 @@ export type FlowDefinition<
   voice?: VoiceConfig;
   middleware?: Middleware[];
 
+  /**
+   * Per-flow MCP exposure config. When `mcp.enabled === true`, the
+   * `@flow-state-dev/mcp` adapter mounts `POST /api/flows/:kind/mcp`
+   * for this flow and translates exposed actions into MCP tools.
+   */
+  mcp?: McpConfig;
+
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
 
@@ -288,6 +344,7 @@ export type FlowInstanceOptions<
   tools?: ToolsConfig;
   voice?: VoiceConfig;
   middleware?: Middleware[];
+  mcp?: McpConfig;
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
   isolateUserState?: boolean;
@@ -323,6 +380,7 @@ export type FlowInstance<
   tools?: ToolsConfig;
   voice?: VoiceConfig;
   middleware?: Middleware[];
+  mcp?: McpConfig;
   tokenCounter?: TokenCounter;
   costEstimator?: CostEstimator;
   isolateUserState: boolean;
@@ -353,6 +411,7 @@ export type FlowType<
   tools?: ToolsConfig;
   voice?: VoiceConfig;
   middleware?: Middleware[];
+  mcp?: McpConfig;
   isolateUserState: boolean;
   isolateOrgState: boolean;
 
