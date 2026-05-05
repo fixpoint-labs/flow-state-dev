@@ -2,6 +2,16 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-05
+
+### Memory: rolling digest tier (FIX-408)
+
+- New `digest` tier in `@thought-fabric/core`'s memory system. A single LLM-generated narrative paragraph that summarises stable knowledge about the user, sitting above atomic semantic facts as the always-on framing layer.
+- Regenerates as a side effect of `consolidate` and `prune`. A source-state signature short-circuits the LLM call when nothing has changed; previous digest is fed back into the prompt so framing stays stable across regenerations.
+- `memory.system({ digest: true | { maxTokens, topN } })` opts in; default `maxTokens` is 400. Digest scope is inherited from `semantic`.
+- `mem.regenerateDigest` exposes a manual escape hatch that bypasses the staleness guard — useful after bulk-loading memory in setup or in tests.
+- New `digestMemoryCapability` exposes `get` / `content` for blocks that read the digest. The composed `mem.capability` installs the digest resource alongside the other tiers.
+
 ## 2026-05-02
 
 ### Quick-start rewrite + new model-setup and first-flow pages (FIX-496)

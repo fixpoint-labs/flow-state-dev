@@ -129,6 +129,15 @@ export function allFacts(ref: SemRef, subject?: string): SemanticFact[] {
 }
 
 /**
+ * Top-N facts by reinforcement count (most established first).
+ * Thin wrapper over `allFacts`; primarily used by digest regeneration
+ * to feed the most-reinforced subset into the prompt.
+ */
+export function topFacts(ref: SemRef, limit: number, subject?: string): SemanticFact[] {
+  return allFacts(ref, subject).slice(0, limit)
+}
+
+/**
  * Query semantic facts by keyword relevance (synchronous, token-overlap).
  * For small stores (≤50), returns all facts sorted by reinforcementCount.
  * For larger stores, filters by token overlap with the query.
