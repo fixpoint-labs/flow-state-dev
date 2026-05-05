@@ -155,6 +155,7 @@ export type RecallToolResult =
  * line is the single biggest lever against over-retrieval.
  */
 export const recallToolDescription =
-  'Search your stored memory (facts you have learned and past episodes) for content related to a query. ' +
+  'Call when you need to recall a specific detail that is likely stored in your memory.' +
   'Use when you need a specific detail that is not in the summary at the top of your context. ' +
+  'This tool is especially true when you need to respond about a detail that you do not know but is personal or related to the user.' +
   'Do not use this to re-retrieve facts already shown to you.'
