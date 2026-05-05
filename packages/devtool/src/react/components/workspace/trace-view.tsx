@@ -282,6 +282,7 @@ function TraceNodeView({
           )}
           {node.blockKind && <KindIndicator kind={node.blockKind} />}
           <span className="text-xs text-slate-300">{node.blockName}</span>
+          {node.phase === "work" && <BackgroundBadge />}
           {traceError && (
             <span
               className="text-[11px] text-red-400/80 truncate max-w-[20rem]"
@@ -358,6 +359,18 @@ function TraceNodeView({
   }
 
   return null;
+}
+
+/** Visual marker for blocks dispatched onto the work queue. */
+function BackgroundBadge() {
+  return (
+    <span
+      className="text-[10px] font-mono text-sky-400/80 px-1 rounded border border-sky-700/50"
+      title="Background sidechain — dispatched via .work() / .workIf() / .forEachBackground()"
+    >
+      BG
+    </span>
+  );
 }
 
 function getItemIcon(type: string): string {
