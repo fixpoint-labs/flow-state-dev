@@ -1862,11 +1862,9 @@ export async function createExecutionContext<
     await stores.org.set(orgRecord.id, orgRecord, "any");
   }
 
-  // Load content from ContentStore, merging with any inline record content
-  // for backward compatibility with records created before ContentStore existed.
-  // ContentStore values take precedence over inline record values.
-  // Content scope keys mirror the scope record keys — namespaced when the
-  // flow isolates that scope.
+  // Content lives in ContentStore exclusively (FIX-347). Eagerly load all
+  // content for the scopes this execution touches so reads during the run
+  // are synchronous against the in-memory cache.
   const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
     stores.content.getAll("session", sessionId),
     stores.content.getAll("user", userKey),
@@ -1875,17 +1873,15 @@ export async function createExecutionContext<
 
   const initialSessionContent = normalizeScopeResourceContent(
     sessionResourceConfigs,
-    { ...(sessionRecord.resourceContent ?? {}), ...sessionContentFromStore }
+    sessionContentFromStore
   );
   const initialUserContent = normalizeScopeResourceContent(
     userResourceConfigs,
-    { ...(userRecord.resourceContent ?? {}), ...userContentFromStore }
+    userContentFromStore
   );
   const initialOrgContent = normalizeScopeResourceContent(
     orgResourceConfigs,
-    resolvedOrgId !== undefined
-      ? { ...(orgRecord?.resourceContent ?? {}), ...orgContentFromStore }
-      : undefined
+    resolvedOrgId !== undefined ? orgContentFromStore : undefined
   );
 
   let requestRecord = loadedRequest;

@@ -122,10 +122,17 @@ export interface ActionMcpConfig {
 }
 
 export type ActionConfig<
-  TInputSchema extends ZodTypeAny = ZodTypeAny,
+  TBlock extends BlockDefinition = BlockDefinition,
 > = {
-  inputSchema: TInputSchema;
-  block: BlockDefinition<TInputSchema, any>;
+  block: TBlock;
+  /**
+   * Optional override for action-level input validation. Defaults to
+   * `block.inputSchema` — the block already validates its own input, so the
+   * action layer only needs an explicit schema when it should diverge from
+   * the block (MCP tool surface with richer `.describe()`, narrower public
+   * contract, escape hatches like `z.unknown()`).
+   */
+  inputSchema?: TBlock["inputSchema"];
   /**
    * Human-readable description. Required when the action is exposed via
    * MCP — the text becomes the LLM-facing tool description and must
@@ -138,7 +145,7 @@ export type ActionConfig<
   mcp?: ActionMcpConfig;
   onCompleted?: BlockDefinition<any, any>;
   onErrored?: BlockDefinition<any, any>;
-  userMessage?: (input: TInputSchema["_output"]) => string;
+  userMessage?: (input: TBlock["inputSchema"]["_output"]) => string;
   tokenBudget?: {
     maxTotalTokens: number;
     warnAt?: number;
@@ -448,7 +455,7 @@ export type InferFlowBlockContext<TDefinition extends FlowDefinition> = BlockCon
   InferFlowStateMap<TDefinition>["org"]
 >;
 
-export type FlowActionInput<TAction extends ActionConfig> = TAction["inputSchema"]["_output"];
+export type FlowActionInput<TAction extends ActionConfig> = TAction["block"]["inputSchema"]["_output"];
 
 export type FlowActionBlock<TAction extends ActionConfig> = TAction["block"];
 

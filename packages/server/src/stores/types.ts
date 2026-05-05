@@ -24,7 +24,6 @@ export type SessionRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
   description?: string;
   tags?: string[];
   resources?: Record<string, JsonObject>;
-  resourceContent?: Record<string, string>;
   metadata?: Record<string, unknown>;
   latestRequestId?: string;
   journal: JournalEntry[];
@@ -59,14 +58,12 @@ export type RequestRecord<TState extends JsonObject = JsonObject> = ScopeRecordB
 export type UserRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
   userId: string;
   resources?: Record<string, JsonObject>;
-  resourceContent?: Record<string, string>;
 };
 
 export type OrgRecord<TState extends JsonObject = JsonObject> = ScopeRecordBase<TState> & {
   orgId: string;
   userId?: string;
   resources?: Record<string, JsonObject>;
-  resourceContent?: Record<string, string>;
 };
 
 export type SessionListOptions = {

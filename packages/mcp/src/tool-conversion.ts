@@ -103,6 +103,6 @@ export function actionToMcpTool(toolName: string, action: ActionConfig): McpTool
   return {
     name: toolName,
     description: action.description ?? "",
-    inputSchema: toolInputJsonSchema(action.inputSchema)
+    inputSchema: toolInputJsonSchema(action.inputSchema ?? action.block.inputSchema)
   };
 }

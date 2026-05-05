@@ -12,6 +12,13 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 - `mem.regenerateDigest` exposes a manual escape hatch that bypasses the staleness guard — useful after bulk-loading memory in setup or in tests.
 - New `digestMemoryCapability` exposes `get` / `content` for blocks that read the digest. The composed `mem.capability` installs the digest resource alongside the other tiers.
 
+### Resource content moves out of scope records (FIX-347)
+
+- `SessionRecord`, `UserRecord`, and `OrgRecord` no longer carry a `resourceContent` field. Content lives exclusively in `ContentStore`, keyed by `(scopeType, scopeId, resourceKey)`. Concurrent writes to different resources no longer contend on the scope-record CAS path.
+- Execution context, state routes, and resource routes all read and write content through `stores.content` directly. The legacy on-record content path and its merge logic are gone.
+- Filesystem adapter writes each resource as a real file under `data/content/<scope>/<id>/<key>`. SQLite and Postgres adapters use a dedicated `resource_content` table.
+- Operators upgrading from a build that persisted inline content must copy each record's old `resourceContent` map into `ContentStore` before deploying — see the migration note in `packages/server/README.md`.
+
 ### Memory: agent-invocable `recall` tool (FIX-409)
 
 - New `mem.tool.recall()` factory on `memory.system()` returns a handler block agents can install on a generator with `tools: [mem.tool.recall()]`. Searches stored memory — semantic facts and past episodes — on demand. Working memory is intentionally excluded; it already lives in the formatter, so surfacing it through the tool would duplicate context cost.

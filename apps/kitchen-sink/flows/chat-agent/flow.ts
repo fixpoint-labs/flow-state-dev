@@ -31,9 +31,7 @@ import { responseAuditor } from "@flow-state-dev/patterns/response-auditor";
 import { z } from "zod";
 import {
   updateArtifact,
-  updateArtifactInputSchema,
   taskQueueDemo,
-  taskQueueDemoInputSchema,
   artifactListContext,
   voiceContext,
   createThinkingStyleRouter,
@@ -419,24 +417,19 @@ const chatAgentFlow = defineFlow({
 
   actions: {
     run: {
-      inputSchema,
       block: runSequencer,
       userMessage: (input) => input.message,
     },
     saveArtifact: {
-      inputSchema: updateArtifactInputSchema,
       block: updateArtifact,
     },
     setPreferredModel: {
-      inputSchema: setPreferredModelInputSchema,
       block: setPreferredModelHandler,
     },
     setPreferredProvider: {
-      inputSchema: setPreferredProviderInputSchema,
       block: setPreferredProviderHandler,
     },
     "task-queue": {
-      inputSchema: taskQueueDemoInputSchema,
       block: taskQueueDemo,
     },
   },
