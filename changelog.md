@@ -2,6 +2,16 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-02 (later)
+
+### MCP server adapter — every flow is reachable from MCP clients (FIX-22)
+
+- New `@flow-state-dev/mcp` package. Mounts as a sibling of the built-in HTTP adapter via `createFlowApiRouter({ adapters: [createMcpTransportAdapter()] })`. Every flow with `mcp.enabled: true` becomes its own MCP server at `POST /api/flows/:kind/mcp`; `GET` and `DELETE` return 405.
+- Per-flow `mcp` config and per-action `description` and `mcp.enabled` on `defineFlow`. Tool names derive deterministically from action keys via `decamelize` (`recordPayment` → `record_payment`); collisions and missing descriptions throw at flow registration.
+- Authentication runs through the existing `host.resolvePrincipal` hook — bearer tokens, HMAC, or anything else a flow's `authentication.resolvePrincipal` returns. `PrincipalResolutionError` maps to HTTP 401 + JSON-RPC `-32001` with `WWW-Authenticate: Bearer realm="MCP"`.
+- v1 ships stateless-only with single-text-content tool results — no `Mcp-Session-Id`, no `notifications/progress`, no `outputSchema`/`structuredContent`. `resources/list` returns the empty list pending a flow-bound resource scope.
+- DevTool already renders MCP-originated requests with a purple `MCP` badge from FIX-438; no devtool change needed.
+
 ## 2026-05-02
 
 ### Quick-start rewrite + new model-setup and first-flow pages (FIX-496)
