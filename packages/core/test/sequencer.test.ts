@@ -1398,5 +1398,43 @@ describe("sequencer builder", () => {
       const ctx = createMockContext();
       await expect(runForTest(seq, 1, ctx)).rejects.toThrow("conditional background failure");
     });
+
+    it("emits a step_error item when a background work task fails (auto-await)", async () => {
+      // The sequencer auto-awaits `.work()` / `.workIf()` tasks at the end of
+      // its run. A rejected task is logged and surfaced via a step_error item
+      // so renderers can show a non-fatal warning, but the parent action
+      // still completes successfully — failures don't propagate.
+      const failingWork = handler({
+        name: "background-failing-work",
+        inputSchema: z.number(),
+        outputSchema: z.number(),
+        execute: () => {
+          throw new Error("background failure");
+        }
+      });
+
+      const emitted: Array<{ type: string; item: { type: string; message?: string; blockName?: string } }> = [];
+      const ctx = createMockContext({
+        response: {
+          emit: (event: { type: string; item: any }) => {
+            if (event.type === "item.added") {
+              emitted.push(event);
+            }
+            return undefined;
+          }
+        } as any
+      });
+
+      const seq = sequencer({ name: "work-step-error", inputSchema: z.number() })
+        .workIf(() => true, failingWork);
+
+      // Parent resolves cleanly even though the background task rejected.
+      await expect(runForTest(seq, 1, ctx)).resolves.toBe(1);
+
+      const stepError = emitted.find((e) => e.item.type === "step_error");
+      expect(stepError).toBeDefined();
+      expect(stepError?.item.message).toContain("background failure");
+      expect(stepError?.item.blockName).toBe("background-failing-work");
+    });
   });
 });
