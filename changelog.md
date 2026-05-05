@@ -2,6 +2,15 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-05
+
+### Resource content moves out of scope records (FIX-347)
+
+- `SessionRecord`, `UserRecord`, and `OrgRecord` no longer carry a `resourceContent` field. Content lives exclusively in `ContentStore`, keyed by `(scopeType, scopeId, resourceKey)`. Concurrent writes to different resources no longer contend on the scope-record CAS path.
+- Execution context, state routes, and resource routes all read and write content through `stores.content` directly. The legacy on-record content path and its merge logic are gone.
+- Filesystem adapter writes each resource as a real file under `data/content/<scope>/<id>/<key>`. SQLite and Postgres adapters use a dedicated `resource_content` table.
+- Operators upgrading from a build that persisted inline content must copy each record's old `resourceContent` map into `ContentStore` before deploying — see the migration note in `packages/server/README.md`.
+
 ## 2026-05-02 (later)
 
 ### MCP server adapter — every flow is reachable from MCP clients (FIX-22)

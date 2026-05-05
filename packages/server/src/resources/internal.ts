@@ -89,9 +89,8 @@ export function findResourceConfig(
 
 /**
  * Read the persisted resource state and content for a given scope of a
- * session. Merges the legacy on-record `resourceContent` snapshot with
- * the canonical ContentStore — content written during execution lands
- * in the ContentStore, and older records may still carry inline content.
+ * session. Resource state lives on the scope record; content lives in the
+ * ContentStore (FIX-347).
  *
  * Returns `undefined` if the session, user record, or org record is
  * missing for the requested scope.
@@ -106,13 +105,10 @@ export async function getPersistedData(
   if (!session) return undefined;
 
   if (scope === "session") {
-    const contentFromStore = await ctx.stores.content.getAll("session", session.id);
+    const content = await ctx.stores.content.getAll("session", session.id);
     return {
       resources: (session.resources ?? {}) as Record<string, JsonObject>,
-      content: {
-        ...((session.resourceContent ?? {}) as Record<string, string>),
-        ...contentFromStore
-      }
+      content
     };
   }
 
@@ -125,13 +121,10 @@ export async function getPersistedData(
       resolveUserStorageKey(session.userId, toIsolationFlow(flow))
     );
     if (!user) return undefined;
-    const contentFromStore = await ctx.stores.content.getAll("user", user.id);
+    const content = await ctx.stores.content.getAll("user", user.id);
     return {
       resources: (user.resources ?? {}) as Record<string, JsonObject>,
-      content: {
-        ...((user.resourceContent ?? {}) as Record<string, string>),
-        ...contentFromStore
-      }
+      content
     };
   }
 
@@ -141,13 +134,10 @@ export async function getPersistedData(
     resolveOrgStorageKey(session.orgId, toIsolationFlow(flow))
   );
   if (!org) return undefined;
-  const contentFromStore = await ctx.stores.content.getAll("org", org.id);
+  const content = await ctx.stores.content.getAll("org", org.id);
   return {
     resources: (org.resources ?? {}) as Record<string, JsonObject>,
-    content: {
-      ...((org.resourceContent ?? {}) as Record<string, string>),
-      ...contentFromStore
-    }
+    content
   };
 }
 

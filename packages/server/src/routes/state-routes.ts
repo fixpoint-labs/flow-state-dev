@@ -117,9 +117,8 @@ export async function handleGetSessionState(
     totalItems = aggregatedItems.length;
     aggregatedItems = aggregatedItems.slice(offset, offset + limit);
   }
-  // Load content from ContentStore, merging with any inline record content
-  // for backward compatibility with records created before ContentStore existed.
-  const [sessionContentFromStore, userContentFromStore, orgContentFromStore] = await Promise.all([
+  // Resource content is canonical in ContentStore (FIX-347).
+  const [sessionContent, userContent, orgContent] = await Promise.all([
     ctx.stores.content.getAll("session", session.id),
     user !== undefined ? ctx.stores.content.getAll("user", user.id) : Promise.resolve({}),
     org !== undefined ? ctx.stores.content.getAll("org", org.id) : Promise.resolve({})
@@ -141,26 +140,17 @@ export async function handleGetSessionState(
   const sessionResources = createScopeResources({
     configs: sessionConfigs,
     persisted: session.resources as Record<string, unknown> | undefined,
-    persistedContent: {
-      ...(session.resourceContent as Record<string, string> | undefined),
-      ...sessionContentFromStore
-    }
+    persistedContent: sessionContent
   });
   const userResources = createScopeResources({
     configs: userConfigs,
     persisted: user?.resources as Record<string, unknown> | undefined,
-    persistedContent: {
-      ...(user?.resourceContent as Record<string, string> | undefined),
-      ...userContentFromStore
-    }
+    persistedContent: userContent
   });
   const orgResources = createScopeResources({
     configs: orgConfigs,
     persisted: org?.resources as Record<string, unknown> | undefined,
-    persistedContent: {
-      ...(org?.resourceContent as Record<string, string> | undefined),
-      ...orgContentFromStore
-    }
+    persistedContent: orgContent
   });
 
   const sessionClientData = await computeClientData({
@@ -193,28 +183,19 @@ export async function handleGetSessionState(
     buildResourceSnapshot({
       configs: sessionConfigs,
       persisted: session.resources as Record<string, unknown> | undefined,
-      persistedContent: {
-        ...(session.resourceContent as Record<string, string> | undefined),
-        ...sessionContentFromStore,
-      },
+      persistedContent: sessionContent,
       includeInternal: includeInternalResources,
     }),
     buildResourceSnapshot({
       configs: userConfigs,
       persisted: user?.resources as Record<string, unknown> | undefined,
-      persistedContent: {
-        ...(user?.resourceContent as Record<string, string> | undefined),
-        ...userContentFromStore,
-      },
+      persistedContent: userContent,
       includeInternal: includeInternalResources,
     }),
     buildResourceSnapshot({
       configs: orgConfigs,
       persisted: org?.resources as Record<string, unknown> | undefined,
-      persistedContent: {
-        ...(org?.resourceContent as Record<string, string> | undefined),
-        ...orgContentFromStore,
-      },
+      persistedContent: orgContent,
       includeInternal: includeInternalResources,
     }),
   ]);
