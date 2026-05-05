@@ -189,6 +189,43 @@ function resolveOriginalToolName(
   return map.get(modelName) ?? modelName;
 }
 
+/**
+ * Walk inbound `messages` and rewrite any toolName references to the
+ * sanitized alias. Returns a fresh structure when changes happen so the
+ * caller's array stays untouched; returns the original reference when
+ * nothing needed to change (the common case for messages that are pure
+ * text). Handles AI SDK v6 content-array shape:
+ *   { role: "assistant", content: [{ type: "tool-call", toolName, ... }] }
+ *   { role: "tool",      content: [{ type: "tool-result", toolName, ... }] }
+ */
+function sanitizeToolNamesInMessages(messages: unknown[]): unknown[] {
+  let out: unknown[] | undefined;
+  for (let i = 0; i < messages.length; i += 1) {
+    const msg = messages[i];
+    if (msg === null || typeof msg !== "object") continue;
+    const record = msg as Record<string, unknown>;
+    const content = record.content;
+    if (!Array.isArray(content)) continue;
+    let nextContent: unknown[] | undefined;
+    for (let j = 0; j < content.length; j += 1) {
+      const part = content[j];
+      if (part === null || typeof part !== "object") continue;
+      const partRecord = part as Record<string, unknown>;
+      const toolName = partRecord.toolName;
+      if (typeof toolName !== "string") continue;
+      const alias = sanitizeToolName(toolName);
+      if (alias === toolName) continue;
+      if (nextContent === undefined) nextContent = content.slice();
+      nextContent[j] = { ...partRecord, toolName: alias };
+    }
+    if (nextContent !== undefined) {
+      if (out === undefined) out = messages.slice();
+      out[i] = { ...record, content: nextContent };
+    }
+  }
+  return out ?? messages;
+}
+
 // Two distinct framework names can sanitize to the same alias (e.g.
 // `tf.memory/recall` and `tf-memory-recall` both → `tf_memory_recall`).
 // Disambiguate by appending the smallest numeric suffix that's unused in
@@ -287,9 +324,15 @@ function buildAiSdkRequest(
   },
   resolveLanguageModel?: ResolveAiSdkLanguageModel
 ): { request: Record<string, unknown>; toolNameMap: ToolNameMap | undefined } {
+  // Historical tool-call / tool-result messages carry the framework's tool
+  // names (e.g. `tf.memory/recall`). When AI SDK serialises those into
+  // OpenAI's request format the toolName lands in `input[N].name`, which
+  // OpenAI validates against the same /^[a-zA-Z0-9_-]+$/ pattern as tool
+  // names. Sanitize every toolName reference in inbound messages so the
+  // alias the model previously saw matches the alias it sees now.
   const request: Record<string, unknown> = {
     model: languageModel,
-    messages: options.messages
+    messages: sanitizeToolNamesInMessages(options.messages)
   };
 
   // Compile block tools — include execute if provided (enables AI SDK auto-execution)

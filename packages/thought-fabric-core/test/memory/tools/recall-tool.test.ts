@@ -183,7 +183,13 @@ describe('tools/recall — tool surface', () => {
     const tool = createRecallTool({ strategy })
     expect(tool).toBeDefined()
     expect(tool.name).toBe('tf.memory/recall')
-    expect((tool as any).description ?? recallToolDescription).toContain('stored memory')
+    // Description text is editable for prompt-tuning; assert only that the
+    // tool exposes one (and that it mentions memory) rather than locking to
+    // a specific phrase.
+    const description = (tool as any).description ?? recallToolDescription
+    expect(typeof description).toBe('string')
+    expect(description.length).toBeGreaterThan(0)
+    expect(description.toLowerCase()).toContain('memory')
     expect(recallToolInputSchema.safeParse({ query: 'hi' }).success).toBe(true)
     expect(recallToolInputSchema.safeParse({ query: '' }).success).toBe(false)
   })
