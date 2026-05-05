@@ -24,6 +24,14 @@ export type TraceNode = {
   blockDuration?: number;
   blockStartedAt?: number;
   blockCompletedAt?: number;
+  /**
+   * Execution phase from `provenance.phase`. Blocks dispatched via the work
+   * queue (`.work()`, `.workIf()` truthy branch, `.forEachBackground()`, and
+   * any descendants thereof) carry `phase: "work"`. Used by the trace view
+   * to render a "BG" sidechain badge so background activity is visually
+   * distinct from main-chain steps.
+   */
+  phase?: "main" | "work";
   item?: OutputItem;
   /** The lifecycle trace item for this block (used for detail panel on click). */
   traceItem?: OutputItem;
@@ -69,10 +77,15 @@ export function buildTraceTree(requestGroups: RequestGroup[]): TraceNode[] {
           blockKind: undefined,
           blockInstanceId: prov.blockInstanceId,
           blockStatus: "in_progress",
+          phase: prov.phase,
           children: [],
           isExpanded: isLast,
         };
         blockMap.set(prov.blockInstanceId, blockNode);
+      } else if (blockNode.phase === undefined && prov.phase !== undefined) {
+        // First seen item didn't carry phase (defensive — provenance.phase is
+        // always set today); backfill from any subsequent item that does.
+        blockNode.phase = prov.phase;
       }
 
       // Track parent relationship from provenance so the nesting phase can

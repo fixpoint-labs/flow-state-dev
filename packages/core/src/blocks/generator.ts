@@ -709,7 +709,7 @@ function compileToolsWithExecute(
                 blockName: identity?.blockName ?? tool.name,
                 blockInstanceId: identity?.blockInstanceId ?? tool.name,
                 parentBlockInstanceId: identity?.parentBlockInstanceId,
-                phase: "main" as const
+                phase: identity?.phase ?? "main"
               },
               ts: Date.now(),
               ownedBy: identity?.ownedBy,
@@ -746,7 +746,7 @@ function compileToolsWithExecute(
                 blockName: identity?.blockName ?? tool.name,
                 blockInstanceId: identity?.blockInstanceId ?? tool.name,
                 parentBlockInstanceId: identity?.parentBlockInstanceId,
-                phase: "main" as const
+                phase: identity?.phase ?? "main"
               },
               ts: Date.now(),
               ownedBy: identity?.ownedBy,

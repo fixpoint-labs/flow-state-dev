@@ -350,6 +350,41 @@ describe("buildTraceTree", () => {
   });
 
 
+  it("captures phase from provenance onto the block node", () => {
+    // Blocks dispatched via `.work()` / `.workIf()` / `.forEachBackground()`
+    // (and any descendants) carry `phase: "work"` in their provenance. The
+    // trace tree surfaces this on the block node so the trace view can
+    // render a sidechain badge.
+    const items = [
+      makeItem({
+        id: "i1",
+        type: "message",
+        provenance: {
+          blockName: "main-block",
+          blockInstanceId: "main-inst",
+          phase: "main",
+        },
+      }),
+      makeItem({
+        id: "i2",
+        type: "message",
+        provenance: {
+          blockName: "bg-block",
+          blockInstanceId: "bg-inst",
+          phase: "work",
+        },
+      }),
+    ];
+
+    const tree = buildTraceTree([makeGroup({ items })]);
+    const requestNode = tree[0];
+    const mainBlock = requestNode.children.find((n) => n.blockName === "main-block");
+    const bgBlock = requestNode.children.find((n) => n.blockName === "bg-block");
+
+    expect(mainBlock?.phase).toBe("main");
+    expect(bgBlock?.phase).toBe("work");
+  });
+
   it("handles nested sequencer state snapshots independently", () => {
     const items = [
       makeItem({

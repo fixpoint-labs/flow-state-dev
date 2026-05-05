@@ -2520,7 +2520,7 @@ export async function createExecutionContext<
         blockName: parent.name,
         blockInstanceId: parent.instanceId,
         parentBlockInstanceId: parent.parentInstanceId,
-        phase: "main"
+        phase: parent.phase ?? "main"
       },
       ts: completedAt,
       ownedBy,
@@ -2827,7 +2827,7 @@ export async function createExecutionContext<
                   provenance: () => ({
                     blockName: matched.parent.name,
                     blockInstanceId: matched.parent.instanceId,
-                    phase: "main"
+                    phase: matched.parent.phase ?? "main"
                   }),
                   blockInstanceId: matched.parent.instanceId,
                   transientStateChanges,
@@ -2974,7 +2974,7 @@ export async function createExecutionContext<
                 blockName: resolvedParent.name,
                 blockInstanceId: resolvedParent.instanceId,
                 parentBlockInstanceId: resolvedParent.parentInstanceId,
-                phase: "main"
+                phase: resolvedParent.phase ?? "main"
               },
               ts: Date.now(),
               ownedBy: activeEmCtx.ownedBy,
