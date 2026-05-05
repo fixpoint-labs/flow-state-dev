@@ -453,6 +453,23 @@ export function memorySystemTick(config: MemorySystemBlocksConfig) {
   })
 }
 
+/**
+ * Append a digest-regeneration step to a chain when digest is configured.
+ *
+ * Both consolidation and prune mutate the semantic store, so both should
+ * trigger a digest refresh. The digest's own staleness guard short-circuits
+ * when the source signature is unchanged — second-level no-op.
+ */
+function withDigestRegenerate<S extends { then: (b: any) => any }>(
+  chain: S,
+  config: MemorySystemBlocksConfig,
+): S {
+  if (!config.digest) return chain
+  return chain.then(
+    digestRegenerate(config as MemorySystemBlocksConfig & { digest: DigestBlocksConfig }),
+  ) as S
+}
+
 // ---------------------------------------------------------------------------
 // Consolidation blocks
 // ---------------------------------------------------------------------------
@@ -797,24 +814,15 @@ export function memorySystemConsolidate(config: MemorySystemBlocksConfig) {
   const generateBlock = consolidationGenerate(config)
   const persistBlock = consolidationPersist(config)
 
-  // When the digest tier is configured, append digest regeneration after the
-  // semantic store mutation. The digest's own staleness guard then short-circuits
-  // when the consolidation produced no net signature delta — second-level no-op.
-  const persistAndMaybeDigest = config.digest
-    ? sequencer({
-        name: config.name ? `${config.name}/consolidate/persist-and-digest` : 'tf.memory/consolidate/persist-and-digest',
-        inputSchema: consolidationOutputSchema,
-      })
-        .then(persistBlock)
-        .then(digestRegenerate(config as MemorySystemBlocksConfig & { digest: DigestBlocksConfig }))
-    : persistBlock
-
-  const generateAndPersist = sequencer({
-    name: config.name ? `${config.name}/consolidate/generate-and-persist` : 'tf.memory/consolidate/generate-and-persist',
-    inputSchema: z.any(),
-  })
-    .then(generateBlock)
-    .then(persistAndMaybeDigest)
+  const generateAndPersist = withDigestRegenerate(
+    sequencer({
+      name: config.name ? `${config.name}/consolidate/generate-and-persist` : 'tf.memory/consolidate/generate-and-persist',
+      inputSchema: z.any(),
+    })
+      .then(generateBlock)
+      .then(persistBlock),
+    config,
+  )
 
   return sequencer({
     name: config.name ? `${config.name}/consolidate` : 'tf.memory/consolidate',
@@ -1051,23 +1059,15 @@ export function memorySystemPrune(config: MemorySystemBlocksConfig) {
   const generateBlock = pruneGenerate(pruneConfig)
   const persistBlock = prunePersist(pruneConfig)
 
-  // Prune mutates the semantic store too — regenerate the digest after a real
-  // prune so it doesn't go stale until the next consolidation.
-  const persistAndMaybeDigest = config.digest
-    ? sequencer({
-        name: config.name ? `${config.name}/prune/persist-and-digest` : 'tf.memory/prune/persist-and-digest',
-        inputSchema: pruneOutputSchema,
-      })
-        .then(persistBlock)
-        .then(digestRegenerate(pruneConfig as MemorySystemBlocksConfig & { digest: DigestBlocksConfig }))
-    : persistBlock
-
-  const generateAndPersist = sequencer({
-    name: config.name ? `${config.name}/prune/generate-and-persist` : 'tf.memory/prune/generate-and-persist',
-    inputSchema: z.any(),
-  })
-    .then(generateBlock)
-    .then(persistAndMaybeDigest)
+  const generateAndPersist = withDigestRegenerate(
+    sequencer({
+      name: config.name ? `${config.name}/prune/generate-and-persist` : 'tf.memory/prune/generate-and-persist',
+      inputSchema: z.any(),
+    })
+      .then(generateBlock)
+      .then(persistBlock),
+    pruneConfig,
+  )
 
   return sequencer({
     name: config.name ? `${config.name}/prune` : 'tf.memory/prune',
