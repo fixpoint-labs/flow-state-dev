@@ -23,30 +23,20 @@ import {
   fixCodeGenerator,
   personalizeGenerator,
 } from "./generators";
-import {
-  copyeditInputSchema,
-  improveInputSchema,
-  changeToneInputSchema,
-  translateInputSchema,
-  summarizeInputSchema,
-  expandInputSchema,
-  fixCodeInputSchema,
-  personalizeInputSchema,
-} from "./schemas";
 import { mem } from "./memory";
 
 const richTextComponentFlow = defineFlow({
   kind: "rich-text-component",
   requireUser: true,
   actions: {
-    copyedit:    { inputSchema: copyeditInputSchema,    block: copyeditGenerator    },
-    improve:     { inputSchema: improveInputSchema,     block: improveGenerator     },
-    changeTone:  { inputSchema: changeToneInputSchema,  block: changeToneGenerator  },
-    translate:   { inputSchema: translateInputSchema,   block: translateGenerator   },
-    summarize:   { inputSchema: summarizeInputSchema,   block: summarizeGenerator   },
-    expand:      { inputSchema: expandInputSchema,      block: expandGenerator      },
-    fixCode:     { inputSchema: fixCodeInputSchema,     block: fixCodeGenerator     },
-    personalize: { inputSchema: personalizeInputSchema, block: personalizeGenerator },
+    copyedit:    { block: copyeditGenerator    },
+    improve:     { block: improveGenerator     },
+    changeTone:  { block: changeToneGenerator  },
+    translate:   { block: translateGenerator   },
+    summarize:   { block: summarizeGenerator   },
+    expand:      { block: expandGenerator      },
+    fixCode:     { block: fixCodeGenerator     },
+    personalize: { block: personalizeGenerator },
   },
 
   // FIX-435: resources live in a single flat resources map; their intrinsic
