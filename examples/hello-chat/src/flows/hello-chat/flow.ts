@@ -81,9 +81,8 @@ const helloChatFlow = defineFlow({
   requireUser: true,
   actions: {
     chat: {
-      inputSchema: chatInputSchema,
       block: chatPipeline,
-      userMessage: (input: z.infer<typeof chatInputSchema>) => input.message
+      userMessage: (input) => input.message
     }
   },
   session: {

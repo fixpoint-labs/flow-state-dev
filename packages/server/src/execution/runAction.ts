@@ -81,7 +81,8 @@ function resolveAction<
  * Validates and parses action input using the action's schema.
  */
 function parseActionInput(action: ActionConfig, input: unknown): unknown {
-  const parsed = action.inputSchema.safeParse(input);
+  const schema = action.inputSchema ?? action.block.inputSchema;
+  const parsed = schema.safeParse(input);
   if (parsed.success) {
     return parsed.data;
   }

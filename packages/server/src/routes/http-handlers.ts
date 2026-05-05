@@ -262,7 +262,7 @@ export function createFlowRouteHandlers(options: CreateFlowRouteHandlersOptions)
             actionSchemas: Object.fromEntries(
               Object.entries(flow.actions).map(([name, config]) => [
                 name,
-                serializeActionSchema(config.inputSchema)
+                serializeActionSchema(config.inputSchema ?? config.block.inputSchema)
               ])
             )
           }))

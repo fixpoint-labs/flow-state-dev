@@ -44,7 +44,6 @@ Actions are the **entry points** to a flow. Every request executes through a nam
 ```ts
 actions: {
   sendMessage: {
-    inputSchema: z.object({ message: z.string().min(1) }),
     block: chatSequencer,
     onCompleted: updateJournalBlock,
     onErrored: logErrorBlock,
@@ -55,8 +54,8 @@ actions: {
 
 | Field | Purpose |
 |-------|---------|
-| `inputSchema` | Zod schema — validated before block execution |
 | `block` | Root block to execute for this action |
+| `inputSchema` | Optional override for action-level validation. Defaults to `block.inputSchema`. |
 | `userMessage` | Optional function extracting display text → emits a `MessageItem` (role: "user") as the first stream item |
 | `onCompleted` | Block executed on terminal success |
 | `onErrored` | Block executed on terminal failure |
@@ -65,6 +64,17 @@ actions: {
 - Actions are flow-level — not nested in session or scope configs
 - Action input validation runs before any block execution
 - `userMessage` is optional — omit it for system triggers or background tasks
+
+### When to override `inputSchema`
+
+`inputSchema` is optional because every block already carries its own. Override it when the action's public contract should diverge from the block's:
+
+- **MCP exposure.** The action schema is the LLM-facing tool definition. Add richer `.describe()` annotations or stricter ranges than the block needs internally.
+- **Boundary narrowing.** Block accepts a generic shape; the action enforces a narrower public contract (`z.string().min(1).max(1000)` over `z.string()`).
+- **Documentation surface.** The action schema is the published contract. The block schema is the implementation contract. They can legitimately diverge.
+- **Test escape hatches.** `inputSchema: z.unknown()` skips action-level validation while leaving the block's check intact.
+
+Otherwise omit it — the block's schema is the source of truth, and the runtime falls back to it automatically.
 
 ## Scope Configuration
 
