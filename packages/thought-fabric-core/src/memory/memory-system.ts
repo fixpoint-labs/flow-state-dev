@@ -51,6 +51,10 @@ import {
   createEpisodicMemoryCapability,
   createSemanticMemoryCapability,
 } from './capabilities.js'
+import { createRecallTool } from './tools/recall-tool.js'
+import { resolveStrategy } from './tools/strategies/index.js'
+import type { BuiltInStrategyName } from './tools/strategies/index.js'
+import type { RetrievalStrategy } from './tools/types.js'
 
 // ---------------------------------------------------------------------------
 // Memory system tracking resource
@@ -152,6 +156,27 @@ export interface SemanticMemoryConfig {
   pruneThreshold?: number
 }
 
+/** Configuration for the agent-invocable recall tool (FIX-409). */
+export interface MemoryToolConfig {
+  /**
+   * Retrieval strategy. Either a built-in name or a custom `RetrievalStrategy`
+   * object. Default: `'llm-filter'`.
+   */
+  strategy?: BuiltInStrategyName | RetrievalStrategy
+  /**
+   * Model id for the strategy's LLM filter call (when applicable).
+   * Defaults to `MemorySystemConfig.model`.
+   */
+  model?: string
+  /** Defaults for tool input handling. */
+  defaults?: {
+    /** Default `limit`. Default: 5. */
+    limit?: number
+    /** Per-item char cap on returned content. Default: 400. */
+    perItemCharCap?: number
+  }
+}
+
 /** Top-level configuration for memory.system(). */
 export interface MemorySystemConfig {
   /** Model ID for the observer LLM. */
@@ -170,6 +195,8 @@ export interface MemorySystemConfig {
   source?: (input: unknown, ctx: any) => string
   /** Max chars of assistant response to include in captureFromItems. Default: 500. */
   maxAssistantChars?: number
+  /** Recall-tool config. Omit to use defaults (`llm-filter` strategy). */
+  tool?: MemoryToolConfig
 }
 
 // ---------------------------------------------------------------------------
@@ -295,6 +322,20 @@ export interface MemorySystem {
 
   /** Semantic memory capability (when semantic configured). */
   semanticMemoryCapability?: CapabilityRef
+
+  /**
+   * Agent-invocable memory tools (FIX-409).
+   *
+   * Install on a generator via `tools: [mem.tool.recall()]`. The tool
+   * searches stored memory (semantic facts + past episodes) on demand;
+   * working memory is intentionally excluded — it lives in the formatter.
+   *
+   * Strategy and defaults are configured at `memory.system({ tool })` time.
+   */
+  tool: {
+    /** Recall-tool factory — returns the handler block, ready to install. */
+    recall: () => ReturnType<typeof createRecallTool>
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -708,6 +749,18 @@ export function system(config: MemorySystemConfig): MemorySystem {
   const maxAssistantChars = config.maxAssistantChars ?? DEFAULT_OBSERVER_CONFIG.maxAssistantChars
   const captureFromItems = capture.connectInput(buildItemsConnector(maxAssistantChars))
 
+  // Build the recall tool (FIX-409). Constructed once and reused across
+  // every generator that installs it. Strategy is created here so the
+  // underlying generator block (for llm-filter) is cached.
+  const toolConfig = config.tool ?? {}
+  const recallStrategy = resolveStrategy(toolConfig.strategy ?? 'llm-filter', {
+    model: toolConfig.model ?? config.model,
+  })
+  const recallToolBlock = createRecallTool({
+    strategy: recallStrategy,
+    defaults: toolConfig.defaults,
+  })
+
   // Compose the unified memory capability
   const capUses: CapabilityRef[] = [wmCapability]
   if (epCapability) capUses.push(epCapability)
@@ -729,6 +782,15 @@ export function system(config: MemorySystemConfig): MemorySystem {
        */
       context: {
         context: { memory: contextFormatterFn },
+      },
+      /**
+       * Agent-invocable recall tool (FIX-409). Off by default in this
+       * ticket — FIX-513 will introduce `agent`/`worker` presets that
+       * bundle this with `context` and flip the default. Manual install
+       * via `tools: [mem.tool.recall()]` remains supported.
+       */
+      tool: {
+        tools: () => [recallToolBlock],
       },
       default: ['context'],
     },
@@ -764,6 +826,9 @@ export function system(config: MemorySystemConfig): MemorySystem {
     },
     capability: composedCapability,
     workingMemoryCapability: wmCapability,
+    tool: {
+      recall: () => recallToolBlock,
+    },
   }
 
   if (consolidate) {

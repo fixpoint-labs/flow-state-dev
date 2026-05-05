@@ -2,6 +2,16 @@
 
 All notable implementation-repo changes are recorded here as concise, wave-level summaries.
 
+## 2026-05-05
+
+### Memory: agent-invocable `recall` tool (FIX-409)
+
+- New `mem.tool.recall()` factory on `memory.system()` returns a handler block agents can install on a generator with `tools: [mem.tool.recall()]`. Searches stored memory — semantic facts and past episodes — on demand. Working memory is intentionally excluded; it already lives in the formatter, so surfacing it through the tool would duplicate context cost.
+- One unified tool, not three. The agent's mental model is "find a thing I knew" — whether the thing is a fact or an episode is an implementation detail surfaced as a `source` field on each result rather than a routing decision the LLM has to make.
+- Pluggable `RetrievalStrategy` interface. V1 ships `'llm-filter'`: query-blind intrinsic pre-rank (top 50 by `confidence × reinforcement` for facts, `significance × exp(-age/50)` for episodes) followed by a single LLM filter call over the bounded candidate set. Token spend per call is bounded regardless of total store size. Optional Stage 1.5 exact-phrase pass-through catches distinctive strings (proper nouns, error codes) buried in low-score memories.
+- Result envelope includes `query`, `strategy`, `totalMatched`, `truncatedTo` so the agent can detect "more available" and re-query. Per-item char cap (default 400) with a truncation marker prevents runaway result sizes.
+- Configure via `memory.system({ tool: { strategy, model, defaults } })`. Custom strategies implement the same interface; the keyword (FIX-410) and hybrid (FIX-412) backends will plug in without changing the tool surface. The memory capability gains a `tool` preset (off by default in this release; FIX-513 introduces `agent`/`worker` presets that bundle it).
+
 ## 2026-05-02 (later)
 
 ### MCP server adapter — every flow is reachable from MCP clients (FIX-22)
