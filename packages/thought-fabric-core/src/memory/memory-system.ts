@@ -286,12 +286,20 @@ export interface MemorySystem {
   /**
    * Context formatter for generator context arrays.
    *
-   * Emits `<memory>` containing the rolling digest (when configured) and
-   * working memory entries. Returns `undefined` when both are empty so the
-   * generator omits the section entirely. Semantic facts and episodic
-   * memories live on the recall tool ([FIX-409]), not the load path.
+   * Returns an object whose keys become nested XML tags under the parent
+   * key the formatter is registered against — e.g.
+   * `context: { memory: mem.contextFormatter }` produces
+   * `<memory><digest>…</digest><working>…</working></memory>`. Returning a
+   * pre-formatted string with embedded tags would be XML-escaped by the
+   * context aggregator's leaf renderer. Returns `undefined` when both
+   * digest and working memory are empty so the generator omits the section
+   * entirely. Semantic facts and episodic memories live on the recall tool
+   * ([FIX-409]), not the load path.
    */
-  contextFormatter: (input: unknown, ctx: any) => string | undefined
+  contextFormatter: (
+    input: unknown,
+    ctx: any
+  ) => { digest?: string; working?: string } | undefined
   /** Working memory module — resource and helpers. */
   working: {
     resource: typeof workingMemoryResource

@@ -204,21 +204,16 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
 
     const result = mem.contextFormatter(undefined, ctx)
     expect(result).toBeDefined()
-    // Framework wraps the entry in <memory> via the context key — formatter
-    // emits only the inner content with <digest> / <working> sections.
-    expect(result).not.toContain('<memory>')
-    expect(result).toContain('<digest>')
-    expect(result).toContain('The user is a TypeScript engineer working on a chat app.')
-    expect(result).toContain('</digest>')
-    expect(result).toContain('<working>')
-    expect(result).toContain('- (pinned) User name is Jake')
-    expect(result).toContain('- Debugging React crash')
-    expect(result).toContain('</working>')
-
-    // <digest> comes before <working>
-    const digestIdx = result!.indexOf('<digest>')
-    const workingIdx = result!.indexOf('<working>')
-    expect(digestIdx).toBeLessThan(workingIdx)
+    // Formatter returns an object so the framework's context aggregator can
+    // nest the keys as XML tags under the parent <memory> tag without
+    // escaping inner < and > as text.
+    expect(result).toEqual({
+      digest: 'The user is a TypeScript engineer working on a chat app.',
+      working: '- (pinned) User name is Jake\n- Debugging React crash',
+    })
+    // Key order matters — framework renders in insertion order, so digest
+    // must appear before working.
+    expect(Object.keys(result!)).toEqual(['digest', 'working'])
   })
 
   it('renders working memory only when no digest configured', () => {
@@ -234,7 +229,7 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
     }
 
     const result = mem.contextFormatter(undefined, ctx)
-    expect(result).toBe('<working>\n- (pinned) User name is Jake\n</working>')
+    expect(result).toEqual({ working: '- (pinned) User name is Jake' })
   })
 
   it('renders working memory only when digest configured but content empty', () => {
@@ -261,7 +256,7 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
     }
 
     const result = mem.contextFormatter(undefined, ctx)
-    expect(result).toBe('<working>\n- Debugging hydration mismatch\n</working>')
+    expect(result).toEqual({ working: '- Debugging hydration mismatch' })
   })
 
   it('renders digest only when working memory empty', () => {
@@ -287,8 +282,8 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
     }
 
     const result = mem.contextFormatter(undefined, ctx)
-    expect(result).toBe('<digest>\nStable framing about the user.\n</digest>')
-    expect(result).not.toContain('<working>')
+    expect(result).toEqual({ digest: 'Stable framing about the user.' })
+    expect(result).not.toHaveProperty('working')
   })
 
   it('returns undefined when both digest and working memory are empty', () => {
@@ -350,7 +345,7 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
 
     const result = mem.contextFormatter(undefined, ctx)
     // No digest content → just the working block
-    expect(result).toBe('<working>\n- Active task\n</working>')
+    expect(result).toEqual({ working: '- Active task' })
   })
 
   it('renders all entries when working memory is at capacity (7)', () => {
@@ -372,14 +367,15 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
     }
 
     const result = mem.contextFormatter(undefined, ctx)!
+    const working = result.working ?? ''
     for (const content of ['item one', 'item two', 'item three', 'item four', 'item five', 'item six', 'item seven']) {
-      expect(result).toContain(content)
+      expect(working).toContain(content)
     }
     // Pinned marker preserved
-    expect(result).toContain('- (pinned) item one')
+    expect(working).toContain('- (pinned) item one')
     // Salience-sorted ordering
-    const idxOne = result.indexOf('item one')
-    const idxSeven = result.indexOf('item seven')
+    const idxOne = working.indexOf('item one')
+    const idxSeven = working.indexOf('item seven')
     expect(idxOne).toBeLessThan(idxSeven)
   })
 
@@ -417,11 +413,12 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
     }
 
     const result = mem.contextFormatter(undefined, ctx)!
-    expect(result).not.toContain('Works at Stripe')
-    expect(result).not.toContain('Prefers TypeScript')
-    expect(result).not.toContain('Debugged a hydration bug')
-    expect(result).not.toContain('Known facts')
-    expect(result).not.toContain('About user')
+    const combined = JSON.stringify(result)
+    expect(combined).not.toContain('Works at Stripe')
+    expect(combined).not.toContain('Prefers TypeScript')
+    expect(combined).not.toContain('Debugged a hydration bug')
+    expect(combined).not.toContain('Known facts')
+    expect(combined).not.toContain('About user')
   })
 
 })

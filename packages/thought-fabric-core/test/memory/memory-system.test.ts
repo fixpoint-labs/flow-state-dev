@@ -400,6 +400,29 @@ describe('memory/memorySystem', () => {
         expect(block.declaredResources).toHaveProperty('workingMemory')
         expect(block.declaredResources).toHaveProperty('memorySystem')
       })
+
+      it('declares digestMemory on the capture pipeline when digest is configured', () => {
+        // When digest is enabled, capture must wire `digestRegenerate` as a
+        // `.work()` step so the rolling summary refreshes every turn whose
+        // source signature drifted. The block's own staleness guard makes
+        // the call cheap when nothing has changed.
+        // Build through system() so resource references are shared across
+        // child blocks — calling memorySystemCapture with raw config would
+        // create independent resource refs and conflict on merge.
+        const mem = system({
+          model: 'gpt-5-mini',
+          working: true,
+          episodic: true,
+          semantic: true,
+          digest: true,
+        })
+        expect(mem.capture.declaredResources).toHaveProperty('digestMemory')
+      })
+
+      it('does not declare digestMemory when digest is not configured', () => {
+        const block = memorySystemCapture(baseConfig)
+        expect(block.declaredResources).not.toHaveProperty('digestMemory')
+      })
     })
   })
 

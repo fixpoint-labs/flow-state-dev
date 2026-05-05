@@ -15,14 +15,27 @@
 import { formatForContext } from './working-memory-helpers.js'
 import type { Digest } from './digest-memory.js'
 
+/** Object-shaped return type understood by the context aggregator. */
+type MemoryContextValue =
+  | { digest?: string; working?: string }
+  | undefined
+
 /**
  * Build the simplified context formatter.
  *
- * The returned function reads working memory and (when configured) the digest
- * resource from `ctx.resources`, then emits one of:
- * - `<digest>{digest}</digest>\n<working>{wm}</working>` when both are present
- * - `<digest>{digest}</digest>` when only the digest has content
- * - `<working>{wm}</working>` when only working memory is non-empty
+ * Returns an object whose keys become nested XML tags under the parent key
+ * the formatter is registered against. With `context: { memory: fn }` and a
+ * return of `{ digest, working }`, the framework renders
+ * `<memory><digest>…</digest><working>…</working></memory>`. Returning an
+ * object (rather than a pre-formatted string with embedded tags) is what
+ * lets the framework treat each tag as structure — string-leaf values are
+ * XML-escaped before rendering, which would garble nested tags in the
+ * combined system message.
+ *
+ * Possible return shapes:
+ * - `{ digest, working }` when both are present
+ * - `{ digest }` when only the digest has content
+ * - `{ working }` when only working memory is non-empty
  * - `undefined` when both are empty (the framework signal to skip the section)
  *
  * `hasDigest` reflects whether the system was configured with a digest tier;
@@ -30,7 +43,7 @@ import type { Digest } from './digest-memory.js'
  * produces an empty section.
  */
 export function createContextFormatter(hasDigest: boolean) {
-  return function contextFormatter(_input: unknown, ctx: any): string | undefined {
+  return function contextFormatter(_input: unknown, ctx: any): MemoryContextValue {
     const wmRef = ctx.resources?.workingMemory
     const workingText = wmRef ? formatForContext(wmRef) : ''
 
@@ -47,10 +60,9 @@ export function createContextFormatter(hasDigest: boolean) {
 
     if (!digestText && !workingText) return undefined
 
-    const parts: string[] = []
-    if (digestText) parts.push('<digest>', digestText, '</digest>')
-    if (workingText) parts.push('<working>', workingText, '</working>')
-
-    return parts.join('\n')
+    const out: { digest?: string; working?: string } = {}
+    if (digestText) out.digest = digestText
+    if (workingText) out.working = workingText
+    return out
   }
 }
