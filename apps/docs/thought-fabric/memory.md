@@ -258,34 +258,38 @@ const chat = generator({
 })
 ```
 
-The formatter calls `recall()` internally and organizes memories into sections. Semantic facts are grouped by subject. When there's only one subject (`user`), it renders as a flat list:
+The formatter emits a single bounded `<memory>` block containing only the rolling digest (when configured) and the current working memory:
 
 ```
-Known facts:
-- [profession] Works at Stripe
-- [preference] Prefers TypeScript
-
-Current focus:
-- Working on a REST API migration
+<memory>
+The user is a TypeScript engineer at Fixpoint Labs, working on a chat app
+and currently debugging a hydration mismatch in apps/web.
+<working>
+- (pinned) User name is Jake
+- Debugging React crash
+- Prefers dark mode
+</working>
+</memory>
 ```
 
-When multiple subjects exist, they're grouped:
+When the digest tier is not configured (or hasn't been generated yet), the digest section is omitted:
 
 ```
-About user:
-- [identity] Name is Jake
-- [profession] Works at Fixpoint Labs
-
-About jennifer:
-- [relationship] Spouse, goes by Moni
-
-Current focus:
-- Working on a REST API migration
+<memory>
+<working>
+- (pinned) User name is Jake
+- Debugging React crash
+</working>
+</memory>
 ```
 
-Semantic facts appear first (highest authority), then working memory entries, then recent episodic memories. Duplicates across stores are filtered — if semantic memory has "Works at Stripe," the same entry won't appear again from working memory.
+When both the digest and working memory are empty the formatter returns `undefined`, and the generator omits the section entirely.
 
-For direct access, use `mem.recall(ctx, cue?)`:
+The output is naturally bounded: working memory has a fixed capacity (default 7 entries) and the digest has a `maxTokens` cap (default 400). Combined, the inject is on the order of ~600 tokens and grows slowly with memory contents.
+
+**Behavior change from V1.** Earlier versions of the formatter pasted every semantic fact and recent episode into the prompt. That path is gone — semantic facts and episodic memories now belong on the agent's lookup path via the recall tool ([see below](#recall-tool)). Pre-injecting them in the formatter is exactly the cost this redesign removes; the agent decides when to pay it.
+
+For direct access to all stores, use `mem.recall(ctx, cue?)`:
 
 ```ts
 const memories = mem.recall(ctx)

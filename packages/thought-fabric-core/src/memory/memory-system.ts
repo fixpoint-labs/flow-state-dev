@@ -62,6 +62,7 @@ import {
   isStale as digestIsStale,
 } from './digest-helpers.js'
 import { digestRegenerate } from './digest-blocks.js'
+import { createContextFormatter } from './formatter.js'
 import { createRecallTool } from './tools/recall-tool.js'
 import { resolveStrategy } from './tools/strategies/index.js'
 import type { BuiltInStrategyName } from './tools/strategies/index.js'
@@ -264,8 +265,15 @@ export interface MemorySystem {
   prune?: ReturnType<typeof memorySystemPrune>
   /** Cross-store recall helper. */
   recall: (ctx: any, cue?: string) => RankedMemoryItem[]
-  /** Context formatter for generator context arrays. */
-  contextFormatter: (input: unknown, ctx: any) => string
+  /**
+   * Context formatter for generator context arrays.
+   *
+   * Emits `<memory>` containing the rolling digest (when configured) and
+   * working memory entries. Returns `undefined` when both are empty so the
+   * generator omits the section entirely. Semantic facts and episodic
+   * memories live on the recall tool ([FIX-409]), not the load path.
+   */
+  contextFormatter: (input: unknown, ctx: any) => string | undefined
   /** Working memory module — resource and helpers. */
   working: {
     resource: typeof workingMemoryResource
@@ -521,73 +529,6 @@ function createRecall(
 }
 
 // ---------------------------------------------------------------------------
-// Context formatter
-// ---------------------------------------------------------------------------
-
-/**
- * Creates a context formatter function for generator context arrays.
- * Calls recall() internally and formats memories into categorized sections.
- */
-function createContextFormatter(
-  recallFn: (ctx: any, cue?: string) => RankedMemoryItem[],
-) {
-  return function contextFormatter(_input: unknown, ctx: any): string {
-    const items = recallFn(ctx)
-    if (items.length === 0) return ''
-
-    // Separate semantic items (which have subjects) from session items
-    const semanticItems = items.filter((i) => i.source === 'semantic')
-    const sessionItems = items.filter((i) => i.source !== 'semantic')
-
-    let output = ''
-
-    // Group semantic items by subject
-    if (semanticItems.length > 0) {
-      const bySubject = new Map<string, RankedMemoryItem[]>()
-      for (const item of semanticItems) {
-        const subject = item.subject ?? 'user'
-        if (!bySubject.has(subject)) bySubject.set(subject, [])
-        bySubject.get(subject)!.push(item)
-      }
-
-      // If only one subject ('user'), omit the grouping header for simplicity
-      if (bySubject.size === 1 && bySubject.has('user')) {
-        const facts = bySubject.get('user')!
-        output += 'Known facts:\n' + facts.map((i) => `- [${i.category}] ${i.content}`).join('\n') + '\n\n'
-      } else {
-        for (const [subject, facts] of bySubject) {
-          output += `About ${subject}:\n` + facts.map((i) => `- [${i.category}] ${i.content}`).join('\n') + '\n\n'
-        }
-      }
-    }
-
-    // Session items (working/episodic) formatted by category
-    const focus = sessionItems.filter((i) => i.category === 'task' || i.category === 'event')
-    const prefs = sessionItems.filter((i) => i.category === 'preference')
-    const patterns = sessionItems.filter((i) => i.category === 'pattern')
-    const other = sessionItems.filter((i) =>
-      i.category !== 'task' && i.category !== 'event' &&
-      i.category !== 'preference' && i.category !== 'pattern',
-    )
-
-    if (other.length > 0) {
-      output += 'Session context:\n' + other.map((i) => `- ${i.content}`).join('\n') + '\n\n'
-    }
-    if (focus.length > 0) {
-      output += 'Current focus:\n' + focus.map((i) => `- ${i.content}`).join('\n') + '\n\n'
-    }
-    if (prefs.length > 0) {
-      output += 'User preferences:\n' + prefs.map((i) => `- ${i.content}`).join('\n') + '\n\n'
-    }
-    if (patterns.length > 0) {
-      output += 'Patterns:\n' + patterns.map((i) => `- ${i.content}`).join('\n') + '\n\n'
-    }
-
-    return output.trimEnd()
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Items connector for captureFromItems
 // ---------------------------------------------------------------------------
 
@@ -838,7 +779,7 @@ export function system(config: MemorySystemConfig): MemorySystem {
     episodicConfig ? { scope: episodicConfig.scope } : undefined,
     semanticConfig ? { scope: semanticConfig.scope } : undefined,
   )
-  const contextFormatterFn = createContextFormatter(recallFn)
+  const contextFormatterFn = createContextFormatter(!!digestConfig)
 
   // Create captureFromItems — self-serving variant that reads from session items
   const maxAssistantChars = config.maxAssistantChars ?? DEFAULT_OBSERVER_CONFIG.maxAssistantChars
@@ -872,9 +813,10 @@ export function system(config: MemorySystemConfig): MemorySystem {
     }),
     presets: {
       /**
-       * Unified context formatter for generators — injects recall output
-       * under a `<memory>` tag. Object-form so multiple memory contributors
-       * (e.g. layered memory systems) aggregate into one section.
+       * Unified context formatter for generators — injects the digest plus
+       * working memory under a `<memory>` tag (FIX-407). Object-form so
+       * multiple memory contributors (e.g. layered memory systems) aggregate
+       * into one section.
        */
       context: {
         context: { memory: contextFormatterFn },

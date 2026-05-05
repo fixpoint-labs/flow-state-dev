@@ -501,63 +501,8 @@ describe('memory/memorySystem', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // contextFormatter()
+  // contextFormatter() — see formatter.test.ts for FIX-407 simplified shape
   // ---------------------------------------------------------------------------
-
-  describe('contextFormatter()', () => {
-    it('returns categorized sections when memories exist', () => {
-      const wmRef = createMockWmRef({
-        entries: [
-          { id: 'e1', content: 'User name is Jake', salience: 0.9, pinned: true, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.9, category: 'identity', durability: 'permanent' },
-          { id: 'e2', content: 'Debugging React crash', salience: 0.7, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.7, category: 'task', durability: 'session' },
-          { id: 'e3', content: 'Prefers dark mode', salience: 0.6, pinned: false, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.6, category: 'preference', durability: 'persistent' },
-        ],
-      })
-
-      const mem = system({ model: 'gpt-5-mini', working: true })
-      const ctx = {
-        resources: createMockResources({ workingMemory: wmRef }),
-      }
-
-      const result = mem.contextFormatter(undefined, ctx)
-      // Working memory items go into session sections (not semantic "Known facts")
-      expect(result).toContain('Session context:')
-      expect(result).toContain('- User name is Jake')
-      expect(result).toContain('Current focus:')
-      expect(result).toContain('- Debugging React crash')
-      expect(result).toContain('User preferences:')
-      expect(result).toContain('- Prefers dark mode')
-    })
-
-    it('returns empty string when no memories', () => {
-      const wmRef = createMockWmRef()
-      const mem = system({ model: 'gpt-5-mini', working: true })
-      const ctx = {
-        resources: createMockResources({ workingMemory: wmRef }),
-      }
-
-      const result = mem.contextFormatter(undefined, ctx)
-      expect(result).toBe('')
-    })
-
-    it('omits empty sections', () => {
-      const wmRef = createMockWmRef({
-        entries: [
-          { id: 'e1', content: 'User name is Jake', salience: 0.9, pinned: true, addedAtTurn: 0, lastAccessedAtTurn: 0, importance: 0.9, category: 'identity', durability: 'permanent' },
-        ],
-      })
-
-      const mem = system({ model: 'gpt-5-mini', working: true })
-      const ctx = {
-        resources: createMockResources({ workingMemory: wmRef }),
-      }
-
-      const result = mem.contextFormatter(undefined, ctx)
-      expect(result).toContain('Session context:')
-      expect(result).not.toContain('Current focus:')
-      expect(result).not.toContain('User preferences:')
-    })
-  })
 
   // ---------------------------------------------------------------------------
   // Reflect handler: persistence behavior
@@ -1791,71 +1736,7 @@ describe('memory/memorySystem', () => {
   // Context formatter with semantic memory
   // ---------------------------------------------------------------------------
 
-  describe('contextFormatter() (with semantic)', () => {
-    it('includes semantic facts in Known facts section (single subject)', () => {
-      const wmRef = createMockWmRef()
-      const semRef = createMockSemRef({
-        facts: [makeFact({ id: 'sf_1', subject: 'user', content: 'Works at Stripe', category: 'profession', confidence: 0.8 })],
-      })
-
-      const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
-      const ctx = {
-        resources: createMockResources({
-          workingMemory: wmRef,
-          semanticMemory: semRef,
-          episodicMemory: createMockEpRef(),
-        }),
-      }
-
-      const result = mem.contextFormatter(undefined, ctx)
-      expect(result).toContain('Known facts:')
-      expect(result).toContain('[profession] Works at Stripe')
-    })
-
-    it('groups by subject when multiple subjects exist', () => {
-      const wmRef = createMockWmRef()
-      const semRef = createMockSemRef({
-        facts: [
-          makeFact({ id: 'sf_1', subject: 'user', content: 'Name is Jake', category: 'identity', confidence: 0.9 }),
-          makeFact({ id: 'sf_2', subject: 'jennifer', content: 'Is the spouse', category: 'relationship', confidence: 0.8 }),
-        ],
-      })
-
-      const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
-      const ctx = {
-        resources: createMockResources({
-          workingMemory: wmRef,
-          semanticMemory: semRef,
-          episodicMemory: createMockEpRef(),
-        }),
-      }
-
-      const result = mem.contextFormatter(undefined, ctx)
-      expect(result).toContain('About user:')
-      expect(result).toContain('[identity] Name is Jake')
-      expect(result).toContain('About jennifer:')
-      expect(result).toContain('[relationship] Is the spouse')
-    })
-
-    it('includes category prefix for semantic facts', () => {
-      const wmRef = createMockWmRef()
-      const semRef = createMockSemRef({
-        facts: [makeFact({ id: 'sf_1', subject: 'user', content: 'Frequently debugs React components', category: 'pattern', confidence: 0.7 })],
-      })
-
-      const mem = system({ model: 'gpt-5-mini', working: true, episodic: true, semantic: true })
-      const ctx = {
-        resources: createMockResources({
-          workingMemory: wmRef,
-          semanticMemory: semRef,
-          episodicMemory: createMockEpRef(),
-        }),
-      }
-
-      const result = mem.contextFormatter(undefined, ctx)
-      expect(result).toContain('[pattern] Frequently debugs React components')
-    })
-  })
+  // contextFormatter() (with semantic) — see formatter.test.ts
 
   // ---------------------------------------------------------------------------
   // Observer prompt
