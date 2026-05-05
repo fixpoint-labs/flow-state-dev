@@ -1,12 +1,16 @@
 /**
  * Simplified `mem.contextFormatter` ([FIX-407]).
  *
- * Emits a bounded `<memory>` block containing only the rolling digest
- * ([FIX-408]) and working-memory entries ([FIX-199]). Semantic facts and
- * episodic memories are intentionally absent — the agent retrieves those on
- * demand via the recall tool ([FIX-409]). The combined output is naturally
- * bounded by the digest's `maxTokens` (default 400) and the working-memory
- * capacity (default 7), so no separate budget contract is needed.
+ * Emits the rolling digest ([FIX-408]) and working-memory entries ([FIX-199]).
+ * Semantic facts and episodic memories are intentionally absent — the agent
+ * retrieves those on demand via the recall tool ([FIX-409]). The combined
+ * output is naturally bounded by the digest's `maxTokens` (default 400) and
+ * the working-memory capacity (default 7), so no separate budget contract is
+ * needed.
+ *
+ * The framework wraps this entry in a `<memory>` tag automatically based on
+ * the key it's registered under (e.g. `context: { memory: contextFormatter }`),
+ * so this function returns only the inner content.
  */
 import { formatForContext } from './working-memory-helpers.js'
 import type { Digest } from './digest-memory.js'
@@ -16,14 +20,14 @@ import type { Digest } from './digest-memory.js'
  *
  * The returned function reads working memory and (when configured) the digest
  * resource from `ctx.resources`, then emits one of:
- * - `<memory>{digest}\n<working>{wm}</working></memory>` when both are present
- * - `<memory>{digest}</memory>` when only the digest has content
- * - `<memory><working>{wm}</working></memory>` when only working memory is non-empty
+ * - `<digest>{digest}</digest>\n<working>{wm}</working>` when both are present
+ * - `<digest>{digest}</digest>` when only the digest has content
+ * - `<working>{wm}</working>` when only working memory is non-empty
  * - `undefined` when both are empty (the framework signal to skip the section)
  *
  * `hasDigest` reflects whether the system was configured with a digest tier;
  * the formatter still reads defensively so missing/empty digest content never
- * produces an empty `<memory>` shell.
+ * produces an empty section.
  */
 export function createContextFormatter(hasDigest: boolean) {
   return function contextFormatter(_input: unknown, ctx: any): string | undefined {
@@ -43,10 +47,9 @@ export function createContextFormatter(hasDigest: boolean) {
 
     if (!digestText && !workingText) return undefined
 
-    const parts: string[] = ['<memory>']
-    if (digestText) parts.push(digestText)
+    const parts: string[] = []
+    if (digestText) parts.push('<digest>', digestText, '</digest>')
     if (workingText) parts.push('<working>', workingText, '</working>')
-    parts.push('</memory>')
 
     return parts.join('\n')
   }

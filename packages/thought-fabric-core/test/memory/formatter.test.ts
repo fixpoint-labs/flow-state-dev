@@ -204,16 +204,19 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
 
     const result = mem.contextFormatter(undefined, ctx)
     expect(result).toBeDefined()
-    expect(result).toContain('<memory>')
+    // Framework wraps the entry in <memory> via the context key — formatter
+    // emits only the inner content with <digest> / <working> sections.
+    expect(result).not.toContain('<memory>')
+    expect(result).toContain('<digest>')
     expect(result).toContain('The user is a TypeScript engineer working on a chat app.')
+    expect(result).toContain('</digest>')
     expect(result).toContain('<working>')
     expect(result).toContain('- (pinned) User name is Jake')
     expect(result).toContain('- Debugging React crash')
     expect(result).toContain('</working>')
-    expect(result).toContain('</memory>')
 
-    // Digest comes before <working>
-    const digestIdx = result!.indexOf('TypeScript engineer')
+    // <digest> comes before <working>
+    const digestIdx = result!.indexOf('<digest>')
     const workingIdx = result!.indexOf('<working>')
     expect(digestIdx).toBeLessThan(workingIdx)
   })
@@ -231,7 +234,7 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
     }
 
     const result = mem.contextFormatter(undefined, ctx)
-    expect(result).toBe('<memory>\n<working>\n- (pinned) User name is Jake\n</working>\n</memory>')
+    expect(result).toBe('<working>\n- (pinned) User name is Jake\n</working>')
   })
 
   it('renders working memory only when digest configured but content empty', () => {
@@ -258,7 +261,7 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
     }
 
     const result = mem.contextFormatter(undefined, ctx)
-    expect(result).toBe('<memory>\n<working>\n- Debugging hydration mismatch\n</working>\n</memory>')
+    expect(result).toBe('<working>\n- Debugging hydration mismatch\n</working>')
   })
 
   it('renders digest only when working memory empty', () => {
@@ -284,7 +287,7 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
     }
 
     const result = mem.contextFormatter(undefined, ctx)
-    expect(result).toBe('<memory>\nStable framing about the user.\n</memory>')
+    expect(result).toBe('<digest>\nStable framing about the user.\n</digest>')
     expect(result).not.toContain('<working>')
   })
 
@@ -347,7 +350,7 @@ describe('memory/contextFormatter (FIX-407 simplified)', () => {
 
     const result = mem.contextFormatter(undefined, ctx)
     // No digest content → just the working block
-    expect(result).toBe('<memory>\n<working>\n- Active task\n</working>\n</memory>')
+    expect(result).toBe('<working>\n- Active task\n</working>')
   })
 
   it('renders all entries when working memory is at capacity (7)', () => {

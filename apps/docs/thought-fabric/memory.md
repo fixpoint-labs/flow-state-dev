@@ -258,12 +258,14 @@ const chat = generator({
 })
 ```
 
-The formatter emits a single bounded `<memory>` block containing only the rolling digest (when configured) and the current working memory:
+The formatter emits the rolling digest (when configured) and the current working memory under `<digest>` and `<working>` sections. The framework wraps the entry in a `<memory>` tag automatically based on the context key it's registered under, so the rendered prompt section looks like this:
 
 ```
 <memory>
+<digest>
 The user is a TypeScript engineer at Fixpoint Labs, working on a chat app
 and currently debugging a hydration mismatch in apps/web.
+</digest>
 <working>
 - (pinned) User name is Jake
 - Debugging React crash
