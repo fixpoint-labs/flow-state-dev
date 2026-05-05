@@ -173,50 +173,6 @@ export function digestRegenerateGuard(config: DigestRegenerateConfig) {
     : undefined)
   const digestResource = config._digestResource ?? createDigestMemoryResource(config.digest.scope)
 
-  async function execute(input: { force?: boolean } | undefined, ctx: any): Promise<DigestGuardOutput> {
-    const digestRef = ctx.resources.digestMemory
-    const semRef = ctx.resources?.semanticMemory
-    const epRef = ctx.resources?.episodicMemory
-
-    // Without a semantic store there is nothing to summarise — never trigger.
-    if (!semRef) {
-      return { triggered: false, facts: [], episodes: [] }
-    }
-
-    const signature = computeSourceSignature(semRef, epRef)
-    const stored = digestRef?.state?.digest as Digest | undefined
-
-    const force = !!input?.force
-    const stale =
-      !stored ||
-      stored.sourceSignature.semanticFactCount !== signature.semanticFactCount ||
-      stored.sourceSignature.semanticReinforcementSum !== signature.semanticReinforcementSum ||
-      stored.sourceSignature.episodeCount !== signature.episodeCount
-
-    if (!force && !stale) {
-      return { triggered: false, previous: stored?.content, facts: [], episodes: [] }
-    }
-
-    const facts = topFacts(semRef, config.digest.topN.facts).map((f) => ({
-      subject: f.subject,
-      content: f.content,
-      category: f.category as string,
-      confidence: f.confidence,
-      reinforcementCount: f.reinforcementCount,
-    }))
-
-    const episodes = epRef
-      ? rankEpisodesForDigest(recentEpisodes(epRef), config.digest.topN.episodes).map((e) => ({
-          content: e.content,
-          category: e.category as string,
-          significance: e.significance,
-          occurredAtTurn: e.occurredAtTurn,
-        }))
-      : []
-
-    return { triggered: true, previous: stored?.content, facts, episodes }
-  }
-
   const resources: Record<string, any> = {
     workingMemory: workingMemoryResource,
     memorySystem: memorySystemResource,
@@ -230,7 +186,49 @@ export function digestRegenerateGuard(config: DigestRegenerateConfig) {
     inputSchema: digestRegenerateInputSchema,
     outputSchema: digestGuardOutputSchema,
     resources,
-    execute,
+    execute: async (input, ctx: any): Promise<DigestGuardOutput> => {
+      const digestRef = ctx.resources.digestMemory
+      const semRef = ctx.resources.semanticMemory
+      const epRef = ctx.resources.episodicMemory
+
+      // Without a semantic store there is nothing to summarise — never trigger.
+      if (!semRef) {
+        return { triggered: false, facts: [], episodes: [] }
+      }
+
+      const signature = computeSourceSignature(semRef, epRef)
+      const stored = digestRef?.state?.digest as Digest | undefined
+
+      const force = !!input?.force
+      const stale =
+        !stored ||
+        stored.sourceSignature.semanticFactCount !== signature.semanticFactCount ||
+        stored.sourceSignature.semanticReinforcementSum !== signature.semanticReinforcementSum ||
+        stored.sourceSignature.episodeCount !== signature.episodeCount
+
+      if (!force && !stale) {
+        return { triggered: false, previous: stored?.content, facts: [], episodes: [] }
+      }
+
+      const facts = topFacts(semRef, config.digest.topN.facts).map((f) => ({
+        subject: f.subject,
+        content: f.content,
+        category: f.category as string,
+        confidence: f.confidence,
+        reinforcementCount: f.reinforcementCount,
+      }))
+
+      const episodes = epRef
+        ? rankEpisodesForDigest(recentEpisodes(epRef), config.digest.topN.episodes).map((e) => ({
+            content: e.content,
+            category: e.category as string,
+            significance: e.significance,
+            occurredAtTurn: e.occurredAtTurn,
+          }))
+        : []
+
+      return { triggered: true, previous: stored?.content, facts, episodes }
+    },
   })
 }
 
@@ -300,39 +298,6 @@ export function digestRegeneratePersist(config: DigestRegenerateConfig) {
     : undefined)
   const digestResource = config._digestResource ?? createDigestMemoryResource(config.digest.scope)
 
-  async function execute(
-    input: z.infer<typeof digestOutputSchema>,
-    ctx: any,
-  ) {
-    const digestRef = ctx.resources.digestMemory
-    const semRef = ctx.resources?.semanticMemory
-    const epRef = ctx.resources?.episodicMemory
-    const wmRef = ctx.resources?.workingMemory
-    if (!digestRef || !input.content || input.content.trim().length === 0) {
-      return { persisted: false }
-    }
-
-    const signature = semRef
-      ? computeSourceSignature(semRef, epRef)
-      : { semanticFactCount: 0, semanticReinforcementSum: 0, episodeCount: 0 }
-    const currentTurn = wmRef?.state?.currentTurn ?? 0
-
-    const next: Digest = {
-      content: input.content,
-      generatedAt: new Date().toISOString(),
-      generatedAtTurn: currentTurn,
-      sourceSignature: signature,
-    }
-
-    await digestRef.updateState((s: DigestMemoryState) => ({
-      ...s,
-      digest: next,
-      totalGenerated: s.totalGenerated + 1,
-    }))
-
-    return { persisted: true, digest: next }
-  }
-
   const resources: Record<string, any> = {
     workingMemory: workingMemoryResource,
     digestMemory: digestResource,
@@ -345,7 +310,35 @@ export function digestRegeneratePersist(config: DigestRegenerateConfig) {
     inputSchema: digestOutputSchema,
     outputSchema: z.any(),
     resources,
-    execute,
+    execute: async (input, ctx: any) => {
+      const digestRef = ctx.resources.digestMemory
+      const semRef = ctx.resources.semanticMemory
+      const epRef = ctx.resources.episodicMemory
+      const wmRef = ctx.resources.workingMemory
+      if (!digestRef || !input.content || input.content.trim().length === 0) {
+        return { persisted: false }
+      }
+
+      const signature = semRef
+        ? computeSourceSignature(semRef, epRef)
+        : { semanticFactCount: 0, semanticReinforcementSum: 0, episodeCount: 0 }
+      const currentTurn = wmRef?.state?.currentTurn ?? 0
+
+      const next: Digest = {
+        content: input.content,
+        generatedAt: new Date().toISOString(),
+        generatedAtTurn: currentTurn,
+        sourceSignature: signature,
+      }
+
+      await digestRef.updateState((s: DigestMemoryState) => ({
+        ...s,
+        digest: next,
+        totalGenerated: s.totalGenerated + 1,
+      }))
+
+      return { persisted: true, digest: next }
+    },
   })
 }
 
