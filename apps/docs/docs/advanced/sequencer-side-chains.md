@@ -169,7 +169,7 @@ const pipeline = sequencer({
 })
   .then(agent)
   .workIf(
-    (ctx) => ctx.session.state.features.memory,
+    (_response, ctx) => ctx.session.state.features.memory,
     memoryObserveBlock
   )
   .then(formatResponse);
@@ -195,7 +195,7 @@ Like `.work()`, you can reshape the input for the background block:
 
 ```ts
 pipeline.workIf(
-  (ctx) => ctx.session.state.observeEnabled,
+  (_response, ctx) => ctx.session.state.observeEnabled,
   (output) => ({ event: "processed", data: output }),
   analyticsBlock,
   { name: "conditional-analytics" }
@@ -206,14 +206,19 @@ When the condition is falsy, the connector is never called.
 
 ### Condition signature
 
-The condition function receives the `BlockContext` (not the pipeline value). This is deliberate: `workIf` is about checking session state, feature flags, or runtime configuration — not examining the pipeline data.
+The condition function receives the running step value first and the
+`BlockContext` second — matching `.thenIf` and `.tapIf`. Authors can gate
+dispatch on either the upstream output or live session/request state:
 
 ```ts
-// ✅ workIf condition — receives ctx only
-.workIf((ctx) => ctx.session.state.featureEnabled, block)
+// ✅ Gate on the upstream output (e.g. don't run capture on empty text)
+.workIf((response) => response.length > 0, captureBlock)
 
-// ✅ thenIf condition — receives both input and ctx
-.thenIf((input, ctx) => input.score > 0.5, block)
+// ✅ Gate on session/request state
+.workIf((_value, ctx) => ctx.session.state.featureEnabled, block)
+
+// ✅ Gate on both
+.workIf((response, ctx) => response.length > 0 && ctx.session.state.captureEnabled, block)
 ```
 
 ### Async conditions
@@ -222,7 +227,7 @@ The condition can be async. It's evaluated once before dispatching:
 
 ```ts
 pipeline.workIf(
-  async (ctx) => {
+  async (_value, ctx) => {
     const settings = await loadFeatureFlags(ctx.session.state.userId);
     return settings.memoryEnabled;
   },

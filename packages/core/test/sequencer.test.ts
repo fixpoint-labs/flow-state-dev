@@ -1236,7 +1236,8 @@ describe("sequencer builder", () => {
       expect(workExecuted).toBe(false);
     });
 
-    it("condition receives BlockContext", async () => {
+    it("condition receives the running value and BlockContext", async () => {
+      let receivedValue: unknown = null;
       let receivedCtx: unknown = null;
       const workBlock = handler({
         name: "bg-work",
@@ -1246,7 +1247,8 @@ describe("sequencer builder", () => {
       });
 
       const seq = sequencer({ name: "workIf-ctx", inputSchema: z.number() })
-        .workIf((ctx) => {
+        .workIf((value, ctx) => {
+          receivedValue = value;
           receivedCtx = ctx;
           return true;
         }, workBlock)
@@ -1254,8 +1256,35 @@ describe("sequencer builder", () => {
 
       const ctx = createMockContext();
       await runForTest(seq, 1, ctx);
+      expect(receivedValue).toBe(1);
       expect(receivedCtx).not.toBeNull();
       expect((receivedCtx as any).request).toBeDefined();
+    });
+
+    it("condition can gate dispatch on the running value", async () => {
+      let workExecuted = false;
+      const workBlock = handler({
+        name: "bg-work",
+        inputSchema: z.string(),
+        outputSchema: z.string(),
+        execute: async (value) => {
+          workExecuted = true;
+          return value;
+        }
+      });
+
+      const seq = sequencer({ name: "workIf-value", inputSchema: z.string() })
+        .workIf((value) => value.length > 0, workBlock)
+        .waitForWork({ failOnError: true });
+
+      // Empty string fails the predicate — work should not run.
+      const ctx = createMockContext();
+      await runForTest(seq, "", ctx);
+      expect(workExecuted).toBe(false);
+
+      // Non-empty satisfies it.
+      await runForTest(seq, "hello", ctx);
+      expect(workExecuted).toBe(true);
     });
 
     it("supports async condition functions", async () => {

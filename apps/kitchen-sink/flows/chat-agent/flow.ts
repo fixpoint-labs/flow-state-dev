@@ -404,7 +404,12 @@ const runSequencer = sequencer({ name: "run", inputSchema })
   .then(thinkingStyleRouter)
   .work(biasCheck)
   .workIf(
-    (ctx) => ctx.session.state.mode === "ask",
+    // Skip capture when the assistant produced no text (e.g. a turn that
+    // ended in a tool call only). The perspective system already no-ops on
+    // empty content, but gating here avoids dispatching a background block
+    // we know has nothing to do.
+    (response, ctx) =>
+      ctx.session.state.mode === "ask" && response.length > 0,
     (response: string) => ({ content: response }),
     analystPerspective.capture,
   )

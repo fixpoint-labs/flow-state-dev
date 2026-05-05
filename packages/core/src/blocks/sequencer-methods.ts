@@ -195,16 +195,23 @@ export interface SequencerDefinition<TInput, TOutput> extends BlockDefinition<an
    * Conditional variant of `.work()` — dispatches a fire-and-forget sidechain
    * only when the condition is truthy. Complete no-op when falsy (no items, no trace).
    *
-   * The condition is evaluated once per execution before dispatching. It receives
-   * the full `BlockContext` so it can read live session/request state.
+   * The condition is evaluated once per execution before dispatching. The
+   * function form receives the running step value first and the
+   * `BlockContext` second — matching `.thenIf` and `.tapIf` — so authors can
+   * gate dispatch on either the upstream output or live session/request
+   * state.
    */
   workIf(
-    condition: boolean | ((ctx: BlockContext) => boolean | Promise<boolean>),
+    condition:
+      | boolean
+      | ((value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>),
     block: BlockDefinition<any, any>,
     options?: { name?: string }
   ): SequencerDefinition<TInput, TOutput>;
   workIf<TStepIn>(
-    condition: boolean | ((ctx: BlockContext) => boolean | Promise<boolean>),
+    condition:
+      | boolean
+      | ((value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>),
     connector: ConnectorFn<TOutput, TStepIn>,
     block: BlockDefinition<any, any>,
     options?: { name?: string }

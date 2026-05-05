@@ -155,17 +155,22 @@ pipeline.tapIf(
 
 A `work` that only fires when the condition is true. When false, it's a complete no-op — no block, no items emitted.
 
+The condition function receives `(value, ctx)` — the running step value first, then the `BlockContext` — matching `.thenIf` and `.tapIf`.
+
 ```ts
 pipeline.workIf(
-  (ctx) => ctx.session.state.features.memory,
+  (_value, ctx) => ctx.session.state.features.memory,
   memoryObserveBlock
 );
+
+// Gate on the upstream value too — e.g. don't capture an empty response:
+pipeline.workIf((response) => response.length > 0, captureBlock);
 
 // Or with a static boolean:
 pipeline.workIf(ENABLE_ANALYTICS, analyticsBlock);
 ```
 
-**When to reach for this**: feature-flag a background side effect.
+**When to reach for this**: feature-flag a background side effect, or skip dispatch when the upstream value isn't worth processing.
 
 ### `exitIf(condition)`
 

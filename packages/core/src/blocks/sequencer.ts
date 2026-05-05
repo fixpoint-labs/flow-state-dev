@@ -1380,7 +1380,9 @@ function createSequencer<TInput, TOutput>(
     },
 
     workIf<TStepIn>(
-      condition: boolean | ((ctx: BlockContext) => boolean | Promise<boolean>),
+      condition:
+        | boolean
+        | ((value: TOutput, ctx: BlockContext) => boolean | Promise<boolean>),
       arg2: BlockDefinition<any, any> | ConnectorFn<TOutput, TStepIn>,
       arg3?: BlockDefinition<any, any> | WorkOptions,
       arg4?: WorkOptions
@@ -1395,7 +1397,9 @@ function createSequencer<TInput, TOutput>(
           name: options?.name ?? `workIf:${block.name}`,
           run: async (value, ctx, runtime, stepIndex) => {
             const shouldDispatch =
-              typeof condition === "function" ? await condition(ctx) : condition;
+              typeof condition === "function"
+                ? await condition(value as TOutput, ctx)
+                : condition;
 
             if (!shouldDispatch) {
               return { value };
