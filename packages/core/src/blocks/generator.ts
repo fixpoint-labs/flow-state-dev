@@ -721,6 +721,12 @@ function compileToolsWithExecute(
               toolCall: {
                 callId: options.toolCallId,
                 name: tool.name,
+                // Sanitised alias the LLM saw — what history replay must use
+                // for `toolName` fields on tool-call / tool-result content
+                // parts. Storing it here avoids re-deriving it later from the
+                // framework name (which can mismatch when the model resolver
+                // disambiguates colliding aliases).
+                alias: sanitizeToolName(tool.name),
                 arguments: typeof args === "string" ? args : JSON.stringify(args),
                 generatorBlock: generatorBlockName
               }
@@ -758,6 +764,7 @@ function compileToolsWithExecute(
               toolCall: {
                 callId: options.toolCallId,
                 name: tool.name,
+                alias: sanitizeToolName(tool.name),
                 arguments: typeof args === "string" ? args : JSON.stringify(args),
                 generatorBlock: generatorBlockName
               },

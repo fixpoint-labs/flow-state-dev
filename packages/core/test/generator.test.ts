@@ -457,6 +457,120 @@ describe("generator builder", () => {
     expect((toolOutput.toolCall as any).callId).toBe("call_123");
     expect((toolOutput.toolCall as any).name).toBe("lookup-tool");
     expect((toolOutput.toolCall as any).generatorBlock).toBe("tool-generator");
+    // Already-clean name → alias equals name (sanitisation is idempotent).
+    expect((toolOutput.toolCall as any).alias).toBe("lookup-tool");
+  });
+
+  it("stamps a sanitized alias on block_tool_output when the tool name contains namespace characters", async () => {
+    // The model only ever sees the sanitized alias `tf_memory_recall`; the
+    // emitted item must carry that alias so history replay sends the same
+    // string OpenAI accepted in the original turn. Prior to FIX-… the item
+    // stored only the framework name, and replay produced a 400 from
+    // OpenAI's `^[a-zA-Z0-9_-]+$` rule.
+    const emittedEvents: Array<{ type: string; item?: Record<string, unknown> }> = [];
+    const namespacedTool = handler({
+      name: "tf.memory/recall",
+      inputSchema: z.object({ query: z.string() }),
+      outputSchema: z.object({ results: z.array(z.string()) }),
+      execute: () => ({ results: ["found"] })
+    });
+
+    const block = generator({
+      name: "ns-tool-generator",
+      model: "m",
+      prompt: "p",
+      tools: [namespacedTool]
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          const toolDef = (options.tools as any[])?.find(
+            (t: any) => t.name === "tf.memory/recall"
+          );
+          if (toolDef?.execute) {
+            await toolDef.execute({ query: "wife" }, { toolCallId: "call_ns" });
+          }
+          return { text: "done" };
+        }
+      }),
+      response: {
+        emit: (event: unknown) => {
+          emittedEvents.push(event as any);
+        },
+        getItems: () => emittedEvents.filter((e: any) => e.item).map((e: any) => e.item)
+      } as any
+    });
+
+    await runForTest(block, { value: "x" }, ctx);
+
+    const toolOutput = emittedEvents.find(
+      (e) => e.type === "item.added" && e.item?.type === "block_tool_output"
+    )!.item!;
+    expect((toolOutput.toolCall as any).name).toBe("tf.memory/recall");
+    expect((toolOutput.toolCall as any).alias).toBe("tf_memory_recall");
+    // The alias must satisfy provider patterns; if this regex check fails,
+    // OpenAI will reject the next turn's replay.
+    expect((toolOutput.toolCall as any).alias).toMatch(/^[a-zA-Z0-9_-]+$/);
+  });
+
+  it("stamps the alias on a failed block_tool_output as well", async () => {
+    // Both success and failure paths emit block_tool_output. Replay sends
+    // the failure's tool-call back to the model on the next turn (with the
+    // synthesised "Tool ... failed" error text), so the alias must travel
+    // with the failure path too.
+    const emittedEvents: Array<{ type: string; item?: Record<string, unknown> }> = [];
+    const failingTool = handler({
+      name: "tf.memory/recall",
+      inputSchema: z.object({ query: z.string() }),
+      outputSchema: z.object({ results: z.array(z.string()) }),
+      execute: () => {
+        throw new Error("boom");
+      }
+    });
+
+    const block = generator({
+      name: "failing-tool-gen",
+      model: "m",
+      prompt: "p",
+      tools: [failingTool]
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          const toolDef = (options.tools as any[])?.find(
+            (t: any) => t.name === "tf.memory/recall"
+          );
+          if (toolDef?.execute) {
+            try {
+              await toolDef.execute({ query: "x" }, { toolCallId: "call_fail" });
+            } catch {
+              // expected — tool execute rethrows after emitting failure item
+            }
+          }
+          return { text: "done" };
+        }
+      }),
+      response: {
+        emit: (event: unknown) => {
+          emittedEvents.push(event as any);
+        },
+        getItems: () => emittedEvents.filter((e: any) => e.item).map((e: any) => e.item)
+      } as any
+    });
+
+    await runForTest(block, { value: "x" }, ctx);
+
+    const failed = emittedEvents.find(
+      (e) =>
+        e.type === "item.added" &&
+        e.item?.type === "block_tool_output" &&
+        e.item?.status === "failed"
+    )!.item!;
+    expect((failed.toolCall as any).alias).toBe("tf_memory_recall");
   });
 
   it("lists tools in the system prompt using sanitized names matching what the model can call", async () => {

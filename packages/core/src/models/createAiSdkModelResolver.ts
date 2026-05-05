@@ -197,6 +197,14 @@ function resolveOriginalToolName(
  * text). Handles AI SDK v6 content-array shape:
  *   { role: "assistant", content: [{ type: "tool-call", toolName, ... }] }
  *   { role: "tool",      content: [{ type: "tool-result", toolName, ... }] }
+ *
+ * Defence-in-depth: with `BlockToolOutputItem.toolCall.alias` populated at
+ * emit time, the upstream replay path (`itemToLLMMessages` in the server
+ * package) already produces sanitized toolNames for tool-call / tool-result
+ * parts. This pass therefore no-ops on messages built from new items but
+ * remains a safety net for messages that did not flow through that path —
+ * dev/test sessions persisted before the field existed, third-party
+ * harnesses that bypass the framework's replay logic, etc.
  */
 function sanitizeToolNamesInMessages(messages: unknown[]): unknown[] {
   let out: unknown[] | undefined;

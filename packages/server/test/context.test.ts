@@ -301,4 +301,109 @@ describe("createExecutionContext", () => {
     ).rejects.toThrow("read-only");
   });
 
+  it("replays block_tool_output items using the stored alias for tool-call/tool-result toolName", async () => {
+    // The model only ever saw the sanitised alias (e.g. `tf_memory_recall`).
+    // History replay must rebuild the tool-call / tool-result content parts
+    // with that same string so OpenAI's `^[a-zA-Z0-9_-]+$` rule passes on
+    // the next turn. Items written by the new emit path carry the alias
+    // explicitly; items persisted before the field existed fall back to
+    // sanitising the framework name.
+    const flow = createFlow();
+    const stores = createInMemoryStores();
+
+    await stores.request.set("req_tool_prev", {
+      id: "req_tool_prev",
+      flowKind: flow.kind,
+      actionName: "run",
+      sessionId: "sess_tool_replay",
+      userId: "user_tool_replay",
+      status: "completed",
+      startedAtMs: 1,
+      updatedAt: 1,
+      items: [
+        {
+          id: "item_user",
+          type: "message",
+          status: "completed",
+          requestId: "req_tool_prev",
+          itemIndex: 0,
+          ts: 1,
+          role: "user",
+          content: [{ type: "output_text", text: "what's my wife's name?" }],
+          provenance: { blockName: "runtime", blockInstanceId: "runtime", phase: "main" }
+        } as any,
+        // New item — alias populated at emit time.
+        {
+          id: "item_tool_new",
+          type: "block_tool_output",
+          status: "completed",
+          requestId: "req_tool_prev",
+          itemIndex: 1,
+          ts: 2,
+          blockName: "tf.memory/recall",
+          output: '{"results":["Moni"]}',
+          toolCall: {
+            callId: "call_new",
+            name: "tf.memory/recall",
+            alias: "tf_memory_recall",
+            arguments: '{"query":"wife"}',
+            generatorBlock: "asst-gen"
+          },
+          provenance: { blockName: "tf.memory/recall", blockInstanceId: "tf.memory/recall", phase: "main" }
+        } as any,
+        // Legacy item — no alias field; fallback derives it from `name`.
+        {
+          id: "item_tool_legacy",
+          type: "block_tool_output",
+          status: "completed",
+          requestId: "req_tool_prev",
+          itemIndex: 2,
+          ts: 3,
+          blockName: "tf.memory/recall",
+          output: '{"results":["Moni"]}',
+          toolCall: {
+            callId: "call_legacy",
+            name: "tf.memory/recall",
+            arguments: '{"query":"wife"}',
+            generatorBlock: "asst-gen"
+          },
+          provenance: { blockName: "tf.memory/recall", blockInstanceId: "tf.memory/recall", phase: "main" }
+        } as any
+      ]
+    } as any, "any");
+
+    const ctx = await createExecutionContext({
+      flow,
+      actionName: "run",
+      requestId: "req_tool_cur",
+      sessionId: "sess_tool_replay",
+      userId: "user_tool_replay",
+      stores
+    });
+
+    const messages = await ctx.session.items.history();
+    // Each block_tool_output expands to an assistant tool-call + tool-result
+    // pair, so we expect: 1 user + 2 * (assistant + tool) = 5 messages.
+    expect(messages).toHaveLength(5);
+
+    const toolCallNames = messages
+      .flatMap((m: any) => (Array.isArray(m.content) ? m.content : []))
+      .filter((c: any) => c?.type === "tool-call" || c?.type === "tool-result")
+      .map((c: any) => c.toolName);
+
+    // Both the new item and the legacy item end up with the sanitised name
+    // — the new item via the stored alias, the legacy item via the fallback.
+    expect(toolCallNames).toEqual([
+      "tf_memory_recall",
+      "tf_memory_recall",
+      "tf_memory_recall",
+      "tf_memory_recall"
+    ]);
+    // Defence: nothing leaks the framework name with `.` / `/` into a part
+    // that the model would see.
+    for (const name of toolCallNames) {
+      expect(name).toMatch(/^[a-zA-Z0-9_-]+$/);
+    }
+  });
+
 });

@@ -9,6 +9,7 @@
 
 export { deepEqual } from "./deep-equal";
 export { deepMerge } from "./deep-merge";
+export { sanitizeToolName } from "./tool-name";
 export {
   transientSlot,
   isTransientSlot,

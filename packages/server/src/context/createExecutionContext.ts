@@ -61,6 +61,7 @@ import type {
 } from "../stores/types";
 import { createModelResolver } from "@flow-state-dev/core/models";
 import type { ModelResolver } from "@flow-state-dev/core";
+import { sanitizeToolName } from "@flow-state-dev/core/utils";
 import { logRuntimeEvent, summarizeForLog } from "../execution/logging";
 import { isTraceObservabilityEnabled } from "@flow-state-dev/core";
 import { deepEqual, getTransientKeys } from "@flow-state-dev/core/utils";
@@ -911,13 +912,18 @@ function itemToLLMMessages(item: OutputItem, allItems: readonly OutputItem[]): L
 
     let input: Record<string, unknown> = {};
     try { input = JSON.parse(bto.toolCall.arguments); } catch { /* use empty */ }
+    // Replay uses the model-facing alias the LLM saw, not the framework
+    // block name. Items written before the `alias` field existed fall back
+    // to deriving it from `name`; once those have aged out, the fallback can
+    // be removed.
+    const replayName = bto.toolCall.alias ?? sanitizeToolName(bto.toolCall.name);
     return [
       {
         role: "assistant",
         content: [{
           type: "tool-call",
           toolCallId: bto.toolCall.callId,
-          toolName: bto.toolCall.name,
+          toolName: replayName,
           input
         }]
       },
@@ -926,7 +932,7 @@ function itemToLLMMessages(item: OutputItem, allItems: readonly OutputItem[]): L
         content: [{
           type: "tool-result",
           toolCallId: bto.toolCall.callId,
-          toolName: bto.toolCall.name,
+          toolName: replayName,
           output: { type: "text", value: resultText }
         }]
       }
