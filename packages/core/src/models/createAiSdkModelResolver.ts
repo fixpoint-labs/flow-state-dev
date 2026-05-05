@@ -15,6 +15,7 @@ import type {
 } from "../types";
 import { makeSchemaStrict } from "./makeSchemaStrict";
 import { applyCaching } from "./caching";
+import { sanitizeToolName } from "../utils/tool-name";
 
 export type ResolveAiSdkLanguageModel = (modelId: string) => unknown;
 
@@ -186,15 +187,6 @@ function resolveOriginalToolName(
     return modelName;
   }
   return map.get(modelName) ?? modelName;
-}
-
-// Strict alias pattern: lowest common denominator across providers. OpenAI's
-// pattern is /^[a-zA-Z0-9_-]+$/; Anthropic accepts the same set. Replacing
-// any other char keeps names stable across providers.
-const TOOL_NAME_ALIAS_PATTERN = /[^a-zA-Z0-9_-]/g;
-
-function sanitizeToolName(name: string): string {
-  return name.replace(TOOL_NAME_ALIAS_PATTERN, "_");
 }
 
 // Two distinct framework names can sanitize to the same alias (e.g.

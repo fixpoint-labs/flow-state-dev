@@ -458,6 +458,52 @@ describe("generator builder", () => {
     expect((toolOutput.toolCall as any).name).toBe("lookup-tool");
     expect((toolOutput.toolCall as any).generatorBlock).toBe("tool-generator");
   });
+
+  it("lists tools in the system prompt using sanitized names matching what the model can call", async () => {
+    // Framework block names use namespacing characters (`.`, `/`) that
+    // OpenAI rejects in tool names. The adapter aliases the names before
+    // submitting; the prompt context must use the same alias so the model
+    // sees one consistent name.
+    const namespaced = handler({
+      name: "tf.memory/recall",
+      description: "Search your stored memory",
+      inputSchema: z.object({ query: z.string() }),
+      outputSchema: z.object({ results: z.array(z.string()) }),
+      execute: async () => ({ results: [] }),
+    });
+
+    let capturedSystemContent = "";
+    const block = generator({
+      name: "ns-tool-listing",
+      model: "m",
+      prompt: "You are a helper.",
+      outputSchema: z.string(),
+      tools: [namespaced],
+    });
+
+    const ctx = createMockContext({
+      resolveModel: () => ({
+        modelId: "m",
+        async generate(options: any) {
+          // The auto-describe tool listing flows through buildSystemPrefix
+          // as its own additional system message — concatenate every
+          // system message so the assertion is independent of how many
+          // system slices the prefix produced.
+          capturedSystemContent = (options.messages ?? [])
+            .filter((m: any) => m.role === "system")
+            .map((m: any) => (typeof m.content === "string" ? m.content : ""))
+            .join("\n");
+          return { text: "ok" };
+        },
+      }),
+    });
+
+    await runForTest(block, { value: "x" }, ctx);
+    // Listed under the sanitized alias the model can actually invoke.
+    expect(capturedSystemContent).toContain("- tf_memory_recall: Search your stored memory");
+    // The original framework name should NOT leak into the prompt body.
+    expect(capturedSystemContent).not.toContain("tf.memory/recall");
+  });
 });
 
 it("supports manually adding unified resource content tools", async () => {

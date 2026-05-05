@@ -59,6 +59,12 @@ const mem = memorySystem({
   working: { capacity: 7 },
   episodic: true,
   semantic: true,
+  // Enables the rolling-summary digest tier. Without this the unified
+  // memory formatter has nothing to render in the system prompt's
+  // <memory> section once working memory drifts past capacity. The capture
+  // pipeline also runs `digestRegenerate` after each turn so the digest
+  // stays fresh as new facts and episodes accumulate.
+  digest: true,
 });
 
 // ---------------------------------------------------------------------------

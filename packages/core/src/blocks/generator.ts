@@ -28,6 +28,7 @@ import type { ToolLifecycleEvent, ToolsConfig } from "../types/flow";
 import type { CapabilityRef, InferCapabilities, UsesEntry } from "../capability/types";
 import { resolveActivePresets, flattenCapabilities } from "../capability/merge";
 import { buildBlock } from "./internal/build-block";
+import { sanitizeToolName } from "../utils/tool-name";
 import { resolveCapabilities, capabilityMatchesAgent } from "./internal/resolve-capabilities";
 import {
   aggregateContextEntries,
@@ -811,6 +812,11 @@ function compileToolsWithExecute(
 /**
  * Build a context string listing available tools by name and description.
  * Returns undefined if no tools have descriptions.
+ *
+ * Names are sanitized to the same alias the model receives in the tools
+ * dict (see `sanitizeToolName`). This keeps the listing the model reads
+ * in its prompt consistent with the name it must call — e.g. a framework
+ * tool block named `tf.memory/recall` is listed as `tf_memory_recall`.
  */
 function buildToolDescriptionContext(tools: GeneratorTool[]): string | undefined {
   const described = tools.filter((t) => t.description);
@@ -818,7 +824,7 @@ function buildToolDescriptionContext(tools: GeneratorTool[]): string | undefined
     return undefined;
   }
 
-  const lines = described.map((t) => `- ${t.name}: ${t.description}`);
+  const lines = described.map((t) => `- ${sanitizeToolName(t.name)}: ${t.description}`);
   return `Available tools:\n${lines.join("\n")}`;
 }
 
