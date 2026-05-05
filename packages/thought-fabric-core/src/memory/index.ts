@@ -124,11 +124,50 @@ export { system } from './memory-system.js'
 export type {
   MemorySystemConfig,
   MemorySystem,
+  MemoryToolConfig,
   RankedMemoryItem,
   WorkingMemorySystemConfig,
   EpisodicMemoryConfig,
   SemanticMemoryConfig,
 } from './memory-system.js'
+
+// ---------------------------------------------------------------------------
+// Layer 3: Agent-invocable recall tool (FIX-409)
+// ---------------------------------------------------------------------------
+
+export {
+  createRecallTool,
+  recallToolDescription,
+  recallToolInputSchema,
+  capContent,
+  DEFAULT_PER_ITEM_CHAR_CAP,
+  DEFAULT_RECALL_LIMIT,
+  TRUNCATION_MARKER,
+  createLlmFilterStrategy,
+  resolveStrategy,
+  PRE_RANK_CAP,
+  RECENCY_HALF_LIFE,
+  EXACT_PHRASE_CAP,
+  intrinsicSemanticScore,
+  intrinsicEpisodicScore,
+  semanticToMemoryItem,
+  episodeToMemoryItem,
+} from './tools/index.js'
+export type {
+  CreateRecallToolOptions,
+  MemoryItem,
+  MemoryItemSource,
+  RankedResult,
+  RecallResultItem,
+  RecallToolInput,
+  RecallToolResult,
+  RetrievalStrategy,
+  RetrievalStrategyContext,
+  RetrievalStrategyOptions,
+  BuiltInStrategyName,
+  LlmFilterStrategyOptions,
+  ResolveStrategyOptions,
+} from './tools/index.js'
 
 // ---------------------------------------------------------------------------
 // Layer 3: Memory system block factories
