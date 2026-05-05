@@ -181,6 +181,15 @@ export async function handleCreateCollectionItem(
 
   const content = typeof body.content === "string" ? body.content : undefined;
 
+  // Write content before the session record. A failed session.set then leaves
+  // orphaned content under a key that doesn't yet exist in `resources`, so a
+  // client retry can re-create the item (the same content key is harmlessly
+  // overwritten). Writing the record first would commit the resource entry
+  // and let a content failure trip the 409 guard on retry, with no recovery.
+  if (content !== undefined) {
+    await ctx.stores.content.set("session", route.sessionId, storageKey, content);
+  }
+
   await ctx.stores.session.set(
     route.sessionId,
     {
@@ -190,10 +199,6 @@ export async function handleCreateCollectionItem(
     },
     "any"
   );
-
-  if (content !== undefined) {
-    await ctx.stores.content.set("session", route.sessionId, storageKey, content);
-  }
 
   return jsonResponse(201, { topic: topic.trim() });
 }
