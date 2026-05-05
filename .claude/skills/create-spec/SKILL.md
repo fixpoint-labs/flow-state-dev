@@ -47,7 +47,7 @@ Launch an `Explore` sub-agent to:
 
 ### Step 3: Research Solutions
 
-Launch two more sub-agents in parallel:
+Launch three sub-agents in parallel:
 
 #### Agent C: Industry Research
 Launch a `general-purpose` sub-agent to research how this type of problem is commonly solved:
@@ -65,6 +65,66 @@ Launch a `feature-dev:code-explorer` sub-agent to:
 - Check if there are test patterns established for this type of feature
 - Look at how similar features handle error cases, edge cases, and configuration
 - **Return**: specific files and patterns to follow, with code references
+
+#### Agent G: Documentation Scoping
+
+Launch an `Explore` sub-agent to map the documentation surface and propose where this change belongs. This is **not** a generic "update the docs" task — placement and content shape require the same rigor as code architecture.
+
+The agent must read:
+- `apps/docs/sidebars.ts` (reference sidebar — concept and API docs)
+- `apps/docs/sidebarsGuides.ts` (guides sidebar — task-oriented walkthroughs)
+- `apps/docs/docs/` directory tree (so it knows what pages already exist)
+- `apps/docs/guides/` directory tree
+- The relevant `packages/*/README.md` files for any package the change touches
+- `CLAUDE.md` "Writing Style (site content)" section
+- One or two existing pages closest in topic to the proposed change (to absorb voice and structure)
+
+The agent must answer, in order:
+
+1. **Is a docs change warranted at all?**
+   - User-facing (public API, observable behavior, configuration, new concept) → yes
+   - Internal refactor with no API change → likely no, but check if any existing page describes the area inaccurately after the change
+   - Bug fix that restores documented behavior → no docs change unless the docs were wrong
+   - Be willing to answer "no" — but justify it.
+
+2. **Which docs surface(s)?** A change can touch more than one. For each, decide independently:
+   - **Reference docs** (`apps/docs/docs/`) — concept explanations, mental models, API surface. Default for new framework concepts.
+   - **Guides** (`apps/docs/guides/`) — task-oriented "how do I X" walkthroughs that compose multiple concepts. Use when the change unlocks a new end-to-end workflow, not just a primitive.
+   - **Package README** (`packages/*/README.md`) — package-internal API reference, kept terse. Update for any public export change.
+   - **Blog** (`apps/docs/blog/`) — only for announcements, philosophy, or migration notes; do not propose blog posts speculatively.
+   - **Architecture docs** (`docs/architecture/*`) — internal contracts, not site-published. Update when the change alters a locked contract.
+
+3. **For each reference-docs change: new page, or extend an existing page?**
+   - **Extend existing** when: adding a parameter/option to a documented API, adding an edge case to a documented behavior, refining wording, or the new content is one section under an existing concept's umbrella.
+   - **New page** when: introducing a new vocabulary term users will search for, a new block/pattern/tool/capability, or a topic that needs >~300 words and its own examples.
+   - When in doubt, prefer extending. New pages fragment the sidebar; over-fragmented sidebars hide content.
+
+4. **For each new page: exactly where in the sidebar?**
+   - Identify the candidate category from `sidebars.ts` (e.g., `Core → Fundamentals`, `Core → Streaming and Items`, `Ecosystem → Patterns`, `Advanced`, `API Reference`).
+   - Propose the **specific position** within that category's `items` array, and explain why (alphabetical? logical reading order? grouped near a sibling concept?).
+   - If no existing category fits, propose a new category — but only with strong justification. Adding categories is heavier than adding pages.
+   - For guides, propose ordering in `sidebarsGuides.ts`.
+
+5. **For each page change (new or extended), draft a content outline.**
+   The outline must include:
+   - **Audience and prerequisites** — what does the reader already need to know? Link those concepts.
+   - **One-paragraph lead** — what this is, in plain terms, in two or three sentences. No marketing.
+   - **Section headers with one-line summaries** of what each section covers. Do not draft full prose at this stage — outlines only. The implementer will write prose.
+   - **At least one minimal code example** — describe what it should demonstrate (the smallest possible thing that conveys the concept, not a kitchen-sink demo).
+   - **Cross-links** — which other pages should link to this, and which should this link to? List both directions.
+   - **Voice constraints** — explicitly cite the `CLAUDE.md` "Writing Style" rules that are most likely to be violated for this topic (e.g., "watch for em-dashes", "avoid 'powerful' adjective", "introduce term `capability` on first use").
+
+6. **Return a structured docs plan** with one entry per affected file, in the format the spec template requires (see section 8 below).
+
+**Heuristics the agent should apply:**
+- A new public function or capability almost always needs at least: a README entry, an API reference entry, and either a Fundamentals/Ecosystem page or an extension to one.
+- A new option on an existing function usually needs only: README update + the existing concept page extended + API reference entry.
+- A new pattern (in `@flow-state-dev/patterns`) lives under `Ecosystem → Patterns`, grouped with siblings of similar coordination shape.
+- A new tool block lives under `Ecosystem → Tools`.
+- A new utility block extension lives under `Ecosystem → Patterns → Utility Blocks → extensions`.
+- A new store adapter needs its own README and a mention on the persistence overview page.
+- Anything that changes streaming, items, or state semantics also requires updating `apps/docs/docs/streaming/` or `apps/docs/docs/state/` pages — these are load-bearing for user mental models and must stay accurate.
+- If the change touches a concept marked in a "deprecated" page, also update the deprecation page with the migration path.
 
 ### Step 4: Synthesize and Draft Spec
 
@@ -111,9 +171,46 @@ Using the research from all four agents, draft the implementation spec. The spec
    - Explicit list of what this spec does NOT cover
    - Phase 2 / follow-up items (prevents scope creep)
 
-8. **Documentation Deliverables**
-   - Which docs need creating or updating (architecture, hosted site, READMEs)
-   - What each doc update should cover
+8. **Documentation Plan**
+
+   Synthesize Agent G's output into this section. **Every spec must include this section, even if the conclusion is "no docs changes required" — in which case state that explicitly with a one-line justification.**
+
+   8.1. **Docs change required?** Yes / No, with one-sentence justification grounded in: is this user-facing, does it change observable behavior, does it introduce or alter a concept, does it change a public API surface.
+
+   8.2. **Surfaces affected** — checklist:
+   - [ ] Reference docs (`apps/docs/docs/`)
+   - [ ] Guides (`apps/docs/guides/`)
+   - [ ] Package README(s) — list which
+   - [ ] Architecture docs (`docs/architecture/`)
+   - [ ] Blog post (only if explicitly warranted — announcement, philosophy, migration)
+
+   8.3. **Per-page plan** — one entry per file to create or modify. For each entry:
+
+   ```
+   File: apps/docs/docs/<path>.md
+   Action: CREATE | EXTEND
+   Sidebar placement: <category path> → position N (between "<sibling-above>" and "<sibling-below>")
+     Sidebar file edit: <exact lines/category to add to in sidebars.ts or sidebarsGuides.ts>
+     Justification: <why this category, why this position>
+     (For EXTEND: which existing section to add to, or new section to add inline)
+   Audience: <who is reading this and what do they already know>
+   Prerequisites/links-in: <pages that should link here>
+   Outline:
+     - Lead paragraph: <one-sentence summary of the lead's job>
+     - ## <Section heading>: <one-line summary of section content>
+     - ## <Section heading>: <one-line summary>
+     - (...)
+   Code examples:
+     - <description of minimal example, what it demonstrates, approximate length>
+   Links-out: <pages this should cross-reference>
+   Voice notes: <which Writing Style rules from CLAUDE.md are most at risk for this topic>
+   ```
+
+   8.4. **Sidebar diff summary** — a consolidated view of every change to `sidebars.ts` and `sidebarsGuides.ts`, so the implementer can make all sidebar edits in one pass without re-deriving them from the per-page entries.
+
+   8.5. **Cross-link audit** — list of *existing* pages that should be updated to link to any new pages (so new pages aren't orphans).
+
+   8.6. **What this docs plan deliberately does NOT cover** — explicit non-goals for documentation, mirroring the spec's overall non-goals. (E.g., "Not adding a 'Migration from X' page — that belongs in Phase 2.")
 
 9. **Dependencies**
    - Linear issues that must complete before this starts
@@ -144,6 +241,16 @@ Launch a `general-purpose` sub-agent to:
 - Validate that non-goals are realistic (not punting critical work)
 - Ensure the spec is self-contained enough for an isolated agent session
 
+#### Agent H: Documentation Plan Validation
+Launch an `Explore` sub-agent to review section 8 (Documentation Plan) specifically:
+- Does the plan answer "is a docs change required?" with a real justification, or does it punt?
+- For each proposed new page: does the proposed sidebar position actually make sense given sibling pages? Re-read the surrounding category and confirm.
+- For each proposed extension: does the existing page actually exist, and is the proposed insertion point inside it sensible?
+- Are there obvious affected pages the plan missed? (E.g., if streaming changes, was `apps/docs/docs/streaming/overview.md` considered?)
+- Are new pages orphaned — i.e., does any existing page link to them per the cross-link audit?
+- Does the content outline pass the project's voice rules, or are there flagged risks (em-dash overuse, marketing adjectives, undefined jargon on first use)?
+- If the conclusion is "no docs changes," is that defensible, or is the agent skipping work?
+
 Address any issues the validators surface. If there are unresolvable questions, add them to the "Open Questions" section.
 
 ### Step 6: Publish to Linear
@@ -167,9 +274,10 @@ Present the completed spec to the user:
 
 1. **Approach chosen**: 2-3 sentences on what the spec proposes and why
 2. **Key decisions**: any architectural choices made and their rationale
-3. **Dependencies identified**: what must land before this can start
-4. **Open questions**: anything that needs the user's input before implementation
-5. **Spec location**: link to the Linear document
+3. **Documentation plan**: one or two sentences naming the docs surfaces affected, any new pages and their sidebar placement, and explicit call-out if the conclusion is "no docs changes." Never omit this — the user has flagged docs scoping as a recurring miss.
+4. **Dependencies identified**: what must land before this can start
+5. **Open questions**: anything that needs the user's input before implementation (including any open docs-placement questions)
+6. **Spec location**: link to the Linear document
 
 If there are open questions, ask the user to resolve them. Once resolved, update the spec document with the decisions.
 
@@ -181,5 +289,6 @@ If there are open questions, ask the user to resolve them. Once resolved, update
 - **Research is not copying.** Industry research informs the approach but the implementation must fit this codebase's architecture, not blindly adopt an external pattern.
 - **Self-contained.** The spec must include everything an implementer needs. If they have to read 5 other documents to understand the spec, it's not done.
 - **Non-goals matter.** Explicitly stating what you're NOT doing prevents scope creep and sets expectations.
+- **Documentation is part of the spec, not an afterthought.** Every spec must include section 8 (Documentation Plan) with a real answer — including "no docs changes required" with justification. Never leave it as a vague bullet like "update the README." Sidebar placement, content outline, and cross-links must be decided at spec time, because that's when the agent has the context to decide well; deferring to implementation time guarantees a worse decision.
 - **Open questions are OK.** It's better to flag uncertainty than to make a wrong assumption. Present options with trade-offs and let the project owner decide.
 - **Dependency accuracy is critical.** If you say "no dependencies," an agent will start building immediately. If there's actually a dependency, the work gets thrown away. Be thorough.
