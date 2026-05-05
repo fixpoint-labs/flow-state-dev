@@ -132,7 +132,10 @@ function normalizeUsage(
   return result;
 }
 
-function normalizeToolCalls(value: unknown): GeneratorModelToolCall[] | undefined {
+function normalizeToolCalls(
+  value: unknown,
+  toolNameMap?: ToolNameMap
+): GeneratorModelToolCall[] | undefined {
   if (!Array.isArray(value)) {
     return undefined;
   }
@@ -160,12 +163,56 @@ function normalizeToolCalls(value: unknown): GeneratorModelToolCall[] | undefine
 
     toolCalls.push({
       toolCallId,
-      toolName,
+      toolName: resolveOriginalToolName(toolName, toolNameMap),
       args
     });
   }
 
   return toolCalls.length === 0 ? undefined : toolCalls;
+}
+
+// Reverse mapping so the framework continues to see the original (framework)
+// tool names everywhere — block-name routing, observability, and items
+// emitted into the SSE stream — while the model only ever sees a sanitized
+// alias that satisfies provider name patterns (notably OpenAI's
+// /^[a-zA-Z0-9_-]+$/).
+type ToolNameMap = ReadonlyMap<string, string>;
+
+function resolveOriginalToolName(
+  modelName: string,
+  map: ToolNameMap | undefined
+): string {
+  if (map === undefined) {
+    return modelName;
+  }
+  return map.get(modelName) ?? modelName;
+}
+
+// Strict alias pattern: lowest common denominator across providers. OpenAI's
+// pattern is /^[a-zA-Z0-9_-]+$/; Anthropic accepts the same set. Replacing
+// any other char keeps names stable across providers.
+const TOOL_NAME_ALIAS_PATTERN = /[^a-zA-Z0-9_-]/g;
+
+function sanitizeToolName(name: string): string {
+  return name.replace(TOOL_NAME_ALIAS_PATTERN, "_");
+}
+
+// Two distinct framework names can sanitize to the same alias (e.g.
+// `tf.memory/recall` and `tf-memory-recall` both → `tf_memory_recall`).
+// Disambiguate by appending the smallest numeric suffix that's unused in
+// the dictionary we've built so far.
+function ensureUniqueAlias(
+  candidate: string,
+  compiled: Record<string, unknown>
+): string {
+  if (!Object.prototype.hasOwnProperty.call(compiled, candidate)) {
+    return candidate;
+  }
+  let suffix = 2;
+  while (Object.prototype.hasOwnProperty.call(compiled, `${candidate}_${suffix}`)) {
+    suffix += 1;
+  }
+  return `${candidate}_${suffix}`;
 }
 
 function normalizeFinishReason(value: unknown): string | undefined {
@@ -247,7 +294,7 @@ function buildAiSdkRequest(
     caching?: CachingConfig;
   },
   resolveLanguageModel?: ResolveAiSdkLanguageModel
-): Record<string, unknown> {
+): { request: Record<string, unknown>; toolNameMap: ToolNameMap | undefined } {
   const request: Record<string, unknown> = {
     model: languageModel,
     messages: options.messages
@@ -257,12 +304,18 @@ function buildAiSdkRequest(
   const hasBlockTools = options.tools !== undefined && options.tools.length > 0;
   const hasProviderTools = options.providerTools !== undefined && options.providerTools.length > 0;
 
+  // Reverse map: alias (sent to model) → original framework name. Only
+  // populated when we actually rename a tool, so callers can skip the
+  // translation step when no renaming happened.
+  let toolNameMap: Map<string, string> | undefined;
+
   if (hasBlockTools || hasProviderTools) {
     const compiled: Record<string, unknown> = {};
 
     // Block tools: compiled with description, inputSchema, optional execute
     if (hasBlockTools) {
       for (const tool of options.tools!) {
+        const alias = ensureUniqueAlias(sanitizeToolName(tool.name), compiled);
         const entry: Record<string, unknown> = {
           description: tool.description,
           inputSchema:
@@ -275,15 +328,26 @@ function buildAiSdkRequest(
         if (tool.execute !== undefined) {
           entry.execute = tool.execute;
         }
-        compiled[tool.name] = entry;
+        compiled[alias] = entry;
+        if (alias !== tool.name) {
+          if (toolNameMap === undefined) toolNameMap = new Map();
+          toolNameMap.set(alias, tool.name);
+        }
       }
     }
 
     // Provider tools: raw AI SDK tool objects, passed through without compilation.
-    // The provider handles execution server-side.
+    // The provider handles execution server-side. Provider tool names already
+    // come from the provider SDK and conform to its pattern, but sanitize for
+    // safety so downstream stream-chunk reverse-mapping is consistent.
     if (hasProviderTools) {
       for (const pt of options.providerTools!) {
-        compiled[pt.name] = pt.tool;
+        const alias = ensureUniqueAlias(sanitizeToolName(pt.name), compiled);
+        compiled[alias] = pt.tool;
+        if (alias !== pt.name) {
+          if (toolNameMap === undefined) toolNameMap = new Map();
+          toolNameMap.set(alias, pt.name);
+        }
       }
     }
 
@@ -351,7 +415,7 @@ function buildAiSdkRequest(
   // `providerOptions` are never overwritten.
   applyCaching(request, options.caching, languageModel);
 
-  return request;
+  return { request, toolNameMap };
 }
 
 // ---------------------------------------------------------------------------
@@ -387,7 +451,8 @@ function normalizeSources(value: unknown): GeneratorModelSource[] | undefined {
 }
 
 function normalizeToolResults(
-  value: unknown
+  value: unknown,
+  toolNameMap?: ToolNameMap
 ): Array<{ toolCallId: string; toolName: string; result: unknown }> | undefined {
   if (!Array.isArray(value) || value.length === 0) {
     return undefined;
@@ -406,7 +471,7 @@ function normalizeToolResults(
 
     results.push({
       toolCallId,
-      toolName,
+      toolName: resolveOriginalToolName(toolName, toolNameMap),
       result: record.result ?? record.output
     });
   }
@@ -414,7 +479,10 @@ function normalizeToolResults(
   return results.length === 0 ? undefined : results;
 }
 
-function normalizeSteps(value: unknown): GeneratorStepResult[] | undefined {
+function normalizeSteps(
+  value: unknown,
+  toolNameMap?: ToolNameMap
+): GeneratorStepResult[] | undefined {
   if (!Array.isArray(value) || value.length === 0) {
     return undefined;
   }
@@ -426,8 +494,8 @@ function normalizeSteps(value: unknown): GeneratorStepResult[] | undefined {
 
     steps.push({
       text: typeof record.text === "string" ? record.text : undefined,
-      toolCalls: normalizeToolCalls(record.toolCalls),
-      toolResults: normalizeToolResults(record.toolResults),
+      toolCalls: normalizeToolCalls(record.toolCalls, toolNameMap),
+      toolResults: normalizeToolResults(record.toolResults, toolNameMap),
       finishReason: normalizeFinishReason(record.finishReason),
       usage: normalizeUsage(
         record.usage,
@@ -440,7 +508,8 @@ function normalizeSteps(value: unknown): GeneratorStepResult[] | undefined {
 }
 
 function normalizeGenerateResult(
-  result: Record<string, unknown>
+  result: Record<string, unknown>,
+  toolNameMap?: ToolNameMap
 ): GeneratorModelResult {
   const text = typeof result.text === "string" ? result.text : undefined;
   const structuredOutput =
@@ -451,17 +520,18 @@ function normalizeGenerateResult(
   return {
     text,
     structuredOutput,
-    toolCalls: normalizeToolCalls(result.toolCalls),
+    toolCalls: normalizeToolCalls(result.toolCalls, toolNameMap),
     finishReason: normalizeFinishReason(result.finishReason),
     usage: normalizeUsage(result.usage, rawProviderMeta),
     providerMetadata: asProviderMetadata(rawProviderMeta),
-    steps: normalizeSteps(result.steps),
+    steps: normalizeSteps(result.steps, toolNameMap),
     sources: normalizeSources(result.sources)
   };
 }
 
 function normalizeFinishChunk(
-  result: Record<string, unknown>
+  result: Record<string, unknown>,
+  toolNameMap?: ToolNameMap
 ): Omit<GeneratorModelStreamChunk, "type"> {
   const text = typeof result.text === "string" ? result.text : undefined;
   const rawProviderMeta = result.providerMetadata ?? result.experimental_providerMetadata;
@@ -470,7 +540,7 @@ function normalizeFinishChunk(
     usage: normalizeUsage(result.usage, rawProviderMeta),
     fullResult: {
       text,
-      toolCalls: normalizeToolCalls(result.toolCalls),
+      toolCalls: normalizeToolCalls(result.toolCalls, toolNameMap),
       finishReason: normalizeFinishReason(result.finishReason),
       usage: normalizeUsage(result.usage, rawProviderMeta),
       providerMetadata: asProviderMetadata(rawProviderMeta),
@@ -613,12 +683,12 @@ function createGeneratorModelFromAiSdk(
     modelId,
 
     async generate(options): Promise<GeneratorModelResult> {
-      const request = buildAiSdkRequest(languageModel, options, resolveLanguageModel);
+      const { request, toolNameMap } = buildAiSdkRequest(languageModel, options, resolveLanguageModel);
       try {
         const result = (await generateText(
           request as any
         )) as unknown as Record<string, unknown>;
-        return normalizeGenerateResult(result);
+        return normalizeGenerateResult(result, toolNameMap);
       } catch (err: unknown) {
         // AI SDK throws NoObjectGeneratedError / NoOutputGeneratedError when
         // the model returns empty or unparseable output for structured generation.
@@ -642,7 +712,7 @@ function createGeneratorModelFromAiSdk(
     },
 
     async *stream(options): AsyncGenerator<GeneratorModelStreamChunk> {
-      const request = buildAiSdkRequest(languageModel, options, resolveLanguageModel);
+      const { request, toolNameMap } = buildAiSdkRequest(languageModel, options, resolveLanguageModel);
 
       // onError: AI SDK v6 callback for streaming errors. Captures errors
       // inline rather than letting them surface as unhandled rejections.
@@ -686,18 +756,19 @@ function createGeneratorModelFromAiSdk(
           yield {
             type: "tool_input_start",
             toolInput: {
-              toolName: partRecord.toolName as string,
+              toolName: resolveOriginalToolName(partRecord.toolName as string, toolNameMap),
               providerExecuted: partRecord.providerExecuted === true ? true : undefined
             }
           };
         } else if (partRecord.type === "tool-input-delta") {
           // AI SDK v6 fullStream emits tool-input-delta with incremental args.
           // Map to framework tool_call_delta so clients can show progress.
+          const rawToolName = (partRecord.toolName as string | undefined) ?? "";
           yield {
             type: "tool_call_delta",
             toolCallDelta: {
               toolCallId: partRecord.id as string,
-              toolName: (partRecord.toolName as string | undefined) ?? "",
+              toolName: rawToolName === "" ? "" : resolveOriginalToolName(rawToolName, toolNameMap),
               argsDelta: partRecord.delta as string
             }
           };
@@ -706,7 +777,7 @@ function createGeneratorModelFromAiSdk(
             type: "tool_call_delta",
             toolCallDelta: {
               toolCallId: partRecord.toolCallId as string,
-              toolName: partRecord.toolName as string,
+              toolName: resolveOriginalToolName(partRecord.toolName as string, toolNameMap),
               argsDelta: JSON.stringify(partRecord.args)
             }
           };
@@ -715,7 +786,7 @@ function createGeneratorModelFromAiSdk(
             type: "tool_result",
             toolResult: {
               toolCallId: partRecord.toolCallId as string,
-              toolName: partRecord.toolName as string,
+              toolName: resolveOriginalToolName(partRecord.toolName as string, toolNameMap),
               result: partRecord.output ?? partRecord.result
             }
           };
@@ -761,7 +832,7 @@ function createGeneratorModelFromAiSdk(
       }
       yield {
         type: "finish",
-        ...normalizeFinishChunk(finalResult)
+        ...normalizeFinishChunk(finalResult, toolNameMap)
       };
     },
 

@@ -494,3 +494,104 @@ describe("createAiSdkModelResolver", () => {
     expect(result.text).toBe("original model");
   });
 });
+
+describe("createAiSdkModelResolver — tool name sanitization", () => {
+  it("rewrites framework-style tool names to a provider-safe alias and translates results back", async () => {
+    // OpenAI rejects tool names with `.` or `/`. Framework-namespaced names like
+    // `tf.memory/recall` must be aliased before submission and translated back
+    // on the way out so block-name routing and observability stay coherent.
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call_1",
+            // Provider echoes back whatever name we sent — so this carries the alias.
+            toolName: "tf_memory_recall",
+            input: { query: "anything" }
+          }
+        ],
+        finishReason: { unified: "tool-calls", raw: undefined },
+        usage: {
+          inputTokens: { total: 5, noCache: 5, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 4, text: undefined, reasoning: undefined }
+        },
+        warnings: []
+      })
+    });
+
+    const resolver = createAiSdkModelResolver(() => model);
+    const result = await resolver("openai/gpt-4o-mini", "gen").generate({
+      messages: [{ role: "user", content: "go" }],
+      tools: [
+        {
+          name: "tf.memory/recall",
+          description: "recall",
+          parameters: z.object({ query: z.string() })
+        }
+      ]
+    });
+
+    const request = model.doGenerateCalls[0]!;
+    const sentTools = request.tools as Array<{ name: string }>;
+    // Submitted name is the sanitized alias.
+    expect(sentTools.map((t) => t.name)).toEqual(["tf_memory_recall"]);
+
+    // Returned tool call carries the original framework name.
+    expect(result.toolCalls).toEqual([
+      { toolCallId: "call_1", toolName: "tf.memory/recall", args: { query: "anything" } }
+    ]);
+  });
+
+  it("disambiguates collisions between names that sanitize to the same alias", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 1, text: 1, reasoning: undefined }
+        },
+        warnings: []
+      })
+    });
+
+    const resolver = createAiSdkModelResolver(() => model);
+    await resolver("openai/gpt-4o-mini", "gen").generate({
+      messages: [{ role: "user", content: "go" }],
+      tools: [
+        { name: "tf.memory/recall", description: "a", parameters: z.object({}) },
+        { name: "tf-memory-recall", description: "b", parameters: z.object({}) },
+        { name: "tf/memory.recall", description: "c", parameters: z.object({}) }
+      ]
+    });
+
+    const sent = model.doGenerateCalls[0]!.tools as Array<{ name: string }>;
+    const aliases = sent.map((t) => t.name);
+    // First wins the bare alias; collisions get numeric suffixes.
+    expect(aliases).toEqual(["tf_memory_recall", "tf-memory-recall", "tf_memory_recall_2"]);
+  });
+
+  it("leaves names that already match the alias pattern untouched", async () => {
+    const model = new MockLanguageModelV3({
+      doGenerate: async () => ({
+        content: [{ type: "text", text: "ok" }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: { total: 1, noCache: 1, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 1, text: 1, reasoning: undefined }
+        },
+        warnings: []
+      })
+    });
+
+    const resolver = createAiSdkModelResolver(() => model);
+    await resolver("openai/gpt-4o-mini", "gen").generate({
+      messages: [{ role: "user", content: "go" }],
+      tools: [{ name: "lookup_data", description: "x", parameters: z.object({}) }]
+    });
+
+    const sent = model.doGenerateCalls[0]!.tools as Array<{ name: string }>;
+    expect(sent[0]?.name).toBe("lookup_data");
+  });
+});
