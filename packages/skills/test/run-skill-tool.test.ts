@@ -8,6 +8,7 @@ import {
 } from "../src/run-skill-tool";
 import { createMockSkillsCollection } from "./mocks";
 
+import { runForTest } from "@flow-state-dev/testing";
 function buildCtx(collection: ReturnType<typeof createMockSkillsCollection>) {
   // Minimal BlockContext shape used by run-skill-tool — only the bits the
   // tool actually touches. Includes the fields the framework generator
@@ -135,7 +136,7 @@ describe("createRunSkillTool — inline mode", () => {
       catalog: {},
     });
     const ctx = buildCtx(c);
-    const result = await tool.run({ name: "pptx", input: "Q2 deck" }, ctx);
+    const result = await runForTest(tool, { name: "pptx", input: "Q2 deck" }, ctx);
     expect(result.skill).toBe("pptx");
     expect(result.mode).toBe("inline");
     expect((ctx as { session: { state: { activeSkills?: unknown[] } } }).session.state.activeSkills).toHaveLength(1);
@@ -152,7 +153,7 @@ describe("createRunSkillTool — inline mode", () => {
       collectionKey: "skills",
       catalog: {},
     });
-    await expect(tool.run({ name: "missing" }, buildCtx(c))).rejects.toThrow(
+    await expect(runForTest(tool, { name: "missing" }, buildCtx(c))).rejects.toThrow(
       /Unknown skill/,
     );
   });
@@ -168,7 +169,7 @@ describe("createRunSkillTool — inline mode", () => {
       collectionKey: "skills",
       catalog: {},
     });
-    await expect(tool.run({ name: "private" }, buildCtx(c))).rejects.toThrow(
+    await expect(runForTest(tool, { name: "private" }, buildCtx(c))).rejects.toThrow(
       /disable-model-invocation/,
     );
   });
@@ -210,7 +211,7 @@ describe("createRunSkillTool — fork mode", () => {
     const ctx = buildCtx(c);
     (ctx as { resolveModel: unknown }).resolveModel = () => ({ modelId: "test", generate });
 
-    const result = await tool.run({ name: "researcher", input: "quantum" }, ctx);
+    const result = await runForTest(tool, { name: "researcher", input: "quantum" }, ctx);
 
     expect(result.skill).toBe("researcher");
     expect(result.mode).toBe("fork");
@@ -252,7 +253,7 @@ describe("createRunSkillTool — fork mode", () => {
       const ctx = buildCtx(c);
       (ctx as { resolveModel: unknown }).resolveModel = () => ({ modelId: "test", generate });
 
-      const result = await tool.run({ name: "misconfig" }, ctx);
+      const result = await runForTest(tool, { name: "misconfig" }, ctx);
       expect(result.mode).toBe("fork");
       expect(seenToolCount).toBe(0);
       expect(warn).toHaveBeenCalledWith(

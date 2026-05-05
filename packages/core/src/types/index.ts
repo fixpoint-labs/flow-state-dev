@@ -8,6 +8,7 @@ export type {
   BlockOutput,
   BlockOutputHint,
   BlockResult,
+  BlockRuntime,
   ChunkValidation,
   ConnectorFn,
   DeclaredResourceEntry,
@@ -18,6 +19,8 @@ export type {
   StateRef,
   TargetRef
 } from "./block";
+
+export { asRuntime } from "./block";
 
 export type {
   ActionConfig,

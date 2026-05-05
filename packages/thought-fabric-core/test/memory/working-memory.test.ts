@@ -1,3 +1,4 @@
+import { runForTest } from "@flow-state-dev/testing";
 import { describe, it, expect } from 'vitest'
 import type { ResourceHandle } from '@flow-state-dev/core'
 import {
@@ -770,7 +771,7 @@ describe('memory/workingMemory', () => {
       } as any
       // The schema uses .default() for pinned and replaces, so Zod applies
       // defaults during input validation — no manual normalization needed.
-      return block.run({ observations } as any, ctx)
+      return runForTest(block, { observations } as any, ctx)
     }
 
     it('persists observations as entries', async () => {

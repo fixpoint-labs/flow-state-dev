@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { utility, sequencer } from "../src";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 describe("utility.composer", () => {
   it("returns a generator block definition", () => {
     const block = utility.composer({
@@ -33,7 +32,7 @@ describe("utility.composer", () => {
     });
 
     await expect(
-      block.run(
+      runForTest(block, 
         {
           parts: [
             { id: "intro", content: "Intro" },
@@ -69,7 +68,7 @@ describe("utility.composer", () => {
       })
     });
 
-    await expect(block.run({ parts: ["a", "b"] }, ctx)).resolves.toEqual({ composed: "assembled" });
+    await expect(runForTest(block, { parts: ["a", "b"] }, ctx)).resolves.toEqual({ composed: "assembled" });
     const serialized = JSON.stringify(seenMessages);
     expect(serialized).toContain("Focus the composition on these objectives");
     expect(serialized).toContain("Preserve chronology");
@@ -106,11 +105,11 @@ describe("utility.composer", () => {
       })
     });
 
-    await expect(defaultBlock.run({ parts: ["x"] }, defaultCtx)).resolves.toEqual({
+    await expect(runForTest(defaultBlock, { parts: ["x"] }, defaultCtx)).resolves.toEqual({
       composed: "ok",
       structure: ["intro", "body"]
     });
-    await expect(customBlock.run({ parts: ["x"] }, customCtx)).resolves.toEqual({
+    await expect(runForTest(customBlock, { parts: ["x"] }, customCtx)).resolves.toEqual({
       composed: "ok",
       confidence: 0.95
     });
@@ -141,6 +140,6 @@ describe("utility.composer", () => {
       })
     });
 
-    await expect(chain.run({ parts: ["A", "B"] }, ctx)).resolves.toEqual({ composed: "A\nB" });
+    await expect(runForTest(chain, { parts: ["A", "B"] }, ctx)).resolves.toEqual({ composed: "A\nB" });
   });
 });

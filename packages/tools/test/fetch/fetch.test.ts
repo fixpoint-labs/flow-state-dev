@@ -3,6 +3,7 @@ import { fetch, firecrawlFetch, jinaFetch, builtinFetch } from "../../src/fetch"
 import { tools } from "../../src";
 import type { FetchResult } from "../../src/fetch/types";
 
+import { runForTest } from "@flow-state-dev/testing";
 // Mock the providers module to avoid real SDK imports
 vi.mock("../../src/fetch/providers", () => {
   const mockFetchResult: FetchResult = {
@@ -86,7 +87,7 @@ describe("fetch tool factory", () => {
 
   it("executes fetch with auto-detected provider (falls back to builtin)", async () => {
     const tool = fetch();
-    const result = await tool.run({ url: "https://example.com" }, {} as any);
+    const result = await runForTest(tool, { url: "https://example.com" }, {} as any);
 
     expect(result.url).toBe("https://example.com");
     expect(result.source).toBe("builtin");
@@ -96,14 +97,14 @@ describe("fetch tool factory", () => {
     process.env.FIRECRAWL_API_KEY = "fc-key";
 
     const tool = fetch();
-    const result = await tool.run({ url: "https://example.com" }, {} as any);
+    const result = await runForTest(tool, { url: "https://example.com" }, {} as any);
 
     expect(result.source).toBe("firecrawl");
   });
 
   it("executes fetch with config keys", async () => {
     const tool = fetch({ keys: { firecrawl: "config-key" } });
-    const result = await tool.run({ url: "https://example.com" }, {} as any);
+    const result = await runForTest(tool, { url: "https://example.com" }, {} as any);
 
     expect(result.source).toBe("firecrawl");
   });
@@ -129,20 +130,20 @@ describe("direct provider fetch factories", () => {
 
   it("jinaFetch locks to jina", async () => {
     const tool = jinaFetch();
-    const result = await tool.run({ url: "https://example.com" }, {} as any);
+    const result = await runForTest(tool, { url: "https://example.com" }, {} as any);
     expect(result.source).toBe("jina");
   });
 
   it("builtinFetch locks to builtin", async () => {
     const tool = builtinFetch();
-    const result = await tool.run({ url: "https://example.com" }, {} as any);
+    const result = await runForTest(tool, { url: "https://example.com" }, {} as any);
     expect(result.source).toBe("builtin");
   });
 
   it("throws when firecrawl has no key", async () => {
     const tool = firecrawlFetch();
     await expect(
-      tool.run({ url: "https://example.com" }, {} as any)
+      runForTest(tool, { url: "https://example.com" }, {} as any)
     ).rejects.toThrow('Fetch provider "firecrawl" requested but no API key found');
   });
 });

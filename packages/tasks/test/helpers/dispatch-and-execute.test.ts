@@ -6,10 +6,11 @@
 import { describe, expect, it } from "vitest";
 import { handler } from "@flow-state-dev/core";
 import type { BlockContext } from "@flow-state-dev/core/types";
+import { runForTest } from "@flow-state-dev/testing";
 import { z } from "zod";
 import {
   createSequencerBackedTaskCollection,
-  dispatchAndExecute,
+  dispatchAndExecuteBlock,
   fifoDispatcher,
   type TaskCollectionRef,
 } from "../../src";
@@ -30,7 +31,7 @@ function buildCollection(): TaskCollectionRef {
 
 const fakeCtx = {} as BlockContext;
 
-describe("dispatchAndExecute", () => {
+describe("dispatchAndExecuteBlock", () => {
   it("claims, runs the worker, calls complete on success", async () => {
     const c = buildCollection();
     await c.addTask({ id: "t", goal: "do thing", input: { x: 2 } });
@@ -42,8 +43,9 @@ describe("dispatchAndExecute", () => {
       execute: (input: { input?: { x: number } }) => ({ y: (input.input?.x ?? 0) * 2 }),
     });
 
-    const result = await dispatchAndExecute(
-      { collection: c, dispatcher: fifoDispatcher, workers: worker },
+    const result = await runForTest(
+      dispatchAndExecuteBlock({ collection: c, dispatcher: fifoDispatcher, workers: worker }),
+      undefined,
       fakeCtx
     );
 
@@ -63,8 +65,9 @@ describe("dispatchAndExecute", () => {
       execute: () => null,
     });
 
-    const result = await dispatchAndExecute(
-      { collection: c, dispatcher: fifoDispatcher, workers: worker },
+    const result = await runForTest(
+      dispatchAndExecuteBlock({ collection: c, dispatcher: fifoDispatcher, workers: worker }),
+      undefined,
       fakeCtx
     );
 
@@ -84,8 +87,9 @@ describe("dispatchAndExecute", () => {
       },
     });
 
-    const result = await dispatchAndExecute(
-      { collection: c, dispatcher: fifoDispatcher, workers: worker },
+    const result = await runForTest(
+      dispatchAndExecuteBlock({ collection: c, dispatcher: fifoDispatcher, workers: worker }),
+      undefined,
       fakeCtx
     );
 
@@ -109,13 +113,14 @@ describe("dispatchAndExecute", () => {
     });
 
     await expect(
-      dispatchAndExecute(
-        {
+      runForTest(
+        dispatchAndExecuteBlock({
           collection: c,
           dispatcher: fifoDispatcher,
           workers: worker,
           onError: "fail",
-        },
+        }),
+        undefined,
         fakeCtx
       )
     ).rejects.toThrow(/propagate/);
@@ -149,14 +154,14 @@ describe("dispatchAndExecute", () => {
     });
     const registry = { researcher, writer };
 
-    await dispatchAndExecute(
-      { collection: c, dispatcher: fifoDispatcher, workers: registry, workerId: "w-1" },
-      fakeCtx
-    );
-    await dispatchAndExecute(
-      { collection: c, dispatcher: fifoDispatcher, workers: registry, workerId: "w-1" },
-      fakeCtx
-    );
+    const block = dispatchAndExecuteBlock({
+      collection: c,
+      dispatcher: fifoDispatcher,
+      workers: registry,
+      workerId: "w-1",
+    });
+    await runForTest(block, undefined, fakeCtx);
+    await runForTest(block, undefined, fakeCtx);
 
     expect(calls).toEqual(["researcher:r1", "writer:w1"]);
     expect(c.get("r1")?.output).toBe("research-result");
@@ -173,8 +178,13 @@ describe("dispatchAndExecute", () => {
       execute: () => null,
     });
     await expect(
-      dispatchAndExecute(
-        { collection: c, dispatcher: fifoDispatcher, workers: { x: worker } },
+      runForTest(
+        dispatchAndExecuteBlock({
+          collection: c,
+          dispatcher: fifoDispatcher,
+          workers: { x: worker },
+        }),
+        undefined,
         fakeCtx
       )
     ).rejects.toThrow(/no assignee/);
@@ -190,8 +200,13 @@ describe("dispatchAndExecute", () => {
       execute: () => null,
     });
     await expect(
-      dispatchAndExecute(
-        { collection: c, dispatcher: fifoDispatcher, workers: { x: worker } },
+      runForTest(
+        dispatchAndExecuteBlock({
+          collection: c,
+          dispatcher: fifoDispatcher,
+          workers: { x: worker },
+        }),
+        undefined,
         fakeCtx
       )
     ).rejects.toThrow(/no worker registered/);

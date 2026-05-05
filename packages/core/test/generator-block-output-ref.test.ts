@@ -13,8 +13,7 @@ import { z } from "zod";
 import { generator } from "../src";
 import type { BlockOutputHint, BlockContext } from "../src/types/block";
 import type { GeneratorModel } from "../src/types/model";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 interface CapturingCtx extends BlockContext {
   _blockOutputHint?: BlockOutputHint;
 }
@@ -62,7 +61,7 @@ describe("FIX-480 generator block_output ref-to-message", () => {
       },
     }) as CapturingCtx;
 
-    const result = await block.run({}, ctx);
+    const result = await runForTest(block, {}, ctx);
     expect(result).toBe("hello world");
 
     const messageDone = emitted.find(
@@ -93,7 +92,7 @@ describe("FIX-480 generator block_output ref-to-message", () => {
       },
     }) as CapturingCtx;
 
-    await block.run({}, ctx);
+    await runForTest(block, {}, ctx);
     expect(ctx._blockOutputHint).toBeUndefined();
   });
 
@@ -125,7 +124,7 @@ describe("FIX-480 generator block_output ref-to-message", () => {
       },
     }) as CapturingCtx;
 
-    await block.run({}, ctx);
+    await runForTest(block, {}, ctx);
     expect(ctx._blockOutputHint).toBeUndefined();
   });
 });

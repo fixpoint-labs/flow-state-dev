@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { utility, sequencer } from "../src";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 describe("utility.combiner", () => {
   it("returns a handler block definition", () => {
     const block = utility.combiner({ name: "merge-results" });
@@ -15,7 +14,7 @@ describe("utility.combiner", () => {
     const block = utility.combiner({ name: "object-merge" });
 
     await expect(
-      block.run(
+      runForTest(block, 
         [
           {
             topic: "alpha",
@@ -48,7 +47,7 @@ describe("utility.combiner", () => {
     const block = utility.combiner({ name: "array-merge" });
 
     await expect(
-      block.run(
+      runForTest(block, 
         [
           ["a", "b", "shared"],
           ["shared", "c"],
@@ -66,7 +65,7 @@ describe("utility.combiner", () => {
     const block = utility.combiner({ name: "mixed-merge" });
 
     await expect(
-      block.run(
+      runForTest(block, 
         {
           artifacts: [
             { id: 1 },
@@ -96,13 +95,13 @@ describe("utility.combiner", () => {
       })
     });
 
-    await expect(defaultBlock.run([], createMockContext())).resolves.toEqual({
+    await expect(runForTest(defaultBlock, [], createMockContext())).resolves.toEqual({
       combined: [],
       mergeNotes: ["No artifacts provided; returned an empty combined array."]
     });
 
     await expect(
-      customBlock.run([{ title: "first" }, { title: "second" }], createMockContext())
+      runForTest(customBlock, [{ title: "first" }, { title: "second" }], createMockContext())
     ).resolves.toEqual({
       combined: { title: "second" },
       mergeNotes: ["combined.title: conflicting values resolved by taking the later artifact."]
@@ -127,7 +126,7 @@ describe("utility.combiner", () => {
       .then(combine);
 
     await expect(
-      chain.run(
+      runForTest(chain, 
         {
           primary: { tags: ["a", "shared"] },
           secondary: { tags: ["shared", "b"] }

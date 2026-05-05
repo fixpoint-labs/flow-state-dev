@@ -9,6 +9,7 @@ import type {
   InferStateFromSchema,
   RetryPolicy
 } from "../types/block";
+import { asRuntime } from "../types/block";
 import type { ItemQuery } from "../types/scope";
 import type { AgentType } from "../items/types";
 import type { AnyResourceRef } from "../types/resource";
@@ -685,7 +686,7 @@ function compileToolsWithExecute(
         await runToolObserver(flowTools?.onToolStarted, { toolName: tool.name, input: args }, scopedCtx);
         try {
           const output = await runWithRetry(
-            () => withTimeout(Promise.resolve(tool.run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
+            () => withTimeout(Promise.resolve(asRuntime(tool).run(args, scopedCtx)), timeoutMs, `tool:${tool.name}`),
             retry
           );
           await runToolObserver(flowTools?.onToolCompleted, { toolName: tool.name, input: args, output }, scopedCtx);
@@ -824,6 +825,8 @@ function buildToolDescriptionContext(tools: GeneratorTool[]): string | undefined
 function isBlockObserver(
   observer: ToolsConfig["onToolStarted"]
 ): observer is BlockDefinition<any, any> {
+  // Block observers carry the substrate `run` dispatch entry point installed
+  // by `buildBlock`; plain function observers don't. Discriminate on that.
   return (
     typeof observer === "object" &&
     observer !== null &&
@@ -842,7 +845,7 @@ async function runToolObserver(
   }
 
   if (isBlockObserver(observer as ToolsConfig["onToolStarted"])) {
-    await (observer as BlockDefinition<any, any>).run(event, ctx);
+    await asRuntime(observer as BlockDefinition<any, any>).run(event, ctx);
     return;
   }
 

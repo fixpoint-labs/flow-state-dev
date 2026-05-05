@@ -16,13 +16,13 @@ A **block** is the unit of work: a handler (deterministic logic), a generator (L
 import { handler, generator, sequencer } from "@flow-state-dev/core";
 import { z } from "zod";
 
+const chatInputSchema = z.object({ message: z.string() });
+
 const validate = handler({
   name: "validate",
-  inputSchema: z.object({ message: z.string() }),
-  outputSchema: z.object({ message: z.string() }),
+  inputSchema: chatInputSchema,
   execute: async (input) => {
     if (!input.message.trim()) throw new Error("Empty message");
-    return input;
   },
 });
 
@@ -30,7 +30,7 @@ const agent = generator({
   name: "agent",
   model: "preset/fast",
   prompt: "You are a helpful assistant.",
-  inputSchema: z.object({ message: z.string() }),
+  inputSchema: chatInputSchema,
   user: (input) => input.message,
 });
 
@@ -46,41 +46,43 @@ const extractJson = handler({
 
 const pipeline = sequencer({
   name: "chat-pipeline",
-  inputSchema: z.object({ message: z.string() }),
+  inputSchema: chatInputSchema,
 })
-  .then(validate)
+  .tap(validate)
   .then(agent)
   .map((out) => out.text)
   .then(extractJson);
 ```
 
-Here, a handler validates, a generator produces text, a `.map()` extracts the text, and a handler parses JSON. The chain's output type is inferred from the last step.
+Here, a handler validates as a tap (it throws on bad input but produces no output of its own), a generator produces text, a `.map()` extracts the text, and a handler parses JSON. The chain's output type is inferred from the last step.
+
+`validate` is chained with `.tap()` because it has no output to feed downstream — its job is to assert that the input is valid. A block that only mutates state, validates, or otherwise has no transformation should never declare an `outputSchema` or `return input`. Use `.tap()`. See [Composing Blocks](/docs/sequencers/composing-blocks) for the full rule.
 
 ## DSL methods
 
+The DSL has 21 methods. You'll only use six on day one. The rest are there when you need them, organized by use case in the reference.
+
+**[Composing Blocks](/docs/sequencers/composing-blocks)** — the six methods you'll reach for first:
+
 | Method | Purpose |
 |--------|---------|
-| `then` | Run a block, pass output to next step |
+| `then` | Run a block, pass output to the next step |
+| `map` | Inline transform between steps (no block) |
+| `tap` | Run a block for side effects, payload passes through |
 | `thenIf` | Run a block only when a condition holds |
-| `map` | Inline transform (no block) |
-| `parallel` | Run multiple blocks concurrently, merge named outputs |
-| `thenAll` | Run blocks concurrently, collect results as ordered array |
-| `thenAny` | Try blocks sequentially, return first success |
-| `race` | Run blocks concurrently, return first success |
-| `exitIf` | Exit the chain early when a condition is true |
-| `forEach` | Process array items with a block (blocking) |
-| `forEachBackground` | Fire-and-forget fan-out over array items (non-blocking) |
-| `doUntil` | Loop until a condition is true |
-| `doWhile` | Loop while a condition is true |
-| `loopBack` | Jump back to a named step |
-| `work` / `background` | Fire-and-forget side work (doesn't block) |
-| `workIf` | Conditional variant of `work` — dispatches only when condition is truthy |
-| `waitForWork` | Wait for `.work()` tasks, optional `failOnError` |
-| `tap` | Run a block or function without changing the payload |
-| `tapIf` | Conditional tap |
-| `rescue` | Catch errors, route to recovery blocks |
-| `branch` | Route to first matching branch |
-| Inline block factories | `.then(handler, { outputSchema, execute })` etc. |
+| `work` | Fire a block in the background, don't wait |
+| `rescue` | Catch errors and route to recovery blocks |
+
+**[Control Flow Reference](/docs/sequencers/control-flow)** — everything else, grouped by use case:
+
+| Group | Methods |
+|-------|---------|
+| Parallelism | `parallel`, `forEach`, `forEachBackground`, `thenAll` |
+| Looping | `doUntil`, `doWhile`, `loopBack` |
+| Conditional sub-cases | `tapIf`, `workIf`, `exitIf` |
+| Specialization (rarely needed) | `thenAny`, `race`, `branch` |
+| Side-chain coordination | `waitForWork` |
+| Connector adaptation | `connectInput` |
 
 Each method returns a sequencer. You chain them: `.then(a).thenIf(cond, b).tap(c).then(d)`.
 
@@ -125,6 +127,7 @@ This is a rendering hint — it has no effect on execution order or block behavi
 
 ## Where to go next
 
-- **[Control Flow](/docs/sequencers/control-flow)** — Common composition patterns with code examples
-- **[Side Chains](/docs/advanced/sequencer-side-chains)** — Fire-and-forget work with `.work()` and `.waitForWork()`
-- **[Connectors](/docs/sequencers/connectors)** — Shaping data between steps, typed refs, and portability
+- **[Composing Blocks](/docs/sequencers/composing-blocks)** — start here. The six methods you'll use day one, with a worked example.
+- **[Control Flow Reference](/docs/sequencers/control-flow)** — the remaining methods, grouped by use case.
+- **[Connectors](/docs/sequencers/connectors)** — shaping data between steps, typed refs, and portability.
+- **[Side Chains](/docs/advanced/sequencer-side-chains)** — fire-and-forget work with `.work()` and `.waitForWork()`.

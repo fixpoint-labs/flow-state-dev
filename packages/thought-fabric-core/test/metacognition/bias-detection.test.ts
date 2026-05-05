@@ -1,3 +1,4 @@
+import { runForTest } from "@flow-state-dev/testing";
 import { describe, it, expect } from 'vitest'
 import {
   biasTypeSchema,
@@ -579,7 +580,7 @@ describe('metacognition/biasDetection', () => {
         response: { emit: async () => {} },
       } as any
 
-      return block.run({
+      return runForTest(block, {
         userInput: 'test input',
         aiResponse: 'test response',
         agreementPattern,
@@ -620,7 +621,7 @@ describe('metacognition/biasDetection', () => {
     it('passes through userInput, aiResponse, and biases', async () => {
       const block = biasScore()
       const ctx = { response: { emit: async () => {} } } as any
-      const result = await block.run({
+      const result = await runForTest(block, {
         userInput: 'specific input',
         aiResponse: 'specific response',
         agreementPattern: makeBreakdown(),
@@ -654,7 +655,7 @@ describe('metacognition/biasDetection', () => {
       const ctx = { response: { emit: async () => {} } } as any
       const breakdown = makeBreakdown()
 
-      return block.run({
+      return runForTest(block, {
         userInput: 'test input',
         aiResponse: 'test response',
         biases,

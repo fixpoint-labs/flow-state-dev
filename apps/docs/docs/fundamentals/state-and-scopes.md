@@ -34,7 +34,7 @@ const tracker = handler({
     mode: z.enum(["chat", "agent"]).default("chat"),
     messageCount: z.number().default(0),
   }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     // Read — typed from the schema
     const mode = ctx.session.state.mode;
 
@@ -74,7 +74,7 @@ Here's the part that makes blocks portable: you don't have to declare every stat
 const counter = handler({
   name: "counter",
   sessionStateSchema: z.object({ messageCount: z.number().default(0) }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.session.incState({ messageCount: 1 });
   },
 });
@@ -82,7 +82,7 @@ const counter = handler({
 const modeSwitch = handler({
   name: "mode-switch",
   sessionStateSchema: z.object({ mode: z.enum(["chat", "agent"]).default("chat") }),
-  execute: async (input, ctx) => {
+  execute: async (_input, ctx) => {
     await ctx.session.patchState({ mode: "agent" });
   },
 });
@@ -116,8 +116,8 @@ import { counter } from "@shared/blocks";
 import { modeSwitch } from "@shared/blocks";
 
 const pipeline = sequencer({ name: "chat" })
-  .then(counter)       // bubbles up { messageCount }
-  .then(modeSwitch)    // bubbles up { mode }
+  .tap(counter)        // bubbles up { messageCount }
+  .tap(modeSwitch)     // bubbles up { mode }
   .then(agent);
 ```
 

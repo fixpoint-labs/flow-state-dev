@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { emitLinkCardTool, LinkCardSchema } from "../../src/generative/link-card";
-
+import { runForTest } from "../helpers";
 function makeCtx() {
   const emitComponent = vi.fn();
   return {
@@ -30,7 +30,7 @@ describe("emitLinkCardTool", () => {
       siteName: "Example",
     };
 
-    const output = await block.run(input as any, ctx);
+    const output = await runForTest(block, input as any, ctx);
 
     expect(emitComponent).toHaveBeenCalledWith(
       "link-card",
@@ -48,7 +48,7 @@ describe("emitLinkCardTool", () => {
     const block = emitLinkCardTool();
     const { ctx } = makeCtx();
     await expect(
-      block.run({ url: "not-a-url", title: "x" } as any, ctx)
+      runForTest(block, { url: "not-a-url", title: "x" } as any, ctx)
     ).rejects.toThrow();
   });
 });

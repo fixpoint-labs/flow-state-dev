@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { utility, sequencer } from "../src";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 describe("utility.summarizer", () => {
   it("returns a generator block definition", () => {
     const block = utility.summarizer({
@@ -30,7 +29,7 @@ describe("utility.summarizer", () => {
       })
     });
 
-    await expect(block.run("source text", ctx)).resolves.toEqual({ summary: "short" });
+    await expect(runForTest(block, "source text", ctx)).resolves.toEqual({ summary: "short" });
     expect(JSON.stringify(seenMessages)).toContain("1-2 sentence");
   });
 
@@ -51,7 +50,7 @@ describe("utility.summarizer", () => {
       })
     });
 
-    await expect(block.run("source text", ctx)).resolves.toEqual({ summary: "long" });
+    await expect(runForTest(block, "source text", ctx)).resolves.toEqual({ summary: "long" });
     expect(JSON.stringify(seenMessages)).toContain("paragraph-level");
   });
 
@@ -72,7 +71,7 @@ describe("utility.summarizer", () => {
       })
     });
 
-    await expect(block.run("source text", ctx)).resolves.toEqual({ summary: "exec", keyPoints: ["k1"] });
+    await expect(runForTest(block, "source text", ctx)).resolves.toEqual({ summary: "exec", keyPoints: ["k1"] });
     expect(JSON.stringify(seenMessages)).toContain("key decisions");
     expect(JSON.stringify(seenMessages)).toContain("recommendations");
   });
@@ -95,7 +94,7 @@ describe("utility.summarizer", () => {
       })
     });
 
-    await expect(block.run("source text", ctx)).resolves.toEqual({ summary: "focused" });
+    await expect(runForTest(block, "source text", ctx)).resolves.toEqual({ summary: "focused" });
     const serialized = JSON.stringify(seenMessages);
     expect(serialized).toContain("Focus the summary on these objectives");
     expect(serialized).toContain("Highlight risks");
@@ -130,8 +129,8 @@ describe("utility.summarizer", () => {
       })
     });
 
-    await expect(defaultBlock.run("x", defaultCtx)).resolves.toEqual({ summary: "ok", keyPoints: ["a"] });
-    await expect(customBlock.run("x", customCtx)).resolves.toEqual({ summary: "ok", confidence: 0.9 });
+    await expect(runForTest(defaultBlock, "x", defaultCtx)).resolves.toEqual({ summary: "ok", keyPoints: ["a"] });
+    await expect(runForTest(customBlock, "x", customCtx)).resolves.toEqual({ summary: "ok", confidence: 0.9 });
   });
 
   it("is composable inside sequencers", async () => {
@@ -155,6 +154,6 @@ describe("utility.summarizer", () => {
       })
     });
 
-    await expect(chain.run({ source: "details" }, ctx)).resolves.toEqual({ summary: "condensed" });
+    await expect(runForTest(chain, { source: "details" }, ctx)).resolves.toEqual({ summary: "condensed" });
   });
 });

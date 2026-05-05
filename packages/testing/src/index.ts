@@ -8,6 +8,7 @@ export { testSequencer } from "./test-utilities/testSequencer";
 export { testRouter } from "./test-utilities/testRouter";
 export { testFlow } from "./test-utilities/testFlow";
 export { testItems } from "./test-utilities/testItems";
+export { runForTest } from "./test-utilities/runForTest";
 
 export type {
   StateChange,

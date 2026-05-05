@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { GeneratorConfig } from "../blocks";
 import { handler, router, sequencer } from "../blocks";
 import type { BlockDefinition } from "../types/block";
+import { asRuntime } from "../types/block";
 import {
   intentClassifier,
   type IntentClassifierOutput
@@ -64,14 +65,16 @@ export function intentRouter<TCategories extends IntentRouterCategories>(
     (input: IntentRouterEnvelope) => input.originalInput
   );
 
-  // BP-011 note: this handler intentionally invokes `classifier.run` to keep the
-  // original input bound to the resulting classification. Lifting the classifier
-  // out into a sibling sequencer step would require reading `originalInput` back
-  // from `ctx.parent`, which is only populated under the full server runtime —
-  // mock contexts (and any `createMockContext` user tests) would silently get
-  // `undefined` as the route handler input. Until there's a runtime-agnostic way
-  // to recover the sequencer's input from a downstream step, the BP-011-friendly
-  // composition isn't worth the regression.
+  // BP-011 deviation (FIX-503): this handler reaches through `asRuntime` to
+  // invoke the classifier inside its own execute so the classification result
+  // is bound to the original input in a single step. Lifting the classifier
+  // into a sibling sequencer step would require recovering `originalInput`
+  // from `ctx.parent` (only populated under the full server runtime —
+  // undefined under `createMockContext`) or sequencer state (also gated on
+  // `_withExecutionScope`). Until the framework grows a runtime-agnostic
+  // carrier for the sequencer's input, the substrate cast is the
+  // intentional escape — no runtime guard catches it, but the explicit
+  // `asRuntime` call signs the deviation in the diff.
   const classifyInput = handler({
     name: `${config.name}-intent-router-input`,
     outputSchema: z.object({
@@ -83,7 +86,7 @@ export function intentRouter<TCategories extends IntentRouterCategories>(
       })
     }),
     execute: async (input, ctx) => {
-      const classification = await classifier.run(input, ctx);
+      const classification = await asRuntime(classifier).run(input, ctx);
       return {
         originalInput: input,
         classification

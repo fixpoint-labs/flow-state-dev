@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { providerTool, generator } from "../src";
 import type { ProviderTool, GeneratorSearchConfig } from "../src/types/model";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 describe("providerTool factory", () => {
   it("creates a ProviderTool with correct shape", () => {
     const rawTool = { type: "provider-defined", id: "web_search" };
@@ -46,7 +45,7 @@ describe("generator search config", () => {
       })
     });
 
-    await block.run({}, ctx);
+    await runForTest(block, {}, ctx);
     expect(receivedProviderTools).toBeDefined();
     expect(receivedProviderTools).toHaveLength(1);
     expect(receivedProviderTools![0].name).toBe("web_search");
@@ -80,7 +79,7 @@ describe("generator search config", () => {
       })
     });
 
-    await block.run({}, ctx);
+    await runForTest(block, {}, ctx);
     expect(receivedConfig).toEqual({
       maxUses: 3,
       allowedDomains: ["example.com"],
@@ -109,7 +108,7 @@ describe("generator search config", () => {
       })
     });
 
-    await block.run({}, ctx);
+    await runForTest(block, {}, ctx);
     expect(receivedProviderTools).toBeUndefined();
   });
 
@@ -138,7 +137,7 @@ describe("generator search config", () => {
       })
     });
 
-    await block.run({}, ctx);
+    await runForTest(block, {}, ctx);
     expect(receivedProviderTools).toHaveLength(2);
     expect(receivedProviderTools![0].name).toBe("codeExec");
     expect(receivedProviderTools![1].name).toBe("web_search");
@@ -172,7 +171,7 @@ describe("generator search config", () => {
       }
     });
 
-    await block.run({}, ctx);
+    await runForTest(block, {}, ctx);
 
     const sourceEvents = emittedEvents.filter(
       (e) => e.type === "item.added" && e.item?.type === "source"

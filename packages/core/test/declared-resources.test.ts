@@ -3,8 +3,7 @@ import { z } from "zod";
 import { handler, generator, router, sequencer } from "../src";
 import { defineResource } from "../src/types/resource";
 import { extractDeclaredResources, mergeDeclaredResources } from "../src/blocks/internal/build-block";
-import { createMockContext } from "./helpers";
-
+import { createMockContext, runForTest } from "./helpers";
 const observationsResource = defineResource({
   scope: "session",
   stateSchema: z.object({
@@ -122,7 +121,7 @@ describe("handler declaredResources", () => {
     });
 
     const ctx = createMockContext();
-    await expect(block.run("test", ctx)).resolves.toBe("processed:test");
+    await expect(runForTest(block, "test", ctx)).resolves.toBe("processed:test");
   });
 });
 
@@ -504,7 +503,7 @@ describe("sequencer resource collection", () => {
       .then(blockB);
 
     const ctx = createMockContext();
-    await expect(seq.run(5, ctx)).resolves.toBe(12);
+    await expect(runForTest(seq, 5, ctx)).resolves.toBe(12);
     expect(seq.declaredResources).toEqual({
       observations: observationsResource,
       artifacts: artifactsResource

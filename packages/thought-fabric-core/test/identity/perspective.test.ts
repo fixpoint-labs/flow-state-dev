@@ -1,3 +1,4 @@
+import { runForTest } from "@flow-state-dev/testing";
 import { describe, it, expect } from 'vitest'
 import {
   perspectiveSalienceSchema,
@@ -579,7 +580,7 @@ describe('identity/perspective', () => {
         response: { emit: async () => {} },
       } as any
 
-      return block.run({ content, context }, ctx)
+      return runForTest(block, { content, context }, ctx)
     }
 
     it('returns content and perspective frame', async () => {
@@ -640,8 +641,8 @@ describe('identity/perspective', () => {
       const pmApply = perspectiveApply({ perspective: pm })
 
       const ctx = { response: { emit: async () => {} } } as any
-      const secResult = await secApply.run({ content: 'test' }, ctx)
-      const pmResult = await pmApply.run({ content: 'test' }, ctx)
+      const secResult = await runForTest(secApply, { content: 'test' }, ctx)
+      const pmResult = await runForTest(pmApply, { content: 'test' }, ctx)
 
       expect(secResult.perspectiveName).toBe('security-engineer')
       expect(pmResult.perspectiveName).toBe('product-manager')
@@ -1130,7 +1131,7 @@ describe('identity/perspective — block execution', () => {
         perspective: makeInstance(),
       })
       const ctx = makeCtx({ observations: obsRef })
-      const result = await block.run({
+      const result = await runForTest(block, {
         observations: [
           { content: 'auth is weak', category: 'risk', confidence: 0.9 },
           { content: 'logs are sparse', category: 'concern' },
@@ -1156,7 +1157,7 @@ describe('identity/perspective — block execution', () => {
         recommendations: ['add MFA'],
         confidence: 0.85,
       }
-      const result = await block.run(analysis as any, ctx)
+      const result = await runForTest(block, analysis as any, ctx)
 
       expect(result.observations).toHaveLength(3)
       expect(result.observations[0].content).toBe('auth gap')
@@ -1174,7 +1175,7 @@ describe('identity/perspective — block execution', () => {
         perspective: makeInstance(),
       })
       const ctx = makeCtx({ observations: obsRef, positions: posRef })
-      const result = await block.run({
+      const result = await runForTest(block, {
         claim: 'Auth needs audit',
         reasoning: 'multiple gaps',
         confidence: 0.85,
@@ -1198,7 +1199,7 @@ describe('identity/perspective — block execution', () => {
         perspective: makeInstance(),
       })
       const ctx = makeCtx({ observations: obsRef, positions: posRef })
-      const result = await block.run({
+      const result = await runForTest(block, {
         positionId: pos.id,
         evidence: 'new evidence',
       } as any, ctx)
@@ -1214,7 +1215,7 @@ describe('identity/perspective — block execution', () => {
         perspective: makeInstance(),
       })
       const ctx = makeCtx({ observations: obsRef, positions: posRef })
-      const result = await block.run({
+      const result = await runForTest(block, {
         positionId: 'nope',
         evidence: 'e',
       } as any, ctx)
@@ -1234,7 +1235,7 @@ describe('identity/perspective — block execution', () => {
         perspective: makeInstance(),
       })
       const ctx = makeCtx({ observations: obsRef, positions: posRef })
-      const result = await block.run(undefined as any, ctx)
+      const result = await runForTest(block, undefined as any, ctx)
 
       expect(result.observations).toHaveLength(1)
       expect(result.positions).toHaveLength(1)
@@ -1249,7 +1250,7 @@ describe('identity/perspective — block execution', () => {
         perspective: makeInstance(),
       })
       const ctx = makeCtx({ observations: obsRef })
-      await block.run(undefined as any, ctx)
+      await runForTest(block, undefined as any, ctx)
       expect(obsRef.state.turnCounter).toBe(1)
     })
   })

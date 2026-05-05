@@ -4,6 +4,7 @@ import type {
   BlockContext,
   BlockDefinition,
   BlockKind,
+  BlockRuntime,
   ConnectorFn,
   DeclaredResources
 } from "../../types/block";
@@ -116,7 +117,7 @@ export function buildBlock<
   TOutputSchema extends ZodTypeAny = ZodTypeAny,
   TInput = z.infer<TInputSchema>,
   TOutput = z.infer<TOutputSchema>,
->(options: BuildBlockOptions<TInputSchema, TOutputSchema>): BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> {
+>(options: BuildBlockOptions<TInputSchema, TOutputSchema>): BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput> {
   const { kind, config } = options;
   const internalExecute = options.execute ?? config.execute;
 
@@ -149,7 +150,7 @@ export function buildBlock<
   // aggregate as `options.requiresOrg`).
   const requiresOrg = Boolean(config.requireOrg) || Boolean(options.requiresOrg);
 
-  const definition: BlockDefinition<TInputSchema, TOutputSchema, TInput, TOutput> = {
+  const definition: BlockRuntime<TInputSchema, TOutputSchema, TInput, TOutput> = {
     kind,
     name: runtimeConfig.name,
     description: runtimeConfig.description,
