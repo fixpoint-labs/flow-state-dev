@@ -58,6 +58,8 @@ The first three patterns use `utility.decomposer` internally to plan work. They 
 
 **Blackboard** — controller-driven multi-agent coordination via a shared workspace. Specialist blocks read from and write to a shared resource. An LLM controller reads the blackboard state and decides which specialist to invoke next, in a loop. Use it for incremental synthesis and directed problem-solving where a "what's next" decision is needed.
 
+**Round Robin** — fixed-roster, deterministic-order turn-taking. Every agent contributes once per round, in declared order, seeing the full prior transcript. After each round a judge decides whether to keep going. Use it for editorial review, committee deliberation, or multi-perspective critique panels where the roster and the order are part of the design.
+
 **Reactive Blackboard** — stigmergic multi-agent coordination via write-time fan-out. Actors subscribe to entry topics and react automatically when matching entries are written. No controller, no loop. Use it for event-driven systems, continuous monitoring, and broadcast scenarios where coordination is emergent.
 
 **Drain Pool** — concurrent streaming dispatch over a dynamic, durable queue. N workers continuously pull items from a shared session-resource collection, process them, and loop until drained. Workers can enqueue follow-up items mid-drain. The parent sequencer waits for full completion. Bounded concurrency (exactly N workers, not `N^depth`), at-least-once semantics, durable via session resources.
@@ -86,6 +88,7 @@ More specifically:
 - **Sequential steps with dependency ordering and adaptive replanning** → [Plan and Execute](./plan-and-execute)
 - **Post-generation quality audit with pluggable analyzers** → [Response Auditor](./response-auditor)
 - **Controller-driven multi-agent workspace (incremental synthesis)** → [Routed Specialists](./routed-specialists)
+- **Fixed-roster turn-taking with a judge deciding when to stop** → [Round Robin](./round-robin)
 - **Event-driven multi-agent coordination (broadcast/react)** → [Event Actors](./event-actors)
 - **Concurrent dependency-aware drain over a Task Collection** → Task Board (see `@flow-state-dev/patterns/task-board`)
 - **Complex hierarchical work where steps need their own sub-planning** → Plan and Execute with a Supervisor as the `stepExecutor`

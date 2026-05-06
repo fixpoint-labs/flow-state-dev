@@ -4,6 +4,16 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-06
 
+### Round Robin pattern (FIX-318)
+
+New `roundRobin` factory in `@flow-state-dev/patterns` for fixed-roster, deterministic-order multi-agent coordination. Every agent in the roster contributes once per round in declared order, seeing the full prior transcript. After each round a judge returns `{ done, summary }` and the loop exits on done or when `maxRounds` (default 5) is reached.
+
+- New subpath export `@flow-state-dev/patterns/round-robin` and matching named exports from the package root: `roundRobin`, `RosterEntry`, the schemas (`roundRobinInputSchema`, `roundRobinStateSchema`, `roundRobinContributionEntrySchema`, `roundRobinJudgeOutputSchema`), and the building-block factories (`createRosterAgent`, `createRoundRobinJudge`, `createRoundRobinSynthesize`, `createRoundRobinContributions`).
+- The transcript lives in a session-scoped writable resource owned by the pattern. Per-turn audit records mirror it in a sequencer-backed `TaskCollection` so DevTool sees one record per `(round, agent)` turn.
+- Roster entries default to a built-in LLM agent that reads the contributions resource and renders prior turns into its prompt; a custom `block` per entry replaces it without losing the audit and transcript wiring. Override blocks may return either `string` or `{ text }`.
+- Judge is required and runs after every round. There is no judge-less mode in v1 — for fixed-rounds-only behaviour, supply a stub judge that always returns `done: false` and rely on `maxRounds`. Setting `outputSchema` while `synthesizer: false` is a definition-time error.
+- Reference docs at `patterns/round-robin`, package README section, sidebar entry between Routed Specialists and Event Actors, and cross-links from Routed Specialists, Supervisor, and the patterns overview.
+
 ### `clientData` privacy fix + API rename to `client.expose` / `client.derived` (FIX-505)
 
 The session snapshot route used to ship raw scope state (`state.request`, `state.session`, `state.user`, `state.org`) alongside `clientData`. Documentation said state was private; the wire format said otherwise. Snapshots are now opt-in for raw state, and the public API for declaring what's visible is one consistent shape on scopes and resources.

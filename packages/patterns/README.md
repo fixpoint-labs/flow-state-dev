@@ -150,6 +150,28 @@ Workers are first-class block compositions, not callbacks. The pattern composes 
 
 **Key exports:** `taskBoard`, `taskBoardStateSchema`, `taskBoardWorkerStateSchema`, `taskBoardWorkerBodyStateSchema`, `claimResultSchema`, `taskWorkerInputSchema`, `checkBoardOutputSchema`, `createSeedCollection`, `createSelectNextReadyTask`, `createClaimTask`, `buildWorkerStep`, `packWorkerInput`, `createRecordSuccess`, `createRecordError`, `createCheckBoard`
 
+### Round Robin
+
+Fixed-roster, deterministic-order turn-taking. Every agent in the roster contributes once per round, in declared order. After each round a judge inspects the transcript and returns `{ done, summary }`; the loop exits on done or when `maxRounds` is hit.
+
+```typescript
+import { roundRobin } from "@flow-state-dev/patterns/round-robin";
+
+const editorial = roundRobin({
+  name: "editorial-review",
+  roster: [
+    { name: "writer", role: "writer responsible for the original draft" },
+    { name: "fact-checker", role: "fact-checker verifying every claim" },
+    { name: "copy-editor", role: "copy editor polishing prose and clarity" },
+  ],
+  maxRounds: 3,
+});
+```
+
+Override any roster entry by passing a `block`; override the judge or the synthesizer by passing custom blocks. Per-turn audit records land in a sequencer-backed `TaskCollection` so DevTool sees the timeline. See [Round Robin](https://flow-state.dev/docs/patterns/round-robin) for the full reference.
+
+**Key exports:** `roundRobin`, `createRoundRobinContributions`, `createRosterAgent`, `createRoundRobinJudge`, `createRoundRobinSynthesize`, `createRoundRobinInitContributions`, `createRoundRobinRecordContribution`, `roundRobinInputSchema`, `roundRobinStateSchema`, `roundRobinContributionEntrySchema`, `roundRobinJudgeOutputSchema`
+
 ## Pattern-Level `instructions`
 
 All three coordination patterns (`planAndExecute`, `supervisor`, `blackboard`) accept an `instructions` prop — a top-level "team brief" that the pattern digests across its internal sub-blocks. This lets consumers apply a role, stance, or set of rules without rebuilding sub-blocks.

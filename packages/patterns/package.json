@@ -36,6 +36,10 @@
     "./task-board": {
       "types": "./dist/task-board/index.d.ts",
       "default": "./dist/task-board/index.js"
+    },
+    "./round-robin": {
+      "types": "./dist/round-robin/index.d.ts",
+      "default": "./dist/round-robin/index.js"
     }
   },
   "license": "MIT",

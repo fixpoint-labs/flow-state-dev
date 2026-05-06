@@ -270,5 +270,6 @@ The synthesizer receives `{ goal: string, results: unknown[] }` where `results` 
 ## See also
 
 - [Parallel Tasks](./parallelTasks) — fan-out without per-task review
+- [Round Robin](./round-robin) — fixed-roster turn-taking with a judge, no per-task retry
 - [Plan and Execute](./plan-and-execute) — sequential dependency-ordered execution with optional replanning
 - [Patterns Overview](./overview) — when to use which pattern

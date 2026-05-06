@@ -1,0 +1,80 @@
+/**
+ * Tap factory that appends a roster turn's output to the contributions
+ * resource and adds-then-completes a Task in the audit collection. One
+ * tap is built per roster slot so the agent's name is bound at build
+ * time and renders clearly in DevTool.
+ */
+import { handler } from "@flow-state-dev/core";
+import type { BlockContext, DefinedResource } from "@flow-state-dev/core/types";
+import { getOrCreateTaskCollection } from "@flow-state-dev/tasks";
+import { z } from "zod";
+import {
+  roundRobinStateSchema,
+  type RoundRobinContributionsState,
+  type RoundRobinState,
+} from "../schemas";
+
+/** Coerce arbitrary roster-agent output into the `text` we store. */
+function coerceText(out: unknown, agentName: string, warned: Set<string>): string {
+  if (typeof out === "string") return out;
+  if (out !== null && typeof out === "object") {
+    const obj = out as { text?: unknown };
+    if (typeof obj.text === "string") return obj.text;
+  }
+  if (!warned.has(agentName)) {
+    warned.add(agentName);
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[round-robin] roster agent "${agentName}" returned a non-string/non-{text} value; coerced via String().`,
+    );
+  }
+  return String(out);
+}
+
+export function createRecordContribution(opts: {
+  name: string;
+  agentName: string;
+  contributions: DefinedResource;
+  collectionId: string;
+  warnedAgents: Set<string>;
+}) {
+  return handler({
+    name: `${opts.name}-record-${opts.agentName}`,
+    inputSchema: z.any(),
+    outputSchema: z.any(),
+    resources: { contributions: opts.contributions },
+    sequencerStateSchema: roundRobinStateSchema,
+    execute: async (input, ctx) => {
+      const text = coerceText(input, opts.agentName, opts.warnedAgents);
+      const state = ctx.sequencer!.state as RoundRobinState;
+      const round = state.round;
+
+      const current = ctx.resources.contributions
+        .state as RoundRobinContributionsState;
+      await ctx.resources.contributions.setState({
+        entries: [
+          ...(current.entries ?? []),
+          { round, agentName: opts.agentName, text },
+        ],
+      } as Parameters<typeof ctx.resources.contributions.setState>[0]);
+
+      const collection = getOrCreateTaskCollection({
+        ctx: ctx as unknown as BlockContext,
+        backing: "sequencer",
+        collectionId: opts.collectionId,
+        sequencer: ctx.sequencer!,
+      });
+      const task = await collection.addTask({
+        goal: `${opts.agentName} (round ${round})`,
+        assignee: opts.agentName,
+        metadata: { round },
+      });
+      await collection.claim(`round-robin:${opts.name}`, {
+        eligibility: (t) => t.id === task.id,
+      });
+      await collection.complete(task.id, { text });
+
+      return input;
+    },
+  });
+}
