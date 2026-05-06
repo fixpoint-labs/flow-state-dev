@@ -154,3 +154,27 @@ export type {
   RecordErrorOptions,
   CheckBoardOptions,
 } from "./task-board";
+export {
+  roundRobin,
+  roundRobinInputSchema,
+  roundRobinStateSchema,
+  roundRobinContributionEntrySchema,
+  roundRobinJudgeOutputSchema,
+  roundRobinContributionsStateSchema,
+  createRoundRobinContributions,
+  createRosterAgent,
+  createJudge as createRoundRobinJudge,
+  createSynthesize as createRoundRobinSynthesize,
+  createInitContributions as createRoundRobinInitContributions,
+  createRecordContribution as createRoundRobinRecordContribution,
+} from "./round-robin";
+export type {
+  RoundRobinConfig,
+  RosterEntry,
+  RoundRobinInput,
+  RoundRobinState,
+  RoundRobinContributionEntry,
+  RoundRobinJudgeOutput,
+  RoundRobinContributionsState,
+  RoundRobinFinalShape,
+} from "./round-robin";

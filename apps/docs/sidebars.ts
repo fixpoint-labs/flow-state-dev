@@ -111,6 +111,7 @@ const sidebars: SidebarsConfig = {
                 "patterns/supervisor",
                 "patterns/plan-and-execute",
                 "patterns/routed-specialists",
+                "patterns/round-robin",
                 "patterns/event-actors",
               ],
             },
