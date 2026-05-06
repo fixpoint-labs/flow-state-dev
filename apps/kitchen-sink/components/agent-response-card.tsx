@@ -1,6 +1,7 @@
 "use client";
 
-import type { BlockOutputItem, BlockValue } from "@flow-state-dev/core/items";
+import type { BlockOutputItem } from "@flow-state-dev/core/items";
+import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { Tool } from "@/components/flow-state/tool";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +18,7 @@ type AgentOutput = {
  * content, so its block_output always carries `kind: "inline"` (FIX-413).
  * Defensive fallback for any legacy/ref shapes just returns undefined.
  */
-function unwrapInline(value: BlockValue<unknown> | undefined): AgentOutput | undefined {
+function unwrapInline(value: BlockValueInternal<unknown> | undefined): AgentOutput | undefined {
   if (value === undefined) return undefined;
   if (typeof value === "object" && "kind" in value && value.kind === "inline") {
     return value.value as AgentOutput;
