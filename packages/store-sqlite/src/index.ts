@@ -8,6 +8,7 @@ import { createSQLiteUserStore } from "./user-store";
 import { createSQLiteOrgStore } from "./org-store";
 import { createSQLiteActiveRequestRegistry } from "./active-request-registry";
 import { createSQLiteCheckpointStore } from "./checkpoint-store";
+import { createSQLiteTraceStore, type SQLiteTraceStoreOptions } from "./trace-store";
 
 export type SQLiteStoreOptions = {
   /** File path to the SQLite database, or ":memory:" for in-memory */
@@ -18,6 +19,8 @@ export type SQLiteStoreOptions = {
    *  synchronous, foreign_keys, etc.) are always applied — they are required
    *  for safe concurrent access on every fresh better-sqlite3 connection. */
   skipSchemaInit?: boolean;
+  /** Trace store retention options. Defaults to `maxRequests: 50`. */
+  traceStore?: SQLiteTraceStoreOptions;
 };
 
 export type SQLiteStoreRegistry = StoreRegistry & {
@@ -47,6 +50,7 @@ export function createSQLiteStores(options: SQLiteStoreOptions): SQLiteStoreRegi
     activeRequests: createSQLiteActiveRequestRegistry(db),
     content: new InMemoryContentStore(),
     checkpoints: createSQLiteCheckpointStore(db),
+    traces: createSQLiteTraceStore(db, options.traceStore),
     close() {
       db.close();
     }
@@ -59,7 +63,10 @@ export {
   createSQLiteUserStore,
   createSQLiteOrgStore,
   createSQLiteActiveRequestRegistry,
-  createSQLiteCheckpointStore
+  createSQLiteCheckpointStore,
+  createSQLiteTraceStore
 };
+
+export type { SQLiteTraceStoreOptions };
 
 export { initializeSchema, initializeSchemaDDL, applyConnectionPragmas } from "./schema";

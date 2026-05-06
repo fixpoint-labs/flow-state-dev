@@ -4,7 +4,14 @@ import type {
   SequencerCheckpoint
 } from "@flow-state-dev/core/types";
 import type { JsonObject } from "@flow-state-dev/core/types";
-import type { OutputItem, RequestStreamEvent } from "@flow-state-dev/core/items";
+import type {
+  BlockDebugItem,
+  BlockOutputItem,
+  OutputItem,
+  RequestStreamEvent,
+  RouterDecisionItem,
+  StateSnapshotItem
+} from "@flow-state-dev/core/items";
 
 export type { RequestStatus };
 
@@ -287,6 +294,38 @@ export interface CheckpointStore {
   delete(requestId: string, blockInstanceId: string): Promise<void>;
 }
 
+/**
+ * A single trace event captured by the runtime. Carries the originating
+ * request, a monotonically-increasing per-request `sequenceNumber` for
+ * cursor-based reads, the wall-clock timestamp, the event type, and the
+ * inner debug item.
+ */
+export type TraceEvent = {
+  requestId: string;
+  sequenceNumber: number;
+  ts: number;
+  type: "trace.item.added" | "trace.item.done";
+  item: BlockOutputItem | RouterDecisionItem | StateSnapshotItem | BlockDebugItem;
+};
+
+/**
+ * Per-request trace event log. Implementations are responsible for bounded
+ * retention — callers should not assume unbounded history.
+ *
+ * `appendEvent` is logically append-only per request. `flush` lets adapters
+ * with batched I/O guarantee durability before a read. `getEvents` supports
+ * cursor reads via `fromSequence` (exclusive lower bound). `listRequestIds`
+ * returns the request IDs currently retained, in insertion order.
+ *
+ * TODO(FIX-511): cross-process live tail.
+ */
+export interface TraceStore {
+  appendEvent(requestId: string, event: TraceEvent): Promise<void>;
+  flush(requestId: string): Promise<void>;
+  getEvents(requestId: string, fromSequence?: number): Promise<TraceEvent[]>;
+  listRequestIds(): Promise<string[]>;
+}
+
 export type StoreRegistry = {
   session: SessionStore;
   request: RequestStore;
@@ -295,4 +334,5 @@ export type StoreRegistry = {
   activeRequests: ActiveRequestRegistry;
   content: ContentStore;
   checkpoints: CheckpointStore;
+  traces: TraceStore;
 };

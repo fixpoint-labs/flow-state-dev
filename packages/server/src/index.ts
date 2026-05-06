@@ -44,6 +44,8 @@ export type {
   SessionStore,
   SetResult,
   StoreRegistry,
+  TraceEvent,
+  TraceStore,
   UserListOptions,
   UserRecord,
   UserStore

@@ -169,7 +169,8 @@ export function resolveStores(partial: Partial<StoreRegistry> | undefined): Stor
     org: partial?.org ?? fallback.org,
     activeRequests: partial?.activeRequests ?? fallback.activeRequests,
     content: partial?.content ?? fallback.content,
-    checkpoints: partial?.checkpoints ?? fallback.checkpoints
+    checkpoints: partial?.checkpoints ?? fallback.checkpoints,
+    traces: partial?.traces ?? fallback.traces
   };
 }
 
