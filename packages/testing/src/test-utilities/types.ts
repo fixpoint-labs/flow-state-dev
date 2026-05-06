@@ -1,7 +1,4 @@
-import type { BlockDebugItem, BlockOutputItem, OutputItem, RouterDecisionItem, StateSnapshotItem } from "@flow-state-dev/core/items";
-
-/** Test-utility item union: includes trace items so harnesses can assert on them. */
-type TestItem = OutputItem | BlockOutputItem | RouterDecisionItem | StateSnapshotItem | BlockDebugItem;
+import type { RuntimeItem as TestItem } from "@flow-state-dev/core/items/internal";
 import type { BlockInput, BlockOutput, FlowInstance } from "@flow-state-dev/core/types";
 import type { StoreRegistry } from "@flow-state-dev/server";
 import type {

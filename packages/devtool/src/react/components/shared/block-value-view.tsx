@@ -10,6 +10,7 @@
  * existing `selectBlock` action when clicked so the user can jump-select
  * the producing block in the trace tree (FIX-556).
  */
+import type { ItemLookup } from "@flow-state-dev/core/items";
 import type { BlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { resolveBlockValueInternal } from "@flow-state-dev/core/items/internal";
 import { Link2, Package } from "lucide-react";
@@ -109,7 +110,7 @@ export function ToolOutputView({
  */
 function RefResolvedValue({ sourceItemId }: { sourceItemId: string }) {
   const { getItem } = useTraceLookup();
-  const sourceItem = getItem(sourceItemId) as DevtoolItem | undefined;
+  const sourceItem = getItem(sourceItemId);
   if (!sourceItem) {
     return (
       <div className="mt-1 text-[11px] text-slate-500 italic">(source not retained)</div>
@@ -118,7 +119,7 @@ function RefResolvedValue({ sourceItemId }: { sourceItemId: string }) {
 
   let resolved: unknown;
   if (sourceItem.type === "block_output") {
-    resolved = resolveBlockValueInternal(sourceItem.output, getItem);
+    resolved = resolveBlockValueInternal(sourceItem.output, getItem as ItemLookup);
   } else if (sourceItem.type === "message") {
     resolved = sourceItem.content
       .map((part) => ("text" in part ? (part as { text: string }).text : ""))

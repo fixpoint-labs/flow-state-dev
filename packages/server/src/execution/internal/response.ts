@@ -1,25 +1,9 @@
 /**
  * Small response-emitter helpers shared by the execution runtime.
  */
-import type {
-  BlockDebugItem,
-  BlockOutputItem,
-  OutputItem,
-  RouterDecisionItem,
-  StateSnapshotItem
-} from "@flow-state-dev/core/items";
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 
-/**
- * Server-side item union. The public `OutputItem` excludes trace items;
- * runtime buffers carry them, so this alias re-includes the four trace
- * types for internal narrowing.
- */
-export type RuntimeItem =
-  | OutputItem
-  | BlockOutputItem
-  | RouterDecisionItem
-  | StateSnapshotItem
-  | BlockDebugItem;
+export type { RuntimeItem };
 
 /**
  * Safely reads buffered response items from both public and internal emitters.

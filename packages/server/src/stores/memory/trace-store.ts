@@ -24,10 +24,12 @@ export type InMemoryTraceStoreOptions = {
 const DEFAULT_MAX_REQUESTS = 50;
 const DEFAULT_MAX_BYTES_PER_REQUEST = 5 * 1024 * 1024;
 
+type SizedEvent = { event: TraceEvent; bytes: number };
+
 export class InMemoryTraceStore implements TraceStore {
   private readonly maxRequests: number;
   private readonly maxBytesPerRequest: number;
-  private readonly requests = new Map<string, TraceEvent[]>();
+  private readonly requests = new Map<string, SizedEvent[]>();
   private readonly byteCount = new Map<string, number>();
 
   constructor(options: InMemoryTraceStoreOptions = {}) {
@@ -40,8 +42,6 @@ export class InMemoryTraceStore implements TraceStore {
 
     let buffer = this.requests.get(requestId);
     if (buffer === undefined) {
-      // New request — enforce maxRequests by evicting the oldest entry first.
-      // Map iteration follows insertion order, so the first key is the oldest.
       while (this.requests.size >= this.maxRequests) {
         const oldest = this.requests.keys().next();
         if (oldest.done === true) break;
@@ -56,10 +56,10 @@ export class InMemoryTraceStore implements TraceStore {
     let bytes = this.byteCount.get(requestId) ?? 0;
     while (buffer.length > 0 && bytes + eventBytes > this.maxBytesPerRequest) {
       const dropped = buffer.shift()!;
-      bytes -= Buffer.byteLength(JSON.stringify(dropped), "utf8");
+      bytes -= dropped.bytes;
     }
 
-    buffer.push(event);
+    buffer.push({ event, bytes: eventBytes });
     bytes += eventBytes;
     this.byteCount.set(requestId, bytes);
   }
@@ -71,8 +71,12 @@ export class InMemoryTraceStore implements TraceStore {
   async getEvents(requestId: string, fromSequence?: number): Promise<TraceEvent[]> {
     const buffer = this.requests.get(requestId);
     if (buffer === undefined) return [];
-    if (fromSequence === undefined) return buffer.slice();
-    return buffer.filter((ev) => ev.sequenceNumber > fromSequence);
+    if (fromSequence === undefined) return buffer.map((s) => s.event);
+    const out: TraceEvent[] = [];
+    for (const sized of buffer) {
+      if (sized.event.sequenceNumber > fromSequence) out.push(sized.event);
+    }
+    return out;
   }
 
   async listRequestIds(): Promise<string[]> {

@@ -9,13 +9,13 @@
  * tree already has — selection lights the right row up immediately.
  */
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import type { OutputItem } from "@flow-state-dev/core/items";
 import type { TraceNode } from "../lib/trace-tree";
+import type { DevtoolItem } from "../lib/item-types";
 import type { RequestGroup } from "../components/workspace/stream-view";
 import { buildTraceTree } from "../lib/trace-tree";
 
 type TraceLookup = {
-  getItem: (itemId: string) => OutputItem | undefined;
+  getItem: (itemId: string) => DevtoolItem | undefined;
   getBlockNode: (blockInstanceId: string) => TraceNode | undefined;
 };
 
@@ -29,10 +29,10 @@ export function TraceLookupProvider({
   children: ReactNode;
 }) {
   const value = useMemo<TraceLookup>(() => {
-    const itemMap = new Map<string, OutputItem>();
+    const itemMap = new Map<string, DevtoolItem>();
     for (const group of requestGroups) {
       for (const item of group.items) {
-        itemMap.set(item.id, item as OutputItem);
+        itemMap.set(item.id, item);
       }
     }
 

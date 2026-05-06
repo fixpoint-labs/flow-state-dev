@@ -7,13 +7,14 @@
  *
  * Rules:
  * - `agentType: "trace"` → neither client nor history, regardless of type.
+ *   The four trace item types (`block_output`, `router_decision`,
+ *   `state_snapshot`, `block_debug`) are always emitted with this stamp.
  * - Conversational types (`message`, `reasoning`, `block_tool_output`)
  *   inherit visibility from `agentType`. Unset `agentType` on a conversational
  *   item falls back to primary-equivalent visibility — this keeps handler
  *   emits like `ctx.emitMessage("hi")` ergonomic when no generator identity
  *   is present.
- * - Structural types have fixed per-type visibility; `agentType` on them is
- *   metadata only.
+ * - All other (structural) types resolve to `{ client: true, history: false }`.
  */
 import type { ItemVisibility, OutputItem } from "./types";
 
@@ -23,30 +24,17 @@ const CONVERSATIONAL_TYPES = new Set<string>([
   "block_tool_output",
 ]);
 
-const STRUCTURAL_TYPE_DEFAULTS: Record<string, ItemVisibility> = {
-  component:       { client: true,  history: false },
-  container:       { client: true,  history: false },
-  source:          { client: true,  history: false },
-  status:          { client: true,  history: false },
-  state_change:    { client: true,  history: false },
-  resource_change: { client: true,  history: false },
-  error:           { client: true,  history: false },
-  // Trace types (`block_output`, `router_decision`, `state_snapshot`,
-  // `block_debug`) are stamped `agentType: "trace"` at emission time and
-  // short-circuit to `{ client: false, history: false }` above. They no
-  // longer need entries here.
-};
+const STRUCTURAL_DEFAULT: ItemVisibility = { client: true, history: false };
+const TRACE_DEFAULT: ItemVisibility = { client: false, history: false };
 
 export function resolveItemVisibility(item: OutputItem): ItemVisibility {
-  if (item.agentType === "trace") return { client: false, history: false };
+  if (item.agentType === "trace") return TRACE_DEFAULT;
 
   if (CONVERSATIONAL_TYPES.has(item.type)) {
-    // Sub-agents are visible live but excluded from history.
-    // Primary or unset (handler-emit fallback) is both.
     return item.agentType === "sub"
       ? { client: true, history: false }
       : { client: true, history: true };
   }
 
-  return STRUCTURAL_TYPE_DEFAULTS[item.type] ?? { client: true, history: false };
+  return STRUCTURAL_DEFAULT;
 }

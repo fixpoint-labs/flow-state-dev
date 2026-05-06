@@ -106,7 +106,7 @@ export async function handleGetSessionState(
           }
           if (
             itemTypeFilter === undefined &&
-            (resolveItemVisibility(item).client === false || TRACE_ITEM_TYPES.has(item.type))
+            (TRACE_ITEM_TYPES.has(item.type) || resolveItemVisibility(item).client === false)
           ) {
             continue;
           }

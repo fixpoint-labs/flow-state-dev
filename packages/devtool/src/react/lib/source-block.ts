@@ -8,7 +8,6 @@
  * Returns `null` when the source item is no longer in the live trace
  * (retention eviction). Callers should degrade the visual gracefully.
  */
-import type { OutputItem } from "@flow-state-dev/core/items";
 import type { DevtoolItem } from "./item-types";
 
 export type SourceBlockRef = {
@@ -19,9 +18,9 @@ export type SourceBlockRef = {
 
 export function resolveSourceBlock(
   sourceItemId: string,
-  lookup: (id: string) => OutputItem | undefined,
+  lookup: (id: string) => DevtoolItem | undefined,
 ): SourceBlockRef | null {
-  const item = lookup(sourceItemId) as DevtoolItem | undefined;
+  const item = lookup(sourceItemId);
   if (!item) return null;
 
   // BlockOutputItem carries blockName + blockInstanceId at the top level.

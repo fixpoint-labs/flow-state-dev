@@ -6,25 +6,7 @@
  * across scenarios; everything else stays in the test file so the
  * assertions speak for themselves.
  */
-import type {
-  BlockDebugItem,
-  BlockOutputItem,
-  OutputItem,
-  RouterDecisionItem,
-  StateSnapshotItem
-} from "@flow-state-dev/core/items";
-
-/**
- * Runtime item union — public `OutputItem` plus the four trace types.
- * Test runners surface trace items in `result.items`, so helpers that
- * filter that array need to accept the wider shape.
- */
-type RuntimeItem =
-  | OutputItem
-  | BlockOutputItem
-  | RouterDecisionItem
-  | StateSnapshotItem
-  | BlockDebugItem;
+import type { RuntimeItem } from "@flow-state-dev/core/items/internal";
 
 /** Returns every item of the given top-level `type`. */
 export function itemsByType<T extends RuntimeItem["type"]>(
