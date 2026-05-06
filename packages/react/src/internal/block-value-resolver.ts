@@ -1,8 +1,8 @@
 /**
  * Inline BlockValue resolver for react components. Mirrors the shape of
- * `resolveBlockValueInternal` from `@flow-state-dev/core/items/internal`,
- * but lives here because `@flow-state-dev/react` may only import types
- * from core (enforced by `scripts/validate-package-boundaries.mjs`).
+ * `resolveBlockValueInternal` (which lives in core/items/internal), but is
+ * inlined here so the react package can stay type-only on core, per the
+ * boundary rules in scripts/validate-package-boundaries.mjs.
  *
  * Handles the three BlockValue cases:
  *   - `inline` → returns `value` directly.
