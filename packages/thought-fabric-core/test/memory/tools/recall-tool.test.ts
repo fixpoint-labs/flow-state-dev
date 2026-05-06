@@ -27,6 +27,7 @@ import {
 } from '../../../src/memory/semantic-memory.js'
 import {
   createRecallTool,
+  formatRecallSummary,
   capContent,
   TRUNCATION_MARKER,
   DEFAULT_PER_ITEM_CHAR_CAP,
@@ -476,6 +477,48 @@ describe('tools/recall — tool surface', () => {
     // Without a filter, format surfaces the intrinsic-ranked candidates.
     expect(result.results.map((r: any) => r.id)).toEqual(['a', 'b'])
     expect(result.totalMatched).toBe(2)
+  })
+
+  it('mapModelOutput is installed and produces a compact summary far smaller than the structured envelope', () => {
+    const { strategy } = makeStubStrategy()
+    const tool = createRecallTool({ strategy })
+    // The recall tool installs `formatRecallSummary` as the model-visible
+    // representation. The structured `RecallToolResult` continues to flow
+    // through the framework.
+    const mapper = (tool as any)._modelOutputMapper
+    expect(typeof mapper).toBe('function')
+
+    const structured = {
+      results: [
+        { id: 'a', content: 'user lives in Paris', source: 'semantic', score: 1, metadata: { confidence: 0.9 }, truncated: false },
+        { id: 'b', content: 'user travels frequently', source: 'semantic', score: 0.5, metadata: { confidence: 0.8 }, truncated: false },
+      ],
+      query: 'where',
+      strategy: 'llm-filter',
+      totalMatched: 5,
+      truncatedTo: 2,
+    }
+    const summary = formatRecallSummary(structured as any)
+    expect(summary).toContain('user lives in Paris')
+    expect(summary).toContain('user travels frequently')
+    expect(summary).toContain('2 of 5')
+    // Sanity: the summary is materially shorter than the JSON envelope.
+    expect(summary.length).toBeLessThan(JSON.stringify(structured).length / 2)
+  })
+
+  it('formatRecallSummary handles error and empty branches', () => {
+    expect(formatRecallSummary({ error: 'boom', query: 'q', strategy: 's' } as any)).toBe(
+      'Recall failed: boom',
+    )
+    expect(
+      formatRecallSummary({
+        results: [],
+        query: 'q',
+        strategy: 's',
+        totalMatched: 0,
+        truncatedTo: 0,
+      } as any),
+    ).toBe('No memories matched "q".')
   })
 })
 

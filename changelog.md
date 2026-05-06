@@ -4,6 +4,16 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-06
 
+### Framework: `mapModelOutput` — model-visible representation separate from structured tool output
+
+Adds a new `BlockDefinition.mapModelOutput((output, ctx) => string)` method that lets a tool block declare a separate, model-visible representation of its output. The structured `TOutput` keeps flowing through the framework — `block_tool_output` items, downstream sequencer steps, devtool, tests, and history replay all see the original value. The mapper fires only at the AI SDK bridge boundary, producing the string the LLM observes on its next turn.
+
+- New method on every block kind. Both `TInputSchema` and `TOutputSchema` are preserved — unlike `connectOutput`, `mapModelOutput` does not reshape downstream consumers. When the block is used as a regular sequencer step (not via `tools: [...]`), the mapper is silently inert.
+- Plumbed through the AI SDK v6 bridge as `toModelOutput` so providers materialise next-turn tool-result content from the mapper's string instead of the structured envelope.
+- Recall tool migrated as the validating consumer: structured `RecallToolResult` keeps flowing through devtool/replay, and the LLM sees a compact bulleted summary built by the new exported `formatRecallSummary` helper. Token cost on a 5-result return drops well below half the previous JSON envelope.
+- Devtool inspection: when a tool block declares `mapModelOutput`, the wrapper emits a `block_debug` item carrying the mapper's string. Devtool can render it side-by-side with the structured `block_tool_output`, so you can see what the LLM saw alongside what the block produced. Gated by `FSDEV_TRACE_OBSERVABILITY`; transient, never persisted, never sent to LLM context.
+- Mapper is expected to be deterministic: history replay re-runs it on the persisted structured output rather than persisting the string itself.
+
 ### Generator: log unparseable candidates + raise consolidation repair attempts
 
 When a generator's output schema rejects the model's response and repair gives up, the framework now logs the actual candidate to stderr alongside the validation error. Previously the only signal was `Generator output validation failed: Expected object, received string` — which tells you the schema saw a string but not *what* string. Operators had to re-run with a debugger or page through the request's block_debug item to see what the model returned.

@@ -270,7 +270,8 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function DebugPayloadSection({ payload }: { payload: BlockDebugPayload }) {
   const hasConfig = payload.model || (payload.tools && payload.tools.length > 0);
   const hasConnected = payload.connectedInput !== undefined;
-  if (!hasConfig && !hasConnected) return null;
+  const hasModelOutput = payload.modelOutput !== undefined;
+  if (!hasConfig && !hasConnected && !hasModelOutput) return null;
   return (
     <>
       {hasConfig && (
@@ -293,6 +294,13 @@ function DebugPayloadSection({ payload }: { payload: BlockDebugPayload }) {
       {hasConnected && (
         <CollapsibleSection title="Connected Input" defaultOpen>
           <JsonViewer data={payload.connectedInput} />
+        </CollapsibleSection>
+      )}
+      {hasModelOutput && (
+        <CollapsibleSection title="Model-visible Output" defaultOpen>
+          <pre className="text-[11px] text-amber-200 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
+            {payload.modelOutput}
+          </pre>
         </CollapsibleSection>
       )}
     </>
@@ -644,6 +652,16 @@ function BlockDebugDetail({ item }: { item: OutputItem & { type: "block_debug" }
       {p.connectedInput !== undefined && (
         <CollapsibleSection title="Connected Input" defaultOpen>
           <JsonViewer data={p.connectedInput} />
+        </CollapsibleSection>
+      )}
+      {p.modelOutput !== undefined && (
+        <CollapsibleSection title="Model-visible Output" defaultOpen>
+          <pre className="text-[11px] text-amber-200 whitespace-pre-wrap font-mono leading-relaxed max-h-96 overflow-y-auto">
+            {p.modelOutput}
+          </pre>
+          <div className="mt-1 text-[10px] text-slate-500">
+            What the LLM saw on its next turn (from `mapModelOutput`). The structured value lives on the matching `block_tool_output`.
+          </div>
         </CollapsibleSection>
       )}
     </div>

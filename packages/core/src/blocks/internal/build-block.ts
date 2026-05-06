@@ -88,6 +88,12 @@ export type BuildBlockOptions<
    * builders OR this with their own `config.requireOrg`. Leaves omit it.
    */
   requiresOrg?: boolean;
+  /**
+   * Mapper installed via `BlockDefinition.mapModelOutput`. Carried on the
+   * runtime view; the generator tool bridge reads it via `asRuntime(tool)`
+   * and forwards it to the AI SDK as `toModelOutput`.
+   */
+  modelOutputMapper?: (output: TOutput, ctx: BlockContext) => string | Promise<string>;
 };
 
 function validateSchema<TValue>(
@@ -160,6 +166,7 @@ export function buildBlock<
     config: runtimeConfig,
     declaredResources: options.declaredResources,
     requiresOrg,
+    _modelOutputMapper: options.modelOutputMapper,
     async run(rawInput: TInput, ctx: BlockContext): Promise<TOutput> {
       try {
         const connectedInput = runtimeConfig.connectInput
@@ -209,7 +216,25 @@ export function buildBlock<
         config: nextConfig,
         execute: internalExecute as unknown as ExecuteFn<ZodTypeAny, TOutputSchema, unknown, TOutput>,
         declaredResources: definition.declaredResources,
+        resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
+        // `connectInput` preserves `TOutputSchema`, so any installed
+        // `mapModelOutput` mapper is still valid against the rebuilt block's
+        // output. Forward it through.
+        modelOutputMapper: options.modelOutputMapper,
+      });
+    },
+    mapModelOutput(
+      mapper: (output: TOutput, ctx: BlockContext) => string | Promise<string>
+    ): BlockDefinition<TInputSchema, TOutputSchema> {
+      return buildBlock<TInputSchema, TOutputSchema, TInput, TOutput>({
+        kind,
+        config: runtimeConfig,
+        execute: internalExecute,
+        declaredResources: definition.declaredResources,
+        resolvedCapabilities: options.resolvedCapabilities,
+        requiresOrg: definition.requiresOrg,
+        modelOutputMapper: mapper,
       });
     },
     connectOutput<TTo>(
@@ -226,11 +251,17 @@ export function buildBlock<
         onCompleted: undefined
       };
 
+      // Intentionally do not forward `modelOutputMapper`: `connectOutput`
+      // changes the output type from `TOutput` to `TTo`, so the original
+      // mapper's `(output: TOutput) => string` signature no longer matches.
+      // Re-install via `.mapModelOutput(...)` after `.connectOutput(...)` if
+      // a model-visible representation is still wanted on the rebuilt block.
       return buildBlock<TInputSchema, ZodTypeAny, TInput, TTo>({
         kind,
         config: nextConfig,
         execute: mappedExecute,
         declaredResources: definition.declaredResources,
+        resolvedCapabilities: options.resolvedCapabilities,
         requiresOrg: definition.requiresOrg,
       });
     }

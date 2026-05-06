@@ -22,6 +22,11 @@ export function BlockDebugItemView({ item }: { item: BlockDebugItem }) {
       {item.payload.model && (
         <span className="text-purple-500/70 truncate">{item.payload.model}</span>
       )}
+      {item.payload.modelOutput !== undefined && (
+        <span className="text-amber-500/70 truncate" title={item.payload.modelOutput}>
+          model-visible: {item.payload.modelOutput}
+        </span>
+      )}
     </div>
   );
 }
