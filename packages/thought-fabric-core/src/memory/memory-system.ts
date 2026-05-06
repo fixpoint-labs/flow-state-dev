@@ -963,7 +963,7 @@ export function system(config: MemorySystemConfig): MemorySystem {
        */
       recall: {
         context: { memory: { 
-          additional: "There are additional memories available then what are included within this context. Use the tf_memory_recall tool to access them when you are being asked for information that is not already included in this context, or in which there might be more useful information available."
+          additional: "There are additional memories available then what are included within this context. Use the tf_memory_recall tool to access them when you are being asked for information that is not already included in this context, or in which there might be more useful information available. Before saying you don’t know, check memory for any relevant context first."
         }},
         tools: () => [recallToolBlock],
       },
