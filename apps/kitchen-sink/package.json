@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "cd ../.. && pnpm install && pnpm -r --filter './packages/**' build && cd apps/kitchen-sink && next dev",
+    "dev": "cd ../.. && pnpm install && tsc --build && cd apps/kitchen-sink && next dev",
+    "dev:fresh": "cd ../.. && pnpm install && tsc --build --clean && tsc --build && cd apps/kitchen-sink && next dev",
     "dev:watch": "node scripts/dev-watch.mjs",
     "build": "next build",
     "migrate": "tsx scripts/migrate.ts",

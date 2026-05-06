@@ -7,12 +7,20 @@ Living under `apps/` (not `examples/`) because kitchen-sink is too large to serv
 ## Commands
 
 ```bash
-pnpm dev          # Build all packages, then start Next.js dev server
-pnpm dev:watch    # Dev server with package rebuild watching
+pnpm dev          # Incremental package build (tsc --build), then Next.js dev server
+pnpm dev:fresh    # Wipe tsbuildinfo + dist (tsc --build --clean), then full rebuild + dev
+pnpm dev:watch    # tsc --build --watch + Next.js with restart-on-dist-change
 pnpm build        # Production build
 pnpm test         # Run tests (builds testing package first)
 pnpm test:watch   # Watch mode
 ```
+
+`pnpm dev` uses TypeScript project references (`tsc --build`) which writes per-package
+`tsconfig.tsbuildinfo` files containing input fingerprints. On re-run it skips
+unchanged projects entirely — first cold start is a few seconds; subsequent runs
+where nothing changed cost ~1s for the build phase. Fingerprints are content-based,
+so it stays correct after `git pull`. Use `dev:fresh` if the cache gets out of sync
+(rare — usually after toolchain upgrades).
 
 ## Testing this app
 
