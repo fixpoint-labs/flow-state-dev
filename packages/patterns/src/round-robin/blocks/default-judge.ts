@@ -7,6 +7,7 @@ import { generator } from "@flow-state-dev/core";
 import type {
   AgentType,
   GeneratorSlot,
+  ToolsSlot,
   UsesSlot,
 } from "@flow-state-dev/core";
 import type { DefinedResource } from "@flow-state-dev/core/types";
@@ -27,6 +28,7 @@ export interface CreateJudgeOptions {
   model?: string;
   context?: GeneratorSlot<any, any>;
   uses?: UsesSlot;
+  tools?: ToolsSlot;
   instructions?: JudgeInstructions;
   agentType?: AgentType;
 }
@@ -42,6 +44,7 @@ export function createJudge(opts: CreateJudgeOptions) {
     agentType: opts.agentType ?? "sub",
     ...(opts.context !== undefined ? { context: opts.context } : {}),
     ...(opts.uses ? { uses: opts.uses as any } : {}),
+    ...(opts.tools !== undefined ? { tools: opts.tools as any } : {}),
     prompt: async (input, ctx) => {
       const resolved = opts.instructions
         ? typeof opts.instructions === "function"

@@ -7,6 +7,7 @@ import { generator } from "@flow-state-dev/core";
 import type {
   AgentType,
   GeneratorSlot,
+  ToolsSlot,
   UsesSlot,
 } from "@flow-state-dev/core";
 import { z, type ZodTypeAny } from "zod";
@@ -21,6 +22,7 @@ export interface CreateSynthesizeOptions {
   outputSchema?: ZodTypeAny;
   context?: GeneratorSlot<any, any>;
   uses?: UsesSlot;
+  tools?: ToolsSlot;
   instructions?: SynthesizerInstructions;
   model?: string;
   agentType?: AgentType;
@@ -40,6 +42,7 @@ export function createSynthesize(opts: CreateSynthesizeOptions) {
     outputSchema: opts.outputSchema ?? z.string(),
     ...(opts.context !== undefined ? { context: opts.context } : {}),
     ...(opts.uses ? { uses: opts.uses as any } : {}),
+    ...(opts.tools !== undefined ? { tools: opts.tools as any } : {}),
     agentType: opts.agentType ?? "primary",
     prompt: [opts.instructions, basePrompt],
     user: (input: unknown) => {

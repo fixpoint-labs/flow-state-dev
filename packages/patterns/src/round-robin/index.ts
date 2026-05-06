@@ -26,6 +26,7 @@ import type {
   AgentType,
   GeneratorSlot,
   SequencerDefinition,
+  ToolsSlot,
   UsesSlot,
 } from "@flow-state-dev/core";
 import type {
@@ -118,6 +119,8 @@ export interface RoundRobinConfig<
   model?: string;
   /** Capabilities forwarded to default roster agents, judge, synthesizer. */
   uses?: UsesSlot;
+  /** Tools forwarded to default roster agents, judge, synthesizer. */
+  tools?: ToolsSlot;
   /** Generator context slot forwarded to defaults. */
   context?: GeneratorSlot<any, any>;
   judgeAgentType?: AgentType;
@@ -141,6 +144,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
     instructions,
     model,
     uses,
+    tools,
     context,
     judgeAgentType,
     synthesizerAgentType,
@@ -214,6 +218,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       ...(model !== undefined ? { model } : {}),
       ...(context !== undefined ? { context } : {}),
       ...(uses !== undefined ? { uses } : {}),
+      ...(tools !== undefined ? { tools } : {}),
       ...(instructions !== undefined ? { instructions } : {}),
       ...(judgeAgentType !== undefined ? { agentType: judgeAgentType } : {}),
     });
@@ -254,6 +259,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
         ...(model !== undefined ? { model } : {}),
         ...(context !== undefined ? { context } : {}),
         ...(uses !== undefined ? { uses } : {}),
+        ...(tools !== undefined ? { tools } : {}),
         ...(instructions !== undefined ? { instructions } : {}),
       });
     const recordTap = createRecordContribution({
@@ -297,6 +303,7 @@ export function roundRobin<TOutputSchema extends ZodTypeAny = ZodTypeAny>(
       ...(outputSchema !== undefined ? { outputSchema } : {}),
       ...(context !== undefined ? { context } : {}),
       ...(uses !== undefined ? { uses } : {}),
+      ...(tools !== undefined ? { tools } : {}),
       ...(instructions !== undefined ? { instructions } : {}),
       ...(model !== undefined ? { model } : {}),
       ...(synthesizerAgentType !== undefined

@@ -133,6 +133,7 @@ The default synthesizer is a generator that composes the transcript into a unifi
 | `instructions` | `string \| (input, ctx) => string` | — | Injected into default blocks only. |
 | `model` | `string` | `"preset/fast"` | Default model for built-in generators. |
 | `uses` | `UsesSlot` | — | Capabilities forwarded to default blocks. |
+| `tools` | `ToolsSlot` | — | Tools forwarded to default blocks. |
 | `context` | `GeneratorSlot` | — | Generator context slot forwarded to default blocks. |
 | `judgeAgentType` | `AgentType` | `"sub"` | Agent type for the default judge. |
 | `synthesizerAgentType` | `AgentType` | `"primary"` | Agent type for the default synthesizer. |
