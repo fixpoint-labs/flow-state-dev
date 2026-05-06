@@ -4,6 +4,15 @@ All notable implementation-repo changes are recorded here as concise, wave-level
 
 ## 2026-05-05
 
+### Recall tool: per-source pre-rank — semantic facts always reach the filter
+
+Fixes a structural starvation in the `llm-filter` strategy's prepare gate: when episodic memory was large and recent (200+ episodes at significance 0.9+), the unified intrinsic pre-rank pool filled with episodes and only the most-reinforced semantic facts squeezed in. A real-world repro on devuser showed 47 episodic + 3 semantic in a 50-candidate pool — every wife-related semantic fact was dropped before the LLM filter ran, and the agent answered "Jennifer" by reading episodic chat history while the semantic record about Moni never appeared.
+
+- **Per-source pooling.** `prepareBlock` no longer pools both stores under one cap. Semantic facts pass through unconditionally (the semantic store is bounded by `pruneThreshold` upstream). Episodes are intrinsically pre-ranked and capped at the new `PRE_RANK_EPISODIC_CAP` (default 30).
+- **Stage 1.5 exact-phrase pass-through** still runs but only over episodes that didn't make the cap. Semantic facts are all already in.
+- **`PRE_RANK_CAP` is deprecated.** Kept exported as the previous value (50) for back-compat with custom strategies that imported it for parity. The strategy itself no longer references it. Will be removed in a future major.
+- **Migration:** transparent for `tool: { strategy: 'llm-filter' }` consumers — the change is purely in the candidate pool composition. Custom strategies that used `PRE_RANK_CAP` should switch to `PRE_RANK_EPISODIC_CAP`.
+
 ### Recall tool: `RetrievalStrategy` becomes block-factory shaped
 
 Reshapes the public `RetrievalStrategy` contract that custom recall backends implement. Strategies used to expose a single `rank(query, ctx, opts)` method called from inside the recall tool's `execute`. They now expose framework blocks the tool composes as a sequencer (`prepare → optional filter → format`), so no handler in the pipeline reaches into `asRuntime()` to invoke a generator (BP-011).
@@ -24,6 +33,16 @@ Pivots away from the role-named `agent` / `worker` memory capability presets. Th
 - **Configurable formatter factory.** New export `createMemoryContextFormatter(options?)` from `@thought-fabric/core/memory`. Options: `{ digest?, working?, semantic?: { topN } | bool, episodic?: { limit } | bool }`. The boolean presets use fixed defaults (top-10 facts, last-5 episodes); reach for the factory directly when those defaults aren't right.
 - **Pre-FIX-407 sections are back, opt-in.** The simplification that removed semantic-fact and episodic-memory injection from the formatter is partially reversed — they're now selectable sections rather than always-on or always-off. The recall tool path remains the canonical way to fetch *specific* details on demand.
 - **Migration:** kitchen-sink's `workerUses` updated from `presets({ agent: false, worker: true })` to `presets({ digest: false, working: false })`. `MemoryCapabilityPreset` type changes from `'agent' | 'worker'` to `'digest' | 'working' | 'semantic' | 'episodic' | 'recall'`. `mem.contextFormatter` direct callers see no change — it remains an alias for `createMemoryContextFormatter()` with default options. Docs at `apps/docs/thought-fabric/memory.md` updated.
+
+### Recall tool: per-source pre-rank gate, semantic facts pass through
+
+Splits the unified pre-rank pool inside the `llm-filter` strategy's `prepareBlock` into two independent gates. Failure mode driving the change: high-significance recent episodes were crowding moderately-reinforced semantic facts out of the unified top-50 pool, leaving the LLM filter with no facts to score against on queries where a fact would have been the right answer.
+
+- **Semantic facts pass through unconditionally.** The semantic store is already bounded by `pruneThreshold`, so the worst case is well within the filter's token budget. No score-based admission, no cap.
+- **Episodes are scored intrinsically and capped at `PRE_RANK_EPISODIC_CAP = 30`** (replaces the old unified 50-item cap shared with facts). Stage 1.5 exact-phrase pass-through still runs over episodes the cap dropped; semantic facts skip the pass-through because they're all already admitted.
+- New export from `@thought-fabric/core/memory`: `PRE_RANK_EPISODIC_CAP`. Custom strategies that previously imported `PRE_RANK_CAP` for parity should switch to this.
+- `PRE_RANK_CAP` is now `@deprecated` but still exported. Internally unused; kept so prior consumers keep compiling. Removed in a future major.
+- Visible to consumers: the candidate set the filter sees is different — facts are no longer crowded out, and episodes that would have made the top-50 mixed pool but not the top-30 episodic pool now fall through to the exact-phrase tier rather than the filter.
 
 ### Memory pipeline + tool naming reliability fixes
 

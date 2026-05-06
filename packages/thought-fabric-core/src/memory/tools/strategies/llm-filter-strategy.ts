@@ -34,8 +34,27 @@ import type {
   RetrievalStrategy,
 } from '../types.js'
 
-/** Maximum candidates handed to the LLM filter call. */
+/**
+ * @deprecated since the prepare gate split into per-source pools — the
+ * strategy no longer references this. Kept exported so prior consumers
+ * (custom strategies that imported it for parity) keep compiling.
+ * Episodes are now capped at `PRE_RANK_EPISODIC_CAP`; semantic facts
+ * pass through unconditionally (the semantic store is bounded by
+ * `pruneThreshold`). Will be removed in a future major.
+ */
 export const PRE_RANK_CAP = 50
+
+/**
+ * Maximum episodes admitted to the pre-rank pool before the LLM filter call.
+ *
+ * Episodes are scored intrinsically (`significance × recency-decay`) and the
+ * top-N kept. Semantic facts are not capped here — they pass through
+ * unconditionally because the semantic store is already bounded by
+ * `pruneThreshold` and pooling both stores under one cap was starving facts
+ * out of the candidate set whenever many high-significance recent episodes
+ * existed.
+ */
+export const PRE_RANK_EPISODIC_CAP = 30
 
 /** Recency half-life (in turns) for episode decay. */
 export const RECENCY_HALF_LIFE = 50
@@ -186,10 +205,25 @@ const prepareOutputSchema = z.object({
 })
 
 /**
- * Build the prepare handler. Reads stores, scores intrinsically, applies
- * `sinceTurn` floor on episodes, runs the optional exact-phrase pass-through.
- * Sets `shouldFilter = candidates.length > 0` so the recall tool's gating
- * conditional skips the LLM call when there's nothing to filter.
+ * Build the prepare handler. Reads stores and produces the candidate set
+ * fed into the LLM filter, using two independent gates:
+ *
+ *   - **Semantic facts** pass through unconditionally. The semantic store is
+ *     bounded by `pruneThreshold` so even the worst case is well within the
+ *     filter's token budget; previously, when episodes-with-high-significance
+ *     dominated a unified intrinsic-rank pool, moderately-reinforced facts
+ *     got pushed out of the candidate set entirely.
+ *   - **Episodes** are scored intrinsically (`significance × recency-decay`)
+ *     and the top-N kept (`PRE_RANK_EPISODIC_CAP`). The `sinceTurn` floor
+ *     applies before scoring.
+ *
+ * The optional Stage 1.5 exact-phrase pass-through (`includeExactPhrase`)
+ * runs over episodes that didn't make the cap — it's a safety net for
+ * "specific identifier buried in a low-score episode" queries. Semantic
+ * facts skip it because they're all already in.
+ *
+ * `shouldFilter = candidates.length > 0`, so the recall tool's gating
+ * conditional skips the LLM call when both stores are empty.
  */
 function buildPrepareBlock(includeExactPhrase: boolean) {
   return handler({
@@ -202,16 +236,20 @@ function buildPrepareBlock(includeExactPhrase: boolean) {
         ? episodic.filter((e) => e.occurredAtTurn >= input.sinceTurn!)
         : episodic
 
-      // Stage 1: query-blind intrinsic pre-rank.
-      const scored: { item: MemoryItem; score: number }[] = []
-      for (const fact of semantic) {
-        scored.push({ item: semanticToMemoryItem(fact), score: intrinsicSemanticScore(fact) })
-      }
-      for (const ep of eligibleEpisodes) {
-        scored.push({ item: episodeToMemoryItem(ep), score: intrinsicEpisodicScore(ep, currentTurn) })
-      }
+      // All semantic facts pass through unconditionally.
+      const semanticItems = semantic.map(semanticToMemoryItem)
 
-      if (scored.length === 0) {
+      // Episodes: intrinsic-score, sort, cap.
+      const scoredEpisodes: { item: MemoryItem; score: number }[] = eligibleEpisodes.map((ep) => ({
+        item: episodeToMemoryItem(ep),
+        score: intrinsicEpisodicScore(ep, currentTurn),
+      }))
+      scoredEpisodes.sort((a, b) => b.score - a.score)
+      const preRankedEpisodes = scoredEpisodes.slice(0, PRE_RANK_EPISODIC_CAP)
+      const droppedEpisodes = scoredEpisodes.slice(PRE_RANK_EPISODIC_CAP)
+
+      // Empty short-circuit.
+      if (semanticItems.length === 0 && preRankedEpisodes.length === 0) {
         return {
           query: input.query,
           limit: input.limit,
@@ -223,17 +261,22 @@ function buildPrepareBlock(includeExactPhrase: boolean) {
         }
       }
 
-      scored.sort((a, b) => b.score - a.score)
-      const preRanked = scored.slice(0, PRE_RANK_CAP)
-      const includedIds = new Set(preRanked.map((c) => c.item.id))
+      const includedIds = new Set<string>()
+      for (const it of semanticItems) includedIds.add(it.id)
+      for (const c of preRankedEpisodes) includedIds.add(c.item.id)
 
-      // Stage 1.5: exact-phrase pass-through over the items the pre-rank dropped.
+      // Stage 1.5: exact-phrase pass-through over episodes that didn't make
+      // the cap. Semantic facts are all already included so the pass-through
+      // doesn't search them.
       const passThroughs = includeExactPhrase
-        ? exactPhraseMatches(input.query, scored.slice(PRE_RANK_CAP), includedIds)
+        ? exactPhraseMatches(input.query, droppedEpisodes, includedIds)
         : []
 
-      const combined = [...preRanked, ...passThroughs]
-      const candidates = combined.map((c) => c.item)
+      const candidates: MemoryItem[] = [
+        ...semanticItems,
+        ...preRankedEpisodes.map((c) => c.item),
+        ...passThroughs.map((c) => c.item),
+      ]
 
       return {
         query: input.query,

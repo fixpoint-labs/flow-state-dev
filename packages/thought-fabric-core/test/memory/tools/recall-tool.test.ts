@@ -31,6 +31,7 @@ import {
   TRUNCATION_MARKER,
   DEFAULT_PER_ITEM_CHAR_CAP,
   PRE_RANK_CAP,
+  PRE_RANK_EPISODIC_CAP,
   RECENCY_HALF_LIFE,
   intrinsicSemanticScore,
   intrinsicEpisodicScore,
@@ -38,6 +39,7 @@ import {
   episodeToMemoryItem,
   recallToolDescription,
   recallToolInputSchema,
+  createLlmFilterStrategy,
   type MemoryItem,
   type PrepareEnvelope,
   type PrepareInput,
@@ -526,7 +528,117 @@ describe('tools/recall — intrinsic scoring', () => {
     expect(intrinsicEpisodicScore(halfLifeAgo, currentTurn)).toBeCloseTo(expected, 4)
   })
 
-  it('PRE_RANK_CAP is the documented ceiling', () => {
+  it('PRE_RANK_CAP retains its documented value (kept exported as a deprecated alias)', () => {
+    // The strategy no longer references this constant — episodes are now
+    // capped at PRE_RANK_EPISODIC_CAP and semantic facts pass through
+    // unconditionally. Asserting the historical value keeps the export
+    // contract stable for any external consumer that imported it for parity.
     expect(PRE_RANK_CAP).toBe(50)
+  })
+
+  it('PRE_RANK_EPISODIC_CAP is the active episodic cap', () => {
+    expect(PRE_RANK_EPISODIC_CAP).toBe(30)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Real llm-filter strategy — prepare-stage behaviour
+// ---------------------------------------------------------------------------
+
+describe('tools/recall — llm-filter prepare gate (per-source pooling)', () => {
+  // Helper: run the strategy's prepareBlock directly against mock stores.
+  async function runPrepare(args: {
+    facts: SemanticFact[]
+    episodes: Episode[]
+    currentTurn?: number
+    query?: string
+    sinceTurn?: number
+  }): Promise<PrepareEnvelope> {
+    const strategy = createLlmFilterStrategy({ model: 'mock-model' })
+    const wmRef = createMockWmRef({ currentTurn: args.currentTurn ?? 100 })
+    const semRef = createMockSemRef({ facts: args.facts })
+    const epRef = createMockEpRef({ episodes: args.episodes })
+    const ctx = buildCtx({ wm: wmRef, ep: epRef, sem: semRef })
+    const input: PrepareInput = {
+      query: args.query ?? 'test query',
+      limit: 5,
+      sinceTurn: args.sinceTurn,
+      strategyName: strategy.name,
+      perItemCharCap: DEFAULT_PER_ITEM_CHAR_CAP,
+    }
+    return runForTest(strategy.prepareBlock, input, ctx as any) as Promise<PrepareEnvelope>
+  }
+
+  it('passes every semantic fact through to the filter regardless of reinforcement (the original starvation bug)', async () => {
+    // 5 semantic facts with low reinforcement (1–3) — under the prior unified
+    // pre-rank these would lose to high-significance recent episodes and get
+    // dropped from the candidate set before the LLM filter saw them.
+    const facts: SemanticFact[] = Array.from({ length: 5 }, (_, i) =>
+      makeFact({
+        id: `sf_lo_${i}`,
+        content: `low-reinforcement fact ${i}`,
+        confidence: 0.7,
+        reinforcementCount: (i % 3) + 1,
+      }),
+    )
+    // 100 high-significance recent episodes — guaranteed to flood any
+    // unified intrinsic pool.
+    const episodes: Episode[] = Array.from({ length: 100 }, (_, i) =>
+      makeEpisode({
+        id: `ep_hi_${i}`,
+        content: `recent significant episode ${i}`,
+        significance: 0.95,
+        occurredAtTurn: 95 + (i % 5),
+      }),
+    )
+
+    const env = await runPrepare({ facts, episodes, currentTurn: 100 })
+
+    const semCount = env.candidates.filter((c) => c.source === 'semantic').length
+    expect(semCount).toBe(5)
+    for (const f of facts) {
+      expect(env.candidates.some((c) => c.id === f.id)).toBe(true)
+    }
+  })
+
+  it('caps episodes at PRE_RANK_EPISODIC_CAP regardless of how many are in the store', async () => {
+    const episodes: Episode[] = Array.from({ length: 100 }, (_, i) =>
+      makeEpisode({
+        id: `ep_${i}`,
+        content: `episode ${i}`,
+        significance: 0.5,
+        occurredAtTurn: i,
+      }),
+    )
+    const env = await runPrepare({ facts: [], episodes, currentTurn: 100 })
+
+    const epCount = env.candidates.filter((c) => c.source === 'episodic').length
+    // Cap is hard regardless of intrinsic score uniformity. Exact-phrase
+    // pass-through doesn't fire because the default query has no 3+-word
+    // phrase that appears verbatim in the episode content.
+    expect(epCount).toBe(PRE_RANK_EPISODIC_CAP)
+  })
+
+  it('semantic facts skip the episodic cap (regression guard)', async () => {
+    // 50 semantic facts — far above the old PRE_RANK_CAP of 50 mixed pool —
+    // alongside 50 episodes. All facts must pass through; episodes get
+    // capped at 30.
+    const facts: SemanticFact[] = Array.from({ length: 50 }, (_, i) =>
+      makeFact({ id: `sf_${i}`, content: `fact ${i}`, reinforcementCount: 1 }),
+    )
+    const episodes: Episode[] = Array.from({ length: 50 }, (_, i) =>
+      makeEpisode({
+        id: `ep_${i}`,
+        content: `episode ${i}`,
+        significance: 0.9,
+        occurredAtTurn: i,
+      }),
+    )
+    const env = await runPrepare({ facts, episodes, currentTurn: 50 })
+
+    const semCount = env.candidates.filter((c) => c.source === 'semantic').length
+    const epCount = env.candidates.filter((c) => c.source === 'episodic').length
+    expect(semCount).toBe(50)
+    expect(epCount).toBe(PRE_RANK_EPISODIC_CAP)
   })
 })

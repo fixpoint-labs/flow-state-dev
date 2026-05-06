@@ -420,12 +420,12 @@ Each result's `content` is capped at 400 characters by default. When a result is
 
 The retrieval backend is pluggable. The default is `llm-filter`, which runs in two stages:
 
-1. **Query-blind intrinsic pre-rank.** Score every fact by `confidence × (0.5 + reinforcementCount/10)` and every episode by `significance × exp(-age/50)`. Pool both, sort, take the top 50. No tokenisation, no overlap math — high-value memories enter the candidate set regardless of query vocabulary.
+1. **Per-source pre-rank.** Two independent gates: every semantic fact passes through unconditionally (the semantic store is bounded by `pruneThreshold`, so fact count is naturally small); episodes are scored by `significance × exp(-age/50)`, sorted, and capped at `PRE_RANK_EPISODIC_CAP` (default 30). Splitting per source eliminates the starvation case where many high-significance recent episodes pushed moderately-reinforced facts out of the candidate set before the LLM filter ever saw them.
 2. **Single LLM filter call.** A small model picks the actually-relevant subset from the bounded candidate list.
 
-Token spend is bounded regardless of total store size. As the store grows, the pre-rank gate gets stricter. When low-value facts the LLM never sees stop being recallable, that's the signal to upgrade to a heavier strategy. There is no silent degradation curve.
+Token spend stays bounded regardless of total store size. The semantic store is gated upstream by `pruneThreshold`; the episodic gate is the cap above. When `pruneThreshold` doesn't keep facts useful or the cap excludes the relevant episode, that's the signal to upgrade to a heavier strategy.
 
-There's also a small Stage 1.5 pass-through that catches exact phrases (proper nouns, error codes) buried in low-score memories — up to 5 extra candidates per call. Disable it via `tool: { strategy: createLlmFilterStrategy({ model, exactPhrasePassThrough: false }) }`.
+There's also a small Stage 1.5 pass-through that catches exact phrases (proper nouns, error codes) buried in episodes that didn't make the cap — up to 5 extra candidates per call, applied to episodes only since semantic facts are all already in. Disable it via `tool: { strategy: createLlmFilterStrategy({ model, exactPhrasePassThrough: false }) }`.
 
 Configure the strategy at `memory.system()` time:
 
