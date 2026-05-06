@@ -11,7 +11,7 @@
  * the producing block in the trace tree (FIX-556).
  */
 import type { BlockValue } from "@flow-state-dev/core/items";
-import { isBlockValue } from "@flow-state-dev/core/items";
+import { isBlockValue, resolveBlockValue } from "@flow-state-dev/core/items";
 import { Link2, Package } from "lucide-react";
 import { JsonViewer } from "./json-viewer";
 import { useTraceLookup } from "../../context/trace-context";
@@ -46,6 +46,7 @@ export function BlockValueView({ value, className }: BlockValueViewProps) {
     return (
       <div className={className}>
         <RefBadge sourceItemId={value.sourceItemId} />
+        <RefResolvedValue sourceItemId={value.sourceItemId} />
       </div>
     );
   }
@@ -90,6 +91,36 @@ export function ToolOutputView({
       <JsonViewer data={value} className="mt-1" />
     </div>
   );
+}
+
+/**
+ * Resolves a ref's `sourceItemId` to its underlying content and renders it
+ * inline beneath the ref pill, so a ref reads as "this block re-emits the
+ * output of {sourceBlock}, which was: {value}". `resolveBlockValue` deep-
+ * resolves through the source's own BlockValue (or joins the text content
+ * for FIX-480 message refs), giving us the same payload the runtime sees.
+ */
+function RefResolvedValue({ sourceItemId }: { sourceItemId: string }) {
+  const { getItem } = useTraceLookup();
+  const sourceItem = getItem(sourceItemId);
+  if (!sourceItem) {
+    return (
+      <div className="mt-1 text-[11px] text-slate-500 italic">(source not retained)</div>
+    );
+  }
+
+  let resolved: unknown;
+  if (sourceItem.type === "block_output") {
+    resolved = resolveBlockValue(sourceItem.output, getItem);
+  } else if (sourceItem.type === "message") {
+    resolved = sourceItem.content
+      .map((part) => ("text" in part ? (part as { text: string }).text : ""))
+      .join("");
+  } else {
+    resolved = sourceItem;
+  }
+
+  return <JsonViewer data={resolved} className="mt-1" />;
 }
 
 function RefBadge({ sourceItemId }: { sourceItemId: string }) {
