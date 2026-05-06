@@ -28,6 +28,8 @@ Use the Linear MCP tools to fetch the full issue:
 
 If $ARGUMENTS doesn't look like a Linear issue ID, search for it with `list_issues` using the argument as a query.
 
+Once the issue is loaded, **move it to "In Spec Dev"** with `save_issue` (set `state` to the "In Spec Dev" workflow state for the issue's team). This signals to the team that spec authoring is in flight. If the issue is already in "In Spec Dev" or a later state, leave it. If the team has no "In Spec Dev" state, fall back to the closest equivalent (e.g., "In Progress") and note it in the publishing comment.
+
 ### Step 2: Understand the Codebase Context
 
 Launch two sub-agents in parallel:
@@ -267,6 +269,8 @@ Address any issues the validators surface. If there are unresolvable questions, 
    - Add/update any dependency relations discovered during research (using `save_issue` with `blockedBy` or `blocks`)
    - Add a comment summarizing: "Implementation spec created/updated. Key decisions: [1-2 sentence summary]. Open questions: [list if any]."
    - If open questions exist, flag the issue for discussion (don't move it to "In Progress" — it's not ready)
+
+3. **Move the issue to "In Spec Review"** with `save_issue` (set `state` to the team's "In Spec Review" workflow state). This signals the spec is ready for human review before implementation begins. Do this *after* the spec document is attached and the publishing comment is posted, so anyone navigating to the issue from the status change finds the spec already linked. If the team has no "In Spec Review" state, fall back to the closest equivalent and note it in the publishing comment.
 
 ### Step 7: Reframe the Issue Description
 
